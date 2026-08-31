@@ -189,7 +189,21 @@ RuntimeBootstrap::compose_from_filesystem_root(
   auto definitions =
       std::make_shared<const definitions::TrustedDefinitionRegistry>(
           std::move(registry));
-  auto services = make_runtime_services();
+  const std::array<std::string_view, 6> package_provider_components{
+      "usr", "lib", "omarchy", "plugin-security", version, "providers.d"};
+  const std::array<std::string_view, 3> admin_provider_components{
+      "etc", "omarchy", "plugin-providers.d"};
+  provider_host::CatalogError provider_error{};
+  auto provider_catalog = provider_host::ProviderCatalog::load(
+      filesystem_root_fd, package_provider_components,
+      admin_provider_components, definition_uid, provider_error);
+  if (!provider_catalog) {
+    error = provider_error == provider_host::CatalogError::resource_exhausted
+                ? RuntimeBootstrapError::resource_exhausted
+                : RuntimeBootstrapError::provider_profiles_untrusted;
+    return {};
+  }
+  auto services = make_runtime_services(std::move(provider_catalog));
   if (!services) {
     error = RuntimeBootstrapError::resource_exhausted;
     return {};
@@ -266,6 +280,11 @@ RuntimeBootstrap::prepare_runtime(
         .permissions = permissions,
         .runtime_limits = runtime_limits_,
         .session_limits = session_limits_,
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+        .test_supervisor_factory = {},
+        .test_before_final_fence = nullptr,
+        .test_before_final_fence_context = nullptr,
+#endif
     });
   } catch (...) {
     return {};

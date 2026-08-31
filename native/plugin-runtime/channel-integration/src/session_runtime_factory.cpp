@@ -39,14 +39,19 @@ bool runtime_service_available(
     const auto resolved = definitions.resolve(definition);
     if (!resolved)
       return false;
-    return std::ranges::count(services.dynamic_services,
-                              resolved->definition->adapter,
-                              &TrustedDynamicService::binding) == 1 &&
-           std::ranges::any_of(
-               services.dynamic_services, [&](const auto &service) {
-                 return service.binding == resolved->definition->adapter &&
-                        service.dispatch != nullptr;
-               });
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+    if (!services.provider_catalog)
+      return std::ranges::count(services.dynamic_services,
+                                resolved->definition->adapter,
+                                &TrustedDynamicService::binding) == 1 &&
+             std::ranges::any_of(
+                 services.dynamic_services, [&](const auto &service) {
+                   return service.binding == resolved->definition->adapter &&
+                          service.dispatch != nullptr;
+                 });
+#endif
+    return services.provider_catalog &&
+           services.provider_catalog->available(resolved->definition->adapter);
   } catch (...) {
     return false;
   }
@@ -84,6 +89,8 @@ const permissions::CapabilityKey kAudio{
 struct PreparedRuntime final {
   std::optional<permissions::QuotaScope> storage;
   std::vector<runtime::DynamicRoute> dynamic_routes;
+  std::shared_ptr<provider_host::ProviderActivation> provider_activation;
+  std::vector<std::shared_ptr<provider_host::ProviderRoute>> provider_routes;
 };
 
 class LiveDispatchAuthority final : public host_session::DispatchAuthority {
@@ -160,6 +167,8 @@ public:
       std::shared_ptr<session::LiveGenerationState> live,
       const Limits &limits)
       : definitions_(std::move(definitions)), context_(services.context),
+        provider_activation_(std::move(prepared.provider_activation)),
+        provider_routes_(std::move(prepared.provider_routes)),
         storage_(state_directory_fd,
                  prepared.storage ? prepared.storage->total_bytes : 0,
                  prepared.storage ? prepared.storage->item_bytes : 0),
@@ -181,6 +190,8 @@ public:
 private:
   std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions_;
   std::shared_ptr<void> context_;
+  std::shared_ptr<provider_host::ProviderActivation> provider_activation_;
+  std::vector<std::shared_ptr<provider_host::ProviderRoute>> provider_routes_;
   providers::PrivateStorageBackend storage_;
   audit::BoundedAuditLog audit_;
   LiveDispatchAuthority authority_;
@@ -243,21 +254,42 @@ std::optional<PreparedRuntime> prepare_runtime(
     const auto resolved = registry.resolve(grant.request.definition);
     if (!resolved)
       return std::nullopt;
-    const auto matches = std::ranges::count(
-        services.dynamic_services, resolved->definition->adapter,
-        &TrustedDynamicService::binding);
-    const auto configured = std::ranges::find(
-        services.dynamic_services, resolved->definition->adapter,
-        &TrustedDynamicService::binding);
-    if (matches != 1 || configured == services.dynamic_services.end() ||
-        !configured->dispatch)
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+    if (!services.provider_catalog) {
+      const auto matches = std::ranges::count(
+          services.dynamic_services, resolved->definition->adapter,
+          &TrustedDynamicService::binding);
+      const auto configured = std::ranges::find(
+          services.dynamic_services, resolved->definition->adapter,
+          &TrustedDynamicService::binding);
+      if (matches != 1 || configured == services.dynamic_services.end() ||
+          !configured->dispatch)
+        return std::nullopt;
+      prepared.dynamic_routes.push_back({
+          .grant = grant,
+          .adapter = {.binding = configured->binding,
+                      .dispatch = configured->dispatch,
+                      .context = services.context.get()},
+          .scope_validator = validator});
+      continue;
+    }
+#endif
+    if (!prepared.provider_activation)
+      prepared.provider_activation = provider_host::ProviderActivation::create(
+          services.provider_catalog, grants.binding);
+    if (!prepared.provider_activation)
+      return std::nullopt;
+    auto provider_route = prepared.provider_activation->route(
+        resolved->definition->adapter);
+    if (!provider_route)
       return std::nullopt;
     prepared.dynamic_routes.push_back({
         .grant = grant,
-        .adapter = {.binding = configured->binding,
-                    .dispatch = configured->dispatch,
-                    .context = services.context.get()},
+        .adapter = {.binding = provider_route->binding(),
+                    .dispatch = provider_host::ProviderRoute::dispatch,
+                    .context = provider_route.get()},
         .scope_validator = validator});
+    prepared.provider_routes.push_back(std::move(provider_route));
   }
   return prepared;
 }

@@ -1762,7 +1762,7 @@ void manager_owns_permission_generation_replacement() {
                                         BlockingNotifications::send,
                                     .audio_play = nullptr,
                                     .compare_scope = nullptr,
-                                    .dynamic_services = {}};
+                                    .provider_catalog = {}};
   bridge::PluginManagerTestAccess::installRuntime(
       *manager, fixture.bootstrap(std::move(services)));
   bridge::PluginManagerTestAccess::setJobSubmitter(
@@ -2243,7 +2243,7 @@ void public_permission_lifecycle_is_closed_until_exact_consent() {
         .notification_send = channel::DesktopNotificationService::send,
         .audio_play = nullptr,
         .compare_scope = nullptr,
-        .dynamic_services = {}};
+        .provider_catalog = {}};
   };
 
   DeterministicJobs scheduler;
@@ -2713,7 +2713,7 @@ void permission_control_is_bounded_and_destruction_safe() {
                                            .notification_send = nullptr,
                                            .audio_play = nullptr,
                                            .compare_scope = nullptr,
-                                           .dynamic_services = {}};
+                                           .provider_catalog = {}};
   bridge::PluginManagerTestAccess::installRuntime(
       *manager, fixture.bootstrap(std::move(services)));
   bridge::PluginManagerTestAccess::setJobSubmitter(
@@ -2805,7 +2805,7 @@ void permission_control_is_bounded_and_destruction_safe() {
                                       .notification_send = nullptr,
                                       .audio_play = nullptr,
                                       .compare_scope = nullptr,
-                                      .dynamic_services = {}};
+                                      .provider_catalog = {}};
   bridge::PluginManagerTestAccess::installRuntime(
       *manager, fixture.bootstrap(std::move(services)));
   bridge::PluginManagerTestAccess::setJobSubmitter(
@@ -3026,7 +3026,7 @@ void concurrent_permission_fences_route_exactly() {
                                         BlockingNotifications::send,
                                     .audio_play = nullptr,
                                     .compare_scope = nullptr,
-                                    .dynamic_services = {}};
+                                    .provider_catalog = {}};
   DeterministicJobs scheduler;
   auto manager = bridge::PluginManagerTestAccess::create();
   struct ReleaseEffects final {

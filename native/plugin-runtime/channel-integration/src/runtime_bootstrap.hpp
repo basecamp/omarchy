@@ -21,6 +21,7 @@ enum class RuntimeBootstrapError : std::uint8_t {
   definition_document_rejected,
   definition_registry_rejected,
   definition_bound_exceeded,
+  provider_profiles_untrusted,
   resource_exhausted,
   internal_failure,
 };
@@ -134,8 +135,11 @@ public:
            bootstrap.services_->context &&
            bootstrap.services_->notification_send != nullptr &&
            bootstrap.services_->audio_play == nullptr &&
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
            bootstrap.services_->compare_scope == nullptr &&
-           bootstrap.services_->dynamic_services.empty();
+           bootstrap.services_->dynamic_services.empty() &&
+#endif
+           bootstrap.services_->provider_catalog;
   }
   static void set_services(RuntimeBootstrap &bootstrap,
                            RuntimeServices services) {

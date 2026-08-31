@@ -102,17 +102,18 @@ bool desktop_notification_reply_accepted(const QDBusMessage &reply) noexcept {
   }
 }
 
-std::shared_ptr<const RuntimeServices> make_runtime_services() noexcept {
+std::shared_ptr<const RuntimeServices> make_runtime_services(
+    std::shared_ptr<const provider_host::ProviderCatalog> provider_catalog)
+    noexcept {
   try {
     auto service = std::make_shared<DesktopNotificationService>(
         std::make_unique<FreedesktopNotificationTransport>(
             QDBusConnection::sessionBus()));
-    return std::make_shared<const RuntimeServices>(
-        RuntimeServices{.context = std::move(service),
-                        .notification_send = DesktopNotificationService::send,
-                        .audio_play = nullptr,
-                        .compare_scope = nullptr,
-                        .dynamic_services = {}});
+    RuntimeServices services;
+    services.context = std::move(service);
+    services.notification_send = DesktopNotificationService::send;
+    services.provider_catalog = std::move(provider_catalog);
+    return std::make_shared<const RuntimeServices>(std::move(services));
   } catch (...) {
     return {};
   }

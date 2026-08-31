@@ -46,9 +46,11 @@ desktop_notification_message(const DesktopNotification &notification);
 [[nodiscard]] bool
 desktop_notification_reply_accepted(const QDBusMessage &reply) noexcept;
 
-// One immutable service table is shared by every runtime composed by a
-// bootstrap. Unsupported audio and dynamic adapters remain absent.
+// One immutable service table and provider catalog are shared by every runtime
+// composed by a bootstrap. Unsupported built-in services remain absent.
 [[nodiscard]] std::shared_ptr<const RuntimeServices>
-make_runtime_services() noexcept;
+make_runtime_services(
+    std::shared_ptr<const provider_host::ProviderCatalog> provider_catalog = {})
+    noexcept;
 
 } // namespace omarchy::plugin_runtime::channel

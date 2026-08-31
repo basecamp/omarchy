@@ -114,6 +114,11 @@ if(TARGET omarchy-plugin-permission-contract
   add_subdirectory(contracts/capability-definitions)
 endif()
 
+if(TARGET omarchy-plugin-capability-definitions
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/provider-host/CMakeLists.txt")
+  add_subdirectory(provider-host)
+endif()
+
 if(TARGET omarchy-plugin-wire
     AND TARGET omarchy-plugin-permission-contract
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/broker/CMakeLists.txt")
@@ -180,6 +185,7 @@ set(plugin_host_embedded_targets
   omarchy-plugin-permission-contract
   omarchy-plugin-sandbox-policy
   omarchy-plugin-capability-definitions
+  omarchy-plugin-provider-host
   omarchy-plugin-broker-core
   omarchy-plugin-trusted-bridge
   omarchy-plugin-surface-host

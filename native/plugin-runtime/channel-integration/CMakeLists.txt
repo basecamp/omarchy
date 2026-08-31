@@ -78,6 +78,7 @@ if(TARGET omarchy-plugin-host-session)
     omarchy-plugin-activation-snapshot
     omarchy-plugin-host-session
     omarchy-plugin-discovery
+    omarchy-plugin-provider-host
   )
   target_link_libraries(omarchy-plugin-authenticated-session PRIVATE
     Qt6::Core
@@ -249,6 +250,8 @@ if(BUILD_TESTING)
       Omarchy::PluginLauncherTestSupport Qt6::Core)
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
       omarchy-plugin-activation-snapshot)
+    target_link_libraries(omarchy-plugin-product-session-test PRIVATE
+      omarchy-plugin-provider-host)
     add_dependencies(omarchy-plugin-product-session-test
       omarchy-plugin-channel-peer omarchy-plugin-channel-fake-bwrap
       omarchy-plugin-qml-worker)

@@ -3,6 +3,7 @@
 #include "plugin_session.hpp"
 #include "dynamic_activation.hpp"
 #include "omarchy/plugin_runtime/providers/provider_set.hpp"
+#include "omarchy/plugin_runtime/provider_host/provider_host.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -13,13 +14,16 @@ namespace omarchy::plugin_runtime::channel {
 
 namespace definitions = omarchy::plugins::definitions;
 namespace providers = omarchy::plugin_runtime::providers;
+namespace provider_host = omarchy::plugin_runtime::provider_host;
 
 class PluginRuntimeRoot;
 
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
 struct TrustedDynamicService final {
   definitions::AdapterBinding binding;
   definitions::DynamicAdapterDispatch dispatch = nullptr;
 };
+#endif
 
 // All callbacks are trusted, synchronous host services. They must finish every
 // effect before returning, must not invoke permission/session lifecycle APIs,
@@ -30,7 +34,10 @@ struct RuntimeServices final {
   providers::NotificationSend notification_send = nullptr;
   providers::AudioPlay audio_play = nullptr;
   definitions::DynamicScopeCompare compare_scope = nullptr;
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
   std::vector<TrustedDynamicService> dynamic_services;
+#endif
+  std::shared_ptr<const provider_host::ProviderCatalog> provider_catalog;
 };
 
 // Trusted availability is derived from the frozen service table and exact

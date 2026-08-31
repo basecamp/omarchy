@@ -87,6 +87,27 @@ std::shared_ptr<runtime::GestureEligibilityLatch> gesture() {
       std::make_shared<Clock>());
 }
 
+std::shared_ptr<const omarchy::plugin_runtime::provider_host::ProviderCatalog>
+empty_provider_catalog(const std::filesystem::path &root) {
+  require(::mkdir((root / "provider-package").c_str(), 0700) == 0 &&
+              ::mkdir((root / "provider-admin").c_str(), 0700) == 0,
+          "empty provider roots failed");
+  const int root_fd =
+      ::open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+  require(root_fd >= 0, "empty provider root open failed");
+  const std::array<std::string_view, 1> package{"provider-package"};
+  const std::array<std::string_view, 1> admin{"provider-admin"};
+  omarchy::plugin_runtime::provider_host::CatalogError error{};
+  auto catalog =
+      omarchy::plugin_runtime::provider_host::ProviderCatalog::load(
+          root_fd, package, admin, static_cast<std::uint32_t>(::getuid()), error);
+  ::close(root_fd);
+  require(catalog && error ==
+                         omarchy::plugin_runtime::provider_host::CatalogError::none,
+          "empty provider catalog load failed");
+  return catalog;
+}
+
 policy::GrantSnapshot audio_snapshot() {
   policy::GrantSnapshot snapshot;
   const permissions::CapabilityKey capability{
@@ -333,7 +354,7 @@ void provider_completeness_and_effect_fence() {
       .notification_send = nullptr,
       .audio_play = play_audio,
       .compare_scope = nullptr,
-      .dynamic_services = {}};
+      .dynamic_services = {}, .provider_catalog = {}};
   auto factory = std::make_unique<channel::SessionRuntimeFactory>(
       definitions, services);
   auto product = factory->create(plugin_manifest(), grants,
@@ -449,7 +470,8 @@ void descriptor_quota_and_dynamic_catalog_validation() {
       .notification_send = nullptr,
       .audio_play = nullptr,
       .compare_scope = exact_scope,
-      .dynamic_services = {}};
+      .dynamic_services = {},
+      .provider_catalog = empty_provider_catalog(directories.root)};
   channel::SessionRuntimeFactory missing_dynamic(
       mutable_definitions, missing_route);
   auto missing_product = missing_dynamic.create(
@@ -474,6 +496,7 @@ void descriptor_quota_and_dynamic_catalog_validation() {
               !missing_dynamic.project_permissions(required_plugin,
                                                    required_dynamic),
           "required granted permission activated without its provider");
+  missing_route.provider_catalog.reset();
   auto wrong = definition.adapter;
   wrong.contract_digest = digest('e');
   missing_route.dynamic_services.push_back(
@@ -599,7 +622,8 @@ void descriptor_quota_and_dynamic_catalog_validation() {
       .audio_play = nullptr,
       .compare_scope = exact_scope,
       .dynamic_services = {
-          {.binding = definition.adapter, .dispatch = dynamic_dispatch}}};
+          {.binding = definition.adapter, .dispatch = dynamic_dispatch}},
+      .provider_catalog = {}};
   channel::SessionRuntimeFactory still_denied(
       mutable_definitions, provider_appeared);
   const auto denied_projection =
@@ -678,7 +702,8 @@ void synchronous_effects_drain_before_revocation_acknowledges() {
        .notification_send = nullptr,
        .audio_play = blocking_audio,
        .compare_scope = nullptr,
-       .dynamic_services = {}});
+       .dynamic_services = {},
+       .provider_catalog = {}});
   auto product = factory.create(plugin_manifest(), grants, directories.revision,
                                 directories.state, 45, live, gesture());
   require(product != nullptr, "blocking effect runtime was rejected");

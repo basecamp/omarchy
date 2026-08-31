@@ -99,10 +99,12 @@ if(BUILD_TESTING)
     src/SurfaceProjectionModel.cpp
     ../channel-integration/src/runtime_bootstrap.cpp
     ../channel-integration/src/runtime_roots.cpp
+    ../channel-integration/src/session_runtime_factory.cpp
   )
   omarchy_plugin_target_defaults(omarchy-plugin-permission-control-contract-test)
   target_compile_definitions(omarchy-plugin-permission-control-contract-test PRIVATE
     OMARCHY_PLUGIN_MANAGER_TESTING
+    OMARCHY_PLUGIN_SESSION_TESTING
     OMARCHY_RUNTIME_BOOTSTRAP_TESTING
     OMARCHY_RUNTIME_ROOTS_TESTING)
   target_include_directories(omarchy-plugin-permission-control-contract-test PRIVATE
