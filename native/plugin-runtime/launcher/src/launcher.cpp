@@ -1005,8 +1005,8 @@ bool Worker::set_readiness_interests(ReadinessInterests interests) noexcept {
          implementation_->set_readiness_interests(interests);
 }
 
-std::string Worker::take_standard_error() {
-  std::string result;
+std::size_t Worker::take_standard_error_byte_count() {
+  std::size_t result = 0;
   if (!implementation_ || !implementation_->standard_error)
     return result;
   const int descriptor = implementation_->standard_error.get();
@@ -1014,10 +1014,10 @@ std::string Worker::take_standard_error() {
   if (flags < 0 || fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) < 0)
     return result;
   std::array<char, 1024> buffer{};
-  while (result.size() < 8192) {
+  while (result < 8192) {
     const auto count = read(descriptor, buffer.data(),
-                            std::min(buffer.size(), 8192 - result.size()));
-    if (count > 0) result.append(buffer.data(), static_cast<std::size_t>(count));
+                            std::min(buffer.size(), 8192 - result));
+    if (count > 0) result += static_cast<std::size_t>(count);
     else if (count < 0 && errno == EINTR) continue;
     else break;
   }

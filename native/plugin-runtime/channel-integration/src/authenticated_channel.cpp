@@ -13,6 +13,7 @@
 #include <chrono>
 #include <limits>
 #include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -22,6 +23,23 @@ namespace {
 constexpr std::uint16_t kControlRoleVersion = 1;
 constexpr std::uint32_t kMaximumInFlight = 32;
 std::atomic<std::uint64_t> next_channel_origin{1};
+
+std::string_view failure_name(ChannelFailure failure) noexcept {
+  switch (failure) {
+  case ChannelFailure::launch_failed: return "launch-failed";
+  case ChannelFailure::identity_mismatch: return "identity-mismatch";
+  case ChannelFailure::peer_failure: return "peer-failure";
+  case ChannelFailure::malformed_envelope: return "malformed-envelope";
+  case ChannelFailure::negotiation_failed: return "negotiation-failed";
+  case ChannelFailure::readiness_failed: return "readiness-failed";
+  case ChannelFailure::not_ready: return "not-ready";
+  case ChannelFailure::role_version_mismatch: return "role-version-mismatch";
+  case ChannelFailure::stale_generation: return "stale-generation";
+  case ChannelFailure::deadline_expired: return "deadline-expired";
+  case ChannelFailure::none: return "none";
+  }
+  return "unknown";
+}
 
 std::size_t role_index(wire::EndpointRole role) {
   const auto value = static_cast<std::uint16_t>(role);
@@ -692,10 +710,6 @@ const launcher::LaunchIdentity &AuthenticatedBrokerChannel::identity() const {
   return identity_;
 }
 
-std::string AuthenticatedBrokerChannel::take_worker_standard_error() {
-  return worker_ == nullptr ? std::string{} : worker_->take_standard_error();
-}
-
 bool AuthenticatedBrokerChannel::terminate(
     launcher::Deadline deadline) noexcept {
   if (!termination_.begin())
@@ -706,12 +720,24 @@ bool AuthenticatedBrokerChannel::terminate(
 }
 
 bool AuthenticatedBrokerChannel::fail(ChannelFailure failure,
-                                      std::string detail) {
+                                      std::string failure_detail) {
   if (!failed()) {
     failure_ = failure;
-    detail_ = std::move(detail);
+    detail_ = std::move(failure_detail);
   }
   ready_ = false;
+  if (worker_ != nullptr) {
+    const auto worker_standard_error_bytes =
+        worker_->take_standard_error_byte_count();
+    if (worker_standard_error_bytes != 0) {
+      dprintf(STDERR_FILENO,
+              "omarchy-plugin-host: plugin=%s worker-failure=%.*s "
+              "untrusted-stderr-bytes=%zu\n",
+              identity_.plugin_id.c_str(),
+              static_cast<int>(failure_name(failure_).size()),
+              failure_name(failure_).data(), worker_standard_error_bytes);
+    }
+  }
   // Worker destruction transfers its preallocated cleanup job to the launcher
   // reaper. Protocol corruption and peer loss must never synchronously wait on
   // process or resource-scope teardown on the channel/UI thread.

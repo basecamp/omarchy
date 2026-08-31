@@ -598,6 +598,48 @@ void fake_suite() {
         "authenticated try ignored authoritative pidfd exit state");
   }
   {
+    Session exited("stderr-ready-loss", FAKE_BWRAP_PATH);
+    require(exited.opened.channel->negotiate(deadline_after(2s)) &&
+                kill(exited.opened.channel->identity().outer_worker_pid,
+                     SIGUSR1) == 0,
+            "stderr preservation fixture did not negotiate or exit");
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (exited.opened.channel->alive() &&
+           std::chrono::steady_clock::now() < deadline)
+      usleep(1000);
+    std::array<int, 2> diagnostic_pipe{};
+    require(pipe2(diagnostic_pipe.data(), O_CLOEXEC) == 0,
+            "could not create host diagnostic capture pipe");
+    Descriptor diagnostic_read(diagnostic_pipe[0]);
+    Descriptor diagnostic_write(diagnostic_pipe[1]);
+    Descriptor saved_standard_error(dup(STDERR_FILENO));
+    require(saved_standard_error.get() >= 0 &&
+                dup2(diagnostic_write.get(), STDERR_FILENO) >= 0,
+            "could not capture host diagnostic output");
+    const auto result = exited.opened.channel->try_receive_authenticated(
+        launcher::EndpointMask::broker);
+    require(dup2(saved_standard_error.get(), STDERR_FILENO) >= 0,
+            "could not restore host diagnostic output");
+    std::array<char, 512> diagnostic{};
+    const auto diagnostic_size =
+        read(diagnostic_read.get(), diagnostic.data(), diagnostic.size());
+    const std::string_view diagnostic_text(
+        diagnostic.data(), diagnostic_size > 0
+                               ? static_cast<std::size_t>(diagnostic_size)
+                               : 0);
+    require((result.status ==
+                 channel::AuthenticatedReceiveStatus::peer_closed ||
+             result.status == channel::AuthenticatedReceiveStatus::fatal) &&
+                diagnostic_text.find("untrusted-stderr-bytes=8192") !=
+                    std::string_view::npos &&
+                diagnostic_text.find("forged") == std::string_view::npos &&
+                diagnostic_text.find("secret") == std::string_view::npos &&
+                diagnostic_text.find("Service.qml") ==
+                    std::string_view::npos,
+            "forged sidecar or QML stderr crossed the host diagnostic "
+            "boundary");
+  }
+  {
     Session replay("replay", FAKE_BWRAP_PATH);
     require(replay.opened.channel->negotiate(deadline_after(2s)),
             "typed replay fixture did not negotiate");

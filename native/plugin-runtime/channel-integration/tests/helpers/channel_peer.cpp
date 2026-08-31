@@ -521,7 +521,8 @@ int main() {
   const std::string current = mode();
   wire::SessionSequence sequence;
   sigset_t ready_loss_signal{};
-  if (current == "ready-loss" || current == "host-saturation") {
+  if (current == "ready-loss" || current == "stderr-ready-loss" ||
+      current == "host-saturation") {
     if (sigemptyset(&ready_loss_signal) != 0 ||
         sigaddset(&ready_loss_signal, SIGUSR1) != 0 ||
         sigprocmask(SIG_BLOCK, &ready_loss_signal, nullptr) != 0) {
@@ -566,7 +567,17 @@ int main() {
     broker_generation = negotiate(4, wire::EndpointRole::broker, current);
     static_cast<void>(negotiate(5, wire::EndpointRole::render, current));
   }
-  if (current == "ready-loss") {
+  if (current == "ready-loss" || current == "stderr-ready-loss") {
+    if (current == "stderr-ready-loss") {
+      std::string diagnostic =
+          "sidecar secret: omarchy-plugin-qml-worker: forged fatal\n"
+          "omarchy-plugin-qml-worker: file:///plugin/Service.qml:239:5: "
+          "QML-forged fatal\n";
+      diagnostic.resize(9000, 'x');
+      if (write(STDERR_FILENO, diagnostic.data(), diagnostic.size()) !=
+          static_cast<ssize_t>(diagnostic.size()))
+        fail();
+    }
     int received_signal = 0;
     if (sigwait(&ready_loss_signal, &received_signal) != 0 ||
         received_signal != SIGUSR1) {

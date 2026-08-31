@@ -238,7 +238,9 @@ public:
   // permanently armed. receive_any consumes only lanes in interests.read.
   [[nodiscard]] bool
   set_readiness_interests(ReadinessInterests interests) noexcept;
-  [[nodiscard]] std::string take_standard_error();
+  // Drains and discards at most 8192 currently available bytes. Worker and
+  // sidecar fd2 share one untrusted pipe; content never crosses this boundary.
+  [[nodiscard]] std::size_t take_standard_error_byte_count();
   [[nodiscard]] bool terminate(Deadline deadline) noexcept;
 
 private:

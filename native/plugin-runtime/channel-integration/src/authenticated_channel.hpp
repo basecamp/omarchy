@@ -161,7 +161,6 @@ public:
   [[nodiscard]] ChannelFailure failure() const;
   [[nodiscard]] const std::string &detail() const;
   [[nodiscard]] const launcher::LaunchIdentity &identity() const;
-  [[nodiscard]] std::string take_worker_standard_error();
   [[nodiscard]] bool terminate(launcher::Deadline deadline) noexcept;
 
 private:
