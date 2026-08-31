@@ -29,7 +29,8 @@ if [[ -s $config_file ]]; then
     | (if (.disabledPlugins? | type) == "array" then
       .disabledPlugins |= map(rename)
     else . end)
-  ' "$config_file" >"$tmp" && mv "$tmp" "$config_file" || rm -f "$tmp"
+  ' "$config_file" >"$tmp" && cat "$tmp" >"$config_file"
+  rm -f "$tmp"
 fi
 
 rm -rf "$HOME/.cache/omarchy/model-usage"
