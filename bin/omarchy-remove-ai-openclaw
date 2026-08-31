@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Remove OpenClaw along with the gateway service it installed.
+
+set -e
+
+# The gateway is a systemd user service OpenClaw writes itself, so it is asked
+# to take it back rather than having the unit unlinked behind it: uninstall
+# stops the running gateway first, and the self-update timer installed beside it
+# is OpenClaw's to clear too. Tolerated failing because a machine that never
+# finished onboarding has no service to give up, and that is not an error here.
+openclaw gateway uninstall >/dev/null 2>&1 || true
+
+# The install itself is mise's, behind the stub in ~/.local/bin.
+mise rm -g npm:openclaw >/dev/null 2>&1 || true
+mise uninstall --all npm:openclaw >/dev/null 2>&1 || true
+
+# The stub stays. Omarchy writes one on every machine and it is cold until it is
+# run, so leaving it puts this machine back where a fresh one starts rather than
+# a step behind it. Nothing runs until someone types openclaw again.
+
+# Not ~/.openclaw: the config names the inference provider, the channel pairings
+# are what took the round trip through each service to approve, and the sessions,
+# memories and the skills OpenClaw wrote for itself are the user's. They are
+# small, and finding them still there after a reinstall is the better surprise.
+
+echo ""
+echo "OpenClaw has been removed."
+echo "Your config, channel pairings, sessions and skills are still in ~/.openclaw."

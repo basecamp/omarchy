@@ -52,7 +52,8 @@ if omarchy-cmd-missing "$agent"; then
 fi
 
 # Agents launched from the keybinding or menu run unattended, so each one starts
-# with its own spelling of "don't stop to ask". Pi and Ori have none to skip.
+# with its own spelling of "don't stop to ask". Pi, Ori and OpenClaw have none
+# to skip.
 case "$agent" in
 opencode)
   command=(opencode --auto)
@@ -89,6 +90,15 @@ codex)
 omp)
   command=(omp --auto-approve)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+openclaw)
+  # OpenClaw's terminal UI is a client of the gateway holding the sessions and
+  # the channel connections, so it attaches to that rather than starting its
+  # own. `openclaw chat` is the same command with --local, which runs the agent
+  # in-process, blind to those sessions, and refuses outright while a gateway
+  # owns them -- and installing OpenClaw here always leaves one running.
+  command=(openclaw tui)
+  [[ -n ${prompt:-} ]] && command+=(--message "$prompt")
   ;;
 ori)
   # Ori is a harness launcher, and `ori code` is the agent it runs itself.
