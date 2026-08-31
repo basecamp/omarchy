@@ -13,3 +13,10 @@ fi
 if pgrep -x ghostty >/dev/null; then
   killall -SIGUSR2 ghostty
 fi
+
+# foot has no runtime config-reload mechanism, so a running instance keeps its
+# stale config no matter what this script does. Say so instead of silently
+# doing nothing for it.
+if pgrep -x foot >/dev/null; then
+  echo "foot has no config-reload mechanism; restart open foot windows to pick up changes." >&2
+fi
