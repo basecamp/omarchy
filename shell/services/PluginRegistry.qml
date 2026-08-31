@@ -90,7 +90,7 @@ QtObject {
     return manifest
   }
 
-  function entryPointUrl(manifest, kind) {
+  function entryPointPath(manifest, kind) {
     if (!Util.isPlainObject(manifest)) return ""
     var ep = manifest.entryPoints ? manifest.entryPoints[kind] : null
     if (!ep) return ""
@@ -104,13 +104,18 @@ QtObject {
       console.warn("PluginRegistry: entry point escapes sourceDir: " + resolved)
       return ""
     }
-    return Util.fileUrl(resolved)
+    return resolved
+  }
+
+  function entryPointUrl(manifest, kind) {
+    var resolved = entryPointPath(manifest, kind)
+    return resolved ? Util.fileUrl(resolved) : ""
   }
 
   // Enabled = the plugin id is referenced somewhere in shell.json. That can
-  // be either the active bar option in `bar.id`, a layout entry inside
-  // `bar.layout.*` (bar widgets), or a top-level entry in `plugins[]` (panels,
-  // overlays, services).
+  // be the active bar option in `bar.id`, the active screensaver option in
+  // `idle.screensaverId`, a layout entry inside `bar.layout.*` (bar widgets),
+  // or a top-level entry in `plugins[]` (panels, overlays, services).
   //
   // Special cases (implicitly always enabled, no shell.json entry needed):
   //   - the built-in bar option (`omarchy.bar`) is active when `bar.id` is
@@ -131,6 +136,15 @@ QtObject {
           selectedBar = Util.canonicalWidgetId(String(config.bar.id || ""))
         if (!selectedBar) selectedBar = "omarchy.bar"
         return selectedBar === key
+      }
+      if (Array.isArray(manifest.kinds) && manifest.kinds.indexOf("screensaver") !== -1) {
+        // Like the bar option, exactly one screensaver plugin is active at a
+        // time; no selection means the built-in terminal screensaver, which is
+        // not a plugin, so nothing is enabled by default.
+        var selectedScreensaver = ""
+        if (Util.isPlainObject(config) && Util.isPlainObject(config.idle))
+          selectedScreensaver = Util.canonicalWidgetId(String(config.idle.screensaverId || ""))
+        return selectedScreensaver === key
       }
       if (isDisabled(config, key)) return false
       if (manifest.__isFirstParty) return true
@@ -459,6 +473,7 @@ QtObject {
       return false
     }
     var isBarOption = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1
+    var isScreensaverOption = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("screensaver") !== -1
     var isBarWidget = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar-widget") !== -1
     var hasNonWidgetKind = manifest && Array.isArray(manifest.kinds)
       && manifest.kinds.some(function(kind) { return kind !== "bar-widget" })
@@ -489,6 +504,20 @@ QtObject {
         } else if (Util.canonicalWidgetId(String(config.bar.id || "")) === key) {
           if (clonedFrom && clonedFrom !== "omarchy.bar") config.bar.id = clonedFrom
           else delete config.bar.id
+        }
+        return
+      }
+
+      if (isScreensaverOption) {
+        // Selection is enablement, like the bar option: enabling makes this
+        // the one active screensaver plugin, disabling falls back to the
+        // built-in terminal screensaver.
+        if (value) {
+          if (!Util.isPlainObject(config.idle)) config.idle = {}
+          config.idle.screensaverId = key
+        } else if (Util.isPlainObject(config.idle)
+            && Util.canonicalWidgetId(String(config.idle.screensaverId || "")) === key) {
+          delete config.idle.screensaverId
         }
         return
       }

@@ -32,7 +32,12 @@ JSON
 
   while IFS= read -r entry; do
     [[ -n $entry ]] || continue
+    mkdir -p "$(dirname "$dir/$entry")"
     touch "$dir/$entry"
+    # The screensaver entry point must carry the executable bit; the bit is
+    # meaningless to the QML kinds, so setting it everywhere keeps this helper
+    # kind-agnostic.
+    chmod 755 "$dir/$entry"
   done < <(jq -r '.[]' <<<"$entry_points")
 
   printf '%s\n' "$dir"
@@ -64,8 +69,18 @@ bar-widget:barWidget
 menu:menu
 overlay:overlay
 panel:panel
+screensaver:screensaver
 service:service
 KINDS
+
+# A screensaver entry point is executed, not loaded as QML, so it must carry
+# the executable bit.
+dir=$(write_plugin "limp-screensaver" '["screensaver"]' '{"screensaver": "bin/launch"}')
+chmod 644 "$dir/bin/launch"
+output=$(validate "$dir") && fail "validate refuses a non-executable screensaver entry point" "$output"
+grep -qF "kind 'screensaver' requires its entry point to be executable" <<<"$output" \
+  || fail "validate explains the screensaver executability contract" "$output"
+pass "validate refuses a non-executable screensaver entry point"
 
 # A plugin that is both a bar and a widget owes an entry point for each.
 dir=$(write_plugin "both" '["bar","bar-widget"]' '{"bar": "Bar.qml", "barWidget": "Widget.qml"}')
