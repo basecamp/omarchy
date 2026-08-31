@@ -722,23 +722,6 @@ RuntimeResult WorkerRuntime::bind_surface(std::string_view surface_name,
   return {};
 }
 
-RuntimeResult WorkerRuntime::open_surface(std::string_view surface_name,
-                                          surface::SurfaceKey key) {
-  auto *instance = implementation_->by_name(surface_name);
-  if (instance == nullptr || !instance->bound_key ||
-      *instance->bound_key != key)
-    return failure(RuntimeFailure::stale_surface,
-                   "surface open target is absent or stale");
-  const auto method = instance->root_item->metaObject()->indexOfMethod("open()");
-  if (method < QObject::staticMetaObject.methodCount() ||
-      !QMetaObject::invokeMethod(instance->root_item, "open",
-                                Qt::DirectConnection))
-    return failure(RuntimeFailure::invalid_transition,
-                   "surface does not expose the presentation open lifecycle");
-  request_render();
-  return {};
-}
-
 std::optional<surface::SurfaceKey>
 WorkerRuntime::surface_key(std::string_view surface_name) const {
   const auto *instance = implementation_->by_name(surface_name);

@@ -110,7 +110,7 @@ public:
         broker_notifier_(kBrokerDescriptor, QSocketNotifier::Read),
         render_notifier_(kRenderDescriptor, QSocketNotifier::Read),
         frame_interval_ms_(frame_interval(manifest)),
-        manifest_(manifest), selected_entry_(manifest.runtime.qml) {
+        manifest_(manifest) {
     QObject::connect(&control_notifier_, &QSocketNotifier::activated,
                      [&] { receive(control_); });
     QObject::connect(&broker_notifier_, &QSocketNotifier::activated,
@@ -215,10 +215,6 @@ private:
       return;
     }
     if (endpoint.role() == wire::EndpointRole::control && !broker_api_) {
-      if (packet.header.message_type == wire::kSurfaceSelectionMessage) {
-        apply_surface_selection(std::move(packet));
-        return;
-      }
       if (pending_permission_snapshot_ ||
           packet.header.message_type != wire::kPermissionSnapshotMessage ||
           packet.header.correlation_id != 0 || !packet.descriptors.empty()) {
@@ -229,14 +225,6 @@ private:
       return;
     }
     if (endpoint.role() == wire::EndpointRole::control && broker_api_) {
-      if (packet.header.message_type == wire::kSurfaceSelectionMessage) {
-        apply_surface_selection(std::move(packet));
-        return;
-      }
-      if (packet.header.message_type == wire::kSurfaceOpenMessage) {
-        apply_surface_open(std::move(packet));
-        return;
-      }
       apply_permission_snapshot(std::move(packet));
       return;
     }
@@ -251,53 +239,6 @@ private:
       return;
     }
     handle_render(packet);
-  }
-
-  void apply_surface_selection(worker::ReceivedPacket packet) {
-    if (surface_selection_received_ || startup_.loaded() ||
-        startup_.loading() || packet.header.correlation_id != 0 ||
-        !packet.descriptors.empty() || packet.payload.empty() ||
-        packet.payload.size() > wire::kMaximumSurfaceNameBytes) {
-      fatal("surface selection failed runtime validation");
-      return;
-    }
-    std::string surface;
-    surface.reserve(packet.payload.size());
-    for (const auto byte : packet.payload)
-      surface.push_back(
-          static_cast<char>(std::to_integer<unsigned char>(byte)));
-    if (!wire::valid_surface_name(surface)) {
-      fatal("surface selection name is invalid");
-      return;
-    }
-    const auto entry = std::ranges::find_if(
-        manifest_.runtime.surface_qml, [&](const auto &candidate) {
-          return candidate.surface == surface;
-        });
-    if (entry == manifest_.runtime.surface_qml.end()) {
-      fatal("surface selection is not declared");
-      return;
-    }
-    selected_entry_ = entry->qml;
-    selected_surface_ = surface;
-    surface_selection_received_ = true;
-    if (!control_.send(wire::kSurfaceSelectionAcceptedMessage, {}, 0))
-      fatal("surface selection acknowledgement failed");
-  }
-
-  void apply_surface_open(worker::ReceivedPacket packet) {
-    wire::SurfaceBinding binding;
-    if (!startup_.loaded() || packet.header.correlation_id != 0 ||
-        !packet.descriptors.empty() ||
-        !wire::decode_surface_binding(packet.payload, binding) ||
-        !runtime_.open_surface(
-            binding.surface,
-            {.id = binding.id, .generation = binding.generation})) {
-      fatal("surface open failed runtime validation");
-      return;
-    }
-    if (!control_.send(wire::kSurfaceOpenAcceptedMessage, {}, 0))
-      fatal("surface open acknowledgement failed");
   }
 
   void apply_permission_snapshot(worker::ReceivedPacket packet) {
@@ -316,14 +257,7 @@ private:
     QTimer::singleShot(0, &control_notifier_, [this, generation] {
       if (startup_.terminal())
         return;
-      if (surface_selection_received_) {
-        const auto loaded = runtime_.load_surface_entry(selected_surface_,
-                                                        selected_entry_);
-        if (!loaded) {
-          fatal(loaded.detail);
-          return;
-        }
-      } else if (!manifest_.runtime.surface_qml.empty()) {
+      if (!manifest_.runtime.surface_qml.empty()) {
         for (const auto &entry : manifest_.runtime.surface_qml) {
           const auto loaded =
               runtime_.load_surface_entry(entry.surface, entry.qml);
@@ -340,13 +274,13 @@ private:
           return;
         }
         const auto loaded = surfaces.object().isEmpty()
-                                ? runtime_.load_entry(selected_entry_)
+                                ? runtime_.load_entry(manifest_.runtime.qml)
                                 : runtime_.load_surface_entry(
                                       surfaces.object()
                                           .begin()
                                           .key()
                                           .toStdString(),
-                                      selected_entry_);
+                                      manifest_.runtime.qml);
         if (!loaded) {
           fatal(loaded.detail);
           return;
@@ -355,8 +289,6 @@ private:
       for (std::size_t index = 0; index < manifest_.surface_names.size();
            ++index) {
         const auto &surface_name = manifest_.surface_names[index];
-        if (surface_selection_received_ && surface_name != selected_surface_)
-          continue;
         const auto binding = wire::manifest_surface_binding(
             surface_name, index, generation);
         if (!binding ||
@@ -620,7 +552,6 @@ private:
   std::unique_ptr<wire::SelectedEndpointState<32>> render_state_;
   std::unique_ptr<worker::QmlBrokerApi> broker_api_;
   worker::StartupState startup_;
-  bool surface_selection_received_ = false;
   std::optional<worker::ReceivedPacket> pending_permission_snapshot_;
   QSocketNotifier control_notifier_;
   QSocketNotifier broker_notifier_;
@@ -629,8 +560,6 @@ private:
   QTimer broker_poll_timer_;
   int frame_interval_ms_ = 17;
   omarchy::plugins::manifest::ManifestV2 manifest_;
-  std::string selected_entry_;
-  std::string selected_surface_;
 };
 
 } // namespace

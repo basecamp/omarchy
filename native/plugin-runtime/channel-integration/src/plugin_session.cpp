@@ -260,16 +260,16 @@ PluginSession::~PluginSession() { stop(); }
 
 void PluginSession::start() { io_->start(); }
 
-bool PluginSession::send(session::ChannelLane lane, std::uint16_t message_type,
-                         std::uint64_t correlation_id,
-                         std::vector<std::byte> payload,
-                         std::vector<session::OwnedFd> descriptors) {
-  if (lane == session::ChannelLane::broker || message_type == 0 ||
+bool PluginSession::send_render(
+    std::uint16_t message_type, std::uint64_t correlation_id,
+    std::vector<std::byte> payload,
+    std::vector<session::OwnedFd> descriptors) {
+  if (message_type == 0 ||
       outbound_sequence_ == std::numeric_limits<std::uint64_t>::max())
     return false;
   session::OwnedMessage message{
       .token = token_,
-      .lane = lane,
+      .lane = session::ChannelLane::render,
       .message_type = message_type,
       .correlation_id = correlation_id,
       .sequence = outbound_sequence_ + 1,
@@ -443,8 +443,6 @@ void PluginSession::message_received(session::OwnedMessage message) {
       events_->render_rejected(result);
     return;
   }
-  if (message.lane == session::ChannelLane::control && events_)
-    events_->control_received(message);
 }
 
 void PluginSession::detach_all() noexcept {

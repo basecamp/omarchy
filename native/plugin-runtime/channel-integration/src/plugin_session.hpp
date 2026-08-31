@@ -45,7 +45,6 @@ public:
   virtual ~PluginSessionEvents() = default;
   virtual void state_changed(session::SessionState state,
                              session::SessionError error) = 0;
-  virtual void control_received(const session::OwnedMessage &message) = 0;
   virtual void render_rejected(session::RouteResult result) = 0;
 };
 
@@ -98,10 +97,10 @@ public:
   PluginSession &operator=(const PluginSession &) = delete;
 
   void start();
-  [[nodiscard]] bool send(session::ChannelLane lane, std::uint16_t message_type,
-                          std::uint64_t correlation_id,
-                          std::vector<std::byte> payload,
-                          std::vector<session::OwnedFd> descriptors = {});
+  [[nodiscard]] bool
+  send_render(std::uint16_t message_type, std::uint64_t correlation_id,
+              std::vector<std::byte> payload,
+              std::vector<session::OwnedFd> descriptors = {});
   void revoke();
   void stop();
 

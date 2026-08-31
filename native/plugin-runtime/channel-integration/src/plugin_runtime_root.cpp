@@ -140,9 +140,8 @@ bool RootSurfaceSessionPort::send_render_packet_impl(
            header.role_protocol_version ==
                session::surface::kRenderRoleVersion &&
            header.flags == 0 && header.payload_length == payload.size() &&
-           session->send(session::ChannelLane::render, header.message_type,
-                         header.correlation_id, std::move(payload),
-                         std::move(descriptors));
+           session->send_render(header.message_type, header.correlation_id,
+                                std::move(payload), std::move(descriptors));
   } catch (...) {
     return false;
   }

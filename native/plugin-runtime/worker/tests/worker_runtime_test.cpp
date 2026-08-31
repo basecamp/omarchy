@@ -1018,12 +1018,6 @@ void two_surface_activation() {
               runtime.surface_key("atlas") == atlas->surface &&
               !runtime.surface_key("missing"),
           "declared surface names did not resolve only to host bindings");
-  require(!runtime.open_surface("atlas", {.id = 52, .generation = 11}),
-          "stale surface generation opened a panel");
-  require(!runtime.open_surface("bar", bar->surface),
-          "surface without presentation lifecycle was opened");
-  require(static_cast<bool>(runtime.open_surface("atlas", atlas->surface)),
-          "host-managed panel open lifecycle was rejected");
 
   const int bar_fd = static_cast<int>(
       syscall(SYS_memfd_create, "worker-bar-frame", MFD_CLOEXEC));

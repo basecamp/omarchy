@@ -108,26 +108,11 @@ bool valid_typed_packet(const wire::PacketView &packet,
         packet.header.correlation_id != 0)
       return false;
     if (direction == wire::Direction::worker_to_host)
-      return (packet.header.message_type ==
-                  wire::kPermissionSnapshotAcceptedMessage ||
-              packet.header.message_type ==
-                  wire::kSurfaceSelectionAcceptedMessage ||
-              packet.header.message_type ==
-                  wire::kSurfaceOpenAcceptedMessage) &&
+      return packet.header.message_type ==
+                 wire::kPermissionSnapshotAcceptedMessage &&
              packet.payload.empty();
-    if (packet.header.message_type == wire::kPermissionSnapshotMessage)
-      return !packet.payload.empty();
-    if (packet.header.message_type == wire::kSurfaceSelectionMessage) {
-      const std::string_view name(
-          reinterpret_cast<const char *>(packet.payload.data()),
-          packet.payload.size());
-      return wire::valid_surface_name(name);
-    }
-    if (packet.header.message_type == wire::kSurfaceOpenMessage) {
-      wire::SurfaceBinding binding;
-      return wire::decode_surface_binding(packet.payload, binding);
-    }
-    return false;
+    return packet.header.message_type == wire::kPermissionSnapshotMessage &&
+           !packet.payload.empty();
   }
   const auto type = packet.header.message_type;
   if (type == static_cast<std::uint16_t>(wire::CommonMessageType::cancel))

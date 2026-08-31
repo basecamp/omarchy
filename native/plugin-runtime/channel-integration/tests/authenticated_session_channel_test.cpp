@@ -215,7 +215,7 @@ public:
                            : wire::EndpointRole::control;
           reply.message_type =
               state_->startup_reply == BackendState::StartupReply::wrong_type
-                  ? wire::kSurfaceSelectionAcceptedMessage
+                  ? 0xffffU
                   : wire::kPermissionSnapshotAcceptedMessage;
           reply.correlation_id =
               state_->startup_reply ==
@@ -379,7 +379,7 @@ void test_invalid_or_missing_startup_ack_never_becomes_ready() {
             "invalid startup acknowledgement became ready");
     auto message = outbound(token(), 1);
     message.lane = session::ChannelLane::control;
-    message.message_type = wire::kSurfaceSelectionMessage;
+    message.message_type = 0xffffU;
     message.correlation_id = 0;
     message.payload = {std::byte{'a'}};
     require(value.send(message, std::chrono::steady_clock::now() + 1s) ==

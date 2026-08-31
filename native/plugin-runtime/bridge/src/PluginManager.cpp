@@ -99,7 +99,6 @@ struct PluginManager::Runtime final {
                                    std::memory_order_release);
     }
 
-    void control_received(const host_session::OwnedMessage &) override {}
     void render_rejected(host_session::RouteResult) override {}
     bool accept(host_session::AdmittedSurfaceIntent) override {
       // Publication grants no callback-thread access to the shell model.

@@ -840,12 +840,10 @@ struct Events final : channel::PluginSessionEvents {
   host::SessionState last_state = host::SessionState::idle;
   bool saw_running = false;
   std::vector<host::RouteResult> rejected;
-  std::size_t controls = 0;
   void state_changed(host::SessionState state, host::SessionError) override {
     last_state = state;
     saw_running = saw_running || state == host::SessionState::running;
   }
-  void control_received(const host::OwnedMessage &) override { ++controls; }
   void render_rejected(host::RouteResult result) override {
     rejected.push_back(result);
   }
@@ -1188,9 +1186,8 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
   revoked.input_sequence = 94;
   channel_state->publish(intent_message(identity, 9, revoked));
   QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-  require(sink.accepted == 1 && bar.deliveries == 0 && panel.deliveries == 0 &&
-              events.controls == 0,
-          "intent escaped through the render router or control path");
+  require(sink.accepted == 1 && bar.deliveries == 0 && panel.deliveries == 0,
+          "intent escaped through the render router");
 }
 
 void product_session_routes_two_surfaces_over_one_launch() {
@@ -1434,8 +1431,6 @@ void startup_ack_failures_never_publish_product_session() {
     require(product->attach("bar", correlations, endpoint).status ==
                 channel::SurfaceAttachStatus::session_not_running,
             std::string(mode) + " retained a surface publication path");
-    require(events.controls == 0,
-            std::string(mode) + " published rejected control traffic");
     require(scope->attachments == 1,
             std::string(mode) + " sandbox launch count was " +
                 std::to_string(scope->attachments.load()) + " with error " +
@@ -1488,7 +1483,7 @@ void authority_loss_between_snapshot_and_ack_never_publishes() {
   Endpoint endpoint;
   const std::array<std::uint64_t, 1> correlations{1};
   require(product->error() == host::SessionError::channel_failed &&
-              !events.saw_running && events.controls == 0 &&
+              !events.saw_running &&
               product->attach("bar", correlations, endpoint).status ==
                   channel::SurfaceAttachStatus::session_not_running &&
               scope->attachments == 1,
@@ -1531,7 +1526,7 @@ bool invalid_qml_worker_never_acknowledges_or_publishes() {
   Endpoint endpoint;
   const std::array<std::uint64_t, 1> correlations{1};
   require(product->error() == host::SessionError::channel_failed &&
-              !events.saw_running && events.controls == 0 &&
+              !events.saw_running &&
               product->attach("bar", correlations, endpoint).status ==
                   channel::SurfaceAttachStatus::session_not_running &&
               scope->attachments == 1,
@@ -1654,7 +1649,6 @@ public:
         error == host::SessionError::none)
       running.fetch_add(1, std::memory_order_release);
   }
-  void control_received(const host::OwnedMessage &) override {}
   void render_rejected(host::RouteResult) override {}
   bool accept(host::AdmittedSurfaceIntent) override {
     intents.fetch_add(1, std::memory_order_release);

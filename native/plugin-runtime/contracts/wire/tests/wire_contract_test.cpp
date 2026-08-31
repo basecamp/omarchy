@@ -586,52 +586,15 @@ void classification_test() {
           "fatal/recoverable classification changed");
 }
 
-void surface_binding_test() {
-  const SurfaceBinding binding{
-      .id = 0x0102030405060708ULL,
-      .generation = 17,
-      .surface = "barWidget"};
-  const auto encoded = encode_surface_binding(binding);
-  SurfaceBinding decoded;
-  require(!encoded.empty() && decode_surface_binding(encoded, decoded) &&
-              decoded.id == binding.id &&
-              decoded.generation == binding.generation &&
-              decoded.surface == binding.surface,
-          "surface binding did not round trip exactly");
+void canonical_surface_binding_test() {
   const auto first = manifest_surface_binding("bar", 0, 17);
-  // A selected surface retains its original manifest index; selection never
-  // renumbers authority within a worker.
   const auto third = manifest_surface_binding("overlay", 2, 17);
   require(first && first->id == 1 && first->generation == 17 &&
-              first->surface == "bar" && third && third->id == 3 &&
-              third->generation == 17 && third->surface == "overlay" &&
+              third && third->id == 3 && third->generation == 17 &&
               !manifest_surface_binding("bar", 0, 0) &&
               !manifest_surface_binding("bad/name", 0, 17) &&
               !manifest_surface_binding("bar", kMaximumPluginSurfaces, 17),
           "canonical manifest surface identity widened or became ambiguous");
-  auto malformed = encoded;
-  malformed[16] = std::byte{64};
-  require(!decode_surface_binding(malformed, decoded),
-          "malformed surface binding length was accepted");
-  malformed = encoded;
-  malformed.back() = std::byte{'/'};
-  require(!decode_surface_binding(malformed, decoded) &&
-              encode_surface_binding({}).empty() &&
-              !encode_surface_binding(
-                   {.id = 1, .generation = 1, .surface = std::string(64, 'X')})
-                   .empty() &&
-              encode_surface_binding(
-                  {.id = 1, .generation = 1, .surface = "Panel.Widget"})
-                  .empty() &&
-              encode_surface_binding(
-                  {.id = 1,
-                   .generation = 1,
-                   .surface = std::string("bad\0name", 8)})
-                  .empty() &&
-              encode_surface_binding(
-                  {.id = 1, .generation = 1, .surface = std::string(65, 'X')})
-                  .empty(),
-          "unsafe or empty surface binding was accepted");
 }
 
 void permission_snapshot_test() {
@@ -871,7 +834,7 @@ int main() {
     negotiation_test();
     state_test();
     classification_test();
-    surface_binding_test();
+    canonical_surface_binding_test();
     permission_snapshot_test();
     std::cout << "plugin wire contract: PASS\n";
     return 0;

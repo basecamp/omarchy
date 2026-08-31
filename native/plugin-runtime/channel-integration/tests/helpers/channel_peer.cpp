@@ -341,7 +341,7 @@ bool accept_startup_permissions(std::uint64_t generation,
       {.envelope_version = wire::kEnvelopeVersion,
        .header_size = wire::kHeaderSize,
        .endpoint_role = wire::EndpointRole::control,
-       .message_type = wrong_type ? wire::kSurfaceSelectionAcceptedMessage
+       .message_type = wrong_type ? std::uint16_t{0xffffU}
                                   : wire::kPermissionSnapshotAcceptedMessage,
        .role_protocol_version = version(wire::EndpointRole::control),
        .launch_generation = wrong_generation ? generation + 1 : generation,
@@ -364,9 +364,6 @@ bool accept_startup_permissions(std::uint64_t generation,
                                 wire::SessionSequence &sequence) {
   send_bytes(4, audio_request(generation, 1, sequence));
   validate_empty_broker_reply(receive_bytes(4), generation, 1, sequence);
-  send_session_signal(3, wire::EndpointRole::control,
-                      wire::kSurfaceSelectionAcceptedMessage, generation, {},
-                      sequence);
   const auto frame =
       surface::encode_frame_ready({.surface = {.id = 1, .generation = 1},
                                    .slot = 0,
