@@ -12,7 +12,7 @@ be restored. Diagnose before resetting user state.
 
    ```bash
    omarchy version
-   omarchy debug --no-sudo --print
+   omarchy-debug --no-sudo --print
    ```
 
    The same diagnostic report is written to `/tmp/omarchy-debug.log`.
