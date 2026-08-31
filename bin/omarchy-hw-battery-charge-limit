@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when a battery exposes a charge limit control.
+
+power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-/sys/class/power_supply}"
+
+for threshold in "$power_supply_path"/BAT*/charge_control_end_threshold; do
+  [[ -r $threshold ]] && exit 0
+done
+
+exit 1

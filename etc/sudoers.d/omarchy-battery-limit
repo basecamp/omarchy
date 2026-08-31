@@ -1,0 +1,4 @@
+# Picking a charge limit in the power panel applies it with one click, so it
+# must not stop for a password. Only the fixed presets are covered: the setter
+# rejects any other value before it ever elevates.
+%wheel ALL=(root) NOPASSWD: /usr/bin/omarchy-battery-limit-set 80, /usr/bin/omarchy-battery-limit-set 90, /usr/bin/omarchy-battery-limit-set 100

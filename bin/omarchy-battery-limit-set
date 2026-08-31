@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# omarchy:summary=Set the battery charge limit
+# omarchy:args=<80|90|100>
+# omarchy:examples=omarchy battery limit-set 80 | omarchy battery limit-set 100
+
+set -euo pipefail
+
+# Whenever this runs as root — invoked directly through the passwordless
+# sudoers rule, or re-execed by require_root below — sudo's secure_path decides
+# where a bare helper resolves, and a dev link (etc/sudoers.d/omarchy-dev-path)
+# prepends a user-writable checkout bin/ to it. Every helper this script calls
+# by bare name (install, cat) is a system tool, never an omarchy-* command, so
+# pin PATH to trusted system directories and keep root from resolving one out
+# of that checkout. The unprivileged wrapper phase keeps the caller's PATH so
+# it can still find sudo/pkexec.
+if (( EUID == 0 )); then
+  export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+fi
+
+STATE_FILE=/etc/omarchy/battery-limit
+
+usage() {
+  echo "Usage: omarchy-battery-limit-set <80|90|100>" >&2
+}
+
+# Validate before any elevation so a bad argument never reaches sudo/pkexec,
+# and so the check can be exercised without root.
+if (( $# != 1 )); then
+  usage
+  exit 2
+fi
+
+case "$1" in
+80 | 90 | 100)
+  limit="$1"
+  ;;
+*)
+  usage
+  exit 2
+  ;;
+esac
+
+# The path etc/sudoers.d/omarchy-battery-limit names. The privileged half
+# always runs from there rather than from whichever copy was invoked, so the
+# rule matches even where $OMARCHY_PATH points at a checkout.
+PACKAGED_PATH=/usr/bin/omarchy-battery-limit-set
+
+# True when sudo would run this exact command without stopping for a password.
+# `sudo -l` on its own reports whether a command is permitted, which the blanket
+# %wheel rule answers yes to for everything; the long listing prints the matched
+# entry's tags, so !authenticate is the grant in
+# etc/sudoers.d/omarchy-battery-limit and nothing else. Listing runs nothing
+# and, under -n, prompts for nothing, so a machine whose omarchy-settings
+# predates that file falls through to polkit instead of dying on a password
+# prompt it has no terminal to show.
+sudo_grants_passwordless() {
+  sudo -n -l -l "$PACKAGED_PATH" "$@" 2>/dev/null | grep -q '!authenticate'
+}
+
+require_root() {
+  if (( EUID == 0 )); then
+    return
+  elif [[ -t 0 ]] || sudo_grants_passwordless "$@"; then
+    # A terminal can carry sudo's own password prompt. Without one, sudo is
+    # right only where the grant reaches; polkit can at least put a prompt on
+    # screen, and offer to authenticate as someone else.
+    exec sudo "$PACKAGED_PATH" "$@"
+  else
+    exec pkexec "$PACKAGED_PATH" "$@"
+  fi
+}
+
+require_root "$limit"
+
+power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-/sys/class/power_supply}"
+
+wrote=false
+for threshold in "$power_supply_path"/BAT*/charge_control_end_threshold; do
+  [[ -e $threshold ]] || continue
+  echo "$limit" >"$threshold"
+  wrote=true
+done
+
+if [[ $wrote == "false" ]]; then
+  echo "Error: no battery on this machine exposes a charge limit (charge_control_end_threshold)." >&2
+  exit 1
+fi
+
+# Persist the choice so omarchy-battery-limit.service can restore it at boot
+# on hardware whose embedded controller forgets the threshold across cycles.
+install -d -m 0755 /etc/omarchy
+printf '%s\n' "$limit" >"$STATE_FILE"
+chmod 0644 "$STATE_FILE"
