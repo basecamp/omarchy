@@ -915,7 +915,7 @@ struct PluginManager::Runtime final {
     for (const auto &name : descriptions->names) {
       const auto policy = surface_host::parse_named_surface_policy(
           policy_source, name);
-      SurfaceProjectionModel::Role role;
+      std::optional<SurfaceProjectionModel::Role> role;
       switch (policy.role) {
       case surface_host::SurfaceRole::bar_embedded:
         role = SurfaceProjectionModel::Role::Bar;
@@ -927,7 +927,7 @@ struct PluginManager::Runtime final {
         role = SurfaceProjectionModel::Role::Panel;
         break;
       }
-      SurfaceProjectionModel::BarSection section;
+      std::optional<SurfaceProjectionModel::BarSection> section;
       switch (policy.default_bar_section) {
       case surface_host::BarSection::unspecified:
         section = SurfaceProjectionModel::BarSection::Unspecified;
@@ -942,15 +942,17 @@ struct PluginManager::Runtime final {
         section = SurfaceProjectionModel::BarSection::Right;
         break;
       }
+      if (!role || !section)
+        return std::nullopt;
       declarations.push_back(
           {.surface_name = policy.surface_name,
-           .role = role,
+           .role = *role,
            .screen_name = {},
            .initially_visible = false,
            .maximum_width = policy.maximum_width,
            .maximum_height = policy.maximum_height,
            .dynamic_input_regions = policy.dynamic_input_regions,
-           .default_bar_section = section});
+           .default_bar_section = *section});
     }
     return declarations;
   }
