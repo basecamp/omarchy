@@ -271,8 +271,10 @@ struct WorkerRuntime::Impl {
     bool dirty = true;
   };
 
-  explicit Impl(std::filesystem::path requested_root)
-      : source_policy(std::move(requested_root)), software_backend([] {
+  explicit Impl(std::filesystem::path requested_root,
+                std::filesystem::path qt_import_root)
+      : source_policy(std::move(requested_root), std::move(qt_import_root)),
+        software_backend([] {
           QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
           return true;
         }()),
@@ -396,31 +398,26 @@ struct WorkerRuntime::Impl {
   std::string last_error;
 };
 
-WorkerRuntime::WorkerRuntime(std::filesystem::path source_root)
-    : implementation_(std::make_unique<Impl>(std::move(source_root))) {}
+WorkerRuntime::WorkerRuntime(std::filesystem::path source_root,
+                             std::filesystem::path qt_import_root)
+    : implementation_(std::make_unique<Impl>(std::move(source_root),
+                                             std::move(qt_import_root))) {}
 
 WorkerRuntime::~WorkerRuntime() = default;
+
+std::string WorkerRuntime::root_object_name() const {
+  const QQuickItem *root = implementation_->headless_root_item;
+  if (root == nullptr && !implementation_->surfaces.empty())
+    root = implementation_->surfaces.front()->root_item;
+  return root == nullptr ? std::string{} : root->objectName().toStdString();
+}
 
 RuntimeResult WorkerRuntime::prepare_trusted_qt_types() {
   if (loaded())
     return failure(RuntimeFailure::invalid_transition,
                    "trusted Qt types must load before plugin QML");
-  QQmlComponent probe(&implementation_->engine);
-  probe.setData(R"(
-    import QtQuick
-    import QtQml as Qml
-    Item {
-      Qml.Timer { interval: 1000 }
-    }
-  )", QUrl(QStringLiteral("qrc:/qt/qml/Omarchy/TrustedTypeProbe.qml")));
-  if (!probe.isReady())
-    return failure(RuntimeFailure::qml_load_failed,
-                   probe.errorString().left(2048).toStdString());
-  std::unique_ptr<QObject> object(probe.create());
-  if (!object)
-    return failure(RuntimeFailure::qml_load_failed,
-                   "trusted Qt type probe could not instantiate");
-  return {};
+  return implementation_->source_policy.preload_trusted_modules(
+      implementation_->engine);
 }
 
 bool safe_relative_qml_path(std::string_view path) {

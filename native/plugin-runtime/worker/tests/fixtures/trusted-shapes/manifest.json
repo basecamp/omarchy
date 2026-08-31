@@ -1,0 +1,1 @@
+{"schemaVersion":2,"id":"example.trusted-shapes","name":"Trusted Shapes fixture","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{"shape":{"role":"panel"}},"permissions":{"required":[],"optional":[]}}

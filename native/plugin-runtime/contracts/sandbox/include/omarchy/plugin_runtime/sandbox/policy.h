@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -99,8 +100,25 @@ struct SandboxPlan {
   SeccompPolicy seccomp;
 };
 
+struct TrustedQmlResourceTree {
+  std::string_view path;
+  std::span<const std::string_view> files;
+  bool recursive_resources;
+};
+
+struct TrustedQmlModule {
+  std::string_view uri;
+  std::string_view probe;
+  std::span<const TrustedQmlResourceTree> trees;
+};
+
 SandboxPlan build_plan();
 bool contains_argument_pair(const SandboxPlan &plan, std::string_view option,
                             std::string_view value);
+std::string_view trusted_qml_import_root();
+const std::vector<std::string> &trusted_qml_files();
+std::span<const TrustedQmlModule> trusted_qml_modules();
+bool trusted_qml_public_module(std::string_view module);
+bool trusted_qml_resource(std::string_view relative);
 
 } // namespace omarchy::plugin_runtime::sandbox

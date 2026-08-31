@@ -9,6 +9,7 @@
 
 #include "omarchy/plugin_runtime/Version.h"
 #include "omarchy/plugin_runtime/runtime_paths.hpp"
+#include "omarchy/plugin_runtime/sandbox/policy.h"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <QGuiApplication>
@@ -98,7 +99,9 @@ class WorkerApplication final : public worker::SurfaceIntentSink {
 public:
   explicit WorkerApplication(
       const omarchy::plugins::manifest::ManifestV2 &manifest)
-      : runtime_("/plugin"),
+      : runtime_("/plugin", std::string(
+                                omarchy::plugin_runtime::sandbox::
+                                    trusted_qml_import_root())),
         control_(kControlDescriptor, wire::EndpointRole::control,
                  kControlRoleVersion, sequence_),
         broker_(kBrokerDescriptor, wire::EndpointRole::broker,

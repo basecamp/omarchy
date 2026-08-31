@@ -64,14 +64,15 @@ struct PublishedFrame {
 
 class WorkerRuntime {
 public:
-  explicit WorkerRuntime(std::filesystem::path source_root);
+  explicit WorkerRuntime(std::filesystem::path source_root,
+                         std::filesystem::path qt_import_root = {});
   ~WorkerRuntime();
   WorkerRuntime(const WorkerRuntime &) = delete;
   WorkerRuntime &operator=(const WorkerRuntime &) = delete;
 
   [[nodiscard]] RuntimeResult load_manifest_entry();
-  // Loads and instantiates only a host-authored Qt type probe before the
-  // steady-state filter. No plugin source is parsed or executed here.
+  // Scans plugin imports, then loads only exact registry-owned Qt probes before
+  // the steady-state filter. Plugin QML is never instantiated here.
   [[nodiscard]] RuntimeResult prepare_trusted_qt_types();
   [[nodiscard]] RuntimeResult load_entry(std::string entry_path);
   [[nodiscard]] RuntimeResult load_surface_entry(std::string surface_name,
@@ -102,6 +103,7 @@ public:
   [[nodiscard]] bool focused() const;
   [[nodiscard]] bool render_requested() const;
   [[nodiscard]] std::size_t object_count() const;
+  [[nodiscard]] std::string root_object_name() const;
   [[nodiscard]] const std::string &last_error() const;
 
 private:

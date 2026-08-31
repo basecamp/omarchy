@@ -153,6 +153,21 @@ trusted_executable(const detail::ExecutableRequirement &requirement,
   return true;
 }
 
+[[nodiscard]] bool trusted_qml_imports(std::string &error) {
+  constexpr std::string_view root = "/usr/lib/qt6/qml/";
+  for (const auto &relative : sandbox::trusted_qml_files()) {
+    const std::filesystem::path candidate = std::string(root) + relative;
+    struct stat metadata{};
+    if (lstat(candidate.c_str(), &metadata) < 0 ||
+        !S_ISREG(metadata.st_mode) || metadata.st_uid != 0 ||
+        (metadata.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
+      error = "certified QML import metadata is unsafe: " + relative;
+      return false;
+    }
+  }
+  return true;
+}
+
 [[nodiscard]] bool normalize_standard_descriptors(std::string &error) {
   for (int descriptor = 0; descriptor <= 2; ++descriptor) {
     errno = 0;
@@ -1186,6 +1201,7 @@ bool Supervisor::prerequisites(Deadline deadline, std::string &error) const {
   }
   if (!trusted_executable(implementation_->recipe.bwrap, error) ||
       !trusted_executable(implementation_->recipe.worker, error) ||
+      !trusted_qml_imports(error) ||
       !kernel_prerequisites(error) ||
       !implementation_->recipe.resource_scope->probe(deadline, error) ||
       !implementation_->recipe.resource_scope->prepare_cleanup(deadline,

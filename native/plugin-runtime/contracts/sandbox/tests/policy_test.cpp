@@ -93,6 +93,28 @@ void verify_mounts(const SandboxPlan &plan, std::string_view worker) {
           "the complete host /usr tree is exposed");
   require(!contains_argument_pair(plan, "--bind", "/"),
           "the host root is exposed");
+  require(contains_argument_pair(plan, "--tmpfs", "/usr/lib/qt6/qml"),
+          "the host QML module tree is not masked");
+  std::size_t qml_bind_count = 0;
+  for (std::size_t index = 0; index + 2 < plan.argv.size(); ++index) {
+    if (plan.argv[index] != "--ro-bind" ||
+        !plan.argv[index + 1].starts_with("/usr/lib/qt6/qml/"))
+      continue;
+    ++qml_bind_count;
+    const auto relative = plan.argv[index + 1].substr(
+        std::string_view("/usr/lib/qt6/qml/").size());
+    require(plan.argv[index + 2] == "/runtime/qml/" + relative,
+            "certified QML bind destination drifted");
+    require(omarchy::plugin_runtime::sandbox::trusted_qml_resource(relative),
+            "mounted QML resource is outside the registry closure");
+  }
+  require(qml_bind_count ==
+              omarchy::plugin_runtime::sandbox::trusted_qml_files().size(),
+          "certified QML bind set is incomplete or contains extras");
+  require(std::ranges::none_of(plan.argv, [](const std::string &argument) {
+            return argument.find("QtQuick/Controls") != std::string::npos;
+          }),
+          "uncertified QtQuick.Controls is exposed");
   for (std::string_view forbidden :
        {"/run/user", "/home", "/sys", "/dev/dri", "/dev/input", "/etc/ssh"}) {
     require(std::ranges::none_of(plan.argv,

@@ -1,6 +1,8 @@
 #include "omarchy/plugin_runtime/sandbox/policy.h"
 #include "omarchy/plugin_runtime/runtime_paths.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cerrno>
 #include <filesystem>
 #include <stdexcept>
@@ -9,6 +11,61 @@
 
 namespace omarchy::plugin_runtime::sandbox {
 namespace {
+using namespace std::literals;
+
+constexpr std::string_view qt_qml_source_root = "/usr/lib/qt6/qml";
+constexpr std::string_view qt_qml_import_root = "/runtime/qml";
+
+constexpr std::array qml_files{"libqmlplugin.so"sv, "plugins.qmltypes"sv,
+                               "qmldir"sv};
+constexpr std::array models_files{"libmodelsplugin.so"sv,
+                                  "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array worker_script_files{"libworkerscriptplugin.so"sv,
+                                         "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array quick_files{"libqtquick2plugin.so"sv,
+                                 "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array shapes_files{"libqmlshapesplugin.so"sv,
+                                  "plugins.qmltypes"sv, "qmldir"sv};
+
+constexpr std::array qml_trees{
+    TrustedQmlResourceTree{"QtQml", qml_files, false},
+    TrustedQmlResourceTree{"QtQml/Models", models_files, true},
+    TrustedQmlResourceTree{"QtQml/WorkerScript", worker_script_files, true},
+};
+constexpr std::array quick_trees{
+    TrustedQmlResourceTree{"QtQuick", quick_files, false}};
+constexpr std::array shapes_trees{
+    TrustedQmlResourceTree{"QtQuick/Shapes", shapes_files, true}};
+
+constexpr std::array qt_qml_modules{
+    TrustedQmlModule{"QtQml", R"(
+      import QtQml
+      QtObject {}
+    )",
+                     qml_trees},
+    TrustedQmlModule{"QtQuick", R"(
+      import QtQuick
+      Item {}
+    )",
+                     quick_trees},
+    TrustedQmlModule{"QtQuick.Shapes", R"(
+      import QtQuick
+      import QtQuick.Shapes
+      Shape { ShapePath { PathSvg { path: "M 0 0 L 1 1" } } }
+    )",
+                     shapes_trees},
+};
+
+const std::vector<std::string> qt_qml_files = [] {
+  std::vector<std::string> result;
+  for (const auto &module : qt_qml_modules) {
+    for (const auto &tree : module.trees) {
+      for (const auto file : tree.files)
+        result.emplace_back(std::string(tree.path) + "/" + std::string(file));
+    }
+  }
+  return result;
+}();
 
 void append(std::vector<std::string> &arguments, std::string option,
             std::string value) {
@@ -241,6 +298,19 @@ SandboxPlan build_plan_for_worker(std::string worker_path) {
   plan.argv.push_back("/lib");
   append(plan.argv, "--symlink", "usr/lib");
   plan.argv.push_back("/lib64");
+  append(plan.argv, "--dir", "/runtime");
+  append(plan.argv, "--dir", std::string(qt_qml_import_root));
+  for (const auto &module : qt_qml_modules) {
+    for (const auto &tree : module.trees)
+      append(plan.argv, "--dir",
+             std::string(qt_qml_import_root) + "/" + std::string(tree.path));
+  }
+  for (const auto &relative : qt_qml_files) {
+    append(plan.argv, "--ro-bind",
+           std::string(qt_qml_source_root) + "/" + relative);
+    plan.argv.push_back(std::string(qt_qml_import_root) + "/" + relative);
+  }
+  append(plan.argv, "--tmpfs", std::string(qt_qml_source_root));
   append(plan.argv, "--ro-bind-try", "/usr/share/fonts");
   plan.argv.push_back("/usr/share/fonts");
   append(plan.argv, "--ro-bind-try", "/usr/share/fontconfig");
@@ -251,7 +321,6 @@ SandboxPlan build_plan_for_worker(std::string worker_path) {
   plan.argv.push_back("/etc/ld.so.cache");
   append(plan.argv, "--ro-bind-try", "/etc/localtime");
   plan.argv.push_back("/etc/localtime");
-  append(plan.argv, "--dir", "/runtime");
   append(plan.argv, "--ro-bind", std::move(worker_path));
   plan.argv.push_back("/runtime/worker");
   append(plan.argv, "--ro-bind-fd", fd_string(fd.revision));
@@ -280,6 +349,34 @@ SandboxPlan build_plan_for_worker(std::string worker_path) {
 
 SandboxPlan build_plan() {
   return build_plan_for_worker(std::string(kPackagedWorkerPath));
+}
+
+std::string_view trusted_qml_import_root() { return qt_qml_import_root; }
+
+const std::vector<std::string> &trusted_qml_files() { return qt_qml_files; }
+
+std::span<const TrustedQmlModule> trusted_qml_modules() {
+  return qt_qml_modules;
+}
+
+bool trusted_qml_public_module(std::string_view module) {
+  return std::ranges::find(qt_qml_modules, module, &TrustedQmlModule::uri) !=
+         qt_qml_modules.end();
+}
+
+bool trusted_qml_resource(std::string_view relative) {
+  if (std::ranges::find(qt_qml_files, relative) != qt_qml_files.end())
+    return true;
+  for (const auto &module : qt_qml_modules) {
+    for (const auto &tree : module.trees) {
+      if (relative.starts_with(tree.path) && relative.size() > tree.path.size() &&
+          relative[tree.path.size()] == '/' &&
+          (tree.recursive_resources ||
+           relative.find('/', tree.path.size() + 1) == relative.npos))
+        return true;
+    }
+  }
+  return false;
 }
 
 bool contains_argument_pair(const SandboxPlan &plan, std::string_view option,

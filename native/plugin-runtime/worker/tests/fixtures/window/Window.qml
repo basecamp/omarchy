@@ -1,7 +1,3 @@
-import QtQuick
-import QtQuick.Window
+import QtQml
 
-Window {
-    width: 64
-    height: 32
-}
+QtObject {}

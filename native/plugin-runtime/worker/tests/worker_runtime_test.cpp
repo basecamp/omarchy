@@ -1,6 +1,7 @@
 #include "worker_runtime.hpp"
 
 #include "qt_touch_injector.hpp"
+#include "omarchy/plugin_runtime/sandbox/policy.h"
 
 #include <QBuffer>
 #include <QEventLoop>
@@ -9,11 +10,14 @@
 #include <QImageReader>
 #include <QInputMethodEvent>
 #include <QKeyEvent>
+#include <QLibraryInfo>
 #include <QQuickItem>
 #include <QQuickRenderControl>
 #include <QQuickWindow>
 #include <QScreen>
 #include <QMouseEvent>
+#include <QQmlComponent>
+#include <QQmlEngine>
 #include <QTimer>
 #include <QTouchEvent>
 #include <QWheelEvent>
@@ -48,6 +52,35 @@ void require(bool condition, const char *message) {
 std::filesystem::path fixture(const char *name) {
   return std::filesystem::path(WORKER_FIXTURE_ROOT) / name;
 }
+
+class ExactQmlTree {
+public:
+  ExactQmlTree() {
+    std::array<char, 40> pattern{};
+    constexpr std::string_view value = "/tmp/omarchy-qml-imports-XXXXXX";
+    std::ranges::copy(value, pattern.begin());
+    root_ = mkdtemp(pattern.data());
+    require(!root_.empty(), "exact QML tree temp directory failed");
+    const std::filesystem::path source(
+        QLibraryInfo::path(QLibraryInfo::QmlImportsPath).toStdString());
+    for (const auto &relative :
+         omarchy::plugin_runtime::sandbox::trusted_qml_files()) {
+      const auto destination = root_ / relative;
+      std::filesystem::create_directories(destination.parent_path());
+      std::filesystem::copy_file(source / relative, destination);
+    }
+  }
+  ~ExactQmlTree() {
+    std::error_code error;
+    std::filesystem::remove_all(root_, error);
+  }
+  ExactQmlTree(const ExactQmlTree &) = delete;
+  ExactQmlTree &operator=(const ExactQmlTree &) = delete;
+  [[nodiscard]] const std::filesystem::path &root() const { return root_; }
+
+private:
+  std::filesystem::path root_;
+};
 
 class Mapping {
 public:
@@ -1237,11 +1270,36 @@ void hostile_loading() {
   const auto window_result = window.load_entry("Window.qml");
   require(!window_result &&
               window_result.failure == worker::RuntimeFailure::root_not_item,
-          "plugin-created top-level Window crossed host surface ownership");
+          "plugin-created non-item root crossed host surface ownership");
 
-  worker::WorkerRuntime remote(fixture("remote"));
-  require(!static_cast<bool>(remote.load_entry("Remote.qml")),
-          "remote QML import bypassed the URL policy");
+  ExactQmlTree exact_qml;
+  worker::WorkerRuntime remote(fixture("remote"), exact_qml.root());
+  require(static_cast<bool>(remote.prepare_trusted_qt_types()) &&
+              !static_cast<bool>(remote.load_entry("Remote.qml")),
+          "remote QML URL crossed the runtime import boundary");
+
+  worker::WorkerRuntime unknown(fixture("unknown-module"), exact_qml.root());
+  require(static_cast<bool>(unknown.prepare_trusted_qt_types()) &&
+              !static_cast<bool>(unknown.load_manifest_entry()),
+          "uncertified QtQuick.Controls loaded from the synthetic tree");
+
+  worker::WorkerRuntime local_module(fixture("local-module"));
+  require(static_cast<bool>(local_module.prepare_trusted_qt_types()) &&
+              static_cast<bool>(local_module.load_manifest_entry()),
+          "plugin-local pure-QML URI module was rejected");
+
+  worker::WorkerRuntime local_native(fixture("local-native"));
+  const auto local_native_result = local_native.prepare_trusted_qt_types();
+  require(!local_native_result &&
+              local_native_result.detail.find("pure QML") != std::string::npos,
+          "BOM/tab plugin-local native module directive was accepted");
+
+  worker::WorkerRuntime local_redirect(fixture("local-redirect"));
+  const auto local_redirect_result = local_redirect.prepare_trusted_qt_types();
+  require(!local_redirect_result &&
+              local_redirect_result.detail.find("pure QML") !=
+                  std::string::npos,
+          "BOM/tab plugin-local redirect directive was accepted");
 
   worker::WorkerRuntime bomb(fixture("object-bomb"));
   const auto bomb_result = bomb.load_entry("Bomb.qml");
@@ -1336,6 +1394,103 @@ void steady_state_denies_exec() {
           "steady-state filter did not deny execve with EPERM");
 }
 
+void trusted_shapes_load_after_steady_state() {
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "trusted Shapes seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("trusted-shapes"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    if (!prepared)
+      _exit(20);
+    std::string error;
+    if (!worker::install_steady_state_seccomp(error))
+      _exit(21);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded)
+      static_cast<void>(write(STDERR_FILENO, loaded.detail.data(),
+                              loaded.detail.size()));
+    _exit(loaded && runtime.loaded() && runtime.root_object_name().empty()
+              ? 0
+              : 22);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "certified system QtQuick.Shapes did not defeat plugin shadowing");
+}
+
+void dynamic_module_resolution_stays_certified() {
+  const pid_t unrestricted = fork();
+  require(unrestricted >= 0, "dynamic module positive-control fork failed");
+  if (unrestricted == 0) {
+    QQmlEngine engine;
+    QQmlComponent component(&engine,
+                            QUrl::fromLocalFile(QString::fromStdString(
+                                (fixture("dynamic-module") / "Main.qml")
+                                    .string())));
+    std::unique_ptr<QObject> root(component.create());
+    _exit(root && root->objectName() == QStringLiteral("controls-loaded") ? 0
+                                                                          : 29);
+  }
+  int unrestricted_status = 0;
+  require(waitpid(unrestricted, &unrestricted_status, 0) == unrestricted &&
+              WIFEXITED(unrestricted_status) &&
+              WEXITSTATUS(unrestricted_status) == 0,
+          "dynamic Controls adversary lacks a working positive control");
+
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "dynamic module seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("dynamic-module"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    if (!prepared)
+      _exit(30);
+    std::string error;
+    if (!worker::install_steady_state_seccomp(error))
+      _exit(31);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded || !runtime.root_object_name().empty()) {
+      const auto detail = std::string("dynamic count=") +
+                          std::to_string(runtime.object_count()) + " " +
+                          loaded.detail + "\n";
+      static_cast<void>(write(STDERR_FILENO, detail.data(), detail.size()));
+    }
+    _exit(loaded && runtime.root_object_name().empty() ? 0 : 32);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "runtime-created QML resolved an uncertified native module");
+}
+
+void dynamic_certified_shapes_succeeds() {
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "dynamic Shapes seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("dynamic-shapes"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    std::string error;
+    if (!prepared || !worker::install_steady_state_seccomp(error))
+      _exit(40);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded || runtime.root_object_name() != "shapes-loaded") {
+      const auto detail = std::string("dynamic Shapes marker=") +
+                          runtime.root_object_name() + " objects=" +
+                          std::to_string(runtime.object_count()) + " " +
+                          loaded.detail + "\n";
+      static_cast<void>(write(STDERR_FILENO, detail.data(), detail.size()));
+    }
+    _exit(loaded && runtime.root_object_name() == "shapes-loaded" ? 0 : 41);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "runtime-created certified QtQuick.Shapes module failed");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -1358,6 +1513,9 @@ int main(int argc, char **argv) {
     hostile_loading();
     bounded_image_decoding();
     steady_state_denies_exec();
+    trusted_shapes_load_after_steady_state();
+    dynamic_module_resolution_stays_certified();
+    dynamic_certified_shapes_succeeds();
     std::cout << "plugin worker runtime: ok\n";
     return 0;
   } catch (const std::exception &error) {
