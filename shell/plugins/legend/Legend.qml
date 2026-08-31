@@ -21,6 +21,7 @@ Item {
   readonly property int pad: 14
   readonly property int columnGap: Style.spacing.xxl
   readonly property int rowGap: 10
+  readonly property int borderWidth: Math.max(1, Style.space(2))
 
   function flippedCorner(c) {
     if (c === "top-right") return "top-left"
@@ -30,17 +31,18 @@ Item {
     return c
   }
   // The card gets out of the cursor's way: it slides to the opposite
-  // horizontal corner when the cursor is over its slot and the other slot
-  // is clear, and slides back once the cursor leaves. Deciding from the two
-  // fixed slot rectangles rather than the card's current spot is what keeps
-  // it from flip-flopping once it has moved.
+  // horizontal corner when the cursor is over its home slot and the other
+  // slot is clear, and slides back once the cursor leaves.
   //
-  // Two things feed the cursor position. The HoverHandler on the card is
-  // instant but only fires when nothing is layered on top of this surface.
-  // Any tool can park its own fullscreen overlay above the legend (omaruler
-  // does), and then the pointer never reaches the card — so the compositor's
-  // real cursor position is also polled (see cursorProc) whenever the legend
-  // is open.
+  // The decision is made against the two *fixed* slot rectangles (home and
+  // flipped), never against where the card currently is. Feeding the card's
+  // own hover/position back into the choice is a binding loop — the card
+  // moves out from under the cursor, the hover clears, so it moves back —
+  // so the cursor position comes only from polling the compositor
+  // (`cursorProc`, every 100ms while open). A HoverHandler would be more
+  // immediate but any caller can float a fullscreen overlay above this
+  // surface (omaruler does) and the pointer would never reach the card
+  // anyway.
   property real cursorX: 0
   property real cursorY: 0
   property bool hasCursor: false
@@ -49,9 +51,11 @@ Item {
   readonly property int avoidPad: Style.space(20)
 
   function cornerRect(c) {
-    var x = c.indexOf("left") !== -1 ? edgeMargin : (panel.width - card.width - edgeMargin)
-    var y = c.indexOf("top") === 0 ? edgeMargin : (panel.height - card.height - edgeMargin)
-    return Qt.rect(x - avoidPad, y - avoidPad, card.width + 2 * avoidPad, card.height + 2 * avoidPad)
+    var w = root.cardWidth
+    var h = root.cardHeight
+    var x = c.indexOf("left") !== -1 ? edgeMargin : (panel.width - w - edgeMargin)
+    var y = c.indexOf("top") === 0 ? edgeMargin : (panel.height - h - edgeMargin)
+    return Qt.rect(x - avoidPad, y - avoidPad, w + 2 * avoidPad, h + 2 * avoidPad)
   }
   function cursorOver(c) {
     if (!hasCursor)
@@ -60,7 +64,7 @@ Item {
     return cursorX >= r.x && cursorX <= r.x + r.width && cursorY >= r.y && cursorY <= r.y + r.height
   }
 
-  readonly property bool homeBlocked: card.hovered || cursorOver(corner)
+  readonly property bool homeBlocked: cursorOver(corner)
   readonly property bool flipBlocked: cursorOver(flippedCorner(corner))
   readonly property string effectiveCorner: homeBlocked && !flipBlocked ? flippedCorner(corner) : corner
 
@@ -88,6 +92,13 @@ Item {
   readonly property int contentWidth: root.keyColumnWidth + root.columnGap + root.actionColumnWidth
   readonly property int contentHeight: root.entries.length * root.rowHeight
     + Math.max(0, root.entries.length - 1) * root.rowGap
+
+  // Card size derived straight from content, independent of the card item's
+  // own geometry, so the slot rectangles in cornerRect() never feed the
+  // card's live (possibly mid-anchor-change) width back into the flip
+  // decision.
+  readonly property int cardWidth: 2 * root.borderWidth + 2 * root.pad + root.contentWidth
+  readonly property int cardHeight: 2 * root.borderWidth + 2 * root.pad + root.contentHeight
 
   function open(payloadJson) {
     try {
@@ -148,17 +159,16 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
-    // The input region is scoped to just the card (not the full surface),
-    // so hovering it can flip it away from the pointer without the legend
-    // ever blocking clicks to the desktop or the calling tool's own
-    // overlay anywhere else on screen.
-    mask: Region { item: card }
+    // Visual-only surface: keep the layer-shell input region empty so the
+    // legend never blocks clicks to the desktop (or the calling tool's own
+    // overlay) below it. Cursor avoidance runs off polled compositor cursor
+    // position, not off this surface receiving the pointer.
+    mask: Region {}
 
     BorderSurface {
       id: card
-      readonly property bool hovered: hoverHandler.hovered
-      width: card.borderLeft + root.pad + root.contentWidth + root.pad + card.borderRight
-      height: card.borderTop + root.pad + root.contentHeight + root.pad + card.borderBottom
+      width: root.cardWidth
+      height: root.cardHeight
       anchors.top: root.effectiveCorner.indexOf("top") === 0 ? parent.top : undefined
       anchors.bottom: root.effectiveCorner.indexOf("bottom") === 0 ? parent.bottom : undefined
       anchors.left: root.effectiveCorner.indexOf("left") !== -1 ? parent.left : undefined
@@ -167,10 +177,6 @@ Item {
       color: Util.alpha(Color.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
-
-      HoverHandler {
-        id: hoverHandler
-      }
 
       Column {
         anchors.top: parent.top

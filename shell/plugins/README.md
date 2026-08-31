@@ -94,11 +94,13 @@ hides it, since a legend is meant to accompany an in-progress interaction
 rather than flash on a single state change.
 
 The card keeps out of the cursor's way: it slides to the opposite horizontal
-corner while the pointer is over its slot and slides back once it leaves. It
-picks this up both from hovering the card directly and, since a caller can
-layer its own fullscreen overlay on top (omaruler does) and swallow the
-pointer before it reaches the card, from polling the compositor's cursor
-position while the legend is open.
+corner while the pointer is over its slot and slides back once it leaves. The
+choice is made against the two fixed slot rectangles, never the card's live
+position (that path is a binding loop — the card moves off the cursor, so the
+trigger clears, so it moves back). The cursor position comes from polling the
+compositor (`hyprctl cursorpos`) while the legend is open rather than from the
+surface receiving the pointer, since a caller can float its own fullscreen
+overlay on top (omaruler does) and the pointer would never reach the card.
 
 Two ways to drive it, mirroring OSD's own CLI wrapper:
 
