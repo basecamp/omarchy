@@ -117,7 +117,13 @@ expect_failure "missing package member" "staging tree omits required member" "$v
 
 reset_fixture
 root=$scratch/root/usr/lib/omarchy/plugin-security/$version
-rmdir "$root/capabilities.d"
+capability_root=$root/capabilities.d
+rm -f -- "$capability_root/"*.capability
+rmdir "$capability_root"
+[[ ! -e $capability_root ]] || {
+  echo "missing capability root fixture still exists" >&2
+  exit 1
+}
 expect_failure "missing mandatory capability root" "staging tree omits required member" "$verifier" --staging "$scratch/root" "$version"
 
 reset_fixture
