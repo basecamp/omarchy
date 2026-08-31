@@ -9,21 +9,26 @@
 #include <unistd.h>
 
 #include <array>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 namespace host = omarchy::plugin_runtime::provider_host;
 namespace definitions = omarchy::plugins::definitions;
 namespace permissions = omarchy::plugins::permissions;
+namespace launcher = omarchy::plugin_runtime::launcher;
 
 namespace {
 
@@ -34,6 +39,86 @@ namespace {
 void require(bool condition, std::string_view message) {
   if (!condition)
     fail(message);
+}
+
+class RecordingScope final : public launcher::ResourceScopeController {
+public:
+  bool probe(launcher::Deadline, std::string &) override {
+    ++probe_count;
+    return probe_succeeds;
+  }
+  bool prepare_cleanup(launcher::Deadline, std::string &) override {
+    ++prepare_count;
+    return prepare_succeeds;
+  }
+  bool terminate_scope_validated(std::string_view unit,
+                                  launcher::Deadline deadline,
+                                  std::string &error) noexcept override {
+    {
+      std::lock_guard lock(termination_mutex);
+      terminated.emplace_back(unit);
+    }
+    termination_changed.notify_all();
+    if (termination_delay.count() > 0)
+      std::this_thread::sleep_until(std::min(
+          deadline, std::chrono::steady_clock::now() + termination_delay));
+    if (!termination_succeeds)
+      error = "synthetic provider scope termination failed";
+    return termination_succeeds;
+  }
+
+  [[nodiscard]] std::size_t termination_count() const {
+    std::lock_guard lock(termination_mutex);
+    return terminated.size();
+  }
+  [[nodiscard]] bool wait_for_termination_count(
+      std::size_t count, std::chrono::steady_clock::time_point deadline) {
+    std::unique_lock lock(termination_mutex);
+    return termination_changed.wait_until(
+        lock, deadline, [&] { return terminated.size() >= count; });
+  }
+  [[nodiscard]] bool exact_termination_retried() const {
+    std::lock_guard lock(termination_mutex);
+    return !terminated.empty() &&
+           std::ranges::all_of(terminated, [&](const auto &unit) {
+             return unit == terminated.front();
+           });
+  }
+
+  bool probe_succeeds = true;
+  bool prepare_succeeds = true;
+  bool attach_succeeds = true;
+  bool cleanup_required = true;
+  std::atomic_bool termination_succeeds = true;
+  bool kill_child_during_attach = false;
+  std::chrono::milliseconds termination_delay{};
+  int probe_count = 0;
+  int prepare_count = 0;
+  std::vector<std::string> units;
+  std::vector<std::string> descriptions;
+  std::vector<std::vector<pid_t>> attached_pids;
+  std::vector<launcher::ProcessResourceCeilings> resources;
+  std::vector<std::string> terminated;
+  mutable std::mutex termination_mutex;
+  std::condition_variable termination_changed;
+
+protected:
+  AttachResult attach_validated(const launcher::ProcessScopeRequest &request,
+                                launcher::Deadline,
+                                std::string &) override {
+    units.emplace_back(request.unit);
+    descriptions.emplace_back(request.description);
+    attached_pids.emplace_back(request.pids.begin(), request.pids.end());
+    resources.push_back(request.resources);
+    if (kill_child_during_attach)
+      (void)::kill(request.pids.front(), SIGKILL);
+    return {.attached = attach_succeeds,
+            .cleanup_required = cleanup_required};
+  }
+};
+
+std::shared_ptr<RecordingScope> recording_scope() {
+  return std::make_shared<RecordingScope>();
 }
 
 std::string read_file(const std::filesystem::path &path) {
@@ -264,7 +349,8 @@ void protocol_and_lifecycle() {
                                std::filesystem::perms::owner_read |
                                    std::filesystem::perms::owner_exec);
   const auto active = activation(4);
-  auto runtime = host::ProviderActivation::create(catalog, active);
+  auto scope = recording_scope();
+  auto runtime = host::ProviderActivation::create(catalog, active, scope);
   auto first = runtime->route(binding("test.adapter"));
   auto second = runtime->route(binding("test.second", 'e'));
   require(first && second && !runtime->route(binding("test.missing")),
@@ -277,16 +363,31 @@ void protocol_and_lifecycle() {
   std::string rejected;
   require(!invoke(first, activation(5), rejected),
           "cross-activation request reached provider");
+  require(scope->units.size() == 1 && scope->attached_pids.size() == 1 &&
+              scope->attached_pids.front().size() == 1 &&
+              scope->descriptions.front() == "Omarchy trusted plugin provider",
+          "provider did not attach one exact process scope");
+  const auto &limits = scope->resources.front();
+  require(limits.memory_high_bytes == 96U * 1024U * 1024U &&
+              limits.memory_max_bytes == 128U * 1024U * 1024U &&
+              limits.tasks_max == 8 &&
+              limits.cpu_quota_per_second_usec == 250000 &&
+              limits.cpu_weight == 10 && limits.io_weight == 10,
+          "provider scope did not use exact bounded ceilings");
 
-  auto other = host::ProviderActivation::create(catalog, activation(5));
+  auto other_scope = recording_scope();
+  auto other =
+      host::ProviderActivation::create(catalog, activation(5), other_scope);
   auto other_route = other->route(binding("test.adapter"));
   std::string other_pid;
   require(invoke(other_route, activation(5), other_pid) && other_pid != first_pid,
           "provider process crossed activation boundary");
   const auto pid = static_cast<pid_t>(std::stoi(other_pid));
-  other->cancel();
-  require(::kill(pid, 0) < 0 && errno == ESRCH,
+  require(other->cancel() && !other->cleanup_pending() &&
+              ::kill(pid, 0) < 0 && errno == ESRCH,
           "cancel did not reap provider process");
+  require(other_scope->terminated == other_scope->units,
+          "cancel did not kill and remove the exact provider scope");
   std::string cancelled;
   require(!invoke(other_route, activation(5), cancelled),
           "cancelled activation restarted provider");
@@ -300,14 +401,17 @@ void failure_modes() {
     host::CatalogError error{};
     auto catalog = load(fixture, error);
     require(catalog != nullptr, "failure-mode catalog rejected");
+    auto scope = recording_scope();
     auto runtime = host::ProviderActivation::create(
-        catalog, activation(8), std::chrono::milliseconds(50));
+        catalog, activation(8), scope, std::chrono::milliseconds(50));
     auto route = runtime->route(binding("test.adapter"));
     std::string output;
     require(!invoke(route, activation(8), output),
             "bad provider response succeeded");
     require(!invoke(route, activation(8), output),
             "failed provider restarted within activation");
+    require(scope->units.size() == 1 && scope->terminated == scope->units,
+            "failed provider did not tear down its exact scope once");
     errno = 0;
     require(::waitpid(-1, nullptr, WNOHANG) < 0 && errno == ECHILD,
             "failed provider child was not reaped");
@@ -318,7 +422,8 @@ void failure_modes() {
                          "echo");
   host::CatalogError error{};
   auto catalog = load(small_response, error);
-  auto runtime = host::ProviderActivation::create(catalog, activation(9));
+  auto runtime = host::ProviderActivation::create(
+      catalog, activation(9), recording_scope());
   auto route = runtime->route(binding("test.adapter"));
   const std::array<std::byte, 1> payload{std::byte{7}};
   std::string output;
@@ -335,7 +440,8 @@ void failure_modes() {
                       "environment");
   error = {};
   catalog = load(environment, error);
-  runtime = host::ProviderActivation::create(catalog, activation(10));
+  runtime = host::ProviderActivation::create(
+      catalog, activation(10), recording_scope());
   route = runtime->route(binding("test.adapter"));
   output.clear();
   require(invoke(route, activation(10), output) &&
@@ -352,7 +458,9 @@ void launch_boundary() {
                false, "/bin/provider-peer", {}, marker_argument);
   host::CatalogError error{};
   auto catalog = load(lazy, error);
-  auto runtime = host::ProviderActivation::create(catalog, activation(11));
+  auto scope = recording_scope();
+  auto runtime =
+      host::ProviderActivation::create(catalog, activation(11), scope);
   auto route = runtime->route(binding("test.adapter"));
   require(route && !std::filesystem::exists(marker),
           "catalog or route construction eagerly launched provider");
@@ -365,6 +473,8 @@ void launch_boundary() {
   require(invoke(route, activation(11), output) &&
               std::filesystem::exists(marker),
           "first authorized invocation did not lazily launch provider");
+  require(scope->units.size() == 1,
+          "first authorized invocation did not attach one scope");
 
   Fixture descriptors;
   const int opened = ::open((descriptors.root / "inherited").c_str(),
@@ -382,7 +492,8 @@ void launch_boundary() {
                       "isolated.group", "isolation", false,
                       "/bin/provider-peer", {}, inherited_argument);
   catalog = load(descriptors, error);
-  runtime = host::ProviderActivation::create(catalog, activation(12));
+  runtime = host::ProviderActivation::create(
+      catalog, activation(12), recording_scope());
   route = runtime->route(binding("test.adapter"));
   output.clear();
   require(invoke(route, activation(12), output) && output == "isolated",
@@ -390,12 +501,263 @@ void launch_boundary() {
   ::close(inherited);
 }
 
+void scope_fail_closed() {
+  Fixture fixture;
+  const auto marker = fixture.root / "provider-started";
+  const std::string marker_text = marker.string();
+  const std::array<std::string_view, 1> marker_argument{marker_text};
+  fixture.profile("scoped", "test.adapter", digest('a'), "scoped.group",
+                  "marker", false, "/bin/provider-peer", {}, marker_argument);
+  host::CatalogError error{};
+  const auto catalog = load(fixture, error);
+  require(catalog != nullptr, "scope failure catalog rejected");
+
+  auto unavailable = recording_scope();
+  unavailable->probe_succeeds = false;
+  require(!host::ProviderActivation::create(catalog, activation(20),
+                                            unavailable) &&
+              unavailable->probe_count == 1 &&
+              unavailable->prepare_count == 0 &&
+              !std::filesystem::exists(marker),
+          "resource-manager probe failure did not reject activation lazily");
+
+  auto unprepared = recording_scope();
+  unprepared->prepare_succeeds = false;
+  require(!host::ProviderActivation::create(catalog, activation(21),
+                                            unprepared) &&
+              unprepared->probe_count == 1 && unprepared->prepare_count == 1 &&
+              !std::filesystem::exists(marker),
+          "resource-manager cleanup preparation failure did not reject activation");
+
+  auto rejected = recording_scope();
+  rejected->attach_succeeds = false;
+  auto runtime =
+      host::ProviderActivation::create(catalog, activation(22), rejected);
+  require(runtime != nullptr, "valid lazy activation rejected");
+  auto route = runtime->route(binding("test.adapter"));
+  std::string output;
+  require(!invoke(route, activation(22), output) &&
+              !std::filesystem::exists(marker),
+          "provider executed before its scope was verified");
+  require(rejected->units.size() == 1 && rejected->terminated == rejected->units,
+          "ambiguous scope attachment did not clean its exact unit");
+  require(!invoke(route, activation(22), output) &&
+              rejected->units.size() == 1,
+          "scope attachment failure restarted provider");
+  errno = 0;
+  require(::waitpid(-1, nullptr, WNOHANG) < 0 && errno == ECHILD,
+          "scope attachment failure did not reap provider child");
+
+  Fixture cleanup_failure;
+  cleanup_failure.profile("cleanup", "test.adapter", digest('a'),
+                          "cleanup.group", "crash");
+  const auto cleanup_catalog = load(cleanup_failure, error);
+  auto failing_cleanup = recording_scope();
+  failing_cleanup->termination_succeeds = false;
+  auto cleanup_runtime = host::ProviderActivation::create(
+      cleanup_catalog, activation(23), failing_cleanup);
+  auto cleanup_route = cleanup_runtime->route(binding("test.adapter"));
+  require(!invoke(cleanup_route, activation(23), output) &&
+              failing_cleanup->units.size() == 1 &&
+              failing_cleanup->terminated == failing_cleanup->units &&
+              cleanup_runtime->cleanup_pending(),
+          "unconfirmed provider scope cleanup was reported clean");
+  require(!cleanup_runtime->cancel() && cleanup_runtime->cleanup_pending() &&
+              failing_cleanup->terminated.size() == 2,
+          "provider cleanup failure was not observable and retained");
+  require(!invoke(cleanup_route, activation(23), output) &&
+              failing_cleanup->units.size() == 1 &&
+              failing_cleanup->terminated.size() == 2,
+          "cleanup failure restarted the provider");
+  failing_cleanup->termination_succeeds = true;
+  require(cleanup_runtime->cancel() && !cleanup_runtime->cleanup_pending() &&
+              failing_cleanup->terminated.size() == 3 &&
+              failing_cleanup->terminated[0] == failing_cleanup->terminated[1] &&
+              failing_cleanup->terminated[1] == failing_cleanup->terminated[2],
+          "unconfirmed provider cleanup authority was not retained for retry");
+
+  Fixture bounded;
+  bounded.profile("bounded", "test.adapter", digest('a'), "bounded.group");
+  const auto bounded_catalog = load(bounded, error);
+  auto bounded_scope = recording_scope();
+  auto bounded_runtime = host::ProviderActivation::create(
+      bounded_catalog, activation(24), bounded_scope,
+      std::chrono::milliseconds(40));
+  auto bounded_route = bounded_runtime->route(binding("test.adapter"));
+  require(invoke(bounded_route, activation(24), output),
+          "bounded-reap provider did not start");
+  bounded_scope->termination_succeeds = false;
+  bounded_scope->termination_delay = std::chrono::milliseconds(250);
+  const auto cancel_started = std::chrono::steady_clock::now();
+  require(!bounded_runtime->cancel() && bounded_runtime->cleanup_pending() &&
+              std::chrono::steady_clock::now() - cancel_started <
+                  std::chrono::milliseconds(150),
+          "stuck provider cleanup exceeded its deadline or was dropped");
+  bounded_scope->termination_succeeds = true;
+  bounded_scope->termination_delay = {};
+  require(bounded_runtime->cancel() && !bounded_runtime->cleanup_pending(),
+          "bounded provider cleanup could not be retried to completion");
+
+  Fixture abandoned;
+  abandoned.profile("abandoned", "test.adapter", digest('a'),
+                    "abandoned.group", "crash");
+  const auto abandoned_catalog = load(abandoned, error);
+  auto abandoned_scope = recording_scope();
+  abandoned_scope->termination_succeeds = false;
+  {
+    auto abandoned_runtime = host::ProviderActivation::create(
+        abandoned_catalog, activation(25), abandoned_scope,
+        std::chrono::milliseconds(40));
+    auto abandoned_route =
+        abandoned_runtime->route(binding("test.adapter"));
+    require(!invoke(abandoned_route, activation(25), output) &&
+                abandoned_runtime->cleanup_pending(),
+            "abandoned cleanup fixture did not retain failed authority");
+    abandoned_route.reset();
+  }
+  const auto abandoned_attempts = abandoned_scope->termination_count();
+  abandoned_scope->termination_succeeds = true;
+  require(abandoned_scope->wait_for_termination_count(
+              abandoned_attempts + 1,
+              std::chrono::steady_clock::now() + std::chrono::seconds(2)) &&
+              abandoned_scope->exact_termination_retried(),
+          "destroyed activation dropped its exact cleanup authority");
+  const auto cleaned_attempts = abandoned_scope->termination_count();
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  require(abandoned_scope->termination_count() == cleaned_attempts,
+          "confirmed abandoned cleanup remained queued");
+
+  const pid_t regression = ::fork();
+  require(regression >= 0, "child-release regression fork failed");
+  if (regression == 0) {
+    Fixture release;
+    release.profile("release", "test.adapter", digest('a'), "release.group");
+    host::CatalogError child_error{};
+    const auto release_catalog = load(release, child_error);
+    auto release_scope = recording_scope();
+    release_scope->kill_child_during_attach = true;
+    auto release_runtime = host::ProviderActivation::create(
+        release_catalog, activation(26), release_scope,
+        std::chrono::milliseconds(100));
+    auto release_route = release_runtime->route(binding("test.adapter"));
+    std::string child_output;
+    const bool safe = release_runtime && release_route &&
+                      !invoke(release_route, activation(26), child_output) &&
+                      !invoke(release_route, activation(26), child_output) &&
+                      !release_runtime->cleanup_pending();
+    ::_exit(safe ? 0 : 1);
+  }
+  int regression_status = 0;
+  pid_t regression_waited = 0;
+  const auto regression_deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (regression_waited == 0 &&
+         std::chrono::steady_clock::now() < regression_deadline) {
+    regression_waited = ::waitpid(regression, &regression_status, WNOHANG);
+    if (regression_waited == 0)
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  require(regression_waited == regression &&
+              WIFEXITED(regression_status) && WEXITSTATUS(regression_status) == 0,
+          "child death before release killed or corrupted the provider host");
+}
+
+std::filesystem::path process_cgroup(pid_t pid) {
+  std::ifstream input(std::filesystem::path("/proc") / std::to_string(pid) /
+                      "cgroup");
+  std::string record;
+  while (std::getline(input, record)) {
+    const auto separator = record.find("::");
+    if (separator != std::string::npos)
+      return record.substr(separator + 2);
+  }
+  return {};
+}
+
+bool terminated(pid_t pid) {
+  std::ifstream input(std::filesystem::path("/proc") / std::to_string(pid) /
+                      "stat");
+  std::string stat;
+  if (!std::getline(input, stat))
+    return true;
+  const auto state = stat.find(") ");
+  return state != std::string::npos && state + 2 < stat.size() &&
+         stat[state + 2] == 'Z';
+}
+
+bool systemd_descendant_scope() {
+  auto scope = launcher::make_systemd_resource_scope_controller();
+  std::string preflight_error;
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(750);
+  if (!scope->probe(deadline, preflight_error) ||
+      !scope->prepare_cleanup(deadline, preflight_error)) {
+    std::cerr << "SKIP: " << preflight_error << '\n';
+    return false;
+  }
+
+  Fixture fixture;
+  fixture.profile("descendant", "test.adapter", digest('a'),
+                  "descendant.group", "descendant");
+  host::CatalogError error{};
+  const auto catalog = load(fixture, error);
+  require(catalog != nullptr, "systemd descendant catalog rejected");
+  const auto active = activation(30);
+  auto runtime = host::ProviderActivation::create(
+      catalog, active, scope, std::chrono::milliseconds(1500));
+  require(runtime != nullptr, "systemd-scoped activation rejected");
+  auto route = runtime->route(binding("test.adapter"));
+  std::string output;
+  require(invoke(route, active, output),
+          "systemd-scoped descendant provider invocation failed");
+  const auto separator = output.find('|');
+  require(separator != std::string::npos,
+          "descendant provider returned malformed process identities");
+  const auto direct = static_cast<pid_t>(std::stoi(output.substr(0, separator)));
+  const auto descendant =
+      static_cast<pid_t>(std::stoi(output.substr(separator + 1)));
+  const auto direct_cgroup = process_cgroup(direct);
+  const auto descendant_cgroup = process_cgroup(descendant);
+  require(!direct_cgroup.empty() && direct_cgroup == descendant_cgroup &&
+              direct_cgroup.string().find(
+                  "app-omarchy-plugin-provider-test.provider-") !=
+                  std::string::npos &&
+              direct_cgroup.extension() == ".scope",
+          "provider descendant escaped the exact activation/group scope");
+
+  const auto cgroup_root = std::filesystem::path("/sys/fs/cgroup") /
+                           direct_cgroup.relative_path();
+  require(read_file(cgroup_root / "memory.high") == "100663296\n" &&
+              read_file(cgroup_root / "memory.max") == "134217728\n" &&
+              read_file(cgroup_root / "pids.max") == "8\n" &&
+              read_file(cgroup_root / "cpu.weight") == "10\n" &&
+              read_file(cgroup_root / "cpu.max").starts_with("25000 "),
+          "systemd scope did not apply exact provider ceilings");
+
+  require(runtime->cancel() && !runtime->cleanup_pending(),
+          "systemd provider cleanup was not confirmed");
+  const auto reap_deadline = std::chrono::steady_clock::now() +
+                             std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < reap_deadline &&
+         (!terminated(direct) || !terminated(descendant) ||
+          std::filesystem::exists(cgroup_root)))
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  require(terminated(direct), "provider direct child was not reaped");
+  require(terminated(descendant), "provider descendant survived revocation");
+  require(!std::filesystem::exists(cgroup_root),
+          "provider resource scope survived revocation");
+  return true;
+}
+
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "systemd")
+    return systemd_descendant_scope() ? 0 : 77;
   catalog_security();
   protocol_and_lifecycle();
   failure_modes();
   launch_boundary();
+  scope_fail_closed();
   std::cout << "provider host tests passed\n";
 }

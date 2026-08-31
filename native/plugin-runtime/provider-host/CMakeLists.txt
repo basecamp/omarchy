@@ -17,7 +17,8 @@ target_compile_options(omarchy-plugin-provider-host PRIVATE
   -Wall -Wextra -Wpedantic -Werror)
 target_include_directories(omarchy-plugin-provider-host PUBLIC include)
 target_link_libraries(omarchy-plugin-provider-host PUBLIC
-  omarchy-plugin-capability-definitions)
+  omarchy-plugin-capability-definitions
+  omarchy-plugin-launcher)
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-provider-peer tests/provider_peer.cpp)
@@ -38,4 +39,9 @@ if(BUILD_TESTING)
   add_test(NAME plugin-provider-host COMMAND omarchy-plugin-provider-host-test)
   set_tests_properties(plugin-provider-host PROPERTIES
     TIMEOUT 30 LABELS "unit;security;providers;protocol;filesystem;adversarial")
+  add_test(NAME plugin-provider-host-systemd-scope
+    COMMAND omarchy-plugin-provider-host-test systemd)
+  set_tests_properties(plugin-provider-host-systemd-scope PROPERTIES
+    TIMEOUT 15 SKIP_RETURN_CODE 77
+    LABELS "integration;security;providers;cgroup;adversarial")
 endif()

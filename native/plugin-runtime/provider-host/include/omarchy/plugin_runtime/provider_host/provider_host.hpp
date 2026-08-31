@@ -1,6 +1,7 @@
 #pragma once
 
 #include "dynamic_activation.hpp"
+#include "omarchy/plugin_runtime/launcher/launcher.h"
 
 #include <chrono>
 #include <cstddef>
@@ -15,6 +16,7 @@ namespace omarchy::plugin_runtime::provider_host {
 
 namespace definitions = omarchy::plugins::definitions;
 namespace permissions = omarchy::plugins::permissions;
+namespace launcher = omarchy::plugin_runtime::launcher;
 
 constexpr std::size_t kMaximumProviderPayload = 64 * 1024;
 
@@ -69,14 +71,29 @@ public:
   create(std::shared_ptr<const ProviderCatalog> catalog,
          permissions::ActivationBinding binding,
          std::chrono::milliseconds timeout = std::chrono::milliseconds(750));
+  // Trusted composition seam for tests and alternate host resource managers.
+  // Plugin data never receives or selects this controller.
+  [[nodiscard]] static std::shared_ptr<ProviderActivation>
+  create(std::shared_ptr<const ProviderCatalog> catalog,
+         permissions::ActivationBinding binding,
+         std::shared_ptr<launcher::ResourceScopeController> resource_scope,
+         std::chrono::milliseconds timeout = std::chrono::milliseconds(750));
   [[nodiscard]] std::shared_ptr<ProviderRoute>
   route(const definitions::AdapterBinding &binding);
-  void cancel() noexcept;
+  // Permanently closes invocation authority. False means exact process/scope
+  // cleanup remains retained and a later cancel() must retry it.
+  bool cancel() noexcept;
+  [[nodiscard]] bool cleanup_pending() const noexcept;
 
 private:
   struct Impl;
+  struct CleanupService;
+  [[nodiscard]] static CleanupService *cleanup_service(bool create) noexcept;
+  static void retain_cleanup(std::unique_ptr<Impl> implementation) noexcept;
   ProviderActivation(std::shared_ptr<const ProviderCatalog> catalog,
                      permissions::ActivationBinding binding,
+                     std::shared_ptr<launcher::ResourceScopeController>
+                         resource_scope,
                      std::chrono::milliseconds timeout);
   [[nodiscard]] bool invoke(const definitions::AdapterBinding &binding,
                             const definitions::AuthorizedDynamicRequest &request,

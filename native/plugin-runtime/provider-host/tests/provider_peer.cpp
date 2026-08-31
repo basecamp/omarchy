@@ -64,6 +64,7 @@ bool isolated_descriptor_table(int inherited_fd) {
 
 int main(int argc, char **argv) {
   const auto mode = argument(argc, argv);
+  pid_t descendant = -1;
   if (mode == "marker" && argc == 3) {
     std::ofstream marker(argv[2]);
     marker << ::getpid() << '\n';
@@ -87,6 +88,20 @@ int main(int argc, char **argv) {
     std::string payload;
     if (mode == "pid")
       payload = std::to_string(::getpid());
+    else if (mode == "descendant") {
+      if (descendant <= 0) {
+        descendant = ::fork();
+        if (descendant < 0)
+          return 5;
+        if (descendant == 0) {
+          ::close(3);
+          while (true)
+            ::pause();
+        }
+      }
+      payload = std::to_string(::getpid()) + "|" +
+                std::to_string(descendant);
+    }
     else if (mode == "environment")
       payload = std::string(::getenv("PATH") ? ::getenv("PATH") : "") + "|" +
                 (::getenv("HOME") ? ::getenv("HOME") : "");

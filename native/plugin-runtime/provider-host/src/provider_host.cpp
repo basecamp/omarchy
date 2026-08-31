@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <linux/close_range.h>
 #include <poll.h>
+#include <sched.h>
 #include <signal.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
@@ -19,11 +20,14 @@
 #include <cerrno>
 #include <charconv>
 #include <climits>
+#include <condition_variable>
 #include <limits>
 #include <map>
 #include <mutex>
+#include <new>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace omarchy::plugin_runtime::provider_host {
@@ -39,6 +43,12 @@ constexpr std::size_t kMaximumExecutableBytes = 128 * 1024 * 1024;
 constexpr std::size_t kMaximumArguments = 16;
 constexpr std::size_t kMaximumArgumentBytes = 512;
 constexpr std::size_t kMaximumProfiles = 128;
+constexpr std::uint64_t kProviderMemoryHighBytes = 96ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t kProviderMemoryMaxBytes = 128ULL * 1024ULL * 1024ULL;
+constexpr std::uint64_t kProviderTasksMax = 8;
+constexpr std::uint64_t kProviderCpuQuotaUsec = 250000;
+constexpr std::uint64_t kProviderCpuWeight = 10;
+constexpr std::uint64_t kProviderIoWeight = 10;
 
 class Descriptor final {
 public:
@@ -431,6 +441,8 @@ struct Process final {
   pid_t pid = -1;
   Descriptor pidfd;
   Descriptor channel;
+  std::string scope;
+  bool scope_cleanup_required = false;
   bool failed = false;
   std::uint64_t next_correlation = 1;
 
@@ -441,26 +453,55 @@ struct Process final {
   Process &operator=(Process &&) noexcept = default;
 };
 
-void stop(Process &process) noexcept {
+bool stop(Process &process,
+          launcher::ResourceScopeController &resource_scope,
+          launcher::Deadline deadline) noexcept {
   process.channel.reset();
-  if (process.pid <= 0) {
-    process.pidfd.reset();
-    process.failed = true;
-    return;
+  bool scope_terminated = true;
+  if (process.scope_cleanup_required && !process.scope.empty()) {
+    std::string cleanup_error;
+    scope_terminated = resource_scope.terminate_scope(
+        process.scope, deadline, cleanup_error);
   }
-  if (process.pidfd) {
-    if (::syscall(SYS_pidfd_send_signal, process.pidfd.get(), SIGKILL, nullptr,
-                  0U) < 0 &&
-        errno != ESRCH)
+  if (process.pid > 0) {
+    if (process.pidfd) {
+      if (::syscall(SYS_pidfd_send_signal, process.pidfd.get(), SIGKILL,
+                    nullptr, 0U) < 0 &&
+          errno != ESRCH)
+        (void)::kill(process.pid, SIGKILL);
+    } else {
       (void)::kill(process.pid, SIGKILL);
-  } else {
-    (void)::kill(process.pid, SIGKILL);
+    }
+    while (true) {
+      const pid_t waited = ::waitpid(process.pid, nullptr, WNOHANG);
+      if (waited == process.pid || (waited < 0 && errno == ECHILD)) {
+        process.pid = -1;
+        process.pidfd.reset();
+        break;
+      }
+      if (waited < 0 && errno != EINTR)
+        break;
+      if (std::chrono::steady_clock::now() >= deadline)
+        break;
+      pollfd ready{.fd = process.pidfd.get(), .events = POLLIN, .revents = 0};
+      const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              deadline - std::chrono::steady_clock::now() +
+              std::chrono::milliseconds(1));
+      if (process.pidfd &&
+          ::poll(&ready, 1, static_cast<int>(remaining.count())) < 0 &&
+          errno != EINTR)
+        break;
+      if (!process.pidfd)
+        ::sched_yield();
+    }
   }
-  while (::waitpid(process.pid, nullptr, 0) < 0 && errno == EINTR) {
+  if (scope_terminated) {
+    process.scope.clear();
+    process.scope_cleanup_required = false;
   }
-  process.pidfd.reset();
-  process.pid = -1;
   process.failed = true;
+  return scope_terminated && process.pid <= 0;
 }
 
 Descriptor open_pidfd(pid_t pid) noexcept {
@@ -473,13 +514,20 @@ Descriptor open_pidfd(pid_t pid) noexcept {
   }
 }
 
-void kill_and_reap_new_child(pid_t pid) noexcept {
-  (void)::kill(pid, SIGKILL);
-  while (::waitpid(pid, nullptr, 0) < 0 && errno == EINTR) {
-  }
+std::string scope_name(const permissions::ActivationBinding &activation,
+                       std::string_view group, pid_t pid) {
+  return "app-omarchy-plugin-provider-" +
+         std::string(activation.plugin.view().substr(0, 40)) + "-" +
+         std::string(activation.revision.view().substr(0, 12)) + "-g" +
+         std::to_string(activation.generation) + "-" +
+         std::string(group.substr(0, 32)) + "-p" + std::to_string(pid) +
+         ".scope";
 }
 
-bool start(Process &process, const ProviderCatalog::Profile &profile) {
+bool start(Process &process, const ProviderCatalog::Profile &profile,
+           const permissions::ActivationBinding &activation,
+           launcher::ResourceScopeController &resource_scope,
+           std::chrono::milliseconds timeout) {
   std::vector<char *> arguments;
   arguments.reserve(profile.arguments.size() + 2);
   arguments.push_back(const_cast<char *>(profile.executable_path.c_str()));
@@ -495,6 +543,12 @@ bool start(Process &process, const ProviderCatalog::Profile &profile) {
     return false;
   Descriptor parent(pair[0]);
   Descriptor child(pair[1]);
+  int barrier_descriptors[2] = {-1, -1};
+  if (::socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0,
+                   barrier_descriptors) < 0)
+    return false;
+  Descriptor barrier_read(barrier_descriptors[0]);
+  Descriptor barrier_write(barrier_descriptors[1]);
   std::array<char *, 5> environment{
       const_cast<char *>("PATH=/usr/bin"), const_cast<char *>("LANG=C"),
       const_cast<char *>("LC_ALL=C"), const_cast<char *>("HOME=/nonexistent"),
@@ -503,6 +557,7 @@ bool start(Process &process, const ProviderCatalog::Profile &profile) {
   if (pid < 0)
     return false;
   if (pid == 0) {
+    barrier_write.reset();
     const int child_fd = child.get();
     parent.reset();
     if (child_fd != 3 && ::dup2(child_fd, 3) != 3)
@@ -523,19 +578,64 @@ bool start(Process &process, const ProviderCatalog::Profile &profile) {
     if (::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) < 0 ||
         ::syscall(SYS_close_range, 4U, UINT_MAX, CLOSE_RANGE_CLOEXEC) < 0)
       _exit(126);
+    unsigned char release = 0;
+    ssize_t released = -1;
+    do {
+      released = ::recv(barrier_read.get(), &release, sizeof(release), 0);
+    } while (released < 0 && errno == EINTR);
+    if (released != static_cast<ssize_t>(sizeof(release)) || release != 0xa5)
+      _exit(126);
     (void)::syscall(SYS_execveat, executable.get(), "",
                     arguments.data(), environment.data(), AT_EMPTY_PATH);
     _exit(127);
   }
   child.reset();
+  barrier_read.reset();
+  process.pid = pid;
+  process.channel = std::move(parent);
   auto pidfd = open_pidfd(pid);
   if (!pidfd) {
-    kill_and_reap_new_child(pid);
+    stop(process, resource_scope, std::chrono::steady_clock::now() + timeout);
     return false;
   }
-  process.pid = pid;
   process.pidfd = std::move(pidfd);
-  process.channel = std::move(parent);
+  process.scope = scope_name(activation, profile.group, pid);
+  // Cleanup is conservative once direct child authority exists. Even an
+  // exception or ambiguous resource-manager reply tears down this exact unit.
+  process.scope_cleanup_required = true;
+  const std::array<pid_t, 1> pids{pid};
+  const launcher::ProcessScopeRequest scope_request{
+      .unit = process.scope,
+      .description = "Omarchy trusted plugin provider",
+      .pids = pids,
+      .resources = {.memory_high_bytes = kProviderMemoryHighBytes,
+                    .memory_max_bytes = kProviderMemoryMaxBytes,
+                    .tasks_max = kProviderTasksMax,
+                    .cpu_quota_per_second_usec = kProviderCpuQuotaUsec,
+                    .cpu_weight = kProviderCpuWeight,
+                    .io_weight = kProviderIoWeight}};
+  std::string scope_error;
+  const auto attached = resource_scope.attach(
+      scope_request, std::chrono::steady_clock::now() + timeout, scope_error);
+  if (!attached.attached) {
+    stop(process, resource_scope, std::chrono::steady_clock::now() + timeout);
+    return false;
+  }
+  const unsigned char release = 0xa5;
+  iovec release_part{.iov_base = const_cast<unsigned char *>(&release),
+                     .iov_len = sizeof(release)};
+  msghdr release_message{};
+  release_message.msg_iov = &release_part;
+  release_message.msg_iovlen = 1;
+  ssize_t released = -1;
+  do {
+    released = ::sendmsg(barrier_write.get(), &release_message, MSG_NOSIGNAL);
+  } while (released < 0 && errno == EINTR);
+  barrier_write.reset();
+  if (released != static_cast<ssize_t>(sizeof(release))) {
+    stop(process, resource_scope, std::chrono::steady_clock::now() + timeout);
+    return false;
+  }
   return true;
 }
 
@@ -602,6 +702,8 @@ request_frame(std::uint64_t correlation,
 }
 
 bool exchange(Process &process, const ProviderCatalog::Profile &profile,
+              const permissions::ActivationBinding &activation,
+              launcher::ResourceScopeController &resource_scope,
               const definitions::AdapterBinding &binding,
               const definitions::AuthorizedDynamicRequest &request,
               std::span<std::byte> response, std::size_t &written,
@@ -610,7 +712,8 @@ bool exchange(Process &process, const ProviderCatalog::Profile &profile,
     if (process.failed)
       return false;
     if (process.next_correlation == 0) {
-      stop(process);
+      stop(process, resource_scope,
+           std::chrono::steady_clock::now() + timeout);
       return false;
     }
     const auto correlation = process.next_correlation;
@@ -618,7 +721,8 @@ bool exchange(Process &process, const ProviderCatalog::Profile &profile,
     std::vector<std::byte> incoming(kHeaderBytes + kMaximumProviderPayload + 1);
     if (frame.empty())
       return false;
-    if (process.pid <= 0 && !start(process, profile)) {
+    if (process.pid <= 0 &&
+        !start(process, profile, activation, resource_scope, timeout)) {
       process.failed = true;
       return false;
     }
@@ -626,18 +730,21 @@ bool exchange(Process &process, const ProviderCatalog::Profile &profile,
     if (!wait_ready(process.channel.get(), POLLOUT, timeout) ||
         send_packet(process.channel.get(), frame.data(), frame.size()) !=
             static_cast<ssize_t>(frame.size())) {
-      stop(process);
+      stop(process, resource_scope,
+           std::chrono::steady_clock::now() + timeout);
       return false;
     }
     if (!wait_ready(process.channel.get(), POLLIN, timeout)) {
-      stop(process);
+      stop(process, resource_scope,
+           std::chrono::steady_clock::now() + timeout);
       return false;
     }
     const auto count =
         receive_packet(process.channel.get(), incoming.data(), incoming.size());
     if (count < static_cast<ssize_t>(kHeaderBytes) ||
         count > static_cast<ssize_t>(incoming.size())) {
-      stop(process);
+      stop(process, resource_scope,
+           std::chrono::steady_clock::now() + timeout);
       return false;
     }
     incoming.resize(static_cast<std::size_t>(count));
@@ -655,7 +762,8 @@ bool exchange(Process &process, const ProviderCatalog::Profile &profile,
         body_size + kHeaderBytes != incoming.size() || body_size < 1 ||
         std::to_integer<std::uint8_t>(incoming[kHeaderBytes]) != 0 ||
         body_size - 1 > response.size()) {
-      stop(process);
+      stop(process, resource_scope,
+           std::chrono::steady_clock::now() + timeout);
       return false;
     }
     written = body_size - 1;
@@ -663,7 +771,8 @@ bool exchange(Process &process, const ProviderCatalog::Profile &profile,
     return true;
   } catch (...) {
     if (process.pid > 0)
-      stop(process);
+      stop(process, resource_scope,
+           std::chrono::steady_clock::now() + timeout);
     return false;
   }
 }
@@ -727,34 +836,153 @@ std::size_t ProviderCatalog::size() const noexcept { return profiles_.size(); }
 struct ProviderActivation::Impl final {
   Impl(std::shared_ptr<const ProviderCatalog> initial_catalog,
        permissions::ActivationBinding initial_binding,
+       std::shared_ptr<launcher::ResourceScopeController> initial_resource_scope,
        std::chrono::milliseconds initial_timeout)
       : catalog(std::move(initial_catalog)), binding(std::move(initial_binding)),
+        resource_scope(std::move(initial_resource_scope)),
         timeout(initial_timeout) {}
 
   std::shared_ptr<const ProviderCatalog> catalog;
   permissions::ActivationBinding binding;
+  std::shared_ptr<launcher::ResourceScopeController> resource_scope;
   std::chrono::milliseconds timeout;
-  std::mutex mutex;
+  mutable std::mutex mutex;
   std::map<std::string, Process> processes;
   bool cancelled = false;
+  std::unique_ptr<Impl> cleanup_next;
 };
+
+struct ProviderActivation::CleanupService final {
+  [[nodiscard]] static bool cleanup(Impl &implementation) noexcept {
+    std::lock_guard lock(implementation.mutex);
+    implementation.cancelled = true;
+    const auto deadline =
+        std::chrono::steady_clock::now() + implementation.timeout;
+    bool cleaned = true;
+    for (auto &[name, process] : implementation.processes) {
+      (void)name;
+      cleaned = stop(process, *implementation.resource_scope, deadline) &&
+                cleaned;
+    }
+    return cleaned;
+  }
+
+  void retain(std::unique_ptr<Impl> implementation) noexcept {
+    {
+      std::lock_guard lock(mutex);
+      implementation->cleanup_next = std::move(pending);
+      pending = std::move(implementation);
+    }
+    ready.notify_one();
+  }
+
+  [[noreturn]] void run() noexcept {
+    while (true) {
+      std::unique_ptr<Impl> batch;
+      {
+        std::unique_lock lock(mutex);
+        ready.wait(lock, [this] { return pending != nullptr; });
+        batch = std::move(pending);
+      }
+
+      std::unique_ptr<Impl> retry;
+      while (batch) {
+        auto current = std::move(batch);
+        batch = std::move(current->cleanup_next);
+        if (!cleanup(*current)) {
+          current->cleanup_next = std::move(retry);
+          retry = std::move(current);
+        }
+      }
+      if (retry) {
+        std::unique_lock lock(mutex);
+        while (retry) {
+          auto current = std::move(retry);
+          retry = std::move(current->cleanup_next);
+          current->cleanup_next = std::move(pending);
+          pending = std::move(current);
+        }
+        // Avoid spinning on a resource manager that is still unavailable.
+        ready.wait_for(lock, std::chrono::milliseconds(100));
+      }
+    }
+  }
+
+  std::mutex mutex;
+  std::condition_variable ready;
+  std::unique_ptr<Impl> pending;
+};
+
+ProviderActivation::CleanupService *
+ProviderActivation::cleanup_service(bool create) noexcept {
+  static std::mutex creation_mutex;
+  static CleanupService *service = nullptr;
+  std::lock_guard lock(creation_mutex);
+  if (service || !create)
+    return service;
+
+  auto *candidate = new (std::nothrow) CleanupService;
+  if (!candidate)
+    return nullptr;
+  try {
+    std::thread([candidate] { candidate->run(); }).detach();
+  } catch (...) {
+    delete candidate;
+    return nullptr;
+  }
+  // The detached cleanup authority intentionally lives until process exit.
+  service = candidate;
+  return service;
+}
+
+void ProviderActivation::retain_cleanup(
+    std::unique_ptr<Impl> implementation) noexcept {
+  auto *service = cleanup_service(false);
+  if (!service)
+    std::terminate();
+  service->retain(std::move(implementation));
+}
 
 ProviderActivation::ProviderActivation(
     std::shared_ptr<const ProviderCatalog> catalog,
-    permissions::ActivationBinding binding, std::chrono::milliseconds timeout)
+    permissions::ActivationBinding binding,
+    std::shared_ptr<launcher::ResourceScopeController> resource_scope,
+    std::chrono::milliseconds timeout)
     : implementation_(std::make_unique<Impl>(
-          std::move(catalog), std::move(binding), timeout)) {}
+          std::move(catalog), std::move(binding), std::move(resource_scope),
+          timeout)) {}
 
-ProviderActivation::~ProviderActivation() { cancel(); }
+ProviderActivation::~ProviderActivation() {
+  if (!cancel())
+    retain_cleanup(std::move(implementation_));
+}
 
 std::shared_ptr<ProviderActivation> ProviderActivation::create(
     std::shared_ptr<const ProviderCatalog> catalog,
     permissions::ActivationBinding binding, std::chrono::milliseconds timeout) {
-  if (!catalog || binding.generation == 0 || timeout.count() <= 0 ||
+  return create(std::move(catalog), std::move(binding),
+                launcher::make_systemd_resource_scope_controller(), timeout);
+}
+
+std::shared_ptr<ProviderActivation> ProviderActivation::create(
+    std::shared_ptr<const ProviderCatalog> catalog,
+    permissions::ActivationBinding binding,
+    std::shared_ptr<launcher::ResourceScopeController> resource_scope,
+    std::chrono::milliseconds timeout) {
+  if (!catalog || !resource_scope || binding.generation == 0 ||
+      timeout.count() <= 0 ||
       timeout > std::chrono::seconds(5))
     return {};
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  std::string error;
+  if (!resource_scope->probe(deadline, error) ||
+      !resource_scope->prepare_cleanup(deadline, error))
+    return {};
+  if (!cleanup_service(true))
+    return {};
   return std::shared_ptr<ProviderActivation>(
-      new ProviderActivation(std::move(catalog), std::move(binding), timeout));
+      new ProviderActivation(std::move(catalog), std::move(binding),
+                             std::move(resource_scope), timeout));
 }
 
 std::shared_ptr<ProviderRoute>
@@ -765,15 +993,21 @@ ProviderActivation::route(const definitions::AdapterBinding &binding) {
       new ProviderRoute(shared_from_this(), binding));
 }
 
-void ProviderActivation::cancel() noexcept {
+bool ProviderActivation::cancel() noexcept {
   if (!implementation_)
-    return;
+    return true;
+  return CleanupService::cleanup(*implementation_);
+}
+
+bool ProviderActivation::cleanup_pending() const noexcept {
+  if (!implementation_)
+    return false;
   std::lock_guard lock(implementation_->mutex);
-  implementation_->cancelled = true;
-  for (auto &[name, process] : implementation_->processes) {
-    (void)name;
-    stop(process);
-  }
+  return std::ranges::any_of(
+      implementation_->processes, [](const auto &entry) {
+        const auto &process = entry.second;
+        return process.pid > 0 || process.scope_cleanup_required;
+      });
 }
 
 bool ProviderActivation::invoke(
@@ -794,8 +1028,9 @@ bool ProviderActivation::invoke(
     auto &[group, process] =
         *implementation_->processes.try_emplace(profile->group).first;
     (void)group;
-    return exchange(process, *profile, binding, request, response, written,
-                    implementation_->timeout);
+    return exchange(process, *profile, implementation_->binding,
+                    *implementation_->resource_scope, binding, request,
+                    response, written, implementation_->timeout);
   } catch (...) {
     return false;
   }
