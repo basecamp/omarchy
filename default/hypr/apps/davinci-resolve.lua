@@ -8,4 +8,6 @@ o.window(".*[Rr]esolve.*", {
   opacity = "1 1",
 })
 
-o.window({ class = ".*[Rr]esolve.*", title = "^DaVinci Resolve( Studio)? - .+$" }, { fullscreen = true })
+-- Maximized keeps the bar clear of Resolve's menu without fullscreen blanketing
+-- the workspace, so other windows there can still be raised above it.
+o.window({ class = ".*[Rr]esolve.*", title = "^DaVinci Resolve( Studio)? - .+$" }, { maximize = true })
