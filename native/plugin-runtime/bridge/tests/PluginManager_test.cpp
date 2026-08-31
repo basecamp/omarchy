@@ -1036,6 +1036,103 @@ void secure_bar_retries_only_on_readiness_events() {
           "secure bar continued polling after its bounded attach retry");
 }
 
+void secure_bar_cannot_expand_the_host_bar() {
+  QQmlEngine engine;
+  QQmlComponent bar_component(
+      &engine, QUrl::fromLocalFile(QString::fromStdString(secureBarQmlPath())));
+  require(bar_component.isReady(), "secure bar QML component did not load");
+
+  QJSValue service = engine.evaluate(
+      "({ attach: function(key, surface) { return false; } })");
+  require(!service.isError(), "inert surface service did not initialize");
+  const QVariantMap properties{
+      {QStringLiteral("surfaceService"), QVariant::fromValue(service)},
+      {QStringLiteral("surfaceKey"), QStringLiteral("bounded-bar")},
+      {QStringLiteral("generation"), QStringLiteral("1")},
+      {QStringLiteral("maximumWidth"), 64},
+      {QStringLiteral("maximumHeight"), 64},
+  };
+  std::unique_ptr<QObject> secure_object(
+      bar_component.createWithInitialProperties(properties));
+  auto *secure_item = qobject_cast<QQuickItem *>(secure_object.get());
+  require(secure_item && secure_item->implicitWidth() == 0 &&
+              secure_item->implicitHeight() == 0,
+          "secure bar exposed manifest geometry before host injection");
+  secure_item->setProperty("bar", QVariant{});
+  QCoreApplication::processEvents();
+  require(secure_item->implicitWidth() == 0 &&
+              secure_item->implicitHeight() == 0,
+          "undefined bar contract exposed plugin geometry");
+  secure_item->setProperty(
+      "bar", QVariantMap{{QStringLiteral("vertical"), false}});
+  QCoreApplication::processEvents();
+  require(secure_item->implicitWidth() == 0 &&
+              secure_item->implicitHeight() == 0,
+          "incomplete bar contract exposed plugin geometry");
+  secure_item->setProperty(
+      "bar", QVariantMap{{QStringLiteral("vertical"), false},
+                          {QStringLiteral("barSize"), -1}});
+  QCoreApplication::processEvents();
+  require(secure_item->implicitWidth() == 0 &&
+              secure_item->implicitHeight() == 0,
+          "invalid bar thickness exposed plugin geometry");
+
+  QQmlComponent host_component(&engine);
+  host_component.setData(R"QML(
+import QtQuick
+Item {
+  width: 256
+  height: 26
+  Row {
+    objectName: "rowModules"
+    anchors.verticalCenter: parent.verticalCenter
+    Item { objectName: "ordinaryRow"; implicitWidth: 40; implicitHeight: 26 }
+  }
+  Column {
+    objectName: "columnModules"
+    x: 128
+    Item { objectName: "ordinaryColumn"; implicitWidth: 32; implicitHeight: 40 }
+  }
+}
+)QML",
+                         QUrl());
+  require(host_component.isReady(), "host bar geometry fixture did not load");
+  std::unique_ptr<QObject> host_object(host_component.create());
+  auto *row = host_object->findChild<QQuickItem *>("rowModules");
+  auto *ordinary_row = host_object->findChild<QQuickItem *>("ordinaryRow");
+  auto *column = host_object->findChild<QQuickItem *>("columnModules");
+  auto *ordinary_column =
+      host_object->findChild<QQuickItem *>("ordinaryColumn");
+  require(row && ordinary_row && column && ordinary_column,
+          "host bar geometry fixture omitted its items");
+  secure_item->setParentItem(row);
+  QCoreApplication::processEvents();
+  require(row->implicitHeight() == 26 && row->y() == 0 &&
+              ordinary_row->y() == 0,
+          "uninjected secure surface displaced the horizontal host bar");
+
+  const QVariantMap horizontal_bar{{QStringLiteral("vertical"), false},
+                                   {QStringLiteral("barSize"), 26}};
+  secure_item->setProperty("bar", horizontal_bar);
+  QCoreApplication::processEvents();
+
+  require(secure_item->implicitWidth() == 64 &&
+              secure_item->implicitHeight() == 26 &&
+              row->implicitHeight() == 26 && row->y() == 0 &&
+              ordinary_row->y() == 0,
+          "64px secure surface expanded or displaced the 26px host bar");
+
+  const QVariantMap vertical_bar{{QStringLiteral("vertical"), true},
+                                 {QStringLiteral("barSize"), 32}};
+  secure_item->setParentItem(column);
+  secure_item->setProperty("bar", vertical_bar);
+  QCoreApplication::processEvents();
+  require(secure_item->implicitWidth() == 32 &&
+              secure_item->implicitHeight() == 64 &&
+              column->implicitWidth() == 32 && ordinary_column->x() == 0,
+          "vertical secure bar expanded or displaced its host column");
+}
+
 void singleton_boundary_is_inert_and_not_configurable() {
   auto manager_owner = bridge::PluginManagerTestAccess::create();
   auto &manager = *manager_owner;
@@ -4011,6 +4108,7 @@ void run_plugin_manager_tests() {
               "Omarchy.PluginHost", 1, 0, "RemotePluginSurface") >= 0,
           "real RemotePluginSurface QML type registration failed");
   secure_bar_retries_only_on_readiness_events();
+  secure_bar_cannot_expand_the_host_bar();
   process_singleton_factory_is_exact_and_recoverable();
   concurrent_engines_have_one_process_winner();
   singleton_boundary_is_inert_and_not_configurable();

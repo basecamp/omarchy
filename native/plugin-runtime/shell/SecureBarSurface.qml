@@ -9,11 +9,21 @@ Item {
   required property string generation
   required property int maximumWidth
   required property int maximumHeight
+  property var bar: null
   property int attachAttempts: 0
   readonly property int maximumAttachAttempts: 40
+  readonly property bool barReady: bar !== null
+    && bar !== undefined
+    && typeof bar.vertical === "boolean"
+    && typeof bar.barSize === "number"
+    && isFinite(bar.barSize)
+    && bar.barSize > 0
 
-  implicitWidth: maximumWidth
-  implicitHeight: maximumHeight
+  // The manifest bounds the plugin's canvas; the shell still owns the bar's
+  // thickness. Preserve the declared extent along the bar while preventing a
+  // tall or wide plugin from resizing the host row or column around it.
+  implicitWidth: !barReady ? 0 : bar.vertical ? Math.min(maximumWidth, bar.barSize) : maximumWidth
+  implicitHeight: !barReady ? 0 : !bar.vertical ? Math.min(maximumHeight, bar.barSize) : maximumHeight
 
   function attachIfReady() {
     if (remote.connected) {

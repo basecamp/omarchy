@@ -82,6 +82,10 @@ grep -F 'requestedScreen !== secureOwner' "$ROOT/shell/plugins/bar/Bar.qml" >/de
   fail "secure bar entries can instantiate on a non-owner screen"
 grep -F 'secureEntry.section === region' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
   fail "secure bar entries bypass their declared section"
+grep -F 'Math.min(maximumHeight, bar.barSize)' "$runtime_root/shell/SecureBarSurface.qml" >/dev/null ||
+  fail "horizontal secure bar surfaces can expand the host bar thickness"
+grep -F 'Math.min(maximumWidth, bar.barSize)' "$runtime_root/shell/SecureBarSurface.qml" >/dev/null ||
+  fail "vertical secure bar surfaces can expand the host bar thickness"
 grep -F 'model: PluginManager.panelSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure panels do not consume the typed role model"
 grep -F 'model: PluginManager.overlaySurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
