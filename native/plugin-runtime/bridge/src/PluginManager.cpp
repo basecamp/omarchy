@@ -134,6 +134,7 @@ struct PluginManager::Runtime final {
     plugins::permissions::CapabilityKey builtin;
     plugins::definitions::CapabilityReference dynamic;
     std::uint64_t expected_sequence = 0;
+    std::shared_ptr<const host_session::ConsentReview> consent_review;
     host_session::ConsentConfirmation confirmation;
     std::vector<host_session::BuiltinConsentDecision> builtin_decisions;
     std::vector<host_session::DynamicConsentDecision> dynamic_decisions;
@@ -597,13 +598,17 @@ struct PluginManager::Runtime final {
 
   bool beginPermissionApply(
       std::string_view plugin, std::uint64_t epoch,
+      std::shared_ptr<const host_session::ConsentReview> review,
       const host_session::ConsentConfirmation &confirmation,
       std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
       std::span<const host_session::DynamicConsentDecision> dynamic_decisions)
       noexcept {
     try {
+      if (!review)
+        return false;
       auto result = std::make_shared<PermissionTransaction>();
       result->kind = PermissionKind::apply_review;
+      result->consent_review = std::move(review);
       result->confirmation = confirmation;
       result->builtin_decisions.assign(builtin_decisions.begin(),
                                        builtin_decisions.end());
@@ -664,7 +669,8 @@ struct PluginManager::Runtime final {
               break;
             case PermissionKind::apply_review:
               result->review = result->authority->apply_review(
-                  result->confirmation, result->builtin_decisions,
+                  *result->consent_review, result->confirmation,
+                  result->builtin_decisions,
                   result->dynamic_decisions, &observer);
               break;
             }
@@ -1293,12 +1299,13 @@ bool PluginManagerTestAccess::revokePermission(
 
 bool PluginManagerTestAccess::applyPermissionReview(
     PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+    std::shared_ptr<const host_session::ConsentReview> review,
     const host_session::ConsentConfirmation &confirmation,
     std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
     std::span<const host_session::DynamicConsentDecision> dynamic_decisions) {
   return manager.runtime_ && manager.runtime_->beginPermissionApply(
-                                 plugin, epoch, confirmation, builtin_decisions,
-                                 dynamic_decisions);
+                                 plugin, epoch, std::move(review), confirmation,
+                                 builtin_decisions, dynamic_decisions);
 }
 
 std::weak_ptr<const void>

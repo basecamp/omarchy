@@ -1501,11 +1501,20 @@ void manager_owns_permission_generation_replacement() {
   auto review = bridge::PluginManagerTestAccess::preparePermissionReview(
       *manager, plugin, slot.epoch);
   require(review != nullptr, "running optional regrant review was unavailable");
+  const auto later_review =
+      bridge::PluginManagerTestAccess::preparePermissionReview(
+          *manager, plugin, slot.epoch);
+  require(later_review && later_review != review,
+          "permission authority did not return independently owned reviews");
   auto decisions = review_decisions(*review);
   auto confirmed = confirmation(*review, decisions);
+  require(!bridge::PluginManagerTestAccess::applyPermissionReview(
+              *manager, plugin, slot.epoch, {}, confirmed, decisions, {}) &&
+              current_slot().running,
+          "permission apply accepted an absent manager-owned review");
   require(bridge::PluginManagerTestAccess::applyPermissionReview(
-              *manager, plugin, slot.epoch, confirmed, decisions, {}),
-          "running optional regrant was not queued");
+              *manager, plugin, slot.epoch, review, confirmed, decisions, {}),
+          "an exact earlier immutable review was not queued");
   run_job();
   require(current_slot().preparing && scheduler.jobs.size() == 1,
           "running optional regrant did not replace its generation");
@@ -1563,7 +1572,7 @@ void manager_owns_permission_generation_replacement() {
   decisions = review_decisions(*review);
   confirmed = confirmation(*review, decisions);
   require(bridge::PluginManagerTestAccess::applyPermissionReview(
-              *manager, plugin, slot.epoch, confirmed, decisions, {}),
+              *manager, plugin, slot.epoch, review, confirmed, decisions, {}),
           "required regrant was not queued from permission-only root");
   run_job();
   require(current_slot().preparing && scheduler.jobs.size() == 1,

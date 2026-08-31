@@ -89,7 +89,6 @@ PluginPermissionAuthority::list() const {
 std::shared_ptr<const host_session::ConsentReview>
 PluginPermissionAuthority::prepare_review() {
   std::scoped_lock lock(mutex_);
-  pending_review_.reset();
   auto verified = activation_source_.verified_revision(record_name_);
   if (!verified)
     return {};
@@ -97,32 +96,28 @@ PluginPermissionAuthority::prepare_review() {
       *authority_, *verified, *definitions_, scope_validator_);
   if (!review)
     return {};
-  pending_review_ =
-      std::make_shared<const host_session::ConsentReview>(std::move(*review));
-  return pending_review_;
+  return std::make_shared<const host_session::ConsentReview>(std::move(*review));
 }
 
 ReviewedPermissionApplyResult PluginPermissionAuthority::apply_review(
+    const host_session::ConsentReview &review,
     const host_session::ConsentConfirmation &confirmation,
     std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
     std::span<const host_session::DynamicConsentDecision> dynamic_decisions,
     host_session::AuthorityFenceObserver *observer) {
   std::scoped_lock lock(mutex_);
-  const auto review = std::move(pending_review_);
-  if (!review)
-    return {};
   const auto verified = activation_source_.verified_revision(record_name_);
-  if (!verified || !same_revision(*verified, review->verified))
+  if (!verified || !same_revision(*verified, review.verified))
     return {};
 
   ReviewedPermissionApplyResult result;
   try {
-    result.binding = review->candidate_binding;
+    result.binding = review.candidate_binding;
   } catch (...) {
     return result;
   }
   result.publication = host_session::publish_consent_review(
-      *authority_, *review, confirmation, builtin_decisions, dynamic_decisions,
+      *authority_, review, confirmation, builtin_decisions, dynamic_decisions,
       *definitions_, scope_validator_);
   if (result.publication != host_session::ConsentResult::applied)
     return {.publication = result.publication,
@@ -130,7 +125,7 @@ ReviewedPermissionApplyResult PluginPermissionAuthority::apply_review(
             .binding = std::nullopt};
 
   result.promotion = authority_->promote_candidate(
-      review->candidate_binding, review->expected_sequence + 1, observer);
+      review.candidate_binding, review.expected_sequence + 1, observer);
   if (result.promotion != host_session::AuthorityMutationResult::applied)
     result.binding.reset();
   return result;
@@ -156,16 +151,10 @@ host_session::AuthorityRevocationResult PluginPermissionAuthority::revoke_exact(
     host_session::AuthorityFenceObserver *observer) {
   std::scoped_lock lock(mutex_);
   try {
-    auto result =
-        authority_->revoke_active(selector, expected_sequence, observer);
-    if (result.status != host_session::AuthorityMutationResult::invalid &&
-        result.status != host_session::AuthorityMutationResult::stale_sequence)
-      pending_review_.reset();
-    return result;
+    return authority_->revoke_active(selector, expected_sequence, observer);
   } catch (...) {
     // AuthorityStore is specified to return a typed failure, but keep the
     // product boundary fail-closed if a future persistence path violates it.
-    pending_review_.reset();
     return {.status = host_session::AuthorityMutationResult::io_error,
             .binding = std::nullopt,
             .activatable = false};

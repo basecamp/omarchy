@@ -64,6 +64,7 @@ private:
   [[nodiscard]] std::shared_ptr<const host_session::ConsentReview>
   prepare_review();
   [[nodiscard]] ReviewedPermissionApplyResult apply_review(
+      const host_session::ConsentReview &review,
       const host_session::ConsentConfirmation &confirmation,
       std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
       std::span<const host_session::DynamicConsentDecision> dynamic_decisions,
@@ -109,7 +110,6 @@ private:
   definitions::DynamicScopeValidator scope_validator_;
   const std::string record_name_;
   mutable std::mutex mutex_;
-  std::shared_ptr<const host_session::ConsentReview> pending_review_;
 
   friend class PluginRuntimeRoot;
   friend class RuntimeBootstrap;

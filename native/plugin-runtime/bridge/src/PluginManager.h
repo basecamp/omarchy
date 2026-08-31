@@ -189,6 +189,7 @@ public:
       std::uint64_t expected_sequence);
   [[nodiscard]] static bool applyPermissionReview(
       PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+      std::shared_ptr<const host_session::ConsentReview> review,
       const host_session::ConsentConfirmation &confirmation,
       std::span<const host_session::BuiltinConsentDecision> builtin_decisions,
       std::span<const host_session::DynamicConsentDecision> dynamic_decisions);
