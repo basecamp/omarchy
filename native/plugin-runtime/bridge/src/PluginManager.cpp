@@ -109,27 +109,6 @@ struct PluginManager::Runtime final {
     std::shared_ptr<HookState> state;
   };
 
-  struct Slot final {
-    std::string plugin;
-    std::uint64_t epoch = 0;
-    Phase phase = Phase::opening;
-    std::uint8_t retry_attempts = 0;
-    std::optional<Clock::time_point> retry_due;
-    bool preparing = false;
-    bool permission_in_flight = false;
-    std::uint64_t permission_epoch = 0;
-    std::shared_ptr<HookState> callback_state;
-    std::unique_ptr<Hook> hook;
-    std::shared_ptr<channel::PluginPermissionAuthority> permissions;
-    std::optional<plugins::permissions::ActivationBinding> expected_binding;
-    std::unique_ptr<channel::PluginRuntimeRoot> root;
-    std::unique_ptr<SurfaceEndpointOwner> endpoint_owner;
-#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
-    std::uint8_t last_state = 0;
-    std::uint8_t last_error = 0;
-#endif
-  };
-
   struct ScanResult final {
     std::unique_ptr<channel::ActivationCatalog> catalog;
   };
@@ -142,11 +121,15 @@ struct PluginManager::Runtime final {
     bool permission_disabled = false;
   };
 
-  struct PermissionResult final {
-    std::string plugin;
-    std::uint64_t epoch = 0;
+  struct PermissionTransaction final {
+    // The authority invokes the fence observer synchronously before returning,
+    // so COMPLETE publishes both the result and any preceding FENCED bit.
+    static constexpr std::uint8_t fenced = 1U << 0U;
+    static constexpr std::uint8_t complete = 1U << 1U;
+
+    std::atomic<std::uint8_t> delivery = 0;
     PermissionKind kind = PermissionKind::revoke_builtin;
-    std::shared_ptr<channel::PluginPermissionAuthority> permissions;
+    std::shared_ptr<channel::PluginPermissionAuthority> authority;
     plugins::permissions::CapabilityKey builtin;
     plugins::definitions::CapabilityReference dynamic;
     std::uint64_t expected_sequence = 0;
@@ -157,6 +140,26 @@ struct PluginManager::Runtime final {
     channel::ReviewedPermissionApplyResult review;
   };
 
+  struct Slot final {
+    std::string plugin;
+    std::uint64_t epoch = 0;
+    Phase phase = Phase::opening;
+    std::uint8_t retry_attempts = 0;
+    std::optional<Clock::time_point> retry_due;
+    bool preparing = false;
+    std::shared_ptr<HookState> callback_state;
+    std::unique_ptr<Hook> hook;
+    std::shared_ptr<channel::PluginPermissionAuthority> permissions;
+    std::shared_ptr<PermissionTransaction> permission_transaction;
+    std::optional<plugins::permissions::ActivationBinding> expected_binding;
+    std::unique_ptr<channel::PluginRuntimeRoot> root;
+    std::unique_ptr<SurfaceEndpointOwner> endpoint_owner;
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
+    std::uint8_t last_state = 0;
+    std::uint8_t last_error = 0;
+#endif
+  };
+
   struct DeliveryGate final {
     std::mutex mutex;
     std::atomic<bool> canceled = false;
@@ -165,32 +168,19 @@ struct PluginManager::Runtime final {
     std::atomic<std::uint8_t> permissions_in_flight = 0;
     std::shared_ptr<ScanResult> scan_result;
     std::array<std::shared_ptr<PreparationResult>, 2> preparation_results;
-    std::array<std::shared_ptr<PermissionResult>, 2> permission_results;
-    std::array<std::shared_ptr<PermissionResult>, 2> permission_fences;
   };
 
   struct PermissionFenceObserver final
       : host_session::AuthorityFenceObserver {
-    PermissionFenceObserver(std::shared_ptr<DeliveryGate> gate,
-                            std::shared_ptr<PermissionResult> result)
-        : gate(std::move(gate)), result(std::move(result)) {}
+    explicit PermissionFenceObserver(
+        std::shared_ptr<PermissionTransaction> transaction)
+        : transaction(std::move(transaction)) {}
 
-    std::shared_ptr<DeliveryGate> gate;
-    std::shared_ptr<PermissionResult> result;
+    std::shared_ptr<PermissionTransaction> transaction;
 
     void live_generation_closed() noexcept override {
-      try {
-        std::scoped_lock lock(gate->mutex);
-        if (gate->canceled.load(std::memory_order_acquire))
-          return;
-        const auto empty = std::ranges::find(
-            gate->permission_fences, std::shared_ptr<PermissionResult>{});
-        if (empty == gate->permission_fences.end())
-          std::terminate();
-        *empty = result;
-      } catch (...) {
-        std::terminate();
-      }
+      transaction->delivery.fetch_or(PermissionTransaction::fenced,
+                                     std::memory_order_release);
     }
   };
 
@@ -293,14 +283,10 @@ struct PluginManager::Runtime final {
   void drainCompletions() noexcept {
     std::shared_ptr<ScanResult> scan;
     std::array<std::shared_ptr<PreparationResult>, 2> preparations;
-    std::array<std::shared_ptr<PermissionResult>, 2> permissions;
-    std::array<std::shared_ptr<PermissionResult>, 2> permission_fences;
     {
       std::scoped_lock lock(gate_->mutex);
       scan = std::move(gate_->scan_result);
       preparations = std::move(gate_->preparation_results);
-      permissions = std::move(gate_->permission_results);
-      permission_fences = std::move(gate_->permission_fences);
     }
     if (scan) {
       gate_->scan_in_flight.store(false);
@@ -351,14 +337,20 @@ struct PluginManager::Runtime final {
           fail(*slot);
       }
     }
-    for (auto &result : permission_fences)
-      if (result)
-        fencePermission(*result);
-    for (auto &result : permissions) {
-      if (!result)
+    for (auto &slot : slots_) {
+      const auto transaction = slot.permission_transaction;
+      if (!transaction)
         continue;
-      --gate_->permissions_in_flight;
-      completePermission(*result);
+      const auto delivery =
+          transaction->delivery.load(std::memory_order_acquire);
+      if ((delivery & PermissionTransaction::fenced) != 0 &&
+          slot.phase != Phase::permission_changing)
+        fencePermission(slot);
+      if ((delivery & PermissionTransaction::complete) != 0) {
+        completePermission(slot, *transaction);
+        if (slot.permission_transaction == transaction)
+          slot.permission_transaction.reset();
+      }
     }
     for (auto &slot : slots_) {
       const auto state = slot.callback_state;
@@ -562,7 +554,7 @@ struct PluginManager::Runtime final {
       const plugins::permissions::CapabilityKey &capability,
       std::uint64_t expected_sequence) noexcept {
     try {
-      auto result = std::make_shared<PermissionResult>();
+      auto result = std::make_shared<PermissionTransaction>();
       result->kind = PermissionKind::revoke_builtin;
       result->builtin = capability;
       result->expected_sequence = expected_sequence;
@@ -578,7 +570,7 @@ struct PluginManager::Runtime final {
         slots_, plugin, {}, [](const Slot &slot) { return slot.plugin; });
     return found != slots_.end() && found->plugin == plugin &&
                    found->epoch == epoch && found->permissions &&
-                   !found->permission_in_flight
+                   !found->permission_transaction
                ? found->permissions->list()
                : std::nullopt;
   }
@@ -586,7 +578,7 @@ struct PluginManager::Runtime final {
   std::shared_ptr<const host_session::ConsentReview>
   preparePermissionReview(std::string_view plugin, std::uint64_t epoch) {
     auto *slot = exact(plugin, epoch);
-    return slot && slot->permissions && !slot->permission_in_flight
+    return slot && slot->permissions && !slot->permission_transaction
                ? slot->permissions->prepare_review()
                                      : nullptr;
   }
@@ -596,7 +588,7 @@ struct PluginManager::Runtime final {
       const plugins::definitions::CapabilityReference &definition,
       std::uint64_t expected_sequence) noexcept {
     try {
-      auto result = std::make_shared<PermissionResult>();
+      auto result = std::make_shared<PermissionTransaction>();
       result->kind = PermissionKind::revoke_dynamic;
       result->dynamic = definition;
       result->expected_sequence = expected_sequence;
@@ -613,7 +605,7 @@ struct PluginManager::Runtime final {
       std::span<const host_session::DynamicConsentDecision> dynamic_decisions)
       noexcept {
     try {
-      auto result = std::make_shared<PermissionResult>();
+      auto result = std::make_shared<PermissionTransaction>();
       result->kind = PermissionKind::apply_review;
       result->confirmation = confirmation;
       result->builtin_decisions.assign(builtin_decisions.begin(),
@@ -627,7 +619,8 @@ struct PluginManager::Runtime final {
   }
 
   bool beginPermissionMutation(std::string_view plugin, std::uint64_t epoch,
-                               std::shared_ptr<PermissionResult> result) noexcept {
+                               std::shared_ptr<PermissionTransaction> result)
+      noexcept {
     constexpr std::uint8_t kMaximumConcurrentPermissionMutations = 2;
     if (!result || gate_->permissions_in_flight.load() >=
                        kMaximumConcurrentPermissionMutations)
@@ -635,14 +628,13 @@ struct PluginManager::Runtime final {
     auto *slot = exact(plugin, epoch);
     const bool running = slot && slot->phase == Phase::running;
     const bool review = result->kind == PermissionKind::apply_review;
-    if (!slot || !slot->permissions || slot->permission_in_flight ||
+    if (!slot || !slot->permissions || slot->permission_transaction ||
         (review ? !(running || slot->phase == Phase::permission_disabled)
                 : !running))
       return false;
 
-    result->plugin = slot->plugin;
-    result->permissions = slot->permissions;
-    result->epoch = slot->epoch;
+    result->authority = slot->permissions;
+    slot->permission_transaction = result;
 
     ++gate_->permissions_in_flight;
     const auto gate = gate_;
@@ -663,18 +655,18 @@ struct PluginManager::Runtime final {
             entry_probe(PluginManagerTestAccess::TestJobKind::permission);
 #endif
           try {
-            PermissionFenceObserver observer(gate, result);
+            PermissionFenceObserver observer(result);
             switch (result->kind) {
             case PermissionKind::revoke_builtin:
-              result->revocation = result->permissions->revoke(
+              result->revocation = result->authority->revoke(
                   result->builtin, result->expected_sequence, &observer);
               break;
             case PermissionKind::revoke_dynamic:
-              result->revocation = result->permissions->revoke(
+              result->revocation = result->authority->revoke(
                   result->dynamic, result->expected_sequence, &observer);
               break;
             case PermissionKind::apply_review:
-              result->review = result->permissions->apply_review(
+              result->review = result->authority->apply_review(
                   result->confirmation, result->builtin_decisions,
                   result->dynamic_decisions, &observer);
               break;
@@ -683,70 +675,41 @@ struct PluginManager::Runtime final {
             result->revocation.status =
                 host_session::AuthorityMutationResult::io_error;
           }
-          try {
-            std::scoped_lock lock(gate->mutex);
-            if (!gate->canceled.load(std::memory_order_acquire)) {
-              const auto empty = std::ranges::find(
-                  gate->permission_results,
-                  std::shared_ptr<PermissionResult>{});
-              if (empty == gate->permission_results.end())
-                std::terminate();
-              *empty = std::move(result);
-            } else {
-              --gate->permissions_in_flight;
-            }
-          } catch (...) {
-            std::terminate();
-          }
+          result->delivery.fetch_or(PermissionTransaction::complete,
+                                    std::memory_order_release);
+          --gate->permissions_in_flight;
           });
     } catch (...) {
       --gate_->permissions_in_flight;
+      if (slot->permission_transaction == result)
+        slot->permission_transaction.reset();
       return false;
     }
     if (!started) {
       --gate_->permissions_in_flight;
+      if (slot->permission_transaction == result)
+        slot->permission_transaction.reset();
       return false;
     }
-    slot->permission_in_flight = true;
-    slot->permission_epoch = result->epoch;
     armCompletionTimer();
     return true;
   }
 
-  Slot *permissionSlot(const PermissionResult &result) noexcept {
-    const auto found = std::ranges::lower_bound(
-        slots_, result.plugin, {}, [](const Slot &slot) { return slot.plugin; });
-    return found != slots_.end() && found->plugin == result.plugin &&
-                   found->permission_in_flight &&
-                   found->permission_epoch == result.epoch &&
-                   found->permissions == result.permissions
-               ? &*found
-               : nullptr;
+  void fencePermission(Slot &slot) noexcept {
+    slot.epoch = nextEpoch();
+    slot.phase = Phase::permission_changing;
+    slot.preparing = false;
+    withdraw(slot);
   }
 
-  void fencePermission(const PermissionResult &result) noexcept {
-    auto *slot = permissionSlot(result);
-    if (!slot || slot->phase == Phase::permission_changing)
-      return;
-    slot->epoch = nextEpoch();
-    slot->phase = Phase::permission_changing;
-    slot->preparing = false;
-    withdraw(*slot);
-  }
-
-  void completePermission(const PermissionResult &result) noexcept {
-    auto *slot = permissionSlot(result);
-    if (!slot || !slot->permission_in_flight ||
-        slot->permissions != result.permissions)
-      return;
-    slot->permission_in_flight = false;
-    slot->permission_epoch = 0;
+  void completePermission(Slot &slot,
+                          const PermissionTransaction &result) noexcept {
     std::optional<plugins::permissions::ActivationBinding> binding;
     bool applied = false;
     if (result.kind == PermissionKind::apply_review) {
       if (result.review.publication != host_session::ConsentResult::applied) {
-        if (slot->phase == Phase::permission_changing)
-          disable(*slot);
+        if (slot.phase == Phase::permission_changing)
+          disable(slot);
         return;
       }
       applied = result.review.promotion ==
@@ -759,20 +722,20 @@ struct PluginManager::Runtime final {
               host_session::AuthorityMutationResult::invalid ||
           result.revocation.status ==
               host_session::AuthorityMutationResult::stale_sequence) {
-        if (slot->phase == Phase::permission_changing)
-          disable(*slot);
+        if (slot.phase == Phase::permission_changing)
+          disable(slot);
         return;
       }
       if (result.revocation.activatable)
         binding = result.revocation.binding;
     }
     if (!applied || !binding) {
-      disable(*slot);
+      disable(slot);
       return;
     }
-    stopRuntime(*slot);
-    slot->expected_binding = std::move(binding);
-    start(*slot);
+    stopRuntime(slot);
+    slot.expected_binding = std::move(binding);
+    start(slot);
   }
 
   void withdraw(Slot &slot) noexcept {
@@ -815,12 +778,15 @@ struct PluginManager::Runtime final {
     if (manual_test_)
       return;
 #endif
+    // A finished worker leaves its transaction attached until one UI drain
+    // consumes it, so job accounting alone cannot decide timer liveness.
     const bool active = gate_->scan_in_flight.load() != 0 ||
                         gate_->preparations_in_flight.load() != 0 ||
                         gate_->permissions_in_flight.load() != 0 ||
                         std::ranges::any_of(slots_, [](const Slot &slot) {
                           return slot.phase == Phase::opening ||
-                                 slot.phase == Phase::starting;
+                                 slot.phase == Phase::starting ||
+                                 slot.permission_transaction != nullptr;
                         });
     const bool monitoring = std::ranges::any_of(
         slots_, [](const Slot &slot) { return slot.callback_state != nullptr; });
@@ -1073,8 +1039,7 @@ struct PluginManager::Runtime final {
     slot.epoch = nextEpoch();
     slot.retry_due.reset();
     slot.preparing = false;
-    slot.permission_in_flight = false;
-    slot.permission_epoch = 0;
+    slot.permission_transaction.reset();
     withdraw(slot);
     slot.root.reset();
     slot.hook.reset();
@@ -1159,7 +1124,8 @@ PluginManagerTestAccess::runtimeSlots(const PluginManager &manager) {
                       .preparing = slot.preparing,
                       .running =
                           slot.phase == PluginManager::Runtime::Phase::running,
-                      .permission_in_flight = slot.permission_in_flight,
+                      .permission_transaction =
+                          slot.permission_transaction != nullptr,
                       .permission_changing =
                           slot.phase == PluginManager::Runtime::Phase::permission_changing,
                       .permission_disabled =
@@ -1243,7 +1209,8 @@ PluginManagerTestAccess::preparationCount(const PluginManager &manager) {
 }
 
 std::uint8_t
-PluginManagerTestAccess::permissionCount(const PluginManager &manager) {
+PluginManagerTestAccess::executingPermissionJobs(
+    const PluginManager &manager) {
   return manager.runtime_
              ? manager.runtime_->gate_->permissions_in_flight.load()
              : 0;

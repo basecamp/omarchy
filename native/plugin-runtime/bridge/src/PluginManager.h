@@ -124,7 +124,7 @@ public:
     bool starting = false;
     bool preparing = false;
     bool running = false;
-    bool permission_in_flight = false;
+    bool permission_transaction = false;
     bool permission_changing = false;
     bool permission_disabled = false;
     bool has_runtime_root = false;
@@ -165,7 +165,7 @@ public:
   [[nodiscard]] static std::uint8_t
   preparationCount(const PluginManager &manager);
   [[nodiscard]] static std::uint8_t
-  permissionCount(const PluginManager &manager);
+  executingPermissionJobs(const PluginManager &manager);
   [[nodiscard]] static bool scanInFlight(const PluginManager &manager);
   [[nodiscard]] static std::uint8_t occupiedPreparationLanes(
       const PluginManager &manager);

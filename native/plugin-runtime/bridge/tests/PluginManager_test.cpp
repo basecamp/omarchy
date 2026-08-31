@@ -1393,7 +1393,7 @@ void manager_owns_permission_generation_replacement() {
   require(!bridge::PluginManagerTestAccess::revokePermission(
               *manager, plugin, slot.epoch, notifications,
               view.authority_slots.sequence) &&
-              !current_slot().permission_in_flight &&
+              !current_slot().permission_transaction &&
               current_slot().epoch == slot.epoch && manager->count() == 1,
           "permission scheduler refusal changed live G1");
   scheduler.refuses = false;
@@ -1401,7 +1401,7 @@ void manager_owns_permission_generation_replacement() {
   require(!bridge::PluginManagerTestAccess::revokePermission(
               *manager, plugin, slot.epoch, notifications,
               view.authority_slots.sequence) &&
-              !current_slot().permission_in_flight &&
+              !current_slot().permission_transaction &&
               current_slot().epoch == slot.epoch && manager->count() == 1,
           "permission scheduler throw changed live G1");
   scheduler.throws = false;
@@ -1409,11 +1409,17 @@ void manager_owns_permission_generation_replacement() {
   require(bridge::PluginManagerTestAccess::revokePermission(
               *manager, plugin, slot.epoch, absent,
               view.authority_slots.sequence) &&
-              current_slot().permission_in_flight,
+              current_slot().permission_transaction,
           "invalid selector did not enter the bounded permission lane");
-  run_job();
+  std::thread invalid_selector_worker([&] { scheduler.runOne(); });
+  invalid_selector_worker.join();
+  require(bridge::PluginManagerTestAccess::executingPermissionJobs(
+              *manager) == 0 &&
+              current_slot().permission_transaction,
+          "completed permission transaction was not retained for UI drain");
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
   require(current_slot().epoch == slot.epoch && current_slot().running &&
-              !current_slot().permission_in_flight && manager->count() == 1,
+              !current_slot().permission_transaction && manager->count() == 1,
           "invalid selector fenced or replaced live G1");
   require(bridge::PluginManagerTestAccess::revokePermission(
               *manager, plugin, slot.epoch, absent_dynamic,
@@ -1454,9 +1460,10 @@ void manager_owns_permission_generation_replacement() {
           "valid optional revoke did not deliver its pre-drain fence");
   bridge::RemotePluginSurface stale_remote;
   require(current_slot().permission_changing &&
-              current_slot().permission_in_flight &&
+              current_slot().permission_transaction &&
               current_slot().has_runtime_root && scheduler.jobs.empty() &&
-              bridge::PluginManagerTestAccess::permissionCount(*manager) == 1 &&
+              bridge::PluginManagerTestAccess::executingPermissionJobs(
+                  *manager) == 1 &&
               manager->count() == 0 && !live_remote.connected() &&
               reentrant_attach_attempted && !reentrant_attach_succeeded &&
               !manager->attach(stale_surface_key, &stale_remote),
@@ -1590,7 +1597,8 @@ void manager_owns_permission_generation_replacement() {
             return current_slot().permission_changing;
           }) &&
               current_slot().has_runtime_root &&
-              bridge::PluginManagerTestAccess::permissionCount(*manager) == 1,
+              bridge::PluginManagerTestAccess::executingPermissionJobs(
+                  *manager) == 1,
           "destruction proof did not reach post-observer effect drain");
   std::atomic<bool> destruction_started = false;
   std::thread release_effect([&] {
@@ -1707,7 +1715,8 @@ void concurrent_permission_fences_route_exactly() {
               !remote_b.connected() &&
               observed(observations, plugin_a).has_runtime_root &&
               observed(observations, plugin_b).has_runtime_root &&
-              bridge::PluginManagerTestAccess::permissionCount(*manager) == 2 &&
+              bridge::PluginManagerTestAccess::executingPermissionJobs(
+                  *manager) == 2 &&
               !manager->attach(key_a, &stale_a) &&
               !manager->attach(key_b, &stale_b),
           "concurrent fences crossed or failed to withdraw exact generations");
