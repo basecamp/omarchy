@@ -15,6 +15,7 @@ sed '/^presize_window$/,$d' "$about" >"$tmp_dir/about.bash"
 
 export HOME="$tmp_dir/home"
 export PATH="$ROOT/bin:$PATH"
+unset NO_COLOR
 mkdir -p "$HOME/.config/omarchy/branding"
 printf '%s\n' '████████' '████████' >"$HOME/.config/omarchy/branding/about.txt"
 

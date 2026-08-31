@@ -4,13 +4,128 @@
 # omarchy:requires-sudo=true
 # omarchy:args=[--force] [--no-rebuild]
 
+set -e
+
+trusted_omarchy_source_root() {
+  local LC_ALL=C
+  local config=/etc/omarchy.conf default_root=/usr/share/omarchy configured_root=""
+  local canonical="" owner="" mode="" links="" size="" line="" extra=""
+  local encoded="" decoded="" expected="" character="" directory="" current_uid=""
+  local index=0 escaped=0 config_fd read_status=0
+  current_uid=$(/usr/bin/id -u) || return 1
+  trusted_directory_chain() {
+    local directory=$1 allow_user_owner=$2 canonical owner mode
+    while :; do
+      [[ -d $directory && ! -L $directory ]] || return 1
+      canonical=$(/usr/bin/realpath -e -- "$directory") || return 1
+      [[ $canonical == "$directory" ]] || return 1
+      read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$directory") || return 1
+      if [[ $owner != 0 ]] && ! { [[ $allow_user_owner == true ]] && [[ $owner == "$current_uid" ]]; }; then return 1; fi
+      (( (8#$mode & 0022) == 0 )) || return 1
+      [[ $directory == / ]] && break
+      directory=${directory%/*}; [[ -n $directory ]] || directory=/
+    done
+  }
+  if [[ ! -e $config && ! -L $config ]]; then
+    configured_root=$default_root
+  else
+    [[ -f $config && ! -L $config ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$config") || return 1
+    [[ $canonical == "$config" ]] || return 1
+    trusted_directory_chain "${config%/*}" false || return 1
+    read -r owner mode links size < <(/usr/bin/stat -Lc '%u %a %h %s' -- "$config") || return 1
+    [[ $owner == 0 && $links == 1 ]] || return 1
+    (( (8#$mode & 0022) == 0 && size > 0 && size <= 4096 )) || return 1
+    exec {config_fd}<"$config" || return 1
+    if ! IFS= read -r line <&$config_fd; then exec {config_fd}<&-; return 1; fi
+    IFS= read -r extra <&$config_fd || read_status=$?
+    exec {config_fd}<&-
+    (( read_status != 0 )) && [[ -z $extra ]] || return 1
+    (( size == ${#line} + 1 )) || return 1
+    [[ $line == 'export OMARCHY_PATH="'*'"' ]] || return 1
+    encoded=${line#'export OMARCHY_PATH="'}; encoded=${encoded%'"'}
+    [[ $encoded != *[$'\n\r\t']* ]] || return 1
+    for (( index = 0; index < ${#encoded}; index++ )); do
+      character=${encoded:index:1}
+      if (( escaped )); then
+        case "$character" in '\' | '"' | '$' | '`') decoded+=$character ;; *) return 1 ;; esac
+        escaped=0
+      elif [[ $character == '\' ]]; then escaped=1
+      elif [[ $character == '"' ]]; then return 1
+      else decoded+=$character
+      fi
+    done
+    (( escaped == 0 )) || return 1
+    expected=$decoded
+    expected=${expected//\\/\\\\}; expected=${expected//\"/\\\"}
+    expected=${expected//\$/\\\$}; expected=${expected//\`/\\\`}
+    [[ $line == "export OMARCHY_PATH=\"$expected\"" ]] || return 1
+    configured_root=$decoded
+  fi
+  [[ $configured_root == /* && -d $configured_root && ! -L $configured_root ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$configured_root") || return 1
+  [[ $canonical == "$configured_root" ]] || return 1
+  if [[ $configured_root == "$default_root" ]]; then
+    trusted_directory_chain "$configured_root" false || return 1
+  else
+    trusted_directory_chain "$configured_root" true || return 1
+    owner=$(/usr/bin/stat -Lc '%u' -- "$configured_root") || return 1
+    [[ $owner == 0 || $owner == "$current_uid" ]] || return 1
+  fi
+  printf '%s\n' "$configured_root"
+}
+
+trusted_omarchy_source_file() {
+  local relative=$1 source="$OMARCHY_PATH/$1" canonical owner mode links directory current_uid
+  current_uid=$(/usr/bin/id -u) || return 1
+  [[ $relative != /* && $relative != *'/../'* && $relative != '../'* && $relative != *'/..' ]] || return 1
+  [[ -f $source && ! -L $source ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$source") || return 1
+  [[ $canonical == "$source" && $canonical == "$OMARCHY_PATH/"* ]] || return 1
+  read -r owner mode links < <(/usr/bin/stat -Lc '%u %a %h' -- "$source") || return 1
+  [[ $links == 1 ]] || return 1
+  (( (8#$mode & 0022) == 0 )) || return 1
+  if [[ $OMARCHY_PATH == /usr/share/omarchy ]]; then [[ $owner == 0 ]] || return 1
+  else [[ $owner == 0 || $owner == "$current_uid" ]] || return 1; fi
+  directory=${source%/*}
+  while [[ $directory == "$OMARCHY_PATH" || $directory == "$OMARCHY_PATH/"* ]]; do
+    [[ -d $directory && ! -L $directory ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$directory") || return 1
+    [[ $canonical == "$directory" ]] || return 1
+    read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$directory") || return 1
+    (( (8#$mode & 0022) == 0 )) || return 1
+    if [[ $OMARCHY_PATH == /usr/share/omarchy ]]; then [[ $owner == 0 ]] || return 1
+    else [[ $owner == 0 || $owner == "$current_uid" ]] || return 1; fi
+    [[ $directory == "$OMARCHY_PATH" ]] && break
+    directory=${directory%/*}
+  done
+  printf '%s\n' "$source"
+}
+
 FORCE=false
 NO_REBUILD=false
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=true ;;
     --no-rebuild) NO_REBUILD=true ;;
+    *) echo "Usage: omarchy-hibernation-setup [--force] [--no-rebuild]" >&2; exit 2 ;;
   esac
+done
+
+unset OMARCHY_PATH
+if ! OMARCHY_PATH=$(trusted_omarchy_source_root); then
+  echo "Refusing to configure hibernation from an untrusted Omarchy source root." >&2
+  exit 1
+fi
+export OMARCHY_PATH
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+
+for required_source in bin/omarchy-cmd-missing bin/omarchy-system-reboot; do
+  trusted_omarchy_source_file "$required_source" >/dev/null || {
+    echo "Refusing an untrusted hibernation helper: $required_source" >&2
+    exit 1
+  }
 done
 
 if [[ ! -f /sys/power/image_size ]]; then
@@ -21,7 +136,7 @@ fi
 # When --no-rebuild is set, the caller is responsible for the UKI rebuild
 # (e.g. running before limine-mkinitcpio-hook is installed during initial
 # install), so we only require limine-mkinitcpio when we'd invoke it ourselves.
-if ! $NO_REBUILD && omarchy-cmd-missing limine-mkinitcpio; then
+if ! $NO_REBUILD && "$OMARCHY_PATH/bin/omarchy-cmd-missing" limine-mkinitcpio; then
   echo "Skipping hibernation setup (requires Limine bootloader)"
   exit 0
 fi
@@ -31,15 +146,15 @@ SWAP_FILE="/swap/swapfile"
 RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
 
 # Check if hibernation is already configured
-if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+if [[ -f $MKINITCPIO_CONF ]] && /usr/bin/grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
   # Fix empty resume_offset if btrfs map-swapfile failed during initial setup
-  if [[ -f $RESUME_DROP_IN ]] && grep -q 'resume_offset="$' "$RESUME_DROP_IN" && [[ -f $SWAP_FILE ]]; then
-    RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE" 2>/dev/null)
+  if [[ -f $RESUME_DROP_IN ]] && /usr/bin/grep -q 'resume_offset="$' "$RESUME_DROP_IN" && [[ -f $SWAP_FILE ]]; then
+    RESUME_OFFSET=$(/usr/bin/sudo /usr/bin/btrfs inspect-internal map-swapfile -r "$SWAP_FILE" 2>/dev/null)
     if [[ -n $RESUME_OFFSET ]]; then
       echo "Fixing empty resume_offset ($RESUME_OFFSET)"
-      sudo sed -i "s/resume_offset=\"$/resume_offset=$RESUME_OFFSET\"/" "$RESUME_DROP_IN"
+      /usr/bin/sudo /usr/bin/sed -i "s/resume_offset=\"$/resume_offset=$RESUME_OFFSET\"/" "$RESUME_DROP_IN"
       if ! $NO_REBUILD; then
-        sudo limine-mkinitcpio
+        /usr/bin/sudo /usr/bin/env PATH=/usr/bin:/usr/sbin:/bin:/sbin /usr/bin/limine-mkinitcpio
       fi
     fi
   fi
@@ -48,8 +163,8 @@ if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; 
 fi
 
 if ! $FORCE; then
-  MEM_TOTAL_HUMAN=$(free --human | awk '/Mem/ {print $2}')
-  if ! gum confirm "Use $MEM_TOTAL_HUMAN on boot drive to make hibernation available?"; then
+  MEM_TOTAL_HUMAN=$(/usr/bin/free --human | /usr/bin/awk '/Mem/ {print $2}')
+  if ! /usr/bin/gum confirm "Use $MEM_TOTAL_HUMAN on boot drive to make hibernation available?"; then
     exit 0
   fi
 fi
@@ -57,62 +172,59 @@ fi
 SWAP_SUBVOLUME="/swap"
 
 # Create btrfs subvolume for swap
-if ! sudo btrfs subvolume show "$SWAP_SUBVOLUME" &>/dev/null; then
+if ! /usr/bin/sudo /usr/bin/btrfs subvolume show "$SWAP_SUBVOLUME" &>/dev/null; then
   echo "Creating Btrfs subvolume"
-  sudo btrfs subvolume create "$SWAP_SUBVOLUME"
-  sudo chattr +C "$SWAP_SUBVOLUME"
+  /usr/bin/sudo /usr/bin/btrfs subvolume create "$SWAP_SUBVOLUME"
+  /usr/bin/sudo /usr/bin/chattr +C "$SWAP_SUBVOLUME"
 fi
 
 # Create swapfile
-if ! sudo swaplabel "$SWAP_FILE" &>/dev/null; then
+if ! /usr/bin/sudo /usr/bin/swaplabel "$SWAP_FILE" &>/dev/null; then
   echo "Creating swapfile in Btrfs subvolume"
-  MEM_TOTAL_KB="$(awk '/MemTotal/ {print $2}' /proc/meminfo)k"
-  sudo btrfs filesystem mkswapfile -s "$MEM_TOTAL_KB" "$SWAP_FILE"
+  MEM_TOTAL_KB="$(/usr/bin/awk '/MemTotal/ {print $2}' /proc/meminfo)k"
+  /usr/bin/sudo /usr/bin/btrfs filesystem mkswapfile -s "$MEM_TOTAL_KB" "$SWAP_FILE"
 fi
 
 # Add swapfile to fstab
-if ! grep -Fq "$SWAP_FILE" /etc/fstab; then
+if ! /usr/bin/grep -Fq "$SWAP_FILE" /etc/fstab; then
   echo "Adding swapfile to /etc/fstab"
-  sudo cp -a /etc/fstab "/etc/fstab.$(date +%Y%m%d%H%M%S).back"
-  printf "\n# Btrfs swapfile for system hibernation\n%s none swap defaults,pri=0 0 0\n" "$SWAP_FILE" | sudo tee -a /etc/fstab >/dev/null
+  /usr/bin/sudo /usr/bin/cp -a /etc/fstab "/etc/fstab.$(/usr/bin/date +%Y%m%d%H%M%S).back"
+  printf "\n# Btrfs swapfile for system hibernation\n%s none swap defaults,pri=0 0 0\n" "$SWAP_FILE" | /usr/bin/sudo /usr/bin/tee -a /etc/fstab >/dev/null
 fi
 
 # Enable swap
-if ! swapon --show | grep -q "$SWAP_FILE"; then
+if ! /usr/bin/swapon --show | /usr/bin/grep -q "$SWAP_FILE"; then
   echo "Enabling swap on $SWAP_FILE"
-  sudo swapon -p 0 "$SWAP_FILE"
+  /usr/bin/sudo /usr/bin/swapon -p 0 "$SWAP_FILE"
 fi
 
 # Add resume hook to mkinitcpio
-sudo mkdir -p /etc/mkinitcpio.conf.d
+/usr/bin/sudo /usr/bin/install -d -m 0755 -o root -g root /etc/mkinitcpio.conf.d
 echo "Adding resume hook to $MKINITCPIO_CONF"
-echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
-
-# Ensure keyboard backlight doesn't prevent sleep
-sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
+echo "HOOKS+=(resume)" | /usr/bin/sudo /usr/bin/tee "$MKINITCPIO_CONF" >/dev/null
 
 # Add resume= kernel parameters so the initramfs resume hook knows where to find the
 # hibernation image. Without these, resume happens late (after GPU drivers load) and fails.
 if [[ ! -f $RESUME_DROP_IN ]]; then
   echo "Adding resume kernel parameters"
-  sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
-  RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
-  RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
+  /usr/bin/sudo /usr/bin/swapon -p 0 "$SWAP_FILE" 2>/dev/null
+  RESUME_DEVICE=$(/usr/bin/findmnt -no SOURCE -T "$SWAP_FILE" | /usr/bin/sed 's/\[.*\]//')
+  RESUME_OFFSET=$(/usr/bin/sudo /usr/bin/btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
   if [[ -n $RESUME_OFFSET ]]; then
-    sudo mkdir -p /etc/limine-entry-tool.d
-    echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
+    /usr/bin/sudo /usr/bin/install -d -m 0755 -o root -g root /etc/limine-entry-tool.d
+    echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | /usr/bin/sudo /usr/bin/tee "$RESUME_DROP_IN" >/dev/null
   else
     echo "Warning: Could not determine resume offset for $SWAP_FILE" >&2
   fi
 fi
 
 # Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
-if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
+if /usr/bin/grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
   LIMINE_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
   if [[ ! -f $LIMINE_DROP_IN ]]; then
     echo "Enabling ACPI RTC alarm for s2idle suspend"
-    sudo mkdir -p /etc/limine-entry-tool.d
-    echo 'KERNEL_CMDLINE[default]+=" rtc_cmos.use_acpi_alarm=1"' | sudo tee "$LIMINE_DROP_IN" >/dev/null
+    /usr/bin/sudo /usr/bin/install -d -m 0755 -o root -g root /etc/limine-entry-tool.d
+    echo 'KERNEL_CMDLINE[default]+=" rtc_cmos.use_acpi_alarm=1"' | /usr/bin/sudo /usr/bin/tee "$LIMINE_DROP_IN" >/dev/null
   fi
 fi
 
@@ -122,10 +234,10 @@ if ! $NO_REBUILD; then
   # binary on the ESP doesn't change here, so we don't need limine-update
   # (which would also re-deploy the binary and rebuild a second time).
   echo "Regenerating initramfs..."
-  sudo limine-mkinitcpio
+  /usr/bin/sudo /usr/bin/env PATH=/usr/bin:/usr/sbin:/bin:/sbin /usr/bin/limine-mkinitcpio
   echo
 fi
 
-if ! $FORCE && ! $NO_REBUILD && gum confirm "Reboot to enable hibernation?"; then
-  omarchy-system-reboot
+if ! $FORCE && ! $NO_REBUILD && /usr/bin/gum confirm "Reboot to enable hibernation?"; then
+  "$OMARCHY_PATH/bin/omarchy-system-reboot"
 fi

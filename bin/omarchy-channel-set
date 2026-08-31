@@ -1,10 +1,57 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Set the Omarchy package channel.
 # omarchy:args=<stable|rc|edge|dev>
 # omarchy:requires-sudo=true
 
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for channel switching." >&2
+  exit 126
+fi
+
+require_privileged_bash_startup() {
+  [[ $- == *p* ]] || return 1
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+if ! require_privileged_bash_startup; then
+  echo "Refusing an unsafe Bash startup for channel switching." >&2
+  exit 126
+fi
+unset -f require_privileged_bash_startup
+
 set -euo pipefail
+
+sanitize_bash_startup_environment() {
+  local environment_entry environment_name
+  local needs_reexec=0
+  local -a environment_unsets=(-u BASH_ENV -u ENV)
+
+  [[ -z ${BASH_ENV+x} && -z ${ENV+x} ]] || needs_reexec=1
+  while IFS= read -r -d '' environment_entry; do
+    environment_name="${environment_entry%%=*}"
+    if [[ $environment_name == BASH_FUNC_*%% ]]; then
+      environment_unsets+=(-u "$environment_name")
+      needs_reexec=1
+    fi
+  done < <(/usr/bin/env -0)
+
+  if (( needs_reexec )); then
+    exec /usr/bin/env "${environment_unsets[@]}" /usr/bin/bash -p "$0" "$@"
+  fi
+}
+sanitize_bash_startup_environment "$@"
+unset -f sanitize_bash_startup_environment
+
+cleanup_sudo_credentials() {
+  /usr/bin/sudo -k || true
+}
 
 usage() { echo "Usage: omarchy-channel-set [stable|rc|edge|dev]"; }
 fail() { echo "Error: $*" >&2; exit 1; }
@@ -17,7 +64,7 @@ It's exclusively intended for developers working on Omarchy itself.
 
 WARNING
 
-  gum confirm --default=false "Switch to dev channel?"
+  /usr/bin/gum confirm --default=false "Switch to dev channel?"
 }
 
 validate_dev_checkout() {
@@ -34,12 +81,43 @@ validate_dev_checkout() {
 
 link_dev_checkout() {
   local checkout="$1"
-  [[ -d $checkout/.git ]] || git clone https://github.com/basecamp/omarchy.git "$checkout"
+  [[ -d $checkout/.git ]] || /usr/bin/git clone https://github.com/basecamp/omarchy.git "$checkout"
 
-  omarchy-dev-link "$checkout" --no-reboot
+  /usr/bin/omarchy-dev-link "$checkout" --no-reboot
+}
+
+prepare_non_reusable_sudo() {
+  local wrapper=/usr/share/omarchy/default/omarchy/sudo-no-update/sudo
+  local current="$wrapper" canonical="" owner="" mode=""
+
+  LC_ALL=C /usr/bin/sudo -h 2>&1 | /usr/bin/grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]' ||
+    fail "This sudo does not support --no-update; refusing a mixed-trust channel switch."
+  [[ -f $wrapper && -x $wrapper && ! -L $wrapper ]] ||
+    fail "Trusted no-update sudo wrapper is missing."
+  canonical=$(/usr/bin/realpath -e -- "$wrapper") || fail "Cannot resolve the trusted no-update sudo wrapper."
+  [[ $canonical == "$wrapper" ]] || fail "Trusted no-update sudo wrapper is redirected."
+  while :; do
+    [[ ! -L $current ]] || fail "Trusted no-update sudo path contains a symlink."
+    read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$current") || fail "Cannot inspect the trusted no-update sudo path."
+    [[ $owner == "0" ]] && (( (8#$mode & 0022) == 0 )) ||
+      fail "Trusted no-update sudo path is writable by an untrusted account."
+    [[ $current == "/usr/share/omarchy" ]] && break
+    current=${current%/*}
+  done
+
+  PATH="${wrapper%/sudo}:/usr/bin:/usr/sbin:/bin:/sbin"
+  export PATH
 }
 
 (( $# > 0 )) || { usage; exit 1; }
+user_path="${PATH:-/usr/bin:/bin}"
+
+# Channel switching is a composite privileged workflow. Start cold, pin every
+# helper to the installed system paths, and make helper sudo calls non-caching
+# before any command that can execute user-controlled Git/tool configuration.
+prepare_non_reusable_sudo
+trap cleanup_sudo_credentials EXIT
+/usr/bin/sudo -k || exit 1
 
 dev_checkout=""
 channel="$1"
@@ -79,21 +157,31 @@ fi
 if [[ -n $dev_checkout ]]; then
   link_dev_checkout "$dev_checkout"
   export OMARCHY_PATH="$dev_checkout"
-  export PATH="$OMARCHY_PATH/bin:$PATH"
-  omarchy-state set reboot-required
+  /usr/bin/omarchy-state set reboot-required
 fi
 
-omarchy-refresh-pacman "$pacman_channel"
+# The refresh hook is executable user code. Defer it across this composite
+# workflow so a detached hook child cannot wait for the package switch or the
+# update pipeline to publish a sudo timestamp. The installed fixed path cannot
+# be replaced through the caller's PATH.
+OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-refresh-pacman "$pacman_channel" --defer-hook
 # --ask 4 accepts omarchy <-> omarchy-dev replacement prompts without file overwrites.
-sudo env OMARCHY_UPDATE_PACMAN=1 pacman -S --needed --noconfirm --ask 4 "${packages[@]}"
+/usr/bin/sudo -N -- /usr/bin/env PATH=/usr/bin:/usr/sbin:/bin:/sbin \
+  OMARCHY_UPDATE_PACMAN=1 /usr/bin/pacman -S --needed --noconfirm --ask 4 "${packages[@]}"
 
 if [[ -z $dev_checkout ]]; then
-  omarchy-dev-unlink --no-reboot
+  /usr/bin/omarchy-dev-unlink --no-reboot
   export OMARCHY_PATH=/usr/share/omarchy
 
   if (( leaving_dev )); then
-    omarchy-state set reboot-required
+    /usr/bin/omarchy-state set reboot-required
   fi
 fi
 
-omarchy-update -y
+PATH="$user_path" OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-update -y
+
+# This is the final action. The trusted refresh command re-resolves the source
+# root from root-owned /etc/omarchy.conf, invalidates first, and invokes the
+# hook exactly once. Its own EXIT cleanup also leaves any hook-authenticated
+# credential cold. If an earlier step fails, the deferred hook is skipped.
+PATH="$user_path" /usr/bin/omarchy-refresh-pacman --run-deferred-hook

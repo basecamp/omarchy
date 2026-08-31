@@ -10,4 +10,5 @@ if [[ -f $OMARCHY_PATH/etc-overrides/cups-cups-files.conf && -f /etc/cups/cups-f
   rm -f /etc/cups/cups-files.conf.pacnew
 fi
 
-source "$OMARCHY_INSTALL/hardware/pacman.sh"
+# No hardware repository overrides are currently required. In particular, T2
+# packages must continue resolving through the signed Omarchy repository.

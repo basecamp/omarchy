@@ -3,11 +3,161 @@
 # omarchy:summary=Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
 # omarchy:requires-sudo=true
 
-if omarchy-cmd-missing supergfxctl; then
-  omarchy-pkg-add supergfxctl
+set -e
+
+trusted_omarchy_source_root() {
+  local LC_ALL=C
+  local config=/etc/omarchy.conf default_root=/usr/share/omarchy configured_root=""
+  local canonical="" owner="" mode="" links="" size="" line="" extra=""
+  local encoded="" decoded="" expected="" character="" directory="" current_uid=""
+  local index=0 escaped=0 config_fd read_status=0
+
+  current_uid=$(/usr/bin/id -u) || return 1
+
+  trusted_directory_chain() {
+    local directory=$1 allow_user_owner=$2 canonical owner mode
+
+    while :; do
+      [[ -d $directory && ! -L $directory ]] || return 1
+      canonical=$(/usr/bin/realpath -e -- "$directory") || return 1
+      [[ $canonical == "$directory" ]] || return 1
+      read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$directory") || return 1
+      if [[ $owner != 0 ]] && ! { [[ $allow_user_owner == true ]] && [[ $owner == "$current_uid" ]]; }; then
+        return 1
+      fi
+      (( (8#$mode & 0022) == 0 )) || return 1
+      [[ $directory == / ]] && break
+      directory=${directory%/*}
+      [[ -n $directory ]] || directory=/
+    done
+  }
+
+  if [[ ! -e $config && ! -L $config ]]; then
+    configured_root=$default_root
+  else
+    [[ -f $config && ! -L $config ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$config") || return 1
+    [[ $canonical == "$config" ]] || return 1
+    trusted_directory_chain "${config%/*}" false || return 1
+    read -r owner mode links size < <(/usr/bin/stat -Lc '%u %a %h %s' -- "$config") || return 1
+    [[ $owner == 0 && $links == 1 ]] || return 1
+    (( (8#$mode & 0022) == 0 && size > 0 && size <= 4096 )) || return 1
+
+    exec {config_fd}<"$config" || return 1
+    if ! IFS= read -r line <&$config_fd; then
+      exec {config_fd}<&-
+      return 1
+    fi
+    IFS= read -r extra <&$config_fd || read_status=$?
+    exec {config_fd}<&-
+    (( read_status != 0 )) && [[ -z $extra ]] || return 1
+    (( size == ${#line} + 1 )) || return 1
+    [[ $line == 'export OMARCHY_PATH="'*'"' ]] || return 1
+    encoded=${line#'export OMARCHY_PATH="'}
+    encoded=${encoded%'"'}
+    [[ $encoded != *[$'\n\r\t']* ]] || return 1
+
+    for (( index = 0; index < ${#encoded}; index++ )); do
+      character=${encoded:index:1}
+      if (( escaped )); then
+        case "$character" in
+          '\' | '"' | '$' | '`') decoded+=$character ;;
+          *) return 1 ;;
+        esac
+        escaped=0
+      elif [[ $character == '\' ]]; then
+        escaped=1
+      elif [[ $character == '"' ]]; then
+        return 1
+      else
+        decoded+=$character
+      fi
+    done
+    (( escaped == 0 )) || return 1
+
+    expected=$decoded
+    expected=${expected//\\/\\\\}
+    expected=${expected//\"/\\\"}
+    expected=${expected//\$/\\\$}
+    expected=${expected//\`/\\\`}
+    [[ $line == "export OMARCHY_PATH=\"$expected\"" ]] || return 1
+    configured_root=$decoded
+  fi
+
+  [[ $configured_root == /* && -d $configured_root && ! -L $configured_root ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$configured_root") || return 1
+  [[ $canonical == "$configured_root" ]] || return 1
+  if [[ $configured_root == "$default_root" ]]; then
+    trusted_directory_chain "$configured_root" false || return 1
+  else
+    trusted_directory_chain "$configured_root" true || return 1
+    owner=$(/usr/bin/stat -Lc '%u' -- "$configured_root") || return 1
+    [[ $owner == 0 || $owner == "$current_uid" ]] || return 1
+  fi
+  printf '%s\n' "$configured_root"
+}
+
+trusted_omarchy_source_file() {
+  local relative=$1 source="$OMARCHY_PATH/$1" canonical owner mode links directory current_uid
+
+  current_uid=$(/usr/bin/id -u) || return 1
+  [[ $relative != /* && $relative != *'/../'* && $relative != '../'* && $relative != *'/..' ]] || return 1
+  [[ -f $source && ! -L $source ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$source") || return 1
+  [[ $canonical == "$source" && $canonical == "$OMARCHY_PATH/"* ]] || return 1
+  read -r owner mode links < <(/usr/bin/stat -Lc '%u %a %h' -- "$source") || return 1
+  [[ $links == 1 ]] || return 1
+  (( (8#$mode & 0022) == 0 )) || return 1
+  if [[ $OMARCHY_PATH == /usr/share/omarchy ]]; then
+    [[ $owner == 0 ]] || return 1
+  else
+    [[ $owner == 0 || $owner == "$current_uid" ]] || return 1
+  fi
+
+  directory=${source%/*}
+  while [[ $directory == "$OMARCHY_PATH" || $directory == "$OMARCHY_PATH/"* ]]; do
+    [[ -d $directory && ! -L $directory ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$directory") || return 1
+    [[ $canonical == "$directory" ]] || return 1
+    read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$directory") || return 1
+    (( (8#$mode & 0022) == 0 )) || return 1
+    if [[ $OMARCHY_PATH == /usr/share/omarchy ]]; then
+      [[ $owner == 0 ]] || return 1
+    else
+      [[ $owner == 0 || $owner == "$current_uid" ]] || return 1
+    fi
+    [[ $directory == "$OMARCHY_PATH" ]] && break
+    directory=${directory%/*}
+  done
+  printf '%s\n' "$source"
+}
+
+unset OMARCHY_PATH
+if ! OMARCHY_PATH=$(trusted_omarchy_source_root); then
+  echo "Refusing to change GPU mode from an untrusted Omarchy source root." >&2
+  exit 1
+fi
+export OMARCHY_PATH
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+
+force_igpu_marker=/etc/omarchy/force-igpu
+force_igpu_hook=/usr/lib/systemd/system-sleep/omarchy-force-igpu
+delay_source=/usr/share/omarchy/default/systemd/system/supergfxd.service.d/delay-start.conf
+delay_drop_in=/etc/systemd/system/supergfxd.service.d/10-omarchy-delay-start.conf
+
+for required_source in bin/omarchy-cmd-missing bin/omarchy-pkg-add bin/omarchy-system-reboot; do
+  trusted_omarchy_source_file "$required_source" >/dev/null || {
+    echo "Refusing an untrusted GPU helper: $required_source" >&2
+    exit 1
+  }
+done
+
+if "$OMARCHY_PATH/bin/omarchy-cmd-missing" supergfxctl; then
+  "$OMARCHY_PATH/bin/omarchy-pkg-add" supergfxctl
 
   # Create config before starting service to prevent hang on first boot
-  sudo tee /etc/supergfxd.conf >/dev/null <<'CONF'
+  /usr/bin/sudo /usr/bin/tee /etc/supergfxd.conf >/dev/null <<'CONF'
 {
   "mode": "Hybrid",
   "vfio_enable": true,
@@ -19,17 +169,17 @@ if omarchy-cmd-missing supergfxctl; then
 }
 CONF
 
-  sudo systemctl enable --now supergfxd
+  /usr/bin/sudo /usr/bin/systemctl enable --now supergfxd
 fi
 
 gpu_mode=""
 for attempt in {1..3}; do
-  if gpu_mode=$(timeout --kill-after=1s 3s supergfxctl -g 2>/dev/null) && [[ -n $gpu_mode ]]; then
+  if gpu_mode=$(/usr/bin/timeout --kill-after=1s 3s /usr/bin/supergfxctl -g 2>/dev/null) && [[ -n $gpu_mode ]]; then
     break
   fi
 
   gpu_mode=""
-  (( attempt < 3 )) && sleep 1
+  (( attempt < 3 )) && /usr/bin/sleep 1
 done
 
 if [[ -z $gpu_mode ]]; then
@@ -39,35 +189,56 @@ fi
 
 case "$gpu_mode" in
 "Integrated")
-  if gum confirm "Enable dedicated GPU and reboot?"; then
+  if /usr/bin/gum confirm "Enable dedicated GPU and reboot?"; then
     # Switch to hybrid mode
-    sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
+    /usr/bin/sudo /usr/bin/sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
 
-    # Let hybrid mode be the default after system sleep
-    sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu
+    # Let hybrid mode be the default after system sleep. The hook itself is
+    # package-owned; only its activation marker is runtime state.
+    /usr/bin/sudo /usr/bin/rm -f -- "$force_igpu_marker"
 
     # Remove the startup delay override (not needed for Hybrid mode)
-    sudo rm -rf /etc/systemd/system/supergfxd.service.d/delay-start.conf
+    /usr/bin/sudo /usr/bin/rm -f -- "$delay_drop_in"
 
-    omarchy-system-reboot
+    # Retire copies made by older Omarchy releases.
+    /usr/bin/sudo /usr/bin/rm -f -- /usr/lib/systemd/system-sleep/force-igpu
+    /usr/bin/sudo /usr/bin/rm -f -- /etc/systemd/system/supergfxd.service.d/delay-start.conf
+
+    "$OMARCHY_PATH/bin/omarchy-system-reboot"
   fi
   ;;
 "Hybrid")
-  if gum confirm "Use only integrated GPU and reboot?"; then
-    # Switch to integrated mode and ensure vfio is enabled (needed for sleep/wake trick)
-    sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
-    sudo sed -i 's/"vfio_enable": false/"vfio_enable": true/' /etc/supergfxd.conf
+  if /usr/bin/gum confirm "Use only integrated GPU and reboot?"; then
+    if [[ ! -f $force_igpu_hook || -L $force_igpu_hook || ! -x $force_igpu_hook ]]; then
+      echo "$force_igpu_hook is missing. Update omarchy-settings before enabling Integrated mode." >&2
+      exit 1
+    fi
+    if [[ ! -f $delay_source || -L $delay_source ]]; then
+      echo "$delay_source is missing. Update omarchy-settings before enabling Integrated mode." >&2
+      exit 1
+    fi
 
-    # Force igpu mode after system sleep (or dgpu could get activated)
-    sudo mkdir -p /usr/lib/systemd/system-sleep
-    sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/force-igpu" /usr/lib/systemd/system-sleep/
+    # Switch to integrated mode and ensure vfio is enabled (needed for sleep/wake trick)
+    /usr/bin/sudo /usr/bin/sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
+    /usr/bin/sudo /usr/bin/sed -i 's/"vfio_enable": false/"vfio_enable": true/' /etc/supergfxd.conf
+
+    # Force iGPU mode after system sleep (or the dGPU could get activated).
+    # Static executable code stays package-owned; the marker is the state.
+    /usr/bin/sudo /usr/bin/install -d -m 0755 -o root -g root /etc/omarchy
+    /usr/bin/sudo /usr/bin/rm -f -- "$force_igpu_marker"
+    /usr/bin/sudo /usr/bin/install -m 0644 -o root -g root -T -- /dev/null "$force_igpu_marker"
 
     # Delay supergfxd startup to avoid race condition with display manager
     # that can cause system freeze when booting in Integrated mode
-    sudo mkdir -p /etc/systemd/system/supergfxd.service.d
-    sudo cp -p "$OMARCHY_PATH/default/systemd/system/supergfxd.service.d/delay-start.conf" /etc/systemd/system/supergfxd.service.d/
+    /usr/bin/sudo /usr/bin/install -d -m 0755 -o root -g root /etc/systemd/system/supergfxd.service.d
+    /usr/bin/sudo /usr/bin/rm -f -- "$delay_drop_in"
+    /usr/bin/sudo /usr/bin/ln -s -- "$delay_source" "$delay_drop_in"
 
-    omarchy-system-reboot
+    # Retire copies made by older Omarchy releases.
+    /usr/bin/sudo /usr/bin/rm -f -- /usr/lib/systemd/system-sleep/force-igpu
+    /usr/bin/sudo /usr/bin/rm -f -- /etc/systemd/system/supergfxd.service.d/delay-start.conf
+
+    "$OMARCHY_PATH/bin/omarchy-system-reboot"
   fi
   ;;
 *)

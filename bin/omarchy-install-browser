@@ -6,7 +6,197 @@
 
 set -e
 
-source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
+trusted_omarchy_source_root() {
+  local LC_ALL=C
+  local config=/etc/omarchy.conf default_root=/usr/share/omarchy configured_root=""
+  local canonical="" owner="" mode="" links="" size="" line="" extra=""
+  local encoded="" decoded="" expected="" character="" directory="" current_uid=""
+  local index=0 escaped=0 config_fd read_status=0
+  current_uid=$(/usr/bin/id -u) || return 1
+  trusted_directory_chain() {
+    local directory=$1 allow_user_owner=$2 canonical owner mode
+    while :; do
+      [[ -d $directory && ! -L $directory ]] || return 1
+      canonical=$(/usr/bin/realpath -e -- "$directory") || return 1
+      [[ $canonical == "$directory" ]] || return 1
+      read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$directory") || return 1
+      if [[ $owner != 0 ]] && ! { [[ $allow_user_owner == true ]] && [[ $owner == "$current_uid" ]]; }; then return 1; fi
+      (( (8#$mode & 0022) == 0 )) || return 1
+      [[ $directory == / ]] && break
+      directory=${directory%/*}; [[ -n $directory ]] || directory=/
+    done
+  }
+  if [[ ! -e $config && ! -L $config ]]; then
+    configured_root=$default_root
+  else
+    [[ -f $config && ! -L $config ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$config") || return 1
+    [[ $canonical == "$config" ]] || return 1
+    trusted_directory_chain "${config%/*}" false || return 1
+    read -r owner mode links size < <(/usr/bin/stat -Lc '%u %a %h %s' -- "$config") || return 1
+    [[ $owner == 0 && $links == 1 ]] || return 1
+    (( (8#$mode & 0022) == 0 && size > 0 && size <= 4096 )) || return 1
+    exec {config_fd}<"$config" || return 1
+    if ! IFS= read -r line <&$config_fd; then exec {config_fd}<&-; return 1; fi
+    IFS= read -r extra <&$config_fd || read_status=$?
+    exec {config_fd}<&-
+    (( read_status != 0 )) && [[ -z $extra ]] || return 1
+    (( size == ${#line} + 1 )) || return 1
+    [[ $line == 'export OMARCHY_PATH="'*'"' ]] || return 1
+    encoded=${line#'export OMARCHY_PATH="'}; encoded=${encoded%'"'}
+    [[ $encoded != *[$'\n\r\t']* ]] || return 1
+    for (( index = 0; index < ${#encoded}; index++ )); do
+      character=${encoded:index:1}
+      if (( escaped )); then
+        case "$character" in '\' | '"' | '$' | '`') decoded+=$character ;; *) return 1 ;; esac
+        escaped=0
+      elif [[ $character == '\' ]]; then escaped=1
+      elif [[ $character == '"' ]]; then return 1
+      else decoded+=$character
+      fi
+    done
+    (( escaped == 0 )) || return 1
+    expected=$decoded
+    expected=${expected//\\/\\\\}; expected=${expected//\"/\\\"}
+    expected=${expected//\$/\\\$}; expected=${expected//\`/\\\`}
+    [[ $line == "export OMARCHY_PATH=\"$expected\"" ]] || return 1
+    configured_root=$decoded
+  fi
+  [[ $configured_root == /* && -d $configured_root && ! -L $configured_root ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$configured_root") || return 1
+  [[ $canonical == "$configured_root" ]] || return 1
+  if [[ $configured_root == "$default_root" ]]; then
+    trusted_directory_chain "$configured_root" false || return 1
+  else
+    trusted_directory_chain "$configured_root" true || return 1
+    owner=$(/usr/bin/stat -Lc '%u' -- "$configured_root") || return 1
+    [[ $owner == 0 || $owner == "$current_uid" ]] || return 1
+  fi
+  printf '%s\n' "$configured_root"
+}
+
+trusted_omarchy_source_file() {
+  local relative=$1 source="$OMARCHY_PATH/$1" canonical owner mode links directory current_uid
+  current_uid=$(/usr/bin/id -u) || return 1
+  [[ $relative != /* && $relative != *'/../'* && $relative != '../'* && $relative != *'/..' ]] || return 1
+  [[ -f $source && ! -L $source ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$source") || return 1
+  [[ $canonical == "$source" && $canonical == "$OMARCHY_PATH/"* ]] || return 1
+  read -r owner mode links < <(/usr/bin/stat -Lc '%u %a %h' -- "$source") || return 1
+  [[ $links == 1 ]] || return 1
+  (( (8#$mode & 0022) == 0 )) || return 1
+  if [[ $OMARCHY_PATH == /usr/share/omarchy ]]; then [[ $owner == 0 ]] || return 1
+  else [[ $owner == 0 || $owner == "$current_uid" ]] || return 1; fi
+  directory=${source%/*}
+  while [[ $directory == "$OMARCHY_PATH" || $directory == "$OMARCHY_PATH/"* ]]; do
+    [[ -d $directory && ! -L $directory ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$directory") || return 1
+    [[ $canonical == "$directory" ]] || return 1
+    read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$directory") || return 1
+    (( (8#$mode & 0022) == 0 )) || return 1
+    if [[ $OMARCHY_PATH == /usr/share/omarchy ]]; then [[ $owner == 0 ]] || return 1
+    else [[ $owner == 0 || $owner == "$current_uid" ]] || return 1; fi
+    [[ $directory == "$OMARCHY_PATH" ]] && break
+    directory=${directory%/*}
+  done
+  printf '%s\n' "$source"
+}
+
+usage() {
+  echo "Usage: omarchy-install-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
+}
+
+(( $# == 1 )) || { usage >&2; exit 2; }
+case $1 in chromium | chrome | brave | brave-origin | edge | firefox | zen) ;; *) usage; exit 1 ;; esac
+
+browser_policy_sudo_args=()
+case $1 in
+  chrome | brave | brave-origin | edge | zen) browser_policy_sudo_args=(-N) ;;
+esac
+
+unset OMARCHY_PATH
+if ! OMARCHY_PATH=$(trusted_omarchy_source_root); then
+  echo "Refusing to install a browser from an untrusted Omarchy source root." >&2
+  exit 1
+fi
+export OMARCHY_PATH
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+
+browser_policy_helper=$(trusted_omarchy_source_file install/helpers/browser-policy.sh) || {
+  echo "Refusing to source an untrusted browser-policy helper." >&2
+  exit 1
+}
+trusted_omarchy_source_file install/helpers/as-root.sh >/dev/null || {
+  echo "Refusing to source an untrusted privilege helper." >&2
+  exit 1
+}
+source "$browser_policy_helper"
+
+# The shared helper intentionally accepts an as_root implementation. Pin both
+# sudo and each privileged utility so neither caller PATH nor dev-link
+# secure_path can substitute a different root command.
+as_root() {
+  local command=${1:-}
+  shift || return 1
+  case $command in
+    find | install | rm) command="/usr/bin/$command" ;;
+    *) echo "Refusing unsupported privileged browser-policy command: $command" >&2; return 1 ;;
+  esac
+  if (( EUID == 0 )); then
+    "$command" "$@"
+  else
+    /usr/bin/sudo "${browser_policy_sudo_args[@]}" -- "$command" "$@"
+  fi
+}
+
+browser_policy_purge_dir() {
+  local dir=$1
+
+  if (( EUID == 0 )); then
+    /usr/bin/find "$dir" -mindepth 1 -maxdepth 1 ! -user root -exec /usr/bin/rm -rf -- {} +
+  else
+    /usr/bin/sudo "${browser_policy_sudo_args[@]}" -- /usr/bin/find "$dir" -mindepth 1 -maxdepth 1 ! -user root -exec /usr/bin/rm -rf -- {} +
+  fi
+}
+
+cleanup_sudo_credentials() {
+  /usr/bin/sudo -k || true
+}
+trap cleanup_sudo_credentials EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+required_sources=()
+case $1 in
+  chromium)
+    required_sources=(bin/omarchy-pkg-add)
+    ;;
+  chrome | edge | brave | brave-origin)
+    required_sources=(bin/omarchy-pkg-aur-add)
+    ;;
+  firefox)
+    required_sources=(bin/omarchy-pkg-add default/firefox/policies.json)
+    ;;
+  zen)
+    required_sources=(bin/omarchy-pkg-aur-add default/firefox/policies.json)
+    ;;
+esac
+if [[ $1 != firefox && $1 != zen ]]; then
+  required_sources+=(
+    config/chromium-flags.conf
+    bin/omarchy-install-chromium-copy-url
+    bin/omarchy-install-chromium-ytdlp
+    bin/omarchy-theme-set-browser
+  )
+fi
+for required_source in "${required_sources[@]}"; do
+  trusted_omarchy_source_file "$required_source" >/dev/null || {
+    echo "Refusing an untrusted browser-install source: $required_source" >&2
+    exit 1
+  }
+done
 
 setup_chromium_policy_directory() {
   browser_policy_setup_dir "$1"
@@ -17,82 +207,95 @@ announce_browser_installed() {
   echo "$1 browser installed. Make it the default via Setup > Defaults > Browser."
 }
 
+apply_browser_theme() {
+  # Without a terminal, the policy helper uses its exact NOPASSWD rule or
+  # pkexec; it cannot create a reusable password-authenticated sudo timestamp
+  # immediately before it refreshes a newly installed browser process.
+  "$OMARCHY_PATH/bin/omarchy-theme-set-browser" </dev/null
+  cleanup_sudo_credentials
+}
+
 copy_chromium_flags() {
-  mkdir -p ~/.config
-  cp -f "$OMARCHY_PATH/config/chromium-flags.conf" "$1"
-  omarchy-install-chromium-copy-url
-  omarchy-install-chromium-ytdlp
+  /usr/bin/mkdir -p ~/.config
+  /usr/bin/cp -f "$OMARCHY_PATH/config/chromium-flags.conf" "$1"
+  "$OMARCHY_PATH/bin/omarchy-install-chromium-copy-url"
+  "$OMARCHY_PATH/bin/omarchy-install-chromium-ytdlp"
 }
 
 setup_firefox_wayland() {
-  mkdir -p ~/.config/environment.d
+  /usr/bin/mkdir -p ~/.config/environment.d
   echo "MOZ_ENABLE_WAYLAND=1" > ~/.config/environment.d/omarchy-firefox-wayland.conf
 }
 
 case $1 in
 chromium)
   echo "Installing Chromium..."
-  omarchy-pkg-add chromium
+  "$OMARCHY_PATH/bin/omarchy-pkg-add" chromium
 
   setup_chromium_policy_directory /etc/chromium/policies/managed
+  cleanup_sudo_credentials
   copy_chromium_flags ~/.config/chromium-flags.conf
-  omarchy-theme-set-browser
+  /usr/bin/mkdir -p ~/.config/chromium
+  /usr/bin/touch ~/.config/chromium/'EULA Accepted'
+  apply_browser_theme
   announce_browser_installed "Chromium"
   ;;
 chrome)
   echo "Installing Chrome..."
-  omarchy-pkg-aur-add google-chrome || exit 1
+  "$OMARCHY_PATH/bin/omarchy-pkg-aur-add" google-chrome || exit 1
 
   setup_chromium_policy_directory /etc/opt/chrome/policies/managed
+  cleanup_sudo_credentials
   copy_chromium_flags ~/.config/chrome-flags.conf
-  omarchy-theme-set-browser
+  apply_browser_theme
   announce_browser_installed "Chrome"
   ;;
 edge)
   echo "Installing Edge..."
-  omarchy-pkg-aur-add microsoft-edge-stable-bin || exit 1
+  "$OMARCHY_PATH/bin/omarchy-pkg-aur-add" microsoft-edge-stable-bin || exit 1
 
   setup_chromium_policy_directory /etc/opt/edge/policies/managed
+  cleanup_sudo_credentials
   copy_chromium_flags ~/.config/microsoft-edge-stable-flags.conf
-  omarchy-theme-set-browser
+  apply_browser_theme
   announce_browser_installed "Edge"
   ;;
 brave)
   echo "Installing Brave..."
-  omarchy-pkg-aur-add brave-bin || exit 1
+  "$OMARCHY_PATH/bin/omarchy-pkg-aur-add" brave-bin || exit 1
 
   setup_chromium_policy_directory /etc/brave/policies/managed
+  cleanup_sudo_credentials
   copy_chromium_flags ~/.config/brave-flags.conf
-  omarchy-theme-set-browser
+  apply_browser_theme
   announce_browser_installed "Brave"
   ;;
 brave-origin)
   echo "Installing Brave Origin..."
-  omarchy-pkg-aur-add brave-origin-bin || exit 1
+  "$OMARCHY_PATH/bin/omarchy-pkg-aur-add" brave-origin-bin || exit 1
 
   setup_chromium_policy_directory /etc/brave/policies/managed
+  cleanup_sudo_credentials
   copy_chromium_flags ~/.config/brave-origin-flags.conf
-  omarchy-theme-set-browser
+  apply_browser_theme
   announce_browser_installed "Brave Origin"
   ;;
 firefox)
   echo "Installing Firefox..."
-  omarchy-pkg-add firefox || exit 1
+  "$OMARCHY_PATH/bin/omarchy-pkg-add" firefox || exit 1
 
   browser_policy_setup_firefox_distribution /usr/lib/firefox/distribution
+  cleanup_sudo_credentials
   setup_firefox_wayland
   announce_browser_installed "Firefox"
   ;;
 zen)
   echo "Installing Zen..."
-  omarchy-pkg-aur-add zen-browser-bin || exit 1
+  "$OMARCHY_PATH/bin/omarchy-pkg-aur-add" zen-browser-bin || exit 1
 
   browser_policy_setup_firefox_distribution /opt/zen-browser/distribution
+  cleanup_sudo_credentials
   setup_firefox_wayland
   announce_browser_installed "Zen"
-  ;;
-*)
-  echo "Usage: omarchy-install-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
-  exit 1
   ;;
 esac

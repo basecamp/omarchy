@@ -9,8 +9,55 @@ unset OMARCHY_UPDATE_FORCE
 unset TEST_AVAILABLE_BYTES
 unset TEST_DF_INVALID
 
-test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"' EXIT
+if [[ -z ${OMARCHY_UPDATE_DISK_TEST_NS:-} ]]; then
+  outer_uid=$(id -u)
+  outer_gid=$(id -g)
+  subuid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subuid)
+  subgid=$(awk -F: -v group="$(id -gn)" '$1 == group { print $2; exit }' /etc/subgid)
+  if [[ -z $subuid || -z $subgid ]]; then
+    pass "no subordinate uid/gid range; skipping authorized update disk-space test"
+    exit 0
+  fi
+  exec unshare --user --mount \
+    --map-users "0:$outer_uid:1" --map-users "1:$subuid:65536" \
+    --map-groups "0:$outer_gid:1" --map-groups "1:$subgid:65536" \
+    env OMARCHY_UPDATE_DISK_TEST_NS=setup bash "$0"
+elif [[ $OMARCHY_UPDATE_DISK_TEST_NS == setup ]]; then
+  mount -t tmpfs -o mode=0755 tmpfs /run
+  namespace_tmp=$(mktemp -d -p /run omarchy-update-disk-space.XXXXXXXX)
+  chmod 0755 "$namespace_tmp"
+  mkdir -p "$namespace_tmp/default/omarchy/sudo-no-update"
+  cp "$ROOT/default/omarchy/sudo-no-update/sudo" "$namespace_tmp/default/omarchy/sudo-no-update/sudo"
+  chmod 0755 "$namespace_tmp/default/omarchy/sudo-no-update/sudo"
+  cat >"$namespace_tmp/fixed-sudo" <<'STUB'
+#!/bin/bash
+if [[ ${1:-} == "-h" ]]; then
+  echo 'usage: sudo [-ABbEHkNnPS] command'
+fi
+exit 0
+STUB
+  chmod 0755 "$namespace_tmp/fixed-sudo"
+  mount --bind "$namespace_tmp/fixed-sudo" /usr/bin/sudo
+  mount -t tmpfs -o mode=0755 tmpfs /etc
+  printf 'export OMARCHY_PATH="%s"\n' "$namespace_tmp" >/etc/omarchy.conf
+  chmod 0644 /etc/omarchy.conf
+  chown -R 1000:1000 "$namespace_tmp"
+
+  set +e
+  setpriv --reuid 1000 --regid 1000 --clear-groups \
+    env OMARCHY_UPDATE_DISK_TEST_NS=run OMARCHY_AUTHORIZED_TEST_ROOT="$namespace_tmp" bash "$0"
+  status=$?
+  set -e
+
+  umount /usr/bin/sudo
+  umount /etc
+  rm -rf "$namespace_tmp"
+  umount /run
+  exit "$status"
+fi
+
+test_tmp="$OMARCHY_AUTHORIZED_TEST_ROOT"
+trap 'rm -rf "$test_tmp"/*' EXIT
 
 stub_bin="$test_tmp/bin"
 test_home="$test_tmp/home"
