@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 2,
+  "id": "org.omarchy.fixture.neutral-surfaces",
+  "name": "Neutral Surfaces Fixture",
+  "version": "1.0.0",
+  "runtime": {
+    "apiVersion": 1,
+    "qml": "ui/Bar.qml",
+    "surfaceQml": {
+      "bar": "ui/Bar.qml",
+      "panel": "ui/Panel.qml",
+      "overlay": "ui/Overlay.qml"
+    }
+  },
+  "surfaces": {
+    "bar": {
+      "role": "bar-embedded",
+      "defaultSection": "right",
+      "maximumWidth": 280,
+      "maximumHeight": 64,
+      "maximumFramesPerSecond": 30
+    },
+    "panel": {
+      "role": "panel",
+      "maximumWidth": 360,
+      "maximumHeight": 720,
+      "maximumFramesPerSecond": 30,
+      "keyboardFocus": false
+    },
+    "overlay": {
+      "role": "desktop-overlay",
+      "maximumWidth": 480,
+      "maximumHeight": 320,
+      "maximumFramesPerSecond": 30,
+      "keyboardFocus": false,
+      "lockScreenVisible": false,
+      "inputRegions": "dynamic-bounded"
+    }
+  },
+  "permissions": {
+    "required": [],
+    "optional": []
+  }
+}

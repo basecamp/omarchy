@@ -2,8 +2,9 @@
 
 #include "omarchy/plugin/wire/surface_name.hpp"
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -15,8 +16,6 @@ inline constexpr std::uint16_t kPermissionSnapshotMessage = 0x0100;
 inline constexpr std::uint16_t kPermissionSnapshotAcceptedMessage = 0x0101;
 inline constexpr std::uint16_t kSurfaceSelectionMessage = 0x0102;
 inline constexpr std::uint16_t kSurfaceSelectionAcceptedMessage = 0x0103;
-inline constexpr std::uint16_t kSurfaceBindingMessage = 0x0104;
-inline constexpr std::uint16_t kSurfaceBindingAcceptedMessage = 0x0105;
 inline constexpr std::uint16_t kSurfaceOpenMessage = 0x0106;
 inline constexpr std::uint16_t kSurfaceOpenAcceptedMessage = 0x0107;
 
@@ -25,6 +24,20 @@ struct SurfaceBinding {
   std::uint64_t generation = 0;
   std::string surface;
 };
+
+// Both trusted endpoints derive surface identity from the verified manifest's
+// canonical surface_names order. Keeping that rule here prevents either side
+// from acquiring an independent name-to-key assignment authority.
+inline std::optional<SurfaceBinding>
+manifest_surface_binding(std::string_view surface, std::size_t index,
+                         std::uint64_t generation) {
+  if (!valid_surface_name(surface) || index >= kMaximumPluginSurfaces ||
+      generation == 0)
+    return std::nullopt;
+  return SurfaceBinding{.id = index + 1,
+                        .generation = generation,
+                        .surface = std::string(surface)};
+}
 
 inline std::vector<std::byte>
 encode_surface_binding(const SurfaceBinding &binding) {

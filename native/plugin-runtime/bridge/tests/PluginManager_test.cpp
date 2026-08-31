@@ -37,11 +37,13 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <mutex>
 #include <ranges>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -132,9 +134,9 @@ void concurrent_engines_have_one_process_winner() {
   }
 }
 
-template <typename Predicate> bool await(Predicate predicate) {
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(2);
+template <typename Predicate>
+bool awaitFor(std::chrono::milliseconds timeout, Predicate predicate) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
   while (std::chrono::steady_clock::now() < deadline) {
     QCoreApplication::processEvents();
     if (predicate())
@@ -142,6 +144,10 @@ template <typename Predicate> bool await(Predicate predicate) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   return predicate();
+}
+
+template <typename Predicate> bool await(Predicate predicate) {
+  return awaitFor(std::chrono::seconds(2), std::move(predicate));
 }
 
 permissions::ActivationBinding binding() {
@@ -221,6 +227,36 @@ public:
     return binding;
   }
 
+  permissions::ActivationBinding
+  seedCheckedFixture(std::string_view plugin,
+                     const std::filesystem::path &source) {
+    const auto binding = stageCheckedFixture(plugin, 1, source);
+    promoteRuntime(binding, 0);
+    activateStaged(binding);
+    return binding;
+  }
+
+  permissions::ActivationBinding
+  stageCheckedFixture(std::string_view plugin, std::uint64_t generation,
+                      const std::filesystem::path &source) {
+    require(std::filesystem::is_directory(source),
+            "checked product fixture directory was unavailable");
+    const auto revision = revisions() / revisionDirectory(plugin, generation);
+    create(revision, 0755);
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator(source)) {
+      const auto destination = revision / entry.path().lexically_relative(source);
+      if (entry.is_directory()) {
+        create(destination, 0755);
+      } else {
+        require(entry.is_regular_file() &&
+                    std::filesystem::copy_file(entry.path(), destination),
+                "checked product fixture copy failed");
+      }
+    }
+    return freezeAndVerify(plugin, generation, revision);
+  }
+
   permissions::ActivationBinding stageRuntime(
       std::string_view plugin, std::uint64_t generation, std::string_view qml,
       std::string_view permission_json = "{\"required\": [], \"optional\": []}",
@@ -246,35 +282,7 @@ public:
       manifest_file << ",\n  \"permissions\": " << permission_json << "\n}\n";
     }
     std::ofstream(revision / "ui/Main.qml") << qml;
-    for (const auto &entry :
-         std::filesystem::recursive_directory_iterator(revision))
-      require(::chmod(entry.path().c_str(),
-                      entry.is_directory() ? 0555 : 0444) == 0,
-              "manager ready revision mode failed");
-    require(::chmod(revision.c_str(), 0555) == 0,
-            "manager ready revision root mode failed");
-    if (generation == 1) {
-      create(state() / std::string(plugin), 0700);
-      create(authority() / std::string(plugin), 0700);
-    }
-
-    const int revision_fd = ::open(
-        revision.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-    require(revision_fd >= 0, "manager ready revision open failed");
-    host::DescriptorRevisionVerifier verifier;
-    auto verified = verifier.verify_open_revision(revision_fd);
-    ::close(revision_fd);
-    require(verified && verified->manifest.id == plugin,
-            "manager ready revision verification failed");
-
-    return {
-        .plugin = permissions::PluginId(plugin),
-        .revision = permissions::Digest(verified->tree_sha256),
-        .policy_fingerprint =
-            permissions::Digest(permissions::policy_request_fingerprint(
-                permissions::requests_from_manifest(verified->manifest))),
-        .generation = generation,
-    };
+    return freezeAndVerify(plugin, generation, revision);
   }
 
   void promoteRuntime(
@@ -380,6 +388,40 @@ public:
   }
 
 private:
+  permissions::ActivationBinding
+  freezeAndVerify(std::string_view plugin, std::uint64_t generation,
+                  const std::filesystem::path &revision) {
+    for (const auto &entry :
+         std::filesystem::recursive_directory_iterator(revision))
+      require(::chmod(entry.path().c_str(),
+                      entry.is_directory() ? 0555 : 0444) == 0,
+              "manager ready revision mode failed");
+    require(::chmod(revision.c_str(), 0555) == 0,
+            "manager ready revision root mode failed");
+    if (generation == 1) {
+      create(state() / std::string(plugin), 0700);
+      create(authority() / std::string(plugin), 0700);
+    }
+
+    const int revision_fd = ::open(
+        revision.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(revision_fd >= 0, "manager ready revision open failed");
+    host::DescriptorRevisionVerifier verifier;
+    auto verified = verifier.verify_open_revision(revision_fd);
+    ::close(revision_fd);
+    require(verified && verified->manifest.id == plugin,
+            "manager ready revision verification failed");
+
+    return {
+        .plugin = permissions::PluginId(plugin),
+        .revision = permissions::Digest(verified->tree_sha256),
+        .policy_fingerprint =
+            permissions::Digest(permissions::policy_request_fingerprint(
+                permissions::requests_from_manifest(verified->manifest))),
+        .generation = generation,
+    };
+  }
+
   static std::string revisionDirectory(std::string_view plugin,
                                        std::uint64_t generation) {
     return std::string(plugin) + "-g" + std::to_string(generation);
@@ -764,6 +806,35 @@ QImage paintedFrame(bridge::RemotePluginSurface &remote) {
   remote.paint(&painter);
   painter.end();
   return image;
+}
+
+std::set<std::string>
+pluginScopePaths(const permissions::ActivationBinding &binding) {
+  const std::string marker = "app-omarchy-plugin-worker-" +
+                             std::string(binding.plugin.view()) + "-" +
+                             std::string(binding.revision.view().substr(0, 12)) +
+                             "-" + std::to_string(binding.generation) + "-m";
+  std::set<std::string> scopes;
+  std::error_code error;
+  for (const auto &entry : std::filesystem::directory_iterator("/proc", error)) {
+    if (error)
+      break;
+    const auto name = entry.path().filename().string();
+    if (name.empty() || !std::ranges::all_of(name, [](unsigned char value) {
+          return value >= '0' && value <= '9';
+        }))
+      continue;
+    std::ifstream cgroup(entry.path() / "cgroup");
+    for (std::string line; std::getline(cgroup, line);) {
+      const auto path_start = line.rfind(':');
+      if (path_start == std::string::npos)
+        continue;
+      const auto path = line.substr(path_start + 1);
+      if (path.find(marker) != std::string::npos && path.ends_with(".scope"))
+        scopes.insert(path);
+    }
+  }
+  return scopes;
 }
 
 bool redSignature(const QImage &image) {
@@ -2840,6 +2911,199 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
   manager.reset();
 }
 
+void neutral_surfaces_share_one_real_sandbox_and_teardown() {
+  require(std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") != nullptr,
+          "neutral surface integration gate was not opted in");
+  require(::access(std::string(omarchy::plugin_runtime::kPackagedWorkerPath)
+                       .c_str(),
+                   X_OK) == 0,
+          "required packaged worker integration test was unavailable");
+
+  using Model = bridge::SurfaceProjectionModel;
+  constexpr std::string_view plugin =
+      "org.omarchy.fixture.neutral-surfaces";
+  const std::filesystem::path fixture_source =
+      std::filesystem::path(OMARCHY_PRODUCT_FIXTURE_ROOT) /
+      "neutral-surfaces";
+  RuntimeFixture fixture;
+  const auto exact_binding =
+      fixture.seedCheckedFixture(plugin, fixture_source);
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap());
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 1 &&
+              scheduler.kinds.front() ==
+                  bridge::PluginManagerTestAccess::TestJobKind::preparation,
+          "neutral fixture did not enter one preparation lane");
+  std::exception_ptr preparation_error;
+  std::jthread preparation([&] {
+    try {
+      scheduler.runOne();
+    } catch (...) {
+      preparation_error = std::current_exception();
+    }
+  });
+  preparation.join();
+  if (preparation_error)
+    std::rethrow_exception(preparation_error);
+  require(await([&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            const auto observations =
+                bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+            return observations.size() == 1 && observations.front().running &&
+                   observations.front().has_runtime_root &&
+                   observations.front().has_endpoint_owner &&
+                   manager->count() == 3;
+          }),
+          "one neutral fixture runtime did not publish three ready surfaces");
+
+  auto *bar_model = manager->barSurfaces();
+  auto *panel_model = manager->panelSurfaces();
+  auto *overlay_model = manager->overlaySurfaces();
+  require(bar_model->rowCount() == 1 && panel_model->rowCount() == 1 &&
+              overlay_model->rowCount() == 1,
+          "neutral fixture roles were not published exactly once");
+  const auto assert_row = [&](QAbstractItemModel *model,
+                              std::string_view surface,
+                              Model::Role expected_role,
+                              std::uint32_t width, std::uint32_t height) {
+    const auto row = model->index(0, 0);
+    require(model->data(row, Model::PluginIdRole).toString() ==
+                    QString::fromUtf8(plugin.data(), plugin.size()) &&
+                model->data(row, Model::SurfaceNameRole).toString() ==
+                    QString::fromUtf8(surface.data(), surface.size()) &&
+                model->data(row, Model::SurfaceRoleRole).toInt() ==
+                    static_cast<int>(expected_role) &&
+                model->data(row, Model::GenerationRole).toString() ==
+                    QString::number(exact_binding.generation) &&
+                model->data(row, Model::MaximumWidthRole).toUInt() == width &&
+                model->data(row, Model::MaximumHeightRole).toUInt() == height,
+            "neutral fixture model row lost identity, role, or bounds");
+    const auto key = model->data(row, Model::SurfaceKeyRole).toString();
+    require(!key.isEmpty(), "neutral fixture model row had no surface key");
+    return key;
+  };
+  const auto bar_key =
+      assert_row(bar_model, "bar", Model::Role::Bar, 280, 64);
+  const auto panel_key =
+      assert_row(panel_model, "panel", Model::Role::Panel, 360, 720);
+  const auto overlay_key = assert_row(overlay_model, "overlay",
+                                      Model::Role::Overlay, 480, 320);
+  require(bar_key != panel_key && bar_key != overlay_key &&
+              panel_key != overlay_key &&
+              bar_model->data(bar_model->index(0, 0),
+                              Model::DefaultSectionRole)
+                      .toString() == QStringLiteral("right"),
+          "neutral fixture keys or bar placement were not distinct and exact");
+
+  QQuickWindow window;
+  window.resize(208, 64);
+  window.show();
+  require(qmlRegisterType<bridge::RemotePluginSurface>(
+              "Omarchy.PluginHost", 1, 0, "RemotePluginSurface") >= 0,
+          "neutral fixture could not register the real Remote surface type");
+  QQmlEngine surface_engine;
+  QQmlComponent remote_component(&surface_engine);
+  remote_component.setData(
+      "import QtQuick\nimport Omarchy.PluginHost 1.0\n"
+      "Item { width: 64; height: 64; "
+      "RemotePluginSurface { anchors.fill: parent } }\n",
+      QUrl());
+  require(remote_component.isReady(),
+          "neutral fixture Remote surface component did not compile");
+  std::array<std::unique_ptr<QObject>, 3> wrappers;
+  std::array<bridge::RemotePluginSurface *, 3> remotes{};
+  for (std::size_t index = 0; index < remotes.size(); ++index) {
+    wrappers[index].reset(remote_component.create());
+    auto *root = qobject_cast<QQuickItem *>(wrappers[index].get());
+    remotes[index] =
+        wrappers[index]->findChild<bridge::RemotePluginSurface *>();
+    require(root && remotes[index],
+            "neutral fixture omitted a QML-completed Remote surface");
+    root->setX(static_cast<qreal>(index * 72));
+    root->setParentItem(window.contentItem());
+  }
+  const std::array keys = {bar_key, panel_key, overlay_key};
+  for (std::size_t index = 0; index < remotes.size(); ++index) {
+    require(manager->attach(keys[index], remotes[index]),
+            "neutral fixture surface did not attach through its trusted key");
+    if (!awaitFor(std::chrono::seconds(5), [&] {
+          return remotes[index]->connected() && remotes[index]->ready() &&
+                 remotes[index]->frameSequence() > 0;
+        })) {
+      const auto after_attach =
+          bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+      const auto state =
+          after_attach.empty() ? 255 : after_attach.front().last_state;
+      const auto error =
+          after_attach.empty() ? 255 : after_attach.front().last_error;
+      throw std::runtime_error(
+          "neutral fixture surface did not complete sequential attachment: " +
+          std::string(index == 0 ? "bar" : index == 1 ? "panel" : "overlay") +
+          " connected=" + std::to_string(remotes[index]->connected()) +
+          " ready=" + std::to_string(remotes[index]->ready()) +
+          " sequence=" + std::to_string(remotes[index]->frameSequence()) +
+          " inspection=" +
+          remotes[index]->inspectionState().toStdString() +
+          " state=" + std::to_string(state) +
+          " error=" + std::to_string(error));
+    }
+  }
+  if (!awaitFor(std::chrono::seconds(10), [&] {
+        return std::ranges::all_of(remotes, [](const auto *remote) {
+          return remote->connected() && remote->ready() &&
+                 remote->frameSequence() > 0;
+        });
+      })) {
+    std::string detail;
+    for (const auto *remote : remotes)
+      detail += " connected=" + std::to_string(remote->connected()) +
+                " ready=" + std::to_string(remote->ready()) +
+                " sequence=" + std::to_string(remote->frameSequence()) +
+                " inspection=" + remote->inspectionState().toStdString();
+    throw std::runtime_error(
+        "neutral fixture surfaces did not render authenticated frames:" +
+        detail);
+  }
+  const std::array<qulonglong, 3> expected_surface_ids = {1, 3, 2};
+  for (std::size_t index = 0; index < remotes.size(); ++index)
+    require(remotes[index]->surfaceId() == expected_surface_ids[index] &&
+                remotes[index]->surfaceGeneration() ==
+                    exact_binding.generation,
+            "neutral fixture host and worker surface identity disagreed");
+
+  const std::array expected = {QColor(QStringLiteral("#52677a")),
+                               QColor(QStringLiteral("#7a6652")),
+                               QColor(QStringLiteral("#647052"))};
+  std::array<QColor, 3> actual;
+  for (std::size_t index = 0; index < remotes.size(); ++index) {
+    actual[index] = paintedFrame(*remotes[index]).pixelColor(32, 32);
+    require(actual[index].alpha() == 255 && actual[index] == expected[index],
+            "neutral fixture surface did not render its exact opaque pixel");
+  }
+  require(actual[0] != actual[1] && actual[0] != actual[2] &&
+              actual[1] != actual[2],
+          "neutral fixture surface frames were not visually distinct");
+  require(await([&] { return pluginScopePaths(exact_binding).size() == 1; }),
+          "neutral fixture did not occupy exactly one systemd sandbox scope");
+
+  manager.reset();
+  require(std::ranges::none_of(remotes, [](const auto *remote) {
+            return remote->connected();
+          }),
+          "manager teardown left a neutral surface transport connected");
+  require(awaitFor(std::chrono::seconds(5),
+                   [&] { return pluginScopePaths(exact_binding).empty(); }),
+          "manager teardown did not reap the sole neutral fixture worker");
+}
+
 void zero_surface_runtime_has_no_publication_authority() {
   if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
     return;
@@ -3173,4 +3437,8 @@ void run_plugin_manager_tests() {
 
 void run_public_permission_lifecycle_test() {
   public_permission_lifecycle_is_closed_until_exact_consent();
+}
+
+void run_neutral_surfaces_real_bwrap_test() {
+  neutral_surfaces_share_one_real_sandbox_and_teardown();
 }

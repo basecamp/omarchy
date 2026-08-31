@@ -1,5 +1,6 @@
 #include "plugin_session.hpp"
 
+#include "omarchy/plugin/wire/control.hpp"
 #include "omarchy/plugin/wire/surface_name.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 #include "permission_projection.hpp"
@@ -243,9 +244,13 @@ PluginSession::PluginSession(
   surfaces_.reserve(manifest_.surface_names.size());
   for (std::size_t index = 0; index < manifest_.surface_names.size(); ++index) {
     const auto &name = manifest_.surface_names[index];
+    const auto binding =
+        wire::manifest_surface_binding(name, index, token_.generation);
+    if (!binding)
+      throw std::invalid_argument("invalid canonical manifest surface binding");
     surfaces_.push_back({
         .name = name,
-        .key = {.id = index + 1, .generation = token_.generation},
+        .key = {.id = binding->id, .generation = binding->generation},
         .endpoint = nullptr,
     });
   }

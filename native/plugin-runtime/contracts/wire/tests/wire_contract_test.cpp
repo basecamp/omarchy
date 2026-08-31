@@ -598,6 +598,17 @@ void surface_binding_test() {
               decoded.generation == binding.generation &&
               decoded.surface == binding.surface,
           "surface binding did not round trip exactly");
+  const auto first = manifest_surface_binding("bar", 0, 17);
+  // A selected surface retains its original manifest index; selection never
+  // renumbers authority within a worker.
+  const auto third = manifest_surface_binding("overlay", 2, 17);
+  require(first && first->id == 1 && first->generation == 17 &&
+              first->surface == "bar" && third && third->id == 3 &&
+              third->generation == 17 && third->surface == "overlay" &&
+              !manifest_surface_binding("bar", 0, 0) &&
+              !manifest_surface_binding("bad/name", 0, 17) &&
+              !manifest_surface_binding("bar", kMaximumPluginSurfaces, 17),
+          "canonical manifest surface identity widened or became ambiguous");
   auto malformed = encoded;
   malformed[16] = std::byte{64};
   require(!decode_surface_binding(malformed, decoded),

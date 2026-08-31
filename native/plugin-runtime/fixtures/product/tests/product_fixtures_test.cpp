@@ -2,14 +2,17 @@
 
 #include <QEventLoop>
 #include <QGuiApplication>
+#include <QColor>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQuickItem>
 #include <QSet>
 #include <QStringList>
 #include <QTimer>
 #include <QVariant>
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -171,6 +174,10 @@ struct LoadedFixture {
   std::unique_ptr<QObject> object;
 };
 
+std::unique_ptr<LoadedFixture> loadEntry(std::string_view name,
+                                         std::string_view relative_qml,
+                                         FakeRuntime &runtime);
+
 std::unique_ptr<LoadedFixture> load(std::string_view name,
                                     FakeRuntime &runtime) {
   const auto directory = kRoot / name;
@@ -178,10 +185,16 @@ std::unique_ptr<LoadedFixture> load(std::string_view name,
       manifest::parse_manifest_v2(read_text(directory / "manifest.json"));
   require(parsed.runtime.api_version == 1,
           "fixture selected an unsupported runtime API");
-  const auto qml = directory / parsed.runtime.qml;
-  require(qml.lexically_normal().string().starts_with(directory.string()),
-          "fixture entry point escaped its product directory");
+  return loadEntry(name, parsed.runtime.qml, runtime);
+}
 
+std::unique_ptr<LoadedFixture> loadEntry(std::string_view name,
+                                         std::string_view relative_qml,
+                                         FakeRuntime &runtime) {
+  const auto directory = kRoot / name;
+  const auto qml = (directory / relative_qml).lexically_normal();
+  require(qml.string().starts_with(directory.string()),
+          "fixture entry point escaped its product directory");
   auto loaded = std::make_unique<LoadedFixture>();
   loaded->engine.rootContext()->setContextProperty(QStringLiteral("runtime"),
                                                     &runtime);
@@ -194,6 +207,44 @@ std::unique_ptr<LoadedFixture> load(std::string_view name,
   loaded->object.reset(component.create());
   require(loaded->object != nullptr, "fixture QML did not instantiate");
   return loaded;
+}
+
+void test_neutral_surface_fixture() {
+  constexpr std::string_view name = "neutral-surfaces";
+  const auto directory = kRoot / name;
+  const auto parsed =
+      manifest::parse_manifest_v2(read_text(directory / "manifest.json"));
+  require(parsed.id == "org.omarchy.fixture.neutral-surfaces" &&
+              parsed.requests.empty() && parsed.surface_names.size() == 3 &&
+              parsed.runtime.surface_qml.size() == 3,
+          "neutral fixture did not declare one zero-permission three-surface runtime");
+
+  FakeRuntime runtime({});
+  const std::array expected_names = {std::string_view("bar"),
+                                     std::string_view("overlay"),
+                                     std::string_view("panel")};
+  const std::array expected_colors = {QColor(QStringLiteral("#52677a")),
+                                      QColor(QStringLiteral("#647052")),
+                                      QColor(QStringLiteral("#7a6652"))};
+  for (std::size_t index = 0; index < parsed.runtime.surface_qml.size();
+       ++index) {
+    const auto &entry = parsed.runtime.surface_qml[index];
+    require(entry.surface == expected_names[index],
+            "neutral fixture surface names were not canonical and exact");
+    auto loaded = loadEntry(name, entry.qml, runtime);
+    auto *item = qobject_cast<QQuickItem *>(loaded->object.get());
+    require(item && item->width() > 0 && item->height() > 0 &&
+                item->property("color").value<QColor>() ==
+                    expected_colors[index],
+            "neutral fixture root was not a visible distinct QQuickItem");
+    if (entry.surface != "bar") {
+      require(QMetaObject::invokeMethod(item, "open") &&
+                  item->property("opened").toBool() &&
+                  QMetaObject::invokeMethod(item, "close") &&
+                  !item->property("opened").toBool(),
+              "neutral panel or overlay did not expose open and close");
+    }
+  }
 }
 
 void test_permission_aware_fixtures() {
@@ -244,6 +295,7 @@ int main(int argc, char **argv) {
   QGuiApplication application(argc, argv);
   try {
     test_permission_aware_fixtures();
+    test_neutral_surface_fixture();
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

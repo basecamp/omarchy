@@ -113,8 +113,6 @@ bool valid_typed_packet(const wire::PacketView &packet,
               packet.header.message_type ==
                   wire::kSurfaceSelectionAcceptedMessage ||
               packet.header.message_type ==
-                  wire::kSurfaceBindingAcceptedMessage ||
-              packet.header.message_type ==
                   wire::kSurfaceOpenAcceptedMessage) &&
              packet.payload.empty();
     if (packet.header.message_type == wire::kPermissionSnapshotMessage)
@@ -125,8 +123,7 @@ bool valid_typed_packet(const wire::PacketView &packet,
           packet.payload.size());
       return wire::valid_surface_name(name);
     }
-    if (packet.header.message_type == wire::kSurfaceBindingMessage ||
-        packet.header.message_type == wire::kSurfaceOpenMessage) {
+    if (packet.header.message_type == wire::kSurfaceOpenMessage) {
       wire::SurfaceBinding binding;
       return wire::decode_surface_binding(packet.payload, binding);
     }

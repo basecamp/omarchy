@@ -18,6 +18,7 @@ void run_surface_endpoint_tests();
 void run_surface_endpoint_owner_tests();
 void run_plugin_manager_tests();
 void run_public_permission_lifecycle_test();
+void run_neutral_surfaces_real_bwrap_test();
 
 namespace {
 
@@ -467,6 +468,13 @@ int main(int argc, char **argv) {
       if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
         return 77;
       run_public_permission_lifecycle_test();
+      return 0;
+    }
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--neutral-surfaces-real-bwrap-only") {
+      if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
+        return 77;
+      run_neutral_surfaces_real_bwrap_test();
       return 0;
     }
     run();

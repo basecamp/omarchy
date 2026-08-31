@@ -62,6 +62,7 @@ if(BUILD_TESTING)
   omarchy_plugin_target_defaults(omarchy-plugin-surface-service-test)
   target_compile_definitions(omarchy-plugin-surface-service-test PRIVATE
     OMARCHY_PLUGIN_MANAGER_TESTING
+    OMARCHY_PRODUCT_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product"
     OMARCHY_RUNTIME_BOOTSTRAP_TESTING
     OMARCHY_RUNTIME_ROOTS_TESTING
     OMARCHY_SURFACE_ENDPOINT_TESTING
@@ -129,4 +130,13 @@ if(BUILD_TESTING)
     SKIP_RETURN_CODE 77
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
     LABELS "integration;shell;bridge;security;permissions;lifecycle")
+
+  add_test(NAME plugin-neutral-surfaces-real-bwrap
+    COMMAND omarchy-plugin-surface-service-test
+            --neutral-surfaces-real-bwrap-only)
+  set_tests_properties(plugin-neutral-surfaces-real-bwrap PROPERTIES
+    TIMEOUT 30
+    SKIP_RETURN_CODE 77
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software"
+    LABELS "integration;shell;bridge;security;sandbox;real-bwrap;fixtures")
 endif()

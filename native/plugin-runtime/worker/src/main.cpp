@@ -219,10 +219,6 @@ private:
         apply_surface_selection(std::move(packet));
         return;
       }
-      if (packet.header.message_type == wire::kSurfaceBindingMessage) {
-        apply_surface_binding(std::move(packet));
-        return;
-      }
       if (pending_permission_snapshot_ ||
           packet.header.message_type != wire::kPermissionSnapshotMessage ||
           packet.header.correlation_id != 0 || !packet.descriptors.empty()) {
@@ -235,10 +231,6 @@ private:
     if (endpoint.role() == wire::EndpointRole::control && broker_api_) {
       if (packet.header.message_type == wire::kSurfaceSelectionMessage) {
         apply_surface_selection(std::move(packet));
-        return;
-      }
-      if (packet.header.message_type == wire::kSurfaceBindingMessage) {
-        apply_surface_binding(std::move(packet));
         return;
       }
       if (packet.header.message_type == wire::kSurfaceOpenMessage) {
@@ -293,21 +285,6 @@ private:
       fatal("surface selection acknowledgement failed");
   }
 
-  void apply_surface_binding(worker::ReceivedPacket packet) {
-    wire::SurfaceBinding binding;
-    if (!startup_.loaded() || packet.header.correlation_id != 0 ||
-        !packet.descriptors.empty() ||
-        !wire::decode_surface_binding(packet.payload, binding) ||
-        !runtime_.bind_surface(
-            binding.surface,
-            {.id = binding.id, .generation = binding.generation})) {
-      fatal("surface binding failed runtime validation");
-      return;
-    }
-    if (!control_.send(wire::kSurfaceBindingAcceptedMessage, {}, 0))
-      fatal("surface binding acknowledgement failed");
-  }
-
   void apply_surface_open(worker::ReceivedPacket packet) {
     wire::SurfaceBinding binding;
     if (!startup_.loaded() || packet.header.correlation_id != 0 ||
@@ -335,7 +312,8 @@ private:
       fatal("permission snapshot failed runtime validation");
       return;
     }
-    QTimer::singleShot(0, &control_notifier_, [this] {
+    const auto generation = packet.header.launch_generation;
+    QTimer::singleShot(0, &control_notifier_, [this, generation] {
       if (startup_.terminal())
         return;
       if (surface_selection_received_) {
@@ -371,6 +349,21 @@ private:
                                       selected_entry_);
         if (!loaded) {
           fatal(loaded.detail);
+          return;
+        }
+      }
+      for (std::size_t index = 0; index < manifest_.surface_names.size();
+           ++index) {
+        const auto &surface_name = manifest_.surface_names[index];
+        if (surface_selection_received_ && surface_name != selected_surface_)
+          continue;
+        const auto binding = wire::manifest_surface_binding(
+            surface_name, index, generation);
+        if (!binding ||
+            !runtime_.bind_surface(
+                surface_name,
+                {.id = binding->id, .generation = binding->generation})) {
+          fatal("manifest surface binding failed runtime validation");
           return;
         }
       }
