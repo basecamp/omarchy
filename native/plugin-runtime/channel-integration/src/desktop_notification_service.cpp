@@ -57,7 +57,9 @@ bool DesktopNotificationService::send(std::string_view plugin,
     auto *service = static_cast<DesktopNotificationService *>(context);
     if (service == nullptr || !service->transport_)
       return false;
-    std::scoped_lock lock(service->transport_mutex_);
+    std::unique_lock lock(service->transport_mutex_, std::try_to_lock);
+    if (!lock.owns_lock())
+      return false;
     const auto utf8 = [](std::string_view value) {
       return QString::fromUtf8(value.data(),
                                static_cast<qsizetype>(value.size()));

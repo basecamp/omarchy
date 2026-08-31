@@ -8,13 +8,14 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
-#include <vector>
 
 namespace channel = omarchy::plugin_runtime::channel;
 
@@ -38,19 +39,33 @@ struct Probe final : channel::DesktopNotificationTransport {
   }
 };
 
-struct ConcurrencyProbe final : channel::DesktopNotificationTransport {
-  std::atomic<unsigned> active = 0;
-  std::atomic<unsigned> calls = 0;
-  std::atomic<bool> overlapped = false;
-
+struct HoldingProbe final : channel::DesktopNotificationTransport {
   bool send(const channel::DesktopNotification &) noexcept override {
-    if (active.fetch_add(1) != 0)
-      overlapped = true;
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-    --active;
+    std::unique_lock lock(mutex);
     ++calls;
+    entered = true;
+    changed.notify_all();
+    changed.wait(lock, [&] { return released; });
     return true;
   }
+
+  bool await_entered() {
+    std::unique_lock lock(mutex);
+    return changed.wait_for(lock, std::chrono::seconds(1),
+                            [&] { return entered; });
+  }
+
+  void release() {
+    std::scoped_lock lock(mutex);
+    released = true;
+    changed.notify_all();
+  }
+
+  std::mutex mutex;
+  std::condition_variable changed;
+  unsigned calls = 0;
+  bool entered = false;
+  bool released = false;
 };
 
 void callback_forwards_only_bounded_fields() {
@@ -131,24 +146,31 @@ void dbus_reply_requires_only_the_specified_type() {
           "malformed or error notification reply was accepted");
 }
 
-void shared_transport_is_serialized() {
-  auto transport = std::make_unique<ConcurrencyProbe>();
+void busy_shared_transport_fails_closed_promptly() {
+  auto transport = std::make_unique<HoldingProbe>();
   auto *probe = transport.get();
   channel::DesktopNotificationService service(std::move(transport));
-  std::atomic<bool> succeeded = true;
-  std::vector<std::thread> callers;
-  for (unsigned index = 0; index < 8; ++index) {
-    callers.emplace_back([&] {
-      if (!channel::DesktopNotificationService::send(
-              "org.example.clock", "timer", "Tea is ready", "Five minutes",
-              &service))
-        succeeded = false;
-    });
+  std::atomic<bool> first_succeeded = false;
+  std::thread first([&] {
+    first_succeeded = channel::DesktopNotificationService::send(
+        "org.example.clock", "timer", "Tea is ready", "Five minutes",
+        &service);
+  });
+  const bool entered = probe->await_entered();
+  if (!entered) {
+    probe->release();
+    first.join();
+    require(false, "first notification did not enter transport");
   }
-  for (auto &caller : callers)
-    caller.join();
-  require(succeeded && probe->calls == 8 && !probe->overlapped,
-          "shared notification transport executed concurrently");
+  const auto started = std::chrono::steady_clock::now();
+  const bool second = channel::DesktopNotificationService::send(
+      "org.example.clock", "timer", "Second", "Must not wait", &service);
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+  probe->release();
+  first.join();
+  require(!second && elapsed < std::chrono::milliseconds(100) &&
+              first_succeeded && probe->calls == 1,
+          "busy shared notification transport did not fail closed promptly");
 }
 
 void production_services_enable_only_notifications() {
@@ -190,7 +212,7 @@ int main(int argc, char **argv) {
     callback_forwards_only_bounded_fields();
     dbus_message_has_no_plugin_control_surface();
     dbus_reply_requires_only_the_specified_type();
-    shared_transport_is_serialized();
+    busy_shared_transport_fails_closed_promptly();
     production_services_enable_only_notifications();
     return 0;
   } catch (const std::exception &error) {
