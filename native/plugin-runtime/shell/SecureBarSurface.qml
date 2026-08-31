@@ -12,6 +12,9 @@ Item {
   property var bar: null
   property int attachAttempts: 0
   readonly property int maximumAttachAttempts: 40
+  // Native RemotePluginSurface owns exact pointer/touch routing into the
+  // sandbox. The bar must not cover it with its ordinary click/reorder layer.
+  readonly property bool routesOwnPointerInput: true
   readonly property bool barReady: bar !== null
     && bar !== undefined
     && typeof bar.vertical === "boolean"

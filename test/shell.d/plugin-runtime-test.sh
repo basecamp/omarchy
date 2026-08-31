@@ -86,6 +86,12 @@ grep -F 'Math.min(maximumHeight, bar.barSize)' "$runtime_root/shell/SecureBarSur
   fail "horizontal secure bar surfaces can expand the host bar thickness"
 grep -F 'Math.min(maximumWidth, bar.barSize)' "$runtime_root/shell/SecureBarSurface.qml" >/dev/null ||
   fail "vertical secure bar surfaces can expand the host bar thickness"
+grep -F 'readonly property bool routesOwnPointerInput: true' "$runtime_root/shell/SecureBarSurface.qml" >/dev/null ||
+  fail "secure bar surface does not declare native pointer routing ownership"
+grep -F 'activeItem.routesOwnPointerInput === true' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "bar slots do not detect native pointer-routing surfaces"
+grep -F '&& !slot.routesOwnPointerInput' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "ordinary bar click/reorder layer still covers secure surface input"
 grep -F 'model: PluginManager.panelSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure panels do not consume the typed role model"
 grep -F 'model: PluginManager.overlaySurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
