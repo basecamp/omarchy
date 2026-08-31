@@ -29,6 +29,11 @@ qt_add_qml_module(omarchy-plugin-host-bridge
 )
 
 omarchy_plugin_target_defaults(omarchy-plugin-host-bridge)
+set_target_properties(omarchy-plugin-host-bridge PROPERTIES
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN YES)
+target_link_options(omarchy-plugin-host-bridge PRIVATE
+  "LINKER:--exclude-libs,ALL")
 target_include_directories(omarchy-plugin-host-bridge PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
   "${CMAKE_CURRENT_SOURCE_DIR}/../trusted-bridge/src"

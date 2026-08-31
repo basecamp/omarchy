@@ -172,6 +172,17 @@ verify_elf "$bridge" shared "$bridge_allowed" libQt6Qml.so.6
 needed_libraries "$bridge" | grep -Fx libseccomp.so.2 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libseccomp.so.2"
 needed_libraries "$bridge" | grep -Fx libsystemd.so.0 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libsystemd.so.0"
 
+expected_bridge_exports=$(cat <<'EOF'
+_Z37qml_register_types_Omarchy_PluginHostv
+omarchy_plugin_host_worker_path_v1
+qt_plugin_instance
+qt_plugin_query_metadata_v2
+EOF
+)
+bridge_exports=$(nm -D --defined-only "$bridge" | awk '$2 ~ /^[BDRT]$/ {print $3}' | LC_ALL=C sort)
+[[ $bridge_exports == "$expected_bridge_exports" ]] ||
+  fail "libomarchy-plugin-host-bridge.so exports an unexpected strong symbol"
+
 if ! worker_contract=$("$worker" --runtime-worker-path 2>/dev/null); then
   fail "worker runtime path contract is unavailable"
 fi
