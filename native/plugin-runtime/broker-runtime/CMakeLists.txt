@@ -50,7 +50,7 @@ if(BUILD_TESTING)
     omarchy-plugin-broker-runtime)
   add_test(NAME plugin-audit-store COMMAND omarchy-plugin-audit-store-test)
   set_tests_properties(plugin-audit-store PROPERTIES
-    TIMEOUT 30 LABELS "unit;integration;adversarial;audit")
+    TIMEOUT 30 LABELS "unit;integration;adversarial;audit;security")
 
   add_executable(omarchy-plugin-dynamic-broker-runtime-test
     tests/dynamic_broker_runtime_test.cpp)
@@ -61,6 +61,8 @@ if(BUILD_TESTING)
     omarchy-plugin-broker-runtime)
   add_test(NAME plugin-dynamic-broker-runtime
     COMMAND omarchy-plugin-dynamic-broker-runtime-test)
+  set_tests_properties(plugin-dynamic-broker-runtime PROPERTIES
+    LABELS "security")
 
   add_executable(omarchy-plugin-gesture-eligibility-test
     tests/gesture_eligibility_test.cpp)

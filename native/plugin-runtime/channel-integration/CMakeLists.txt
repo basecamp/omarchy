@@ -133,7 +133,7 @@ if(BUILD_TESTING)
   set_tests_properties(plugin-channel-integration-bwrap PROPERTIES
     TIMEOUT 30
     SKIP_RETURN_CODE 77
-    LABELS "integration;adversarial;protocol;broker;launcher;sandbox;linux"
+    LABELS "integration;adversarial;protocol;broker;launcher;sandbox;linux;security"
   )
 
   if(TARGET omarchy-plugin-authenticated-session)

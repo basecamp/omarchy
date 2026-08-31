@@ -38,6 +38,6 @@ if(BUILD_TESTING)
   )
   add_test(NAME plugin-broker-core COMMAND omarchy-plugin-broker-core-test)
   set_tests_properties(plugin-broker-core PROPERTIES
-    LABELS "unit;protocol;adversarial;broker"
+    LABELS "unit;protocol;adversarial;broker;security"
   )
 endif()

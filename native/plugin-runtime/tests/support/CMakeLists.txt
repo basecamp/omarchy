@@ -34,7 +34,7 @@ if(TARGET omarchy-plugin-wire)
     omarchy-plugin-wire
   )
   add_test(NAME plugin-malicious-peer COMMAND omarchy-plugin-malicious-peer-test)
-  set_tests_properties(plugin-malicious-peer PROPERTIES LABELS "integration;adversarial;linux" TIMEOUT 10)
+  set_tests_properties(plugin-malicious-peer PROPERTIES LABELS "integration;adversarial;linux;security" TIMEOUT 10)
 endif()
 
 option(PLUGIN_SECURITY_BUILD_FUZZERS "Build bounded libFuzzer targets" OFF)

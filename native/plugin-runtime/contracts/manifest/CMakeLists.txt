@@ -44,6 +44,6 @@ if(BUILD_TESTING)
   add_test(NAME plugin-manifest-v2-contract COMMAND omarchy-plugin-manifest-contract-test)
   set_tests_properties(plugin-manifest-v2-contract PROPERTIES
     TIMEOUT 15
-    LABELS "unit;protocol;adversarial"
+    LABELS "unit;protocol;adversarial;security"
   )
 endif()

@@ -101,6 +101,6 @@ add_test(NAME plugin-adversarial-harness
   COMMAND omarchy-plugin-adversarial-harness-test
 )
 set_tests_properties(plugin-adversarial-harness PROPERTIES
-  LABELS "unit;integration;adversarial;fixtures;linux"
+  LABELS "unit;integration;adversarial;fixtures;linux;security"
   TIMEOUT 15
 )

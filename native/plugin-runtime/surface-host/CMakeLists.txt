@@ -85,6 +85,6 @@ if(BUILD_TESTING)
     COMMAND omarchy-plugin-surface-host-render-session-test)
   set_tests_properties(plugin-render-session PROPERTIES
     TIMEOUT 30
-    LABELS "integration;adversarial;render;qml;protocol"
+    LABELS "integration;adversarial;render;qml;protocol;security"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0")
 endif()

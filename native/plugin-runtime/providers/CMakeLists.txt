@@ -41,7 +41,7 @@ if(BUILD_TESTING)
   )
   add_test(NAME plugin-providers COMMAND omarchy-plugin-providers-test)
   set_tests_properties(plugin-providers PROPERTIES
-    LABELS "unit;protocol;adversarial;providers"
+    LABELS "unit;protocol;adversarial;providers;security"
   )
 
   add_executable(omarchy-plugin-provider-schema-test

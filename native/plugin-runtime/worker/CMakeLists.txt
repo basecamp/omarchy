@@ -98,7 +98,7 @@ if(BUILD_TESTING)
   )
   add_test(NAME plugin-worker-runtime COMMAND omarchy-plugin-worker-runtime-test)
   set_tests_properties(plugin-worker-runtime PROPERTIES
-    LABELS "unit;integration;adversarial;render"
+    LABELS "unit;integration;adversarial;render;security"
     TIMEOUT 30
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
   )
@@ -111,7 +111,7 @@ if(BUILD_TESTING)
   )
   add_test(NAME plugin-worker-channel COMMAND omarchy-plugin-worker-channel-test)
   set_tests_properties(plugin-worker-channel PROPERTIES
-    LABELS "unit;protocol;adversarial"
+    LABELS "unit;protocol;adversarial;security"
     TIMEOUT 20
   )
 

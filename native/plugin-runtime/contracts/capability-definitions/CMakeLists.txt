@@ -68,6 +68,8 @@ if(BUILD_TESTING)
 
   add_test(NAME capability-definition-contract
     COMMAND omarchy-plugin-capability-definition-test)
+  set_tests_properties(capability-definition-contract PROPERTIES
+    LABELS "security")
   add_test(NAME capability-catalog-determinism
     COMMAND "${CMAKE_COMMAND}"
       -DGENERATOR=$<TARGET_FILE:omarchy-plugin-generate-capability-catalog>

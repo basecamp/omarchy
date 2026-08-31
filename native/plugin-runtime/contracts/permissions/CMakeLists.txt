@@ -65,6 +65,6 @@ if(BUILD_TESTING)
            COMMAND omarchy-plugin-permission-contract-test)
   set_tests_properties(plugin-permission-contract PROPERTIES
     TIMEOUT 15
-    LABELS "unit;protocol;adversarial"
+    LABELS "unit;protocol;adversarial;security"
   )
 endif()

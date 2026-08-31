@@ -37,6 +37,6 @@ if(BUILD_TESTING)
   set_tests_properties(plugin-trusted-bridge PROPERTIES
     TIMEOUT 30
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
-    LABELS "unit;integration;adversarial;render;qml"
+    LABELS "unit;integration;adversarial;render;qml;security"
   )
 endif()
