@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Hibernate the system
+# omarchy:group=system
+
+set -uo pipefail
+
+log_hibernate_path() {
+  logger --tag omarchy-system-hibernate -- "$*" 2>/dev/null || true
+}
+
+# A session lock is still the only authentication after resume on an
+# unencrypted install, or on an encrypted install that unlocks automatically.
+# Those paths go straight through the ordinary sleep monitor.
+if ! omarchy-hibernation-boot-auth; then
+  log_hibernate_path "boot-auth=unavailable marker=none action=ordinary-hibernate"
+  exec systemctl hibernate
+fi
+
+# The user sleep monitor cannot learn the sleep operation from logind's
+# PrepareForSleep signal. Hold an advisory lock while this explicit hibernate
+# request is in flight so the monitor can distinguish it from suspend without
+# leaving stale state behind if either process dies.
+runtime_dir=${XDG_RUNTIME_DIR:-}
+if [[ -z $runtime_dir || ! -d $runtime_dir ]]; then
+  log_hibernate_path "boot-auth=interactive marker=unavailable reason=runtime-dir action=ordinary-hibernate"
+  exec systemctl hibernate
+fi
+
+marker="$runtime_dir/omarchy-hibernate-boot-auth.lock"
+if ! exec {marker_fd}>>"$marker"; then
+  log_hibernate_path "boot-auth=interactive marker=unavailable reason=open action=ordinary-hibernate"
+  exec systemctl hibernate
+fi
+if ! flock -n "$marker_fd"; then
+  log_hibernate_path "boot-auth=interactive marker=unavailable reason=already-held action=ordinary-hibernate"
+  exec systemctl hibernate
+fi
+
+cleanup_marker() {
+  flock -u "$marker_fd" 2>/dev/null || true
+  rm -f -- "$marker"
+}
+trap cleanup_marker EXIT INT TERM
+
+log_hibernate_path "boot-auth=interactive marker=held action=hibernate"
+systemctl hibernate
+status=$?
+log_hibernate_path "boot-auth=interactive marker=releasing hibernate-status=$status"
+exit "$status"

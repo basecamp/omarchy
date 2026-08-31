@@ -66,6 +66,54 @@ if kill -0 "$producer_pid" 2>/dev/null; then
 fi
 pass "sleep monitor reaps its event producer"
 
+# An explicit encrypted hibernate already authenticates through the initramfs
+# LUKS prompt. The hibernate command holds this lock only for that operation,
+# allowing the monitor to skip a redundant desktop prompt.
+runtime_dir="$tmpdir/runtime"
+boot_auth_marker="$runtime_dir/omarchy-hibernate-boot-auth.lock"
+boot_auth_ready="$runtime_dir/boot-auth-ready"
+mkdir -p "$runtime_dir"
+(
+  exec 9>>"$boot_auth_marker"
+  flock 9
+  touch "$boot_auth_ready"
+  exec sleep 30
+) &
+boot_auth_pid=$!
+
+for _ in {1..100}; do
+  [[ -e $boot_auth_ready ]] && break
+  sleep 0.01
+done
+[[ -e $boot_auth_ready ]] || fail "sleep monitor test acquires the hibernate marker"
+
+OMARCHY_PATH="$mock_omarchy" \
+  XDG_RUNTIME_DIR="$runtime_dir" \
+  PATH="$mock_bin:$PATH" \
+  PRODUCER_PID_FILE="$producer_pid_file" \
+  LOCK_LOG="$lock_log" \
+  "$sleep_monitor"
+
+(( $(wc -l <"$lock_log") == 1 )) ||
+  fail "sleep monitor accepts interactive boot authentication for hibernate"
+pass "sleep monitor accepts interactive boot authentication for hibernate"
+
+kill "$boot_auth_pid" 2>/dev/null || true
+wait "$boot_auth_pid" 2>/dev/null || true
+
+# A leftover file without a live holder is not authority to skip locking.
+: >"$boot_auth_marker"
+OMARCHY_PATH="$mock_omarchy" \
+  XDG_RUNTIME_DIR="$runtime_dir" \
+  PATH="$mock_bin:$PATH" \
+  PRODUCER_PID_FILE="$producer_pid_file" \
+  LOCK_LOG="$lock_log" \
+  "$sleep_monitor"
+
+(( $(wc -l <"$lock_log") == 2 )) ||
+  fail "sleep monitor ignores a stale hibernate marker"
+pass "sleep monitor ignores a stale hibernate marker"
+
 # Terminating the monitor must also clean up the producer instead of orphaning
 # it under the user systemd instance.
 cat >"$mock_bin/dbus-monitor" <<'SH'

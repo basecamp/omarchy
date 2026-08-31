@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# omarchy:summary=Check whether hibernate resume requires interactive boot authentication
+# omarchy:args=[root-device] [kernel-cmdline]
+# omarchy:hidden=true
+
+root_source=${1:-$(findmnt -no SOURCE / 2>/dev/null)}
+root_source=${root_source%%\[*}
+cmdline=${2:-$(< /proc/cmdline)}
+
+# Omarchy's encrypted install maps the root filesystem directly through
+# dm-crypt and unlocks it with mkinitcpio's encrypt hook. With no cryptkey on
+# the kernel command line, restoring a hibernation image necessarily passes
+# through the interactive LUKS prompt first.
+[[ -n $root_source ]] || exit 1
+[[ $(lsblk -dnro TYPE -- "$root_source" 2>/dev/null) == crypt ]] || exit 1
+[[ " $cmdline " == *" cryptdevice="* ]] || exit 1
+[[ " $cmdline " != *" cryptkey="* ]] || exit 1
