@@ -1,23 +1,42 @@
 #!/bin/bash
 # Pi / Oh My Pi provider wiring and TUI launch. Sourced; do not run.
+models_target() { # models_target <dir> -> the models config file this agent actually reads
+  # Oh My Pi reads models.yml/models.yaml with precedence and treats models.json as a
+  # one-time migration source, so ~/.omp gets YAML. JSON is valid YAML; we write JSON text.
+  if [[ -f $1/models.yml ]]; then printf '%s/models.yml' "$1"
+  elif [[ -f $1/models.yaml ]]; then printf '%s/models.yaml' "$1"
+  elif [[ $1 == */.omp/* ]]; then printf '%s/models.yml' "$1"
+  else printf '%s/models.json' "$1"; fi
+}
 wire() {
-  local r=$1 model=$2 p d cur tmp
+  local r=$1 model=$2 p d tgt cur tmp status
   p=$(jq -nc --arg u "http://127.0.0.1:$PORT/v1" --arg m "$model" --arg n "$(jq -r '.model.name//.model.id' <<<"$r")" \
     --argjson tools "$(jq -r '.capabilities.tools//false' <<<"$r")" \
-    '{baseUrl:$u,apiKey:"local",api:"openai-completions",models:[{id:$m,name:($n+" · local"),tools:$tools,input:["text"],cost:{input:0,output:0,cacheRead:0,cacheWrite:0}}]}')
+    '{baseUrl:$u,apiKey:"local",api:"openai-completions",models:[{id:$m,name:($n+" · local"),supportsTools:$tools,input:["text"],cost:{input:0,output:0,cacheRead:0,cacheWrite:0}}]}')
   for d in "$HOME_DIR/.pi/agent" "$HOME_DIR/.omp/agent"; do
     mkdir -p "$d"
-    cur='{}'; [[ -f $d/models.json ]] && cur=$(<"$d/models.json")
-    jq -e 'type=="object"' >/dev/null <<<"$cur" || { fail "invalid $d/models.json"; return; }
-    tmp=$(mktemp "$d/.m.XXXXXX") && jq --argjson p "$p" '.providers["omarchy-local"]=$p' <<<"$cur" >"$tmp" && mv "$tmp" "$d/models.json"
+    tgt=$(models_target "$d"); status=wired
+    cur='{}'
+    if [[ -f $tgt ]]; then cur=$(<"$tgt")
+    elif [[ $tgt == *.yml && -f $d/models.json ]]; then cur=$(<"$d/models.json"); fi
+    if jq -e 'type=="object"' >/dev/null 2>&1 <<<"$cur"; then
+      tmp=$(mktemp "$d/.m.XXXXXX") && jq --argjson p "$p" '.providers["omarchy-local"]=$p' <<<"$cur" >"$tmp" && mv "$tmp" "$tgt"
+    else
+      status=manual # hand-written YAML we cannot merge; leave it alone and say so
+    fi
+    sw '.active.agents[$k]=$v' --arg k "$(basename "${d%/agent}" | tr -d .)" --arg v "$status"
     cur='{}'; [[ -f $d/settings.json ]] && cur=$(<"$d/settings.json")
     tmp=$(mktemp "$d/.s.XXXXXX") && jq --arg m "$model" 'if .defaultProvider=="omarchy-local" then .defaultModel=$m else . end' <<<"$cur" >"$tmp" && mv "$tmp" "$d/settings.json"
   done
 }
 unwire() {
-  local d tmp
+  local d f tmp
   for d in "$HOME_DIR/.pi/agent" "$HOME_DIR/.omp/agent"; do
-    [[ -f $d/models.json ]] && tmp=$(mktemp "$d/.m.XXXXXX") && jq 'del(.providers["omarchy-local"])' "$d/models.json" >"$tmp" && mv "$tmp" "$d/models.json"
+    for f in "$d/models.json" "$d/models.yml" "$d/models.yaml"; do
+      [[ -f $f ]] || continue
+      jq -e 'type=="object"' "$f" >/dev/null 2>&1 || continue
+      tmp=$(mktemp "$d/.m.XXXXXX") && jq 'del(.providers["omarchy-local"])' "$f" >"$tmp" && mv "$tmp" "$f"
+    done
     [[ -f $d/settings.json ]] && tmp=$(mktemp "$d/.s.XXXXXX") && jq 'if .defaultProvider=="omarchy-local" then del(.defaultProvider,.defaultModel) else . end' "$d/settings.json" >"$tmp" && mv "$tmp" "$d/settings.json"
   done
   return 0

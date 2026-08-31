@@ -5,7 +5,11 @@ set -euo pipefail
 HOME_DIR="${OMARCHY_AI_USER_HOME:-$HOME}"
 REPO="${OMARCHY_AI_REGISTRY_REPO:-$HOME_DIR/omarchy/local-ai}"
 REG="${OMARCHY_AI_REGISTRY:-$REPO/registry}"
+IDX="$REG/index/recipes.json"
 REMOTE="${OMARCHY_AI_REGISTRY_REMOTE:-https://github.com/0xSero/local-ai-registry.git}"
+# The registry is pinned by commit; registry.pin moves it deliberately. Empty OMARCHY_AI_REGISTRY_PIN tracks main.
+MODELS_SUB='~/.cache/omarchy/local-ai/models'
+CACHE_SUB='~/.cache/omarchy/local-ai/cache'
 ST="${OMARCHY_AI_STATE:-${XDG_STATE_HOME:-$HOME_DIR/.local/state}/omarchy/local-ai}"
 SNAP="$ST/snapshot.json"
 CTR="${OMARCHY_AI_CONTAINER:-omarchy-local-ai}"
@@ -16,7 +20,8 @@ POLL="${OMARCHY_AI_POLL:-2}"
 TIMEOUT="${OMARCHY_AI_TIMEOUT:-7200}"
 HERE=$(cd -- "$(dirname -- "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")")" && pwd)
 SELF="$HERE/$(basename "${BASH_SOURCE[0]}")"
-EMPTY='{"schemaVersion":"omarchy-local-ai/3","state":"uninitialized","updatedAt":"","error":"","operation":{"name":"","recipeId":"","percent":0,"indeterminate":false,"detail":""},"active":{"recipeId":"","modelId":"","name":"","servedModel":"","container":"","endpoint":"","port":0,"gpuIndices":[],"apiReady":false,"toolCallReady":false,"tools":false},"gpus":[],"registry":{"path":"","matching":0,"total":0},"hardware":{"groups":[]},"models":[]}'
+PIN=${OMARCHY_AI_REGISTRY_PIN-$([[ -f $HERE/../registry.pin ]] && tr -d '[:space:]' <"$HERE/../registry.pin" || true)}
+EMPTY='{"schemaVersion":"omarchy-local-ai/4","state":"uninitialized","updatedAt":"","error":"","operation":{"name":"","recipeId":"","percent":0,"indeterminate":false,"detail":""},"active":{"recipeId":"","modelId":"","name":"","servedModel":"","container":"","endpoint":"","port":0,"gpuIndices":[],"apiReady":false,"toolCallReady":false,"tools":false,"agents":{}},"gpus":[],"registry":{"path":"","revision":"","matching":0,"total":0},"hardware":{"groups":[]},"models":[]}'
 # shellcheck source=../lib/state.sh
 source "$HERE/../lib/state.sh"
 # shellcheck source=../lib/hardware.sh

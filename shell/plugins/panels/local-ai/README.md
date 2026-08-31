@@ -54,19 +54,37 @@ any -> error
 `open-agent` launches Pi or Oh My Pi through `omarchy-launch-tui` with
 `--provider omarchy-local --model <served>` and a fresh session id. On
 run, the controller writes an `omarchy-local` provider into
-`~/.pi/agent` and `~/.omp/agent`. It updates `defaultModel` only when
-`defaultProvider` is already `omarchy-local`. A missing default is left
-alone. `snapshot` never writes agent config. Unload removes that
-provider.
+`~/.pi/agent/models.json` and — because Oh My Pi reads
+`models.yml`/`models.yaml` with precedence and only migrates
+`models.json` once — into `~/.omp/agent/models.yml` (JSON text, which is
+valid YAML). A hand-written YAML file is never touched; the snapshot
+reports that agent as `manual` under `active.agents`. The controller
+updates `defaultModel` only when `defaultProvider` is already
+`omarchy-local`. A missing default is left alone. `snapshot` never
+writes agent config. Unload removes that provider.
 
 ## Registry
 
-`scan` clones or fast-forwards
+`scan` clones
 [local-ai-registry](https://github.com/0xSero/local-ai-registry) into
-`~/omarchy/local-ai`. Every recipe must be `status: validated`, pin its
-image by `@sha256`, and pin its model revision by full commit hash.
-Recipes that disable CUDA graphs or eager-enforce are refused. Override
-the tree with `OMARCHY_AI_REGISTRY`.
+`~/omarchy/local-ai` and checks out the commit in `registry.pin`, so
+the trust root is a revision reviewed with this plugin, not whatever
+`main` says at clone time. Moving the pin is a deliberate change to
+that file (set `OMARCHY_AI_REGISTRY_PIN=` empty to track `main`
+instead). The catalog reads the sharded discovery index at
+`registry/index/recipes.json`. Override the tree with
+`OMARCHY_AI_REGISTRY`.
+
+Every recipe must be `status: validated`, pin its image by `@sha256`,
+and pin its model revision by full commit hash. Recipes that disable
+CUDA graphs or eager-enforce are refused. The controller owns exactly
+two registry placeholders — `${MODEL_ROOT}` and `${CACHE_ROOT}` map to
+`~/.cache/omarchy/local-ai/{models,cache}` — and refuses any other
+placeholder, host networking, or multi-node (`--nnodes`) launch. A
+refused recipe still appears in the catalog as `blocked` with its
+reason, instead of vanishing. A read-only `${MODEL_ROOT}` mount beyond
+the primary weights (for example a speculative-decoding draft model)
+must already exist on disk; the reason names the missing path.
 
 The OpenAI-compatible endpoint binds to `127.0.0.1`. Only containers
 labeled `io.omarchy.local-ai=1` are adopted, started, stopped, or

@@ -6,19 +6,19 @@ w_scan() {
   local hw models total
   hw=$(hardware_matched) || oops "hardware scan failed"
   models=$(catalog "$hw")
-  total=$(jq '.recipes|length' "$REG/index.json")
-  sw '.hardware=$h | .models=$m | .gpus=$g | .registry={path:$p,matching:($m|length),total:$t}
+  total=$(jq '.recipes|length' "$IDX")
+  sw '.hardware=$h | .models=$m | .gpus=$g | .registry={path:$p,revision:$rev,matching:($m|length),total:$t}
       | .models|=map(.active=(.recipeId==($ss.active.recipeId//"")))
       | .state=(if ($ss.active.apiReady//false) then "ready" else "idle" end)
       | .operation={name:"",recipeId:"",percent:0,indeterminate:false,detail:""} | .error=""' \
-    --argjson h "$hw" --argjson m "$models" --argjson g "$(gpus_json)" --arg p "$REG" \
+    --argjson h "$hw" --argjson m "$models" --argjson g "$(gpus_json)" --arg p "$REG" --arg rev "$(reg_rev)" \
     --argjson t "$total" --argjson ss "$(sread)"
   trace "$(sread | jq -r .state)"
 }
 w_download() {
   local id=$1 r img repo rev exp kind base hf file bytes pct pid
   guard || oops "another operation is running"
-  r=$(resolve "$id") || oops "recipe $id failed validation"
+  r=$(resolve "$id" 2>"$ST/gate.err") || oops "$(sed -n '$s/^local-ai: //p' "$ST/gate.err" | grep . || printf 'recipe %s failed validation' "$id")"
   img=$(jq -r .launch.image <<<"$r"); repo=$(jq -r .model.repository <<<"$r")
   rev=$(jq -r .model.revision <<<"$r"); exp=$(jq -r .model.bytes <<<"$r")
   op download "$id" 0 true "pulling image"
@@ -33,8 +33,8 @@ w_download() {
       if [[ -n $hf ]]; then "$hf" download "$repo" --revision "$rev" >/dev/null 2>&1 & pid=$!
       else docker run --rm --user "$(id -u):$(id -g)" --label "$LABEL.download=1" --entrypoint hf --volume "$base:/root/.cache/huggingface" "$img" download "$repo" --revision "$rev" >/dev/null 2>&1 & pid=$!; fi
     else
-      if [[ -n $hf ]]; then "$hf" download "$repo" "${extra[@]}" --revision "$rev" --local-dir "$base" >/dev/null 2>&1 & pid=$!
-      else docker run --rm --user "$(id -u):$(id -g)" --label "$LABEL.download=1" --entrypoint hf --volume "$base:$base" "$img" download "$repo" "${extra[@]}" --revision "$rev" --local-dir "$base" >/dev/null 2>&1 & pid=$!; fi
+      if [[ -n $hf ]]; then "$hf" download "$repo" ${extra[@]+"${extra[@]}"} --revision "$rev" --local-dir "$base" >/dev/null 2>&1 & pid=$!
+      else docker run --rm --user "$(id -u):$(id -g)" --label "$LABEL.download=1" --entrypoint hf --volume "$base:$base" "$img" download "$repo" ${extra[@]+"${extra[@]}"} --revision "$rev" --local-dir "$base" >/dev/null 2>&1 & pid=$!; fi
     fi
     while kill -0 "$pid" 2>/dev/null; do
       bytes=$(progress_bytes "$r")
@@ -59,7 +59,7 @@ w_refresh_models() {
 w_run() {
   local id=$1 phase=$2 r was=false prev_active
   guard || oops "another operation is running"
-  r=$(resolve "$id") || oops "recipe $id failed validation"
+  r=$(resolve "$id" 2>"$ST/gate.err") || oops "$(sed -n '$s/^local-ai: //p' "$ST/gate.err" | grep . || printf 'recipe %s failed validation' "$id")"
   jq -e --arg i "$id" '.models[]|select(.recipeId==$i and .imageDownloaded and .weightsDownloaded)' >/dev/null <<<"$(sread)" \
     || oops "model $id is not downloaded"
   prev_active=$(sread | jq -c .active)

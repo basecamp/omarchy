@@ -34,7 +34,7 @@ Item {
   function selected() { return models.length ? models[selectedIndex] : null }
   function act(args) { if (busy || action.running) return; action.command = [cli].concat(args); action.running = true; Qt.callLater(refresh) }
   function primary() {
-    var m = selected(); if (!m) return
+    var m = selected(); if (!m || m.blocked) return
     if (!m.imageDownloaded || !m.weightsDownloaded) act(["download", m.recipeId])
     else if (loaded && active.recipeId === m.recipeId) return
     else if (loaded) act(["switch", m.recipeId])
@@ -42,6 +42,7 @@ Item {
   }
   function primaryLabel() {
     var m = selected(); if (!m) return ""
+    if (m.blocked) return "Blocked"
     if (!m.imageDownloaded || !m.weightsDownloaded) return "Download"
     if (loaded && active.recipeId === m.recipeId) return "Running"
     return loaded ? "Switch" : "Run"
@@ -61,6 +62,7 @@ Item {
   }
   function vramText(g) { return (g.usedMiB === null || g.usedMiB === undefined ? "unavailable" : g.usedMiB + " / " + g.totalMiB + " MiB") }
   function modelState(m) {
+    if (m.blocked) return "blocked"
     if (m.recipeId === active.recipeId) return state
     if (m.recipeId === operation.recipeId && busy) return operation.indeterminate ? operation.name : operation.percent + "%"
     if (m.imageDownloaded && m.weightsDownloaded) return "downloaded"
@@ -202,7 +204,9 @@ Item {
             Meta {
               anchors.left: parent.left; anchors.right: go.left; anchors.rightMargin: Style.space(18)
               anchors.top: parent.top; anchors.topMargin: Style.space(12)
-              text: root.selected() ? root.selected().recipeId + " · " + (root.selected().available ? "available" : "unavailable") + " · image " + (root.selected().imageDownloaded ? "yes" : "no") + " · weights " + (root.selected().weightsDownloaded ? "yes" : "no") : "no matching recipe"
+              text: !root.selected() ? "no matching recipe"
+                    : root.selected().blocked ? root.selected().recipeId + " · " + (root.selected().reason || "blocked")
+                    : root.selected().recipeId + " · " + (root.selected().available ? "available" : "unavailable") + " · image " + (root.selected().imageDownloaded ? "yes" : "no") + " · weights " + (root.selected().weightsDownloaded ? "yes" : "no")
             }
             Rectangle {
               visible: root.busy && !root.operation.indeterminate
@@ -210,7 +214,7 @@ Item {
               height: Math.max(2, Style.spaceReal(2)); color: Util.alpha(root.foreground, 0.16)
               Rectangle { width: parent.width * Math.min(1, (root.operation.percent || 0) / 100); height: parent.height; color: root.foreground }
             }
-            Link { id: go; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; enabled: Boolean(root.selected()) && !root.busy; text: root.busy ? root.progressText() : root.primaryLabel(); onTriggered: root.primary() }
+            Link { id: go; anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; enabled: Boolean(root.selected()) && !root.selected().blocked && !root.busy; text: root.busy ? root.progressText() : root.primaryLabel(); onTriggered: root.primary() }
           }
         }
       }

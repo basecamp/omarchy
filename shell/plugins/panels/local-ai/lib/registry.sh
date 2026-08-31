@@ -1,23 +1,32 @@
 #!/bin/bash
 # Registry sync, recipe safety gate, catalog, and weight presence. Sourced; do not run.
-reg_ok() { jq -e '.schema_version=="local-ai-registry/v1" and (.recipes|type=="array" and length>0)' "$REG/index.json" >/dev/null 2>&1; }
+reg_ok() { jq -e '.schema_version=="local-ai-registry/v1" and (.recipes|type=="array" and length>0)' "$IDX" >/dev/null 2>&1; }
+reg_rev() { git -C "$REPO" rev-parse HEAD 2>/dev/null || printf ''; }
 sync_registry() {
   [[ -n ${OMARCHY_AI_REGISTRY:-} ]] && { reg_ok || fail "registry invalid at $REG"; return; }
-  if [[ ! -d $REPO/.git ]]; then git clone --filter=blob:none --branch main "$REMOTE" "$REPO"
+  if [[ ! -d $REPO/.git ]]; then git clone --filter=blob:none "$REMOTE" "$REPO" || { fail "registry clone failed"; return; }
   else
-    [[ -z $(git -C "$REPO" status --porcelain) ]] || fail "registry checkout has local changes"
-    git -C "$REPO" fetch origin main && git -C "$REPO" merge --ff-only origin/main
+    [[ -z $(git -C "$REPO" status --porcelain) ]] || { fail "registry checkout has local changes"; return; }
+    git -C "$REPO" fetch origin || { fail "registry fetch failed"; return; }
+  fi
+  if [[ -n $PIN ]]; then
+    git -C "$REPO" -c advice.detachedHead=false checkout --quiet --detach "$PIN" \
+      || { fail "pinned registry revision $PIN is unavailable"; return; }
+  else
+    git -C "$REPO" checkout --quiet main && git -C "$REPO" merge --ff-only --quiet origin/main \
+      || { fail "registry update failed"; return; }
   fi
   reg_ok || fail "registry invalid at $REG"
 }
-resolve() {
-  local id=$1 r i m h out src root; root=$(cd "$REG" && pwd)
+resolve_raw() { # join recipe + instance + model + hardware; interpolate owned placeholders; no gate
+  local id=$1 r i m h
   [[ -f $REG/recipe/$id.json ]] || { fail "unknown recipe $id"; return; }
   r=$(<"$REG/recipe/$id.json")
   i=$(<"$REG/model-instance/$(jq -r .model_instance_id <<<"$r").json")
   m=$(<"$REG/model/$(jq -r .model_id <<<"$i").json")
   h=$(<"$REG/hardware/$(jq -r .hardware_id <<<"$r").json")
-  out=$(jq -nc --argjson r "$r" --argjson i "$i" --argjson m "$m" --argjson h "$h" '
+  jq -nc --argjson r "$r" --argjson i "$i" --argjson m "$m" --argjson h "$h" \
+    --arg mr "$MODELS_SUB" --arg cr "$CACHE_SUB" '
     def arg($n): (.launch.arguments|index($n)) as $p | if $p==null then null else .launch.arguments[$p+1] end;
     {id:$r.id,status:$r.status,engine:$r.engine,capabilities:$r.capabilities,
      model:{id:$m.id,name:$m.name,repository:$i.repository,revision:$i.revision,
@@ -25,31 +34,53 @@ resolve() {
        precision:($i.weights.precision//"?"),bytes:((($i.weights.size_gb//0)*1073741824)|floor)},
      hardware:{id:$h.id,name:$h.name,backend:$h.accelerator_backend,count:$r.hardware_count,vramGb:($h.memory.vram_gb//0)},
      launch:{image:$r.launch.image,containerPort:$r.launch.container_port,entrypoint:($r.launch.entrypoint//null),
-       ipc:($r.launch.ipc//null),shm:($r.launch.shm_size//null),environment:($r.launch.environment//{}),
+       ipc:($r.launch.ipc//null),shm:($r.launch.shm_size//null),networkMode:($r.launch.network_mode//null),
+       environment:($r.launch.environment//{}),
        arguments:($r.launch.arguments//[]),mounts:($r.launch.mounts//[]),devices:($r.launch.devices//[]),
-       capAdd:($r.launch.cap_add//[]),securityOpt:($r.launch.security_opt//[])}}' | jq -ce '
-    select(.status=="validated")
-    | select(.launch.image|test("@sha256:[0-9a-f]{64}$"))
-    | select(.model.revision|test("^[0-9a-f]{40,64}$"))
-    | select(.launch.containerPort|type=="number")
-    | select([.launch.arguments[]?|select(test("enforce.eager|disable.?cuda.?graph";"i"))]|length==0)') \
-    || { fail "recipe $id failed the safety gate"; return; }
-  while IFS= read -r src; do
+       capAdd:($r.launch.cap_add//[]),securityOpt:($r.launch.security_opt//[])}}
+    | .launch |= walk(if type=="string" then gsub("\\$\\{MODEL_ROOT\\}";$mr)|gsub("\\$\\{CACHE_ROOT\\}";$cr) else . end)'
+}
+gate_reason() { # gate_reason <resolved-json> -> one-line refusal reason on stdout; empty means launchable
+  local r=$1 root src tgt ro primary=1
+  root=$(cd "$REG" && pwd)
+  jq -r '
+    if .status!="validated" then "not validated"
+    elif ((.launch.arguments|index("--nnodes"))!=null) then "runs across \(.launch.arguments[(.launch.arguments|index("--nnodes"))+1]//"several") networked machines"
+    elif ([.launch|..|strings|select(test("\\$\\{"))]|length)>0 then "needs unsupported placeholder \([.launch|..|strings|select(test("\\$\\{"))]|first|capture("(?<p>\\$\\{[^}]+\\})").p)"
+    elif ((.launch.networkMode//"bridge")!="bridge") then "requires \(.launch.networkMode) networking"
+    elif (.launch.image|test("@sha256:[0-9a-f]{64}$")|not) then "image is not digest-pinned"
+    elif (.model.revision|test("^[0-9a-f]{40,64}$")|not) then "model revision is not pinned"
+    elif ((.launch.containerPort|type)!="number") then "invalid container port"
+    elif ([.launch.arguments[]?|select(test("enforce.eager|disable.?cuda.?graph";"i"))]|length)>0 then "disallowed launch argument"
+    else empty end' <<<"$r" | head -1 | grep . && return 0
+  while IFS=$'\t' read -r src tgt ro; do
     case $src in
-      \~/.cache/*) [[ $src != *..* ]] || { fail "recipe $id mounts unsafe host path $src"; return; } ;;
+      "$MODELS_SUB"/*|"$CACHE_SUB"/*)
+        [[ $src != *..* ]] || { printf 'mounts unsafe host path %s\n' "$src"; return; }
+        if [[ $tgt == /model || $tgt == /models || $tgt == /workspace/models ]] && (( primary )); then primary=0
+        elif [[ $ro == true && $src == "$MODELS_SUB"/* && ! -d $HOME_DIR/${src#\~/} ]]; then
+          printf 'place weights at %s first\n' "$src"; return
+        fi ;;
+      \~/.cache/*) [[ $src != *..* ]] || { printf 'mounts unsafe host path %s\n' "$src"; return; } ;;
       /dev/dri/by-path) ;;
-      /*) fail "recipe $id mounts unsafe host path $src"; return ;;
-      *) src=$(cd "$root" && realpath "$src" 2>/dev/null) || { fail "recipe $id asset missing"; return; }
-         [[ $src == "$root/"* ]] || { fail "recipe $id asset escapes the registry"; return; } ;;
+      /*) printf 'mounts unsafe host path %s\n' "$src"; return ;;
+      *) src=$(cd "$root" && realpath "$src" 2>/dev/null) || { printf 'registry asset is missing\n'; return; }
+         [[ $src == "$root/"* ]] || { printf 'asset escapes the registry\n'; return; } ;;
     esac
-  done < <(jq -r '.launch.mounts[]?.source' <<<"$out")
+  done < <(jq -r '.launch.mounts[]?|[.source,.target,(.read_only//false|tostring)]|@tsv' <<<"$r")
+}
+resolve() {
+  local id=$1 out reason
+  out=$(resolve_raw "$id") || return 1
+  reason=$(gate_reason "$out")
+  [[ -z $reason ]] || { fail "recipe $id failed the safety gate: $reason"; return; }
   printf '%s\n' "$out"
 }
 resolve_mount() {
   local r=$1 src tgt
   while IFS=$'\t' read -r src tgt; do
     [[ $src == '~/.cache/huggingface' ]] && { printf 'hf\t%s\n' "$HOME_DIR/.cache/huggingface"; return; }
-    [[ $src == '~/.cache/'* && ( $tgt == /models || $tgt == /workspace/models ) ]] && { printf 'dir\t%s\n' "$HOME_DIR/${src#\~/}"; return; }
+    [[ $src == '~/.cache/'* && ( $tgt == /model || $tgt == /models || $tgt == /workspace/models ) ]] && { printf 'dir\t%s\n' "$HOME_DIR/${src#\~/}"; return; }
   done < <(jq -r '.launch.mounts[]?|[.source,.target]|@tsv' <<<"$r")
   printf 'hf\t%s\n' "$HOME_DIR/.cache/huggingface"
 }
@@ -88,10 +119,21 @@ weights_have() {
   (( b*100 >= exp*85 ))
 }
 catalog() {
-  local hw=$1 ids id r rows='[]' bytes pct ind img wt
+  local hw=$1 ids id r reason rows='[]' bytes pct ind img wt
   ids=$(jq -c '[.groups[].registryId|select(length>0)]' <<<"$hw")
   while IFS= read -r id; do
-    r=$(resolve "$id" 2>/dev/null) || continue
+    r=$(resolve_raw "$id" 2>/dev/null) || continue
+    reason=$(gate_reason "$r")
+    if [[ -n $reason ]]; then
+      rows=$(jq -c --argjson r "$r" --argjson hw "$hw" --arg reason "$reason" '
+        ([$hw.groups[]|select(.registryId==$r.hardware.id)][0]) as $g
+        | .+[{recipeId:$r.id,modelId:$r.model.id,name:$r.model.name,engine:$r.engine.name,
+              precision:$r.model.precision,hardware:($g.registryName//$r.hardware.name),
+              acceleratorCount:$r.hardware.count,available:false,
+              imageDownloaded:false,weightsDownloaded:false,downloadPercent:0,downloadIndeterminate:true,
+              tools:($r.capabilities.tools//false),active:false,blocked:true,reason:$reason}]' <<<"$rows")
+      continue
+    fi
     bytes=$(progress_bytes "$r")
     ind=true; pct=0
     if (( $(jq -r .model.bytes <<<"$r") > 0 )); then
@@ -106,8 +148,8 @@ catalog() {
             precision:$r.model.precision,hardware:($g.registryName//$r.hardware.name),
             acceleratorCount:$r.hardware.count,available:(($g.count//0)>=$r.hardware.count),
             imageDownloaded:$img,weightsDownloaded:$wt,downloadPercent:$pct,downloadIndeterminate:$ind,
-            tools:($r.capabilities.tools//false),active:false}]' <<<"$rows")
+            tools:($r.capabilities.tools//false),active:false,blocked:false,reason:""}]' <<<"$rows")
   done < <(jq -r --argjson ids "$ids" '.recipes[]|select(.status=="validated" and .launch_kind=="docker")
-    |select(.hardware_id as $h|$ids|index($h))|.id' "$REG/index.json")
-  jq -c 'sort_by([.acceleratorCount,(.weightsDownloaded|not),.name])' <<<"$rows"
+    |select(.hardware_id as $h|$ids|index($h))|.id' "$IDX")
+  jq -c 'sort_by([.blocked,.acceleratorCount,(.weightsDownloaded|not),.name])' <<<"$rows"
 }
