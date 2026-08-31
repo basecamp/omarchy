@@ -167,7 +167,7 @@ fi
 # pending, and the login notifier keeps prompting until a rerun goes through
 # with the affected profiles closed.
 while affected_profile_open; do
-  if ! gum confirm "Close the browser windows to repair the Copy URL shortcut, then continue"; then
+  if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 ]] || ! gum confirm "Close the browser windows to repair the Copy URL shortcut, then continue"; then
     echo "A running browser would undo the Copy URL shortcut repair." >&2
     echo "Close the browser windows, then run: omarchy-migrate" >&2
     exit 1

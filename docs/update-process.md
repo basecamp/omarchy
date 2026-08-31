@@ -117,7 +117,7 @@ omarchy-update
   │    └─ acquire the update lock and run omarchy-update inside it
   ├─ omarchy-update-requires-free-space
   │    └─ abort below the configured free-space threshold on /
-  ├─ confirm unless -y
+  ├─ confirm unless --yes/-y; otherwise print a plain-text unattended summary
   ├─ omarchy-update-pkg-prune
   │    └─ trim the pacman cache to two versions per package, deliberately
   │       before the snapshot since the cache lives on the snapshotted subvolume
@@ -137,9 +137,7 @@ Important behavior:
 
 - In dev-link mode, `omarchy update` fast-forwards the active checkout from its
   configured upstream before changing system packages or running migrations.
-- `-y` exports `OMARCHY_UPDATE_UNATTENDED=1` — a promise not to ask anything.
-  Steps that would prompt (orphan removal, conflict handoff) report and skip
-  instead of blocking.
+- `--yes` (or its short form `-y`) exports `OMARCHY_UPDATE_UNATTENDED=1` — a promise not to ask anything. It replaces the TUI confirmation with a plain-text summary. Steps that would prompt never block: optional work such as orphan removal is reported and skipped, while required decisions such as package conflict resolution fail with an actionable message.
 - The free-space requirement uses a 10 GiB threshold and stops the update before
   confirmation when it is not met. If free space cannot be determined, the
   check is silently skipped. Set `OMARCHY_UPDATE_FORCE=1` to bypass the check.

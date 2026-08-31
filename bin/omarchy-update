@@ -1,11 +1,26 @@
 #!/bin/bash
 
 # omarchy:summary=Update Omarchy and system packages
-# omarchy:args=[-y]
-# omarchy:examples=omarchy update | omarchy update -y
+# omarchy:args=[-y|--yes]
+# omarchy:examples=omarchy update | omarchy update --yes
 # omarchy:requires-sudo=true
 
 set -e
+
+if (( $# > 1 )); then
+  echo "Usage: omarchy update [-y|--yes]" >&2
+  exit 2
+fi
+
+case ${1:-} in
+  "") unset OMARCHY_UPDATE_UNATTENDED ;;
+  -y | --yes) export OMARCHY_UPDATE_UNATTENDED=1 ;;
+  *)
+    echo "Unknown option: $1" >&2
+    echo "Usage: omarchy update [-y|--yes]" >&2
+    exit 2
+    ;;
+esac
 
 if [[ -z ${OMARCHY_UPDATE_LOGGED:-} ]]; then
   script_command=$(printf '%q ' "$0" "$@")
@@ -21,11 +36,18 @@ trap 'omarchy-update-stay-awake stop' EXIT
 
 omarchy-update-requires-free-space
 
-# -y is a promise not to ask anything. Steps that would need an answer report
-# and move on instead of waiting on a prompt nobody is here to give.
-[[ ${1:-} != "-y" ]] || export OMARCHY_UPDATE_UNATTENDED=1
+# --yes/-y is a promise not to ask anything. Steps that would need an answer
+# skip optional work or fail with an actionable message instead of waiting.
+if [[ -n ${OMARCHY_UPDATE_UNATTENDED:-} ]]; then
+  echo "Starting the full Omarchy update non-interactively; prompts and optional actions will be skipped."
+  confirmed=true
+elif omarchy-update-confirm; then
+  confirmed=true
+else
+  confirmed=false
+fi
 
-if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
+if $confirmed; then
   # Before the snapshot: the cache is on the snapshotted subvolume, so pruning
   # after it frees nothing until that snapshot ages out.
   omarchy-update-pkg-prune

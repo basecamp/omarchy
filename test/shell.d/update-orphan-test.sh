@@ -35,6 +35,12 @@ grep -q '^  old-lib$' "$test_tmp/noninteractive.out" || fail "orphan checker lis
 grep -q 'Re-run omarchy-update-orphan-pkgs in a terminal' "$test_tmp/noninteractive.out" || fail "orphan checker does not remove packages non-interactively"
 pass "orphan checker only reports orphans non-interactively"
 
+require_command script
+output=$(OMARCHY_UPDATE_UNATTENDED=1 HOME="$test_home" PATH="$stub_bin:$PATH" script -qec "$ROOT/bin/omarchy-update-orphan-pkgs" /dev/null)
+[[ $output != *"gum should not be called"* ]] || fail "unattended orphan checker does not prompt inside the update pseudo-terminal"
+[[ $output == *"orphaned package(s) found"* ]] || fail "unattended orphan checker reports orphans inside the update pseudo-terminal"
+pass "unattended orphan checker does not mistake the transcript pseudo-terminal for a person"
+
 write_stub pacman 'if [[ $1 == "-Qtdq" ]]; then exit 0; fi; exit 1'
 run_orphan_checker >"$test_tmp/none.out" 2>"$test_tmp/none.err"
 [[ ! -s $test_tmp/none.out ]] || fail "orphan checker stays quiet when no orphans exist"

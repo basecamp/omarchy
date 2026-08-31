@@ -80,11 +80,18 @@ expected_steps() {
     omarchy-update-restart
 }
 
-run_update -y || fail "an update where everything works reports a failure"
+run_update --yes || fail "an update where everything works reports a failure"
 diff <(expected_steps) <(steps_run) >"$test_tmp/order" ||
   fail "an update where everything works does not run every step in order" "$(cat "$test_tmp/order")"
+grep -q '^Starting the full Omarchy update non-interactively' "$test_tmp/out" ||
+  fail "a non-interactive update prints a plain-text summary"
 pass "an update where every step works runs all of them, in order"
 
+grep -q '^omarchy-update-system-pkgs unattended=1$' "$test_tmp/steps" ||
+  fail "--yes does not mark the update unattended"
+run_update -y || fail "the short unattended flag reports a failure"
+diff <(expected_steps) <(steps_run) >"$test_tmp/order" ||
+  fail "-y does not run the same full update as --yes" "$(cat "$test_tmp/order")"
 grep -q '^omarchy-update-system-pkgs unattended=1$' "$test_tmp/steps" ||
   fail "-y does not mark the update unattended"
 run_update </dev/null || fail "a confirmed update reports a failure"
@@ -92,7 +99,7 @@ diff <(expected_steps confirmed) <(steps_run) >"$test_tmp/order" ||
   fail "a confirmed update runs a different set of steps" "$(cat "$test_tmp/order")"
 grep -q '^omarchy-update-system-pkgs unattended=$' "$test_tmp/steps" ||
   fail "an update a person confirmed is treated as unattended"
-pass "-y is what marks an update unattended, not the update itself"
+pass "--yes and -y mark an update unattended, not the update itself"
 
 # Migrations ship with the packages the upgrade installs and are written against
 # them. Running them against what is still on disk is the failure this ordering

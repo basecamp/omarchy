@@ -71,6 +71,16 @@ run_migration && fail "migration defers while the affected profile is open"
   fail "migration leaves preferences alone while the affected profile is open"
 pass "migration defers the repair while the affected profile is open"
 
+cat >"$stub_bin/gum" <<'STUB'
+#!/bin/bash
+touch "${GUM_CALLED:?}"
+exit 99
+STUB
+GUM_CALLED="$test_dir/unattended-gum-called" OMARCHY_UPDATE_UNATTENDED=1 run_migration &&
+  fail "unattended migration defers while the affected profile is open"
+[[ ! -e $test_dir/unattended-gum-called ]] || fail "unattended migration does not prompt in the transcript pseudo-terminal"
+pass "unattended migration reports required interaction without prompting"
+
 # gum paints its prompt on stderr, so that stream has to stay attached:
 # suppressing it leaves gum reading keys behind an unpainted screen, which
 # reads as a hung update.

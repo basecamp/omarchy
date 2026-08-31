@@ -116,7 +116,8 @@ pass "interactive update stops before confirmation with low disk space"
 
 rm -f "$snapshot_marker" "$gum_marker"
 output=$(OMARCHY_UPDATE_FORCE=1 run_update -y)
-[[ -z $output ]] || fail "forced update does not emit the free-space warning"
+[[ $output != *"You need at least 10 GiB free"* ]] || fail "forced update does not emit the free-space warning"
+[[ $output == *"Starting the full Omarchy update non-interactively"* ]] || fail "forced update prints the non-interactive summary"
 [[ ! -f $gum_marker ]] || fail "forced non-interactive update does not prompt"
 [[ -f $snapshot_marker ]] || fail "forced update continues with low disk space"
 pass "forced update skips the free-space requirement"
@@ -136,6 +137,7 @@ pass "interactive update keeps the normal confirmation prompt when space is suff
 
 rm -f "$snapshot_marker"
 output=$(TEST_DF_INVALID=1 run_update -y)
-[[ -z $output ]] || fail "failed disk-space detection remains silent"
+[[ $output != *"You need at least 10 GiB free"* ]] || fail "failed disk-space detection remains silent"
+[[ $output == *"Starting the full Omarchy update non-interactively"* ]] || fail "update prints the non-interactive summary after a skipped space check"
 [[ -f $snapshot_marker ]] || fail "failed disk-space detection does not block the update"
 pass "failed disk-space detection silently continues"
