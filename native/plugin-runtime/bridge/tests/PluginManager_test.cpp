@@ -195,7 +195,7 @@ public:
             "manager runtime fixture root mode failed");
     home_ = root_ / "home";
     create(home_, 0700);
-    create(home_ / ".local/share/omarchy/plugin-security/v2/revisions", 0700);
+    create(home_ / ".local/share/omarchy-plugin-security/v2/revisions", 0700);
     create(home_ / ".local/state/omarchy/plugin-security/v2/activations", 0700);
     create(home_ / ".local/state/omarchy/plugin-security/v2/authority", 0700);
     create(home_ / ".local/state/omarchy/plugin-security/v2/state", 0700);
@@ -472,7 +472,7 @@ private:
     return home_ / ".local/state/omarchy/plugin-security/v2/activations";
   }
   std::filesystem::path revisions() const {
-    return home_ / ".local/share/omarchy/plugin-security/v2/revisions";
+    return home_ / ".local/share/omarchy-plugin-security/v2/revisions";
   }
   std::filesystem::path authority() const {
     return home_ / ".local/state/omarchy/plugin-security/v2/authority";

@@ -40,7 +40,7 @@ public:
             "fixture root mode setup failed");
     home_ = root_ / "user-home";
     create(home_, 0700);
-    create(home_ / ".local/share/omarchy/plugin-security/v2/revisions", 0700);
+    create(home_ / ".local/share/omarchy-plugin-security/v2/revisions", 0700);
     create(home_ / ".local/state/omarchy/plugin-security/v2/activations",
            0700);
     create(home_ / ".local/state/omarchy/plugin-security/v2/authority", 0700);
@@ -70,7 +70,7 @@ public:
     return home_ / ".local/state/omarchy/plugin-security/v2/activations";
   }
   [[nodiscard]] std::filesystem::path revisions() const {
-    return home_ / ".local/share/omarchy/plugin-security/v2/revisions";
+    return home_ / ".local/share/omarchy-plugin-security/v2/revisions";
   }
   [[nodiscard]] std::filesystem::path state() const {
     return home_ / ".local/state/omarchy/plugin-security/v2/state";

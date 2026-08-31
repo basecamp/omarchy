@@ -288,7 +288,7 @@ public:
 
 private:
   std::filesystem::path revisions() const {
-    return home_ / ".local/share/omarchy/plugin-security/v2/revisions";
+    return home_ / ".local/share/omarchy-plugin-security/v2/revisions";
   }
   std::filesystem::path activations() const {
     return home_ / ".local/state/omarchy/plugin-security/v2/activations";

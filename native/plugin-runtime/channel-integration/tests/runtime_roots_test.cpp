@@ -126,7 +126,7 @@ public:
     require(created != nullptr, "root fixture creation failed");
     home_ = created;
     if (with_roots) {
-      create(".local/share/omarchy/plugin-security/v2/revisions");
+      create(".local/share/omarchy-plugin-security/v2/revisions");
       create(".local/state/omarchy/plugin-security/v2/activations");
       create(".local/state/omarchy/plugin-security/v2/authority");
       create(".local/state/omarchy/plugin-security/v2/state");
@@ -217,13 +217,12 @@ void fresh_home_is_provisioned_privately_and_idempotently() {
   require(roots && error == channel::RuntimeRootsError::none,
           "fresh home was not provisioned");
 
-  const std::array<std::filesystem::path, 13> created{
+  const std::array<std::filesystem::path, 12> created{
       ".local",
       ".local/share",
-      ".local/share/omarchy",
-      ".local/share/omarchy/plugin-security",
-      ".local/share/omarchy/plugin-security/v2",
-      ".local/share/omarchy/plugin-security/v2/revisions",
+      ".local/share/omarchy-plugin-security",
+      ".local/share/omarchy-plugin-security/v2",
+      ".local/share/omarchy-plugin-security/v2/revisions",
       ".local/state",
       ".local/state/omarchy",
       ".local/state/omarchy/plugin-security",
@@ -241,7 +240,7 @@ void fresh_home_is_provisioned_privately_and_idempotently() {
   }
   const std::array leaves{
       fixture.home() /
-          ".local/share/omarchy/plugin-security/v2/revisions",
+          ".local/share/omarchy-plugin-security/v2/revisions",
       fixture.home() /
           ".local/state/omarchy/plugin-security/v2/activations",
       fixture.home() /
@@ -265,6 +264,38 @@ void fresh_home_is_provisioned_privately_and_idempotently() {
                 std::filesystem::is_empty(leaves[index]),
             "idempotent provisioning replaced a root or created authority");
   }
+}
+
+void provisioning_coexists_with_the_omarchy_compatibility_symlink() {
+  Fixture fixture(false);
+  const auto local = fixture.home() / ".local";
+  const auto share = local / "share";
+  const auto compatibility_target = fixture.home() / "system-omarchy";
+  std::filesystem::create_directories(share);
+  std::filesystem::create_directory(compatibility_target);
+  require(::chmod(local.c_str(), 0755) == 0 &&
+              ::chmod(share.c_str(), 0755) == 0 &&
+              ::chmod(compatibility_target.c_str(), 0755) == 0,
+          "compatibility fixture mode setup failed");
+  write_file(compatibility_target / "sentinel", "Omarchy data tree\n");
+  std::filesystem::create_directory_symlink(
+      compatibility_target, share / "omarchy");
+
+  channel::RuntimeRootsError error{};
+  auto roots = provision(fixture, error);
+  require(roots && error == channel::RuntimeRootsError::none,
+          "Omarchy compatibility symlink blocked runtime provisioning");
+  require(std::filesystem::is_symlink(share / "omarchy") &&
+              std::filesystem::exists(compatibility_target / "sentinel") &&
+              !std::filesystem::exists(compatibility_target /
+                                       "plugin-security"),
+          "runtime provisioning traversed or changed the compatibility symlink");
+  require(std::filesystem::is_directory(
+              share / "omarchy-plugin-security/v2/revisions") &&
+              std::filesystem::is_directory(
+                  fixture.home() /
+                  ".local/state/omarchy/plugin-security/v2/activations"),
+          "real-home-like provisioning omitted a fixed runtime root");
 }
 
 void provisioning_rejects_untrusted_existing_components() {
@@ -397,7 +428,7 @@ void fixed_roots_are_exact_distinct_and_pinned() {
   }
 
   const auto revisions =
-      fixture.home() / ".local/share/omarchy/plugin-security/v2/revisions";
+      fixture.home() / ".local/share/omarchy-plugin-security/v2/revisions";
   const auto displaced = fixture.home() / "displaced-revisions";
   std::filesystem::rename(revisions, displaced);
   std::filesystem::create_directory(revisions);
@@ -424,7 +455,8 @@ void unsafe_home_components_and_roots_fail_closed() {
   }
   {
     Fixture fixture;
-    const auto component = fixture.home() / ".local/share/omarchy";
+    const auto component =
+        fixture.home() / ".local/share/omarchy-plugin-security";
     require(::chmod(component.c_str(), 0770) == 0,
             "unsafe component mode setup failed");
     channel::RuntimeRootsError error{};
@@ -435,7 +467,7 @@ void unsafe_home_components_and_roots_fail_closed() {
   {
     Fixture fixture;
     const auto revisions =
-        fixture.home() / ".local/share/omarchy/plugin-security/v2/revisions";
+        fixture.home() / ".local/share/omarchy-plugin-security/v2/revisions";
     require(::chmod(revisions.c_str(), 0755) == 0,
             "inexact leaf mode setup failed");
     channel::RuntimeRootsError error{};
@@ -733,7 +765,7 @@ void candidate_update_crashes_leave_exact_old_or_new_record() {
             "candidate update exposed a record outside the old/new states");
     for (const auto &entry : std::filesystem::directory_iterator(
              fixture.home() /
-             ".local/share/omarchy/plugin-security/v2/revisions")) {
+             ".local/share/omarchy-plugin-security/v2/revisions")) {
       const auto name = entry.path().filename().string();
       if (name.starts_with(".incoming-"))
         continue;
@@ -1005,6 +1037,7 @@ void product_review_rejects_mutated_published_metadata() {
 int main() {
   try {
     fresh_home_is_provisioned_privately_and_idempotently();
+    provisioning_coexists_with_the_omarchy_compatibility_symlink();
     provisioning_rejects_untrusted_existing_components();
     provisioning_substitution_is_rejected_at_each_identity_fence();
     concurrent_provisioning_converges_without_leaks();

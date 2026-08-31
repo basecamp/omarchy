@@ -1808,8 +1808,9 @@ PluginManager::PluginManager(QObject *parent, ProcessClaim claim)
   connect(&surfaces_, &SurfaceProjectionModel::dismissRequested, this,
           &PluginManager::dismissRequested);
 #ifndef OMARCHY_PLUGIN_MANAGER_TESTING
-  // Trust roots and definitions are immutable for this singleton lifetime.
-  // Installation/update provisions them before an explicit shell restart.
+  // Explicit v2 shell activation provisions fixed empty roots before the first
+  // catalog scan or install. Trust roots and definitions are then immutable for
+  // this singleton lifetime.
   runtime_ = Runtime::open(*this);
 #endif
 }

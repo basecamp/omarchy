@@ -16,6 +16,7 @@
 #include <new>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -51,8 +52,8 @@ void run_provisioning_race_hook(ProvisioningRacePoint point) {
 
 constexpr std::size_t kMaximumPasswdBuffer = 1024 * 1024;
 constexpr std::size_t kMaximumAccountLookupAttempts = 16;
-constexpr std::array<std::string_view, 6> kRevisionComponents{
-    ".local", "share", "omarchy", "plugin-security", "v2", "revisions"};
+constexpr std::array<std::string_view, 5> kRevisionComponents{
+    ".local", "share", "omarchy-plugin-security", "v2", "revisions"};
 constexpr std::array<std::string_view, 6> kActivationComponents{
     ".local", "state", "omarchy", "plugin-security", "v2", "activations"};
 constexpr std::array<std::string_view, 6> kAuthorityComponents{
@@ -295,9 +296,8 @@ OwnedDescriptor duplicate_directory(int descriptor) noexcept {
 
 enum class FixedRootAccess : std::uint8_t { existing, provision };
 
-template <std::size_t Size>
 OwnedDescriptor
-open_fixed_root(int home_fd, const std::array<std::string_view, Size> &parts,
+open_fixed_root(int home_fd, std::span<const std::string_view> parts,
                 std::uint32_t uid, FixedRootAccess access,
                 RuntimeRootsError &error) {
   auto current = duplicate_directory(home_fd);
@@ -464,9 +464,12 @@ RuntimeRoots::provision_from_home_fd_impl(
     error = RuntimeRootsError::home_untrusted;
     return {};
   }
-  for (const auto *parts : {&kRevisionComponents, &kActivationComponents,
-                            &kAuthorityComponents, &kStateComponents}) {
-    if (!open_fixed_root(locked.get(), *parts, uid,
+  const std::array roots{std::span<const std::string_view>(kRevisionComponents),
+                         std::span<const std::string_view>(kActivationComponents),
+                         std::span<const std::string_view>(kAuthorityComponents),
+                         std::span<const std::string_view>(kStateComponents)};
+  for (const auto parts : roots) {
+    if (!open_fixed_root(locked.get(), parts, uid,
                          FixedRootAccess::provision, error))
       return {};
   }
