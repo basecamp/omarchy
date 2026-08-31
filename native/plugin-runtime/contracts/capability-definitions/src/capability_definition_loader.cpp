@@ -137,11 +137,9 @@ std::string canonical_definition_document(const CapabilityDefinition &definition
 
 LoadResult parse_definition_document(std::string_view document,
                                      DefinitionSource source,
-                                     const AdapterVerifier &verifier,
                                      LoadedDefinition &output) {
   output = {};
-  if (document.empty() || document.size() > kMaximumDocumentBytes ||
-      verifier.available == nullptr)
+  if (document.empty() || document.size() > kMaximumDocumentBytes)
     return LoadResult::invalid_document;
   std::size_t offset = 0;
   std::string_view value;
@@ -236,10 +234,6 @@ LoadResult parse_definition_document(std::string_view document,
   } catch (const std::runtime_error &) {
     return LoadResult::invalid_document;
   }
-  if (!verifier.available(definition.adapter.adapter_class.view(),
-                          definition.adapter.implementation_digest,
-                          definition.adapter.abi_version, verifier.context))
-    return LoadResult::adapter_unavailable;
   output = {.definition = definition,
             .source = source,
             .generation = generation,
@@ -249,8 +243,7 @@ LoadResult parse_definition_document(std::string_view document,
 
 LoadResult load_definition_directory_fd(
     int directory_fd, DefinitionSource source, std::uint32_t expected_uid,
-    const AdapterVerifier &verifier, TrustedDefinitionRegistry &registry,
-    std::size_t &loaded_count) {
+    TrustedDefinitionRegistry &registry, std::size_t &loaded_count) {
   loaded_count = 0;
   struct stat directory_before {};
   if (directory_fd < 0 || fstat(directory_fd, &directory_before) != 0 ||
@@ -321,7 +314,7 @@ LoadResult load_definition_directory_fd(
       break;
     }
     LoadedDefinition loaded;
-    result = parse_definition_document(document, source, verifier, loaded);
+    result = parse_definition_document(document, source, loaded);
     if (result != LoadResult::loaded)
       break;
     if (!candidate_registry.install(loaded.definition, loaded.source,

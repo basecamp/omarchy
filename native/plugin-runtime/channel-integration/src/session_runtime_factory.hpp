@@ -43,6 +43,11 @@ struct RuntimeServices final {
     const definitions::TrustedDefinitionRegistry &definitions,
     const RuntimeServices &services,
     const definitions::CapabilityReference &definition) noexcept;
+// Scope equality is always available from the trusted definition contract.
+// A provider may add schema-specific narrowing, but definition review never
+// depends on the provider process being present.
+[[nodiscard]] definitions::DynamicScopeValidator
+runtime_scope_validator(const RuntimeServices &services) noexcept;
 
 struct Limits final {
   std::size_t maximum_audit_records = 1024;
@@ -66,6 +71,11 @@ public:
   definitions() const noexcept;
   [[nodiscard]] definitions::DynamicScopeValidator
   scope_validator() const noexcept;
+  [[nodiscard]] std::optional<
+      plugin::wire::permission_snapshot::PermissionSnapshot>
+  project_permissions(
+      const plugins::manifest::ManifestV2 &manifest,
+      const session::policy::GrantSnapshot &grants) const override;
 
   [[nodiscard]] std::unique_ptr<AuthenticatedSessionRuntime>
   create(const plugins::manifest::ManifestV2 &manifest,

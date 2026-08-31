@@ -18,12 +18,6 @@ void require(bool condition, std::string_view message) {
     throw std::runtime_error(std::string(message));
 }
 
-bool adapter_available(std::string_view adapter_class, const Digest &digest,
-                       std::uint32_t abi, void *) noexcept {
-  return adapter_class == "bounded-https-fetch" &&
-         digest.view() == std::string(64, 'a') && abi == 1;
-}
-
 CapabilityDefinition fixture() {
   CapabilityDefinition definition{
       .canonical_name = Name("local.weather-fetch"),
@@ -33,7 +27,8 @@ CapabilityDefinition fixture() {
       .display_category_label = Label("Local weather tools"),
       .scope_schema = ScopeSchema::https_origins_and_methods,
       .title = Label("Fetch weather from selected origins"),
-      .risk_text = Label("Sends bounded requests to explicitly granted weather origins"),
+      .risk_text =
+          Label("Sends bounded requests to explicitly granted weather origins"),
       .risk = RiskLevel::moderate,
       .revocation = RevocationPolicy::cancel_inflight,
       .audit = {},
@@ -42,28 +37,26 @@ CapabilityDefinition fixture() {
                   .abi_version = 1},
       .operations = {},
   };
-  definition.operations.insert({.name = Name("forecast.read"),
-                                .label = Label("Read a forecast")});
+  definition.operations.insert(
+      {.name = Name("forecast.read"), .label = Label("Read a forecast")});
   return definition;
 }
 } // namespace
 
 void capability_definition_loader_tests() {
-  const AdapterVerifier verifier{.available = adapter_available};
   const auto definition = fixture();
   const auto document = canonical_definition_document(definition, 7);
   require(!document.empty(), "canonical definition document was empty");
   LoadedDefinition parsed;
   require(parse_definition_document(document, DefinitionSource::local_admin,
-                                    verifier, parsed) == LoadResult::loaded &&
+                                    parsed) == LoadResult::loaded &&
               parsed.generation == 7 && parsed.definition == definition,
           "canonical admin definition did not parse");
   auto mutated = document;
   mutated.replace(mutated.find("bounded-https-fetch"),
                   std::string("bounded-https-fetch").size(), "unknown-adapter");
   require(parse_definition_document(mutated, DefinitionSource::local_admin,
-                                    verifier, parsed) ==
-              LoadResult::invalid_document,
+                                    parsed) == LoadResult::invalid_document,
           "digest-bound document mutation was accepted");
 
   char temporary[] = "/tmp/omarchy-capability-loader.XXXXXX";
@@ -80,28 +73,27 @@ void capability_definition_loader_tests() {
   std::size_t loaded = 0;
   const int root_fd = open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
   require(root_fd >= 0, "trusted root descriptor did not open");
-  require(load_definition_directory_fd(
-              root_fd, DefinitionSource::local_admin,
-              static_cast<std::uint32_t>(getuid()), verifier, registry,
-              loaded) == LoadResult::loaded &&
+  require(load_definition_directory_fd(root_fd, DefinitionSource::local_admin,
+                                       static_cast<std::uint32_t>(getuid()),
+                                       registry,
+                                       loaded) == LoadResult::loaded &&
               loaded == 1 && registry.find("local.weather-fetch"),
           "trusted descriptor-rooted local-admin directory did not load");
 
   TrustedDefinitionRegistry wrong_owner_registry;
-  require(load_definition_directory_fd(
-              root_fd, DefinitionSource::local_admin,
-              static_cast<std::uint32_t>(getuid()) + 1, verifier,
-              wrong_owner_registry, loaded) == LoadResult::untrusted_path &&
+  require(load_definition_directory_fd(root_fd, DefinitionSource::local_admin,
+                                       static_cast<std::uint32_t>(getuid()) + 1,
+                                       wrong_owner_registry,
+                                       loaded) == LoadResult::untrusted_path &&
               loaded == 0 && wrong_owner_registry.size() == 0,
           "definition root with a mismatched trusted uid was accepted");
 
   TrustedDefinitionRegistry invalid_descriptor_registry;
   loaded = 99;
-  require(load_definition_directory_fd(
-              -1, DefinitionSource::local_admin,
-              static_cast<std::uint32_t>(getuid()), verifier,
-              invalid_descriptor_registry, loaded) ==
-              LoadResult::untrusted_path &&
+  require(load_definition_directory_fd(-1, DefinitionSource::local_admin,
+                                       static_cast<std::uint32_t>(getuid()),
+                                       invalid_descriptor_registry,
+                                       loaded) == LoadResult::untrusted_path &&
               loaded == 0 && invalid_descriptor_registry.size() == 0,
           "invalid definition root descriptor did not fail transactionally");
   const int regular_file_fd =
@@ -110,9 +102,8 @@ void capability_definition_loader_tests() {
   loaded = 99;
   require(load_definition_directory_fd(
               regular_file_fd, DefinitionSource::local_admin,
-              static_cast<std::uint32_t>(getuid()), verifier,
-              invalid_descriptor_registry, loaded) ==
-              LoadResult::untrusted_path &&
+              static_cast<std::uint32_t>(getuid()), invalid_descriptor_registry,
+              loaded) == LoadResult::untrusted_path &&
               loaded == 0 && invalid_descriptor_registry.size() == 0,
           "non-directory definition root did not fail transactionally");
   close(regular_file_fd);
@@ -126,7 +117,7 @@ void capability_definition_loader_tests() {
     require(descriptor >= 0, "negative root descriptor did not open");
     const auto result = load_definition_directory_fd(
         descriptor, DefinitionSource::local_admin,
-        static_cast<std::uint32_t>(getuid()), verifier, candidate, loaded);
+        static_cast<std::uint32_t>(getuid()), candidate, loaded);
     close(descriptor);
     require(result != LoadResult::loaded && loaded == 0 &&
                 candidate.size() == before &&
@@ -166,8 +157,7 @@ void capability_definition_loader_tests() {
     require(descriptor >= 0, "mutation root descriptor did not open");
     const auto result = load_definition_directory_fd(
         descriptor, DefinitionSource::local_admin,
-        static_cast<std::uint32_t>(getuid()), verifier, mutation_registry,
-        loaded);
+        static_cast<std::uint32_t>(getuid()), mutation_registry, loaded);
     close(descriptor);
     if (result != LoadResult::loaded) {
       require(loaded == 0 && mutation_registry.size() == 0,
@@ -197,16 +187,15 @@ void capability_definition_loader_tests() {
   while (directory_mutations.load(std::memory_order_acquire) < 100) {
   }
   bool rejected_directory_mutation = false;
-  for (int attempt = 0;
-       attempt < 100 && !rejected_directory_mutation; ++attempt) {
+  for (int attempt = 0; attempt < 100 && !rejected_directory_mutation;
+       ++attempt) {
     TrustedDefinitionRegistry mutation_registry;
     const int descriptor =
         open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     require(descriptor >= 0, "directory mutation root did not open");
     const auto result = load_definition_directory_fd(
         descriptor, DefinitionSource::local_admin,
-        static_cast<std::uint32_t>(getuid()), verifier, mutation_registry,
-        loaded);
+        static_cast<std::uint32_t>(getuid()), mutation_registry, loaded);
     close(descriptor);
     if (result != LoadResult::loaded) {
       require(loaded == 0 && mutation_registry.size() == 0,
@@ -228,9 +217,8 @@ void capability_definition_loader_tests() {
   require(symlink_root_fd >= 0, "symlink root descriptor did not open");
   require(load_definition_directory_fd(
               symlink_root_fd, DefinitionSource::local_admin,
-              static_cast<std::uint32_t>(getuid()), verifier,
-              symlink_registry, loaded) ==
-              LoadResult::untrusted_path &&
+              static_cast<std::uint32_t>(getuid()), symlink_registry,
+              loaded) == LoadResult::untrusted_path &&
               symlink_registry.size() == 0,
           "symlink definition entered the trust registry");
   close(symlink_root_fd);

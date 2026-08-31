@@ -2,6 +2,7 @@
 #include "PluginManager.h"
 
 #include "authority_store.hpp"
+#include "authority_store_test_access.hpp"
 #include "capability_definition.hpp"
 #include "omarchy/plugin_runtime/Version.h"
 #include "revision_verifier_adapter.hpp"
@@ -158,19 +159,23 @@ public:
     std::filesystem::remove_all(root_, ignored);
   }
 
-  void seed(std::string_view plugin) {
+  void seed(std::string_view plugin, bool start_running = true) {
     const auto revision_name = std::string(plugin) + "-g1";
     const auto revision = revisions() / revision_name;
     create(revision / "ui", 0755);
-    const auto permissions_json =
-        "{\"required\":[],\"optional\":["
+    const std::string storage =
         "{\"capability\":\"storage.private\",\"reason\":\"builtin row\","
-        "\"quotaBytes\":8192},"
+        "\"quotaBytes\":8192}";
+    const std::string dynamic =
         "{\"capability\":\"write\",\"reason\":\"dynamic row\","
         "\"definitionGeneration\":3,\"definitionDigest\":\"" +
         definition_digest_ +
         "\",\"operations\":[\"remove\",\"storage.private\"],"
-        "\"profile\":\"contract\"}]}";
+        "\"profile\":\"contract\"}";
+    const auto permissions_json =
+        start_running
+            ? "{\"required\":[],\"optional\":[" + storage + ',' + dynamic + "]}"
+            : "{\"required\":[" + storage + "],\"optional\":[" + dynamic + "]}";
     {
       std::ofstream manifest(revision / "manifest.json");
       manifest << "{\"schemaVersion\":2,\"id\":\"" << plugin
@@ -246,10 +251,20 @@ public:
                 store->promote_candidate(snapshot.binding, 1) ==
                     host::AuthorityMutationResult::applied,
             "permission contract authority activation failed");
+    if (!start_running) {
+      const auto view = store->read_authority_view();
+      require(view && view->active && snapshot.requests.size() == 1 &&
+                  host::AuthorityStoreTestAccess::revoke_active(
+                      *store, snapshot.requests.values().front().capability,
+                      view->authority_slots.sequence)
+                          .status == host::AuthorityMutationResult::applied,
+              "permission contract disabled authority setup failed");
+    }
     writeActivation(plugin, revision_name, verified->tree_sha256);
   }
 
-  std::unique_ptr<channel::RuntimeBootstrap> bootstrap() const {
+  std::unique_ptr<channel::RuntimeBootstrap>
+  bootstrap(bool dynamic_provider = true) const {
     const int home =
         ::open(home_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     require(home >= 0, "permission contract home unavailable");
@@ -262,8 +277,11 @@ public:
     auto services = std::make_shared<channel::RuntimeServices>();
     services->context = std::make_shared<int>(0);
     services->compare_scope = compareScope;
-    services->dynamic_services.push_back(
-        {.binding = collisionDefinition().adapter, .dispatch = inertDispatch});
+    if (dynamic_provider) {
+      services->dynamic_services.push_back(
+          {.binding = collisionDefinition().adapter,
+           .dispatch = inertDispatch});
+    }
     return channel::RuntimeBootstrapTestAccess::compose_with_context(
         std::move(roots), registry_, std::move(services));
   }
@@ -654,14 +672,85 @@ void publicPermissionContract() {
           "stale exact review ID survived a public authority mutation");
 }
 
+void unavailableProviderReviewContract() {
+  constexpr std::string_view plugin = "unavailable.permission-contract";
+  RuntimeFixture fixture;
+  fixture.seed(plugin, false);
+  Jobs jobs;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(*manager,
+                                                  fixture.bootstrap(false));
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager,
+      [&](auto kind, auto job) { return jobs.submit(kind, std::move(job)); });
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              jobs.jobs.size() == 1,
+          "missing-provider activation did not queue exact preparation");
+  jobs.run();
+  bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  const auto initial = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  if (initial.size() != 1 || !initial.front().permission_disabled) {
+    std::string detail =
+        "permission-disabled authority did not retain a reviewable slot";
+    for (const auto &entry : initial)
+      detail += " [preparing=" + std::to_string(entry.preparing) +
+                " retry=" + std::to_string(entry.retry_wait) +
+                " state=" + std::to_string(entry.last_state) +
+                " error=" + std::to_string(entry.last_error) + "]";
+    throw std::runtime_error(detail);
+  }
+
+  auto &control = *manager->permissions();
+  const auto review_id = control.beginReview(QString::fromUtf8(plugin));
+  require(!review_id.isEmpty(),
+          "missing-provider definition was not reviewable");
+  runPermission(jobs, *manager);
+  const auto review_rows = rows(poll(control, review_id));
+  const auto builtin = rowNamed(review_rows, "storage.private");
+  const auto dynamic = rowNamed(review_rows, "write");
+  require(!builtin.isEmpty() && !dynamic.isEmpty() &&
+              dynamic.value("state") == "granted" &&
+              dynamic.value("available") == false,
+          "review did not separate durable grant from provider availability");
+  QJsonArray dynamic_operations;
+  for (const auto &value : dynamic.value("operations").toArray())
+    dynamic_operations.push_back(value.toObject().value("operationId"));
+  require(
+      control.apply(review_id, choices(builtin, dynamic, dynamic_operations))
+          .isEmpty(),
+      "review granted an unavailable provider");
+  const auto deny_choices = QString::fromUtf8(
+      QJsonDocument(
+          QJsonObject{{"choices", QJsonArray{choice(builtin, true),
+                                             choice(dynamic, false)}}})
+          .toJson(QJsonDocument::Compact));
+  const auto apply_id = control.apply(review_id, deny_choices);
+  require(!apply_id.isEmpty(),
+          "optional unavailable permission could not be explicitly denied");
+  runPermission(jobs, *manager);
+  require(poll(control, apply_id).value("state") == "succeeded" &&
+              jobs.jobs.size() == 1,
+          "optional denial did not publish one exact authority generation");
+  const auto promoted = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  require(promoted.size() == 1 && promoted.front().preparing,
+          "optional denial did not queue exact degraded preparation");
+  const auto authority = bridge::PluginManagerTestAccess::permissionView(
+      *manager, plugin, promoted.front().epoch);
+  require(authority && authority->active &&
+              authority->active->dynamic_grants.size() == 1 &&
+              authority->active->dynamic_grants.front().grant.state ==
+                  permissions::GrantState::denied,
+          "optional unavailable denial did not persist exact authority");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   QCoreApplication application(argc, argv);
-  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
-    return 77;
   try {
-    publicPermissionContract();
+    unavailableProviderReviewContract();
+    if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") != nullptr)
+      publicPermissionContract();
   } catch (const std::exception &error) {
     std::fprintf(stderr, "permission control contract test failed: %s\n",
                  error.what());

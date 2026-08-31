@@ -19,7 +19,6 @@ enum class RuntimeBootstrapError : std::uint8_t {
   package_definitions_untrusted,
   admin_definitions_untrusted,
   definition_document_rejected,
-  definition_adapter_unavailable,
   definition_registry_rejected,
   definition_bound_exceeded,
   resource_exhausted,
@@ -66,10 +65,6 @@ private:
       std::uint32_t definition_uid,
       RuntimeBootstrapError &error) noexcept;
   [[nodiscard]] static bool
-  adapter_available_for_test(std::string_view adapter_class,
-                             const definitions::Digest &digest,
-      std::uint32_t abi_version) noexcept;
-  [[nodiscard]] static bool
   authority_directory_accepted_for_test(std::uint32_t owner_uid,
                                         std::uint32_t mode,
       std::uint32_t trusted_uid) noexcept;
@@ -105,12 +100,9 @@ public:
     return RuntimeBootstrap::open_from_test_filesystem_root(
         std::move(roots), filesystem_root_fd, definition_uid, error);
   }
-  [[nodiscard]] static bool
-  adapter_available(std::string_view adapter_class,
-                    const definitions::Digest &digest,
-                    std::uint32_t abi_version) noexcept {
-    return RuntimeBootstrap::adapter_available_for_test(
-        adapter_class, digest, abi_version);
+  [[nodiscard]] static std::optional<definitions::ResolvedDefinition>
+  definition(const RuntimeBootstrap &bootstrap, std::string_view name) {
+    return bootstrap.definitions_->find(name);
   }
   [[nodiscard]] static bool
   authority_directory_accepted(std::uint32_t owner_uid, std::uint32_t mode,

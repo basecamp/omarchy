@@ -258,12 +258,28 @@ definitions::CapabilityDefinition dynamic_definition() {
 
 policy::GrantSnapshot dynamic_snapshot(
     const definitions::ResolvedDefinition &resolved,
-    permissions::GrantState state = permissions::GrantState::granted) {
+    permissions::GrantState state = permissions::GrantState::granted,
+    bool required = false) {
+  manifest::ManifestV2 manifest_value;
+  manifest_value.id = "fixture.plugin";
+  manifest_value.requests.push_back(
+      {.capability = std::string(resolved.definition->canonical_name.view()),
+       .reason = "exercise an exact trusted provider",
+       .canonical_scope = "exact",
+       .definition_generation = resolved.generation,
+       .definition_digest = std::string(resolved.digest.view()),
+       .operations = {"echo"},
+       .required = required});
   policy::GrantSnapshot snapshot;
-  snapshot.binding = {.plugin = permissions::PluginId("fixture.plugin"),
-                      .revision = digest('a'),
-                      .policy_fingerprint = digest('b'),
-                      .generation = 7};
+  snapshot.requests = permissions::requests_from_manifest(manifest_value);
+  snapshot.binding = {
+      .plugin = permissions::PluginId("fixture.plugin"),
+      .revision = digest('a'),
+      .policy_fingerprint = permissions::Digest(
+          permissions::policy_request_fingerprint(snapshot.requests)),
+      .generation = 7};
+  snapshot.source_request_fingerprint = permissions::Digest(
+      manifest::requested_capability_fingerprint(manifest_value.requests));
   definitions::DynamicRevisionGrant grant{
       .binding = snapshot.binding,
       .request = {.definition =
@@ -272,7 +288,7 @@ policy::GrantSnapshot dynamic_snapshot(
                        .definition_digest = resolved.digest},
                   .operations = {},
                   .scope = definitions::CanonicalScope("exact"),
-                  .required = false},
+                  .required = required},
       .grant = {}};
   grant.request.operations.insert(definitions::Name("echo"));
   grant.grant = {.definition = grant.request.definition,
@@ -282,6 +298,22 @@ policy::GrantSnapshot dynamic_snapshot(
                  .epoch = 7};
   snapshot.dynamic_grants.push_back(std::move(grant));
   return snapshot;
+}
+
+manifest::ManifestV2
+dynamic_manifest(const definitions::ResolvedDefinition &resolved,
+                 bool required = false) {
+  manifest::ManifestV2 value;
+  value.id = "fixture.plugin";
+  value.requests.push_back(
+      {.capability = std::string(resolved.definition->canonical_name.view()),
+       .reason = "exercise an exact trusted provider",
+       .canonical_scope = "exact",
+       .definition_generation = resolved.generation,
+       .definition_digest = std::string(resolved.digest.view()),
+       .operations = {"echo"},
+       .required = required});
+  return value;
 }
 
 void provider_completeness_and_effect_fence() {
@@ -408,6 +440,7 @@ void descriptor_quota_and_dynamic_catalog_validation() {
   const auto resolved = mutable_definitions.find("service.echo");
   require(resolved.has_value(), "dynamic definition lookup failed");
   auto dynamic = dynamic_snapshot(*resolved);
+  const auto dynamic_plugin = dynamic_manifest(*resolved);
   auto dynamic_live =
       std::make_shared<host::LiveGenerationState>(dynamic.binding);
   auto probe = std::make_shared<ServiceProbe>();
@@ -419,40 +452,65 @@ void descriptor_quota_and_dynamic_catalog_validation() {
       .dynamic_services = {}};
   channel::SessionRuntimeFactory missing_dynamic(
       mutable_definitions, missing_route);
-  require(!missing_dynamic.create(plugin_manifest(), dynamic,
-                                  directories.revision, directories.state, 43,
-                                  dynamic_live, gesture()),
-          "granted dynamic permission accepted a missing adapter");
+  auto missing_product = missing_dynamic.create(
+      dynamic_plugin, dynamic, directories.revision, directories.state, 43,
+      dynamic_live, gesture());
+  const auto missing_projection =
+      missing_dynamic.project_permissions(dynamic_plugin, dynamic);
+  require(missing_product && missing_projection &&
+              missing_projection->permissions.size() == 1 &&
+              missing_projection->permissions[0].state ==
+                  wire::permission_snapshot::GrantState::granted &&
+              missing_projection->permissions[0].operation_mask == 0,
+          "optional granted permission did not degrade without its provider");
+  auto required_dynamic =
+      dynamic_snapshot(*resolved, permissions::GrantState::granted, true);
+  const auto required_plugin = dynamic_manifest(*resolved, true);
+  auto required_live =
+      std::make_shared<host::LiveGenerationState>(required_dynamic.binding);
+  require(!missing_dynamic.create(required_plugin, required_dynamic,
+                                  directories.revision, directories.state, 44,
+                                  required_live, gesture()) &&
+              !missing_dynamic.project_permissions(required_plugin,
+                                                   required_dynamic),
+          "required granted permission activated without its provider");
   auto wrong = definition.adapter;
   wrong.implementation_digest = digest('e');
   missing_route.dynamic_services.push_back(
       {.binding = wrong, .dispatch = dynamic_dispatch});
   channel::SessionRuntimeFactory wrong_dynamic(
       mutable_definitions, missing_route);
-  require(!wrong_dynamic.create(plugin_manifest(), dynamic,
-                                directories.revision, directories.state, 43,
-                                dynamic_live, gesture()),
-          "dynamic route accepted the wrong implementation digest");
+  require(wrong_dynamic.create(dynamic_plugin, dynamic, directories.revision,
+                               directories.state, 43, dynamic_live,
+                               gesture()) != nullptr,
+          "optional permission did not degrade for a wrong provider digest");
   missing_route.dynamic_services[0].binding = definition.adapter;
   missing_route.dynamic_services.push_back(
       {.binding = definition.adapter, .dispatch = dynamic_dispatch});
   channel::SessionRuntimeFactory duplicate_dynamic(
       mutable_definitions, missing_route);
-  require(!duplicate_dynamic.create(plugin_manifest(), dynamic,
-                                    directories.revision, directories.state,
-                                    43, dynamic_live, gesture()),
-          "duplicate exact dynamic adapters were accepted");
+  require(duplicate_dynamic.create(dynamic_plugin, dynamic,
+                                   directories.revision, directories.state, 43,
+                                   dynamic_live, gesture()) != nullptr,
+          "optional permission did not degrade for ambiguous providers");
   missing_route.dynamic_services.pop_back();
   missing_route.dynamic_services[0].binding.abi_version = 2;
   channel::SessionRuntimeFactory wrong_abi_dynamic(
       mutable_definitions, missing_route);
-  require(!wrong_abi_dynamic.create(plugin_manifest(), dynamic,
-                                    directories.revision, directories.state,
-                                    43, dynamic_live, gesture()),
-          "dynamic route accepted the wrong adapter ABI");
+  require(wrong_abi_dynamic.create(dynamic_plugin, dynamic,
+                                   directories.revision, directories.state, 43,
+                                   dynamic_live, gesture()) != nullptr,
+          "optional permission did not degrade for a wrong provider ABI");
   missing_route.dynamic_services[0].binding = definition.adapter;
   channel::SessionRuntimeFactory exact_dynamic(
       mutable_definitions, missing_route);
+  const auto restored_projection =
+      exact_dynamic.project_permissions(dynamic_plugin, dynamic);
+  require(restored_projection && restored_projection->permissions.size() == 1 &&
+              restored_projection->permissions[0] ==
+                  wire::permission_snapshot::PermissionRow{
+                      wire::permission_snapshot::GrantState::granted, 0x0001},
+          "the exact provider did not restore an existing durable grant");
   auto changed_definition = dynamic_definition();
   changed_definition.canonical_name = definitions::Name("service.other");
   changed_definition.authority_identity =
@@ -468,7 +526,7 @@ void descriptor_quota_and_dynamic_catalog_validation() {
               exact_dynamic.definitions().size() == 1,
           "factory registry changed through its mutable source alias");
   auto dynamic_product = exact_dynamic.create(
-      plugin_manifest(), dynamic, directories.revision, directories.state, 43,
+      dynamic_plugin, dynamic, directories.revision, directories.state, 43,
       dynamic_live, gesture());
   require(dynamic_product != nullptr,
           "exact trusted dynamic route was rejected");
@@ -488,6 +546,28 @@ void descriptor_quota_and_dynamic_catalog_validation() {
                                                  dynamic_size),
           "dynamic invocation encoding failed");
   dynamic_payload.resize(dynamic_size);
+  auto missing_admission = missing_product->broker().take_admission();
+  require(static_cast<bool>(missing_admission),
+          "missing-provider runtime admission unavailable");
+  auto missing_request = missing_admission.admission->admit(
+      {.message_type = broker::kDynamicInvokeMessage,
+       .correlation_id = 9,
+       .payload = dynamic_payload});
+  require(static_cast<bool>(missing_request),
+          "missing-provider request was not admitted for broker rejection");
+  std::array<std::byte, 64> missing_response{};
+  auto missing_result = missing_product->broker().dispatch(
+      std::move(*missing_request.request), 9, missing_response);
+  // The trusted snapshot gives well-behaved QML a zero operation mask. If a
+  // compromised worker bypasses that local gate, the broker returns a typed
+  // denial for the absent route and never reaches a provider callback. This
+  // is nonfatal so a transient provider outage cannot kill unrelated plugin
+  // features.
+  require(missing_result.state() == host::TransactionState::reply &&
+              missing_result.reply_kind() == host::ReplyKind::denied &&
+              probe->dynamic_calls == 0 &&
+              missing_product->broker().commit_sent(std::move(missing_result)),
+          "missing optional provider received a call");
   auto dynamic_request = dynamic_admission.admission->admit(
       {.message_type = broker::kDynamicInvokeMessage,
        .correlation_id = 1,
@@ -508,10 +588,47 @@ void descriptor_quota_and_dynamic_catalog_validation() {
       std::make_shared<host::LiveGenerationState>(denied.binding);
   channel::SessionRuntimeFactory denied_dynamic(
       mutable_definitions, {});
-  require(denied_dynamic.create(plugin_manifest(), denied,
+  require(denied_dynamic.create(dynamic_plugin, denied,
                                 directories.revision, directories.state, 44,
                                 denied_live, gesture()) != nullptr,
           "denied dynamic permission required an adapter or validator");
+
+  channel::RuntimeServices provider_appeared{
+      .context = probe,
+      .notification_send = nullptr,
+      .audio_play = nullptr,
+      .compare_scope = exact_scope,
+      .dynamic_services = {
+          {.binding = definition.adapter, .dispatch = dynamic_dispatch}}};
+  channel::SessionRuntimeFactory still_denied(
+      mutable_definitions, provider_appeared);
+  const auto denied_projection =
+      still_denied.project_permissions(dynamic_plugin, denied);
+  auto degraded = still_denied.create(
+      dynamic_plugin, denied, directories.revision, directories.state, 45,
+      denied_live, gesture());
+  require(degraded && denied_projection &&
+              denied_projection->permissions.size() == 1 &&
+              denied_projection->permissions[0] ==
+                  wire::permission_snapshot::PermissionRow{
+                      wire::permission_snapshot::GrantState::denied, 0x0000},
+          "provider appearance changed an explicitly denied activation");
+  auto degraded_admission = degraded->broker().take_admission();
+  require(static_cast<bool>(degraded_admission),
+          "degraded runtime admission unavailable");
+  auto denied_request = degraded_admission.admission->admit(
+      {.message_type = broker::kDynamicInvokeMessage,
+       .correlation_id = 2,
+       .payload = dynamic_payload});
+  require(static_cast<bool>(denied_request),
+          "denied dynamic request was not admitted for broker rejection");
+  auto denied_result = degraded->broker().dispatch(
+      std::move(*denied_request.request), 2, dynamic_response);
+  require(denied_result.state() == host::TransactionState::reply &&
+              denied_result.reply_kind() == host::ReplyKind::denied &&
+              probe->dynamic_calls == 1 &&
+              degraded->broker().commit_sent(std::move(denied_result)),
+          "a provider appearing later auto-granted or received a denied call");
 }
 
 void synchronous_effects_drain_before_revocation_acknowledges() {

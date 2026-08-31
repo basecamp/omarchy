@@ -4,6 +4,7 @@
 #include "activation_snapshot.hpp"
 #include "gesture_intent.hpp"
 #include "authenticated_session_channel.hpp"
+#include "omarchy/plugin/wire/permission_snapshot.hpp"
 
 #include <memory>
 #include <span>
@@ -22,6 +23,14 @@ class PluginRuntimeRoot;
 class AuthenticatedSessionRuntimeFactory {
 public:
   virtual ~AuthenticatedSessionRuntimeFactory() = default;
+  // Projects the authority snapshot into the permissions visible to this
+  // exact runtime composition. Implementations may remove operation bits for
+  // optional grants whose trusted provider is currently absent, but must not
+  // widen durable authority.
+  [[nodiscard]] virtual std::optional<
+      plugin::wire::permission_snapshot::PermissionSnapshot>
+  project_permissions(const plugins::manifest::ManifestV2 &manifest,
+                      const session::policy::GrantSnapshot &grants) const;
   // Construction may allocate owned provider/runtime state, but it must not
   // launch code or perform plugin-visible/system effects. Start and the
   // authenticated generation fences are the first effect boundary.
@@ -113,7 +122,7 @@ public:
   // Called only after trusted host-input admission accepts physical input. If
   // the input packet cannot be sent, the caller must clear the exact source.
   [[nodiscard]] bool arm_surface_intent(session::surface::SurfaceKey source,
-                     std::uint64_t input_sequence);
+                                        std::uint64_t input_sequence);
   void clear_surface_intent_eligibility(
       session::surface::SurfaceKey source) noexcept;
   [[nodiscard]] std::size_t surface_count() const noexcept;
@@ -137,11 +146,11 @@ private:
   class LiveAuthority;
   PluginSession(
       session::SessionToken token, session::OwnedDescriptor activation_record,
-                plugins::manifest::ManifestV2 manifest,
-                session::policy::GrantSnapshot grants,
-                std::shared_ptr<session::LiveGenerationState> live,
-                std::unique_ptr<session::SessionChannel> channel,
-                PluginSessionEvents *events, SurfaceIntentSink *intent_sink,
+      plugins::manifest::ManifestV2 manifest,
+      session::policy::GrantSnapshot grants,
+      std::shared_ptr<session::LiveGenerationState> live,
+      std::unique_ptr<session::SessionChannel> channel,
+      PluginSessionEvents *events, SurfaceIntentSink *intent_sink,
       std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility,
       session::SessionLimits limits, QObject *parent);
 

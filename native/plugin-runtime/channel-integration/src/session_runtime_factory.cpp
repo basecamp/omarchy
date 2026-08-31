@@ -2,6 +2,7 @@
 
 #include "audit_store.hpp"
 #include "omarchy/plugin_runtime/providers/private_storage_backend.hpp"
+#include "permission_projection.hpp"
 #include "structured_broker.hpp"
 
 #include <fcntl.h>
@@ -36,7 +37,7 @@ bool runtime_service_available(
     const definitions::CapabilityReference &definition) noexcept {
   try {
     const auto resolved = definitions.resolve(definition);
-    if (!resolved || services.compare_scope == nullptr)
+    if (!resolved)
       return false;
     return std::ranges::count(services.dynamic_services,
                               resolved->definition->adapter,
@@ -49,6 +50,26 @@ bool runtime_service_available(
   } catch (...) {
     return false;
   }
+}
+
+namespace {
+
+definitions::DynamicScopeRelation
+exact_scope(const definitions::CapabilityDefinition &,
+            std::string_view candidate, std::string_view baseline,
+            void *) noexcept {
+  return candidate == baseline
+             ? definitions::DynamicScopeRelation::equal
+             : definitions::DynamicScopeRelation::incomparable;
+}
+
+} // namespace
+
+definitions::DynamicScopeValidator
+runtime_scope_validator(const RuntimeServices &services) noexcept {
+  return {.compare =
+              services.compare_scope ? services.compare_scope : exact_scope,
+          .context = services.context.get()};
 }
 
 namespace {
@@ -184,26 +205,41 @@ std::optional<PreparedRuntime> prepare_runtime(
         return std::nullopt;
       prepared.storage = *quota;
     } else if (grant.capability == kNotifications) {
-      if (!runtime_service_available(services, grant.capability))
+      const auto request =
+          std::ranges::find(grants.requests.values(), grant.capability,
+                            &permissions::CapabilityRequest::capability);
+      if (request == grants.requests.values().end())
+        return std::nullopt;
+      if (!runtime_service_available(services, grant.capability) &&
+          request->required)
         return std::nullopt;
     } else if (grant.capability == kAudio) {
-      if (!runtime_service_available(services, grant.capability))
+      const auto request =
+          std::ranges::find(grants.requests.values(), grant.capability,
+                            &permissions::CapabilityRequest::capability);
+      if (request == grants.requests.values().end())
+        return std::nullopt;
+      if (!runtime_service_available(services, grant.capability) &&
+          request->required)
         return std::nullopt;
     } else {
       return std::nullopt;
     }
   }
 
-  const definitions::DynamicScopeValidator validator{
-      .compare = services.compare_scope, .context = services.context.get()};
+  const auto validator = runtime_scope_validator(services);
   for (const auto &grant : grants.dynamic_grants) {
     if (grant.grant.state != permissions::GrantState::granted)
       continue;
     if (grant.binding != grants.binding ||
-        !runtime_service_available(registry, services,
-                                   grant.request.definition) ||
         !definitions::review_dynamic_grant(registry, grant, validator))
       return std::nullopt;
+    if (!runtime_service_available(registry, services,
+                                   grant.request.definition)) {
+      if (grant.request.required)
+        return std::nullopt;
+      continue;
+    }
     const auto resolved = registry.resolve(grant.request.definition);
     if (!resolved)
       return std::nullopt;
@@ -260,8 +296,53 @@ SessionRuntimeFactory::definitions() const noexcept {
 
 definitions::DynamicScopeValidator
 SessionRuntimeFactory::scope_validator() const noexcept {
-  return {.compare = services_->compare_scope,
-          .context = services_->context.get()};
+  return runtime_scope_validator(*services_);
+}
+
+std::optional<plugin::wire::permission_snapshot::PermissionSnapshot>
+SessionRuntimeFactory::project_permissions(
+    const plugins::manifest::ManifestV2 &manifest,
+    const session::policy::GrantSnapshot &grants) const {
+  auto projected = session::project_permission_snapshot(manifest, grants);
+  if (!projected)
+    return std::nullopt;
+  const auto ordered =
+      plugins::manifest::canonical_capability_requests(manifest.requests);
+  if (ordered.size() != projected->permissions.size())
+    return std::nullopt;
+  for (std::size_t index = 0; index < ordered.size(); ++index) {
+    const auto &request = ordered[index];
+    auto &row = projected->permissions[index];
+    if (row.state != plugin::wire::permission_snapshot::GrantState::granted)
+      continue;
+    bool available = false;
+    if (request.definition_generation == 0) {
+      try {
+        available = runtime_service_available(
+            *services_, {.id = permissions::CapabilityId(request.capability),
+                         .version = 1});
+      } catch (...) {
+        return std::nullopt;
+      }
+    } else {
+      try {
+        available = runtime_service_available(
+            *definitions_, *services_,
+            {.canonical_name = definitions::Name(request.capability),
+             .definition_generation = request.definition_generation,
+             .definition_digest =
+                 definitions::Digest(request.definition_digest)});
+      } catch (...) {
+        return std::nullopt;
+      }
+    }
+    if (available)
+      continue;
+    if (request.required)
+      return std::nullopt;
+    row.operation_mask = 0;
+  }
+  return projected;
 }
 
 std::unique_ptr<AuthenticatedSessionRuntime>

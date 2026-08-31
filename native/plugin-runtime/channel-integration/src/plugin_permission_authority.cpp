@@ -77,8 +77,7 @@ PluginPermissionAuthority::PluginPermissionAuthority(
                          trusted_uid),
       expected_plugin_(std::move(expected_plugin)),
       definitions_(std::move(definitions)), services_(std::move(services)),
-      scope_validator_{.compare = services_->compare_scope,
-                       .context = services_->context.get()},
+      scope_validator_(runtime_scope_validator(*services_)),
       record_name_(std::move(fixed_record_name)) {}
 
 std::optional<host_session::AuthorityView>

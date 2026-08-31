@@ -71,18 +71,6 @@ std::vector<RegisteredAdapter> parse_adapters(std::string_view value) {
   return result;
 }
 
-bool adapter_available(std::string_view adapter_class,
-                       const definitions::Digest &digest, std::uint32_t abi,
-                       void *context) noexcept {
-  const auto &adapters =
-      *static_cast<const std::vector<RegisteredAdapter> *>(context);
-  return std::ranges::any_of(adapters, [&](const auto &registered) {
-    return registered.binding.adapter_class.view() == adapter_class &&
-           registered.binding.implementation_digest == digest &&
-           registered.binding.abi_version == abi;
-  });
-}
-
 struct Binding {
   definitions::DynamicRequest request;
   definitions::DynamicGrant grant;
@@ -243,15 +231,13 @@ void run(const std::filesystem::path &root,
   auto adapters = parse_adapters(adapter_text);
   definitions::TrustedDefinitionRegistry registry;
   std::size_t loaded = 0;
-  const definitions::AdapterVerifier verifier{.available = adapter_available,
-                                              .context = &adapters};
   const int definition_root_fd = open(
       definition_root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
   require(definition_root_fd >= 0,
           "independent trusted definition root did not open");
   const auto definition_result = definitions::load_definition_directory_fd(
       definition_root_fd, definitions::DefinitionSource::local_admin,
-      static_cast<std::uint32_t>(getuid()), verifier, registry, loaded);
+      static_cast<std::uint32_t>(getuid()), registry, loaded);
   close(definition_root_fd);
   require(definition_result == definitions::LoadResult::loaded && loaded > 0,
           "independent trusted definition set failed to load");

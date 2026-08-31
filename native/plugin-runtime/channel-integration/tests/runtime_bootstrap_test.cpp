@@ -564,7 +564,7 @@ void authority_stores_are_physically_isolated_per_plugin() {
           "released plugin authority lock could not be reacquired");
 }
 
-void every_unregistered_native_adapter_fails_closed() {
+void trusted_definition_loads_without_a_provider() {
   Fixture fixture;
   const auto definition = dynamic_definition();
   const auto document = definitions::canonical_definition_document(definition, 1);
@@ -577,14 +577,16 @@ void every_unregistered_native_adapter_fails_closed() {
   require(::chmod(file.c_str(), 0644) == 0,
           "dynamic definition mode setup failed");
   channel::RuntimeBootstrapError error{};
-  require(!load(fixture, error) &&
-              error == channel::RuntimeBootstrapError::
-                           definition_adapter_unavailable &&
-              !channel::RuntimeBootstrapTestAccess::adapter_available(
-                  definition.adapter.adapter_class.view(),
-                  definition.adapter.implementation_digest,
-                  definition.adapter.abi_version),
-          "unregistered native adapter entered the frozen registry");
+  auto bootstrap = load(fixture, error);
+  const auto loaded = bootstrap
+                          ? channel::RuntimeBootstrapTestAccess::definition(
+                                *bootstrap, definition.canonical_name.view())
+                          : std::nullopt;
+  require(bootstrap && error == channel::RuntimeBootstrapError::none &&
+              loaded && loaded->generation == 1 &&
+              loaded->digest == definitions::definition_digest(definition) &&
+              loaded->definition->adapter == definition.adapter,
+          "trusted definition was coupled to provider availability");
 }
 
 } // namespace
@@ -596,7 +598,7 @@ int main() {
     mandatory_package_and_optional_admin_are_exact();
     authority_children_are_exact_and_never_created();
     authority_stores_are_physically_isolated_per_plugin();
-    every_unregistered_native_adapter_fails_closed();
+    trusted_definition_loads_without_a_provider();
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "runtime bootstrap test failed: " << error.what()

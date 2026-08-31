@@ -118,21 +118,11 @@ open_fixed_directory(int filesystem_root_fd,
   return FixedDirectoryResult::opened;
 }
 
-// No dynamic native adapter is safe to expose yet. Extending this verifier is
-// a compiled host change paired with a fixed service implementation; it never
-// dlopens a path named by a definition.
-bool compiled_adapter_available(std::string_view, const definitions::Digest &,
-                                std::uint32_t, void *) noexcept {
-  return false;
-}
-
 RuntimeBootstrapError
 definition_error(definitions::LoadResult result) noexcept {
   switch (result) {
   case definitions::LoadResult::loaded:
     return RuntimeBootstrapError::none;
-  case definitions::LoadResult::adapter_unavailable:
-    return RuntimeBootstrapError::definition_adapter_unavailable;
   case definitions::LoadResult::registry_rejected:
     return RuntimeBootstrapError::definition_registry_rejected;
   case definitions::LoadResult::bound_exceeded:
@@ -174,12 +164,10 @@ RuntimeBootstrap::compose_from_filesystem_root(
   }
 
   definitions::TrustedDefinitionRegistry registry;
-  const definitions::AdapterVerifier verifier{.available =
-                                                  compiled_adapter_available};
   std::size_t loaded = 0;
   auto load_result = definitions::load_definition_directory_fd(
       package.get(), definitions::DefinitionSource::omarchy_package,
-      definition_uid, verifier, registry, loaded);
+      definition_uid, registry, loaded);
   if (load_result != definitions::LoadResult::loaded) {
     error = load_result == definitions::LoadResult::untrusted_path
                 ? RuntimeBootstrapError::package_definitions_untrusted
@@ -189,7 +177,7 @@ RuntimeBootstrap::compose_from_filesystem_root(
   if (admin_result == FixedDirectoryResult::opened) {
     load_result = definitions::load_definition_directory_fd(
         admin.get(), definitions::DefinitionSource::local_admin, definition_uid,
-        verifier, registry, loaded);
+        registry, loaded);
     if (load_result != definitions::LoadResult::loaded) {
       error = load_result == definitions::LoadResult::untrusted_path
                   ? RuntimeBootstrapError::admin_definitions_untrusted
@@ -312,13 +300,6 @@ RuntimeBootstrap::open_from_test_filesystem_root(
     error = RuntimeBootstrapError::internal_failure;
     return {};
   }
-}
-
-bool RuntimeBootstrap::adapter_available_for_test(
-    std::string_view adapter_class, const definitions::Digest &digest,
-    std::uint32_t abi_version) noexcept {
-  return compiled_adapter_available(adapter_class, digest, abi_version,
-                                    nullptr);
 }
 
 bool RuntimeBootstrap::authority_directory_accepted_for_test(

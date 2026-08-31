@@ -126,6 +126,13 @@ private:
   std::shared_ptr<session::LiveGenerationState> live_;
 };
 
+std::optional<plugin::wire::permission_snapshot::PermissionSnapshot>
+AuthenticatedSessionRuntimeFactory::project_permissions(
+    const plugins::manifest::ManifestV2 &manifest,
+    const session::policy::GrantSnapshot &grants) const {
+  return session::project_permission_snapshot(manifest, grants);
+}
+
 std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
     launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
     AuthenticatedSessionRuntimeFactory &runtime_factory,
@@ -145,8 +152,8 @@ std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
   }
 
   try {
-    const auto projected = session::project_permission_snapshot(
-        snapshot.manifest, snapshot.grants);
+    const auto projected =
+        runtime_factory.project_permissions(snapshot.manifest, snapshot.grants);
     if (!projected)
       return {};
     auto permission_snapshot = wire::permission_snapshot::encode(*projected);
