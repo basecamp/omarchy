@@ -1,0 +1,384 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Grok usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Grok CLI usage into one display-ready JSON record.
+
+Grok ships no usage or rate-limit endpoint: the CLI has no `usage`
+subcommand and never exposes the account's allowance, so this record carries
+local stats only -- the shape Claude's collector falls back to when it cannot
+reach Anthropic's endpoint. The panel draws tokens by day, tokens by model,
+prompts, and sessions; the limits section stays empty.
+
+Every number comes from ~/.grok/sessions/<encoded-cwd>/<session-id>/updates.jsonl,
+where the CLI writes one `turn_completed` update per prompt carrying that
+turn's token usage broken down by model.
+"""
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+AGENT_ID = "grok"
+AGENT_NAME = "Grok"
+AUTH_HELP = "Run `grok login` to sign in."
+
+# A scan this recent is only reused to dedup concurrent collector runs (the
+# update command backgrounds one per agent while the panel refreshes on its
+# own); every periodic widget refresh lands a real rescan, however low
+# refreshIntervalSec is set. --limits-only promises only fresh limits, and
+# this agent has none to fetch, so it may reuse a scan for far longer.
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+# Only sessions touched inside this window are scanned, so a long-lived
+# ~/.grok does not cost a full-tree read on every refresh. All-time totals
+# therefore cover this window, the same caveat the Codex collector carries.
+SCAN_WINDOW_DAYS = 30
+
+# The marker that lets a multi-megabyte updates.jsonl line be skipped without
+# a JSON parse. It is an accelerator, not the authority: the parsed
+# sessionUpdate below decides what actually counts.
+TURN_MARKER = '"turn_completed"'
+
+
+def number(value):
+  try:
+    return int(value or 0)
+  except Exception:
+    return 0
+
+
+def grok_home():
+  return Path(os.environ.get("GROK_HOME") or (Path.home() / ".grok"))
+
+
+def local_day(value):
+  if value is None:
+    return datetime.now().strftime("%Y-%m-%d")
+  if isinstance(value, (int, float)):
+    # Grok writes seconds at the top level and milliseconds in _meta.
+    if value > 10_000_000_000:
+      value = value / 1000
+    return datetime.fromtimestamp(value).strftime("%Y-%m-%d")
+  text = str(value)
+  try:
+    if text.endswith("Z"):
+      parsed = datetime.fromisoformat(text[:-1] + "+00:00")
+    else:
+      parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is not None:
+      parsed = parsed.astimezone()
+    return parsed.strftime("%Y-%m-%d")
+  except Exception:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def model_name(raw):
+  value = str(raw or "").strip()
+  return value if value else "grok"
+
+
+now = datetime.now()
+today = now.strftime("%Y-%m-%d")
+recent_dates = [(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+today_tokens_by_model = {}
+model_usage = {}
+today_sessions = set()
+active_days = set()
+
+today_prompts = 0
+today_total_tokens = 0
+total_prompts = 0
+total_sessions = set()
+# Grok prompt ids are UUIDs unique to a turn, so a session forked with
+# --fork-session -- which replays the transcript under a new session id --
+# contributes its shared turns once rather than twice.
+seen_prompts = set()
+
+
+def split_buckets(usage):
+  """Grok's four disjoint token buckets, from its overlapping ones.
+
+  cachedReadTokens and cacheCreationTokens are both counted inside
+  inputTokens (records satisfy totalTokens == inputTokens + outputTokens), so
+  the plain input bucket is what is left after removing them. Reasoning
+  tokens stay folded into output, the way the Codex collector keeps them.
+  """
+  cache_read = number(usage.get("cachedReadTokens"))
+  cache_write = number(usage.get("cacheCreationTokens"))
+  input_tokens = max(0, number(usage.get("inputTokens")) - cache_read - cache_write)
+  output_tokens = number(usage.get("outputTokens"))
+  return input_tokens, output_tokens, cache_read, cache_write
+
+
+def add_turn(day, session_key, usage):
+  """Record one completed turn: one prompt, tokens split across its models."""
+  global today_prompts, today_total_tokens, total_prompts
+
+  # A turn that switched models mid-flight reports each one separately, and
+  # the top-level counters are their sum, so only one of the two is read.
+  per_model = usage.get("modelUsage")
+  if not isinstance(per_model, dict) or not per_model:
+    per_model = {model_name(usage.get("model")): usage}
+
+  turn_total = 0
+  counted = False
+  for raw_model, model_stats in per_model.items():
+    if not isinstance(model_stats, dict):
+      continue
+    input_tokens, output_tokens, cache_read, cache_write = split_buckets(model_stats)
+    if not (input_tokens or output_tokens or cache_read or cache_write):
+      continue
+    counted = True
+    model = model_name(raw_model)
+    bucket = model_usage.setdefault(model, {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "cacheReadInputTokens": 0,
+      "cacheCreationInputTokens": 0,
+    })
+    bucket["inputTokens"] += input_tokens
+    bucket["outputTokens"] += output_tokens
+    bucket["cacheReadInputTokens"] += cache_read
+    bucket["cacheCreationInputTokens"] += cache_write
+
+    total = input_tokens + output_tokens + cache_read + cache_write
+    turn_total += total
+    if day == today:
+      today_tokens_by_model[model] = today_tokens_by_model.get(model, 0) + total
+
+  # A turn that burned no tokens is not a prompt worth counting.
+  if not counted:
+    return
+
+  # One turn_completed is one prompt, however many models served it.
+  total_prompts += 1
+  total_sessions.add(session_key)
+  active_days.add(day)
+
+  if day in recent:
+    recent[day]["messageCount"] += turn_total
+
+  if day == today:
+    today_prompts += 1
+    today_sessions.add(session_key)
+    today_total_tokens += turn_total
+
+
+def session_files():
+  root = grok_home() / "sessions"
+  if not root.is_dir():
+    return []
+  cutoff = time.time() - SCAN_WINDOW_DAYS * 24 * 60 * 60
+  found = []
+  # sessions/<url-encoded-cwd>/<session-id>/updates.jsonl
+  for path in root.glob("*/*/updates.jsonl"):
+    try:
+      if path.stat().st_mtime >= cutoff:
+        found.append(path)
+    except OSError:
+      continue
+  return found
+
+
+def scan_sessions():
+  for path in session_files():
+    session_id = path.parent.name
+    try:
+      with path.open(errors="replace") as handle:
+        for index, raw in enumerate(handle):
+          if TURN_MARKER not in raw:
+            continue
+          try:
+            entry = json.loads(raw)
+          except Exception:
+            continue
+          params = entry.get("params") or {}
+          update = params.get("update") or {}
+          if not isinstance(update, dict) or update.get("sessionUpdate") != "turn_completed":
+            continue
+          usage = update.get("usage")
+          if not isinstance(usage, dict) or not usage:
+            continue
+
+          prompt_key = str(update.get("prompt_id") or "") or f"{path}:{index}"
+          if prompt_key in seen_prompts:
+            continue
+          seen_prompts.add(prompt_key)
+
+          meta = params.get("_meta") or {}
+          stamp = entry.get("timestamp") or meta.get("agentTimestampMs")
+          if stamp is None:
+            try:
+              stamp = path.stat().st_mtime
+            except OSError:
+              stamp = None
+          add_turn(local_day(stamp), str(params.get("sessionId") or session_id), usage)
+    except OSError:
+      continue
+
+
+def cache_root():
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def scan_cache_paths():
+  digest = hashlib.sha1(str(grok_home()).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"grok-scan-{digest}.json", root / f"grok-scan-{digest}.lock"
+
+
+def read_fresh_json(path, max_age_seconds):
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    # A negative age means the mtime is in the future: the clock moved
+    # backwards since the write, so the cache's freshness cannot be trusted.
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path, payload):
+  # A temp name unique to this writer, not derived from the target: several
+  # collectors can run at once, and a shared temp path means the second
+  # replace finds the first one's file already moved away.
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    # mkstemp opens at 0600; nothing in the cache is sensitive, so open it
+    # up to the usual 0644.
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+# The cache payload is a versioned envelope around the local-stats dict, so a
+# corrupted or foreign-shaped file is a cache miss (rescan + rewrite) instead
+# of a crash or a garbage record.
+def read_cached_stats(cache_file, max_age_seconds):
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+    return None
+  # today* fields only mean "today" on the day they were scanned. A cache
+  # from another local date (midnight passed, or the clock moved) is a miss,
+  # not merely old, whatever its mtime says.
+  if cached.get("scanDate") != today:
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+    return None
+  return stats
+
+
+def write_cached_stats(cache_file, stats):
+  try:
+    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
+  except Exception as exc:
+    print(f"omarchy-agent-usage-grok: could not write usage cache ({exc})", file=sys.stderr)
+
+
+def local_stats():
+  """Snapshot the aggregated local usage into the record's stats dict."""
+  return {
+    "todayPrompts": today_prompts,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_total_tokens,
+    "todayTokensByModel": today_tokens_by_model,
+    "recentDays": [recent[day] for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": len(total_sessions),
+    # Days with any recorded usage, for the all-time "N days" summary. The
+    # dates travel too: merging snapshots from several machines needs their
+    # union, which a count alone cannot give.
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+    "modelUsage": model_usage,
+  }
+
+
+def cached_local_stats(max_age):
+  """Local stats, with the cache as a pure optimization.
+
+  The cache must never take the collector down: any cache-layer failure
+  (unwritable cache root, lock errors, disk full) degrades to a direct scan
+  and a warning on stderr. The JSON record is the contract; the cache is not.
+  """
+  try:
+    return _cached_local_stats(max_age)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-grok: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    scan_sessions()
+    return local_stats()
+
+
+def _cached_local_stats(max_age):
+  cache_file, lock_file = scan_cache_paths()
+
+  cached = read_cached_stats(cache_file, max_age)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age)
+    if cached is not None:
+      return cached
+    scan_sessions()
+    stats = local_stats()
+    write_cached_stats(cache_file, stats)
+    return stats
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  # --force rescans and rewrites the cache. --limits-only is kept for CLI
+  # compatibility with the panel's refreshLimits() call; this agent exposes
+  # no limits, so it only widens how long a scan may be reused.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+  stats = cached_local_stats(max_age)
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": True,
+    "hasLocalStats": True,
+    "hasPromptStats": True,
+    # No endpoint to ask, so no allowance to draw and nothing to retry.
+    "limits": [],
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": AUTH_HELP,
+  }
+  record.update(stats)
+  print(json.dumps(record, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+  main()
