@@ -188,6 +188,7 @@ pass "shell IPC summon and hide contract works"
 jq -e '.hasPlayer | type == "boolean"' <<<"$(shell_ipc media status)" >/dev/null || fail_with_log "media IPC returns status JSON"
 jq -e '.enabled | type == "boolean"' <<<"$(shell_ipc idle status)" >/dev/null || fail_with_log "idle IPC returns status JSON"
 jq -e '.locked | type == "boolean"' <<<"$(shell_ipc lock status)" >/dev/null || fail_with_log "lock IPC returns status JSON"
+lock_status_before=$(shell_ipc lock status)
 [[ $(shell_ipc image-selector ping) == "ok" ]] || fail_with_log "image selector IPC responds"
 [[ $(shell_ipc osd ping) == "ok" ]] || fail_with_log "OSD IPC responds"
 [[ $(shell_ipc osd show '{"message":"Runtime smoke","duration":0}') == "ok" ]] || fail_with_log "OSD IPC opens"
@@ -214,6 +215,17 @@ done
 shell_ipc_quiet image-selector cancel "$selector_done_file" >/dev/null
 rm -f "$selector_selection_file" "$selector_done_file"
 pass "image selector IPC survives plugin rescan"
+
+lock_status_after=$(shell_ipc lock status)
+jq -e '.locked | type == "boolean"' <<<"$lock_status_after" >/dev/null || fail_with_log "lock IPC survives plugin rescan"
+lock_event_after=$(jq -r '.lastEvent // empty' <<<"$lock_status_after")
+[[ $lock_event_after != lock-stranded* ]] ||
+  fail_with_log "plugin rescan does not strand the session lock ($lock_event_after)"
+lock_event_at_before=$(jq -r '.lastEventAt // empty' <<<"$lock_status_before")
+lock_event_at_after=$(jq -r '.lastEventAt // empty' <<<"$lock_status_after")
+[[ $lock_event_at_before == "$lock_event_at_after" ]] ||
+  fail_with_log "plugin rescan keeps the keepLoaded lock service mounted"
+pass "keepLoaded lock service survives plugin rescan"
 
 shell_ipc_quiet omarchy.system-update refresh >/dev/null 2>&1 || true
 sleep 0.8
