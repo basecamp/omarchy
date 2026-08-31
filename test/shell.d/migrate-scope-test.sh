@@ -4,15 +4,47 @@ set -euo pipefail
 
 source "$(dirname "$0")/base-test.sh"
 
-test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"' EXIT
+if [[ ${OMARCHY_MIGRATE_SCOPE_NS:-0} != 1 ]]; then
+  exec unshare --user --map-root-user --mount \
+    env OMARCHY_MIGRATE_SCOPE_NS=1 bash "$0"
+fi
+
+mount -t tmpfs -o mode=0755 tmpfs /run
+test_tmp=$(mktemp -d -p /run omarchy-migrate-scope.XXXXXXXX)
+cat >"$test_tmp/sudo" <<'STUB'
+#!/bin/bash
+if [[ ${1:-} == "-h" ]]; then
+  echo 'usage: sudo [-ABbEHkNnPS] command'
+  exit 0
+fi
+[[ -z ${TEST_SUDO_ARGS_LOG:-} ]] || printf '%s\n' "${1:-none}" >>"$TEST_SUDO_ARGS_LOG"
+[[ ${1:-} == "-N" ]] && shift
+[[ ${1:-} == "-k" ]] && exit 0
+[[ ${1:-} == "--" ]] && shift
+exec "$@"
+STUB
+chmod 0755 "$test_tmp/sudo"
+mount --bind "$test_tmp/sudo" /usr/bin/sudo
+trap 'umount /usr/bin/sudo; rm -rf "$test_tmp"; umount /run' EXIT
+
+prepare_test_root() {
+  local root="$1"
+
+  mkdir -p "$root/default/omarchy/sudo-no-update"
+  cp "$ROOT/default/omarchy/sudo-no-update/sudo" "$root/default/omarchy/sudo-no-update/sudo"
+  chmod 0755 "$root/default/omarchy/sudo-no-update/sudo"
+}
 
 test_root="$test_tmp/omarchy"
 test_home="$test_tmp/home"
 mkdir -p "$test_root/migrations" "$test_home"
+prepare_test_root "$test_root"
 
 cat >"$test_root/migrations/100-first.sh" <<'SH'
 [[ $OMARCHY_PATH == "$TEST_EXPECTED_OMARCHY_PATH" ]]
+[[ ${OMARCHY_SUDO_NO_UPDATE:-0} == 1 ]]
+[[ $(command -v sudo) == "$TEST_EXPECTED_SUDO_WRAPPER" ]]
+sudo /usr/bin/true
 echo first >>"$TEST_CALLS"
 SH
 cat >"$test_root/migrations/200-second.sh" <<'SH'
@@ -21,6 +53,8 @@ echo second >>"$TEST_CALLS"
 SH
 
 calls="$test_tmp/calls"
+sudo_args_log="$test_tmp/sudo-args"
+: >"$sudo_args_log"
 
 if ! HOME="$test_home" OMARCHY_PATH="$test_root" "$ROOT/bin/omarchy-migrate" --pending >"$test_tmp/pending.out"; then
   fail "migration runner reports pending migrations before state exists"
@@ -32,17 +66,22 @@ pass "migration runner detects pending migrations"
 HOME="$test_home" \
 OMARCHY_PATH="$test_root" \
 TEST_EXPECTED_OMARCHY_PATH="$test_root" \
+TEST_EXPECTED_SUDO_WRAPPER="$test_root/default/omarchy/sudo-no-update/sudo" \
+TEST_SUDO_ARGS_LOG="$sudo_args_log" \
 TEST_CALLS="$calls" \
   "$ROOT/bin/omarchy-migrate" >"$test_tmp/first-run.out"
 [[ $(sed -n '1p' "$calls") == "first" ]] || fail "migration runner runs first migration"
 [[ $(sed -n '2p' "$calls") == "second" ]] || fail "migration runner runs second migration"
 [[ -f $test_home/.local/state/omarchy/migrations/100-first.sh ]] || fail "migration runner records first migration marker"
 [[ -f $test_home/.local/state/omarchy/migrations/200-second.sh ]] || fail "migration runner records second migration marker"
+grep -qxF -- '-N' "$sudo_args_log" || fail "migration sudo wrapper did not enforce --no-update"
 pass "migration runner runs all migrations"
 
 HOME="$test_home" \
 OMARCHY_PATH="$test_root" \
 TEST_EXPECTED_OMARCHY_PATH="$test_root" \
+TEST_EXPECTED_SUDO_WRAPPER="$test_root/default/omarchy/sudo-no-update/sudo" \
+TEST_SUDO_ARGS_LOG="$sudo_args_log" \
 TEST_CALLS="$calls" \
   "$ROOT/bin/omarchy-migrate" >"$test_tmp/second-run.out"
 [[ $(wc -l <"$calls") -eq 2 ]] || fail "migration runner skips completed migrations"
@@ -56,6 +95,7 @@ pass "migration runner detects no pending migrations"
 failure_root="$test_tmp/failure-omarchy"
 failure_home="$test_tmp/failure-home"
 mkdir -p "$failure_root/migrations" "$failure_home"
+prepare_test_root "$failure_root"
 
 cat >"$failure_root/migrations/500-fail.sh" <<'SH'
 echo before-fail >>"$TEST_CALLS"
@@ -80,6 +120,7 @@ stdin_root="$test_tmp/stdin-omarchy"
 stdin_home="$test_tmp/stdin-home"
 stdin_calls="$test_tmp/stdin-calls"
 mkdir -p "$stdin_root/migrations" "$stdin_home"
+prepare_test_root "$stdin_root"
 
 cat >"$stdin_root/migrations/100-reader.sh" <<'SH'
 IFS= read -r value

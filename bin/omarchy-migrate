@@ -1,11 +1,64 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Run pending Omarchy migrations.
 # omarchy:args=[--pending]
 
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for Omarchy migrations." >&2
+  exit 126
+fi
+
+source "${BASH_SOURCE[0]%/*}/omarchy-install-security-functions" || exit 126
+
+if ! omarchy_security_require_privileged_bash_startup; then
+  echo "Refusing an unsafe Bash startup for Omarchy migrations." >&2
+  exit 126
+fi
+
 set -euo pipefail
 
+omarchy_install_security_sanitize_bash_startup_environment "$0" "$@"
+
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+export OMARCHY_PATH
+PATH="$OMARCHY_PATH/bin:/usr/bin:/usr/sbin:/bin:/sbin"
+export PATH
+
 mode="run"
+
+enable_non_reusable_sudo() {
+  local wrapper_dir="$OMARCHY_PATH/default/omarchy/sudo-no-update"
+  local wrapper="$wrapper_dir/sudo" canonical="" current="" owner="" mode=""
+
+  omarchy_security_sudo_supports_no_update || {
+    echo "This sudo does not support --no-update; refusing to run mixed-trust migrations." >&2
+    return 1
+  }
+  [[ -f $wrapper && -x $wrapper && ! -L $wrapper ]] || {
+    echo "Trusted no-update sudo wrapper is missing; refusing to run migrations." >&2
+    return 1
+  }
+  canonical=$(/usr/bin/realpath -e -- "$wrapper") || return 1
+  [[ $canonical == "$wrapper" ]] || return 1
+  if [[ $OMARCHY_PATH == "/usr/share/omarchy" ]]; then
+    current="$wrapper"
+    while :; do
+      [[ ! -L $current ]] || return 1
+      read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$current") || return 1
+      [[ $owner == "0" ]] || return 1
+      (( (8#$mode & 0022) == 0 )) || return 1
+      [[ $current == "$OMARCHY_PATH" ]] && break
+      current=${current%/*}
+    done
+  fi
+  PATH="$wrapper_dir:$PATH"
+  export PATH
+  # Some trusted helpers deliberately reset PATH and invoke /usr/bin/sudo.
+  # Export the same validated policy so those absolute-path calls retain the
+  # command-scoped boundary instead of silently publishing a timestamp.
+  OMARCHY_SUDO_NO_UPDATE=1
+  export OMARCHY_SUDO_NO_UPDATE
+}
 
 usage() {
   echo "Usage: omarchy-migrate [--pending]"
@@ -28,7 +81,6 @@ while (($#)); do
   esac
 done
 
-OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 STATE_DIR="${OMARCHY_MIGRATION_STATE:-$HOME/.local/state/omarchy/migrations}"
 MIGRATIONS_DIR="$OMARCHY_PATH/migrations"
 
@@ -85,16 +137,25 @@ wait_for_pacman_transaction
 mkdir -p "$STATE_DIR"
 [[ -d $MIGRATIONS_DIR ]] || exit 0
 
+# Migrations are strictly ordered and may mix user-controlled code (mise,
+# themes, AUR builds) with later privileged repairs. Start cold and force every
+# migration sudo through -N so authentication authorizes only that command and
+# never creates a timestamp a detached earlier child can reuse.
+omarchy_security_revoke_sudo_timestamp || exit 1
+enable_non_reusable_sudo
+
 while IFS=$'\t' read -r name file marker <&3; do
   [[ -n $name ]] || continue
 
   if [[ ! -f $marker ]]; then
     echo -e "\e[32m\nRunning migration (${name%.sh})\e[0m"
-    OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file" 3<&-
+    OMARCHY_PATH="$OMARCHY_PATH" /usr/bin/bash -p -euo pipefail "$file" 3<&-
     mkdir -p "$(dirname "$marker")"
     touch "$marker"
   fi
 done 3< <(migration_entries)
+
+omarchy_security_revoke_sudo_timestamp || exit 1
 
 # Clear a login-time notification the user left sitting there and then resolved
 # by running migrations some other way. The substring matches both the current
