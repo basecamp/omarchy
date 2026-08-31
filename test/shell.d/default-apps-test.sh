@@ -287,6 +287,38 @@ for entry in "${terminal_cases[@]}"; do
 done
 pass "terminal defaults install every missing terminal before selection"
 
+# The getter has to answer from the file the setter writes. Resolving through
+# xdg-terminal-exec, which is not on this test's PATH and need not be on a real
+# machine's either, is what left the menu with nothing selected.
+[[ $(omarchy-default-terminal) == "kitty" ]] ||
+  fail "the default terminal is read back from xdg-terminals.list" "got: $(omarchy-default-terminal)"
+pass "the default terminal is read back from xdg-terminals.list"
+
+printf '# only a comment\n\nfoot.desktop\n' >"$test_home/.config/xdg-terminals.list"
+[[ $(omarchy-default-terminal) == "foot" ]] ||
+  fail "reading the default terminal skips comments and blank lines" "got: $(omarchy-default-terminal)"
+pass "reading the default terminal skips comments and blank lines"
+
+# A terminal Omarchy does not name is still the honest answer.
+printf 'org.wezfurlong.wezterm.desktop\n' >"$test_home/.config/xdg-terminals.list"
+[[ $(omarchy-default-terminal) == "org.wezfurlong.wezterm.desktop" ]] ||
+  fail "an unrecognised default terminal is reported as its desktop id" "got: $(omarchy-default-terminal)"
+pass "an unrecognised default terminal is reported as its desktop id"
+
+# Nothing written yet: the system resolver still gets its turn.
+rm -f "$test_home/.config/xdg-terminals.list"
+cat >"$mock_bin/xdg-terminal-exec" <<'SH'
+#!/bin/bash
+[[ $1 == "--print-id" ]] && echo "Alacritty.desktop:/usr/share/applications/Alacritty.desktop"
+SH
+chmod +x "$mock_bin/xdg-terminal-exec"
+[[ $(omarchy-default-terminal) == "alacritty" ]] ||
+  fail "an unset default terminal falls back to the system resolver" "got: $(omarchy-default-terminal)"
+rm -f "$mock_bin/xdg-terminal-exec"
+pass "an unset default terminal falls back to the system resolver"
+
+omarchy-default-terminal kitty >/dev/null
+
 for entry in "${editor_cases[@]}"; do
   read -r selection command installer <<<"$entry"
   rm -f "$installed_dir/$command"
