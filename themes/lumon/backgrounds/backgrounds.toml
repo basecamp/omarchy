@@ -1,3 +1,6 @@
 ["01-united-in-severance"]
 fill_color = "#0e1f29"
 svg_layout = "responsive"
+
+["omarchy"]
+svg_layout = "responsive"
