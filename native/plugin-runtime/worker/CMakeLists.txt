@@ -119,7 +119,7 @@ if(BUILD_TESTING)
   omarchy_plugin_target_defaults(omarchy-plugin-qml-broker-api-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-qml-broker-api-test)
   target_compile_definitions(omarchy-plugin-qml-broker-api-test PRIVATE
-    OMARCHY_PRODUCT_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product"
+    OMARCHY_NEUTRAL_SURFACE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../tests/fixtures/neutral-surfaces"
   )
   target_link_libraries(omarchy-plugin-qml-broker-api-test PRIVATE
     omarchy-plugin-worker-runtime)

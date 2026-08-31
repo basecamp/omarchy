@@ -733,7 +733,7 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
 }
 void neutral_surface_trusted_input() {
   const std::filesystem::path fixture =
-      std::filesystem::path(OMARCHY_PRODUCT_FIXTURE_ROOT) / "neutral-surfaces";
+      std::filesystem::path(OMARCHY_NEUTRAL_SURFACE_FIXTURE_ROOT);
   QFile manifest_file(
       QString::fromStdString((fixture / "manifest.json").string()));
   require(manifest_file.open(QIODevice::ReadOnly),

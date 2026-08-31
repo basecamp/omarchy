@@ -65,7 +65,7 @@ if(BUILD_TESTING)
   omarchy_plugin_target_defaults(omarchy-plugin-surface-service-test)
   target_compile_definitions(omarchy-plugin-surface-service-test PRIVATE
     OMARCHY_PLUGIN_MANAGER_TESTING
-    OMARCHY_PRODUCT_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product"
+    OMARCHY_NEUTRAL_SURFACE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../tests/fixtures/neutral-surfaces"
     OMARCHY_RUNTIME_BOOTSTRAP_TESTING
     OMARCHY_RUNTIME_ROOTS_TESTING
     OMARCHY_SURFACE_ENDPOINT_TESTING

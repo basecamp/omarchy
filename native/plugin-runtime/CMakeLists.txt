@@ -205,7 +205,6 @@ foreach(target IN LISTS plugin_host_embedded_targets)
 endforeach()
 
 if(BUILD_TESTING)
-  add_subdirectory(fixtures/product)
   add_subdirectory(tests/adversarial)
   add_subdirectory(tests)
 endif()

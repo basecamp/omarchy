@@ -3522,8 +3522,7 @@ void neutral_surfaces_share_one_real_sandbox_and_teardown() {
   constexpr std::string_view plugin =
       "org.omarchy.fixture.neutral-surfaces";
   const std::filesystem::path fixture_source =
-      std::filesystem::path(OMARCHY_PRODUCT_FIXTURE_ROOT) /
-      "neutral-surfaces";
+      std::filesystem::path(OMARCHY_NEUTRAL_SURFACE_FIXTURE_ROOT);
   RuntimeFixture fixture;
   const auto exact_binding =
       fixture.seedCheckedFixture(plugin, fixture_source);
