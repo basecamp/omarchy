@@ -4,55 +4,90 @@
 # and SDDM autologin loops with no compositor error.
 #
 # Sourced from ~/.config/uwsm/env-hyprland.d after the wiki-documented
-# env-hyprland export. Colon-free pins (cardN, udev names) are left alone.
+# env-hyprland export. zz- sorts after numeric and alphabetic drop-ins under
+# POSIX ls (uwsm's loader). Colon-free pins (cardN, udev names) are left alone.
 # A set-but-empty value is unset: getenv non-null takes the explicit path,
 # and CVarList on "" yields no GPUs.
+#
+# Split on ':' like Aquamarine (removeEmpty), then reassemble PCI by-path
+# fragments (pci-DOMAIN:BUS:DEV.FUNC, two colons after pci-) so the pin
+# survives.
+
+omarchy_sanitize_aq_drm_emit() {
+  _omarchy_aq_path=$1
+  [[ -n $_omarchy_aq_path ]] || return 0
+
+  case "$_omarchy_aq_path" in
+    *:*)
+      _omarchy_aq_real=$(readlink -e "$_omarchy_aq_path" 2>/dev/null || true)
+      case "${_omarchy_aq_real:-}" in
+        ""|*:* ) return 0 ;;
+      esac
+      _omarchy_aq_path=$_omarchy_aq_real
+      ;;
+  esac
+
+  if [[ -n $_omarchy_aq_out ]]; then
+    _omarchy_aq_out=$_omarchy_aq_out:$_omarchy_aq_path
+  else
+    _omarchy_aq_out=$_omarchy_aq_path
+  fi
+}
 
 omarchy_sanitize_aq_drm_devices() {
-  if [ -z "${AQ_DRM_DEVICES:-}" ]; then
+  if [[ -z ${AQ_DRM_DEVICES:-} ]]; then
     unset AQ_DRM_DEVICES
     return 0
   fi
 
   _omarchy_aq_rest=$AQ_DRM_DEVICES
   _omarchy_aq_out=
+  _omarchy_aq_cur=
 
-  while [ -n "$_omarchy_aq_rest" ]; do
+  while :; do
     case "$_omarchy_aq_rest" in
-      *:/*)
-        _omarchy_aq_path=${_omarchy_aq_rest%%:/*}
-        _omarchy_aq_rest=/${_omarchy_aq_rest#*:/}
+      *:*)
+        _omarchy_aq_part=${_omarchy_aq_rest%%:*}
+        _omarchy_aq_rest=${_omarchy_aq_rest#*:}
         ;;
       *)
-        _omarchy_aq_path=$_omarchy_aq_rest
+        _omarchy_aq_part=$_omarchy_aq_rest
         _omarchy_aq_rest=
         ;;
     esac
 
-    # Aquamarine splits on ':' with removeEmpty=true. The :/ split leaves a
-    # trailing colon on the previous token (card1::/other → card1:), which
-    # would otherwise look like an unresolvable by-path and drop a working GPU.
-    _omarchy_aq_path=${_omarchy_aq_path%:}
-    [ -n "$_omarchy_aq_path" ] || continue
-
-    case "$_omarchy_aq_path" in
-      *:*)
-        _omarchy_aq_real=$(readlink -e "$_omarchy_aq_path" 2>/dev/null || true)
-        case "${_omarchy_aq_real:-}" in
-          ""|*:* ) continue ;;
+    if [[ -n $_omarchy_aq_part ]]; then
+      if [[ -z $_omarchy_aq_cur ]]; then
+        _omarchy_aq_cur=$_omarchy_aq_part
+      else
+        _omarchy_aq_glue=
+        case "$_omarchy_aq_cur" in
+          *pci-[0-9a-fA-F]*)
+            _omarchy_aq_pci=${_omarchy_aq_cur##*pci-}
+            _omarchy_aq_colons=${_omarchy_aq_pci//[^:]/}
+            if (( ${#_omarchy_aq_colons} < 2 )); then
+              case "$_omarchy_aq_part" in
+                [0-9a-fA-F]*) _omarchy_aq_glue=1 ;;
+              esac
+            fi
+            ;;
         esac
-        _omarchy_aq_path=$_omarchy_aq_real
-        ;;
-    esac
 
-    if [ -n "$_omarchy_aq_out" ]; then
-      _omarchy_aq_out=$_omarchy_aq_out:$_omarchy_aq_path
-    else
-      _omarchy_aq_out=$_omarchy_aq_path
+        if [[ -n $_omarchy_aq_glue ]]; then
+          _omarchy_aq_cur=$_omarchy_aq_cur:$_omarchy_aq_part
+        else
+          omarchy_sanitize_aq_drm_emit "$_omarchy_aq_cur"
+          _omarchy_aq_cur=$_omarchy_aq_part
+        fi
+      fi
     fi
+
+    [[ -n $_omarchy_aq_rest ]] || break
   done
 
-  if [ -n "$_omarchy_aq_out" ]; then
+  [[ -n $_omarchy_aq_cur ]] && omarchy_sanitize_aq_drm_emit "$_omarchy_aq_cur"
+
+  if [[ -n $_omarchy_aq_out ]]; then
     AQ_DRM_DEVICES=$_omarchy_aq_out
     export AQ_DRM_DEVICES
   else
@@ -60,7 +95,9 @@ omarchy_sanitize_aq_drm_devices() {
   fi
 
   unset _omarchy_aq_rest _omarchy_aq_out _omarchy_aq_path _omarchy_aq_real
+  unset _omarchy_aq_part _omarchy_aq_cur _omarchy_aq_glue
+  unset _omarchy_aq_pci _omarchy_aq_colons
 }
 
 omarchy_sanitize_aq_drm_devices
-unset -f omarchy_sanitize_aq_drm_devices
+unset -f omarchy_sanitize_aq_drm_devices omarchy_sanitize_aq_drm_emit

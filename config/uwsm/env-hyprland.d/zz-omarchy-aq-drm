@@ -1,3 +1,4 @@
-# Rewrite PCI by-path AQ_DRM_DEVICES after user env-hyprland.
+# Rewrite PCI by-path AQ_DRM_DEVICES after user env-hyprland and env-hyprland.d.
+# zz- sorts after numeric and alphabetic names under POSIX ls (uwsm's loader).
 # Aquamarine splits on ':' (hyprwm/aquamarine#167).
 [ -r "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices" ] && . "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices"

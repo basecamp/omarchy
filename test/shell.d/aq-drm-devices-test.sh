@@ -5,15 +5,20 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 helper="$ROOT/default/uwsm/sanitize-aq-drm-devices"
-dropin="$ROOT/config/uwsm/env-hyprland.d/99-omarchy-aq-drm"
+dropin="$ROOT/config/uwsm/env-hyprland.d/zz-omarchy-aq-drm"
 migration="$ROOT/migrations/1787934927.sh"
 
 [[ -f $helper ]] || fail "sanitize helper is in the tree"
 [[ -f $dropin ]] || fail "uwsm env-hyprland.d drop-in is in the tree"
+[[ ! -e $ROOT/config/uwsm/env-hyprland.d/99-omarchy-aq-drm ]] || fail "numeric 99- drop-in was renamed to zz-"
 [[ -f $migration ]] || fail "migration is in the tree"
 
 grep -q 'sanitize-aq-drm-devices' "$dropin" || fail "drop-in sources the sanitize helper"
 pass "drop-in sources the sanitize helper"
+
+sorted=$(printf '%s\n' '99-omarchy-aq-drm' 'my_vars' 'zz-omarchy-aq-drm' | LC_ALL=C sort | tail -n 1)
+[[ $sorted == "zz-omarchy-aq-drm" ]] || fail "zz- sorts after numeric and alphabetic drop-in names"
+pass "zz- sorts after numeric and alphabetic drop-in names"
 
 run_sanitize() {
   local value=$1
@@ -37,11 +42,23 @@ pass "colon-free pin is left alone"
 [[ $(run_sanitize "/dev/dri/card0:/dev/dri/card1") == "/dev/dri/card0:/dev/dri/card1" ]] || fail "colon-free list is left alone"
 pass "colon-free list is left alone"
 
+[[ $(run_sanitize "amd-igpu:nvidia-dgpu") == "amd-igpu:nvidia-dgpu" ]] || fail "udev-name list is left alone"
+pass "udev-name list is left alone"
+
+[[ $(run_sanitize "/dev/dri/card0:card1") == "/dev/dri/card0:card1" ]] || fail "mixed colon-free list is left alone"
+pass "mixed colon-free list is left alone"
+
 [[ $(run_sanitize "/dev/dri/card1::/does-not-exist") == "/dev/dri/card1:/does-not-exist" ]] || fail "empty list component does not drop the previous GPU"
 pass "empty list component does not drop the previous GPU"
 
 [[ $(run_sanitize "/dev/dri/card1:") == "/dev/dri/card1" ]] || fail "trailing colon is stripped"
 pass "trailing colon is stripped"
+
+[[ $(run_sanitize "/dev/dri/card1:::/dev/dri/card9999") == "/dev/dri/card1:/dev/dri/card9999" ]] || fail "two empty components do not drop the previous GPU"
+pass "two empty components do not drop the previous GPU"
+
+[[ $(run_sanitize "/dev/dri/card1::::/dev/dri/card9999") == "/dev/dri/card1:/dev/dri/card9999" ]] || fail "three empty components do not drop the previous GPU"
+pass "three empty components do not drop the previous GPU"
 
 [[ $(run_sanitize "/dev/dri/by-path/pci-0000:13:00.0-card") == "__UNSET__" ]] || fail "missing by-path is dropped so Aquamarine cannot split it"
 pass "missing by-path is dropped so Aquamarine cannot split it"
@@ -76,6 +93,9 @@ if mkdir -p "$by_dir" && ln -s "$dir/dri/card0" "$by_path" 2>/dev/null; then
     [[ $(run_sanitize "$by_path:/dev/dri/by-path/pci-0000:03:00.0-card") == "$dir/dri/card0" ]] || fail "resolved by-path is kept when a missing sibling is dropped"
     pass "resolved by-path is kept when a missing sibling is dropped"
 
+    [[ $(run_sanitize "$by_path:$dir/dri/card1") == "$dir/dri/card0:$dir/dri/card1" ]] || fail "resolved by-path keeps a following colon-free pin"
+    pass "resolved by-path keeps a following colon-free pin"
+
     dangling="$by_dir/pci-0000:03:00.0-card"
     if ln -s "$dir/dri/card99" "$dangling" 2>/dev/null; then
       [[ $(run_sanitize "$dangling") == "__UNSET__" ]] || fail "dangling by-path is dropped"
@@ -107,7 +127,7 @@ dropin_out=$(
 pass "sourcing the drop-in sanitizes AQ_DRM_DEVICES"
 
 test_home=$(mktemp -d)
-dst="$test_home/.config/uwsm/env-hyprland.d/99-omarchy-aq-drm"
+dst="$test_home/.config/uwsm/env-hyprland.d/zz-omarchy-aq-drm"
 mkdir -p "$(dirname "$dst")"
 if ln -s "$test_home/missing-drop-in" "$dst" 2>/dev/null; then
   HOME=$test_home OMARCHY_PATH=$ROOT bash -euo pipefail "$migration" >/dev/null || fail "migration no-ops on a dangling drop-in symlink"
@@ -119,7 +139,29 @@ fi
 rm -rf "$test_home"
 
 test_home=$(mktemp -d)
-dst="$test_home/.config/uwsm/env-hyprland.d/99-omarchy-aq-drm"
+dst="$test_home/.config/uwsm/env-hyprland.d/zz-omarchy-aq-drm"
+old="$test_home/.config/uwsm/env-hyprland.d/99-omarchy-aq-drm"
+mkdir -p "$(dirname "$old")"
+echo leftover >"$old"
+HOME=$test_home OMARCHY_PATH=$ROOT bash -euo pipefail "$migration" >/dev/null
+[[ -f $dst ]] || fail "migration installs the zz- drop-in beside an unrelated 99- file"
+[[ $(cat "$old") == leftover ]] || fail "migration leaves an unrelated 99- file in place"
+pass "migration leaves an unrelated 99- file in place"
+rm -rf "$test_home"
+
+test_home=$(mktemp -d)
+dst="$test_home/.config/uwsm/env-hyprland.d/zz-omarchy-aq-drm"
+old="$test_home/.config/uwsm/env-hyprland.d/99-omarchy-aq-drm"
+mkdir -p "$(dirname "$old")"
+printf '%s\n' '[ -r helper ] && . helper # sanitize-aq-drm-devices' >"$old"
+HOME=$test_home OMARCHY_PATH=$ROOT bash -euo pipefail "$migration" >/dev/null
+[[ -f $dst ]] || fail "migration installs the zz- drop-in"
+[[ ! -e $old ]] || fail "migration removes the leftover sanitizer 99- drop-in"
+pass "migration replaces a leftover sanitizer 99- drop-in with zz-"
+rm -rf "$test_home"
+
+test_home=$(mktemp -d)
+dst="$test_home/.config/uwsm/env-hyprland.d/zz-omarchy-aq-drm"
 HOME=$test_home OMARCHY_PATH=$ROOT bash -euo pipefail "$migration" >/dev/null
 [[ -f $dst ]] || fail "migration installs the drop-in"
 cmp -s "$dst" "$dropin" || fail "migration copies the shipped drop-in"
