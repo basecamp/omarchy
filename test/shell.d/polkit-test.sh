@@ -12,6 +12,37 @@ assert(polkit.promptLooksFingerprint('fprintd verification'), 'polkit detects fp
 assert(!polkit.promptLooksFingerprint('Password:'), 'polkit ignores password prompts')
 
 assertEqual(
+  polkit.promptLabel('Please enter the PIN: '),
+  'Please enter the PIN',
+  'polkit shows the security key PIN prompt PAM actually sent'
+)
+assertEqual(
+  polkit.promptLabel(''),
+  'Enter password',
+  'polkit falls back to its own label when PAM sends no prompt'
+)
+assertEqual(
+  polkit.promptLabel('Password: '),
+  'Enter password',
+  'polkit normalizes the stock password prompt'
+)
+assertEqual(
+  polkit.promptLabel('UNIX password:'),
+  'Enter password',
+  'polkit normalizes the pam_unix password prompt'
+)
+assertEqual(
+  polkit.promptLabel('   :  '),
+  'Enter password',
+  'polkit falls back when the prompt is only punctuation'
+)
+assertEqual(
+  polkit.promptLabel("julianduque's password:"),
+  "julianduque's password",
+  'polkit passes a qualified password prompt through'
+)
+
+assertEqual(
   polkit.authorizationLabel("Authentication is needed to run `/usr/bin/true' as the super user"),
   "Authorize running '/usr/bin/true'",
   'polkit shortens the standard pkexec message'
