@@ -71,17 +71,9 @@ start_webcam_overlay() {
     fi
   fi
 
-  # Try preferred 16:9 resolutions in order, use first available
-  local preferred_resolutions=("640x360" "1280x720" "1920x1080")
-  local capture_options="framerate=30"
-  local available_formats=$(v4l2-ctl --list-formats-ext -d "$WEBCAM_DEVICE" 2>/dev/null)
-
-  for resolution in "${preferred_resolutions[@]}"; do
-    if echo "$available_formats" | grep -q "$resolution"; then
-      capture_options="video_size=$resolution,$capture_options"
-      break
-    fi
-  done
+  local capture_options
+  capture_options=$(omarchy-capture-webcam-format "$WEBCAM_DEVICE")
+  [[ -n $capture_options ]] || capture_options="framerate=30"
 
   mpv "av://v4l2:$WEBCAM_DEVICE" \
     --profile=low-latency --untimed --no-cache \
