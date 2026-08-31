@@ -10,10 +10,50 @@
 
 LOGO_FILE="$HOME/.config/omarchy/branding/about.txt"
 FIT_FILE="$HOME/.local/state/omarchy/windows/about.fit"
+OMARCHY_FASTFETCH_DIR=/etc/fastfetch
 
-# A user-level fastfetch config can relocate or restyle the logo in ways this
-# measurement cannot see, so leave sizing to the float rule in that case.
+# The logo block in the fastfetch config. The fit below reproduces this layout to
+# size the window, and the sheen has to repaint the very cells fastfetch drew the
+# logo on, so both read the padding from here.
+LOGO_PAD_LEFT=2
+LOGO_PAD_TOP=2
+LOGO_PAD_RIGHT=6
+
+# The content is measured once and then goes on living: an uptime that turns
+# minutes into hours and hours into days, a version string that grows, a module
+# that shows up on the next boot. A window fitted to exactly what was measured
+# has nowhere to put any of it, and the layout clips or scrolls the moment it
+# grows — which is also the moment the logo stops being where it was drawn. Keep
+# a little in hand rather than measure again every time something ticks over.
+FIT_SPARE_COLUMNS=2
+FIT_SPARE_ROWS=1
+
+POLL_SECONDS=0.5
+
+# fastfetch has no animation of its own, so the sheen is ours. It knows about a
+# logo and nothing about About, which is why it is a file of its own.
+source omarchy-branding-about-animation
+
+# A user's own fastfetch config can relocate or restyle the logo in ways this
+# measurement cannot see, so leave sizing to the float rule in that case. It can
+# sit in any of several directories fastfetch searches ahead of Omarchy's own, so
+# ask fastfetch for that order rather than keep a copy here for its next release
+# to outdate.
 custom_fastfetch_config() {
+  local directory listed=false
+
+  # A whole line at a time, because a home directory may contain a space, and the
+  # marker fastfetch puts beside the config it settled on is not part of the path.
+  while IFS= read -r directory; do
+    listed=true
+    directory=${directory% (\*)}
+    [[ ${directory%/} == "$OMARCHY_FASTFETCH_DIR" ]] && return 1
+    [[ -f ${directory%/}/config.jsonc ]] && return 0
+  done < <(fastfetch --list-config-paths 2>/dev/null)
+
+  # Silence is not the same answer as "none of them", so fall back to the
+  # directory fastfetch has always looked in first rather than read it as one.
+  [[ $listed == true ]] && return 1
   [[ -f $HOME/.config/fastfetch/config.jsonc ]]
 }
 
@@ -100,17 +140,22 @@ fit_window() {
 
   # The guard character keeps command substitution from eating the trailing
   # break line, which provides the bottom padding row.
-  local modules module_w module_h
+  local modules module_w
   modules=$(fastfetch --logo none | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g'; printf X)
   modules=${modules%X}
   module_w=$(printf '%s' "$modules" | display_columns)
-  module_h=$(printf '%s' "$modules" | wc -l)
+
+  # Ask fastfetch how tall its layout came out rather than predicting it from the
+  # logo and the module column: once the logo is the taller of the two, fastfetch
+  # writes a row more than that arithmetic expects, and a window sized by it
+  # scrolls the top padding away.
+  measure_layout || return 1
 
   # Mirror the logo block in the fastfetch config: 2 columns of padding left of
-  # the logo, 6 between logo and modules, 2 rows above it. Then 2 columns of
-  # right padding to match, and a row for the cursor so the trailing break shows.
-  local target_c=$(( 2 + logo_w + 6 + module_w + 2 ))
-  local target_r=$(( (logo_h + 2 > module_h ? logo_h + 2 : module_h) + 1 ))
+  # the logo, 6 between logo and modules. Then 2 columns of right padding to
+  # match, a row for the cursor so the trailing break shows, and the spare above.
+  local target_c=$(( LOGO_PAD_LEFT + logo_w + LOGO_PAD_RIGHT + module_w + LOGO_PAD_LEFT + FIT_SPARE_COLUMNS ))
+  local target_r=$(( LAYOUT_ROWS + 1 + FIT_SPARE_ROWS ))
 
   local nudges=0 rows cols address width height shift_w shift_h target_w target_h
   while :; do
@@ -146,8 +191,144 @@ fit_window() {
   return 1
 }
 
+# One run answers both questions the sheen has to ask first. How tall the layout
+# is, because a window too small for it scrolls, which moves the logo off the rows
+# the frames address. And what colour fastfetch drew the logo in, because the
+# glint has to hand every cell back in the colour it arrived in — assume it, and
+# a logo fastfetch colours differently comes out of the first glint a new one.
+measure_layout() {
+  [[ -n ${LAYOUT_ROWS:-} ]] && return 0
+
+  local rendered plain needle offset found row
+
+  # --pipe false because fastfetch drops its colours when it is not writing to a
+  # terminal, and it is writing to this substitution.
+  rendered=$(fastfetch --pipe false 2>/dev/null; printf X)
+  rendered=${rendered%X}
+  LAYOUT_ROWS=$(printf '%s' "$rendered" | wc -l)
+  (( LAYOUT_ROWS > 0 )) || return 1
+
+  # Find the logo in what fastfetch drew rather than working it out from the
+  # padding this file was written against. The config that runs is the one in
+  # /etc, which a checkout does not replace, so the two can disagree — and a logo
+  # measured two rows above where it was drawn is a logo the sheen moves. Not
+  # finding it at all is the same answer as finding it somewhere unexpected:
+  # whatever is on screen is not the text in the file, so leave it alone.
+  IFS=$'\t' read -r offset needle < <(logo_landmark) || return 1
+  [[ -n $needle ]] || return 1
+
+  plain=$(printf '%s' "$rendered" | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g')
+  found=$(printf '%s' "$plain" | LC_ALL=C.UTF-8 awk -v needle="$needle" \
+    'index($0, needle) { print NR, index($0, needle); exit }')
+  [[ -n $found ]] || return 1
+  read -r LOGO_ROW LOGO_COLUMN <<<"$found"
+  LOGO_ROW=$(( LOGO_ROW - offset ))
+  (( LOGO_ROW >= 1 && LOGO_COLUMN >= 1 )) || return 1
+
+  # Whatever fastfetch set before that row is what the sheen has to give back.
+  row=$(printf '%s' "$rendered" | sed -n "$(( LOGO_ROW + offset ))p")
+  LOGO_COLOR=""
+  [[ $row =~ ^(($ESC\[[0-9;]*m)+) ]] && LOGO_COLOR=${BASH_REMATCH[1]}
+
+  return 0
+}
+
+# The longest line of the logo, and how far down the logo it sits — the most
+# distinctive thing to look for in the render, and the offset that turns where it
+# was found back into where the logo starts.
+# Tab-separated, and the offset first, because the line may hold spaces of its
+# own and splitting on them would cut the landmark short.
+logo_landmark() {
+  LC_ALL=C.UTF-8 awk '
+    { if (length($0) > best) { best = length($0); line = $0; at = NR - 1 } }
+    END { if (best > 0) printf "%d\t%s\n", at, line }
+  ' "$LOGO_FILE" 2>/dev/null
+}
+
+# The About screen's own reasons the logo might not be where these frames would
+# draw it. Whether the logo itself can be animated is the sheen's own question.
+build_sheen() {
+  # Whatever the last build left is not this window's, and the loop below plays
+  # whatever is here — so a build that fails has to leave nothing to play.
+  SHEEN_FRAMES=()
+
+  custom_fastfetch_config && return 1
+
+  # fastfetch honours NO_COLOR when it writes to a terminal but not when it writes
+  # to the measurement below, so a logo drawn without colour would be measured as
+  # green and left green by the first glint. A glint is colour anyway, which is
+  # the thing NO_COLOR asks for none of.
+  [[ -n ${NO_COLOR:-} ]] && return 1
+
+  measure_layout || return 1
+
+  # The layout needs a row for the cursor past its last line. Without one it has
+  # scrolled, and the logo is no longer on the rows the frames address. Ask the
+  # terminal where the cursor actually is rather than trust the arithmetic, and
+  # keep the arithmetic for a terminal that will not say.
+  local rows cols
+  read -r rows cols <<<"$(stty size)"
+  (( rows > LAYOUT_ROWS )) || return 1
+
+  # The cell the logo's first row starts on, every attribute fastfetch left on
+  # those cells so a glint that has passed leaves them as it found them, and the
+  # room it has to work in left of the module column.
+  sheen_build "$LOGO_FILE" "$LOGO_ROW" "$LOGO_COLUMN" "${ESC}[0m${LOGO_COLOR}" "$(( cols - LOGO_COLUMN + 1 ))"
+}
+
+# What the frames were built against. A window that resized, or a logo that was
+# rebranded, needs fastfetch run again before anything is drawn over it.
+content_changed() {
+  [[ $resized == true ]] && return 0
+
+  [[ $(stty size) != "$grid" || $(stat -c %Y "$LOGO_FILE" 2>/dev/null) != "$logo_stamp" ]]
+}
+
+# A tick either times out, which is the delay, or a key arrives and About closes.
+# Anything else on stdin is a terminal that went away, which closes it too.
+tick() {
+  read -t "$1" -n 1 -s && exit
+  (( $? > 128 )) || exit
+}
+
+play_sheen() {
+  local index
+
+  for (( index = 0; index < ${#SHEEN_FRAMES[@]}; index++ )); do
+    # Stop before painting a frame rather than after: a resize has already moved
+    # the cells these address, and the rest of a sweep would land across them.
+    # The grid costs a process, so it stays on the poll interval. The trap costs
+    # nothing, so it is read last — a signal that arrived while the grid was being
+    # read would otherwise be seen only after another frame had gone out.
+    (( index % SHEEN_POLL_FRAMES == 0 )) && content_changed && return 1
+    [[ $resized == true ]] && return 1
+
+    printf '%s' "${SHEEN_FRAMES[index]}"
+    tick "$SHEEN_FRAME_SECONDS"
+  done
+
+  return 0
+}
+
+# The logo is still between glints, so About is a quiet window to leave open.
+rest_sheen() {
+  local ticks
+
+  for (( ticks = 0; ticks < SHEEN_REST_TICKS; ticks++ )); do
+    tick "$POLL_SECONDS"
+    content_changed && return 1
+  done
+
+  return 0
+}
+
 if [[ ${1:-} == "--render" ]]; then
   printf '\e[?25l'
+
+  # A sweep runs for seconds between polls, so it reads this instead. The polling
+  # stays as the backstop, for a signal that arrived while it could not be taken.
+  resized=false
+  trap 'resized=true' WINCH
 
   # Give the compositor a moment to apply the window rules before measuring cells.
   settle_grid
@@ -155,8 +336,10 @@ if [[ ${1:-} == "--render" ]]; then
   fitted=false
   passes=0
   while :; do
-    size=$(stty size)
+    grid=$(stty size)
     logo_stamp=$(stat -c %Y "$LOGO_FILE" 2>/dev/null)
+    resized=false
+    LAYOUT_ROWS=""
     clear
     fastfetch
     # A second pass picks up a fit that could not measure the window the first
@@ -165,10 +348,10 @@ if [[ ${1:-} == "--render" ]]; then
     if [[ $fitted == false ]] && (( ++passes <= 2 )); then
       fit_window && fitted=true
     fi
-    while [[ $(stty size) == $size && $(stat -c %Y "$LOGO_FILE" 2>/dev/null) == $logo_stamp ]]; do
-      read -t 0.5 -n 1 -s && exit
-      (( $? > 128 )) || exit
-    done
+    # An empty frame list plays nothing, so a logo that cannot be animated waits
+    # here exactly as the still one did, and there is one loop rather than two.
+    build_sheen
+    while play_sheen && rest_sheen; do :; done
     # A rebranded logo changes the content dimensions, so measure again.
     if [[ $(stat -c %Y "$LOGO_FILE" 2>/dev/null) != $logo_stamp ]]; then
       fitted=false

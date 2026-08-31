@@ -17,6 +17,19 @@ THEME_SET_LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-theme-set.lock"
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
 
+# What a theme installed from a git repo may not ship, because these run code.
+# Hyprland requires a theme's hyprland.lua and gum_env.lua at login and Neovim
+# loads its neovim.lua at startup, so no .lua from such a theme is staged at all.
+# Each terminal config names the program the terminal launches, and vscode.json
+# names an extension omarchy-theme-set-vscode installs, a VS Code extension being
+# arbitrary JavaScript. Everything else a theme ships is colour and is kept.
+#
+# Adding a template for another terminal, or for another editor that loads Lua,
+# means adding it here. test/shell.d/theme-staging-test.sh fails on a generated
+# theme file that is neither denied here nor recorded there as colour-only.
+INSTALLED_THEME_DENIED=(alacritty.toml foot.ini ghostty.conf kitty.conf vscode.json)
+IGNORED_THEME_FILES=()
+
 run_parallel() {
   local pid
   local pids=()
@@ -122,10 +135,119 @@ set_theme_background() {
   ln -nsf "$new_background" "$CURRENT_BACKGROUND_LINK"
 }
 
+is_denied_installed_file() {
+  local name="$1"
+  local denied
+
+  [[ $name == *.lua ]] && return 0
+
+  for denied in "${INSTALLED_THEME_DENIED[@]}"; do
+    [[ $name == "$denied" ]] && return 0
+  done
+
+  return 1
+}
+
+# Themes older than colors.toml still get their palette, but their
+# alacritty.toml never reaches the staged theme: an Alacritty config names the
+# program the terminal launches.
+stage_installed_colors_from_alacritty() {
+  local source="$1"
+  local scratch
+
+  if [[ -f $NEXT_THEME_PATH/colors.toml ]]; then
+    return
+  fi
+
+  if [[ ! -f $source/alacritty.toml || -L $source/alacritty.toml ]]; then
+    return
+  fi
+
+  scratch=$(mktemp -d)
+  cp "$source/alacritty.toml" "$scratch/alacritty.toml"
+  omarchy-theme-colors-from-alacritty "$scratch"
+
+  if [[ -f $scratch/colors.toml ]]; then
+    cp "$scratch/colors.toml" "$NEXT_THEME_PATH/colors.toml"
+  fi
+
+  rm -rf "$scratch"
+}
+
+# Copies a directory without ever following a symlink: in an installed theme one
+# points wherever the theme author chose, which is how an unlock.png becomes a
+# copy of any file the session can read.
+stage_installed_dir() {
+  local source="$1"
+  local dest="$2"
+  local entry name
+
+  mkdir -p "$dest"
+
+  for entry in "$source"/*; do
+    [[ -e $entry && ! -L $entry ]] || continue
+    name=${entry##*/}
+
+    if [[ -d $entry ]]; then
+      stage_installed_dir "$entry" "$dest/$name"
+    else
+      cp "$entry" "$dest/$name"
+    fi
+  done
+}
+
+# `omarchy theme install` clones into ~/.config/omarchy/themes, so a .git
+# directory there means the contents came from a stranger and are held to the
+# list above. A directory the user wrote themselves, and a symlink to their own
+# working copy, are theirs to fill however they like -- the same distinction
+# omarchy-theme-extras draws when it decides which themes it may pull.
+theme_came_from_a_repo() {
+  local source="$1"
+
+  [[ ! -L $source && -d $source/.git ]]
+}
+
+stage_installed_theme() {
+  local source="$1"
+  local entry name
+
+  [[ -d $source ]] || return 0
+
+  for entry in "$source"/*; do
+    [[ -e $entry ]] || continue
+    name=${entry##*/}
+
+    if [[ -L $entry ]] || is_denied_installed_file "$name"; then
+      case "${name,,}" in
+        readme* | license* | changelog* | *.md | *.txt) ;;
+        *) IGNORED_THEME_FILES+=("$name") ;;
+      esac
+    elif [[ -d $entry ]]; then
+      stage_installed_dir "$entry" "$NEXT_THEME_PATH/$name"
+    else
+      cp "$entry" "$NEXT_THEME_PATH/$name"
+    fi
+  done
+
+  stage_installed_colors_from_alacritty "$source"
+}
+
+report_ignored_theme_files() {
+  (( ${#IGNORED_THEME_FILES[@]} > 0 )) || return 0
+
+  echo "Ignored in $USER_THEMES_PATH/$THEME_NAME: ${IGNORED_THEME_FILES[*]}" >&2
+  echo "A theme installed from a git repo cannot supply Lua, a terminal config, or vscode.json." >&2
+}
+
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
 THEME_HEADLESS=0
 if [[ ${OMARCHY_THEME_HEADLESS:-} == "1" || ${OMARCHY_THEME_OFFLINE:-} == "1" ]]; then
   THEME_HEADLESS=1
+fi
+
+if [[ -z $THEME_NAME || $THEME_NAME == .* || $THEME_NAME == */* ]]; then
+  echo "Invalid theme name: $1"
+  exit 1
 fi
 
 if [[ ! -d $OMARCHY_THEMES_PATH/$THEME_NAME ]] && [[ ! -d $USER_THEMES_PATH/$THEME_NAME ]]; then
@@ -143,9 +265,15 @@ flock 9
 rm -rf "$NEXT_THEME_PATH"
 mkdir -p "$NEXT_THEME_PATH"
 
-# Copy official theme first, then overlay user customizations on top
+# Copy official theme first, then overlay the user's theme on top
 cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
-cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
+
+if theme_came_from_a_repo "$USER_THEMES_PATH/$THEME_NAME"; then
+  stage_installed_theme "$USER_THEMES_PATH/$THEME_NAME"
+  report_ignored_theme_files
+else
+  cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
+fi
 
 # Generate colors.toml from alacritty.toml if theme is missing colors.toml
 if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]; then

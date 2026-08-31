@@ -52,14 +52,14 @@ if omarchy-cmd-missing "$agent"; then
 fi
 
 # Agents launched from the keybinding or menu run unattended, so each one starts
-# with its own spelling of "don't stop to ask". Pi has no approval prompts.
+# with its own spelling of "don't stop to ask". Pi and Ori have none to skip.
 case "$agent" in
 opencode)
   command=(opencode --auto)
   [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
   ;;
-gemini)
-  command=(gemini --yolo)
+agy)
+  command=(agy --dangerously-skip-permissions)
   [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
   ;;
 copilot)
@@ -89,6 +89,13 @@ codex)
 omp)
   command=(omp --auto-approve)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+ori)
+  # Ori is a harness launcher, and `ori code` is the agent it runs itself.
+  # A prompt alone means one headless turn there, printed after the turn ends,
+  # so --interactive is what seeds the session with it and keeps the window.
+  command=(ori code)
+  [[ -n ${prompt:-} ]] && command+=(--interactive --prompt "$prompt")
   ;;
 pi)
   command=(pi)

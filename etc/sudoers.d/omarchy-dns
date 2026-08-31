@@ -1,0 +1,5 @@
+# Switching between the stock providers is a one-click toggle in the network
+# panel, so it must not stop for a password. Custom is deliberately absent: it
+# points the machine at servers the caller supplies, and it already runs in a
+# terminal that can ask.
+%wheel ALL=(root) NOPASSWD: /usr/bin/omarchy-dns Cloudflare, /usr/bin/omarchy-dns Google, /usr/bin/omarchy-dns DHCP
