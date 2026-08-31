@@ -34,12 +34,19 @@ wait).
 | `overlay`    | Fullscreen overlay (e.g. background picker)    |
 | `menu`       | Summoned menu surface                          |
 | `service`    | Headless singleton, no UI                      |
+| `screensaver` | Executable that replaces the built-in idle screensaver |
 
 Only one full bar option is active at a time. The built-in `omarchy.bar` is
 used when `bar.id` is omitted or when a selected third-party bar cannot load.
+The `screensaver` kind mirrors that: exactly one is active, selected by
+`idle.screensaverId`, and the built-in terminal screensaver is used when the
+key is omitted or the selection cannot be resolved.
 Panels, overlays, and menus are loaded when summoned. Plugins can set the top-level manifest key `keepLoaded: true` to survive between summons, and to keep a service mounted across plugin hot-reload (so `omarchy.lock` is not destroyed while Hyprland still holds the session lock). First-party services are loaded at startup.
 
-Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
+Entry points are QML `Item`s, except `screensaver`, whose entry point is an
+executable launcher the idle service runs instead of `omarchy-launch-screensaver`
+(it should open windows with the class `org.omarchy.screensaver` and must not
+take an idle inhibitor). Panel, overlay, and menu entry points expose
 `open(payloadJson)` and `close()` for summon/hide; on load the host injects
 `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
 `barWidgetRegistry`) as properties.
@@ -167,6 +174,8 @@ Rules:
    First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
 6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+   `idle.screensaverId` selects a `screensaver`-kind plugin the way `bar.id`
+   selects a bar option; omit it for the built-in terminal screensaver.
 8. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no

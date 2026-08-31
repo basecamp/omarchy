@@ -81,9 +81,17 @@ Supported `kinds`:
 | `menu`       | A summoned menu surface                                      |
 | `service`    | A headless singleton, no UI                                  |
 | `bar`        | A full bar option that can replace the built-in `omarchy.bar` |
+| `screensaver` | An executable that replaces the built-in idle screensaver     |
 
 Only one `bar` plugin is active at a time. Missing or invalid selections fall
 back to the built-in `omarchy.bar`, so users always have a safe path home.
+The `screensaver` kind works the same way: exactly one is active, selected by
+`idle.screensaverId`, and a missing or invalid selection falls back to the
+built-in terminal screensaver. Its entry point is an executable launcher run
+by the idle service, not a QML file; the launcher should give its windows the
+class `org.omarchy.screensaver` so dismissal cancels the pending lock and
+locking cleans them up, and it must not take an idle inhibitor or the machine
+will never lock.
 Panels, overlays, and menus are loaded when summoned. Plugins that need
 to outlive a single summon can set `keepLoaded: true` (e.g. the image
 picker keeps its overlay window mounted between summons). The same flag
@@ -271,7 +279,8 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
    like `Clock` and `AudioPanel` forward.
 5. **Third-party enabled ⇔ present.** A third-party plugin is enabled iff
    its id appears somewhere in shell.json. For full bar options, that means
-   `bar.id`; for bar widgets, plugin enable/disable adds/removes layout entries;
+   `bar.id`; for screensaver options, `idle.screensaverId`;
+   for bar widgets, plugin enable/disable adds/removes layout entries;
    other plugin kinds are enabled the same way. First-party non-bar plugins
    are enabled unless listed in `disabledPlugins[]`.
 6. **Multiple instances** are allowed when a manifest sets
@@ -280,7 +289,9 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
    entries with their own values.
 7. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
    are seconds since user idle began, so the default lock fires at 300s
-   even if the 150s screensaver starts first.
+   even if the 150s screensaver starts first. `idle.screensaverId` selects
+   a `screensaver`-kind plugin the way `bar.id` selects a bar option; omit
+   it for the built-in terminal screensaver.
 8. **`version: 1` is required** at the top level. The shell will fall back
    to defaults rather than load an unknown version.
 
