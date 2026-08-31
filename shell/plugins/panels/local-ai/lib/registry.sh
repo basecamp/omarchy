@@ -54,13 +54,17 @@ gate_reason() { # gate_reason <resolved-json> -> one-line refusal reason on stdo
     elif ([.launch.arguments[]?|select(test("enforce.eager|disable.?cuda.?graph";"i"))]|length)>0 then "disallowed launch argument"
     else empty end' <<<"$r" 2>/dev/null) || { printf 'recipe data failed validation\n'; return; } # fail closed on malformed data
   [[ -z $reason ]] || { printf '%s\n' "$reason"; return; }
-  while IFS=$'\t' read -r src tgt ro; do
+  while IFS=$'\t' read -r src tgt ro prepo prv; do
     case $src in
       "$MODELS_SUB"/*|"$CACHE_SUB"/*)
         [[ $src != *..* ]] || { printf 'mounts unsafe host path %s\n' "$src"; return; }
         if [[ $tgt == /model || $tgt == /models || $tgt == /workspace/models ]] && (( primary )); then primary=0
-        elif [[ $ro == true && $src == "$MODELS_SUB"/* && ! -d $HOME_DIR/${src#\~/} ]]; then
-          printf 'place weights at %s first\n' "$src"; return
+        elif [[ $ro == true && $src == "$MODELS_SUB"/* ]]; then
+          if [[ -n $prepo ]]; then # provisioned: downloadable like the primary, but only from a pinned revision
+            [[ $prv =~ ^[0-9a-f]{40,64}$ ]] || { printf 'provision for %s is not pinned\n' "$src"; return; }
+          elif [[ ! -d $HOME_DIR/${src#\~/} ]]; then
+            printf 'place weights at %s first\n' "$src"; return
+          fi
         fi ;;
       \~/.cache/*) [[ $src != *..* ]] || { printf 'mounts unsafe host path %s\n' "$src"; return; } ;;
       /dev/dri/by-path) ;;
@@ -68,7 +72,16 @@ gate_reason() { # gate_reason <resolved-json> -> one-line refusal reason on stdo
       *) src=$(cd "$root" && realpath "$src" 2>/dev/null) || { printf 'registry asset is missing\n'; return; }
          [[ $src == "$root/"* ]] || { printf 'asset escapes the registry\n'; return; } ;;
     esac
-  done < <(jq -r '.launch.mounts[]?|[.source,.target,(.read_only//false|tostring)]|@tsv' <<<"$r")
+  done < <(jq -r '.launch.mounts[]?|[.source,.target,(.read_only//false|tostring),(.provision.repository//""),(.provision.revision//"")]|@tsv' <<<"$r")
+}
+provision_rows() { jq -r '.launch.mounts[]?|select(.provision.repository)|[.source,.provision.repository,(.provision.revision//""),(((.provision.size_gb//0)*1073741824)|floor)]|@tsv' <<<"$1"; }
+dir_complete() { # dir_complete <dir> <expected-bytes>
+  local d=$1 exp=$2 b
+  [[ -d $d ]] || return 1
+  has_incomplete "$d" && return 1
+  b=$(dir_bytes "$d"); (( b > 0 )) || return 1
+  (( exp == 0 )) && return 0
+  (( b*100 >= exp*85 ))
 }
 resolve() {
   local id=$1 out reason
@@ -95,7 +108,14 @@ progress_bytes() {
 }
 image_have() { docker image inspect "$1" >/dev/null 2>&1; }
 hf_bin() { [[ -z ${OMARCHY_AI_NO_HOST_HF:-} ]] && bin_of hf 2>/dev/null; return 0; }
-weights_have() {
+provisions_have() {
+  local r=$1 src prepo prv pexp
+  while IFS=$'\t' read -r src prepo prv pexp; do
+    dir_complete "$HOME_DIR/${src#\~/}" "$pexp" || return 1
+  done < <(provision_rows "$r")
+}
+weights_have() { primary_have "$1" && provisions_have "$1"; }
+primary_have() {
   local r=$1 repo rev exp kind base d b file
   repo=$(jq -r .model.repository <<<"$r"); rev=$(jq -r .model.revision <<<"$r"); exp=$(jq -r .model.bytes <<<"$r")
   read -r kind base < <(resolve_mount "$r")
@@ -132,7 +152,7 @@ catalog() {
               precision:$r.model.precision,hardware:($g.registryName//$r.hardware.name),
               acceleratorCount:$r.hardware.count,available:false,
               imageDownloaded:false,weightsDownloaded:false,downloadPercent:0,downloadIndeterminate:true,
-              sizeGb:(($r.model.bytes/107374182|floor)/10),
+              sizeGb:((($r.model.bytes + (([$r.launch.mounts[]?.provision.size_gb//0]|add//0)*1073741824))/107374182|floor)/10),
               tools:($r.capabilities.tools//false),active:false,blocked:true,reason:$reason}]' <<<"$rows")
       continue
     fi
@@ -150,7 +170,7 @@ catalog() {
             precision:$r.model.precision,hardware:($g.registryName//$r.hardware.name),
             acceleratorCount:$r.hardware.count,available:(($g.count//0)>=$r.hardware.count),
             imageDownloaded:$img,weightsDownloaded:$wt,downloadPercent:$pct,downloadIndeterminate:$ind,
-            sizeGb:(($r.model.bytes/107374182|floor)/10),
+            sizeGb:((($r.model.bytes + (([$r.launch.mounts[]?.provision.size_gb//0]|add//0)*1073741824))/107374182|floor)/10),
             tools:($r.capabilities.tools//false),active:false,blocked:false,reason:""}]' <<<"$rows")
   done < <(jq -r --argjson ids "$ids" '.recipes[]|select(.status=="validated" and .launch_kind=="docker")
     |select(.hardware_id as $h|$ids|index($h))|.id' "$IDX")

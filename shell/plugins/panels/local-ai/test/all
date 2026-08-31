@@ -36,6 +36,9 @@ jq -n --arg dg "$digest" '{id:"multi-node",status:"validated",model_instance_id:
 jq -n --arg dg "$digest" '{id:"hostnet",status:"validated",model_instance_id:"org-small--bf16",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,network_mode:"host",arguments:[],mounts:[]}}' >"$OMARCHY_AI_REGISTRY/recipe/hostnet.json"
 jq -n '{schema_version:"local-ai-registry/v1",id:"org-small--norev",model_id:"small",repository:"org/small",served_name:"org/small",weights:{precision:"BF16",size_gb:0.0000001}}' >"$OMARCHY_AI_REGISTRY/model-instance/org-small--norev.json"
 jq -n --arg rev "$revision" '{schema_version:"local-ai-registry/v1",id:"org-small--big",model_id:"small",repository:"org/big",revision:$rev,served_name:"org/big",weights:{precision:"BF16",size_gb:1000}}' >"$OMARCHY_AI_REGISTRY/model-instance/org-small--big.json"
+# recipe with a provisioned draft mount: both primary and draft auto-download
+jq -n --arg dg "$digest" --arg rev "$revision" '{id:"small-prov",status:"validated",model_instance_id:"org-small--bf16",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"vllm"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:["--served-model-name","org/small"],mounts:[{source:"${MODEL_ROOT}/small-prov",target:"/model",read_only:true},{source:"${MODEL_ROOT}/small-prov-draft",target:"/draft",read_only:true,provision:{repository:"org/draft",revision:$rev,size_gb:0.0000001}},{source:"${CACHE_ROOT}/small-prov",target:"/cache",read_only:false}]}}' >"$OMARCHY_AI_REGISTRY/recipe/small-prov.json"
+jq -n --arg dg "$digest" '{id:"bad-prov",status:"validated",model_instance_id:"org-small--bf16",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"vllm"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:[],mounts:[{source:"${MODEL_ROOT}/bad-prov",target:"/model",read_only:true},{source:"${MODEL_ROOT}/bad-prov-draft",target:"/draft",read_only:true,provision:{repository:"org/draft",revision:"deadbeef",size_gb:0.0000001}}]}}' >"$OMARCHY_AI_REGISTRY/recipe/bad-prov.json"
 jq -n --arg dg "$digest" '{id:"big-3090",status:"validated",model_instance_id:"org-small--big",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:[],mounts:[{source:"~/.cache/huggingface",target:"/root/.cache/huggingface",read_only:false}]}}' >"$OMARCHY_AI_REGISTRY/recipe/big-3090.json"
 jq -n --arg dg "$digest" '{id:"no-rev",status:"validated",model_instance_id:"org-small--norev",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:[],mounts:[{source:"~/.cache/huggingface",target:"/root/.cache/huggingface",read_only:false}]}}' >"$OMARCHY_AI_REGISTRY/recipe/no-rev.json"
 jq -n '{schema_version:"local-ai-registry/v1",recipes:[
@@ -46,7 +49,9 @@ jq -n '{schema_version:"local-ai-registry/v1",recipes:[
   {id:"multi-node",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
   {id:"hostnet",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
   {id:"no-rev",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
-  {id:"big-3090",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"}]}' >"$OMARCHY_AI_REGISTRY/index/recipes.json"
+  {id:"big-3090",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
+  {id:"small-prov",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
+  {id:"bad-prov",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"}]}' >"$OMARCHY_AI_REGISTRY/index/recipes.json"
 CD="$TMP/docker"; mkdir -p "$CD/containers" "$CD/images"
 c_write() { jq -n --argjson o "$2" --argjson r "$3" '{owned:$o,running:$r}' >"$CD/containers/$1"; }
 docker() {
@@ -117,16 +122,18 @@ assert jq -e '.state=="ready" and .active.recipeId=="small-3090" and .active.api
 assert [ ! -e "$OMARCHY_AI_USER_HOME/.omp/agent/models.json" ]
 "$CLI" unload >/dev/null; ok 'snapshot adopts an owned live runtime after controller state is lost'
 "$CLI" scan >/dev/null
-assert jq -e '.state=="idle" and .registry.matching==8 and .registry.total==8 and .registry.revision=="" and (.gpus|length)==2
-  and (.models|length)==8 and (.models[]|select(.recipeId=="small-3090")|.available) and (.models[]|select(.recipeId=="small-3090")|.imageDownloaded|not)
+assert jq -e '.state=="idle" and .registry.matching==10 and .registry.total==10 and .registry.revision=="" and (.gpus|length)==2
+  and (.models|length)==10 and (.models[]|select(.recipeId=="small-3090")|.available) and (.models[]|select(.recipeId=="small-3090")|.imageDownloaded|not)
   and (.models[]|select(.recipeId=="big-3090")|.sizeGb==1000)' >/dev/null <<<"$(snap)"
 ok 'scan populates hardware, gpus, and models with downloaded vs available split'
 assert jq -e '(.models[]|select(.recipeId=="multi-node")|.blocked and (.reason|test("2 networked machines")))
   and (.models[]|select(.recipeId=="hostnet")|.blocked and (.reason|test("host networking")))
   and (.models[]|select(.recipeId=="small-mr")|.blocked and (.reason|test("place weights at .*small-draft")))
   and (.models[]|select(.recipeId=="no-rev")|.blocked and (.reason|test("revision is not pinned")))
-  and ([.models[-4:][]|.blocked]|all)' >/dev/null <<<"$(snap)"
-ok 'multi-node, host-networking, missing-draft, and null-revision recipes stay visible as blocked rows that sort last'
+  and (.models[]|select(.recipeId=="bad-prov")|.blocked and (.reason|test("provision for .* is not pinned")))
+  and (.models[]|select(.recipeId=="small-prov")|.blocked|not)
+  and ([.models[-5:][]|.blocked]|all)' >/dev/null <<<"$(snap)"
+ok 'multi-node, host-networking, missing-draft, null-revision, and unpinned-provision recipes stay blocked; a provisioned draft does not block'
 mkdir -p "$OMARCHY_AI_USER_HOME/.cache/omarchy/local-ai/models/small-draft"
 "$CLI" scan >/dev/null
 assert jq -e '.models[]|select(.recipeId=="small-mr")|(.blocked|not)' >/dev/null <<<"$(snap)"
@@ -134,6 +141,11 @@ assert jq -e '.models[]|select(.recipeId=="small-mr")|(.blocked|not)' >/dev/null
 assert jq -e '.models[]|select(.recipeId=="small-mr")|.weightsDownloaded' >/dev/null <<<"$(snap)"
 assert [ -f "$OMARCHY_AI_USER_HOME/.cache/omarchy/local-ai/models/small-mr/model.bin" ]
 ok '${MODEL_ROOT} maps to the managed models dir: draft presence unblocks, primary downloads via --local-dir'
+"$CLI" download small-prov >/dev/null
+assert jq -e '.models[]|select(.recipeId=="small-prov")|.weightsDownloaded' >/dev/null <<<"$(snap)"
+assert [ -f "$OMARCHY_AI_USER_HOME/.cache/omarchy/local-ai/models/small-prov/model.bin" ]
+assert [ -f "$OMARCHY_AI_USER_HOME/.cache/omarchy/local-ai/models/small-prov-draft/model.bin" ]
+ok 'a provisioned draft mount downloads alongside the primary; nothing needs manual placement'
 DF_AVAIL_KB=1024 "$CLI" download big-3090 >/dev/null || true
 assert jq -e '.state=="error" and (.error|test("GB free under"))' >/dev/null <<<"$(snap)"
 ok 'a download that cannot fit on the target filesystem is refused with the shortfall in GB'
@@ -251,7 +263,7 @@ pin_ok=0
   rm "$TMP/reg-remote/registry/index/recipes.json"   # break main past the pin to prove the pin wins
   g add -A; g commit -qm broken
   OMARCHY_AI_REGISTRY_PIN=$pin "$CLI" scan >/dev/null
-  jq -e --arg pin "$pin" '.state=="idle" and .registry.revision==$pin and .registry.total==8' >/dev/null <<<"$("$CLI" snapshot)"
+  jq -e --arg pin "$pin" '.state=="idle" and .registry.revision==$pin and .registry.total==10' >/dev/null <<<"$("$CLI" snapshot)"
 ) && pin_ok=1 || pin_ok=0
 assert [ "$pin_ok" = 1 ]
 ok 'scan checks out the pinned registry commit, not whatever main moved to'

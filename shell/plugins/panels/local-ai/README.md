@@ -93,7 +93,9 @@ placeholder, host networking, or multi-node (`--nnodes`) launch. A
 refused recipe still appears in the catalog as `blocked` with its
 reason, instead of vanishing. A read-only `${MODEL_ROOT}` mount beyond
 the primary weights (for example a speculative-decoding draft model)
-must already exist on disk; the reason names the missing path.
+either carries a registry `provision` (repository, pinned revision,
+size) and is downloaded alongside the primary, or must already exist
+on disk — the reason names the missing path.
 
 The OpenAI-compatible endpoint binds to `127.0.0.1`. Only containers
 labeled `io.omarchy.local-ai=1` are adopted, started, stopped, or

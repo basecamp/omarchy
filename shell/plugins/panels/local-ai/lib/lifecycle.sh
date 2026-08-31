@@ -28,21 +28,22 @@ do_remove() { # synchronous: delete one recipe's weights and image, keep the reg
   w_refresh_models
 }
 w_download() {
-  local id=$1 r img repo rev exp kind base hf file bytes pct pid free
+  local id=$1 r img repo rev exp kind base hf file bytes pct pid free pexp psrc prepo prv pdir
   guard || oops "another operation is running"
   r=$(resolve "$id" 2>"$ST/gate.err") || oops "$(sed -n '$s/^local-ai: //p' "$ST/gate.err" | grep . || printf 'recipe %s failed validation' "$id")"
   img=$(jq -r .launch.image <<<"$r"); repo=$(jq -r .model.repository <<<"$r")
   rev=$(jq -r .model.revision <<<"$r"); exp=$(jq -r .model.bytes <<<"$r")
   op download "$id" 0 true "pulling image"
   image_have "$img" || docker pull "$img" >/dev/null 2>&1 || oops "image pull failed for $id"
-  if weights_have "$r"; then op download "$id" 100 false "weights present"
+  hf=$(hf_bin || true)
+  if primary_have "$r"; then op download "$id" 100 false "weights present"
   else
     read -r kind base < <(resolve_mount "$r"); mkdir -p "$base"
     bytes=$(progress_bytes "$r"); free=$(df -Pk "$base" 2>/dev/null | awk 'NR==2{print $4*1024}')
-    if (( exp > 0 && ${free:-0} > 0 && free < exp - bytes )); then
-      oops "need $(( (exp-bytes+1073741823)/1073741824 )) GB free under $base"
+    pexp=$(jq -r '(([.launch.mounts[]?.provision.size_gb//0]|add//0)*1073741824)|floor' <<<"$r")
+    if (( exp > 0 && ${free:-0} > 0 && free < exp + pexp - bytes )); then
+      oops "need $(( (exp+pexp-bytes+1073741823)/1073741824 )) GB free under $base"
     fi
-    hf=$(hf_bin || true)
     file=$(jq -r .model.servedName <<<"$r"); local -a extra=()
     [[ $kind == dir && $file == *.gguf ]] && extra=("${file##*/}")
     if [[ $kind == hf ]]; then
@@ -60,9 +61,19 @@ w_download() {
       sleep "$POLL"
     done
     wait "$pid" || oops "weight download failed for $id"
-    weights_have "$r" || oops "download incomplete for $id"
+    primary_have "$r" || oops "download incomplete for $id"
     op download "$id" 100 false "weights complete"
   fi
+  while IFS=$'\t' read -r psrc prepo prv pexp; do # provisioned secondary weights (e.g. a speculative draft)
+    pdir="$HOME_DIR/${psrc#\~/}"
+    dir_complete "$pdir" "$pexp" && continue
+    op download "$id" 0 true "downloading ${psrc##*/}"
+    mkdir -p "$pdir"
+    if [[ -n $hf ]]; then "$hf" download "$prepo" --revision "$prv" --local-dir "$pdir" >/dev/null 2>&1 || oops "download failed for ${psrc##*/}"
+    else docker run --rm --user "$(id -u):$(id -g)" --label "$LABEL.download=1" --entrypoint hf --volume "$pdir:$pdir" "$img" download "$prepo" --revision "$prv" --local-dir "$pdir" >/dev/null 2>&1 || oops "download failed for ${psrc##*/}"; fi
+    dir_complete "$pdir" "$pexp" || oops "download incomplete for ${psrc##*/}"
+    op download "$id" 100 false "${psrc##*/} complete"
+  done < <(provision_rows "$r")
   w_refresh_models
   [[ $(sread | jq -r '.active.apiReady') == true ]] && setstate ready || setstate downloaded
 }
