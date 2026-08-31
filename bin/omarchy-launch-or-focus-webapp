@@ -10,6 +10,13 @@ fi
 
 WINDOW_PATTERN="$1"
 shift
-LAUNCH_COMMAND="omarchy-launch-webapp $@"
+# omarchy-launch-or-focus re-parses this string with eval, so every argument
+# must be shell-quoted before being joined into it -- an unquoted argument
+# here would let its shell metacharacters (command substitution in
+# particular, since eval's leading `exec` swallows anything chained after a
+# bare `;`) execute instead of being passed through as inert data.
+QUOTED_ARGS=""
+(($# > 0)) && printf -v QUOTED_ARGS '%q ' "$@"
+LAUNCH_COMMAND="omarchy-launch-webapp ${QUOTED_ARGS% }"
 
 exec omarchy-launch-or-focus "$WINDOW_PATTERN" "$LAUNCH_COMMAND"
