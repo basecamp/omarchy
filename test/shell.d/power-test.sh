@@ -19,6 +19,21 @@ assertDeepEqual(
   { profiles: ['power-saver', 'balanced', 'performance'], activeProfile: 'balanced', profileIndex: 2 },
   'power parses profile output and clamps selection'
 )
+assertDeepEqual(
+  power.parseResponsiveStatus('{"available":true,"enabled":true,"health":"ok","reason":"responsive"}'),
+  { valid: true, supported: true, installed: true, available: true, enabled: true, health: 'ok', reason: 'responsive' },
+  'power parses app launch responsiveness status'
+)
+assertDeepEqual(
+  power.parseResponsiveStatus('{"supported":true,"installed":false,"available":false,"enabled":false,"health":"ok","reason":"ineligible"}'),
+  { valid: true, supported: true, installed: false, available: false, enabled: false, health: 'ok', reason: 'ineligible' },
+  'power parses supported app launch setup status'
+)
+assertDeepEqual(
+  power.parseResponsiveStatus('not json'),
+  { valid: false, supported: false, installed: false, available: false, enabled: false, health: 'blocked', reason: 'status_invalid' },
+  'power rejects invalid app launch responsiveness status'
+)
 
 assert(power.profileIcon('performance').length > 0, 'power maps profile icons')
 assertEqual(power.batteryFraction({ isPresent: true, percentage: 1.5 }), 1, 'power clamps battery fraction')
@@ -48,4 +63,12 @@ assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon
 assert(/openPanelIndicatorWidth:.*showPercentage.*button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
 assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentage\(\) \}/.test(panelSource), 'power exposes togglePercentage over IPC')
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
+assert(/command: \["omarchy-app-launch-responsive", "status", "--json"\]/.test(panelSource), 'power discovers app launch responsiveness support')
+assert(/"omarchy-app-launch-responsive",[\s\S]*?"set",[\s\S]*?responsiveEnabled \? "off" : "on"/.test(panelSource), 'power toggles app launch responsiveness')
+assert(/visible: root\.responsiveVisible[\s\S]*?label: "Faster app launches"/.test(panelSource), 'power only shows the faster app launches toggle when supported')
+assert(/enabled: root\.responsiveCanToggle && !root\.responsiveBusy/.test(panelSource), 'power only enables app launch setup in an eligible state')
+assert(/"Unplug and select Balanced to set up"/.test(panelSource), 'power explains how to make app launch setup available')
+assert(/responsiveInstalled && responsiveHealth === "blocked"/.test(panelSource), 'power flags an installed blocked backend for review')
+assert(/!root\.responsiveVisible[\s\S]*?selectProfileByDelta\(dy\)/.test(panelSource), 'power keeps vertical profile navigation when the hardware toggle is hidden')
+assert(/function normalizeResponsiveCursor\(\)[\s\S]*?!responsiveVisible && cursorSection === "responsive"[\s\S]*?cursorSection = "profiles"/.test(panelSource), 'power clears a hidden app launch cursor')
 JS

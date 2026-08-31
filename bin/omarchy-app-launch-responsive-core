@@ -1,0 +1,1261 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Internal reconciler for responsive battery app launches
+# omarchy:hidden=true
+
+"""Safely own the supported battery-Balanced app-launch latency override."""
+
+from __future__ import annotations
+
+import fcntl
+import glob
+import json
+import logging
+import os
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Any, Mapping
+
+
+CONFIG_DEFAULT = Path("/etc/omarchy-app-launch-responsive.json")
+STATE_DEFAULT = Path("/var/lib/omarchy-app-launch-responsive/state.json")
+LOCK_DEFAULT = Path("/run/omarchy-app-launch-responsive/control.lock")
+SERVICE_UNIT = "omarchy-app-launch-responsive.service"
+
+SLIDER_BALANCE = Path(
+    "/sys/module/processor_thermal_soc_slider/parameters/slider_balance"
+)
+SLIDER_OFFSET = Path(
+    "/sys/module/processor_thermal_soc_slider/parameters/slider_offset"
+)
+PRESERVE_PATHS = {
+    "hwp_dynamic_boost": Path(
+        "/sys/devices/system/cpu/intel_pstate/hwp_dynamic_boost"
+    ),
+    "no_turbo": Path("/sys/devices/system/cpu/intel_pstate/no_turbo"),
+    "min_perf_pct": Path("/sys/devices/system/cpu/intel_pstate/min_perf_pct"),
+    "max_perf_pct": Path("/sys/devices/system/cpu/intel_pstate/max_perf_pct"),
+}
+POWER_SUPPLY_ROOT = Path("/sys/class/power_supply")
+
+UP_NAME = "org.freedesktop.UPower"
+UP_PATH = "/org/freedesktop/UPower"
+UP_IFACE = "org.freedesktop.UPower"
+PPD_NAME = "org.freedesktop.UPower.PowerProfiles"
+PPD_PATH = "/org/freedesktop/UPower/PowerProfiles"
+PPD_IFACE = "org.freedesktop.UPower.PowerProfiles"
+
+LOG = logging.getLogger("omarchy-app-launch-responsive")
+
+
+class StateFileError(RuntimeError):
+    """The persistent ownership journal cannot safely be trusted."""
+
+
+def runtime_path(default: Path, environment_name: str) -> Path:
+    # Root operations always use fixed paths. Overrides exist only for tests
+    # and unprivileged read-only probes.
+    if os.geteuid() == 0:
+        return default
+    return Path(os.environ.get(environment_name, str(default)))
+
+
+def config_path() -> Path:
+    return runtime_path(
+        CONFIG_DEFAULT, "OMARCHY_APP_LAUNCH_RESPONSIVE_CONFIG"
+    )
+
+
+def state_path() -> Path:
+    return runtime_path(STATE_DEFAULT, "OMARCHY_APP_LAUNCH_RESPONSIVE_STATE")
+
+
+def lock_path() -> Path:
+    return runtime_path(LOCK_DEFAULT, "OMARCHY_APP_LAUNCH_RESPONSIVE_LOCK")
+
+
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8").strip()
+
+
+def read_optional(path: Path) -> str | None:
+    try:
+        return read(path)
+    except OSError:
+        return None
+
+
+def write(path: Path, value: str) -> None:
+    path.write_text(f"{value}\n", encoding="utf-8")
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    if value.get("schema") != 1:
+        raise ValueError(f"unsupported config schema {value.get('schema')!r}")
+    return value
+
+
+def default_state() -> dict[str, Any]:
+    return {
+        "schema": 1,
+        "initialized": False,
+        "requested": False,
+        "applied": False,
+        "needs_restore": False,
+        "failure_latched": False,
+        "quiesced": False,
+        "baseline": None,
+        "blocked_reason": None,
+        "last_error": None,
+        "last_reconcile_unix": None,
+    }
+
+
+def validate_state(value: Mapping[str, Any]) -> None:
+    if value.get("schema") != 1:
+        raise StateFileError(f"unsupported state schema {value.get('schema')!r}")
+    for key in (
+        "initialized",
+        "requested",
+        "applied",
+        "needs_restore",
+        "failure_latched",
+        "quiesced",
+    ):
+        if type(value.get(key)) is not bool:
+            raise StateFileError(f"state field {key!r} must be boolean")
+    baseline = value.get("baseline")
+    if baseline is not None:
+        if not isinstance(baseline, Mapping):
+            raise StateFileError("state baseline must be an object or null")
+        required = {"slider_balance", "slider_offset", "epp", "platform"}
+        if not required.issubset(baseline):
+            raise StateFileError("state baseline is incomplete")
+        if not isinstance(baseline.get("epp"), Mapping):
+            raise StateFileError("state baseline EPP must be a path/value object")
+        if not isinstance(baseline.get("platform"), Mapping):
+            raise StateFileError("state baseline platform must be an object")
+    if value.get("applied") and not value.get("needs_restore"):
+        raise StateFileError("applied state must retain a rollback obligation")
+    if value.get("needs_restore") and baseline is None:
+        raise StateFileError("rollback obligation requires a baseline")
+    for key in ("blocked_reason", "last_error"):
+        if value.get(key) is not None and not isinstance(value.get(key), str):
+            raise StateFileError(f"state field {key!r} must be a string or null")
+    stamp = value.get("last_reconcile_unix")
+    if stamp is not None and type(stamp) is not int:
+        raise StateFileError("last_reconcile_unix must be an integer or null")
+
+
+def load_state(*, strict: bool = False) -> dict[str, Any]:
+    result = default_state()
+    try:
+        value = json.loads(state_path().read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise StateFileError("state must contain a JSON object")
+        validate_state(value)
+    except FileNotFoundError:
+        result["_valid"] = True
+        result["_present"] = False
+        return result
+    except (OSError, ValueError, json.JSONDecodeError, StateFileError) as exc:
+        if strict:
+            raise StateFileError(f"state unreadable: {exc}") from exc
+        result["_valid"] = False
+        result["_present"] = True
+        result["blocked_reason"] = "state_corrupt"
+        result["last_error"] = str(exc)
+        return result
+    result.update(value)
+    result["_valid"] = True
+    result["_present"] = True
+    return result
+
+
+def save_state(state: Mapping[str, Any]) -> None:
+    if os.geteuid() != 0:
+        raise PermissionError("state mutation requires root")
+    path = state_path()
+    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    descriptor, temp_name = tempfile.mkstemp(prefix=".state.", dir=path.parent)
+    temp = Path(temp_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            persisted = {
+                key: value for key, value in state.items() if not key.startswith("_")
+            }
+            validate_state(persisted)
+            json.dump(persisted, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp, 0o644)
+        os.replace(temp, path)
+        directory_descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_descriptor)
+        finally:
+            os.close(directory_descriptor)
+    finally:
+        try:
+            temp.unlink()
+        except FileNotFoundError:
+            pass
+
+
+class Locked:
+    def __enter__(self) -> "Locked":
+        if os.geteuid() != 0:
+            raise PermissionError("reconciliation requires root")
+        path = lock_path()
+        path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        self.handle = path.open("a+", encoding="utf-8")
+        os.chmod(path, 0o644)
+        fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+        self.handle.close()
+
+
+def command_output(argv: list[str]) -> str:
+    result = subprocess.run(
+        argv,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=5,
+    )
+    return result.stdout.strip()
+
+
+def bus_property(name: str, path: str, interface: str, prop: str) -> Any:
+    output = command_output(
+        [
+            "/usr/bin/busctl",
+            "--json=short",
+            "get-property",
+            name,
+            path,
+            interface,
+            prop,
+        ]
+    )
+    return json.loads(output)["data"]
+
+
+def service_active(unit: str = SERVICE_UNIT) -> bool:
+    try:
+        result = subprocess.run(
+            ["/usr/bin/systemctl", "is-active", "--quiet", unit],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=3,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def cpu_identity() -> tuple[int, int]:
+    family: int | None = None
+    model: int | None = None
+    for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
+        if ":" not in line:
+            continue
+        key, value = (part.strip() for part in line.split(":", 1))
+        if key == "cpu family":
+            family = int(value)
+        elif key == "model":
+            model = int(value)
+        if family is not None and model is not None:
+            return family, model
+    raise RuntimeError("could not determine CPU family/model")
+
+
+def platform_snapshot() -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for raw in sorted(glob.glob("/sys/class/platform-profile/platform-profile-*")):
+        directory = Path(raw)
+        name = read(directory / "name")
+        if name in result:
+            raise RuntimeError(f"duplicate platform profile name: {name}")
+        result[name] = {
+            "realpath": str((directory / "profile").resolve(strict=True)),
+            "profile": read(directory / "profile"),
+            "choices": (read_optional(directory / "choices") or "").split(),
+        }
+    return result
+
+
+def epp_snapshot() -> tuple[dict[str, str], dict[str, list[str]], dict[str, str]]:
+    values: dict[str, str] = {}
+    choices: dict[str, list[str]] = {}
+    drivers: dict[str, str] = {}
+    pattern = "/sys/devices/system/cpu/cpufreq/policy*/energy_performance_preference"
+    for raw in sorted(glob.glob(pattern)):
+        path = Path(raw)
+        values[raw] = read(path)
+        choices[raw] = (
+            read_optional(path.parent / "energy_performance_available_preferences") or ""
+        ).split()
+        drivers[raw] = read_optional(path.parent / "scaling_driver") or ""
+    return values, choices, drivers
+
+
+def power_supply_snapshot() -> tuple[dict[str, Any], dict[str, Any]]:
+    external: dict[str, Any] = {}
+    batteries: dict[str, Any] = {}
+    for directory in sorted(POWER_SUPPLY_ROOT.glob("*")):
+        scope = read_optional(directory / "scope")
+        # Bluetooth peripherals and other device-scoped supplies are not part
+        # of the laptop's physical power source. System-scoped and legacy
+        # supplies without a scope remain in the conservative source audit.
+        if scope == "Device":
+            continue
+        if scope not in {None, "System"}:
+            raise RuntimeError(
+                f"power supply {directory.name!r} has unknown scope {scope!r}"
+            )
+        supply_type = read_optional(directory / "type")
+        if supply_type is None:
+            raise RuntimeError(f"power supply {directory.name!r} has no readable type")
+        if supply_type == "Battery":
+            batteries[directory.name] = {
+                "present": read_optional(directory / "present"),
+                "status": read_optional(directory / "status"),
+            }
+        else:
+            # Treat every non-battery supply conservatively as a possible input.
+            # An unknown device without an online signal makes DC ineligible.
+            external[directory.name] = {
+                "type": supply_type,
+                "online": read_optional(directory / "online"),
+            }
+    return external, batteries
+
+
+def ppd_profiles() -> list[dict[str, str]]:
+    raw_profiles = bus_property(PPD_NAME, PPD_PATH, PPD_IFACE, "Profiles")
+    result: list[dict[str, str]] = []
+    for raw in raw_profiles:
+        result.append(
+            {
+                key: str(value.get("data"))
+                for key, value in raw.items()
+                if isinstance(value, Mapping)
+            }
+        )
+    return result
+
+
+def observe() -> dict[str, Any]:
+    family, model = cpu_identity()
+    external, batteries = power_supply_snapshot()
+    epp, epp_choices, epp_drivers = epp_snapshot()
+    return {
+        "sys_vendor": read(Path("/sys/class/dmi/id/sys_vendor")),
+        "product_name": read(Path("/sys/class/dmi/id/product_name")),
+        "product_sku": read(Path("/sys/class/dmi/id/product_sku")),
+        "cpu_family": family,
+        "cpu_model": model,
+        "on_battery": bool(bus_property(UP_NAME, UP_PATH, UP_IFACE, "OnBattery")),
+        "active_profile": str(
+            bus_property(PPD_NAME, PPD_PATH, PPD_IFACE, "ActiveProfile")
+        ),
+        "battery_aware": bool(
+            bus_property(PPD_NAME, PPD_PATH, PPD_IFACE, "BatteryAware")
+        ),
+        "ppd_profiles": ppd_profiles(),
+        "lpmd_active": service_active("intel_lpmd.service"),
+        "platform": platform_snapshot(),
+        "epp": epp,
+        "epp_choices": epp_choices,
+        "epp_drivers": epp_drivers,
+        "slider_balance": read(SLIDER_BALANCE),
+        "slider_offset": read(SLIDER_OFFSET),
+        "preserve": {name: read(path) for name, path in PRESERVE_PATHS.items()},
+        "external_power": external,
+        "batteries": batteries,
+    }
+
+
+def lpmd_semantic_errors(config: Mapping[str, Any]) -> list[str]:
+    providers = config["providers"]
+    path = Path(providers["intel_lpmd_config"])
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError) as exc:
+        return [f"cannot parse Intel LPMD config {path}: {exc}"]
+
+    def text(tag: str) -> str | None:
+        element = root.find(tag)
+        return element.text.strip() if element is not None and element.text else None
+
+    errors: list[str] = []
+    expected = {
+        "BalancedSliderDC": str(providers["balanced_slider_dc"]),
+        "SliderOffsetDC": str(providers["slider_offset_dc"]),
+    }
+    for tag, wanted in expected.items():
+        actual = text(tag)
+        if actual != wanted:
+            errors.append(f"Intel LPMD {tag}: expected {wanted!r}, got {actual!r}")
+
+    hardware = config["hardware"]
+    matching_state = False
+    for states in root.findall("States"):
+        family = states.findtext("CPUFamily", default="").strip()
+        model = states.findtext("CPUModel", default="").strip()
+        if family == str(hardware["cpu_family"]) and model == str(
+            hardware["cpu_model"]
+        ):
+            matching_state = True
+            break
+    if not matching_state:
+        errors.append("Intel LPMD config has no matching CPU state")
+    return errors
+
+
+def static_audit(config: Mapping[str, Any], observed: Mapping[str, Any]) -> list[str]:
+    errors: list[str] = []
+    hardware = config["hardware"]
+    for key in ("sys_vendor", "product_name", "product_sku", "cpu_family", "cpu_model"):
+        if observed.get(key) != hardware[key]:
+            errors.append(
+                f"{key}: expected {hardware[key]!r}, got {observed.get(key)!r}"
+            )
+
+    if observed.get("preserve") != hardware["preserve"]:
+        errors.append("non-target Intel P-state baseline changed")
+
+    expected_epp = set(hardware["epp_paths"])
+    actual_epp = set(observed.get("epp", {}))
+    if actual_epp != expected_epp:
+        errors.append("EPP policy path inventory changed")
+    required_epp = {
+        config["stock_battery_balanced"]["epp"],
+        config["responsive_battery_balanced"]["epp"],
+    }
+    for path in sorted(expected_epp & actual_epp):
+        available = set(observed.get("epp_choices", {}).get(path, []))
+        if not required_epp.issubset(available):
+            errors.append(f"EPP capabilities changed at {path}")
+        if observed.get("epp_drivers", {}).get(path) != "intel_pstate":
+            errors.append(f"EPP driver is not intel_pstate at {path}")
+
+    expected_platform = hardware["platform_profile_realpaths"]
+    actual_platform = observed.get("platform", {})
+    if set(actual_platform) != set(expected_platform):
+        errors.append("platform profile provider inventory changed")
+    else:
+        realpaths = {name: item.get("realpath") for name, item in actual_platform.items()}
+        if realpaths != expected_platform:
+            errors.append("platform profile realpaths changed")
+        for name, item in actual_platform.items():
+            if "balanced" not in item.get("choices", []):
+                errors.append(f"platform profile {name!r} no longer offers balanced")
+
+    providers = config["providers"]
+    if providers.get("require_battery_aware") and not observed.get("battery_aware"):
+        errors.append("power-profiles-daemon BatteryAware is false")
+    balanced_profiles = [
+        item
+        for item in observed.get("ppd_profiles", [])
+        if item.get("Profile") == "balanced"
+    ]
+    if len(balanced_profiles) != 1:
+        errors.append("power-profiles-daemon balanced profile is missing or ambiguous")
+    elif (
+        balanced_profiles[0].get("CpuDriver") != "intel_pstate"
+        or balanced_profiles[0].get("PlatformDriver") != "platform_profile"
+    ):
+        errors.append("power-profiles-daemon balanced providers changed")
+    if not observed.get("lpmd_active"):
+        errors.append("intel_lpmd.service is inactive")
+    errors.extend(lpmd_semantic_errors(config))
+    return errors
+
+
+def externally_powered(observed: Mapping[str, Any]) -> bool:
+    return any(
+        item.get("online") == "1"
+        for item in observed.get("external_power", {}).values()
+    )
+
+
+def is_eligible(observed: Mapping[str, Any]) -> tuple[bool, str]:
+    external = observed.get("external_power", {})
+    batteries = observed.get("batteries", {})
+    if not external or not batteries:
+        return False, "physical_source_unknown"
+    online_values = [item.get("online") for item in external.values()]
+    if any(value not in {"0", "1"} for value in online_values):
+        return False, "physical_source_unknown"
+    if any(value == "1" for value in online_values):
+        return False, "ac_power"
+    if observed.get("on_battery") is not True:
+        return False, "source_disagreement"
+    if any(item.get("present") != "1" for item in batteries.values()):
+        return False, "battery_not_present"
+    if any(item.get("status") != "Discharging" for item in batteries.values()):
+        return False, "battery_not_discharging"
+    if observed.get("active_profile") != "balanced":
+        return False, f"profile_{observed.get('active_profile')}"
+    if any(
+        item.get("profile") != "balanced"
+        for item in observed.get("platform", {}).values()
+    ):
+        return False, "platform_profile_not_balanced"
+    return True, "eligible"
+
+
+def tuning_matches(observed: Mapping[str, Any], target: Mapping[str, Any]) -> bool:
+    if observed.get("slider_balance") != target["slider_balance"]:
+        return False
+    if observed.get("slider_offset") != target["slider_offset"]:
+        return False
+    wanted_epp = target["epp"]
+    if isinstance(wanted_epp, Mapping):
+        return observed.get("epp") == wanted_epp
+    values = list(observed.get("epp", {}).values())
+    return bool(values) and all(value == wanted_epp for value in values)
+
+
+def capture_baseline(observed: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "slider_balance": observed["slider_balance"],
+        "slider_offset": observed["slider_offset"],
+        "epp": observed["epp"],
+        "platform": {
+            name: item["profile"] for name, item in observed["platform"].items()
+        },
+    }
+
+
+def validate_write_scope(
+    config: Mapping[str, Any],
+    target: Mapping[str, Any],
+    observed: Mapping[str, Any],
+) -> None:
+    expected_platform = config["hardware"]["platform_profile_realpaths"]
+    actual_platform = {
+        name: item.get("realpath")
+        for name, item in observed.get("platform", {}).items()
+    }
+    if actual_platform != expected_platform:
+        raise RuntimeError("refusing write: platform provider realpaths changed")
+    expected_epp = set(config["hardware"]["epp_paths"])
+    if set(observed.get("epp", {})) != expected_epp:
+        raise RuntimeError("refusing write: EPP path inventory changed")
+    wanted_epp = target["epp"]
+    if isinstance(wanted_epp, Mapping) and set(wanted_epp) != expected_epp:
+        raise RuntimeError("refusing write: target EPP inventory is not pinned")
+    platform_target = target.get("platform")
+    if platform_target is not None and (
+        not isinstance(platform_target, Mapping)
+        or set(platform_target) != set(expected_platform)
+        or any(value != "balanced" for value in platform_target.values())
+    ):
+        raise RuntimeError("refusing write: target platform inventory is not pinned")
+
+
+def write_tuning(
+    config: Mapping[str, Any],
+    target: Mapping[str, Any],
+    observed: Mapping[str, Any],
+) -> dict[str, Any]:
+    audit_errors = static_audit(config, observed)
+    if audit_errors:
+        raise RuntimeError(f"refusing write after provider drift: {'; '.join(audit_errors)}")
+    if not is_eligible(observed)[0]:
+        raise RuntimeError("refusing write outside verified battery Balanced mode")
+    validate_write_scope(config, target, observed)
+    preserve_before = dict(observed["preserve"])
+
+    write(SLIDER_BALANCE, str(target["slider_balance"]))
+    write(SLIDER_OFFSET, str(target["slider_offset"]))
+
+    # Rewriting the already-balanced provider profiles commits the two module
+    # parameters on this hardware. Only configured canonical realpaths are used.
+    realpaths = config["hardware"]["platform_profile_realpaths"]
+    for name in sorted(realpaths):
+        if observed["platform"][name]["profile"] != "balanced":
+            raise RuntimeError(f"refusing write while {name!r} is not balanced")
+        write(Path(realpaths[name]), "balanced")
+
+    wanted_epp = target["epp"]
+    for raw in sorted(config["hardware"]["epp_paths"]):
+        value = wanted_epp[raw] if isinstance(wanted_epp, Mapping) else wanted_epp
+        write(Path(raw), str(value))
+
+    verify_ms = int(config["timing"]["post_write_verify_ms"])
+    time.sleep(verify_ms / 1000)
+    after = observe()
+    if not is_eligible(after)[0]:
+        raise RuntimeError("power source or profile changed during write")
+    if not tuning_matches(after, target):
+        raise RuntimeError("post-write tuning verification failed")
+    if after["preserve"] != preserve_before:
+        raise RuntimeError("an unrelated Intel P-state value changed")
+    return after
+
+
+def mark_state(
+    state: dict[str, Any], *, blocked: str | None = None, error: str | None = None
+) -> None:
+    state["blocked_reason"] = blocked
+    state["last_error"] = error
+    state["last_reconcile_unix"] = int(time.time())
+
+
+def clear_ownership(state: dict[str, Any]) -> None:
+    state["applied"] = False
+    state["needs_restore"] = False
+    state["baseline"] = None
+
+
+def restore_owned(
+    config: Mapping[str, Any], state: dict[str, Any], observed: Mapping[str, Any]
+) -> None:
+    baseline = state.get("baseline")
+    if not isinstance(baseline, Mapping):
+        raise RuntimeError("rollback obligation exists without a valid baseline")
+    if set(baseline.get("epp", {})) != set(observed.get("epp", {})):
+        raise RuntimeError("EPP path inventory changed since baseline capture")
+    if set(baseline.get("platform", {})) != set(observed.get("platform", {})):
+        raise RuntimeError("platform provider inventory changed since baseline capture")
+    write_tuning(config, baseline, observed)
+    clear_ownership(state)
+
+
+def state_is_fresh(config: Mapping[str, Any], state: Mapping[str, Any]) -> bool:
+    stamp = state.get("last_reconcile_unix")
+    if type(stamp) is not int:
+        return False
+    maximum_age = max(
+        5,
+        2 * int(config["timing"]["periodic_reconcile_seconds"])
+        + int(config["timing"]["event_debounce_ms"]) // 1000
+        + 5,
+    )
+    return 0 <= int(time.time()) - stamp <= maximum_age
+
+
+def reconcile_locked(reason: str) -> tuple[bool, str]:
+    config = load_json(config_path())
+    state = load_state(strict=True)
+    try:
+        observed = observe()
+    except Exception as exc:
+        mark_state(state, blocked="observation_failed", error=str(exc))
+        save_state(state)
+        return False, str(exc)
+
+    errors = static_audit(config, observed)
+    eligible, eligibility_reason = is_eligible(observed)
+    stock = config["stock_battery_balanced"]
+    responsive = config["responsive_battery_balanced"]
+
+    if errors:
+        # A provider audit failure can mean that the machine identity, driver,
+        # capabilities, or policy semantics changed. Never write through that
+        # uncertainty, including for rollback: preserve the ownership journal
+        # so a later reconcile can restore only after every gate passes again.
+        message = "; ".join(errors)
+        state["failure_latched"] = True
+        mark_state(state, blocked="provider_drift", error=message)
+        save_state(state)
+        LOG.error("reconcile %s blocked: %s", reason, message)
+        if not state["requested"] and not state["needs_restore"]:
+            return True, f"disabled with clean ownership despite drift: {message}"
+        return False, message
+
+    if not state["initialized"]:
+        if not eligible:
+            message = "stock battery-Balanced baseline has not been observed"
+            mark_state(state, blocked="baseline_unverified", error=message)
+            save_state(state)
+            return False, message
+        if not tuning_matches(observed, stock):
+            message = "initialization requires exact stock battery-Balanced values"
+            mark_state(state, blocked="unexpected_unowned_policy", error=message)
+            save_state(state)
+            return False, message
+        state["initialized"] = True
+        mark_state(state)
+        save_state(state)
+
+    if not eligible:
+        if state["needs_restore"] and (
+            not state["requested"] or state["failure_latched"] or state["quiesced"]
+        ):
+            message = f"restore deferred while {eligibility_reason}"
+            mark_state(state, blocked="restore_deferred", error=message)
+            save_state(state)
+            return False, message
+        if state["failure_latched"] and state["requested"]:
+            mark_state(
+                state,
+                blocked=state.get("blocked_reason"),
+                error=state.get("last_error"),
+            )
+            save_state(state)
+            return False, state.get("last_error") or "apply failure is latched"
+        mark_state(state)
+        save_state(state)
+        return True, eligibility_reason
+
+    if state["quiesced"]:
+        if state["needs_restore"]:
+            try:
+                restore_owned(config, state, observed)
+            except Exception as exc:
+                mark_state(state, blocked="restore_failed", error=str(exc))
+                save_state(state)
+                return False, str(exc)
+        mark_state(state)
+        save_state(state)
+        return True, "quiesced"
+
+    if state["failure_latched"] and state["requested"]:
+        if state["needs_restore"]:
+            try:
+                restore_owned(config, state, observed)
+                state["requested"] = False
+            except Exception as exc:
+                message = f"latched apply failure; restoration failed: {exc}"
+                mark_state(state, blocked="apply_failed", error=message)
+                save_state(state)
+                return False, message
+        mark_state(
+            state,
+            blocked=state.get("blocked_reason"),
+            error=state.get("last_error"),
+        )
+        save_state(state)
+        return False, state.get("last_error") or "apply failure is latched"
+
+    if state["requested"]:
+        if not service_active():
+            message = "refusing enable while the watcher service is inactive"
+            mark_state(state, blocked="service_inactive", error=message)
+            save_state(state)
+            return False, message
+        if state.get("baseline") is None:
+            if not tuning_matches(observed, stock):
+                message = "cannot capture baseline because current values are not stock"
+                mark_state(state, blocked="unexpected_baseline", error=message)
+                save_state(state)
+                return False, message
+            state["baseline"] = capture_baseline(observed)
+            save_state(state)
+
+        if not tuning_matches(observed, responsive):
+            state["needs_restore"] = True
+            save_state(state)
+            try:
+                write_tuning(config, responsive, observed)
+            except Exception as exc:
+                rollback_ok = False
+                try:
+                    current = observe()
+                    if (
+                        not static_audit(config, current)
+                        and is_eligible(current)[0]
+                        and isinstance(state.get("baseline"), Mapping)
+                    ):
+                        write_tuning(config, state["baseline"], current)
+                        rollback_ok = True
+                except Exception as rollback_exc:
+                    exc = RuntimeError(f"{exc}; rollback also failed: {rollback_exc}")
+                state["applied"] = False
+                state["needs_restore"] = not rollback_ok
+                state["failure_latched"] = True
+                if rollback_ok:
+                    state["requested"] = False
+                    state["baseline"] = None
+                mark_state(state, blocked="apply_failed", error=str(exc))
+                save_state(state)
+                return False, str(exc)
+        state["applied"] = True
+        state["needs_restore"] = True
+        mark_state(state)
+        save_state(state)
+        return True, "responsive_app_launches"
+
+    if state["applied"] or state["needs_restore"]:
+        try:
+            restore_owned(config, state, observed)
+        except Exception as exc:
+            mark_state(state, blocked="restore_failed", error=str(exc))
+            save_state(state)
+            return False, str(exc)
+        observed = observe()
+    clear_ownership(state)
+    if not tuning_matches(observed, stock):
+        message = "disabled backend requires exact stock battery-Balanced values"
+        mark_state(state, blocked="unexpected_unowned_policy", error=message)
+        save_state(state)
+        return False, message
+    if not state["failure_latched"]:
+        mark_state(state)
+    else:
+        state["last_reconcile_unix"] = int(time.time())
+    save_state(state)
+    return True, "stock"
+
+
+def reconcile(reason: str) -> tuple[bool, str]:
+    with Locked():
+        return reconcile_locked(reason)
+
+
+def set_requested(enabled: bool) -> tuple[bool, str]:
+    with Locked():
+        state = load_state(strict=True)
+        if enabled:
+            if not service_active():
+                return False, "watcher service is inactive"
+            if not state["initialized"]:
+                return False, "stock baseline has not been initialized"
+            if state["quiesced"]:
+                return False, "watcher service is quiescing"
+            state["failure_latched"] = False
+        state["requested"] = enabled
+        state["blocked_reason"] = None
+        state["last_error"] = None
+        if (
+            not enabled
+            and not state["applied"]
+            and not state["needs_restore"]
+        ):
+            # A baseline without applied/needs_restore is the intentional
+            # pre-write crash boundary. No sysfs ownership was established.
+            state["baseline"] = None
+            state["failure_latched"] = False
+            mark_state(state)
+            save_state(state)
+            return True, "disabled with clean ownership"
+        save_state(state)
+        ok, detail = reconcile_locked("set_on" if enabled else "set_off")
+        if not enabled and ok:
+            state = load_state(strict=True)
+            if not state["needs_restore"]:
+                state["failure_latched"] = False
+                if state["blocked_reason"] not in {"provider_drift"}:
+                    state["blocked_reason"] = None
+                    state["last_error"] = None
+                save_state(state)
+        return ok, detail
+
+
+def activate_service() -> tuple[bool, str]:
+    with Locked():
+        state = load_state(strict=True)
+        state["quiesced"] = False
+        save_state(state)
+        return reconcile_locked("startup")
+
+
+def quiesce_service() -> tuple[bool, str]:
+    with Locked():
+        state = load_state(strict=True)
+        state["quiesced"] = True
+        save_state(state)
+        if (
+            not state["applied"]
+            and not state["needs_restore"]
+        ):
+            state["baseline"] = None
+            save_state(state)
+            return True, "quiesced with clean ownership"
+        ok, detail = reconcile_locked("quiesce")
+        after = load_state(strict=True)
+        if after["needs_restore"]:
+            return False, f"quiesce left a rollback obligation: {detail}"
+        return True, "quiesced" if ok else f"quiesced after: {detail}"
+
+
+def verify_removable() -> tuple[bool, str]:
+    try:
+        state = load_state(strict=True)
+    except Exception as exc:
+        return False, str(exc)
+    if service_active():
+        return False, "service is still active"
+    if state["requested"]:
+        return False, "preference is still enabled"
+    if state["applied"] or state["needs_restore"] or state.get("baseline") is not None:
+        return False, "rollback ownership has not been cleared"
+    return True, "safe: service inactive and rollback ownership is clean"
+
+
+def source_name(observed: Mapping[str, Any]) -> str:
+    if externally_powered(observed):
+        return "ac"
+    if observed.get("on_battery") is True:
+        return "battery"
+    return "unknown"
+
+
+def actual_document(observed: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "slider_balance": observed["slider_balance"],
+        "slider_offset": observed["slider_offset"],
+        "epp_values": sorted(set(observed["epp"].values())),
+        "platform_profiles": {
+            name: item["profile"] for name, item in observed["platform"].items()
+        },
+    }
+
+
+def probe_document(config_override: Path) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "schema": 1,
+        "installed": False,
+        "supported": False,
+        "available": False,
+        "enabled": False,
+        "requested": False,
+        "effective": False,
+        "can_enable_now": False,
+        "health": "blocked",
+        "reason": "observation_failed",
+        "detail": None,
+        "source": "unknown",
+        "profile": None,
+        "actual": None,
+    }
+    try:
+        config = load_json(config_override)
+        observed = observe()
+        errors = static_audit(config, observed)
+    except Exception as exc:
+        result["detail"] = str(exc)
+        return result
+    eligible, eligibility_reason = is_eligible(observed)
+    stock = tuning_matches(observed, config["stock_battery_balanced"])
+    supported = not errors
+    can_enable = bool(supported and eligible and stock)
+    result.update(
+        {
+            "supported": supported,
+            "available": can_enable,
+            "can_enable_now": can_enable,
+            "source": source_name(observed),
+            "profile": observed["active_profile"],
+            "actual": actual_document(observed),
+        }
+    )
+    if errors:
+        result["reason"] = "unsupported"
+        result["detail"] = "; ".join(errors)
+    elif not eligible:
+        result["health"] = "ok"
+        result["reason"] = eligibility_reason
+    elif not stock:
+        result["reason"] = "unexpected_unowned_policy"
+        result["detail"] = "first enable requires exact stock values"
+    else:
+        result["health"] = "ok"
+        result["reason"] = "ready"
+    return result
+
+
+def status_document() -> dict[str, Any]:
+    state = load_state()
+    active = service_active()
+    valid = state.get("_valid") is True
+    result: dict[str, Any] = {
+        "schema": 1,
+        "installed": True,
+        "supported": False,
+        "available": False,
+        # A pending rollback stays user-visible/actionable even after an OFF
+        # request. `requested` separately reports the user's preference.
+        "enabled": bool(state["requested"] or state["needs_restore"]),
+        "requested": bool(state["requested"]),
+        "effective": False,
+        "can_enable_now": False,
+        "health": "blocked",
+        "reason": "observation_failed",
+        "detail": None,
+        "source": "unknown",
+        "profile": None,
+        "actual": None,
+        "service_active": active,
+        "state_valid": valid,
+        "initialized": bool(state["initialized"]),
+        "ownership_pending": bool(state["needs_restore"]),
+        "last_reconcile_unix": state.get("last_reconcile_unix"),
+    }
+    try:
+        config = load_json(config_path())
+        observed = observe()
+        errors = static_audit(config, observed)
+    except Exception as exc:
+        result["detail"] = str(exc)
+        return result
+    eligible, eligibility_reason = is_eligible(observed)
+    responsive = config["responsive_battery_balanced"]
+    stock = config["stock_battery_balanced"]
+    supported = not errors
+    effective = bool(
+        state["requested"] and eligible and tuning_matches(observed, responsive)
+    )
+    can_enable = bool(
+        supported
+        and active
+        and valid
+        and state["initialized"]
+        and not state["quiesced"]
+        and eligible
+        and (
+            (state["requested"] and tuning_matches(observed, responsive))
+            or (not state["requested"] and tuning_matches(observed, stock))
+        )
+    )
+    result.update(
+        {
+            "supported": supported,
+            "available": can_enable,
+            "effective": effective,
+            "can_enable_now": can_enable,
+            "source": source_name(observed),
+            "profile": observed["active_profile"],
+            "actual": actual_document(observed),
+        }
+    )
+    if not valid:
+        result["reason"] = "state_corrupt"
+        result["detail"] = state.get("last_error")
+    elif errors:
+        result["reason"] = "provider_drift"
+        result["detail"] = "; ".join(errors)
+    elif not active:
+        result["reason"] = "service_inactive"
+    elif not state["initialized"]:
+        result["reason"] = "baseline_unverified"
+    elif state["requested"] and not state_is_fresh(config, state):
+        result["reason"] = "state_stale"
+    elif state.get("blocked_reason"):
+        result["reason"] = state["blocked_reason"]
+        result["detail"] = state.get("last_error")
+    elif (
+        eligible
+        and not state["requested"]
+        and not state["needs_restore"]
+        and state.get("baseline") is None
+        and not tuning_matches(observed, stock)
+    ):
+        result["reason"] = "unexpected_unowned_policy"
+        result["detail"] = "disabled backend requires exact stock values"
+    elif not state["requested"]:
+        result["health"] = "ok"
+        result["reason"] = "disabled"
+    elif effective:
+        result["health"] = "ok"
+        result["reason"] = "responsive_app_launches"
+    elif not eligible:
+        result["health"] = "ok"
+        result["reason"] = eligibility_reason
+    else:
+        result["health"] = "pending"
+        result["reason"] = "awaiting_reconcile"
+    return result
+
+
+def audit_document(config_override: Path, require_stock: bool) -> dict[str, Any]:
+    try:
+        config = load_json(config_override)
+        observed = observe()
+        errors = static_audit(config, observed)
+        eligible, eligibility_reason = is_eligible(observed)
+        if require_stock:
+            if not eligible:
+                errors.append(
+                    f"first setup requires stock battery Balanced: {eligibility_reason}"
+                )
+            elif not tuning_matches(observed, config["stock_battery_balanced"]):
+                errors.append("live values are not the exact stock baseline")
+        return {
+            "schema": 1,
+            "ok": not errors,
+            "errors": errors,
+            "eligible_now": eligible,
+            "eligibility_reason": eligibility_reason,
+            "source": source_name(observed),
+            "profile": observed["active_profile"],
+            "actual": actual_document(observed),
+        }
+    except Exception as exc:
+        return {"schema": 1, "ok": False, "errors": [str(exc)]}
+
+
+def run_daemon() -> None:
+    if os.geteuid() != 0:
+        raise PermissionError("daemon must run as root")
+    from gi.repository import Gio, GLib
+
+    config = load_json(config_path())
+    debounce_ms = int(config["timing"]["event_debounce_ms"])
+    periodic_seconds = int(config["timing"]["periodic_reconcile_seconds"])
+    loop = GLib.MainLoop()
+    bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+    pending: int | None = None
+
+    def do_reconcile(reason: str) -> bool:
+        nonlocal pending
+        pending = None
+        try:
+            ok, detail = reconcile(reason)
+            if not ok:
+                LOG.error("%s", detail)
+        except Exception:
+            LOG.exception("reconciliation failed")
+        return GLib.SOURCE_REMOVE
+
+    def schedule(reason: str = "dbus_event") -> None:
+        nonlocal pending
+        if pending is not None:
+            GLib.source_remove(pending)
+        pending = GLib.timeout_add(debounce_ms, do_reconcile, reason)
+
+    def changed(*_: object) -> None:
+        schedule("dbus_event")
+
+    for sender, path, changed_interface in (
+        (UP_NAME, UP_PATH, UP_IFACE),
+        (PPD_NAME, PPD_PATH, PPD_IFACE),
+    ):
+        bus.signal_subscribe(
+            sender,
+            "org.freedesktop.DBus.Properties",
+            "PropertiesChanged",
+            path,
+            changed_interface,
+            Gio.DBusSignalFlags.NONE,
+            changed,
+        )
+    bus.signal_subscribe(
+        "org.freedesktop.login1",
+        "org.freedesktop.login1.Manager",
+        "PrepareForSleep",
+        "/org/freedesktop/login1",
+        None,
+        Gio.DBusSignalFlags.NONE,
+        changed,
+    )
+
+    def periodic() -> bool:
+        try:
+            state = load_state()
+            if (
+                not state.get("_valid")
+                or not state["initialized"]
+                or state["requested"]
+                or state["needs_restore"]
+            ):
+                schedule("periodic")
+        except Exception:
+            schedule("periodic")
+        return GLib.SOURCE_CONTINUE
+
+    def startup() -> bool:
+        nonlocal pending
+        pending = None
+        try:
+            ok, detail = activate_service()
+            if not ok:
+                LOG.error("%s", detail)
+        except Exception:
+            LOG.exception("startup reconciliation failed")
+        return GLib.SOURCE_REMOVE
+
+    GLib.timeout_add_seconds(periodic_seconds, periodic)
+    GLib.idle_add(startup)
+    signal.signal(signal.SIGHUP, lambda *_: GLib.idle_add(schedule, "sighup"))
+    signal.signal(signal.SIGTERM, lambda *_: GLib.idle_add(loop.quit))
+    signal.signal(signal.SIGINT, lambda *_: GLib.idle_add(loop.quit))
+    loop.run()
+
+
+def emit(value: Mapping[str, Any]) -> None:
+    json.dump(dict(value), sys.stdout, separators=(",", ":"), sort_keys=True)
+    sys.stdout.write("\n")
+
+
+def usage() -> None:
+    print(
+        "internal usage: core status --json | probe --json CONFIG | "
+        "audit-config --json CONFIG --require-stock | set on|off | "
+        "reconcile | activate | quiesce | verify-removable --json | daemon",
+        file=sys.stderr,
+    )
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    args = sys.argv[1:]
+    if args == ["status", "--json"]:
+        emit(status_document())
+        return
+    if len(args) == 3 and args[:2] == ["probe", "--json"]:
+        emit(probe_document(Path(args[2])))
+        return
+    if len(args) == 4 and args[:2] == ["audit-config", "--json"]:
+        if args[3] != "--require-stock":
+            usage()
+            raise SystemExit(2)
+        document = audit_document(Path(args[2]), True)
+        emit(document)
+        raise SystemExit(0 if document.get("ok") else 1)
+    if len(args) == 2 and args[0] == "set" and args[1] in {"on", "off"}:
+        if os.geteuid() != 0:
+            raise PermissionError("set requires root")
+        ok, detail = set_requested(args[1] == "on")
+        document = status_document()
+        document["operation"] = {"ok": ok, "detail": detail}
+        emit(document)
+        raise SystemExit(0 if ok else 1)
+    if args == ["reconcile"]:
+        ok, detail = reconcile("manual")
+        emit({"ok": ok, "detail": detail})
+        raise SystemExit(0 if ok else 1)
+    if args == ["activate"]:
+        ok, detail = activate_service()
+        emit({"ok": ok, "detail": detail})
+        raise SystemExit(0 if ok else 1)
+    if args == ["quiesce"]:
+        ok, detail = quiesce_service()
+        emit({"ok": ok, "detail": detail})
+        raise SystemExit(0 if ok else 1)
+    if args == ["verify-removable", "--json"]:
+        ok, detail = verify_removable()
+        emit({"ok": ok, "detail": detail})
+        raise SystemExit(0 if ok else 1)
+    if args == ["daemon"]:
+        run_daemon()
+        return
+    usage()
+    raise SystemExit(2)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as exc:
+        LOG.error("%s", exc)
+        raise SystemExit(1)

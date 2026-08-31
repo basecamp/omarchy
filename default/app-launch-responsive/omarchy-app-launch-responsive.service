@@ -1,0 +1,58 @@
+[Unit]
+Description=Reduce battery app-launch latency on supported Dell XPS hardware
+Wants=upower.service power-profiles-daemon.service intel_lpmd.service
+After=upower.service power-profiles-daemon.service intel_lpmd.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-app-launch-responsive-core daemon
+ExecStop=/usr/bin/omarchy-app-launch-responsive-core quiesce
+ExecStopPost=/usr/bin/omarchy-app-launch-responsive-core quiesce
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=20s
+StateDirectory=omarchy-app-launch-responsive
+StateDirectoryMode=0755
+RuntimeDirectory=omarchy-app-launch-responsive
+RuntimeDirectoryMode=0755
+UMask=0022
+User=root
+Group=root
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+SystemCallArchitectures=native
+ProtectKernelTunables=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/omarchy-app-launch-responsive
+ReadWritePaths=/run/omarchy-app-launch-responsive
+ReadWritePaths=/sys/module/processor_thermal_soc_slider/parameters/slider_balance
+ReadWritePaths=/sys/module/processor_thermal_soc_slider/parameters/slider_offset
+ReadWritePaths=/sys/devices/pci0000:00/0000:00:04.0/platform-profile/platform-profile-0/profile
+ReadWritePaths=/sys/devices/faux/dell-pc/platform-profile/platform-profile-1/profile
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy0/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy1/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy2/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy3/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy4/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy5/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy6/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy7/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy8/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy9/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy10/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy11/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy12/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy13/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy14/energy_performance_preference
+ReadWritePaths=/sys/devices/system/cpu/cpufreq/policy15/energy_performance_preference
+
+[Install]
+WantedBy=multi-user.target

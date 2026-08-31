@@ -38,6 +38,43 @@ function parseProfiles(raw, previousIndex) {
   }
 }
 
+function parseResponsiveStatus(raw) {
+  var invalid = {
+    valid: false,
+    supported: false,
+    installed: false,
+    available: false,
+    enabled: false,
+    health: "blocked",
+    reason: "status_invalid"
+  }
+
+  try {
+    var value = JSON.parse(String(raw || ""))
+    if (!value || typeof value !== "object"
+        || typeof value.available !== "boolean"
+        || typeof value.enabled !== "boolean"
+        || (value.supported !== undefined && typeof value.supported !== "boolean")
+        || (value.installed !== undefined && typeof value.installed !== "boolean")) {
+      return invalid
+    }
+
+    return {
+      valid: true,
+      supported: value.supported === undefined
+        ? value.available || value.enabled
+        : value.supported,
+      installed: value.installed === undefined ? value.enabled : value.installed,
+      available: value.available,
+      enabled: value.enabled,
+      health: typeof value.health === "string" ? value.health : "blocked",
+      reason: typeof value.reason === "string" ? value.reason : "status_incomplete"
+    }
+  } catch (error) {
+    return invalid
+  }
+}
+
 function profileIcon(name) {
   if (name === "power-saver") return "󰌪"
   if (name === "balanced") return "󰊚"
@@ -95,6 +132,7 @@ if (typeof module !== "undefined") {
     selectProfileIndex: selectProfileIndex,
     parseKeyValue: parseKeyValue,
     parseProfiles: parseProfiles,
+    parseResponsiveStatus: parseResponsiveStatus,
     profileIcon: profileIcon,
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,

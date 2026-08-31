@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=Reduce slow app-launch latency in battery Balanced mode on supported hardware
+# omarchy:args=<status --json|set on|set off>
+# omarchy:group=power
+
+set -euo pipefail
+
+core="${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-app-launch-responsive-core"
+config="${OMARCHY_PATH:-/usr/share/omarchy}/default/app-launch-responsive/config.json"
+installed_config=/etc/omarchy-app-launch-responsive.json
+installed_unit=/etc/systemd/system/omarchy-app-launch-responsive.service
+installed_policy=/etc/polkit-1/actions/org.omarchy.app-launch-responsive.policy
+installed_state=/var/lib/omarchy-app-launch-responsive
+control=/usr/bin/omarchy-app-launch-responsive-control
+
+if [[ ! -x $core ]]; then
+  core=/usr/bin/omarchy-app-launch-responsive-core
+fi
+
+case "$#:${1:-}:${2:-}" in
+  2:status:--json)
+    if [[ -r $installed_config ]]; then
+      exec "$core" status --json
+    else
+      exec "$core" probe --json "$config"
+    fi
+    ;;
+  2:set:on | 2:set:off)
+    if [[ $2 == "off" && ! -e $installed_config && ! -L $installed_config &&
+      ! -e $installed_unit && ! -L $installed_unit &&
+      ! -e $installed_policy && ! -L $installed_policy &&
+      ! -e $installed_state && ! -L $installed_state ]]; then
+      exec "$core" probe --json "$config"
+    fi
+    exec pkexec "$control" "$1" "$2"
+    ;;
+  *)
+    printf '%s\n' \
+      'Usage: omarchy-app-launch-responsive status --json' \
+      '       omarchy-app-launch-responsive set on|off' >&2
+    exit 2
+    ;;
+esac
