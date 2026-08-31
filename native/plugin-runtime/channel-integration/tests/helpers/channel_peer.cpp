@@ -592,6 +592,8 @@ int main() {
   if (current.starts_with("session-") &&
       !accept_startup_permissions(control_generation, current, sequence))
     return 0;
+  if (current == "session-idle")
+    wait_forever();
   if (current == "session-happy")
     session_happy(broker_generation, sequence);
   if (current == "session-replay")

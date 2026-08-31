@@ -1785,7 +1785,7 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
 
 void composed_root_is_the_composed_authority_path() {
   using namespace std::chrono_literals;
-  CoordinatorFixture fixture("session-notification");
+  CoordinatorFixture fixture("session-idle");
   fixture.record();
   const auto active = fixture.publish(1, 0, true);
   fixture.promote(active, 1);
