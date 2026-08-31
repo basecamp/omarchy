@@ -33,6 +33,11 @@ Item {
   property string lastEventAt: ""
   property bool strandedLock: false
   property bool strandedLockResolved: false
+  property bool displayBlanked: false
+  property double wakeGraceUntil: 0
+
+  readonly property int blankDelayMilliseconds: 5000
+  readonly property int wakeBlankDelayMilliseconds: 30000
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
@@ -154,22 +159,49 @@ Item {
     pendingSessionLockTimer.stop()
     resetAuthenticationState()
     idleBlankTimer.stop()
+    displayBlanked = false
+    wakeGraceUntil = 0
     sessionLock.locked = false
     logEvent("unlocked")
     runWake()
   }
 
-  function armBlankTimer() {
+  function armBlankTimer(delayMilliseconds) {
+    var delay = Number(delayMilliseconds)
+    if (!isFinite(delay) || delay <= 0) delay = root.blankDelayMilliseconds
+    idleBlankTimer.interval = Math.round(delay)
     idleBlankTimer.armedAt = Date.now()
     idleBlankTimer.restart()
   }
 
   function runWake() {
+    // DPMS reports an output enabled before a slow DisplayPort panel has
+    // finished link training and become visible. Keep the first wake from
+    // re-blanking underneath that hardware startup; later activity preserves
+    // the remainder of the same grace window instead of shortening it.
+    if (displayBlanked) wakeGraceUntil = Date.now() + wakeBlankDelayMilliseconds
+    displayBlanked = false
+
     if (!wakeProcess.running) wakeProcess.running = true
-    if (lockRequested) armBlankTimer()
+    if (lockRequested) armBlankTimer(Math.max(blankDelayMilliseconds, wakeGraceUntil - Date.now()))
+  }
+
+  function handleSystemResume(suspendedMilliseconds) {
+    if (!root.lockRequested) return
+
+    // Timers resume before a slow physical display has finished link training.
+    // Start a complete wake grace instead of letting a frozen countdown blank
+    // the prompt as the panel becomes visible.
+    wakeGraceUntil = Date.now() + wakeBlankDelayMilliseconds
+    displayBlanked = false
+    logEvent("system-resume: suspended=" + Math.round(suspendedMilliseconds) + "ms")
+    if (!wakeProcess.running) wakeProcess.running = true
+    armBlankTimer(wakeBlankDelayMilliseconds)
   }
 
   function runBlank() {
+    displayBlanked = true
+    wakeGraceUntil = 0
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -413,21 +445,36 @@ Item {
 
   Timer {
     id: idleBlankTimer
-    interval: 5000
+    interval: root.blankDelayMilliseconds
     repeat: false
     property double armedAt: 0
     onTriggered: {
       // A countdown frozen by suspend fires right after resume, which would
       // blank the freshly woken unlock screen under the user. Wall-clock time
-      // exposes the gap: take a fresh run-up instead of blanking.
+      // exposes the gap: take a full slow-display wake grace instead of
+      // blanking as the panel finishes link training.
       if (Date.now() - armedAt > interval + 2000) {
-        root.armBlankTimer()
+        root.handleSystemResume(Date.now() - armedAt)
         return
       }
       // Only a password check in flight should hold the display up. The
       // fingerprint PAM stays armed for the whole lock, so gating on
       // `authenticating` here would keep the panel lit until unlock.
       if (root.lockRequested && !root.authenticatingPassword) root.runBlank()
+    }
+  }
+
+  Timer {
+    id: systemResumeGapTimer
+    interval: 1000
+    repeat: true
+    running: true
+    property double lastTickAt: Date.now()
+    onTriggered: {
+      var now = Date.now()
+      var elapsed = now - lastTickAt
+      lastTickAt = now
+      if (elapsed > interval + 2000) root.handleSystemResume(elapsed)
     }
   }
 
