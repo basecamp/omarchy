@@ -21,8 +21,13 @@ struct RuntimeServices;
 } // namespace omarchy::plugin_runtime::channel
 
 namespace omarchy::plugin_runtime::bridge {
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 class PluginManager;
+#endif
 class PermissionControl;
+namespace detail {
+class PluginRuntimeController;
+}
 }
 
 namespace omarchy::plugin_runtime::channel {
@@ -128,8 +133,11 @@ private:
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   friend class PluginRuntimeRootTestAccess;
 #endif
+#ifdef OMARCHY_PLUGIN_MANAGER_TESTING
   friend class omarchy::plugin_runtime::bridge::PluginManager;
+#endif
   friend class omarchy::plugin_runtime::bridge::PermissionControl;
+  friend class omarchy::plugin_runtime::bridge::detail::PluginRuntimeController;
 };
 
 } // namespace omarchy::plugin_runtime::channel

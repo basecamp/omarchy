@@ -16,7 +16,9 @@
 #include <vector>
 
 namespace omarchy::plugin_runtime::bridge {
-class PluginManager;
+namespace detail {
+class PluginRuntimeController;
+}
 }
 
 namespace omarchy::plugin_runtime::channel {
@@ -100,7 +102,7 @@ private:
   friend class RootSurfaceSessionPort;
   friend class PreparedPluginRuntime;
   friend class RuntimeBootstrap;
-  friend class omarchy::plugin_runtime::bridge::PluginManager;
+  friend class omarchy::plugin_runtime::bridge::detail::PluginRuntimeController;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   std::function<launcher::Supervisor()> supervisor_factory_;

@@ -13,6 +13,11 @@ qt_add_qml_module(omarchy-plugin-host-bridge
     src/PluginInstallControl.h
     src/PluginManager.cpp
     src/PluginManager.h
+    src/PluginRuntimeCatalog.cpp
+    src/PluginRuntimeController.cpp
+    src/PluginRuntimeController.h
+    src/PluginRuntimePermissions.cpp
+    src/PluginRuntimeSurfaces.cpp
     src/SurfaceEndpoint.cpp
     src/SurfaceEndpoint.h
     src/SurfaceEndpointOwner.cpp
@@ -52,7 +57,12 @@ if(BUILD_TESTING)
     src/PermissionControl.cpp
     src/PluginInstallControl.cpp
     src/PluginManager.cpp
+    src/PluginRuntimeCatalog.cpp
+    src/PluginRuntimeController.cpp
+    src/PluginRuntimePermissions.cpp
+    src/PluginRuntimeSurfaces.cpp
     tests/PluginManager_test.cpp
+    tests/PluginManagerTestAccess.cpp
     src/SurfaceEndpoint.cpp
     tests/SurfaceEndpoint_test.cpp
     src/SurfaceEndpointOwner.cpp
@@ -93,7 +103,12 @@ if(BUILD_TESTING)
     src/PermissionControl.cpp
     src/PluginInstallControl.cpp
     src/PluginManager.cpp
+    src/PluginRuntimeCatalog.cpp
+    src/PluginRuntimeController.cpp
+    src/PluginRuntimePermissions.cpp
+    src/PluginRuntimeSurfaces.cpp
     tests/PermissionControl_contract_test.cpp
+    tests/PluginManagerTestAccess.cpp
     src/SurfaceEndpoint.cpp
     src/SurfaceEndpointOwner.cpp
     src/SurfaceProjectionModel.cpp

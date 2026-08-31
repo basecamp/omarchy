@@ -24,7 +24,9 @@ class MonotonicClock;
 
 namespace omarchy::plugin_runtime::bridge {
 
-class PluginManager;
+namespace detail {
+class PluginRuntimeController;
+}
 class SurfaceProjectionModel;
 class SurfaceEndpoint;
 class RemotePluginSurface;
@@ -57,7 +59,7 @@ private:
   std::string declared_surface_;
   qulonglong publication_revision_ = 0;
 
-  friend class PluginManager;
+  friend class detail::PluginRuntimeController;
   friend class SurfaceProjectionModel;
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
   friend class SurfaceProjectionModelTestAccess;
@@ -105,7 +107,7 @@ private:
   std::vector<Record> records_;
   bool closing_all_ = false;
 
-  friend class PluginManager;
+  friend class detail::PluginRuntimeController;
 #ifdef OMARCHY_SURFACE_ENDPOINT_OWNER_TESTING
   friend class SurfaceEndpointOwnerTestAccess;
 #endif

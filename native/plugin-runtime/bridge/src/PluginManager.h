@@ -35,6 +35,10 @@ class RuntimeBootstrap;
 
 namespace omarchy::plugin_runtime::bridge {
 
+namespace detail {
+class PluginRuntimeController;
+}
+
 class PluginManager final : public QObject {
   Q_OBJECT
   QML_NAMED_ELEMENT(PluginManager)
@@ -138,15 +142,13 @@ private:
       std::uint64_t expected_sequence);
 #endif
 
-  struct Runtime;
-
   // Declared first so all authority-bearing state is destroyed before the
   // process claim is released and another engine can create a manager.
   ProcessClaim process_claim_;
   SurfaceProjectionModel surfaces_;
   PermissionControl permissions_;
   PluginInstallControl installer_;
-  std::unique_ptr<Runtime> runtime_;
+  std::unique_ptr<detail::PluginRuntimeController> runtime_;
   bool available_ = false;
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
@@ -155,6 +157,7 @@ private:
 #endif
   friend class PermissionControl;
   friend class PluginInstallControl;
+  friend class detail::PluginRuntimeController;
 };
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING

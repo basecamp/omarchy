@@ -19,6 +19,9 @@ class AdmittedSurfaceIntent;
 namespace omarchy::plugin_runtime::bridge {
 
 class PluginManager;
+namespace detail {
+class PluginRuntimeController;
+}
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 class SurfaceProjectionModelTestAccess;
 #endif
@@ -119,6 +122,7 @@ private:
   std::unique_ptr<RoleFilterModel> overlay_surfaces_;
 
   friend class PluginManager;
+  friend class detail::PluginRuntimeController;
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
   friend class SurfaceProjectionModelTestAccess;
 #endif

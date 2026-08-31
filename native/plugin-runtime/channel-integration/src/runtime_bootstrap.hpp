@@ -10,6 +10,10 @@
 #include <string_view>
 #include <utility>
 
+namespace omarchy::plugin_runtime::bridge::detail {
+class PluginRuntimeController;
+}
+
 namespace omarchy::plugin_runtime::channel {
 
 enum class RuntimeBootstrapError : std::uint8_t {
@@ -71,7 +75,7 @@ private:
       std::uint32_t trusted_uid) noexcept;
   friend class RuntimeBootstrapTestAccess;
 #endif
-  friend class omarchy::plugin_runtime::bridge::PluginManager;
+  friend class omarchy::plugin_runtime::bridge::detail::PluginRuntimeController;
 
   std::unique_ptr<RuntimeRoots> roots_;
   std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions_;
