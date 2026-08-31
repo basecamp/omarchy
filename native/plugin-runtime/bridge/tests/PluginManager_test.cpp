@@ -1004,7 +1004,7 @@ void bounded_mailbox_coalesces_and_recovers_without_backoff() {
     require(bridge::PluginManagerTestAccess::scanRuntime(*manager),
             "submit-failure fixture catalog was rejected");
     const auto refused = bridge::PluginManagerTestAccess::runtimeSlots(*manager);
-    require(refused.size() == 1 && refused[0].opening && !refused[0].preparing &&
+    require(refused.size() == 1 && refused[0].opening &&
                 refused[0].retry_attempts == 0 &&
                 bridge::PluginManagerTestAccess::preparationCount(*manager) ==
                     0,

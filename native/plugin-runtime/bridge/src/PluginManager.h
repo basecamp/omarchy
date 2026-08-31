@@ -121,8 +121,8 @@ public:
     std::uint8_t retry_attempts = 0;
     bool retry_wait = false;
     bool opening = false;
-    bool starting = false;
     bool preparing = false;
+    bool starting = false;
     bool running = false;
     bool permission_transaction = false;
     bool permission_changing = false;

@@ -63,6 +63,7 @@ struct PluginManager::Runtime final {
 
   enum class Phase : std::uint8_t {
     opening,
+    preparing,
     starting,
     running,
     permission_changing,
@@ -146,7 +147,6 @@ struct PluginManager::Runtime final {
     Phase phase = Phase::opening;
     std::uint8_t retry_attempts = 0;
     std::optional<Clock::time_point> retry_due;
-    bool preparing = false;
     std::shared_ptr<HookState> callback_state;
     std::unique_ptr<Hook> hook;
     std::shared_ptr<channel::PluginPermissionAuthority> permissions;
@@ -297,9 +297,8 @@ struct PluginManager::Runtime final {
         continue;
       --gate_->preparations_in_flight;
       auto *slot = exact(result->plugin, result->epoch);
-      if (slot == nullptr || !slot->preparing)
+      if (slot == nullptr || slot->phase != Phase::preparing)
         continue;
-      slot->preparing = false;
       if (!result->permissions ||
           (slot->permissions && slot->permissions != result->permissions)) {
         fail(*slot);
@@ -459,7 +458,6 @@ struct PluginManager::Runtime final {
     slot.retry_due.reset();
     slot.epoch = nextEpoch();
     slot.phase = Phase::opening;
-    slot.preparing = false;
   }
 
   void requestPreparations() noexcept {
@@ -467,11 +465,11 @@ struct PluginManager::Runtime final {
     while (gate_->preparations_in_flight.load() <
            kMaximumConcurrentPreparations) {
       auto found = std::ranges::find_if(slots_, [](const Slot &slot) {
-        return slot.phase == Phase::opening && !slot.preparing;
+        return slot.phase == Phase::opening;
       });
       if (found == slots_.end())
         break;
-      found->preparing = true;
+      found->phase = Phase::preparing;
       bool counted = false;
       try {
         auto result = std::make_shared<PreparationResult>();
@@ -535,13 +533,13 @@ struct PluginManager::Runtime final {
         if (!started) {
           --gate_->preparations_in_flight;
           counted = false;
-          found->preparing = false;
+          found->phase = Phase::opening;
           break;
         }
       } catch (...) {
         if (counted)
           --gate_->preparations_in_flight;
-        found->preparing = false;
+        found->phase = Phase::opening;
         break;
       }
     }
@@ -697,7 +695,6 @@ struct PluginManager::Runtime final {
   void fencePermission(Slot &slot) noexcept {
     slot.epoch = nextEpoch();
     slot.phase = Phase::permission_changing;
-    slot.preparing = false;
     withdraw(slot);
   }
 
@@ -784,6 +781,7 @@ struct PluginManager::Runtime final {
                         gate_->permissions_in_flight.load() != 0 ||
                         std::ranges::any_of(slots_, [](const Slot &slot) {
                           return slot.phase == Phase::opening ||
+                                 slot.phase == Phase::preparing ||
                                  slot.phase == Phase::starting ||
                                  slot.permission_transaction != nullptr;
                         });
@@ -1037,7 +1035,6 @@ struct PluginManager::Runtime final {
     slot.phase = Phase::stopping;
     slot.epoch = nextEpoch();
     slot.retry_due.reset();
-    slot.preparing = false;
     slot.permission_transaction.reset();
     withdraw(slot);
     slot.root.reset();
@@ -1118,9 +1115,10 @@ PluginManagerTestAccess::runtimeSlots(const PluginManager &manager) {
                                     PluginManager::Runtime::Phase::retry_wait,
                       .opening = slot.phase ==
                                  PluginManager::Runtime::Phase::opening,
+                      .preparing = slot.phase ==
+                                   PluginManager::Runtime::Phase::preparing,
                       .starting = slot.phase ==
                                   PluginManager::Runtime::Phase::starting,
-                      .preparing = slot.preparing,
                       .running =
                           slot.phase == PluginManager::Runtime::Phase::running,
                       .permission_transaction =
