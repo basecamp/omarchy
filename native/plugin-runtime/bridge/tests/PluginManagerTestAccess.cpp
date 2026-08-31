@@ -1,4 +1,5 @@
 #include "PluginRuntimeController.h"
+#include "SurfaceEndpointOwner.h"
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 
@@ -192,6 +193,28 @@ bool PluginManagerTestAccess::stageRunningSurfaceIntentSlot(
   slot->test_running_binding = binding;
   slot->test_surface_endpoint = true;
   return true;
+}
+
+bool PluginManagerTestAccess::routeTrustedPointer(
+    PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+    QStringView surface_key, bool pressed) {
+  if (!manager.runtime_)
+    return false;
+  auto *slot = manager.runtime_->exact(plugin, epoch);
+  if (!slot || !slot->endpoint_owner)
+    return false;
+  return SurfaceEndpointOwnerTestAccess::route_input(
+      *slot->endpoint_owner, surface_key,
+      {.payload = surface::PointerButton{
+           .position = {16U << surface::kQ16FractionBits,
+                        16U << surface::kQ16FractionBits},
+           .button = static_cast<std::uint32_t>(Qt::LeftButton),
+           .state = pressed ? surface::ButtonState::pressed
+                            : surface::ButtonState::released,
+           .buttons = pressed ? static_cast<std::uint32_t>(Qt::LeftButton)
+                              : 0U},
+       .device = 1,
+       .trusted_physical = true});
 }
 
 std::uint8_t

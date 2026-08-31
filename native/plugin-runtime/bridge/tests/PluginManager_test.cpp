@@ -3786,6 +3786,33 @@ void neutral_surfaces_share_one_real_sandbox_and_teardown() {
   require(actual[0] != actual[1] && actual[0] != actual[2] &&
               actual[1] != actual[2],
           "neutral fixture surface frames were not visually distinct");
+
+  const auto running_epoch =
+      bridge::PluginManagerTestAccess::runtimeSlots(*manager).front().epoch;
+  QString intent_source;
+  QString intent_target;
+  QString intent_generation;
+  QObject::connect(manager.get(), &bridge::PluginManager::toggleRequested,
+                   [&](const QString &source, const QString &target,
+                       const QString &generation) {
+                     intent_source = source;
+                     intent_target = target;
+                     intent_generation = generation;
+                   });
+  require(bridge::PluginManagerTestAccess::routeTrustedPointer(
+              *manager, plugin, running_epoch, bar_key, true),
+          "neutral fixture trusted pointer press was not routed");
+  require(awaitFor(std::chrono::seconds(5), [&] {
+            bridge::PluginManagerTestAccess::drainRuntime(*manager);
+            return !intent_target.isEmpty();
+          }) &&
+              intent_source == bar_key && intent_target == panel_key &&
+              intent_generation == QString::number(exact_binding.generation),
+          "neutral fixture trusted press did not publish its panel intent");
+  require(bridge::PluginManagerTestAccess::routeTrustedPointer(
+              *manager, plugin, running_epoch, bar_key, false),
+          "neutral fixture trusted pointer release was not routed");
+
   require(await([&] { return pluginScopePaths(exact_binding).size() == 1; }),
           "neutral fixture did not occupy exactly one systemd sandbox scope");
 

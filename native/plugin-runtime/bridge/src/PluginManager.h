@@ -222,6 +222,9 @@ public:
       PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
       const plugins::permissions::ActivationBinding &binding,
       std::vector<SurfaceProjectionModel::SurfaceDeclaration> declarations);
+  [[nodiscard]] static bool routeTrustedPointer(
+      PluginManager &manager, std::string_view plugin, std::uint64_t epoch,
+      QStringView surface_key, bool pressed);
   [[nodiscard]] static std::uint8_t
   preparationCount(const PluginManager &manager);
   [[nodiscard]] static std::uint8_t

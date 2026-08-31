@@ -19,6 +19,9 @@ class SurfaceEndpointOwner;
 #ifdef OMARCHY_SURFACE_ENDPOINT_TESTING
 class SurfaceEndpointTestAccess;
 #endif
+#ifdef OMARCHY_SURFACE_ENDPOINT_OWNER_TESTING
+class SurfaceEndpointOwnerTestAccess;
+#endif
 
 // Manager-owned adapter for one declared surface. It remains event-loop
 // confined and owns every object that can route the session into QML. Active
@@ -73,6 +76,9 @@ private:
   friend class SurfaceEndpointOwner;
 #ifdef OMARCHY_SURFACE_ENDPOINT_TESTING
   friend class SurfaceEndpointTestAccess;
+#endif
+#ifdef OMARCHY_SURFACE_ENDPOINT_OWNER_TESTING
+  friend class SurfaceEndpointOwnerTestAccess;
 #endif
 };
 

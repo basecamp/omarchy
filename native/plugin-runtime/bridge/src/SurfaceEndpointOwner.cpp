@@ -202,6 +202,17 @@ bool SurfaceEndpointOwner::on_owner_thread() const noexcept {
 }
 
 #ifdef OMARCHY_SURFACE_ENDPOINT_OWNER_TESTING
+bool SurfaceEndpointOwnerTestAccess::route_input(SurfaceEndpointOwner &owner,
+                                                 QStringView surface_key,
+                                                 HostInputEvent event) {
+  const auto found = std::ranges::find_if(
+      owner.records_, [surface_key](const SurfaceEndpointOwner::Record &record) {
+        return record.surface_key == surface_key;
+      });
+  return found != owner.records_.end() && found->endpoint &&
+         found->endpoint->route(std::move(event));
+}
+
 std::size_t SurfaceEndpointOwnerTestAccess::count(
     const SurfaceEndpointOwner &owner) noexcept {
   return owner.records_.size();

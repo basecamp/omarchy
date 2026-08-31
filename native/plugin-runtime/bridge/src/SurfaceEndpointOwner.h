@@ -149,6 +149,9 @@ public:
   static void close_all(SurfaceEndpointOwner &owner) noexcept {
     owner.close_all();
   }
+  [[nodiscard]] static bool route_input(SurfaceEndpointOwner &owner,
+                                        QStringView surface_key,
+                                        HostInputEvent event);
   [[nodiscard]] static std::size_t
   count(const SurfaceEndpointOwner &owner) noexcept;
   [[nodiscard]] static std::optional<Geometry>
