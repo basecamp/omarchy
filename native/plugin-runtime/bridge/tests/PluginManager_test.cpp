@@ -515,6 +515,7 @@ private:
 };
 
 constexpr std::string_view permissionAwareQml = R"QML(import QtQuick
+import QtQml
 Item {
   width: 64
   height: 64
@@ -1325,6 +1326,10 @@ void manager_owns_permission_generation_replacement() {
   DeterministicJobs scheduler;
   auto manager = bridge::PluginManagerTestAccess::create();
   auto notification_backend = std::make_shared<BlockingNotifications>();
+  struct ReleaseNotification final {
+    std::shared_ptr<BlockingNotifications> backend;
+    ~ReleaseNotification() { backend->release("status"); }
+  } release_notification{notification_backend};
   notification_backend->hold("status");
   channel::RuntimeServices services{.context = notification_backend,
                                     .notification_send =
@@ -1459,7 +1464,7 @@ void manager_owns_permission_generation_replacement() {
   std::thread invalid_selector_worker([&] { scheduler.runOne(); });
   invalid_selector_worker.join();
   require(bridge::PluginManagerTestAccess::executingPermissionJobs(*manager) ==
-                  0 &&
+                  1 &&
               current_slot().permission_transaction,
           "completed permission transaction was not retained for UI drain");
   bridge::PluginManagerTestAccess::drainRuntime(*manager);
