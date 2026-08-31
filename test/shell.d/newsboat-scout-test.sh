@@ -270,7 +270,7 @@ grep -Fxq 'https://scout-three.test/feed.xml' "$linked_urls" || fail "Feed Scout
 pass "Feed Scout preserves externally managed subscriptions"
 
 grep -Fq 'macro d set browser "omarchy-newsboat-handoff scout %u %T %F"' "$ROOT/default/newsboat/omarchy.conf" || fail "Newsboat exposes non-blocking article-driven Feed Scout"
-grep -F 'macro d ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit --' || fail "Newsboat closes before a confirmed Feed Scout changes subscriptions"
+grep -F 'macro d ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit; quit --' || fail "Newsboat closes both its article and feed lists before Feed Scout changes subscriptions"
 grep -Fq 'state_dir="${NEWSBOAT_SCOUT_STATE_DIR:-/tmp/omarchy-newsboat-$UID/scouts}"' "$ROOT/bin/omarchy-newsboat-scout-propose" || fail "Feed Scout keeps proposal state in the agent-writable private temp area"
 grep -Fq 'omarchy-newsboat-confirm" scout' "$ROOT/bin/omarchy-newsboat-scout-apply" || fail "Feed Scout trusts the agent prompt as its only mutation confirmation"
 pass "Newsboat exposes the agent-independent Feed Scout experience"
