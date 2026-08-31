@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# omarchy:summary=Detect GETAC V110G3 laptops whose Synaptics touchpad dies after S3.
+
+vendor="${OMARCHY_DMI_SYS_VENDOR:-/sys/class/dmi/id/sys_vendor}"
+product="${OMARCHY_DMI_PRODUCT_NAME:-/sys/class/dmi/id/product_name}"
+
+grep -qix "GETAC" "$vendor" 2>/dev/null &&
+  grep -qix "V110G3" "$product" 2>/dev/null
