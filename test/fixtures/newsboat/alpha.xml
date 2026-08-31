@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Alpha Engineering</title>
+    <link>http://127.0.0.1/alpha</link>
+    <description>Deterministic acceptance feed</description>
+    <item>
+      <title>Alpha launch note</title>
+      <link>http://127.0.0.1/articles/alpha-launch</link>
+      <guid isPermaLink="false">omarchy-acceptance-alpha</guid>
+      <pubDate>Sat, 29 Aug 2026 12:00:00 GMT</pubDate>
+      <description>The first local acceptance article.</description>
+    </item>
+  </channel>
+</rss>
