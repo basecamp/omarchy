@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# omarchy:summary=Shared helpers for nudging a Hyprland window to a measured size (source this, don't run it).
+# omarchy:group=hyprland
+# omarchy:name=window-resize-helpers
+# omarchy:hidden=true
+
+# Both the About and presentation-terminal windows measure their own content
+# from inside the terminal and nudge themselves to fit it. This is the
+# plumbing they share for that: dispatching a resize through Hyprland's Lua
+# API where it exists, falling back to the legacy dispatch where it doesn't,
+# and waiting for the terminal's grid to hold still after either one. What to
+# measure and what size to ask for is each caller's own question.
+
+hypr_dispatch() {
+  local lua="$1"
+  shift
+  hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
+}
+
+# Hyprland animates a resize and the terminal reflows to every step of it, so
+# wait for the grid to hold still before measuring it.
+settle_grid() {
+  local current previous="" held=0
+
+  for _ in {1..20}; do
+    current=$(stty size)
+    if [[ $current == $previous ]]; then
+      (( ++held == 3 )) && break
+    else
+      held=0
+      previous=$current
+    fi
+    sleep 0.05
+  done
+}

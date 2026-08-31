@@ -7,15 +7,15 @@
 # for the logo at the default terminal font size -- at a bumped
 # `omarchy display text-size` the logo wraps mid-glyph into an unreadable mess.
 # The size that hugs the logo depends on the terminal font, so it can only be
-# measured from inside the terminal. We remember the size that fit and try to
-# apply it as a window rule before launching, mirroring the approach
-# omarchy-launch-about uses for its own window -- though a window rule set this
-# way does not appear to affect the size a window opens at, so in practice the
-# live nudge below still runs on every launch regardless of the cache.
+# measured from inside the terminal, which is what the live nudge below does
+# on every launch. A window-rule cache mirroring omarchy-launch-about's own was
+# tried first, but a rule set that way turned out not to affect the size a
+# window opens at, so there is nothing here worth caching.
 
 LOGO_FILE="$OMARCHY_PATH/logo.txt"
-FIT_FILE="$HOME/.local/state/omarchy/windows/presentation.fit"
 APP_ID="org.omarchy.terminal"
+
+source omarchy-hyprland-window-resize-helpers
 
 # A little breathing room around the logo's own width. The row target isn't a
 # flat number either: the old float rule was a fixed 875x600px box, and that
@@ -37,12 +37,6 @@ logo_width() {
   display_columns <"$LOGO_FILE"
 }
 
-hypr_dispatch() {
-  local lua="$1"
-  shift
-  hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
-}
-
 # This terminal isn't necessarily the focused window -- a slow-to-appear popup
 # can lose a focus race to whatever the user clicked on meanwhile, and
 # `hyprctl activewindow` would then silently report someone else's window
@@ -56,68 +50,29 @@ own_client() {
       '.[] | select(.class == $id and (.pid | tostring) == $p) | "\(.address) \(.size[0]) \(.size[1])"')
     [[ -n $match ]] && { printf '%s\n' "$match"; return 0; }
     ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-    [[ $ppid == "$pid" ]] && break
+    [[ $ppid == $pid ]] && break
     pid=$ppid
   done
+
+  # The ancestry walk only finds a window whose owning process is a descendant
+  # of this script -- which misses a terminal that runs as a persistent server
+  # (e.g. `foot --server`), since the process that maps the window there is
+  # never our ancestor. $APP_ID is exclusive to this launcher, so when exactly
+  # one client carries it, that one is unambiguously ours even without a pid
+  # match; more than one is ambiguous and left to the caller to skip.
+  match=$(hyprctl clients -j | jq -r --arg id "$APP_ID" \
+    '[.[] | select(.class == $id)] | if length == 1 then .[0] | "\(.address) \(.size[0]) \(.size[1])" else empty end')
+  [[ -n $match ]] && { printf '%s\n' "$match"; return 0; }
 
   return 1
 }
 
-remember_fit() {
-  local directory tmp
-  directory=$(dirname "$FIT_FILE")
-  mkdir -p "$directory"
-  tmp=$(mktemp "$directory/.presentation.fit.XXXXXX")
-  printf '%s %s %s\n' "$1" "$2" "$3" >"$tmp"
-  mv "$tmp" "$FIT_FILE"
-}
-
-# Replaces the rule from the last launch so a remembered size never outlives the
-# fit it came from. Called without one it only clears, leaving the float rule's
-# starting size.
-apply_size_rule() {
-  local rule=""
-  (( $# == 2 )) && rule="omarchy_presentation_size_rule = hl.window_rule({ match = { class = \"$APP_ID\" }, size = { $1, $2 } })"
-
-  hyprctl eval "if omarchy_presentation_size_rule then omarchy_presentation_size_rule:set_enabled(false) end; omarchy_presentation_size_rule = nil; $rule" >/dev/null 2>&1
-}
-
-# Sized before the terminal is spawned, so the window maps at its final size
-# if the cached rule turns out to have any effect after all.
-presize_window() {
-  local logo_w fit_logo_w fit_w fit_h
-
-  if [[ -r $FIT_FILE ]]; then
-    logo_w=$(logo_width)
-    read -r fit_logo_w fit_w fit_h <"$FIT_FILE"
-
-    # A rebranded logo needs a different window, so leave that launch to the
-    # float rule and let the fit below measure the new size.
-    if [[ -n ${logo_w:-} && $logo_w == "$fit_logo_w" ]] &&
-      [[ $fit_w =~ ^[0-9]+$ && $fit_h =~ ^[0-9]+$ ]]; then
-      apply_size_rule "$fit_w" "$fit_h"
-      return
-    fi
-  fi
-
-  apply_size_rule
-}
-
-# Hyprland animates a resize and the terminal reflows to every step of it, so
-# wait for the grid to hold still before measuring it.
-settle_grid() {
-  local current previous="" held=0
-
-  for _ in {1..20}; do
-    current=$(stty size)
-    if [[ $current == $previous ]]; then
-      (( ++held == 3 )) && break
-    else
-      held=0
-      previous=$current
-    fi
-    sleep 0.05
-  done
+# The window's current size, read directly by address rather than repeating
+# the ancestry walk -- the address own_client found does not change for the
+# rest of a single fit, only the size behind it does.
+client_geometry() {
+  local address="$1"
+  hyprctl clients -j | jq -r --arg a "$address" '.[] | select(.address == $a) | "\(.size[0]) \(.size[1])"'
 }
 
 fit_window() {
@@ -127,16 +82,20 @@ fit_window() {
 
   local target_c=$(( logo_w + LOGO_PAD * 2 ))
 
+  local address width height
+  read -r address width height <<<"$(own_client)"
+  [[ -n ${address:-} ]] || return 1
+
+  local rows cols
+  read -r rows cols <<<"$(stty size)"
+  [[ -n ${cols:-} && -n ${width:-} ]] || return 1
+  (( height > 0 )) || return 1
+
   # Row target: scale the pixel width the column target needs at this
   # window's current cell size, apply the old fixed rule's own aspect ratio to
   # get the pixel height that goes with it, then convert that back to a row
   # count at this window's current row height. Same shape as the old 875x600
   # box, just as wide as the logo actually needs.
-  local rows cols address width height
-  read -r rows cols <<<"$(stty size)"
-  read -r address width height <<<"$(own_client)"
-  [[ -n ${cols:-} && -n ${width:-} ]] || return 1
-
   local target_w_px target_h_px target_r
   target_w_px=$(awk -v c="$target_c" -v cols="$cols" -v w="$width" 'BEGIN { printf "%d", c * w / cols + 0.5 }')
   target_h_px=$(awk -v w="$target_w_px" -v ow="$OLD_WIDTH_PX" -v oh="$OLD_HEIGHT_PX" 'BEGIN { printf "%d", w * oh / ow + 0.5 }')
@@ -145,16 +104,12 @@ fit_window() {
   local nudges=0 shift_w shift_h target_w target_h
   while :; do
     read -r rows cols <<<"$(stty size)"
-    read -r address width height <<<"$(own_client)"
-    [[ -n ${address:-} ]] || return 1
+    read -r width height <<<"$(client_geometry "$address")"
     (( cols > 0 && rows > 0 && width > 0 && height > 0 )) || return 1
 
     # A window has to land on the terminal's cell boundaries, so take a cell of
     # slack over chasing an exact grid, and remember where it came to rest.
-    if (( cols >= target_c && cols <= target_c + 1 && rows >= target_r && rows <= target_r + 1 )); then
-      remember_fit "$logo_w" "$width" "$height"
-      return 0
-    fi
+    (( cols >= target_c && cols <= target_c + 1 && rows >= target_r && rows <= target_r + 1 )) && return 0
 
     # Two nudges is the budget, and each one is measured before the next is spent.
     (( ++nudges <= 2 )) || return 1
@@ -187,11 +142,10 @@ if [[ ${1:-} == "--render" ]]; then
 
   presentation_script="omarchy-show-logo; $cmd; if (( \$? != 130 )); then omarchy-show-done; fi"
   exec bash -c "$presentation_script"
+else
+  # Export the current theme's gum styling so gum widgets match the active theme
+  # even after a theme switch (the inherited environment is captured at login).
+  source omarchy-restart-gum
+
+  exec setsid uwsm-app -- xdg-terminal-exec --app-id="$APP_ID" --title=Omarchy -e bash -c "omarchy-launch-floating-terminal-with-presentation --render $(printf '%q' "$*")"
 fi
-
-# Export the current theme's gum styling so gum widgets match the active theme
-# even after a theme switch (the inherited environment is captured at login).
-source omarchy-restart-gum
-
-presize_window
-exec setsid uwsm-app -- xdg-terminal-exec --app-id="$APP_ID" --title=Omarchy -e bash -c "omarchy-launch-floating-terminal-with-presentation --render $(printf '%q' "$*")"
