@@ -20,6 +20,7 @@ Item {
 
   property string resolvedPath: ""
   property string fill: "crop"
+  property string backdrop: "solid"
   property color fillColor: Color.background
   property real focalX: 0.5
   property real focalY: 0.5
@@ -83,6 +84,7 @@ Item {
     if (seq !== requestSeq) return
     resolvedPath = canonicalPath
     fill = "crop"
+    backdrop = "solid"
     fillColor = Color.background
     focalX = 0.5
     focalY = 0.5
@@ -105,6 +107,7 @@ Item {
     }
     resolvedPath = meta.path
     fill = ["crop", "fit", "center", "tile"].indexOf(meta.fill) >= 0 ? meta.fill : "crop"
+    backdrop = ["solid", "edge", "blur"].indexOf(meta.backdrop) >= 0 ? meta.backdrop : "solid"
     fillColor = /^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$/.test(String(meta.fill_color)) ? meta.fill_color : Color.background
     focalX = isFinite(Number(meta.focal_x)) ? Util.clamp(meta.focal_x, 0, 1) : 0.5
     focalY = isFinite(Number(meta.focal_y)) ? Util.clamp(meta.focal_y, 0, 1) : 0.5

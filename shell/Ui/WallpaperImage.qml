@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import qs.Commons
 
 // Wallpaper surface shared by the background and lock plugins. Renders one
@@ -10,6 +11,7 @@ Item {
 
   property string path: ""
   property string fill: "crop"
+  property string backdrop: "solid"
   property color fillColor: Color.background
   property real focalX: 0.5
   property real focalY: 0.5
@@ -38,6 +40,34 @@ Item {
     anchors.fill: parent
     color: root.fillColor
     visible: root.fill !== "crop"
+  }
+
+  // A blur backdrop keeps the full foreground composition visible while a
+  // quiet cover copy supplies ambient pixels in the otherwise empty space.
+  // The solid fill remains beneath it as the decode/error fallback.
+  Item {
+    anchors.fill: parent
+    visible: root.fill !== "crop" && root.backdrop === "blur" && root.path !== ""
+    opacity: 0.35
+    layer.enabled: visible
+    layer.smooth: true
+    layer.effect: MultiEffect {
+      autoPaddingEnabled: false
+      blurEnabled: true
+      blur: 0.7
+      blurMax: 128
+      blurMultiplier: 1.25
+    }
+
+    Image {
+      anchors.fill: parent
+      source: root.path ? Util.fileUrl(root.path) + (root.sourceVersion > 0 ? "?v=" + root.sourceVersion : "") : ""
+      fillMode: Image.PreserveAspectCrop
+      asynchronous: root.asynchronous
+      cache: root.cache
+      smooth: root.smooth
+      mipmap: root.mipmap
+    }
   }
 
   Image {

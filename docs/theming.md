@@ -26,21 +26,28 @@ A `backgrounds.toml` beside the images declares how they render. It is read from
 ```toml
 [defaults]
 fill = "crop"              # crop | fit | center | tile
+backdrop = "solid"         # solid | edge | blur
 fill_color = "background"  # colors.toml key OR "#rrggbb"
 focal = "0.5 0.5"          # crop anchor, x y in 0..1
 svg_layout = "fixed"       # fixed | responsive
 
 ["1-forest"]               # section = image stem; quotes optional for simple stems
 fill = "fit"
+backdrop = "blur"
 focal = "0.65 0.4"
 ```
 
 - `fill` picks the render mode: `crop` scales the image to cover the screen (the default, matching pre-metadata behavior), `fit` scales it to be fully visible, `center` places it unscaled, and `tile` repeats it.
+- `backdrop` paints the space left by `fit`, `center`, or `tile`: `solid` uses `fill_color` and preserves the historical behavior, `edge` uses the dominant color sampled from the resolved image's perimeter with `fill_color` as its fallback, and `blur` places a quiet blurred cover copy behind the foreground. It has no visible effect with `crop` because the foreground already covers the screen.
 - `fill_color` paints the area the image does not cover under `fit`, `center`, and `tile`, and backs SVG rasterization. A value starting with `#` passes through unchanged; any other value is resolved as a key from the active theme's `colors.toml`, falling back to `background`, then `#000000`.
 - `focal` names the point of the image to keep in view when `crop` discards overflow: `"0.5 0.5"` crops symmetrically around the center, `"0.65 0.4"` keeps the point 65% across and 40% down.
 - `svg_layout = "responsive"` gives an SVG the exact screen dimensions as its viewport, allowing percentage-based artwork to reflow instead of preserving one intrinsic canvas shape. It has no effect on raster images; the default `fixed` layout keeps the SVG's intrinsic aspect ratio.
 
-Per-image sections override `[defaults]`. Section headers may be bare (`[1-forest]`) or quoted (`["1-forest"]`), and the stem is matched exactly against the canonical image's basename minus its last extension. Unknown keys are ignored, and invalid values fall back to the defaults (`crop`, the theme background color, `0.5 0.5`). Without a `backgrounds.toml` at all, a raster background renders exactly as it did before the metadata existed: cropped to cover, centered.
+Per-image sections override `[defaults]`. Section headers may be bare (`[1-forest]`) or quoted (`["1-forest"]`), and the stem is matched exactly against the canonical image's basename minus its last extension. Unknown keys are ignored, and invalid values fall back to the defaults (`crop`, `solid`, the theme background color, `0.5 0.5`). Without a `backgrounds.toml` at all, a raster background renders exactly as it did before the metadata existed: cropped to cover, centered.
+
+Backdrop selection happens after aspect-ratio variant selection and SVG rasterization. An `edge` backdrop therefore samples the actual per-screen asset rather than the canonical file, and its result is cached by resolved path, modification time, and fallback color. A theme can combine these tools deliberately: use `blur` for photography or paintings whose whole composition matters, `edge` for centered artwork on a mostly flat field, responsive SVG for layouts that genuinely reflow, and an `@variant` when the composition itself needs to change for a screen shape.
+
+The blur and sampled-edge backdrop concepts were inspired by Thomas Feichtinger's MIT-licensed [Background Display for Omarchy](https://github.com/fchtngr/omarchy-background-display) plugin. Omarchy implements them here as per-background resolver metadata so they compose with per-screen variants, focal crops, responsive SVGs, transitions, and the lock screen rather than replacing the background service.
 
 ### Aspect-ratio variants
 

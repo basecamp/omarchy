@@ -211,6 +211,7 @@ FILL_COLOR_SPEC="background"
 FOCAL_X="0.5"
 FOCAL_Y="0.5"
 SVG_LAYOUT="fixed"
+BACKDROP="solid"
 
 fill=$(meta_value fill)
 [[ $fill =~ ^(crop|fit|center|tile)$ ]] && FILL="$fill"
@@ -230,6 +231,9 @@ fill_color_spec=$(meta_value fill_color)
 
 svg_layout=$(meta_value svg_layout)
 [[ $svg_layout == "responsive" ]] && SVG_LAYOUT="$svg_layout"
+
+backdrop=$(meta_value backdrop)
+[[ $backdrop =~ ^(solid|edge|blur)$ ]] && BACKDROP="$backdrop"
 
 # A literal #rrggbb (or #rrggbbaa) passes through; a plain palette key is
 # resolved against the current theme. Anything else — a malformed hex value,
@@ -347,6 +351,56 @@ if [[ -n $SCREEN && ${SELECTED,,} == *.svg ]]; then
   fi
 fi
 
+# Edge backdrops preserve a fitted composition over the dominant colour around
+# the resolved asset's perimeter. Sampling happens after per-screen variant
+# selection and SVG rasterization, so each monitor measures the pixels it will
+# actually display. The result is cached by path, mtime, and alpha fallback;
+# an unreadable or mixed-edge image simply keeps the declared fill_color.
+sample_edge_color() {
+  local image="$1"
+  local cache_dir="$HOME/.cache/omarchy/background-edge-colors"
+  local mtime cache_key cache_file cache_tmp line
+
+  mtime=$(stat -c %Y "$image" 2>/dev/null) || return 1
+  cache_key=$(printf '%s\t%s\t%s' "$image" "$mtime" "$FILL_COLOR" | md5sum)
+  cache_key=${cache_key%% *}
+  cache_file="$cache_dir/$cache_key"
+
+  if [[ -f $cache_file ]]; then
+    line=$(<"$cache_file")
+    if [[ $line =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+      touch "$cache_file"
+      printf '%s' "$line"
+      return 0
+    fi
+  fi
+
+  line=$(magick "${image}[0]" -background "$FILL_COLOR" -alpha remove -alpha off \
+    -colorspace sRGB -resize '64x64!' \
+    -write mpr:source +delete \
+    \( mpr:source -gravity north -crop '64x4+0+0' +repage \) \
+    \( mpr:source -gravity south -crop '64x4+0+0' +repage \) \
+    \( mpr:source -gravity west -crop '4x64+0+0' +repage -rotate 90 \) \
+    \( mpr:source -gravity east -crop '4x64+0+0' +repage -rotate 90 \) \
+    -append -colors 8 -format '%c' histogram:info:- 2>/dev/null |
+    LC_ALL=C sort -nr | sed -n '1p') || return 1
+
+  [[ $line =~ \#([0-9A-Fa-f]{6}) ]] || return 1
+  line="#${BASH_REMATCH[1]}"
+
+  mkdir -p "$cache_dir"
+  find "$cache_dir" -maxdepth 1 -type f -mtime +30 -delete 2>/dev/null
+  cache_tmp=$(mktemp "$cache_dir/.edge-XXXXXX") || return 1
+  printf '%s\n' "$line" >"$cache_tmp"
+  mv "$cache_tmp" "$cache_file"
+  printf '%s' "$line"
+}
+
+if [[ $BACKDROP == "edge" && $FILL != "crop" ]]; then
+  sampled_color=$(sample_edge_color "$RESOLVED") || sampled_color=""
+  [[ -z $sampled_color ]] || FILL_COLOR="$sampled_color"
+fi
+
 # Both output shapes are line- and quote-framed, so ASCII control characters
 # in any emitted string (a hostile path or metadata value) would corrupt the
 # framing. Strip them; such a value is degenerate either way.
@@ -367,11 +421,12 @@ if [[ $OUTPUT == "fields" ]]; then
   printf 'path\t%s\n' "$(strip_controls "$RESOLVED")"
   printf 'canonical\t%s\n' "$(strip_controls "$CANONICAL")"
   printf 'fill\t%s\n' "$FILL"
+  printf 'backdrop\t%s\n' "$BACKDROP"
   printf 'fill_color\t%s\n' "$(strip_controls "$FILL_COLOR")"
   printf 'focal_x\t%s\n' "$FOCAL_X"
   printf 'focal_y\t%s\n' "$FOCAL_Y"
 else
-  printf '{"path":"%s","canonical":"%s","fill":"%s","fill_color":"%s","focal_x":%s,"focal_y":%s}\n' \
-    "$(json_escape "$RESOLVED")" "$(json_escape "$CANONICAL")" "$FILL" \
+  printf '{"path":"%s","canonical":"%s","fill":"%s","backdrop":"%s","fill_color":"%s","focal_x":%s,"focal_y":%s}\n' \
+    "$(json_escape "$RESOLVED")" "$(json_escape "$CANONICAL")" "$FILL" "$BACKDROP" \
     "$(json_escape "$FILL_COLOR")" "$FOCAL_X" "$FOCAL_Y"
 fi

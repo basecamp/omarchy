@@ -99,8 +99,16 @@ assert(
 
 assert(
   /path:\s*panel\.incomingPath\b/.test(incomingFrameBlock) &&
-    /fill:\s*panel\.incomingFill\b/.test(incomingFrameBlock),
+    /fill:\s*panel\.incomingFill\b/.test(incomingFrameBlock) &&
+    /backdrop:\s*panel\.incomingBackdrop\b/.test(incomingFrameBlock),
   'incoming pixels and meta come from the per-panel lock, not live resolver bindings'
+)
+
+assert(
+  /backdrop:\s*panel\.lastDisplayedBackdrop\b/.test(baseBlock) &&
+    /backdrop:\s*panel\.lastDisplayedBackdrop\b/.test(oldFrameBlock) &&
+    /lastDisplayedBackdrop\s*=\s*backdrop/.test(displayedResolver),
+  'displayed and transition layers preserve the resolved backdrop mode'
 )
 
 assert(
@@ -169,6 +177,12 @@ assert(
   'resolvers re-resolve when their refresh token bumps even if inputs are string-identical'
 )
 
+assert(
+  /property string backdrop:\s*"solid"/.test(resolverQml) &&
+    /\["solid",\s*"edge",\s*"blur"\]\.indexOf\(meta\.backdrop\)/.test(resolverQml),
+  'background resolver defaults backdrop metadata safely and accepts the documented modes'
+)
+
 const requestBlock = blockAfter(resolverQml, 'function requestResolve', 'requestResolve exists')
 const startBlock = blockAfter(resolverQml, 'function startResolve', 'startResolve exists')
 const invalidGuard = /if\s*\(!canonicalPath\s*\|\|\s*screenWidth\s*<=\s*0\s*\|\|\s*screenHeight\s*<=\s*0\)/
@@ -189,8 +203,17 @@ const wallpaperQml = fs.readFileSync(path.join(root, 'shell/Ui/WallpaperImage.qm
 
 assert(
   wallpaperQml.includes('return Image.PreserveAspectCrop') &&
-    /property string fill:\s*"crop"/.test(wallpaperQml),
+    /property string fill:\s*"crop"/.test(wallpaperQml) &&
+    /property string backdrop:\s*"solid"/.test(wallpaperQml),
   'wallpaper image defaults to the historical centered crop rendering'
+)
+
+assert(
+  /root\.backdrop\s*===\s*"blur"/.test(wallpaperQml) &&
+    /fillMode:\s*Image\.PreserveAspectCrop/.test(wallpaperQml) &&
+    /blurEnabled:\s*true/.test(wallpaperQml) &&
+    /opacity:\s*0\.35/.test(wallpaperQml),
+  'blur backdrop paints a quiet cover copy beneath the unchanged foreground image'
 )
 
 assert(
@@ -208,5 +231,11 @@ assert(
 assert(
   /onSourceChanged:\s*naturalAspect\s*=\s*0/.test(wallpaperQml),
   'a new source relearns the natural aspect before re-deriving the cover decode size'
+)
+
+const lockQml = fs.readFileSync(path.join(root, 'shell/plugins/lock/LockView.qml'), 'utf8')
+assert(
+  /backdrop:\s*backgroundResolver\.backdrop/.test(lockQml),
+  'lock screen renders the same resolved backdrop as the desktop'
 )
 JS

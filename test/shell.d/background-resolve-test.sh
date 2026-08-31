@@ -57,6 +57,7 @@ output=$(resolve --fields)
 [[ $(fields_value path "$output") == "$base" ]] || fail "the canonical file resolves to itself" "$output"
 [[ $(fields_value canonical "$output") == "$base" ]] || fail "the canonical field names the canonical file" "$output"
 [[ $(fields_value fill "$output") == "crop" ]] || fail "fill defaults to crop" "$output"
+[[ $(fields_value backdrop "$output") == "solid" ]] || fail "backdrop defaults to solid" "$output"
 [[ $(fields_value fill_color "$output") == "#000000" ]] || fail "fill_color falls back to black without a palette" "$output"
 [[ $(fields_value focal_x "$output") == "0.5" ]] || fail "focal_x defaults to 0.5" "$output"
 [[ $(fields_value focal_y "$output") == "0.5" ]] || fail "focal_y defaults to 0.5" "$output"
@@ -104,10 +105,12 @@ TOML
 cat >"$backgrounds/backgrounds.toml" <<'TOML'
 [defaults]
 fill = "fit"
+backdrop = "blur"
 fill_color = "#123456"
 
 ["3-meadow"]
 fill = "center"
+backdrop = "solid"
 fill_color = "accent"
 focal = "0.65 0.4"
 TOML
@@ -118,6 +121,7 @@ ln -nsf "$backgrounds/3-meadow.png" "$state/background"
 
 output=$(resolve --fields)
 [[ $(fields_value fill "$output") == "center" ]] || fail "a per-stem section overrides the default fill" "$output"
+[[ $(fields_value backdrop "$output") == "solid" ]] || fail "a per-stem section overrides the default backdrop" "$output"
 [[ $(fields_value fill_color "$output") == "#7aa2f7" ]] || fail "a palette-key fill_color resolves through the theme palette" "$output"
 [[ $(fields_value focal_x "$output") == "0.65" ]] || fail "a per-stem focal_x is honored" "$output"
 [[ $(fields_value focal_y "$output") == "0.4" ]] || fail "a per-stem focal_y is honored" "$output"
@@ -125,10 +129,11 @@ output=$(resolve --fields)
 output=$(resolve --fields --canonical "$backgrounds/4-plain.png")
 [[ $(fields_value path "$output") == "$(realpath "$backgrounds/4-plain.png")" ]] || fail "--canonical overrides the state symlink" "$output"
 [[ $(fields_value fill "$output") == "fit" ]] || fail "an image without a section gets the [defaults] fill" "$output"
+[[ $(fields_value backdrop "$output") == "blur" ]] || fail "an image without a section gets the [defaults] backdrop" "$output"
 [[ $(fields_value fill_color "$output") == "#123456" ]] || fail "a hex fill_color passes through unresolved" "$output"
 [[ $(fields_value focal_x "$output") == "0.5" ]] || fail "focal stays at the default without an override" "$output"
 
-pass "backgrounds.toml defaults and per-stem overrides resolve fill, fill_color, and focal"
+pass "backgrounds.toml defaults and per-stem overrides resolve fill, backdrop, fill_color, and focal"
 
 # An SVG selected for a known screen rasterizes to a cached PNG covering the
 # screen; the same request reuses the cache, and no --screen keeps the SVG.
@@ -189,6 +194,40 @@ center=$(magick "$rendered" -format '%[pixel:p{100,100}]' info:)
 
 pass "responsive SVG backgrounds render against the exact screen viewport"
 
+# Edge backdrops sample the dominant perimeter colour from the per-screen
+# resolved asset, while blur backdrops leave fill_color as their solid fallback.
+cat >"$backgrounds/backgrounds.toml" <<'TOML'
+["6-edge"]
+fill = "fit"
+backdrop = "edge"
+fill_color = "#abcdef"
+
+["6-blur"]
+fill = "fit"
+backdrop = "blur"
+fill_color = "accent"
+TOML
+
+magick -size 160x90 xc:'#123456' -fill '#fedcba' -draw 'rectangle 24,16 136,74' "$backgrounds/6-edge.png"
+magick -size 320x90 xc:'#654321' -fill '#fedcba' -draw 'rectangle 80,16 240,74' "$backgrounds/6-edge@ultrawide.png"
+magick -size 160x90 xc:'#654321' "$backgrounds/6-blur.png"
+
+output=$(resolve --fields --screen 5120x1440 --canonical "$backgrounds/6-edge.png")
+[[ $(fields_value backdrop "$output") == "edge" ]] || fail "edge backdrop metadata is published" "$output"
+[[ $(fields_value path "$output") == "$(realpath "$backgrounds/6-edge@ultrawide.png")" ]] || fail "edge backdrop samples the selected per-screen variant" "$output"
+[[ $(fields_value fill_color "$output") == "#654321" ]] || fail "edge backdrop samples the variant's dominant perimeter colour" "$output"
+
+output=$(resolve --fields --screen 1920x1080 --canonical "$backgrounds/6-edge.png")
+[[ $(fields_value path "$output") == "$(realpath "$backgrounds/6-edge.png")" ]] || fail "edge backdrop keeps the canonical image on its matching screen" "$output"
+[[ $(fields_value fill_color "$output") == "#123456" ]] || fail "edge backdrop samples the canonical image's dominant perimeter colour" "$output"
+[[ $(find "$home/.cache/omarchy/background-edge-colors" -maxdepth 1 -type f | wc -l) == 2 ]] || fail "edge sampling caches one result per resolved asset"
+
+output=$(resolve --fields --screen 5120x1440 --canonical "$backgrounds/6-blur.png")
+[[ $(fields_value backdrop "$output") == "blur" ]] || fail "blur backdrop metadata is published" "$output"
+[[ $(fields_value fill_color "$output") == "#7aa2f7" ]] || fail "blur backdrop retains the declared solid fallback" "$output"
+
+pass "edge and blur backdrops resolve with sampled and fallback colours"
+
 # Malformed metadata never breaks resolution: unparseable lines are ignored
 # and invalid values fall back to the defaults (with the theme background
 # color backing an unknown palette key).
@@ -198,6 +237,7 @@ this is not toml
 [defaults
 [defaults]
 fill = "diagonal"
+backdrop = "mirrors"
 focal = "2 9"
 fill_color = "not-a-real-key"
 TOML
@@ -206,16 +246,17 @@ ln -nsf "$backgrounds/4-plain.png" "$state/background"
 output=$(resolve --fields)
 [[ $(fields_value path "$output") == "$(realpath "$backgrounds/4-plain.png")" ]] || fail "malformed metadata still resolves the canonical file" "$output"
 [[ $(fields_value fill "$output") == "crop" ]] || fail "an invalid fill falls back to crop" "$output"
+[[ $(fields_value backdrop "$output") == "solid" ]] || fail "an invalid backdrop falls back to solid" "$output"
 [[ $(fields_value fill_color "$output") == "#1a1b26" ]] || fail "an unknown palette key falls back to the theme background" "$output"
 [[ $(fields_value focal_x "$output") == "0.5" ]] || fail "an out-of-range focal falls back to 0.5" "$output"
 [[ $(fields_value focal_y "$output") == "0.5" ]] || fail "an out-of-range focal falls back to 0.5" "$output"
 
 pass "malformed backgrounds.toml falls back to the defaults"
 
-# Output shapes: --fields prints exactly the six keys in order, and the JSON
+# Output shapes: --fields prints exactly the seven keys in order, and the JSON
 # object carries the same values with paths escaped well enough for jq.
 keys=$(resolve --fields | cut -f1 | paste -sd,)
-[[ $keys == "path,canonical,fill,fill_color,focal_x,focal_y" ]] || fail "--fields prints exactly the six documented keys" "$keys"
+[[ $keys == "path,canonical,fill,backdrop,fill_color,focal_x,focal_y" ]] || fail "--fields prints exactly the seven documented keys" "$keys"
 
 magick -size 160x90 xc:blue "$backgrounds/6-quo\"te.png"
 ln -nsf "$backgrounds/6-quo\"te.png" "$state/background"
@@ -223,7 +264,7 @@ quoted=$(realpath "$backgrounds/6-quo\"te.png")
 
 json=$(resolve)
 jq -e --arg path "$quoted" '
-  .path == $path and .canonical == $path and .fill == "crop" and
+  .path == $path and .canonical == $path and .fill == "crop" and .backdrop == "solid" and
   .focal_x == 0.5 and .focal_y == 0.5 and (.fill_color | type) == "string"
 ' <<<"$json" >/dev/null || fail "the JSON output parses and escapes paths" "$json"
 
@@ -291,13 +332,13 @@ output=$(resolve --fields --canonical "$backgrounds/8-badhex.png")
 pass "unsafe fill_color values fall back to the theme background"
 
 # Control characters in an emitted string cannot corrupt the framing: a path
-# with an embedded newline still yields exactly six field lines and valid JSON.
+# with an embedded newline still yields exactly seven field lines and valid JSON.
 nl_name="$backgrounds/9-line"$'\n'"break.png"
 magick -size 160x90 xc:red "$nl_name"
 
 output=$(resolve --fields --canonical "$nl_name")
 lines=$(wc -l <<<"$output")
-(( lines == 6 )) || fail "a newline in the path cannot add field lines" "$output"
+(( lines == 7 )) || fail "a newline in the path cannot add field lines" "$output"
 [[ $(fields_value path "$output") == *"/9-linebreak.png" ]] || fail "the control character is stripped from the emitted path" "$output"
 
 json=$(resolve --canonical "$nl_name")

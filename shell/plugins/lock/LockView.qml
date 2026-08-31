@@ -96,6 +96,7 @@ Item {
       anchors.fill: parent
       path: root.loadBackground && backgroundResolver.ready ? backgroundResolver.resolvedPath : ""
       fill: backgroundResolver.fill
+      backdrop: backgroundResolver.backdrop
       fillColor: backgroundResolver.fillColor
       focalX: backgroundResolver.focalX
       focalY: backgroundResolver.focalY
