@@ -6,18 +6,15 @@ multiple_gpus() {
   (($(lspci | grep -cE 'VGA|3D|Display') >= 2))
 }
 
-if omarchy-cmd-present supergfxctl; then
-  # A wedged supergfxd blocks its clients forever, and this gate runs while
-  # the menu renders. Bound the query, and treat a daemon that cannot answer
-  # like a machine without supergfxctl: count GPUs instead of hiding hardware
-  # that is really there.
-  modes=$(timeout --kill-after=1s 1s supergfxctl -s 2>/dev/null)
-  status=$?
-
-  if ((status == 124 || status == 137)); then
-    multiple_gpus
+if omarchy-cmd-present cardwire; then
+  # cardwire only offers integrated mode on hybrid laptops (iGPU + offload
+  # dGPU); desktops get hybrid/manual alone. When the daemon can't answer,
+  # treat it like a machine without cardwire: count GPUs instead of hiding
+  # hardware that is really there.
+  if modes=$(timeout --kill-after=1s 1s cardwire get 2>/dev/null); then
+    grep -qw integrated <<<"$modes"
   else
-    grep -qw Hybrid <<<"$modes"
+    multiple_gpus
   fi
 else
   multiple_gpus
