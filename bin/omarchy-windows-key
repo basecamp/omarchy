@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# omarchy:summary=Print the OEM Windows product key stored in firmware
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+MSDM=${OMARCHY_MSDM_PATH:-/sys/firmware/acpi/tables/MSDM}
+
+if [[ ! -e $MSDM ]]; then
+  echo "No Windows license key found in firmware." >&2
+  exit 1
+fi
+
+read_msdm() {
+  if [[ -r $MSDM ]]; then
+    "$@" "$MSDM"
+  else
+    sudo "$@" "$MSDM"
+  fi
+}
+
+extract_key() {
+  grep -aoEm1 '[A-Z0-9]{5}(-[A-Z0-9]{5}){4}'
+}
+
+key=""
+if omarchy-cmd-present strings; then
+  key=$(read_msdm strings | extract_key) || true
+fi
+
+if [[ -z $key ]]; then
+  key=$(read_msdm cat | extract_key) || true
+fi
+
+if [[ -z $key ]]; then
+  echo "Firmware license table found, but no Windows product key could be extracted." >&2
+  exit 1
+fi
+
+printf '%s\n' "$key"

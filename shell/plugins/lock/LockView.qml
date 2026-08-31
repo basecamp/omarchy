@@ -184,6 +184,7 @@ Item {
       }
 
       Text {
+        textFormat: Text.PlainText
         anchors.fill: passwordInput
         text: root.authenticatingPassword ? "Checking…" : (root.failureMessage.length > 0 ? root.failureMessage : root.placeholderText)
         visible: passwordInput.text.length === 0

@@ -17,4 +17,5 @@ systemctl --user enable --now \
   omarchy-recover-internal-monitor.service \
   omarchy-sleep-lock.service \
   omarchy-migrate-notify.service \
-  omarchy-fcitx5.service
+  omarchy-fcitx5.service \
+  omarchy-crash-watch.service

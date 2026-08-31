@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Retry a system package update after resolving file conflicts
+# omarchy:summary=Retry a system package update that hit a conflict
 # omarchy:hidden=true
 
 # Internal to omarchy-update-system-pkgs. Not a command to run by hand: it acts
@@ -11,6 +11,10 @@
 # release's installer, an in-place edit -- belong to nobody, and pacman refuses
 # to install over a file it doesn't own. This clears them and runs the upgrade
 # again.
+#
+# Packages that conflict with each other are the other blocked upgrade, and that
+# one is a decision rather than a cleanup, so it goes back to the person
+# watching the update.
 
 set -e
 
@@ -56,6 +60,26 @@ restore_moved() {
 # Cleaning it up is this script's job from now on.
 trap 'restore_moved; rm -f "$errors"' EXIT
 trap 'exit 1' INT TERM
+
+# Pacman answers its own conflict question with No under --noconfirm, so one
+# retired package can stop every upgrade after it. Which package to drop is a
+# decision -- an upstream split retires one, but so does a package the user
+# picked on purpose -- so put the question to whoever started the update rather
+# than guess at it. Pacman printed what conflicts just above.
+if grep -q 'unresolvable package conflicts detected' "$errors"; then
+  # -y promised not to ask anything, and without a terminal there is nowhere to
+  # ask; either way pacman would sit on a prompt nobody answers. An upgrade that
+  # isn't running --noconfirm puts its questions on stderr and reads the answers
+  # from stdin, so those are the two that have to be a terminal.
+  if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 || ! -t 0 || ! -t 2 ]]; then
+    echo -e "\e[33m\nThis upgrade needs an answer. Run omarchy update interactively to give it.\e[0m" >&2
+    exit 1
+  fi
+
+  echo -e "\e[33m\nA package conflict stopped this upgrade. Running it again so you can answer:\e[0m"
+  OMARCHY_UPDATE_INTERACTIVE=1 omarchy-update-system-pkgs
+  exit 0
+fi
 
 # Paths one of these packages installs that pacman doesn't own. Moving them out
 # of the way is what lets the upgrade through, and works on a leftover directory

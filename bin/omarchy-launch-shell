@@ -9,8 +9,14 @@
 #
 # Backgrounded because bash defers a trap until a foreground command returns but
 # interrupts wait. systemd-cat execs, so the job is Quickshell itself.
+#
+# Quickshell's own reloading is off; Omarchy restarts the shell deliberately.
+# A package upgrade rewriting $OMARCHY_PATH/shell would otherwise reload it
+# against a half-written tree, and that failed reload leaves a second engine
+# generation behind that turns the next restart's IPC kill into a crash.
 run_shell() {
-  systemd-cat -t omarchy-shell -- quickshell -n -p "$OMARCHY_PATH/shell" &
+  QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1 \
+    systemd-cat -t omarchy-shell -- quickshell -n -p "$OMARCHY_PATH/shell" &
   shell_pid=$!
 
   local status

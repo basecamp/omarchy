@@ -4,4 +4,4 @@
 # To put it into use, remove .sample from this file name.
 
 # Example: Show the name of the font that was just set.
-# notify-send -u low "New font" "Your new font is $1"
+# omarchy-notification-send -u low "New font" "Your new font is $1"

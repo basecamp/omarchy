@@ -17,9 +17,8 @@ chromium
 clang
 cliamp
 cups
-cups-browsed
 cups-filters
-cups-pdf
+cups-pk-helper
 ddcutil
 docker
 docker-buildx
@@ -78,7 +77,7 @@ lua51
 luarocks
 man-db
 mariadb-libs
-mise
+mise-bin
 moonlight-qt
 mpv
 mpv-mpris
@@ -108,7 +107,8 @@ python-poetry-core
 ttfx
 qemu-user-static-binfmt
 qrencode
-quickshell-git
+qt6-imageformats
+quickshell
 ripgrep
 ruby
 tensaku

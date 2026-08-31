@@ -34,7 +34,8 @@ function normalizeItem(id, raw) {
     provider: value.provider || "",
     aliases: aliases,
     when: value.when || "",
-    checked: value.checked || ""
+    checked: value.checked || "",
+    disabled: value.disabled || ""
   }
 }
 
@@ -83,7 +84,7 @@ function mergeMenuSources(defaultItems, userItems) {
   }
 
   if (!nextItems.root) {
-    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", description: "", aliases: [], when: "", checked: "", action: "", provider: "" }
+    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", description: "", aliases: [], when: "", checked: "", disabled: "", action: "", provider: "" }
     nextOrder.unshift("root")
   }
   for (var k3 = 0; k3 < nextOrder.length; k3++) nextItems[nextOrder[k3]].order = k3
@@ -270,10 +271,20 @@ function isVisible(items, itemOrder, whenResults, entry, depth) {
   return false
 }
 
-function labelFor(entry, checkedResults) {
+// A `disabled:` row stays listed but goes dim and unselectable. The
+// Install submenus use it so software already on the machine reads as
+// installed rather than disappearing from the list it was installed from.
+function isDisabled(disabledResults, entry) {
+  if (!entry || !entry.disabled) return false
+  return !!(disabledResults && disabledResults[entry.id])
+}
+
+// A disabled row is software you already have, which is the same thing the ✓
+// says everywhere else in the menu, so it earns the same marker.
+function labelFor(entry, checkedResults, disabledResults) {
   if (!entry) return ""
-  if (entry.checked && checkedResults && checkedResults[entry.id]) return entry.label + " ✓"
-  return entry.label
+  var marked = (entry.checked && checkedResults && checkedResults[entry.id]) || isDisabled(disabledResults, entry)
+  return marked ? entry.label + " ✓" : entry.label
 }
 
 function searchableToken(value) {
@@ -351,16 +362,17 @@ function searchScore(items, entry, query) {
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }
 
-function displayRow(items, itemOrder, checkedResults, entry, detail, score, section) {
+function displayRow(items, itemOrder, checkedResults, disabledResults, entry, detail, score, section) {
   var target = entry.kind === "link" ? entry.target : entry.id
   return {
     itemId: entry.id,
+    disabled: isDisabled(disabledResults, entry),
     kind: entry.kind,
     icon: entry.icon,
     iconFont: entry.iconFont || "",
     appIcon: entry.appIcon || "",
     appId: entry.appId || "",
-    label: labelFor(entry, checkedResults),
+    label: labelFor(entry, checkedResults, disabledResults),
     target: target,
     detail: detail || "",
     path: pathFor(items, entry.id),
@@ -459,10 +471,10 @@ function guardLine(id, tag, expression) {
     + id + ":" + tag + ":1; else echo " + id + ":" + tag + ":0; fi\n"
 }
 
-// One bash script for every `when:` and `checked:` in the menu, reporting
-// `<id>:<w|c>:<0|1>` per line. Speed is the whole point: the menu opens on
-// the last evaluation's answers, so however long this takes is how long a row
-// can contradict the state it describes.
+// One bash script for every `when:`, `checked:` and `disabled:` in the menu,
+// reporting `<id>:<w|c|d>:<0|1>` per line. Speed is the whole point: the menu
+// opens on the last evaluation's answers, so however long this takes is how
+// long a row can contradict the state it describes.
 function guardScript(items) {
   var guards = ""
   var ids = Object.keys(items || {})
@@ -472,6 +484,7 @@ function guardScript(items) {
     if (!entry) continue
     if (entry.when) guards += guardLine(ids[i], "w", entry.when)
     if (entry.checked) guards += guardLine(ids[i], "c", entry.checked)
+    if (entry.disabled) guards += guardLine(ids[i], "d", entry.disabled)
   }
 
   return guards ? guardPrelude(guards) + guards : ""
@@ -497,6 +510,7 @@ if (typeof module !== "undefined") {
     isDescendantOf: isDescendantOf,
     childCount: childCount,
     isVisible: isVisible,
+    isDisabled: isDisabled,
     labelFor: labelFor,
     searchableToken: searchableToken,
     leafIdFor: leafIdFor,

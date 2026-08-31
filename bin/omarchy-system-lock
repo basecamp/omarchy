@@ -20,4 +20,7 @@ if pgrep -x "1password" >/dev/null && omarchy-cmd-present 1password; then
 fi
 
 # Avoid running screensaver when locked
+pkill -x ttfx 2>/dev/null || true
+# ttfx handles SIGTERM asynchronously, so keep its terminal alive until it exits.
+timeout 1s pidwait -x ttfx 2>/dev/null || true
 pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null || true

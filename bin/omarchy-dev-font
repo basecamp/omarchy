@@ -1,0 +1,652 @@
+#!/usr/bin/python3
+# omarchy:summary=Add branded glyphs to the Omarchy icon font
+# omarchy:args=[list|add] <name> <svg-file-or-url> [--codepoint U+E9xx] [--font PATH]
+# omarchy:examples=omarchy dev font list | omarchy dev font add ollama https://simpleicons.org/icons/ollama.svg
+"""Append monochrome SVG marks to default/fonts/omarchy/omarchy.ttf.
+
+The font is a private-use icon font: the menu renders a mark by setting
+"iconFont":"omarchy" on an entry and using the glyph's codepoint as its
+icon. Adding a mark means appending a glyph here, then pointing a menu
+entry at the codepoint this prints.
+
+Marks must be monochrome single-path SVGs so the menu can draw them in the
+active theme's foreground and selection colors. Brand icon sets like
+simpleicons.org publish exactly that shape; app favicons often do not.
+
+The glyph is scaled into the same 64..960 box the existing marks use, so a
+new mark lands at the same optical size as the ones already in the font.
+"""
+
+import argparse
+import math
+import os
+import re
+import struct
+import sys
+import urllib.request
+
+UPEM = 1024
+ART_BOX = (64, 64, 960, 960)  # the box every existing mark is drawn in
+TOL = 0.6  # cubic -> quadratic error tolerance, in font units
+PUA_FIRST = 0xE900
+
+
+# --- SVG path parsing ------------------------------------------------------
+
+NUM = re.compile(r'[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?')
+CMD = re.compile(r'[MmZzLlHhVvCcSsQqTtAa]')
+
+
+def tokenize(d):
+    out, i = [], 0
+    while i < len(d):
+        c = d[i]
+        if CMD.match(c):
+            out.append(c)
+            i += 1
+        elif c in ' ,\t\r\n':
+            i += 1
+        else:
+            m = NUM.match(d, i)
+            if not m:
+                raise ValueError('bad path data at %d: %r' % (i, d[i:i + 20]))
+            out.append(float(m.group()))
+            i = m.end()
+    return out
+
+
+def arc_to_cubics(p0, rx, ry, phi, large, sweep, p1):
+    """Endpoint-parameterized SVG arc -> cubic segments."""
+    if p0 == p1:
+        return []
+    rx, ry = abs(rx), abs(ry)
+    if rx == 0 or ry == 0:
+        return [('L', p1)]
+    phi = math.radians(phi % 360)
+    cosp, sinp = math.cos(phi), math.sin(phi)
+    dx2, dy2 = (p0[0] - p1[0]) / 2.0, (p0[1] - p1[1]) / 2.0
+    x1 = cosp * dx2 + sinp * dy2
+    y1 = -sinp * dx2 + cosp * dy2
+    lam = x1 * x1 / (rx * rx) + y1 * y1 / (ry * ry)
+    if lam > 1:
+        s = math.sqrt(lam)
+        rx, ry = rx * s, ry * s
+    num = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1
+    den = rx * rx * y1 * y1 + ry * ry * x1 * x1
+    co = math.sqrt(max(0.0, num / den)) if den else 0.0
+    if large == sweep:
+        co = -co
+    cx1 = co * rx * y1 / ry
+    cy1 = -co * ry * x1 / rx
+    cx = cosp * cx1 - sinp * cy1 + (p0[0] + p1[0]) / 2.0
+    cy = sinp * cx1 + cosp * cy1 + (p0[1] + p1[1]) / 2.0
+
+    def angle(ux, uy, vx, vy):
+        dot = ux * vx + uy * vy
+        n = math.hypot(ux, uy) * math.hypot(vx, vy)
+        a = math.acos(max(-1.0, min(1.0, dot / n))) if n else 0.0
+        return -a if ux * vy - uy * vx < 0 else a
+
+    theta = angle(1, 0, (x1 - cx1) / rx, (y1 - cy1) / ry)
+    delta = angle((x1 - cx1) / rx, (y1 - cy1) / ry, (-x1 - cx1) / rx, (-y1 - cy1) / ry)
+    if not sweep and delta > 0:
+        delta -= 2 * math.pi
+    elif sweep and delta < 0:
+        delta += 2 * math.pi
+
+    segs = []
+    n = max(1, int(math.ceil(abs(delta) / (math.pi / 2) - 1e-9)))
+    step = delta / n
+    k = 4.0 / 3.0 * math.tan(step / 4.0)
+
+    def at(t):
+        x, y = rx * math.cos(t), ry * math.sin(t)
+        return (cosp * x - sinp * y + cx, sinp * x + cosp * y + cy)
+
+    def deriv(t):
+        x, y = -rx * math.sin(t), ry * math.cos(t)
+        return (cosp * x - sinp * y, sinp * x + cosp * y)
+
+    for i in range(n):
+        t0 = theta + i * step
+        t1 = t0 + step
+        a, b = at(t0), at(t1)
+        da, db = deriv(t0), deriv(t1)
+        segs.append(('C',
+                     (a[0] + k * da[0], a[1] + k * da[1]),
+                     (b[0] - k * db[0], b[1] - k * db[1]),
+                     b))
+    return segs
+
+
+def parse_path(d):
+    """Return one list of absolute segments per subpath."""
+    t = tokenize(d)
+    subs, cur = [], None
+    pos = start = (0.0, 0.0)
+    prev_c = prev_q = None
+    i, cmd = 0, None
+    while i < len(t):
+        if isinstance(t[i], str):
+            cmd = t[i]
+            i += 1
+        rel = cmd.islower()
+        c = cmd.upper()
+
+        def take(n):
+            nonlocal i
+            v = t[i:i + n]
+            i += n
+            return v
+
+        def abspt(x, y):
+            return (pos[0] + x, pos[1] + y) if rel else (x, y)
+
+        if c == 'M':
+            x, y = take(2)
+            pos = start = abspt(x, y)
+            if cur:
+                subs.append(cur)
+            cur = [('M', pos)]
+            cmd = 'l' if rel else 'L'  # implicit lineto for extra pairs
+            prev_c = prev_q = None
+        elif c == 'Z':
+            if cur:
+                subs.append(cur)
+                cur = None
+            pos = start
+            prev_c = prev_q = None
+        elif c in 'LHV':
+            if c == 'L':
+                x, y = take(2)
+                p = abspt(x, y)
+            elif c == 'H':
+                x = take(1)[0]
+                p = (pos[0] + x, pos[1]) if rel else (x, pos[1])
+            else:
+                y = take(1)[0]
+                p = (pos[0], pos[1] + y) if rel else (pos[0], y)
+            cur.append(('L', p))
+            pos = p
+            prev_c = prev_q = None
+        elif c in 'CS':
+            if c == 'C':
+                x1, y1, x2, y2, x, y = take(6)
+                c1, c2, p = abspt(x1, y1), abspt(x2, y2), abspt(x, y)
+            else:
+                x2, y2, x, y = take(4)
+                c2, p = abspt(x2, y2), abspt(x, y)
+                c1 = (2 * pos[0] - prev_c[0], 2 * pos[1] - prev_c[1]) if prev_c else pos
+            cur.append(('C', c1, c2, p))
+            prev_c, prev_q = c2, None
+            pos = p
+        elif c in 'QT':
+            if c == 'Q':
+                x1, y1, x, y = take(4)
+                q, p = abspt(x1, y1), abspt(x, y)
+            else:
+                x, y = take(2)
+                p = abspt(x, y)
+                q = (2 * pos[0] - prev_q[0], 2 * pos[1] - prev_q[1]) if prev_q else pos
+            cur.append(('C',
+                        (pos[0] + 2.0 / 3 * (q[0] - pos[0]), pos[1] + 2.0 / 3 * (q[1] - pos[1])),
+                        (p[0] + 2.0 / 3 * (q[0] - p[0]), p[1] + 2.0 / 3 * (q[1] - p[1])),
+                        p))
+            prev_q, prev_c = q, None
+            pos = p
+        elif c == 'A':
+            rx, ry, rot, large, sweep, x, y = take(7)
+            p = abspt(x, y)
+            cur.extend(arc_to_cubics(pos, rx, ry, rot, int(large), int(sweep), p))
+            pos = p
+            prev_c = prev_q = None
+        else:
+            raise ValueError('unsupported path command %r' % cmd)
+    if cur:
+        subs.append(cur)
+    return subs
+
+
+# --- outline conversion ----------------------------------------------------
+
+def cubic_to_quads(p0, p1, p2, p3, tol, depth=0):
+    """Approximate one cubic with quadratics: [(control, end), ...]."""
+    ex = p0[0] - 3 * p1[0] + 3 * p2[0] - p3[0]
+    ey = p0[1] - 3 * p1[1] + 3 * p2[1] - p3[1]
+    if math.sqrt(3) / 36 * math.hypot(ex, ey) <= tol or depth >= 8:
+        return [(((3 * p1[0] - p0[0] + 3 * p2[0] - p3[0]) / 4.0,
+                  (3 * p1[1] - p0[1] + 3 * p2[1] - p3[1]) / 4.0), p3)]
+
+    def mid(a, b):
+        return ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+
+    p01, p12, p23 = mid(p0, p1), mid(p1, p2), mid(p2, p3)
+    p012, p123 = mid(p01, p12), mid(p12, p23)
+    m = mid(p012, p123)
+    return (cubic_to_quads(p0, p01, p012, m, tol, depth + 1) +
+            cubic_to_quads(m, p123, p23, p3, tol, depth + 1))
+
+
+def contours_from_svg(path_d, view):
+    """SVG path -> TrueType contours [[(x, y, on_curve), ...], ...]."""
+    vbx, vby, vbw, vbh = view
+    ax0, ay0, ax1, ay1 = ART_BOX
+    scale = min((ax1 - ax0) / vbw, (ay1 - ay0) / vbh)
+    ox = ax0 + ((ax1 - ax0) - vbw * scale) / 2.0
+    oy = ay0 + ((ay1 - ay0) - vbh * scale) / 2.0
+
+    def tf(p):
+        # SVG y grows down, font y grows up.
+        return (ox + (p[0] - vbx) * scale, oy + (vbh - (p[1] - vby)) * scale)
+
+    contours = []
+    for sub in parse_path(path_d):
+        pts, cursor = [], None
+        for seg in sub:
+            if seg[0] in ('M', 'L'):
+                cursor = tf(seg[1])
+                pts.append((cursor[0], cursor[1], True))
+            elif seg[0] == 'C':
+                c1, c2, p = tf(seg[1]), tf(seg[2]), tf(seg[3])
+                for q, end in cubic_to_quads(cursor, c1, c2, p, TOL):
+                    pts.append((q[0], q[1], False))
+                    pts.append((end[0], end[1], True))
+                cursor = p
+        if len(pts) > 2:
+            contours.append(clean(pts))
+    return orient(contours)
+
+
+def clean(pts):
+    """Round to integers, drop duplicates and the redundant closing point."""
+    out = []
+    for x, y, on in pts:
+        p = (int(round(x)), int(round(y)), on)
+        if not out or out[-1] != p:
+            out.append(p)
+    while len(out) > 1 and out[-1][:2] == out[0][:2] and out[-1][2] and out[0][2]:
+        out.pop()
+    return out
+
+
+def area(pts):
+    a = 0.0
+    for i in range(len(pts)):
+        x0, y0 = pts[i][0], pts[i][1]
+        x1, y1 = pts[(i + 1) % len(pts)][0], pts[(i + 1) % len(pts)][1]
+        a += x0 * y1 - x1 * y0
+    return a / 2.0
+
+
+def orient(contours):
+    """TrueType draws outer contours clockwise (negative shoelace area).
+
+    Flipping the whole set preserves each hole's direction relative to its
+    outer contour, which is what keeps counters (eyes, cutouts) unfilled.
+    """
+    if contours and area(max(contours, key=lambda c: abs(area(c)))) > 0:
+        return [list(reversed(c)) for c in contours]
+    return contours
+
+
+# --- glyph and table encoding ----------------------------------------------
+
+def encode_glyph(contours):
+    if not contours:
+        return b''
+    xs = [p[0] for c in contours for p in c]
+    ys = [p[1] for c in contours for p in c]
+    out = [struct.pack('>hhhhh', len(contours), min(xs), min(ys), max(xs), max(ys))]
+    ends, n = [], 0
+    for c in contours:
+        n += len(c)
+        ends.append(n - 1)
+    out.append(struct.pack('>%dH' % len(ends), *ends))
+    out.append(struct.pack('>H', 0))  # no instructions
+
+    flags, xdel, ydel = [], [], []
+    px = py = 0
+    for c in contours:
+        for x, y, on in c:
+            dx, dy = x - px, y - py
+            px, py = x, y
+            f = 1 if on else 0
+            if dx == 0:
+                f |= 0x10
+            elif -255 <= dx <= 255:
+                f |= 0x02 | (0x10 if dx > 0 else 0)
+                xdel.append(struct.pack('>B', abs(dx)))
+            else:
+                xdel.append(struct.pack('>h', dx))
+            if dy == 0:
+                f |= 0x20
+            elif -255 <= dy <= 255:
+                f |= 0x04 | (0x20 if dy > 0 else 0)
+                ydel.append(struct.pack('>B', abs(dy)))
+            else:
+                ydel.append(struct.pack('>h', dy))
+            flags.append(struct.pack('>B', f))
+    data = b''.join(out + flags + xdel + ydel)
+    return data + b'\0' * (-len(data) % 4)
+
+
+def read_tables(d):
+    t = {}
+    for i in range(struct.unpack('>H', d[4:6])[0]):
+        off = 12 + i * 16
+        tag = d[off:off + 4].decode('latin-1')
+        s, l = struct.unpack('>II', d[off + 8:off + 16])
+        t[tag] = (s, l)
+    return t
+
+
+def checksum(data):
+    data += b'\0' * (-len(data) % 4)
+    return sum(struct.unpack('>%dI' % (len(data) // 4), data)) & 0xFFFFFFFF
+
+
+def read_loca(d, t, ng):
+    ls = t['loca'][0]
+    if struct.unpack('>h', d[t['head'][0] + 50:t['head'][0] + 52])[0] == 0:
+        return [x * 2 for x in struct.unpack('>%dH' % (ng + 1), d[ls:ls + 2 * (ng + 1)])]
+    return list(struct.unpack('>%dI' % (ng + 1), d[ls:ls + 4 * (ng + 1)]))
+
+
+def read_cmap(d, cs):
+    """Read the format 12 subtable; it carries every mapping the font has."""
+    m = {}
+    for i in range(struct.unpack('>H', d[cs + 2:cs + 4])[0]):
+        pid, eid, off = struct.unpack('>HHI', d[cs + 4 + i * 8:cs + 12 + i * 8])
+        sub = cs + off
+        if struct.unpack('>H', d[sub:sub + 2])[0] != 12:
+            continue
+        for j in range(struct.unpack('>I', d[sub + 12:sub + 16])[0]):
+            s, e, g = struct.unpack('>III', d[sub + 16 + j * 12:sub + 28 + j * 12])
+            for c in range(s, e + 1):
+                m[c] = g + (c - s)
+    return m
+
+
+def read_names(d, ps, ng):
+    n = struct.unpack('>H', d[ps + 32:ps + 34])[0]
+    idx = list(struct.unpack('>%dH' % n, d[ps + 34:ps + 34 + n * 2]))
+    p = ps + 34 + n * 2
+    pool = []
+    need = max([i - 258 + 1 for i in idx if i >= 258] or [0])
+    while len(pool) < need:
+        ln = d[p]
+        pool.append(d[p + 1:p + 1 + ln].decode('latin-1'))
+        p += 1 + ln
+    out = [pool[i - 258] if i >= 258 else '#mac%d' % i for i in idx]
+    return out + ['#mac0'] * (ng - len(out))
+
+
+def build_post(d, ps, names):
+    idx, pool = [], []
+    for nm in names:
+        if nm.startswith('#mac'):
+            idx.append(int(nm[4:]))
+        else:
+            idx.append(258 + len(pool))
+            pool.append(nm)
+    body = struct.pack('>H', len(idx)) + struct.pack('>%dH' % len(idx), *idx)
+    for nm in pool:
+        body += struct.pack('>B', len(nm)) + nm.encode('latin-1')
+    return d[ps:ps + 32] + body
+
+
+def build_cmap(m):
+    """Emit format 4 and 12 subtables under the usual encoding records."""
+    groups = []
+    for c in sorted(m):
+        if groups and c == groups[-1][1] + 1 and m[c] == groups[-1][2] + (c - groups[-1][0]):
+            groups[-1][1] = c
+        else:
+            groups.append([c, c, m[c]])
+
+    segs = [(a, b, g) for a, b, g in groups if b <= 0xFFFF] + [(0xFFFF, 0xFFFF, 0)]
+    count = len(segs)
+    pow2 = 2 ** (count.bit_length() - 1) * 2
+    f4 = struct.pack('>HHHHHHH', 4, 16 + count * 8, 0, count * 2,
+                     pow2, count.bit_length() - 1, count * 2 - pow2)
+    f4 += struct.pack('>%dH' % count, *[s[1] for s in segs])
+    f4 += struct.pack('>H', 0)
+    f4 += struct.pack('>%dH' % count, *[s[0] for s in segs])
+    deltas = [((s[2] - s[0]) & 0xFFFF) if s[0] != 0xFFFF else 1 for s in segs]
+    f4 += struct.pack('>%dh' % count, *[x - 65536 if x > 32767 else x for x in deltas])
+    f4 += struct.pack('>%dH' % count, *([0] * count))
+
+    f12 = struct.pack('>HHIII', 12, 0, 16 + len(groups) * 12, 0, len(groups))
+    for a, b, g in groups:
+        f12 += struct.pack('>III', a, b, g)
+
+    f0 = struct.pack('>HHH', 0, 262, 0) + bytes(256)
+
+    body, offsets = b'', {}
+    for data in (f4, f12, f0):
+        offsets[id(data)] = len(body)
+        body += data
+    records = [(0, 3, f4), (0, 4, f12), (1, 0, f0), (3, 1, f4), (3, 10, f12)]
+    head = struct.pack('>HH', 0, len(records))
+    base = 4 + len(records) * 8
+    for pid, eid, data in records:
+        head += struct.pack('>HHI', pid, eid, base + offsets[id(data)])
+    return head + body
+
+
+def assemble(tables):
+    tags = sorted(tables)
+    n = len(tags)
+    sr = 2 ** (n.bit_length() - 1) * 16
+    font = struct.pack('>IHHHH', 0x00010000, n, sr, n.bit_length() - 1, n * 16 - sr)
+    offset = 12 + n * 16
+    body, records = b'', []
+    for tag in tags:
+        data = tables[tag]
+        records.append((tag, checksum(data), offset + len(body), len(data)))
+        body += data + b'\0' * (-len(data) % 4)
+    font += b''.join(struct.pack('>4sIII', t.encode('latin-1'), c, o, l)
+                     for t, c, o, l in records)
+    font += body
+    adj = (0xB1B0AFBA - checksum(font)) & 0xFFFFFFFF
+    hs = [o for t, c, o, l in records if t == 'head'][0]
+    return font[:hs + 8] + struct.pack('>I', adj) + font[hs + 12:]
+
+
+# --- commands --------------------------------------------------------------
+
+def load_font(path):
+    d = open(path, 'rb').read()
+    t = read_tables(d)
+    ng = struct.unpack('>H', d[t['maxp'][0] + 4:t['maxp'][0] + 6])[0]
+    return d, t, ng
+
+
+def glyph_list(path):
+    d, t, ng = load_font(path)
+    loca = read_loca(d, t, ng)
+    names = read_names(d, t['post'][0], ng)
+    gs = t['glyf'][0]
+    rows = []
+    for cp, gid in sorted(read_cmap(d, t['cmap'][0]).items()):
+        if cp < PUA_FIRST:
+            continue
+        a, b = loca[gid], loca[gid + 1]
+        box = ''
+        if b > a:
+            _, x0, y0, x1, y1 = struct.unpack('>hhhhh', d[gs + a:gs + a + 10])
+            box = '%d x %d' % (x1 - x0, y1 - y0)
+        name = names[gid]
+        rows.append((cp, '' if name.startswith('#mac') else name, box))
+    return rows
+
+
+def add_glyph(font_path, codepoint, name, contours):
+    d, t, ng = load_font(font_path)
+    loca = read_loca(d, t, ng)
+    gs = t['glyf'][0]
+    glyphs = [d[gs + loca[i]:gs + loca[i + 1]] for i in range(ng)]
+
+    nhm = struct.unpack('>H', d[t['hhea'][0] + 34:t['hhea'][0] + 36])[0]
+    hm = t['hmtx'][0]
+    adv, lsb = [], []
+    for i in range(ng):
+        if i < nhm:
+            a, b = struct.unpack('>Hh', d[hm + i * 4:hm + i * 4 + 4])
+        else:
+            a = adv[-1]
+            b = struct.unpack('>h', d[hm + nhm * 4 + (i - nhm) * 2:][:2])[0]
+        adv.append(a)
+        lsb.append(b)
+
+    names = read_names(d, t['post'][0], ng)
+    cmap = read_cmap(d, t['cmap'][0])
+
+    gid = len(glyphs)
+    glyphs.append(encode_glyph(contours))
+    xs = [p[0] for c in contours for p in c]
+    adv.append(UPEM)
+    lsb.append(min(xs) if xs else 0)
+    names.append(name)
+    cmap[codepoint] = gid
+    ng = len(glyphs)
+
+    offs, o = [0], 0
+    for g in glyphs:
+        o += len(g)
+        offs.append(o)
+    short = offs[-1] <= 0x1FFFE and all(x % 2 == 0 for x in offs)
+
+    hhea = bytearray(d[t['hhea'][0]:t['hhea'][0] + t['hhea'][1]])
+    struct.pack_into('>H', hhea, 34, ng)
+
+    maxp = bytearray(d[t['maxp'][0]:t['maxp'][0] + t['maxp'][1]])
+    struct.pack_into('>H', maxp, 4, ng)
+    struct.pack_into('>H', maxp, 6, max(struct.unpack('>H', bytes(maxp[6:8]))[0],
+                                        sum(len(c) for c in contours)))
+    struct.pack_into('>H', maxp, 8, max(struct.unpack('>H', bytes(maxp[8:10]))[0],
+                                        len(contours)))
+
+    boxes = [struct.unpack('>hhhhh', g[:10])[1:] for g in glyphs if len(g) >= 10]
+    head = bytearray(d[t['head'][0]:t['head'][0] + t['head'][1]])
+    struct.pack_into('>hhhh', head, 36,
+                     min(b[0] for b in boxes), min(b[1] for b in boxes),
+                     max(b[2] for b in boxes), max(b[3] for b in boxes))
+    struct.pack_into('>h', head, 50, 0 if short else 1)
+    struct.pack_into('>I', head, 8, 0)  # checkSumAdjustment, recomputed below
+
+    tables = {tag: d[s:s + l] for tag, (s, l) in t.items()}
+    tables['glyf'] = b''.join(glyphs)
+    tables['loca'] = (struct.pack('>%dH' % len(offs), *[x // 2 for x in offs]) if short
+                      else struct.pack('>%dI' % len(offs), *offs))
+    tables['hmtx'] = b''.join(struct.pack('>Hh', adv[i], lsb[i]) for i in range(ng))
+    tables['hhea'] = bytes(hhea)
+    tables['maxp'] = bytes(maxp)
+    tables['cmap'] = build_cmap(cmap)
+    tables['post'] = build_post(d, t['post'][0], names)
+    tables['head'] = bytes(head)
+
+    open(font_path, 'wb').write(assemble(tables))
+
+
+def read_svg(location):
+    if not location.startswith(('http://', 'https://')):
+        return open(location, encoding='utf-8').read()
+    # Icon sites reject the stock urllib agent, so ask like a browser would.
+    req = urllib.request.Request(location, headers={'User-Agent': 'omarchy-dev-font'})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return r.read().decode('utf-8')
+    except OSError as e:
+        sys.exit('could not fetch %s: %s' % (location, e))
+
+
+def svg_contours(svg, location):
+    vb = re.search(r'viewBox="([^"]+)"', svg)
+    if not vb:
+        sys.exit('%s: no viewBox; need an SVG with a viewBox' % location)
+    view = tuple(float(x) for x in vb.group(1).replace(',', ' ').split())
+    paths = re.findall(r'<path[^>]*\bd="([^"]+)"', svg)
+    if len(paths) != 1:
+        sys.exit('%s: expected a single <path>, found %d — flatten the mark to '
+                 'one monochrome path first' % (location, len(paths)))
+    return contours_from_svg(paths[0], view)
+
+
+def default_font():
+    root = os.environ.get('OMARCHY_PATH')
+    if not root:
+        sys.exit('OMARCHY_PATH is not set')
+    return os.path.join(root, 'default/fonts/omarchy/omarchy.ttf')
+
+
+def readme_for(font_path):
+    return os.path.join(os.path.dirname(font_path), 'README.md')
+
+
+def record_source(font_path, codepoint, label, location):
+    """Append the new mark to the font's README so sources stay tracked."""
+    readme = readme_for(font_path)
+    if not os.path.exists(readme):
+        return None
+    lines = open(readme, encoding='utf-8').read().split('\n')
+    last = max(i for i, l in enumerate(lines) if l.startswith('- `U+'))
+    entry = '- `U+%04X` — %s' % (codepoint, label)
+    if location.startswith(('http://', 'https://')):
+        entry += ', from <%s>' % location
+    lines.insert(last + 1, entry)
+    open(readme, 'w', encoding='utf-8').write('\n'.join(lines))
+    return readme
+
+
+def main():
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument('--font', help='font to edit '
+                        '(default: $OMARCHY_PATH/default/fonts/omarchy/omarchy.ttf)')
+
+    p = argparse.ArgumentParser(prog='omarchy dev font', parents=[common],
+                                description=__doc__.split('\n')[0])
+    sub = p.add_subparsers(dest='command')
+    sub.add_parser('list', parents=[common], help='show the marks the font carries')
+    add = sub.add_parser('add', parents=[common],
+                         help='append a mark from a monochrome SVG')
+    add.add_argument('name', help='glyph name, e.g. ollama')
+    add.add_argument('svg', help='SVG file or URL')
+    add.add_argument('--codepoint', help='private-use codepoint (default: next free)')
+    add.add_argument('--label', help='README label (default: the glyph name)')
+    args = p.parse_args()
+
+    font = args.font or default_font()
+    if not os.path.exists(font):
+        sys.exit('no font at %s' % font)
+
+    if args.command in (None, 'list'):
+        for cp, name, box in glyph_list(font):
+            print('U+%04X  %s  %-12s %s' % (cp, chr(cp), name, box))
+        return
+
+    taken = {cp for cp, _, _ in glyph_list(font)}
+    if args.codepoint:
+        cp = int(args.codepoint.upper().replace('U+', ''), 16)
+        if cp in taken:
+            sys.exit('U+%04X is already used' % cp)
+    else:
+        cp = max(taken) + 1 if taken else PUA_FIRST
+
+    contours = svg_contours(read_svg(args.svg), args.svg)
+    add_glyph(font, cp, args.name, contours)
+    readme = record_source(font, cp, args.label or args.name, args.svg)
+
+    print('Added %s as U+%04X (%s)' % (args.name, cp, chr(cp)))
+    print()
+    print('Next:')
+    if readme:
+        print('  - check the new line in %s' % os.path.relpath(readme))
+    print('  - point a menu entry at it: "icon":"%s","iconFont":"omarchy"' % chr(cp))
+    print('  - bump the charset range in test/shell.d/menu-test.sh to e900-%x' % cp)
+    print('  - the font is package-owned, so it reaches the desktop through an')
+    print('    omarchy-settings release, not through omarchy update')
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,19 @@
+[Unit]
+Description=Announce process crashes and offer an AI diagnosis
+# Needs the session bus to notify, and uwsm-app to open the diagnosis terminal.
+# Both are up only after graphical-session.target.
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+# Set by omarchy-toggle-crash-capture. Checked here so a disabled watcher stays
+# disabled across logins without the unit having to be disabled.
+ConditionPathExists=!%h/.local/state/omarchy/toggles/crash-capture-off
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-crash-watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

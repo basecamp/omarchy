@@ -765,24 +765,67 @@ def probe_limits(access_token: str) -> dict[str, Any]:
   return {"ok": True, "limits": limits}
 
 
+# A cached percentage outlives the probe that measured it, but only until its
+# window rolls over: once a window has reset, the figure describes a period
+# that is over, and a stale 78% would misreport an allowance that is now
+# untouched. A window with no reset time, or one that will not parse, is kept
+# — an unreadable timestamp is no reason to throw away a real number.
+def limit_window_open(entry: dict[str, Any], now: dt.datetime) -> bool:
+  raw = str(entry.get("resetsAt") or "")
+  if raw == "":
+    return True
+  try:
+    resets_at = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+  except Exception:
+    return True
+  if resets_at.tzinfo is None:
+    resets_at = resets_at.replace(tzinfo=dt.timezone.utc)
+  return resets_at > now
+
+
+def usable_cached_limits(cached: dict[str, Any]) -> list[dict[str, Any]]:
+  entries = cached.get("limits")
+  if not isinstance(entries, list):
+    return []
+  now = dt.datetime.now(dt.timezone.utc)
+  return [entry for entry in entries if isinstance(entry, dict) and limit_window_open(entry, now)]
+
+
 def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[str, Any]:
   result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP}
-
-  if access_token == "":
-    result["usageStatusText"] = "Waiting for auth"
-    return result
-  if expires_at_ms > 0 and expires_at_ms <= time.time() * 1000:
-    return result
 
   # A panel that is opened and shut repeatedly must not turn into a request
   # per flick, so recent probe results are reused for a short window — and
   # kept as the answer of record when a later probe fails.
   probe_cache = cache_root() / "claude-limits.json"
   cached = read_fresh_json(probe_cache, float("inf")) or {}
+  fallback = usable_cached_limits(cached)
+
+  # Probing needs a live token and only the Claude Code CLI can mint one: it
+  # refreshes the credential file when it runs, so a machine left alone long
+  # enough finds the saved token lapsed. Say so — an empty limits list with
+  # nothing else set hides the whole section and explains nothing — and keep
+  # showing the last numbers whose window has not since reset.
+  if access_token == "":
+    result["limits"] = fallback
+    result["usageStatusText"] = "Waiting for auth"
+    return result
+  if expires_at_ms > 0 and expires_at_ms <= time.time() * 1000:
+    result["limits"] = fallback
+    result["usageStatusText"] = "Sign-in expired"
+    result["authHelpText"] = (
+      "Claude Code's saved sign-in expired"
+      + (" — showing the last known limits." if fallback else ".")
+      + " Start Claude Code, or run `claude auth login`, to refresh it."
+    )
+    return result
+
+  # --force is a person asking for fresh numbers, so it skips the reuse window
+  # entirely; the interval is there to absorb repeated panel opens, not to
+  # overrule someone who pressed refresh.
   fetched_at = number(cached.get("fetchedAtMs")) / 1000
-  min_interval = 0 if force else PROBE_MIN_INTERVAL_SECONDS
-  if cached.get("limits") and time.time() - fetched_at < max(min_interval, PROBE_MIN_INTERVAL_SECONDS):
-    result["limits"] = cached["limits"]
+  if fallback and not force and time.time() - fetched_at < PROBE_MIN_INTERVAL_SECONDS:
+    result["limits"] = fallback
     return result
 
   probe = probe_limits(access_token)
@@ -795,8 +838,8 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
   # route. Ask the shell to try again sooner than its regular interval.
   if probe.get("transport"):
     result["retryAdvised"] = True
-  if cached.get("limits"):
-    result["limits"] = cached["limits"]
+  if fallback:
+    result["limits"] = fallback
   else:
     result["usageStatusText"] = "Claude limits unavailable"
     result["authHelpText"] = probe["helpText"]

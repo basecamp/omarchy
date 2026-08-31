@@ -22,7 +22,20 @@ CONF
   sudo systemctl enable --now supergfxd
 fi
 
-gpu_mode=$(supergfxctl -g)
+gpu_mode=""
+for attempt in {1..3}; do
+  if gpu_mode=$(timeout --kill-after=1s 3s supergfxctl -g 2>/dev/null) && [[ -n $gpu_mode ]]; then
+    break
+  fi
+
+  gpu_mode=""
+  (( attempt < 3 )) && sleep 1
+done
+
+if [[ -z $gpu_mode ]]; then
+  echo "supergfxd is not responding. Try again, or check: systemctl status supergfxd" >&2
+  exit 1
+fi
 
 case "$gpu_mode" in
 "Integrated")

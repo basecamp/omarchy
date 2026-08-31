@@ -159,9 +159,9 @@ BarWidget {
     return "drawer"
   }
 
-  function ownedByDedicatedWidget(item) {
+  function ownedByOmarchy(item) {
     var layout = root.bar && root.bar.layoutConfig ? root.bar.layoutConfig : null
-    return TrayModel.ownedByDedicatedWidget(item, layout)
+    return TrayModel.ownedByOmarchy(item, layout)
   }
 
   function bucket(category) {
@@ -170,7 +170,7 @@ BarWidget {
     for (var i = 0; i < values.length; i++) {
       var item = values[i]
       if (item.status === Status.Passive) continue
-      if (ownedByDedicatedWidget(item)) continue
+      if (ownedByOmarchy(item)) continue
       if (category === "all") {
         result.push(item)
         continue
@@ -467,6 +467,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: rowIcon.right
             anchors.leftMargin: Style.space(10)
@@ -577,6 +578,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: parent.left
             anchors.leftMargin: Style.space(28)
@@ -681,6 +683,7 @@ BarWidget {
               }
 
               Text {
+                textFormat: Text.PlainText
                 visible: !menuRow.modelData.isSeparator && menuRow.modelData.buttonType !== QsMenuButtonType.None
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left
@@ -709,6 +712,7 @@ BarWidget {
               }
 
               Text {
+                textFormat: Text.PlainText
                 visible: !menuRow.modelData.isSeparator
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.left: parent.left

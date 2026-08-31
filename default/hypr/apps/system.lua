@@ -20,8 +20,9 @@ o.window({
 }, { tag = "+floating-window" })
 
 -- The About fastfetch layout needs more columns than the standard float provides.
--- This size only positions the first paint: omarchy-launch-about then measures
--- the rendered content and fits the window to it exactly.
+-- This size only covers the first launch: omarchy-launch-about measures the
+-- rendered content, remembers the size that hugs it, and applies that as its own
+-- rule before every later launch.
 o.window("org.omarchy.about", { float = true })
 o.window("org.omarchy.about", { center = true })
 o.window("org.omarchy.about", { size = { 920, 480 } })
