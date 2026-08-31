@@ -1022,6 +1022,92 @@ bool Worker::terminate(Deadline deadline) noexcept {
   return implementation_->terminate(deadline);
 }
 
+ResourceScopeController::AttachResult ResourceScopeController::attach(
+    std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
+    const sandbox::SandboxPlan &plan, Deadline deadline, std::string &error) {
+  const std::array processes{monitor_pid, worker_pid};
+  const auto &resources = plan.resources;
+  return attach(
+      {.unit = unit,
+       .description = "Omarchy sandboxed plugin worker",
+       .pids = processes,
+       .resources =
+           {.memory_high_bytes = resources.memory_high_bytes,
+            .memory_max_bytes = resources.memory_max_bytes,
+            .tasks_max = resources.tasks_max,
+            .cpu_quota_per_second_usec =
+                static_cast<std::uint64_t>(resources.cpu_quota_percent) *
+                10000ULL,
+            .cpu_weight = resources.cpu_weight,
+            .io_weight = resources.io_weight}},
+      deadline, error);
+}
+
+ResourceScopeController::AttachResult ResourceScopeController::attach(
+    const ProcessScopeRequest &request, Deadline deadline,
+    std::string &error) {
+  constexpr std::size_t kMaximumScopePids = 64;
+  const auto valid_unit =
+      !request.unit.empty() && request.unit.size() <= 255 &&
+      request.unit.ends_with(".scope") &&
+      std::ranges::all_of(request.unit, [](unsigned char character) {
+        return (character >= 'a' && character <= 'z') ||
+               (character >= 'A' && character <= 'Z') ||
+               (character >= '0' && character <= '9') || character == '-' ||
+               character == '_' || character == '.' || character == ':' ||
+               character == '@';
+      });
+  const auto valid_description =
+      !request.description.empty() && request.description.size() <= 256 &&
+      std::ranges::none_of(request.description, [](unsigned char character) {
+        return character < 0x20 || character == 0x7f;
+      });
+  if (!valid_unit || !valid_description) {
+    error = "invalid process scope identity";
+    return {};
+  }
+  if (request.pids.empty() || request.pids.size() > kMaximumScopePids) {
+    error = "invalid process scope PID count";
+    return {};
+  }
+  for (std::size_t index = 0; index < request.pids.size(); ++index) {
+    if (request.pids[index] <= 0 ||
+        std::find(request.pids.begin(), request.pids.begin() + index,
+                  request.pids[index]) != request.pids.begin() + index) {
+      error = "invalid or duplicate process scope PID";
+      return {};
+    }
+  }
+  const auto &resources = request.resources;
+  if (resources.memory_high_bytes == 0 || resources.memory_max_bytes == 0 ||
+      resources.memory_high_bytes > resources.memory_max_bytes ||
+      resources.memory_max_bytes > kMaximumProcessScopeMemoryBytes ||
+      resources.tasks_max == 0 ||
+      resources.tasks_max > kMaximumProcessScopeTasks ||
+      resources.cpu_quota_per_second_usec == 0 ||
+      resources.cpu_quota_per_second_usec >
+          kMaximumProcessScopeCpuQuotaUsec ||
+      resources.cpu_weight == 0 ||
+      resources.cpu_weight > 10000 || resources.io_weight == 0 ||
+      resources.io_weight > 10000) {
+    error = "invalid process scope resource ceilings";
+    return {};
+  }
+  if (std::chrono::steady_clock::now() >= deadline) {
+    error = "process scope attachment deadline expired";
+    return {};
+  }
+  return attach_validated(request, deadline, error);
+}
+
+ResourceScopeController::AttachResult
+ResourceScopeController::attach_validated(const ProcessScopeRequest &,
+                                          Deadline,
+                                          std::string &error) {
+  error = "generic process scope attachment is unsupported";
+  return {};
+}
+
 namespace {
 
 [[nodiscard]] bool append_basic_property(sd_bus_message *message,
@@ -1037,17 +1123,15 @@ namespace {
 }
 
 [[nodiscard]] bool append_pid_property(sd_bus_message *message,
-                                       pid_t monitor_pid, pid_t worker_pid) {
-  const std::array<std::uint32_t, 2> pids = {
-      static_cast<std::uint32_t>(monitor_pid),
-      static_cast<std::uint32_t>(worker_pid)};
+                                       std::span<const pid_t> processes) {
   if (sd_bus_message_open_container(message, 'r', "sv") < 0 ||
       sd_bus_message_append_basic(message, 's', "PIDs") < 0 ||
       sd_bus_message_open_container(message, 'v', "au") < 0 ||
       sd_bus_message_open_container(message, 'a', "u") < 0) {
     return false;
   }
-  for (const std::uint32_t pid : pids) {
+  for (const pid_t process : processes) {
+    const auto pid = static_cast<std::uint32_t>(process);
     if (sd_bus_message_append_basic(message, 'u', &pid) < 0) {
       return false;
     }
@@ -1103,16 +1187,16 @@ public:
     return true;
   }
 
-  AttachResult attach(std::string_view unit, pid_t monitor_pid,
-                      pid_t worker_pid, const sandbox::SandboxPlan &plan,
-                      Deadline deadline, std::string &error) override {
+  AttachResult attach_validated(const ProcessScopeRequest &request,
+                                Deadline deadline,
+                                std::string &error) override {
     std::unique_lock lock(mutex_, std::defer_lock);
     if (!lock.try_lock_until(deadline)) {
       error = "systemd user manager lock deadline expired";
       return {};
     }
     if (!probe_locked(deadline, error)) return {};
-    return attach_locked(unit, monitor_pid, worker_pid, plan, deadline, error);
+    return attach_locked(request, deadline, error);
   }
 
   void kill(std::string_view unit, Deadline deadline) noexcept override {
@@ -1149,9 +1233,7 @@ private:
     return true;
   }
 
-  AttachResult attach_locked(std::string_view unit, pid_t monitor_pid,
-                             pid_t worker_pid,
-                             const sandbox::SandboxPlan &plan,
+  AttachResult attach_locked(const ProcessScopeRequest &request,
                              Deadline deadline, std::string &error) {
     const auto call_remaining =
         std::chrono::duration_cast<std::chrono::microseconds>(
@@ -1163,13 +1245,12 @@ private:
     sd_bus_message *message = nullptr;
     sd_bus_message *reply = nullptr;
     sd_bus_error bus_error = SD_BUS_ERROR_NULL;
-    const std::string unit_name(unit);
+    const std::string unit_name(request.unit);
     const char *mode = "fail";
-    const char *description = "Omarchy sandboxed plugin worker";
+    const std::string description(request.description);
     const char *collect_mode = "inactive-or-failed";
-    const auto &resources = plan.resources;
-    const std::uint64_t cpu_quota =
-        static_cast<std::uint64_t>(resources.cpu_quota_percent) * 10000ULL;
+    const auto &resources = request.resources;
+    const std::uint64_t cpu_quota = resources.cpu_quota_per_second_usec;
     const std::uint64_t memory_high = resources.memory_high_bytes;
     const std::uint64_t memory_max = resources.memory_max_bytes;
     const std::uint64_t tasks_max = resources.tasks_max;
@@ -1185,8 +1266,9 @@ private:
         sd_bus_message_append_basic(message, 's', unit_name.c_str()) >= 0 &&
         sd_bus_message_append_basic(message, 's', mode) >= 0 &&
         sd_bus_message_open_container(message, 'a', "(sv)") >= 0 &&
-        append_basic_property(message, "Description", "s", description) &&
-        append_pid_property(message, monitor_pid, worker_pid) &&
+        append_basic_property(message, "Description", "s",
+                              description.c_str()) &&
+        append_pid_property(message, request.pids) &&
         append_basic_property(message, "MemoryHigh", "t", &memory_high) &&
         append_basic_property(message, "MemoryMax", "t", &memory_max) &&
         append_basic_property(message, "TasksMax", "t", &tasks_max) &&
@@ -1211,20 +1293,23 @@ private:
     }
     if (built) {
       const std::string expected = "/" + unit_name;
-      bool applied = false;
+      std::vector<bool> applied(request.pids.size(), false);
       while (std::chrono::steady_clock::now() < deadline) {
-        std::ifstream cgroup(std::filesystem::path("/proc") /
-                             std::to_string(worker_pid) / "cgroup");
-        std::string record;
-        while (std::getline(cgroup, record)) {
-          const auto separator = record.find("::");
-          if (separator != std::string::npos &&
-              record.substr(separator + 2).ends_with(expected)) {
-            applied = true;
-            break;
+        for (std::size_t index = 0; index < request.pids.size(); ++index) {
+          if (applied[index]) continue;
+          std::ifstream cgroup(std::filesystem::path("/proc") /
+                               std::to_string(request.pids[index]) / "cgroup");
+          std::string record;
+          while (std::getline(cgroup, record)) {
+            const auto separator = record.find("::");
+            if (separator != std::string::npos &&
+                record.substr(separator + 2).ends_with(expected)) {
+              applied[index] = true;
+              break;
+            }
           }
         }
-        if (applied) {
+        if (std::ranges::all_of(applied, std::identity{})) {
           break;
         }
         static_cast<void>(sd_bus_process(bus_, nullptr));
@@ -1238,8 +1323,8 @@ private:
             sd_bus_wait(bus_, static_cast<std::uint64_t>(std::min<std::int64_t>(
                                   remaining.count(), 10000))));
       }
-      if (!applied) {
-        error = "transient scope did not bind the worker before its deadline";
+      if (!std::ranges::all_of(applied, std::identity{})) {
+        error = "transient scope did not bind every process before its deadline";
         built = false;
       }
     }

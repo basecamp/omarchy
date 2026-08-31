@@ -132,6 +132,27 @@ struct ReceivedMessage {
   }
 };
 
+struct ProcessResourceCeilings {
+  std::uint64_t memory_high_bytes = 0;
+  std::uint64_t memory_max_bytes = 0;
+  std::uint64_t tasks_max = 0;
+  std::uint64_t cpu_quota_per_second_usec = 0;
+  std::uint64_t cpu_weight = 0;
+  std::uint64_t io_weight = 0;
+};
+
+inline constexpr std::uint64_t kMaximumProcessScopeMemoryBytes =
+    16ULL * 1024ULL * 1024ULL * 1024ULL;
+inline constexpr std::uint64_t kMaximumProcessScopeTasks = 4096;
+inline constexpr std::uint64_t kMaximumProcessScopeCpuQuotaUsec = 4000000;
+
+struct ProcessScopeRequest {
+  std::string_view unit;
+  std::string_view description;
+  std::span<const pid_t> pids;
+  ProcessResourceCeilings resources;
+};
+
 class ResourceScopeController {
 public:
   struct AttachResult {
@@ -148,12 +169,25 @@ public:
   // authority exists. Cleanup operations must never reconnect lazily.
   [[nodiscard]] virtual bool prepare_cleanup(Deadline deadline,
                                              std::string &error) = 0;
+  // Validates the complete generic scope request before an implementation can
+  // contact its resource manager. A rejected request acquires no cleanup
+  // authority.
+  [[nodiscard]] AttachResult attach(const ProcessScopeRequest &request,
+                                    Deadline deadline, std::string &error);
+  // Worker adapter retained as part of the established launcher API. The
+  // default maps the worker's exact plan into ProcessScopeRequest; injected
+  // controllers may continue to override it for isolated launcher tests.
   [[nodiscard]] virtual AttachResult
   attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
          const sandbox::SandboxPlan &plan, Deadline deadline,
-         std::string &error) = 0;
+         std::string &error);
   virtual void kill(std::string_view unit, Deadline deadline) noexcept = 0;
   virtual void remove(std::string_view unit, Deadline deadline) noexcept = 0;
+
+protected:
+  [[nodiscard]] virtual AttachResult
+  attach_validated(const ProcessScopeRequest &request, Deadline deadline,
+                   std::string &error);
 };
 
 [[nodiscard]] std::shared_ptr<ResourceScopeController>

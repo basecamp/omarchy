@@ -48,6 +48,8 @@ add_dependencies(omarchy-plugin-launcher-test
 
 add_test(NAME plugin-launcher-contract COMMAND omarchy-plugin-launcher-test contract)
 set_tests_properties(plugin-launcher-contract PROPERTIES LABELS "unit;adversarial;launcher" TIMEOUT 10)
+add_test(NAME plugin-launcher-process-scope COMMAND omarchy-plugin-launcher-test scope)
+set_tests_properties(plugin-launcher-process-scope PROPERTIES LABELS "unit;adversarial;launcher;cgroup" TIMEOUT 10)
 add_test(NAME plugin-launcher-malicious-peer COMMAND omarchy-plugin-launcher-test malicious)
 set_tests_properties(plugin-launcher-malicious-peer PROPERTIES LABELS "integration;adversarial;launcher;linux" TIMEOUT 10)
 add_test(NAME plugin-launcher-bwrap COMMAND omarchy-plugin-launcher-test bwrap)

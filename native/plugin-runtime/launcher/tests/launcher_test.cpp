@@ -180,29 +180,35 @@ public:
     return true;
   }
 
-  AttachResult attach(std::string_view unit, pid_t monitor_pid,
-                      pid_t worker_pid, const sandbox::SandboxPlan &plan,
-                      launcher::Deadline deadline,
-                      std::string &error) override {
+  AttachResult attach_validated(const launcher::ProcessScopeRequest &request,
+                                launcher::Deadline deadline,
+                                std::string &error) override {
     attach_deadline = deadline;
     if (!attach_succeeds) {
       error = "synthetic scope attachment rejected";
       return {};
     }
-    require(unit.starts_with("app-omarchy-plugin-worker-"),
+    require(request.unit.starts_with("app-omarchy-plugin-worker-"),
             "scope name escaped the trusted prefix");
-    require(monitor_pid > 0 && worker_pid > 0,
+    require(request.description == "Omarchy sandboxed plugin worker",
+            "worker scope description changed");
+    require(request.pids.size() == 2 && request.pids[0] > 0 &&
+                request.pids[1] > 0 && request.pids[0] != request.pids[1],
             "scope received an invalid process identity");
-    require(plan.worker_descriptors == std::vector<int>({3, 4, 5}) &&
-                plan.launcher_descriptors ==
-                    std::vector<int>({3, 4, 5, 6, 7, 8, 9, 10}),
-            "launcher did not consume the B5 descriptor contract");
-    require(plan.resources.memory_max_bytes == 512ULL * 1024ULL * 1024ULL &&
-                plan.resources.tasks_max == 16,
+    require(request.resources.memory_high_bytes ==
+                    384ULL * 1024ULL * 1024ULL &&
+                request.resources.memory_max_bytes ==
+                    512ULL * 1024ULL * 1024ULL &&
+                request.resources.tasks_max == 16 &&
+                request.resources.cpu_quota_per_second_usec == 500000 &&
+                request.resources.cpu_weight == 20 &&
+                request.resources.io_weight == 10,
             "launcher did not consume the B5 resource/deadline contract");
     attached = true;
     attached_before_release = true;
-    scope.assign(unit);
+    scope.assign(request.unit);
+    description.assign(request.description);
+    pids.assign(request.pids.begin(), request.pids.end());
     if (attach_delay > 0ms) {
       const auto remaining = deadline - std::chrono::steady_clock::now();
       if (remaining <= attach_delay) {
@@ -246,6 +252,8 @@ public:
   std::optional<launcher::Deadline> cleanup_deadline;
   std::optional<launcher::Deadline> attach_deadline;
   std::string scope;
+  std::string description;
+  std::vector<pid_t> pids;
   bool cleanup_prepared = false;
 };
 
@@ -258,15 +266,51 @@ public:
 static_assert(std::is_abstract_v<IncompleteController>,
               "incomplete controllers must not enter the launch path");
 
+class ScopeRequestProbe final : public launcher::ResourceScopeController {
+public:
+  bool probe(launcher::Deadline, std::string &) override { return true; }
+  bool prepare_cleanup(launcher::Deadline, std::string &) override {
+    return true;
+  }
+  AttachResult attach_validated(const launcher::ProcessScopeRequest &request,
+                                launcher::Deadline deadline,
+                                std::string &) override {
+    ++attach_calls;
+    unit.assign(request.unit);
+    description.assign(request.description);
+    pids.assign(request.pids.begin(), request.pids.end());
+    resources = request.resources;
+    attach_deadline = deadline;
+    return attach_result;
+  }
+  void kill(std::string_view requested, launcher::Deadline) noexcept override {
+    if (requested == unit) ++kill_calls;
+  }
+  void remove(std::string_view requested,
+              launcher::Deadline) noexcept override {
+    if (requested == unit) ++remove_calls;
+  }
+
+  AttachResult attach_result{.attached = true, .cleanup_required = true};
+  unsigned attach_calls = 0;
+  unsigned kill_calls = 0;
+  unsigned remove_calls = 0;
+  std::string unit;
+  std::string description;
+  std::vector<pid_t> pids;
+  launcher::ProcessResourceCeilings resources;
+  std::optional<launcher::Deadline> attach_deadline;
+};
+
 class BlockingCleanupScope final : public launcher::ResourceScopeController {
 public:
   bool probe(launcher::Deadline, std::string &) override { return true; }
   bool prepare_cleanup(launcher::Deadline, std::string &) override {
     return true;
   }
-  AttachResult attach(std::string_view, pid_t, pid_t,
-                      const sandbox::SandboxPlan &, launcher::Deadline,
-                      std::string &) override {
+  AttachResult attach_validated(const launcher::ProcessScopeRequest &,
+                                launcher::Deadline,
+                                std::string &) override {
     return {.attached = true, .cleanup_required = true};
   }
   void kill(std::string_view, launcher::Deadline) noexcept override {}
@@ -293,9 +337,9 @@ public:
   bool prepare_cleanup(launcher::Deadline, std::string &) override {
     return true;
   }
-  AttachResult attach(std::string_view, pid_t, pid_t,
-                      const sandbox::SandboxPlan &, launcher::Deadline,
-                      std::string &) override {
+  AttachResult attach_validated(const launcher::ProcessScopeRequest &,
+                                launcher::Deadline,
+                                std::string &) override {
     return {.attached = true, .cleanup_required = true};
   }
   void kill(std::string_view, launcher::Deadline) noexcept override {}
@@ -375,6 +419,151 @@ void pidfd_reap_state_test() {
               !launcher::pidfd_has_exited(POLLIN | POLLERR) &&
               !launcher::pidfd_has_exited(POLLIN | POLLNVAL),
           "unexpected pidfd events were accepted as an exit certificate");
+}
+
+launcher::ProcessResourceCeilings scope_resources() {
+  return {.memory_high_bytes = 1024,
+          .memory_max_bytes = 2048,
+          .tasks_max = 8,
+          .cpu_quota_per_second_usec = 250000,
+          .cpu_weight = 50,
+          .io_weight = 25};
+}
+
+void generic_process_scope_request_test() {
+  ScopeRequestProbe scope;
+  const std::array<pid_t, 3> processes{101, 202, 303};
+  const auto deadline = deadline_after(5s);
+  std::string error;
+  const launcher::ProcessScopeRequest request{
+      .unit = "app-omarchy-plugin-provider-example.scope",
+      .description = "Omarchy trusted plugin provider",
+      .pids = processes,
+      .resources = scope_resources()};
+  const auto attached = scope.attach(request, deadline, error);
+  require(attached.attached && attached.cleanup_required && error.empty() &&
+              scope.attach_calls == 1 && scope.attach_deadline == deadline &&
+              scope.unit == request.unit &&
+              scope.description == request.description &&
+              scope.pids == std::vector<pid_t>(processes.begin(),
+                                               processes.end()) &&
+              scope.resources.memory_high_bytes == 1024 &&
+              scope.resources.memory_max_bytes == 2048 &&
+              scope.resources.tasks_max == 8 &&
+              scope.resources.cpu_quota_per_second_usec == 250000 &&
+              scope.resources.cpu_weight == 50 &&
+              scope.resources.io_weight == 25,
+          "generic scope request did not preserve exact processes/resources");
+  scope.kill(request.unit, deadline);
+  scope.remove(request.unit, deadline);
+  require(scope.kill_calls == 1 && scope.remove_calls == 1,
+          "generic scope cleanup did not retain its exact unit identity");
+
+  ScopeRequestProbe boundary;
+  std::string boundary_error;
+  auto boundary_request = request;
+  boundary_request.resources.memory_high_bytes =
+      launcher::kMaximumProcessScopeMemoryBytes;
+  boundary_request.resources.memory_max_bytes =
+      launcher::kMaximumProcessScopeMemoryBytes;
+  boundary_request.resources.tasks_max = launcher::kMaximumProcessScopeTasks;
+  boundary_request.resources.cpu_quota_per_second_usec =
+      launcher::kMaximumProcessScopeCpuQuotaUsec;
+  require(boundary.attach(boundary_request, deadline_after(5s),
+                          boundary_error)
+                  .attached &&
+              boundary.attach_calls == 1 && boundary_error.empty(),
+          "exact generic resource ceiling boundary was rejected");
+
+  const auto rejected_without_call = [&](std::span<const pid_t> pids,
+                                         std::string_view expected) {
+    ScopeRequestProbe rejected;
+    std::string rejected_error;
+    auto candidate = request;
+    candidate.pids = pids;
+    const auto result = rejected.attach(candidate, deadline, rejected_error);
+    require(!result.attached && !result.cleanup_required &&
+                rejected.attach_calls == 0 &&
+                rejected_error.find(expected) != std::string::npos,
+            "invalid generic scope request reached the resource manager");
+  };
+  rejected_without_call({}, "PID count");
+  const std::array<pid_t, 2> invalid{101, -1};
+  rejected_without_call(invalid, "invalid or duplicate");
+  const std::array<pid_t, 2> zero{101, 0};
+  rejected_without_call(zero, "invalid or duplicate");
+  const std::array<pid_t, 2> duplicate{101, 101};
+  rejected_without_call(duplicate, "invalid or duplicate");
+
+  ScopeRequestProbe invalid_resources;
+  std::string resource_error;
+  auto bad_resources = request;
+  bad_resources.resources.memory_high_bytes =
+      bad_resources.resources.memory_max_bytes + 1;
+  const auto resource_result = invalid_resources.attach(
+      bad_resources, deadline_after(5s), resource_error);
+  require(!resource_result.attached && !resource_result.cleanup_required &&
+              invalid_resources.attach_calls == 0 &&
+              resource_error.find("resource ceilings") != std::string::npos,
+          "invalid generic resource ceilings reached the resource manager");
+  const auto rejects_resource = [&](auto mutation) {
+    ScopeRequestProbe rejected;
+    std::string rejected_error;
+    auto candidate = boundary_request;
+    mutation(candidate.resources);
+    const auto result = rejected.attach(candidate, deadline_after(5s),
+                                        rejected_error);
+    require(!result.attached && !result.cleanup_required &&
+                rejected.attach_calls == 0 &&
+                rejected_error.find("resource ceilings") != std::string::npos,
+            "resource hard maximum was not enforced before the backend");
+  };
+  rejects_resource([](auto &resources) {
+    resources.memory_max_bytes =
+        launcher::kMaximumProcessScopeMemoryBytes + 1;
+  });
+  rejects_resource([](auto &resources) {
+    resources.tasks_max = launcher::kMaximumProcessScopeTasks + 1;
+  });
+  rejects_resource([](auto &resources) {
+    resources.cpu_quota_per_second_usec =
+        launcher::kMaximumProcessScopeCpuQuotaUsec + 1;
+  });
+
+  ScopeRequestProbe expired;
+  std::string expired_error;
+  const auto expired_result = expired.attach(
+      request, std::chrono::steady_clock::now(), expired_error);
+  require(!expired_result.attached && !expired_result.cleanup_required &&
+              expired.attach_calls == 0 &&
+              expired_error.find("deadline") != std::string::npos,
+          "expired generic scope request acquired cleanup authority");
+
+  ScopeRequestProbe attempted;
+  attempted.attach_result = {.attached = false, .cleanup_required = true};
+  std::string attempted_error;
+  const auto attempted_result = attempted.attach(
+      request, deadline_after(5s), attempted_error);
+  require(!attempted_result.attached && attempted_result.cleanup_required &&
+              attempted.attach_calls == 1,
+          "attempted generic attach lost fail-stop cleanup authority");
+  attempted.kill(request.unit, deadline_after(5s));
+  attempted.remove(request.unit, deadline_after(5s));
+  require(attempted.kill_calls == 1 && attempted.remove_calls == 1,
+          "failed generic attach could not perform exact cleanup");
+
+  FakeScope worker_scope;
+  std::string worker_error;
+  const auto worker_deadline = deadline_after(5s);
+  const auto worker_result = worker_scope.attach(
+      "app-omarchy-plugin-worker-test.scope", 404, 505,
+      sandbox::build_plan(), worker_deadline, worker_error);
+  require(worker_result.attached && worker_result.cleanup_required &&
+              worker_error.empty() &&
+              worker_scope.pids == std::vector<pid_t>({404, 505}) &&
+              worker_scope.description == "Omarchy sandboxed plugin worker" &&
+              worker_scope.attach_deadline == worker_deadline,
+          "worker scope adapter changed established scope behavior");
 }
 
 void deadline_and_async_cleanup_test(LaunchFixture &fixture) {
@@ -1110,7 +1299,9 @@ int main(int argc, char **argv) {
     return 64;
   }
   const std::string_view mode(argv[1]);
-  if (mode == "contract") {
+  if (mode == "scope") {
+    generic_process_scope_request_test();
+  } else if (mode == "contract") {
     contract_test();
   } else if (mode == "malicious") {
     malicious_test();
