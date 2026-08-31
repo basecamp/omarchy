@@ -140,6 +140,36 @@ valid_username() { [[ $1 =~ ^[A-Za-z0-9_-]{1,20}$ ]]; }
 valid_tz() { [[ $1 =~ ^[A-Za-z0-9_/.+-]{1,64}$ ]]; }
 valid_password() { [[ $1 =~ ^[[:print:]]{1,64}$ ]]; }
 
+generate_password() {
+  local random
+  # 192 random bits, rendered as hex so Dockur, Windows, YAML, and FreeRDP all
+  # receive a portable printable value. The fixed prefix guarantees the usual
+  # Windows complexity classes without reducing the random portion.
+  random=$(/usr/bin/od -An -N24 -tx1 /dev/urandom) || return 1
+  random=${random//[[:space:]]/}
+  [[ $random =~ ^[0-9a-f]{48}$ ]] || return 1
+  printf 'Om4!%s' "$random"
+}
+
+prompt_windows_password() {
+  while :; do
+    PASSWORD=$(gum input --placeholder="Password (leave blank to generate a secure password)" --password --header="Enter Windows password:")
+    if [[ -z $PASSWORD ]]; then
+      PASSWORD=$(generate_password) || {
+        echo "Could not generate a secure Windows password." >&2
+        return 1
+      }
+      PASSWORD_DISPLAY="(securely generated; stored privately)"
+      return 0
+    elif valid_password "$PASSWORD"; then
+      PASSWORD_DISPLAY="(user-defined)"
+      return 0
+    else
+      echo "Invalid password. Use 1-64 printable characters; please try again." >&2
+    fi
+  done
+}
+
 # The only privileged sub-actions __priv may dispatch. A bash command name
 # containing a slash is executed as a path, so validating the action here — not
 # just interpolating it into "__priv_${action}" — is what stops an action like
@@ -1268,18 +1298,7 @@ EOF
     USERNAME="docker"
   fi
 
-  PASSWORD=$(gum input --placeholder="Password (Press enter to use default: admin)" --password --header="Enter Windows password:")
-  if [[ -z $PASSWORD ]]; then
-    PASSWORD="admin"
-    PASSWORD_DISPLAY="(default)"
-  else
-    PASSWORD_DISPLAY="(user-defined)"
-  fi
-  if ! valid_password "$PASSWORD"; then
-    echo "Invalid password (printable characters, up to 64). Using default: admin"
-    PASSWORD="admin"
-    PASSWORD_DISPLAY="(default)"
-  fi
+  prompt_windows_password || exit 1
 
   # Display configuration summary
   gum style \
@@ -1404,8 +1423,11 @@ launch_windows() {
     [[ -z $WIN_USER ]] && WIN_USER=$(unescape "$(read_compose_value USERNAME "$COMPOSE_FILE")")
     [[ -z $WIN_PASS ]] && WIN_PASS=$(unescape "$(read_compose_value PASSWORD "$COMPOSE_FILE")")
   fi
-  [[ -z $WIN_USER ]] && WIN_USER="docker"
-  [[ -z $WIN_PASS ]] && WIN_PASS="admin"
+  if ! valid_username "$WIN_USER" || ! valid_password "$WIN_PASS"; then
+    echo "Windows VM credentials are missing or invalid; refusing to use public defaults." >&2
+    echo "Restore the private credentials file at $CREDENTIALS_FILE or reinstall the VM configuration." >&2
+    exit 1
+  fi
 
   echo "Starting Windows VM (this may prompt for authorization)..."
   if ! priv up_wait; then
