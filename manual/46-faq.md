@@ -54,15 +54,15 @@ Automatic discovery, where printers on the network appear without being added, i
 
 ### How do I change where screenshots or screenrecordings are saved?
 
-If you want screenshots to be saved to `~/Pictures/Screenshots` instead of just `~/Pictures`, you can add this to a file under `~/.config/uwsm/env.d/` (like `~/.config/uwsm/env.d/capture`):
+Omasnap saves screenshots to `~/Pictures/Screenshots` by default. To use another directory, add this to a file under `~/.config/uwsm/env.d/` (like `~/.config/uwsm/env.d/capture`):
 
 ```
-export OMARCHY_SCREENSHOT_DIR="$HOME/Pictures/Screenshots"
+export OMASNAP_SCREENSHOT_DIR="$HOME/Pictures/Captures"
 ```
 
 You can do the same for screenrecordings using `OMARCHY_SCREENRECORD_DIR`.
 
-Just remember to create the directoy you want to save to and restart Omarchy for this to take effect.
+Omasnap creates its screenshot directory automatically. Create the screenrecording directory yourself, then restart Omarchy for either environment change to take effect.
 
 ### How do I get the speakers + webcam working on my Apple Studio Display?
 

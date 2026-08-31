@@ -15,10 +15,7 @@ Take a full-screen screenshot without opening the editor:
 omarchy capture screenshot fullscreen save
 ```
 
-The command prints the saved path and writes to the configured Pictures
-directory. Use `omarchy screenshot` for the interactive smart-region flow.
-Capture reference and candidate states as separate images when changing a
-layer-shell surface or layout, then compare both.
+The command writes to Omasnap's configured screenshot directory. Use `omarchy screenshot` for the interactive editor flow. Capture reference and candidate states as separate images when changing a layer-shell surface or layout, then compare both.
 
 Record a short full-screen video for animation, transition, timing, capture, or
 screen-recording changes:

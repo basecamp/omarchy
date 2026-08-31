@@ -10,12 +10,10 @@ omarchy screenshot                            # Interactive smart-region flow
 omarchy capture screenshot region             # Select a region
 omarchy capture screenshot windows            # Pick a window
 omarchy capture screenshot fullscreen save    # Full screen, straight to disk (no editor)
+omarchy capture screenshot scroll              # Capture and stitch a scrolling region
 ```
 
-The first argument picks the mode (`smart|region|windows|fullscreen`), the
-second what happens with it (`slurp|copy|save`). `save` skips the annotation
-editor and prints the saved path. Screenshots land in the configured Pictures
-directory (override with `OMARCHY_SCREENSHOT_DIR`).
+The first argument picks the Omasnap mode (`smart|region|windows|fullscreen|scroll`). With no second argument, the selection opens in Omasnap's annotation editor; `copy` or `save` skips the editor and sends the screenshot straight to that destination. Screenshots land in `~/Pictures/Screenshots` by default (override with `OMASNAP_SCREENSHOT_DIR`; the legacy `OMARCHY_SCREENSHOT_DIR` is also honored by the Omarchy command).
 
 ## Screen Recording
 

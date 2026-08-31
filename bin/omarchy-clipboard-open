@@ -30,7 +30,7 @@ open_image() {
   local path="$1"
 
   [[ -r $path ]] || exit 1
-  exec tensaku-edit "$path"
+  exec omasnap "$path"
 }
 
 open_text() {

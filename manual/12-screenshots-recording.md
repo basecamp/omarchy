@@ -13,13 +13,13 @@ Everything you can grab off the screen hangs off the Print Screen key. One key o
 
 ## Screenshots
 
-Hit `Print Screen` and the screen freezes so nothing shifts under you while you aim. Drag a box for a freeform region, or just click once and the shot snaps to whatever rectangle you clicked in — a window if you landed on one, the whole monitor if you landed on the bar or in a gap. Changed your mind? Hit `Print Screen` again to dismiss the picker.
+Hit `Print Screen` and Omasnap captures the focused monitor before its overlay appears, so nothing shifts under you while you aim. Drag a freeform region, or use the tabs across the top to switch between Region, Scrolling Region, Window, and Fullscreen capture. Changed your mind? Hit `Print Screen` again to dismiss Omasnap.
 
-The result goes two places at once: a PNG in your pictures directory, and the clipboard, so you can paste it straight into a chat window with `Super + V`. A notification pops up with a thumbnail. Click it (or hit `Super + Alt + ,` to invoke the last notification) and the shot opens in Tensaku, the annotation editor, where you can draw arrows and boxes on it before you send it.
+After you select an area, Omasnap opens its annotation editor. It can draw arrows, lines, shapes, highlights, numbered markers, text, and secure redactions; crop or cut out part of the image; OCR its text; and add a backdrop. Press `Enter` to copy and save the finished PNG, `Ctrl + C` to copy it without saving, `Ctrl + S` to save it without copying, or `P` to pin it above your windows.
 
-Files land in `~/Pictures` by default, named `screenshot-2026-08-13_14-22-05.png`. If you'd rather keep them in their own folder, set `OMARCHY_SCREENSHOT_DIR` — see [the FAQ](46-faq.md) for where to put session environment variables. Omarchy creates the directory for you if it isn't there. You can swap the editor too with `OMARCHY_SCREENSHOT_EDITOR`.
+Files land in `~/Pictures/Screenshots` by default, with a name such as `screenshot-2026-08-13_14-22-05-firefox.png`. Set `OMASNAP_SCREENSHOT_DIR` to use another directory — see [the FAQ](46-faq.md) for where to put session environment variables. Omasnap creates the directory when it saves the first shot.
 
-From the terminal, `omarchy screenshot` takes the same shot, and you can be explicit about it: `omarchy capture screenshot region` for freeform only, `windows` to snap to window and monitor rectangles, or `fullscreen` to skip the picker entirely and grab the focused monitor. A second argument of `copy` puts the shot only on the clipboard, and `save` only on disk.
+From the terminal, `omarchy screenshot` opens the same overlay, and you can choose its starting mode: `omarchy capture screenshot region`, `windows`, `fullscreen`, or `scroll`. A second argument of `copy` or `save` bypasses the annotation editor and sends the shot straight to that destination.
 
 ### Driving the picker from the keyboard
 
@@ -27,16 +27,19 @@ While the selection is up, you don't have to use the mouse at all:
 
 | Key | Function |
 | --- | -------- |
+| `Space` | Step through Region, Scrolling Region, and Window modes |
+| `S` | Toggle scrolling-region mode |
+| `Super + Arrow keys` | Move among windows in Window mode |
 | `Return` | Capture the highlighted window |
-| `Ctrl + Return` | Capture the whole screen |
-| `Tab` / `Ctrl + Tab` | Highlight the next / previous window |
-| Arrow keys | Highlight the window in that direction |
+| `Ctrl + A` | Capture the full focused monitor |
+| `R` | Restore the last region drawn in this session |
+| `Esc` | Dismiss Omasnap |
 
-The arrows and Tab move the cursor to the window they pick, so the highlight follows along and you can see what you're about to capture. These bindings only exist while a selection is on screen, so they can't collide with anything in your own config.
+These bindings only exist while Omasnap is open, so they can't collide with anything in your own config.
 
 ## Screen recording
 
-`Alt + Print Screen` opens _Trigger > Capture > Screenrecord_, which asks what you want on the soundtrack: no audio, desktop audio, desktop plus microphone, or desktop plus microphone plus webcam. That last one only shows up if you actually have a camera plugged in. Pick one and you get the same picker as a screenshot: drag a region, or click a window or monitor.
+`Alt + Print Screen` opens _Trigger > Capture > Screenrecord_, which asks what you want on the soundtrack: no audio, desktop audio, desktop plus microphone, or desktop plus microphone plus webcam. That last one only shows up if you actually have a camera plugged in. Pick one and Omarchy's recording picker lets you drag a region or click a window or monitor.
 
 Recording runs on gpu-screen-recorder, which encodes on the GPU at 60fps and falls back to the CPU if it has to. The result is an MP4 in `~/Videos`, named `screenrecording-2026-08-13_14-22-05.mp4`. Set `OMARCHY_SCREENRECORD_DIR` to change that — but note that unlike the screenshot directory, this one has to exist already, or the recording refuses to start.
 
