@@ -171,8 +171,9 @@ private:
       return false;
     const std::string diagnostic = "omarchy-plugin-qml-worker: " +
                                    std::string(detail) + "\n";
-    static_cast<void>(write(STDERR_FILENO, diagnostic.data(),
-                            diagnostic.size()));
+    const auto ignored =
+        write(STDERR_FILENO, diagnostic.data(), diagnostic.size());
+    static_cast<void>(ignored);
     control_notifier_.setEnabled(false);
     broker_notifier_.setEnabled(false);
     render_notifier_.setEnabled(false);
