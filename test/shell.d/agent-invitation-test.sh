@@ -18,10 +18,12 @@ mkdir -p "$(dirname "$hook_path")"
 cat >"$test_bin/omarchy-notification-send" <<'EOF'
 #!/bin/bash
 echo notification >>"$TEST_LOG"
+exec_args=()
 while (($# > 0)); do
-  [[ $1 == "--exec" ]] && echo "exec:$2" >>"$TEST_LOG"
+  if [[ $1 == "--exec" ]]; then shift; exec_args=("$@"); break; fi
   shift
 done
+((${#exec_args[@]})) && echo "exec:${exec_args[*]}" >>"$TEST_LOG"
 EOF
 chmod +x "$test_bin/omarchy-notification-send"
 

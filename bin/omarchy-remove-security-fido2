@@ -24,9 +24,14 @@ echo -e "\e[32mRemoving FIDO2 device from authentication.\n\e[0m"
 
 remove_pam_config
 
-if [[ -d /etc/fido2 ]]; then
+authdir=/etc/fido2
+
+# -d follows symlinks, so a dangling link at /etc/fido2 would survive this and
+# a later setup would install the authfile through it. rm -rf on a symlink
+# removes the link itself, never the directory it points at.
+if [[ -e $authdir || -L $authdir ]]; then
   echo "Removing FIDO2 configuration..."
-  sudo rm -rf /etc/fido2
+  sudo rm -rf "$authdir"
 fi
 
 echo "Removing FIDO2 packages..."
