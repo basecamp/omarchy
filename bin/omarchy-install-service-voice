@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# omarchy:summary=Install Oma, voice control for the desktop, and enable its bar widget.
+
+# Speech becomes actions rather than text: you say "put my email on workspace
+# three and go there" and the windows move. Voxtype already covers dictation on
+# F9; this is the other half, on SUPER + SHIFT + V.
+#
+# The add-on lives outside the omarchy package because it carries a Python
+# daemon, a user service and a paid API dependency, none of which belong in the
+# base install. This script is the supported way in, following the same shape as
+# the other optional services.
+
+set -euo pipefail
+
+REPO="https://github.com/wombatoperator/omarchy-voice.git"
+SRC="${XDG_DATA_HOME:-$HOME/.local/share}/omarchy-voice-src"
+
+echo -e "\nInstalling dependencies..."
+# websockets drives the realtime session; wtype types and presses keys; grim and
+# tesseract are how it reads the screen back to you.
+omarchy-pkg-add python-websockets wtype grim tesseract tesseract-data-eng
+
+echo -e "\nFetching Oma..."
+if [[ -d $SRC/.git ]]; then
+  git -C "$SRC" pull --ff-only
+else
+  rm -rf "$SRC"
+  git clone --depth 1 "$REPO" "$SRC"
+fi
+
+echo -e "\nInstalling..."
+"$SRC/install.sh"
+
+echo -e "\nAdding the listening indicator to the bar..."
+omarchy-plugin-enable voice.indicator 2>/dev/null ||
+  omarchy bar put voice.indicator --section right 2>/dev/null ||
+  echo "  Add it later with: omarchy bar put voice.indicator --section right"
+
+cat <<'DONE'
+
+Oma is installed.
+
+  1. Put your OpenAI API key in ~/.config/omarchy-voice/env:
+       OPENAI_API_KEY=sk-...
+  2. systemctl --user start omarchy-voice
+  3. Press SUPER + SHIFT + V and talk to it.
+
+  omarchy-voice doctor   checks every moving part
+  omarchy-voice log -f   shows what it heard and did
+
+The microphone starts off. While it is on, room audio streams to OpenAI; while
+it is off, no recorder is running at all.
+DONE
