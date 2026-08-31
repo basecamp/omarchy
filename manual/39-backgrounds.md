@@ -30,4 +30,11 @@ focal = "0.65 0.4"
 
 The section name is the image's filename without its extension, and `focal` is the spot to keep in view — `"0.5 0.5"` is the center, `"0.65 0.4"` keeps the point 65% across and 40% down.
 
-**Use an SVG.** SVG backgrounds are drawn crisply at whatever size each of your screens happens to be, so a vector wallpaper never needs variants at all.
+**Use a responsive SVG.** SVG backgrounds stay crisp, and an SVG designed with percentage-based placement can reflow to every monitor shape without variants. Opt that file into an exact per-screen viewport in `backgrounds.toml`:
+
+```toml
+["wallpaper"]
+svg_layout = "responsive"
+```
+
+The section name is the SVG filename without `.svg`. Its root `<svg>` should include `width`, `height`, and `viewBox`; Omarchy replaces those with the current screen dimensions while rendering. Nested SVG viewports can keep a logo undistorted while backgrounds and horizontal artwork expand to fill the screen.

@@ -210,6 +210,7 @@ FILL="crop"
 FILL_COLOR_SPEC="background"
 FOCAL_X="0.5"
 FOCAL_Y="0.5"
+SVG_LAYOUT="fixed"
 
 fill=$(meta_value fill)
 [[ $fill =~ ^(crop|fit|center|tile)$ ]] && FILL="$fill"
@@ -226,6 +227,9 @@ fi
 
 fill_color_spec=$(meta_value fill_color)
 [[ -n $fill_color_spec ]] && FILL_COLOR_SPEC="$fill_color_spec"
+
+svg_layout=$(meta_value svg_layout)
+[[ $svg_layout == "responsive" ]] && SVG_LAYOUT="$svg_layout"
 
 # A literal #rrggbb (or #rrggbbaa) passes through; a plain palette key is
 # resolved against the current theme. Anything else — a malformed hex value,
@@ -253,30 +257,36 @@ resolve_fill_color() {
 FILL_COLOR=$(resolve_fill_color "$FILL_COLOR_SPEC")
 
 # An SVG selected for a known screen is rasterized once per
-# path/mtime/screen/fill/fill_color combination and served from the cache.
+# path/mtime/screen/fill/fill_color/svg_layout combination and served from the
+# cache. A responsive SVG receives the screen itself as its viewport; other
+# SVGs retain their intrinsic aspect ratio and the normal fill behavior.
 rasterize_svg() {
   local svg="$1"
   local cache_dir="$HOME/.cache/omarchy/background-renders"
-  local dims target mtime cache_key cache_file render_tmp
+  local dims target mtime cache_key cache_file render_tmp render_source render_work asset
 
-  dims=$(probe_dimensions "$svg") || dims=""
-  [[ $dims =~ ^([1-9][0-9]*)\ ([1-9][0-9]*)$ ]] || return 1
+  if [[ $SVG_LAYOUT == "responsive" ]]; then
+    target="$SCREEN_W $SCREEN_H"
+  else
+    dims=$(probe_dimensions "$svg") || dims=""
+    [[ $dims =~ ^([1-9][0-9]*)\ ([1-9][0-9]*)$ ]] || return 1
 
-  # crop covers the screen, fit is contained by it, center/tile keep the
-  # intrinsic size. Width and height scale together, so aspect is preserved.
-  target=$(awk -v sw="$SCREEN_W" -v sh="$SCREEN_H" -v w="${BASH_REMATCH[1]}" -v h="${BASH_REMATCH[2]}" -v fill="$FILL" '
-    BEGIN {
-      if (fill == "crop") scale = (sw / w > sh / h) ? sw / w : sh / h
-      else if (fill == "fit") scale = (sw / w < sh / h) ? sw / w : sh / h
-      else scale = 1
-      printf "%d %d", int(w * scale + 0.5), int(h * scale + 0.5)
-    }
-  ')
+    # crop covers the screen, fit is contained by it, center/tile keep the
+    # intrinsic size. Width and height scale together, so aspect is preserved.
+    target=$(awk -v sw="$SCREEN_W" -v sh="$SCREEN_H" -v w="${BASH_REMATCH[1]}" -v h="${BASH_REMATCH[2]}" -v fill="$FILL" '
+      BEGIN {
+        if (fill == "crop") scale = (sw / w > sh / h) ? sw / w : sh / h
+        else if (fill == "fit") scale = (sw / w < sh / h) ? sw / w : sh / h
+        else scale = 1
+        printf "%d %d", int(w * scale + 0.5), int(h * scale + 0.5)
+      }
+    ')
+  fi
   [[ $target =~ ^([1-9][0-9]*)\ ([1-9][0-9]*)$ ]] || return 1
   local target_w=${BASH_REMATCH[1]} target_h=${BASH_REMATCH[2]}
 
   mtime=$(stat -c %Y "$svg" 2>/dev/null) || return 1
-  cache_key=$(printf '%s\t%s\t%s\t%s\t%s' "$svg" "$mtime" "${SCREEN_W}x${SCREEN_H}" "$FILL" "$FILL_COLOR" | md5sum)
+  cache_key=$(printf '%s\t%s\t%s\t%s\t%s\t%s' "$svg" "$mtime" "${SCREEN_W}x${SCREEN_H}" "$FILL" "$FILL_COLOR" "$SVG_LAYOUT" | md5sum)
   cache_key=${cache_key%% *}
   cache_file="$cache_dir/$cache_key.png"
 
@@ -291,11 +301,40 @@ rasterize_svg() {
   fi
 
   render_tmp=$(mktemp "$cache_dir/.render-XXXXXX.png") || return 1
-  if rsvg-convert --width "$target_w" --height "$target_h" --keep-aspect-ratio \
-    --background-color "$FILL_COLOR" -o "$render_tmp" "$svg" 2>/dev/null; then
+  render_source="$svg"
+
+  if [[ $SVG_LAYOUT == "responsive" ]]; then
+    # Give the SVG a real viewport matching this screen. The temporary source
+    # stays beside hardlinks (or copies) of its sibling assets so relative image
+    # references continue to resolve exactly as they do in the theme directory.
+    render_work=$(mktemp -d "$cache_dir/.responsive-XXXXXX") || {
+      rm -f "$render_tmp"
+      return 1
+    }
+    for asset in "$(dirname "$svg")"/*; do
+      [[ -f $asset && $asset != "$svg" ]] || continue
+      ln -- "$asset" "$render_work/$(basename "$asset")" 2>/dev/null ||
+        cp --reflink=auto -- "$asset" "$render_work/$(basename "$asset")"
+    done
+    render_source="$render_work/$(basename "$svg")"
+    sed -E \
+      -e "0,/width=\"[^\"]*\"/s//width=\"$SCREEN_W\"/" \
+      -e "0,/height=\"[^\"]*\"/s//height=\"$SCREEN_H\"/" \
+      -e "0,/viewBox=\"[^\"]*\"/s//viewBox=\"0 0 $SCREEN_W $SCREEN_H\"/" \
+      "$svg" >"$render_source"
+  fi
+
+  rsvg_args=(--width "$target_w" --height "$target_h" --background-color "$FILL_COLOR")
+  if [[ $SVG_LAYOUT != "responsive" ]]; then
+    rsvg_args+=(--keep-aspect-ratio)
+  fi
+
+  if rsvg-convert "${rsvg_args[@]}" -o "$render_tmp" "$render_source" 2>/dev/null; then
+    [[ -z ${render_work:-} ]] || rm -rf -- "$render_work"
     mv "$render_tmp" "$cache_file"
     printf '%s' "$cache_file"
   else
+    [[ -z ${render_work:-} ]] || rm -rf -- "$render_work"
     rm -f "$render_tmp"
     return 1
   fi

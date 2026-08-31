@@ -161,6 +161,34 @@ output=$(resolve --fields)
 
 pass "SVG backgrounds rasterize to cached cover-sized PNGs per screen"
 
+# A responsive SVG receives the exact screen as its viewport instead of being
+# rendered at a fixed intrinsic aspect. Relative sibling assets remain usable
+# from the temporary responsive source.
+cat >>"$backgrounds/backgrounds.toml" <<'TOML'
+
+["5-responsive"]
+svg_layout = "responsive"
+TOML
+
+magick -size 20x20 xc:blue "$backgrounds/responsive-asset.png"
+cat >"$backgrounds/5-responsive.svg" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" width="100" height="50" viewBox="0 0 100 50">
+  <rect width="100%" height="100%" fill="red"/>
+  <image x="25%" y="25%" width="50%" height="50%" href="responsive-asset.png"/>
+</svg>
+SVG
+ln -nsf "$backgrounds/5-responsive.svg" "$state/background"
+
+output=$(resolve --fields --screen 200x200)
+rendered=$(fields_value path "$output")
+dims=$(magick identify -ping -format '%wx%h' "$rendered")
+[[ $dims == "200x200" ]] || fail "a responsive SVG render matches the exact screen viewport" "got $dims"
+
+center=$(magick "$rendered" -format '%[pixel:p{100,100}]' info:)
+[[ $center == "srgb(0,0,255)" ]] || fail "a responsive SVG keeps relative sibling assets available" "got $center"
+
+pass "responsive SVG backgrounds render against the exact screen viewport"
+
 # Malformed metadata never breaks resolution: unparseable lines are ignored
 # and invalid values fall back to the defaults (with the theme background
 # color backing an unknown palette key).

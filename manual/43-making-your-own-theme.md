@@ -46,7 +46,7 @@ Your theme's backgrounds live in its `backgrounds/` folder, and by default each 
   ```
 
   Sections are named after an image's filename without its extension. `fill` is one of `crop`, `fit`, `center`, or `tile`; `fill_color` is a color name from your `colors.toml` or a hex value; `focal` is the point of the image to keep in view when cropping, from `"0 0"` (top left) to `"1 1"` (bottom right).
-- **SVG backgrounds.** An `.svg` in `backgrounds/` is rendered crisply at each screen's exact size, so one file covers every shape. Even better, name it `something.svg.tpl` and use the same `{{ background }}`-style placeholders as any other template: when your theme is applied, it's rendered into `something.svg` with your theme's colors, so one piece of artwork can follow the palette. (If you ship both the `.tpl` and a ready-made `.svg` with the same name, your `.svg` wins.)
+- **Responsive SVG backgrounds.** An `.svg` in `backgrounds/` stays crisp, and `svg_layout = "responsive"` in that image's `backgrounds.toml` section gives it each screen's exact viewport so percentage-based artwork can reflow instead of being cropped. Keep `width`, `height`, and `viewBox` on the root `<svg>`; Omarchy replaces them for the target screen while nested SVG viewports can preserve a logo's proportions. Even better, name it `something.svg.tpl` and use the same `{{ background }}`-style placeholders as any other template: when your theme is applied, it's rendered into `something.svg` with your theme's colors, so one piece of artwork can follow the palette. (If you ship both the `.tpl` and a ready-made `.svg` with the same name, your `.svg` wins.)
 
 ### Theming apps Omarchy doesn't cover
 
