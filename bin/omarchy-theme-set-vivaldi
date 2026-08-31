@@ -1,0 +1,141 @@
+#!/bin/bash
+
+# omarchy:summary=Apply the current theme colors to Vivaldi's native theme
+# omarchy:hidden=true
+
+# Vivaldi ignores the Chromium theme policy the other browsers are colored
+# with: BrowserThemeColor is accepted and reported OK on vivaldi://policy, but
+# nothing in the UI acts on it, because Vivaldi paints its chrome from its own
+# theme engine. So it gets a native Vivaldi theme instead, written into the
+# profile preferences.
+#
+# Two preferences are involved, and the second is easy to miss because it sits
+# under vivaldi.theme (singular) while the themes themselves live under
+# vivaldi.themes (plural):
+#
+#   vivaldi.themes.user         the theme objects
+#   vivaldi.theme.schedule.o_s  {"light": <id>, "dark": <id>}, selecting per OS mode
+#
+# A theme written without pointing the schedule at its id is inert. Both slots
+# get the same id: Vivaldi does not follow the XDG appearance portal, so which
+# slot it consults cannot be predicted from the system setting.
+#
+# Vivaldi holds preferences in memory and rewrites them on exit, so a write
+# while it is running would be silently discarded on quit. This refuses to
+# write in that case; omarchy-launch-browser runs it again before starting
+# Vivaldi, which covers a theme changed mid-session.
+
+THEME_PREFIX="Omarchy"
+
+if pgrep -x vivaldi-bin >/dev/null; then
+  exit 0
+fi
+
+theme_name=$(omarchy-theme-current 2>/dev/null)
+background=$(omarchy-theme-color background)
+foreground=$(omarchy-theme-color foreground)
+accent=$(omarchy-theme-color accent)
+lighter_background=$(omarchy-theme-color lighter_background)
+
+if [[ -z $background || -z $foreground || -z $accent || -z $lighter_background ]]; then
+  exit 0
+fi
+
+failed=0
+for preferences in "$HOME"/.config/vivaldi/*/Preferences; do
+  [[ -f $preferences ]] || continue
+
+  THEME_NAME="$theme_name" BACKGROUND="$background" FOREGROUND="$foreground" \
+    ACCENT="$accent" LIGHTER_BACKGROUND="$lighter_background" \
+    python3 - "$preferences" "$THEME_PREFIX" <<'PYTHON' || failed=1
+import io
+import json
+import os
+import sys
+import uuid
+
+path, prefix = sys.argv[1], sys.argv[2]
+
+try:
+    with io.open(path, encoding="utf-8") as preferences:
+        data = json.load(preferences)
+except (OSError, ValueError):
+    sys.exit(1)
+
+background = os.environ["BACKGROUND"]
+colors = {
+    "name": f"{prefix} {os.environ['THEME_NAME']}".strip(),
+    "colorBg": background,
+    "colorFg": os.environ["FOREGROUND"],
+    "colorAccentBg": os.environ["LIGHTER_BACKGROUND"],
+    "colorHighlightBg": os.environ["ACCENT"],
+    "defaultBackground": background,
+    # Vivaldi's stock light theme sets this, which tints the chrome from the
+    # page and would override the theme colors on every navigation.
+    "accentFromPage": False,
+}
+
+vivaldi = data.setdefault("vivaldi", {})
+themes = vivaldi.setdefault("themes", {})
+user = themes.get("user")
+if not isinstance(user, list):
+    user = []
+    themes["user"] = user
+
+theme = next(
+    (
+        candidate
+        for candidate in user
+        if isinstance(candidate, dict) and str(candidate.get("name", "")).startswith(prefix)
+    ),
+    None,
+)
+
+if theme is None:
+    # The shape Vivaldi's own theme export writes. Reusing an existing entry
+    # keeps its id, which the schedule below refers to.
+    theme = {
+        "accentOnWindow": False,
+        "accentSaturationLimit": 0.85,
+        "alpha": 1,
+        "backgroundImage": "",
+        "backgroundPosition": "stretch",
+        "backgroundSource": "",
+        "blur": 0,
+        "colorPosition": "unified",
+        "colorWindowBg": "",
+        "contrast": 0,
+        "dimBlurred": False,
+        "engineVersion": 1,
+        "id": str(uuid.uuid4()),
+        "preferSystemAccent": False,
+        "radius": 8,
+        "simpleScrollbar": False,
+        "transparencyTabBar": False,
+        "transparencyTabs": False,
+        "url": "",
+        "version": 1,
+    }
+    user.append(theme)
+
+theme.update(colors)
+
+schedule = vivaldi.setdefault("theme", {}).setdefault("schedule", {}).setdefault("o_s", {})
+schedule["light"] = theme["id"]
+schedule["dark"] = theme["id"]
+
+# Write through a temporary file so an interrupted run cannot leave a profile
+# with truncated preferences.
+staged = path + ".omarchy-staged"
+try:
+    with io.open(staged, "w", encoding="utf-8") as preferences:
+        preferences.write(json.dumps(data, separators=(",", ":")))
+    os.replace(staged, path)
+except OSError:
+    if os.path.exists(staged):
+        os.remove(staged)
+    sys.exit(1)
+PYTHON
+done
+
+exit "$failed"

@@ -9,6 +9,12 @@ if [[ -z $default_browser ]]; then
 fi
 browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$default_browser 2>/dev/null | head -1)
 
+# A theme set while Vivaldi was running could not be written then, because
+# Vivaldi rewrites its preferences from memory on exit. It is closed now.
+if [[ $browser_exec == *vivaldi* ]]; then
+  omarchy-theme-set-vivaldi
+fi
+
 if $browser_exec --help 2>/dev/null | grep -q MOZ_LOG; then
   private_flag="--private-window"
 elif [[ $browser_exec =~ edge ]]; then

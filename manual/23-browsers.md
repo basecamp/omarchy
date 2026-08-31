@@ -34,6 +34,12 @@ Firefox and Zen are a different family, so they get different treatment: Omarchy
 
 They don't get the Chromium extensions above, and they're not themed by Omarchy, so those parts of the experience are yours to set up.
 
+## Vivaldi
+
+Vivaldi is Chromium-family, but it paints its own interface instead of using Chromium's, so it ignores the theme policy the others follow. Omarchy builds it a native Vivaldi theme from your current colors instead, which means it does get themed — unlike Firefox and Zen — but the new colors arrive the next time Vivaldi starts rather than the moment you switch themes. If you change themes while it's open, restarting it catches up.
+
+It doesn't get the Copy URL and Download Video extensions.
+
 ## Removing one again
 
 Anything you installed here can be taken back off under _Remove > Browser_. Chromium isn't in that list — it's part of the base system.
