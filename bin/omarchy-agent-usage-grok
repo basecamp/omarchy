@@ -159,8 +159,8 @@ def turn_usage(usage: dict[str, Any]) -> tuple[int, int, int, int]:
   reasoning = number(usage.get("reasoningTokens", usage.get("reasoning_tokens")))
   # Grok's inputTokens is the full prompt, cache included. Subtract so the
   # four panel buckets stay mutually exclusive, the same way Codex does.
-  if input_tokens >= cache_read + cache_write:
-    input_tokens -= cache_read + cache_write
+  # Clamp at 0 when a ledger reports more cache than input.
+  input_tokens = max(0, input_tokens - cache_read - cache_write)
   if reasoning > output_tokens:
     output_tokens = reasoning
   return input_tokens, output_tokens, cache_read, cache_write
@@ -284,7 +284,10 @@ def scan_pi_sessions() -> list[dict[str, Any]]:
                 "reasoningTokens": usage.get("reasoning", usage.get("reasoningTokens")),
               })
               if not (input_tokens or output_tokens or cache_read or cache_write):
-                continue
+                total = number(usage.get("totalTokens"))
+                if total <= 0:
+                  continue
+                input_tokens = total
               turns.append({
                 "id": str(entry.get("id") or f"{path}:{line_number}"),
                 "day": local_date_from_timestamp(entry.get("timestamp") or message.get("timestamp")),
@@ -754,7 +757,19 @@ def collect_limits() -> dict[str, Any]:
       code = error.get("code") if isinstance(error, dict) else None
       text = str((error.get("message") if isinstance(error, dict) else error) or "Grok billing failed")
       lowered = text.lower()
-      if code in (401, 403) or any(word in lowered for word in ("auth", "login", "unauthor", "expired", "sign-in", "sign in")):
+      auth_markers = (
+        "unauthorized",
+        "unauthorised",
+        "unauthenticated",
+        "authentication",
+        "authorization",
+        "authorisation",
+        "login",
+        "expired",
+        "sign-in",
+        "sign in",
+      )
+      if code in (401, 403) or any(marker in lowered for marker in auth_markers):
         result["usageStatusText"] = "Sign-in expired"
         result["authHelpText"] = AUTH_HELP
         return result
@@ -799,11 +814,10 @@ def main() -> int:
   parser = argparse.ArgumentParser()
   parser.add_argument("--force", action="store_true", help="rescan sessions, ignoring caches")
   parser.add_argument("--limits-only", action="store_true", help="reuse any recent session scan; only the limits probe must be fresh")
-  parser.add_argument("--cache-seconds", type=float, default=SCAN_REUSE_SECONDS)
   args = parser.parse_args()
 
   home = grok_home()
-  scan_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else args.cache_seconds)
+  scan_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
   stats = cached_scan(home / "sessions", scan_age)
   has_data = number(stats.get("totalPrompts")) > 0 or number(stats.get("totalSessions")) > 0
   limits = collect_limits()

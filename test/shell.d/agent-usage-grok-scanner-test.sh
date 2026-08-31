@@ -252,6 +252,32 @@ result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_H
   fail "Grok collector does not retry an expired login every 30s" "$result"
 pass "Grok collector treats billing 401 as expired sign-in"
 
+# "author" contains "auth"; that must not look like expired sign-in.
+cat >"$TEST_HOME/bin/grok" <<'EOF'
+#!/bin/bash
+while read -r request; do
+  id=$(jq -r '.id // empty' <<<"$request")
+  method=$(jq -r '.method // empty' <<<"$request")
+  [[ -z $id ]] && continue
+  case "$method" in
+  initialize)
+    jq -cn --argjson id "$id" '{jsonrpc:"2.0",id:$id,result:{}}'
+    ;;
+  _x.ai/billing)
+    jq -cn --argjson id "$id" '{jsonrpc:"2.0",id:$id,error:{code:-32603,message:"Request author mismatch"}}'
+    ;;
+  esac
+done
+EOF
+chmod +x "$TEST_HOME/bin/grok"
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_HOME/.grok" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+[[ $(jq -r '.usageStatusText' <<<"$result") == "Grok limits unavailable" ]] ||
+  fail "Grok collector does not treat author in an error as expired sign-in" "$result"
+[[ $(jq '.retryAdvised // false' <<<"$result") == "true" ]] ||
+  fail "Grok collector retries a non-auth billing error" "$result"
+pass "Grok collector does not treat author in an error as expired sign-in"
+
 # Mise wrappers may print a non-JSON line before ACP traffic; skip it.
 cat >"$TEST_HOME/bin/grok" <<'EOF'
 #!/bin/bash
@@ -535,3 +561,41 @@ result=$(HOME="$UNWRITABLE_HOME" XDG_CACHE_HOME="$UNWRITABLE_HOME/not-a-dir" XDG
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "3" ]] ||
   fail "Grok collector still prints a complete record when the cache is unwritable" "$result"
 pass "Grok collector still prints a complete record when the cache is unwritable"
+
+# Inconsistent ledger: cache larger than input. Clamp input to 0 so the four
+# buckets stay exclusive, the same way Codex uses max(0, input - cache).
+CLAMP_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$EMPTY_HOME" "$PI_HOME" "$OPENCODE_HOME" "$INTERRUPTED_HOME" "$CACHE_HOME" "$UNWRITABLE_HOME" "$CLAMP_HOME"' EXIT
+clamp_session="$CLAMP_HOME/.grok/sessions/%2Ftmp/clamp-session"
+mkdir -p "$clamp_session"
+cat >"$clamp_session/summary.json" <<'EOF'
+{"info":{"id":"clamp-session"},"current_model_id":"grok-4.6"}
+EOF
+cat >"$clamp_session/updates.jsonl" <<EOF
+{"timestamp":"${today}T12:00:00Z","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"clamp-1","usage":{"inputTokens":10,"outputTokens":5,"cachedReadTokens":60,"cacheCreationTokens":10}}}}
+EOF
+result=$(HOME="$CLAMP_HOME" XDG_CACHE_HOME="$CLAMP_HOME/.cache" XDG_DATA_HOME="$CLAMP_HOME/.local/share" \
+  GROK_HOME="$CLAMP_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+[[ $(jq -c '.modelUsage["grok"]' <<<"$result") == '{"cacheCreationInputTokens":10,"cacheReadInputTokens":60,"inputTokens":0,"outputTokens":5}' ]] ||
+  fail "Grok collector clamps overlapping cache out of input" "$result"
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "75" ]] ||
+  fail "Grok collector does not double-count cache when the ledger is inconsistent" "$result"
+pass "Grok collector clamps overlapping cache out of input"
+
+# pi rows that only have totalTokens still count, matching Claude/Codex.
+PI_TOTAL_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$EMPTY_HOME" "$PI_HOME" "$OPENCODE_HOME" "$INTERRUPTED_HOME" "$CACHE_HOME" "$UNWRITABLE_HOME" "$CLAMP_HOME" "$PI_TOTAL_HOME"' EXIT
+mkdir -p "$PI_TOTAL_HOME/.pi/agent/sessions/project"
+now_ms=$(python3 -c 'import time; print(int(time.time() * 1000))')
+cat >"$PI_TOTAL_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
+{"type":"message","id":"pi-total","timestamp":$now_ms,"message":{"role":"assistant","provider":"xai","model":"grok-4.6","usage":{"totalTokens":40}}}
+EOF
+result=$(HOME="$PI_TOTAL_HOME" XDG_CACHE_HOME="$PI_TOTAL_HOME/.cache" XDG_DATA_HOME="$PI_TOTAL_HOME/.local/share" \
+  GROK_HOME="$PI_TOTAL_HOME/.grok" PATH="$(dirname "$jq_bin"):/usr/bin:/bin" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "40" ]] ||
+  fail "Grok collector counts pi totalTokens-only rows" "$result"
+[[ $(jq -c '.modelUsage["grok-4.6"]' <<<"$result") == '{"cacheCreationInputTokens":0,"cacheReadInputTokens":0,"inputTokens":40,"outputTokens":0}' ]] ||
+  fail "Grok collector files totalTokens-only pi rows as input" "$result"
+pass "Grok collector counts pi totalTokens-only rows"
