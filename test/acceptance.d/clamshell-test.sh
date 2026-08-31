@@ -318,6 +318,10 @@ virtual_disabled() { [[ $(hyprctl monitors all -j | jq -r '[.[] | select(.name =
 # A strict enabled assertion: an absent output or an unreadable answer must
 # fail the case, not pass as "not disabled".
 virtual_enabled() { [[ $(hyprctl monitors all -j | jq -r '[.[] | select(.name == "Virtual-1")] | first | .disabled') == "false" ]]; }
+# The placeholder itself, asserted rather than assumed: without this the
+# predicate answering false below reads the same whether FALLBACK is there or
+# Hyprland stopped making one.
+fallback_enabled() { [[ $(hyprctl monitors all -j | jq -r '[.[] | select(.name == "FALLBACK")] | first | .disabled') == "false" ]]; }
 eval_disable() { hyprctl eval "hl.monitor({ output = \"$1\", disabled = true })" >/dev/null 2>&1; }
 
 apply_config <<LUA
@@ -334,6 +338,7 @@ no_active_external || fail "P1 repair: with no enabled non-internal output, the 
 # asserted again against it.
 eval_disable "$internal"
 await panel_disabled || fail "P1 repair: the stranded state can be staged" "$(panel)"
+await fallback_enabled || fail "P1 repair: Hyprland runs its enabled FALLBACK placeholder once no real output is left" "$(hyprctl monitors all -j | jq -c '[.[] | {name, disabled}]')"
 no_active_external || fail "P1 repair: the FALLBACK placeholder is not an active external" "$(hyprctl monitors all -j | jq -c '[.[] | {name, disabled}]')"
 rm -f "$overlay"
 set_lid open
