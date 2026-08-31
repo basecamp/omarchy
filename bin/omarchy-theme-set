@@ -333,6 +333,10 @@ post_theme_commands=(
 )
 
 if [[ $THEME_HEADLESS != "1" ]]; then
+  # Tell post-theme commands they are running as part of a theme switch, not
+  # a direct user request, so ones like omarchy-restart-terminal can skip
+  # warnings that only make sense when the user asked for a reload themselves.
+  export OMARCHY_THEME_SWITCHING=1
   run_parallel "${post_theme_commands[@]}"
 
   # Call hook on theme set

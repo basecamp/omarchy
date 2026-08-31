@@ -73,6 +73,16 @@ pass "a running ghostty is sent SIGUSR2 to reload"
 OMARCHY_TEST_KITTY_RUNNING=0 OMARCHY_TEST_GHOSTTY_RUNNING=0 OMARCHY_TEST_FOOT_RUNNING=1 \
   run_restart_terminal >/dev/null 2>"$test_tmp/err.log" || fail "a running foot does not fail the script"
 [[ ! -s $test_tmp/killall.log ]] || fail "foot is never sent a signal, since it has none to reload with" "$(<"$test_tmp/killall.log")"
-grep -qF "foot has no config-reload mechanism" "$test_tmp/err.log" ||
-  fail "a running foot gets an explicit no-reload message instead of a silent no-op" "$(<"$test_tmp/err.log")"
-pass "a running foot gets an explicit no-reload message instead of a silent no-op"
+grep -qF "foot cannot reload foot.ini" "$test_tmp/err.log" ||
+  fail "a directly-invoked restart on a running foot gets an explicit no-reload message instead of a silent no-op" "$(<"$test_tmp/err.log")"
+pass "a directly-invoked restart on a running foot gets an explicit no-reload message instead of a silent no-op"
+
+# A theme switch only ever changes colors, which omarchy-theme-set-foot
+# already applies live over OSC -- foot needs no restart for that, so
+# omarchy-theme-set marks the run and the warning should stay quiet.
+: >"$test_tmp/killall.log"
+OMARCHY_THEME_SWITCHING=1 OMARCHY_TEST_KITTY_RUNNING=0 OMARCHY_TEST_GHOSTTY_RUNNING=0 OMARCHY_TEST_FOOT_RUNNING=1 \
+  run_restart_terminal >/dev/null 2>"$test_tmp/err.log" || fail "a running foot does not fail the script during a theme switch"
+[[ ! -s $test_tmp/err.log ]] ||
+  fail "the foot warning is skipped during a theme switch, since colors already updated live" "$(<"$test_tmp/err.log")"
+pass "the foot warning is skipped during a theme switch, since colors already updated live"
