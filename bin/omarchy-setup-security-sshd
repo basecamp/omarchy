@@ -222,4 +222,5 @@ fi
 open_firewall
 
 echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
+echo "Password logins are off; this machine now accepts authorized keys only."
 echo "You can now connect with: ssh $USER@$(hostname)"

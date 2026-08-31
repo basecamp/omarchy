@@ -677,11 +677,15 @@ user_groups() {
   if [[ -f $PROVISIONING_DIR/groups ]]; then
     while IFS= read -r group; do
       [[ -n $group ]] || continue
-      # Never grant docker at first boot, even if an older install recorded it
-      # (or a factory snapshot predating the opt-in default carries it): the
-      # docker group is root-equivalent. It is opt-in via
-      # omarchy-setup-security-sudoless-docker.
+      # Never replay old privileged group defaults. Docker is always opt-in.
+      # Input is only retained when the factory image has one of the features
+      # whose installer deliberately grants access to raw input devices.
       [[ $group == "docker" ]] && continue
+      if [[ $group == "input" ]] &&
+        ! pacman -Qq xpadneo-dkms &>/dev/null &&
+        ! pacman -Qq ydotool &>/dev/null; then
+        continue
+      fi
       getent group "$group" >/dev/null || continue
       [[ ",$groups," == *",$group,"* ]] || groups+=",$group"
     done <"$PROVISIONING_DIR/groups"
@@ -742,6 +746,12 @@ create_user() {
   # for specific commands), and a duplicate grant is harmless.
   echo "%wheel ALL=(ALL:ALL) ALL" >/etc/sudoers.d/00-omarchy-wheel
   chmod 440 /etc/sudoers.d/00-omarchy-wheel
+
+  source "$OMARCHY_PATH/install/helpers/browser-policy.sh"
+  for dir in "${BROWSER_POLICY_MANAGED_DIRS[@]}"; do
+    [[ -d $dir || -L $dir ]] || continue
+    browser_policy_setup_dir "$dir"
+  done
 }
 
 install_authorized_keys() {
@@ -782,7 +792,7 @@ configure_login() {
 # After=) is what makes it deterministic — no sleep/race against SDDM's startup.
 install_autologin_once_cleanup() {
   local unit=omarchy-provision-autologin-once.service
-  cat >"/etc/systemd/system/$unit" <<UNIT
+  sed "s|@UNIT@|$unit|g" >"/etc/systemd/system/$unit" <<'UNIT'
 [Unit]
 Description=Drop the first-boot autologin before the next login
 Before=display-manager.service
@@ -791,7 +801,7 @@ ConditionPathExists=/etc/sddm.conf.d/autologin.conf
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/rm -f /etc/sddm.conf.d/autologin.conf
-ExecStartPost=/usr/bin/rm -f /etc/systemd/system/graphical.target.wants/$unit /etc/systemd/system/$unit
+ExecStartPost=/usr/bin/rm -f /etc/systemd/system/graphical.target.wants/@UNIT@ /etc/systemd/system/@UNIT@
 
 [Install]
 WantedBy=graphical.target

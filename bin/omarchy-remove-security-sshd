@@ -18,6 +18,12 @@ if sudo test -f "$SSHD_DROPIN"; then
   sudo rm -f "$SSHD_DROPIN"
 fi
 
+# Pre-#8365 hardening path from quattro, if present.
+if sudo test -f /etc/ssh/sshd_config.d/10-omarchy-hardening.conf; then
+  echo "Removing the legacy sshd hardening drop-in..."
+  sudo rm -f /etc/ssh/sshd_config.d/10-omarchy-hardening.conf
+fi
+
 if omarchy-cmd-present ufw; then
   echo "Closing the SSH port in the firewall..."
   sudo ufw --force delete limit 22/tcp >/dev/null 2>&1 || true
