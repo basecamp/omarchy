@@ -65,6 +65,9 @@ XKBVARIANT=intl
 assert_input "latin layouts are left alone" "[de] [nodeadkeys] [$base_options]" 'XKBLAYOUT=de
 XKBVARIANT=nodeadkeys
 '
+assert_input "korean machines keep kr leading, since kr types latin" "[kr] [] [$base_options]" 'KEYMAP=us
+XKBLAYOUT=kr
+'
 assert_input "non-latin layout gains us in front" "[us,ara] [,] [$toggle_options]" 'XKBLAYOUT=ara
 '
 assert_input "prepended us keeps variants aligned" "[us,ru] [,phonetic] [$toggle_options]" 'XKBLAYOUT=ru

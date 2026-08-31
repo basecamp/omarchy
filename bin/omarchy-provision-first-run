@@ -83,6 +83,8 @@ run_first_run_step "set GTK primary paste" \
   bash "$OMARCHY_PATH/install/user/first-run/gtk-primary-paste.sh"
 run_first_run_step "apply speaker tuning" \
   bash "$OMARCHY_PATH/install/user/first-run/audio-tuning.sh"
+run_first_run_step "seed Korean input method" \
+  bash "$OMARCHY_PATH/install/user/first-run/korean-ime.sh"
 
 omarchy-notification-wait || log_first_run "Timed out waiting for notification service; continuing"
 # Each send returns only once the server has taken the toast, so sending in
