@@ -1,12 +1,10 @@
 # Reporting a Crash Upstream to Omarchy
 
-Read this only after concluding that a crash is genuinely Omarchy's to fix.
+Read this when evidence suggests Omarchy may contribute to a crash, or when ownership remains unclear after diagnosis.
 
-## Is it even Omarchy's bug?
+## Determine the responsible layer
 
-Be strict here. Omarchy is a configuration layer over Arch Linux, so a crash
-inside a third-party application — a file manager, a browser, a GNOME or Qt
-library — is almost always an upstream bug in **that** project, not in Omarchy.
+Approach ownership neutrally. Omarchy combines its own commands and configuration with Arch Linux and third-party applications. A crash inside a third-party process may be an application bug, but it can also be triggered by the way Omarchy packages, configures, launches, or integrates that application. Follow the evidence rather than starting from either conclusion.
 
 Omarchy's sphere of control is roughly:
 
@@ -17,18 +15,13 @@ Omarchy's sphere of control is roughly:
 - its install and migration scripts
 - how it packages and configures what it installs
 
-A crash in a program Omarchy merely installs is **not** an Omarchy bug unless
-Omarchy's own packaging or configuration is implicated.
+A third-party frame in the backtrace does not settle ownership by itself. Check the command line, Omarchy-managed configuration, recent Omarchy updates or migrations, and whether the failure reproduces without the relevant Omarchy customization.
 
-If it is not Omarchy's, say so and stop. Suggesting the right upstream project is
-useful; filing there yourself is not part of this.
+When the evidence places the defect outside Omarchy, explain that connection plainly and point the user to the appropriate upstream project. When ownership remains uncertain, say what evidence is missing and use the Discord for triage rather than forcing an attribution.
 
 ## Three conditions, all required
 
-1. **It is a verified bug in Omarchy's sphere**, established on evidence. Issues
-   are for verified bugs only. An "is this even a bug?" belongs on the Discord at
-   <https://omarchy.org/discord>; a feature idea belongs in GitHub Discussions
-   under Suggestions.
+1. **Evidence ties the failure to behavior Omarchy controls.** GitHub issues are most actionable when the responsible Omarchy command, configuration, packaging, integration, installation, or migration behavior has been identified. If the cause or owner is still uncertain, continue triage on the Discord at <https://omarchy.org/discord>; a feature idea belongs in GitHub Discussions under Suggestions.
 2. **The user has explicitly agreed.** Show them the exact title and body you
    propose, and wait for a yes. Never file unprompted.
 3. **The machine can file it** — `gh auth status` must succeed. If `gh` is missing
@@ -37,7 +30,7 @@ useful; filing there yourself is not part of this.
 
 ## Search before filing
 
-A duplicate issue costs a maintainer more time than no report at all.
+Search first so maintainers can keep evidence for the same failure together.
 
 ```bash
 gh search issues --repo basecamp/omarchy "<program> crash"
@@ -70,8 +63,7 @@ when you have something the thread does not already contain: a different
 reproduction, a symbolized stack where it has none, a narrower trigger, a version
 where it regressed.
 
-A comment that only says the bug happens to you too is noise. If that is all you
-have, tell the user so and file nothing.
+A comment that only repeats that the bug also occurs does not add diagnostic evidence. If that is all you have, tell the user the existing issue already covers it and file nothing.
 
 ```bash
 gh issue comment <number> --repo basecamp/omarchy --body "..."
