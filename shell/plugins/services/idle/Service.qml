@@ -76,7 +76,10 @@ Item {
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
     resetScreensaverWindows()
-    runProcess(lockProcess, "lock", "omarchy-system-lock")
+    // The screensaver is already dark. Ask the lock service to keep real DPMS
+    // off while the secure surface replaces it, then run the normal cleanup
+    // path regardless of whether that optional IPC request succeeded.
+    runProcess(lockProcess, "lock", "omarchy-shell lock lockAndBlank >/dev/null 2>&1 || true; omarchy-system-lock")
   }
 
   function startIdleCycle() {

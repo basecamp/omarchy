@@ -33,6 +33,10 @@ Item {
   property string lastEventAt: ""
   property bool strandedLock: false
   property bool strandedLockResolved: false
+  property bool displayBlanked: false
+  property bool pointerWakeArmed: false
+
+  readonly property int pointerWakeSettleSeconds: 1
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
@@ -154,6 +158,8 @@ Item {
     pendingSessionLockTimer.stop()
     resetAuthenticationState()
     idleBlankTimer.stop()
+    displayBlanked = false
+    pointerWakeArmed = false
     sessionLock.locked = false
     logEvent("unlocked")
     runWake()
@@ -165,12 +171,34 @@ Item {
   }
 
   function runWake() {
+    displayBlanked = false
+    pointerWakeArmed = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    displayBlanked = true
+    pointerWakeArmed = false
     if (!blankProcess.running) blankProcess.running = true
+  }
+
+  function handlePointerWake() {
+    // Mapping the lock surface reports the pointer position before any real
+    // user motion. Ignore that initialization until compositor-side idle has
+    // settled; the next actual pointer activity wakes normally.
+    if (displayBlanked && !pointerWakeArmed) return
+    runWake()
+  }
+
+  function handlePointerWakeMonitorChanged() {
+    if (!root.displayBlanked) return
+
+    if (pointerWakeMonitor.isIdle) {
+      root.pointerWakeArmed = true
+    } else if (root.pointerWakeArmed) {
+      root.runWake()
+    }
   }
 
   function submitPassword(value) {
@@ -276,11 +304,13 @@ Item {
         failedAttempts: root.failedAttempts
         inputEnabled: root.lockRequested
         loadBackground: root.locked
+        concealAuthentication: root.displayBlanked
         passwordText: root.enteredPassword
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
         onWakeRequested: root.runWake()
+        onPointerWakeRequested: root.handlePointerWake()
       }
 
     }
@@ -373,6 +403,14 @@ Item {
         }
       }
     }
+  }
+
+  IdleMonitor {
+    id: pointerWakeMonitor
+    enabled: root.displayBlanked
+    timeout: root.pointerWakeSettleSeconds
+    respectInhibitors: false
+    onIsIdleChanged: root.handlePointerWakeMonitorChanged()
   }
 
   Process {
@@ -516,6 +554,15 @@ Item {
       return "ok"
     }
 
+    function lockAndBlank(): string {
+      if (!root.passwordPamConfigured) return "missing-pam"
+      if (!root.locked && !root.beginLock()) return "failed"
+
+      idleBlankTimer.stop()
+      root.runBlank()
+      return "ok"
+    }
+
     function isLocked(): string {
       return root.locked ? "true" : "false"
     }
@@ -531,6 +578,9 @@ Item {
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
         authenticating: root.authenticating,
+        displayBlanked: root.displayBlanked,
+        authenticationConcealed: root.displayBlanked,
+        pointerWakeArmed: root.pointerWakeArmed,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt
       })
