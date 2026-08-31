@@ -3,11 +3,6 @@
 # omarchy:summary=Overwrite the user config for the Plymouth drive decryption and boot sequence with the Omarchy default and rebuild it.
 # omarchy:requires-sudo=true
 
-sudo cp -r "$OMARCHY_PATH/default/plymouth/." /usr/share/plymouth/themes/omarchy/
-sudo plymouth-set-default-theme omarchy
-
-if omarchy-cmd-present limine-mkinitcpio; then
-  sudo limine-mkinitcpio
-else
-  sudo mkinitcpio -P
-fi
+# Reuse the fixed-file publisher so root never resolves the source checkout or
+# follows a destination symlink while restoring the packaged assets.
+exec "$OMARCHY_PATH/bin/omarchy-plymouth-set" --refresh-default

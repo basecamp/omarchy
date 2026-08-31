@@ -85,16 +85,16 @@ wait_for_pacman_transaction
 mkdir -p "$STATE_DIR"
 [[ -d $MIGRATIONS_DIR ]] || exit 0
 
-while IFS=$'\t' read -r name file marker; do
+while IFS=$'\t' read -r name file marker <&3; do
   [[ -n $name ]] || continue
 
   if [[ ! -f $marker ]]; then
     echo -e "\e[32m\nRunning migration (${name%.sh})\e[0m"
-    OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file"
+    OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file" 3<&-
     mkdir -p "$(dirname "$marker")"
     touch "$marker"
   fi
-done < <(migration_entries)
+done 3< <(migration_entries)
 
 # Clear a login-time notification the user left sitting there and then resolved
 # by running migrations some other way. The substring matches both the current
