@@ -624,8 +624,12 @@ void run() {
   worker::WorkerEndpoint endpoint(pair.descriptors[0], wire::EndpointRole::broker,
                                   broker::kBrokerRoleVersion, worker_sequence);
   handshake(endpoint, pair.descriptors[1]);
-  worker::QmlBrokerApi api(endpoint,
-      std::make_unique<worker::BootstrapInvokeEncoder>());
+  const auto readiness_manifest = manifest::parse_manifest_v2(
+      R"({"schemaVersion":2,"id":"org.example.readiness","name":"Readiness","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[],"optional":[{"capability":"storage.private","reason":"state","quotaBytes":65536}]}})");
+  worker::QmlBrokerApi api(
+      endpoint,
+      std::make_unique<worker::ManifestInvokeEncoder>(readiness_manifest),
+      readiness_manifest, 77);
   QQmlEngine readiness_engine;
   readiness_engine.rootContext()->setContextProperty(
       QStringLiteral("runtime"), &api);
@@ -672,11 +676,15 @@ void run() {
           "startup QML emitted a broker request before readiness");
   require(!api.markBrokerReady() && !api.brokerReady(),
           "broker became ready before a permission snapshot existed");
-  const auto empty_snapshot = wire::permission_snapshot::encode({
+  const auto readiness_snapshot = wire::permission_snapshot::encode({
       .manifest_request_fingerprint =
-          manifest::requested_capability_fingerprint({}),
-      .permissions = {}});
-  require(api.applyPermissionSnapshot(77, empty_snapshot) &&
+          manifest::requested_capability_fingerprint(
+              readiness_manifest.requests),
+      .permissions = {
+          {wire::permission_snapshot::GrantState::granted, 0x0002}}});
+  require(api.applyPermissionSnapshot(77, readiness_snapshot) &&
+              api.hasPermission("storage.private", "write") &&
+              !api.hasPermission("storage.private", "read") &&
               !api.brokerReady() &&
               !readiness->property("observedReady").toBool(),
           "accepting a permission snapshot implied broker readiness");
@@ -863,6 +871,20 @@ void run() {
           "undeclared operation gained an ambient fallback or broker packet");
   dynamic_qml_to_adapter();
   permission_awareness(endpoint, pair.descriptors[1], host_sequence);
+  api.disconnect(QStringLiteral("test-disconnect"));
+  drain_events();
+  auto *disconnected = qobject_cast<worker::BrokerCall *>(
+      api.invoke(QStringLiteral("storage_write"), arguments).value<QObject *>());
+  errno = 0;
+  require(!api.brokerReady() &&
+              !readiness->property("observedReady").toBool() &&
+              readiness->property("transitions").toInt() == 2 &&
+              disconnected != nullptr && disconnected->finished() &&
+              !disconnected->ok() && disconnected->correlation() == 0 &&
+              disconnected->error() == QStringLiteral("broker-unavailable") &&
+              recv(pair.descriptors[1], &byte, 1, 0) < 0 &&
+              (errno == EAGAIN || errno == EWOULDBLOCK),
+          "disconnect did not withdraw QML broker readiness without traffic");
 }
 } // namespace
 

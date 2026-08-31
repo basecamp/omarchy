@@ -108,9 +108,6 @@ class QmlBrokerApi final : public QObject {
 public:
   QmlBrokerApi(WorkerEndpoint &endpoint,
                std::unique_ptr<InvokeEncoder> encoder,
-               QObject *parent = nullptr);
-  QmlBrokerApi(WorkerEndpoint &endpoint,
-               std::unique_ptr<InvokeEncoder> encoder,
                const omarchy::plugins::manifest::ManifestV2 &manifest,
                std::uint64_t activation_generation,
                QObject *parent = nullptr);

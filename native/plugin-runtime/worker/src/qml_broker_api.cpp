@@ -272,14 +272,6 @@ void BrokerCall::reject(QString error) {
                             Qt::QueuedConnection);
 }
 
-QmlBrokerApi::QmlBrokerApi(WorkerEndpoint &endpoint,
-                           std::unique_ptr<InvokeEncoder> encoder,
-                           QObject *parent)
-    : QObject(parent), endpoint_(endpoint), encoder_(std::move(encoder)),
-      manifest_request_fingerprint_(
-          omarchy::plugins::manifest::requested_capability_fingerprint({})),
-      activation_generation_(endpoint.generation()) {}
-
 QmlBrokerApi::QmlBrokerApi(
     WorkerEndpoint &endpoint, std::unique_ptr<InvokeEncoder> encoder,
     const omarchy::plugins::manifest::ManifestV2 &manifest,
