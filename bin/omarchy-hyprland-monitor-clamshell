@@ -59,6 +59,14 @@ if [[ -n $INTERNAL && ! $INTERNAL =~ ^[A-Za-z0-9._-]+$ ]]; then
   exit 1
 fi
 
+# A run killed harder than its own trap -- SIGKILL, which
+# omarchy-system-sleep-lock deals in -- can leave its temporary or backup file
+# behind. Neither is ever loaded (the toggles loader takes only *.lua), and
+# under the lock no live run owns one, so any found here is a killed run's
+# debris: swept before either hosted helper can end this run early. The
+# unsafe-name refusal above rightly comes first -- refuse before any effect.
+rm -f "$TOGGLES_DIR"/.internal-monitor-clamshell.* 2>/dev/null || true
+
 # Two recoveries this command hosts for the watcher: a manual disable or a
 # mirror left on after the external monitor went away. Each is entered only
 # when the toggle it exists to recover is present, since with it absent each

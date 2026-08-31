@@ -369,6 +369,22 @@ run_command || fail "T3 directory: a directory at the overlay's path runs"
 [[ $(ls -A "$toggles" | wc -l) -eq 1 ]] || fail "T3 directory: no debris beside it"
 pass "T3: a transition that cannot be made is not attempted and leaves nothing"
 
+# A killed run's debris -- the EXIT trap does not run on SIGKILL -- is swept
+# under the lock by the next run that passes name validation, before either
+# hosted helper can end that run early.
+reset_state; clamshell; printf 'orphan' >"$toggles/.internal-monitor-clamshell.tmpXYZ"; printf 'old bytes' >"$toggles/.internal-monitor-clamshell.prior.XYZ123"
+run_command || fail "T3 sweep: runs over a killed run's debris"
+[[ ! -e $toggles/.internal-monitor-clamshell.tmpXYZ && ! -e $toggles/.internal-monitor-clamshell.prior.XYZ123 ]] || fail "T3 sweep: the debris is gone" "$(ls -A "$toggles")"
+overlay_equals "$expected_overlay" && (( $(reloads) == 1 )) || fail "T3 sweep: the run's own transition still happens"
+reset_state; printf 'orphan' >"$toggles/.internal-monitor-clamshell.prior.ABC456"
+run_command || fail "T3 sweep: an idempotent run still sweeps"
+[[ ! -e $toggles/.internal-monitor-clamshell.prior.ABC456 ]] || fail "T3 sweep: debris does not survive a no-op run"
+(( $(reloads) == 0 && $(dispatches) == 0 )) || fail "T3 sweep: sweeping is not a transition"
+reset_state; touch "$manual_flag" "$ctl/fail-helper-internal"; printf 'orphan' >"$toggles/.internal-monitor-clamshell.prior.DEF789"
+run_command || true
+[[ ! -e $toggles/.internal-monitor-clamshell.prior.DEF789 ]] || fail "T3 sweep: a failing helper cannot end the run before the sweep"
+pass "T3: a killed run's leftover files are swept by the next run that passes name validation, before either helper can exit early"
+
 # Nothing is created on an idempotent run: the same run with the directory read-only is identical.
 idempotent_case() {
   local label="$1"
