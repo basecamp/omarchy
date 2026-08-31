@@ -288,7 +288,7 @@ void empty_package_and_absent_admin_compose_one_shared_context() {
   require(bootstrap && error == channel::RuntimeBootstrapError::none &&
               channel::RuntimeBootstrapTestAccess::has_fixed_service_context(
                   *bootstrap),
-          "fixed bootstrap did not compose exact production services");
+          "fixed bootstrap did not compose exact runtime services");
 
   const permissions::PluginId plugin("example.plugin");
   require(!prepare_runtime_for_test(

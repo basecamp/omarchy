@@ -173,13 +173,13 @@ void busy_shared_transport_fails_closed_promptly() {
           "busy shared notification transport did not fail closed promptly");
 }
 
-void production_services_enable_only_notifications() {
+void runtime_services_enable_only_implemented_adapters() {
   const auto services = channel::make_runtime_services();
   require(services && services->context && services->notification_send &&
               services->audio_play == nullptr &&
               services->compare_scope == nullptr &&
               services->dynamic_services.empty(),
-          "production service table enabled an unsupported adapter");
+          "runtime service table enabled an unsupported adapter");
   const auto capability = [](std::string_view id) {
     return omarchy::plugins::permissions::CapabilityKey{
         .id = omarchy::plugins::permissions::CapabilityId(id), .version = 1};
@@ -213,7 +213,7 @@ int main(int argc, char **argv) {
     dbus_message_has_no_plugin_control_surface();
     dbus_reply_requires_only_the_specified_type();
     busy_shared_transport_fails_closed_promptly();
-    production_services_enable_only_notifications();
+    runtime_services_enable_only_implemented_adapters();
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "desktop notification service test failed: " << error.what()
