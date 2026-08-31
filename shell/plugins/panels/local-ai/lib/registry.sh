@@ -29,11 +29,11 @@ resolve_raw() { # join recipe + instance + model + hardware; interpolate owned p
     --arg mr "$MODELS_SUB" --arg cr "$CACHE_SUB" '
     def arg($n): (.launch.arguments|index($n)) as $p | if $p==null then null else .launch.arguments[$p+1] end;
     {id:$r.id,status:$r.status,engine:$r.engine,capabilities:$r.capabilities,
-     model:{id:$m.id,name:$m.name,repository:$i.repository,revision:$i.revision,
+     model:{id:$m.id,name:$m.name,repository:($i.repository//""),revision:($i.revision//""),
        servedName:(($r|arg("--served-model-name"))//$i.served_name//$i.repository),
        precision:($i.weights.precision//"?"),bytes:((($i.weights.size_gb//0)*1073741824)|floor)},
      hardware:{id:$h.id,name:$h.name,backend:$h.accelerator_backend,count:$r.hardware_count,vramGb:($h.memory.vram_gb//0)},
-     launch:{image:$r.launch.image,containerPort:$r.launch.container_port,entrypoint:($r.launch.entrypoint//null),
+     launch:{image:($r.launch.image//""),containerPort:$r.launch.container_port,entrypoint:($r.launch.entrypoint//null),
        ipc:($r.launch.ipc//null),shm:($r.launch.shm_size//null),networkMode:($r.launch.network_mode//null),
        environment:($r.launch.environment//{}),
        arguments:($r.launch.arguments//[]),mounts:($r.launch.mounts//[]),devices:($r.launch.devices//[]),
@@ -41,9 +41,9 @@ resolve_raw() { # join recipe + instance + model + hardware; interpolate owned p
     | .launch |= walk(if type=="string" then gsub("\\$\\{MODEL_ROOT\\}";$mr)|gsub("\\$\\{CACHE_ROOT\\}";$cr) else . end)'
 }
 gate_reason() { # gate_reason <resolved-json> -> one-line refusal reason on stdout; empty means launchable
-  local r=$1 root src tgt ro primary=1
+  local r=$1 root src tgt ro reason primary=1
   root=$(cd "$REG" && pwd)
-  jq -r '
+  reason=$(jq -r '
     if .status!="validated" then "not validated"
     elif ((.launch.arguments|index("--nnodes"))!=null) then "runs across \(.launch.arguments[(.launch.arguments|index("--nnodes"))+1]//"several") networked machines"
     elif ([.launch|..|strings|select(test("\\$\\{"))]|length)>0 then "needs unsupported placeholder \([.launch|..|strings|select(test("\\$\\{"))]|first|capture("(?<p>\\$\\{[^}]+\\})").p)"
@@ -52,7 +52,8 @@ gate_reason() { # gate_reason <resolved-json> -> one-line refusal reason on stdo
     elif (.model.revision|test("^[0-9a-f]{40,64}$")|not) then "model revision is not pinned"
     elif ((.launch.containerPort|type)!="number") then "invalid container port"
     elif ([.launch.arguments[]?|select(test("enforce.eager|disable.?cuda.?graph";"i"))]|length)>0 then "disallowed launch argument"
-    else empty end' <<<"$r" | head -1 | grep . && return 0
+    else empty end' <<<"$r" 2>/dev/null) || { printf 'recipe data failed validation\n'; return; } # fail closed on malformed data
+  [[ -z $reason ]] || { printf '%s\n' "$reason"; return; }
   while IFS=$'\t' read -r src tgt ro; do
     case $src in
       "$MODELS_SUB"/*|"$CACHE_SUB"/*)

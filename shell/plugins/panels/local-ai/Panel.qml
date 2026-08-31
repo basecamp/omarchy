@@ -72,7 +72,7 @@ Panel {
           width: parent.width; spacing: Style.space(3)
           Text { width: parent.width; text: root.loaded ? root.active.name : "Local AI"; color: root.foreground; font.family: root.bar.fontFamily; font.pixelSize: Style.font.heading; font.weight: Font.Medium; elide: Text.ElideRight }
           Meta { width: parent.width; text: root.line() }
-          Meta { width: parent.width; text: root.loaded ? "api " + (root.active.apiReady ? "ready" : "pending") + " · tools " + (root.active.toolCallReady ? "ready" : root.active.tools ? "pending" : "n/a") : (root.snap.models || []).length + " recipes" }
+          Meta { width: parent.width; text: root.loaded ? "api " + (root.active.apiReady ? "ready" : "pending") + " · tools " + (root.active.toolCallReady ? "ready" : root.active.tools ? "pending" : "n/a") : (root.snap.models || []).filter(function(m) { return !m.blocked }).length + " runnable recipes" }
         }
         Column {
           width: parent.width; spacing: Style.space(3)

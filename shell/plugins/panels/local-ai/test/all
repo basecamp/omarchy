@@ -34,13 +34,16 @@ jq -n --arg dg "$digest" '{id:"evil",status:"validated",model_instance_id:"org-s
 jq -n --arg dg "$digest" '{id:"small-mr",status:"validated",model_instance_id:"org-small--bf16",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"vllm"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:["--served-model-name","org/small"],mounts:[{source:"${MODEL_ROOT}/small-mr",target:"/model",read_only:true},{source:"${MODEL_ROOT}/small-draft",target:"/draft",read_only:true},{source:"${CACHE_ROOT}/small-mr",target:"/cache",read_only:false}]}}' >"$OMARCHY_AI_REGISTRY/recipe/small-mr.json"
 jq -n --arg dg "$digest" '{id:"multi-node",status:"validated",model_instance_id:"org-small--bf16",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:["--nnodes","2","--node-rank","${NODE_RANK}"],mounts:[]}}' >"$OMARCHY_AI_REGISTRY/recipe/multi-node.json"
 jq -n --arg dg "$digest" '{id:"hostnet",status:"validated",model_instance_id:"org-small--bf16",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,network_mode:"host",arguments:[],mounts:[]}}' >"$OMARCHY_AI_REGISTRY/recipe/hostnet.json"
+jq -n '{schema_version:"local-ai-registry/v1",id:"org-small--norev",model_id:"small",repository:"org/small",served_name:"org/small",weights:{precision:"BF16",size_gb:0.0000001}}' >"$OMARCHY_AI_REGISTRY/model-instance/org-small--norev.json"
+jq -n --arg dg "$digest" '{id:"no-rev",status:"validated",model_instance_id:"org-small--norev",hardware_id:"rtx-3090-24gb",hardware_count:1,engine:{name:"sglang"},capabilities:{tools:false},launch:{image:("img@sha256:"+$dg),container_port:30000,arguments:[],mounts:[{source:"~/.cache/huggingface",target:"/root/.cache/huggingface",read_only:false}]}}' >"$OMARCHY_AI_REGISTRY/recipe/no-rev.json"
 jq -n '{schema_version:"local-ai-registry/v1",recipes:[
   {id:"small-3090",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
   {id:"small-3090-tools",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
   {id:"small-3090-dir",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
   {id:"small-mr",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
   {id:"multi-node",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
-  {id:"hostnet",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"}]}' >"$OMARCHY_AI_REGISTRY/index/recipes.json"
+  {id:"hostnet",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"},
+  {id:"no-rev",status:"validated",hardware_id:"rtx-3090-24gb",launch_kind:"docker"}]}' >"$OMARCHY_AI_REGISTRY/index/recipes.json"
 CD="$TMP/docker"; mkdir -p "$CD/containers" "$CD/images"
 c_write() { jq -n --argjson o "$2" --argjson r "$3" '{owned:$o,running:$r}' >"$CD/containers/$1"; }
 docker() {
@@ -110,14 +113,15 @@ assert jq -e '.state=="ready" and .active.recipeId=="small-3090" and .active.api
 assert [ ! -e "$OMARCHY_AI_USER_HOME/.omp/agent/models.json" ]
 "$CLI" unload >/dev/null; ok 'snapshot adopts an owned live runtime after controller state is lost'
 "$CLI" scan >/dev/null
-assert jq -e '.state=="idle" and .registry.matching==6 and .registry.total==6 and .registry.revision=="" and (.gpus|length)==2
-  and (.models|length)==6 and (.models[]|select(.recipeId=="small-3090")|.available) and (.models[]|select(.recipeId=="small-3090")|.imageDownloaded|not)' >/dev/null <<<"$(snap)"
+assert jq -e '.state=="idle" and .registry.matching==7 and .registry.total==7 and .registry.revision=="" and (.gpus|length)==2
+  and (.models|length)==7 and (.models[]|select(.recipeId=="small-3090")|.available) and (.models[]|select(.recipeId=="small-3090")|.imageDownloaded|not)' >/dev/null <<<"$(snap)"
 ok 'scan populates hardware, gpus, and models with downloaded vs available split'
 assert jq -e '(.models[]|select(.recipeId=="multi-node")|.blocked and (.reason|test("2 networked machines")))
   and (.models[]|select(.recipeId=="hostnet")|.blocked and (.reason|test("host networking")))
   and (.models[]|select(.recipeId=="small-mr")|.blocked and (.reason|test("place weights at .*small-draft")))
-  and ([.models[-3:][]|.blocked]|all)' >/dev/null <<<"$(snap)"
-ok 'multi-node, host-networking, and missing-draft recipes stay visible as blocked rows that sort last'
+  and (.models[]|select(.recipeId=="no-rev")|.blocked and (.reason|test("revision is not pinned")))
+  and ([.models[-4:][]|.blocked]|all)' >/dev/null <<<"$(snap)"
+ok 'multi-node, host-networking, missing-draft, and null-revision recipes stay visible as blocked rows that sort last'
 mkdir -p "$OMARCHY_AI_USER_HOME/.cache/omarchy/local-ai/models/small-draft"
 "$CLI" scan >/dev/null
 assert jq -e '.models[]|select(.recipeId=="small-mr")|(.blocked|not)' >/dev/null <<<"$(snap)"
@@ -227,7 +231,7 @@ pin_ok=0
   rm "$TMP/reg-remote/registry/index/recipes.json"   # break main past the pin to prove the pin wins
   g add -A; g commit -qm broken
   OMARCHY_AI_REGISTRY_PIN=$pin "$CLI" scan >/dev/null
-  jq -e --arg pin "$pin" '.state=="idle" and .registry.revision==$pin and .registry.total==6' >/dev/null <<<"$("$CLI" snapshot)"
+  jq -e --arg pin "$pin" '.state=="idle" and .registry.revision==$pin and .registry.total==7' >/dev/null <<<"$("$CLI" snapshot)"
 ) && pin_ok=1 || pin_ok=0
 assert [ "$pin_ok" = 1 ]
 ok 'scan checks out the pinned registry commit, not whatever main moved to'
