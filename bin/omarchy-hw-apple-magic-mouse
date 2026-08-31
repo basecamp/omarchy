@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# omarchy:summary=Detect an Apple Magic Mouse on USB or Bluetooth.
+
+hid_dir="${OMARCHY_HID_DEVICES_DIR:-/sys/bus/hid/devices}"
+shopt -s nullglob
+for uevent in "$hid_dir"/*/uevent; do
+  # USB 0003 / Bluetooth 0005. Apple 05AC and the later Bluetooth vendor 004C.
+  # Mouse v1 030D, v2 0269, USB-C 0323. Same hid-magicmouse module as the trackpad.
+  if grep -qiE 'HID_ID=000[35]:0000(05AC|004C):0000(030D|0269|0323)' "$uevent"; then
+    exit 0
+  fi
+done
+exit 1

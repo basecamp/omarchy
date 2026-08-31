@@ -57,6 +57,18 @@ hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
 
 On Dell XPS laptops with a haptic touchpad, you can also set the click strength to low, mid, or high under _Trigger > Hardware > Touchpad Haptics_.
 
+### Apple Magic Trackpad
+
+Omarchy ships Magic Trackpad defaults that ignore a resting thumb (the way macOS does) and keep small pointer moves precise:
+
+- libinput size/pressure thresholds drop a light edge rest so it is not treated as a second finger
+- `hid-magicmouse` kernel two-finger scroll and 3-button emulation are turned off so libinput can own those gestures
+- Hyprland keeps adaptive acceleration and the default sensitivity on the pad even if you raise the global pointer speed in `input.lua`
+
+Two-finger right-click and two-finger scroll still work through libinput. The kernel module options are skipped when an Apple Magic Mouse is also connected, because that mouse still needs kernel surface-scroll emulation.
+
+Override any of this in `~/.config/hypr/input.lua` the same way as other input settings.
+
 ### Typing in Chinese, Japanese, and other languages
 
 Omarchy runs the [fcitx5](https://fcitx-im.org/) input method framework as part of every session — it's what powers the CapsLock compose sequences. That means the plumbing for non-Latin input is already in place: install an input engine like `fcitx5-mozc` (Japanese) or `fcitx5-chinese-addons` (Chinese) with `omarchy pkg add`, plus `fcitx5-configtool` to add the engine to your input methods and set the key that switches between them.
