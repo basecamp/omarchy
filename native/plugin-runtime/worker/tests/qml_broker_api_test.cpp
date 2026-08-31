@@ -240,6 +240,26 @@ void capability_qualified_collision() {
   worker::ManifestInvokeEncoder malformed_encoder(malformed_reference);
   require(!malformed_encoder.encode("service.alpha", "read", arguments),
           "a malformed definition reference reached encoding");
+
+  const std::string overlong_name(129, 'a');
+  auto overlong_capability = parsed;
+  overlong_capability.requests.front().capability = overlong_name;
+  worker::ManifestInvokeEncoder overlong_capability_encoder(
+      overlong_capability);
+  require(!overlong_capability_encoder.encode(overlong_name, "read",
+                                              arguments) &&
+              !overlong_capability_encoder.encode("service.beta", "read",
+                                                  arguments),
+          "an overlong capability retained an encodable transport binding");
+
+  auto overlong_operation = parsed;
+  overlong_operation.requests.front().operations.front() = overlong_name;
+  worker::ManifestInvokeEncoder overlong_operation_encoder(overlong_operation);
+  require(!overlong_operation_encoder.encode("service.alpha", overlong_name,
+                                             arguments) &&
+              !overlong_operation_encoder.encode("service.beta", "read",
+                                                 arguments),
+          "an overlong operation retained an encodable transport binding");
 }
 
 void dynamic_qml_to_adapter() {

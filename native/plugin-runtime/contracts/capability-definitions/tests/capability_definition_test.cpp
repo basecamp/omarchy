@@ -233,6 +233,9 @@ int main() {
   require(contract == semantic_contract_digest("request=a;response=b") &&
               contract != semantic_contract_digest("request=a;response=c"),
           "semantic contract digest is not deterministic and content-bound");
+  require(canonical_identifier(std::string(128, 'a')) &&
+              !canonical_identifier(std::string(129, 'a')),
+          "canonical identifier did not enforce its exact 128-byte bound");
 
   capability_definition_loader_tests();
   dynamic_activation_tests();

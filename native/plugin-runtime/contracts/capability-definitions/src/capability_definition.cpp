@@ -41,7 +41,7 @@ bool matching_scope_schema(const CapabilityDefinition &definition) {
 } // namespace
 
 bool canonical_identifier(std::string_view value) {
-  if (value.empty())
+  if (value.empty() || value.size() > 128)
     return false;
   bool separator = true;
   for (const unsigned char item : value) {
