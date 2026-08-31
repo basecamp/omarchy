@@ -232,7 +232,6 @@ if(BUILD_TESTING)
     omarchy_plugin_target_defaults(omarchy-plugin-product-session-test)
     target_compile_definitions(omarchy-plugin-product-session-test PRIVATE
       OMARCHY_PLUGIN_SESSION_TESTING
-      OMARCHY_AUTHORITY_STORE_TESTING
       CHANNEL_PEER_PATH="$<TARGET_FILE:omarchy-plugin-channel-peer>"
       FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>"
       QML_WORKER_PATH="$<TARGET_FILE:omarchy-plugin-qml-worker>"
@@ -258,6 +257,12 @@ if(BUILD_TESTING)
         SKIP_RETURN_CODE 77
         LABELS "integration;security;session;qml;sandbox"
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    add_test(NAME plugin-consent-only-classification
+      COMMAND omarchy-plugin-product-session-test
+              --consent-only-classification-only)
+    set_tests_properties(plugin-consent-only-classification PROPERTIES
+      TIMEOUT 15
+      LABELS "unit;security;session;permissions;lifecycle")
     add_test(NAME plugin-product-session-required-denial
       COMMAND omarchy-plugin-product-session-test --required-denial-only)
     set_tests_properties(plugin-product-session-required-denial PROPERTIES

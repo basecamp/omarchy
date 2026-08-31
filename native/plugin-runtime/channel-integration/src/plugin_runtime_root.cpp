@@ -181,8 +181,16 @@ PluginRuntimePreparationResult PluginRuntimeRoot::prepare(
     auto root = std::unique_ptr<PluginRuntimeRoot>(
         new PluginRuntimeRoot(configuration));
     auto loaded = root->permissions_->load_activation();
-    if (!loaded.snapshot)
-      return {};
+    if (!loaded.snapshot) {
+      if (loaded.error != host_session::ActivationError::grant_unavailable)
+        return {};
+      // No active grant resolved for the selected revision. Keep the exact
+      // authority reachable only when it can build a coherent immutable
+      // review. Torn/corrupt or candidate-only authority remains unavailable.
+      // No plugin-controlled runtime is assembled before review promotion.
+      const auto review = root->permissions_->prepare_review();
+      return {.runtime = {}, .permission_disabled = review != nullptr};
+    }
     auto &snapshot = *loaded.snapshot;
     const auto binding = snapshot.grants.binding;
     const auto live = snapshot.live;

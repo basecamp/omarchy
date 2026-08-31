@@ -1,6 +1,7 @@
 #include "PluginManager.h"
 
 #include "authority_store.hpp"
+#include "desktop_notification_service.hpp"
 #include "omarchy/plugin_runtime/Version.h"
 #include "omarchy/plugin_runtime/runtime_paths.hpp"
 #include "remote_surface.hpp"
@@ -335,6 +336,15 @@ public:
           O_CREAT | O_EXCL);
   }
 
+  void activateStaged(const permissions::ActivationBinding &binding) {
+    write(binding.plugin.view(),
+          readyActivationRecord(
+              binding.plugin.view(),
+              revisionDirectory(binding.plugin.view(), binding.generation),
+              binding.revision.view()),
+          O_CREAT | O_EXCL);
+  }
+
   void erase(std::string_view name) {
     require(std::filesystem::remove(activations() / std::string(name)),
             "manager runtime fixture erase failed");
@@ -514,6 +524,106 @@ private:
       {{.category = "status"}, {.category = "a"}, {.category = "b"}}};
 };
 
+class LifecycleNotificationState final {
+public:
+  bool send(const channel::DesktopNotification &notification) noexcept {
+    try {
+      std::unique_lock lock(mutex_);
+      notifications_.push_back(notification);
+      entered_ = true;
+      changed_.notify_all();
+      return changed_.wait_for(lock, std::chrono::seconds(5),
+                               [&] { return !held_; });
+    } catch (...) {
+      return false;
+    }
+  }
+
+  void hold() {
+    std::scoped_lock lock(mutex_);
+    held_ = true;
+    entered_ = false;
+  }
+
+  void release() noexcept {
+    try {
+      {
+        std::scoped_lock lock(mutex_);
+        held_ = false;
+      }
+      changed_.notify_all();
+    } catch (...) {
+    }
+  }
+
+  bool awaitEntered() {
+    std::unique_lock lock(mutex_);
+    return changed_.wait_for(lock, std::chrono::seconds(2),
+                             [&] { return entered_; });
+  }
+
+  std::size_t calls() const {
+    std::scoped_lock lock(mutex_);
+    return notifications_.size();
+  }
+
+  channel::DesktopNotification last() const {
+    std::scoped_lock lock(mutex_);
+    require(!notifications_.empty(),
+            "notification lifecycle transport had no call");
+    return notifications_.back();
+  }
+
+private:
+  mutable std::mutex mutex_;
+  std::condition_variable changed_;
+  std::vector<channel::DesktopNotification> notifications_;
+  bool held_ = false;
+  bool entered_ = false;
+};
+
+class LifecycleNotificationHold final {
+public:
+  explicit LifecycleNotificationHold(
+      std::shared_ptr<LifecycleNotificationState> state)
+      : state_(std::move(state)) {}
+  ~LifecycleNotificationHold() { release(); }
+
+  void hold() {
+    if (held_)
+      return;
+    state_->hold();
+    held_ = true;
+  }
+
+  void release() noexcept {
+    if (!held_)
+      return;
+    state_->release();
+    held_ = false;
+  }
+
+private:
+  std::shared_ptr<LifecycleNotificationState> state_;
+  bool held_ = false;
+};
+
+class LifecycleNotificationTransport final
+    : public channel::DesktopNotificationTransport {
+public:
+  explicit LifecycleNotificationTransport(
+      std::shared_ptr<LifecycleNotificationState> state)
+      : state_(std::move(state)) {}
+
+  bool
+  send(const channel::DesktopNotification &notification) noexcept override {
+    return state_->send(notification);
+  }
+
+private:
+  std::shared_ptr<LifecycleNotificationState> state_;
+};
+
 constexpr std::string_view permissionAwareQml = R"QML(import QtQuick
 import QtQml
 Item {
@@ -625,6 +735,28 @@ QString grantEveryAvailablePermission(const QJsonArray &rows) {
                                .toJson(QJsonDocument::Compact));
 }
 
+QString decidePermissions(const QJsonArray &rows,
+                          std::span<const std::string_view> denied) {
+  QJsonArray choices;
+  for (const auto value : rows) {
+    const auto row = value.toObject();
+    const auto name = row.value("name").toString().toStdString();
+    const bool deny =
+        std::ranges::find(denied, std::string_view(name)) != denied.end();
+    QJsonObject choice{{"rowId", row.value("rowId")},
+                       {"decision", deny ? "deny" : "grant"}};
+    if (!deny && row.value("kind") == "dynamic") {
+      QJsonArray selected;
+      for (const auto operation : row.value("operations").toArray())
+        selected.push_back(
+            operation.toObject().value("operationId").toString());
+      choice.insert("operations", selected);
+    }
+    choices.push_back(choice);
+  }
+  return QString::fromUtf8(QJsonDocument(QJsonObject{{"choices", choices}})
+                               .toJson(QJsonDocument::Compact));
+}
 QImage paintedFrame(bridge::RemotePluginSurface &remote) {
   QImage image(64, 64, QImage::Format_RGBA8888_Premultiplied);
   image.fill(Qt::transparent);
@@ -1784,6 +1916,289 @@ void manager_owns_permission_generation_replacement() {
           "post-fence canceled permission worker retained delivery state");
 }
 
+void public_permission_lifecycle_is_closed_until_exact_consent() {
+  if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
+    return;
+  require(::access(
+              std::string(omarchy::plugin_runtime::kPackagedWorkerPath).c_str(),
+              X_OK) == 0,
+          "public lifecycle packaged worker was unavailable");
+
+  constexpr std::string_view plugin_a = "org.example.lifecycle-a";
+  constexpr std::string_view plugin_b = "org.example.lifecycle-b";
+  constexpr std::string_view permissions_a =
+      R"({"required":[{"capability":"storage.private","reason":"state","quotaBytes":4096}],"optional":[{"capability":"notifications.send","reason":"alerts","categories":["a"]}]})";
+  constexpr std::string_view permissions_b =
+      R"({"required":[],"optional":[{"capability":"notifications.send","reason":"alerts","categories":["b"]}]})";
+
+  RuntimeFixture fixture;
+  const auto binding_a = fixture.stageRuntime(
+      plugin_a, 1, permissionAwareQmlFor("a"), permissions_a);
+  const auto binding_b = fixture.stageRuntime(
+      plugin_b, 1, permissionAwareQmlFor("b"), permissions_b);
+  fixture.activateStaged(binding_a);
+  fixture.activateStaged(binding_b);
+
+  auto notification_state = std::make_shared<LifecycleNotificationState>();
+  auto notification_service =
+      std::make_shared<channel::DesktopNotificationService>(
+          std::make_unique<LifecycleNotificationTransport>(notification_state));
+  const auto services = [&] {
+    return channel::RuntimeServices{
+        .context = notification_service,
+        .notification_send = channel::DesktopNotificationService::send,
+        .audio_play = nullptr,
+        .compare_scope = nullptr,
+        .dynamic_services = {}};
+  };
+
+  DeterministicJobs scheduler;
+  auto manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(
+      *manager, fixture.bootstrap(services()));
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  const auto run_job_at = [&](std::size_t index) {
+    std::thread worker([&] { scheduler.runAt(index); });
+    worker.join();
+  };
+  const auto run_job = [&] { run_job_at(0); };
+  const auto drain = [&] {
+    bridge::PluginManagerTestAccess::drainRuntime(*manager);
+  };
+  const auto observe_slots = [&] {
+    return bridge::PluginManagerTestAccess::runtimeSlots(*manager);
+  };
+
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 2,
+          "staged initial activations did not queue exact preparations");
+  run_job_at(1);
+  run_job_at(0);
+  drain();
+  auto observations = observe_slots();
+  require(observations.size() == 2 &&
+              observed(observations, plugin_a).permission_disabled &&
+              observed(observations, plugin_b).permission_disabled &&
+              manager->count() == 0 && scheduler.jobs.empty(),
+          "unreviewed staged activations started or lost consent authority");
+
+  auto *control = manager->permissions();
+  const auto review_a = control->beginReview(QString::fromUtf8(plugin_a));
+  const auto review_b = control->beginReview(QString::fromUtf8(plugin_b));
+  require(!review_a.isEmpty() && !review_b.isEmpty() &&
+              scheduler.jobs.size() == 2,
+          "two public initial reviews were not admitted independently");
+  run_job_at(1);
+  run_job_at(0);
+  drain();
+  const auto rows_a = permissionRows(*control, review_a);
+  const auto rows_b = permissionRows(*control, review_b);
+  constexpr std::array<std::string_view, 1> deny_required{"storage.private"};
+  require(control->apply(review_a, decidePermissions(rows_a, deny_required))
+                  .isEmpty() &&
+              scheduler.jobs.empty(),
+          "required denial crossed the public validation boundary");
+  observations = observe_slots();
+  require(observed(observations, plugin_a).permission_disabled &&
+              observed(observations, plugin_b).permission_disabled &&
+              manager->count() == 0,
+          "rejected required denial mutated or activated a staged plugin");
+
+  constexpr std::array<std::string_view, 1> deny_notifications{
+      "notifications.send"};
+  const auto apply_a =
+      control->apply(review_a, decidePermissions(rows_a, deny_notifications));
+  const auto apply_b = control->apply(review_b, decidePermissions(rows_b, {}));
+  require(!apply_a.isEmpty() && !apply_b.isEmpty() &&
+              scheduler.jobs.size() == 2,
+          "valid public initial consent did not queue two opaque operations");
+  run_job_at(1);
+  run_job_at(0);
+  drain();
+  require(permissionOperation(*control, apply_a).value("state") ==
+                  "succeeded" &&
+              permissionOperation(*control, apply_b).value("state") ==
+                  "succeeded" &&
+              scheduler.jobs.size() == 2,
+          "reordered public consent operations crossed plugin identity");
+
+  std::jthread revocation;
+  LifecycleNotificationHold notification_hold(notification_state);
+  notification_hold.hold();
+  run_job_at(1);
+  run_job_at(0);
+  drain();
+  const bool initial_running = await([&] {
+    drain();
+    const auto current = observe_slots();
+    return observed(current, plugin_a).running &&
+           observed(current, plugin_b).running && manager->count() == 2;
+  });
+  if (!initial_running) {
+    const auto current = observe_slots();
+    const auto &a = observed(current, plugin_a);
+    const auto &b = observed(current, plugin_b);
+    throw std::runtime_error(
+        "consented runtimes did not start: A state/error=" +
+        std::to_string(a.last_state) + "/" + std::to_string(a.last_error) +
+        ", B state/error=" + std::to_string(b.last_state) + "/" +
+        std::to_string(b.last_error));
+  }
+  require(notification_state->awaitEntered(),
+          "consented runtime did not enter the real notification service");
+  const auto first_notification = notification_state->last();
+  require(first_notification.plugin == QString::fromUtf8(plugin_b) &&
+              first_notification.category == "b" &&
+              notification_state->calls() == 1,
+          "optional denial or reordered consent crossed notification identity");
+
+  QQuickWindow window;
+  window.resize(128, 64);
+  window.show();
+  bridge::RemotePluginSurface remote_a(window.contentItem());
+  bridge::RemotePluginSurface remote_b(window.contentItem());
+  remote_a.setWidth(64);
+  remote_a.setHeight(64);
+  remote_b.setX(64);
+  remote_b.setWidth(64);
+  remote_b.setHeight(64);
+  const auto key_a = barSurfaceKey(*manager, plugin_a);
+  const auto key_b = barSurfaceKey(*manager, plugin_b);
+  require(!key_a.isEmpty() && !key_b.isEmpty() &&
+              manager->attach(key_a, &remote_a) &&
+              manager->attach(key_b, &remote_b) &&
+              await([&] { return remote_a.ready(); }) && remote_b.connected() &&
+              redSignature(paintedFrame(remote_a)),
+          "optional denial was not visible to live QML through permissions");
+
+  const auto list_b = control->beginList(QString::fromUtf8(plugin_b));
+  require(!list_b.isEmpty() && scheduler.jobs.size() == 1,
+          "public notification list was not queued");
+  run_job();
+  drain();
+  const auto row_b =
+      permissionRow(permissionRows(*control, list_b), "notifications.send");
+  const auto revoke_b = control->revoke(list_b, row_b);
+  require(!revoke_b.isEmpty() && scheduler.jobs.size() == 1,
+          "public notification revoke was not queued");
+  revocation = std::jthread([&] { scheduler.runOne(); });
+  require(await([&] {
+            drain();
+            return observed(observe_slots(), plugin_b).permission_changing;
+          }),
+          "notification revoke did not close admission before effect drain");
+  require(
+      manager->count() == 1 && remote_a.connected() && !remote_b.connected() &&
+          bridge::PluginManagerTestAccess::executingPermissionJobs(*manager) ==
+              1,
+      "revocation drain left publication open or disturbed plugin A");
+  notification_hold.release();
+  revocation.join();
+  drain();
+  require(permissionOperation(*control, revoke_b).value("state") ==
+                  "succeeded" &&
+              observed(observe_slots(), plugin_b).preparing &&
+              scheduler.jobs.size() == 1,
+          "drained notification revoke did not queue one fresh generation");
+  run_job();
+  drain();
+  require(await([&] {
+            drain();
+            return observed(observe_slots(), plugin_b).running &&
+                   manager->count() == 2;
+          }),
+          "revoked optional generation did not restart safely");
+  bridge::RemotePluginSurface denied_b(window.contentItem());
+  denied_b.setWidth(64);
+  denied_b.setHeight(64);
+  require(manager->attach(barSurfaceKey(*manager, plugin_b), &denied_b) &&
+              await([&] { return denied_b.ready(); }) &&
+              redSignature(paintedFrame(denied_b)) &&
+              notification_state->calls() == 1,
+          "restarted QML did not hide its revoked notification feature");
+
+  const auto list_a = control->beginList(QString::fromUtf8(plugin_a));
+  require(!list_a.isEmpty() && scheduler.jobs.size() == 1,
+          "public storage list was not queued");
+  run_job();
+  drain();
+  const auto storage_row =
+      permissionRow(permissionRows(*control, list_a), "storage.private");
+  const auto revoke_a = control->revoke(list_a, storage_row);
+  require(!revoke_a.isEmpty() && scheduler.jobs.size() == 1,
+          "public required storage revoke was not queued");
+  run_job();
+  drain();
+  require(permissionOperation(*control, revoke_a).value("state") ==
+                  "succeeded" &&
+              observed(observe_slots(), plugin_a).permission_disabled &&
+              manager->count() == 1 && !remote_a.connected() &&
+              denied_b.connected(),
+          "required storage revoke did not disable only its exact plugin");
+
+  manager.reset();
+  require(!denied_b.connected(),
+          "manager restart left an old generation attached");
+  manager = bridge::PluginManagerTestAccess::create();
+  bridge::PluginManagerTestAccess::installRuntime(
+      *manager, fixture.bootstrap(services()));
+  bridge::PluginManagerTestAccess::setJobSubmitter(
+      *manager, [&](auto kind, auto job) {
+        return scheduler.submit(kind, std::move(job));
+      });
+  require(bridge::PluginManagerTestAccess::scanRuntime(*manager) &&
+              scheduler.jobs.size() == 2,
+          "manager restart did not reopen two exact authorities");
+  run_job_at(1);
+  run_job_at(0);
+  drain();
+  require(await([&] {
+            drain();
+            const auto current = observe_slots();
+            return observed(current, plugin_a).permission_disabled &&
+                   observed(current, plugin_b).running && manager->count() == 1;
+          }),
+          "restart activated required-revoked storage or lost plugin B");
+
+  control = manager->permissions();
+  const auto regrant_review = control->beginReview(QString::fromUtf8(plugin_a));
+  require(!regrant_review.isEmpty() && scheduler.jobs.size() == 1,
+          "required-disabled restart was not publicly reviewable");
+  run_job();
+  drain();
+  const auto regrant = control->apply(
+      regrant_review,
+      grantEveryAvailablePermission(permissionRows(*control, regrant_review)));
+  require(!regrant.isEmpty() && scheduler.jobs.size() == 1,
+          "public regrant was not queued from permission-only state");
+  run_job();
+  drain();
+  require(permissionOperation(*control, regrant).value("state") ==
+                  "succeeded" &&
+              observed(observe_slots(), plugin_a).preparing &&
+              scheduler.jobs.size() == 1,
+          "public regrant did not queue exact recovery preparation");
+  notification_hold.hold();
+  run_job();
+  drain();
+  require(await([&] {
+            drain();
+            return observed(observe_slots(), plugin_a).running &&
+                   manager->count() == 2;
+          }) &&
+              notification_state->awaitEntered(),
+          "public regrant did not recover runtime and notification provider");
+  const auto recovered_notification = notification_state->last();
+  require(recovered_notification.plugin == QString::fromUtf8(plugin_a) &&
+              recovered_notification.category == "a" &&
+              notification_state->calls() == 2,
+          "regrant notification escaped its plugin/category identity");
+  notification_hold.release();
+}
+
 void permission_control_is_bounded_and_destruction_safe() {
   if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
     return;
@@ -2754,4 +3169,8 @@ void run_plugin_manager_tests() {
   zero_surface_runtime_has_no_publication_authority();
   reentrant_publication_replacement_rechecks_exact_epoch();
   joined_runtimes_replace_and_render_without_cross_routing();
+}
+
+void run_public_permission_lifecycle_test() {
+  public_permission_lifecycle_is_closed_until_exact_consent();
 }

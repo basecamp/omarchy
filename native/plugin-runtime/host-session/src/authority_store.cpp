@@ -813,6 +813,23 @@ AuthorityMutationResult AuthorityStore::replace_slots(AuthoritySlots slots) {
   return AuthorityMutationResult::applied;
 }
 
+#ifdef OMARCHY_AUTHORITY_STORE_TESTING
+AuthorityMutationResult AuthorityStore::replace_active_for_testing(
+    const policy::GrantSnapshot &snapshot) {
+  std::scoped_lock lock(mutation_mutex_);
+  auto slot_state = read_slots_unlocked(root_.get(), expected_uid_);
+  if (!slot_state)
+    return AuthorityMutationResult::io_error;
+  AuthorityRevisionRef reference;
+  const auto stored =
+      store_snapshot_record(root_.get(), expected_uid_, snapshot, reference);
+  if (stored != AuthorityMutationResult::applied)
+    return stored;
+  slot_state->active = std::move(reference);
+  return replace_slots(std::move(*slot_state));
+}
+#endif
+
 AuthorityMutationResult AuthorityStore::publish_candidate(
     const VerifiedRevision &verified, const policy::GrantSnapshot &snapshot,
     std::uint64_t expected_sequence,

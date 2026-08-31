@@ -9,6 +9,10 @@ public:
                                  std::uint64_t epoch) noexcept {
     store.mutation_epoch_ = epoch;
   }
+  [[nodiscard]] static AuthorityMutationResult
+  replace_active(AuthorityStore &store, const policy::GrantSnapshot &snapshot) {
+    return store.replace_active_for_testing(snapshot);
+  }
   [[nodiscard]] static AuthorityRevocationResult
   revoke_active(AuthorityStore &store,
                 const permissions::CapabilityKey &capability,

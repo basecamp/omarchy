@@ -83,7 +83,6 @@ if(BUILD_TESTING)
     TIMEOUT 10
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
     LABELS "unit;shell;bridge;security")
-
   add_executable(omarchy-plugin-permission-control-contract-test
     src/PermissionControl.cpp
     src/PluginManager.cpp
@@ -119,4 +118,13 @@ if(BUILD_TESTING)
     SKIP_RETURN_CODE 77
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
     LABELS "unit;shell;bridge;security;permission-contract")
+
+  add_test(NAME plugin-public-permission-lifecycle
+    COMMAND omarchy-plugin-surface-service-test
+            --public-permission-lifecycle-only)
+  set_tests_properties(plugin-public-permission-lifecycle PROPERTIES
+    TIMEOUT 30
+    SKIP_RETURN_CODE 77
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
+    LABELS "integration;shell;bridge;security;permissions;lifecycle")
 endif()

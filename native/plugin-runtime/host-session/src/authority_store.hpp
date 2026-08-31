@@ -157,6 +157,10 @@ private:
   fence_bound_live(std::unique_lock<std::mutex> &lock,
                    const AuthoritySlots &preimage,
                    AuthorityFenceObserver *observer = nullptr);
+#ifdef OMARCHY_AUTHORITY_STORE_TESTING
+  [[nodiscard]] AuthorityMutationResult
+  replace_active_for_testing(const policy::GrantSnapshot &snapshot);
+#endif
 
   OwnedDescriptor root_;
   OwnedDescriptor lock_;

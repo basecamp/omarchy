@@ -511,6 +511,12 @@ public:
             "cannot promote runtime root candidate");
   }
 
+  void replace_active(const policy::GrantSnapshot &value) {
+    require(host::AuthorityStoreTestAccess::replace_active(*store_, value) ==
+                host::AuthorityMutationResult::applied,
+            "cannot replace runtime root active snapshot");
+  }
+
   void record(std::string revision_sha256 = {}) const {
     if (revision_sha256.empty())
       revision_sha256 = verified_->tree_sha256;
@@ -600,6 +606,17 @@ public:
          std::string(authority_state->active->snapshot_digest.view()));
     std::fstream stream(file, std::ios::in | std::ios::out | std::ios::binary);
     stream.put('X');
+  }
+
+  std::uint64_t authority_sequence() const {
+    auto reopened =
+        store_ ? nullptr
+               : host::AuthorityStore::open(authority_fd_, ::getuid(),
+                                            permissions::PluginId(plugin_));
+    const auto *store = store_ ? store_.get() : reopened.get();
+    const auto slot_state = store ? store->read_slots() : std::nullopt;
+    require(slot_state.has_value(), "runtime root authority slots unavailable");
+    return slot_state->sequence;
   }
 
   void corrupt_prepared_backing() {
@@ -1706,6 +1723,67 @@ void required_denied_activation_is_permission_only_after_reopen() {
           "reopened required-denied authority attempted runtime assembly");
 }
 
+void consent_only_preparation_requires_an_exact_reviewable_activation() {
+  {
+    RuntimeRootFixture fixture;
+    fixture.record();
+    const auto before = fixture.authority_sequence();
+    const auto prepared = fixture.prepare_result();
+    require(!prepared.runtime && prepared.permission_disabled &&
+                fixture.authority_sequence() == before,
+            "exact no-active activation was not consent-only or preparation "
+            "mutated authority");
+  }
+  {
+    RuntimeRootFixture fixture;
+    fixture.record();
+    (void)fixture.publish(1, 0);
+    const auto before = fixture.authority_sequence();
+    const auto prepared = fixture.prepare_result();
+    require(!prepared.runtime && !prepared.permission_disabled &&
+                fixture.authority_sequence() == before,
+            "candidate-only authority was mislabeled as initial consent or "
+            "mutated by preparation");
+  }
+  {
+    RuntimeRootFixture fixture;
+    fixture.record();
+    const auto active = fixture.publish(1, 0);
+    fixture.promote(active, 1);
+    fixture.corrupt_active();
+    const auto before = fixture.authority_sequence();
+    const auto prepared = fixture.prepare_result();
+    require(!prepared.runtime && !prepared.permission_disabled &&
+                fixture.authority_sequence() == before,
+            "corrupt active authority was mislabeled as initial consent or "
+            "mutated by preparation");
+  }
+  {
+    RuntimeRootFixture fixture;
+    fixture.record();
+    auto active = fixture.publish(1, 0);
+    fixture.promote(active, 1);
+    active.source_request_fingerprint =
+        permissions::Digest(std::string(64, 'b'));
+    fixture.replace_active(active);
+    const auto before = fixture.authority_sequence();
+    const auto prepared = fixture.prepare_result();
+    require(!prepared.runtime && !prepared.permission_disabled &&
+                fixture.authority_sequence() == before,
+            "canonical grant mismatch became consent-only or mutated "
+            "authority");
+  }
+  {
+    RuntimeRootFixture fixture;
+    fixture.record(std::string(64, 'c'));
+    const auto before = fixture.authority_sequence();
+    const auto prepared = fixture.prepare_result();
+    require(!prepared.runtime && !prepared.permission_disabled &&
+                fixture.authority_sequence() == before,
+            "revision mismatch became consent-only or mutated authority");
+  }
+}
+
 void prepared_root_final_fence_rejects_intervening_mutation() {
   RuntimeRootFixture fixture;
   fixture.record();
@@ -1938,6 +2016,12 @@ int main(int argc, char **argv) {
       return 0;
     }
     if (argc == 2 &&
+        std::string_view(argv[1]) == "--consent-only-classification-only") {
+      consent_only_preparation_requires_an_exact_reviewable_activation();
+      std::cout << "consent-only classification tests passed\n";
+      return 0;
+    }
+    if (argc == 2 &&
         std::string_view(argv[1]) == "--real-worker-invalid-qml-only") {
       if (!invalid_qml_worker_never_acknowledges_or_publishes())
         return 77;
@@ -1959,6 +2043,7 @@ int main(int argc, char **argv) {
     prepared_root_final_fence_rejects_intervening_mutation();
     prepared_root_commit_is_ui_only_and_path_independent();
     required_denied_activation_is_permission_only_after_reopen();
+    consent_only_preparation_requires_an_exact_reviewable_activation();
     session_runtime_factory_tests();
     failed_session_rejects_surfaces();
   } catch (const std::exception &error) {

@@ -5,6 +5,7 @@
 #include <QGuiApplication>
 
 #include <algorithm>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -16,6 +17,7 @@
 void run_surface_endpoint_tests();
 void run_surface_endpoint_owner_tests();
 void run_plugin_manager_tests();
+void run_public_permission_lifecycle_test();
 
 namespace {
 
@@ -460,6 +462,13 @@ int main(int argc, char **argv) {
   QGuiApplication application(argc, argv);
   (void)application;
   try {
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--public-permission-lifecycle-only") {
+      if (std::getenv("OMARCHY_REQUIRE_PACKAGED_WORKER_TEST") == nullptr)
+        return 77;
+      run_public_permission_lifecycle_test();
+      return 0;
+    }
     run();
     run_plugin_manager_tests();
     run_surface_endpoint_tests();

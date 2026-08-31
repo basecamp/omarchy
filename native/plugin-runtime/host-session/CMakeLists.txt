@@ -41,6 +41,10 @@ target_link_libraries(omarchy-plugin-activation-snapshot PUBLIC
 target_compile_features(omarchy-plugin-activation-snapshot PUBLIC cxx_std_20)
 target_compile_options(omarchy-plugin-activation-snapshot PRIVATE
   -Wall -Wextra -Wpedantic -Werror)
+if(BUILD_TESTING)
+  target_compile_definitions(omarchy-plugin-activation-snapshot PUBLIC
+    OMARCHY_AUTHORITY_STORE_TESTING)
+endif()
 
 add_library(omarchy-plugin-host-session STATIC
   src/gesture_intent.cpp
