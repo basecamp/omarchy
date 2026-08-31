@@ -7,6 +7,7 @@
 # structured COREDUMP_* fields, which carry more than the core filenames do.
 
 set -uo pipefail
+umask 077
 
 # See systemd.journal-fields(7).
 readonly COREDUMP_MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1
@@ -21,10 +22,12 @@ readonly dedupe_seconds=${OMARCHY_CRASH_DEDUPE_SECONDS:-60}
 # Extended regex of process names never worth announcing.
 readonly ignore_pattern=${OMARCHY_CRASH_IGNORE:-}
 
+readonly STATE_ROOT="${OMARCHY_CRASH_STATE_ROOT:-$HOME/.local/state/omarchy/crash-watch}"
+
 declare -A last_notified
 
 announce() {
-  local comm=$1 pid=$2 exe=$3 signal=$4
+  local comm=$1 pid=$2 signature=$3
 
   # The shell owns org.freedesktop.Notifications, so a shell crash takes the
   # notification server down with it and a toast sent into that gap is lost.
@@ -41,8 +44,30 @@ announce() {
     --urgency critical \
     --glyph "$CRASH_GLYPH" \
     "Process crashed: $comm" \
-    "Click to diagnose with AI" \
-    --exec omarchy-agent-crash "$pid" "$comm" "$exe" "$signal"
+    "Click to review what happened" \
+    --exec omarchy-crash-review "$pid" "$signature"
+}
+
+record_crash() {
+  local signature=$1 name=$2 pid=$3 exe=$4 signal=$5 cmdline=$6
+  local metadata="$STATE_ROOT/metadata/$signature.json"
+  local count=1
+
+  mkdir -p "$STATE_ROOT/metadata"
+  [[ -f $metadata ]] && count=$(jq -r '(.count // 0) + 1' "$metadata" 2>/dev/null) || true
+  [[ $count =~ ^[0-9]+$ ]] || count=1
+
+  jq -n \
+    --arg name "$name" \
+    --arg pid "$pid" \
+    --arg exe "$exe" \
+    --arg signal "$signal" \
+    --arg cmdline "$cmdline" \
+    --arg last_seen "$(date --iso-8601=seconds)" \
+    --argjson count "$count" \
+    '{name: $name, pid: $pid, exe: $exe, signal: $signal,
+      cmdline: $cmdline, count: $count, last_seen: $last_seen}' >"$metadata.new"
+  mv "$metadata.new" "$metadata"
 }
 
 # -n 0 so a restart does not re-announce crashes already dealt with.
@@ -52,13 +77,14 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
     # IFS whitespace, so an empty field collapses into the next delimiter and
     # every field after it shifts along one. A process can set its own comm to
     # nothing, and that crash used to be read as somebody else's and dropped.
-    IFS=$'\t' read -r uid comm pid exe signal < <(
+    IFS=$'\t' read -r uid comm pid exe signal cmdline < <(
       jq -r 'def field: if . == null or . == "" then "-" else . end;
              [(._UID | field),
               (.COREDUMP_COMM | field),
               (.COREDUMP_PID | field),
               (.COREDUMP_EXE | field),
-              (.COREDUMP_SIGNAL_NAME | field)] | @tsv' <<<"$entry" 2>/dev/null
+              (.COREDUMP_SIGNAL_NAME | field),
+              (.COREDUMP_CMDLINE | field)] | @tsv' <<<"$entry" 2>/dev/null
     )
 
     [[ $pid =~ ^[0-9]+$ ]] || continue
@@ -94,16 +120,30 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
     # Never announce our own machinery, or it notifies about itself.
     [[ $name == omarchy-crash-* || $name == omarchy-agent-* ]] && continue
 
+    signature=$(omarchy-crash-signature "$exe" "$signal" "$cmdline")
+    record_crash "$signature" "$name" "$pid" "$exe" "$signal" "$cmdline"
+
+    [[ -f $STATE_ROOT/ignored/$signature ]] && continue
+
+    snoozed_until=0
+    [[ -f $STATE_ROOT/snoozed/$signature ]] && read -r snoozed_until <"$STATE_ROOT/snoozed/$signature"
+    [[ $snoozed_until =~ ^[0-9]+$ ]] || snoozed_until=0
+    if ((EPOCHSECONDS < snoozed_until)); then
+      continue
+    elif ((snoozed_until)); then
+      rm -f "$STATE_ROOT/snoozed/$signature"
+    fi
+
     # Muted at the end of a diagnosis, when the user was offered it and said
     # yes. A flag per program rather than one list, so omarchy-crash-mute can
     # lift one without reading, rewriting and re-parsing the rest.
     omarchy-toggle-enabled "crash-ignore/$name" && continue
 
     now=$EPOCHSECONDS
-    (((now - ${last_notified[$name]:-0}) < dedupe_seconds)) && continue
+    (((now - ${last_notified[$signature]:-0}) < dedupe_seconds)) && continue
 
     # Only a delivered toast starts the dedupe window. A failed send that
     # counted would suppress the rest of a crash loop for a minute, and
     # `journalctl -n 0` never replays what was missed.
-    announce "$name" "$pid" "$exe" "$signal" && last_notified[$name]=$now
+    announce "$name" "$pid" "$signature" && last_notified[$signature]=$now
   done

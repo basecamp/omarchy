@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# omarchy:summary=Review a process crash before deciding whether to diagnose it
+# omarchy:args=<pid> <signature>
+# omarchy:hidden=true
+
+set -euo pipefail
+umask 077
+
+pid=${1:?usage: omarchy-crash-review <pid> <signature>}
+signature=${2:?usage: omarchy-crash-review <pid> <signature>}
+
+[[ $pid =~ ^[0-9]+$ ]] || { echo "Not a PID: $pid" >&2; exit 1; }
+[[ $signature =~ ^[0-9a-f]{64}$ ]] || { echo "Not a crash signature: $signature" >&2; exit 1; }
+
+# A notification action has no terminal. Relaunch only validated numeric/hex
+# values, so the presentation wrapper never receives process-controlled text.
+if [[ ! -t 0 && -z ${OMARCHY_CRASH_REVIEW_INTERACTIVE:-} ]]; then
+  exec omarchy-launch-floating-terminal-with-presentation "omarchy-crash-review $pid $signature"
+fi
+
+readonly STATE_ROOT="${OMARCHY_CRASH_STATE_ROOT:-$HOME/.local/state/omarchy/crash-watch}"
+readonly metadata="$STATE_ROOT/metadata/$signature.json"
+
+if [[ ! -f $metadata ]]; then
+  echo "Crash details are no longer available."
+  exit 1
+fi
+
+name=$(jq -r '.name // "unknown"' "$metadata")
+exe=$(jq -r '.exe // "unknown"' "$metadata")
+signal=$(jq -r '.signal // "unknown"' "$metadata")
+cmdline=$(jq -r '.cmdline // "unknown"' "$metadata")
+count=$(jq -r '.count // 1' "$metadata")
+last_seen=$(jq -r '.last_seen // "unknown"' "$metadata")
+
+gum style --border rounded --padding "1 2" --width 100 \
+  "Process crashed: $name" \
+  "Signal: $signal" \
+  "Command: $cmdline" \
+  "Executable: $exe" \
+  "Seen $count time(s); last at $last_seen"
+
+action=$(gum choose --header "What would you like to do?" \
+  "Diagnose with AI" \
+  "Dismiss this occurrence" \
+  "Snooze this crash type" \
+  "Ignore this crash type from now on" \
+  "Mute all crashes from $name") || exit 0
+
+case "$action" in
+  "Diagnose with AI")
+    exec omarchy-agent-crash "$pid" "$name" "$exe" "$signal"
+    ;;
+  "Dismiss this occurrence")
+    ;;
+  "Snooze this crash type")
+    duration=$(gum choose --header "Snooze for how long?" \
+      "15 minutes" "1 hour" "4 hours" "Until tomorrow") || exit 0
+    case "$duration" in
+      "15 minutes") seconds=900 ;;
+      "1 hour") seconds=3600 ;;
+      "4 hours") seconds=14400 ;;
+      "Until tomorrow") seconds=86400 ;;
+    esac
+    mkdir -p "$STATE_ROOT/snoozed"
+    printf '%s\n' "$((EPOCHSECONDS + seconds))" >"$STATE_ROOT/snoozed/$signature"
+    echo "Snoozed $name crashes of this type for $duration."
+    ;;
+  "Ignore this crash type from now on")
+    omarchy-crash-ignore "$signature" on >/dev/null
+    echo "Ignored this $name crash type. Other $name crashes will still notify."
+    ;;
+  "Mute all crashes from $name")
+    omarchy-crash-mute "$name" on
+    ;;
+esac

@@ -96,11 +96,12 @@ reset_entries() {
 # One core dump as systemd-coredump journals it. The UID must be this user's, or
 # the watcher discards it as somebody else's crash before anything under test.
 crash_entry() {
-  local comm="$1" exe="$2"
+  local comm="$1" exe="$2" cmdline="${3:-$2 --test}"
 
-  jq -cn --arg uid "$UID" --arg comm "$comm" --arg exe "$exe" \
+  jq -cn --arg uid "$UID" --arg comm "$comm" --arg exe "$exe" --arg cmdline "$cmdline" \
     '{_UID: $uid, COREDUMP_COMM: $comm, COREDUMP_PID: "4242",
-      COREDUMP_EXE: $exe, COREDUMP_SIGNAL_NAME: "SIGSEGV"}' >>"$JOURNAL_ENTRIES"
+      COREDUMP_EXE: $exe, COREDUMP_SIGNAL_NAME: "SIGSEGV",
+      COREDUMP_CMDLINE: $cmdline}' >>"$JOURNAL_ENTRIES"
 }
 
 # The stubbed journalctl ends after the entries, so the watcher's loop ends too.
@@ -140,6 +141,41 @@ run_watch
 announced hyprland ||
   fail "a crash nobody muted still announces itself"
 pass "a crash nobody muted still announces itself"
+
+signature=$("$ROOT/bin/omarchy-crash-signature" /usr/bin/hyprland SIGSEGV "/usr/bin/hyprland --test")
+metadata="$watch_home/.local/state/omarchy/crash-watch/metadata/$signature.json"
+[[ -f $metadata ]] ||
+  fail "the watcher does not retain a summary for the review opened by the notification"
+[[ $(jq -r .count "$metadata") == "1" ]] ||
+  fail "the first occurrence has the wrong recurrence count"
+grep -Fq -- "--exec omarchy-crash-review 4242 $signature" "$NOTIFY_LOG" ||
+  fail "clicking the toast still launches AI directly instead of opening the crash review"
+pass "a crash notification opens a retained local summary before AI"
+
+mkdir -p "$watch_home/.local/state/omarchy/crash-watch/ignored"
+touch "$watch_home/.local/state/omarchy/crash-watch/ignored/$signature"
+run_watch
+! announced hyprland ||
+  fail "ignoring one crash signature does not stop that crash type from announcing"
+[[ $(jq -r .count "$metadata") == "2" ]] ||
+  fail "an ignored recurrence is not counted in its local summary"
+pass "ignoring one crash type keeps counting it without announcing it"
+rm -f "$watch_home/.local/state/omarchy/crash-watch/ignored/$signature"
+
+mkdir -p "$watch_home/.local/state/omarchy/crash-watch/snoozed"
+printf '%s\n' "$((EPOCHSECONDS + 3600))" >"$watch_home/.local/state/omarchy/crash-watch/snoozed/$signature"
+run_watch
+! announced hyprland ||
+  fail "a snoozed crash type still announces before the snooze expires"
+pass "snoozing suppresses only that crash type until its deadline"
+
+printf '%s\n' "$((EPOCHSECONDS - 1))" >"$watch_home/.local/state/omarchy/crash-watch/snoozed/$signature"
+run_watch
+announced hyprland ||
+  fail "a crash stays silent after its snooze deadline"
+[[ ! -f $watch_home/.local/state/omarchy/crash-watch/snoozed/$signature ]] ||
+  fail "an expired snooze is left behind as stale state"
+pass "an expired snooze restores notifications and cleans itself up"
 
 mute hyprland on
 run_watch
@@ -372,6 +408,85 @@ refusal=$(HOME="$mute_home" PATH="$failing_bin:$ROOT/bin:$PATH" \
 ! grep -Fq "Muted crash notifications" <<<"$refusal" ||
   fail "a mute that could not be written still reports success, so the user believes a program is silenced when it is not"
 pass "a mute that could not be written is not reported as one"
+
+# The click-through review is deliberately local: it shows the retained facts
+# and asks before spending agent time or granting the agent access to the core.
+review_bin="$TMPDIR/review-bin"
+REVIEW_ACTIONS="$TMPDIR/review-actions"
+REVIEW_AGENT_LOG="$TMPDIR/review-agent-log"
+REVIEW_LAUNCH_LOG="$TMPDIR/review-launch-log"
+mkdir -p "$review_bin"
+
+cat >"$review_bin/gum" <<'SH'
+#!/bin/bash
+[[ ${1:-} == "style" ]] && exit 0
+[[ ${1:-} == "choose" ]] || exit 1
+head -n 1 "$REVIEW_ACTIONS"
+tail -n +2 "$REVIEW_ACTIONS" >"$REVIEW_ACTIONS.next"
+mv "$REVIEW_ACTIONS.next" "$REVIEW_ACTIONS"
+SH
+
+cat >"$review_bin/omarchy-agent-crash" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >"$REVIEW_AGENT_LOG"
+SH
+
+cat >"$review_bin/omarchy-launch-floating-terminal-with-presentation" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >"$REVIEW_LAUNCH_LOG"
+SH
+
+chmod +x "$review_bin/gum" "$review_bin/omarchy-agent-crash" \
+  "$review_bin/omarchy-launch-floating-terminal-with-presentation"
+
+run_review() {
+  HOME="$watch_home" \
+  PATH="$review_bin:$ROOT/bin:$PATH" \
+  REVIEW_ACTIONS="$REVIEW_ACTIONS" \
+  REVIEW_AGENT_LOG="$REVIEW_AGENT_LOG" \
+  REVIEW_LAUNCH_LOG="$REVIEW_LAUNCH_LOG" \
+  OMARCHY_CRASH_REVIEW_INTERACTIVE=1 \
+    "$ROOT/bin/omarchy-crash-review" 4242 "$signature"
+}
+
+printf '%s\n' "Diagnose with AI" >"$REVIEW_ACTIONS"
+run_review
+grep -Fqx "4242 hyprland /usr/bin/hyprland SIGSEGV" "$REVIEW_AGENT_LOG" ||
+  fail "choosing diagnosis does not hand the reviewed facts to the existing agent flow"
+pass "the review launches AI only after diagnosis is chosen"
+
+rm -f "$watch_home/.local/state/omarchy/crash-watch/ignored/$signature"
+printf '%s\n' "Ignore this crash type from now on" >"$REVIEW_ACTIONS"
+run_review >/dev/null
+[[ -f $watch_home/.local/state/omarchy/crash-watch/ignored/$signature ]] ||
+  fail "the review's permanent ignore does not write the signature rule the watcher reads"
+pass "the review can permanently ignore one exact crash type"
+
+ignore_list=$(HOME="$watch_home" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-crash-ignore")
+grep -Fq "$signature" <<<"$ignore_list" && grep -Fq $'hyprland\tSIGSEGV' <<<"$ignore_list" ||
+  fail "a permanent crash-type ignore cannot be identified later from its list"
+HOME="$watch_home" PATH="$ROOT/bin:$PATH" \
+  "$ROOT/bin/omarchy-crash-ignore" "$signature" off >/dev/null
+[[ ! -f $watch_home/.local/state/omarchy/crash-watch/ignored/$signature ]] ||
+  fail "a permanent crash-type ignore cannot be removed"
+pass "permanent crash-type ignores can be listed and removed"
+
+rm -f "$watch_home/.local/state/omarchy/crash-watch/snoozed/$signature"
+printf '%s\n' "Snooze this crash type" "1 hour" >"$REVIEW_ACTIONS"
+before=$EPOCHSECONDS
+run_review >/dev/null
+read -r snoozed_until <"$watch_home/.local/state/omarchy/crash-watch/snoozed/$signature"
+((snoozed_until >= before + 3600)) ||
+  fail "the review's one-hour snooze does not persist a one-hour deadline"
+pass "the review can snooze one exact crash type"
+
+HOME="$watch_home" \
+PATH="$review_bin:$ROOT/bin:$PATH" \
+REVIEW_LAUNCH_LOG="$REVIEW_LAUNCH_LOG" \
+  "$ROOT/bin/omarchy-crash-review" 4242 "$signature"
+grep -Fqx "omarchy-crash-review 4242 $signature" "$REVIEW_LAUNCH_LOG" ||
+  fail "a notification click does not open the crash review in a floating terminal"
+pass "the notification action opens the review in a themed floating terminal"
 
 skill="$ROOT/default/agents/skills/diagnose-crash/SKILL.md"
 grep -Fq 'omarchy-crash-mute' "$skill" ||

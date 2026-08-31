@@ -167,12 +167,7 @@ Everything goes through the same sender contract, so the pieces are small:
 
 - **Low battery** — `omarchy-battery-low` sends a critical toast and runs the
   `battery-low` hook.
-- **Crash capture** — `omarchy-crash-watch` follows the systemd-coredump
-  journal stream and announces each crashed program (deduped per minute) as a
-  critical toast whose click runs `omarchy-agent-crash` (via `--exec`, so a
-  hostile process name stays a discrete argument). It waits for the
-  server first: a shell crash takes the notification server down with it, and
-  that crash is the one most worth reporting.
+- **Crash capture** — `omarchy-crash-watch` follows the systemd-coredump journal stream and announces each crashed program (deduped per minute) as a critical toast. A click opens `omarchy-crash-review` with a local summary and recurrence count before the user chooses whether to diagnose with AI, dismiss, snooze that exact crash type, ignore it permanently, or mute every crash from the program. A crash type is the SHA-256 signature of its executable, signal, and command line, so ignoring a known probe does not hide unrelated failures in the same executable. Retained summaries, snooze deadlines, and ignore rules live under `~/.local/state/omarchy/crash-watch`; the state is private to the user because command lines can contain sensitive values. The watcher waits for the notification server first: a shell crash takes the server down with it, and that crash is the one most worth reporting.
 - **Pending migrations** — `omarchy-migrate-notify` (from its user service
   after `graphical-session.target`) waits for the server, then sends a
   critical toast whose click opens a terminal running `omarchy-migrate`,
