@@ -3,12 +3,50 @@
 if lspci -nn | grep "106b:180[12]" >/dev/null; then
   echo "Detected MacBook with T2 chip. Installing support items..."
 
-  omarchy-pkg-add \
-    linux-t2 \
-    linux-t2-headers \
-    apple-t2-audio-config \
-    apple-bcm-firmware \
+  t2_packages=(
+    linux-t2
+    linux-t2-headers
+    apple-t2-audio-config
+    apple-bcm-firmware
     t2fanrd
+  )
+
+  effective_siglevel=$(/usr/bin/pacman-conf --repo omarchy SigLevel 2>/dev/null) || {
+    echo "Could not resolve the Omarchy repository signature policy; refusing T2 setup." >&2
+    return 1
+  }
+  if [[ -z ${effective_siglevel//[$' \t\n\r']/} ]]; then
+    effective_siglevel=$(/usr/bin/pacman-conf SigLevel 2>/dev/null) || {
+      echo "Could not resolve the inherited package signature policy; refusing T2 setup." >&2
+      return 1
+    }
+  fi
+  effective_siglevel=${effective_siglevel//$'\n'/ }
+  effective_siglevel=${effective_siglevel//$'\t'/ }
+  if [[ " $effective_siglevel " != *" PackageRequired "* ||
+    " $effective_siglevel " != *" PackageTrustedOnly "* ||
+    " $effective_siglevel " == *" PackageOptional "* ||
+    " $effective_siglevel " == *" PackageNever "* ||
+    " $effective_siglevel " == *" PackageTrustAll "* ]]; then
+    echo "The Omarchy repository is not enforcing trusted package signatures; refusing T2 setup." >&2
+    return 1
+  fi
+
+  # These kernel-level artifacts used to come from an unsigned third-party
+  # repository. They must now exist in Omarchy's pinned-key repository before
+  # any installation starts; otherwise leave the machine unchanged and report
+  # the packaging prerequisite explicitly.
+  for package in "${t2_packages[@]}"; do
+    repository=$(LC_ALL=C /usr/bin/pacman -Si "$package" 2>/dev/null |
+      /usr/bin/awk -F: '/^Repository[[:space:]]*:/ { gsub(/[[:space:]]/, "", $2); print $2; exit }')
+    if [[ $repository != "omarchy" ]]; then
+      echo "Authenticated T2 package '$package' is unavailable from the Omarchy repository." >&2
+      echo "T2 setup cannot continue until all support packages are published there with Omarchy signatures." >&2
+      return 1
+    fi
+  done
+
+  omarchy-pkg-add "${t2_packages[@]}"
 
   # Enable T2 fan control
   systemctl enable t2fanrd.service
