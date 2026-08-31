@@ -1,0 +1,136 @@
+#!/bin/bash
+
+# omarchy:summary=Install Cursor Agent from Cursor's official Linux tarball
+# omarchy:args=[--check]
+# omarchy:hidden=true
+
+# Cursor's documented CLI name is `agent`, but Omarchy stores and launches
+# `cursor-agent` so it does not collide with other tools named agent. An asdf
+# plugin is not used: that path is third-party bash that scrapes
+# cursor.com/install and pipes curl into tar with no checksum.
+
+set -euo pipefail
+
+ASDF_STUB_MARK='asdf:icholy/asdf-cursor-agent'
+CURSOR_INSTALL_SCRIPT='https://cursor.com/install'
+CURSOR_DOWNLOAD_HOST='https://downloads.cursor.com/lab'
+
+cursor_agent_path() {
+  command -v cursor-agent 2>/dev/null || true
+}
+
+cursor_agent_is_asdf_stub() {
+  local path=$1
+
+  [[ -f $path ]] && grep -Fq "$ASDF_STUB_MARK" "$path"
+}
+
+cursor_agent_ready() {
+  local path
+  path=$(cursor_agent_path)
+  [[ -n $path ]] || return 1
+  cursor_agent_is_asdf_stub "$path" && return 1
+  return 0
+}
+
+remove_asdf_stub() {
+  local path
+  path=$(cursor_agent_path)
+  [[ -n $path ]] || return 0
+  cursor_agent_is_asdf_stub "$path" || return 0
+  rm -f "$path"
+}
+
+linux_arch() {
+  case "$(uname -m)" in
+  x86_64 | amd64) echo x64 ;;
+  aarch64 | arm64) echo arm64 ;;
+  *)
+    echo "omarchy-install-cursor-agent: unsupported architecture $(uname -m)" >&2
+    return 1
+    ;;
+  esac
+}
+
+cursor_agent_version() {
+  local install_script version
+
+  install_script=$(curl -fsSL "$CURSOR_INSTALL_SCRIPT") || {
+    echo "Could not read $CURSOR_INSTALL_SCRIPT to find the current Cursor Agent version." >&2
+    return 1
+  }
+
+  if [[ $install_script =~ downloads\.cursor\.com/lab/([0-9]{4}\.[0-9]{2}\.[0-9]{2}-[A-Za-z0-9]+) ]]; then
+    version=${BASH_REMATCH[1]}
+    printf '%s\n' "$version"
+    return 0
+  fi
+
+  echo "Could not find a Cursor Agent download URL in $CURSOR_INSTALL_SCRIPT." >&2
+  return 1
+}
+
+install_cursor_agent() {
+  local arch version url tarball extract_dir data_home final_dir bin_dir
+
+  if cursor_agent_ready; then
+    return 0
+  fi
+
+  remove_asdf_stub
+
+  arch=$(linux_arch)
+  version=$(cursor_agent_version)
+  data_home=${XDG_DATA_HOME:-$HOME/.local/share}
+  final_dir="$data_home/cursor-agent/versions/$version"
+  bin_dir="$HOME/.local/bin"
+  url="$CURSOR_DOWNLOAD_HOST/$version/linux/$arch/agent-cli-package.tar.gz"
+
+  echo "Installing Cursor Agent $version..."
+
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  tarball="$tmp/agent-cli-package.tar.gz"
+  extract_dir="$tmp/extract"
+  mkdir -p "$extract_dir"
+
+  curl -fL --progress-bar "$url" -o "$tarball" || {
+    echo "Could not download Cursor Agent from $url" >&2
+    return 1
+  }
+
+  tar --strip-components=1 -xzf "$tarball" -C "$extract_dir"
+  [[ -f $extract_dir/cursor-agent ]] || {
+    echo "Cursor Agent tarball did not contain cursor-agent." >&2
+    return 1
+  }
+  chmod +x "$extract_dir/cursor-agent"
+
+  rm -rf "$final_dir"
+  mkdir -p "$(dirname "$final_dir")" "$bin_dir"
+  mv "$extract_dir" "$final_dir"
+  ln -sfn "$final_dir/cursor-agent" "$bin_dir/cursor-agent"
+  [[ -x $bin_dir/cursor-agent ]] || {
+    echo "Could not link cursor-agent into $bin_dir." >&2
+    return 1
+  }
+}
+
+case "${1:-}" in
+--check)
+  cursor_agent_ready
+  ;;
+-h | --help)
+  echo "Usage: omarchy-install-cursor-agent [--check]"
+  echo
+  echo "Installs Cursor's official Linux CLI as cursor-agent if it is not already"
+  echo "on PATH. --check exits 0 when a usable cursor-agent is present."
+  ;;
+"")
+  install_cursor_agent
+  ;;
+*)
+  echo "omarchy-install-cursor-agent: unknown option '$1'. Try --help." >&2
+  exit 2
+  ;;
+esac

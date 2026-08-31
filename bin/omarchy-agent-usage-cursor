@@ -1,0 +1,440 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Cursor Agent usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Cursor Agent usage into one display-ready JSON record.
+
+Plan, included-usage meters, and per-model / per-day token totals come from
+Cursor's DashboardService over the same Bearer token `cursor-agent login`
+stores in ~/.config/cursor/auth.json. The agents panel only ever reads the
+JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "cursor"
+AGENT_NAME = "Cursor"
+AUTH_HELP = "Run `cursor-agent login` to authenticate."
+API_BASE_URL = "https://api2.cursor.sh"
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+
+class CursorError(Exception):
+  pass
+
+
+def number(value: Any) -> int:
+  try:
+    return max(0, round(float(value or 0)))
+  except (TypeError, ValueError):
+    return 0
+
+
+def fraction(value: Any) -> float:
+  try:
+    n = float(value)
+  except (TypeError, ValueError):
+    return -1.0
+  if n != n:
+    return -1.0
+  # Cursor speaks 0–100 percentages; the panel meters want 0–1.
+  if n > 1.0:
+    n = n / 100.0
+  return max(0.0, min(1.0, n))
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value)))
+
+
+def cache_root() -> Path:
+  root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+  path.parent.mkdir(parents=True, exist_ok=True)
+  fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
+  try:
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+      json.dump(payload, handle, separators=(",", ":"))
+      handle.write("\n")
+    os.replace(tmp_name, path)
+  except Exception:
+    try:
+      os.unlink(tmp_name)
+    except OSError:
+      pass
+    raise
+
+
+def read_json(path: Path) -> dict[str, Any]:
+  try:
+    with path.open("r", encoding="utf-8") as handle:
+      fcntl.flock(handle.fileno(), fcntl.LOCK_SH)
+      try:
+        payload = json.load(handle)
+      finally:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+  except (OSError, json.JSONDecodeError):
+    return {}
+  return payload if isinstance(payload, dict) else {}
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_stats() -> dict[str, Any]:
+  today = datetime.now().astimezone().date()
+  recent_dates = [(today - timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [{"date": day, "messageCount": 0} for day in recent_dates],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    # Dashboard numbers are account-global, so synced machines must not sum them.
+    "scope": "account",
+    "hasPromptStats": True,
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+def auth_path() -> Path:
+  config_home = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+  return config_home / "cursor" / "auth.json"
+
+
+def read_access_token(path: Path) -> str:
+  env_key = str(os.environ.get("CURSOR_API_KEY") or "").strip()
+  if env_key:
+    return env_key
+  try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+  except (OSError, json.JSONDecodeError):
+    return ""
+  if not isinstance(payload, dict):
+    return ""
+  return str(payload.get("accessToken") or "").strip()
+
+
+def ms_to_iso(value: Any) -> str:
+  try:
+    ms = int(float(value))
+  except (TypeError, ValueError):
+    return ""
+  if ms <= 0:
+    return ""
+  # Accept seconds for callers that already converted.
+  if ms < 10_000_000_000:
+    ms *= 1000
+  return datetime.fromtimestamp(ms / 1000.0, timezone.utc).isoformat()
+
+
+def local_day_from_ms(value: Any) -> str:
+  try:
+    ms = int(float(value))
+  except (TypeError, ValueError):
+    return datetime.now().astimezone().date().isoformat()
+  if ms < 10_000_000_000:
+    ms *= 1000
+  return datetime.fromtimestamp(ms / 1000.0).astimezone().date().isoformat()
+
+
+class CursorClient:
+  def __init__(self, token: str, api_base_url: str = API_BASE_URL):
+    self.token = token
+    self.api_base_url = api_base_url.rstrip("/")
+
+  def request(self, method: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    body = json.dumps(payload or {}).encode("utf-8")
+    request = urllib.request.Request(
+      f"{self.api_base_url}/aiserver.v1.DashboardService/{method}",
+      data=body,
+      method="POST",
+      headers={
+        "Authorization": f"Bearer {self.token}",
+        "Content-Type": "application/json",
+        "Connect-Protocol-Version": "1",
+        "User-Agent": "omarchy-agent-usage-cursor",
+      },
+    )
+    try:
+      with urllib.request.urlopen(request, timeout=20) as response:
+        raw = response.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as error:
+      detail = error.read().decode("utf-8", errors="replace")[:200]
+      if error.code in (401, 403):
+        raise CursorError("Sign-in expired") from error
+      raise CursorError(f"Cursor usage endpoint returned status {error.code}: {detail}") from error
+    except Exception as error:
+      raise CursorError("Couldn't reach Cursor's usage endpoint") from error
+
+    try:
+      parsed = json.loads(raw) if raw else {}
+    except json.JSONDecodeError as error:
+      raise CursorError("Cursor usage endpoint returned invalid JSON") from error
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def plan_limits(period: dict[str, Any]) -> list[dict[str, Any]]:
+  usage = period.get("planUsage") if isinstance(period.get("planUsage"), dict) else {}
+  resets_at = ms_to_iso(period.get("billingCycleEnd"))
+  limits: list[dict[str, Any]] = []
+
+  # Cursor's own dashboard prefers totalPercentUsed and only falls back to
+  # includedSpend/limit when that field is missing. Using spend/limit alone
+  # reads as 100% as soon as the included pool is exhausted, even while
+  # totalPercentUsed still reports ~30% of the broader included allowance.
+  included = usage.get("totalPercentUsed")
+  if included is None:
+    included_limit = number(usage.get("limit"))
+    if included_limit > 0:
+      included = number(usage.get("includedSpend")) / included_limit * 100.0
+  included_percent = fraction(included)
+  if included_percent >= 0:
+    limits.append({"label": "Included", "title": "Included", "percent": included_percent, "resetsAt": resets_at})
+
+  if "autoPercentUsed" in usage:
+    auto = fraction(usage.get("autoPercentUsed"))
+    if auto >= 0:
+      limits.append({"label": "Auto", "title": "Auto", "percent": auto, "resetsAt": resets_at})
+
+  if "apiPercentUsed" in usage:
+    api = fraction(usage.get("apiPercentUsed"))
+    if api >= 0:
+      limits.append({"label": "API", "title": "API", "percent": api, "resetsAt": resets_at})
+
+  return limits
+
+
+def summarize_events(events: list[Any], today: date | None = None) -> dict[str, Any]:
+  today = today or datetime.now().astimezone().date()
+  recent_dates = [(today - timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
+  recent = {day: 0 for day in recent_dates}
+  today_by_model: dict[str, int] = {}
+  model_usage: dict[str, dict[str, int]] = {}
+  active_dates: set[str] = set()
+  sessions: set[str] = set()
+  today_sessions: set[str] = set()
+  total_prompts = 0
+  today_prompts = 0
+
+  for raw in events:
+    if not isinstance(raw, dict):
+      continue
+    token_usage = raw.get("tokenUsage") if isinstance(raw.get("tokenUsage"), dict) else {}
+    input_tokens = number(token_usage.get("inputTokens"))
+    output_tokens = number(token_usage.get("outputTokens"))
+    cache_read = number(token_usage.get("cacheReadTokens") or token_usage.get("cacheReadInputTokens"))
+    cache_write = number(token_usage.get("cacheWriteTokens") or token_usage.get("cacheCreationInputTokens"))
+    total = input_tokens + output_tokens + cache_read + cache_write
+    if total <= 0 and not raw.get("conversationId"):
+      continue
+
+    day = local_day_from_ms(raw.get("timestamp"))
+    model = str(raw.get("model") or "cursor").strip() or "cursor"
+    session = str(raw.get("conversationId") or f"{day}:{total_prompts}").strip()
+
+    total_prompts += 1
+    sessions.add(session)
+    active_dates.add(day)
+
+    bucket = model_usage.setdefault(model, empty_bucket())
+    bucket["inputTokens"] += input_tokens
+    bucket["outputTokens"] += output_tokens
+    bucket["cacheReadInputTokens"] += cache_read
+    bucket["cacheCreationInputTokens"] += cache_write
+
+    if day in recent:
+      recent[day] += total
+    if day == today.isoformat():
+      today_prompts += 1
+      today_sessions.add(session)
+      today_by_model[model] = today_by_model.get(model, 0) + total
+
+  return {
+    "todayPrompts": today_prompts,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": sum(today_by_model.values()),
+    "todayTokensByModel": today_by_model,
+    "recentDays": [{"date": day, "messageCount": recent[day]} for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": len(sessions),
+    "activeDays": len(active_dates),
+    "activeDates": sorted(active_dates),
+    "modelUsage": model_usage,
+  }
+
+
+def merge_model_usage(primary: dict[str, dict[str, int]], secondary: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+  # Prefer the billing-period aggregation when an event window is shorter.
+  if secondary and (not primary or sum(sum(b.values()) for b in primary.values()) < sum(sum(b.values()) for b in secondary.values())):
+    return secondary
+  merged = {model: dict(bucket) for model, bucket in primary.items()}
+  for model, bucket in secondary.items():
+    target = merged.setdefault(model, empty_bucket())
+    for key, value in bucket.items():
+      target[key] = max(target.get(key, 0), value)
+  return merged
+
+
+def aggregations_to_models(payload: dict[str, Any]) -> dict[str, dict[str, int]]:
+  rows = payload.get("aggregations")
+  if not isinstance(rows, list):
+    return {}
+  models: dict[str, dict[str, int]] = {}
+  for raw in rows:
+    if not isinstance(raw, dict):
+      continue
+    model = str(raw.get("modelIntent") or raw.get("model") or "cursor").strip() or "cursor"
+    bucket = models.setdefault(model, empty_bucket())
+    bucket["inputTokens"] += number(raw.get("inputTokens"))
+    bucket["outputTokens"] += number(raw.get("outputTokens"))
+    bucket["cacheReadInputTokens"] += number(raw.get("cacheReadTokens") or raw.get("cacheReadInputTokens"))
+    bucket["cacheCreationInputTokens"] += number(raw.get("cacheWriteTokens") or raw.get("cacheCreationInputTokens"))
+  return models
+
+
+def collect_limits(client: CursorClient) -> dict[str, Any]:
+  period = client.request("GetCurrentPeriodUsage")
+  plan = client.request("GetPlanInfo")
+  plan_info = plan.get("planInfo") if isinstance(plan.get("planInfo"), dict) else {}
+  tier = str(plan_info.get("planName") or "").strip()
+  return {
+    "limits": plan_limits(period),
+    "tierLabel": tier,
+    "usageStatusText": "",
+    "authHelpText": AUTH_HELP,
+  }
+
+
+def collect_stats(client: CursorClient) -> dict[str, Any]:
+  now = datetime.now(timezone.utc)
+  start_ms = int((now - timedelta(days=6)).timestamp() * 1000)
+  end_ms = int(now.timestamp() * 1000)
+  filtered = client.request(
+    "GetFilteredUsageEvents",
+    {"startDate": str(start_ms), "endDate": str(end_ms)},
+  )
+  events = filtered.get("usageEventsDisplay") or filtered.get("usageEvents") or []
+  if not isinstance(events, list):
+    events = []
+  stats = summarize_events(events)
+  aggregated = client.request("GetAggregatedUsageEvents")
+  stats["modelUsage"] = merge_model_usage(stats["modelUsage"], aggregations_to_models(aggregated))
+  # Aggregations cover the billing period; count active days from events only.
+  if not stats["activeDays"] and stats["modelUsage"]:
+    stats["activeDays"] = 1
+  return stats
+
+
+def usable_cached_stats(cached: dict[str, Any], max_age: int) -> dict[str, Any] | None:
+  if cached.get("schemaVersion") != 1:
+    return None
+  fetched_at = number(cached.get("fetchedAtMs"))
+  if fetched_at <= 0:
+    return None
+  age = (time.time() * 1000) - fetched_at
+  if age > max_age * 1000:
+    return None
+  stats = cached.get("stats")
+  return stats if isinstance(stats, dict) else None
+
+
+def scan(token: str, api_base_url: str, force: bool, limits_only: bool) -> dict[str, Any]:
+  if not token:
+    return base_record(usageStatusText="Waiting for auth", authHelpText=AUTH_HELP)
+
+  client = CursorClient(token, api_base_url)
+  cache_file = cache_root() / "cursor-scan.json"
+  max_age = 0 if force else (LIMITS_ONLY_REUSE_SECONDS if limits_only else SCAN_REUSE_SECONDS)
+  cached = read_json(cache_file)
+  stats = usable_cached_stats(cached, max_age)
+
+  try:
+    limits = collect_limits(client)
+  except CursorError as error:
+    message = str(error)
+    status = "Sign-in expired" if "Sign-in expired" in message else "Cursor limits unavailable"
+    return base_record(usageStatusText=status, authHelpText=message if status != "Sign-in expired" else AUTH_HELP)
+
+  if stats is None:
+    try:
+      stats = collect_stats(client)
+      write_json(cache_file, {"schemaVersion": 1, "fetchedAtMs": round(time.time() * 1000), "stats": stats})
+    except CursorError as error:
+      record = base_record(ready=True, **limits)
+      record["usageStatusText"] = "Cursor usage unavailable"
+      record["authHelpText"] = str(error)
+      return record
+
+  record = base_record(ready=True, hasLocalStats=True, **limits)
+  record.update(stats)
+  return record
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Cursor usage record as JSON")
+  parser.add_argument("--force", action="store_true", help="rescan events and re-probe limits, ignoring caches")
+  parser.add_argument("--limits-only", action="store_true", help="reuse any recent event scan; only limits must be fresh")
+  parser.add_argument("--auth-path", default=os.environ.get("CURSOR_AUTH_PATH", ""))
+  parser.add_argument("--api-base-url", default=os.environ.get("CURSOR_API_BASE_URL", API_BASE_URL))
+  args = parser.parse_args()
+
+  path = expand_path(args.auth_path) if args.auth_path else auth_path()
+  try:
+    record = scan(read_access_token(path), args.api_base_url, args.force, args.limits_only)
+  except Exception as error:
+    record = base_record(usageStatusText="Cursor unavailable", authHelpText="Cursor usage scan failed")
+    print(f"omarchy-agent-usage-cursor: {type(error).__name__}", file=sys.stderr)
+
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

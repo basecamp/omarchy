@@ -74,6 +74,11 @@ crush)
     command=(crush --yolo)
   fi
   ;;
+cursor-agent)
+  # --yolo skips command approvals; --trust skips the workspace trust prompt.
+  command=(cursor-agent --yolo --trust)
+  [[ -n ${prompt:-} ]] && command+=("$prompt")
+  ;;
 claude)
   command=(claude --permission-mode auto)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
