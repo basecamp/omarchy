@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Set up the OpenSSH server, open the firewall, and authorize an SSH key
+# omarchy:summary=Set up the OpenSSH server, open the firewall, and authorize SSH keys
 # omarchy:args=[--key=<public-key>] [--gh-keys <github-username>]
 # omarchy:examples=omarchy-setup-security-sshd | omarchy-setup-security-sshd --gh-keys dhh | omarchy-setup-security-sshd --key="ssh-ed25519 AAAA... user@host"
 # omarchy:requires-sudo=true
@@ -38,7 +38,7 @@ while (( $# > 0 )); do
     echo "Usage: omarchy-setup-security-sshd [--key=<public-key>] [--gh-keys <github-username>]"
     echo
     echo "Sets up the OpenSSH server, opens the SSH port in the UFW firewall,"
-    echo "and authorizes an SSH key (from GitHub, pasted, or passed via --key)."
+    echo "and authorizes SSH keys (all keys from GitHub, or one pasted/passed via --key)."
     echo
     echo "Passing --key or --gh-keys skips the prompts, so the command can run"
     echo "unattended from a script or a fresh machine's first login."
@@ -99,12 +99,49 @@ authorize_key() {
   fi
 }
 
+preview_github_keys() {
+  local username="$1" keys="$2" key count=0 import_scope
+
+  echo "GitHub user '$username' publishes these SSH keys:"
+  while IFS= read -r key; do
+    [[ -z $key ]] && continue
+
+    if valid_key "$key"; then
+      echo "  $(ssh-keygen -lf /dev/stdin <<<"$key")"
+      count=$((count + 1))
+    fi
+  done <<<"$keys"
+
+  if (( count == 0 )); then
+    echo -e "\e[31mNo valid SSH keys found for GitHub user '$username'.\e[0m" >&2
+    exit 1
+  fi
+
+  if (( count == 1 )); then
+    import_scope="this key"
+  else
+    import_scope="all $count keys"
+  fi
+
+  echo
+  echo "Importing $import_scope lets anyone holding a matching private key log in"
+  echo "to this machine as '$USER' without a password."
+}
+
 authorize_keys_from_github() {
-  local username="$1" keys added=0
+  local username="$1" confirmation="${2:-}" keys added=0
 
   echo "Fetching keys from https://github.com/$username.keys..."
   if ! keys=$(curl -fsSL "https://github.com/$username.keys") || [[ -z $keys ]]; then
     echo -e "\e[31mCould not fetch any SSH keys for GitHub user '$username'.\e[0m" >&2
+    exit 1
+  fi
+
+  preview_github_keys "$username" "$keys"
+
+  if [[ $confirmation == "confirm" ]] &&
+    ! gum confirm --default=false "Authorize all displayed GitHub SSH keys?"; then
+    echo "GitHub key import cancelled."
     exit 1
   fi
 
@@ -128,7 +165,7 @@ prompt_for_github_user() {
     exit 1
   fi
 
-  authorize_keys_from_github "$username"
+  authorize_keys_from_github "$username" confirm
 }
 
 authorize_pasted_key() {
@@ -198,15 +235,15 @@ if [[ -n $KEY ]]; then
 elif [[ -n $GITHUB_USER ]]; then
   authorize_keys_from_github "$GITHUB_USER"
 else
-  case $(gum choose "Grab key from GitHub" "Paste key manually" --header "How would you like to add your SSH key?") in
-  "Grab key from GitHub") prompt_for_github_user ;;
-  "Paste key manually") authorize_pasted_key ;;
+  case $(gum choose "Import all SSH keys from GitHub" "Paste one SSH key manually" --header "How would you like to authorize SSH access?") in
+  "Import all SSH keys from GitHub") prompt_for_github_user ;;
+  "Paste one SSH key manually") authorize_pasted_key ;;
   *) exit 1 ;;
   esac
 fi
 
 disable_password_auth
 
-echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
+echo -e "\e[32m\nPerfect! The SSH server is running and key-based login is authorized.\e[0m"
 echo "Password logins are off; this machine now accepts authorized keys only."
 echo "You can now connect with: ssh $USER@$(hostname)"
