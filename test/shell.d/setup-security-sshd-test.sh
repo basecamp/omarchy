@@ -70,6 +70,9 @@ run_setup() {
   local root="$test_dir/$scenario/root"
 
   mkdir -p "$home" "$root"
+  if [[ -n ${HOME_MODE:-} ]]; then
+    chmod "$HOME_MODE" "$home"
+  fi
   : >"$test_dir/$scenario.calls"
 
   HOME="$home" TEST_ROOT="$root" CALL_LOG="$test_dir/$scenario.calls" \
@@ -115,3 +118,18 @@ fi
 ! grep -q "Password logins are off" "$test_dir/invalid.output" ||
   fail "SSH setup must not claim rejected hardening succeeded"
 pass "SSH setup fails safely when sshd rejects the config"
+
+# StrictModes makes sshd ignore authorized_keys under a group-writable home,
+# so disabling passwords would leave SSH with neither passwords nor keys.
+if HOME_MODE=775 run_setup loose-home >"$test_dir/loose-home.output" 2>&1; then
+  fail "SSH setup must fail when the home directory is group-writable"
+fi
+[[ ! -e $test_dir/loose-home/root/etc/ssh/sshd_config.d/10-omarchy-hardening.conf ]] ||
+  fail "SSH setup must not disable passwords when sshd would ignore the key"
+! grep -qF "systemctl reload sshd.service" "$test_dir/loose-home.calls" ||
+  fail "SSH setup must not reload hardening when the home directory is group-writable"
+! grep -q "Password logins are off" "$test_dir/loose-home.output" ||
+  fail "SSH setup must not claim hardening succeeded under a group-writable home"
+grep -q "group- or world-writable" "$test_dir/loose-home.output" ||
+  fail "SSH setup explains why it refused to disable passwords"
+pass "SSH setup leaves passwords on when the home directory is group-writable"

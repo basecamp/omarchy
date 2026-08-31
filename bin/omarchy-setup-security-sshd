@@ -148,9 +148,22 @@ authorize_pasted_key() {
 disable_password_auth() {
   local config=/etc/ssh/sshd_config.d/10-omarchy-hardening.conf
   local effective_config
+  local home_mode
 
   if [[ ! -s $AUTHORIZED_KEYS ]]; then
     echo -e "\e[31mCannot disable SSH password authentication without an authorized key.\e[0m" >&2
+    return 1
+  fi
+
+  # Under StrictModes, sshd's default, a group- or world-writable home
+  # directory makes sshd ignore authorized_keys. ~/.ssh and the keys file
+  # are tightened in authorize_key; the home directory is not ours to change.
+  home_mode=$(stat -c '%a' "$HOME" 2>/dev/null) || {
+    echo -e "\e[31mCannot disable SSH password authentication: could not inspect the permissions on $HOME.\e[0m" >&2
+    return 1
+  }
+  if (( 8#$home_mode & 8#022 )); then
+    echo -e "\e[31mCannot disable SSH password authentication: $HOME is group- or world-writable, so sshd would ignore the authorized key.\e[0m" >&2
     return 1
   fi
 
