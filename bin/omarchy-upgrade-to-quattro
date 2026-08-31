@@ -2128,25 +2128,16 @@ for unit in pipewire-pulse.service pipewire-pulse.socket; do
   fi
 done
 
+# Directory + default pointer only. Never plant a hand-written
+# Default_keyring.keyring stub — gnome-keyring 50.x rejects that plaintext
+# format and creates a throwaway empty keyring on every login (wiping secrets).
 keyring_dir="$HOME/.local/share/keyrings"
-keyring_file="$keyring_dir/Default_keyring.keyring"
 default_file="$keyring_dir/default"
 mkdir -p "$keyring_dir"
-if [[ ! -f $keyring_file ]]; then
-  cat >"$keyring_file" <<EOF
-[keyring]
-display-name=Default keyring
-ctime=$(date +%s)
-mtime=0
-lock-on-idle=false
-lock-after=false
-EOF
-fi
 if [[ ! -f $default_file ]]; then
   printf 'Default_keyring\n' >"$default_file"
 fi
 chmod 700 "$keyring_dir"
-chmod 600 "$keyring_file"
 chmod 644 "$default_file"
 
 mkdir -p "$HOME/.local/share/applications"
