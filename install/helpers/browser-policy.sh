@@ -4,6 +4,57 @@
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/as-root.sh"
 
+# Policy files are installed as root, so they must come from a trusted tree.
+# The packaged tree is always trusted. A linked checkout is trusted only when
+# /etc/omarchy.conf is a root-owned regular file whose only line names that
+# checkout, which is what omarchy-dev-link writes. omarchy-plymouth-set uses
+# the same rule. Keep this block in step with omarchy-refresh-limine,
+# omarchy-refresh-pacman, omarchy-toggle-hybrid-gpu, omarchy-hibernation-setup,
+# omarchy-migrate, and omarchy-install-browser.
+omarchy_privileged_source_root() {
+  local packaged=/usr/share/omarchy
+  local path=${OMARCHY_PATH:-$packaged}
+  local conf=/etc/omarchy.conf
+  local uid mode
+  local -a lines
+
+  if [[ $path == "$packaged" ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  if [[ ! -f $conf || -L $conf ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  uid=$(stat -c %u -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  mode=$(stat -c %a -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( uid != 0 )) || (( 8#$mode & 0022 )); then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  mapfile -t lines <"$conf" || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( ${#lines[@]} == 1 )) && [[ ${lines[0]} == "export OMARCHY_PATH=\"$path\"" ]]; then
+    printf '%s\n' "$path"
+    return
+  fi
+
+  printf '%s\n' "$packaged"
+}
+
+BROWSER_POLICY_SOURCE_ROOT=$(omarchy_privileged_source_root)
+
 BROWSER_POLICY_MANAGED_DIRS=(
   /etc/chromium/policies/managed
   /etc/opt/chrome/policies/managed
@@ -153,14 +204,14 @@ browser_policy_firefox_hardened() {
 
 browser_policy_install_firefox_policies() {
   local distribution_dir=$1
-  local policies=${2:-$OMARCHY_PATH/default/firefox/policies.json}
+  local policies=${2:-$BROWSER_POLICY_SOURCE_ROOT/default/firefox/policies.json}
 
   as_root install -m 644 -o root -g root -T "$policies" "$distribution_dir/policies.json"
 }
 
 browser_policy_setup_firefox_distribution() {
   local distribution_dir=$1
-  local policies=${2:-$OMARCHY_PATH/default/firefox/policies.json}
+  local policies=${2:-$BROWSER_POLICY_SOURCE_ROOT/default/firefox/policies.json}
 
   browser_policy_setup_parent "$distribution_dir"
   browser_policy_purge_dir "$distribution_dir"

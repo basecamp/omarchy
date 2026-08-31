@@ -5,6 +5,58 @@
 
 set -euo pipefail
 
+# Migrations run with the caller's sudo credentials inside the update flow, so
+# the tree they are read from must be trusted. The packaged tree is always
+# trusted. A linked checkout is trusted only when /etc/omarchy.conf is a
+# root-owned regular file whose only line names that checkout, which is what
+# omarchy-dev-link writes. omarchy-plymouth-set uses the same rule. Keep this
+# block in step with omarchy-refresh-limine, omarchy-refresh-pacman,
+# omarchy-toggle-hybrid-gpu, omarchy-hibernation-setup,
+# omarchy-install-browser, and install/helpers/browser-policy.sh.
+omarchy_privileged_source_root() {
+  local packaged=/usr/share/omarchy
+  local path=${OMARCHY_PATH:-$packaged}
+  local conf=/etc/omarchy.conf
+  local uid mode
+  local -a lines
+
+  if [[ $path == "$packaged" ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  if [[ ! -f $conf || -L $conf ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  uid=$(stat -c %u -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  mode=$(stat -c %a -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( uid != 0 )) || (( 8#$mode & 0022 )); then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  mapfile -t lines <"$conf" || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( ${#lines[@]} == 1 )) && [[ ${lines[0]} == "export OMARCHY_PATH=\"$path\"" ]]; then
+    printf '%s\n' "$path"
+    return
+  fi
+
+  printf '%s\n' "$packaged"
+}
+
+SOURCE_ROOT=$(omarchy_privileged_source_root)
+
 mode="run"
 
 usage() {
@@ -30,7 +82,7 @@ done
 
 OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 STATE_DIR="${OMARCHY_MIGRATION_STATE:-$HOME/.local/state/omarchy/migrations}"
-MIGRATIONS_DIR="$OMARCHY_PATH/migrations"
+MIGRATIONS_DIR="$SOURCE_ROOT/migrations"
 
 migration_entries() {
   [[ -d $MIGRATIONS_DIR ]] || return 0
@@ -90,7 +142,7 @@ while IFS=$'\t' read -r name file marker <&3; do
 
   if [[ ! -f $marker ]]; then
     echo -e "\e[32m\nRunning migration (${name%.sh})\e[0m"
-    OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file" 3<&-
+    OMARCHY_PATH="$SOURCE_ROOT" bash -euo pipefail "$file" 3<&-
     mkdir -p "$(dirname "$marker")"
     touch "$marker"
   fi

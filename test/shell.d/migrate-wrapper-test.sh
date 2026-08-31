@@ -10,7 +10,34 @@ trap 'rm -rf "$test_tmp"' EXIT
 test_root="$test_tmp/omarchy"
 test_home="$test_tmp/home"
 stub_bin="$test_tmp/bin"
+conf="$test_tmp/omarchy.conf"
 mkdir -p "$test_root/migrations" "$test_home" "$stub_bin"
+
+# omarchy-migrate reads migrations from the packaged tree, or from a checkout
+# that a root-owned /etc/omarchy.conf names. Run a copy whose conf path points
+# at a stand-in, and authorize the scratch tree the way omarchy-dev-link
+# would. stat is stubbed to report the stand-in as root-owned, which is the
+# part of dev-link only root can do for real.
+migrate_copy="$test_tmp/omarchy-migrate"
+sed "s#/etc/omarchy.conf#$conf#g" "$ROOT/bin/omarchy-migrate" >"$migrate_copy"
+chmod +x "$migrate_copy"
+
+cat >"$stub_bin/stat" <<'SH'
+#!/bin/bash
+for last; do :; done
+if [[ $last == "$TEST_CONF" ]]; then
+  case " $* " in
+    *" %u "*) echo 0 ;;
+    *" %a "*) echo 644 ;;
+  esac
+  exit 0
+fi
+exec /usr/bin/stat "$@"
+SH
+chmod +x "$stub_bin/stat"
+
+printf 'export OMARCHY_PATH="%s"\n' "$test_root" >"$conf"
+chmod 0644 "$conf"
 
 cat >"$stub_bin/omarchy-notification-dismiss" <<'SH'
 #!/bin/bash
@@ -25,10 +52,11 @@ SH
 run_migrate() {
   HOME="$test_home" \
   OMARCHY_PATH="$test_root" \
+  TEST_CONF="$conf" \
   PATH="$stub_bin:$ROOT/bin:$PATH" \
   TEST_CALLS="$test_tmp/calls" \
   TEST_DISMISSALS="$test_tmp/dismissals" \
-    "$ROOT/bin/omarchy-migrate" "$@"
+    "$migrate_copy" "$@"
 }
 
 : >"$test_tmp/calls"

@@ -9,7 +9,41 @@ trap 'rm -rf "$test_tmp"' EXIT
 
 test_root="$test_tmp/omarchy"
 test_home="$test_tmp/home"
-mkdir -p "$test_root/migrations" "$test_home"
+stub_bin="$test_tmp/bin"
+conf="$test_tmp/omarchy.conf"
+mkdir -p "$test_root/migrations" "$test_home" "$stub_bin"
+
+# omarchy-migrate reads migrations from the packaged tree, or from a checkout
+# that a root-owned /etc/omarchy.conf names. Run a copy whose conf path points
+# at a stand-in, and authorize each scratch tree the way omarchy-dev-link
+# would. stat is stubbed to report the stand-in as root-owned, which is the
+# part of dev-link only root can do for real.
+migrate_copy="$test_tmp/omarchy-migrate"
+sed "s#/etc/omarchy.conf#$conf#g" "$ROOT/bin/omarchy-migrate" >"$migrate_copy"
+chmod +x "$migrate_copy"
+
+cat >"$stub_bin/stat" <<'SH'
+#!/bin/bash
+for last; do :; done
+if [[ $last == "$TEST_CONF" ]]; then
+  case " $* " in
+    *" %u "*) echo 0 ;;
+    *" %a "*) echo 644 ;;
+  esac
+  exit 0
+fi
+exec /usr/bin/stat "$@"
+SH
+chmod +x "$stub_bin/stat"
+
+authorize() {
+  printf 'export OMARCHY_PATH="%s"\n' "$1" >"$conf"
+  chmod 0644 "$conf"
+}
+
+run_migrate() {
+  TEST_CONF="$conf" PATH="$stub_bin:$PATH" "$migrate_copy" "$@"
+}
 
 cat >"$test_root/migrations/100-first.sh" <<'SH'
 [[ $OMARCHY_PATH == "$TEST_EXPECTED_OMARCHY_PATH" ]]
@@ -22,7 +56,8 @@ SH
 
 calls="$test_tmp/calls"
 
-if ! HOME="$test_home" OMARCHY_PATH="$test_root" "$ROOT/bin/omarchy-migrate" --pending >"$test_tmp/pending.out"; then
+authorize "$test_root"
+if ! HOME="$test_home" OMARCHY_PATH="$test_root" run_migrate --pending >"$test_tmp/pending.out"; then
   fail "migration runner reports pending migrations before state exists"
 fi
 grep -q '^100-first\.sh$' "$test_tmp/pending.out" || fail "migration runner lists first pending migration filename"
@@ -33,7 +68,7 @@ HOME="$test_home" \
 OMARCHY_PATH="$test_root" \
 TEST_EXPECTED_OMARCHY_PATH="$test_root" \
 TEST_CALLS="$calls" \
-  "$ROOT/bin/omarchy-migrate" >"$test_tmp/first-run.out"
+  run_migrate >"$test_tmp/first-run.out"
 [[ $(sed -n '1p' "$calls") == "first" ]] || fail "migration runner runs first migration"
 [[ $(sed -n '2p' "$calls") == "second" ]] || fail "migration runner runs second migration"
 [[ -f $test_home/.local/state/omarchy/migrations/100-first.sh ]] || fail "migration runner records first migration marker"
@@ -44,11 +79,11 @@ HOME="$test_home" \
 OMARCHY_PATH="$test_root" \
 TEST_EXPECTED_OMARCHY_PATH="$test_root" \
 TEST_CALLS="$calls" \
-  "$ROOT/bin/omarchy-migrate" >"$test_tmp/second-run.out"
+  run_migrate >"$test_tmp/second-run.out"
 [[ $(wc -l <"$calls") -eq 2 ]] || fail "migration runner skips completed migrations"
 pass "migration runner skips completed migrations"
 
-if HOME="$test_home" OMARCHY_PATH="$test_root" "$ROOT/bin/omarchy-migrate" --pending >"$test_tmp/not-pending.out"; then
+if HOME="$test_home" OMARCHY_PATH="$test_root" run_migrate --pending >"$test_tmp/not-pending.out"; then
   fail "migration runner reports no pending migrations after state exists"
 fi
 pass "migration runner detects no pending migrations"
@@ -63,11 +98,12 @@ false
 echo after-fail >>"$TEST_CALLS"
 SH
 
+authorize "$failure_root"
 set +e
 HOME="$failure_home" \
 OMARCHY_PATH="$failure_root" \
 TEST_CALLS="$calls" \
-  "$ROOT/bin/omarchy-migrate" >"$test_tmp/failure.out" 2>"$test_tmp/failure.err"
+  run_migrate >"$test_tmp/failure.out" 2>"$test_tmp/failure.err"
 failure_status=$?
 set -e
 [[ $failure_status -ne 0 ]] || fail "migration runner exits non-zero when a migration fails"
@@ -89,11 +125,12 @@ cat >"$stdin_root/migrations/200-after.sh" <<'SH'
 echo after-reader >>"$TEST_CALLS"
 SH
 
+authorize "$stdin_root"
 printf 'migration input\n' | \
   HOME="$stdin_home" \
   OMARCHY_PATH="$stdin_root" \
   TEST_CALLS="$stdin_calls" \
-  "$ROOT/bin/omarchy-migrate" >"$test_tmp/stdin.out"
+  run_migrate >"$test_tmp/stdin.out"
 
 grep -q '^reader:migration input$' "$stdin_calls" ||
   fail "migration runner preserves the caller's stdin for a migration" "$(cat "$stdin_calls")"
