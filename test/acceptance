@@ -19,7 +19,13 @@ mkdir -p "$OMARCHY_ACCEPTANCE_DIR"
 # the session environment is inherited.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
-export OMARCHY_PATH="${OMARCHY_PATH:-$ROOT}"
+# The suite verifies the installed product the session is running, so default
+# OMARCHY_PATH to the installed tree — never this checkout, which may hold
+# only test/ (omarchy-iso-test's --sync-omarchy). qs matches shell instances
+# by config path, so a suite pointed at any other tree reads the session
+# shell as "not running". Callers testing a different tree pass it explicitly.
+export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
 if [[ -z ${DISPLAY:-} ]]; then

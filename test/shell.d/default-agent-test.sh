@@ -91,10 +91,13 @@ export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
+export OMARCHY_PATH="$ROOT"
 
 grok_package="npm:@xai-official/grok"
 omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
+agy_package="antigravity-cli"
+ori_package="github:OpenRouterLabs/ori-releases"
 
 assert_lazy_stub() {
   local package=$1
@@ -112,12 +115,15 @@ assert_lazy_stub() {
 assert_lazy_stub "$grok_package" grok
 assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
+assert_lazy_stub "$ori_package" ori
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
+grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity lazy stub"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
+grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "user setup creates the Ori lazy stub"
 pass "user setup creates the custom agent lazy stubs"
 
 : >"$stub_log"
@@ -125,10 +131,83 @@ source "$ROOT/migrations/1785617047.sh" >/dev/null
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "Oh My Pi migration creates a working lazy stub"
 
 : >"$stub_log"
+source "$ROOT/migrations/1787342993.sh" >/dev/null
+grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "Ori migration creates a working lazy stub"
+
+: >"$stub_log"
 source "$ROOT/migrations/1785846769.sh" >/dev/null
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repairs the Oh My Pi lazy stub"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
+
+: >"$stub_log"
+mkdir -p "$(dirname "$agent_file")"
+printf '%s\n' gemini >"$agent_file"
+"$ROOT/bin/omarchy-mise-install" gemini
+export OMARCHY_TEST_MISSING_COMMAND=agy
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+unset OMARCHY_TEST_MISSING_COMMAND
+grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "Antigravity migration creates its lazy stub"
+[[ $(<"$agent_file") == "agy" ]] || fail "Antigravity migration replaces a Gemini default"
+
+: >"$stub_log"
+printf '  %s  \n' gemini >"$agent_file"
+export OMARCHY_TEST_MISSING_COMMAND=agy
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+unset OMARCHY_TEST_MISSING_COMMAND
+[[ $(<"$agent_file") == "agy" ]] ||
+  fail "Antigravity migration replaces a padded Gemini default the launcher would still read"
+pass "Antigravity migration reads the default the way the launcher does"
+
+for obsolete_form in 'mise use -g "gemini"' 'mise use -g --quiet "gemini"'; do
+  printf '#!/bin/bash\n%s || exit 1\n' "$obsolete_form" >"$test_home/.local/bin/gemini"
+  chmod +x "$test_home/.local/bin/gemini"
+  source "$ROOT/migrations/1786719479.sh" >/dev/null
+  [[ ! -e $test_home/.local/bin/gemini ]] ||
+    fail "Antigravity migration removes a wrapper built on [$obsolete_form]"
+done
+
+printf '#!/bin/bash\nexec /opt/gemini "$@"\n' >"$test_home/.local/bin/gemini"
+chmod +x "$test_home/.local/bin/gemini"
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+[[ -e $test_home/.local/bin/gemini ]] || fail "Antigravity migration leaves a hand-written gemini alone"
+
+printf '#!/bin/bash\n# replaced: mise use -g --quiet "gemini"\nexec /opt/gemini "$@"\n' >"$test_home/.local/bin/gemini"
+chmod +x "$test_home/.local/bin/gemini"
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+[[ -e $test_home/.local/bin/gemini ]] ||
+  fail "Antigravity migration leaves a wrapper that only mentions the installer line"
+rm -f "$test_home/.local/bin/gemini"
+pass "Antigravity migration only removes the Gemini wrapper Omarchy wrote"
+
+[[ -L "$test_home/.gemini/config/skills/omarchy" && $(readlink "$test_home/.gemini/config/skills/omarchy") == "$ROOT/default/agents/skills/omarchy" ]] ||
+   fail "Antigravity migration provisions the omarchy skill"
+[[ -L "$test_home/.gemini/config/skills/diagnose-crash" && $(readlink "$test_home/.gemini/config/skills/diagnose-crash") == "$ROOT/default/agents/skills/diagnose-crash" ]] ||
+   fail "Antigravity migration provisions the diagnose-crash skill"
+pass "Antigravity migration provisions Antigravity skills"
+
+
+: >"$stub_log"
+mkdir -p "$test_home/.local/state/omarchy"
+touch "$test_home/.local/state/omarchy/preinstalls-removed"
+export OMARCHY_TEST_MISSING_COMMAND=agy
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+[[ ! -s $stub_log ]] || fail "Antigravity migration preserves removed preinstalls"
+pass "Antigravity migration respects removed preinstalls"
+
+: >"$stub_log"
+printf '%s\n' gemini >"$agent_file"
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+unset OMARCHY_TEST_MISSING_COMMAND
+grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "Antigravity migration installs the agent a Gemini default now names"
+[[ $(<"$agent_file") == "agy" ]] || fail "Antigravity migration replaces a Gemini default after opt-out"
+pass "Antigravity migration never leaves the default naming a missing agent"
+
+: >"$stub_log"
+rm "$test_home/.local/state/omarchy/preinstalls-removed"
+source "$ROOT/migrations/1786719479.sh" >/dev/null
+[[ ! -s $stub_log ]] || fail "Antigravity migration reinstalls an existing Antigravity command"
+pass "Antigravity migration preserves an existing Antigravity install"
 
 mkdir -p "$test_home/.local/state/omarchy"
 touch "$test_home/.local/state/omarchy/preinstalls-removed"
@@ -136,6 +215,7 @@ touch "$test_home/.local/state/omarchy/preinstalls-removed"
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
+source "$ROOT/migrations/1787342993.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 
@@ -157,10 +237,12 @@ source "$ROOT/migrations/1785846769.sh" >/dev/null
 rm -f "$test_home/.local/bin/omp"
 
 rm "$test_home/.local/state/omarchy/preinstalls-removed"
+rm -f "$agent_file"
 pass "agent migrations install working wrappers without overriding the preinstall opt-out"
 
+touch "$test_home/.local/bin/agy" "$test_home/.local/bin/ori"
 omarchy-remove-preinstalls >/dev/null
-for command in omp grok crush; do
+for command in agy omp ori grok crush; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
@@ -211,13 +293,18 @@ declare -A expected_agents=(
   [oh-my-pi]="omp"
   [opencode]="opencode"
   [open-code]="opencode"
+  [ori]="ori"
+  [openrouter]="ori"
   [claude]="claude"
   [claude-code]="claude"
   [codex]="codex"
   [crush]="crush"
   [grok]="grok"
-  [gemini]="gemini"
-  [gemini-cli]="gemini"
+  [agy]="agy"
+  [antigravity]="agy"
+  [antigravity-cli]="agy"
+  [gemini]="agy"
+  [gemini-cli]="agy"
   [copilot]="copilot"
   [github-copilot]="copilot"
 )
@@ -226,11 +313,12 @@ declare -A expected_packages=(
   [pi]="pi"
   [omp]="$omp_package"
   [opencode]="opencode"
+  [ori]="$ori_package"
   [claude]="claude"
   [codex]="codex"
   [crush]="$crush_package"
   [grok]="$grok_package"
-  [gemini]="gemini"
+  [agy]="$agy_package"
   [copilot]="copilot"
 )
 
@@ -369,22 +457,24 @@ assert_bypass() {
 assert_launch pi pi "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
+assert_launch ori ori code --interactive --prompt "Review this project"
 assert_launch claude claude --permission-mode auto -- "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
-assert_launch gemini gemini --yolo --prompt-interactive "Review this project"
+assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
 assert_bypass opencode opencode --auto
+assert_bypass ori ori code
 assert_bypass claude claude --permission-mode auto
 assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
-assert_bypass gemini gemini --yolo
+assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
 

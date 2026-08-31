@@ -18,9 +18,11 @@ To install, say, Ruby, you'd run `mise use -g ruby`, which will both install Rub
 
 ## Docker
 
-[Docker](https://www.docker.com/) hardly needs any introduction. It allows you to run isolated containers, and Omarchy installs everything needed to run it well. This includes Docker itself, [Docker Compose](https://docs.docker.com/compose/), and the user group changes needed for you to run Docker as the normal user and not as root.
+[Docker](https://www.docker.com/) hardly needs any introduction. It allows you to run isolated containers, and Omarchy installs everything needed to run it well, including Docker itself and [Docker Compose](https://docs.docker.com/compose/).
 
-Remember to checkout the Lazydocker command to manage your containers in a cool TUI using `Super + Shift + D`.
+By default your user is *not* in the `docker` group. That group is effectively passwordless root — anything in it can `docker run -v /:/host` and take over the machine — so a single rogue script or dependency running as you would otherwise be one command away from root. So on the command line you run Docker with `sudo` (`sudo docker ps`, `sudo docker compose up`), and the graphical tools that talk to the daemon — the Docker TUI on `Super + Shift + D` and the Windows VM — ask for authorization when they need it. If you want the convenience of a groupless setup back and understand the tradeoff, enable it from **Setup > Security > Sudoless Docker** (or run `omarchy-setup-security-sudoless-docker`), which adds you to the `docker` group after a warning; then plain `docker` and the `d` alias work without `sudo` again.
+
+Remember to checkout the Lazydocker command to manage your containers in a cool TUI using `Super + Shift + D`; it asks for authorization the first time unless you have enabled sudoless Docker.
 
 You can setup the common databases for local development in Docker using _Install > Development > Docker DB_ in the Omarchy menu.
 
