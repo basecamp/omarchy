@@ -180,17 +180,40 @@ PluginRuntimePreparationResult PluginRuntimeRoot::prepare(
       return {};
     auto root = std::unique_ptr<PluginRuntimeRoot>(
         new PluginRuntimeRoot(configuration));
-    auto activation = root->coordinator_.prepare();
-    if (!activation)
+    auto loaded = root->permissions_->load_activation();
+    if (!loaded.snapshot)
+      return {};
+    auto &snapshot = *loaded.snapshot;
+    const auto binding = snapshot.grants.binding;
+    const auto live = snapshot.live;
+    if (snapshot.record.plugin_id !=
+        root->permissions_->expected_plugin_.view())
+      return {};
+    if (loaded.grant_status ==
+        host_session::GrantStatus::permission_disabled)
       return {.runtime = {},
-              .status = activation.permission_disabled
-                            ? PluginRuntimePreparationStatus::permission_disabled
-                            : PluginRuntimePreparationStatus::failed};
+              .status =
+                  PluginRuntimePreparationStatus::permission_disabled};
+    if (loaded.grant_status != host_session::GrantStatus::activatable)
+      return {};
+    auto live_binding =
+        root->permissions_->prepare_live_activation(binding, live);
+    if (!live_binding)
+      return {};
+
+    // Bind before construction so an already-stale active revision cannot
+    // enter even the side-effect-free runtime assembly phase.
+    PluginSessionCreateError create_error = PluginSessionCreateError::none;
+    auto session = PluginSession::prepare(
+        root->supervisor(), std::move(snapshot), root->runtime_factory_,
+        create_error, root->session_limits_);
+    if (!session)
+      return {};
     auto prepared =
         std::unique_ptr<PreparedPluginRuntime>(new PreparedPluginRuntime);
     prepared->root = std::move(root);
-    prepared->session = std::move(activation.prepared);
-    prepared->live_binding = std::move(activation.live_binding);
+    prepared->session = std::move(session);
+    prepared->live_binding = std::move(live_binding);
     return {.runtime = std::move(prepared),
             .status = PluginRuntimePreparationStatus::prepared};
   } catch (...) {
@@ -208,10 +231,25 @@ PluginRuntimeRoot::commit(
   try {
     auto root = std::move(prepared->root);
     root->surface_session_ = std::make_unique<RootSurfaceSessionPort>(*root);
-    const bool activated = root->coordinator_.commit(
-        std::move(prepared->session), std::move(*prepared->live_binding),
-        &hooks, &hooks);
-    return activated ? std::move(root) : nullptr;
+    const auto expected_binding = prepared->session->grants.binding;
+    const auto expected_live = prepared->session->live;
+    PluginSessionCreateError create_error = PluginSessionCreateError::none;
+    auto session = PluginSession::commit(std::move(prepared->session),
+                                         create_error, &hooks, &hooks, nullptr);
+    if (!session)
+      return {};
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+    if (root->before_final_fence_)
+      root->before_final_fence_(root->permissions_->authority_for_test(),
+                                root->before_final_fence_context_);
+#endif
+    if (!root->permissions_->commit_live_activation(
+            std::move(*prepared->live_binding), expected_binding,
+            expected_live))
+      return {};
+    session->start();
+    root->session_ = std::move(session);
+    return root;
   } catch (...) {
     return {};
   }
@@ -222,23 +260,34 @@ PluginRuntimeRoot::PluginRuntimeRoot(Configuration &configuration)
                        configuration.permissions->services_,
                        configuration.runtime_limits),
       permissions_(std::move(configuration.permissions)),
-      coordinator_(*permissions_, runtime_factory_,
-                   configuration.session_limits) {
+      session_limits_(configuration.session_limits) {
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
-  if (configuration.test_supervisor_factory)
-    coordinator_.set_supervisor_factory(
-        std::move(configuration.test_supervisor_factory));
-  if (configuration.test_before_final_fence)
-    coordinator_.set_before_final_fence(
-        configuration.test_before_final_fence,
-        configuration.test_before_final_fence_context);
+  supervisor_factory_ = std::move(configuration.test_supervisor_factory);
+  before_final_fence_ = configuration.test_before_final_fence;
+  before_final_fence_context_ = configuration.test_before_final_fence_context;
 #endif
 }
 
 PluginRuntimeRoot::~PluginRuntimeRoot() noexcept {
   // Destruction concurrent with a public call is outside the ownership
   // contract; avoid a throwing lock in this noexcept teardown path.
-  coordinator_.stop();
+  stop();
+}
+
+launcher::Supervisor PluginRuntimeRoot::supervisor() const {
+#ifdef OMARCHY_PLUGIN_SESSION_TESTING
+  if (supervisor_factory_)
+    return supervisor_factory_();
+#endif
+  return launcher::Supervisor::packaged();
+}
+
+void PluginRuntimeRoot::stop() noexcept {
+  if (!session_)
+    return;
+  session_->revoke();
+  session_->stop();
+  session_.reset();
 }
 
 std::optional<permissions::ActivationBinding>
@@ -280,7 +329,7 @@ PluginSession *PluginRuntimeRoot::running_session_unlocked() const noexcept {
 }
 
 PluginSession *PluginRuntimeRoot::session_unlocked() const noexcept {
-  return coordinator_.session();
+  return session_.get();
 }
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING

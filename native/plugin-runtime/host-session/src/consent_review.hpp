@@ -83,8 +83,8 @@ enum class ConsentResult : std::uint8_t {
 };
 
 // Trusted-host API only: fingerprints and actor values bind context but do not
-// authenticate an IPC peer. The activation coordinator supplies a descriptor-
-// verified revision and choices obtained from trusted UI or interactive CLI;
+// authenticate an IPC peer. The trusted activation owner supplies a
+// descriptor-verified revision and choices from trusted UI or interactive CLI;
 // plugins never call these functions or provide these structs.
 [[nodiscard]] std::optional<ConsentReview> prepare_consent_review(
     AuthorityStore &store, const VerifiedRevision &verified,

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "plugin_activation_coordinator.hpp"
 #include "plugin_permission_controller.hpp"
+#include "plugin_session.hpp"
 #include "session_runtime_factory.hpp"
 #include "surface_session_port.hpp"
 
@@ -93,10 +93,13 @@ private:
   commit(std::unique_ptr<PreparedPluginRuntime> prepared,
          PluginRuntimeHooks &hooks, QObject &ui_owner);
   explicit PluginRuntimeRoot(Configuration &configuration);
+  [[nodiscard]] launcher::Supervisor supervisor() const;
+  void stop() noexcept;
 
   SessionRuntimeFactory runtime_factory_;
   std::shared_ptr<PluginPermissionAuthority> permissions_;
-  PluginActivationCoordinator coordinator_;
+  session::SessionLimits session_limits_;
+  std::unique_ptr<PluginSession> session_;
   std::unique_ptr<SurfaceSessionPort> surface_session_;
   mutable std::mutex mutex_;
 
@@ -107,6 +110,10 @@ private:
   friend class omarchy::plugin_runtime::bridge::PluginManager;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
+  std::function<launcher::Supervisor()> supervisor_factory_;
+  void (*before_final_fence_)(host_session::AuthorityStore &,
+                              void *) noexcept = nullptr;
+  void *before_final_fence_context_ = nullptr;
   friend class PluginRuntimeRootTestAccess;
 #endif
 };

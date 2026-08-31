@@ -4,7 +4,6 @@
 #include "dynamic_broker_runtime.hpp"
 #include "omarchy/plugin_runtime/launcher/test_supervisor.h"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
-#include "plugin_activation_coordinator.hpp"
 #include "plugin_permission_controller.hpp"
 #include "plugin_session.hpp"
 #include "plugin_runtime_root.hpp"
@@ -408,12 +407,12 @@ private:
   std::filesystem::path state_;
 };
 
-class CoordinatorFixture final {
+class RuntimeRootFixture final {
 public:
-  explicit CoordinatorFixture(std::string_view worker_mode = "session-happy") {
+  explicit RuntimeRootFixture(std::string_view worker_mode = "session-happy") {
     std::string pattern = "/tmp/omarchy-product-activation-XXXXXX";
     const char *created = ::mkdtemp(pattern.data());
-    require(created != nullptr, "cannot create coordinator fixture");
+    require(created != nullptr, "cannot create runtime root fixture");
     root_ = created;
     activation_ = root_ / "activation";
     revisions_ = root_ / "revisions";
@@ -425,7 +424,7 @@ public:
     std::filesystem::create_directory(revisions_);
     std::filesystem::create_directory(state_);
     std::filesystem::create_directory(authority_);
-    std::filesystem::copy(COORDINATOR_REVISION_FIXTURE, revision_,
+    std::filesystem::copy(RUNTIME_ROOT_REVISION_FIXTURE, revision_,
                           std::filesystem::copy_options::recursive);
     std::ofstream(revision_ / "d1-mode") << worker_mode << '\n';
     for (const auto &entry :
@@ -440,7 +439,7 @@ public:
     std::ofstream(state_directory_ / "identity") << "pinned\n";
     require(::chmod(authority_.c_str(), 0700) == 0 &&
                 ::chmod(state_directory_.c_str(), 0700) == 0,
-            "cannot secure coordinator authority roots");
+            "cannot secure runtime root authority roots");
 
     activation_fd_ = open_directory(activation_);
     revisions_fd_ = open_directory(revisions_);
@@ -448,16 +447,16 @@ public:
     authority_fd_ = open_directory(authority_);
     store_ = host::AuthorityStore::open(authority_fd_, ::getuid(),
                                         permissions::PluginId(plugin_));
-    require(store_ != nullptr, "cannot open coordinator authority store");
+    require(store_ != nullptr, "cannot open runtime root authority store");
     const int revision_fd = open_directory(revision_);
     host::DescriptorRevisionVerifier verifier;
     verified_ = verifier.verify_open_revision(revision_fd);
     ::close(revision_fd);
     require(verified_ && verified_->manifest.id == plugin_,
-            "cannot descriptor-verify coordinator fixture");
+            "cannot descriptor-verify runtime root fixture");
   }
 
-  ~CoordinatorFixture() {
+  ~RuntimeRootFixture() {
     store_.reset();
     for (const int fd :
          {activation_fd_, revisions_fd_, state_fd_, authority_fd_})
@@ -502,14 +501,14 @@ public:
     require(store_->publish_candidate(*verified_, value, sequence, definitions_,
                                       {}) ==
                 host::AuthorityMutationResult::applied,
-            "cannot publish coordinator candidate");
+            "cannot publish runtime root candidate");
     return value;
   }
 
   void promote(const policy::GrantSnapshot &value, std::uint64_t sequence) {
     require(store_->promote_candidate(value.binding, sequence) ==
                 host::AuthorityMutationResult::applied,
-            "cannot promote coordinator candidate");
+            "cannot promote runtime root candidate");
   }
 
   void record(std::string revision_sha256 = {}) const {
@@ -594,7 +593,7 @@ public:
   void corrupt_active() {
     const auto authority_state = store_->read_slots();
     require(authority_state && authority_state->active,
-            "active coordinator slot missing");
+            "active runtime root slot missing");
     const auto file =
         authority_ /
         ("grant-" +
@@ -650,7 +649,7 @@ public:
 private:
   static int open_directory(const std::filesystem::path &path) {
     const int fd = ::open(path.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    require(fd >= 0, "cannot open coordinator directory");
+    require(fd >= 0, "cannot open runtime root directory");
     return fd;
   }
 
@@ -1662,7 +1661,7 @@ void invalidate_final_fence(host::AuthorityStore &store,
 }
 
 void prepared_root_commits_on_ui_with_exact_hooks() {
-  CoordinatorFixture fixture;
+  RuntimeRootFixture fixture;
   fixture.record();
   const auto active = fixture.publish(1, 0, true);
   fixture.promote(active, 1);
@@ -1693,7 +1692,7 @@ void prepared_root_commits_on_ui_with_exact_hooks() {
 }
 
 void required_denied_activation_is_permission_only_after_reopen() {
-  CoordinatorFixture fixture;
+  RuntimeRootFixture fixture;
   fixture.record();
   const auto active = fixture.publish(1, 0);
   fixture.promote(active, 1);
@@ -1710,7 +1709,7 @@ void required_denied_activation_is_permission_only_after_reopen() {
 }
 
 void prepared_root_final_fence_rejects_intervening_mutation() {
-  CoordinatorFixture fixture;
+  RuntimeRootFixture fixture;
   fixture.record();
   const auto active = fixture.publish(1, 0, true);
   fixture.promote(active, 1);
@@ -1734,7 +1733,7 @@ void prepared_root_final_fence_rejects_intervening_mutation() {
 
 void prepared_root_commit_is_ui_only_and_path_independent() {
   {
-    CoordinatorFixture fixture;
+    RuntimeRootFixture fixture;
     fixture.record();
     const auto active = fixture.publish(1, 0, true);
     fixture.promote(active, 1);
@@ -1756,7 +1755,7 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
             "off-UI prepared commit launched or retained a runtime");
   }
 
-  CoordinatorFixture fixture;
+  RuntimeRootFixture fixture;
   fixture.record();
   const auto active = fixture.publish(1, 0, true);
   fixture.promote(active, 1);
@@ -1785,7 +1784,7 @@ void prepared_root_commit_is_ui_only_and_path_independent() {
 
 void composed_root_is_the_composed_authority_path() {
   using namespace std::chrono_literals;
-  CoordinatorFixture fixture("session-idle");
+  RuntimeRootFixture fixture("session-idle");
   fixture.record();
   const auto active = fixture.publish(1, 0, true);
   fixture.promote(active, 1);
@@ -1829,7 +1828,7 @@ void composed_root_is_the_composed_authority_path() {
 }
 
 void composed_root_rejects_unusable_authority_and_providers() {
-  CoordinatorFixture bad_fd;
+  RuntimeRootFixture bad_fd;
   {
     require(!bad_fd.prepare_root({}, {}, "current", ::getuid(), false),
             "invalid authority descriptor opened a product root");
@@ -1841,13 +1840,13 @@ void composed_root_rejects_unusable_authority_and_providers() {
   }
 
   {
-    CoordinatorFixture wrong_record;
+    RuntimeRootFixture wrong_record;
     wrong_record.record();
     require(!wrong_record.prepare_root({}, {}, "../current"),
             "non-canonical fixed activation record prepared a runtime");
   }
 
-  CoordinatorFixture missing_provider("session-notification");
+  RuntimeRootFixture missing_provider("session-notification");
   missing_provider.record();
   const auto active = missing_provider.publish(1, 0);
   missing_provider.promote(active, 1);
@@ -1913,6 +1912,13 @@ int main(int argc, char **argv) {
       prepared_root_final_fence_rejects_intervening_mutation();
       prepared_root_commit_is_ui_only_and_path_independent();
       std::cout << "composed root tests passed\n";
+      return 0;
+    }
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--runtime-root-fence-only") {
+      required_denied_activation_is_permission_only_after_reopen();
+      prepared_root_final_fence_rejects_intervening_mutation();
+      std::cout << "runtime root fence tests passed\n";
       return 0;
     }
     if (argc == 2 && std::string_view(argv[1]) == "--prepared-session-only") {

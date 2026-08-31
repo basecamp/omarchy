@@ -11,7 +11,6 @@
 
 namespace omarchy::plugin_runtime::channel {
 
-class PluginActivationCoordinator;
 class PluginRuntimeRoot;
 class RuntimeBootstrap;
 struct RuntimeServices;
@@ -112,7 +111,6 @@ private:
   mutable std::mutex mutex_;
   std::shared_ptr<const host_session::ConsentReview> pending_review_;
 
-  friend class PluginActivationCoordinator;
   friend class PluginRuntimeRoot;
   friend class RuntimeBootstrap;
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING

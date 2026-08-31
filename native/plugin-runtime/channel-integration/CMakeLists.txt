@@ -60,7 +60,6 @@ if(TARGET omarchy-plugin-host-session)
   add_library(omarchy-plugin-authenticated-session STATIC
     src/authenticated_session_channel.cpp
     src/broker_session_settlement.cpp
-    src/plugin_activation_coordinator.cpp
     src/plugin_permission_controller.cpp
     src/runtime_bootstrap.cpp
     src/activation_catalog.cpp
@@ -206,7 +205,6 @@ if(BUILD_TESTING)
     add_executable(omarchy-plugin-product-session-test
       src/authenticated_session_channel.cpp
       src/broker_session_settlement.cpp
-      src/plugin_activation_coordinator.cpp
       src/plugin_permission_controller.cpp
       src/plugin_runtime_root.cpp
       src/session_runtime_factory.cpp
@@ -220,7 +218,7 @@ if(BUILD_TESTING)
       CHANNEL_PEER_PATH="$<TARGET_FILE:omarchy-plugin-channel-peer>"
       FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>"
       QML_WORKER_PATH="$<TARGET_FILE:omarchy-plugin-qml-worker>"
-      COORDINATOR_REVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/valid-minimal")
+      RUNTIME_ROOT_REVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/valid-minimal")
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
       omarchy-plugin-channel-integration omarchy-plugin-host-session
       Omarchy::PluginLauncherTestSupport Qt6::Core)
@@ -245,6 +243,10 @@ if(BUILD_TESTING)
     add_test(NAME plugin-product-session-required-denial
       COMMAND omarchy-plugin-product-session-test --required-denial-only)
     set_tests_properties(plugin-product-session-required-denial PROPERTIES
+      TIMEOUT 15 LABELS "unit;security;session;authority")
+    add_test(NAME plugin-runtime-root-fences
+      COMMAND omarchy-plugin-product-session-test --runtime-root-fence-only)
+    set_tests_properties(plugin-runtime-root-fences PROPERTIES
       TIMEOUT 15 LABELS "unit;security;session;authority")
   endif()
 endif()

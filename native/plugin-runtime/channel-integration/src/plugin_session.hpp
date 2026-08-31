@@ -16,8 +16,8 @@ namespace omarchy::plugin_runtime::channel {
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 class PluginSessionTestAccess;
 #endif
-class PluginActivationCoordinator;
 class PreparedPluginSession;
+class PluginRuntimeRoot;
 
 class AuthenticatedSessionRuntimeFactory {
 public:
@@ -176,7 +176,7 @@ private:
   SurfaceAttachFault surface_attach_fault_ = SurfaceAttachFault::none;
   friend class PluginSessionTestAccess;
 #endif
-  friend class PluginActivationCoordinator;
+  friend class PluginRuntimeRoot;
 };
 
 // Fully validated and assembled activation state with no QObject ownership or
@@ -214,7 +214,7 @@ private:
   session::SessionLimits limits;
 
   friend class PluginSession;
-  friend class PluginActivationCoordinator;
+  friend class PluginRuntimeRoot;
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
   friend class PluginSessionTestAccess;
 #endif
