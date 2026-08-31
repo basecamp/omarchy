@@ -1,0 +1,338 @@
+#!/bin/bash
+
+# omarchy:summary=Resolve the background variant and render metadata for a screen
+# omarchy:args=[--screen <W>x<H>] [--canonical <path>] [--fields]
+# omarchy:hidden=true
+
+# The single implementation of background resolution, shared by the CLI and the
+# shell: picks the aspect-ratio variant closest to the screen, reads render
+# metadata from backgrounds.toml beside the image, and rasterizes SVG
+# backgrounds to a cached PNG sized for the screen. Pure read plus cache write;
+# the current-background symlink is never touched here.
+
+SCREEN=""
+SCREEN_W=0
+SCREEN_H=0
+CANONICAL=""
+OUTPUT="json"
+
+usage() {
+  echo "Usage: omarchy-theme-bg-resolve [--screen <W>x<H>] [--canonical <path>] [--fields]"
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --screen)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      SCREEN="$2"
+      shift 2
+      ;;
+    --canonical)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      CANONICAL="$2"
+      shift 2
+      ;;
+    --fields)
+      OUTPUT="fields"
+      shift
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -n $SCREEN ]]; then
+  if [[ $SCREEN =~ ^([1-9][0-9]*)x([1-9][0-9]*)$ ]]; then
+    SCREEN_W=${BASH_REMATCH[1]}
+    SCREEN_H=${BASH_REMATCH[2]}
+  else
+    usage >&2
+    exit 1
+  fi
+fi
+
+[[ -n $CANONICAL ]] || CANONICAL="$HOME/.local/state/omarchy/current/background"
+CANONICAL=$(readlink -f -- "$CANONICAL" 2>/dev/null) || CANONICAL=""
+if [[ -z $CANONICAL || ! -f $CANONICAL ]]; then
+  exit 1
+fi
+
+BG_DIR=$(dirname "$CANONICAL")
+CANONICAL_NAME=$(basename "$CANONICAL")
+STEM="${CANONICAL_NAME%.*}"
+
+probe_dimensions() {
+  magick identify -ping -format '%w %h' "${1}[0]" 2>/dev/null
+}
+
+# Candidates are the canonical file plus its aspect-ratio variants: sibling
+# regular files named <stem>@<label>.<ext> with a background image extension.
+CANDIDATES=("$CANONICAL")
+shopt -s nullglob
+for candidate in "$BG_DIR"/*; do
+  [[ -f $candidate ]] || continue
+  candidate_name=$(basename "$candidate")
+  [[ $candidate_name == "$STEM@"*.* ]] || continue
+  candidate_ext="${candidate_name##*.}"
+  [[ ${candidate_ext,,} =~ ^(jpg|jpeg|png|gif|bmp|webp|svg)$ ]] || continue
+  CANDIDATES+=("$candidate")
+done
+
+# Pick the candidate whose actual aspect ratio is closest to the screen's,
+# by log-ratio distance. The canonical file is first, and only a strictly
+# better distance replaces it, so ties keep the canonical file. A candidate
+# that cannot be probed is skipped; when the canonical file itself cannot be
+# probed there is nothing sound to compare against, so it wins outright.
+SELECTED="$CANONICAL"
+if [[ -n $SCREEN ]] && (( ${#CANDIDATES[@]} > 1 )); then
+  best_distance=""
+  for candidate in "${CANDIDATES[@]}"; do
+    dims=$(probe_dimensions "$candidate") || dims=""
+    if [[ ! $dims =~ ^([1-9][0-9]*)\ ([1-9][0-9]*)$ ]]; then
+      if [[ $candidate == "$CANONICAL" ]]; then
+        SELECTED="$CANONICAL"
+        break
+      fi
+      continue
+    fi
+    distance=$(awk -v sw="$SCREEN_W" -v sh="$SCREEN_H" -v w="${BASH_REMATCH[1]}" -v h="${BASH_REMATCH[2]}" '
+      BEGIN {
+        d = log(sw / sh) - log(w / h)
+        if (d < 0) d = -d
+        printf "%.9f", d
+      }
+    ')
+    if [[ -z $best_distance ]] || awk -v a="$distance" -v b="$best_distance" 'BEGIN { exit !(a < b) }'; then
+      best_distance="$distance"
+      SELECTED="$candidate"
+    fi
+  done
+fi
+
+# Render metadata comes from backgrounds.toml in the canonical file's own
+# directory: [defaults] first, then the canonical stem's section on top.
+# Section headers may be bare ([1-forest]) or quoted (["1-forest"]).
+declare -A DEFAULTS_META SECTION_META
+
+META_FILE="$BG_DIR/backgrounds.toml"
+if [[ -f $META_FILE ]]; then
+  while IFS=$'\t' read -r scope key value; do
+    case "$scope" in
+      defaults) DEFAULTS_META[$key]="$value" ;;
+      stem) SECTION_META[$key]="$value" ;;
+    esac
+  done < <(awk -v stem="$STEM" '
+    function trim(s) {
+      sub(/^[[:space:]]+/, "", s)
+      sub(/[[:space:]]+$/, "", s)
+      return s
+    }
+
+    function unquote(s,  first, last) {
+      if (length(s) >= 2) {
+        first = substr(s, 1, 1)
+        last = substr(s, length(s), 1)
+        if ((first == "\"" && last == "\"") || (first == "\047" && last == "\047")) {
+          return substr(s, 2, length(s) - 2)
+        }
+      }
+      return s
+    }
+
+    # A quoted value ends at its closing quote; an unquoted one at a comment.
+    function parse_value(v,  quote, rest, closing) {
+      v = trim(v)
+      quote = substr(v, 1, 1)
+      if (quote == "\"" || quote == "\047") {
+        rest = substr(v, 2)
+        closing = index(rest, quote)
+        if (closing > 0) return substr(rest, 1, closing - 1)
+      }
+      sub(/#.*/, "", v)
+      return trim(v)
+    }
+
+    /^[[:space:]]*\[[^]]+\][[:space:]]*(#.*)?$/ {
+      name = $0
+      sub(/^[[:space:]]*\[/, "", name)
+      sub(/\].*$/, "", name)
+      name = unquote(trim(name))
+      if (name == "defaults") scope = "defaults"
+      else if (name == stem) scope = "stem"
+      else scope = ""
+      next
+    }
+
+    # Any other [-led line is still a section boundary: a header that does not
+    # parse (a ] in the name, [[array-of-tables]], junk after the bracket) must
+    # not leak its keys into the previous section, so it opens an inert scope.
+    /^[[:space:]]*\[/ {
+      scope = "\001invalid"
+      next
+    }
+
+    scope != "defaults" && scope != "stem" { next }
+    /^[[:space:]]*(#|$)/ { next }
+
+    index($0, "=") > 1 {
+      key = trim(substr($0, 1, index($0, "=") - 1))
+      value = parse_value(substr($0, index($0, "=") + 1))
+      if (key != "") print scope "\t" key "\t" value
+    }
+  ' "$META_FILE")
+fi
+
+meta_value() {
+  local key="$1"
+
+  if [[ -n ${SECTION_META[$key]:-} ]]; then
+    printf '%s' "${SECTION_META[$key]}"
+  else
+    printf '%s' "${DEFAULTS_META[$key]:-}"
+  fi
+}
+
+FILL="crop"
+FILL_COLOR_SPEC="background"
+FOCAL_X="0.5"
+FOCAL_Y="0.5"
+
+fill=$(meta_value fill)
+[[ $fill =~ ^(crop|fit|center|tile)$ ]] && FILL="$fill"
+
+focal=$(meta_value focal)
+if [[ $focal =~ ^([0-9]*\.?[0-9]+)[[:space:]]+([0-9]*\.?[0-9]+)$ ]]; then
+  focal_x=${BASH_REMATCH[1]}
+  focal_y=${BASH_REMATCH[2]}
+  if awk -v x="$focal_x" -v y="$focal_y" 'BEGIN { exit !(x >= 0 && x <= 1 && y >= 0 && y <= 1) }'; then
+    FOCAL_X=$(awk -v v="$focal_x" 'BEGIN { printf "%g", v }')
+    FOCAL_Y=$(awk -v v="$focal_y" 'BEGIN { printf "%g", v }')
+  fi
+fi
+
+fill_color_spec=$(meta_value fill_color)
+[[ -n $fill_color_spec ]] && FILL_COLOR_SPEC="$fill_color_spec"
+
+# A literal #rrggbb (or #rrggbbaa) passes through; a plain palette key is
+# resolved against the current theme. Anything else — a malformed hex value,
+# or a key that could read as an option or shell metacharacters — skips
+# straight to the fallbacks: the theme background, then black.
+resolve_fill_color() {
+  local spec="$1" color=""
+
+  if [[ $spec == \#* ]]; then
+    if [[ $spec =~ ^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$ ]]; then
+      printf '%s' "$spec"
+      return
+    fi
+  elif [[ $spec =~ ^[A-Za-z0-9_][A-Za-z0-9_-]*$ ]]; then
+    color=$(omarchy-theme-color "$spec" 2>/dev/null)
+  fi
+
+  if [[ -z $color ]]; then
+    color=$(omarchy-theme-color background 2>/dev/null)
+  fi
+
+  printf '%s' "${color:-#000000}"
+}
+
+FILL_COLOR=$(resolve_fill_color "$FILL_COLOR_SPEC")
+
+# An SVG selected for a known screen is rasterized once per
+# path/mtime/screen/fill/fill_color combination and served from the cache.
+rasterize_svg() {
+  local svg="$1"
+  local cache_dir="$HOME/.cache/omarchy/background-renders"
+  local dims target mtime cache_key cache_file render_tmp
+
+  dims=$(probe_dimensions "$svg") || dims=""
+  [[ $dims =~ ^([1-9][0-9]*)\ ([1-9][0-9]*)$ ]] || return 1
+
+  # crop covers the screen, fit is contained by it, center/tile keep the
+  # intrinsic size. Width and height scale together, so aspect is preserved.
+  target=$(awk -v sw="$SCREEN_W" -v sh="$SCREEN_H" -v w="${BASH_REMATCH[1]}" -v h="${BASH_REMATCH[2]}" -v fill="$FILL" '
+    BEGIN {
+      if (fill == "crop") scale = (sw / w > sh / h) ? sw / w : sh / h
+      else if (fill == "fit") scale = (sw / w < sh / h) ? sw / w : sh / h
+      else scale = 1
+      printf "%d %d", int(w * scale + 0.5), int(h * scale + 0.5)
+    }
+  ')
+  [[ $target =~ ^([1-9][0-9]*)\ ([1-9][0-9]*)$ ]] || return 1
+  local target_w=${BASH_REMATCH[1]} target_h=${BASH_REMATCH[2]}
+
+  mtime=$(stat -c %Y "$svg" 2>/dev/null) || return 1
+  cache_key=$(printf '%s\t%s\t%s\t%s\t%s' "$svg" "$mtime" "${SCREEN_W}x${SCREEN_H}" "$FILL" "$FILL_COLOR" | md5sum)
+  cache_key=${cache_key%% *}
+  cache_file="$cache_dir/$cache_key.png"
+
+  mkdir -p "$cache_dir"
+  find "$cache_dir" -maxdepth 1 -type f -name '*.png' -mtime +30 -delete 2>/dev/null
+
+  if [[ -f $cache_file ]]; then
+    # Keep renders that are still being served ahead of the age-based prune.
+    touch "$cache_file"
+    printf '%s' "$cache_file"
+    return 0
+  fi
+
+  render_tmp=$(mktemp "$cache_dir/.render-XXXXXX.png") || return 1
+  if rsvg-convert --width "$target_w" --height "$target_h" --keep-aspect-ratio \
+    --background-color "$FILL_COLOR" -o "$render_tmp" "$svg" 2>/dev/null; then
+    mv "$render_tmp" "$cache_file"
+    printf '%s' "$cache_file"
+  else
+    rm -f "$render_tmp"
+    return 1
+  fi
+}
+
+RESOLVED="$SELECTED"
+if [[ -n $SCREEN && ${SELECTED,,} == *.svg ]]; then
+  if rasterized=$(rasterize_svg "$SELECTED") && [[ -n $rasterized ]]; then
+    RESOLVED="$rasterized"
+  fi
+fi
+
+# Both output shapes are line- and quote-framed, so ASCII control characters
+# in any emitted string (a hostile path or metadata value) would corrupt the
+# framing. Strip them; such a value is degenerate either way.
+strip_controls() {
+  printf '%s' "${1//[[:cntrl:]]/}"
+}
+
+json_escape() {
+  local s
+  s=$(strip_controls "$1")
+
+  s=${s//\\/\\\\}
+  s=${s//\"/\\\"}
+  printf '%s' "$s"
+}
+
+if [[ $OUTPUT == "fields" ]]; then
+  printf 'path\t%s\n' "$(strip_controls "$RESOLVED")"
+  printf 'canonical\t%s\n' "$(strip_controls "$CANONICAL")"
+  printf 'fill\t%s\n' "$FILL"
+  printf 'fill_color\t%s\n' "$(strip_controls "$FILL_COLOR")"
+  printf 'focal_x\t%s\n' "$FOCAL_X"
+  printf 'focal_y\t%s\n' "$FOCAL_Y"
+else
+  printf '{"path":"%s","canonical":"%s","fill":"%s","fill_color":"%s","focal_x":%s,"focal_y":%s}\n' \
+    "$(json_escape "$RESOLVED")" "$(json_escape "$CANONICAL")" "$FILL" \
+    "$(json_escape "$FILL_COLOR")" "$FOCAL_X" "$FOCAL_Y"
+fi

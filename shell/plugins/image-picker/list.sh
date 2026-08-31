@@ -36,7 +36,8 @@ thumbnail_for() {
 while IFS= read -r dir; do
   [[ -n $dir && -d $dir ]] || continue
   find -L "$dir" -maxdepth 1 -type f \
-    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
+    ! -name '*@*' \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' -o -iname '*.svg' \) \
     -print0 2>/dev/null
 done <<<"$image_dirs" | sort -z | while IFS= read -r -d '' image; do
   thumbnail=$(thumbnail_for "$image")

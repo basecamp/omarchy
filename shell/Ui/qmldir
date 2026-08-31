@@ -1,5 +1,6 @@
 module qs.Ui
 
+BackgroundResolver 1.0 BackgroundResolver.qml
 BarIndicator 1.0 BarIndicator.qml
 BarIconButton 1.0 BarIconButton.qml
 BarWidget 1.0 BarWidget.qml
@@ -31,4 +32,5 @@ SpeedTestOverlay 1.0 SpeedTestOverlay.qml
 TextField 1.0 TextField.qml
 Toggle 1.0 Toggle.qml
 ToggleSwitch 1.0 ToggleSwitch.qml
+WallpaperImage 1.0 WallpaperImage.qml
 WidgetButton 1.0 WidgetButton.qml

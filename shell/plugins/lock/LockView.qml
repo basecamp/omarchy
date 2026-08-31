@@ -8,6 +8,9 @@ Item {
 
   property string backgroundPath: ""
   property int backgroundVersion: 0
+  // Screen this view covers (the lock surface's or the preview window's), so
+  // the background resolves against the real output dimensions.
+  property var viewScreen: null
   property bool fingerprintConfigured: false
   property bool authenticatingPassword: false
   property string failureMessage: ""
@@ -42,15 +45,6 @@ Item {
   signal passwordTextEdited(string password)
   signal clearFailureRequested()
   signal wakeRequested()
-
-  // Cache-busts the lock background by appending `?v=`. Adding a query
-  // string keeps Image's loader happy while forcing it to reload when the
-  // user picks a new background mid-session.
-  function fileUrl(path) {
-    if (!path) return ""
-    var encoded = String(path).split("/").map(encodeURIComponent).join("/")
-    return "file://" + encoded + "?v=" + backgroundVersion
-  }
 
   function forcePasswordFocus() {
     passwordInput.forceActiveFocus()
@@ -90,15 +84,29 @@ Item {
     anchors.fill: parent
     color: Color.background
 
-    Image {
+    BackgroundResolver {
+      id: backgroundResolver
+      canonicalPath: root.loadBackground ? root.backgroundPath : ""
+      screenWidth: root.viewScreen ? root.viewScreen.width : Math.round(root.width)
+      screenHeight: root.viewScreen ? root.viewScreen.height : Math.round(root.height)
+    }
+
+    WallpaperImage {
       id: wallpaper
       anchors.fill: parent
-      source: root.loadBackground ? root.fileUrl(root.backgroundPath) : ""
-      fillMode: Image.PreserveAspectCrop
-      asynchronous: true
+      path: root.loadBackground && backgroundResolver.ready ? backgroundResolver.resolvedPath : ""
+      fill: backgroundResolver.fill
+      fillColor: backgroundResolver.fillColor
+      focalX: backgroundResolver.focalX
+      focalY: backgroundResolver.focalY
+      // ?v= cache-busting forces a reload when the user picks a new
+      // background mid-session without the path changing.
+      sourceVersion: root.backgroundVersion
+      useSourceSizeCap: true
       cache: false
-      sourceSize.width: width
-      sourceSize.height: height
+      // The blur MultiEffect needs a texture provider; a composed Item only
+      // becomes one through a layer.
+      layer.enabled: true
     }
 
     MultiEffect {

@@ -15,6 +15,47 @@ ship `backgrounds/` (users overlay their own via
 
 A theme installed from a git repo is held to a much shorter list; see [What an installed theme may not ship](#what-an-installed-theme-may-not-ship).
 
+## Backgrounds
+
+A theme's images live in `themes/<name>/backgrounds/`, and users overlay extras in `~/.config/omarchy/backgrounds/<name>/`. The active background is always the `~/.local/state/omarchy/current/background` symlink, pointing at exactly one canonical image file; everything below happens at render time and never changes what that symlink points to.
+
+### `backgrounds.toml`
+
+A `backgrounds.toml` beside the images declares how they render. It is read from the same directory the canonical image lives in — the theme's `backgrounds/` or the user overlay directory — with no merging across the two:
+
+```toml
+[defaults]
+fill = "crop"              # crop | fit | center | tile
+fill_color = "background"  # colors.toml key OR "#rrggbb"
+focal = "0.5 0.5"          # crop anchor, x y in 0..1
+
+["1-forest"]               # section = image stem; quotes optional for simple stems
+fill = "fit"
+focal = "0.65 0.4"
+```
+
+- `fill` picks the render mode: `crop` scales the image to cover the screen (the default, matching pre-metadata behavior), `fit` scales it to be fully visible, `center` places it unscaled, and `tile` repeats it.
+- `fill_color` paints the area the image does not cover under `fit`, `center`, and `tile`, and backs SVG rasterization. A value starting with `#` passes through unchanged; any other value is resolved as a key from the active theme's `colors.toml`, falling back to `background`, then `#000000`.
+- `focal` names the point of the image to keep in view when `crop` discards overflow: `"0.5 0.5"` crops symmetrically around the center, `"0.65 0.4"` keeps the point 65% across and 40% down.
+
+Per-image sections override `[defaults]`. Section headers may be bare (`[1-forest]`) or quoted (`["1-forest"]`), and the stem is matched exactly against the canonical image's basename minus its last extension. Unknown keys are ignored, and invalid values fall back to the defaults (`crop`, the theme background color, `0.5 0.5`). Without a `backgrounds.toml` at all, a raster background renders exactly as it did before the metadata existed: cropped to cover, centered.
+
+### Aspect-ratio variants
+
+A regular file named `<stem>@<label>.<ext>` beside a background is an aspect-ratio variant of it: `forest@ultrawide.png` next to `forest.png`. The label is free-form and only the actual pixel dimensions matter. For each screen, the candidate — canonical file plus its variants — whose measured aspect ratio is closest to the screen's is displayed, closest meaning the smallest absolute difference between the logarithms of the two aspect ratios. The canonical file wins ties, a variant whose dimensions cannot be probed is skipped — while a canonical file that cannot be probed wins outright — and with no screen size to select against the canonical file is used.
+
+The choosers hide every filename containing `@`, whether or not a canonical base file exists — an orphan like `mountains@2x.png` with no `mountains.png` beside it is simply invisible, so background filenames should only use `@` to mark variants. Variants never become the `current/background` symlink target; setting a background always means the canonical file, and variants share its `backgrounds.toml` section. The per-screen choice happens purely at render time, so different monitors on the same desktop can show different variants of the same background.
+
+### SVG backgrounds
+
+`.svg` files are valid backgrounds. When one is selected for a screen, it is rasterized with `rsvg-convert` — to cover size for `crop`, contain size for `fit`, and intrinsic size for `center` and `tile`, with `fill_color` as the rasterization background — and the resulting PNG is cached under `~/.cache/omarchy/background-renders/`, keyed by path, mtime, screen size, and fill settings. Cache entries older than 30 days are pruned opportunistically.
+
+A theme can also ship theme-colored SVG templates as `backgrounds/*.svg.tpl`. When the staged theme has a `colors.toml`, `omarchy-theme-set-templates` renders each one into the same directory under the same name minus `.tpl`, using the same placeholders as every other template (`{{ background }}`, `{{ accent }}`, and the rest), so the artwork picks up the active palette. The usual theme-file-wins rule applies — a template whose output name already exists is skipped — and the `.tpl` is removed from the staged theme after a successful render. Only theme-shipped templates are rendered; user overlay backgrounds directories are not part of the template pipeline.
+
+### Resolution
+
+`omarchy-theme-bg-resolve` (a hidden command) is the single implementation of metadata parsing, variant selection, and SVG rasterization. Both the CLI side and the shell's per-screen QML background layers call it; nothing else should reimplement the selection rule.
+
 ## Theme activation flow
 
 `omarchy-theme-set <name>` builds a clean staging directory at

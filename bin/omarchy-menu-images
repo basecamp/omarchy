@@ -111,8 +111,8 @@ cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
 rows_cache_file="$cache_dir/$cache_key.rows"
 rows_signature_file="$cache_dir/$cache_key.signature"
 rows_fast_signature_file="$cache_dir/$cache_key.fast-signature"
-rows_signature="v3"$'\n'
-rows_fast_signature="v2"$'\n'
+rows_signature="v4"$'\n'
+rows_fast_signature="v3"$'\n'
 rows_cacheable=true
 rows_cache_hit=false
 image_files=()
@@ -133,7 +133,7 @@ else
         image_files+=("$image")
         image_signature=$(stat -Lc '%s:%Y' "$image") || continue
         rows_signature+="$image:$image_signature"$'\n'
-      done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print0 2>/dev/null | sort -z)
+      done < <(find -L "$dir" -maxdepth 1 -type f ! -name '*@*' \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' -o -iname '*.svg' \) -print0 2>/dev/null | sort -z)
     fi
   done
 fi

@@ -398,6 +398,23 @@ if [[ -f $COLORS_FILE ]]; then
     fi
   done
 
+  # Render theme-shipped background templates next to the backgrounds they
+  # generate. A theme-shipped file with the output name wins, and the template
+  # never lingers in the staged theme. A symlinked backgrounds directory is
+  # left alone: writing (and removing templates) through it would mutate the
+  # theme author's source tree instead of the staged copy.
+  if [[ -d $NEXT_THEME_DIR/backgrounds && ! -L $NEXT_THEME_DIR/backgrounds ]]; then
+    for tpl in "$NEXT_THEME_DIR/backgrounds"/*.svg.tpl; do
+      output_path="${tpl%.tpl}"
+
+      if [[ ! -f $output_path ]]; then
+        sed -f "$sed_script" "$tpl" >"$output_path"
+      fi
+
+      rm "$tpl"
+    done
+  fi
+
   rm "$sed_script"
 fi
 

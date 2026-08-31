@@ -74,14 +74,12 @@ valid_hex "$background_color" || fallback
 [[ $bar_size =~ ^[0-9]+$ ]] || fallback
 omarchy-cmd-present magick || fallback
 
-if [[ -z $background_path ]]; then
-  background_path=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null || true)
-fi
-[[ -f $background_path ]] || fallback
-
 if [[ -z $screen_size ]]; then
   if omarchy-cmd-present hyprctl && omarchy-cmd-present jq; then
-    screen_size=$(hyprctl monitors -j 2>/dev/null | jq -r '.[0] | "\(.width)x\(.height)"' 2>/dev/null || true)
+    # hyprctl reports the raw mode resolution; an odd transform (90/270 degree
+    # rotation) swaps the logical axes the shell renders with, so swap here too.
+    screen_size=$(hyprctl monitors -j 2>/dev/null |
+      jq -r '.[0] | if ((.transform // 0) % 2) == 1 then "\(.height)x\(.width)" else "\(.width)x\(.height)" end' 2>/dev/null || true)
   fi
 fi
 [[ $screen_size =~ ^([0-9]+)x([0-9]+)$ ]] || fallback
@@ -89,6 +87,40 @@ fi
 screen_width=${BASH_REMATCH[1]}
 screen_height=${BASH_REMATCH[2]}
 ((screen_width > 0 && screen_height > 0 && bar_size > 0)) || fallback
+
+# The resolver picks the per-screen variant and render metadata so the sampled
+# pixels match what the shell actually paints on this screen.
+sample_path=""
+fill="crop"
+fill_color="$background_color"
+resolver_args=(--screen "${screen_width}x${screen_height}" --fields)
+[[ -n $background_path ]] && resolver_args+=(--canonical "$background_path")
+
+if resolved=$(omarchy-theme-bg-resolve "${resolver_args[@]}" 2>/dev/null); then
+  while IFS=$'\t' read -r key value; do
+    case "$key" in
+    path)
+      sample_path="$value"
+      ;;
+    fill)
+      [[ $value =~ ^(crop|fit|center|tile)$ ]] && fill="$value"
+      ;;
+    fill_color)
+      valid_hex "$value" && fill_color="$value"
+      ;;
+    esac
+  done <<<"$resolved"
+fi
+
+# Resolver missing or failed: sample the canonical background as before.
+if [[ ! -f $sample_path ]]; then
+  if [[ -z $background_path ]]; then
+    background_path=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null || true)
+  fi
+  [[ -f $background_path ]] || fallback
+  sample_path="$background_path"
+  fill="crop"
+fi
 
 case "$position" in
 top)
@@ -109,11 +141,44 @@ right)
   ;;
 esac
 
-pixel=$(magick "$background_path" -auto-orient \
-  -resize "${screen_width}x${screen_height}^" \
-  -gravity center -extent "${screen_width}x${screen_height}" \
-  -gravity NorthWest -crop "$crop" +repage \
-  -resize '1x1!' -format '%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]' info:- 2>/dev/null || true)
+screen="${screen_width}x${screen_height}"
+sample_format='%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]'
+
+case "$fill" in
+fit)
+  pixel=$(magick -size "$screen" "xc:$fill_color" \
+    \( "$sample_path" -auto-orient -resize "$screen" \) \
+    -gravity center -composite \
+    -gravity NorthWest -crop "$crop" +repage \
+    -resize '1x1!' -format "$sample_format" info:- 2>/dev/null || true)
+  ;;
+center)
+  pixel=$(magick -size "$screen" "xc:$fill_color" \
+    \( "$sample_path" -auto-orient \) \
+    -gravity center -composite \
+    -gravity NorthWest -crop "$crop" +repage \
+    -resize '1x1!' -format "$sample_format" info:- 2>/dev/null || true)
+  ;;
+tile)
+  # The shell paints a fill_color rectangle under tiled images too, so a tile
+  # with transparency must be composited over it before sampling.
+  pixel=$(magick -size "$screen" "xc:$fill_color" \
+    \( -size "$screen" "tile:$sample_path" \) \
+    -composite \
+    -gravity NorthWest -crop "$crop" +repage \
+    -resize '1x1!' -format "$sample_format" info:- 2>/dev/null || true)
+  ;;
+*)
+  # crop: cover-resize and center like the shell's PreserveAspectCrop. A
+  # non-center focal shifts the crop window slightly; the averaged bar strip
+  # barely moves, so sampling stays centered.
+  pixel=$(magick "$sample_path" -auto-orient \
+    -resize "${screen}^" \
+    -gravity center -extent "$screen" \
+    -gravity NorthWest -crop "$crop" +repage \
+    -resize '1x1!' -format "$sample_format" info:- 2>/dev/null || true)
+  ;;
+esac
 [[ $pixel =~ ^([0-9]+),([0-9]+),([0-9]+)$ ]] || fallback
 
 sample=$(printf '#%02x%02x%02x' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")

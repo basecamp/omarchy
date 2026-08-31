@@ -20,15 +20,16 @@ Item {
   property string oldBackground: ""
   property bool finishingTransition: false
   property int backgroundVersion: 0
+  // Bumps whenever displayedBackground is assigned, even to an identical
+  // string: a forced theme transition can re-render the same canonical path
+  // in place (new SVG raster, new mtime), so the displayed resolvers must
+  // re-resolve on assignment, not only on string change.
+  property int displayedVersion: 0
   property int revealStartedVersion: -1
   property int pendingThemeVersion: -1
   property string pendingColorsRaw: ""
   property string pendingShellRaw: ""
   property real revealProgress: 1
-
-  function imageUrl(path) {
-    return Util.fileUrl(path)
-  }
 
   function refreshBackground() {
     if (!readlinkProc.running) readlinkProc.running = true
@@ -54,6 +55,7 @@ Item {
       oldBackground = ""
       incomingBackground = ""
       displayedBackground = path
+      displayedVersion += 1
       revealProgress = 1
       return
     }
@@ -98,6 +100,22 @@ Item {
     revealStartedVersion = backgroundVersion
     applyPendingTheme()
     revealAnimation.restart()
+  }
+
+  function maybeFinishTransition() {
+    // Multi-monitor resolves and decodes land with real skew (a large panel's
+    // cold SVG raster can trail a small one by hundreds of ms), so the shared
+    // incoming/old sources are only cleared once EVERY panel's base layer has
+    // settled on the final background — clearing on the first ready panel
+    // would yank the slower panels back to the old wallpaper.
+    if (!finishingTransition) return
+    const panels = panelVariants.instances
+    for (let i = 0; i < panels.length; i++) {
+      if (!panels[i].baseSettled()) return
+    }
+    incomingBackground = ""
+    oldBackground = ""
+    finishingTransition = false
   }
 
   function openSelector() {
@@ -170,15 +188,18 @@ Item {
     onFinished: {
       if (root.incomingBackground) {
         root.displayedBackground = root.currentBackground || root.incomingBackground
+        root.displayedVersion += 1
         root.finishingTransition = true
       }
       root.revealProgress = 1
+      root.maybeFinishTransition()
     }
   }
 
   Component.onCompleted: refreshBackground()
 
   Variants {
+    id: panelVariants
     model: Quickshell.screens
 
     PanelWindow {
@@ -203,14 +224,73 @@ Item {
 
       property bool maskReady: false
 
+      // Last successful displayed resolution for this panel. It drives the
+      // base layer and stands in for the old frame's fill/meta during theme
+      // switches, when the old canonical handed to the transition is only a
+      // snapshot copy whose directory carries no metadata.
+      property string lastDisplayedCanonical: ""
+      property string lastDisplayedPath: ""
+      property string lastDisplayedFill: "crop"
+      property color lastDisplayedFillColor: Color.background
+      property real lastDisplayedFocalX: 0.5
+      property real lastDisplayedFocalY: 0.5
+
+      // Incoming source lock: each panel commits its incoming pixels/meta
+      // exactly once per backgroundVersion — from its own resolver when it
+      // lands in time, from the handed-down snapshot when
+      // incomingFallbackTimer fires first — and never swaps them mid-reveal.
+      property int incomingLockedVersion: -1
+      property string incomingPath: ""
+      property string incomingFill: "crop"
+      property color incomingFillColor: Color.background
+      property real incomingFocalX: 0.5
+      property real incomingFocalY: 0.5
+
+      function lockIncoming(path, fillMode, tint, fx, fy) {
+        if (incomingLockedVersion === root.backgroundVersion) return
+        incomingLockedVersion = root.backgroundVersion
+        incomingFallbackTimer.stop()
+        incomingPath = path
+        incomingFill = fillMode
+        incomingFillColor = tint
+        incomingFocalX = fx
+        incomingFocalY = fy
+      }
+
+      // True once this panel's base layer is painting the final background:
+      // its resolver has published for the current displayed canonical and
+      // the decode is no longer in flight.
+      function baseSettled() {
+        if (root.displayedBackground === "") return true
+        if (!displayedResolver.ready || lastDisplayedCanonical !== root.displayedBackground) return false
+        return base.status !== Image.Loading
+      }
+
       function maybeStartReveal() {
-        if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
+        // Join tolerance: a panel whose incoming frame becomes ready after
+        // the reveal's first tick still raises its mask at the current
+        // spread instead of staying hidden for the rest of the animation.
+        if (!root.incomingBackground || root.revealProgress >= 1 || maskReady) return
         if (incomingFrame.status !== Image.Ready) return
         Qt.callLater(function() {
-          if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
+          if (!root.incomingBackground || root.revealProgress >= 1 || maskReady) return
           if (incomingFrame.status !== Image.Ready) return
           root.startReveal(panel)
         })
+      }
+
+      // The snapshot fallback bound: a panel whose incoming resolve has not
+      // published this long after the transition armed paints the
+      // handed-down snapshot with its cached displayed meta, so one slow
+      // panel never blocks or misses the shared reveal.
+      Timer {
+        id: incomingFallbackTimer
+        interval: 250
+        repeat: false
+        onTriggered: {
+          if (root.incomingBackground === "") return
+          panel.lockIncoming(root.incomingBackground, panel.lastDisplayedFill, panel.lastDisplayedFillColor, panel.lastDisplayedFocalX, panel.lastDisplayedFocalY)
+        }
       }
 
       WlrLayershell.namespace: "omarchy-background"
@@ -218,27 +298,80 @@ Item {
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
       exclusionMode: ExclusionMode.Ignore
 
-      Image {
-        id: base
-        anchors.fill: parent
-        source: root.imageUrl(root.displayedBackground)
-        fillMode: Image.PreserveAspectCrop
-        asynchronous: true
-        cache: true
-        onStatusChanged: {
-          if (status === Image.Ready && root.finishingTransition) {
-            root.incomingBackground = ""
-            root.oldBackground = ""
-            root.finishingTransition = false
+      BackgroundResolver {
+        id: displayedResolver
+        canonicalPath: root.displayedBackground
+        screenWidth: panel.modelData.width
+        screenHeight: panel.modelData.height
+        refreshToken: root.displayedVersion
+        onResolveVersionChanged: {
+          if (ready && resolvedPath !== "") {
+            panel.lastDisplayedCanonical = canonicalPath
+            panel.lastDisplayedPath = resolvedPath
+            panel.lastDisplayedFill = fill
+            panel.lastDisplayedFillColor = fillColor
+            panel.lastDisplayedFocalX = focalX
+            panel.lastDisplayedFocalY = focalY
           }
+          root.maybeFinishTransition()
         }
       }
 
-      Image {
+      BackgroundResolver {
+        id: oldResolver
+        canonicalPath: root.oldBackground
+        screenWidth: panel.modelData.width
+        screenHeight: panel.modelData.height
+        refreshToken: root.backgroundVersion
+      }
+
+      // A theme switch hands transitionBackground a snapshot copy for pixels
+      // while root.currentBackground already holds the real post-swap
+      // canonical, whose directory carries the variants and metadata — so the
+      // incoming layer resolves against the final path and only falls back to
+      // the snapshot when that resolve fails or has not landed yet.
+      BackgroundResolver {
+        id: incomingResolver
+        canonicalPath: root.currentBackground !== "" ? root.currentBackground : root.incomingBackground
+        screenWidth: panel.modelData.width
+        screenHeight: panel.modelData.height
+        // A forced theme transition can keep the canonical string identical
+        // while re-rendering its content in place; keying on the version
+        // guarantees a fresh resolve for every transition.
+        refreshToken: root.backgroundVersion
+        onResolveVersionChanged: {
+          if (!ready || root.incomingBackground === "") return
+          panel.lockIncoming(usedFallback ? root.incomingBackground : resolvedPath, fill, fillColor, focalX, focalY)
+        }
+      }
+
+      WallpaperImage {
+        id: base
+        anchors.fill: parent
+        path: panel.lastDisplayedPath
+        fill: panel.lastDisplayedFill
+        fillColor: panel.lastDisplayedFillColor
+        focalX: panel.lastDisplayedFocalX
+        focalY: panel.lastDisplayedFocalY
+        asynchronous: true
+        cache: true
+        onStatusChanged: root.maybeFinishTransition()
+      }
+
+      WallpaperImage {
         id: oldFrame
         anchors.fill: parent
-        source: root.imageUrl(root.oldBackground)
-        fillMode: Image.PreserveAspectCrop
+        // The old theme dir can be gone after the swap: an unchanged canonical
+        // keeps this panel's displayed pixels, anything else (a snapshot) shows
+        // the resolver's echo of the handed-down file.
+        path: root.oldBackground === "" ? ""
+          : root.oldBackground === panel.lastDisplayedCanonical ? panel.lastDisplayedPath
+          : oldResolver.ready ? oldResolver.resolvedPath
+          : root.oldBackground
+        fill: panel.lastDisplayedFill
+        fillColor: panel.lastDisplayedFillColor
+        focalX: panel.lastDisplayedFocalX
+        focalY: panel.lastDisplayedFocalY
         asynchronous: true
         cache: false
         smooth: true
@@ -260,11 +393,18 @@ Item {
           maskSpreadAtMin: 0.02
         }
 
-        Image {
+        WallpaperImage {
           id: incomingFrame
           anchors.fill: parent
-          source: root.imageUrl(root.incomingBackground)
-          fillMode: Image.PreserveAspectCrop
+          // The panel's locked incoming source: the resolver's answer when
+          // it landed within incomingFallbackTimer's window, the handed-down
+          // snapshot otherwise. Locking keeps the pixel source settled for
+          // the whole reveal — a mid-reveal swap would blink the layer.
+          path: panel.incomingPath
+          fill: panel.incomingFill
+          fillColor: panel.incomingFillColor
+          focalX: panel.incomingFocalX
+          focalY: panel.incomingFocalY
           asynchronous: true
           cache: false
           smooth: true
@@ -305,6 +445,10 @@ Item {
         target: root
         function onIncomingBackgroundChanged() {
           panel.maskReady = false
+          incomingFallbackTimer.stop()
+          panel.incomingLockedVersion = -1
+          panel.incomingPath = ""
+          if (root.incomingBackground !== "") incomingFallbackTimer.restart()
           panel.maybeStartReveal()
         }
       }

@@ -32,7 +32,7 @@ find_preview() {
   done
 
   if [[ -d $theme_path/backgrounds ]]; then
-    find -L "$theme_path/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print 2>/dev/null | sort | head -n 1
+    find -L "$theme_path/backgrounds" -maxdepth 1 -type f ! -name '*@*' \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print 2>/dev/null | sort | head -n 1
   fi
 }
 

@@ -28,6 +28,26 @@ If you'd like to color-match the file manager icons to your theme, add a file ca
 
 Themes supplied with `unlock.png` and `preview-unlock.png` images will be listed under _Style > Unlock_. Your `unlock.png` should preferably be a transparent png. And you can create the preview image using `omarchy plymouth preview`.
 
+### Backgrounds that fit every screen
+
+Your theme's backgrounds live in its `backgrounds/` folder, and by default each one is scaled to fill the screen, cropping the overflow. Users run everything from tall portrait monitors to 32:9 super-ultrawides, so a theme worth sharing should think about what happens when the crop gets extreme. You have three tools, and they combine:
+
+- **Aspect-ratio variants.** Ship alternate crops of the same artwork as sibling files named with an `@` label: `forest.png`, `forest@ultrawide.png`, `forest@portrait.png`. Omarchy shows whichever file best matches each monitor's shape, per monitor. The labels are just names — the images' actual proportions decide — and only the base file appears in the background picker.
+- **A `backgrounds.toml`** in the same folder, declaring how images should be drawn. Set `fill = "fit"` with a `fill_color` to letterbox instead of crop, or keep cropping but steer it with `focal` so the subject stays in frame:
+
+  ```toml
+  [defaults]
+  fill = "fit"
+  fill_color = "background"
+
+  ["forest"]
+  fill = "crop"
+  focal = "0.65 0.4"
+  ```
+
+  Sections are named after an image's filename without its extension. `fill` is one of `crop`, `fit`, `center`, or `tile`; `fill_color` is a color name from your `colors.toml` or a hex value; `focal` is the point of the image to keep in view when cropping, from `"0 0"` (top left) to `"1 1"` (bottom right).
+- **SVG backgrounds.** An `.svg` in `backgrounds/` is rendered crisply at each screen's exact size, so one file covers every shape. Even better, name it `something.svg.tpl` and use the same `{{ background }}`-style placeholders as any other template: when your theme is applied, it's rendered into `something.svg` with your theme's colors, so one piece of artwork can follow the palette. (If you ship both the `.tpl` and a ready-made `.svg` with the same name, your `.svg` wins.)
+
 ### Theming apps Omarchy doesn't cover
 
 If you use an app that isn't in that list, you can teach Omarchy to theme it yourself with a template. Drop a file in `~/.config/omarchy/themed/` named after the config it generates plus a `.tpl` extension, and write the config with `{{ background }}`, `{{ foreground }}`, `{{ accent }}`, `{{ red }}`, `{{ color0 }}` through `{{ color15 }}`, and the rest of the palette as placeholders. Every time you switch themes, the file is regenerated with that theme's colors.

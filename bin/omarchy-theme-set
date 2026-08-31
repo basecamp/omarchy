@@ -76,7 +76,8 @@ choose_theme_background() {
   CHOSEN_THEME_BACKGROUND=""
   mapfile -d '' -t backgrounds < <(
     find -L "$HOME/.config/omarchy/backgrounds/$THEME_NAME/" "$CURRENT_THEME_PATH/backgrounds/" -maxdepth 1 -type f \
-      \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
+      ! -name '*@*' \
+      \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' -o -iname '*.svg' \) \
       -print0 2>/dev/null | sort -z
   )
 
