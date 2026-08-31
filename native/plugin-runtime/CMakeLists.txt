@@ -6,15 +6,34 @@ include(CTest)
 include(GNUInstallDirs)
 
 set(OMARCHY_PLUGIN_QT_MIN_VERSION "" CACHE STRING "Optional minimum Qt 6 version required by the package build")
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install path prefix" FORCE)
+endif()
+if(NOT CMAKE_INSTALL_PREFIX STREQUAL "/usr")
+  message(FATAL_ERROR
+    "The secure plugin runtime must be built for the canonical /usr prefix; use DESTDIR to stage it")
+endif()
+if(NOT CMAKE_INSTALL_LIBDIR STREQUAL "lib")
+  message(FATAL_ERROR
+    "The secure plugin runtime must use the canonical /usr/lib package root")
+endif()
+
 set(OMARCHY_PLUGIN_INSTALL_ROOT
-  "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-security/${PROJECT_VERSION}"
-  CACHE STRING "Versioned side-by-side secure plugin runtime root")
+  "lib/omarchy/plugin-security/${PROJECT_VERSION}")
 
 set(OMARCHY_PLUGIN_PACKAGED_WORKER
-  "${CMAKE_INSTALL_PREFIX}/${OMARCHY_PLUGIN_INSTALL_ROOT}/bin/omarchy-plugin-qml-worker")
-cmake_path(NORMAL_PATH OMARCHY_PLUGIN_PACKAGED_WORKER)
+  "/usr/${OMARCHY_PLUGIN_INSTALL_ROOT}/bin/omarchy-plugin-qml-worker")
+install(CODE [[
+  if(NOT CMAKE_INSTALL_PREFIX STREQUAL "/usr")
+    message(FATAL_ERROR
+      "The secure plugin runtime must be installed with its canonical /usr prefix; use DESTDIR to stage it")
+  endif()
+]])
 configure_file(cmake/runtime_paths.hpp.in
   "${CMAKE_CURRENT_BINARY_DIR}/generated/omarchy/plugin_runtime/runtime_paths.hpp"
+  @ONLY)
+configure_file(packaging/runtime-paths-v1.txt.in
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/runtime-paths-v1.txt"
   @ONLY)
 add_library(omarchy-plugin-runtime-paths INTERFACE)
 add_library(Omarchy::PluginRuntimePaths ALIAS omarchy-plugin-runtime-paths)
@@ -55,6 +74,7 @@ configure_file(packaging/runtime-dependencies-v1.txt.in
   @ONLY)
 install(FILES
   "${CMAKE_CURRENT_BINARY_DIR}/generated/runtime-dependencies-v1.txt"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/runtime-paths-v1.txt"
   DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/metadata")
 
 qt_policy(SET QTP0001 NEW)

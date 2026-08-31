@@ -8,6 +8,7 @@
 #include "manifest_contract.hpp"
 
 #include "omarchy/plugin_runtime/Version.h"
+#include "omarchy/plugin_runtime/runtime_paths.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
 #include <QGuiApplication>
@@ -642,6 +643,15 @@ private:
 } // namespace
 
 int main(int argc, char *argv[]) {
+  if (argc == 2 && std::string_view(argv[1]) == "--runtime-worker-path") {
+    QTextStream(stdout)
+        << QString::fromLatin1(
+               omarchy::plugin_runtime::kPackagedWorkerPath.data(),
+               static_cast<qsizetype>(
+                   omarchy::plugin_runtime::kPackagedWorkerPath.size()))
+        << '\n';
+    return 0;
+  }
   if (argc == 2 && std::string_view(argv[1]) == "--version") {
     const auto version = omarchy::plugin_runtime::build_version();
     QTextStream(stdout) << "omarchy-plugin-qml-worker "

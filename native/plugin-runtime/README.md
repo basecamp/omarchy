@@ -6,15 +6,18 @@ Schema v1 remains the pre-security QML loader and is trusted by default. It is u
 
 The same-UID Quickshell IPC socket is trusted session control and must remain outside the v2 worker sandbox. The permission CLI's `interactive_cli` actor records ingress provenance, not proof that a human approved the change; its TTY prompts are an ergonomic confirmation.
 
-Installation is side-by-side below `${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-security/${PROJECT_VERSION}`. It installs no command in `PATH`, no systemd unit, no global QML import, and no shell configuration. Activation requires `OMARCHY_PLUGIN_V2_ENABLED=1`, `OMARCHY_PLUGIN_V2_SHELL_ENTRY` pointing to the package-owned `SecurePluginHost.qml`, and the versioned `qml` directory on Quickshell's import path. Without all three, installation is inert.
+Installation is side-by-side below `/usr/lib/omarchy/plugin-security/${PROJECT_VERSION}`. It installs no command in `PATH`, no systemd unit, no global QML import, and no shell configuration. Activation requires `OMARCHY_PLUGIN_V2_ENABLED=1`, `OMARCHY_PLUGIN_V2_SHELL_ENTRY` pointing to the package-owned `SecurePluginHost.qml`, and the versioned `qml` directory on Quickshell's import path. Without all three, installation is inert.
 
 Build and test locally:
 
 ```bash
-cmake -S native/plugin-runtime -B build/plugin-runtime -G Ninja -DBUILD_TESTING=ON
+cmake -S native/plugin-runtime -B build/plugin-runtime -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DBUILD_TESTING=ON
 cmake --build build/plugin-runtime
 ctest --test-dir build/plugin-runtime --output-on-failure
-cmake --install build/plugin-runtime --prefix "$(mktemp -d)"
+stage=$(mktemp -d)
+sudo chown root:root "$stage"
+sudo chmod 755 "$stage"
+sudo env DESTDIR="$stage" cmake --install build/plugin-runtime
 ```
 
-Packagers may set `OMARCHY_PLUGIN_QT_MIN_VERSION` and `OMARCHY_PLUGIN_INSTALL_ROOT`. Building and installing the artifacts does not activate schema v2.
+Packagers may set `OMARCHY_PLUGIN_QT_MIN_VERSION`. The `/usr` prefix and versioned `/usr/lib/omarchy/plugin-security` package root are fixed; use only `DESTDIR` for staging. Building and installing the artifacts does not activate schema v2.

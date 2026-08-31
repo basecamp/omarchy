@@ -55,40 +55,97 @@ staging=$2
 version=$3
 [[ -d $staging ]] || fail "staging root is absent"
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "runtime version is not numeric semver"
+[[ $staging != "/" ]] || fail "staging root must not be the live filesystem"
+[[ $staging == /* && $(realpath -e -- "$staging") == "$staging" ]] ||
+  fail "staging root path is not canonical"
 
 root=$staging/usr/lib/omarchy/plugin-security/$version
 manifest=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/package-manifest-v1.txt
-[[ -d $root && ! -L $root ]] || fail "versioned runtime root is absent or linked"
-[[ -d $root/capabilities.d && ! -L $root/capabilities.d ]] || fail "trusted capability directory is absent or linked"
 
-actual=$(cd "$root" && find . -type f -printf '%m %P\n' | LC_ALL=C sort)
-expected=$(LC_ALL=C sort "$manifest")
-[[ $actual == "$expected" ]] || fail "installed file manifest differs from package-manifest-v1.txt"
+declare -A expected_type expected_mode seen
+add_expected() {
+  local relative=$1 type=$2 mode=$3
+  [[ -z ${expected_type[$relative]+present} ]] ||
+    fail "package manifest contains a duplicate member: $relative"
+  expected_type[$relative]=$type
+  expected_mode[$relative]=$mode
+}
 
-while read -r mode relative; do
-  path=$root/$relative
-  [[ -f $path && ! -L $path ]] || fail "manifest member is absent or linked: $relative"
-  [[ $(stat -c '%a' "$path") == "$mode" ]] || fail "manifest member has wrong mode: $relative"
-  if (( (8#$mode & 8#6022) != 0 )); then
-    fail "manifest member has unsafe permissions: $relative"
-  fi
+for directory in \
+  . \
+  usr \
+  usr/lib \
+  usr/lib/omarchy \
+  usr/lib/omarchy/plugin-security \
+  "usr/lib/omarchy/plugin-security/$version" \
+  "usr/lib/omarchy/plugin-security/$version/capabilities.d"; do
+  add_expected "$directory" d 755
+done
+
+while read -r mode relative extra; do
+  [[ -n $mode && -n $relative && -z ${extra:-} ]] ||
+    fail "package manifest contains a malformed row"
+  [[ $mode == "644" || $mode == "755" ]] ||
+    fail "package manifest contains an unsupported mode: $relative"
+  [[ $relative =~ ^[A-Za-z0-9._/-]+$ && $relative != /* &&
+     $relative != *//* && $relative != ".." &&
+     $relative != ../* && $relative != */../* && $relative != */.. ]] ||
+    fail "package manifest contains an unsafe path: $relative"
+  package_relative="usr/lib/omarchy/plugin-security/$version/$relative"
+  add_expected "$package_relative" f "$mode"
+  parent=${package_relative%/*}
+  while [[ $parent != "usr/lib/omarchy/plugin-security/$version" ]]; do
+    if [[ -z ${expected_type[$parent]+present} ]]; then
+      add_expected "$parent" d 755
+    fi
+    parent=${parent%/*}
+  done
 done < "$manifest"
 
-while IFS= read -r directory; do
-  [[ ! -L $directory ]] || fail "runtime directory is linked: $directory"
-  [[ $(stat -c '%a' "$directory") == "755" ]] || fail "runtime directory mode is not 755: $directory"
-done < <(find "$root" -type d -print)
+tree_listing=$(mktemp)
+cleanup_tree_listing() {
+  rm -f -- "$tree_listing"
+}
+trap cleanup_tree_listing EXIT
+find -P "$staging" -printf '%P\0%y\0%m\0%U\0%G\0%n\0' >"$tree_listing"
+mapfile -d '' tree_fields <"$tree_listing"
+(( ${#tree_fields[@]} % 6 == 0 )) || fail "staging tree metadata is incomplete"
 
-version_roots=$(find "$staging/usr/lib/omarchy/plugin-security" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | LC_ALL=C sort)
-[[ $version_roots == "$version" ]] || fail "staging package contains another runtime version"
+for ((index = 0; index < ${#tree_fields[@]}; index += 6)); do
+  relative=${tree_fields[index]}
+  type=${tree_fields[index + 1]}
+  mode=${tree_fields[index + 2]}
+  uid=${tree_fields[index + 3]}
+  gid=${tree_fields[index + 4]}
+  links=${tree_fields[index + 5]}
+  [[ -n $relative ]] || relative=.
+  [[ -n ${expected_type[$relative]+present} ]] ||
+    fail "staging tree contains an unexpected member: $relative"
+  [[ $type == "${expected_type[$relative]}" ]] ||
+    fail "staging tree member has wrong type: $relative"
+  [[ $mode == "${expected_mode[$relative]}" ]] ||
+    fail "staging tree member has wrong mode: $relative"
+  [[ $uid == "0" && $gid == "0" ]] ||
+    fail "staging tree member is not owned by root:root: $relative"
+  if [[ $type == "f" && $links != "1" ]]; then
+    fail "staging tree file has multiple hard links: $relative"
+  fi
+  seen[$relative]=1
+done
 
-for forbidden in usr/bin usr/lib/systemd usr/share/omarchy shell config default migrations; do
-  [[ ! -e $staging/$forbidden ]] || fail "package writes outside its owned versioned root: $forbidden"
+for relative in "${!expected_type[@]}"; do
+  [[ -n ${seen[$relative]+present} ]] ||
+    fail "staging tree omits required member: $relative"
 done
 
 worker=$root/bin/omarchy-plugin-qml-worker
 bridge=$root/qml/Omarchy/PluginHost/libomarchy-plugin-host-bridge.so
 runtime_dependencies=$root/metadata/runtime-dependencies-v1.txt
+runtime_paths=$root/metadata/runtime-paths-v1.txt
+canonical_worker=/usr/lib/omarchy/plugin-security/$version/bin/omarchy-plugin-qml-worker
+
+[[ $(<"$runtime_paths") == "worker=$canonical_worker" ]] ||
+  fail "runtime path contract is not canonical"
 
 if ! qt6_base_package=$(/usr/bin/pacman -Q -- qt6-base 2>/dev/null); then
   fail "installed qt6-base package cannot be queried"
@@ -110,14 +167,6 @@ EOF
 [[ $(<"$runtime_dependencies") == $expected_dependencies ]] ||
   fail "runtime dependency contract differs from the required Arch package set or qt6-base build"
 
-set +e
-"$worker" >/dev/null 2>&1
-worker_status=$?
-set -e
-(( worker_status == 78 )) || fail "private worker does not reject direct execution"
-readelf -Ws "$worker" | grep -F '@Qt_6_PRIVATE_API' >/dev/null ||
-  fail "omarchy-plugin-qml-worker omits expected Qt private ABI imports"
-
 qt_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libxkbcommon\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6)$'
 bridge_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|DBus|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libsystemd\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6|ld-linux-x86-64\.so\.2)$'
 verify_elf "$worker" pie "$qt_allowed" libseccomp.so.2
@@ -126,12 +175,50 @@ verify_elf "$bridge" shared "$bridge_allowed" libQt6Qml.so.6
 needed_libraries "$bridge" | grep -Fx libseccomp.so.2 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libseccomp.so.2"
 needed_libraries "$bridge" | grep -Fx libsystemd.so.0 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libsystemd.so.0"
 
-python -m json.tool "$root/policy/builtin-capabilities-v1.json" >/dev/null
+if ! worker_contract=$("$worker" --runtime-worker-path 2>/dev/null); then
+  fail "worker runtime path contract is unavailable"
+fi
+[[ $worker_contract == "$canonical_worker" ]] ||
+  fail "worker runtime path contract is not canonical"
+
+if ! bridge_contract=$(/usr/bin/python -c '
+import ctypes
+import sys
+bridge = ctypes.CDLL(sys.argv[1])
+contract = bridge.omarchy_plugin_host_worker_path_v1
+contract.restype = ctypes.c_char_p
+value = contract()
+if value is None:
+    raise RuntimeError("empty bridge worker path contract")
+sys.stdout.write(value.decode("ascii"))
+' "$bridge" 2>/dev/null); then
+  fail "bridge runtime path contract is unavailable"
+fi
+[[ $bridge_contract == "$canonical_worker" ]] ||
+  fail "bridge runtime path contract is not canonical"
+
+set +e
+"$worker" >/dev/null 2>&1
+worker_status=$?
+set -e
+(( worker_status == 78 )) || fail "private worker does not reject direct execution"
+readelf -Ws "$worker" | grep -F '@Qt_6_PRIVATE_API' >/dev/null ||
+  fail "omarchy-plugin-qml-worker omits expected Qt private ABI imports"
+
+if ! python -m json.tool "$root/policy/builtin-capabilities-v1.json" >/dev/null 2>&1; then
+  fail "builtin capability policy is not valid JSON"
+fi
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-QT_QPA_PLATFORM=offscreen \
+if ! /usr/lib/qt6/bin/qmllint -I "$root/qml" "$root"/shell/*.qml \
+  >/dev/null 2>&1; then
+  fail "installed shell QML syntax validation failed"
+fi
+if ! QT_QPA_PLATFORM=offscreen \
   QT_QPA_PLATFORMTHEME=none \
   QSG_RHI_BACKEND=software \
-  /usr/lib/qt6/bin/qml -I "$root/qml" "$script_dir/ModuleProbe.qml" >/dev/null
+  /usr/lib/qt6/bin/qml -I "$root/qml" "$script_dir/ModuleProbe.qml" >/dev/null; then
+  fail "QML module import probe failed"
+fi
 
 echo "secure plugin package verification passed: $root"

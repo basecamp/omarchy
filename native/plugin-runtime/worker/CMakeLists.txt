@@ -59,6 +59,7 @@ omarchy_plugin_target_defaults(omarchy-plugin-qml-worker)
 omarchy_plugin_worker_sanitize(omarchy-plugin-qml-worker)
 target_link_libraries(omarchy-plugin-qml-worker
   PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Omarchy::PluginRuntimeVersion
+          Omarchy::PluginRuntimePaths
           omarchy-plugin-worker-runtime
 )
 

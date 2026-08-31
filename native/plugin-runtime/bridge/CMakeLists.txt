@@ -17,6 +17,7 @@ qt_add_qml_module(omarchy-plugin-host-bridge
     src/SurfaceEndpointOwner.h
     src/SurfaceProjectionModel.cpp
     src/SurfaceProjectionModel.h
+    src/runtime_contract.cpp
     ../trusted-bridge/src/remote_surface.hpp
 )
 
@@ -28,6 +29,7 @@ target_include_directories(omarchy-plugin-host-bridge PRIVATE
 target_link_libraries(omarchy-plugin-host-bridge PRIVATE
   Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
   Omarchy::PluginRuntimeVersion
+  Omarchy::PluginRuntimePaths
   omarchy-plugin-trusted-bridge
   omarchy-plugin-host-session
   omarchy-plugin-authenticated-session
