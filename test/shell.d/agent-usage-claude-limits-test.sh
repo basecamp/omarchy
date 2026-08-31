@@ -89,7 +89,8 @@ spec = importlib.util.spec_from_loader(loader.name, loader)
 collector = importlib.util.module_from_spec(spec)
 loader.exec_module(collector)
 
-cache = collector.cache_root() / "claude-limits.json"
+digest = __import__("hashlib").sha1(str(collector.config_dir()).encode("utf-8")).hexdigest()[:16]
+cache = collector.cache_root() / f"claude-limits-{digest}.json"
 cached = os.environ["CACHED"]
 if cached:
   cache.write_text(cached, encoding="utf-8")
@@ -167,7 +168,8 @@ spec = importlib.util.spec_from_loader(loader.name, loader)
 collector = importlib.util.module_from_spec(spec)
 loader.exec_module(collector)
 
-cache = collector.cache_root() / "claude-limits.json"
+digest = __import__("hashlib").sha1(str(collector.config_dir()).encode("utf-8")).hexdigest()[:16]
+cache = collector.cache_root() / f"claude-limits-{digest}.json"
 cache.write_text(os.environ["CACHED"], encoding="utf-8")
 
 probes = []
