@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <fstream>
 #include <limits>
+#include <type_traits>
 
 namespace omarchy::plugin_runtime::worker {
 namespace {
@@ -565,6 +566,24 @@ QVariant QmlBrokerApi::invoke(const QString &capability,
     disconnect(QStringLiteral("failed"));
   }
   return QVariant::fromValue(static_cast<QObject *>(call));
+}
+
+bool QmlBrokerApi::beginTrustedGestureForInput(
+    const surface::InputEvent &event) {
+  const bool trusted_activation = std::visit(
+      [](const auto &payload) {
+        using Event = std::decay_t<decltype(payload)>;
+        if constexpr (std::is_same_v<Event, surface::PointerButton>)
+          return payload.state == surface::ButtonState::pressed;
+        if constexpr (std::is_same_v<Event, surface::TouchFrame>)
+          return payload.phase == surface::TouchFramePhase::begin;
+        return false;
+      },
+      event.payload);
+  if (trusted_activation)
+    beginTrustedGesture(event.surface.id, event.surface.generation,
+                        event.sequence);
+  return trusted_activation;
 }
 
 void QmlBrokerApi::beginTrustedGesture(

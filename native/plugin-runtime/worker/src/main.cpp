@@ -493,19 +493,8 @@ private:
         fatal("input event failed validation");
         return;
       }
-      const bool trusted_activation = std::visit(
-          [](const auto &payload) {
-            using Event = std::decay_t<decltype(payload)>;
-            if constexpr (std::is_same_v<Event, surface::PointerButton>)
-              return payload.state == surface::ButtonState::pressed;
-            if constexpr (std::is_same_v<Event, surface::TouchFrame>)
-              return payload.phase == surface::TouchFramePhase::begin;
-            return false;
-          },
-          event.payload);
-      if (trusted_activation)
-        broker_api_->beginTrustedGesture(
-            event.surface.id, event.surface.generation, event.sequence);
+      const bool trusted_activation =
+          broker_api_->beginTrustedGestureForInput(event);
       if (!runtime_.input(event)) {
         broker_api_->endTrustedGesture();
         fatal("input event failed validation");

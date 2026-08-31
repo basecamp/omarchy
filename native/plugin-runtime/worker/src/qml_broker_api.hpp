@@ -145,6 +145,8 @@ public:
       std::uint64_t envelope_generation, std::span<const std::byte> payload);
   [[nodiscard]] bool receive(ReceivedPacket packet);
   [[nodiscard]] QString status() const;
+  [[nodiscard]] bool
+  beginTrustedGestureForInput(const surface::InputEvent &event);
   void beginTrustedGesture(std::uint64_t surface_id,
                            std::uint64_t surface_generation,
                            std::uint64_t input_sequence);

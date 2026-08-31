@@ -14,12 +14,15 @@
 #include <QQmlEngine>
 #include <QTimer>
 #include <QTemporaryDir>
+#include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #include <array>
 #include <algorithm>
 #include <cerrno>
+#include <filesystem>
 #include <iostream>
 #include <span>
 #include <stdexcept>
@@ -73,6 +76,24 @@ public:
   definitions::DynamicInvocation::GestureClaim last_source{};
   std::string last_target;
   surface::SurfaceIntentAction last_action = surface::SurfaceIntentAction::open;
+};
+
+class FixtureIntentSink final : public worker::SurfaceIntentSink {
+public:
+  bool request_surface_intent(
+      const definitions::DynamicInvocation::GestureClaim &source,
+      std::string_view target,
+      surface::SurfaceIntentAction action) override {
+    sources.push_back(source);
+    targets.emplace_back(target);
+    actions.push_back(action);
+    return (target == "panel" || target == "overlay") &&
+           action == surface::SurfaceIntentAction::toggle;
+  }
+
+  std::vector<definitions::DynamicInvocation::GestureClaim> sources;
+  std::vector<std::string> targets;
+  std::vector<surface::SurfaceIntentAction> actions;
 };
 
 void require(bool condition, const char *message) {
@@ -710,7 +731,115 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
   require(qml->property("notificationsAvailable").toBool(),
           "one-shot permission projection was not immutable in QML");
 }
+void neutral_surface_trusted_input() {
+  const std::filesystem::path fixture =
+      std::filesystem::path(OMARCHY_PRODUCT_FIXTURE_ROOT) / "neutral-surfaces";
+  QFile manifest_file(
+      QString::fromStdString((fixture / "manifest.json").string()));
+  require(manifest_file.open(QIODevice::ReadOnly),
+          "neutral fixture manifest could not be opened");
+  const auto parsed = manifest::parse_manifest_v2(
+      manifest_file.readAll().toStdString());
+  require(parsed.requests.empty(),
+          "neutral input fixture unexpectedly requested authority");
+
+  Pair pair;
+  wire::SessionSequence worker_sequence;
+  worker::WorkerEndpoint endpoint(pair.descriptors[0],
+                                  wire::EndpointRole::broker,
+                                  broker::kBrokerRoleVersion,
+                                  worker_sequence);
+  handshake(endpoint, pair.descriptors[1]);
+  worker::QmlBrokerApi api(
+      endpoint, std::make_unique<worker::ManifestInvokeEncoder>(parsed),
+      parsed, 77);
+  FixtureIntentSink sink;
+  require(api.bindSurfaceIntentSink(sink),
+          "neutral fixture intent sink did not bind");
+
+  worker::WorkerRuntime runtime(fixture);
+  require(static_cast<bool>(runtime.bind_runtime_api(api)) &&
+              static_cast<bool>(
+                  runtime.load_surface_entry("bar", "ui/Bar.qml")) &&
+              static_cast<bool>(runtime.select_software_profile(
+                  surface::software_profile_offer())),
+          "neutral bar did not load through the real worker runtime");
+  const auto page_size = sysconf(_SC_PAGESIZE);
+  require(page_size > 0, "neutral input fixture page size was unavailable");
+  const auto allocation = surface::make_allocation(
+      {.id = 71, .generation = 9}, 252, 48, 252, 48, 1, 1,
+      static_cast<std::uint64_t>(page_size));
+  require(allocation.has_value() &&
+              static_cast<bool>(runtime.bind_surface("bar",
+                                                     allocation->surface)),
+          "neutral bar did not bind its trusted surface identity");
+  const int descriptor = static_cast<int>(
+      syscall(SYS_memfd_create, "neutral-input-frame", MFD_CLOEXEC));
+  require(descriptor >= 0 &&
+              ftruncate(descriptor,
+                        static_cast<off_t>(allocation->mapping_bytes)) == 0 &&
+              static_cast<bool>(runtime.allocate(*allocation, descriptor)),
+          "neutral bar did not receive its trusted frame allocation");
+  require(static_cast<bool>(runtime.input(
+              {.surface = allocation->surface,
+               .sequence = 1,
+               .payload = surface::FocusChanged{.focused = true}})) &&
+              sink.targets.empty(),
+          "neutral bar requested a surface before pointer input");
+
+  auto pointer = [&](std::uint64_t sequence, std::uint32_t x,
+                     surface::ButtonState state, std::uint32_t buttons) {
+    return surface::InputEvent{
+        .surface = allocation->surface,
+        .sequence = sequence,
+        .payload = surface::PointerButton{
+            .position = {.x_q16 = x << 16, .y_q16 = 24U << 16},
+            .button = static_cast<std::uint32_t>(Qt::LeftButton),
+            .state = state,
+            .buttons = buttons}};
+  };
+  const auto panel_press =
+      pointer(2, 63, surface::ButtonState::pressed,
+              static_cast<std::uint32_t>(Qt::LeftButton));
+  require(api.beginTrustedGestureForInput(panel_press) &&
+              static_cast<bool>(runtime.input(panel_press)),
+          "neutral panel press did not traverse trusted worker input");
+  api.endTrustedGesture();
+  require(sink.targets.size() == 1 && sink.targets[0] == "panel" &&
+              sink.actions[0] == surface::SurfaceIntentAction::toggle &&
+              sink.sources[0].surface_id == allocation->surface.id &&
+              sink.sources[0].surface_generation ==
+                  allocation->surface.generation &&
+              sink.sources[0].input_sequence == 2,
+          "neutral panel press lost its exact trusted gesture claim");
+
+  const auto panel_release =
+      pointer(3, 63, surface::ButtonState::released, 0);
+  require(!api.beginTrustedGestureForInput(panel_release) &&
+              static_cast<bool>(runtime.input(panel_release)) &&
+              sink.targets.size() == 1,
+          "neutral panel release minted a trusted surface intent");
+  const auto overlay_press =
+      pointer(4, 189, surface::ButtonState::pressed,
+              static_cast<std::uint32_t>(Qt::LeftButton));
+  require(api.beginTrustedGestureForInput(overlay_press) &&
+              static_cast<bool>(runtime.input(overlay_press)),
+          "neutral overlay press did not traverse trusted worker input");
+  api.endTrustedGesture();
+  require(sink.targets.size() == 2 && sink.targets[1] == "overlay" &&
+              sink.actions[1] == surface::SurfaceIntentAction::toggle &&
+              sink.sources[1].input_sequence == 4,
+          "neutral overlay press lost its exact trusted gesture claim");
+  const auto overlay_release =
+      pointer(5, 189, surface::ButtonState::released, 0);
+  require(!api.beginTrustedGestureForInput(overlay_release) &&
+              static_cast<bool>(runtime.input(overlay_release)) &&
+              sink.targets.size() == 2,
+          "neutral overlay release minted a trusted surface intent");
+}
+
 void run() {
+  neutral_surface_trusted_input();
   worker::BrokerCall text_call(1);
   text_call.resolve(QByteArray("{\"station\":\"M\xC3\xBCnchen\"}"));
   require(text_call.utf8Text() == QString::fromUtf8("{\"station\":\"M\xC3\xBCnchen\"}"),

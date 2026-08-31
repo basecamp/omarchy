@@ -4,7 +4,7 @@ project(omarchy_plugin_product_fixtures LANGUAGES CXX)
 
 include(CTest)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Test)
 
 option(PLUGIN_SECURITY_ENABLE_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
@@ -36,7 +36,7 @@ target_compile_definitions(omarchy-plugin-product-fixtures-test PRIVATE
   OMARCHY_PRODUCT_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 target_link_libraries(omarchy-plugin-product-fixtures-test PRIVATE
-  Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
+  Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test
   omarchy-plugin-manifest-contract
 )
 

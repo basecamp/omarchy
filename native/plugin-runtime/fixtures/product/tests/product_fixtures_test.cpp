@@ -7,8 +7,10 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickItem>
+#include <QQuickView>
 #include <QSet>
 #include <QStringList>
+#include <QTest>
 #include <QTimer>
 #include <QVariant>
 
@@ -129,6 +131,27 @@ public:
                                                 : QStringLiteral("denied");
   }
 
+  Q_INVOKABLE bool requestSurfaceIntent(const QString &target,
+                                        const QString &action) {
+    surface_intents_.push_back({target, action});
+    return true;
+  }
+
+  [[nodiscard]] qsizetype invocationCount() const {
+    return operations_.size() + denied_.size();
+  }
+
+  [[nodiscard]] qsizetype surfaceIntentCount() const {
+    return surface_intents_.size();
+  }
+
+  [[nodiscard]] bool surfaceIntentAt(qsizetype index, const QString &target,
+                                     const QString &action) const {
+    return index >= 0 && index < surface_intents_.size() &&
+           surface_intents_[index].target == target &&
+           surface_intents_[index].action == action;
+  }
+
   [[nodiscard]] QVariantMap permissions() const {
     return {{QStringLiteral("notifications.send"),
              QVariantMap{
@@ -149,6 +172,11 @@ signals:
   void callFinished(QObject *call);
 
 private:
+  struct SurfaceIntent {
+    QString target;
+    QString action;
+  };
+
   QVariant asynchronousCall(bool ok, QString error, QVariant value) {
     auto call = std::make_unique<FakeCall>(ok, std::move(error),
                                           std::move(value), next_correlation_++,
@@ -167,6 +195,7 @@ private:
   QStringList operations_;
   QStringList denied_;
   QList<QVariantMap> payloads_;
+  QList<SurfaceIntent> surface_intents_;
   std::vector<std::unique_ptr<FakeCall>> calls_;
   qulonglong next_correlation_ = 1;
 };
@@ -249,6 +278,49 @@ void test_neutral_surface_fixture() {
   }
 }
 
+void test_neutral_surface_controls() {
+  const auto bar = kRoot / "neutral-surfaces/ui/Bar.qml";
+  FakeRuntime runtime({});
+  QQuickView view;
+  view.setResizeMode(QQuickView::SizeViewToRootObject);
+  view.rootContext()->setContextProperty(QStringLiteral("runtime"), &runtime);
+  view.setSource(QUrl::fromLocalFile(QString::fromStdString(bar.string())));
+  require(view.status() == QQuickView::Ready && view.rootObject() != nullptr,
+          "neutral bar interaction fixture did not load");
+  require(view.rootObject()->findChild<QObject *>(
+              QStringLiteral("panelToggle")) != nullptr &&
+              view.rootObject()->findChild<QObject *>(
+                  QStringLiteral("overlayToggle")) != nullptr,
+          "neutral bar did not expose both bounded click targets");
+  view.show();
+  QCoreApplication::processEvents();
+
+  require(runtime.surfaceIntentCount() == 0 && runtime.invocationCount() == 0,
+          "neutral bar requested ambient authority before user input");
+  QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, QPoint(63, 24));
+  QCoreApplication::processEvents();
+  require(runtime.surfaceIntentCount() == 1 &&
+              runtime.surfaceIntentAt(0, QStringLiteral("panel"),
+                                      QStringLiteral("toggle")) &&
+              runtime.invocationCount() == 0,
+          "neutral bar panel control did not request one exact surface intent");
+  QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, QPoint(63, 24));
+  QCoreApplication::processEvents();
+  require(runtime.surfaceIntentCount() == 1 && runtime.invocationCount() == 0,
+          "neutral bar pointer release minted a surface intent");
+  QTest::mousePress(&view, Qt::LeftButton, Qt::NoModifier, QPoint(189, 24));
+  QCoreApplication::processEvents();
+  require(runtime.surfaceIntentCount() == 2 &&
+              runtime.surfaceIntentAt(1, QStringLiteral("overlay"),
+                                      QStringLiteral("toggle")) &&
+              runtime.invocationCount() == 0,
+          "neutral bar overlay control did not request one exact surface intent");
+  QTest::mouseRelease(&view, Qt::LeftButton, Qt::NoModifier, QPoint(189, 24));
+  QCoreApplication::processEvents();
+  require(runtime.surfaceIntentCount() == 2 && runtime.invocationCount() == 0,
+          "neutral bar overlay release minted a surface intent");
+}
+
 void test_permission_aware_fixtures() {
   FakeRuntime authorized({QStringLiteral("storage.private/read"),
                           QStringLiteral("storage.private/write")}, true);
@@ -298,6 +370,7 @@ int main(int argc, char **argv) {
   try {
     test_permission_aware_fixtures();
     test_neutral_surface_fixture();
+    test_neutral_surface_controls();
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

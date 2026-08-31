@@ -155,6 +155,9 @@ if(BUILD_TESTING)
   add_executable(omarchy-plugin-qml-broker-api-test tests/qml_broker_api_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-qml-broker-api-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-qml-broker-api-test)
+  target_compile_definitions(omarchy-plugin-qml-broker-api-test PRIVATE
+    OMARCHY_PRODUCT_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/product"
+  )
   target_link_libraries(omarchy-plugin-qml-broker-api-test PRIVATE
     omarchy-plugin-worker-runtime)
   add_test(NAME plugin-qml-broker-api COMMAND omarchy-plugin-qml-broker-api-test)
