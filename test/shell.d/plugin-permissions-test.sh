@@ -35,7 +35,7 @@ case ${2:-} in
   poll)
     case ${3:-} in
       permission-00000000000000000000000000000000)
-        list_result='{"operationId":"permission-00000000000000000000000000000000","kind":"list","state":"succeeded","result":{"plugin":"org.example.evil\nplugin","permissions":[{"rowId":"row-11111111111111111111111111111111","kind":"builtin","name":"notifications.send\u001b[31m\nforged","required":true,"available":true,"state":"granted","scope":"desktop","operations":["send"]},{"rowId":"row-22222222222222222222222222222222","kind":"dynamic","name":"cli.example","title":"Example CLI","required":false,"available":true,"state":"denied","scope":"repository","operations":["Read\nfiles","Write"]}]}}'
+        list_result='{"operationId":"permission-00000000000000000000000000000000","kind":"list","state":"succeeded","result":{"plugin":"org.example.evil\nplugin","permissions":[{"rowId":"row-11111111111111111111111111111111","kind":"builtin","name":"notifications.send\u001b[31m\nforged","required":true,"available":true,"state":"granted","scope":"desktop","operations":["send"]},{"rowId":"row-22222222222222222222222222222222","kind":"dynamic","name":"cli.example","title":"Example CLI","required":false,"available":true,"state":"denied","scope":"repository","operations":["Read\u061c\u200efiles\u200f","Write"]}]}}'
         case ${PERMISSION_TEST_MODE:-} in
           pending-extra)
             printf '%s\n' '{"operationId":"permission-00000000000000000000000000000000","kind":"list","state":"pending","authoritySequence":17}'
@@ -46,7 +46,7 @@ case ${2:-} in
             exit 0
             ;;
           failed-string)
-            printf '%s\n' '{"operationId":"permission-00000000000000000000000000000000","kind":"list","state":"failed","error":"denied\u009b31m\u202eforged\u2069"}'
+            printf '%s\n' '{"operationId":"permission-00000000000000000000000000000000","kind":"list","state":"failed","error":"denied\u009b31m\u061c\u200eleft\u200f\u202eforged\u2069"}'
             exit 0
             ;;
           success-extra-outer)
@@ -65,7 +65,7 @@ case ${2:-} in
         printf '%s\n' "$list_result"
         ;;
       permission-11111111111111111111111111111111)
-        printf '%s\n' '{"operationId":"permission-11111111111111111111111111111111","kind":"review","state":"succeeded","result":{"plugin":"org.example.review","permissions":[{"rowId":"row-11111111111111111111111111111111","kind":"builtin","name":"notifications.send","required":true,"available":true,"state":"undecided","scope":"desktop","operations":["send"],"delta":"added","reason":"Show status"},{"rowId":"row-22222222222222222222222222222222","kind":"dynamic","name":"cli.example","title":"Example CLI","required":false,"available":true,"state":"undecided","scope":"repository","operations":[{"operationId":"operation-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"read","label":"Read\u202efiles\u2069"},{"operationId":"operation-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","name":"write","label":"Write"}],"delta":"added","reason":"Read \u009b31m\u202eonly\u2069 when selected"}]}}'
+        printf '%s\n' '{"operationId":"permission-11111111111111111111111111111111","kind":"review","state":"succeeded","result":{"plugin":"org.example.review","permissions":[{"rowId":"row-11111111111111111111111111111111","kind":"builtin","name":"notifications.send","required":true,"available":true,"state":"undecided","scope":"desktop","operations":["send"],"delta":"added","reason":"Show status"},{"rowId":"row-22222222222222222222222222222222","kind":"dynamic","name":"cli.example","title":"Example CLI","required":false,"available":true,"state":"undecided","scope":"repository","operations":[{"operationId":"operation-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","name":"read","label":"Read\u061c\u200efiles\u200f\u202eend\u2069"},{"operationId":"operation-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","name":"write","label":"Write"}],"delta":"added","reason":"Read \u009b31m\u061c\u200eleft\u200f\u202eonly\u2069 when selected"}]}}'
         ;;
       permission-22222222222222222222222222222222)
         [[ ${PERMISSION_TEST_MODE:-} != "poll-fail" ]] || exit 1
@@ -158,15 +158,15 @@ if failed_output=$(PERMISSION_TEST_MODE=failed-string \
   "$ROOT/bin/omarchy-plugin-permissions" org.example.evil --json 2>&1); then
   fail "valid failed permission response returned success" "$failed_output"
 fi
-[[ $failed_output == *"permission operation failed: denied 31m forged "* ]] ||
+[[ $failed_output == *"permission operation failed: denied 31m"* && $failed_output == *"left"* && $failed_output == *"forged"* ]] ||
   fail "failed permission response was not sanitized for presentation" "$failed_output"
-for forbidden_character in $'\u009b' $'\u202e' $'\u2069'; do
+for forbidden_character in $'\u009b' $'\u061c' $'\u200e' $'\u200f' $'\u202e' $'\u2069'; do
   [[ $failed_output != *"$forbidden_character"* ]] || fail "failed permission response emitted a terminal-control Unicode character" "$failed_output"
 done
 pass "valid failed poll responses are sanitized before presentation"
 
 calls_before=$(wc -l <"$calls")
-for hostile_id in $'org.example\nforged' $'org.example\u202eforged'; do
+for hostile_id in $'org.example\nforged' $'org.example\u202eforged' .org org. org..example org_-example -org org-; do
   if hostile_output=$("$ROOT/bin/omarchy-plugin-permissions" "$hostile_id" 2>&1); then
     fail "hostile caller plugin id was accepted" "$hostile_output"
   fi
@@ -176,11 +176,18 @@ done
 [[ $(wc -l <"$calls") == "$calls_before" ]] || fail "invalid caller plugin id reached shell IPC"
 pass "caller plugin ids are validated before IPC or presentation"
 
+digit_id_output=$("$ROOT/bin/omarchy-plugin-permissions" 1example.plugin --json)
+jq -e '.permissions | type == "array"' <<<"$digit_id_output" >/dev/null || fail "valid leading-digit plugin id was rejected" "$digit_id_output"
+pass "plugin id validation accepts the authoritative leading-digit grammar"
+
 human_output=$("$ROOT/bin/omarchy-plugin-permissions" org.example.evil)
 [[ $human_output != *$'\e'* ]] || fail "human permission output emits an ANSI escape"
 [[ $human_output == *"org.example.evil plugin"* ]] || fail "human permission output flattens control characters" "$human_output"
 [[ $human_output == *"notifications.send forged"* ]] || fail "human permission output sanitizes names" "$human_output"
-[[ $human_output == *"Read files"* ]] || fail "human permission output sanitizes operation labels" "$human_output"
+[[ $human_output == *"Read"* && $human_output == *"files"* ]] || fail "human permission output sanitizes operation labels" "$human_output"
+for forbidden_character in $'\u061c' $'\u200e' $'\u200f'; do
+  [[ $human_output != *"$forbidden_character"* ]] || fail "human permission output emitted a directional control" "$human_output"
+done
 pass "human permission output is terminal-safe"
 
 calls_before=$(wc -l <"$calls")
@@ -207,7 +214,7 @@ require_command script
 review_output=$(printf 'y\ny\ny\nn\n' | script -qefc \
   "env PATH='$test_dir/bin:$PATH' PERMISSION_TEST_CALLS='$calls' '$ROOT/bin/omarchy-plugin-permissions' review org.example.review" /dev/null)
 [[ $review_output == *"Permissions updated for org.example.review"* ]] || fail "interactive permission review did not complete" "$review_output"
-for forbidden_character in $'\u009b' $'\u202e' $'\u2069'; do
+for forbidden_character in $'\u009b' $'\u061c' $'\u200e' $'\u200f' $'\u202e' $'\u2069'; do
   [[ $review_output != *"$forbidden_character"* ]] || fail "interactive review emitted a terminal-control Unicode character" "$review_output"
 done
 apply_choices=$(awk -F '\t' '$2 == "apply" {print $4 $5 $6}' "$calls" | tail -n1)

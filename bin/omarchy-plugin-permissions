@@ -44,7 +44,7 @@ USAGE
 require_plugin_id() {
   local plugin_id="$1"
 
-  if (( ${#plugin_id} <= 128 )) && [[ $plugin_id =~ ^[a-z][a-z0-9]*([._-][a-z0-9]+)*$ ]]; then
+  if (( ${#plugin_id} <= 128 )) && [[ $plugin_id =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
     return 0
   else
     fail "plugin id is invalid"
@@ -72,7 +72,7 @@ sanitize_json_string() {
 
   jq -r "($filter // \"\" | tostring)
     | gsub(\"\\u001b\\\\[[0-?]*[ -/]*[@-~]\"; \"\")
-    | gsub(\"[\\u0000-\\u001f\\u007f-\\u009f\\u202a-\\u202e\\u2066-\\u2069]\"; \" \")
+    | gsub(\"[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e-\\u200f\\u202a-\\u202e\\u2066-\\u2069]\"; \" \")
     | .[0:160]" <<<"$json"
 }
 
@@ -223,7 +223,7 @@ print_permission_row() {
     [.operations[]? | if type == "object" then (.label // .name // "") else . end
       | tostring
       | gsub("\u001b\\[[0-?]*[ -/]*[@-~]"; "")
-      | gsub("[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]"; " ")
+      | gsub("[\u0000-\u001f\u007f-\u009f\u061c\u200e-\u200f\u202a-\u202e\u2066-\u2069]"; " ")
       | .[0:80]]
     | join(", ")
     | .[0:320]
