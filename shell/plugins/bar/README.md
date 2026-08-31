@@ -161,6 +161,7 @@ Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (o
 - `bar.vertical` — boolean shortcut
 - `bar.barSize` — 26 horizontal / 28 vertical
 - `bar.run(command)` — fire-and-forget bash exec (quote arguments with `Util.shellQuote` from `qs.Commons`)
+- `bar.runProgram(argv)` — same, for a fixed argv naming a system tool; skips the login shell `run` sources on every call
 - `bar.showTooltip(target, text)` / `bar.hideTooltip(target)` — shared tooltip popup
 - `bar.requestPopout(owner)` / `bar.releasePopout(owner)` — one-popup-at-a-time coordinator
 

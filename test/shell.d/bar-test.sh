@@ -485,3 +485,36 @@ put_output=$(PATH="$put_tmp/bin:$ROOT/bin:$PATH" \
   fail "put places a widget through a ready shell" "$put_output"
 [[ $put_output == "omarchy.keyboard-layout is on the bar" ]] || fail "put reports the placed widget" "$put_output"
 pass "put places a widget through a ready shell"
+
+# A bar click that runs a system tool should not pay for a login shell first.
+# Util.execProgram hands the argv straight to Quickshell; run and execArgv keep
+# their `bash -lc` because the targets they launch need the session env.
+if ! rg -qU 'function execProgram\(argv\) \{\n\s*Quickshell\.execDetached\(argv\)\n\s*\}' "$ROOT/shell/Commons/Util.qml"; then
+  fail "Util.execProgram must run the argv without a shell in between"
+fi
+pass "Util.execProgram runs a program without a login shell"
+
+if ! rg -qU 'function runProgram\(argv\) \{[^}]*Util\.execProgram\(argv\)' "$ROOT/shell/plugins/bar/Bar.qml"; then
+  fail "bar.runProgram must delegate to Util.execProgram"
+fi
+pass "bar.runProgram gives widgets the no-shell path"
+
+if rg -q 'bar\.run\("hyprctl' "$ROOT/shell/plugins/bar/widgets/Workspaces.qml" "$ROOT/shell/plugins/bar/widgets/KeyboardLayout.qml"; then
+  fail "hyprctl must not be launched through a login shell from the bar"
+fi
+pass "bar hyprctl calls skip the login shell"
+
+if ! rg -q 'Hyprland\.dispatch\("hl\.dsp\.focus' "$ROOT/shell/plugins/bar/widgets/Workspaces.qml"; then
+  fail "workspace focus must go down the socket the widget already holds"
+fi
+pass "workspace focus dispatches over the existing Hyprland socket"
+
+if rg -q 'hyprctl' "$ROOT/shell/plugins/bar/widgets/Workspaces.qml"; then
+  fail "workspace focus must not spawn hyprctl at all"
+fi
+pass "clicking a workspace spawns no process"
+
+if ! rg -q 'runProgram\(\["hyprctl", "switchxkblayout", root\.keyboardName, "next"\]\)' "$ROOT/shell/plugins/bar/widgets/KeyboardLayout.qml"; then
+  fail "keyboard layout switch must pass the device name as an argv element"
+fi
+pass "keyboard layout switch passes its device name literally"
