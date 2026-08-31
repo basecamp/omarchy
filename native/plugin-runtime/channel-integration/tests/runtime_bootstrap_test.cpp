@@ -308,15 +308,18 @@ void empty_package_and_absent_admin_compose_one_shared_context() {
 void authority_cannot_cross_runtime_service_identity() {
   Fixture fixture;
   fixture.seed_runtime("example.plugin", "installed");
-  channel::RuntimeBootstrapError first_error{};
-  channel::RuntimeBootstrapError second_error{};
-  auto first = load(fixture, first_error);
-  auto second = load(fixture, second_error);
-  require(first && second &&
-              first_error == channel::RuntimeBootstrapError::none &&
-              second_error == channel::RuntimeBootstrapError::none,
-          "cross-bootstrap service fixture did not compose");
-  channel::RuntimeBootstrapTestAccess::share_definitions(*second, *first);
+  const auto shared_definitions =
+      std::make_shared<const definitions::TrustedDefinitionRegistry>();
+  const auto first_services =
+      std::make_shared<const channel::RuntimeServices>();
+  const auto second_services =
+      std::make_shared<const channel::RuntimeServices>();
+  auto first = channel::RuntimeBootstrapTestAccess::compose_with_context(
+      fixture.roots(), shared_definitions, first_services);
+  auto second = channel::RuntimeBootstrapTestAccess::compose_with_context(
+      fixture.roots(), shared_definitions, second_services);
+  require(first && second,
+          "cross-bootstrap service contexts did not compose");
   const permissions::PluginId plugin("example.plugin");
   auto authority = channel::RuntimeBootstrapTestAccess::open_permissions(
       *first, plugin.view(), plugin);

@@ -236,19 +236,6 @@ std::unique_ptr<RuntimeBootstrap> RuntimeBootstrap::open(
   }
 }
 
-std::optional<PluginRuntimeRoot::Configuration>
-RuntimeBootstrap::configuration(
-    const std::shared_ptr<PluginPermissionAuthority> &permissions) const {
-  if (!permissions || permissions->definitions_ != definitions_ ||
-      permissions->services_ != services_)
-    return std::nullopt;
-  return PluginRuntimeRoot::Configuration{
-      .permissions = permissions,
-      .runtime_limits = runtime_limits_,
-      .session_limits = session_limits_,
-  };
-}
-
 std::shared_ptr<PluginPermissionAuthority>
 RuntimeBootstrap::open_permissions(
     std::string_view record_name,
@@ -274,9 +261,14 @@ RuntimeBootstrap::prepare_runtime(
     const std::shared_ptr<PluginPermissionAuthority> &permissions) const
     noexcept {
   try {
-    auto candidate = configuration(permissions);
-    return candidate ? PluginRuntimeRoot::prepare(std::move(*candidate))
-                     : PluginRuntimePreparationResult{};
+    if (!permissions || permissions->definitions_ != definitions_ ||
+        permissions->services_ != services_)
+      return {};
+    return PluginRuntimeRoot::prepare({
+        .permissions = permissions,
+        .runtime_limits = runtime_limits_,
+        .session_limits = session_limits_,
+    });
   } catch (...) {
     return {};
   }

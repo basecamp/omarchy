@@ -6,7 +6,6 @@
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string_view>
 #include <utility>
 
@@ -57,10 +56,6 @@ private:
                                int filesystem_root_fd,
       std::uint32_t definition_uid,
       RuntimeBootstrapError &error);
-  [[nodiscard]] std::optional<PluginRuntimeRoot::Configuration>
-  configuration(
-      const std::shared_ptr<PluginPermissionAuthority> &permissions) const;
-
 #ifdef OMARCHY_RUNTIME_BOOTSTRAP_TESTING
   [[nodiscard]] static std::unique_ptr<RuntimeBootstrap>
   open_from_test_filesystem_root(
@@ -89,6 +84,16 @@ private:
 #ifdef OMARCHY_RUNTIME_BOOTSTRAP_TESTING
 class RuntimeBootstrapTestAccess final {
 public:
+  [[nodiscard]] static std::unique_ptr<RuntimeBootstrap>
+  compose_with_context(
+      std::unique_ptr<RuntimeRoots> roots,
+      std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions,
+      std::shared_ptr<const RuntimeServices> services) {
+    if (!roots || !definitions || !services)
+      return {};
+    return std::unique_ptr<RuntimeBootstrap>(new RuntimeBootstrap(
+        std::move(roots), std::move(definitions), std::move(services)));
+  }
   [[nodiscard]] static std::unique_ptr<RuntimeBootstrap>
   open_from_filesystem_root(std::unique_ptr<RuntimeRoots> roots,
                             int filesystem_root_fd,
@@ -139,10 +144,6 @@ public:
                            RuntimeServices services) {
     bootstrap.services_ =
         std::make_shared<const RuntimeServices>(std::move(services));
-  }
-  static void share_definitions(RuntimeBootstrap &target,
-                                const RuntimeBootstrap &source) noexcept {
-    target.definitions_ = source.definitions_;
   }
 };
 #endif
