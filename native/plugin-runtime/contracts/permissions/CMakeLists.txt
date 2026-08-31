@@ -14,7 +14,11 @@ endif()
 option(PLUGIN_SECURITY_PERMISSION_SANITIZERS
        "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 
-add_library(omarchy-plugin-permission-contract STATIC src/permission_contract.cpp)
+add_library(omarchy-plugin-permission-contract STATIC
+  src/audit_contract.cpp
+  src/permission_contract.cpp
+  src/scope_registry.cpp
+)
 target_include_directories(omarchy-plugin-permission-contract PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )

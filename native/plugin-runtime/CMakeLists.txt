@@ -87,8 +87,6 @@ function(omarchy_plugin_target_defaults target)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endfunction()
 
-add_subdirectory(policy)
-
 install(FILES
   shell/SecurePluginHost.qml
   shell/SecureSurfacePolicy.js
@@ -108,6 +106,8 @@ foreach(contract IN ITEMS manifest wire surface permissions sandbox)
     add_subdirectory("contracts/${contract}")
   endif()
 endforeach()
+
+add_subdirectory(policy)
 
 if(TARGET omarchy-plugin-permission-contract
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/capability-definitions/CMakeLists.txt")

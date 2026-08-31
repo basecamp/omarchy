@@ -640,7 +640,16 @@ void audit_contract() {
 
 } // namespace
 
-int main() {
+int main(int argc, char **argv) {
+  if (argc == 2 && std::string_view(argv[1]) == "--list-capabilities") {
+    for (const auto &definition : capability_registry())
+      std::cout << definition.key.id.view() << '\n';
+    return 0;
+  }
+  if (argc != 1) {
+    std::cerr << "permission-contract-test: unsupported argument\n";
+    return 2;
+  }
   try {
     bounded_collection_contract();
     registry_and_scope_contract();

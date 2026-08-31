@@ -3,7 +3,7 @@
 set -euo pipefail
 
 data=$1
-contract=$2
+registry=$2
 
 jq -e '
   keys == ["authority", "capabilities", "schemaVersion"] and
@@ -18,8 +18,17 @@ jq -e '
     (.provider | type == "string" and length > 0))
 ' "$data" >/dev/null
 
-for capability in storage.private notifications.send audio.play-cue; do
-  grep -F "CapabilityId(\"$capability\")" "$contract" >/dev/null
+mapfile -t data_capabilities < <(jq -r '.capabilities[].id' "$data")
+mapfile -t registered_capabilities < <("$registry" --list-capabilities)
+if (( ${#data_capabilities[@]} != ${#registered_capabilities[@]} )); then
+  echo "built-in policy data and capability registry differ" >&2
+  exit 1
+fi
+for (( index = 0; index < ${#data_capabilities[@]}; ++index )); do
+  if [[ ${data_capabilities[index]} != ${registered_capabilities[index]} ]]; then
+    echo "built-in policy data and capability registry differ" >&2
+    exit 1
+  fi
 done
 
 if grep -F 'service.fake-status' "$data" >/dev/null; then
