@@ -92,6 +92,53 @@ assertDeepEqual(arrayLikeLists.connected.map(bluetooth.deviceLabel), ['Earbuds']
 assertDeepEqual(arrayLikeLists.known.map(bluetooth.deviceLabel), ['Trackpad'], 'bluetooth groups known devices from array-like values')
 assertDeepEqual(arrayLikeLists.discovered.map(bluetooth.deviceLabel), ['Gamepad'], 'bluetooth groups discovered devices from array-like values')
 
+// A click acts on whatever row is under the pointer when the button goes down,
+// so nothing found mid-scan may take a row that is already on screen.
+const scanning = [
+  { name: 'Marshall', address: 'm' },
+  { name: 'Pixel Buds', address: 'p' },
+  { name: 'Sony WH-1000XM4', address: 's' }
+]
+const addresses = function(list) { return list.map(function(d) { return d.address }) }
+const onScreen = addresses(bluetooth.deviceLists(scanning).discovered)
+assertDeepEqual(onScreen, ['m', 'p', 's'], 'bluetooth sorts discovered devices by label while the pointer is away')
+
+assertDeepEqual(
+  addresses(bluetooth.deviceLists(scanning.concat([{ name: 'Anker Soundcore', address: 'a' }]), onScreen).discovered),
+  ['m', 'p', 's', 'a'],
+  'bluetooth appends a device found mid-scan instead of sorting it above the rows on screen'
+)
+
+// BlueZ often resolves a name after the device first appears, which resorts the
+// list exactly as an arrival does.
+assertDeepEqual(
+  addresses(bluetooth.deviceLists([
+    { name: 'Marshall', address: 'm' },
+    { name: 'AirPods Pro', address: 'p' },
+    { name: 'Sony WH-1000XM4', address: 's' }
+  ], onScreen).discovered),
+  ['m', 'p', 's'],
+  'bluetooth holds a row in place when its label changes under the pointer'
+)
+
+assertDeepEqual(
+  addresses(bluetooth.deviceLists(scanning.concat([{ name: 'Anker Soundcore', address: 'a' }]), []).discovered),
+  ['a', 'm', 'p', 's'],
+  'bluetooth sorts the list again once the pointer leaves'
+)
+
+// A pin that outlived the pointer would ignore every later discovery result.
+assert(
+  /HoverHandler \{[\s\S]{0,200}root\.pinnedOrder = hovered/.test(panelSource),
+  'bluetooth pins the row order only while the pointer is on the list'
+)
+const openedHandler = panelSource.match(/onOpenedChanged: \{[\s\S]*?\n  \}/)
+assert(openedHandler, 'bluetooth has the panel open handler')
+assert(
+  /pinnedOrder = \[\]/.test(openedHandler[0]),
+  'bluetooth releases the pinned order when the panel closes'
+)
+
 assertDeepEqual(
   bluetooth.deviceRow({ name: 'Deadbeef', address: '1', connected: false }),
   { address: '1', name: 'Deadbeef', deviceName: '', connected: false, state: -1, batteryAvailable: false, battery: 0, pairing: false },

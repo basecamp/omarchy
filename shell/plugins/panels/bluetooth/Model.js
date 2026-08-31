@@ -99,8 +99,26 @@ function deviceRow(d) {
   }
 }
 
-function deviceLists(devices) {
+// Keeps rows already listed in `order` where they are and appends the rest by
+// label. An empty order is just the sort.
+function sortedWithPinnedOrder(devices, order) {
+  var rank = {}
+  for (var i = 0; i < order.length; i++) rank[order[i]] = i
+
+  var pinned = []
+  var arrived = []
+  for (var j = 0; j < devices.length; j++) {
+    if (rank[devices[j].address] === undefined) arrived.push(devices[j])
+    else pinned.push(devices[j])
+  }
+
+  pinned.sort(function(a, b) { return rank[a.address] - rank[b.address] })
+  return pinned.concat(sortedByLabel(arrived))
+}
+
+function deviceLists(devices, pinnedOrder) {
   var values = toArray(devices)
+  var order = pinnedOrder || []
   var connected = []
   var known = []
   var discovered = []
@@ -113,10 +131,11 @@ function deviceLists(devices) {
     else discovered.push(d)
   }
 
+  // Connected devices render above the scroll area, not in the pinned list.
   return {
     connected: sortedByLabel(connected),
-    known: sortedByLabel(known),
-    discovered: sortedByLabel(discovered)
+    known: sortedWithPinnedOrder(known, order),
+    discovered: sortedWithPinnedOrder(discovered, order)
   }
 }
 
