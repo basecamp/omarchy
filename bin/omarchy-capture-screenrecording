@@ -15,16 +15,10 @@
 # start.
 #
 # Env: OMARCHY_SCREENRECORD_DEBUG=true appends gpu-screen-recorder's stderr (and
-# the picker target it was launched with) to /tmp/omarchy-screenrecord.log so
-# users can attach a log when reporting capture failures.
+# the picker target it was launched with) to the private screen-recording
+# runtime directory instead of a shared file under /tmp.
 
-[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
-OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
-
-if [[ ! -d $OUTPUT_DIR ]]; then
-  omarchy-notification-send -u critical -t 3000 "Screen recording directory does not exist: $OUTPUT_DIR"
-  exit 1
-fi
+set -uo pipefail
 
 DESKTOP_AUDIO="false"
 MICROPHONE_AUDIO="false"
@@ -34,35 +28,342 @@ WEBCAM_SIZE="medium"
 RESOLUTION=""
 FULLSCREEN="false"
 STOP_RECORDING="false"
-RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
-REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
-LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
 
-for arg in "$@"; do
-  case "$arg" in
-  --with-desktop-audio) DESKTOP_AUDIO="true" ;;
-  --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
-  --with-webcam) WEBCAM="true" ;;
-  --webcam-device=*) WEBCAM_DEVICE="${arg#*=}" ;;
-  --webcam-size=*) WEBCAM_SIZE="${arg#*=}" ;;
-  --resolution=*) RESOLUTION="${arg#*=}" ;;
-  --fullscreen) FULLSCREEN="true" ;;
-  --stop-recording) STOP_RECORDING="true" ;;
+CURRENT_UID=""
+OUTPUT_DIR=""
+RUNTIME_BASE=""
+STATE_DIR=""
+STATE_FILE=""
+REGION_FILE=""
+LOG_FILE="/dev/null"
+
+RECORDING_PID="0"
+RECORDING_START="0"
+RECORDING_PATH=""
+WEBCAM_PID="0"
+WEBCAM_START="0"
+STATE_PUBLISHED="false"
+START_CLEANUP_ARMED="false"
+
+parse_args() {
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+    --with-desktop-audio) DESKTOP_AUDIO="true" ;;
+    --with-microphone-audio) MICROPHONE_AUDIO="true" ;;
+    --with-webcam) WEBCAM="true" ;;
+    --webcam-device=*) WEBCAM_DEVICE="${arg#*=}" ;;
+    --webcam-size=*) WEBCAM_SIZE="${arg#*=}" ;;
+    --resolution=*) RESOLUTION="${arg#*=}" ;;
+    --fullscreen) FULLSCREEN="true" ;;
+    --stop-recording) STOP_RECORDING="true" ;;
+    esac
+  done
+
+  case $WEBCAM_SIZE in
+  small | medium | large) ;;
+  *)
+    echo "Invalid webcam size: $WEBCAM_SIZE (expected small, medium, or large)" >&2
+    return 1
+    ;;
   esac
-done
+}
 
-case $WEBCAM_SIZE in
-small | medium | large) ;;
-*)
-  echo "Invalid webcam size: $WEBCAM_SIZE (expected small, medium, or large)" >&2
-  exit 1
-  ;;
-esac
+trusted_path_ancestors() {
+  local path="$1" owner mode mode_value
+  while :; do
+    [[ -d $path && ! -L $path ]] || return 1
+    owner=$(/usr/bin/stat -c '%u' -- "$path") || return 1
+    mode=$(/usr/bin/stat -c '%a' -- "$path") || return 1
+    mode_value=$((8#$mode))
+    if [[ $owner == "$CURRENT_UID" ]]; then
+      ((!(mode_value & 022))) || return 1
+    elif [[ $owner == "0" ]]; then
+      if ((mode_value & 022)); then
+        ((mode_value == 01777)) || return 1
+      fi
+    else
+      # A mapped or foreign-owned ancestor is trustworthy only when even its
+      # owner cannot modify directory entries (for example / in a userns).
+      ((!(mode_value & 0222))) || return 1
+    fi
+    [[ $path == "/" ]] && return 0
+    path=$(/usr/bin/dirname -- "$path") || return 1
+  done
+}
+
+runtime_dir_safe() {
+  local directory="$1" canonical owner mode
+  [[ $directory == /* && -d $directory && ! -L $directory ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$directory") || return 1
+  [[ $canonical == "$directory" ]] || return 1
+  owner=$(/usr/bin/stat -c '%u' -- "$directory") || return 1
+  mode=$(/usr/bin/stat -c '%a' -- "$directory") || return 1
+  [[ $owner == "$CURRENT_UID" && $mode == "700" ]] || return 1
+  trusted_path_ancestors "$directory"
+}
+
+resolve_runtime_base() {
+  local fallback="/run/user/$CURRENT_UID"
+  if [[ -n ${XDG_RUNTIME_DIR:-} ]] && runtime_dir_safe "$XDG_RUNTIME_DIR"; then
+    RUNTIME_BASE=$XDG_RUNTIME_DIR
+  elif runtime_dir_safe "$fallback"; then
+    RUNTIME_BASE=$fallback
+  else
+    echo "Screen recording requires a private mode-0700 user runtime directory." >&2
+    return 1
+  fi
+}
+
+initialize_runtime_state() {
+  CURRENT_UID=$(/usr/bin/id -u) || return 1
+  [[ $CURRENT_UID =~ ^[0-9]+$ ]] || return 1
+  resolve_runtime_base || return 1
+
+  STATE_DIR="$RUNTIME_BASE/omarchy-screenrecord"
+  if [[ ! -e $STATE_DIR && ! -L $STATE_DIR ]]; then
+    /usr/bin/mkdir -- "$STATE_DIR" 2>/dev/null ||
+      [[ -d $STATE_DIR && ! -L $STATE_DIR ]] || return 1
+    /usr/bin/chmod 0700 -- "$STATE_DIR" || return 1
+  fi
+  runtime_dir_safe "$STATE_DIR" || {
+    echo "Refusing unsafe screen-recording runtime state: $STATE_DIR" >&2
+    return 1
+  }
+
+  STATE_FILE="$STATE_DIR/recording.state"
+  REGION_FILE="$STATE_DIR/region"
+  if [[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]]; then
+    LOG_FILE="$STATE_DIR/screenrecording.log"
+  fi
+}
+
+resolve_account_home() {
+  local entry entry_uid canonical owner mode
+  entry=$(/usr/bin/getent passwd "$CURRENT_UID") || return 1
+  IFS=: read -r _ _ entry_uid _ _ ACCOUNT_HOME _ <<<"$entry"
+  [[ $entry_uid == "$CURRENT_UID" && $ACCOUNT_HOME == /* ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$ACCOUNT_HOME") || return 1
+  [[ $canonical == "$ACCOUNT_HOME" && -d $ACCOUNT_HOME && ! -L $ACCOUNT_HOME ]] || return 1
+  owner=$(/usr/bin/stat -c '%u' -- "$ACCOUNT_HOME") || return 1
+  mode=$(/usr/bin/stat -c '%a' -- "$ACCOUNT_HOME") || return 1
+  [[ $owner == "$CURRENT_UID" ]] && ! ((8#$mode & 022)) || return 1
+  trusted_path_ancestors "$ACCOUNT_HOME"
+}
+
+user_dirs_config_safe() {
+  local config_home="$1" config_file="$2" canonical owner mode links
+  [[ -d $config_home && ! -L $config_home ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$config_home") || return 1
+  [[ $canonical == "$config_home" ]] || return 1
+  owner=$(/usr/bin/stat -c '%u' -- "$config_home") || return 1
+  mode=$(/usr/bin/stat -c '%a' -- "$config_home") || return 1
+  [[ $owner == "$CURRENT_UID" ]] && ! ((8#$mode & 022)) || return 1
+  [[ -f $config_file && ! -L $config_file ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$config_file") || return 1
+  [[ $canonical == "$config_file" && ${canonical%/*} == "$config_home" ]] || return 1
+  owner=$(/usr/bin/stat -c '%u' -- "$config_file") || return 1
+  mode=$(/usr/bin/stat -c '%a' -- "$config_file") || return 1
+  links=$(/usr/bin/stat -c '%h' -- "$config_file") || return 1
+  [[ $owner == "$CURRENT_UID" && $links == "1" ]] && ! ((8#$mode & 022))
+}
+
+initialize_output_dir() {
+  local configured canonical owner mode config_home config_file
+  local HOME XDG_VIDEOS_DIR=""
+  if [[ -n ${OMARCHY_SCREENRECORD_DIR:-} ]]; then
+    configured=$OMARCHY_SCREENRECORD_DIR
+  else
+    resolve_account_home || return 1
+    HOME=$ACCOUNT_HOME
+    config_home="$ACCOUNT_HOME/.config"
+    config_file="$config_home/user-dirs.dirs"
+    if user_dirs_config_safe "$config_home" "$config_file"; then
+      source "$config_file"
+    fi
+    configured="${XDG_VIDEOS_DIR:-$ACCOUNT_HOME/Videos}"
+  fi
+  [[ $configured != *$'\n'* && $configured != *$'\r'* && $configured != *$'\t'* ]] || return 1
+  [[ -d $configured ]] || {
+    omarchy-notification-send -u critical -t 3000 "Screen recording directory does not exist: $configured"
+    return 1
+  }
+  canonical=$(/usr/bin/realpath -e -- "$configured") || return 1
+  [[ -d $canonical && ! -L $canonical ]] || return 1
+  owner=$(/usr/bin/stat -c '%u' -- "$canonical") || return 1
+  mode=$(/usr/bin/stat -c '%a' -- "$canonical") || return 1
+  [[ $owner == "$CURRENT_UID" ]] && ! ((8#$mode & 022)) || {
+    echo "Refusing a recording directory writable by another local account: $canonical" >&2
+    return 1
+  }
+  trusted_path_ancestors "$canonical" || {
+    echo "Refusing a recording directory below an unsafe path: $canonical" >&2
+    return 1
+  }
+  OUTPUT_DIR=$canonical
+}
+
+private_runtime_file_safe() {
+  local file="$1" owner mode links canonical
+  [[ -f $file && ! -L $file ]] || return 1
+  owner=$(/usr/bin/stat -c '%u' -- "$file") || return 1
+  mode=$(/usr/bin/stat -c '%a' -- "$file") || return 1
+  links=$(/usr/bin/stat -c '%h' -- "$file") || return 1
+  canonical=$(/usr/bin/realpath -e -- "$file") || return 1
+  [[ $owner == "$CURRENT_UID" && $mode == "600" && $links == "1" ]] || return 1
+  [[ $canonical == "$file" && ${canonical%/*} == "$STATE_DIR" ]]
+}
+
+atomic_create_runtime_file() {
+  local file="$1" contents="$2" temporary
+  [[ ! -e $file && ! -L $file ]] || return 1
+  temporary=$(/usr/bin/mktemp "$STATE_DIR/.private.XXXXXXXX") || return 1
+  if ! printf '%s\n' "$contents" >"$temporary" ||
+    ! set_private_mode "$temporary" ||
+    ! /usr/bin/ln -- "$temporary" "$file"; then
+    /usr/bin/rm -- "$temporary" 2>/dev/null || true
+    return 1
+  fi
+  if ! /usr/bin/rm -- "$temporary" || ! private_runtime_file_safe "$file"; then
+    /usr/bin/rm -- "$file" 2>/dev/null || true
+    return 1
+  fi
+}
+
+set_private_mode() {
+  /usr/bin/chmod 0600 -- "$1"
+}
+
+remove_private_runtime_file() {
+  local file="$1"
+  [[ ! -e $file && ! -L $file ]] && return 0
+  private_runtime_file_safe "$file" || return 1
+  /usr/bin/rm -- "$file"
+}
+
+ensure_debug_log() {
+  [[ $LOG_FILE != "/dev/null" ]] || return 0
+  if [[ -e $LOG_FILE || -L $LOG_FILE ]]; then
+    private_runtime_file_safe "$LOG_FILE" || {
+      echo "Refusing unsafe screen-recording debug log: $LOG_FILE" >&2
+      return 1
+    }
+  else
+    atomic_create_runtime_file "$LOG_FILE" "" || return 1
+  fi
+}
+
+read_process_stat() {
+  local pid="$1" stat_line remainder
+  local -a fields=()
+  [[ $pid =~ ^[1-9][0-9]*$ && -r /proc/$pid/stat ]] || return 1
+  stat_line=$(</proc/$pid/stat) || return 1
+  remainder=${stat_line##*) }
+  [[ $remainder != "$stat_line" ]] || return 1
+  read -r -a fields <<<"$remainder"
+  ((${#fields[@]} > 19)) || return 1
+  [[ ${fields[19]} =~ ^[1-9][0-9]*$ ]] || return 1
+  PROCESS_STATE=${fields[0]}
+  PROCESS_START=${fields[19]}
+}
+
+process_owned_by_current_uid() {
+  local pid="$1" label real effective saved filesystem
+  while read -r label real effective saved filesystem; do
+    if [[ $label == "Uid:" ]]; then
+      [[ $real == "$CURRENT_UID" && $effective == "$CURRENT_UID" &&
+        $saved == "$CURRENT_UID" && $filesystem == "$CURRENT_UID" ]]
+      return
+    fi
+  done <"/proc/$pid/status"
+  return 1
+}
+
+process_matches() {
+  local pid="$1" expected_start="$2"
+  read_process_stat "$pid" || return 1
+  [[ $PROCESS_START == "$expected_start" && $PROCESS_STATE != "Z" && $PROCESS_STATE != "X" ]] || return 1
+  process_owned_by_current_uid "$pid" || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+signal_bound_process() {
+  local pid="$1" start="$2" signal="$3"
+  process_matches "$pid" "$start" || return 0
+  kill -s "$signal" "$pid" 2>/dev/null
+}
+
+wait_for_bound_process_exit() {
+  local pid="$1" start="$2" attempts="$3" index
+  for ((index = 0; index < attempts; index++)); do
+    process_matches "$pid" "$start" || return 0
+    /usr/bin/sleep 0.1
+  done
+  ! process_matches "$pid" "$start"
+}
+
+write_region_state() {
+  local region="$1"
+  [[ $region =~ ^[0-9]+x[0-9]+\+-?[0-9]+\+-?[0-9]+$ ]] || return 1
+  remove_private_runtime_file "$REGION_FILE" || return 1
+  atomic_create_runtime_file "$REGION_FILE" "$region"
+}
+
+cleanup_region_state() {
+  remove_private_runtime_file "$REGION_FILE"
+}
+
+read_recording_state() {
+  local line pattern tab=$'\t'
+  local -a lines=()
+  private_runtime_file_safe "$STATE_FILE" || return 1
+  mapfile -t lines <"$STATE_FILE" || return 1
+  ((${#lines[@]} == 1)) || return 1
+  line=${lines[0]}
+  printf '%s\n' "$line" | /usr/bin/cmp -s - "$STATE_FILE" || return 1
+  pattern="^version=1${tab}pid=([1-9][0-9]*)${tab}start=([1-9][0-9]*)${tab}webcam_pid=(0|[1-9][0-9]*)${tab}webcam_start=(0|[1-9][0-9]*)${tab}file=(/[^[:cntrl:]]+)$"
+  [[ $line =~ $pattern ]] || return 1
+  RECORDING_PID=${BASH_REMATCH[1]}
+  RECORDING_START=${BASH_REMATCH[2]}
+  WEBCAM_PID=${BASH_REMATCH[3]}
+  WEBCAM_START=${BASH_REMATCH[4]}
+  RECORDING_PATH=${BASH_REMATCH[5]}
+  if [[ $WEBCAM_PID == "0" ]]; then
+    [[ $WEBCAM_START == "0" ]] || return 1
+  else
+    [[ $WEBCAM_START != "0" ]] || return 1
+  fi
+}
+
+publish_recording_state() {
+  local contents
+  [[ $RECORDING_PATH != *$'\n'* && $RECORDING_PATH != *$'\r'* && $RECORDING_PATH != *$'\t'* ]] || return 1
+  contents="version=1"$'\t'"pid=$RECORDING_PID"$'\t'"start=$RECORDING_START"$'\t'"webcam_pid=$WEBCAM_PID"$'\t'"webcam_start=$WEBCAM_START"$'\t'"file=$RECORDING_PATH"
+  atomic_create_runtime_file "$STATE_FILE" "$contents"
+}
+
+output_file_safe_in_directory() {
+  local file="$1" canonical owner mode links
+  [[ $file == /* && -f $file && ! -L $file ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$file") || return 1
+  owner=$(/usr/bin/stat -c '%u' -- "$file") || return 1
+  mode=$(/usr/bin/stat -c '%a' -- "$file") || return 1
+  links=$(/usr/bin/stat -c '%h' -- "$file") || return 1
+  [[ $canonical == "$file" && ${canonical%/*} == "$OUTPUT_DIR" ]] || return 1
+  [[ $owner == "$CURRENT_UID" && $mode == "600" && $links == "1" ]]
+}
+
+recording_path_safe() {
+  local file="$1" basename
+  output_file_safe_in_directory "$file" || return 1
+  basename=${file##*/}
+  [[ $basename =~ ^screenrecording-[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2}\.mp4$ ]]
+}
 
 start_webcam_overlay() {
-  cleanup_webcam
+  local target="$1" available_formats capture_options="framerate=30" waited=0 resolution
+  local -a preferred_resolutions=("640x360" "1280x720" "1920x1080")
 
-  # Auto-detect first available webcam if none specified
   if [[ -z $WEBCAM_DEVICE ]]; then
     WEBCAM_DEVICE=$(omarchy-capture-webcam-list | sed -n '1s/[[:space:]].*//p')
     if [[ -z $WEBCAM_DEVICE ]]; then
@@ -71,13 +372,9 @@ start_webcam_overlay() {
     fi
   fi
 
-  # Try preferred 16:9 resolutions in order, use first available
-  local preferred_resolutions=("640x360" "1280x720" "1920x1080")
-  local capture_options="framerate=30"
-  local available_formats=$(v4l2-ctl --list-formats-ext -d "$WEBCAM_DEVICE" 2>/dev/null)
-
+  available_formats=$(v4l2-ctl --list-formats-ext -d "$WEBCAM_DEVICE" 2>/dev/null)
   for resolution in "${preferred_resolutions[@]}"; do
-    if echo "$available_formats" | grep -q "$resolution"; then
+    if grep -q "$resolution" <<<"$available_formats"; then
       capture_options="video_size=$resolution,$capture_options"
       break
     fi
@@ -90,26 +387,35 @@ start_webcam_overlay() {
     --title="WebcamOverlay" --wayland-app-id="WebcamOverlay-$WEBCAM_SIZE" \
     --no-border --no-audio --no-osc --osd-level=0 \
     --really-quiet &>/dev/null &
+  WEBCAM_PID=$!
+  if ! read_process_stat "$WEBCAM_PID" || ! process_owned_by_current_uid "$WEBCAM_PID"; then
+    kill -TERM "$WEBCAM_PID" 2>/dev/null || true
+    WEBCAM_PID="0"
+    return 1
+  fi
+  WEBCAM_START=$PROCESS_START
 
-  # The move has to settle before gpu-screen-recorder starts, or the camera is
-  # recorded sliding into its corner. Waiting for the map is what the blind
-  # second was partly guessing at, so the remainder is trimmed to hold the
-  # pre-capture delay where it was: starting later costs the first words spoken.
-  local waited=0
   while ((waited < 40)) && ! hyprctl clients -j | jq -e 'any(.[]; .title == "WebcamOverlay")' >/dev/null 2>&1; do
-    sleep 0.05
+    /usr/bin/sleep 0.05
     ((waited++))
   done
 
-  [[ ${1:-} == region:* ]] && echo "${1#region:}" >"$REGION_FILE"
-  omarchy-capture-webcam-resize "$WEBCAM_SIZE"
-
-  sleep 0.6
+  if [[ $target == region:* ]]; then
+    write_region_state "${target#region:}" || return 1
+  else
+    cleanup_region_state || return 1
+  fi
+  XDG_RUNTIME_DIR="$RUNTIME_BASE" omarchy-capture-webcam-resize "$WEBCAM_SIZE"
+  /usr/bin/sleep 0.6
 }
 
-cleanup_webcam() {
-  pkill -f "WebcamOverlay" 2>/dev/null
-  rm -f "$REGION_FILE"
+cleanup_bound_webcam() {
+  if [[ $WEBCAM_PID != "0" && $WEBCAM_START != "0" ]]; then
+    signal_bound_process "$WEBCAM_PID" "$WEBCAM_START" TERM || true
+    wait_for_bound_process_exit "$WEBCAM_PID" "$WEBCAM_START" 10 ||
+      signal_bound_process "$WEBCAM_PID" "$WEBCAM_START" KILL || true
+  fi
+  cleanup_region_state
 }
 
 default_resolution() {
@@ -122,35 +428,49 @@ default_resolution() {
   fi
 }
 
-# Echoes "monitor:NAME" when the selection matches an entire monitor (prefer
-# -w <monitor> over a region capture — same kms backend, but no scaling math
-# and full native res), otherwise "region:WxH+X+Y". Returns non-zero if the
-# user cancelled the picker.
 select_capture_target() {
   local target
   target=$(omarchy-capture-region smart --match-monitor) || return 1
-
   if [[ $target == monitor:* ]]; then
     echo "$target"
     return
   fi
-
   [[ $target =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || return 1
-
-  # gpu-screen-recorder wants region geometry in the compositor's logical
-  # coordinate space — same space slurp returns — so pass the values through
-  # untouched. (gsr scales to physical pixels itself based on the monitor.)
   echo "region:${BASH_REMATCH[3]}x${BASH_REMATCH[4]}+${BASH_REMATCH[1]}+${BASH_REMATCH[2]}"
 }
 
-start_screenrecording() {
-  local capture_args=()
-  local target
+cleanup_pending_start() {
+  if [[ $STATE_PUBLISHED != "true" ]]; then
+    if [[ $RECORDING_PID != "0" && $RECORDING_START != "0" ]]; then
+      signal_bound_process "$RECORDING_PID" "$RECORDING_START" TERM || true
+      wait_for_bound_process_exit "$RECORDING_PID" "$RECORDING_START" 10 ||
+        signal_bound_process "$RECORDING_PID" "$RECORDING_START" KILL || true
+    fi
+    cleanup_bound_webcam || true
+    remove_private_runtime_file "$STATE_FILE" 2>/dev/null || true
+  fi
+  START_CLEANUP_ARMED="false"
+}
 
-  # Opt-in path for HDR, external-GPU monitors, and window capture (all things
-  # the portal backend supports and the kms backend doesn't). Default flow uses
-  # slurp + the kms backend, which avoids the EGL DMA-BUF modifier import
-  # failures the portal path can hit on some configurations.
+cleanup_interrupted_start() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  cleanup_pending_start
+  exit "$status"
+}
+
+start_screenrecording() {
+  local target filename audio_devices="" log_header attempt
+  local -a capture_args=() audio_args=()
+
+  START_CLEANUP_ARMED="true"
+  trap cleanup_interrupted_start EXIT HUP INT TERM
+  cleanup_region_state || {
+    echo "Refusing unsafe stale screen-recording region state." >&2
+    return 1
+  }
+  ensure_debug_log || return 1
+
   if [[ $FULLSCREEN == "true" ]]; then
     target="monitor:$(omarchy-hyprland-monitor-focused)"
     capture_args=(-w "${target#monitor:}" -s "${RESOLUTION:-$(default_resolution)}")
@@ -159,11 +479,8 @@ start_screenrecording() {
     capture_args=(-w portal -s "${RESOLUTION:-$(default_resolution)}")
   else
     target=$(select_capture_target) || return 1
-
     case $target in
-    monitor:*)
-      capture_args=(-w "${target#monitor:}" -s "${RESOLUTION:-$(default_resolution)}")
-      ;;
+    monitor:*) capture_args=(-w "${target#monitor:}" -s "${RESOLUTION:-$(default_resolution)}") ;;
     region:*)
       capture_args=(-w "${target#region:}")
       [[ -n $RESOLUTION ]] && capture_args+=(-s "$RESOLUTION")
@@ -171,118 +488,226 @@ start_screenrecording() {
     esac
   fi
 
-  [[ $WEBCAM == "true" ]] && start_webcam_overlay "$target"
+  if [[ $WEBCAM == "true" ]]; then
+    start_webcam_overlay "$target" || return 1
+  fi
 
-  local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
-  local audio_devices=""
-  local audio_args=()
-
+  filename="$OUTPUT_DIR/screenrecording-$(/usr/bin/date +'%Y-%m-%d_%H-%M-%S').mp4"
+  [[ ! -e $filename && ! -L $filename ]] || {
+    echo "Refusing to overwrite an existing screen recording: $filename" >&2
+    return 1
+  }
   [[ $DESKTOP_AUDIO == "true" ]] && audio_devices+="default_output"
-
   if [[ $MICROPHONE_AUDIO == "true" ]]; then
-    # Merge audio tracks into one - separate tracks only play one at a time in most players
     [[ -n $audio_devices ]] && audio_devices+="|"
     audio_devices+="default_input"
   fi
-
   [[ -n $audio_devices ]] && audio_args+=(-a "$audio_devices" -ac aac)
 
-  echo "===== $(date '+%F %T') args: $* target: $target =====" >>"$LOG_FILE"
+  log_header="===== $(/usr/bin/date '+%F %T') args: $* target: $target ====="
+  if [[ $LOG_FILE != "/dev/null" ]]; then
+    printf '%s\n' "$log_header" >>"$LOG_FILE" || return 1
+  fi
+
   gpu-screen-recorder "${capture_args[@]}" -k auto -f 60 -fm cfr -fallback-cpu-encoding yes -o "$filename" "${audio_args[@]}" 2>>"$LOG_FILE" &
-  local pid=$!
+  RECORDING_PID=$!
+  if ! read_process_stat "$RECORDING_PID" || ! process_owned_by_current_uid "$RECORDING_PID"; then
+    return 1
+  fi
+  RECORDING_START=$PROCESS_START
+  RECORDING_PATH=$filename
 
-  while kill -0 $pid 2>/dev/null && [[ ! -f $filename ]]; do
-    sleep 0.2
+  for ((attempt = 0; attempt < 75; attempt++)); do
+    [[ -e $filename || -L $filename ]] && break
+    process_matches "$RECORDING_PID" "$RECORDING_START" || return 1
+    /usr/bin/sleep 0.2
   done
+  process_matches "$RECORDING_PID" "$RECORDING_START" || return 1
+  if [[ ! -e $filename && ! -L $filename ]]; then
+    echo "Screen recorder did not create its output within 15 seconds." >&2
+    return 1
+  fi
+  recording_path_safe "$filename" || return 1
+  publish_recording_state || return 1
+  process_matches "$RECORDING_PID" "$RECORDING_START" || {
+    remove_private_runtime_file "$STATE_FILE" || true
+    return 1
+  }
+  STATE_PUBLISHED="true"
+  toggle_screenrecording_indicator || true
+}
 
-  if kill -0 $pid 2>/dev/null; then
-    echo "$filename" >"$RECORDING_FILE"
-    toggle_screenrecording_indicator
+finalize_recording() {
+  local latest="$1" processed
+  local -a video_codec=(-c:v copy) args=()
+  recording_path_safe "$latest" || return 1
+
+  if ffprobe -v error -select_streams v:0 -read_intervals %+0.2 -show_entries packet=flags -of csv=p=0 "$latest" 2>/dev/null | grep -q D; then
+    video_codec=(-c:v libx264 -preset veryfast -crf 20)
+  fi
+  args=(-y -ss 0.1 -i "$latest" "${video_codec[@]}")
+  recording_path_safe "$latest" || return 1
+  if ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$latest" 2>/dev/null | grep -q audio; then
+    args+=(-af "volume=enable='lt(t,0.4)':volume=0,afade=t=in:st=0.4:d=0.05,loudnorm=I=-14:TP=-1.5:LRA=11")
+  fi
+
+  processed=$(/usr/bin/mktemp "$OUTPUT_DIR/.omarchy-screenrecord-processed.XXXXXXXX.mp4") || return 1
+  if ! set_private_mode "$processed"; then
+    cleanup_created_output_temp "$processed"
+    return 1
+  fi
+  if recording_path_safe "$latest" && ffmpeg "${args[@]}" "$processed" -loglevel quiet 2>/dev/null; then
+    if output_file_safe_in_directory "$processed" && recording_path_safe "$latest" &&
+      /usr/bin/mv -T -- "$processed" "$latest"; then
+      return 0
+    fi
+    cleanup_created_output_temp "$processed"
+    return 1
+  else
+    cleanup_created_output_temp "$processed"
   fi
 }
 
-stop_screenrecording() {
-  pkill -SIGINT -f "^gpu-screen-recorder" # SIGINT required to save video properly
+cleanup_created_output_temp() {
+  local file="$1"
+  [[ $file == "$OUTPUT_DIR"/.omarchy-screenrecord-processed.*.mp4 ]] || return 1
+  [[ ! -e $file && ! -L $file ]] && return 0
+  /usr/bin/rm -- "$file"
+}
 
-  # Wait a maximum of 5 seconds to finish before hard killing
-  local count=0
-  while pgrep -f "^gpu-screen-recorder" >/dev/null && ((count < 50)); do
-    sleep 0.1
-    count=$((count + 1))
-  done
-
-  toggle_screenrecording_indicator
-  cleanup_webcam
-
-  if pgrep -f "^gpu-screen-recorder" >/dev/null; then
-    pkill -9 -f "^gpu-screen-recorder"
-    omarchy-notification-send -u critical -t 5000 "Screen recording error" "Recording process had to be force-killed. Video may be corrupted."
+create_preview() {
+  local filename="$1" preview
+  recording_path_safe "$filename" || return 1
+  preview=$(/usr/bin/mktemp "$STATE_DIR/preview.XXXXXXXX.png") || return 1
+  if ! set_private_mode "$preview"; then
+    cleanup_created_preview "$preview"
+    return 1
+  fi
+  if recording_path_safe "$filename" &&
+    ffmpeg -y -i "$filename" -ss 00:00:00.1 -vframes 1 -q:v 2 "$preview" -loglevel quiet 2>/dev/null &&
+    private_runtime_file_safe "$preview"; then
+    printf '%s\n' "$preview"
   else
-    finalize_recording
-    local filename=$(cat "$RECORDING_FILE" 2>/dev/null)
-    echo "$filename"
-    local preview="${filename%.mp4}-preview.png"
+    cleanup_created_preview "$preview"
+    return 1
+  fi
+}
 
-    # Generate a preview thumbnail from the first frame
-    ffmpeg -y -i "$filename" -ss 00:00:00.1 -vframes 1 -q:v 2 "$preview" -loglevel quiet 2>/dev/null
+cleanup_created_preview() {
+  local file="$1"
+  [[ $file == "$STATE_DIR"/preview.*.png ]] || return 1
+  [[ ! -e $file && ! -L $file ]] && return 0
+  /usr/bin/rm -- "$file"
+}
 
-    omarchy-notification-send "Screen recording saved" "Open with Super + Alt + , (or click this)" \
-      -t 10000 --image "${preview:-$filename}" \
-      --exec mpv -- "$filename"
+stop_screenrecording() {
+  local forced="false" preview="" status=0
+  process_matches "$RECORDING_PID" "$RECORDING_START" || return 1
 
-    # The shell loads the thumbnail into memory when the toast appears and never
-    # re-reads the file, so the preview only has to outlive that load -- not the
-    # toast. Clear it out of the recordings directory a moment later.
-    (
-      sleep 2
-      rm -f "$preview"
-    ) &
+  signal_bound_process "$RECORDING_PID" "$RECORDING_START" INT || return 1
+  if ! wait_for_bound_process_exit "$RECORDING_PID" "$RECORDING_START" 50; then
+    signal_bound_process "$RECORDING_PID" "$RECORDING_START" KILL || true
+    wait_for_bound_process_exit "$RECORDING_PID" "$RECORDING_START" 10 || true
+    forced="true"
   fi
 
-  rm -f "$RECORDING_FILE"
+  toggle_screenrecording_indicator || true
+  cleanup_bound_webcam || status=1
+
+  if [[ $forced == "true" ]]; then
+    omarchy-notification-send -u critical -t 5000 "Screen recording error" "Recording process had to be force-killed. Video may be corrupted."
+  elif recording_path_safe "$RECORDING_PATH"; then
+    finalize_recording "$RECORDING_PATH" || status=1
+    if recording_path_safe "$RECORDING_PATH"; then
+      printf '%s\n' "$RECORDING_PATH"
+      preview=$(create_preview "$RECORDING_PATH") || preview=""
+      omarchy-notification-send "Screen recording saved" "Open with Super + Alt + , (or click this)" \
+        -t 10000 --image "${preview:-$RECORDING_PATH}" \
+        --exec mpv -- "$RECORDING_PATH"
+      if [[ -n $preview ]]; then
+        (
+          /usr/bin/sleep 2
+          remove_private_runtime_file "$preview" 2>/dev/null || true
+        ) &
+      fi
+    else
+      status=1
+    fi
+  else
+    echo "Refusing unsafe screen-recording output state." >&2
+    status=1
+  fi
+
+  remove_private_runtime_file "$STATE_FILE" || status=1
+  return "$status"
 }
 
 toggle_screenrecording_indicator() {
   omarchy-shell -q omarchy.indicators refresh
 }
 
-screenrecording_active() {
-  pgrep -f "^gpu-screen-recorder" >/dev/null
+cleanup_stale_state() {
+  cleanup_bound_webcam || return 1
+  remove_private_runtime_file "$STATE_FILE"
 }
 
-finalize_recording() {
-  local latest
-  latest=$(cat "$RECORDING_FILE" 2>/dev/null)
-  [[ -f $latest ]] || return
+dispatch_screenrecording() {
+  if [[ -e $STATE_FILE || -L $STATE_FILE ]]; then
+    read_recording_state || {
+      echo "Refusing malformed or unsafe screen-recording state: $STATE_FILE" >&2
+      return 1
+    }
+    if process_matches "$RECORDING_PID" "$RECORDING_START"; then
+      stop_screenrecording
+      return
+    fi
 
-  # Re-encode only when the first GOP contains discardable warmup packets — stream copy can't
-  # trim those (it rewinds to the keyframe). Clean recordings stay on the fast stream-copy path.
-  local video_codec=(-c:v copy)
-  if ffprobe -v error -select_streams v:0 -read_intervals %+0.2 -show_entries packet=flags -of csv=p=0 "$latest" 2>/dev/null | grep -q D; then
-    video_codec=(-c:v libx264 -preset veryfast -crf 20)
+    cleanup_stale_state || {
+      echo "Could not safely clean stale screen-recording state." >&2
+      return 1
+    }
+    toggle_screenrecording_indicator || true
+    [[ $STOP_RECORDING == "true" ]] && return 1
+  elif [[ $STOP_RECORDING == "true" ]]; then
+    return 1
   fi
 
-  # Trim the first frame, and normalize audio to -14 LUFS if present, in a single pass
-  local args=(-y -ss 0.1 -i "$latest" "${video_codec[@]}")
-  if ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$latest" 2>/dev/null | grep -q audio; then
-    # Hard-mute the first 400ms to drop the PipeWire capture-open pop (a near-clipping
-    # transient around 130-200ms that a gentle fade-in can't attenuate enough), then a
-    # 50ms fade avoids a click at the boundary before loudnorm normalizes the rest.
-    args+=(-af "volume=enable='lt(t,0.4)':volume=0,afade=t=in:st=0.4:d=0.05,loudnorm=I=-14:TP=-1.5:LRA=11")
-  fi
-
-  local processed="${latest%.mp4}-processed.mp4"
-  if ffmpeg "${args[@]}" "$processed" -loglevel quiet 2>/dev/null; then
-    mv "$processed" "$latest"
-  else
-    rm -f "$processed"
-  fi
+  start_screenrecording
 }
 
-if screenrecording_active; then
-  stop_screenrecording
-elif [[ $STOP_RECORDING == "true" ]]; then
-  exit 1
-else
-  start_screenrecording || cleanup_webcam
+with_state_lock() {
+  local descriptor status=0
+  exec {descriptor}<"$STATE_DIR/." || return 1
+  /usr/bin/flock -x "$descriptor" || {
+    exec {descriptor}<&-
+    return 1
+  }
+  dispatch_screenrecording || status=$?
+  if ((status != 0)) && [[ $START_CLEANUP_ARMED == "true" ]]; then
+    cleanup_pending_start
+    trap - EXIT HUP INT TERM
+  fi
+  /usr/bin/flock -u "$descriptor" || status=1
+  exec {descriptor}<&-
+  return "$status"
+}
+
+main() {
+  local old_umask status=0
+  parse_args "$@" || return 1
+  old_umask=$(umask)
+  umask 077
+  initialize_runtime_state || status=1
+  if ((status == 0)); then
+    initialize_output_dir || status=1
+  fi
+  if ((status == 0)); then
+    with_state_lock || status=$?
+  fi
+  umask "$old_umask"
+  return "$status"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
 fi

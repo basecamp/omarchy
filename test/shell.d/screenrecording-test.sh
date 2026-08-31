@@ -229,10 +229,12 @@ if [[ -s $OMARCHY_TEST_HYPRCTL_ARGS ]]; then
 fi
 pass "webcam resize ignores other windows"
 
-region_file="$XDG_RUNTIME_DIR/omarchy-screenrecord-region"
+mkdir -m 0700 "$XDG_RUNTIME_DIR/omarchy-screenrecord"
+region_file="$XDG_RUNTIME_DIR/omarchy-screenrecord/region"
 
 : >"$OMARCHY_TEST_HYPRCTL_ARGS"
 echo "800x600+100+100" >"$region_file"
+chmod 0600 "$region_file"
 "$ROOT/bin/omarchy-capture-webcam-resize" reset
 
 printf '%s\n' \
@@ -251,6 +253,7 @@ printf '%s\n' \
 for region in "not-a-region" ""; do
   : >"$OMARCHY_TEST_HYPRCTL_ARGS"
   printf '%s' "$region" >"$region_file"
+  chmod 0600 "$region_file"
   "$ROOT/bin/omarchy-capture-webcam-resize" reset
 
   if ! cmp -s "$OMARCHY_TEST_HYPRCTL_ARGS" "$expected_hyprctl_args"; then
@@ -263,6 +266,7 @@ pass "webcam falls back to the monitor for an unusable region"
 # ladder, so the three sizes stay distinct and each one fits inside the margins
 : >"$OMARCHY_TEST_HYPRCTL_ARGS"
 echo "200x1200+0+0" >"$region_file"
+chmod 0600 "$region_file"
 for size in small medium large; do
   "$ROOT/bin/omarchy-capture-webcam-resize" "$size"
 done

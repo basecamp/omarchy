@@ -8,7 +8,14 @@
 set -euo pipefail
 
 readonly MARGIN=40
-readonly REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
+
+CURRENT_UID=$(/usr/bin/id -u)
+RUNTIME_BASE=${XDG_RUNTIME_DIR:-/run/user/$CURRENT_UID}
+[[ $RUNTIME_BASE == /* && -d $RUNTIME_BASE && ! -L $RUNTIME_BASE ]] || exit 0
+[[ $(/usr/bin/realpath -e -- "$RUNTIME_BASE") == "$RUNTIME_BASE" ]] || exit 0
+[[ $(/usr/bin/stat -c '%u:%a' -- "$RUNTIME_BASE") == "$CURRENT_UID:700" ]] || exit 0
+readonly STATE_DIR="$RUNTIME_BASE/omarchy-screenrecord"
+readonly REGION_FILE="$STATE_DIR/region"
 
 usage() {
   echo "Usage: omarchy-capture-webcam-resize <smaller|larger|reset|small|medium|large>" >&2
@@ -66,7 +73,19 @@ anchor_y=$monitor_y
 anchor_width=$monitor_width
 anchor_height=$monitor_height
 
-if [[ -f $REGION_FILE ]] && region=$(<"$REGION_FILE"); then
+region=""
+if [[ -d $STATE_DIR && ! -L $STATE_DIR ]] &&
+  [[ $(/usr/bin/realpath -e -- "$STATE_DIR") == "$STATE_DIR" ]] &&
+  [[ $(/usr/bin/stat -c '%u:%a' -- "$STATE_DIR") == "$CURRENT_UID:700" ]] &&
+  [[ -f $REGION_FILE && ! -L $REGION_FILE ]] &&
+  [[ $(/usr/bin/stat -c '%u:%a:%h' -- "$REGION_FILE") == "$CURRENT_UID:600:1" ]]; then
+  mapfile -t region_lines <"$REGION_FILE"
+  if ((${#region_lines[@]} == 1)) && printf '%s\n' "${region_lines[0]}" | /usr/bin/cmp -s - "$REGION_FILE"; then
+    region=${region_lines[0]}
+  fi
+fi
+
+if [[ -n $region ]]; then
   if [[ $region =~ ^([0-9]+)x([0-9]+)\+(-?[0-9]+)\+(-?[0-9]+)$ ]]; then
     anchor_width=${BASH_REMATCH[1]}
     anchor_height=${BASH_REMATCH[2]}

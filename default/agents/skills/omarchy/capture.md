@@ -32,9 +32,7 @@ Recordings land in the configured Videos directory (override with
 `OMARCHY_SCREENRECORD_DIR`). Resize a live webcam overlay with
 `omarchy capture webcam resize <smaller|larger|reset|small|medium|large>`.
 
-If recording fails to start, rerun with `OMARCHY_SCREENRECORD_DEBUG=true` to
-collect a log at `/tmp/omarchy-screenrecord.log` worth attaching to a bug
-report.
+If recording fails to start, rerun with `OMARCHY_SCREENRECORD_DEBUG=true` to collect a private `screenrecording.log` under `$XDG_RUNTIME_DIR/omarchy-screenrecord/` worth attaching to a bug report.
 
 ## Text Capture (OCR)
 

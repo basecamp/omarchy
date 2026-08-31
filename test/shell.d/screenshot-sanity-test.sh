@@ -20,6 +20,13 @@ trap cleanup EXIT
 
 require_compositor "screenshot sanity test"
 
+# A secure ext-session-lock intentionally replaces the bar with the lock view,
+# so a compositor screenshot cannot prove bar rendering until the user unlocks.
+if "$ROOT/bin/omarchy-hyprland-session-locked"; then
+  pass "session is locked; skipping screenshot sanity test"
+  exit 0
+fi
+
 if ! command -v quickshell >/dev/null 2>&1; then
   pass "quickshell not installed; skipping screenshot sanity test"
   exit 0

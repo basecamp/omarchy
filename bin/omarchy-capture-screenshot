@@ -40,14 +40,64 @@ PROCESSING="${2:-slurp}"
 # hardware cursors) are baked into the frames grim captures, so force
 # hardware cursors until after grim runs and restore the setting on exit.
 NO_HW_CURSORS=$(hyprctl getoption cursor:no_hardware_cursors -j | jq '.int')
+GRIM_PID=""
+FRAME_REQUEST_PID=""
+OUTPUT_FRAME_FALLBACK_USED=0
+
+request_output_frame() {
+  local cursor_position cursor_x cursor_y
+
+  hyprctl eval 'hl.dispatch(hl.dsp.no_op())' &>/dev/null && return 0
+  (( OUTPUT_FRAME_FALLBACK_USED == 0 )) || return 0
+
+  # Legacy Hyprland has no Lua no-op dispatcher. Moving back immediately keeps
+  # the user's pointer in place while still scheduling the frame grim needs.
+  cursor_position=$(hyprctl cursorpos) || return 0
+  cursor_x=${cursor_position%,*}
+  cursor_y=${cursor_position#*, }
+  hyprctl dispatch movecursor "$((cursor_x + 1))" "$cursor_y" &>/dev/null || true
+  hyprctl dispatch movecursor "$cursor_x" "$cursor_y" &>/dev/null || true
+  OUTPUT_FRAME_FALLBACK_USED=1
+}
 
 set_no_hw_cursors() {
-  hyprctl eval "hl.config({ cursor = { no_hardware_cursors = $1 } })" &>/dev/null ||
-    hyprctl keyword cursor:no_hardware_cursors "$1" &>/dev/null
+  if hyprctl eval "hl.config({ cursor = { no_hardware_cursors = $1 } })" &>/dev/null ||
+    hyprctl keyword cursor:no_hardware_cursors "$1" &>/dev/null; then
+    # Changing this cursor setting does not itself damage an output. grim then
+    # waits for a frame on an otherwise still desktop.
+    request_output_frame
+  fi
+}
+
+run_grim() {
+  local status=0
+
+  /usr/bin/timeout --foreground --signal=TERM --kill-after=2s 15s grim "$@" &
+  GRIM_PID=$!
+  (
+    # Registering the screencopy request races the frame scheduled above. Keep
+    # asking briefly while grim is alive so at least one request lands after it
+    # has attached; timeout remains the fail-closed backstop.
+    for _ in {1..30}; do
+      /usr/bin/kill -0 "$GRIM_PID" 2>/dev/null || exit 0
+      /usr/bin/sleep 0.05
+      request_output_frame
+    done
+  ) &
+  FRAME_REQUEST_PID=$!
+
+  wait "$GRIM_PID" || status=$?
+  GRIM_PID=""
+  kill "$FRAME_REQUEST_PID" 2>/dev/null || true
+  wait "$FRAME_REQUEST_PID" 2>/dev/null || true
+  FRAME_REQUEST_PID=""
+  return "$status"
 }
 
 cleanup() {
-  [[ -n $FREEZE_PID ]] && kill $FREEZE_PID 2>/dev/null
+  [[ -z $FRAME_REQUEST_PID ]] || kill "$FRAME_REQUEST_PID" 2>/dev/null
+  [[ -z $GRIM_PID ]] || kill "$GRIM_PID" 2>/dev/null
+  [[ -n $FREEZE_PID ]] && kill "$FREEZE_PID" 2>/dev/null
   set_no_hw_cursors "$NO_HW_CURSORS"
 }
 trap cleanup EXIT
@@ -62,7 +112,7 @@ FILEPATH="$OUTPUT_DIR/$FILENAME"
 
 case "$PROCESSING" in
   slurp)
-    grim -g "$SELECTION" "$FILEPATH" || exit 1
+    run_grim -g "$SELECTION" "$FILEPATH" || exit 1
     echo "$FILEPATH"
     wl-copy --type image/png <"$FILEPATH"
 
@@ -73,10 +123,10 @@ case "$PROCESSING" in
       --exec "$SCREENSHOT_EDITOR" "$FILEPATH" || true
     ;;
   copy)
-    grim -g "$SELECTION" - | wl-copy --type image/png
+    run_grim -g "$SELECTION" - | wl-copy --type image/png
     ;;
   save)
-    grim -g "$SELECTION" "$FILEPATH" || exit 1
+    run_grim -g "$SELECTION" "$FILEPATH" || exit 1
     echo "$FILEPATH"
     ;;
 esac
