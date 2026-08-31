@@ -137,6 +137,40 @@ if(BUILD_TESTING)
   )
 
   if(TARGET omarchy-plugin-authenticated-session)
+    add_executable(omarchy-plugin-provider-composition-peer
+      tests/helpers/provider_composition_peer.cpp)
+    omarchy_plugin_target_defaults(omarchy-plugin-provider-composition-peer)
+
+    add_executable(omarchy-plugin-provider-composition-test
+      src/runtime_bootstrap.cpp
+      src/runtime_roots.cpp
+      tests/provider_composition_test.cpp)
+    omarchy_plugin_target_defaults(omarchy-plugin-provider-composition-test)
+    target_compile_definitions(omarchy-plugin-provider-composition-test PRIVATE
+      OMARCHY_RUNTIME_BOOTSTRAP_TESTING
+      OMARCHY_RUNTIME_ROOTS_TESTING
+      PROVIDER_COMPOSITION_PEER_PATH="$<TARGET_FILE:omarchy-plugin-provider-composition-peer>")
+    target_link_libraries(omarchy-plugin-provider-composition-test PRIVATE
+      omarchy-plugin-authenticated-session Qt6::DBus)
+    add_dependencies(omarchy-plugin-provider-composition-test
+      omarchy-plugin-provider-composition-peer)
+    add_test(NAME plugin-provider-composition
+      COMMAND omarchy-plugin-provider-composition-test)
+    set_tests_properties(plugin-provider-composition PROPERTIES
+      TIMEOUT 30
+      LABELS "integration;security;providers;bootstrap;protocol;filesystem;adversarial")
+    find_program(OMARCHY_FAKEROOT_EXECUTABLE fakeroot)
+    if(OMARCHY_FAKEROOT_EXECUTABLE AND
+       NOT PLUGIN_SECURITY_CHANNEL_SANITIZERS)
+      add_test(NAME plugin-provider-composition-ownership
+        COMMAND "${OMARCHY_FAKEROOT_EXECUTABLE}" -u "${CMAKE_COMMAND}" -E env
+          OMARCHY_TEST_FAKE_OWNERSHIP=1
+          "$<TARGET_FILE:omarchy-plugin-provider-composition-test>")
+      set_tests_properties(plugin-provider-composition-ownership PROPERTIES
+        TIMEOUT 30
+        LABELS "integration;security;providers;bootstrap;filesystem;adversarial;ownership")
+    endif()
+
     add_executable(omarchy-plugin-desktop-notification-service-test
       tests/desktop_notification_service_test.cpp)
     omarchy_plugin_target_defaults(

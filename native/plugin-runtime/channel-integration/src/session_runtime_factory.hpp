@@ -17,6 +17,7 @@ namespace providers = omarchy::plugin_runtime::providers;
 namespace provider_host = omarchy::plugin_runtime::provider_host;
 
 class PluginRuntimeRoot;
+class RuntimeBootstrapTestAccess;
 
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
 struct TrustedDynamicService final {
@@ -104,6 +105,7 @@ private:
   Limits limits_;
 
   friend class PluginRuntimeRoot;
+  friend class RuntimeBootstrapTestAccess;
 };
 
 } // namespace omarchy::plugin_runtime::channel

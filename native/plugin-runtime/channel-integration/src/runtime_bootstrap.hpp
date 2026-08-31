@@ -117,6 +117,28 @@ public:
       noexcept {
     return bootstrap.prepare_runtime(permissions);
   }
+  [[nodiscard]] static std::optional<
+      plugin::wire::permission_snapshot::PermissionSnapshot>
+  project_permissions(const RuntimeBootstrap &bootstrap,
+                      const plugins::manifest::ManifestV2 &manifest,
+                      const session::policy::GrantSnapshot &grants) {
+    SessionRuntimeFactory factory(bootstrap.definitions_, bootstrap.services_);
+    return factory.project_permissions(manifest, grants);
+  }
+  [[nodiscard]] static std::unique_ptr<AuthenticatedSessionRuntime>
+  create_session_runtime(
+      const RuntimeBootstrap &bootstrap,
+      const plugins::manifest::ManifestV2 &manifest,
+      const session::policy::GrantSnapshot &grants, int revision_directory_fd,
+      int private_state_directory_fd, std::uint64_t session_nonce,
+      std::shared_ptr<session::LiveGenerationState> live_generation,
+      std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility) {
+    SessionRuntimeFactory factory(bootstrap.definitions_, bootstrap.services_);
+    return factory.create(manifest, grants, revision_directory_fd,
+                          private_state_directory_fd, session_nonce,
+                          std::move(live_generation),
+                          std::move(gesture_eligibility));
+  }
   [[nodiscard]] static std::shared_ptr<PluginPermissionAuthority>
   open_permissions(const RuntimeBootstrap &bootstrap,
                    std::string_view record_name,
