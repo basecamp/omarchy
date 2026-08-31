@@ -4,8 +4,55 @@ set -euo pipefail
 
 source "$(dirname "$0")/base-test.sh"
 
-test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"' EXIT
+if [[ -z ${OMARCHY_UPDATE_SEQUENCE_NS:-} ]]; then
+  outer_uid=$(id -u)
+  outer_gid=$(id -g)
+  subuid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subuid)
+  subgid=$(awk -F: -v group="$(id -gn)" '$1 == group { print $2; exit }' /etc/subgid)
+  if [[ -z $subuid || -z $subgid ]]; then
+    pass "no subordinate uid/gid range; skipping authorized update-sequence test"
+    exit 0
+  fi
+  exec unshare --user --mount \
+    --map-users "0:$outer_uid:1" --map-users "1:$subuid:65536" \
+    --map-groups "0:$outer_gid:1" --map-groups "1:$subgid:65536" \
+    env OMARCHY_UPDATE_SEQUENCE_NS=setup bash "$0"
+elif [[ $OMARCHY_UPDATE_SEQUENCE_NS == setup ]]; then
+  mount -t tmpfs -o mode=0755 tmpfs /run
+  namespace_tmp=$(mktemp -d -p /run omarchy-update-sequence.XXXXXXXX)
+  chmod 0755 "$namespace_tmp"
+  mkdir -p "$namespace_tmp/default/omarchy/sudo-no-update"
+  cp "$ROOT/default/omarchy/sudo-no-update/sudo" "$namespace_tmp/default/omarchy/sudo-no-update/sudo"
+  chmod 0755 "$namespace_tmp/default/omarchy/sudo-no-update/sudo"
+  cat >"$namespace_tmp/fixed-sudo" <<'STUB'
+#!/bin/bash
+if [[ ${1:-} == "-h" ]]; then
+  echo 'usage: sudo [-ABbEHkNnPS] command'
+fi
+exit 0
+STUB
+  chmod 0755 "$namespace_tmp/fixed-sudo"
+  mount --bind "$namespace_tmp/fixed-sudo" /usr/bin/sudo
+  mount -t tmpfs -o mode=0755 tmpfs /etc
+  printf 'export OMARCHY_PATH="%s"\n' "$namespace_tmp" >/etc/omarchy.conf
+  chmod 0644 /etc/omarchy.conf
+  chown -R 1000:1000 "$namespace_tmp"
+
+  set +e
+  setpriv --reuid 1000 --regid 1000 --clear-groups \
+    env OMARCHY_UPDATE_SEQUENCE_NS=run OMARCHY_AUTHORIZED_TEST_ROOT="$namespace_tmp" bash "$0"
+  status=$?
+  set -e
+
+  umount /usr/bin/sudo
+  umount /etc
+  rm -rf "$namespace_tmp"
+  umount /run
+  exit "$status"
+fi
+
+test_tmp="$OMARCHY_AUTHORIZED_TEST_ROOT"
+trap 'rm -rf "$test_tmp"/*' EXIT
 
 stub_bin="$test_tmp/bin"
 mkdir -p "$stub_bin"
@@ -49,7 +96,7 @@ run_update() {
     FAILING_STEP="${FAILING_STEP:-}" \
     OMARCHY_UPDATE_LOGGED=1 \
     PATH="$stub_bin:$PATH" \
-    bash "$ROOT/bin/omarchy-update" "$@" >"$test_tmp/out" 2>"$test_tmp/err"
+    "$ROOT/bin/omarchy-update" "$@" >"$test_tmp/out" 2>"$test_tmp/err"
 }
 
 steps_run() {
@@ -70,13 +117,14 @@ expected_steps() {
     omarchy-update-keyring \
     omarchy-update-system-pkgs \
     omarchy-migrate \
-    omarchy-hook \
-    omarchy-update-aur-pkgs \
-    omarchy-update-mise \
     omarchy-update-orphan-pkgs \
     omarchy-update-analyze-logs \
     omarchy-update-status \
+    omarchy-update-restart \
     omarchy-update-stay-awake \
+    omarchy-update-aur-pkgs \
+    omarchy-hook \
+    omarchy-update-mise \
     omarchy-update-restart
 }
 
