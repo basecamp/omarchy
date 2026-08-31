@@ -78,7 +78,17 @@ else
 fi
 SH
 
-chmod +x "$mock_bin/omarchy-shell" "$mock_bin/ps"
+cat >"$mock_bin/mv" <<'SH'
+#!/bin/bash
+destination=""
+for argument in "$@"; do destination="$argument"; done
+if [[ -n ${CONFIRM_TEST_MV_FAIL_PREFIX:-} && $destination == "$CONFIRM_TEST_MV_FAIL_PREFIX"* ]]; then
+  exit 73
+fi
+exec /bin/mv "$@"
+SH
+
+chmod +x "$mock_bin/omarchy-shell" "$mock_bin/ps" "$mock_bin/mv"
 
 file_mode() {
   if stat -c '%a' "$1" >/dev/null 2>&1; then
@@ -133,6 +143,34 @@ set -e
 (( piped_status == 1 )) || fail "agent-terminal stdin can approve the separate Newsboat prompt" "$piped_status"
 pass "Newsboat confirmation cannot be answered through the agent command's stdin"
 unset CONFIRM_TEST_DECISION
+
+real_confirmation_dir="$NEWSBOAT_CONFIRM_STATE_DIR"
+symlink_target="$test_tmp/confirmation-symlink-target"
+mkdir -p "$symlink_target"
+rm -rf "$real_confirmation_dir"
+/bin/ln -s "$symlink_target" "$real_confirmation_dir"
+if "$ROOT/bin/omarchy-newsboat-confirm" scout 1 >/dev/null 2>"$test_tmp/symlink-state-error"; then
+  fail "Newsboat confirmation accepts a symlinked state directory"
+fi
+grep -Fq 'state may not be a symlink' "$test_tmp/symlink-state-error" || fail "symlinked confirmation state has no clear rejection"
+[[ -z $(find "$symlink_target" -type f -print -quit) ]] || fail "symlinked confirmation state receives request files"
+rm -f "$real_confirmation_dir"
+mkdir -p "$real_confirmation_dir"
+pass "Newsboat confirmation rejects symlinked private state"
+
+publish_failure_id=publishAB12
+printf '%s\n' '{"version":1,"kind":"scout","count":1}' >"$NEWSBOAT_CONFIRM_STATE_DIR/request.$publish_failure_id"
+export CONFIRM_TEST_MV_FAIL_PREFIX="$NEWSBOAT_CONFIRM_STATE_DIR/response."
+set +e
+printf 'approved\n' | "$ROOT/bin/omarchy-newsboat-confirm" --bridge "$NEWSBOAT_CONFIRM_STATE_DIR" "$publish_failure_id" >/dev/null 2>"$test_tmp/publish-failure-error"
+publish_failure_status=$?
+set -e
+unset CONFIRM_TEST_MV_FAIL_PREFIX
+(( publish_failure_status == 73 )) || fail "a failed confirmation response publication hides its status" "$publish_failure_status"
+[[ ! -e $NEWSBOAT_CONFIRM_STATE_DIR/response.$publish_failure_id ]] || fail "failed confirmation response publication creates a visible decision"
+[[ -z $(find "$NEWSBOAT_CONFIRM_STATE_DIR" -type f -name '.response.*' -print -quit) ]] || fail "failed confirmation response publication leaves temporary state"
+rm -f "$NEWSBOAT_CONFIRM_STATE_DIR/request.$publish_failure_id"
+pass "Newsboat confirmation cleans a response that cannot publish"
 
 mkdir -p "$NEWSBOAT_CONFIRM_STATE_DIR"
 direct_request_id=directAB12
@@ -217,6 +255,7 @@ grep -Fq 'function launchNewsboatConfirmation(stateDir: string, requestId: strin
 grep -Fq 'return newsboatConfirmation.launch(stateDir, requestId)' "$ROOT/shell/shell.qml" || fail "the Shell bridge drops the request state directory"
 grep -Fq 'confirmationProcess.command = [root.omarchyPath + "/bin/omarchy-newsboat-confirm", "--bridge", nextDir, nextId]' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the native surface does not use the request-owned confirmation state"
 grep -Fq '!/^[A-Za-z0-9_-]{8,64}$/.test(nextId)' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the Shell bridge accepts arbitrary confirmation commands"
+grep -Fq '!nextDir.startsWith("/")' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the Shell bridge accepts a relative confirmation state directory"
 grep -Fq 'WlrLayershell.keyboardFocus: root.opened ? WlrKeyboardFocus.Exclusive' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the native confirmation does not own keyboard focus"
 grep -Fq 'property int selectedIndex: 0' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the native confirmation does not default to Cancel"
 grep -Fq 'confirmationProcess.write(decision + "\n")' "$ROOT/shell/NewsboatConfirmation.qml" || fail "the native surface does not return its private decision to the waiting helper"

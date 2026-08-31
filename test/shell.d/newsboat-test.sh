@@ -285,7 +285,7 @@ fi
 
 rm -rf "$HOME/.config/newsboat"
 mkdir -p "$HOME/.config/newsboat"
-unset NEWSBOAT_TEST_PACKAGE_MISSING NEWSBOAT_TEST_NEWSBOAT_FAIL NEWSBOAT_TEST_LN_RACE_TARGET
+unset NEWSBOAT_TEST_PACKAGE_MISSING NEWSBOAT_TEST_NEWSBOAT_FAIL NEWSBOAT_TEST_LN_RACE_TARGET NEWSBOAT_TEST_MV_FAIL_TARGET
 
 if "$ROOT/bin/omarchy-newsboat-add" 'file:///tmp/feed.xml' >/dev/null 2>&1; then
   fail "Newsboat add rejects a non-web feed URL"
@@ -307,10 +307,32 @@ expected_feeds=$'https://first.example/feed\nhttps://second.example/feed'
 [[ $(<"$HOME/.config/newsboat/urls") == "$expected_feeds" ]] || fail "Newsboat add preserves a final unterminated line"
 "$ROOT/bin/omarchy-newsboat-add" 'https://second.example/feed' >/dev/null
 [[ $(grep -c '^https://second.example/feed$' "$HOME/.config/newsboat/urls") == 1 ]] || fail "Newsboat add deduplicates an existing subscription"
+[[ -z $(find "$HOME/.config/newsboat" -name '.urls.add.*' -print -quit) ]] || fail "idempotent Newsboat add leaves a staged file"
 injection_marker="$test_tmp/feed-command-ran"
 "$ROOT/bin/omarchy-newsboat-add" 'https://example.test/$(touch${IFS}'"$injection_marker"')' >/dev/null
 [[ ! -e $injection_marker ]] || fail "Newsboat add treats a feed URL as data"
 pass "Newsboat add appends safely and idempotently"
+
+before_add=$(<"$HOME/.config/newsboat/urls")
+export NEWSBOAT_TEST_MV_FAIL_TARGET="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$HOME/.config/newsboat/urls")"
+if "$ROOT/bin/omarchy-newsboat-add" 'https://publication-failure.example/feed' >/dev/null 2>&1; then
+  fail "Newsboat add reports success when subscription publication fails"
+fi
+unset NEWSBOAT_TEST_MV_FAIL_TARGET
+[[ $(<"$HOME/.config/newsboat/urls") == "$before_add" ]] || fail "failed Newsboat add changes existing subscriptions"
+[[ -z $(find "$HOME/.config/newsboat" -name '.urls.add.*' -print -quit) ]] || fail "failed Newsboat add leaves a staged file"
+pass "Newsboat add is atomic when subscription publication fails"
+
+linked_add_target="$test_tmp/add-linked-urls"
+printf 'https://linked-existing.example/feed\n' >"$linked_add_target"
+rm -f "$HOME/.config/newsboat/urls"
+/bin/ln -s "$linked_add_target" "$HOME/.config/newsboat/urls"
+"$ROOT/bin/omarchy-newsboat-add" 'https://linked-new.example/feed' >/dev/null
+[[ -L $HOME/.config/newsboat/urls ]] || fail "Newsboat add replaces a user subscriptions symlink"
+grep -Fxq 'https://linked-new.example/feed' "$linked_add_target" || fail "Newsboat add does not update the subscriptions symlink target"
+pass "Newsboat add preserves linked subscription files"
+rm -f "$HOME/.config/newsboat/urls"
+printf '%s\n' "$before_add" >"$HOME/.config/newsboat/urls"
 
 if "$ROOT/bin/omarchy-newsboat-remove" 'file:///tmp/feed.xml' >/dev/null 2>&1; then
   fail "Newsboat remove rejects a non-web feed URL"
@@ -340,6 +362,15 @@ before_remove=$(<"$HOME/.config/newsboat/urls")
 [[ $(<"$HOME/.config/newsboat/urls") == "$before_remove" ]] || fail "Newsboat remove is idempotent for an absent subscription"
 pass "Newsboat remove deletes only exact subscriptions"
 
+export NEWSBOAT_TEST_MV_FAIL_TARGET="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$HOME/.config/newsboat/urls")"
+if "$ROOT/bin/omarchy-newsboat-remove" 'https://second.example/feed' >/dev/null 2>&1; then
+  fail "Newsboat remove reports success when subscription publication fails"
+fi
+unset NEWSBOAT_TEST_MV_FAIL_TARGET
+[[ $(<"$HOME/.config/newsboat/urls") == "$before_remove" ]] || fail "failed Newsboat remove changes existing subscriptions"
+[[ -z $(find "$HOME/.config/newsboat" -name '.urls.remove.*' -print -quit) ]] || fail "failed Newsboat remove leaves a staged file"
+pass "Newsboat remove is atomic when subscription publication fails"
+
 linked_urls="$test_tmp/linked-urls"
 printf 'https://linked.example/feed' >"$linked_urls"
 rm -f "$HOME/.config/newsboat/urls"
@@ -367,6 +398,15 @@ fi
 pass "Newsboat import is atomic when Newsboat rejects the OPML"
 
 unset NEWSBOAT_TEST_NEWSBOAT_FAIL
+export NEWSBOAT_TEST_MV_FAIL_TARGET="$HOME/.config/newsboat/urls"
+if "$ROOT/bin/omarchy-newsboat-import" "$opml_file" >/dev/null 2>&1; then
+  fail "Newsboat import reports success when subscription publication fails"
+fi
+unset NEWSBOAT_TEST_MV_FAIL_TARGET
+[[ $(<"$HOME/.config/newsboat/urls") == 'https://existing.example/feed' ]] || fail "failed OPML publication changes existing subscriptions"
+[[ -z $(find "$HOME/.config/newsboat" -name 'urls.import.*' -print -quit) ]] || fail "failed OPML publication leaves a staged file"
+pass "Newsboat import is atomic when subscription publication fails"
+
 "$ROOT/bin/omarchy-newsboat-import" "$opml_file" >/dev/null
 grep -Fq 'https://existing.example/feed' "$HOME/.config/newsboat/urls" || fail "Newsboat import keeps existing subscriptions"
 grep -Fq 'https://imported.example/feed Imported' "$HOME/.config/newsboat/urls" || fail "Newsboat import publishes imported subscriptions"

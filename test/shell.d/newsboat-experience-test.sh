@@ -84,6 +84,20 @@ printf "close:%s\n" "$*" >>"$FEEDS_TEST_CLOSE_LOG"
 printf "close\n" >>"$FEEDS_TEST_MUTATION_LOG"
 exit "${FEEDS_TEST_CLOSE_STATUS:-0}"
 '
+write_mock mv '
+destination=""
+for argument in "$@"; do destination="$argument"; done
+if [[ ${FEEDS_TEST_READER_PUBLISH_FAIL:-0} == 1 && $destination == */reader.* ]]; then
+  exit 72
+fi
+exec /bin/mv "$@"
+'
+write_mock rm '
+target=""
+for argument in "$@"; do target="$argument"; done
+[[ ${FEEDS_TEST_RM_FAIL_TARGET:-} != "$target" ]] || exit 73
+exec /bin/rm "$@"
+'
 write_mock wl-paste 'printf "%s" "${FEEDS_TEST_CLIPBOARD:-}"'
 write_mock curl '
 output=""
@@ -238,6 +252,46 @@ export FEEDS_TEST_UNREAD_BEFORE=4 FEEDS_TEST_UNREAD_AFTER=2
 [[ ! -s $notification_log ]] || fail "an unfinished edition does not claim completion"
 pass "Feeds only shows done after the inbox reaches zero"
 
+: >"$newsboat_log"
+: >"$notification_log"
+: >"$unread_state"
+export FEEDS_TEST_READER_STATUS=17
+set +e
+"$ROOT/bin/omarchy-newsboat-read"
+reader_status=$?
+set -e
+(( reader_status == 17 )) || fail "Feeds hides the foreground reader's exit status" "$reader_status"
+[[ -z $(find "$NEWSBOAT_READER_STATE_DIR" -type f -print -quit) ]] || fail "a failed reader leaves stale registration state"
+[[ ! -s $notification_log ]] || fail "a failed reader reports a completed edition"
+pass "Feeds cleans reader registration after a failed foreground session"
+
+: >"$newsboat_log"
+: >"$unread_state"
+export FEEDS_TEST_READER_PUBLISH_FAIL=1 FEEDS_TEST_READER_STATUS=0
+if "$ROOT/bin/omarchy-newsboat-read" >/dev/null 2>&1; then
+  fail "Feeds opens without publishing its reader registration"
+fi
+unset FEEDS_TEST_READER_PUBLISH_FAIL
+[[ -z $(find "$NEWSBOAT_READER_STATE_DIR" -type f -print -quit) ]] || fail "failed reader registration leaves a temporary or published file"
+(( $(wc -l <"$newsboat_log") == 2 )) || fail "failed reader registration still launches the interactive reader"
+pass "Feeds cleans temporary state when reader registration cannot publish"
+
+real_reader_state_dir="$NEWSBOAT_READER_STATE_DIR"
+symlinked_reader_target="$test_tmp/symlinked-reader-target"
+mkdir -p "$symlinked_reader_target"
+rm -rf "$real_reader_state_dir"
+/bin/ln -s "$symlinked_reader_target" "$real_reader_state_dir"
+: >"$newsboat_log"
+: >"$unread_state"
+if "$ROOT/bin/omarchy-newsboat-read" >/dev/null 2>&1; then
+  fail "Feeds trusts a symlinked reader-state directory"
+fi
+(( $(wc -l <"$newsboat_log") == 2 )) || fail "symlinked reader state still launches the interactive reader"
+[[ -z $(find "$symlinked_reader_target" -type f -print -quit) ]] || fail "symlinked reader state receives registration files"
+rm -f "$real_reader_state_dir"
+mkdir -p "$real_reader_state_dir"
+pass "Feeds rejects symlinked reader state before opening"
+
 write_mock omarchy-default-agent 'printf "%s\n" "${FEEDS_TEST_AGENT:-}"'
 write_mock omarchy-agent-prompt '
 [[ ${1:-} == "--conversation" ]] || exit 64
@@ -271,6 +325,20 @@ with sqlite3.connect(sys.argv[1]) as database:
 PY
 
 export FEEDS_TEST_AGENT=codex
+brief_symlink_target="$test_tmp/brief-symlink-target"
+mkdir -p "$brief_symlink_target"
+rm -rf "$NEWSBOAT_BRIEF_STATE_DIR"
+/bin/ln -s "$brief_symlink_target" "$NEWSBOAT_BRIEF_STATE_DIR"
+rm -f "$agent_log"
+if "$ROOT/bin/omarchy-newsboat-brief" >/dev/null 2>"$test_tmp/brief-symlink-error"; then
+  fail "Feeds writes briefing state through a symlinked directory"
+fi
+[[ ! -e $agent_log ]] || fail "symlinked briefing state reaches the configured agent"
+[[ -z $(find "$brief_symlink_target" -type f -print -quit) ]] || fail "symlinked briefing state receives a snapshot"
+rm -f "$NEWSBOAT_BRIEF_STATE_DIR"
+mkdir -p "$NEWSBOAT_BRIEF_STATE_DIR"
+pass "Feeds rejects symlinked briefing state before agent handoff"
+
 cp -- "$HOME/.config/newsboat/urls" "$test_tmp/valid-urls"
 printf 'https://one.example/feed "unfinished label\n' >"$HOME/.config/newsboat/urls"
 rm -f "$agent_log"
@@ -299,6 +367,17 @@ grep -Fq 'Mark <READ> articles as read and leave <LEAVE> unread? (yes/no)' "$age
 brief_id=$(sed -n 's/.*omarchy-newsboat-triage \([A-Za-z0-9_-]*\) READ LEAVE.*/\1/p' "$agent_log")
 [[ -n $brief_id && -f $NEWSBOAT_BRIEF_STATE_DIR/brief.$brief_id ]] || fail "the briefing creates a protected confirmation snapshot"
 pass "Feeds gives the selected Omarchy agent a focused, confirmation-only briefing"
+
+real_brief_state="$test_tmp/brief-state-real"
+/bin/mv "$NEWSBOAT_BRIEF_STATE_DIR" "$real_brief_state"
+/bin/ln -s "$real_brief_state" "$NEWSBOAT_BRIEF_STATE_DIR"
+if "$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 1 1 A001 >/dev/null 2>&1; then
+  fail "triage consumes a snapshot through symlinked briefing state"
+fi
+[[ ! -e $import_log ]] || fail "symlinked briefing state reaches Newsboat import"
+rm -f "$NEWSBOAT_BRIEF_STATE_DIR"
+/bin/mv "$real_brief_state" "$NEWSBOAT_BRIEF_STATE_DIR"
+pass "Feeds rejects symlinked briefing state before confirmation"
 
 export FEEDS_TEST_CONFIRM_STATUS=1
 : >"$close_log"
@@ -359,6 +438,35 @@ if "$ROOT/bin/omarchy-newsboat-triage" "$brief_id" 2 0 A001 >/dev/null 2>&1; the
 fi
 [[ ! -e $import_log ]] || fail "mismatched confirmation counts never reach Newsboat"
 pass "Feeds verifies the numbers shown to the user before changing read state"
+
+rm -f "$agent_log" "$import_log"
+: >"$close_log"
+: >"$mutation_log"
+"$ROOT/bin/omarchy-newsboat-brief"
+zero_brief_id=$(sed -n 's/.*omarchy-newsboat-triage \([A-Za-z0-9_-]*\) READ LEAVE.*/\1/p' "$agent_log")
+"$ROOT/bin/omarchy-newsboat-triage" "$zero_brief_id" 0 2 A001 A002 >"$test_tmp/zero-triage-output"
+[[ ! -e $import_log ]] || fail "a keep-everything triage invokes Newsboat import"
+[[ ! -s $close_log ]] || fail "a keep-everything triage closes Feeds"
+[[ ! -e $NEWSBOAT_BRIEF_STATE_DIR/brief.$zero_brief_id ]] || fail "a completed keep-everything triage remains reusable"
+grep -Fq '0 marked read; 2 left unread.' "$test_tmp/zero-triage-output" || fail "keep-everything triage hides its exact no-op result"
+pass "Feeds completes a confirmed keep-everything briefing without cache mutation"
+
+rm -f "$agent_log" "$import_log"
+: >"$close_log"
+"$ROOT/bin/omarchy-newsboat-brief"
+cleanup_brief_id=$(sed -n 's/.*omarchy-newsboat-triage \([A-Za-z0-9_-]*\) READ LEAVE.*/\1/p' "$agent_log")
+cleanup_brief_file="$NEWSBOAT_BRIEF_STATE_DIR/brief.$cleanup_brief_id"
+export FEEDS_TEST_RM_FAIL_TARGET="$cleanup_brief_file"
+if "$ROOT/bin/omarchy-newsboat-triage" "$cleanup_brief_id" 0 2 A001 A002 >"$test_tmp/triage-cleanup-output" 2>"$test_tmp/triage-cleanup-error"; then
+  fail "triage reports complete when consumed briefing cleanup fails"
+fi
+unset FEEDS_TEST_RM_FAIL_TARGET
+[[ ! -e $import_log ]] || fail "briefing cleanup failure invokes Newsboat import"
+[[ ! -s $close_log ]] || fail "briefing cleanup failure closes Feeds for a no-op plan"
+[[ -f $cleanup_brief_file ]] || fail "briefing cleanup failure hides its retained snapshot"
+grep -Fq 'No read state changed' "$test_tmp/triage-cleanup-error" || fail "briefing cleanup failure does not report its safe outcome"
+/bin/rm -f -- "$cleanup_brief_file"
+pass "Feeds reports and contains consumed briefing cleanup failure"
 
 : >"$close_log"
 : >"$mutation_log"

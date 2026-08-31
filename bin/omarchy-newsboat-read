@@ -67,9 +67,11 @@ if [[ -n ${NEWSBOAT_READER_STATE_DIR:-} ]]; then
   reader_state_root=""
 fi
 reader_state_file=""
+reader_state_tmp=""
 
 cleanup_reader_state() {
   [[ -z $reader_state_file ]] || rm -f -- "$reader_state_file"
+  [[ -z $reader_state_tmp ]] || rm -f -- "$reader_state_tmp"
 }
 trap cleanup_reader_state EXIT
 
@@ -85,6 +87,7 @@ jq -cn --argjson pid "$$" --arg cache "$cache_file" \
   '{version: 1, pid: $pid, cache: $cache}' >"$reader_state_tmp"
 chmod 600 "$reader_state_tmp"
 mv -f -- "$reader_state_tmp" "$reader_state_file"
+reader_state_tmp=""
 
 set +e
 newsboat -c "$cache_file" -u "$urls_file"

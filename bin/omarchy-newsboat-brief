@@ -48,8 +48,38 @@ fi
 # to opaque article IDs without ever turning feed-controlled text into shell
 # arguments.
 state_dir="${NEWSBOAT_BRIEF_STATE_DIR:-/tmp/omarchy-newsboat-$UID/briefs}"
+state_root=""
+if [[ -z ${NEWSBOAT_BRIEF_STATE_DIR:-} ]]; then
+  state_root="/tmp/omarchy-newsboat-$UID"
+fi
+
+owner_uid() {
+  if stat -c %u "$1" >/dev/null 2>&1; then
+    stat -c %u "$1"
+  else
+    stat -f %u "$1"
+  fi
+}
+
+prepare_state_dir() {
+  if [[ -n $state_root ]]; then
+    [[ ! -L $state_root ]] || return 1
+    install -d -m 700 "$state_root"
+    [[ $(owner_uid "$state_root") == "$UID" ]] || return 1
+    chmod 700 "$state_root"
+  fi
+
+  [[ ! -L $state_dir ]] || return 1
+  install -d -m 700 "$state_dir"
+  [[ $(owner_uid "$state_dir") == "$UID" ]] || return 1
+  chmod 700 "$state_dir"
+}
+
 umask 077
-install -d -m 700 "$state_dir"
+if ! prepare_state_dir; then
+  echo "Could not prepare private Newsboat briefing state" >&2
+  exit 1
+fi
 snapshot_file=$(mktemp "$state_dir/brief.XXXXXXXX")
 brief_id=${snapshot_file##*/brief.}
 trap 'rm -f "$snapshot_file"' EXIT

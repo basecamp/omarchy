@@ -141,3 +141,26 @@ if "$ROOT/bin/omarchy-newsboat-close" /tmp/cache-a >/dev/null 2>&1; then
 fi
 [[ ! -e $signal_log ]] || fail "malformed reader state still signals a process"
 pass "Newsboat close fails closed on malformed reader state"
+
+rm -rf "$reader_state_dir"
+symlinked_state_target="$test_tmp/symlinked-readers"
+mkdir -p "$symlinked_state_target"
+/bin/ln -s "$symlinked_state_target" "$reader_state_dir"
+reset_probe
+if "$ROOT/bin/omarchy-newsboat-close" /tmp/cache-a >/dev/null 2>&1; then
+  fail "Newsboat close trusts a symlinked reader-state directory"
+fi
+[[ ! -e $signal_log ]] || fail "symlinked reader state can trigger a process signal"
+rm -f "$reader_state_dir"
+pass "Newsboat close rejects symlinked reader state"
+
+mkdir -p "$reader_state_dir"
+reader_target="$test_tmp/reader-target"
+jq -cn '{version: 1, pid: 111, cache: "/tmp/cache-a"}' >"$reader_target"
+/bin/ln -s "$reader_target" "$reader_state_dir/reader.111"
+reset_probe
+if "$ROOT/bin/omarchy-newsboat-close" /tmp/cache-a >/dev/null 2>&1; then
+  fail "Newsboat close trusts a symlinked reader registration"
+fi
+[[ ! -e $signal_log ]] || fail "symlinked reader registration can trigger a process signal"
+pass "Newsboat close rejects symlinked reader registrations"

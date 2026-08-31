@@ -75,6 +75,12 @@ for argument in "$@"; do destination="$argument"; done
 [[ ${SCOUT_TEST_MV_FAIL_TARGET:-} != "$destination" ]] || exit 71
 exec /bin/mv "$@"
 '
+write_mock rm '
+target=""
+for argument in "$@"; do target="$argument"; done
+[[ ${SCOUT_TEST_RM_FAIL_TARGET:-} != "$target" ]] || exit 72
+exec /bin/rm "$@"
+'
 write_mock curl '
 output=""
 url=""
@@ -160,6 +166,21 @@ fi
 grep -Fq 'Choose a default agent first' "$notification_log" || fail "Feed Scout explains an unconfigured agent"
 pass "Feed Scout handles an unconfigured Omarchy"
 
+scout_symlink_target="$test_tmp/scout-symlink-target"
+mkdir -p "$scout_symlink_target"
+rm -rf "$NEWSBOAT_SCOUT_STATE_DIR"
+/bin/ln -s "$scout_symlink_target" "$NEWSBOAT_SCOUT_STATE_DIR"
+write_urls
+: >"$curl_log"
+if "$ROOT/bin/omarchy-newsboat-scout-propose" https://scout-one.test >/dev/null 2>"$test_tmp/scout-symlink-error"; then
+  fail "Feed Scout writes proposal state through a symlinked directory"
+fi
+[[ ! -s $curl_log ]] || fail "symlinked Feed Scout state reaches network validation"
+[[ -z $(find "$scout_symlink_target" -type f -print -quit) ]] || fail "symlinked Feed Scout state receives a proposal"
+rm -f "$NEWSBOAT_SCOUT_STATE_DIR"
+mkdir -p "$NEWSBOAT_SCOUT_STATE_DIR"
+pass "Feed Scout rejects symlinked proposal state before validation"
+
 write_urls
 : >"$curl_log"
 proposal_output="$test_tmp/proposal-output"
@@ -180,6 +201,17 @@ grep -Fq 'Skipped unvalidated candidate' "$test_tmp/proposal-errors" || fail "Fe
 proposal_id=$(sed -n 's/^Validated Feed Scout proposal \([A-Za-z0-9_-]*\):$/\1/p' "$proposal_output")
 [[ -n $proposal_id && -f $NEWSBOAT_SCOUT_STATE_DIR/scout.$proposal_id ]] || fail "Feed Scout protects the validated proposal in a snapshot"
 pass "Feed Scout validates candidates without subscribing"
+
+real_scout_state="$test_tmp/scout-state-real"
+/bin/mv "$NEWSBOAT_SCOUT_STATE_DIR" "$real_scout_state"
+/bin/ln -s "$real_scout_state" "$NEWSBOAT_SCOUT_STATE_DIR"
+if "$ROOT/bin/omarchy-newsboat-scout-apply" "$proposal_id" 2 F001 F002 >/dev/null 2>&1; then
+  fail "Feed Scout consumes a proposal through symlinked state"
+fi
+[[ $(grep -c '^https://' "$urls_file") == 1 ]] || fail "symlinked Feed Scout state mutates subscriptions"
+rm -f "$NEWSBOAT_SCOUT_STATE_DIR"
+/bin/mv "$real_scout_state" "$NEWSBOAT_SCOUT_STATE_DIR"
+pass "Feed Scout rejects symlinked proposal state before confirmation"
 
 write_urls
 printf 'https://broken.example/feed "unfinished label\n' >>"$urls_file"
@@ -254,6 +286,25 @@ unset SCOUT_TEST_NOTIFICATION_STATUS
 grep -Fq '2 feeds added to Newsboat.' "$test_tmp/notification-failure-output" || fail "a notification failure hides a completed Feed Scout update"
 [[ ! -e $NEWSBOAT_SCOUT_STATE_DIR/scout.$proposal_id ]] || fail "a completed Feed Scout proposal remains reusable after notification failure"
 pass "Feed Scout reports success even if its desktop notification fails"
+
+write_urls
+"$ROOT/bin/omarchy-newsboat-scout-propose" https://scout-three.test >"$proposal_output"
+proposal_id=$(sed -n 's/^Validated Feed Scout proposal \([A-Za-z0-9_-]*\):$/\1/p' "$proposal_output")
+proposal_file="$NEWSBOAT_SCOUT_STATE_DIR/scout.$proposal_id"
+export SCOUT_TEST_RM_FAIL_TARGET="$proposal_file"
+if "$ROOT/bin/omarchy-newsboat-scout-apply" "$proposal_id" 1 F001 >"$test_tmp/cleanup-failure-output" 2>"$test_tmp/cleanup-failure-error"; then
+  fail "Feed Scout reports a fully completed transaction when proposal cleanup fails"
+fi
+unset SCOUT_TEST_RM_FAIL_TARGET
+grep -Fxq 'https://scout-three.test/feed.xml' "$urls_file" || fail "proposal cleanup failure loses the committed subscription"
+[[ -f $proposal_file ]] || fail "proposal cleanup failure hides the unremoved state"
+if "$ROOT/bin/omarchy-newsboat-scout-apply" "$proposal_id" 1 F001 >/dev/null 2>&1; then
+  fail "Feed Scout reapplies a proposal left after cleanup failure"
+fi
+[[ $(grep -Fxc 'https://scout-three.test/feed.xml' "$urls_file") == 1 ]] || fail "a retained consumed proposal duplicates a subscription"
+grep -Fq 'Subscriptions were updated' "$test_tmp/cleanup-failure-error" || fail "proposal cleanup failure does not report the committed subscription change"
+/bin/rm -f -- "$proposal_file"
+pass "Feed Scout fails safely if consumed proposal cleanup cannot finish"
 
 linked_urls="$test_tmp/linked-urls"
 cat >"$linked_urls" <<'URLS'

@@ -29,8 +29,20 @@ fi
 urls_file="${NEWSBOAT_URLS_FILE:-$HOME/.config/newsboat/urls}"
 state_dir="${NEWSBOAT_SCOUT_STATE_DIR:-/tmp/omarchy-newsboat-$UID/scouts}"
 snapshot_file="$state_dir/scout.$proposal_id"
-claim_file="$snapshot_file.applying"
-if [[ ! -f $urls_file || ! -f $snapshot_file || -L $snapshot_file ]]; then
+
+owner_uid() {
+  if stat -c %u "$1" >/dev/null 2>&1; then
+    stat -c %u "$1"
+  else
+    stat -f %u "$1"
+  fi
+}
+
+if [[ ! -f $urls_file || ! -d $state_dir || -L $state_dir || ! -f $snapshot_file || -L $snapshot_file ]]; then
+  echo "That Feed Scout proposal is no longer available. Run Feed Scout again." >&2
+  exit 1
+fi
+if [[ $(owner_uid "$state_dir") != $UID || $(owner_uid "$snapshot_file") != $UID ]]; then
   echo "That Feed Scout proposal is no longer available. Run Feed Scout again." >&2
   exit 1
 fi
@@ -83,20 +95,16 @@ if [[ -s $staged_urls && -n $(tail -c 1 "$staged_urls") ]]; then
 fi
 jq -r '.feeds[]' <<<"$result" >>"$staged_urls"
 
-if ! mv -- "$snapshot_file" "$claim_file"; then
-  echo "Could not claim that Feed Scout proposal. Run Feed Scout again." >&2
-  exit 1
-fi
 if ! mv -f -- "$staged_urls" "$urls_target"; then
-  if mv -- "$claim_file" "$snapshot_file"; then
-    echo "Could not update Newsboat subscriptions. The proposal is still available." >&2
-  else
-    echo "Could not update Newsboat subscriptions or restore the proposal. Run Feed Scout again." >&2
-  fi
+  echo "Could not update Newsboat subscriptions. The proposal is still available." >&2
   exit 1
 fi
 staged_urls=""
-rm -f -- "$claim_file" || true
+if ! rm -f -- "$snapshot_file"; then
+  echo "Subscriptions were updated, but the consumed Feed Scout proposal could not be removed." >&2
+  echo "It cannot be applied again because the subscriptions have changed." >&2
+  exit 1
+fi
 
 omarchy-notification-send -g  \
   "$count new feeds added" \

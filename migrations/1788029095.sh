@@ -126,7 +126,8 @@ profile_open() {
 affected_profile_open() {
   local preferences profile_root backup
 
-  for preferences in "${pending[@]}"; do
+  for preferences in "${pending[@]-}"; do
+    [[ -n $preferences ]] || continue
     profile_open "$(dirname "$(dirname "$preferences")")" && return 0
   done
 
@@ -155,7 +156,8 @@ done
 
 find_pending
 
-for preferences in "${pending[@]}"; do
+for preferences in "${pending[@]-}"; do
+  [[ -n $preferences ]] || continue
   python3 -c "$repair_py" "$preferences" "$pinned_id" "$accelerator" "$suggested_key" "$backup_suffix" repair
 done
 
@@ -165,7 +167,8 @@ if affected_profile_open; then
   exit 1
 fi
 
-for preferences in "${pending[@]}"; do
+for preferences in "${pending[@]-}"; do
+  [[ -n $preferences ]] || continue
   if python3 -c "$repair_py" "$preferences" "$pinned_id" "$accelerator" "$suggested_key" "$backup_suffix" check; then
     echo "A browser undid the Subscribe to Feeds shortcut repair on exit." >&2
     echo "Close the browser windows, then run: omarchy-migrate" >&2

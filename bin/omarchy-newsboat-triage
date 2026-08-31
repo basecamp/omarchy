@@ -32,7 +32,19 @@ urls_file="${NEWSBOAT_URLS_FILE:-$HOME/.config/newsboat/urls}"
 state_dir="${NEWSBOAT_BRIEF_STATE_DIR:-/tmp/omarchy-newsboat-$UID/briefs}"
 snapshot_file="$state_dir/brief.$brief_id"
 
-if [[ ! -f $cache_file || ! -f $urls_file || ! -f $snapshot_file || -L $snapshot_file ]]; then
+owner_uid() {
+  if stat -c %u "$1" >/dev/null 2>&1; then
+    stat -c %u "$1"
+  else
+    stat -f %u "$1"
+  fi
+}
+
+if [[ ! -f $cache_file || ! -f $urls_file || ! -d $state_dir || -L $state_dir || ! -f $snapshot_file || -L $snapshot_file ]]; then
+  echo "That feed briefing is no longer available. Run Brief Unread again." >&2
+  exit 1
+fi
+if [[ $(owner_uid "$state_dir") != $UID || $(owner_uid "$snapshot_file") != $UID ]]; then
   echo "That feed briefing is no longer available. Run Brief Unread again." >&2
   exit 1
 fi
@@ -85,7 +97,15 @@ if (( read_count > 0 )); then
   fi
 fi
 
-rm -f "$snapshot_file" || true
+if ! rm -f -- "$snapshot_file"; then
+  if (( read_count > 0 )); then
+    echo "The inbox was updated, but the consumed briefing could not be removed." >&2
+    echo "It cannot be applied again because the unread edition has changed." >&2
+  else
+    echo "No read state changed, but the consumed briefing could not be removed." >&2
+  fi
+  exit 1
+fi
 omarchy-notification-send -g 󰚩 \
   "$read_count marked read · $leave_count left for you" \
   "Your confirmed feed briefing is ready." \

@@ -17,6 +17,7 @@ else
   state_dir="$state_root/confirmations"
 fi
 response_written=false
+response_attempted=false
 response_tmp=""
 request_file=""
 response_file=""
@@ -67,12 +68,22 @@ prepare_state_dir() {
 publish_response() {
   local response_file=$1 decision=$2
 
+  response_attempted=true
   response_tmp=$(mktemp "$state_dir/.response.XXXXXXXX")
   chmod 600 "$response_tmp"
   printf '%s\n' "$decision" >"$response_tmp"
   mv -f -- "$response_tmp" "$response_file"
   response_tmp=""
   response_written=true
+}
+
+cleanup_response() {
+  [[ -z $response_tmp ]] || rm -f -- "$response_tmp"
+  response_tmp=""
+  if [[ $response_written == "false" && $response_attempted == "false" && -n $request_file && -f $request_file ]]; then
+    publish_response "$response_file" failed || true
+  fi
+  [[ -z $response_tmp ]] || rm -f -- "$response_tmp"
 }
 
 respond() {
@@ -91,7 +102,7 @@ respond() {
 
   local kind prompt read_count leave_count feed_count
   local decision=failed confirm_status=0
-  trap 'if [[ $response_written == "false" && -f $request_file ]]; then publish_response "$response_file" failed; fi; [[ -z $response_tmp ]] || rm -f -- "$response_tmp"' EXIT
+  trap cleanup_response EXIT
 
   kind=$(jq -er '.kind | select(. == "triage" or . == "scout")' "$request_file") || exit 2
   if [[ $kind == "triage" ]]; then
@@ -136,7 +147,7 @@ bridge() {
   fi
 
   local kind read_count leave_count feed_count descriptor decision=failed
-  trap 'if [[ $response_written == "false" && -f $request_file ]]; then publish_response "$response_file" failed; fi; [[ -z $response_tmp ]] || rm -f -- "$response_tmp"' EXIT
+  trap cleanup_response EXIT
 
   jq -e '.version == 1' "$request_file" >/dev/null || exit 2
   kind=$(jq -er '.kind | select(. == "triage" or . == "scout")' "$request_file") || exit 2

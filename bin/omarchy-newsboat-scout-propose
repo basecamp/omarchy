@@ -29,6 +29,39 @@ if [[ ! -f $urls_file ]]; then
   exit 1
 fi
 
+state_root=""
+if [[ -z ${NEWSBOAT_SCOUT_STATE_DIR:-} ]]; then
+  state_root="/tmp/omarchy-newsboat-$UID"
+fi
+
+owner_uid() {
+  if stat -c %u "$1" >/dev/null 2>&1; then
+    stat -c %u "$1"
+  else
+    stat -f %u "$1"
+  fi
+}
+
+prepare_state_dir() {
+  if [[ -n $state_root ]]; then
+    [[ ! -L $state_root ]] || return 1
+    install -d -m 700 "$state_root"
+    [[ $(owner_uid "$state_root") == "$UID" ]] || return 1
+    chmod 700 "$state_root"
+  fi
+
+  [[ ! -L $state_dir ]] || return 1
+  install -d -m 700 "$state_dir"
+  [[ $(owner_uid "$state_dir") == "$UID" ]] || return 1
+  chmod 700 "$state_dir"
+}
+
+umask 077
+if ! prepare_state_dir; then
+  echo "Could not prepare private Feed Scout state" >&2
+  exit 1
+fi
+
 read_subscriptions() {
   python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" subscriptions "$urls_file" | jq -c '[.[].url]'
 }
@@ -77,8 +110,6 @@ if [[ $current_subscriptions != "$subscriptions" ]]; then
 fi
 
 candidates_json=$(printf '%s\n' "${candidates[@]}" | jq -s '.')
-umask 077
-install -d -m 700 "$state_dir"
 snapshot_file=$(mktemp "$state_dir/scout.XXXXXXXX")
 proposal_id=${snapshot_file##*/scout.}
 trap 'rm -f "$snapshot_file"' EXIT
