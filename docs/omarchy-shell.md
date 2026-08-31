@@ -160,9 +160,7 @@ Rules:
 1. The active bar option is `bar.id`. Omit it or set it to `omarchy.bar` for
    the built-in bar; set it to a plugin whose manifest declares `kind: "bar"`
    to replace the full bar.
-2. Set `bar.transparent` to `false` for solid, `true` for transparent, or
-   `"dynamic"` to stay transparent on an empty or floating-only focused
-   workspace and turn solid for a visible tiled client.
+2. Set `bar.transparent` to `false` for solid, `true` for transparent, or `"dynamic"` to stay transparent on an empty or floating-only focused workspace and turn solid for a visible tiled client.
 3. Every plugin instance is one entry — `bar.layout.<section>` for
    bar widgets, `plugins[]` for everything else.
 4. Settings are inline on the entry. No `config:` sub-object, no
