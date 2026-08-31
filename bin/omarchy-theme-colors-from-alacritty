@@ -120,7 +120,11 @@ background=${background:-$color0}
 foreground=${foreground:-$color7}
 color0=$background
 color7=$foreground
-selection_background=${selection_background:-$foreground}
+# Prefer a muted surface over the text color. Falling back to $foreground made
+# Visual/gum/btop highlights invisible once colors.toml locked selection to the
+# same value as foreground. Match omarchy-theme-color's cascade instead:
+# selection_background -> color8 -> color0 -> background.
+selection_background=${selection_background:-${color8:-${color0:-$background}}}
 accent=$color4
 
 mkdir -p "$THEME_SOURCE"
