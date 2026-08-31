@@ -231,19 +231,23 @@ public:
       if (remove_delay > 0ms)
         std::this_thread::sleep_until(std::min(
             deadline, std::chrono::steady_clock::now() + remove_delay));
+      const bool succeeds = termination_succeeds.load();
       ++termination_count;
+      if (!succeeds)
+        error = "synthetic confirmed termination failed";
+      return succeeds && std::chrono::steady_clock::now() < deadline;
     }
-    if (!termination_succeeds)
+    const bool succeeds = termination_succeeds.load();
+    if (!succeeds)
       error = "synthetic confirmed termination failed";
-    return termination_succeeds &&
-           std::chrono::steady_clock::now() < deadline;
+    return succeeds && std::chrono::steady_clock::now() < deadline;
   }
 
   bool available = true;
   bool attach_succeeds = true;
   bool attached = false;
   bool attached_before_release = false;
-  bool termination_succeeds = true;
+  std::atomic<bool> termination_succeeds = true;
   std::atomic<unsigned> termination_count = 0;
   std::chrono::milliseconds probe_delay{};
   std::chrono::milliseconds cleanup_setup_delay{};
