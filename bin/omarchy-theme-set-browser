@@ -17,8 +17,14 @@ refresh_running_browser() {
   local command="$2"
   local pgrep_args="${3:--x}"
 
+  # The refresh only asks an already-running browser to re-read the policy it
+  # was just handed; the file on disk is what the next launch reads either way.
+  # So it must never hold up the theme change, the migration that called it, or
+  # the update running that migration. -k because a browser that ignores TERM
+  # leaves plain timeout waiting exactly as long as the process it was meant to
+  # bound.
   if omarchy-cmd-present "$command" && pgrep $pgrep_args "$process" >/dev/null; then
-    "$command" --refresh-platform-policy --no-startup-window &>/dev/null
+    timeout -k 2s 10s "$command" --refresh-platform-policy --no-startup-window &>/dev/null
   fi
 }
 
