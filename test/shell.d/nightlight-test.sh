@@ -90,3 +90,47 @@ if rg -q 'omarchy.indicators' "$ROOT/bin/omarchy-toggle-nightlight"; then
   fail "nightlight toggle leaves indicator refresh to the nightlight service"
 fi
 pass "nightlight toggle leaves indicator refresh to the nightlight service"
+
+run_node_test <<'JS'
+const fs = require('fs')
+
+// Item already has `enabled` and `state`. Redeclaring either shadows the base
+// for QML while the C++ side keeps its own, so the two disagree as soon as
+// anything in the chain drives the state machine or disables a subtree.
+const service = fs.readFileSync(path.join(root, 'shell/plugins/services/nightlight/Service.qml'), 'utf8')
+
+assert(
+  !/property\s+bool\s+enabled\s*:/.test(service),
+  'the nightlight service does not shadow Item.enabled'
+)
+
+assert(
+  /readonly property bool nightlightOn:/.test(service) && /var enabling = !root\.nightlightOn/.test(service),
+  'the nightlight service reports its own state under its own name'
+)
+
+// The IPC payload is read outside the shell, so the key it publishes stays put.
+assert(
+  service.includes('JSON.stringify({ enabled: root.nightlightOn, temperature: root.temperature })'),
+  'the nightlight IPC status still answers with an enabled key'
+)
+
+const indicator = fs.readFileSync(path.join(root, 'shell/plugins/bar/indicators/NightLight.qml'), 'utf8')
+
+assert(
+  indicator.includes('nightlightService.nightlightOn') && !indicator.includes('nightlightService.enabled'),
+  'the night light indicator reads the renamed property'
+)
+
+const dictation = fs.readFileSync(path.join(root, 'shell/plugins/bar/indicators/Dictation.qml'), 'utf8')
+
+assert(
+  !/property\s+string\s+state\s*:/.test(dictation) && /property string mode:/.test(dictation),
+  'the dictation indicator does not shadow Item.state'
+)
+
+assert(
+  /active: mode === "recording"/.test(dictation) && /activeTooltipText: mode/.test(dictation),
+  'the dictation indicator drives itself from the renamed property'
+)
+JS

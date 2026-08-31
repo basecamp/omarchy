@@ -5,21 +5,21 @@ import qs.Ui
 BarIndicator {
   id: root
 
-  property string state: "idle"
+  property string mode: "idle"
   property string icon: ""
 
-  active: state === "recording"
+  active: mode === "recording"
   activeText: icon
   inactiveText: "󰍬"
-  activeTooltipText: state
+  activeTooltipText: mode
   inactiveTooltipText: "Dictate"
 
   function update(raw) {
     var data = extractData(raw)
 
-    state = String(data.alt || data.class || "idle")
-    if (state === "recording") icon = "󰍬"
-    else if (state === "transcribing") icon = "󰔟"
+    mode = String(data.alt || data.class || "idle")
+    if (mode === "recording") icon = "󰍬"
+    else if (mode === "transcribing") icon = "󰔟"
     else icon = ""
   }
 
