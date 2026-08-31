@@ -25,7 +25,7 @@ Item {
     }
 
     function beginAttempt() {
-        deniedCall = runtime.invoke("notification_send", {
+        deniedCall = runtime.invoke("notifications.send", "send", {
             category: "spoofed",
             title: "This must not appear",
             body: "The manifest never requested notification authority"

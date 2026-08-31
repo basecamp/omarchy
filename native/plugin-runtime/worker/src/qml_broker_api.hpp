@@ -42,13 +42,15 @@ class InvokeEncoder {
 public:
   virtual ~InvokeEncoder() = default;
   [[nodiscard]] virtual std::optional<EncodedInvoke>
-  encode(std::string_view operation, const QVariantMap &arguments) const = 0;
+  encode(std::string_view capability, std::string_view operation,
+         const QVariantMap &arguments) const = 0;
 };
 
-class BootstrapInvokeEncoder final : public InvokeEncoder {
+class BuiltinInvokeEncoder final {
 public:
   [[nodiscard]] std::optional<EncodedInvoke>
-  encode(std::string_view operation, const QVariantMap &arguments) const override;
+  encode(std::string_view capability, std::string_view operation,
+         const QVariantMap &arguments) const;
 };
 
 class ManifestInvokeEncoder final : public InvokeEncoder {
@@ -56,16 +58,19 @@ public:
   explicit ManifestInvokeEncoder(
       const omarchy::plugins::manifest::ManifestV2 &manifest);
   [[nodiscard]] std::optional<EncodedInvoke>
-  encode(std::string_view operation, const QVariantMap &arguments) const override;
+  encode(std::string_view capability, std::string_view operation,
+         const QVariantMap &arguments) const override;
 
 private:
-  struct DynamicBinding {
-    omarchy::plugins::definitions::CapabilityReference definition;
+  struct Binding {
+    std::string capability;
     std::vector<std::string> operations;
+    std::optional<omarchy::plugins::definitions::CapabilityReference>
+        definition;
   };
-  BootstrapInvokeEncoder bootstrap_;
-  std::vector<DynamicBinding> dynamic_;
-  bool ambiguous_ = false;
+  BuiltinInvokeEncoder builtin_;
+  std::vector<Binding> bindings_;
+  bool valid_ = true;
 };
 
 class BrokerCall final : public QObject {
@@ -111,7 +116,8 @@ public:
                const omarchy::plugins::manifest::ManifestV2 &manifest,
                std::uint64_t activation_generation,
                QObject *parent = nullptr);
-  Q_INVOKABLE QVariant invoke(const QString &operation,
+  Q_INVOKABLE QVariant invoke(const QString &capability,
+                              const QString &operation,
                               const QVariantMap &arguments);
   Q_INVOKABLE bool hasPermission(const QString &capability,
                                  const QString &operation) const;

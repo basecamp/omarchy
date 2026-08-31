@@ -43,6 +43,30 @@ bool bounded_text(const QByteArray &value, qsizetype maximum,
   return true;
 }
 
+bool canonical_name(std::string_view value) {
+  if (value.empty() || value.size() > 128)
+    return false;
+  bool separator = true;
+  for (const unsigned char item : value) {
+    const bool alphanumeric = (item >= 'a' && item <= 'z') ||
+                              (item >= '0' && item <= '9');
+    const bool current_separator = item == '.' || item == '-';
+    if ((!alphanumeric && !current_separator) ||
+        (separator && current_separator))
+      return false;
+    separator = current_separator;
+  }
+  return !separator;
+}
+
+bool canonical_digest(std::string_view value) {
+  return value.size() == 64 &&
+         std::ranges::all_of(value, [](const unsigned char item) {
+           return (item >= '0' && item <= '9') ||
+                  (item >= 'a' && item <= 'f');
+         });
+}
+
 QStringList operations_for(
     const omarchy::plugins::manifest::CapabilityRequest &request) {
   QStringList result;
@@ -148,40 +172,78 @@ std::optional<EncodedInvoke> token_request(
 ManifestInvokeEncoder::ManifestInvokeEncoder(
     const omarchy::plugins::manifest::ManifestV2 &manifest) {
   for (const auto &request : manifest.requests) {
-    if (request.definition_generation == 0)
+    if (!canonical_name(request.capability)) {
+      valid_ = false;
       continue;
-    DynamicBinding binding{
-        .definition = {
-            .canonical_name = omarchy::plugins::definitions::Name(
-                request.capability),
-            .definition_generation = request.definition_generation,
-            .definition_digest = omarchy::plugins::definitions::Digest(
-                request.definition_digest)},
-        .operations = request.operations};
-    for (const auto &operation : binding.operations) {
-      if (std::ranges::any_of(dynamic_, [&](const DynamicBinding &existing) {
-            return std::ranges::find(existing.operations, operation) !=
-                   existing.operations.end();
-          }))
-        ambiguous_ = true;
     }
-    dynamic_.push_back(std::move(binding));
+    if (std::ranges::any_of(bindings_, [&](const Binding &binding) {
+          return binding.capability == request.capability;
+        })) {
+      valid_ = false;
+      continue;
+    }
+    Binding binding{.capability = request.capability,
+                    .operations = {},
+                    .definition = std::nullopt};
+    const permissions::CapabilityKey builtin_key{
+        permissions::CapabilityId(request.capability), 1};
+    if (const auto *builtin = permissions::find_capability(builtin_key)) {
+      if (request.definition_generation != 0 ||
+          !request.definition_digest.empty() || !request.operations.empty()) {
+        valid_ = false;
+        continue;
+      }
+      for (std::size_t index = 0; index < builtin->operation_count; ++index) {
+        const auto operation =
+            permissions::operation_name(builtin->operations[index]);
+        if (operation.empty()) {
+          valid_ = false;
+          break;
+        }
+        binding.operations.emplace_back(operation);
+      }
+    } else {
+      if (request.definition_generation == 0 ||
+          !canonical_digest(request.definition_digest) ||
+          request.operations.empty()) {
+        valid_ = false;
+        continue;
+      }
+      binding.definition =
+          omarchy::plugins::definitions::CapabilityReference{
+              .canonical_name = omarchy::plugins::definitions::Name(
+                  request.capability),
+              .definition_generation = request.definition_generation,
+              .definition_digest = omarchy::plugins::definitions::Digest(
+                  request.definition_digest)};
+      for (const auto &operation : request.operations) {
+        if (!canonical_name(operation) ||
+            std::ranges::find(binding.operations, operation) !=
+            binding.operations.end()) {
+          valid_ = false;
+          break;
+        }
+        binding.operations.push_back(operation);
+      }
+    }
+    if (valid_)
+      bindings_.push_back(std::move(binding));
   }
 }
 
 std::optional<EncodedInvoke> ManifestInvokeEncoder::encode(
-    std::string_view operation, const QVariantMap &arguments) const {
-  if (const auto compiled = bootstrap_.encode(operation, arguments))
-    return compiled;
-  if (ambiguous_)
+    std::string_view capability, std::string_view operation,
+    const QVariantMap &arguments) const {
+  if (!valid_)
     return std::nullopt;
-  const auto binding = std::ranges::find_if(
-      dynamic_, [&](const DynamicBinding &candidate) {
-        return std::ranges::find(candidate.operations, operation) !=
-               candidate.operations.end();
-      });
-  if (binding == dynamic_.end())
+  const auto binding = std::ranges::find(bindings_, capability,
+                                         &Binding::capability);
+  if (binding == bindings_.end() ||
+      std::ranges::find(binding->operations, operation) ==
+          binding->operations.end())
     return std::nullopt;
+  if (!binding->definition)
+    return builtin_.encode(capability, operation, arguments);
   const auto scope =
       arguments.value(QStringLiteral("demandScope")).toString().toUtf8();
   if (!bounded_text(scope, 4096, false))
@@ -201,7 +263,7 @@ std::optional<EncodedInvoke> ManifestInvokeEncoder::encode(
   const auto payload_bytes = std::as_bytes(std::span(
       payload.constData(), static_cast<std::size_t>(payload.size())));
   const omarchy::plugins::definitions::DynamicInvocation invocation{
-      .definition = binding->definition,
+      .definition = *binding->definition,
       .operation = omarchy::plugins::definitions::Name(operation),
       .demand_scope = omarchy::plugins::definitions::CanonicalScope(
           scope.toStdString()),
@@ -215,15 +277,16 @@ std::optional<EncodedInvoke> ManifestInvokeEncoder::encode(
       std::vector<std::byte>(envelope.begin(), envelope.begin() + written)};
 }
 
-std::optional<EncodedInvoke> BootstrapInvokeEncoder::encode(
-    std::string_view operation, const QVariantMap &arguments) const {
-  if (operation == "storage_read")
+std::optional<EncodedInvoke> BuiltinInvokeEncoder::encode(
+    std::string_view capability, std::string_view operation,
+    const QVariantMap &arguments) const {
+  if (capability == "storage.private" && operation == "read")
     return storage(permissions::OperationId::storage_read, arguments);
-  if (operation == "storage_write")
+  if (capability == "storage.private" && operation == "write")
     return storage(permissions::OperationId::storage_write, arguments);
-  if (operation == "storage_remove")
+  if (capability == "storage.private" && operation == "remove")
     return storage(permissions::OperationId::storage_remove, arguments);
-  if (operation == "notification_send") {
+  if (capability == "notifications.send" && operation == "send") {
     const auto category = arguments.value(QStringLiteral("category")).toString().toUtf8();
     const auto title = arguments.value(QStringLiteral("title")).toString().toUtf8();
     const auto body = arguments.value(QStringLiteral("body")).toString().toUtf8();
@@ -238,7 +301,7 @@ std::optional<EncodedInvoke> BootstrapInvokeEncoder::encode(
     return token_request(permissions::OperationId::notification_send,
                          category, provider);
   }
-  if (operation == "audio_play_cue") {
+  if (capability == "audio.play-cue" && operation == "play") {
     const auto cue = arguments.value(QStringLiteral("cue")).toString().toUtf8();
     return token_request(permissions::OperationId::audio_play_cue, cue, {});
   }
@@ -480,21 +543,23 @@ void QmlBrokerApi::notifyFinished(BrokerCall *call) {
       this, [this, call] { emit callFinished(call); }, Qt::QueuedConnection);
 }
 
-QVariant QmlBrokerApi::invoke(const QString &operation,
+QVariant QmlBrokerApi::invoke(const QString &capability,
+                              const QString &operation,
                               const QVariantMap &arguments) {
   if (status_ != QStringLiteral("ready") || encoder_ == nullptr)
     return rejected(QStringLiteral("broker-unavailable"));
   if (!broker_ready_)
     return rejected(QStringLiteral("broker-not-ready"));
-  auto encoded = encoder_->encode(operation.toUtf8().toStdString(), arguments);
+  auto encoded = encoder_->encode(capability.toUtf8().toStdString(),
+                                  operation.toUtf8().toStdString(), arguments);
   if (!encoded)
-    return rejected(QStringLiteral("operation-undeclared"));
+    return rejected(QStringLiteral("request-undeclared"));
   if (encoded->message_type == broker::kDynamicInvokeMessage &&
       trusted_gesture_) {
     omarchy::plugins::definitions::DynamicInvocation invocation;
     if (!omarchy::plugins::definitions::decode_dynamic_invocation(
             encoded->payload, invocation))
-      return rejected(QStringLiteral("operation-undeclared"));
+      return rejected(QStringLiteral("request-undeclared"));
     invocation.gesture = trusted_gesture_;
     std::array<std::byte,
                omarchy::plugins::definitions::kMaximumDynamicEnvelopeBytes>
@@ -502,7 +567,7 @@ QVariant QmlBrokerApi::invoke(const QString &operation,
     std::size_t written = 0;
     if (!omarchy::plugins::definitions::encode_dynamic_invocation(
             invocation, envelope, written))
-      return rejected(QStringLiteral("operation-undeclared"));
+      return rejected(QStringLiteral("request-undeclared"));
     encoded->payload.assign(envelope.begin(), envelope.begin() + written);
   }
   auto slot = std::ranges::find_if(pending_, [](const Pending &item) {

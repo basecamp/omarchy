@@ -175,12 +175,13 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
     if (method.access() != QMetaMethod::Public)
       return false;
     if (method.methodSignature() ==
-            QByteArrayLiteral("invoke(QString,QVariantMap)") &&
+            QByteArrayLiteral("invoke(QString,QString,QVariantMap)") &&
         method.methodType() == QMetaMethod::Method &&
         method.returnMetaType().id() == QMetaType::QVariant &&
-        method.parameterCount() == 2 &&
+        method.parameterCount() == 3 &&
         method.parameterMetaType(0).id() == QMetaType::QString &&
-        method.parameterMetaType(1).id() == QMetaType::QVariantMap) {
+        method.parameterMetaType(1).id() == QMetaType::QString &&
+        method.parameterMetaType(2).id() == QMetaType::QVariantMap) {
       ++invoke;
     } else if (own_properties == 3 &&
                method.methodSignature() ==
@@ -616,7 +617,8 @@ RuntimeResult WorkerRuntime::bind_runtime_api(QObject &runtime_api) {
   }
   if (!valid_runtime_api_surface(runtime_api))
     return failure(RuntimeFailure::invalid_runtime_api,
-                   "runtime API must expose only invoke(QString,QVariantMap)");
+                   "runtime API must expose only "
+                   "invoke(QString,QString,QVariantMap)");
   implementation_->engine.rootContext()->setContextProperty(
       QStringLiteral("runtime"), &runtime_api);
   implementation_->runtime_api_bound = true;

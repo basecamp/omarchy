@@ -38,17 +38,20 @@ namespace wire = omarchy::plugin::wire;
 class DuplicateApiBase : public QObject {
   Q_OBJECT
 public:
-  Q_INVOKABLE QVariant invoke(const QString &, const QVariantMap &) { return {}; }
+  Q_INVOKABLE QVariant invoke(const QString &, const QString &,
+                              const QVariantMap &) { return {}; }
 };
 class DuplicateApi final : public DuplicateApiBase {
   Q_OBJECT
 public:
-  Q_INVOKABLE QVariant invoke(const QString &, const QVariantMap &) { return {}; }
+  Q_INVOKABLE QVariant invoke(const QString &, const QString &,
+                              const QVariantMap &) { return {}; }
 };
 class WrongParameterApi final : public QObject {
   Q_OBJECT
 public:
-  Q_INVOKABLE QVariant invoke(const QString &, const QVariant &) { return {}; }
+  Q_INVOKABLE QVariant invoke(const QString &, const QString &,
+                              const QVariant &) { return {}; }
 };
 
 class IntentSink final : public worker::SurfaceIntentSink {
@@ -161,6 +164,84 @@ bool fake_dynamic_dispatch(const definitions::AuthorizedDynamicRequest &request,
   written = 1;
   return true;
 }
+
+void capability_qualified_collision() {
+  const std::string alpha_digest(64, 'a');
+  const std::string beta_digest(64, 'b');
+  const std::string document =
+      "{\"schemaVersion\":2,\"id\":\"org.example.collision\","
+      "\"name\":\"Collision\",\"version\":\"1\",\"runtime\":{"
+      "\"apiVersion\":1,\"qml\":\"Main.qml\"},\"surfaces\":{},"
+      "\"permissions\":{\"required\":[{\"capability\":\"service.alpha\","
+      "\"definitionGeneration\":3,\"definitionDigest\":\"" + alpha_digest +
+      "\",\"operations\":[\"read\",\"control\"],\"reason\":\"alpha\"},{"
+      "\"capability\":\"service.beta\",\"definitionGeneration\":7,"
+      "\"definitionDigest\":\"" + beta_digest +
+      "\",\"operations\":[\"read\",\"control\"],\"reason\":\"beta\"}],"
+      "\"optional\":[]}}";
+  const auto parsed = manifest::parse_manifest_v2(document);
+  worker::ManifestInvokeEncoder encoder(parsed);
+  const QVariantMap arguments{
+      {QStringLiteral("demandScope"), QStringLiteral("{}")},
+      {QStringLiteral("payload"),
+       QVariantMap{{QStringLiteral("resource"), 7}}}};
+
+  const auto alpha_read = encoder.encode("service.alpha", "read", arguments);
+  const auto beta_read = encoder.encode("service.beta", "read", arguments);
+  const auto beta_control =
+      encoder.encode("service.beta", "control", arguments);
+  definitions::DynamicInvocation alpha_invocation;
+  definitions::DynamicInvocation beta_read_invocation;
+  definitions::DynamicInvocation beta_control_invocation;
+  require(alpha_read && beta_read && beta_control &&
+              definitions::decode_dynamic_invocation(alpha_read->payload,
+                                                     alpha_invocation) &&
+              definitions::decode_dynamic_invocation(beta_read->payload,
+                                                     beta_read_invocation) &&
+              definitions::decode_dynamic_invocation(beta_control->payload,
+                                                     beta_control_invocation) &&
+              alpha_invocation.definition.canonical_name.view() ==
+                  "service.alpha" &&
+              alpha_invocation.definition.definition_generation == 3 &&
+              alpha_invocation.definition.definition_digest.view() ==
+                  alpha_digest &&
+              alpha_invocation.operation.view() == "read" &&
+              beta_read_invocation.definition.canonical_name.view() ==
+                  "service.beta" &&
+              beta_read_invocation.definition.definition_generation == 7 &&
+              beta_read_invocation.definition.definition_digest.view() ==
+                  beta_digest &&
+              beta_read_invocation.operation.view() == "read" &&
+              beta_control_invocation.definition ==
+                  beta_read_invocation.definition &&
+              beta_control_invocation.operation.view() == "control",
+          "shared operation names did not retain their exact capability and "
+          "definition bindings");
+  require(!encoder.encode("service.old-alpha", "read", arguments) &&
+              !encoder.encode("service.alpha", "delete", arguments) &&
+              !encoder.encode("storage.private", "read", arguments),
+          "an undeclared capability or operation reached encoding");
+
+  auto duplicate_capability = parsed;
+  duplicate_capability.requests.push_back(parsed.requests.front());
+  worker::ManifestInvokeEncoder duplicate_encoder(duplicate_capability);
+  require(!duplicate_encoder.encode("service.alpha", "read", arguments),
+          "duplicate capability rows retained an ambiguous binding");
+  auto duplicate_operation = parsed;
+  duplicate_operation.requests.front().operations.push_back("read");
+  worker::ManifestInvokeEncoder duplicate_operation_encoder(
+      duplicate_operation);
+  require(!duplicate_operation_encoder.encode("service.alpha", "read",
+                                               arguments),
+          "duplicate operation rows retained an ambiguous binding");
+  auto malformed_reference = parsed;
+  malformed_reference.requests.front().definition_digest =
+      std::string(64, 'A');
+  worker::ManifestInvokeEncoder malformed_encoder(malformed_reference);
+  require(!malformed_encoder.encode("service.alpha", "read", arguments),
+          "a malformed definition reference reached encoding");
+}
+
 void dynamic_qml_to_adapter() {
   definitions::CapabilityDefinition definition{
       .canonical_name = definitions::Name("service.status"),
@@ -198,7 +279,7 @@ void dynamic_qml_to_adapter() {
   const auto parsed = manifest::parse_manifest_v2(document);
   worker::ManifestInvokeEncoder encoder(parsed);
   const auto encoded = encoder.encode(
-      "read", {{QStringLiteral("demandScope"),
+      "service.status", "read", {{QStringLiteral("demandScope"),
                  QStringLiteral("{\"dataset\":\"status\"}")},
                 {QStringLiteral("payload"),
                  QVariantMap{{QStringLiteral("resource"), 7}}}});
@@ -446,8 +527,8 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
     const auto fingerprint =
         manifest::requested_capability_fingerprint(sixteen.requests);
     worker::QmlBrokerApi high_bit(
-        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(), sixteen,
-        77);
+        endpoint, std::make_unique<worker::ManifestInvokeEncoder>(sixteen),
+        sixteen, 77);
     const auto high_bit_payload = wire::permission_snapshot::encode({
         .manifest_request_fingerprint = fingerprint,
         .permissions = {
@@ -466,8 +547,8 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
             "worker did not map bit 15 to canonical operation index 15");
 
     worker::QmlBrokerApi full(
-        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(), sixteen,
-        77);
+        endpoint, std::make_unique<worker::ManifestInvokeEncoder>(sixteen),
+        sixteen, 77);
     const auto full_payload = wire::permission_snapshot::encode({
         .manifest_request_fingerprint = fingerprint,
         .permissions = {
@@ -479,8 +560,8 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
 
     sixteen.requests.front().operations.pop_back();
     worker::QmlBrokerApi fifteen(
-        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(), sixteen,
-        77);
+        endpoint, std::make_unique<worker::ManifestInvokeEncoder>(sixteen),
+        sixteen, 77);
     const auto excess_payload = wire::permission_snapshot::encode({
         .manifest_request_fingerprint =
             manifest::requested_capability_fingerprint(sixteen.requests),
@@ -501,7 +582,7 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
          .operations = {"required", "state"},
          .required = false});
     worker::QmlBrokerApi candidate(
-        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(),
+        endpoint, std::make_unique<worker::ManifestInvokeEncoder>(colliding),
         colliding, 77);
     const auto collision_payload = wire::permission_snapshot::encode({
         .manifest_request_fingerprint =
@@ -531,7 +612,7 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
 
     colliding.requests.front().required = true;
     worker::QmlBrokerApi required_candidate(
-        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(),
+        endpoint, std::make_unique<worker::ManifestInvokeEncoder>(colliding),
         colliding, 77);
     const auto required_partial = wire::permission_snapshot::encode({
         .manifest_request_fingerprint =
@@ -565,7 +646,7 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
            .required = false});
     }
     worker::QmlBrokerApi candidate(
-        endpoint, std::make_unique<worker::BootstrapInvokeEncoder>(), many,
+        endpoint, std::make_unique<worker::ManifestInvokeEncoder>(many), many,
         77);
     const auto many_payload = wire::permission_snapshot::encode({
         .manifest_request_fingerprint =
@@ -593,7 +674,7 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
   require(qml != nullptr && qml->property("notificationsAvailable").toBool(),
           "representative QML did not enable its granted optional feature");
   auto *still_checked = qobject_cast<worker::BrokerCall *>(
-      api.invoke(QStringLiteral("storage_read"),
+      api.invoke(QStringLiteral("storage.private"), QStringLiteral("read"),
                  {{QStringLiteral("key"), QStringLiteral("widget-state")}})
           .value<QObject *>());
   static_cast<void>(receive_packet(host));
@@ -643,7 +724,7 @@ void run() {
       property var startupCall
       property var readyCall
       function requestWrite() {
-        return runtime.invoke("storage_write", {
+        return runtime.invoke("storage.private", "write", {
           key: "startup-state", value: "saved",
           quotaBytes: 65536, itemBytes: 4096
         })
@@ -754,7 +835,8 @@ void run() {
   QVariantMap arguments{{QStringLiteral("key"), QStringLiteral("timer-state")},
                         {QStringLiteral("value"), QByteArray("saved")}};
   auto *allowed = qobject_cast<worker::BrokerCall *>(
-      api.invoke(QStringLiteral("storage_write"), arguments).value<QObject *>());
+      api.invoke(QStringLiteral("storage.private"), QStringLiteral("write"),
+                 arguments).value<QObject *>());
   require(allowed != nullptr && !allowed->finished() && allowed->correlation() != 0,
           "declared invoke did not become asynchronous");
   const auto request_bytes = receive_packet(pair.descriptors[1]);
@@ -782,7 +864,7 @@ void run() {
       property var call: null
       property string phase: "idle"
       function start() {
-        call = runtime.invoke("storage_write", {
+        call = runtime.invoke("storage.private", "write", {
           key: "qml-completion", value: "saved",
           quotaBytes: 65536, itemBytes: 4096
         })
@@ -832,7 +914,8 @@ void run() {
           "authenticated denial did not update representative QML behavior");
 
   auto *denied = qobject_cast<worker::BrokerCall *>(
-      api.invoke(QStringLiteral("storage_write"), arguments).value<QObject *>());
+      api.invoke(QStringLiteral("storage.private"), QStringLiteral("write"),
+                 arguments).value<QObject *>());
   static_cast<void>(receive_packet(pair.descriptors[1]));
   const auto denial = broker::encode_broker_error({
       .failed_operation = permissions::OperationId::storage_write,
@@ -845,7 +928,8 @@ void run() {
           "explicit denial did not reject QML call");
 
   auto *outside = qobject_cast<worker::BrokerCall *>(
-      api.invoke(QStringLiteral("storage_write"), arguments).value<QObject *>());
+      api.invoke(QStringLiteral("storage.private"), QStringLiteral("write"),
+                 arguments).value<QObject *>());
   static_cast<void>(receive_packet(pair.descriptors[1]));
   const auto scope_denial = broker::encode_broker_error({
       .failed_operation = permissions::OperationId::storage_write,
@@ -861,20 +945,31 @@ void run() {
   require(fcntl(pair.descriptors[1], F_SETFL, O_NONBLOCK) == 0,
           "nonblocking host setup failed");
   auto *unknown = qobject_cast<worker::BrokerCall *>(
-      api.invoke(QStringLiteral("shell_exec"), {}).value<QObject *>());
+      api.invoke(QStringLiteral("shell.exec"), QStringLiteral("execute"), {})
+          .value<QObject *>());
+  auto *wrong_capability = qobject_cast<worker::BrokerCall *>(
+      api.invoke(QStringLiteral("notifications.send"),
+                 QStringLiteral("send"), {})
+          .value<QObject *>());
   std::byte byte{};
   errno = 0;
   require(unknown != nullptr && unknown->finished() && !unknown->ok() &&
-              unknown->error() == "operation-undeclared" &&
+              unknown->error() == "request-undeclared" &&
+              wrong_capability != nullptr && wrong_capability->finished() &&
+              !wrong_capability->ok() &&
+              wrong_capability->error() == "request-undeclared" &&
               recv(pair.descriptors[1], &byte, 1, 0) < 0 &&
               (errno == EAGAIN || errno == EWOULDBLOCK),
-          "undeclared operation gained an ambient fallback or broker packet");
+          "undeclared capability or operation gained an ambient fallback or "
+          "broker packet");
   dynamic_qml_to_adapter();
+  capability_qualified_collision();
   permission_awareness(endpoint, pair.descriptors[1], host_sequence);
   api.disconnect(QStringLiteral("test-disconnect"));
   drain_events();
   auto *disconnected = qobject_cast<worker::BrokerCall *>(
-      api.invoke(QStringLiteral("storage_write"), arguments).value<QObject *>());
+      api.invoke(QStringLiteral("storage.private"), QStringLiteral("write"),
+                 arguments).value<QObject *>());
   errno = 0;
   require(!api.brokerReady() &&
               !readiness->property("observedReady").toBool() &&

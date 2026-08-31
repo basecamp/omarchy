@@ -148,19 +148,26 @@ resolve_requests(const manifest::ManifestV2 &plugin,
   return result;
 }
 
-std::vector<std::string>
+struct RequestName {
+  std::string capability;
+  std::string operation;
+  bool operator==(const RequestName &) const = default;
+};
+
+std::vector<RequestName>
 compiled_operations(const manifest::ManifestV2 &plugin) {
-  std::vector<std::string> result;
+  std::vector<RequestName> result;
   for (const auto &request : plugin.requests) {
     if (request.definition_generation != 0)
       continue;
     if (request.capability == "storage.private")
-      result.insert(result.end(), {"storage_read", "storage_write",
-                                   "storage_remove"});
+      result.insert(result.end(), {{"storage.private", "read"},
+                                   {"storage.private", "write"},
+                                   {"storage.private", "remove"}});
     else if (request.capability == "notifications.send")
-      result.push_back("notification_send");
+      result.emplace_back("notifications.send", "send");
     else if (request.capability == "audio.play-cue")
-      result.push_back("audio_play_cue");
+      result.emplace_back("audio.play-cue", "play");
   }
   return result;
 }
@@ -170,18 +177,23 @@ class StrictRuntime final : public QObject {
 public:
   StrictRuntime(const definitions::TrustedDefinitionRegistry &registry,
                 std::vector<Binding> bindings,
-                std::vector<std::string> compiled)
+                std::vector<RequestName> compiled)
       : registry_(registry), bindings_(std::move(bindings)),
         compiled_(std::move(compiled)) {}
 
-  Q_INVOKABLE QVariant invoke(const QString &operation,
+  Q_INVOKABLE QVariant invoke(const QString &capability,
+                              const QString &operation,
                               const QVariantMap &arguments) {
     (void)arguments;
+    const auto capability_name = capability.toStdString();
     const auto name = operation.toStdString();
-    if (std::ranges::find(compiled_, name) != compiled_.end())
+    if (std::ranges::find(compiled_, RequestName{capability_name, name}) !=
+        compiled_.end())
       return QVariantMap{{QStringLiteral("ok"), true}};
     bool registered = false;
     for (const auto &binding : bindings_) {
+      if (binding.request.definition.canonical_name.view() != capability_name)
+        continue;
       const auto resolved = registry_.resolve(binding.request.definition);
       if (resolved &&
           std::ranges::any_of(
@@ -204,7 +216,7 @@ public:
 private:
   const definitions::TrustedDefinitionRegistry &registry_;
   std::vector<Binding> bindings_;
-  std::vector<std::string> compiled_;
+  std::vector<RequestName> compiled_;
 };
 
 class Mapping {
@@ -283,7 +295,8 @@ void run(const std::filesystem::path &root,
 
   StrictRuntime provider(registry, std::move(bindings), std::move(compiled));
   const auto unknown =
-      provider.invoke(QStringLiteral("untrusted.magic"), {}).toMap();
+      provider.invoke(QStringLiteral("untrusted.capability"),
+                      QStringLiteral("magic"), {}).toMap();
   require(!unknown.value(QStringLiteral("ok")).toBool() &&
               unknown.value(QStringLiteral("error")).toString() ==
                   QStringLiteral("unknown-operation"),

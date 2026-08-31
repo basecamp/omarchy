@@ -19,7 +19,7 @@ Item {
     function begin() {
         phase = "WRITING"
         detail = "storage.private/write requested"
-        writeCall = runtime.invoke("storage_write", {
+        writeCall = runtime.invoke("storage.private", "write", {
             key: "live-evidence",
             value: "broker-round-trip",
             quotaBytes: 65536,
@@ -38,7 +38,7 @@ Item {
         }
         phase = "READING"
         detail = "write allowed; storage.private/read requested"
-        readCall = runtime.invoke("storage_read", {
+        readCall = runtime.invoke("storage.private", "read", {
             key: "live-evidence",
             quotaBytes: 65536,
             itemBytes: 4096

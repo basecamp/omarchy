@@ -87,18 +87,20 @@ public:
       : QObject(parent), allowed_(std::move(allowed)),
         asynchronous_(asynchronous) {}
 
-  Q_INVOKABLE QVariant invoke(const QString &operation,
+  Q_INVOKABLE QVariant invoke(const QString &capability,
+                              const QString &operation,
                               const QVariantMap &payload) {
-    if (!allowed_.contains(operation)) {
-      denied_.push_back(operation);
+    const auto request = capability + QStringLiteral("/") + operation;
+    if (!allowed_.contains(request)) {
+      denied_.push_back(request);
       if (asynchronous_)
         return asynchronousCall(false, QStringLiteral("permission denied"), {});
       return false;
     }
-    operations_.push_back(operation);
+    operations_.push_back(request);
     payloads_.push_back(payload);
     if (asynchronous_) {
-      const QVariant value = operation == QStringLiteral("storage_read")
+      const QVariant value = request == QStringLiteral("storage.private/read")
                                  ? QVariant(QStringLiteral("encoded-result"))
                                  : QVariant();
       return asynchronousCall(true, {}, value);
@@ -106,19 +108,19 @@ public:
     return true;
   }
 
-  [[nodiscard]] int count(const QString &operation) const {
-    return operations_.count(operation);
+  [[nodiscard]] int count(const QString &request) const {
+    return operations_.count(request);
   }
 
-  [[nodiscard]] bool denied(const QString &operation) const {
-    return denied_.contains(operation);
+  [[nodiscard]] bool denied(const QString &request) const {
+    return denied_.contains(request);
   }
 
   Q_INVOKABLE bool hasPermission(const QString &capability,
                                  const QString &operation) const {
     return capability == QStringLiteral("notifications.send") &&
            operation == QStringLiteral("send") &&
-           allowed_.contains(QStringLiteral("notification_send"));
+           allowed_.contains(QStringLiteral("notifications.send/send"));
   }
 
   Q_INVOKABLE QString permissionState(const QString &capability,
@@ -132,13 +134,13 @@ public:
              QVariantMap{
                  {QStringLiteral("required"), false},
                  {QStringLiteral("state"),
-                  allowed_.contains(QStringLiteral("notification_send"))
+                  allowed_.contains(QStringLiteral("notifications.send/send"))
                       ? QStringLiteral("granted")
                       : QStringLiteral("denied")},
                  {QStringLiteral("operations"),
                   QVariantMap{{QStringLiteral("send"),
                                allowed_.contains(QStringLiteral(
-                                   "notification_send"))
+                                   "notifications.send/send"))
                                    ? QStringLiteral("granted")
                                    : QStringLiteral("denied")}}}}}};
   }
@@ -248,30 +250,30 @@ void test_neutral_surface_fixture() {
 }
 
 void test_permission_aware_fixtures() {
-  FakeRuntime authorized({QStringLiteral("storage_read"),
-                          QStringLiteral("storage_write")}, true);
+  FakeRuntime authorized({QStringLiteral("storage.private/read"),
+                          QStringLiteral("storage.private/write")}, true);
   auto authorized_fixture = load("lab-authorized", authorized);
   QEventLoop authorized_loop;
   QTimer::singleShot(50, &authorized_loop, &QEventLoop::quit);
   authorized_loop.exec();
   require(authorized_fixture->object->property("phase").toString() ==
                   QStringLiteral("AUTHORIZED") &&
-              authorized.count(QStringLiteral("storage_write")) == 1 &&
-              authorized.count(QStringLiteral("storage_read")) == 1,
+              authorized.count(QStringLiteral("storage.private/write")) == 1 &&
+              authorized.count(QStringLiteral("storage.private/read")) == 1,
           "authorized fixture did not follow async broker completions");
 
-  FakeRuntime denied({QStringLiteral("storage_read"),
-                      QStringLiteral("storage_write")}, true);
+  FakeRuntime denied({QStringLiteral("storage.private/read"),
+                      QStringLiteral("storage.private/write")}, true);
   auto denied_fixture = load("lab-denied", denied);
   QEventLoop denied_loop;
   QTimer::singleShot(50, &denied_loop, &QEventLoop::quit);
   denied_loop.exec();
   require(denied_fixture->object->property("phase").toString() ==
                   QStringLiteral("DENIED") &&
-              denied.denied(QStringLiteral("notification_send")),
+              denied.denied(QStringLiteral("notifications.send/send")),
           "denial fixture did not follow async broker denial");
 
-  FakeRuntime permission({QStringLiteral("notification_send")});
+  FakeRuntime permission({QStringLiteral("notifications.send/send")});
   require(permission.permissions()
                   .value(QStringLiteral("notifications.send"))
                   .toMap()

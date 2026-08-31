@@ -715,7 +715,7 @@ Item {
   property var notificationCall
   function invokeNotification() {
     if (notificationsGranted)
-      notificationCall = runtime.invoke("notification_send", {
+      notificationCall = runtime.invoke("notifications.send", "send", {
         category: "status",
         title: "Permission generation",
         body: "The optional feature is enabled"
