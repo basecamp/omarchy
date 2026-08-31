@@ -3,6 +3,56 @@
 # omarchy:summary=Overwrite the user config for the Limine bootloader and rebuild it.
 # omarchy:requires-sudo=true
 
+# Privileged copies must not follow a caller-controlled OMARCHY_PATH. The
+# packaged tree is always trusted. A linked checkout is trusted only when
+# /etc/omarchy.conf is a root-owned regular file whose only line names that
+# checkout, which is what omarchy-dev-link writes. omarchy-plymouth-set uses
+# the same rule. Keep this block in step with omarchy-refresh-pacman,
+# omarchy-toggle-hybrid-gpu, and omarchy-hibernation-setup.
+omarchy_privileged_source_root() {
+  local packaged=/usr/share/omarchy
+  local path=${OMARCHY_PATH:-$packaged}
+  local conf=/etc/omarchy.conf
+  local uid mode
+  local -a lines
+
+  if [[ $path == "$packaged" ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  if [[ ! -f $conf || -L $conf ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  uid=$(stat -c %u -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  mode=$(stat -c %a -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( uid != 0 )) || (( 8#$mode & 0022 )); then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  mapfile -t lines <"$conf" || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( ${#lines[@]} == 1 )) && [[ ${lines[0]} == "export OMARCHY_PATH=\"$path\"" ]]; then
+    printf '%s\n' "$path"
+    return
+  fi
+
+  printf '%s\n' "$packaged"
+}
+
+SOURCE_ROOT=$(omarchy_privileged_source_root)
+
 legacy_uki="/boot/EFI/Linux/$(cat /etc/machine-id)_linux.efi"
 
 if sudo test -f /boot/EFI/Linux/omarchy_linux.efi && sudo test -f "$legacy_uki"; then
@@ -13,7 +63,7 @@ echo "Resetting limine config"
 
 sudo mv /boot/limine.conf /boot/limine.conf.bak
 
-sudo cp "$OMARCHY_PATH/default/limine/limine.conf" /boot/limine.conf
+sudo cp "$SOURCE_ROOT/default/limine/limine.conf" /boot/limine.conf
 
 sudo limine-update
 sudo limine-snapper-sync

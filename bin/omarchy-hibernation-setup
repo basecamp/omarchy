@@ -4,6 +4,56 @@
 # omarchy:requires-sudo=true
 # omarchy:args=[--force] [--no-rebuild]
 
+# Privileged copies must not follow a caller-controlled OMARCHY_PATH. The
+# packaged tree is always trusted. A linked checkout is trusted only when
+# /etc/omarchy.conf is a root-owned regular file whose only line names that
+# checkout, which is what omarchy-dev-link writes. omarchy-plymouth-set uses
+# the same rule. Keep this block in step with omarchy-refresh-limine,
+# omarchy-refresh-pacman, and omarchy-toggle-hybrid-gpu.
+omarchy_privileged_source_root() {
+  local packaged=/usr/share/omarchy
+  local path=${OMARCHY_PATH:-$packaged}
+  local conf=/etc/omarchy.conf
+  local uid mode
+  local -a lines
+
+  if [[ $path == "$packaged" ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  if [[ ! -f $conf || -L $conf ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  uid=$(stat -c %u -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  mode=$(stat -c %a -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( uid != 0 )) || (( 8#$mode & 0022 )); then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  mapfile -t lines <"$conf" || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( ${#lines[@]} == 1 )) && [[ ${lines[0]} == "export OMARCHY_PATH=\"$path\"" ]]; then
+    printf '%s\n' "$path"
+    return
+  fi
+
+  printf '%s\n' "$packaged"
+}
+
+SOURCE_ROOT=$(omarchy_privileged_source_root)
+
 FORCE=false
 NO_REBUILD=false
 for arg in "$@"; do
@@ -89,7 +139,7 @@ echo "Adding resume hook to $MKINITCPIO_CONF"
 echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
 
 # Ensure keyboard backlight doesn't prevent sleep
-sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
+sudo cp -p "$SOURCE_ROOT/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
 
 # Add resume= kernel parameters so the initramfs resume hook knows where to find the
 # hibernation image. Without these, resume happens late (after GPU drivers load) and fails.

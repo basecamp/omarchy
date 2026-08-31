@@ -3,6 +3,56 @@
 # omarchy:summary=Overwrite the package configuration for /etc/pacman with the Omarchy default of using its dedicated mirrors and repositories, then update all packages.
 # omarchy:requires-sudo=true
 
+# Privileged copies must not follow a caller-controlled OMARCHY_PATH. The
+# packaged tree is always trusted. A linked checkout is trusted only when
+# /etc/omarchy.conf is a root-owned regular file whose only line names that
+# checkout, which is what omarchy-dev-link writes. omarchy-plymouth-set uses
+# the same rule. Keep this block in step with omarchy-refresh-limine,
+# omarchy-toggle-hybrid-gpu, and omarchy-hibernation-setup.
+omarchy_privileged_source_root() {
+  local packaged=/usr/share/omarchy
+  local path=${OMARCHY_PATH:-$packaged}
+  local conf=/etc/omarchy.conf
+  local uid mode
+  local -a lines
+
+  if [[ $path == "$packaged" ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  if [[ ! -f $conf || -L $conf ]]; then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  uid=$(stat -c %u -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  mode=$(stat -c %a -- "$conf" 2>/dev/null) || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( uid != 0 )) || (( 8#$mode & 0022 )); then
+    printf '%s\n' "$packaged"
+    return
+  fi
+
+  mapfile -t lines <"$conf" || {
+    printf '%s\n' "$packaged"
+    return
+  }
+  if (( ${#lines[@]} == 1 )) && [[ ${lines[0]} == "export OMARCHY_PATH=\"$path\"" ]]; then
+    printf '%s\n' "$path"
+    return
+  fi
+
+  printf '%s\n' "$packaged"
+}
+
+SOURCE_ROOT=$(omarchy_privileged_source_root)
+
 sudo cp -f /etc/pacman.conf /etc/pacman.conf.bak
 sudo cp -f /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 
@@ -16,8 +66,8 @@ fi
 echo "Setting channel to $channel"
 echo
 
-sudo cp -f "$OMARCHY_PATH/default/pacman/pacman-$channel.conf" /etc/pacman.conf
-sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist
+sudo cp -f "$SOURCE_ROOT/default/pacman/pacman-$channel.conf" /etc/pacman.conf
+sudo cp -f "$SOURCE_ROOT/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist
 
 # Allow user customization of /etc/pacman.conf before the upgrade runs
 omarchy-hook pre-refresh-pacman
