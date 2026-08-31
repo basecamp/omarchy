@@ -101,7 +101,8 @@ struct Harness {
   explicit Harness(std::uint64_t generation, std::uint32_t logical_width = 64,
                    std::uint32_t logical_height = 32, std::uint32_t dpr = 1,
                    std::string_view fixture_name = "expressive")
-      : runtime(std::filesystem::path(D2_WORKER_FIXTURE_ROOT) / fixture_name),
+      : runtime(std::filesystem::path(SURFACE_HOST_WORKER_FIXTURE_ROOT) /
+                fixture_name),
         input_sink(std::make_shared<NullInputSink>()),
         transport(std::make_shared<bridge::AuthenticatedInputTransport>(
             generation, input_sink)),
@@ -113,7 +114,7 @@ struct Harness {
         {.id = generation + 100, .generation = generation}, logical_width,
         logical_height, logical_width * dpr, logical_height * dpr, dpr, 1,
         static_cast<std::uint64_t>(page_size));
-    require(allocation.has_value(), "D2 allocation fixture failed");
+    require(allocation.has_value(), "surface allocation fixture failed");
   }
 
   bool receive(std::uint16_t type, std::span<const std::byte> payload,
@@ -130,7 +131,7 @@ struct Harness {
     surface::ProfileOffer offer{};
     require(surface::decode_profile_offer(sender.payloads.at(0), offer) &&
                 static_cast<bool>(runtime.select_software_profile(offer)),
-            "C5 worker rejected D2 software offer");
+            "worker rejected the host software-profile offer");
     const auto selected =
         surface::select_software_profile(std::array{offer.version});
     require(selected.has_value(), "profile selection fixture failed");
@@ -139,7 +140,7 @@ struct Harness {
                         surface::RenderMessageType::profile_select),
                     selected_payload, 1) &&
                 sender.headers.size() == 2 && sender.worker_descriptor >= 0,
-            "host did not send the B4 allocation and descriptor");
+            "host did not send the surface allocation and descriptor");
     surface::TrustedAllocation decoded{};
     const auto page_size = sysconf(_SC_PAGESIZE);
     require(surface::decode_surface_allocation(
@@ -148,7 +149,7 @@ struct Harness {
                 decoded == *allocation &&
                 static_cast<bool>(
                     runtime.allocate(decoded, sender.take_worker_descriptor())),
-            "C5 worker rejected D2 frame region");
+            "worker rejected the host frame region");
   }
 
   void negotiate() {
@@ -164,12 +165,12 @@ struct Harness {
 
   surface::FrameReady publish() {
     const auto frame = runtime.render();
-    require(frame.has_value(), "C5 worker did not render a frame");
+    require(frame.has_value(), "worker did not render a frame");
     const auto payload = surface::encode_frame_ready(frame->ready);
     require(receive(static_cast<std::uint16_t>(
                         surface::RenderMessageType::frame_ready),
                     payload),
-            "D2 host rejected a valid C5 frame");
+            "host rejected a valid worker frame");
     return frame->ready;
   }
 
@@ -227,7 +228,7 @@ void animated_alpha_and_throughput() {
   const QImage first_image = painted_surface(harness.item, *harness.allocation);
   const auto pixel = first_image.pixelColor(0, 0);
   require(pixel.alpha() > 0 && pixel.alpha() < 255,
-          "premultiplied alpha was lost across the D2 loop");
+          "premultiplied alpha was lost across the render loop");
   bool changed = false;
   const auto started = std::chrono::steady_clock::now();
   for (int frame = 0; frame < 120; ++frame) {
@@ -245,7 +246,7 @@ void animated_alpha_and_throughput() {
               statistics.maximum_copy_time < std::chrono::milliseconds(50),
           "animated frame throughput or bounded copy latency regressed");
   std::cout
-      << "D2 frames=" << statistics.accepted_frames
+      << "render_session frames=" << statistics.accepted_frames
       << " copied_bytes=" << statistics.copied_bytes << " wall_us="
       << std::chrono::duration_cast<std::chrono::microseconds>(elapsed).count()
       << " max_copy_us="

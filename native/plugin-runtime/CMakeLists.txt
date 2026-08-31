@@ -128,7 +128,6 @@ endif()
 if(TARGET omarchy-plugin-wire
     AND TARGET omarchy-plugin-surface-contract)
   add_subdirectory(trusted-bridge)
-  add_subdirectory(render-session)
   add_subdirectory(surface-host)
 endif()
 
@@ -182,7 +181,6 @@ set(plugin_host_embedded_targets
   omarchy-plugin-capability-definitions
   omarchy-plugin-broker-core
   omarchy-plugin-trusted-bridge
-  omarchy-plugin-render-session
   omarchy-plugin-surface-host
   omarchy-plugin-launcher
   omarchy-plugin-providers
