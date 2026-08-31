@@ -43,6 +43,13 @@ assertEqual(outputRows[0].kind, 'sink', 'audio keeps active sinks as selectable 
 assertEqual(outputRows[0].label, 'Left Monitor', 'audio labels active sinks from their card ports')
 assertEqual(outputRows[1].kind, 'profile', 'audio exposes inactive profiles as selectable output rows')
 assertEqual(outputRows[1].label, 'Right Monitor', 'audio keeps monitor names on profile rows')
+
+const reorderedRows = audio.outputRows([{ ...activeSink, name: 'alsa_output.gpu.hdmi-stereo-extra1' }], [
+  { cardName: 'alsa_card.gpu', profileName: 'output:hdmi-stereo', label: 'Left Monitor', description: 'Digital Stereo' },
+  { cardName: 'alsa_card.gpu', profileName: 'output:hdmi-stereo-extra1', label: 'Right Monitor', description: 'Digital Stereo' }
+])
+assertEqual(reorderedRows[0].label, 'Left Monitor', 'audio keeps output rows sorted when the active profile changes')
+assertEqual(reorderedRows[1].label, 'Right Monitor', 'audio does not move the selected output to the front')
 assertEqual(audio.friendlyDeviceLabel('Built-in Audio Speakers Output'), 'Speakers', 'audio cleans device labels')
 assertEqual(
   audio.nodeLabel({ ready: true, properties: { 'node.nick': 'Built-in Audio Microphones Input' }, name: 'alsa_input' }),
