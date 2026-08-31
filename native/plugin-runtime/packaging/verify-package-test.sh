@@ -50,6 +50,11 @@ expect_failure "writable directory" "runtime directory mode is not 755" "$verifi
 
 reset_fixture
 root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+rmdir "$root/capabilities.d"
+expect_failure "missing capability root" "trusted capability directory is absent" "$verifier" --staging "$scratch/root" "$version"
+
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
 mv "$root/policy/builtin-capabilities-v1.json" "$scratch/policy.json"
 ln -s "$scratch/policy.json" "$root/policy/builtin-capabilities-v1.json"
 expect_failure "policy symlink" "installed file manifest differs" "$verifier" --staging "$scratch/root" "$version"

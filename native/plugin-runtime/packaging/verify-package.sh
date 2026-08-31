@@ -59,6 +59,7 @@ version=$3
 root=$staging/usr/lib/omarchy/plugin-security/$version
 manifest=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/package-manifest-v1.txt
 [[ -d $root && ! -L $root ]] || fail "versioned runtime root is absent or linked"
+[[ -d $root/capabilities.d && ! -L $root/capabilities.d ]] || fail "trusted capability directory is absent or linked"
 
 actual=$(cd "$root" && find . -type f -printf '%m %P\n' | LC_ALL=C sort)
 expected=$(LC_ALL=C sort "$manifest")
@@ -118,7 +119,7 @@ readelf -Ws "$worker" | grep -F '@Qt_6_PRIVATE_API' >/dev/null ||
   fail "omarchy-plugin-qml-worker omits expected Qt private ABI imports"
 
 qt_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libxkbcommon\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6)$'
-bridge_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libsystemd\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6|ld-linux-x86-64\.so\.2)$'
+bridge_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|DBus|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libsystemd\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6|ld-linux-x86-64\.so\.2)$'
 verify_elf "$worker" pie "$qt_allowed" libseccomp.so.2
 needed_libraries "$worker" | grep -Fx libxkbcommon.so.0 >/dev/null || fail "omarchy-plugin-qml-worker omits required DT_NEEDED libxkbcommon.so.0"
 verify_elf "$bridge" shared "$bridge_allowed" libQt6Qml.so.6
