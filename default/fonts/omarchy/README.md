@@ -12,6 +12,8 @@ The private-use glyphs in `omarchy.ttf` are:
 - `U+E907` — Ollama, from <https://simpleicons.org/icons/ollama.svg>
 - `U+E908` — T3 Code, traced from the app icon in <https://aur.archlinux.org/cgit/aur.git/plain/t3code-icon.png?h=t3code-bin>, since upstream publishes no monochrome SVG
 - `U+E909` — Ori, from <https://openrouter.ai/brand/v2/openrouter-glyph-dark.svg>, OpenRouter's own mark: Ori ships no separate logo and its product page uses this one
+- `U+E90A` — Dim Agent, traced from the app icon at <https://dimcode.dev/apple-touch-icon.png>, since upstream publishes no monochrome SVG
+- `U+E90B` — Kimi Code, from <https://simpleicons.org/icons/kimi.svg>
 
 The agent marks are monochrome so the menu can render them using the active
 theme's foreground and selection colors.

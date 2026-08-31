@@ -52,7 +52,8 @@ if omarchy-cmd-missing "$agent"; then
 fi
 
 # Agents launched from the keybinding or menu run unattended, so each one starts
-# with its own spelling of "don't stop to ask". Pi and Ori have none to skip.
+# with its own spelling of "don't stop to ask". Pi, Ori and Dim have none to
+# skip.
 case "$agent" in
 opencode)
   command=(opencode --auto)
@@ -78,9 +79,22 @@ claude)
   command=(claude --permission-mode auto)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
+dim)
+  # `dim exec` is the one-shot prompt form; interactive dim is the bare TUI.
+  if [[ -n ${prompt:-} ]]; then
+    command=(dim exec "$prompt")
+  else
+    command=(dim)
+  fi
+  ;;
 grok)
   command=(grok --permission-mode bypassPermissions)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
+  ;;
+kimi)
+  # --prompt is kimi's one-shot form, like `crush run`; --auto spares its questions.
+  command=(kimi --auto)
+  [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
   ;;
 codex)
   command=(codex --approve-for-me)
