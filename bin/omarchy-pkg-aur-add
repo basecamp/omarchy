@@ -3,16 +3,96 @@
 # omarchy:summary=Add the named packages to the system from the AUR if they're missing. Returns false if it couldn't be done.
 # omarchy:args=<packages...>
 
-if omarchy-pkg-missing "$@"; then
-  yay -S --noconfirm --needed "$@" || exit 1
-fi
+set -euo pipefail
 
-for pkg in "$@"; do
-  # Secondary check to handle states where pacman doesn't actually register an error
-  if ! pacman -Q "$pkg" &>/dev/null; then
-    echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+umask 077
+
+trusted_system_command() {
+  local command=$1 require_setuid=${2:-false}
+  local canonical owner mode links
+
+  [[ $command == /usr/bin/* && -f $command && -x $command && ! -L $command ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$command") || return 1
+  [[ $canonical == "$command" ]] || return 1
+  read -r owner mode links < <(/usr/bin/stat -Lc '%u %a %h' -- "$command") || return 1
+  [[ $owner == 0 && $links == 1 ]] || return 1
+  (( (8#$mode & 0022) == 0 )) || return 1
+  [[ $require_setuid != true ]] || (( (8#$mode & 04000) != 0 ))
+}
+
+cleanup_sudo_credentials() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  if ! /usr/bin/sudo -k >/dev/null 2>&1; then
+    echo "Failed to invalidate sudo credentials after the AUR operation." >&2
+    (( status != 0 )) || status=1
+  fi
+  exit "$status"
+}
+
+trap cleanup_sudo_credentials EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+for command in /usr/bin/realpath /usr/bin/stat /usr/bin/sudo /usr/bin/yay /usr/bin/pacman /usr/bin/makepkg /usr/bin/omarchy-makepkg-unprivileged /usr/bin/setpriv /usr/bin/git /usr/bin/gpg; do
+  require_setuid=false
+  [[ $command != /usr/bin/sudo ]] || require_setuid=true
+  if ! trusted_system_command "$command" "$require_setuid"; then
+    echo "Refusing the AUR operation because $command is not a trusted system command." >&2
     exit 1
   fi
 done
 
-exit 0
+# This intentionally revokes even a timestamp that existed before invocation.
+# sudo cannot selectively invalidate only credentials created by one workflow;
+# preserving one would let build code reuse authority this command did not create.
+/usr/bin/sudo -k >/dev/null || {
+  echo "Unable to start the AUR build with a cold sudo credential state." >&2
+  exit 1
+}
+if ! /usr/bin/sudo -N -V >/dev/null 2>&1; then
+  echo "This sudo does not support --no-update; refusing to run an AUR build." >&2
+  exit 1
+fi
+
+(( $# > 0 )) || {
+  echo "Usage: omarchy-pkg-aur-add <packages...>" >&2
+  exit 2
+}
+
+packages=()
+missing_packages=()
+for package in "$@"; do
+  if [[ ! $package =~ ^[a-z0-9][a-z0-9@._+:-]*$ ]]; then
+    echo "Invalid AUR package name: $package" >&2
+    exit 2
+  fi
+  packages+=("$package")
+  if ! /usr/bin/pacman -Q -- "$package" &>/dev/null; then
+    missing_packages+=("$package")
+  fi
+done
+
+if (( ${#missing_packages[@]} )); then
+  # Command-line settings override hostile user config. -N makes each sudo
+  # authorization command-scoped; disabling sudoloop prevents refreshes.
+  /usr/bin/yay \
+    --sudo /usr/bin/sudo --sudoflags=-N --sudoloop=false \
+    --pacman /usr/bin/pacman --makepkg /usr/bin/omarchy-makepkg-unprivileged \
+    --mflags=--nodeps \
+    --git /usr/bin/git --gpg /usr/bin/gpg \
+    --config /etc/pacman.conf --nomakepkgconf --noremovemake \
+    -S --noconfirm --needed -- "${missing_packages[@]}"
+fi
+
+for package in "${packages[@]}"; do
+  # Secondary check to handle states where pacman doesn't actually register an error.
+  if ! /usr/bin/pacman -Q -- "$package" &>/dev/null; then
+    echo -e "\033[31mError: Package '$package' did not install\033[0m" >&2
+    exit 1
+  fi
+done
