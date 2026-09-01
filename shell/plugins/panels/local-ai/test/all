@@ -243,11 +243,12 @@ assert grep -q -- '--provider omarchy-local --model org/small' "$TMP/hyprctl2.ou
 auto=0; grep -q -- '--auto-approve' "$TMP/hyprctl2.out" && auto=1
 assert [ "$auto" = 0 ]
 ( export XDG_RUNTIME_DIR="$TMP/xdg" HYPRLAND_INSTANCE_SIGNATURE=sig
+  : >"$OMARCHY_AI_USER_HOME/.local/bin/claude"; chmod +x "$OMARCHY_AI_USER_HOME/.local/bin/claude"
   hyprctl() { printf '%s\n' "$*" >"$TMP/hyprctl3.out"; }; omarchy-default-agent() { printf 'claude\n'; }
   export -f hyprctl omarchy-default-agent
   "$CLI" open-agent >/dev/null
 )
-assert grep -q 'omarchy-agent' "$TMP/hyprctl3.out"
+assert grep -q -- '.local/bin/claude' "$TMP/hyprctl3.out"
 ( export XDG_RUNTIME_DIR="$TMP/xdg" HYPRLAND_INSTANCE_SIGNATURE=sig
   : >"$OMARCHY_AI_USER_HOME/.local/bin/opencode"; chmod +x "$OMARCHY_AI_USER_HOME/.local/bin/opencode"
   hyprctl() { printf '%s\n' "$*" >"$TMP/hyprctl4.out"; }; omarchy-default-agent() { printf 'opencode\n'; }

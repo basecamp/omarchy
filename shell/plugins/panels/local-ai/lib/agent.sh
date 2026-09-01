@@ -100,6 +100,7 @@ open_agent() { # no argument: Omarchy's default agent; pi/omp get the local mode
          launch_tui "$bin" --provider omarchy-local --model "$served" --session-id "$sid" ;;
     opencode) bin=$(bin_of opencode) || fail "opencode is not installed"
          launch_tui "$bin" --model "omarchy-local/$served" ;;
-    *) launch_tui omarchy-agent ;; # their chosen agent, launched the way Omarchy launches it
+    *) bin=$(bin_of "$name") || fail "$name is not installed"
+       launch_tui "$bin" ;; # the chosen agent, plain: no approval flags granted by this plugin
   esac
 }

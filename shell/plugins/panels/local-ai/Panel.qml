@@ -18,6 +18,10 @@ Panel {
   readonly property var share: snap.share || ({})
   readonly property string state: snap.state || "uninitialized"
   readonly property var rec: (snap.models || []).filter(function(m) { return m.recipeId === snap.recommended })[0] || null
+  property string agentPick: ""
+  property bool agentsOpen: false
+  readonly property var agentList: (snap.agents && snap.agents.installed) || []
+  readonly property string agentSel: agentPick !== "" ? agentPick : (agentList.indexOf("pi") >= 0 || agentList.length === 0 ? "pi" : agentList[0])
   readonly property bool hasActive: Boolean(active.container); readonly property bool loaded: Boolean(active.apiReady) && hasActive
   readonly property bool busy: ["scanning", "downloading", "starting", "switching", "unloading"].indexOf(state) >= 0
   readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -63,7 +67,7 @@ Panel {
       }
     }
     tooltipText: "Local AI · " + root.title()
-    onPressed: function(code) { if (code === Qt.RightButton && root.loaded) root.act(["open-agent"], true); else root.toggle() }
+    onPressed: function(code) { if (code === Qt.RightButton && root.loaded) root.act(["open-agent", root.agentSel], true); else root.toggle() }
   }
   KeyboardPanel {
     id: panel
@@ -77,7 +81,7 @@ Panel {
     PanelKeyCatcher {
       id: keys
       anchors.fill: parent
-      onActivateRequested: { if (root.loaded) root.act(["open-agent"], true); else if (root.rec) root.act(["load", root.rec.recipeId], false) }
+      onActivateRequested: { if (root.loaded) root.act(["open-agent", root.agentSel], true); else if (root.rec) root.act(["load", root.rec.recipeId], false) }
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       Column {
@@ -88,7 +92,14 @@ Panel {
         Text { width: parent.width; textFormat: Text.PlainText; text: root.title(); color: root.foreground; font.family: root.bar.fontFamily; font.pixelSize: Style.font.heading; font.weight: Font.Medium; elide: Text.ElideRight }
         Text { width: parent.width; textFormat: Text.PlainText; visible: root.status() !== ""; text: root.status(); color: root.dim; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall; elide: Text.ElideRight; maximumLineCount: 1 }
         Link { visible: !root.loaded; enabled: !root.busy && Boolean(root.rec); text: root.loadLabel(); onTriggered: root.act(["load", root.rec.recipeId], false) }
-        Link { visible: root.loaded; text: "Open agent"; onTriggered: root.act(["open-agent"], true) }
+        Link { visible: root.loaded; text: "Open agent · " + root.agentSel + (root.agentsOpen ? "  ^" : "  v"); onTriggered: root.agentsOpen = !root.agentsOpen }
+        Column {
+          visible: root.agentsOpen && root.loaded; width: parent.width; spacing: Style.space(6)
+          Repeater {
+            model: root.agentList
+            Link { required property var modelData; width: content.width; text: "  " + modelData; onTriggered: { root.agentPick = modelData; root.agentsOpen = false; root.act(["open-agent", modelData], true) } }
+          }
+        }
         Link { visible: root.loaded && Boolean(root.share.available); enabled: !root.busy; text: root.share.active ? "Stop sharing" : "Share on Tailscale"; onTriggered: root.act(["share"], false) }
         Link { visible: root.hasActive; enabled: !root.busy; text: "Unload"; onTriggered: root.act(["unload"], false) }
       }
