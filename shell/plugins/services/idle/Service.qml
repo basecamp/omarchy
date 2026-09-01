@@ -25,6 +25,15 @@ Item {
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
+  // Quickshell updates IdleMonitor.timeout without replacing the underlying
+  // ext-idle-notification, which leaves the live monitor silent. Pulse it off
+  // across an event-loop turn so a shell.json timeout change registers a new
+  // notification instead of silently disabling screensaver and lock events.
+  onFirstIdleTimeoutSecondsChanged: if (root.idleEnabled) {
+    root.logEvent("idle-monitor-rearm", "timeout=" + root.firstIdleTimeoutSeconds)
+    idleMonitorRearmTimer.restart()
+  }
+
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
   property bool hasPendingStayAwakePersist: false
@@ -192,6 +201,7 @@ Item {
       lockDelay: root.lockDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
       timers: {
+        idleMonitorRearm: idleMonitorRearmTimer.running,
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
         screensaverLaunchGrace: screensaverLaunchGraceTimer.running
@@ -249,10 +259,16 @@ Item {
 
   IdleMonitor {
     id: idleMonitor
-    enabled: root.idleEnabled
+    enabled: root.idleEnabled && !idleMonitorRearmTimer.running
     timeout: root.firstIdleTimeoutSeconds
     respectInhibitors: true
     onIsIdleChanged: root.handleIdleChanged()
+  }
+
+  Timer {
+    id: idleMonitorRearmTimer
+    interval: 150
+    repeat: false
   }
 
   Timer {
