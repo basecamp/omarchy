@@ -3,32 +3,20 @@
 # omarchy:summary=Show a fuzzy-finder TUI for picking new Arch and OPR packages to install.
 # omarchy:requires-sudo=true
 
-set -euo pipefail
+source "${BASH_SOURCE[0]%/*}/omarchy-security-functions" || exit 126
 
+set -euo pipefail
 PATH=/usr/bin:/usr/sbin:/bin:/sbin
 export PATH
 unset BASH_ENV ENV CDPATH GLOBIGNORE
 
-cleanup_sudo_credentials() {
-  local status=$?
-  trap - EXIT HUP INT TERM
-  if ! /usr/bin/sudo -k >/dev/null 2>&1; then
-    echo "Failed to invalidate sudo credentials after the package picker." >&2
-    (( status != 0 )) || status=1
-  fi
-  exit "$status"
-}
+omarchy_security_install_sudo_cleanup_traps   "Failed to invalidate sudo credentials after the package picker."
 
-trap cleanup_sudo_credentials EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
-
-/usr/bin/sudo -k >/dev/null || {
+if ! omarchy_security_revoke_sudo_timestamp; then
   echo "Unable to start package discovery with a cold sudo credential state." >&2
   exit 1
-}
-if ! /usr/bin/sudo -N -V >/dev/null 2>&1; then
+fi
+if ! omarchy_security_sudo_supports_no_update; then
   echo "This sudo does not support --no-update; refusing to run the package picker." >&2
   exit 1
 fi

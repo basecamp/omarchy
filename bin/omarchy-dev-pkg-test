@@ -7,11 +7,6 @@
 
 set -euo pipefail
 
-PATH=/usr/bin:/usr/sbin:/bin:/sbin
-export PATH
-unset BASH_ENV ENV CDPATH GLOBIGNORE
-umask 077
-
 if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
   cat <<USAGE
 Usage: omarchy dev pkg-test [package-name] [path-to-checkout]
@@ -42,7 +37,7 @@ remove_pkgver_function() {
   local pkgbuild="$1"
   local tmp="$pkgbuild.tmp"
 
-  /usr/bin/awk '
+  awk '
     /^pkgver\(\)[[:space:]]*\{/ {
       in_pkgver = 1
       depth = 0
@@ -60,7 +55,7 @@ remove_pkgver_function() {
     }
     { print }
   ' "$pkgbuild" >"$tmp"
-  /usr/bin/mv "$tmp" "$pkgbuild"
+  mv "$tmp" "$pkgbuild"
 }
 
 dev_package_name() {
@@ -87,15 +82,6 @@ else
 fi
 PKGBUILDS_ROOT="${OMARCHY_PKGBUILDS_DIR:-$HOME/Work/omarchy/omarchy-pkgs/pkgbuilds}"
 
-for argument in "${MAKEPKG_ARGS[@]}"; do
-  case $argument in
-    -- | --config | --config=* | PACMAN=* | PACMAN+=* | PACMAN_AUTH=* | PACMAN_AUTH+=* | MAKEPKG_CONF=* | BASH_ENV=* | ENV=*)
-      echo "Error: makepkg argument '$argument' would bypass the fixed privilege boundary." >&2
-      exit 2
-      ;;
-  esac
-done
-
 if [[ ! -d "$CHECKOUT" ]]; then
   echo "Error: checkout not found at $CHECKOUT" >&2
   exit 1
@@ -109,152 +95,43 @@ for PKG in "${PKGS[@]}"; do
   fi
 done
 
-trusted_system_command() {
-  local command=$1 require_setuid=${2:-false}
-  local canonical owner mode links
-
-  [[ $command == /usr/bin/* && -f $command && -x $command && ! -L $command ]] || return 1
-  canonical=$(/usr/bin/realpath -e -- "$command") || return 1
-  [[ $canonical == "$command" ]] || return 1
-  read -r owner mode links < <(/usr/bin/stat -Lc '%u %a %h' -- "$command") || return 1
-  [[ $owner == 0 && $links == 1 ]] || return 1
-  (( (8#$mode & 0022) == 0 )) || return 1
-  [[ $require_setuid != true ]] || (( (8#$mode & 04000) != 0 ))
-}
-
-for command in /usr/bin/realpath /usr/bin/stat /usr/bin/sudo /usr/bin/pacman /usr/bin/makepkg /usr/bin/setpriv; do
-  require_setuid=false
-  [[ $command != /usr/bin/sudo ]] || require_setuid=true
-  if ! trusted_system_command "$command" "$require_setuid"; then
-    echo "Refusing the package build because $command is not a trusted system command." >&2
-    exit 1
-  fi
-done
-
-/usr/bin/sudo -k >/dev/null || {
-  echo "Unable to start the package build with a cold sudo credential state." >&2
-  exit 1
-}
-if ! /usr/bin/sudo -N -V >/dev/null 2>&1; then
-  echo "This sudo does not support --no-update; refusing to run package build code." >&2
-  exit 1
-fi
-
-build_dir=$(/usr/bin/mktemp -d -t omarchy-dev-pkg-test.XXXXXX)
-
-cleanup() {
-  local status=$?
-  trap - EXIT HUP INT TERM
-  /usr/bin/rm -rf -- "$build_dir"
-  if ! /usr/bin/sudo -k >/dev/null 2>&1; then
-    echo "Failed to invalidate sudo credentials after the package build." >&2
-    (( status != 0 )) || status=1
-  fi
-  exit "$status"
-}
-trap cleanup EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+build_dir=$(mktemp -d -t omarchy-dev-pkg-test.XXXXXX)
+trap 'rm -rf "$build_dir"' EXIT
 
 # pkgver=dev.<sha>[.dirty] so pacman -Q makes the source obvious.
-short_sha=$(/usr/bin/git -C "$CHECKOUT" rev-parse --short HEAD 2>/dev/null || echo "local")
+short_sha=$(git -C "$CHECKOUT" rev-parse --short HEAD 2>/dev/null || echo "local")
 dirty=""
-if [[ -d "$CHECKOUT/.git" ]] && [[ -n "$(/usr/bin/git -C "$CHECKOUT" status --porcelain)" ]]; then
+if [[ -d "$CHECKOUT/.git" ]] && [[ -n "$(git -C "$CHECKOUT" status --porcelain)" ]]; then
   dirty=".dirty"
 fi
 new_pkgver="dev.${short_sha}${dirty}"
 
-dependency_name() {
-  local dependency=$1 name=${1%%[<>=]*}
-  [[ $name =~ ^[a-z0-9][a-z0-9@._+:-]*$ ]] || return 1
-  printf '%s\n' "$name"
-}
-
-install_build_dependencies() {
-  local srcinfo=$1 architecture dependency status missing_output name
-  local dependencies=() missing=()
-  local -A seen=()
-  architecture=$(/usr/bin/uname -m)
-
-  while IFS= read -r line; do
-    if [[ $line =~ ^$'\t'(depends|makedepends|checkdepends)(_([a-zA-Z0-9_]+))?\ =\ (.+)$ ]]; then
-      [[ -z ${BASH_REMATCH[3]} || ${BASH_REMATCH[3]} == "$architecture" ]] || continue
-      dependency=${BASH_REMATCH[4]}
-      dependency_name "$dependency" >/dev/null || {
-        echo "Error: unsafe dependency in generated .SRCINFO: $dependency" >&2
-        return 1
-      }
-      dependencies+=("$dependency")
-    fi
-  done <"$srcinfo"
-
-  (( ${#dependencies[@]} )) || return 0
-  if missing_output=$(/usr/bin/pacman -T -- "${dependencies[@]}"); then
-    return 0
-  else
-    status=$?
-  fi
-  (( status == 127 )) || return "$status"
-
-  while IFS= read -r dependency; do
-    [[ -n $dependency ]] || continue
-    name=$(dependency_name "$dependency") || {
-      echo "Error: pacman returned an unsafe dependency name: $dependency" >&2
-      return 1
-    }
-    if [[ -z ${seen[$name]+x} ]]; then
-      seen[$name]=1
-      missing+=("$name")
-    fi
-  done <<<"$missing_output"
-  (( ${#missing[@]} )) || return 1
-  /usr/bin/sudo -N -- /usr/bin/pacman -S --asdeps --needed --noconfirm -- "${missing[@]}"
-}
-
-built_pkgs=()
 for PKG in "${PKGS[@]}"; do
   PKGBUILD_DIR="$PKGBUILDS_ROOT/$PKG"
   package_build_dir="$build_dir/$PKG"
-  /usr/bin/mkdir -p "$package_build_dir"
-  /usr/bin/cp -a "$PKGBUILD_DIR/." "$package_build_dir/"
+  mkdir -p "$package_build_dir"
+  cp -a "$PKGBUILD_DIR/." "$package_build_dir/"
 
   remove_pkgver_function "$package_build_dir/PKGBUILD"
-  /usr/bin/sed -i "s/^pkgver=.*/pkgver=${new_pkgver}/" "$package_build_dir/PKGBUILD"
+  sed -i "s/^pkgver=.*/pkgver=${new_pkgver}/" "$package_build_dir/PKGBUILD"
 
   echo "Building $PKG ${new_pkgver} from $CHECKOUT"
   echo "  build dir: $package_build_dir"
   echo "  PKGBUILD : $PKGBUILD_DIR/PKGBUILD"
   echo
 
-  srcinfo="$package_build_dir/.SRCINFO.omarchy"
   (
     cd "$package_build_dir"
-    OMARCHY_SRC="$CHECKOUT" /usr/bin/setpriv --no-new-privs /usr/bin/makepkg --printsrcinfo
-  ) >"$srcinfo"
-  install_build_dependencies "$srcinfo"
-
-  (
-    cd "$package_build_dir"
-    # Dependency installation is deliberately separate. Even if a PKGBUILD
-    # mutates makepkg's internal NODEPS/PACMAN_AUTH variables, no_new_privs in
-    # the fixed launcher prevents any setuid program from granting it root.
-    OMARCHY_SRC="$CHECKOUT" /usr/bin/setpriv --no-new-privs /usr/bin/makepkg \
-      --nodeps --skipchecksums --noconfirm "${MAKEPKG_ARGS[@]}"
+    OMARCHY_SRC="$CHECKOUT" makepkg -s --skipchecksums --noconfirm "${MAKEPKG_ARGS[@]}"
   )
 
-  built_pkg=""
-  for candidate in "$package_build_dir"/*.pkg.tar.*; do
-    [[ -f $candidate && $candidate != *.sig ]] || continue
-    [[ -z $built_pkg || $candidate -nt $built_pkg ]] && built_pkg=$candidate
-  done
+  # Install separately so we can pass --overwrite='*' (makepkg -i can't).
+  # Dev builds frequently conflict with files left behind by previous
+  # script-installed Omarchy versions; the build is the authoritative state.
+  built_pkg=$(ls -t "$package_build_dir"/*.pkg.tar.* 2>/dev/null | grep -v '\.sig$' | head -1)
   if [[ -z $built_pkg ]]; then
     echo "Error: no built package found in $package_build_dir" >&2
     exit 1
   fi
-  built_pkgs+=("$built_pkg")
+  sudo pacman -U --noconfirm --overwrite='*' "$built_pkg"
 done
-
-# Install the built package set in one transaction so its
-# provides/conflicts/dependencies resolve as they do from the repository.
-/usr/bin/sudo -N -- /usr/bin/pacman -U --noconfirm -- "${built_pkgs[@]}"

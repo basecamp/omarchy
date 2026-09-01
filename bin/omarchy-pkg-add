@@ -1,82 +1,21 @@
-#!/bin/bash -p
+#!/bin/bash
 
 # omarchy:summary=Install Arch packages if they are missing
 # omarchy:args=<packages...>
 # omarchy:examples=omarchy pkg add jq ripgrep
 # omarchy:requires-sudo=true
 
-if [[ $- != *p* ]]; then
-  echo "Refusing an unsafe Bash startup for package installation." >&2
-  exit 126
-fi
-
-require_privileged_bash_startup() {
-  /usr/bin/env -i /usr/bin/bash -p -c '
-    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
-    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
-    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
-    [[ $executable == /usr/bin/bash ]]
-    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
-    [[ ${argv[1]:-} == -p ]]
-  ' omarchy-bash-startup "$$"
-}
-require_privileged_bash_startup || {
-  echo "Refusing an unsafe Bash startup for package installation." >&2
-  exit 126
-}
-unset -f require_privileged_bash_startup
-
-sanitize_bash_startup_environment() {
-  local environment_entry environment_name
-  local needs_reexec=0
-  local -a environment_unsets=(-u BASH_ENV -u ENV)
-
-  [[ -z ${BASH_ENV+x} && -z ${ENV+x} ]] || needs_reexec=1
-  while IFS= read -r -d '' environment_entry; do
-    environment_name="${environment_entry%%=*}"
-    if [[ $environment_name == BASH_FUNC_*%% ]]; then
-      environment_unsets+=(-u "$environment_name")
-      needs_reexec=1
-    fi
-  done < <(/usr/bin/env -0)
-
-  if ((needs_reexec)); then
-    exec /usr/bin/env "${environment_unsets[@]}" /usr/bin/bash -p "$0" "$@"
-  fi
-}
-sanitize_bash_startup_environment "$@"
-unset -f sanitize_bash_startup_environment
-unset BASH_ENV ENV
-
-set -euo pipefail
-PATH=/usr/bin:/usr/sbin:/bin:/sbin
-export PATH
-
-case "${OMARCHY_SUDO_NO_UPDATE:-0}" in
-  0|"") sudo_args=() ;;
-  1) sudo_args=(-N) ;;
-  *)
-    echo "Invalid OMARCHY_SUDO_NO_UPDATE value." >&2
-    exit 2
-    ;;
-esac
-
-(($# > 0)) || {
-  echo "Usage: omarchy-pkg-add <packages...>" >&2
-  exit 2
-}
-
-if /usr/bin/omarchy-pkg-missing "$@"; then
+if omarchy-pkg-missing "$@"; then
   if (( EUID == 0 )); then
-    /usr/bin/pacman -S --noconfirm --needed -- "$@" || exit 1
+    pacman -S --noconfirm --needed "$@" || exit 1
   else
-    /usr/bin/sudo "${sudo_args[@]}" -- /usr/bin/pacman -S --noconfirm --needed -- "$@" || exit 1
+    sudo pacman -S --noconfirm --needed "$@" || exit 1
   fi
 fi
 
 for pkg in "$@"; do
   # Secondary check to handle states where pacman doesn't actually register an error
-  if ! /usr/bin/pacman -Q -- "$pkg" &>/dev/null; then
+  if ! pacman -Q "$pkg" &>/dev/null; then
     echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2
     exit 1
   fi

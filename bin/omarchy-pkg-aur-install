@@ -3,61 +3,27 @@
 # omarchy:summary=Show a fuzzy-finder TUI for picking new AUR packages to install.
 # omarchy:requires-sudo=true
 
-set -euo pipefail
-
-PATH=/usr/bin:/usr/sbin:/bin:/sbin
-export PATH
-unset BASH_ENV ENV CDPATH GLOBIGNORE
-
-cleanup_sudo_credentials() {
-  local status=$?
-  trap - EXIT HUP INT TERM
-  if ! /usr/bin/sudo -k >/dev/null 2>&1; then
-    echo "Failed to invalidate sudo credentials after the AUR package picker." >&2
-    (( status != 0 )) || status=1
-  fi
-  exit "$status"
-}
-
-trap cleanup_sudo_credentials EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
-
-/usr/bin/sudo -k >/dev/null || {
-  echo "Unable to start AUR discovery with a cold sudo credential state." >&2
-  exit 1
-}
-if ! /usr/bin/sudo -N -V >/dev/null 2>&1; then
-  echo "This sudo does not support --no-update; refusing to run the AUR package picker." >&2
-  exit 1
-fi
-
 fzf_args=(
   --multi
-  --preview '/usr/bin/yay --sudo /usr/bin/sudo --sudoflags=-N --sudoloop=false -Siia -- {1}'
+  --preview 'yay -Siia {1}'
   --preview-label='alt-p: toggle description, alt-b/B: toggle PKGBUILD, alt-j/k: scroll, tab: multi-select'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
   --bind 'alt-p:toggle-preview'
   --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
   --bind 'alt-k:preview-up,alt-j:preview-down'
-  --bind 'alt-b:change-preview:/usr/bin/yay --sudo /usr/bin/sudo --sudoflags=-N --sudoloop=false -Gpa -- {1} | /usr/bin/tail -n +5'
-  --bind 'alt-B:change-preview:/usr/bin/yay --sudo /usr/bin/sudo --sudoflags=-N --sudoloop=false -Siia -- {1}'
+  --bind 'alt-b:change-preview:yay -Gpa {1} | tail -n +5'
+  --bind 'alt-B:change-preview:yay -Siia {1}'
   --color 'pointer:green,marker:green'
 )
 
-pkg_names=$(/usr/bin/yay --sudo /usr/bin/sudo --sudoflags=-N --sudoloop=false -Slqa | /usr/bin/fzf "${fzf_args[@]}")
+pkg_names=$(yay -Slqa | fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
-  mapfile -t packages <<<"$pkg_names"
-  for package in "${packages[@]}"; do
-    [[ $package =~ ^[a-z0-9][a-z0-9@._+:-]*$ ]] || {
-      echo "Invalid AUR package selection: $package" >&2
-      exit 2
-    }
-  done
-  /usr/bin/omarchy-pkg-aur-add "${packages[@]}"
-  /usr/bin/sudo -N -- /usr/bin/updatedb
-  /usr/bin/omarchy-show-done
+  # Add aur/ prefix to each package name and convert to space-separated for yay
+  source omarchy-sudo-keepalive
+
+  echo "$pkg_names" | sed 's/^/aur\//' | tr '\n' ' ' | xargs yay -S --noconfirm
+  sudo updatedb
+  omarchy-show-done
 fi
