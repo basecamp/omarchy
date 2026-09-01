@@ -9,66 +9,40 @@ if [[ $- != *p* ]]; then
   exit 126
 fi
 
-require_privileged_bash_startup() {
-  /usr/bin/env -i /usr/bin/bash -p -c '
-    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
-    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
-    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
-    [[ $executable == /usr/bin/bash ]]
-    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
-    [[ ${argv[1]:-} == -p ]]
-  ' omarchy-bash-startup "$$"
-}
-require_privileged_bash_startup || {
+source "${BASH_SOURCE[0]%/*}/omarchy-install-security-functions" || exit 126
+
+omarchy_security_require_privileged_bash_startup || {
   echo "Refusing an unsafe Bash startup for GeForce NOW installation." >&2
   exit 126
 }
-unset -f require_privileged_bash_startup
 
 set -euo pipefail
 
 installer=""
 
-revoke_sudo_timestamp() {
-  /usr/bin/sudo -k >/dev/null 2>&1
-}
-
 cleanup() {
   local status=$?
-  trap - EXIT HUP INT TERM
-  if ! revoke_sudo_timestamp; then
-    echo "Could not invalidate cached sudo authorization." >&2
-    ((status != 0)) || status=1
+  if [[ -n $installer ]] && ! /usr/bin/rm -f -- "$installer"; then
+    (( status != 0 )) || status=1
   fi
-  if [[ -n $installer ]]; then
-    /usr/bin/rm -f -- "$installer"
-  fi
-  exit "$status"
+  omarchy_security_exit_with_revoked_sudo "$status"
 }
 
 trap cleanup EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+omarchy_security_install_signal_exit_traps
 
 # This command deliberately invalidates even a sudo timestamp that predated
 # the workflow. sudo cannot identify which command refreshed a shared terminal
 # timestamp, and downloaded vendor code must never inherit silent root access.
-if ! revoke_sudo_timestamp; then
-  echo "Could not invalidate cached sudo authorization; refusing to continue." >&2
-  exit 1
-fi
-LC_ALL=C /usr/bin/sudo -h 2>&1 |
-  /usr/bin/grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]' || {
-  echo "This sudo does not support --no-update; refusing a mixed-trust installer." >&2
-  exit 1
-}
+omarchy_install_security_prepare_cold_command_scoped_sudo \
+  "Could not invalidate cached sudo authorization; refusing to continue." \
+  "This sudo does not support --no-update; refusing a mixed-trust installer."
 echo "Security note: this installer clears cached sudo authorization before running downloaded vendor code."
 
 echo "Installing GeForce NOW..."
 OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-pkg-add flatpak
 
-if ! revoke_sudo_timestamp; then
+if ! omarchy_security_revoke_sudo_timestamp; then
   echo "Could not invalidate cached sudo authorization; refusing to run the downloaded installer." >&2
   exit 1
 fi

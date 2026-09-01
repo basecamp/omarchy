@@ -10,42 +10,14 @@ if [[ $- != *p* ]]; then
   exit 126
 fi
 
-require_privileged_bash_startup() {
-  /usr/bin/env -i /usr/bin/bash -p -c '
-    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
-    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
-    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
-    [[ $executable == /usr/bin/bash ]]
-    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
-    [[ ${argv[1]:-} == -p ]]
-  ' omarchy-bash-startup "$$"
-}
-require_privileged_bash_startup || {
+source "${BASH_SOURCE[0]%/*}/omarchy-install-security-functions" || exit 126
+
+omarchy_security_require_privileged_bash_startup || {
   echo "Refusing an unsafe Bash startup for package installation." >&2
   exit 126
 }
-unset -f require_privileged_bash_startup
 
-sanitize_bash_startup_environment() {
-  local environment_entry environment_name
-  local needs_reexec=0
-  local -a environment_unsets=(-u BASH_ENV -u ENV)
-
-  [[ -z ${BASH_ENV+x} && -z ${ENV+x} ]] || needs_reexec=1
-  while IFS= read -r -d '' environment_entry; do
-    environment_name="${environment_entry%%=*}"
-    if [[ $environment_name == BASH_FUNC_*%% ]]; then
-      environment_unsets+=(-u "$environment_name")
-      needs_reexec=1
-    fi
-  done < <(/usr/bin/env -0)
-
-  if ((needs_reexec)); then
-    exec /usr/bin/env "${environment_unsets[@]}" /usr/bin/bash -p "$0" "$@"
-  fi
-}
-sanitize_bash_startup_environment "$@"
-unset -f sanitize_bash_startup_environment
+omarchy_install_security_sanitize_bash_startup_environment "$0" "$@"
 unset BASH_ENV ENV
 
 set -euo pipefail

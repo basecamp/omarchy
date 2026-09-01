@@ -10,21 +10,12 @@ if [[ $- != *p* ]]; then
   exit 126
 fi
 
-require_privileged_bash_startup() {
-  /usr/bin/env -i /usr/bin/bash -p -c '
-    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
-    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
-    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
-    [[ $executable == /usr/bin/bash ]]
-    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
-    [[ ${argv[1]:-} == -p ]]
-  ' omarchy-bash-startup "$$"
-}
-require_privileged_bash_startup || {
+source "${BASH_SOURCE[0]%/*}/omarchy-security-functions" || exit 126
+
+omarchy_security_require_privileged_bash_startup || {
   echo "Refusing an unsafe Bash startup for graphics-driver installation." >&2
   exit 126
 }
-unset -f require_privileged_bash_startup
 
 set -euo pipefail
 

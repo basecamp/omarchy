@@ -115,6 +115,13 @@ int main(int argc, char **argv) {
     if (index < argc && strcmp(argv[index], "/usr/bin/true") == 0) return 0;
     return 125;
   }
+  if (index < argc && strcmp(argv[index], "/usr/bin/pacman") == 0 && stat(token(), &st) < 0) {
+    int fd = open(token(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return 125;
+    close(fd);
+    log_event("PACKAGE_REFRESHED");
+    return 0;
+  }
   if (stat(token(), &st) < 0 || st.st_uid != 0) {
     log_event("DENIED");
     fputs("sudo: a password is required\n", stderr);
@@ -139,11 +146,15 @@ for installer_source in \
   "$ROOT/bin/omarchy-install-dev-env" \
   "$ROOT/bin/omarchy-install-gaming-geforce-now" \
   "$ROOT/bin/omarchy-install-gaming-battlenet"; do
-  grep -qF '/usr/bin/sudo -k' "$installer_source" ||
-    fail "${installer_source##*/} no longer uses the fixed trusted invalidation command"
-  grep -qF 'trap cleanup' "$installer_source" ||
+  grep -Eq 'omarchy_(security|install_security)_(revoke_sudo_timestamp|finish_privileged_phase|prepare_cold_command_scoped_sudo)' "$installer_source" ||
+    fail "${installer_source##*/} no longer uses the shared trusted invalidation boundary"
+  grep -Eq 'omarchy_security_install_(sudo_cleanup|signal_exit)_traps|trap cleanup' "$installer_source" ||
     fail "${installer_source##*/} no longer invalidates on exit and signals"
 done
+grep -qF '/usr/bin/sudo -k' "$ROOT/bin/omarchy-security-functions" ||
+  fail "shared security functions no longer pin sudo invalidation to /usr/bin"
+grep -qF 'omarchy_security_sudo_supports_no_update' "$ROOT/bin/omarchy-install-security-functions" ||
+  fail "install security functions no longer enforce command-scoped sudo support"
 ! grep -Eq '^[[:space:]]*(source|\.)[[:space:]]+.*\.bashrc' "$ROOT/bin/omarchy-install-dev-env" ||
   fail "development installer reintroduced execution of user-owned shell configuration"
 pass "installer sources retain fixed-path invalidation and cleanup boundaries"
@@ -157,7 +168,6 @@ cat >"$stub_bin/pacman" <<'STUB'
 [[ ${1:-} == -Q ]]
 STUB
 chmod 0755 "$stub_bin/omarchy-pkg-missing" "$stub_bin/pacman"
-mount --bind "$ROOT/bin/omarchy-pkg-add" /usr/bin/omarchy-pkg-add
 mount --bind "$stub_bin/omarchy-pkg-missing" /usr/bin/omarchy-pkg-missing
 mount --bind "$stub_bin/pacman" /usr/bin/pacman
 
@@ -166,10 +176,26 @@ pkg_event_log="$test_tmp/pkg-add-events"
 chown 1000:1000 "$pkg_event_log"
 setpriv --reuid 1000 --regid 1000 --clear-groups \
   env HOME="$test_home" TEST_EVENT_LOG="$pkg_event_log" TEST_SUDO_TOKEN="$token" \
-    OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-pkg-add audit-package
+    OMARCHY_SUDO_NO_UPDATE=1 "$ROOT/bin/omarchy-pkg-add" audit-package
 grep -qxF PACKAGE_NO_UPDATE "$pkg_event_log" ||
   fail "real package helper did not use sudo --no-update"
 [[ ! -e $token ]] || fail "real no-update package helper published a timestamp"
+
+mutation_dir="$test_tmp/pkg-add-without-no-update"
+mkdir -p "$mutation_dir"
+cp "$ROOT/bin/omarchy-security-functions" "$ROOT/bin/omarchy-install-security-functions" "$mutation_dir/"
+sed 's|/usr/bin/sudo "${sudo_args\[@\]}" --|/usr/bin/sudo --|' \
+  "$ROOT/bin/omarchy-pkg-add" >"$mutation_dir/omarchy-pkg-add"
+chmod 0755 "$mutation_dir/omarchy-pkg-add"
+: >"$pkg_event_log"
+setpriv --reuid 1000 --regid 1000 --clear-groups \
+  env HOME="$test_home" TEST_EVENT_LOG="$pkg_event_log" TEST_SUDO_TOKEN="$token" \
+    OMARCHY_SUDO_NO_UPDATE=1 "$mutation_dir/omarchy-pkg-add" audit-package
+grep -qxF PACKAGE_REFRESHED "$pkg_event_log" ||
+  fail "removing command-scoped sudo did not reproduce credential publication"
+[[ -e $token ]] || fail "mutated package helper did not leave reusable authorization"
+TEST_EVENT_LOG="$pkg_event_log" TEST_SUDO_TOKEN="$token" /usr/bin/sudo -k
+pass "removing command-scoped sudo reproduces the install-chain credential leak"
 
 pkg_bash_env="$test_home/pkg-add-bash-env"
 pkg_bash_env_marker="$test_home/pkg-add-bash-env-ran"
@@ -184,12 +210,11 @@ chown 1000:1000 "$pkg_bash_env"
 if setpriv --reuid 1000 --regid 1000 --clear-groups \
   env HOME="$test_home" BASH_ENV="$pkg_bash_env" TEST_PKG_BASH_ENV_RAN="$pkg_bash_env_marker" \
     TEST_EVENT_LOG="$pkg_event_log" TEST_SUDO_TOKEN="$token" \
-    /usr/bin/bash /usr/bin/omarchy-pkg-add -p >/dev/null 2>&1; then
+    /usr/bin/bash "$ROOT/bin/omarchy-pkg-add" -p >/dev/null 2>&1; then
   fail "package helper accepted a decoy post-script -p"
 fi
 [[ -e $pkg_bash_env_marker && ! -s $pkg_event_log && ! -e $token ]] ||
   fail "unsafe package-helper startup reached sudo"
-umount /usr/bin/omarchy-pkg-add
 pass "real package helper binds privileged startup and command-scoped sudo"
 
 cat >"$stub_bin/trusted-pkg-add" <<'STUB'

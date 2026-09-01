@@ -11,21 +11,12 @@ if [[ $- != *p* ]]; then
   exit 126
 fi
 
-require_privileged_bash_startup() {
-  /usr/bin/env -i /usr/bin/bash -p -c '
-    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
-    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
-    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
-    [[ $executable == /usr/bin/bash ]]
-    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
-    [[ ${argv[1]:-} == -p ]]
-  ' omarchy-bash-startup "$$"
-}
-require_privileged_bash_startup || {
+source "${BASH_SOURCE[0]%/*}/omarchy-install-security-functions" || exit 126
+
+omarchy_security_require_privileged_bash_startup || {
   echo "Refusing an unsafe Bash startup for development-environment installation." >&2
   exit 126
 }
-unset -f require_privileged_bash_startup
 
 set -euo pipefail
 
@@ -48,45 +39,21 @@ esac
 # distinguish a timestamp refreshed by this workflow from an older one. The
 # explicit contract prevents any home-owned tool manager, downloaded backend,
 # language hook, or remote script below from inheriting silent root authority.
-revoke_sudo_timestamp() {
-  /usr/bin/sudo -k >/dev/null 2>&1
-}
-
-cleanup_sudo_timestamp() {
-  local status=$?
-  trap - EXIT HUP INT TERM
-  if ! revoke_sudo_timestamp; then
-    echo "Could not invalidate cached sudo authorization." >&2
-    ((status != 0)) || status=1
-  fi
-  exit "$status"
-}
-
 finish_privileged_phase() {
-  if ! revoke_sudo_timestamp; then
-    echo "Could not invalidate cached sudo authorization; refusing to run user-owned installer code." >&2
-    return 1
-  fi
-}
-
-sudo_supports_no_update() {
-  LC_ALL=C /usr/bin/sudo -h 2>&1 |
-    /usr/bin/grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]'
+  omarchy_install_security_finish_privileged_phase \
+    "Could not invalidate cached sudo authorization; refusing to run user-owned installer code."
 }
 
 install_packages() {
   OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-pkg-add "$@"
 }
 
-trap cleanup_sudo_timestamp EXIT
-trap 'exit 129' HUP
-trap 'exit 130' INT
-trap 'exit 143' TERM
+omarchy_security_install_sudo_cleanup_traps
 
 finish_privileged_phase
 case "$environment" in
   ruby|php|laravel|symfony|clojure)
-    sudo_supports_no_update || {
+    omarchy_security_sudo_supports_no_update || {
       echo "This sudo does not support --no-update; refusing a mixed-trust installer." >&2
       exit 1
     }
