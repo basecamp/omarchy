@@ -209,7 +209,11 @@ if [[ $* == *" -I "* ]]; then
     if [[ $1 == "-I" ]]; then
       printf "import\n" >>"$FEEDS_TEST_MUTATION_LOG"
       cp -- "$2" "$FEEDS_TEST_IMPORT_LOG"
-      exit "${FEEDS_TEST_IMPORT_STATUS:-0}"
+      import_status=${FEEDS_TEST_IMPORT_STATUS:-0}
+      if (( import_status == 0 )) && [[ -n ${FEEDS_TEST_IMPORT_HOOK:-} ]]; then
+        "$FEEDS_TEST_IMPORT_HOOK" "$2"
+      fi
+      exit "$import_status"
     fi
     shift
   done
@@ -467,6 +471,67 @@ unset FEEDS_TEST_RM_FAIL_TARGET
 grep -Fq 'No read state changed' "$test_tmp/triage-cleanup-error" || fail "briefing cleanup failure does not report its safe outcome"
 /bin/rm -f -- "$cleanup_brief_file"
 pass "Feeds reports and contains consumed briefing cleanup failure"
+
+cat >"$mock_bin/feeds-test-apply-import" <<'SH'
+#!/bin/bash
+python3 - "$HOME/.local/share/newsboat/cache.db" "$1" <<'PY'
+import sqlite3
+import sys
+
+with open(sys.argv[2], encoding="utf-8") as import_file:
+    read_guids = [line.strip() for line in import_file if line.strip()]
+
+with sqlite3.connect(sys.argv[1]) as database:
+    database.executemany(
+        "UPDATE rss_item SET unread = 0 WHERE guid = ?",
+        ((guid,) for guid in read_guids),
+    )
+PY
+SH
+chmod +x "$mock_bin/feeds-test-apply-import"
+
+rm -f "$agent_log" "$import_log"
+: >"$close_log"
+: >"$confirm_log"
+: >"$mutation_log"
+: >"$notification_log"
+"$ROOT/bin/omarchy-newsboat-brief"
+committed_cleanup_brief_id=$(sed -n 's/.*omarchy-newsboat-triage \([A-Za-z0-9_-]*\) READ LEAVE.*/\1/p' "$agent_log")
+committed_cleanup_brief_file="$NEWSBOAT_BRIEF_STATE_DIR/brief.$committed_cleanup_brief_id"
+export FEEDS_TEST_IMPORT_HOOK=feeds-test-apply-import
+export FEEDS_TEST_RM_FAIL_TARGET="$committed_cleanup_brief_file"
+if "$ROOT/bin/omarchy-newsboat-triage" "$committed_cleanup_brief_id" 1 1 A001 >"$test_tmp/committed-cleanup-output" 2>"$test_tmp/committed-cleanup-error"; then
+  fail "triage reports complete when briefing cleanup fails after a read import"
+fi
+unset FEEDS_TEST_RM_FAIL_TARGET
+grep -Fq 'The inbox was updated, but the consumed briefing could not be removed.' "$test_tmp/committed-cleanup-error" || fail "post-import cleanup failure hides the committed read mutation"
+[[ -f $committed_cleanup_brief_file ]] || fail "post-import cleanup failure hides its retained snapshot"
+[[ $(<"$import_log") == 'guid-two' ]] || fail "post-import cleanup failure does not commit the exact confirmed read mutation"
+python3 - "$HOME/.local/share/newsboat/cache.db" <<'PY'
+import sqlite3
+import sys
+
+with sqlite3.connect(sys.argv[1]) as database:
+    unread = dict(database.execute("SELECT guid, unread FROM rss_item WHERE guid IN ('guid-one', 'guid-two')"))
+raise SystemExit(0 if unread == {"guid-one": 1, "guid-two": 0} else 1)
+PY
+if "$ROOT/bin/omarchy-newsboat-triage" "$committed_cleanup_brief_id" 1 1 A001 >/dev/null 2>&1; then
+  fail "triage replays a retained briefing after its read import committed"
+fi
+unset FEEDS_TEST_IMPORT_HOOK
+[[ $(grep -Fxc import "$mutation_log") == 1 ]] || fail "retrying a retained briefing performs a second read import"
+[[ $(grep -Fxc close "$mutation_log") == 1 ]] || fail "retrying a retained briefing closes Feeds again"
+(( $(wc -l <"$confirm_log") == 1 )) || fail "retrying a retained briefing asks for approval after its edition changed"
+[[ ! -s $notification_log ]] || fail "post-import cleanup failure sends a completion notification"
+/bin/rm -f -- "$committed_cleanup_brief_file"
+python3 - "$HOME/.local/share/newsboat/cache.db" <<'PY'
+import sqlite3
+import sys
+
+with sqlite3.connect(sys.argv[1]) as database:
+    database.execute("UPDATE rss_item SET unread = 1 WHERE guid = 'guid-two'")
+PY
+pass "Feeds prevents replay when briefing cleanup fails after a committed read import"
 
 : >"$close_log"
 : >"$mutation_log"
