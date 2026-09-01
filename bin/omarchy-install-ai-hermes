@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Install the Hermes desktop app
+# omarchy:requires-sudo=true
+
+set -e
+
+# No CLI is installed here on purpose. Hermes Desktop only runs against a
+# runtime built from its own commit, so it provisions one itself under
+# ~/.hermes on first launch, which takes a few minutes and shows its own
+# progress. Handing it the mise CLI instead fails: PyPI trails the tags, and
+# the version gap fails the app's readiness probe with a 401.
+echo "Installing Hermes Desktop..."
+omarchy-pkg-add hermes-desktop
+
+# If Hermes was already installed for the terminal, the app supersedes it: one
+# machine, one Hermes. This drops that copy so the terminal, the default agent
+# and the app all end up on the app's installation.
+omarchy-install-hermes-cli || true
+
+echo "Opening Hermes Desktop..."
+setsid uwsm-app -- /usr/bin/hermes-desktop >/dev/null 2>&1 &
+
+echo ""
+echo "Hermes Desktop has been installed."
+echo "Its first launch installs the Hermes runtime, which takes a few minutes."
