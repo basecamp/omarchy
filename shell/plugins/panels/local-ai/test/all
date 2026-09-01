@@ -179,7 +179,10 @@ tailscale() {
   printf '%s\n' "$*" >>"$TMP/tailscale.log"
   case "$1 ${2:-}" in
     "serve status") [[ -f $TMP/ts-shared ]] && printf 'tcp://127.0.0.1:12434\n'; return 0 ;;
-    "serve --bg") touch "$TMP/ts-shared" ;;
+    "serve --bg")
+      if [[ ${TS_DENY:-0} == 1 ]]; then
+        printf 'sending serve config: Access denied\nTo not require root, use sudo tailscale set --operator=$USER once.\n' >&2; return 1
+      fi; touch "$TMP/ts-shared" ;;
     "status --json") printf '{"Self":{"DNSName":"omarchy.tail.ts.net."}}\n' ;;
     *) [[ $1 == serve && ${*: -1} == off ]] && rm -f "$TMP/ts-shared"; return 0 ;;
   esac
@@ -189,6 +192,8 @@ export -f tailscale
 assert jq -e '.share.available and .share.active and .share.dns=="omarchy.tail.ts.net"' >/dev/null <<<"$(snap)"
 "$CLI" share
 assert jq -e '.share.active|not' >/dev/null <<<"$(snap)"
+msg=$(TS_DENY=1 "$CLI" share 2>&1) || true
+assert grep -q 'operator' <<<"$msg"
 "$CLI" share
 assert jq -e '.share.active' >/dev/null <<<"$(snap)"
 ok 'share toggles tailscale serve for the loopback endpoint and reports the tailnet name'

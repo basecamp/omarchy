@@ -73,7 +73,8 @@ case $cmd in
   share)
     jq -e '.available' >/dev/null <<<"$(share_state)" || fail 'tailscale is not installed'
     [[ $(sread | jq -r '.active.apiReady') == true ]] || fail 'load a model first'
-    if jq -e '.active' >/dev/null <<<"$(share_state)"; then share_off; else share_on || fail 'tailscale serve failed'; fi ;;
+    if jq -e '.active' >/dev/null <<<"$(share_state)"; then share_off
+    else share_on 2>"$ST/share.err" || fail "$(awk 'NF{l=$0} END{print (l==""?"tailscale serve failed":l)}' "$ST/share.err" 2>/dev/null)"; fi ;;
   download) [[ -n ${1:-} ]] || fail 'choose a recipe'; setstate downloading; op download "$1" 0 true "queued"; spawn _worker-download "$1" ;;
   run) [[ -n ${1:-} ]] || fail 'choose a recipe'; setstate starting; op starting "$1" 0 true "queued"; spawn _worker-run "$1" starting ;;
   switch) [[ -n ${1:-} ]] || fail 'choose a recipe'; setstate switching; op switching "$1" 0 true "queued"; spawn _worker-run "$1" switching ;;

@@ -11,7 +11,7 @@ share_state() { # -> {available,active,dns}; stateless, read from tailscale each
   dns=$("$b" status --json 2>/dev/null | jq -r '(.Self.DNSName//"")|rtrimstr(".")')
   jq -nc --argjson a "$active" --arg d "$dns" '{available:true,active:$a,dns:$d}'
 }
-share_on() { "$(ts_bin)" serve --bg --tcp "$PORT" "tcp://127.0.0.1:$PORT" >/dev/null 2>&1; }
+share_on() { "$(ts_bin)" serve --bg --tcp "$PORT" "tcp://127.0.0.1:$PORT" >/dev/null; }
 share_off() { local b; b=$(ts_bin) || return 0; "$b" serve --tcp "$PORT" off >/dev/null 2>&1 || true; }
 gpu_ids() {
   hardware_json | jq -r --argjson need "$(jq -r .hardware.count <<<"$1")" \
