@@ -31,6 +31,24 @@ mapfile -d '' -t args <"$args_file"
 [[ ${args[4]} == "--profile-directory=Profile 2" ]] || fail "webapp launcher preserves flags containing spaces"
 pass "webapp launcher forwards URL and flags as discrete arguments"
 
+ARGS_FILE="$args_file" PATH="$test_dir/bin:$PATH" \
+  "$ROOT/bin/omarchy-launch-or-focus-tui" \
+  --app-id=org.custom \
+  command-name \
+  'argument with spaces' \
+  '--literal=*'
+
+mapfile -d '' -t args <"$args_file"
+[[ ${#args[@]} == 7 ]] || fail "TUI launcher preserves argument count" "got ${#args[@]} arguments"
+[[ ${args[0]} == "org.custom" ]] || fail "TUI launcher forwards the app ID as the window pattern"
+[[ ${args[1]} == "--" ]] || fail "TUI launcher selects argv mode"
+[[ ${args[2]} == "omarchy-launch-tui" ]] || fail "TUI launcher forwards the launch command"
+[[ ${args[3]} == "--app-id=org.custom" ]] || fail "TUI launcher preserves its app ID flag"
+[[ ${args[4]} == "command-name" ]] || fail "TUI launcher preserves the command"
+[[ ${args[5]} == "argument with spaces" ]] || fail "TUI launcher preserves spaces"
+[[ ${args[6]} == '--literal=*' ]] || fail "TUI launcher preserves glob characters"
+pass "TUI launcher forwards arguments without reparsing"
+
 cat >"$test_dir/bin/hyprctl" <<'STUB'
 #!/bin/bash
 printf '[]\n'
