@@ -136,6 +136,55 @@ desktop_exec_arg() {
   printf '"%s"' "$escaped"
 }
 
+browser_profile_state_file() {
+  local browser
+  browser=$(xdg-settings get default-web-browser 2>/dev/null || true)
+
+  # Keep this in step with omarchy-launch-webapp: unsupported default browsers
+  # use Chromium for web apps.
+  case $browser in
+  google-chrome*) printf '%s' "$HOME/.config/google-chrome/Local State" ;;
+  brave-origin*) printf '%s' "$HOME/.config/BraveSoftware/Brave-Origin/Local State" ;;
+  brave*) printf '%s' "$HOME/.config/BraveSoftware/Brave-Browser/Local State" ;;
+  microsoft-edge*) printf '%s' "$HOME/.config/microsoft-edge/Local State" ;;
+  opera*) printf '%s' "$HOME/.config/opera/Local State" ;;
+  vivaldi*) printf '%s' "$HOME/.config/vivaldi/Local State" ;;
+  helium*) printf '%s' "$HOME/.config/net.imput.helium/Local State" ;;
+  *) printf '%s' "$HOME/.config/chromium/Local State" ;;
+  esac
+}
+
+select_browser_profile() {
+  local state_file directory name option selected
+  local -a options=("Automatic")
+  local -A profile_directories=()
+
+  state_file=$(browser_profile_state_file)
+  [[ -r $state_file ]] || return 0
+
+  while IFS=$'\t' read -r directory name; do
+    [[ -n $directory ]] || continue
+    option="$name ($directory)"
+    options+=("$option")
+    profile_directories["$option"]=$directory
+  done < <(jq -r '
+    .profile.info_cache // {}
+    | to_entries
+    | sort_by(.key)
+    | .[]
+    | [.key, (.value.name // .key)]
+    | @tsv
+  ' "$state_file" 2>/dev/null)
+
+  # With zero or one profile, automatic browser selection is unambiguous.
+  (( ${#options[@]} > 2 )) || return 0
+
+  selected=$(gum choose --header "Browser profile" "${options[@]}")
+  if [[ $selected != "Automatic" ]]; then
+    printf '%s' "${profile_directories[$selected]}"
+  fi
+}
+
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
@@ -143,6 +192,7 @@ if (( $# < 3 )); then
   APP_URL=$(gum input --prompt "URL> " --placeholder "https://example.com")
   APP_URL=$(normalize_webapp_url "$APP_URL")
   require_http_url "$APP_URL"
+  BROWSER_PROFILE=$(select_browser_profile)
 
   # Try to fetch the site's icon automatically first.
   mkdir -p "$ICON_DIR"
@@ -164,6 +214,7 @@ else
   ICON_REF="$3"
   CUSTOM_EXEC="$4" # Optional custom exec command
   MIME_TYPES="$5"  # Optional mime types
+  BROWSER_PROFILE=""
   INTERACTIVE_MODE=false
 fi
 
@@ -206,6 +257,9 @@ if [[ -n $CUSTOM_EXEC ]]; then
   EXEC_COMMAND=$CUSTOM_EXEC
 else
   EXEC_COMMAND="omarchy-launch-webapp $(desktop_exec_arg "$APP_URL")"
+  if [[ -n $BROWSER_PROFILE ]]; then
+    EXEC_COMMAND+=" --profile-directory=$(desktop_exec_arg "$BROWSER_PROFILE")"
+  fi
 fi
 
 # Create application .desktop file
