@@ -19,10 +19,10 @@ cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash
 
 if [[ $1 == "monitors" ]]; then
-  primary=$(printf '{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0}' \
+  primary=$(printf '{"name":"eDP-1","description":"BOE NE180WUM-NX1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0}' \
     "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}")
   if [[ -n ${OMARCHY_TEST_SECOND_MONITOR:-} ]]; then
-    printf '[%s,{"name":"HDMI-A-1","focused":false,"scale":1,"width":2560,"height":1440,"refreshRate":60.0}]' "$primary"
+    printf '[%s,{"name":"HDMI-A-1","description":"LG Electronics LG HDR 4K 0x0007F1E8","focused":false,"scale":1,"width":2560,"height":1440,"refreshRate":60.0}]' "$primary"
   else
     printf '[%s]' "$primary"
   fi
@@ -302,3 +302,23 @@ grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", 
 grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null ||
   fail "monitor scaling falls back to the catch-all when the only named rule is block commented"
 pass "monitor scaling leaves a rule inside a block comment alone"
+
+# desc: is Hyprland's own syntax and the usual advice for multi-monitor setups,
+# because connector names renumber across hotplug. A desc: rule that goes
+# unrecognised sends the write to the catch-all, which here is read by the rule
+# for the other output.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+hl.monitor({ output = "desc:BOE NE180WUM", mode = "preferred", position = "0x0", scale = 2 })
+hl.monitor({ output = "desc:LG Electronics LG HDR 4K", mode = "preferred", position = "auto-right", scale = 1 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'hl.monitor({ output = "desc:BOE NE180WUM", mode = "preferred", position = "0x0", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling writes onto a rule naming the output by desc:"
+grep -Fx 'hl.monitor({ output = "desc:LG Electronics LG HDR 4K", mode = "preferred", position = "auto-right", scale = 1 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves another output's desc: rule alone"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves the catch-all alone once a desc: rule matched"
+pass "monitor scaling writes onto a rule naming the output by desc:"
