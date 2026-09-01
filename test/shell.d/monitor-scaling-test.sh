@@ -18,7 +18,7 @@ mkdir -p "$stub_bin" "$home_dir/.config/hypr"
 cat >"$stub_bin/hyprctl" <<'SH'
 #!/bin/bash
 
-if [[ $1 == "monitors" && $2 == "-j" ]]; then
+if [[ $1 == "monitors" ]]; then
   primary=$(printf '{"name":"eDP-1","focused":true,"scale":%s,"width":%s,"height":%s,"refreshRate":120.0}' \
     "${OMARCHY_TEST_MONITOR_SCALE:-2}" "${OMARCHY_TEST_MONITOR_WIDTH:-2880}" "${OMARCHY_TEST_MONITOR_HEIGHT:-1800}")
   if [[ -n ${OMARCHY_TEST_SECOND_MONITOR:-} ]]; then

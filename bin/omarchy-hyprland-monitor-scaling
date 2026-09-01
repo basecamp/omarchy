@@ -80,7 +80,10 @@ persist_gdk_scale() {
   local file="$2"
   local enabled
 
-  enabled="$(hyprctl monitors -j | jq '[.[] | select(.disabled != true)] | length')"
+  # Mirrors are absent from plain `monitors`, so counting there can miss an
+  # output whose XWayland windows this would resize; `all` plus an explicit
+  # disabled filter is what the other monitor helpers use.
+  enabled="$(hyprctl monitors all -j | jq '[.[] | select(.disabled != true)] | length')"
   [[ $enabled == 1 ]] || return 0
 
   sed -i --follow-symlinks -E \
