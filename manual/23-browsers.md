@@ -26,6 +26,8 @@ The Chromium-family browsers (Chromium itself, Chrome, Edge, and Brave) come wit
 
 Both extensions talk to Omarchy through a small native messaging host, which gets installed for you along with the browser. That's the piece that lets a web page's video end up in your home directory and a URL end up in your clipboard manager, which a normal extension can't do on its own.
 
+Their shortcuts appear in the `Super + K` keybindings menu only while at least one Chromium-family browser is configured to load the corresponding extension. Removing an extension from that browser's `--load-extension` flag removes its shortcut from the menu too.
+
 These are Chromium-family only. Firefox and Zen don't get them.
 
 ## Firefox and Zen
