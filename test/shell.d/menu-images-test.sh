@@ -139,3 +139,37 @@ PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" VIPSTHUMBNAIL_CALLS_FILE="$t
 
 (( $(wc -l <"$tmp/calls") == 6 )) || fail "image menu releases thumbnail locks after generation"
 pass "image menu owns locks for exactly one generator lifetime"
+
+# --group-by-dir hands the picker a third column so every image under one
+# directory collapses into a single carousel item -- one theme, its preview and
+# its backgrounds -- rather than one item per file.
+grouped="$tmp/grouped"
+mkdir -p "$grouped/nord" "$grouped/rose-pine"
+printf 'image' >"$grouped/nord/000-preview.png"
+printf 'image' >"$grouped/nord/001-city.png"
+printf 'image' >"$grouped/rose-pine/000-preview.png"
+
+rm -rf "$cache_home"
+PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
+  "$ROOT/bin/omarchy-menu-images" --cache-only --group-by-dir "$grouped/nord" "$grouped/rose-pine"
+
+grouped_key=$(printf '%s\n%s' "$grouped/nord" "$grouped/rose-pine" | md5sum | cut -d ' ' -f 1)
+grouped_rows="$cache_dir/$grouped_key.rows"
+
+[[ -f $grouped_rows ]] || fail "image menu caches grouped rows"
+(( $(awk 'END { print NR }' "$grouped_rows") == 3 )) || fail "image menu keeps every grouped image as its own row"
+[[ $(awk -F '\t' 'NR == 1 { print $3 }' "$grouped_rows") == "nord" ]] ||
+  fail "image menu names a grouped row for its directory"
+(( $(awk -F '\t' '$3 == "nord"' "$grouped_rows" | wc -l) == 2 )) ||
+  fail "image menu groups every image in a directory under that directory"
+[[ $(awk -F '\t' 'END { print $3 }' "$grouped_rows") == "rose-pine" ]] ||
+  fail "image menu groups each directory separately"
+pass "image menu groups rows by directory"
+
+rm -rf "$cache_home"
+PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
+  "$ROOT/bin/omarchy-menu-images" --cache-only "$grouped/nord" "$grouped/rose-pine"
+
+(( $(awk -F '\t' 'NF == 2' "$grouped_rows" | wc -l) == 3 )) ||
+  fail "image menu leaves ungrouped rows at two columns"
+pass "image menu only groups rows when asked to"

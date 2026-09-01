@@ -7,8 +7,8 @@ const fs = require('fs')
 const backgroundQml = fs.readFileSync(path.join(root, 'shell/plugins/background/Background.qml'), 'utf8')
 
 assert(
-  /theme=\$\(omarchy-theme-switcher\); \[\[ -n \$theme \]\] && omarchy-theme-set \\"\$theme\\" >\/dev\/null 2>&1 &/.test(backgroundQml),
-  'background theme switcher starts theme application asynchronously after selection'
+  /read -r theme background < <\(omarchy-theme-switcher\); \[\[ -n \$theme \]\] && omarchy-theme-set \\"\$theme\\" \\"\$background\\" >\/dev\/null 2>&1 &/.test(backgroundQml),
+  'background theme switcher applies the picked theme and background asynchronously after selection'
 )
 
 assert(

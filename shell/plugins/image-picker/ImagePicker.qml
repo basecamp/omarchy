@@ -19,6 +19,7 @@ Item {
   property string selectionFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTION_FILE") || Quickshell.env("OMARCHY_BACKGROUND_SELECTION_FILE")
   property string selectedImage: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTED")
   property int selectedIndex: 0
+  property int selectedVariant: 0
   property bool imagesLoaded: false
   property bool opened: false
   property bool showLabels: false
@@ -68,22 +69,33 @@ Item {
 
   function currentPath() {
     if (imageArray.length === 0 || !itemMatches(selectedIndex)) return ""
-    return imageArray[selectedIndex].filePath
+    var variant = ImagePickerModel.variantAt(imageArray, selectedIndex, selectedVariant)
+    return variant ? variant.filePath : ""
   }
 
-  function nameForPath(path) {
-    return ImagePickerModel.nameForPath(path)
+  function variantCount(index) {
+    return ImagePickerModel.variantCount(imageArray, index)
   }
 
-  function labelForPath(path) {
-    return ImagePickerModel.labelForPath(path)
+  function variantThumbnail(index, variant) {
+    var value = ImagePickerModel.variantAt(imageArray, index, variant)
+    return value ? value.thumbnailPath : ""
+  }
+
+  // Up/down walks the variants the selected item carries -- for the theme
+  // picker, the backgrounds that theme ships -- so the carousel shows the
+  // desktop the user is actually choosing before they commit to it.
+  function cycleVariant(direction) {
+    var count = variantCount(selectedIndex)
+    if (count <= 1) return
+
+    selectedVariant = (selectedVariant + direction + count) % count
   }
 
   function currentLabel() {
-    var path = currentPath()
-    if (!path) return filterText ? "No matches" : ""
+    if (!currentPath()) return filterText ? "No matches" : ""
 
-    return labelForPath(path)
+    return ImagePickerModel.labelForItem(imageArray, selectedIndex)
   }
 
   function itemMatches(index) {
@@ -110,6 +122,7 @@ Item {
     if (index === selectedIndex && immediate !== true) return
 
     selectedIndex = index
+    selectedVariant = 0
   }
 
   function selectAdjacent(direction) {
@@ -131,7 +144,10 @@ Item {
 
     if (!itemMatches(selectedIndex)) {
       var first = ImagePickerModel.nextSelectedIndexForFilter(imageArray, selectedIndex, filterText)
-      if (first >= 0) selectedIndex = first
+      if (first >= 0) {
+        selectedIndex = first
+        selectedVariant = 0
+      }
     }
   }
 
@@ -195,10 +211,12 @@ Item {
 
   function loadRows(rows, reveal) {
     var newImages = ImagePickerModel.loadRows(rows)
+    var location = root.locateSelectedImage(newImages)
 
     root.loadedImageRows = rows
-    root.selectedIndex = root.indexForSelectedImage(newImages)
+    root.selectedIndex = location.index
     root.imageArray = newImages
+    root.selectedVariant = location.variant
     root.imagesLoaded = true
 
     if (reveal !== false) {
@@ -225,7 +243,9 @@ Item {
     layoutSettled = false
 
     if (imageRows && imageRows === loadedImageRows && imageArray.length > 0) {
-      root.select(root.selectedImageIndex(), true)
+      var location = root.locateSelectedImage(imageArray)
+      root.select(location.index, true)
+      root.selectedVariant = location.variant
       imagesLoaded = true
       opened = true
       root.revealWhenSettled(requestSerial)
@@ -237,6 +257,7 @@ Item {
       var rowsSerial = requestSerial
       imageArray = []
       selectedIndex = 0
+      selectedVariant = 0
       imagesLoaded = true
       opened = true
       Qt.callLater(function() {
@@ -248,6 +269,7 @@ Item {
 
     imageArray = []
     selectedIndex = 0
+    selectedVariant = 0
     imagesLoaded = false
     opened = false
     startImageScan(requestSerial, imageDirs)
@@ -269,12 +291,8 @@ Item {
     loadImagesProc.running = true
   }
 
-  function indexForSelectedImage(images) {
-    return ImagePickerModel.indexForSelectedImage(images, selectedImage)
-  }
-
-  function selectedImageIndex() {
-    return indexForSelectedImage(imageArray)
+  function locateSelectedImage(images) {
+    return ImagePickerModel.locateImage(images, selectedImage)
   }
 
   Process {
@@ -339,7 +357,9 @@ Item {
     layoutSettled = false
 
     if (imageRows && imageRows === loadedImageRows && imageArray.length > 0) {
-      selectedIndex = selectedImageIndex()
+      var location = root.locateSelectedImage(imageArray)
+      selectedIndex = location.index
+      selectedVariant = location.variant
       imagesLoaded = true
     } else if (imageRows) {
       loadRows(imageRows, false)
@@ -426,6 +446,12 @@ Item {
             } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Tab) {
               root.selectAdjacent(1)
               event.accepted = true
+            } else if (event.key === Qt.Key_Up) {
+              root.cycleVariant(-1)
+              event.accepted = true
+            } else if (event.key === Qt.Key_Down) {
+              root.cycleVariant(1)
+              event.accepted = true
             } else if (root.filterable && event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
               root.updateFilter(root.filterText + event.text)
               event.accepted = true
@@ -444,7 +470,7 @@ Item {
               readonly property var imageData: root.imageArray[index]
               readonly property string filePath: imageData ? imageData.filePath : ""
               readonly property string fileName: imageData ? imageData.fileName : ""
-              readonly property string thumbnailPath: imageData ? imageData.thumbnailPath : ""
+              readonly property string thumbnailPath: selected ? root.variantThumbnail(index, root.selectedVariant) : (imageData ? imageData.thumbnailPath : "")
 
               readonly property bool matched: root.itemMatches(index)
               readonly property int relativeIndex: root.filteredPosition(index) - root.selectedFilteredPosition()
@@ -539,6 +565,31 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: item.selected ? root.applySelected() : root.select(index)
               }
+            }
+          }
+        }
+
+        // The only hint that an item carries more than one image. Without it the
+        // theme picker's backgrounds are a feature nobody presses down to find.
+        Row {
+          visible: root.imageArray.length > 0 && root.itemMatches(root.selectedIndex) && root.variantCount(root.selectedIndex) > 1
+          spacing: Style.space(6)
+          anchors.horizontalCenter: carousel.horizontalCenter
+          anchors.bottom: carousel.bottom
+          anchors.bottomMargin: Style.space(14)
+
+          Repeater {
+            model: root.variantCount(root.selectedIndex)
+
+            delegate: Rectangle {
+              required property int index
+
+              width: Style.space(6)
+              height: width
+              radius: width / 2
+              color: index === root.selectedVariant ? root.foreground : Util.alpha(root.foreground, 0.35)
+              border.width: 1
+              border.color: Util.alpha(root.dimColor, 0.55)
             }
           }
         }

@@ -116,7 +116,7 @@ Item {
 
   Process {
     id: themeSwitchProc
-    command: ["bash", "-c", "theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\" >/dev/null 2>&1 &"]
+    command: ["bash", "-c", "IFS=$'\\t' read -r theme background < <(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\" \"$background\" >/dev/null 2>&1 &"]
     onExited: root.refreshBackground()
   }
 
