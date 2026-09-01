@@ -127,5 +127,18 @@ selection=$(MENU_IMAGES_SELECTION="$previews/nord/003-1-city.webp" switch)
   fail "theme picker reports the theme and the background the user stopped on" "$selection"
 pass "theme picker reports the picked theme and background"
 
+# Stopping on the first variant is declining to choose a background, whether that
+# variant is the theme's preview or the background standing in for one. Both have
+# to rotate, the way every theme did before the picker could report one at all.
+selection=$(MENU_IMAGES_SELECTION="$previews/nord/000-preview.png" switch)
+[[ $selection == "nord"$'\t' ]] ||
+  fail "theme picker reports no background when the user never left the preview" "$selection"
+pass "theme picker reports no background for a theme's preview"
+
+selection=$(MENU_IMAGES_SELECTION="$previews/plain/000-1-only.webp" switch)
+[[ $selection == "plain"$'\t' ]] ||
+  fail "a theme with no preview of its own also reports no background for its first variant" "$selection"
+pass "theme picker treats a missing preview the same as a real one"
+
 [[ -z $(MENU_IMAGES_SELECTION="" switch) ]] || fail "theme picker reports nothing when dismissed"
 pass "theme picker reports nothing when dismissed"

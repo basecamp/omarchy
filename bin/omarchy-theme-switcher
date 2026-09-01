@@ -222,5 +222,14 @@ selection=$(omarchy-menu-images "${menu_args[@]}" "${theme_dirs[@]}")
 
 if [[ -n $selection ]]; then
   theme_name=${selection%/*}
-  printf '%s\t%s\n' "${theme_name##*/}" "$(readlink -f "$selection")"
+  background=$(readlink -f "$selection")
+
+  # The first variant is a theme's preview, or the background standing in for
+  # one where a theme ships none. Stopping there is declining to choose a
+  # background, so report none and let the rotation pick as it always has.
+  if [[ ${selection##*/} == 000-* ]]; then
+    background=""
+  fi
+
+  printf '%s\t%s\n' "${theme_name##*/}" "$background"
 fi
