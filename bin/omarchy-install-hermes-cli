@@ -30,6 +30,9 @@ mode=${1:-}
 tool='pipx:hermes-agent[extras=all]'
 python='3.13'
 
+# TODO: Install uv and Hermes without `mise use -g`. They are Omarchy runtime
+# dependencies and should not add entries to the user's global mise config.
+
 # The line that identifies the stub as this installer's; matched whole, so a
 # wrapper that merely mentions the command is not mistaken for ours.
 marker='# Written by omarchy-install-hermes-cli.'
