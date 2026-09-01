@@ -32,7 +32,12 @@ o.bind_toggle("SUPER + CTRL + N", "Toggle nightlight", "nightlight")
 o.bind("SUPER + CTRL + Delete", "Toggle laptop display", "omarchy-hyprland-monitor-internal toggle")
 o.bind("SUPER + CTRL + ALT + Delete", "Toggle laptop display mirroring", "omarchy-hyprland-monitor-internal-mirror toggle")
 o.bind("switch:on:Lid Switch", nil, "omarchy-system-lid-close", { locked = true })
-o.bind("switch:off:Lid Switch", nil, "omarchy-hyprland-monitor-clamshell", { locked = true })
+-- Lid open after suspend only reconciled clamshell state. That left the
+-- internal panel black on hardware where ACPI backlight restore is slow or
+-- incomplete (see #9628). omarchy-system-wake already turns the display back
+-- on, restores the keyboard backlight, and then runs the same clamshell
+-- reconciliation the previous binding did alone.
+o.bind("switch:off:Lid Switch", nil, "omarchy-system-wake", { locked = true })
 
 o.bind("PRINT", "Screenshot", "omarchy-capture-screenshot")
 o.bind("ALT + PRINT", "Screenrecording", "omarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord")
