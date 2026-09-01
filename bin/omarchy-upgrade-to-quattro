@@ -2000,11 +2000,12 @@ mkdir -p "$HOME/.config/omarchy/branding"
 [[ -f $root/icon.txt ]] && cp "$root/icon.txt" "$HOME/.config/omarchy/branding/about.txt"
 [[ -f $root/logo.txt ]] && cp "$root/logo.txt" "$HOME/.config/omarchy/branding/screensaver.txt"
 
-mkdir -p "$HOME/Downloads" "$HOME/Pictures" "$HOME/Videos" "$HOME/Projects" "$HOME/.config/gtk-3.0"
+desktop_dir="$HOME/.local/share/desktop"
+mkdir -p "$HOME/Downloads" "$HOME/Pictures" "$HOME/Videos" "$HOME/Projects" "$HOME/.config/gtk-3.0" "$desktop_dir"
 if command -v xdg-user-dirs-update >/dev/null 2>&1; then
   xdg-user-dirs-update --set TEMPLATES "$HOME" || true
   xdg-user-dirs-update --set PUBLICSHARE "$HOME" || true
-  xdg-user-dirs-update --set DESKTOP "$HOME" || true
+  xdg-user-dirs-update --set DESKTOP "$desktop_dir" || true
 fi
 rmdir "$HOME/Templates" "$HOME/Public" "$HOME/Desktop" 2>/dev/null || true
 touch "$HOME/.config/gtk-3.0/bookmarks"
