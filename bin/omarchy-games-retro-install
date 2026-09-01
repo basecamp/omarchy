@@ -46,6 +46,37 @@ if [[ ! -f $core_path ]]; then
   exit 1
 fi
 
+# Desktop Entry values are line-oriented, and Exec arguments have their own
+# quoting rules. Reject control characters before serializing either path.
+if [[ $game_path == *[[:cntrl:]]* || $core_path == *[[:cntrl:]]* ]]; then
+  echo "Game and core paths cannot contain control characters." >&2
+  exit 1
+fi
+
+desktop_string_escape() {
+  # Desktop Entry "string" value (freedesktop Desktop Entry Spec, "Value types"):
+  # a raw newline would start a new key line and let a value inject a second
+  # Exec. Escape backslash first, then tab/CR/LF and a leading space.
+  local value="$1"
+
+  value=${value//\\/\\\\}
+  value=${value//$'\t'/\\t}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\n'/\\n}
+  [[ $value == " "* ]] && value="\\s${value# }"
+
+  printf '%s' "$value"
+}
+
+desktop_exec_arg() {
+  # One Exec argument, double-quoted per the freedesktop Exec spec. Escape the
+  # syntax characters before the whole Exec value is escaped for the file.
+  local escaped
+  escaped=$(printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\$/g' -e 's/%/%%/g')
+  printf '"%s"' "$escaped"
+}
+
 game_name=$(printf '%s' "${game_path##*/}" | sed 's/\.[^.]*$//; s/[[:space:]]*([^)]*)//g; s/[[:space:]]\+/ /g; s/^ //; s/ $//' | perl -Mopen=locale -pe 's/(^|[[:space:]])([^[:space:]])/$1\U$2/g')
 desktop_name="$game_name"
 desktop_id=$(printf '%s' "$desktop_name" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]' '-' | sed 's/^-//; s/-$//')
@@ -53,12 +84,16 @@ desktop_dir="$HOME/.local/share/applications"
 desktop_file="$desktop_dir/$desktop_id.desktop"
 mkdir -p "$desktop_dir"
 
+name_field=$(desktop_string_escape "$desktop_name")
+comment_field=$(desktop_string_escape "Play $game_name with RetroArch")
+exec_field=$(desktop_string_escape "retroarch -L $(desktop_exec_arg "$core_path") $(desktop_exec_arg "$game_path")")
+
 cat >"$desktop_file" <<EOF
 [Desktop Entry]
 Version=1.0
-Name=$desktop_name
-Comment=Play $game_name with RetroArch
-Exec=retroarch -L "$core_path" "$game_path"
+Name=$name_field
+Comment=$comment_field
+Exec=$exec_field
 Terminal=false
 Type=Application
 Icon=retro-gaming
