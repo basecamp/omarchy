@@ -17,6 +17,16 @@ Item {
   // Injected by omarchy-shell (the first-party service loader).
   property var shell: null
 
+  // Notification popups are layer-shell overlays, while the fullscreen
+  // screensaver is a normal Wayland client. Hide the overlays whenever the
+  // enabled idle service reports a screensaver window. Resolve through the
+  // registry so this also follows a user-cloned idle service.
+  readonly property string idleServiceId: shell && shell.pluginRegistry
+    ? shell.pluginRegistry.resolveEnabledId("omarchy.idle")
+    : "omarchy.idle"
+  readonly property var idleService: shell ? shell.serviceFor(idleServiceId) : null
+  readonly property bool screensaverActive: !!idleService && idleService.screensaverWindowCount > 0
+
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string home: Quickshell.env("HOME")
   // History + DND live under XDG_STATE_HOME: they're persistent user state
@@ -956,7 +966,7 @@ Item {
       id: popupWindow
       required property var modelData
       screen: modelData
-      visible: popupModel.count > 0
+      visible: popupModel.count > 0 && !service.screensaverActive
 
       WlrLayershell.namespace: "omarchy-notifications"
       WlrLayershell.layer: WlrLayer.Overlay
@@ -1027,7 +1037,9 @@ Item {
             Timer {
               interval: 50
               repeat: true
-              running: cardSlot.ticking
+              // A hidden toast should retain the visible lifetime it had left
+              // and resume its countdown after the screensaver closes.
+              running: cardSlot.ticking && !service.screensaverActive
               onTriggered: {
                 if (cardSlot.lifetime <= 0) return
                 cardSlot.remainingLifetime -= 50.0 / cardSlot.lifetime
