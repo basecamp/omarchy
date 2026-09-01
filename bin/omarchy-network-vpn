@@ -1,0 +1,169 @@
+#!/bin/bash
+
+# omarchy:summary=List or toggle WireGuard/VPN connections
+# omarchy:group=network
+# omarchy:args=[up|down <name>]
+# omarchy:examples=omarchy network vpn | omarchy network vpn up pvpn-ch | omarchy network vpn down pvpn-ch
+
+set -euo pipefail
+
+internet_probe=1.1.1.1
+
+# nmcli's own exit codes are documented as 0-10 (0 success, 1 unspecified
+# error, 2 invalid user input, ... 10 not found). A raw nmcli failure can
+# already legitimately exit 2, so the traffic-verification signal below
+# needs a code clearly outside that range or the two get confused -- a
+# `down` that nmcli itself refuses with its own exit 2 must not be reported
+# as "Connected, no traffic".
+EXIT_NO_TRAFFIC=75
+
+# `-e no` keeps ':' in a connection NAME from being escaped, matching the
+# convention already used by omarchy-network-band's nm_get.
+nm_get() {
+  LC_ALL=C nmcli -e no -g "$@" 2>/dev/null
+}
+
+# Wireguard profiles report TYPE=wireguard; other tunnel types NetworkManager
+# manages (OpenVPN, etc.) report TYPE=vpn. Both belong in the same list.
+#
+# `-e no` leaves a ':' inside NAME unescaped (connection names allow it), so
+# TYPE and ACTIVE are read off the *end* of the line and NAME is whatever is
+# left, rather than splitting on every ':' and assuming NAME never has one.
+list_vpn_connections() {
+  nm_get NAME,TYPE,ACTIVE connection show |
+    awk -F: '
+      NF == 0 { next }
+      {
+        active = $NF
+        type = $(NF - 1)
+        name = $1
+        for (i = 2; i <= NF - 2; i++) name = name ":" $i
+        if (type == "wireguard" || type == "vpn") print name "\t" active
+      }'
+}
+
+usage() {
+  echo "Usage: omarchy-network-vpn [up|down <name>]" >&2
+}
+
+if (( $# == 0 )); then
+  list_vpn_connections
+  exit 0
+fi
+
+if (( $# != 2 )); then
+  usage
+  exit 1
+fi
+
+# Reads connections (as printed by list_vpn_connections) on stdin, rather
+# than calling it again itself -- the caller already fetched one listing for
+# previously_active, and a second nmcli shellout back to back would only
+# reread the same thing (or, worse, a slightly different snapshot if
+# something else changed NetworkManager state in between the two calls).
+deactivate_other_vpns() {
+  local keep=$1 name active
+
+  while IFS=$'\t' read -r name active; do
+    # $keep is compared literally, not as a glob pattern -- unquoted here it
+    # would treat a name with a glob metacharacter (e.g. "work*") as a
+    # pattern instead of a literal, matching connections it was never meant
+    # to. This is the one place in this file a variable is deliberately
+    # quoted inside [[ ]] against the repo's usual style, for that reason.
+    [[ $name == "$keep" ]] && continue
+    [[ $active == "yes" ]] || continue
+    # Best-effort: a stuck old tunnel should not block bringing the new one
+    # up. If this fails, both can end up active at once -- rare (a transient
+    # D-Bus/NetworkManager error), but worth a line on stderr rather than
+    # disappearing outright, since it means the exclusivity guarantee above
+    # didn't hold.
+    if ! nmcli connection down "$name" >/dev/null 2>&1; then
+      echo "Warning: could not deactivate $name; it may still be active alongside $keep." >&2
+    fi
+  done
+}
+
+# NetworkManager reports a WireGuard profile as fully "activated" once its
+# own local setup (device, keys, routes) succeeds -- it does not wait on or
+# check the peer handshake. A wrong endpoint, a blocked UDP port, or a dead
+# server all still read as "connected" from nmcli alone. One ping bound to
+# the tunnel device is the only way to tell a working tunnel from one that
+# is locally configured but not actually carrying traffic.
+#
+# A full tunnel shows up either as a literal default route, or as the
+# classic wg-quick split of 0.0.0.0/1 + 128.0.0.0/1 that some NetworkManager
+# versions use instead, specifically to avoid clobbering an existing default
+# route. Either form covers "all traffic goes through this device".
+is_full_tunnel() {
+  local device=$1 routes
+  routes=$(ip route show table all dev "$device" 2>/dev/null)
+  [[ -n $routes ]] || return 1
+  grep -q '^default' <<<"$routes" && return 0
+  grep -q '^0\.0\.0\.0/1 ' <<<"$routes" && grep -q '^128\.0\.0\.0/1 ' <<<"$routes"
+}
+
+# Only checked for a full tunnel: a split-tunnel profile that only routes
+# specific subnets, or a peer that firewalls off ICMP, would fail this probe
+# while working exactly as configured, so there is nothing generic to verify
+# there -- take NetworkManager's word for those instead of guessing at a
+# false negative.
+verify_tunnel() {
+  local name=$1 device state
+
+  device=$(nm_get GENERAL.DEVICES connection show "$name")
+  [[ -n $device ]] || return 1
+
+  state=$(nm_get GENERAL.STATE device show "$device")
+  [[ $state == 100* ]] || return 1
+
+  is_full_tunnel "$device" || return 0
+
+  # No ping binary is nothing to hold against the tunnel -- omarchy-network-status
+  # treats it the same way (omarchy-cmd-present ping || return) rather than
+  # failing a check it cannot actually run.
+  omarchy-cmd-present ping || return 0
+
+  ping -c 1 -W 2 -I "$device" "$internet_probe" >/dev/null 2>&1
+}
+
+case "$1" in
+  up)
+    # Nothing at the NetworkManager/WireGuard level stops two tunnels being
+    # active at once -- they'd just fight over the default route. Treat VPN
+    # selection as exclusive, one profile carrying traffic at a time.
+    #
+    # Fetched once and reused below: a bare `x=$(...)` assignment under
+    # set -e aborts the whole script outright if the pipeline inside it
+    # fails (a transient nmcli/D-Bus hiccup), so `|| true` degrades to "no
+    # connections known" instead of killing the up attempt before it starts.
+    connections=$(list_vpn_connections) || true
+    previously_active=$(awk -F'\t' -v keep="$2" '$1 != keep && $2 == "yes" { print $1 }' <<<"$connections")
+
+    deactivate_other_vpns "$2" <<<"$connections"
+
+    if ! nmcli connection up "$2" >/dev/null 2>&1; then
+      echo "Error: failed to activate $2." >&2
+      # Bringing the new profile up failed outright -- put back whatever was
+      # working before rather than leaving the user with nothing active.
+      while IFS= read -r name; do
+        [[ -n $name ]] && nmcli connection up "$name" >/dev/null 2>&1
+      done <<<"$previously_active" || true
+      exit 1
+    fi
+
+    if ! verify_tunnel "$2"; then
+      echo "Warning: $2 connected but is not passing traffic." >&2
+      exit "$EXIT_NO_TRAFFIC"
+    fi
+    ;;
+  down)
+    if ! nmcli connection down "$2" >/dev/null 2>&1; then
+      echo "Error: failed to deactivate $2." >&2
+      exit 1
+    fi
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
