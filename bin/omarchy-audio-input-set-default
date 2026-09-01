@@ -12,9 +12,76 @@ if [[ -z $node_id || -z $source_name ]]; then
   exit 1
 fi
 
-wpctl set-default "$node_id" 2>/dev/null || true
-pactl set-default-source "$source_name" 2>/dev/null || true
+# Bluetooth headsets advertise capture only on an HFP/HSP profile. Selecting
+# their input while the card is still on A2DP changes the default source in
+# metadata but leaves the microphone silent (see #9380). Switch the owning
+# bluez card to a duplex headset profile before claiming the source.
+ensure_bluetooth_headset_profile() {
+  local source=$1
+  local mac card profiles active sources_on_active profile
 
-pactl list short source-outputs 2>/dev/null | awk '{ print $1 }' | while read -r output; do
-  [[ -n $output ]] && pactl move-source-output "$output" "$source_name" 2>/dev/null || true
+  # bluez_input.AA_BB_… / bluez_output.AA_BB_….a2dp-sink / bluez_card.AA_BB_…
+  [[ $source == bluez_* ]] || return 0
+
+  mac=$(printf '%s' "$source" | grep -oE '[0-9A-Fa-f]{2}(_[0-9A-Fa-f]{2}){5}' | head -n1)
+  [[ -n $mac ]] || return 0
+
+  card="bluez_card.$mac"
+
+  # pactl "Profiles:" block lists "name: Description (sinks: N, sources: M, …)".
+  # Prefer a profile that exposes a source (duplex headset). Fall back to any
+  # headset-head-unit* name WirePlumber still advertises.
+  profiles=$(
+    timeout 2 pactl list cards 2>/dev/null | awk -v card="$card" '
+      $1 == "Name:" && $2 == card { in_card = 1; next }
+      in_card && $1 == "Name:" { in_card = 0 }
+      in_card && $1 == "Active" && $2 == "Profile:" {
+        print "ACTIVE", $3
+        next
+      }
+      in_card && /^[\t ]+[a-z0-9-]+: / {
+        name = $1
+        sub(/:$/, "", name)
+        sources = 0
+        line = $0
+        sub(/.*sources: /, "", line)
+        sub(/[^0-9].*/, "", line)
+        if (line ~ /^[0-9]+$/) sources = line + 0
+        print "PROFILE", name, sources
+      }
+    '
+  )
+
+  active=$(printf '%s\n' "$profiles" | awk '$1 == "ACTIVE" { print $2; exit }')
+  # Already on a capture-capable profile — leave codec choice alone.
+  if [[ -n $active ]]; then
+    sources_on_active=$(printf '%s\n' "$profiles" | awk -v a="$active" '$1 == "PROFILE" && $2 == a { print $3; exit }')
+    if [[ -n $sources_on_active && $sources_on_active != 0 ]]; then
+      return 0
+    fi
+  fi
+
+  profile=$(
+    printf '%s\n' "$profiles" | awk '
+      $1 == "PROFILE" && $3 + 0 > 0 {
+        if ($2 ~ /^headset-head-unit/) { print $2; found = 1; exit }
+        if (!fallback) fallback = $2
+      }
+      END { if (!found && fallback) print fallback }
+    '
+  )
+
+  [[ -n $profile ]] || return 0
+  [[ $profile == "$active" ]] && return 0
+
+  timeout 2 pactl set-card-profile "$card" "$profile" 2>/dev/null || true
+}
+
+ensure_bluetooth_headset_profile "$source_name"
+
+timeout 2 wpctl set-default "$node_id" 2>/dev/null || true
+timeout 2 pactl set-default-source "$source_name" 2>/dev/null || true
+
+timeout 2 pactl list short source-outputs 2>/dev/null | awk '{ print $1 }' | while read -r output; do
+  [[ -n $output ]] && timeout 2 pactl move-source-output "$output" "$source_name" 2>/dev/null || true
 done
