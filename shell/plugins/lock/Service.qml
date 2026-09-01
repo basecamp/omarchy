@@ -22,6 +22,10 @@ Item {
   property bool fingerprintAuthenticating: false
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
+  property int fingerprintRetryAttempt: 0
+  readonly property int fingerprintRetryMax: 8
+  readonly property int fingerprintRetryBaseMs: 250
+  readonly property int fingerprintRetryCapMs: 30000
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -120,6 +124,7 @@ Item {
     failedAttempts = 0
     authenticatingPassword = false
     fingerprintAuthenticating = false
+    fingerprintRetryAttempt = 0
     fingerprintRetryTimer.stop()
     if (passwordPam.active) passwordPam.abort()
     if (fingerprintPam.active) fingerprintPam.abort()
@@ -223,7 +228,7 @@ Item {
     if (result === PamResult.Success) {
       finishUnlock()
     } else if (fingerprintConfigured) {
-      fingerprintRetryTimer.restart()
+      root.scheduleFingerprintRetry()
     }
   }
 
@@ -238,6 +243,7 @@ Item {
         root.pendingSessionLock = false
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
+        root.fingerprintRetryAttempt = 0
         root.startFingerprint()
       }
     }
@@ -349,13 +355,29 @@ Item {
 
     onError: function(error) {
       root.fingerprintAuthenticating = false
-      if (root.lockRequested && root.fingerprintConfigured) fingerprintRetryTimer.restart()
+      if (root.lockRequested && root.fingerprintConfigured) root.scheduleFingerprintRetry()
     }
+  }
+
+  function scheduleFingerprintRetry() {
+    if (!lockRequested || !fingerprintConfigured) return
+    if (fingerprintRetryAttempt >= fingerprintRetryMax) {
+      root.logEvent("fingerprint-retry-exhausted")
+      return
+    }
+
+    var delay = Math.min(
+      fingerprintRetryCapMs,
+      fingerprintRetryBaseMs * Math.pow(2, fingerprintRetryAttempt)
+    )
+    fingerprintRetryAttempt += 1
+    fingerprintRetryTimer.interval = delay
+    fingerprintRetryTimer.restart()
   }
 
   Timer {
     id: fingerprintRetryTimer
-    interval: 250
+    interval: fingerprintRetryBaseMs
     repeat: false
     onTriggered: root.startFingerprint()
   }
