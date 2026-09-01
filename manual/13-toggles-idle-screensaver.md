@@ -62,6 +62,28 @@ Nothing is lost, though. A silenced notification is written straight into your n
 
 Two kinds of message still get through: Omarchy's own confirmation toasts for something you just did ("Theme changed", "Screenshot saved"), and critical alerts sent from the command line. Chat apps that mark everything critical to force their way in front of you don't qualify.
 
+### Notification urgency
+
+Senders pick their own urgency, and some of them lie about it. An app that marks every message critical gets a toast that never goes away on its own, because critical notifications stay up until you dismiss them. You can correct a sender with a top-level `notifications` block in `~/.config/omarchy/shell.json`:
+
+```json
+{
+  "version": 1,
+  "notifications": {
+    "rules": [
+      { "app": "Brave Origin", "urgency": "critical", "set": { "urgency": "normal" } },
+      { "app": "Brave Origin", "summary~": "Alex|Sam", "set": { "urgency": "critical" } }
+    ]
+  }
+}
+```
+
+A rule filters on the fields it names — `app`, `appIcon`, `summary`, `body`, and the incoming `urgency` — and every field it names has to match. Add a `~` to a field name to match a regular expression instead of the exact text. What the rule changes goes in `set`. The urgency names are `low`, `normal` and `critical`.
+
+Rules apply in order and the last match wins, so the pair above reads as "everything that browser marks critical is really only normal, except messages from these two people, which really are critical". The name to match is the one the sender declares for itself; if you are not sure what that is, read it out of the `app` field of your recent notifications in `~/.local/state/omarchy/notifications/history/`.
+
+The correction happens the moment a notification arrives, before anything else looks at it. A remapped notification gets the on-screen lifetime of its new urgency, and it faces do not disturb as the new urgency too.
+
 ### Idle
 
 The Omarchy shell owns idle behavior, and the timings are a top-level `idle` block in `~/.config/omarchy/shell.json`:

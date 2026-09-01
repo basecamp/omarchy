@@ -99,6 +99,12 @@ Item {
   readonly property int normalPopupDuration: 8000
   readonly property int maxPopupDuration: 30000
 
+  // Rules that correct the urgency senders declare, applied once at ingest by
+  // NotificationLogic.mapUrgency(). Read straight off shellConfig so they
+  // hot-reload with the rest of shell.json.
+  readonly property var notificationsConfig: shell && shell.shellConfig && shell.shellConfig.notifications ? shell.shellConfig.notifications : ({})
+  readonly property var urgencyRules: Array.isArray(notificationsConfig.rules) ? notificationsConfig.rules : []
+
   function durationFor(urgency, expireTimeout) {
     switch (urgency) {
     case NotificationUrgency.Critical:
@@ -127,12 +133,12 @@ Item {
   //     Trusted because it's almost always omarchy or system shell scripts —
   //     chat apps set app_name to their brand (Discord/Slack/Vesktop), which
   //     falls outside this rule.
-  function shouldBypassDnd(notification) {
-    return NotificationLogic.shouldBypassDnd(notification, NotificationUrgency.Critical)
+  function shouldBypassDnd(entry) {
+    return NotificationLogic.shouldBypassDnd(entry, NotificationUrgency.Critical)
   }
 
   function snapshotOf(notification) {
-    return NotificationLogic.snapshotOf(notification, Date.now())
+    return NotificationLogic.snapshotOf(notification, Date.now(), service.urgencyRules)
   }
 
   // A notification nobody looks back at:
@@ -170,7 +176,7 @@ Item {
     // DND bypass rules: chat apps abuse urgency=critical to force
     // visibility, so critical alone isn't enough — we also require the
     // sender to be CLI-style. See shouldBypassDnd().
-    if (service.doNotDisturb && !shouldBypassDnd(notification)) {
+    if (service.doNotDisturb && !shouldBypassDnd(snapshot)) {
       // The toast never shows, so the only record a silenced notification
       // can leave is a history entry. Write it straight into history —
       // "what did I miss while silenced" is exactly what history is for.
@@ -206,7 +212,7 @@ Item {
     writeHistoryFile(written, function() {
       var updated = null
       try {
-        updated = NotificationLogic.replacementSnapshot(notification, written.originalId, written.timestamp)
+        updated = NotificationLogic.replacementSnapshot(notification, written.originalId, written.timestamp, service.urgencyRules)
       } catch (e) {
         // Torn down by the server while the write was queued.
       }
@@ -260,7 +266,7 @@ Item {
 
     var updated
     try {
-      updated = NotificationLogic.replacementSnapshot(notification, originalId, timestamp)
+      updated = NotificationLogic.replacementSnapshot(notification, originalId, timestamp, service.urgencyRules)
     } catch (e) {
       // Object torn down by the server while the signal was in flight.
       return
