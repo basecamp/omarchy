@@ -5,4 +5,5 @@ Exec=omarchy-launch-webapp https://web.whatsapp.com/
 Terminal=false
 Type=Application
 Icon=whatsapp
+StartupWMClass=chrome-web.whatsapp.com__-Default
 StartupNotify=true

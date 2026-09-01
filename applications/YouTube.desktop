@@ -5,4 +5,5 @@ Exec=omarchy-launch-webapp https://youtube.com/
 Terminal=false
 Type=Application
 Icon=youtube
+StartupWMClass=chrome-youtube.com__-Default
 StartupNotify=true

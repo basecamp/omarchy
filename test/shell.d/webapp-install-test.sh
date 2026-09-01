@@ -29,6 +29,8 @@ desktop=$(desktop_for Example)
 grep -Fxq 'Name=Example' "$desktop" || fail "webapp install writes the app name"
 grep -Fxq 'Exec=omarchy-launch-webapp "https://example.com"' "$desktop" ||
   fail "webapp install launches the https URL" "$(cat "$desktop")"
+grep -Fxq 'StartupWMClass=chrome-example.com__-Default' "$desktop" ||
+  fail "webapp install writes Chromium's --app= window class" "$(cat "$desktop")"
 pass "webapp install writes an https desktop entry"
 
 if install_webapp "Plain" "example.org/app" "webapp" >"$tmpdir/out" 2>"$tmpdir/err"; then
@@ -38,6 +40,8 @@ else
 fi
 grep -Fxq 'Exec=omarchy-launch-webapp "https://example.org/app"' "$(desktop_for Plain)" ||
   fail "webapp install stores the prefixed https URL" "$(cat "$(desktop_for Plain)")"
+grep -Fxq 'StartupWMClass=chrome-example.org__app-Default' "$(desktop_for Plain)" ||
+  fail "webapp install encodes the path in StartupWMClass" "$(cat "$(desktop_for Plain)")"
 pass "webapp install prefixes a schemeless URL with https"
 
 if install_webapp "Local" "https://localhost:47990" "webapp" "omarchy-launch-webapp https://localhost:47990 --ignore-certificate-errors" >"$tmpdir/out" 2>"$tmpdir/err"; then
@@ -47,7 +51,20 @@ else
 fi
 grep -Fxq 'Exec=omarchy-launch-webapp https://localhost:47990 --ignore-certificate-errors' "$(desktop_for Local)" ||
   fail "webapp install writes the custom exec" "$(cat "$(desktop_for Local)")"
+grep -Fxq 'StartupWMClass=chrome-localhost__-Default' "$(desktop_for Local)" ||
+  fail "webapp install strips a non-default port from StartupWMClass" "$(cat "$(desktop_for Local)")"
 pass "webapp install keeps a custom https exec"
+
+if install_webapp "Work" "https://web.whatsapp.com/" "webapp" \
+  'omarchy-launch-webapp --profile-directory="Profile 1" https://web.whatsapp.com/' \
+  >"$tmpdir/out" 2>"$tmpdir/err"; then
+  :
+else
+  fail "webapp install keeps a profile-directory exec" "$(cat "$tmpdir/err")"
+fi
+grep -Fxq 'StartupWMClass=chrome-web.whatsapp.com__-Profile_1' "$(desktop_for Work)" ||
+  fail "webapp install puts the profile directory in StartupWMClass" "$(cat "$(desktop_for Work)")"
+pass "webapp install encodes --profile-directory in StartupWMClass"
 
 for url in "javascript:alert(1)" "file:///etc/passwd" "data:text/html,hi" "ftp://example.com" "ext://x"; do
   if install_webapp "Bad" "$url" "webapp" >"$tmpdir/out" 2>"$tmpdir/err"; then

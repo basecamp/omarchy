@@ -5,4 +5,5 @@ Exec=omarchy-launch-webapp https://launchpad.37signals.com
 Terminal=false
 Type=Application
 Icon=basecamp
+StartupWMClass=chrome-launchpad.37signals.com__-Default
 StartupNotify=true

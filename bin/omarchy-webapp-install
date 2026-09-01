@@ -136,6 +136,50 @@ desktop_exec_arg() {
   printf '"%s"' "$escaped"
 }
 
+# Chromium --app= windows advertise chrome-<host>_<path>-<profile> (slashes in
+# the path become underscores, spaces in the profile directory become
+# underscores). An empty path is "/". The host is lowercased the way GURL does.
+chromium_webapp_startup_class() {
+  local url=$1
+  local profile=${2:-Default}
+  local rest host path app
+
+  rest=${url#*://}
+  authority=${rest%%/*}
+  host=${authority##*@}
+  [[ $host == *:* && $host != \[* ]] && host=${host%%:*}
+  if [[ $rest == "$authority" ]]; then
+    path="/"
+  else
+    path=${rest#"$authority"}
+    path=${path%%\?*}
+    path=${path%%#*}
+    [[ -z $path ]] && path="/"
+  fi
+  host=${host,,}
+  app=${host}_${path}
+  app=${app//\//_}
+  printf 'chrome-%s-%s' "$app" "${profile// /_}"
+}
+
+profile_directory_from_exec() {
+  local exec=$1
+
+  if [[ $exec =~ --profile-directory=\"([^\"]+)\" ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return
+  fi
+  if [[ $exec =~ --profile-directory=\'([^\']+)\' ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return
+  fi
+  if [[ $exec =~ --profile-directory=([^[:space:]]+) ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+    return
+  fi
+  printf 'Default'
+}
+
 if (( $# < 3 )); then
   echo -e "\e[32mLet's create a new web app you can start with the app launcher.\n\e[0m"
   APP_NAME=$(gum input --prompt "Name> " --placeholder "My favorite web app")
@@ -216,6 +260,8 @@ mkdir -p "$DESKTOP_DIR"
 name_field=$(desktop_string_escape "$APP_NAME")
 exec_field=$(desktop_string_escape "$EXEC_COMMAND")
 icon_field=$(desktop_string_escape "$ICON_VALUE")
+startup_class=$(chromium_webapp_startup_class "$APP_URL" "$(profile_directory_from_exec "$EXEC_COMMAND")")
+startup_field=$(desktop_string_escape "$startup_class")
 
 cat >"$DESKTOP_FILE" <<EOF
 [Desktop Entry]
@@ -226,6 +272,7 @@ Exec=$exec_field
 Terminal=false
 Type=Application
 Icon=$icon_field
+StartupWMClass=$startup_field
 StartupNotify=true
 EOF
 

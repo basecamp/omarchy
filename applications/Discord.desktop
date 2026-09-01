@@ -5,4 +5,5 @@ Exec=omarchy-launch-webapp https://discord.com/channels/@me
 Terminal=false
 Type=Application
 Icon=omarchy-discord
+StartupWMClass=chrome-discord.com__channels_@me-Default
 StartupNotify=true
