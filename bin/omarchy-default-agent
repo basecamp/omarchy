@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set and launch the default coding agent
-# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush]
+# omarchy:args=[pi|omp|opencode|ori|claude|codex|cursor|grok|agy|copilot|crush]
 # omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
 
 installing=false
@@ -31,28 +31,49 @@ ori | openrouter) agent="ori"; name="Ori"; agent_package="github:OpenRouterLabs/
 claude | claude-code) agent="claude"; name="Claude Code" ;;
 codex) agent="codex"; name="Codex" ;;
 crush) agent="crush"; name="Crush" ;;
+cursor | cursor-agent) agent="cursor-agent"; name="Cursor" ;;
 grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
 agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
 *)
-  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush>"
+  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|cursor|grok|agy|copilot|crush>"
   exit 1
   ;;
 esac
 
-agent_package=${agent_package:-$agent}
+# Cursor Agent is Cursor's own CLI, not a mise registry tool. Prefer a
+# cursor-agent already on PATH; otherwise fetch Cursor's published tarball.
+if [[ $agent == "cursor-agent" ]]; then
+  cursor_ready=false
+  omarchy-install-cursor-agent --check && cursor_ready=true
 
-if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; then
-  exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
-fi
-
-if ! mise use -g "$agent_package"; then
-  if [[ $installing == "true" ]]; then
-    echo "Could not install $name with mise" >&2
-  else
-    echo "Could not set $name as the default coding agent" >&2
+  if [[ $cursor_ready == "false" && $installing == "false" ]]; then
+    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
   fi
-  exit 1
+
+  if [[ $cursor_ready == "false" ]] && ! omarchy-install-cursor-agent; then
+    if [[ $installing == "true" ]]; then
+      echo "Could not install $name" >&2
+    else
+      echo "Could not set $name as the default coding agent" >&2
+    fi
+    exit 1
+  fi
+else
+  agent_package=${agent_package:-$agent}
+
+  if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; then
+    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
+  fi
+
+  if ! mise use -g "$agent_package"; then
+    if [[ $installing == "true" ]]; then
+      echo "Could not install $name with mise" >&2
+    else
+      echo "Could not set $name as the default coding agent" >&2
+    fi
+    exit 1
+  fi
 fi
 
 mkdir -p "$(dirname "$agent_file")"

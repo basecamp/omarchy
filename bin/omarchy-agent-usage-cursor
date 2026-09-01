@@ -1,0 +1,671 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Cursor usage record as JSON
+# omarchy:args=[--force] [--limits-only] [--state-db <path>] [--auth-json <path>]
+# omarchy:hidden=true
+"""Collect Cursor plan usage into one display-ready JSON record.
+
+Credentials come from Cursor's local state.vscdb (IDE, read-only) or, when that
+is missing, from the Cursor Agent CLI auth file (~/.config/cursor/auth.json).
+
+Limits come from GetCurrentPeriodUsage. Tier comes from GetPlanInfo (falling
+back to membership fields on the credentials). Day / model / prompt stats come
+from GetFilteredUsageEvents (paged) plus GetAggregatedUsageEvents for the
+all-time model breakdown when events are sparse.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import sqlite3
+import sys
+import urllib.error
+import urllib.request
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "cursor"
+AGENT_NAME = "Cursor"
+AUTH_HELP = "Open Cursor and sign in, or run `agent login`."
+API_BASE = "https://api2.cursor.sh/aiserver.v1.DashboardService"
+PERIOD_PATH = "GetCurrentPeriodUsage"
+PLAN_PATH = "GetPlanInfo"
+EVENTS_PATH = "GetFilteredUsageEvents"
+AGGREGATED_PATH = "GetAggregatedUsageEvents"
+DEFAULT_STATE_DB = Path.home() / ".config" / "Cursor" / "User" / "globalStorage" / "state.vscdb"
+DEFAULT_AUTH_JSON = Path.home() / ".config" / "cursor" / "auth.json"
+EVENTS_PAGE_SIZE = 200
+EVENTS_MAX_PAGES = 40
+STATS_KEYS = (
+  "todayPrompts",
+  "todaySessions",
+  "todayTotalTokens",
+  "todayTokensByModel",
+  "recentDays",
+  "totalPrompts",
+  "totalSessions",
+  "activeDays",
+  "activeDates",
+  "modelUsage",
+  "hasLocalStats",
+  "hasPromptStats",
+)
+
+
+def usage_record_path() -> Path:
+  root = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state"))
+  return root / "omarchy" / "agents" / "usage" / f"{AGENT_ID}.json"
+
+
+def load_cached_stats() -> dict[str, Any]:
+  path = usage_record_path()
+  if not path.is_file():
+    return {}
+  try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return {}
+  if not isinstance(data, dict):
+    return {}
+  cached = {key: data[key] for key in STATS_KEYS if key in data}
+  if cached.get("hasLocalStats") is None and (
+    number(cached.get("totalPrompts")) > 0
+    or bool(cached.get("modelUsage"))
+    or any(number((day or {}).get("messageCount")) > 0 for day in (cached.get("recentDays") or []))
+  ):
+    cached["hasLocalStats"] = True
+  return cached
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_result(**overrides: Any) -> dict[str, Any]:
+  out: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    "hasPromptStats": True,
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  out.update(empty_stats())
+  out.update(overrides)
+  return out
+
+
+def expand_path(value: str | None, fallback: Path) -> Path:
+  text = str(value or "").strip()
+  if not text:
+    return fallback
+  return Path(os.path.expandvars(os.path.expanduser(text))).expanduser()
+
+
+def read_item(conn: sqlite3.Connection, key: str) -> str | None:
+  row = conn.execute(
+    "SELECT value FROM ItemTable WHERE key = ? LIMIT 1",
+    (key,),
+  ).fetchone()
+  if not row or row[0] is None:
+    return None
+  value = row[0]
+  if isinstance(value, bytes):
+    value = value.decode("utf-8", errors="replace")
+  text = str(value).strip()
+  return text or None
+
+
+def load_credentials_from_state_db(state_db: Path) -> tuple[dict[str, str | None] | None, dict[str, Any] | None]:
+  if not state_db.is_file():
+    return None, None
+
+  try:
+    # Open read-only. mode=ro blocks writes through this connection; WAL/shm
+    # sidecars may still exist from Cursor's writer. Avoid immutable=1 so a
+    # live DB with an active WAL remains readable.
+    uri = state_db.resolve().as_uri() + "?mode=ro"
+    conn = sqlite3.connect(uri, uri=True, timeout=2)
+  except sqlite3.Error as exc:
+    return None, empty_result(
+      usageStatusText="Cursor unavailable",
+      authHelpText=f"Could not open Cursor database: {exc}",
+    )
+
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    access_token = read_item(conn, "cursorAuth/accessToken")
+    membership = read_item(conn, "cursorAuth/stripeMembershipType")
+  except sqlite3.Error as exc:
+    return None, empty_result(
+      usageStatusText="Cursor unavailable",
+      authHelpText=f"Could not read Cursor database: {exc}",
+    )
+  finally:
+    conn.close()
+
+  if not access_token:
+    return None, None
+
+  return {"accessToken": access_token, "membershipType": membership}, None
+
+
+def load_credentials_from_auth_json(auth_json: Path) -> tuple[dict[str, str | None] | None, dict[str, Any] | None]:
+  if not auth_json.is_file():
+    return None, None
+
+  try:
+    payload = json.loads(auth_json.read_text(encoding="utf-8"))
+  except Exception as exc:
+    return None, empty_result(
+      usageStatusText="Cursor unavailable",
+      authHelpText=f"Could not read Cursor auth file: {exc}",
+    )
+
+  if not isinstance(payload, dict):
+    return None, empty_result(
+      usageStatusText="Cursor unavailable",
+      authHelpText="Cursor auth file was not a JSON object.",
+    )
+
+  access_token = str(payload.get("accessToken") or payload.get("token") or "").strip()
+  if not access_token:
+    return None, None
+
+  membership = str(
+    payload.get("membershipType")
+    or payload.get("stripeMembershipType")
+    or payload.get("subscriptionTier")
+    or ""
+  ).strip() or None
+
+  return {"accessToken": access_token, "membershipType": membership}, None
+
+
+def load_credentials(
+  state_db: Path,
+  auth_json: Path,
+) -> tuple[dict[str, str | None] | None, dict[str, Any] | None]:
+  credentials, error = load_credentials_from_state_db(state_db)
+  if error is not None:
+    return None, error
+  if credentials is not None:
+    return credentials, None
+
+  credentials, error = load_credentials_from_auth_json(auth_json)
+  if error is not None:
+    return None, error
+  if credentials is not None:
+    return credentials, None
+
+  if not state_db.is_file() and not auth_json.is_file():
+    return None, empty_result(
+      usageStatusText="Cursor unavailable",
+      authHelpText="Cursor state database not found. Open Cursor and sign in, or run `agent login`.",
+    )
+
+  return None, empty_result(
+    usageStatusText="Sign in to Cursor",
+    authHelpText=AUTH_HELP,
+  )
+
+
+def to_epoch_ms(value: Any) -> int | None:
+  if value is None or value == "":
+    return None
+  if isinstance(value, (int, float)):
+    number = float(value)
+    if not math.isfinite(number):
+      return None
+    # Values at/above ~1e11 are already milliseconds (ms since ~1973).
+    # Smaller magnitudes are treated as seconds.
+    if abs(number) >= 1e11:
+      return int(number)
+    return int(number * 1000.0)
+
+  text = str(value).strip()
+  if not text:
+    return None
+  if text.isdigit() or (text.startswith("-") and text[1:].isdigit()):
+    return to_epoch_ms(float(text))
+
+  try:
+    if text.endswith("Z"):
+      dt = datetime.fromisoformat(text[:-1] + "+00:00")
+    else:
+      dt = datetime.fromisoformat(text)
+    if dt.tzinfo is None:
+      dt = dt.replace(tzinfo=timezone.utc)
+    return int(dt.timestamp() * 1000)
+  except Exception:
+    return None
+
+
+def parse_billing_cycle_end(value: Any) -> str:
+  # Keep resetsAt empty on unparseable/non-finite/out-of-range input so QML
+  # date parsing stays valid and the collector still emits JSON.
+  try:
+    ms = to_epoch_ms(value)
+    if ms is None:
+      return ""
+    return datetime.fromtimestamp(ms / 1000.0, timezone.utc).isoformat()
+  except (OverflowError, OSError, ValueError, TypeError):
+    return ""
+
+
+def format_tier(value: Any) -> str:
+  text = str(value or "").strip()
+  if not text:
+    return ""
+  return " ".join(part.capitalize() for part in text.replace("_", " ").split())
+
+
+def percent_to_fraction(value: Any) -> float:
+  if value is None:
+    return -1.0
+  try:
+    number = float(value)
+  except (TypeError, ValueError):
+    return -1.0
+  # Non-finite values would serialize as NaN/Infinity and break QML JSON.parse.
+  if not math.isfinite(number):
+    return -1.0
+  return number / 100.0
+
+
+def number(value: Any) -> int:
+  try:
+    n = float(value or 0)
+    return round(n) if n == n else 0
+  except Exception:
+    return 0
+
+
+def date_string(value: date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = datetime.now().astimezone().date()
+  return [date_string(today - timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_from_epoch_ms(ms: int) -> str:
+  try:
+    return date_string(datetime.fromtimestamp(ms / 1000.0).astimezone().date())
+  except Exception:
+    return date_string(datetime.now().astimezone().date())
+
+
+def model_label(raw: Any) -> str:
+  text = str(raw or "").strip() or "unknown"
+  if text in ("default", "auto"):
+    return "Auto"
+  return text
+
+
+def api_post(
+  access_token: str,
+  path: str,
+  body: dict[str, Any] | None = None,
+  timeout: float = 30,
+) -> tuple[Any | None, dict[str, Any] | None]:
+  request = urllib.request.Request(
+    f"{API_BASE}/{path}",
+    data=json.dumps(body or {}).encode("utf-8"),
+    method="POST",
+    headers={
+      "Authorization": f"Bearer {access_token}",
+      "Content-Type": "application/json",
+      "Connect-Protocol-Version": "1",
+    },
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+      raw = response.read().decode("utf-8", errors="replace")
+      status = getattr(response, "status", 200)
+  except urllib.error.HTTPError as exc:
+    status = exc.code
+    raw = exc.read().decode("utf-8", errors="replace")
+    if status in (401, 403):
+      return None, empty_result(
+        usageStatusText="Sign in to Cursor",
+        authHelpText="Cursor session expired. Open Cursor and sign in again, or run `agent login`.",
+      )
+    return None, empty_result(
+      usageStatusText="Cursor limits unavailable",
+      authHelpText=f"Usage API returned HTTP {status}",
+    )
+  except Exception as exc:
+    return None, empty_result(
+      usageStatusText="Cursor limits unavailable",
+      authHelpText=str(exc),
+    )
+
+  if status < 200 or status >= 300:
+    return None, empty_result(
+      usageStatusText="Cursor limits unavailable",
+      authHelpText=f"Usage API returned HTTP {status}",
+    )
+
+  try:
+    return json.loads(raw), None
+  except Exception:
+    return None, empty_result(
+      usageStatusText="Cursor limits unavailable",
+      authHelpText="Could not parse usage response.",
+    )
+
+
+def api_post_optional(access_token: str, path: str, body: dict[str, Any] | None = None) -> Any | None:
+  payload, error = api_post(access_token, path, body, timeout=25)
+  if error is not None:
+    # Auth failures are still fatal for the whole collect; bubble them up by
+    # returning the error dict under a sentinel the caller can detect.
+    if error.get("usageStatusText") == "Sign in to Cursor":
+      return error
+    return None
+  return payload
+
+
+def fetch_period_usage(access_token: str):
+  return api_post(access_token, PERIOD_PATH, {}, timeout=20)
+
+
+def fetch_plan_tier(access_token: str, fallback: str | None) -> str:
+  payload = api_post_optional(access_token, PLAN_PATH, {})
+  if isinstance(payload, dict) and payload.get("usageStatusText") == "Sign in to Cursor":
+    return format_tier(fallback)
+  if isinstance(payload, dict):
+    plan = payload.get("planInfo")
+    if isinstance(plan, dict):
+      name = str(plan.get("planName") or "").strip()
+      if name:
+        return format_tier(name)
+  return format_tier(fallback)
+
+
+def build_rate_limits(payload: Any, tier_label: str) -> dict[str, Any]:
+  if not isinstance(payload, dict):
+    return empty_result(
+      usageStatusText="Cursor limits unavailable",
+      authHelpText="Usage response was not a JSON object.",
+      tierLabel=format_tier(tier_label),
+    )
+
+  plan = payload.get("planUsage")
+  if not isinstance(plan, dict):
+    return empty_result(
+      usageStatusText="Cursor limits unavailable",
+      authHelpText="Usage response did not include plan usage.",
+      tierLabel=format_tier(tier_label),
+    )
+
+  reset_at = parse_billing_cycle_end(payload.get("billingCycleEnd"))
+  membership = format_tier(tier_label) or format_tier(payload.get("membershipType"))
+  total_percent = percent_to_fraction(plan.get("totalPercentUsed"))
+  auto_percent = percent_to_fraction(plan.get("autoPercentUsed"))
+  api_percent = percent_to_fraction(plan.get("apiPercentUsed"))
+  # Treat a missing pool as 0% used when the plan object itself is present,
+  # so a signed-in Cursor account still surfaces in the bar.
+  if auto_percent < 0 and plan.get("autoPercentUsed") is None:
+    auto_percent = 0.0
+  if api_percent < 0 and plan.get("apiPercentUsed") is None:
+    api_percent = 0.0
+
+  limits: list[dict[str, Any]] = []
+  if total_percent >= 0:
+    limits.append({"label": "Included total", "percent": total_percent, "resetsAt": reset_at})
+  if auto_percent >= 0:
+    limits.append({"label": "Cursor Models", "percent": auto_percent, "resetsAt": reset_at})
+  if api_percent >= 0:
+    limits.append({"label": "Other Models", "percent": api_percent, "resetsAt": reset_at})
+
+  return empty_result(
+    ready=len(limits) > 0,
+    limits=limits,
+    tierLabel=membership,
+  )
+
+
+def event_token_usage(event: dict[str, Any]) -> dict[str, int]:
+  usage = event.get("tokenUsage") if isinstance(event.get("tokenUsage"), dict) else {}
+  bucket = empty_bucket()
+  bucket["inputTokens"] = number(usage.get("inputTokens"))
+  bucket["outputTokens"] = number(usage.get("outputTokens"))
+  bucket["cacheReadInputTokens"] = number(usage.get("cacheReadTokens") or usage.get("cacheReadInputTokens"))
+  bucket["cacheCreationInputTokens"] = number(
+    usage.get("cacheWriteTokens") or usage.get("cacheCreationInputTokens")
+  )
+  return bucket
+
+
+def token_total(bucket: dict[str, int]) -> int:
+  return (
+    bucket["inputTokens"]
+    + bucket["outputTokens"]
+    + bucket["cacheReadInputTokens"]
+    + bucket["cacheCreationInputTokens"]
+  )
+
+
+def add_bucket(dst: dict[str, int], src: dict[str, int]) -> None:
+  for key in empty_bucket():
+    dst[key] = number(dst.get(key)) + number(src.get(key))
+
+
+def fetch_all_usage_events(access_token: str) -> tuple[list[dict[str, Any]], int, dict[str, Any] | None]:
+  events: list[dict[str, Any]] = []
+  total = 0
+  for page in range(1, EVENTS_MAX_PAGES + 1):
+    payload = api_post_optional(
+      access_token,
+      EVENTS_PATH,
+      {"page": page, "pageSize": EVENTS_PAGE_SIZE},
+    )
+    if isinstance(payload, dict) and payload.get("usageStatusText") == "Sign in to Cursor":
+      return [], 0, payload
+    if not isinstance(payload, dict):
+      break
+    total = max(total, number(payload.get("totalUsageEventsCount")))
+    batch = payload.get("usageEventsDisplay")
+    if not isinstance(batch, list) or not batch:
+      break
+    for entry in batch:
+      if isinstance(entry, dict):
+        events.append(entry)
+    if len(batch) < EVENTS_PAGE_SIZE:
+      break
+  return events, total or len(events), None
+
+
+def model_usage_from_aggregations(access_token: str) -> dict[str, dict[str, int]]:
+  payload = api_post_optional(access_token, AGGREGATED_PATH, {})
+  if not isinstance(payload, dict) or payload.get("usageStatusText") == "Sign in to Cursor":
+    return {}
+  usage: dict[str, dict[str, int]] = {}
+  for row in payload.get("aggregations") or []:
+    if not isinstance(row, dict):
+      continue
+    label = model_label(row.get("modelIntent") or row.get("model"))
+    bucket = usage.setdefault(label, empty_bucket())
+    bucket["inputTokens"] += number(row.get("inputTokens"))
+    bucket["outputTokens"] += number(row.get("outputTokens"))
+    bucket["cacheReadInputTokens"] += number(row.get("cacheReadTokens") or row.get("cacheReadInputTokens"))
+    bucket["cacheCreationInputTokens"] += number(
+      row.get("cacheWriteTokens") or row.get("cacheCreationInputTokens")
+    )
+  return usage
+
+
+def build_stats_from_events(
+  events: list[dict[str, Any]],
+  reported_total: int,
+  aggregated_models: dict[str, dict[str, int]],
+) -> dict[str, Any]:
+  today = date_string(datetime.now().astimezone().date())
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+
+  model_usage: dict[str, dict[str, int]] = {}
+  today_tokens: dict[str, int] = {}
+  active_dates: set[str] = set()
+  conversations: set[str] = set()
+  today_conversations: set[str] = set()
+  today_prompts = 0
+  today_total = 0
+
+  for event in events:
+    ms = to_epoch_ms(event.get("timestamp"))
+    if ms is None:
+      continue
+    day = local_date_from_epoch_ms(ms)
+    bucket = event_token_usage(event)
+    total = token_total(bucket)
+    label = model_label(event.get("model") or event.get("modelIntent"))
+
+    if total > 0:
+      active_dates.add(day)
+      add_bucket(model_usage.setdefault(label, empty_bucket()), bucket)
+    if day in recent:
+      recent[day]["messageCount"] += total
+
+    conversation = str(event.get("conversationId") or "").strip()
+    if conversation and conversation != "null":
+      conversations.add(conversation)
+
+    if day == today:
+      today_prompts += 1
+      today_total += total
+      if total > 0:
+        today_tokens[label] = number(today_tokens.get(label)) + total
+      if conversation and conversation != "null":
+        today_conversations.add(conversation)
+
+  # Events carry real model ids; aggregations often collapse to "default".
+  # Only fall back to aggregations when the event scan produced nothing.
+  if not model_usage and aggregated_models:
+    model_usage = {
+      name: dict(bucket)
+      for name, bucket in aggregated_models.items()
+      if token_total(bucket) > 0
+    }
+
+  stats = empty_stats()
+  stats.update(
+    {
+      "todayPrompts": today_prompts,
+      "todaySessions": len(today_conversations),
+      "todayTotalTokens": today_total,
+      "todayTokensByModel": today_tokens,
+      "recentDays": [recent[day] for day in recent_dates],
+      "totalPrompts": max(reported_total, len(events)),
+      "totalSessions": len(conversations),
+      "activeDays": len(active_dates),
+      "activeDates": sorted(active_dates),
+      "modelUsage": model_usage,
+    }
+  )
+  return stats
+
+
+def collect_record(access_token: str, membership: str | None, limits_only: bool) -> dict[str, Any]:
+  period, error = fetch_period_usage(access_token)
+  if error is not None:
+    return error
+
+  tier = fetch_plan_tier(access_token, membership)
+  record = build_rate_limits(period, tier)
+  if record.get("usageStatusText"):
+    return record
+
+  # Opening the panel refreshes with --limits-only. Keep the last day/model
+  # scan so meters update without wiping the charts Claude/Codex keep.
+  if limits_only:
+    cached = load_cached_stats()
+    if cached:
+      record.update(cached)
+      record["ready"] = bool(record.get("ready")) or bool(cached.get("hasLocalStats"))
+    return record
+
+  events, reported_total, auth_error = fetch_all_usage_events(access_token)
+  if auth_error is not None:
+    return auth_error
+
+  aggregated = model_usage_from_aggregations(access_token)
+  stats = build_stats_from_events(events, reported_total, aggregated)
+  has_stats = (
+    number(stats.get("totalPrompts")) > 0
+    or number(stats.get("todayTotalTokens")) > 0
+    or bool(stats.get("modelUsage"))
+    or any(number(day.get("messageCount")) > 0 for day in (stats.get("recentDays") or []))
+  )
+  record["hasLocalStats"] = has_stats
+  record["ready"] = bool(record.get("ready")) or has_stats
+  record.update(stats)
+  return record
+
+
+def main(argv: list[str] | None = None) -> int:
+  parser = argparse.ArgumentParser(description="Print the Cursor usage record as JSON")
+  # --force / --limits-only exist so every collector accepts the same invocation.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.add_argument(
+    "--state-db",
+    default=os.environ.get("CURSOR_STATE_DB", str(DEFAULT_STATE_DB)),
+    help="Path to Cursor state.vscdb (read-only)",
+  )
+  parser.add_argument(
+    "--auth-json",
+    default=os.environ.get("CURSOR_AUTH_JSON", str(DEFAULT_AUTH_JSON)),
+    help="Path to Cursor Agent CLI auth.json (fallback when state.vscdb is missing)",
+  )
+  args = parser.parse_args(argv)
+
+  state_db = expand_path(args.state_db, DEFAULT_STATE_DB)
+  auth_json = expand_path(args.auth_json, DEFAULT_AUTH_JSON)
+  credentials, error = load_credentials(state_db, auth_json)
+  if error is not None:
+    print(json.dumps(error, separators=(",", ":")))
+    return 0
+
+  record = collect_record(
+    credentials["accessToken"],
+    credentials.get("membershipType"),
+    args.limits_only,
+  )
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
