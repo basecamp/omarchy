@@ -7,8 +7,9 @@ if gum confirm "Are you sure you want to restore all preinstalled web apps, TUI 
   echo -e "Restoring preinstalled Omarchy applications...\n"
 
   # Recreates the shipped .desktop launchers (web apps and TUIs) and the mise stubs
-  # that back claude, gh, opencode, and the rest of the agents
-  omarchy-refresh-applications
+  # that back claude, gh, opencode, and the rest of the agents. The opt-out marker
+  # is still in place here, so ask for them by name.
+  omarchy-refresh-applications --with-preinstalls
 
   # Mirrors the list in omarchy-remove-preinstalls; both track omarchy-base.packages
   if ! omarchy-pkg-add \

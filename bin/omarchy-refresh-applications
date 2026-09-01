@@ -1,16 +1,38 @@
 #!/bin/bash
 
 # omarchy:summary=Ensure default application launchers and mise wrappers are installed.
+# omarchy:args=[--with-preinstalls]
+
+# Remove Preinstalls deletes the shipped web app and TUI launchers and the mise
+# wrappers, and records that choice at the marker below. This command lays all
+# of them back down, so it honours the marker: an update that refreshes the
+# launchers must not quietly undo the opt-out. Install Preinstalls is the one
+# caller meant to undo it, and says so with --with-preinstalls.
+marker="$HOME/.local/state/omarchy/preinstalls-removed"
+include_preinstalls=true
+if [[ -f $marker && ${1:-} != "--with-preinstalls" ]]; then
+  include_preinstalls=false
+fi
+
+# The same test omarchy-webapp-remove-all and omarchy-tui-remove-all apply, so
+# what stays away here is exactly what Remove Preinstalls took away.
+is_preinstall_launcher() {
+  grep -q "Exec=omarchy-launch-webapp\|Exec=omarchy-webapp-handler\|Exec=xdg-terminal-exec --app-id=TUI\." "$1"
+}
 
 # Copy .desktop declarations
 mkdir -p ~/.local/share/applications
-cp "$OMARCHY_PATH"/applications/*.desktop ~/.local/share/applications/
+for launcher in "$OMARCHY_PATH"/applications/*.desktop; do
+  if [[ $include_preinstalls == true ]] || ! is_preinstall_launcher "$launcher"; then
+    cp "$launcher" ~/.local/share/applications/
+  fi
+done
 
 if omarchy-cmd-present alacritty; then
   cp "$OMARCHY_PATH/default/alacritty/Alacritty.desktop" ~/.local/share/applications/
 fi
 
-if [[ -f "$OMARCHY_PATH/install/user/mise.sh" ]]; then
+if [[ $include_preinstalls == true && -f $OMARCHY_PATH/install/user/mise.sh ]]; then
   bash "$OMARCHY_PATH/install/user/mise.sh"
 fi
 
