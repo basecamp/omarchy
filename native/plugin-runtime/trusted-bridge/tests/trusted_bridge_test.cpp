@@ -8,9 +8,12 @@
 #include <QImage>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QQuickWindow>
 #include <QSizeF>
+#include <QTest>
 #include <QWheelEvent>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -92,6 +95,153 @@ public:
   std::uint64_t last_generation = 0;
   bool accept = true;
 };
+
+class WindowInputProbe final : public QObject {
+public:
+  bool eventFilter(QObject *watched, QEvent *event) override {
+    (void)watched;
+    if (event->type() == QEvent::MouseButtonPress) {
+      const auto &mouse = *static_cast<QMouseEvent *>(event);
+      saw_press = true;
+      press_was_spontaneous = mouse.spontaneous();
+      press_source = mouse.source();
+      press_device_type = mouse.deviceType();
+    }
+    return false;
+  }
+
+  bool saw_press = false;
+  bool press_was_spontaneous = false;
+  Qt::MouseEventSource press_source = Qt::MouseEventSynthesizedByApplication;
+  QInputDevice::DeviceType press_device_type =
+      QInputDevice::DeviceType::Unknown;
+};
+
+class AbsorbingItem final : public QQuickItem {
+public:
+  explicit AbsorbingItem(QQuickItem *parent) : QQuickItem(parent) {
+    setAcceptedMouseButtons(Qt::LeftButton);
+  }
+
+private:
+  void mousePressEvent(QMouseEvent *event) override { event->accept(); }
+  void mouseReleaseEvent(QMouseEvent *event) override { event->accept(); }
+};
+
+void test_qpa_pointer_provenance_is_captured_before_quick_redispatch() {
+  QQuickWindow window;
+  window.resize(96, 96);
+  WindowInputProbe probe;
+  window.installEventFilter(&probe);
+
+  bridge::RemotePluginSurface item(window.contentItem());
+  item.setPosition({0, 0});
+  item.setSize({64, 64});
+  RecordingInputRouter router;
+  auto sink = std::make_shared<RecordingSink>();
+  auto transport =
+      std::make_shared<bridge::AuthenticatedInputTransport>(18, sink);
+  const auto allocation = surface::make_allocation(
+      {.id = 12, .generation = 6}, 64, 64, 64, 64, 1, 1, 4096);
+  require(allocation && item.bindTransport(transport) &&
+              item.configure(*allocation) && item.bindHostInputRouter(router),
+          "QPA provenance fixture did not configure");
+
+  window.show();
+  QCoreApplication::processEvents();
+  router.events.clear();
+  QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+  QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+  require(probe.saw_press, "QPA window did not observe a mouse press");
+  require(probe.press_was_spontaneous,
+          "QPA window mouse press was not spontaneous");
+  require(probe.press_source == Qt::MouseEventNotSynthesized,
+          "QPA window mouse press was synthesized");
+  require(probe.press_device_type == QInputDevice::DeviceType::Mouse,
+          "QPA window press did not originate from a mouse device");
+  const auto pointer_events = [&] {
+    return std::ranges::count_if(router.events, [](const auto &input) {
+      return std::holds_alternative<surface::PointerButton>(input.payload);
+    });
+  };
+  require(pointer_events() == 2,
+          "QPA press/release did not route exactly once each");
+  const auto press = std::ranges::find_if(router.events, [](const auto &input) {
+    const auto *button = std::get_if<surface::PointerButton>(&input.payload);
+    return button != nullptr &&
+           button->state == surface::ButtonState::pressed;
+  });
+  const auto release =
+      std::ranges::find_if(router.events, [](const auto &input) {
+        const auto *button =
+            std::get_if<surface::PointerButton>(&input.payload);
+        return button != nullptr &&
+               button->state == surface::ButtonState::released;
+      });
+  require(press != router.events.end() && release != router.events.end() &&
+              press->trusted_physical && release->trusted_physical,
+          "QPA mouse press lost physical provenance before item routing");
+
+  const auto after_physical = pointer_events();
+  QMouseEvent direct_replay(
+      QEvent::MouseButtonPress, QPointF(12, 18), QPointF(12, 18),
+      QPointF(12, 18), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier,
+      Qt::MouseEventNotSynthesized);
+  require(QCoreApplication::sendEvent(&item, &direct_replay) &&
+              pointer_events() == after_physical + 1 &&
+              !router.events.back().trusted_physical,
+          "direct item replay borrowed retained QPA provenance");
+
+  const auto after_replay = pointer_events();
+  QMouseEvent synthetic_window(
+      QEvent::MouseButtonPress, QPointF(12, 18), QPointF(12, 18),
+      QPointF(12, 18), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier,
+      Qt::MouseEventNotSynthesized);
+  QCoreApplication::sendEvent(&window, &synthetic_window);
+  QMouseEvent application_synthesized(
+      QEvent::MouseButtonPress, QPointF(12, 18), QPointF(12, 18),
+      QPointF(12, 18), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier,
+      Qt::MouseEventSynthesizedByApplication);
+  QCoreApplication::sendEvent(&window, &application_synthesized);
+  require(pointer_events() == after_replay,
+          "non-spontaneous window input escaped the private proxy gate");
+  item.setWidth(63);
+  QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+  QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+  require(pointer_events() == after_replay,
+          "physical input escaped a mismatched allocation geometry");
+  item.setWidth(64);
+
+  AbsorbingItem unrelated(&item);
+  unrelated.setSize(item.size());
+  unrelated.setZ(10);
+  QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+  QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+  require(pointer_events() == after_replay,
+          "an unrelated child borrowed the private proxy provenance path");
+
+  unrelated.setVisible(false);
+  auto *touch_device = QTest::createTouchDevice();
+  require(touch_device != nullptr, "QPA touch device could not be created");
+  QTest::touchEvent(&window, touch_device)
+      .press(0, {20, 20}, &window)
+      .commit();
+  QTest::touchEvent(&window, touch_device)
+      .release(0, {20, 20}, &window)
+      .commit();
+  const auto touch_frames =
+      std::ranges::count_if(router.events, [](const auto &input) {
+        return std::holds_alternative<bridge::HostTouchFrame>(input.payload);
+      });
+  const bool touch_was_untrusted =
+      std::ranges::all_of(router.events, [](const auto &input) {
+        return !std::holds_alternative<bridge::HostTouchFrame>(input.payload) ||
+               !input.trusted_physical;
+      });
+  require(touch_frames == 2 && touch_was_untrusted &&
+              pointer_events() == after_replay,
+          "localized QPA touch did not traverse the fail-closed parent path");
+}
 
 void test_quick_item_pointer_delivery() {
   bridge::RemotePluginSurface item;
@@ -683,6 +833,7 @@ int main(int argc, char **argv) {
   QGuiApplication application(argc, argv);
   (void)application;
   try {
+    test_qpa_pointer_provenance_is_captured_before_quick_redispatch();
     test_quick_item_pointer_delivery();
     test_router_unbind_is_idempotent_and_identity_checked();
     test_router_destruction_orders();

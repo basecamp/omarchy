@@ -68,7 +68,9 @@ std::uint64_t device_token(const QInputEvent &event) {
 
 bool trusted_pointer(const QMouseEvent &event) {
   return event.spontaneous() &&
-         event.source() == Qt::MouseEventNotSynthesized;
+         event.source() == Qt::MouseEventNotSynthesized &&
+         event.device() != nullptr &&
+         event.deviceType() == QInputDevice::DeviceType::Mouse;
 }
 
 } // namespace
@@ -82,6 +84,17 @@ RemotePluginSurface::RemotePluginSurface(QQuickItem *parent)
   setAcceptHoverEvents(true);
   setAcceptTouchEvents(true);
   setFlag(QQuickItem::ItemAcceptsInputMethod, true);
+  setFiltersChildMouseEvents(true);
+
+  // Qt Quick clears QEvent::spontaneous() when it redispatches a window-system
+  // mouse event to a QQuickItem with QCoreApplication::sendEvent(). A private
+  // child makes childMouseEventFilter() the last public Qt Quick boundary at
+  // which both the exact hit target and the original QPA provenance exist.
+  input_proxy_ = new QQuickItem(this);
+  input_proxy_->setAcceptedMouseButtons(
+      Qt::LeftButton | Qt::RightButton | Qt::MiddleButton | Qt::BackButton |
+      Qt::ForwardButton);
+  input_proxy_->setSize(size());
 }
 
 RemotePluginSurface::~RemotePluginSurface() {
@@ -176,6 +189,77 @@ bool RemotePluginSurface::cancelHostInput(const QInputEvent &event) {
          host_input_router_->cancel(device_token(event));
 }
 
+void RemotePluginSurface::geometryChange(const QRectF &new_geometry,
+                                         const QRectF &old_geometry) {
+  QQuickPaintedItem::geometryChange(new_geometry, old_geometry);
+  if (input_proxy_ != nullptr) {
+    input_proxy_->setPosition({0, 0});
+    input_proxy_->setSize(new_geometry.size());
+  }
+}
+
+bool RemotePluginSurface::childMouseEventFilter(QQuickItem *item,
+                                                QEvent *event) {
+  if (item != input_proxy_ || event == nullptr)
+    return false;
+
+  const bool supported = event->type() == QEvent::MouseMove ||
+                         event->type() == QEvent::MouseButtonPress ||
+                         event->type() == QEvent::MouseButtonRelease;
+  if (!supported)
+    return false;
+
+  auto &mouse = *static_cast<QMouseEvent *>(event);
+  const bool exact_geometry =
+      state_.has_value() && input_proxy_->x() == 0 && input_proxy_->y() == 0 &&
+      input_proxy_->width() == width() &&
+      input_proxy_->height() == height() &&
+      width() == state_->allocation().logical_width &&
+      height() == state_->allocation().logical_height;
+  if (!exact_geometry || !trusted_pointer(mouse)) {
+    event->ignore();
+    return true;
+  }
+
+  event->setAccepted(routeMouseInput(mouse, true));
+  return true;
+}
+
+bool RemotePluginSurface::routeMouseInput(QMouseEvent &event,
+                                          bool trusted_physical) {
+  if (!state_)
+    return false;
+  const auto x = q16(event.position().x(), state_->allocation().logical_width);
+  const auto y = q16(event.position().y(), state_->allocation().logical_height);
+  if (!x || !y) {
+    if (event.type() == QEvent::MouseButtonRelease)
+      return cancelHostInput(event);
+    return false;
+  }
+
+  if (event.type() == QEvent::MouseMove) {
+    return routeHostInput(
+        surface::PointerMotion{.position = {*x, *y},
+                               .buttons = buttons(event.buttons()),
+                               .modifiers = modifiers(event.modifiers())},
+        event, trusted_physical);
+  }
+
+  if (event.type() != QEvent::MouseButtonPress &&
+      event.type() != QEvent::MouseButtonRelease)
+    return false;
+  return routeHostInput(
+      surface::PointerButton{
+          .position = {*x, *y},
+          .button = static_cast<std::uint32_t>(event.button()),
+          .state = event.type() == QEvent::MouseButtonPress
+                       ? surface::ButtonState::pressed
+                       : surface::ButtonState::released,
+          .buttons = buttons(event.buttons()),
+          .modifiers = modifiers(event.modifiers())},
+      event, trusted_physical);
+}
+
 void RemotePluginSurface::hoverMoveEvent(QHoverEvent *event) {
   if (!state_) {
     event->ignore();
@@ -189,55 +273,15 @@ void RemotePluginSurface::hoverMoveEvent(QHoverEvent *event) {
 }
 
 void RemotePluginSurface::mouseMoveEvent(QMouseEvent *event) {
-  if (!state_) {
-    event->ignore();
-    return;
-  }
-  const auto x = q16(event->position().x(), state_->allocation().logical_width);
-  const auto y = q16(event->position().y(), state_->allocation().logical_height);
-  event->setAccepted(x && y && routeHostInput(
-      surface::PointerMotion{.position = {*x, *y},
-                             .buttons = buttons(event->buttons()),
-                             .modifiers = modifiers(event->modifiers())},
-      *event, trusted_pointer(*event)));
+  event->setAccepted(routeMouseInput(*event, trusted_pointer(*event)));
 }
 
 void RemotePluginSurface::mousePressEvent(QMouseEvent *event) {
-  if (!state_) {
-    event->ignore();
-    return;
-  }
-  const auto x = q16(event->position().x(), state_->allocation().logical_width);
-  const auto y = q16(event->position().y(), state_->allocation().logical_height);
-  event->setAccepted(x && y && routeHostInput(
-      surface::PointerButton{
-          .position = {*x, *y},
-          .button = static_cast<std::uint32_t>(event->button()),
-          .state = surface::ButtonState::pressed,
-          .buttons = buttons(event->buttons()),
-          .modifiers = modifiers(event->modifiers())},
-      *event, trusted_pointer(*event)));
+  event->setAccepted(routeMouseInput(*event, trusted_pointer(*event)));
 }
 
 void RemotePluginSurface::mouseReleaseEvent(QMouseEvent *event) {
-  if (!state_) {
-    event->ignore();
-    return;
-  }
-  const auto x = q16(event->position().x(), state_->allocation().logical_width);
-  const auto y = q16(event->position().y(), state_->allocation().logical_height);
-  if (!x || !y) {
-    event->setAccepted(cancelHostInput(*event));
-    return;
-  }
-  event->setAccepted(routeHostInput(
-      surface::PointerButton{
-          .position = {*x, *y},
-          .button = static_cast<std::uint32_t>(event->button()),
-          .state = surface::ButtonState::released,
-          .buttons = buttons(event->buttons()),
-          .modifiers = modifiers(event->modifiers())},
-      *event, trusted_pointer(*event)));
+  event->setAccepted(routeMouseInput(*event, trusted_pointer(*event)));
 }
 
 void RemotePluginSurface::wheelEvent(QWheelEvent *event) {

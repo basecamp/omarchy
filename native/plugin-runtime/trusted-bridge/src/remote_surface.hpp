@@ -111,6 +111,9 @@ signals:
   void inputRegionsChanged();
 
 private:
+  bool childMouseEventFilter(QQuickItem *item, QEvent *event) override;
+  void geometryChange(const QRectF &new_geometry,
+                      const QRectF &old_geometry) override;
   void hoverMoveEvent(QHoverEvent *event) override;
   void mouseMoveEvent(QMouseEvent *event) override;
   void mousePressEvent(QMouseEvent *event) override;
@@ -125,6 +128,8 @@ private:
   [[nodiscard]] bool routeHostInput(HostInputPayload payload,
                                     const QInputEvent &event,
                                     bool trusted_physical);
+  [[nodiscard]] bool routeMouseInput(QMouseEvent &event,
+                                     bool trusted_physical);
   [[nodiscard]] bool cancelHostInput(const QInputEvent &event);
   void fail(InspectionFailure failure, bool terminal);
   void resetFrame();
@@ -134,6 +139,7 @@ private:
   HostInputRouter *host_input_router_ = nullptr;
   HostInputRegionRouter *host_input_region_router_ = nullptr;
   RemoteSurfaceLifetimeObserver *lifetime_observer_ = nullptr;
+  QQuickItem *input_proxy_ = nullptr;
   std::uint64_t input_region_generation_ = 0;
   QList<QRect> input_regions_;
   std::optional<surface::SurfaceState> state_;

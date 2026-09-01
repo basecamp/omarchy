@@ -29,10 +29,11 @@ target_link_libraries(omarchy-plugin-trusted-bridge PUBLIC
 )
 
 if(BUILD_TESTING)
+  find_package(Qt6 REQUIRED COMPONENTS Test)
   add_executable(omarchy-plugin-trusted-bridge-test tests/trusted_bridge_test.cpp)
   target_compile_features(omarchy-plugin-trusted-bridge-test PRIVATE cxx_std_20)
   target_compile_options(omarchy-plugin-trusted-bridge-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
-  target_link_libraries(omarchy-plugin-trusted-bridge-test PRIVATE omarchy-plugin-trusted-bridge Qt6::Gui Qt6::Quick)
+  target_link_libraries(omarchy-plugin-trusted-bridge-test PRIVATE omarchy-plugin-trusted-bridge Qt6::Gui Qt6::Quick Qt6::Test)
   add_test(NAME plugin-trusted-bridge COMMAND omarchy-plugin-trusted-bridge-test)
   set_tests_properties(plugin-trusted-bridge PROPERTIES
     TIMEOUT 30
