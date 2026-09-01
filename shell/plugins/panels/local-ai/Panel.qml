@@ -37,7 +37,7 @@ Panel {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: { try { root.snap = JSON.parse(text) } catch (e) {} } }
   }
   Process { id: action; property bool closeAfter: false; onExited: { if (closeAfter) root.close(); root.refresh() } }
-  Timer { interval: root.opened ? (root.busy ? 1000 : 4000) : root.setting("refreshIntervalSec", 30) * 1000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.refresh() }
+  Timer { interval: root.opened ? (root.busy ? 1000 : 4000) : 30000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.refresh() }
   BarIconButton {
     id: button
     anchors.fill: parent
