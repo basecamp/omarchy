@@ -110,6 +110,13 @@ assertDeepEqual(julySunday.map(week => week.week), [27, 28, 29, 30, 31, 32], 'ca
 const januarySunday = calendar.monthGrid(2021, 0, 0, '')
 assertEqual(januarySunday[0].week, 53, 'calendar carries the previous ISO year into a straddling first row')
 
+const septemberSunday = calendar.monthGrid(2026, 8, 0, '2026-09-01')
+assertDeepEqual(septemberSunday[0].days.map(day => day.day), [30, 31, 1, 2, 3, 4, 5], 'calendar starts September 2026 on Sunday with Aug 30')
+assertDeepEqual(septemberSunday[1].days.map(day => day.day), [6, 7, 8, 9, 10, 11, 12], 'calendar does not repeat 5 September on the next Sunday')
+const septemberDays = septemberSunday.flatMap(week => week.days).filter(day => day.inMonth).map(day => day.day)
+assertEqual(septemberDays.length, 30, 'calendar has thirty in-month cells for September')
+assertEqual(new Set(septemberDays).size, 30, 'calendar never duplicates an in-month day')
+
 // ---- stepping
 assertDeepEqual(calendar.stepMonth(2026, 0, 1), { year: 2026, month: 1 }, 'calendar steps to the next month')
 assertDeepEqual(calendar.stepMonth(2026, 0, -1), { year: 2025, month: 11 }, 'calendar steps back across the new year')
