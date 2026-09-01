@@ -19,17 +19,40 @@ case "${1:-}" in
     ;;
 esac
 
+net_sysfs=${OMARCHY_NET_SYSFS:-/sys/class/net}
+
+# TUN/TAP (ARPHRD_NONE=65534) and PPP (512) win `ip route get` under split
+# tables, but they are not the connection the bar should show.
+is_tunnel_iface() {
+  local device=$1
+  local type_file=$net_sysfs/$device/type
+  local iface_type
+
+  [[ -e $net_sysfs/$device/tun ]] && return 0
+  [[ -r $type_file ]] || return 1
+  iface_type=$(< "$type_file")
+  [[ $iface_type == 65534 || $iface_type == 512 ]]
+}
+
+wifi_connected_device() {
+  nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null | awk -F: '$2 == "wifi" && $3 == "connected" { print $1; exit }'
+}
+
 print_status() {
   local device nm state ssid signal freq
 
   device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+
+  if [[ -n $device ]] && is_tunnel_iface "$device"; then
+    device=$(wifi_connected_device)
+  fi
 
   if [[ -z $device ]]; then
     printf 'disconnected\t\t\t\n'
     return
   fi
 
-  if [[ ! -d /sys/class/net/$device/wireless ]]; then
+  if [[ ! -d $net_sysfs/$device/wireless ]]; then
     printf 'ethernet\t%s\t\t\n' "$device"
     return
   fi
