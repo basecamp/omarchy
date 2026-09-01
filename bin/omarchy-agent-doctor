@@ -1,0 +1,166 @@
+#!/bin/bash
+
+# omarchy:summary=Diagnose coding agent and skill setup
+# omarchy:args=[--json]
+
+set -uo pipefail
+
+json=false
+case ${1:-} in
+"") ;;
+--json) json=true ;;
+*)
+  echo "Usage: omarchy-agent-doctor [--json]" >&2
+  exit 1
+  ;;
+esac
+
+if (($# > 1)); then
+  echo "Usage: omarchy-agent-doctor [--json]" >&2
+  exit 1
+fi
+
+default_agent=""
+agent_binary=""
+agent_version=""
+binary_available=false
+declare -a instructions=()
+declare -a installed_skills=()
+declare -a broken_skills=()
+declare -a warnings=()
+
+agent_file="$HOME/.config/omarchy/defaults/agent"
+if [[ -f $agent_file ]]; then
+  read -r default_agent <"$agent_file" || true
+fi
+
+if [[ -n $default_agent ]]; then
+  if omarchy-cmd-present "$default_agent"; then
+    agent_binary=$(type -P -- "$default_agent" 2>/dev/null || true)
+    binary_available=true
+
+    # Mise lazy stubs can install software when invoked. Presence is useful on
+    # its own, but probing those wrappers would turn this diagnostic into a
+    # mutating command.
+    if ! grep -Eq '^[[:space:]]*mise (use|x) ' "$agent_binary" 2>/dev/null; then
+      agent_version=$(timeout 2 "$default_agent" --version 2>&1 | head -n 1 || true)
+      agent_version=${agent_version//$'\r'/}
+    fi
+  else
+    warnings+=("Default agent '$default_agent' is not available on PATH")
+  fi
+else
+  warnings+=("No default coding agent is configured")
+fi
+
+for instruction in AGENTS.md CLAUDE.md GEMINI.md; do
+  [[ -f $PWD/$instruction ]] && instructions+=("$instruction")
+done
+
+skill_source="$OMARCHY_PATH/default/agents/skills"
+skill_roots=(
+  "$HOME/.agents/skills"
+  "$HOME/.claude/skills"
+  "$HOME/.codex/skills"
+  "$HOME/.pi/agent/skills"
+  "$HOME/.gemini/config/skills"
+)
+
+for skill_root in "${skill_roots[@]}"; do
+  [[ -d $skill_root ]] || continue
+
+  while IFS= read -r -d '' skill; do
+    name=${skill##*/}
+    target=""
+    package_owned=false
+    broken=false
+
+    if [[ -L $skill ]]; then
+      # -m resolves relative targets lexically even when the destination is
+      # missing, so a broken packaged link can still be identified as owned.
+      target=$(readlink -m -- "$skill" 2>/dev/null || true)
+      if [[ ! -e $skill ]]; then
+        broken=true
+      fi
+      if [[ $target == "$skill_source"/* ]]; then
+        package_owned=true
+      fi
+    elif [[ -d $skill ]]; then
+      target=$(readlink -f -- "$skill" 2>/dev/null || true)
+    else
+      continue
+    fi
+
+    record="$skill_root"$'\t'"$name"$'\t'"$skill"$'\t'"$target"$'\t'"$package_owned"$'\t'"$broken"
+    installed_skills+=("$record")
+    if [[ $broken == "true" ]]; then
+      broken_skills+=("$record")
+      warnings+=("Broken skill link: $skill")
+    fi
+  done < <(find "$skill_root" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print0 2>/dev/null | sort -z)
+done
+
+if [[ ! -d $skill_source ]]; then
+  warnings+=("Packaged Omarchy skills are unavailable at $skill_source")
+fi
+
+json_string() {
+  local value=$1
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\t'/\\t}
+  printf '"%s"' "$value"
+}
+
+json_string_array() {
+  local -n values=$1
+  local separator=""
+  local value
+  printf '['
+  for value in "${values[@]}"; do
+    printf '%s' "$separator"
+    json_string "$value"
+    separator=','
+  done
+  printf ']'
+}
+
+json_skill_array() {
+  local -n values=$1
+  local separator=""
+  local record root name path target package_owned broken
+  printf '['
+  for record in "${values[@]}"; do
+    IFS=$'\t' read -r root name path target package_owned broken <<<"$record"
+    printf '%s{' "$separator"
+    printf '"root":'; json_string "$root"
+    printf ',"name":'; json_string "$name"
+    printf ',"path":'; json_string "$path"
+    printf ',"target":'; json_string "$target"
+    printf ',"package_owned":%s,"broken":%s}' "$package_owned" "$broken"
+    separator=','
+  done
+  printf ']'
+}
+
+if [[ $json == "true" ]]; then
+  printf '{"default_agent":'; json_string "$default_agent"
+  printf ',"binary_available":%s,"binary_path":' "$binary_available"; json_string "$agent_binary"
+  printf ',"version":'; json_string "$agent_version"
+  printf ',"instruction_files":'; json_string_array instructions
+  printf ',"skills":{"installed":'; json_skill_array installed_skills
+  printf ',"broken":'; json_skill_array broken_skills
+  printf '},"warnings":'; json_string_array warnings
+  printf '}\n'
+else
+  printf 'Default agent: %s\n' "${default_agent:-not configured}"
+  printf 'Binary: %s\n' "${agent_binary:-not available}"
+  [[ -n $agent_version ]] && printf 'Version: %s\n' "$agent_version"
+  printf 'Instruction files: %s\n' "${instructions[*]:-none}"
+  printf 'Installed skill links: %d\n' "${#installed_skills[@]}"
+  printf 'Broken skill links: %d\n' "${#broken_skills[@]}"
+  for warning in "${warnings[@]}"; do
+    printf 'Warning: %s\n' "$warning"
+  done
+fi

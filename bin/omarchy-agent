@@ -1,11 +1,13 @@
 #!/bin/bash
 
 # omarchy:summary=Launch the default coding agent in a terminal
-# omarchy:args=[--inline] [--pick]
-# omarchy:examples=omarchy agent | omarchy agent --inline
+# omarchy:args=[--inline] [--pick] [--safe|--auto]
+# omarchy:examples=omarchy agent | omarchy agent --safe | omarchy agent --inline
 
 inline=false
 pick=false
+approval=auto
+approval_explicit=false
 
 # Flags only. A bare prompt would shadow the subcommands under this group, so
 # prompts go through omarchy-agent-prompt, which passes one here as --prompt.
@@ -17,6 +19,24 @@ while (($#)); do
       ;;
     --pick)
       pick=true
+      shift
+      ;;
+    --safe)
+      if [[ $approval_explicit == "true" && $approval != "safe" ]]; then
+        echo "Cannot combine --safe and --auto" >&2
+        exit 1
+      fi
+      approval=safe
+      approval_explicit=true
+      shift
+      ;;
+    --auto)
+      if [[ $approval_explicit == "true" && $approval != "auto" ]]; then
+        echo "Cannot combine --safe and --auto" >&2
+        exit 1
+      fi
+      approval=auto
+      approval_explicit=true
       shift
       ;;
     --prompt)
@@ -55,15 +75,18 @@ fi
 # with its own spelling of "don't stop to ask". Pi and Ori have none to skip.
 case "$agent" in
 opencode)
-  command=(opencode --auto)
+  command=(opencode)
+  [[ $approval == "auto" ]] && command+=(--auto)
   [[ -n ${prompt:-} ]] && command+=(--prompt "$prompt")
   ;;
 agy)
-  command=(agy --dangerously-skip-permissions)
+  command=(agy)
+  [[ $approval == "auto" ]] && command+=(--dangerously-skip-permissions)
   [[ -n ${prompt:-} ]] && command+=(--prompt-interactive "$prompt")
   ;;
 copilot)
-  command=(copilot --allow-all)
+  command=(copilot)
+  [[ $approval == "auto" ]] && command+=(--allow-all)
   [[ -n ${prompt:-} ]] && command+=(--interactive "$prompt")
   ;;
 crush)
@@ -71,23 +94,28 @@ crush)
   if [[ -n ${prompt:-} ]]; then
     command=(crush run "$prompt")
   else
-    command=(crush --yolo)
+    command=(crush)
+    [[ $approval == "auto" ]] && command+=(--yolo)
   fi
   ;;
 claude)
-  command=(claude --permission-mode auto)
+  command=(claude)
+  [[ $approval == "auto" ]] && command+=(--permission-mode auto)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 grok)
-  command=(grok --permission-mode bypassPermissions)
+  command=(grok)
+  [[ $approval == "auto" ]] && command+=(--always-approve)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 codex)
-  command=(codex --approve-for-me)
+  command=(codex)
+  [[ $approval == "auto" ]] && command+=(--approve-for-me)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 omp)
-  command=(omp --auto-approve)
+  command=(omp)
+  [[ $approval == "auto" ]] && command+=(--auto-approve)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
 ori)
