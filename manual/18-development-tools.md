@@ -16,6 +16,8 @@ The majority of these environments are managed by [Mise](https://mise.jdx.dev/).
 
 To install, say, Ruby, you'd run `mise use -g ruby`, which will both install Ruby and set it as the global default. Or, if your project has a .ruby-version file, you can just run `mise i` in the root of that project.
 
+If you're in China, flip _Setup > Region_ to China and the package registries for Node.js, Python, Rust, Go, and Ruby get pointed at fast Chinese mirrors — and back again when you switch to World.
+
 ## Docker
 
 [Docker](https://www.docker.com/) hardly needs any introduction. It allows you to run isolated containers, and Omarchy installs everything needed to run it well, including Docker itself and [Docker Compose](https://docs.docker.com/compose/).

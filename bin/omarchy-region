@@ -1,0 +1,251 @@
+#!/bin/bash
+
+# omarchy:summary=Show or set the region the machine pulls its sources from
+# omarchy:args=[world|china]
+# omarchy:examples=omarchy region | omarchy region china
+
+set -euo pipefail
+
+region_file="$HOME/.config/omarchy/region"
+
+if (($# == 0)); then
+  region="World"
+  if [[ -f $region_file ]] && read -r stored <"$region_file"; then
+    region=$stored
+  fi
+  echo "$region"
+  exit 0
+fi
+
+if (($# > 1)); then
+  echo "Usage: omarchy-region <world|china>"
+  exit 1
+fi
+
+case "$1" in
+world | World) region="World" ;;
+china | China) region="China" ;;
+*)
+  echo "Usage: omarchy-region <world|china>"
+  exit 1
+  ;;
+esac
+
+npm_registry="https://registry.npmmirror.com"
+pip_index="https://pypi.tuna.tsinghua.edu.cn/simple"
+cargo_registry="sparse+https://rsproxy.cn/index/"
+go_proxy="https://goproxy.cn,direct"
+gem_source="https://mirrors.tuna.tsinghua.edu.cn/rubygems/"
+
+npm_conf="$HOME/.npmrc"
+pip_conf="$HOME/.config/pip/pip.conf"
+cargo_conf="$HOME/.cargo/config.toml"
+go_conf="$HOME/.config/go/env"
+gem_conf="$HOME/.gemrc"
+
+menu_overlay="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
+menu_sample="$OMARCHY_PATH/config/omarchy/extensions/omarchy-menu.jsonc"
+overlay_marker="// Omarchy region managed"
+
+cargo_begin="# Omarchy region begin"
+cargo_end="# Omarchy region end"
+managed_marker="# Omarchy region managed"
+
+# Any matching line that is not exactly ours counts, so a foreign value can
+# never hide behind an Omarchy one on an earlier line.
+foreign_line() {
+  local file="$1" match="$2" line="$3"
+  grep -sE "$match" "$file" | grep -vFx "$line" || true
+}
+
+set_line() {
+  local file="$1" match="$2" line="$3"
+  mkdir -p "${file%/*}"
+  touch "$file"
+  { grep -vE "$match" "$file" || true; printf '%s\n' "$line"; } >"$file.tmp"
+  chmod --reference="$file" "$file.tmp"
+  mv "$file.tmp" "$file"
+}
+
+drop_line() {
+  local file="$1" line="$2"
+  if [[ -f $file ]]; then
+    grep -vFx "$line" "$file" >"$file.tmp" || true
+    chmod --reference="$file" "$file.tmp"
+    mv "$file.tmp" "$file"
+    if [[ ! -s $file ]]; then
+      rm "$file"
+    fi
+  fi
+}
+
+managed_file() {
+  local file="$1"
+  [[ ! -s $file ]] || grep -qFx "$managed_marker" "$file"
+}
+
+# A source someone else configured is never overwritten or restored blind:
+# every target is checked before anything is touched, so a refusal leaves
+# nothing half-applied.
+refusals=()
+
+if [[ $region == "China" ]]; then
+  npm_foreign=$(foreign_line "$npm_conf" '^registry=' "registry=$npm_registry")
+  [[ -z $npm_foreign ]] ||
+    refusals+=("npm: $npm_conf already sets [${npm_foreign%%$'\n'*}]")
+
+  managed_file "$pip_conf" ||
+    refusals+=("pip: $pip_conf has content Omarchy does not manage")
+
+  cargo_rest=$(sed "/^$cargo_begin\$/,/^$cargo_end\$/d" "$cargo_conf" 2>/dev/null || true)
+  if grep -E '^\[source\.(crates-io|omarchy-region)\]' <<<"$cargo_rest" >/dev/null; then
+    refusals+=("cargo: $cargo_conf already configures a crates-io source")
+  fi
+
+  go_foreign=$(foreign_line "$go_conf" '^GOPROXY=' "GOPROXY=$go_proxy")
+  [[ -z $go_foreign ]] ||
+    refusals+=("go: $go_conf already sets [${go_foreign%%$'\n'*}]")
+
+  managed_file "$gem_conf" ||
+    refusals+=("gem: $gem_conf has content Omarchy does not manage")
+
+  # The stock machine carries the commented sample extension; only real user
+  # customizations are off limits.
+  if [[ -s $menu_overlay ]] && ! grep -qFx "$overlay_marker" "$menu_overlay" &&
+    ! cmp -s "$menu_overlay" "$menu_sample"; then
+    refusals+=("menu: $menu_overlay has content Omarchy does not manage")
+  fi
+
+  if ((${#refusals[@]})); then
+    printf '%s\n' "${refusals[@]}" >&2
+    echo "Resolve these by hand, then rerun: omarchy region china" >&2
+    exit 1
+  fi
+
+  set_line "$npm_conf" '^registry=' "registry=$npm_registry"
+  echo "npm -> $npm_registry"
+
+  mkdir -p "${pip_conf%/*}"
+  cat >"$pip_conf" <<EOF
+$managed_marker
+[global]
+index-url = $pip_index
+EOF
+  echo "pip -> $pip_index"
+
+  mkdir -p "${cargo_conf%/*}"
+  touch "$cargo_conf"
+  sed -i "/^$cargo_begin\$/,/^$cargo_end\$/d" "$cargo_conf"
+  if [[ -s $cargo_conf && $(tail -c1 "$cargo_conf") != "" ]]; then
+    echo >>"$cargo_conf"
+  fi
+  cat >>"$cargo_conf" <<EOF
+$cargo_begin
+[source.crates-io]
+replace-with = "omarchy-region"
+
+[source.omarchy-region]
+registry = "$cargo_registry"
+$cargo_end
+EOF
+  echo "cargo -> $cargo_registry"
+
+  set_line "$go_conf" '^GOPROXY=' "GOPROXY=$go_proxy"
+  echo "go -> $go_proxy"
+
+  cat >"$gem_conf" <<EOF
+$managed_marker
+---
+:sources:
+- $gem_source
+EOF
+  echo "gem -> $gem_source"
+
+  mkdir -p "${menu_overlay%/*}"
+  cp "$OMARCHY_PATH/default/omarchy/omarchy-menu.zh-cn.jsonc" "$menu_overlay"
+  echo "menu -> Chinese labels"
+
+  # localectl writes /etc/locale.conf; the session picks it up at next login.
+  if ! grep -qsFx 'LANG=zh_CN.UTF-8' /etc/locale.conf; then
+    sudo sed -i 's/^#\(zh_CN\.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+    sudo locale-gen
+    sudo localectl set-locale LANG=zh_CN.UTF-8
+  fi
+  echo "language -> zh_CN.UTF-8 (from the next login)"
+else
+  drop_line "$npm_conf" "registry=$npm_registry"
+  if [[ -f $pip_conf ]] && grep -qFx "$managed_marker" "$pip_conf"; then
+    rm "$pip_conf"
+  fi
+  if [[ -f $cargo_conf ]]; then
+    sed -i "/^$cargo_begin\$/,/^$cargo_end\$/d" "$cargo_conf"
+    if [[ ! -s $cargo_conf ]]; then
+      rm "$cargo_conf"
+    fi
+  fi
+  drop_line "$go_conf" "GOPROXY=$go_proxy"
+  if [[ -f $gem_conf ]] && grep -qFx "$managed_marker" "$gem_conf"; then
+    rm "$gem_conf"
+  fi
+  echo "China source overrides removed from npm, pip, cargo, go and gem"
+
+  if [[ -f $menu_overlay ]] && grep -qFx "$overlay_marker" "$menu_overlay"; then
+    cp "$menu_sample" "$menu_overlay"
+  fi
+
+  if grep -qsFx 'LANG=zh_CN.UTF-8' /etc/locale.conf; then
+    sudo localectl set-locale LANG=en_US.UTF-8
+    echo "language -> en_US.UTF-8 (from the next login)"
+  fi
+fi
+
+# Rime Ice's TUI drives its own sudo and fcitx5 restart; the schema file is
+# what a finished install leaves behind. A fresh install has no repo databases
+# until its first sync, and both pkg-add and the installer's pacman need them.
+if [[ $region == "China" && ! -f $HOME/.local/share/fcitx5/rime/rime_ice.schema.yaml ]]; then
+  sudo pacman -Sy
+  omarchy-pkg-add rime-ice-installer
+  rime-ice-installer
+fi
+
+# Rime first makes Chinese the active default; keyboard-us stays one
+# Ctrl+Space away, pinned explicitly rather than left to fcitx5's default.
+if [[ $region == "China" ]]; then
+  fcitx_dir="$HOME/.config/fcitx5"
+  mkdir -p "$fcitx_dir"
+  cat >"$fcitx_dir/profile" <<EOF
+[Groups/0]
+Name=Default
+Default Layout=us
+DefaultIM=rime
+
+[Groups/0/Items/0]
+Name=rime
+Layout=
+
+[Groups/0/Items/1]
+Name=keyboard-us
+Layout=
+
+[GroupOrder]
+0=Default
+EOF
+
+  touch "$fcitx_dir/config"
+  awk '
+    /^\[Hotkey\/TriggerKeys\]$/ { skip = 1; next }
+    /^\[/ { skip = 0 }
+    !skip { print }
+  ' "$fcitx_dir/config" >"$fcitx_dir/config.tmp"
+  printf '[Hotkey/TriggerKeys]\n0=Control+space\n' >>"$fcitx_dir/config.tmp"
+  mv "$fcitx_dir/config.tmp" "$fcitx_dir/config"
+  echo "input method -> Rime Ice by default, Ctrl+Space toggles"
+
+  if systemctl --user is-active omarchy-fcitx5.service >/dev/null 2>&1; then
+    systemctl --user restart omarchy-fcitx5.service
+  fi
+fi
+
+mkdir -p "${region_file%/*}"
+printf '%s\n' "$region" >"$region_file"
+echo "Region set to $region"

@@ -261,6 +261,22 @@ assert(
   'menu always exposes every supported browser, terminal, and editor under Defaults'
 )
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
+const regionEntries = defaultItems.filter(item => item.parent === 'setup.region')
+assert(
+  regionEntries.map(item => item.label).join('\0') === 'World\0China'
+    && regionEntries.every(item => item.checked.includes(`== \"${item.label}\"`) && !item.when)
+    && defaultById['setup.region.world'].action.includes('omarchy-region world')
+    && defaultById['setup.region.china'].action.includes('omarchy-region china'),
+  'menu offers World and China under Setup > Region'
+)
+const zhOverlay = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.zh-cn.jsonc'), 'utf8')
+const zhItems = menu.parseMenuJsonc(zhOverlay)
+assert(zhItems.length > 100, 'Chinese menu overlay parses')
+assert(zhItems.every(item => defaultById[item.id]), 'Chinese menu overlay only retitles shipped entries')
+assert(
+  !/"(action|target|icon|when|checked|disabled|provider|aliases)"/.test(zhOverlay),
+  'Chinese menu overlay declares labels and titles only'
+)
 // Software you already have keeps its place in Install, dimmed rather than
 // dropped, so the list reads as a catalog of what Omarchy can install.
 // Chromium Account is the sole Install row with anything left to hide for, so
