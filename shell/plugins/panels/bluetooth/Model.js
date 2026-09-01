@@ -1,6 +1,6 @@
 function deviceLabel(device) {
   if (!device) return ""
-  return String(device.deviceName || device.name || "").trim()
+  return String(device.name || device.deviceName || "").trim()
 }
 
 function toArray(values) {
