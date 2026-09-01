@@ -169,11 +169,16 @@ Item {
       id: card
       width: root.cardWidth
       height: root.cardHeight
-      anchors.top: root.effectiveCorner.indexOf("top") === 0 ? parent.top : undefined
-      anchors.bottom: root.effectiveCorner.indexOf("bottom") === 0 ? parent.bottom : undefined
-      anchors.left: root.effectiveCorner.indexOf("left") !== -1 ? parent.left : undefined
-      anchors.right: root.effectiveCorner.indexOf("right") !== -1 ? parent.right : undefined
-      anchors.margins: Style.space(14)
+      // Positioned with x/y, not toggled anchors: switching which edge a
+      // child is anchored to leaves the old anchor half-applied in this Qt
+      // (the card sticks to its previous corner even after effectiveCorner
+      // flips back). Plain x/y bindings always re-resolve cleanly.
+      x: root.effectiveCorner.indexOf("left") !== -1
+         ? root.edgeMargin
+         : (parent.width - root.cardWidth - root.edgeMargin)
+      y: root.effectiveCorner.indexOf("top") === 0
+         ? root.edgeMargin
+         : (parent.height - root.cardHeight - root.edgeMargin)
       color: Util.alpha(Color.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
       radius: Style.cornerRadius
