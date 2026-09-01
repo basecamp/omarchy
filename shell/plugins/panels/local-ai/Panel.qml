@@ -47,7 +47,18 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     iconComponent: Component {
-      Item { Rectangle { anchors.centerIn: parent; width: Style.space(9); height: width; radius: width / 2; color: root.loaded ? root.foreground : "transparent"; border.width: root.loaded ? 0 : Math.max(1, Style.space(1)); border.color: root.foreground } }
+      Item {
+        Rectangle {
+          anchors.centerIn: parent; width: Style.space(9); height: width; radius: width / 2
+          color: root.loaded ? root.foreground : "transparent"
+          border.width: root.loaded ? 0 : Math.max(1, Style.space(1))
+          border.color: root.state === "error" ? (root.bar ? root.bar.urgent : root.foreground) : root.foreground
+          SequentialAnimation on opacity {
+            running: root.busy; loops: Animation.Infinite; alwaysRunToEnd: true
+            NumberAnimation { to: 0.25; duration: 500 } NumberAnimation { to: 1; duration: 500 }
+          }
+        }
+      }
     }
     tooltipText: "Local AI · " + root.title()
     onPressed: function(code) { if (code === Qt.RightButton && root.loaded) root.act(["open-agent"], true); else root.toggle() }
