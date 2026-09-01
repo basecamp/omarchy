@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set and launch the default coding agent
-# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush]
+# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush|dim|kimi]
 # omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
 
 installing=false
@@ -31,11 +31,13 @@ ori | openrouter) agent="ori"; name="Ori"; agent_package="github:OpenRouterLabs/
 claude | claude-code) agent="claude"; name="Claude Code" ;;
 codex) agent="codex"; name="Codex" ;;
 crush) agent="crush"; name="Crush" ;;
+dim | dimcode | dim-agent) agent="dim"; name="Dim Agent"; agent_package="npm:dimcode" ;;
 grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
+kimi | kimi-code) agent="kimi"; name="Kimi Code"; agent_package="npm:@moonshot-ai/kimi-code" ;;
 agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
 *)
-  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush>"
+  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush|dim|kimi>"
   exit 1
   ;;
 esac
