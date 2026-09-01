@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when the CPU has SSE4.2 and POPCNT, or is not x86_64.
+
+# Bun's linux-x64 target needs SSE4.2 and POPCNT. x86-64-v1 CPUs (Core 2 Duo,
+# first-gen Atom, …) install the natives then SIGILL. ARM/aarch64 — including
+# Apple Silicon and Asahi — uses a different build and should still install.
+#
+# OMARCHY_CPUINFO and OMARCHY_ARCH override /proc/cpuinfo and uname for tests.
+
+cpuinfo=${OMARCHY_CPUINFO:-/proc/cpuinfo}
+arch=${OMARCHY_ARCH:-}
+
+cpu_has_bun_x64_flags() {
+  local flags=$1
+
+  [[ " $flags " == *" sse4_2 "* && " $flags " == *" popcnt "* ]]
+}
+
+if [[ -z $arch && -r $cpuinfo ]]; then
+  if grep -q '^flags[[:space:]]*:' "$cpuinfo"; then
+    arch=x86_64
+  elif grep -qiE '^(features|cpu architecture)[[:space:]]*:' "$cpuinfo"; then
+    arch=aarch64
+  fi
+fi
+
+if [[ -z $arch ]]; then
+  arch=$(uname -m)
+fi
+
+case $arch in
+aarch64 | arm64)
+  exit 0
+  ;;
+esac
+
+flags=""
+if [[ -r $cpuinfo ]]; then
+  flags=$(awk -F: '/^flags[[:space:]]*:/{print $2; exit}' "$cpuinfo")
+fi
+
+if [[ -z $flags ]] && command -v lscpu >/dev/null; then
+  flags=$(lscpu 2>/dev/null | awk -F: '/^Flags:/{print $2; exit}')
+fi
+
+cpu_has_bun_x64_flags "$flags"

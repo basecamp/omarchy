@@ -215,13 +215,14 @@ assertEqual(
   'setup.reset',
   'menu lists Reset Computer last under Setup'
 )
+const bunX64When = 'omarchy-hw-cpu-sse4_2'
 const expectedAgents = {
   agy: { icon: '󰫢', label: 'Antigravity' },
-  pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
+  pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi', when: bunX64When },
   omp: { icon: '\ue903', iconFont: 'omarchy', label: 'omp' },
   opencode: { icon: '\ue902', iconFont: 'omarchy', label: 'OpenCode' },
   ori: { icon: '\ue909', iconFont: 'omarchy', label: 'Ori' },
-  claude: { icon: '󰛄', label: 'Claude' },
+  claude: { icon: '󰛄', label: 'Claude', when: bunX64When },
   codex: { icon: '\ue905', iconFont: 'omarchy', label: 'Codex' },
   grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
   copilot: { icon: '', label: 'Copilot' },
@@ -235,7 +236,7 @@ assert(
       && entry.iconFont === (expected.iconFont || '')
       && entry.label === expected.label
       && entry.action === `omarchy-default-agent ${agent}`
-      && !entry.when
+      && entry.when === (expected.when || '')
       && entry.checked.includes(`== \"${agent}\"`)
   }),
   'menu exposes every mise-installable coding agent with its own glyph under Defaults > Agent'
