@@ -152,6 +152,7 @@ catalog() {
   ids=$(jq -c '[.groups[].registryId|select(length>0)]' <<<"$hw")
   while IFS= read -r id; do
     r=$(resolve_raw "$id" 2>/dev/null) || continue
+    [[ $(jq -r '.hardware.count' <<<"$r") == 1 ]] || continue # single-GPU recipes only for now
     reason=$(gate_reason "$r")
     if [[ -n $reason ]]; then
       rows=$(jq -c --argjson r "$r" --argjson hw "$hw" --arg reason "$reason" '
