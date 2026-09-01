@@ -10,7 +10,7 @@ const serviceQml = fs.readFileSync(`${root}/shell/plugins/lock/Service.qml`, 'ut
 const viewQml = fs.readFileSync(`${root}/shell/plugins/lock/LockView.qml`, 'utf8')
 
 assert(
-  /function beginPasswordFocusRecovery\(\)[\s\S]*focusRecoveryTimer\.remaining = focusRecoveryTimer\.attemptBudget[\s\S]*requestPasswordFocus\(\)[\s\S]*focusRecoveryTimer\.restart\(\)/.test(serviceQml),
+  /function beginPasswordFocusRecovery\(completeBudget\)[\s\S]*focusRecoveryTimer\.completeBudget = Boolean\(completeBudget\)[\s\S]*focusRecoveryTimer\.remaining = focusRecoveryTimer\.attemptBudget[\s\S]*requestPasswordFocus\(\)[\s\S]*focusRecoveryTimer\.restart\(\)/.test(serviceQml),
   'focus recovery starts with a complete retry budget'
 )
 
@@ -30,8 +30,18 @@ assert(
 )
 
 assert(
-  /if \(!root\.lockRequested \|\| root\.authenticatingPassword \|\| remaining <= 0\)[\s\S]*if \(root\.passwordFocusAcquired && remaining <= attemptBudget - 4\) stop\(\)/.test(serviceQml),
+  /if \(!root\.lockRequested \|\| root\.authenticatingPassword \|\| remaining <= 0\)[\s\S]*if \(!completeBudget && root\.passwordFocusAcquired && remaining <= attemptBudget - 4\) stop\(\)/.test(serviceQml),
   'focus recovery survives sequential multi-monitor recreation'
+)
+
+assert(
+  /remaining -= 1[\s\S]*if \(remaining <= 0\) \{[\s\S]*completeBudget = false[\s\S]*stop\(\)/.test(serviceQml),
+  'a complete resume recovery budget stops cleanly when exhausted'
+)
+
+assert(
+  /function resumeFromSleep\(\): string \{[\s\S]*if \(!root\.lockRequested\) return "idle"[\s\S]*root\.beginPasswordFocusRecovery\(true\)/.test(serviceQml),
+  'an explicit post-resume event starts the complete focus retry budget'
 )
 
 assert(

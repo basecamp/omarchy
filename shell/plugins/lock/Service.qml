@@ -60,16 +60,18 @@ Item {
     root.passwordFocusGeneration += 1
   }
 
-  function beginPasswordFocusRecovery() {
+  function beginPasswordFocusRecovery(completeBudget) {
     if (!root.lockRequested) return
 
     if (root.authenticatingPassword) {
       focusRecoveryTimer.stop()
       focusRecoveryTimer.remaining = 0
+      focusRecoveryTimer.completeBudget = false
       return
     }
 
     root.passwordFocusAcquired = false
+    focusRecoveryTimer.completeBudget = Boolean(completeBudget)
     focusRecoveryTimer.remaining = focusRecoveryTimer.attemptBudget
     requestPasswordFocus()
     focusRecoveryTimer.restart()
@@ -178,6 +180,7 @@ Item {
     idleBlankTimer.stop()
     focusRecoveryTimer.stop()
     focusRecoveryTimer.remaining = 0
+    focusRecoveryTimer.completeBudget = false
     sessionLock.locked = false
     logEvent("unlocked")
     runWake()
@@ -462,10 +465,14 @@ Item {
     id: focusRecoveryTimer
     interval: 500
     repeat: true
-    readonly property int attemptBudget: 20
+    // A resume retry lasts twelve seconds, matching the interval over which
+    // input devices and preserved single-output lock surfaces can settle.
+    readonly property int attemptBudget: 24
     property int remaining: 0
+    property bool completeBudget: false
     onTriggered: {
       if (!root.lockRequested || root.authenticatingPassword || remaining <= 0) {
+        completeBudget = false
         stop()
         return
       }
@@ -473,9 +480,15 @@ Item {
       remaining -= 1
       root.requestPasswordFocus()
 
+      if (remaining <= 0) {
+        completeBudget = false
+        stop()
+        return
+      }
+
       // Keep retrying briefly after the first acknowledgement because outputs
       // can be recreated one after another during multi-monitor resume.
-      if (root.passwordFocusAcquired && remaining <= attemptBudget - 4) stop()
+      if (!completeBudget && root.passwordFocusAcquired && remaining <= attemptBudget - 4) stop()
     }
   }
 
@@ -530,6 +543,7 @@ Item {
       idleBlankTimer.stop()
       focusRecoveryTimer.stop()
       focusRecoveryTimer.remaining = 0
+      focusRecoveryTimer.completeBudget = false
     } else {
       armBlankTimer()
       beginPasswordFocusRecovery()
@@ -571,6 +585,12 @@ Item {
       return "ok"
     }
 
+    function resumeFromSleep(): string {
+      if (!root.lockRequested) return "idle"
+      root.beginPasswordFocusRecovery(true)
+      return "ok"
+    }
+
     function isLocked(): string {
       return root.locked ? "true" : "false"
     }
@@ -588,6 +608,7 @@ Item {
         authenticating: root.authenticating,
         passwordFocusAcquired: root.passwordFocusAcquired,
         focusRecoveryRemaining: focusRecoveryTimer.remaining,
+        focusRecoveryCompleteBudget: focusRecoveryTimer.completeBudget,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt
       })
