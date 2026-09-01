@@ -300,7 +300,10 @@ Panel {
     if (!name) return
     if (enabled && root.enabledDisplayCount <= 1) return
 
-    actionProc.command = ["hyprctl", "eval", Model.displayToggleSpec(name, enabled)]
+    var command = Model.displayToggleCommand(name, enabled, root.internalMonitor)
+    if (!command) return
+
+    actionProc.command = command
     if (!actionProc.running) actionProc.running = true
   }
 
