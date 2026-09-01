@@ -98,7 +98,7 @@ mkdir -p "$test_home/.hermes/hermes-agent/venv/bin"
 cat >"$test_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
-  [[ ${OMARCHY_TEST_HERMES_CAPABLE:-1} == 1 ]] && echo "--oneshot"
+  [[ ${OMARCHY_TEST_HERMES_CAPABLE:-1} == 1 ]] && echo "[-q QUERY, --query QUERY] [--tui]"
 else
   echo "hermes-agent 0.0.0-test"
 fi
@@ -388,7 +388,7 @@ run_ready_check && fail "--check rejects the app's wrapper when its runtime is g
 cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
-  echo "--oneshot"
+  echo "[-q QUERY, --query QUERY] [--tui]"
 else
   echo "hermes-agent 0.0.0-test"
 fi
@@ -396,3 +396,17 @@ SH
 chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
 run_ready_check || fail "--check accepts the app's wrapper once it runs"
 pass "readiness runs the app's command rather than trusting its marker"
+
+# A release whose help lists only the retired --oneshot marker cannot run the
+# seeded --tui --query session omarchy-agent starts, so it is not ready.
+cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "--oneshot"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+run_ready_check && fail "--check accepts a release without the flags omarchy-agent passes"
+pass "a release listing only --oneshot is not prompt-ready"

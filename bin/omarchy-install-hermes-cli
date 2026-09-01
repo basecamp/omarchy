@@ -88,13 +88,16 @@ hermes_runs() {
     timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
 }
 
-# The chat subcommand's --oneshot opt-out arrived with native interactive -q,
-# so its presence is a stable capability check without relying on a version.
+# Probed for the flags omarchy-agent actually passes -- --query to seed the
+# session and --tui to keep it interactive -- rather than a flag that merely
+# shipped alongside them: the previous marker, --oneshot, was dropped in Hermes
+# v0.20 and left working installs stranded as "not ready".
 hermes_prompt_ready() {
   local help
   hermes_runs &&
     help=$(timeout 15 "$HOME/.local/bin/hermes" chat --help 2>/dev/null) &&
-    grep -qF -- '--oneshot' <<<"$help"
+    grep -qF -- '--tui' <<<"$help" &&
+    grep -qF -- '--query' <<<"$help"
 }
 
 # --owns answers whether the wrapper on PATH is the one this command wrote, so
