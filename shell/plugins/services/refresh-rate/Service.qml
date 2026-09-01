@@ -57,9 +57,19 @@ Item {
     }
   }
 
+  // A rate Hyprland refuses is worth a line. Nothing here is visible to the
+  // user until the panel fails to change rate, and a service that reports
+  // success over a refused eval leaves nothing to look at.
   Process {
     id: applyProc
-    stdout: StdioCollector { waitForEnd: true }
+    stdout: StdioCollector {
+      id: applyStdout
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0)
+        console.warn("refresh-rate", "eval exited", exitCode, String(applyStdout.text || "").trim())
+    }
     onRunningChanged: if (!running) root.applyNext()
   }
 
