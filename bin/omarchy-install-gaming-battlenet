@@ -57,7 +57,13 @@ app launcher.
 
 EOF
 
-  log="/tmp/omarchy-battlenet-installer.log"
+  # The log is written by the detached installer after this script exits, so it
+  # cannot be cleaned up here. At a fixed name in /tmp another local account
+  # could read it, and with fs.protected_regular a second user running this
+  # command got "Permission denied" on the file the first user left. The cache
+  # directory is private to the user, so a fixed name here is fine and each run
+  # overwrites the last log instead of leaving a new file behind.
+  log="$cache_dir/battlenet-installer.log"
   setsid -f sh -c "umu-run '$installer' >'$log' 2>&1" </dev/null >/dev/null 2>&1
   echo "Installer log: $log"
   launched_installer=1

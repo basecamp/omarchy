@@ -8,8 +8,15 @@
 set -e
 
 if [[ -z ${OMARCHY_UPDATE_LOGGED:-} ]]; then
+  # The transcript is read back by omarchy-update-analyze-logs after the run,
+  # so it needs a stable name rather than mktemp. At a fixed name in /tmp
+  # another local account could read the output, and with fs.protected_regular
+  # a second user running the update got "Permission denied" on the file the
+  # first user left. The user's own state directory avoids both.
+  update_log="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/update.log"
+  mkdir -p "$(dirname "$update_log")"
   script_command=$(printf '%q ' "$0" "$@")
-  exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "/tmp/omarchy-update.log"
+  exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "$update_log"
 fi
 
 if ! omarchy-update-lock held; then

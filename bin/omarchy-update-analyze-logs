@@ -2,7 +2,10 @@
 
 # omarchy:summary=Check the update log for known failure conditions
 
-update_log="/tmp/omarchy-update.log"
+# Same transcript path omarchy-update writes. Kept in the user's state
+# directory, not /tmp, so no other local account can read it and two users
+# running the update do not collide on one file.
+update_log="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/update.log"
 
 # Check for initramfs generation failure
 if grep -q "Updating linux initcpios" "$update_log"; then

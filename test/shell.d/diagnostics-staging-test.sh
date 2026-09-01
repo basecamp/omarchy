@@ -87,3 +87,132 @@ for staged in TEMP_LOG SYSTEM_INFO; do
     fail "omarchy-upload-log stages $staged with mktemp"
 done
 pass "omarchy-upload-log stages its bundle with mktemp"
+
+
+# --- omarchy-update transcript -------------------------------------------------
+
+# The transcript is read back by omarchy-update-analyze-logs after the run, so
+# it keeps a stable name. That name moves off /tmp into the user's own state
+# directory, where no other local account can read it and two users running
+# the update do not collide on one file.
+script_log="$tmpdir/script.log"
+: >"$script_log"
+
+cat >"$stub_bin/script" <<SH
+#!/bin/bash
+
+printf '%s\n' "\$@" >>"$script_log"
+exit 0
+SH
+chmod +x "$stub_bin/script"
+
+state_home="$tmpdir/xdg-state"
+XDG_STATE_HOME="$state_home" PATH="$stub_bin:$PATH" "$ROOT/bin/omarchy-update" >/dev/null 2>&1
+
+grep -qF "$state_home/omarchy/update.log" "$script_log" ||
+  fail "omarchy update writes its transcript under XDG_STATE_HOME" \
+    "script got: $(cat "$script_log")"
+pass "omarchy update writes its transcript under XDG_STATE_HOME"
+
+fake_home="$tmpdir/home"
+mkdir -p "$fake_home"
+: >"$script_log"
+env -u XDG_STATE_HOME HOME="$fake_home" PATH="$stub_bin:$PATH" "$ROOT/bin/omarchy-update" >/dev/null 2>&1
+
+grep -qF "$fake_home/.local/state/omarchy/update.log" "$script_log" ||
+  fail "omarchy update falls back to ~/.local/state without XDG_STATE_HOME" \
+    "script got: $(cat "$script_log")"
+pass "omarchy update falls back to ~/.local/state without XDG_STATE_HOME"
+
+# --- omarchy-update-analyze-logs -----------------------------------------------
+
+mkdir -p "$state_home/omarchy"
+printf 'Updating linux initcpios\n' >"$state_home/omarchy/update.log"
+output=$(XDG_STATE_HOME="$state_home" "$ROOT/bin/omarchy-update-analyze-logs" 2>&1)
+
+grep -q "Initramfs generation may have failed" <<<"$output" ||
+  fail "omarchy-update-analyze-logs reads the transcript from the state directory" \
+    "output: $output"
+pass "omarchy-update-analyze-logs reads the transcript from the state directory"
+
+printf 'Updating linux initcpios\nInitcpio image generation successful\n' >"$state_home/omarchy/update.log"
+output=$(XDG_STATE_HOME="$state_home" "$ROOT/bin/omarchy-update-analyze-logs" 2>&1)
+
+[[ -z $output ]] ||
+  fail "omarchy-update-analyze-logs stays quiet on a good transcript" "output: $output"
+pass "omarchy-update-analyze-logs stays quiet on a good transcript"
+
+for update_script in omarchy-update omarchy-update-analyze-logs; do
+  grep -q '/tmp/omarchy-update\.log' "$ROOT/bin/$update_script" &&
+    fail "$update_script no longer references the fixed /tmp transcript path"
+done
+pass "update scripts no longer reference the fixed /tmp transcript path"
+
+# --- omarchy-install-gaming-battlenet ------------------------------------------
+
+# The installer log is written by a detached process after the script exits, so
+# it cannot be trapped away. It moves from a fixed /tmp name to a fixed name in
+# the user's own cache directory, which is private to the user already.
+setsid_log="$tmpdir/setsid.log"
+: >"$setsid_log"
+
+for tool in omarchy-pkg-add omarchy-install-gaming-gpu-lib32 update-desktop-database; do
+  cat >"$stub_bin/$tool" <<'SH'
+#!/bin/bash
+
+exit 0
+SH
+  chmod +x "$stub_bin/$tool"
+done
+
+cat >"$stub_bin/curl" <<'SH'
+#!/bin/bash
+
+out=""
+while (($#)); do
+  if [[ $1 == "--output" ]]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+[[ -z $out ]] || printf 'fake installer\n' >"$out"
+exit 0
+SH
+chmod +x "$stub_bin/curl"
+
+cat >"$stub_bin/setsid" <<SH
+#!/bin/bash
+
+printf '%s\n' "\$*" >>"$setsid_log"
+exit 0
+SH
+chmod +x "$stub_bin/setsid"
+
+battle_home="$tmpdir/battle-home"
+mkdir -p "$battle_home"
+
+HOME="$battle_home" OMARCHY_PATH="$ROOT" PATH="$stub_bin:$PATH" \
+  "$ROOT/bin/omarchy-install-gaming-battlenet" >/dev/null 2>&1
+
+grep -qF '/tmp/omarchy-battlenet-installer.log' "$setsid_log" &&
+  fail "Battle.net installer log moved off the fixed /tmp name" \
+    "setsid got: $(cat "$setsid_log")"
+
+grep -qF "$battle_home/.cache/omarchy/battlenet-installer.log" "$setsid_log" ||
+  fail "Battle.net installer log stages in the user's cache directory" \
+    "setsid got: $(cat "$setsid_log")"
+pass "Battle.net installer log stages in the user's cache directory"
+
+# The stub saw the whole command as one line. Pull the path out of the
+# redirect target and check the directory the detached writer points at exists,
+# since the writer creates the file itself after the script exits.
+log_file=$(sed -n "s/.*>'\([^']*\)'.*/\1/p" "$setsid_log" | head -1)
+[[ $log_file == "$battle_home/.cache/omarchy/battlenet-installer.log" && -d $(dirname "$log_file") ]] ||
+  fail "Battle.net installer log points into the user's cache directory" \
+    "setsid got: $(cat "$setsid_log")"
+pass "Battle.net installer log points into the user's cache directory"
+
+grep -q '/tmp/omarchy-battlenet-installer\.log' "$ROOT/bin/omarchy-install-gaming-battlenet" &&
+  fail "Battle.net installer script no longer names the fixed /tmp log"
+pass "Battle.net installer script no longer names the fixed /tmp log"
