@@ -132,6 +132,8 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
   prompts = 0
   today_prompt_count = 0
   today_token_total = 0
+  unreadable = 0
+  first_unreadable = ""
 
   files = projects_path.rglob("*.jsonl") if projects_path.is_dir() else []
   for path in files:
@@ -194,7 +196,21 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
             today_token_total += total
             today_tokens[model] = today_tokens.get(model, 0) + total
     except Exception as exc:
-      print(f"Ignoring unreadable Claude project file {path}: {exc}", file=sys.stderr)
+      # A transcript the user cannot read is a normal condition: Claude Code
+      # run as root with the home mounted leaves thousands behind. The shell
+      # keeps this collector's stderr in its tmpfs log, and a line per file per
+      # refresh filled $XDG_RUNTIME_DIR until the compositor died. Count them
+      # and say so once per scan.
+      unreadable += 1
+      if not first_unreadable:
+        first_unreadable = f"{path}: {exc}"
+
+  if unreadable:
+    noun = "file" if unreadable == 1 else "files"
+    print(
+      f"Ignoring {unreadable} unreadable Claude project {noun} under {projects_path}; first: {first_unreadable}",
+      file=sys.stderr,
+    )
 
   return {
     "todayPrompts": today_prompt_count,

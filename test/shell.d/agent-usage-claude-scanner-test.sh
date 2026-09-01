@@ -33,6 +33,33 @@ pass "Claude collector keeps mutually exclusive token categories"
   fail "Claude collector identifies itself and reports missing auth" "$result"
 pass "Claude collector identifies itself and reports missing auth"
 
+# Transcripts the user cannot read are a normal condition, and the shell keeps
+# this collector's stderr in its tmpfs log: the report must be one line per
+# scan, not one per file, and the readable transcripts must still count.
+# Root reads a mode-000 file anyway, so give a root test run something it
+# cannot open either: a directory wearing the transcript suffix.
+for index in 1 2 3; do
+  unreadable="$projects/unreadable-$index.jsonl"
+  if (( EUID == 0 )); then
+    mkdir "$unreadable"
+  else
+    : >"$unreadable"
+    chmod 000 "$unreadable"
+  fi
+done
+
+stderr_file="$TEST_HOME/collector.stderr"
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --force 2>"$stderr_file")
+
+[[ $(wc -l <"$stderr_file") == 1 ]] ||
+  fail "Claude collector reports unreadable transcripts once per scan" "$(cat "$stderr_file")"
+grep -q '^Ignoring 3 unreadable Claude project files under ' "$stderr_file" ||
+  fail "Claude collector counts the unreadable transcripts it skipped" "$(cat "$stderr_file")"
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "58793" ]] ||
+  fail "Claude collector still counts the readable transcripts" "$result"
+pass "Claude collector reports unreadable transcripts once per scan"
+
 # A machine with no transcripts and no stats-cache still gets today's counts
 # from history.jsonl alone.
 HISTORY_HOME=$(mktemp -d)
