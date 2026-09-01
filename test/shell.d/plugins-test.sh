@@ -197,7 +197,7 @@ for (const [id, section] of Object.entries({
 }
 check(byId['omarchy.media']?.barWidget?.defaultSection === undefined, 'omarchy.media must use the center fallback')
 
-for (const id of ['omarchy.lock', 'omarchy.idle', 'omarchy.polkit', 'omarchy.notifications']) {
+for (const id of ['omarchy.lock', 'omarchy.idle', 'omarchy.polkit', 'omarchy.notifications', 'omarchy.media']) {
   check(byId[id]?.keepLoaded === true, `${id} must stay loaded across plugin reloads`)
 }
 

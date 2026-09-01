@@ -89,7 +89,9 @@ to outlive a single summon can set `keepLoaded: true` (e.g. the image
 picker keeps its overlay window mounted between summons). The same flag
 keeps a service mounted across plugin hot-reload, so tearing down a
 changed bar widget cannot destroy `omarchy.lock` while Hyprland still
-holds the session lock. First-party services are loaded at startup.
+holds the session lock. The kept instance is not replaced, so code
+changes to a `keepLoaded` service itself only take effect on a shell
+restart. First-party services are loaded at startup.
 
 The full schema lives in `services/PluginRegistry.qml`.
 
