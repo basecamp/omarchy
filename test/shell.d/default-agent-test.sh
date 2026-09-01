@@ -74,6 +74,11 @@ cat >"$mock_bin/omarchy-test-noop" <<'SH'
 exit 0
 SH
 
+cat >"$mock_bin/sudo" <<'SH'
+#!/bin/bash
+exec "$@"
+SH
+
 for command in gum hyprctl omarchy-webapp-remove-all omarchy-tui-remove-all omarchy-pkg-drop; do
   ln -s omarchy-test-noop "$mock_bin/$command"
 done
@@ -92,6 +97,7 @@ export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 export OMARCHY_PATH="$ROOT"
+export OMARCHY_MISE_CONFIG_PATH="$test_tmp/etc/mise/config.toml"
 
 grok_package="grok"
 omp_package="oh-my-pi"
@@ -120,17 +126,15 @@ assert_lazy_stub "$ori_package" ori
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
-grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity lazy stub"
-grep -Fx "$grok_package" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
-grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
-grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
-grep -Fx "$ori_package" "$stub_log" >/dev/null || fail "user setup creates the Ori lazy stub"
-pass "user setup creates the custom agent lazy stubs"
-
-if grep -Eq '^omarchy-mise-install [^[:space:]]+:' "$ROOT/install/user/mise.sh"; then
-  fail "user setup uses only mise registry shorthands"
-fi
-pass "user setup uses only mise registry shorthands"
+lazy_config="$ROOT/default/mise/config.toml"
+[[ -f $lazy_config ]] || fail "Omarchy ships the system mise config"
+for tool in "$agy_package" "$grok_package" "$omp_package" "$crush_package" "$ori_package"; do
+  grep -Eq "^$tool = \\{ version = \"latest\", lazy = true, minimum_release_age = \"0s\" \\}$" "$lazy_config" ||
+    fail "user setup declares $tool as a native lazy tool"
+done
+[[ $(grep -c 'lazy = true' "$lazy_config") == 15 ]] || fail "user setup declares every default mise tool as lazy"
+grep -Fx "reshim --system" "$mise_history" >/dev/null || fail "user setup builds the system lazy bootstrap shims"
+pass "user setup configures system lazy tools from registry shorthands"
 
 write_legacy_wrapper() {
   local package=$1 command=$2

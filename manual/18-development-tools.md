@@ -28,7 +28,7 @@ You can setup the common databases for local development in Docker using _Instal
 
 ## GitHub CLI
 
-[The GitHub CLI](https://cli.github.com/) let's you authenticate with your GitHub account and clone private repositories using it. It's wired up as one of the lazy-loading mise stubs, so the first time you run `gh`, it installs itself. To authenticate, run `gh auth login`. Then you can checkout private repositories using `gh repo clone org/repo`.
+[The GitHub CLI](https://cli.github.com/) lets you authenticate with your GitHub account and clone private repositories using it. It's configured as a lazy mise tool, so the first time you run `gh`, it installs itself. Run `mise install --include-lazy` if you want to install it and all other lazy tools up front. To authenticate, run `gh auth login`. Then you can checkout private repositories using `gh repo clone org/repo`.
 
 You can also perform a bunch of other GitHub operations using this command. Just run `gh` to see everything that's possible.
 

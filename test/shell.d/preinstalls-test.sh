@@ -10,10 +10,11 @@ trap 'rm -rf "$test_tmp"' EXIT
 mock_bin="$test_tmp/bin"
 test_home="$test_tmp/home"
 marker="$test_home/.local/state/omarchy/preinstalls-removed"
+mise_config="$test_tmp/etc/mise/config.toml"
 pkg_log="$test_tmp/packages"
 mkdir -p "$mock_bin" "$test_home/.local/state/omarchy"
 
-for command in omarchy-webapp-remove-all omarchy-tui-remove-all omarchy-refresh-applications hyprctl; do
+for command in omarchy-webapp-remove-all omarchy-tui-remove-all omarchy-refresh-applications hyprctl mise; do
   printf '#!/bin/bash\nexit 0\n' >"$mock_bin/$command"
 done
 
@@ -34,6 +35,11 @@ cat >"$mock_bin/omarchy-pkg-drop" <<'SH'
 printf '%s\n' "$@" >"$OMARCHY_TEST_PKG_LOG"
 SH
 
+cat >"$mock_bin/sudo" <<'SH'
+#!/bin/bash
+exec "$@"
+SH
+
 chmod +x "$mock_bin"/*
 
 # $ROOT/bin after the mocks: Remove Preinstalls asks omarchy-install-hermes-cli
@@ -41,6 +47,8 @@ chmod +x "$mock_bin"/*
 # that is the real command at runtime. The mocks still shadow what they name.
 export PATH="$mock_bin:$ROOT/bin:$PATH"
 export HOME="$test_home"
+export OMARCHY_PATH="$ROOT"
+export OMARCHY_MISE_CONFIG_PATH="$mise_config"
 export OMARCHY_TEST_PKG_LOG="$pkg_log"
 
 # Both scripts restore and remove the same set, and every package in it has to be
@@ -50,9 +58,11 @@ mapfile -t shipped < <(sed -e 's/[[:space:]]*#.*$//' -e '/^[[:space:]]*$/d' "$RO
 
 "$ROOT/bin/omarchy-install-preinstalls" >/dev/null
 mapfile -t restored <"$pkg_log"
+cmp -s "$ROOT/default/mise/config.toml" "$mise_config" || fail "Install Preinstalls restores the system mise config"
 
 "$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
 mapfile -t dropped <"$pkg_log"
+[[ ! -e $mise_config ]] || fail "Remove Preinstalls deletes the system mise config"
 
 [[ ${restored[*]} == "${dropped[*]}" ]] ||
   fail "Install and Remove Preinstalls cover the same packages" \
@@ -92,6 +102,12 @@ pass "declining Remove Preinstalls changes nothing"
 "$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
 [[ -f $marker ]] || fail "Remove Preinstalls records the opt-out"
 pass "Remove Preinstalls records the opt-out"
+
+mkdir -p "$(dirname "$mise_config")"
+touch "$mise_config"
+"$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
+[[ ! -e $mise_config ]] || fail "Remove Preinstalls deletes Omarchy's lazy mise declarations"
+pass "Remove Preinstalls deletes Omarchy's lazy mise declarations"
 
 # Hermes' wrapper is only a preinstall when omarchy-install-hermes-cli wrote it.
 # The desktop app's command and an official install live at the same path and
