@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# omarchy:summary=Launch the Omarchy shell after Hyprland has a real output
+# omarchy:hidden=true
+
+ready_attempts=${OMARCHY_HYPRLAND_READY_ATTEMPTS:-40}
+ready_delay=${OMARCHY_HYPRLAND_READY_DELAY:-0.25}
+
+real_output_ready() {
+  hyprctl monitors all -j | jq -e '
+    any(.[]; .disabled != true and (.width // 0) > 0 and (.height // 0) > 0)
+  ' >/dev/null 2>&1
+}
+
+for (( attempt = 1; attempt <= ready_attempts; attempt++ )); do
+  if real_output_ready; then
+    omarchy-hyprland-monitor-clamshell || true
+    exec omarchy-launch-shell
+  fi
+
+  if (( attempt < ready_attempts )); then
+    sleep "$ready_delay"
+  fi
+done
+
+logger -t omarchy-shell "Starting Omarchy shell before Hyprland reported a real output."
+omarchy-hyprland-monitor-clamshell || true
+exec omarchy-launch-shell
