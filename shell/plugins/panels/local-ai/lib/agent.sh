@@ -28,6 +28,21 @@ wire() {
     cur='{}'; [[ -f $d/settings.json ]] && cur=$(<"$d/settings.json")
     tmp=$(mktemp "$d/.s.XXXXXX") && jq --arg m "$model" 'if .defaultProvider=="omarchy-local" then .defaultModel=$m else . end' <<<"$cur" >"$tmp" && mv "$tmp" "$d/settings.json"
   done
+  wire_json "$HOME_DIR/.config/opencode/opencode.json" opencode "$(jq -nc --arg u "http://127.0.0.1:$PORT/v1" --arg m "$model" \
+    --arg n "$(jq -r '.model.name//.model.id' <<<"$r")" \
+    '{npm:"@ai-sdk/openai-compatible",name:"Omarchy Local",options:{baseURL:$u},models:{($m):{name:($n+" · local")}}}')" '.provider["omarchy-local"]=$p'
+  wire_json "$HOME_DIR/.config/crush/crush.json" crush "$(jq -nc --arg u "http://127.0.0.1:$PORT/v1" --arg m "$model" \
+    --arg n "$(jq -r '.model.name//.model.id' <<<"$r")" \
+    '{name:"Omarchy Local",type:"openai",base_url:$u,api_key:"local",models:[{id:$m,name:($n+" · local")}]}')" '.providers["omarchy-local"]=$p'
+}
+wire_json() { # wire_json <file> <agent-key> <provider-json> <jq-set-expr>: merge, never clobber unparseable configs
+  local f=$1 key=$2 p=$3 expr=$4 cur='{}' tmp status=wired
+  mkdir -p "$(dirname "$f")"
+  [[ -f $f ]] && cur=$(<"$f")
+  if jq -e 'type=="object"' >/dev/null 2>&1 <<<"$cur"; then
+    tmp=$(mktemp "$(dirname "$f")/.w.XXXXXX") && jq --argjson p "$p" "$expr" <<<"$cur" >"$tmp" && mv "$tmp" "$f"
+  else status=manual; fi
+  sw '.active.agents[$k]=$v' --arg k "$key" --arg v "$status"
 }
 unwire() {
   local d f tmp
@@ -38,6 +53,11 @@ unwire() {
       tmp=$(mktemp "$d/.m.XXXXXX") && jq 'del(.providers["omarchy-local"])' "$f" >"$tmp" && mv "$tmp" "$f"
     done
     [[ -f $d/settings.json ]] && tmp=$(mktemp "$d/.s.XXXXXX") && jq 'if .defaultProvider=="omarchy-local" then del(.defaultProvider,.defaultModel) else . end' "$d/settings.json" >"$tmp" && mv "$tmp" "$d/settings.json"
+  done
+  for f in "$HOME_DIR/.config/opencode/opencode.json" "$HOME_DIR/.config/crush/crush.json"; do
+    [[ -f $f ]] || continue
+    jq -e 'type=="object"' "$f" >/dev/null 2>&1 || continue
+    tmp=$(mktemp "$(dirname "$f")/.w.XXXXXX") && jq 'del(.provider["omarchy-local"], .providers["omarchy-local"])' "$f" >"$tmp" && mv "$tmp" "$f"
   done
   return 0
 }
@@ -78,6 +98,8 @@ open_agent() { # no argument: Omarchy's default agent; pi/omp get the local mode
         launch_tui "$bin" --provider omarchy-local --model "$served" --session-id "$sid" ;;
     omp) bin=$(bin_of omp) || fail "omp is not installed"
          launch_tui "$bin" --provider omarchy-local --model "$served" --session-id "$sid" ;;
+    opencode) bin=$(bin_of opencode) || fail "opencode is not installed"
+         launch_tui "$bin" --model "omarchy-local/$served" ;;
     *) launch_tui omarchy-agent ;; # their chosen agent, launched the way Omarchy launches it
   esac
 }

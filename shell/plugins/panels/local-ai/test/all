@@ -186,6 +186,10 @@ assert jq -e '.providers["omarchy-local"].models[0].id=="org/small" and .provide
 assert jq -e '(.defaultProvider // "") == ""' >/dev/null "$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
 assert jq -e '.providers["omarchy-local"].models[0].id=="org/small"' >/dev/null "$OMARCHY_AI_USER_HOME/.omp/agent/models.yml"
 assert [ ! -e "$OMARCHY_AI_USER_HOME/.omp/agent/models.json" ]
+assert jq -e '.provider["omarchy-local"].options.baseURL=="http://127.0.0.1:12434/v1" and (.provider["omarchy-local"].models|has("org/small"))' >/dev/null "$OMARCHY_AI_USER_HOME/.config/opencode/opencode.json"
+assert jq -e '.providers["omarchy-local"].type=="openai" and .providers["omarchy-local"].models[0].id=="org/small"' >/dev/null "$OMARCHY_AI_USER_HOME/.config/crush/crush.json"
+assert jq -e '.active.agents.opencode=="wired" and .active.agents.crush=="wired"' >/dev/null <<<"$(snap)"
+ok 'opencode and crush get the omarchy-local provider in their own config schemas'
 assert jq -e '.active.agents.pi=="wired" and .active.agents.omp=="wired"' >/dev/null <<<"$(snap)"
 assert jq -e '.active.ctxTokens==131072 and .active.toksPerSec==42' >/dev/null <<<"$(snap)"
 ok 'run transitions to ready, confirms API identity, and wires the collision-safe omarchy-local provider'
@@ -244,6 +248,14 @@ assert [ "$auto" = 0 ]
   "$CLI" open-agent >/dev/null
 )
 assert grep -q 'omarchy-agent' "$TMP/hyprctl3.out"
+( export XDG_RUNTIME_DIR="$TMP/xdg" HYPRLAND_INSTANCE_SIGNATURE=sig
+  : >"$OMARCHY_AI_USER_HOME/.local/bin/opencode"; chmod +x "$OMARCHY_AI_USER_HOME/.local/bin/opencode"
+  hyprctl() { printf '%s\n' "$*" >"$TMP/hyprctl4.out"; }; omarchy-default-agent() { printf 'opencode\n'; }
+  export -f hyprctl omarchy-default-agent
+  "$CLI" open-agent >/dev/null
+)
+assert grep -q -- 'omarchy-local/org/small' "$TMP/hyprctl4.out"
+ok 'opencode launches targeting the wired local model directly'
 assert jq -e '(.agents.installed|index("pi")) and (.agents.installed|index("omp")) and .agents.default==""' >/dev/null <<<"$(snap)"
 ok 'open-agent follows the Omarchy default agent, and the snapshot reports which agents are installed'
 c_write "omarchy-local-ai" 0 1
@@ -282,6 +294,8 @@ assert [ -f "$CD/containers/omarchy-local-ai-previous" ]
 rm -f "$CD/containers/omarchy-local-ai-previous"
 assert jq -e '(.defaultProvider // "") == ""' >/dev/null "$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
 assert jq -e '.share.active|not' >/dev/null <<<"$(snap)"
+assert jq -e '(.provider["omarchy-local"]//null)==null' >/dev/null "$OMARCHY_AI_USER_HOME/.config/opencode/opencode.json"
+assert jq -e '(.providers["omarchy-local"]//null)==null' >/dev/null "$OMARCHY_AI_USER_HOME/.config/crush/crush.json"
 ok 'unload ignores an unowned <container>-previous instead of aborting mid-transition'
 assert [ -d "$OMARCHY_AI_USER_HOME/.cache/huggingface/hub/models--org--small" ]
 "$CLI" remove small-3090 >/dev/null

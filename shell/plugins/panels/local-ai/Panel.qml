@@ -25,9 +25,10 @@ Panel {
   function refresh() { if (!poll.running) poll.running = true }
   function act(args, closeAfter) { if (busy || action.running) return; action.command = [cli].concat(args); action.closeAfter = closeAfter; action.running = true }
   function title() { return loaded ? active.name : (rec ? rec.name : "Local AI") }
+  property int spin: 0
   function status() {
     if (snap.error) return snap.error
-    if (busy) return (operation.name || state) + (operation.indeterminate ? "" : " · " + (operation.percent || 0) + "%")
+    if (busy) return ["|", "/", "-", "\\"][spin] + " " + (operation.name || state) + (operation.indeterminate ? "" : " · " + (operation.percent || 0) + "%")
     return ""
   }
   function loadLabel() {
@@ -42,6 +43,7 @@ Panel {
   }
   Process { id: action; property bool closeAfter: false; onExited: { if (closeAfter) root.close(); root.refresh() } }
   Timer { interval: root.opened ? (root.busy ? 1000 : 4000) : 30000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.refresh() }
+  Timer { interval: 140; running: root.busy && root.opened; repeat: true; onTriggered: root.spin = (root.spin + 1) % 4 }
   BarIconButton {
     id: button
     anchors.fill: parent
