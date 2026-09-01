@@ -49,13 +49,18 @@ resolve_raw() { # join recipe + instance + model + hardware + speed sweep; inter
     | .launch |= walk(if type=="string" then gsub("\\$\\{MODEL_ROOT\\}";$mr)|gsub("\\$\\{CACHE_ROOT\\}";$cr) else . end)'
 }
 gate_reason() { # gate_reason <resolved-json> -> one-line refusal reason on stdout; empty means launchable
-  local r=$1 root src tgt ro reason primary=1
+  local r=$1 root src tgt ro reason primary=1 real plug_root hf_root
   root=$(cd "$REG" && pwd)
+  plug_root=$(canon "$HOME_DIR/.cache/omarchy/local-ai")
+  hf_root=$(canon "$HOME_DIR/.cache/huggingface")
   reason=$(jq -r '
     if .status!="validated" then "not validated"
     elif ((.launch.arguments|index("--nnodes"))!=null) then "runs across \(.launch.arguments[(.launch.arguments|index("--nnodes"))+1]//"several") networked machines"
     elif ([.launch|..|strings|select(test("\\$\\{"))]|length)>0 then "needs unsupported placeholder \([.launch|..|strings|select(test("\\$\\{"))]|first|capture("(?<p>\\$\\{[^}]+\\})").p)"
     elif ((.launch.networkMode//"bridge")!="bridge") then "requires \(.launch.networkMode) networking"
+    elif ((.launch.ipc//"")=="host") then "requires host IPC"
+    elif ((.launch.capAdd//[])|length)>0 then "requires extra kernel capabilities"
+    elif ((.launch.securityOpt//[])|length)>0 then "requires a weakened security profile"
     elif (.launch.image|test("@sha256:[0-9a-f]{64}$")|not) then "image is not digest-pinned"
     elif (.model.revision|test("^[0-9a-f]{40,64}$")|not) then "model revision is not pinned"
     elif ((.launch.containerPort|type)!="number") then "invalid container port"
@@ -66,6 +71,9 @@ gate_reason() { # gate_reason <resolved-json> -> one-line refusal reason on stdo
     case $src in
       "$MODELS_SUB"/*|"$CACHE_SUB"/*)
         [[ $src != *..* ]] || { printf 'mounts unsafe host path %s\n' "$src"; return; }
+        real=$(canon "$HOME_DIR/${src#\~/}")
+        [[ $real == "$plug_root"/* ]] || { printf 'mounts unsafe host path %s\n' "$src"; return; }
+        if [[ $src == "$MODELS_SUB"/* && $ro != true ]]; then printf 'model weights must be mounted read-only\n'; return; fi
         if [[ $tgt == /model || $tgt == /models || $tgt == /workspace/models ]] && (( primary )); then primary=0
         elif [[ $ro == true && $src == "$MODELS_SUB"/* ]]; then
           if [[ -n $prepo ]]; then # provisioned: downloadable like the primary, but only from a pinned revision
@@ -74,9 +82,12 @@ gate_reason() { # gate_reason <resolved-json> -> one-line refusal reason on stdo
             printf 'place weights at %s first\n' "$src"; return
           fi
         fi ;;
-      \~/.cache/*) [[ $src != *..* ]] || { printf 'mounts unsafe host path %s\n' "$src"; return; } ;;
+      \~/.cache/huggingface|\~/.cache/huggingface/*)
+        [[ $src != *..* ]] || { printf 'mounts unsafe host path %s\n' "$src"; return; }
+        real=$(canon "$HOME_DIR/${src#\~/}")
+        [[ $real == "$hf_root" || $real == "$hf_root"/* ]] || { printf 'mounts unsafe host path %s\n' "$src"; return; } ;;
       /dev/dri/by-path) ;;
-      /*) printf 'mounts unsafe host path %s\n' "$src"; return ;;
+      \~/*|/*) printf 'mounts unsafe host path %s\n' "$src"; return ;;
       *) src=$(cd "$root" && realpath "$src" 2>/dev/null) || { printf 'registry asset is missing\n'; return; }
          [[ $src == "$root/"* ]] || { printf 'asset escapes the registry\n'; return; } ;;
     esac

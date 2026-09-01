@@ -20,27 +20,41 @@ gpu_ids() {
     | [.groups[]|select(.product as $x|$p|index($x)).devices[]]|sort_by(-.freeMiB)|.[:$need]|map(.index)|join(",")'
 }
 build_argv() {
-  local r=$1 root ids src tgt mode v backend root_real
+  local r=$1 root ids src tgt mode v backend root_real real plug_root hf_root
   root_real=$(cd "$REG" && pwd)
+  plug_root=$(canon "$HOME_DIR/.cache/omarchy/local-ai")
+  hf_root=$(canon "$HOME_DIR/.cache/huggingface")
+  jq -e '((.launch.capAdd//[])|length)==0 and ((.launch.securityOpt//[])|length)==0 and ((.launch.ipc//"")!="host")' >/dev/null <<<"$r" \
+    || { fail "recipe requires disallowed isolation options"; return; }
   backend=$(jq -r .hardware.backend <<<"$r")
   local -a a=(docker run --detach --name "$CTR" --restart unless-stopped
     --label "$LABEL=1" --label "$LABEL.recipe=$(jq -r .id <<<"$r")")
   if [[ $backend == nvidia ]]; then
     ids=$(gpu_ids "$r"); [[ -n $ids ]] || { fail "no free matching GPUs"; return; }
     a+=(--gpus "device=$ids")
-  else
-    a+=(--device /dev/dri:/dev/dri)
+  else # render nodes only, resolved per device: no card* control nodes, no whole /dev/dri
+    local -a nodes=()
+    for v in "${OMARCHY_AI_DRI_PATH:-/dev/dri/by-path}"/*-render; do
+      [[ -e $v ]] || continue; real=$(canon "$v"); nodes+=(--device "$real:$real")
+    done
+    ((${#nodes[@]})) || { fail "no render nodes found"; return; }
+    a+=("${nodes[@]}" --volume /dev/dri/by-path:/dev/dri/by-path:ro)
   fi
-  while IFS= read -r v; do [[ $backend != nvidia && $v == SYS_PTRACE ]] || { fail "unsupported capability $v"; return; }; a+=(--cap-add "$v"); done < <(jq -r '.launch.capAdd[]?' <<<"$r")
-  while IFS= read -r v; do [[ $backend != nvidia && $v == seccomp=unconfined ]] || { fail "unsupported security option $v"; return; }; a+=(--security-opt "$v"); done < <(jq -r '.launch.securityOpt[]?' <<<"$r")
   a+=(--publish "127.0.0.1:$PORT:$(jq -r .launch.containerPort <<<"$r")")
-  [[ $(jq -r '.launch.ipc//""' <<<"$r") == host ]] && a+=(--ipc host)
   v=$(jq -r '.launch.shm//empty' <<<"$r"); [[ -n $v ]] && a+=(--shm-size "$v")
   while IFS=$'\t' read -r src tgt mode; do
     [[ -n $src && -n $tgt ]] || continue
-    if [[ $src == \~/* ]]; then [[ $src != *..* ]] || { fail "mount outside boundary: $src"; return; }; src=$HOME_DIR/${src#\~/}; mkdir -p "$src"
-    elif [[ $src != /* ]]; then src=$(cd "$root_real" && realpath "$src") || { fail "mount missing"; return; }; fi
-    [[ $src == "$HOME_DIR/.cache/"* || $src == /dev/dri/by-path || $src == "$root_real/"* ]] || { fail "mount outside boundary: $src"; return; }
+    if [[ $src == \~/* ]]; then
+      [[ $src != *..* ]] || { fail "mount outside boundary: $src"; return; }
+      src=$HOME_DIR/${src#\~/}; mkdir -p "$src" 2>/dev/null || true
+      real=$(canon "$src")
+      [[ $real == "$plug_root"/* || $real == "$hf_root" || $real == "$hf_root"/* ]] || { fail "mount outside boundary: $src"; return; }
+      src=$real
+    elif [[ $src == /dev/dri/by-path ]]; then :
+    elif [[ $src == /* ]]; then fail "mount outside boundary: $src"; return
+    else src=$(cd "$root_real" && realpath "$src") || { fail "mount missing"; return; }
+      [[ $src == "$root_real/"* ]] || { fail "mount outside boundary: $src"; return; }
+    fi
     a+=(--volume "$src:$tgt$mode")
   done < <(jq -r '.launch.mounts[]?|[.source,.target,(if .read_only then ":ro" else "" end)]|@tsv' <<<"$r")
   while IFS= read -r v; do a+=(--env "$v"); done < <(jq -r '.launch.environment|to_entries[]?|"\(.key)=\(.value)"' <<<"$r")
@@ -49,8 +63,8 @@ build_argv() {
   while IFS= read -r v; do a+=("$v"); done < <(jq -r '.launch.arguments[]?' <<<"$r")
   printf '%s\0' "${a[@]}"
 }
-api() { curl -fsS --max-time "${2:-30}" "http://127.0.0.1:$PORT/v1/$1"; }
-post() { curl -fsS --max-time 600 -H 'Content-Type: application/json' -d "$2" "http://127.0.0.1:$PORT/v1/$1"; }
+api() { curl -fsS --max-time "${2:-30}" --max-filesize 1048576 "http://127.0.0.1:$PORT/v1/$1"; }
+post() { curl -fsS --max-time 600 --max-filesize 1048576 -H 'Content-Type: application/json' -d "$2" "http://127.0.0.1:$PORT/v1/$1"; }
 accept() {
   local r=$1 want served reply tools deadline=$((SECONDS+TIMEOUT))
   want=$(jq -r .model.servedName <<<"$r")

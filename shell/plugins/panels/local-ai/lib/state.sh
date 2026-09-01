@@ -2,6 +2,12 @@
 # Snapshot store. Sourced by omarchy-local-ai; do not run.
 fail() { printf 'local-ai: %s\n' "$*" >&2; return 1; }
 bin_of() { [[ -x $HOME_DIR/.local/bin/$1 ]] && printf '%s\n' "$HOME_DIR/.local/bin/$1" || command -v "$1"; }
+canon() { # canonicalize, resolving symlinks even for not-yet-existing leaf paths
+  local p=$1 rest=""
+  if realpath -m -- / >/dev/null 2>&1; then realpath -m -- "$p"; return; fi
+  while [[ -n $p && ! -e $p ]]; do rest="/$(basename "$p")$rest"; p=$(dirname "$p"); done
+  printf '%s%s\n' "$(realpath -- "${p:-/}" 2>/dev/null || printf '%s' "$p")" "$rest"
+}
 HAVE_FLOCK=0; command -v flock >/dev/null 2>&1 && HAVE_FLOCK=1
 slock() { if ((HAVE_FLOCK)); then exec 9>"$ST/state.lock"; flock 9; else until mkdir "$ST/state.lockd" 2>/dev/null; do sleep 0.05; done; fi; }
 sunlock() { if ((HAVE_FLOCK)); then exec 9>&-; else rmdir "$ST/state.lockd" 2>/dev/null || true; fi; }

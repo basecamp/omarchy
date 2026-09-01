@@ -38,7 +38,7 @@ Panel {
   Process {
     id: poll
     command: [root.cli, "snapshot"]
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: { try { root.snap = JSON.parse(text) } catch (e) {} } }
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: { if (text.length > 262144) return; try { root.snap = JSON.parse(text) } catch (e) {} } }
   }
   Process { id: action; property bool closeAfter: false; onExited: { if (closeAfter) root.close(); root.refresh() } }
   Timer { interval: root.opened ? (root.busy ? 1000 : 4000) : 30000; running: true; repeat: true; triggeredOnStart: true; onTriggered: root.refresh() }
@@ -83,8 +83,8 @@ Panel {
         anchors.left: parent.left
         anchors.right: parent.right
         spacing: Style.space(10)
-        Text { width: parent.width; text: root.title(); color: root.foreground; font.family: root.bar.fontFamily; font.pixelSize: Style.font.heading; font.weight: Font.Medium; elide: Text.ElideRight }
-        Text { width: parent.width; visible: root.status() !== ""; text: root.status(); color: root.dim; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall; elide: Text.ElideRight; maximumLineCount: 1 }
+        Text { width: parent.width; textFormat: Text.PlainText; text: root.title(); color: root.foreground; font.family: root.bar.fontFamily; font.pixelSize: Style.font.heading; font.weight: Font.Medium; elide: Text.ElideRight }
+        Text { width: parent.width; textFormat: Text.PlainText; visible: root.status() !== ""; text: root.status(); color: root.dim; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall; elide: Text.ElideRight; maximumLineCount: 1 }
         Link { visible: !root.loaded; enabled: !root.busy && Boolean(root.rec); text: root.loadLabel(); onTriggered: root.act(["load", root.rec.recipeId], false) }
         Link { visible: root.loaded; text: "Open agent"; onTriggered: root.act(["open-agent"], true) }
         Link { visible: root.loaded && Boolean(root.share.available); enabled: !root.busy; text: root.share.active ? "Stop sharing" : "Share on Tailscale"; onTriggered: root.act(["share"], false) }
@@ -94,6 +94,7 @@ Panel {
   }
   component Link: Text {
     signal triggered()
+    textFormat: Text.PlainText
     color: root.foreground; opacity: enabled ? 1 : 0.32; font.family: root.bar.fontFamily; font.pixelSize: Style.font.bodySmall; elide: Text.ElideRight
     MouseArea { anchors.fill: parent; enabled: parent.enabled; hoverEnabled: true; cursorShape: parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: parent.triggered() }
   }

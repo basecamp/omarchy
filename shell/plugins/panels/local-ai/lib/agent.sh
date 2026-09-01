@@ -77,7 +77,7 @@ open_agent() { # no argument: Omarchy's default agent; pi/omp get the local mode
     pi) bin=$(bin_of pi) || fail "pi is not installed"
         launch_tui "$bin" --provider omarchy-local --model "$served" --session-id "$sid" ;;
     omp) bin=$(bin_of omp) || fail "omp is not installed"
-         launch_tui "$bin" --auto-approve --provider omarchy-local --model "$served" --session-id "$sid" ;;
+         launch_tui "$bin" --provider omarchy-local --model "$served" --session-id "$sid" ;;
     *) launch_tui omarchy-agent ;; # their chosen agent, launched the way Omarchy launches it
   esac
 }
