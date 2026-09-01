@@ -54,9 +54,6 @@ ShellRoot {
 
   property var defaultsConfig: builtinShellConfig
   property var shellConfig: builtinShellConfig
-  property bool pluginReloading: false
-  property bool pluginReloadPending: false
-
   Timer {
     id: localPluginReloadTimer
     interval: 150
@@ -246,7 +243,7 @@ ShellRoot {
   Loader {
     id: pluginBarLoader
 
-    active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
+    active: shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
     source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
     asynchronous: true
     onLoaded: shell.configureBar(item, shell.activeBarManifest)
@@ -345,17 +342,9 @@ ShellRoot {
     }
   }
 
-  function unloadPluginServices() {
-    for (var existingId in _services) {
-      var inst = _services[existingId]
-      if (inst && typeof inst.destroy === "function") inst.destroy()
-    }
-    _services = ({})
-  }
-
   Connections {
     target: shell.pluginRegistry
-    function onPluginsChanged() { if (!shell.pluginReloading) shell._syncServices() }
+    function onPluginsChanged() { shell._syncServices() }
   }
 
   // Writes inline settings to a bar layout entry or top-level plugin entry in
@@ -530,14 +519,6 @@ ShellRoot {
     panelLoaders = next
   }
 
-  function unloadPanels() {
-    for (var id in panelLoaders) hide(id)
-    panelEntries = []
-    panelLoaders = ({})
-    pendingPayloads = ({})
-    openPanelIds = ({})
-  }
-
   function deliverIfLoaded(pluginId) {
     var loader = panelLoaders[pluginId]
     if (!loader || !loader.item) return
@@ -604,7 +585,7 @@ ShellRoot {
 
   Connections {
     target: shell.pluginRegistry
-    function onPluginsChanged() { if (!shell.pluginReloading) shell.panelEntries = shell.computePanelEntries() }
+    function onPluginsChanged() { shell.panelEntries = shell.computePanelEntries() }
   }
 
   Instantiator {
@@ -661,7 +642,7 @@ ShellRoot {
   // widgets use the same first-party manifest contract as third-party widgets.
   Connections {
     target: shell.pluginRegistry
-    function onPluginsChanged() { if (!shell.pluginReloading) shell.syncPluginWidgets() }
+    function onPluginsChanged() { shell.syncPluginWidgets() }
   }
 
   property var pluginWidgetComponents: ({})
@@ -731,31 +712,8 @@ ShellRoot {
     }
   }
 
-  function unloadPluginWidgets() {
-    for (var id in pluginWidgetComponents) shell.barWidgetRegistry.unregister(id)
-    pluginWidgetComponents = ({})
-  }
-
   function reloadPlugins() {
-    if (shell.pluginReloading || shell.pluginRegistry.scanning) {
-      shell.pluginReloadPending = true
-      return
-    }
-    shell.pluginReloading = true
-    shell.unloadPanels()
-    shell.unloadPluginServices()
-    shell.unloadPluginWidgets()
-    Qt.callLater(shell.finishPluginReload)
-  }
-
-  function finishPluginReload() {
-    if (!shell.pluginReloading) return
-    if (shell.pluginRegistry.scanning) {
-      shell.pluginReloadPending = true
-      return
-    }
-    if (typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
-    shell.pluginRegistry.rescan()
+    Quickshell.reload(false)
   }
 
   Connections {
@@ -765,13 +723,6 @@ ShellRoot {
       localPluginReloadTimer.restart()
     }
     function onScanFinished() {
-      if (shell.pluginReloadPending) {
-        shell.pluginReloadPending = false
-        shell.pluginReloading = false
-        Qt.callLater(shell.reloadPlugins)
-        return
-      }
-      shell.pluginReloading = false
       shell._syncServices()
       shell.panelEntries = shell.computePanelEntries()
       shell.syncPluginWidgets()

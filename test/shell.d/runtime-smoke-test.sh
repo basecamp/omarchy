@@ -61,11 +61,46 @@ cat >"$hot_reload_dir/manifest.json" <<JSON
   "name": "Before Hot Reload",
   "version": "1.0.0",
   "kinds": ["overlay"],
+  "keepLoaded": true,
   "entryPoints": {"overlay": "Overlay.qml"},
   "omarchy": {"clonedFrom": "omarchy.emojis"}
 }
 JSON
 cat >"$hot_reload_dir/Overlay.qml" <<'QML'
+import QtQuick
+import Quickshell.Io
+import "Simulation.js" as Simulation
+
+Item {
+  function open(payloadJson) {}
+  function close() {}
+
+  IpcHandler {
+    target: "hot-reload"
+    function marker(): string { return Simulation.marker }
+  }
+}
+QML
+cat >"$hot_reload_dir/Simulation.js" <<'JS'
+var marker = "before"
+JS
+
+linked_plugin_id="acme.linked-reload"
+linked_plugin_source="$TMPDIR/linked-plugin"
+linked_plugin_dir="$test_home/.config/omarchy/plugins/$linked_plugin_id"
+mkdir -p "$linked_plugin_source"
+ln -s "$linked_plugin_source" "$linked_plugin_dir"
+cat >"$linked_plugin_source/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$linked_plugin_id",
+  "name": "Before Linked Reload",
+  "version": "1.0.0",
+  "kinds": ["overlay"],
+  "entryPoints": {"overlay": "Overlay.qml"}
+}
+JSON
+cat >"$linked_plugin_source/Overlay.qml" <<'QML'
 import QtQuick
 
 Item {
@@ -157,8 +192,112 @@ done
   fail_with_log "installed plugin changes reload without an explicit rescan"
 pass "installed plugin changes reload without an explicit rescan"
 
+jq '.name = "After Linked Reload"' "$linked_plugin_source/manifest.json" >"$linked_plugin_source/manifest.json.tmp"
+mv "$linked_plugin_source/manifest.json.tmp" "$linked_plugin_source/manifest.json"
+
+linked_reload_name=""
+for _ in {1..80}; do
+  linked_reload_name=$(shell_ipc shell listPlugins 2>/dev/null |
+    jq -r --arg id "$linked_plugin_id" '.[] | select(.id == $id) | .name' 2>/dev/null || true)
+  [[ $linked_reload_name == "After Linked Reload" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading a changed linked plugin"
+  fi
+  sleep 0.1
+done
+[[ $linked_reload_name == "After Linked Reload" ]] ||
+  fail_with_log "linked plugin changes reload without an explicit rescan"
+pass "linked plugin changes reload without an explicit rescan"
+
+replacement_linked_plugin_source="$TMPDIR/replacement-linked-plugin"
+mkdir -p "$replacement_linked_plugin_source"
+cat >"$replacement_linked_plugin_source/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$linked_plugin_id",
+  "name": "After Linked Replacement",
+  "version": "1.0.0",
+  "kinds": ["overlay"],
+  "entryPoints": {"overlay": "Overlay.qml"}
+}
+JSON
+cp "$linked_plugin_source/Overlay.qml" "$replacement_linked_plugin_source/Overlay.qml"
+ln -s "$replacement_linked_plugin_source" "$test_home/.config/omarchy/plugins/.replacement-linked-plugin"
+mv -T "$test_home/.config/omarchy/plugins/.replacement-linked-plugin" "$linked_plugin_dir"
+
+linked_reload_name=""
+for _ in {1..80}; do
+  linked_reload_name=$(shell_ipc shell listPlugins 2>/dev/null |
+    jq -r --arg id "$linked_plugin_id" '.[] | select(.id == $id) | .name' 2>/dev/null || true)
+  [[ $linked_reload_name == "After Linked Replacement" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading a replaced linked plugin"
+  fi
+  sleep 0.1
+done
+[[ $linked_reload_name == "After Linked Replacement" ]] ||
+  fail_with_log "replacing a linked plugin reloads its replacement"
+
+jq '.name = "After Replacement Target Write"' "$replacement_linked_plugin_source/manifest.json" >"$replacement_linked_plugin_source/manifest.json.tmp"
+mv "$replacement_linked_plugin_source/manifest.json.tmp" "$replacement_linked_plugin_source/manifest.json"
+
+linked_reload_name=""
+for _ in {1..80}; do
+  linked_reload_name=$(shell_ipc shell listPlugins 2>/dev/null |
+    jq -r --arg id "$linked_plugin_id" '.[] | select(.id == $id) | .name' 2>/dev/null || true)
+  [[ $linked_reload_name == "After Replacement Target Write" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading a replacement linked plugin"
+  fi
+  sleep 0.1
+done
+[[ $linked_reload_name == "After Replacement Target Write" ]] ||
+  fail_with_log "replacement linked plugin changes reload without an explicit rescan"
+pass "replacing a linked plugin rebuilds its watcher"
+
 [[ $(shell_ipc shell setPluginEnabled "$hot_reload_id" true) == "ok" ]] ||
   fail_with_log "installed plugin could not be enabled"
+
+marker=""
+for _ in {1..80}; do
+  marker=$(shell_ipc hot-reload marker 2>/dev/null || true)
+  [[ $marker == "before" ]] && break
+  sleep 0.1
+done
+[[ $marker == "before" ]] || fail_with_log "installed plugin loads imported JavaScript"
+
+exec 3>"$hot_reload_dir/Simulation.js"
+printf 'var marker = "after"\n' >&3
+shell_ipc_quiet shell rescanPlugins >/dev/null
+
+marker=""
+for _ in {1..80}; do
+  marker=$(shell_ipc hot-reload marker 2>/dev/null || true)
+  [[ $marker == "after" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while reloading imported JavaScript"
+  fi
+  sleep 0.1
+done
+[[ $marker == "after" ]] || fail_with_log "plugin rescan reloads imported JavaScript"
+pass "plugin rescan reloads imported JavaScript"
+
+# The rescan above writes through an open descriptor, avoiding its close_write
+# event. A normal edit must instead trigger the local plugin watcher itself.
+printf 'var marker = "watcher"\n' >"$hot_reload_dir/Simulation.js"
+
+marker=""
+for _ in {1..80}; do
+  marker=$(shell_ipc hot-reload marker 2>/dev/null || true)
+  [[ $marker == "watcher" ]] && break
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while watcher-reloading imported JavaScript"
+  fi
+  sleep 0.1
+done
+[[ $marker == "watcher" ]] || fail_with_log "editing imported JavaScript reloads through the local plugin watcher"
+pass "editing imported JavaScript reloads through the local plugin watcher"
+
 [[ $(shell_ipc shell summon omarchy.emojis "{}") == "ok" ]] ||
   fail_with_log "calls to a cloned source id do not reach its enabled clone"
 shell_ipc_quiet shell hide omarchy.emojis >/dev/null
@@ -282,21 +421,24 @@ pass "direct panel IPC opens and closes default panels"
 
 # Each widget registers its IPC handler once per bar, and the bar is
 # instantiated once per screen, so Quickshell reports one collision per screen
-# past the first. Anything beyond that is two instances on the same screen —
-# the shape duplicate component loads produced, where a sync pass that ran
-# while a widget's asynchronous load was still in flight started a second one.
-# Checked before the reload below, which rebuilds widgets by design.
+# past the first for each loaded engine generation. Anything beyond that is two
+# instances on the same screen — the shape duplicate component loads produced,
+# where a sync pass that ran while a widget's asynchronous load was still in
+# flight started a second one.
 screens=$(hyprctl -j monitors 2>/dev/null | jq 'length' 2>/dev/null || true)
 [[ $screens =~ ^[0-9]+$ ]] && (( screens > 0 )) || screens=1
+generations=$(grep -c "Configuration Loaded" "$log" || true)
+(( generations > 0 )) || generations=1
+allowed_collisions=$((generations * (screens - 1)))
 # No matches is the good case, and pipefail would otherwise abort the run.
 worst=$(grep -oE "another handler is registered for target [a-z.-]+" "$log" |
   sort | uniq -c | sort -rn | head -1 | awk '{print $1}' || true)
 worst=${worst:-0}
-if (( worst > screens - 1 )); then
+if (( worst > allowed_collisions )); then
   grep "another handler is registered for target" "$log" | sed 's/^/  /' | head -20 >&2
-  fail_with_log "each widget registers its IPC handler once per screen (saw $worst for $screens screen(s))"
+  fail_with_log "each widget registers its IPC handler once per screen and generation (saw $worst; allowed $allowed_collisions for $screens screen(s) across $generations generation(s))"
 fi
-pass "each widget registers its IPC handler once per screen"
+pass "each widget registers its IPC handler once per screen and generation"
 
 HOME="$test_home" OMARCHY_PATH="$test_root" PATH="$ROOT/bin:$PATH" "$ROOT/bin/omarchy-plugin-disable" omarchy.audio
 

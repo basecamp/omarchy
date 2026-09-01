@@ -1,0 +1,22 @@
+#!/bin/bash
+
+set -euo pipefail
+
+plugins_dir=$1
+canonical_plugins_dir=$(realpath -e -- "$plugins_dir")
+watch_paths=("$plugins_dir")
+
+# inotifywait does not traverse a symlink it finds below a recursive watch.
+# Passing a direct plugin symlink explicitly makes it report changes through
+# the logical plugin path, which the registry already knows how to route.
+for plugin_dir in "$plugins_dir"/*; do
+  [[ -L $plugin_dir && -d $plugin_dir ]] || continue
+  target=$(realpath -e -- "$plugin_dir") || continue
+  [[ $target == "$canonical_plugins_dir" || $target == "$canonical_plugins_dir"/* ]] && continue
+  watch_paths+=("$plugin_dir")
+done
+
+exec inotifywait -m -r -q \
+  -e close_write,create,delete,move \
+  --format '%w%f' \
+  "${watch_paths[@]}"
