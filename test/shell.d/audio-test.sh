@@ -63,23 +63,41 @@ cat >"$tmp_dir/bin/pactl" <<'EOF'
 
 printf 'pactl %s\n' "$*" >>"$AUDIO_CALLS"
 
-if [[ $* == "list short source-outputs" ]]; then
+if [[ $* == "--format=json list sources" ]]; then
+  printf '[{"name":"bluez_input.AA:BB:CC:DD:EE:FF","properties":{"device.name":"bluez_card.AA_BB_CC_DD_EE_FF"}}]\n'
+elif [[ $* == "--format=json list cards" ]]; then
+  attempts=0
+  [[ ! -f $AUDIO_ATTEMPTS ]] || attempts=$(<"$AUDIO_ATTEMPTS")
+  if (( attempts >= ${AUDIO_PROFILE_READY_AFTER:-1} )); then
+    printf '[{"name":"bluez_card.AA_BB_CC_DD_EE_FF","active_profile":"duplex","profiles":{"duplex":{"sources":1}}}]\n'
+  else
+    printf '[{"name":"bluez_card.AA_BB_CC_DD_EE_FF","active_profile":"playback","profiles":{"playback":{"sources":0}}}]\n'
+  fi
+elif [[ $* == "list short source-outputs" ]]; then
   printf '71\tPipeWire\n'
 elif [[ $1 == "move-source-output" && $3 == bluez_input.* ]]; then
   attempts=0
   [[ ! -f $AUDIO_ATTEMPTS ]] || attempts=$(<"$AUDIO_ATTEMPTS")
   (( attempts += 1 ))
   printf '%s\n' "$attempts" >"$AUDIO_ATTEMPTS"
-  (( attempts > ${AUDIO_MOVE_FAILURES:-0} ))
+elif [[ $1 == "move-source-output" && ${AUDIO_ALSA_MOVE_FAIL:-0} == "1" ]]; then
+  exit 1
 fi
 EOF
 chmod +x "$tmp_dir/bin/pactl"
+
+cat >"$tmp_dir/bin/omarchy-notification-send" <<'EOF'
+#!/bin/bash
+printf 'omarchy-notification-send %s\n' "$*" >>"$AUDIO_CALLS"
+EOF
+chmod +x "$tmp_dir/bin/omarchy-notification-send"
 
 audio_calls="$tmp_dir/calls"
 audio_attempts="$tmp_dir/attempts"
 
 run_input_switch() {
-  AUDIO_CALLS="$audio_calls" AUDIO_ATTEMPTS="$audio_attempts" AUDIO_MOVE_FAILURES="${AUDIO_MOVE_FAILURES:-0}" \
+  AUDIO_CALLS="$audio_calls" AUDIO_ATTEMPTS="$audio_attempts" \
+    AUDIO_PROFILE_READY_AFTER="${AUDIO_PROFILE_READY_AFTER:-1}" AUDIO_ALSA_MOVE_FAIL="${AUDIO_ALSA_MOVE_FAIL:-0}" \
     PATH="$tmp_dir/bin:$PATH" \
     "$ROOT/bin/omarchy-audio-input-set-default" "$@"
 }
@@ -92,11 +110,13 @@ pass "audio retries a Bluetooth capture move after its graph is rebuilt"
 
 : >"$audio_calls"
 : >"$audio_attempts"
-if AUDIO_MOVE_FAILURES=5 run_input_switch 43 bluez_input.AA:BB:CC:DD:EE:FF 2>/dev/null; then
+if AUDIO_PROFILE_READY_AFTER=99 run_input_switch 43 bluez_input.AA:BB:CC:DD:EE:FF 2>/dev/null; then
   fail "audio reports an exhausted Bluetooth capture move"
 fi
 [[ $(<"$audio_attempts") == "5" ]] ||
   fail "audio bounds Bluetooth capture move retries" "$(<"$audio_calls")"
+grep -Fq 'omarchy-notification-send -u critical Bluetooth microphone unavailable' "$audio_calls" ||
+  fail "audio notifies when Bluetooth capture routing is exhausted" "$(<"$audio_calls")"
 pass "audio reports an exhausted Bluetooth capture move after bounded retries"
 
 : >"$audio_calls"
@@ -104,3 +124,8 @@ run_input_switch 44 alsa_input.usb-Generic_USB_Audio-00.mono-fallback
 [[ $(grep -Fc 'pactl move-source-output 71 alsa_input.usb-Generic_USB_Audio-00.mono-fallback' "$audio_calls") == "1" ]] ||
   fail "audio moves an ordinary capture stream once" "$(<"$audio_calls")"
 pass "audio moves an ordinary capture stream once"
+
+if ! AUDIO_ALSA_MOVE_FAIL=1 run_input_switch 44 alsa_input.usb-Generic_USB_Audio-00.mono-fallback; then
+  fail "audio keeps ordinary capture stream moves best effort"
+fi
+pass "audio keeps ordinary capture stream moves best effort"
