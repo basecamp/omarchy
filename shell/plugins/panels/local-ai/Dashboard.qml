@@ -35,16 +35,16 @@ Item {
   function act(args) { if (busy || action.running) return; action.command = [cli].concat(args); action.running = true; Qt.callLater(refresh) }
   function primary() {
     var m = selected(); if (!m || m.blocked) return
+    if (loaded && active.recipeId === m.recipeId) return
     if (!m.imageDownloaded || !m.weightsDownloaded) act(["download", m.recipeId])
-    else if (loaded && active.recipeId === m.recipeId) return
     else if (loaded) act(["switch", m.recipeId])
     else act(["run", m.recipeId])
   }
   function primaryLabel() {
     var m = selected(); if (!m) return ""
     if (m.blocked) return "Blocked"
-    if (!m.imageDownloaded || !m.weightsDownloaded) return m.sizeGb > 0 ? "Download · " + m.sizeGb + " GB" : "Download"
     if (loaded && active.recipeId === m.recipeId) return "Running"
+    if (!m.imageDownloaded || !m.weightsDownloaded) return m.sizeGb > 0 ? "Download · " + m.sizeGb + " GB" : "Download"
     return loaded ? "Switch" : "Run"
   }
   function progressText() {
