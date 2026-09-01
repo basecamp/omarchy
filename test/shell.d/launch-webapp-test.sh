@@ -22,7 +22,12 @@ EOF
 
 cat >"$mock_bin/xdg-settings" <<'SH'
 #!/bin/bash
-printf '%s\n' "$OMARCHY_TEST_BROWSER"
+printf '%s\n' "${BROWSER:-$OMARCHY_TEST_BROWSER}"
+SH
+
+cat >"$mock_bin/omarchy-notification-send" <<'SH'
+#!/bin/bash
+printf 'notify:%s\n' "$*" >>"$OMARCHY_TEST_LAUNCH"
 SH
 
 cat >"$mock_bin/sed" <<'SH'
@@ -85,10 +90,19 @@ launch_webapp "firefox.desktop" "https://messenger.com" "--user-data-dir=/tmp/x"
 assert_launch "/usr/bin/google-chrome-stable --app=https://messenger.com --user-data-dir=/tmp/x" \
   "extra arguments pass through to the browser"
 
+write_desktop "evil-chrome.desktop" "/usr/bin/evil-chrome %u"
+export BROWSER=evil-chrome.desktop
+launch_webapp "firefox.desktop" "https://messenger.com"
+unset BROWSER
+assert_launch "/usr/bin/google-chrome-stable --app=https://messenger.com" \
+  "the BROWSER environment variable does not skew browser detection"
+
 rm "$test_home/.local/share/applications/google-chrome.desktop" "$test_home/.local/share/applications/com.google.Chrome.desktop"
 
 output=$(launch_webapp "firefox.desktop" "https://messenger.com" 2>&1) && status=0 || status=$?
 [[ $status -eq 1 ]] || fail "a missing chromium-family browser exits with an error" "exit: $status, output: $output"
 [[ $output == *"no Chromium-family browser installed"* ]] ||
   fail "a missing chromium-family browser prints a clear error" "output: $output"
-pass "a missing chromium-family browser exits with a clear error"
+grep -F "notify:" "$test_tmp/launch" >/dev/null ||
+  fail "a missing chromium-family browser sends a notification" "log: $(cat "$test_tmp/launch")"
+pass "a missing chromium-family browser exits with a clear error and sends a notification"
