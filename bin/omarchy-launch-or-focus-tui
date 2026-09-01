@@ -9,4 +9,4 @@ else
   APP_ID="org.omarchy.$(basename "$1")"
 fi
 
-exec omarchy-launch-or-focus "$APP_ID" -- omarchy-launch-tui "$@"
+exec omarchy-launch-or-focus "$APP_ID" omarchy-launch-tui "$@"

@@ -1,36 +1,25 @@
 #!/bin/bash
 
 # omarchy:summary=Launch an app or focus an existing window matching a pattern
-# omarchy:args=<window-pattern> [<launch-command> | -- <command> [args...]]
+# omarchy:args=<window-pattern> [<command> [args...]]
 
 if (($# == 0)); then
-  echo "Usage: omarchy-launch-or-focus <window-pattern> [<launch-command> | -- <command> [args...]]"
+  echo "Usage: omarchy-launch-or-focus <window-pattern> [<command> [args...]]"
   exit 1
 fi
 
 WINDOW_PATTERN="$1"
 shift
 
-if [[ ${1:-} == "--" ]]; then
-  shift
-  if (( $# == 0 )); then
-    echo "omarchy-launch-or-focus: -- requires a command" >&2
-    exit 1
-  fi
+if (( $# > 0 )); then
   LAUNCH_ARGV=("$@")
-  LAUNCH_COMMAND=""
 else
-  LAUNCH_ARGV=()
-  LAUNCH_COMMAND="${1:-"uwsm-app -- $WINDOW_PATTERN"}"
+  LAUNCH_ARGV=(uwsm-app -- "$WINDOW_PATTERN")
 fi
 WINDOW_ADDRESS=$(hyprctl clients -j | jq -r --arg p "$WINDOW_PATTERN" '.[]|select((.class|test("\\b" + $p + "\\b";"i")) or (.title|test("\\b" + $p + "\\b";"i")))|.address' | head -n1)
 
 if [[ -n $WINDOW_ADDRESS ]]; then
   hyprctl dispatch "hl.dsp.focus({ window = \"address:$WINDOW_ADDRESS\" })" >/dev/null 2>&1 || hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
 else
-  if (( ${#LAUNCH_ARGV[@]} > 0 )); then
-    exec setsid "${LAUNCH_ARGV[@]}"
-  else
-    eval exec setsid $LAUNCH_COMMAND
-  fi
+  exec setsid "${LAUNCH_ARGV[@]}"
 fi
