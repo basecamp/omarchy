@@ -36,6 +36,17 @@ printf 'image' >"$omarchy/themes/plain/backgrounds/1-only.webp"
 printf 'preview' >"$home/.config/omarchy/themes/mine/preview.png"
 printf 'image' >"$home/.config/omarchy/themes/mine/backgrounds/1-mine.webp"
 
+# A theme the user wrote is theirs to fill however they like, symlinks included.
+ln -s "$omarchy/themes/nord/backgrounds/1-city.webp" "$home/.config/omarchy/themes/mine/backgrounds/2-linked.webp"
+
+# A theme installed from a git repo came from a stranger, and omarchy-theme-set
+# drops the symlinks in one rather than stage a file from anywhere on disk.
+cloned="$home/.config/omarchy/themes/cloned"
+mkdir -p "$cloned/backgrounds" "$cloned/.git"
+printf 'preview' >"$cloned/preview.png"
+printf 'image' >"$cloned/backgrounds/1-own.webp"
+ln -s "$omarchy/themes/nord/backgrounds/2-moon.jpg" "$cloned/backgrounds/2-linked.jpg"
+
 cat >"$stub_bin/omarchy-menu-images" <<'EOF'
 #!/bin/bash
 printf '%s\n' "$@" >"$MENU_IMAGES_ARGS"
@@ -79,8 +90,14 @@ pass "theme picker includes user backgrounds"
 pass "theme picker keeps a fallback preview out of the list twice"
 
 [[ $(links_for mine) == "000-preview.png
-001-1-mine.webp" ]] || fail "theme picker offers a user theme" "$(links_for mine)"
+001-1-mine.webp
+002-2-linked.webp" ]] || fail "theme picker offers a user theme, symlinks and all" "$(links_for mine)"
 pass "theme picker includes user themes"
+
+[[ $(links_for cloned) == "000-preview.png
+001-1-own.webp" ]] ||
+  fail "theme picker offers a symlink an installed theme would never get to stage" "$(links_for cloned)"
+pass "theme picker holds an installed theme to what it can stage"
 
 grep -qx -- '--group-by-dir' "$test_tmp/args" || fail "theme picker groups the picker's rows by theme"
 [[ $(grep -A1 -x -- '--item-label' "$test_tmp/args" | tail -n 1) == "theme" ]] ||

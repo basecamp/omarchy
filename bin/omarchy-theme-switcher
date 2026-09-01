@@ -22,12 +22,32 @@ fast_signature_file="$CACHE_PATH/fast-signature"
 
 mkdir -p "$preview_dir"
 
+# The line omarchy-theme-set draws before staging: a symlink in a stranger's
+# theme points wherever its author chose. Staging drops those, so offering them
+# would show an image outside the theme and then apply something else.
+theme_came_from_a_repo() {
+  local theme_path="$1"
+
+  [[ ! -L $theme_path && -d $theme_path/.git ]]
+}
+
+follow_links_in() {
+  local theme_path="$1"
+
+  if theme_came_from_a_repo "$theme_path"; then
+    printf '%s' "-P"
+  else
+    printf '%s' "-L"
+  fi
+}
+
 find_preview() {
   local theme_path="$1"
+  local follow="${2:--L}"
   local preview preview_name
 
   for preview_name in preview.png preview.jpg preview.jpeg preview.webp preview.gif preview.bmp; do
-    preview=$(find -L "$theme_path" -maxdepth 1 -type f -iname "$preview_name" -print -quit 2>/dev/null)
+    preview=$(find "$follow" "$theme_path" -maxdepth 1 -type f -iname "$preview_name" -print -quit 2>/dev/null)
 
     if [[ -n $preview ]]; then
       printf '%s\n' "$preview"
@@ -36,7 +56,7 @@ find_preview() {
   done
 
   if [[ -d $theme_path/backgrounds ]]; then
-    find -L "$theme_path/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print 2>/dev/null | sort | head -n 1
+    find "$follow" "$theme_path/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print 2>/dev/null | sort | head -n 1
   fi
 }
 
@@ -48,10 +68,19 @@ theme_images() {
   local theme_path="$2"
   local backgrounds=()
   local -A seen=()
-  local background dir name preview
+  local background dir name preview follow dir_follow
+
+  follow=$(follow_links_in "$theme_path")
 
   for dir in "$USER_BACKGROUNDS_PATH/$theme_name" "$theme_path/backgrounds" "$OMARCHY_THEMES_PATH/$theme_name/backgrounds"; do
     [[ -d $dir ]] || continue
+
+    # Only the theme's own directory is held to that line.
+    if [[ $dir == "$theme_path/backgrounds" ]]; then
+      dir_follow="$follow"
+    else
+      dir_follow="-L"
+    fi
 
     while IFS= read -r -d '' background; do
       name=${background##*/}
@@ -59,13 +88,13 @@ theme_images() {
       seen[$name]=1
       backgrounds+=("$background")
     done < <(
-      find -L "$dir" -maxdepth 1 -type f \
+      find "$dir_follow" "$dir" -maxdepth 1 -type f \
         \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
         -print0 2>/dev/null | sort -z
     )
   done
 
-  preview=$(find_preview "$theme_path")
+  preview=$(find_preview "$theme_path" "$follow")
 
   if [[ -z $preview ]]; then
     preview=$(find_preview "$OMARCHY_THEMES_PATH/$theme_name")
