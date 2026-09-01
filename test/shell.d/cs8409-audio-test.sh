@@ -30,7 +30,13 @@ assert_hw MacBookPro14,1 yes "MacBookPro14,1 has CS8409 audio"
 assert_hw MacBookPro13,3 yes "MacBookPro13,3 has CS8409 audio"
 assert_hw MacBookPro13,2 yes "MacBookPro13,2 has CS8409 audio"
 assert_hw MacBookPro13,1 yes "MacBookPro13,1 has CS8409 audio"
+assert_hw iMac18,3 yes "iMac18,3 has CS8409 audio"
+assert_hw iMac18,2 yes "iMac18,2 has CS8409 audio"
+assert_hw iMac18,1 yes "iMac18,1 has CS8409 audio"
+assert_hw iMac19,1 yes "iMac19,1 has CS8409 audio"
+assert_hw iMac19,2 yes "iMac19,2 has CS8409 audio"
 assert_hw MacBookPro15,1 no "MacBookPro15,1 is T2, not CS8409"
+assert_hw iMacPro1,1 no "iMacPro1,1 is T2, not CS8409"
 assert_hw MacBook8,1 no "MacBook8,1 is SPI-only"
 
 grep -Fq 'fix-cs8409-audio.sh' "$ROOT/install/hardware/all.sh" ||
@@ -45,6 +51,8 @@ pass "install hook installs snd-hda-macbookpro-dkms"
 
 grep -Fq 'snd-hda-macbookpro-dkms' "$manual" ||
   fail "Mac support chapter names the CS8409 package"
+grep -Fq '2017–2019 iMacs' "$manual" ||
+  fail "Mac support chapter documents iMac CS8409 speakers"
 ! grep -q 'Sound is not functioning' "$manual" ||
   fail "Mac support chapter no longer lists speakers as unsupported"
 pass "Mac support chapter documents CS8409 speakers"
@@ -106,6 +114,28 @@ PATH="$stub_bin:$ROOT/bin:$PATH" \
 grep -Fq $'omarchy-pkg-add\tlinux-headers\tsnd-hda-macbookpro-dkms' "$calls" ||
   fail "migration installs the CS8409 package on a 15-inch T1"
 pass "migration installs the driver on MacBookPro14,3"
+
+: >"$calls"
+printf 'iMac18,3\n' >"$dmi"
+PATH="$stub_bin:$ROOT/bin:$PATH" \
+  TEST_LOG="$calls" \
+  OMARCHY_DMI_PRODUCT_NAME="$dmi" \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_INSTALL="$ROOT/install" \
+  bash -c 'source "$1"' _ "$fix"
+grep -Fq $'omarchy-pkg-add\tlinux-headers\tsnd-hda-macbookpro-dkms' "$calls" ||
+  fail "install hook adds headers and the CS8409 package on iMac18,3"
+pass "install hook runs on iMac18,3 (CS8409)"
+
+: >"$calls"
+printf 'iMac18,3\n' >"$dmi"
+PATH="$stub_bin:$ROOT/bin:$PATH" \
+  TEST_LOG="$calls" \
+  OMARCHY_DMI_PRODUCT_NAME="$dmi" \
+  bash -euo pipefail "$migration" >/dev/null
+grep -Fq $'omarchy-pkg-add\tlinux-headers\tsnd-hda-macbookpro-dkms' "$calls" ||
+  fail "migration installs the CS8409 package on iMac18,3"
+pass "migration installs the driver on iMac18,3"
 
 : >"$calls"
 printf 'MacBookPro16,1\n' >"$dmi"
