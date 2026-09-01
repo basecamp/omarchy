@@ -46,4 +46,27 @@ auth required pam_unix.so
 `),
   'polkit reports no fingerprint when pam_fprintd is absent'
 )
+
+assert(
+  polkit.faceConfiguredFromPamConfig(`
+auth      sufficient pam_unix.so try_first_pass likeauth nullok
+auth      sufficient pam_howdy.so
+auth      required pam_unix.so
+`),
+  'polkit detects face unlock behind the password-first line'
+)
+assert(
+  !polkit.faceConfiguredFromPamConfig(`
+# auth sufficient pam_howdy.so
+auth required pam_unix.so
+`),
+  'polkit ignores a commented-out pam_howdy'
+)
+assert(
+  !polkit.faceConfiguredFromPamConfig(`
+auth sufficient pam_fprintd.so
+auth required pam_unix.so
+`),
+  'polkit reports no face unlock when pam_howdy is absent'
+)
 JS

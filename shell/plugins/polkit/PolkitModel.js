@@ -17,6 +17,20 @@ function fingerprintConfiguredFromPamConfig(raw) {
   return false
 }
 
+function faceConfiguredFromPamConfig(raw) {
+  // Face unlock is available whenever pam_howdy appears in the auth stack.
+  // pam_unix normally precedes it so a typed password never waits on the
+  // camera; an empty submit is what falls through to the scan.
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].replace(/^\s+|\s+$/g, "")
+    if (!line || line.charAt(0) === "#") continue
+    if (!line.match(/^auth\s+/)) continue
+    if (line.indexOf("pam_howdy.so") !== -1) return true
+  }
+  return false
+}
+
 function authorizationLabel(message) {
   var text = String(message || "")
   var match = text.match(/^Authentication is (?:needed|required) to run [`']([^`']+)[`'] as /i)
@@ -27,6 +41,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     promptLooksFingerprint: promptLooksFingerprint,
     fingerprintConfiguredFromPamConfig: fingerprintConfiguredFromPamConfig,
+    faceConfiguredFromPamConfig: faceConfiguredFromPamConfig,
     authorizationLabel: authorizationLabel
   }
 }

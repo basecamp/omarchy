@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=Remove face unlock (howdy) from sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+remove_pam_config() {
+  for file in /etc/pam.d/sudo /etc/pam.d/polkit-1; do
+    [[ -f $file ]] || continue
+    if grep -q 'pam_howdy.so' "$file"; then
+      echo "Removing face authentication from $(basename "$file")..."
+      sudo sed -i '/pam_howdy\.so/d' "$file"
+      sudo sed -i '/pam_unix\.so.*try_first_pass.*likeauth.*nullok/d' "$file"
+    fi
+  done
+}
+
+remove_lock_face_pam() {
+  if [[ -f /etc/pam.d/omarchy-lock-face ]]; then
+    echo "Removing lock screen face authentication..."
+    sudo rm -f /etc/pam.d/omarchy-lock-face
+  fi
+}
+
+
+echo -e "\e[32mRemoving face unlock from authentication.\n\e[0m"
+
+remove_pam_config
+remove_lock_face_pam
+
+if [[ -f /etc/pacman.d/hooks/howdy-dlib-check.hook ]]; then
+  echo "Removing face unlock pacman hook..."
+  sudo rm /etc/pacman.d/hooks/howdy-dlib-check.hook
+fi
+
+if systemctl is-enabled linux-enable-ir-emitter.service &>/dev/null; then
+  echo "Disabling IR emitter service..."
+  sudo systemctl disable --now linux-enable-ir-emitter.service
+fi
+
+echo "Removing face unlock packages..."
+omarchy-pkg-drop howdy-git linux-enable-ir-emitter
+
+echo -e "\e[32mFace unlock has been completely removed.\e[0m"

@@ -34,6 +34,14 @@ Item {
   property bool errorFlash: false
   // pam_fprintd appears in the polkit PAM stack (a sensor is enrolled).
   property bool fingerprintConfigured: false
+  // pam_howdy appears in the polkit PAM stack (a face model is enrolled). Face
+  // never takes over the dialog the way fingerprint does: pam_unix sits above
+  // pam_howdy, so the field stays and an empty Enter is what starts the scan.
+  property bool faceConfigured: false
+  // The response in flight was an empty submit, i.e. howdy is looking now.
+  property bool faceScanning: false
+  // The failure being flashed came from a face scan, not a typed password.
+  property bool faceMissed: false
   // Lid shut right now — the reader is physically unreachable, so we fall back
   // to the password even when a sensor is enrolled. Refreshed per request.
   property bool laptopClosed: false
@@ -56,6 +64,7 @@ Item {
 
   function loadPamConfig(raw) {
     fingerprintConfigured = PolkitModel.fingerprintConfiguredFromPamConfig(raw)
+    faceConfigured = PolkitModel.faceConfiguredFromPamConfig(raw)
   }
 
   function refreshLidState() {
@@ -71,6 +80,8 @@ Item {
     failed = false
     errorFlash = false
     submitted = false
+    faceScanning = false
+    faceMissed = false
     passwordInput.text = ""
   }
 
@@ -111,6 +122,7 @@ Item {
     if (!flow || !flow.isResponseRequired) return
     submitted = true
     errorFlash = false
+    faceScanning = faceConfigured && passwordInput.text.length === 0
     flow.submit(passwordInput.text)
     passwordInput.text = ""
     keyCatcher.forceActiveFocus()
@@ -127,6 +139,8 @@ Item {
 
   function triggerFailureFeedback() {
     submitted = false
+    faceMissed = faceScanning
+    faceScanning = false
     errorFlash = true
     passwordInput.text = ""
     errorTimer.restart()
@@ -148,7 +162,10 @@ Item {
     id: errorTimer
     interval: 1200
     repeat: false
-    onTriggered: root.errorFlash = false
+    onTriggered: {
+      root.errorFlash = false
+      root.faceMissed = false
+    }
   }
 
   SequentialAnimation {
@@ -162,7 +179,10 @@ Item {
     watchChanges: true
     printErrors: false
     onLoaded: root.loadPamConfig(text())
-    onLoadFailed: root.fingerprintConfigured = false
+    onLoadFailed: {
+      root.fingerprintConfigured = false
+      root.faceConfigured = false
+    }
     onFileChanged: reload()
   }
 
@@ -309,6 +329,7 @@ Item {
           TextInput {
             id: passwordInput
             anchors.fill: parent
+            anchors.rightMargin: root.faceConfigured ? faceHint.width + Style.space(10) : 0
             verticalAlignment: TextInput.AlignVCenter
             activeFocusOnPress: true
             clip: true
@@ -335,8 +356,11 @@ Item {
             textFormat: Text.PlainText
             anchors.left: parent.left
             anchors.right: parent.right
+            anchors.rightMargin: passwordInput.anchors.rightMargin
             anchors.verticalCenter: parent.verticalCenter
-            text: root.errorFlash ? "Wrong" : (root.submitted ? "Checking..." : "Enter password")
+            text: root.errorFlash
+              ? (root.faceMissed ? "Not recognized" : "Wrong")
+              : (root.submitted ? (root.faceScanning ? "Scanning..." : "Checking...") : "Enter password")
             color: root.errorFlash ? Color.polkit.textError : root.foreground
             opacity: root.errorFlash ? 1 : 0.36
             font.family: root.fontFamily
@@ -359,6 +383,26 @@ Item {
             acceptedButtons: Qt.LeftButton
             enabled: passwordInput.visible
             onClicked: passwordInput.forceActiveFocus()
+          }
+
+          // Face hint at the field's right edge, dim like the placeholder so
+          // it reads as "you could also just press Enter", and lit in the
+          // accent while howdy is actually looking. Same glyph and spot as the
+          // lock screen, so the two dialogs teach each other.
+          Text {
+            id: faceHint
+            objectName: "faceHint"
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.faceConfigured
+            text: "󰱻"
+            color: root.errorFlash && root.faceMissed ? Color.polkit.textError : (root.faceScanning ? root.accent : root.foreground)
+            opacity: root.faceScanning || (root.errorFlash && root.faceMissed) ? 1 : 0.36
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.iconLarge
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            Behavior on opacity { NumberAnimation { duration: 150 } }
           }
         }
       }
