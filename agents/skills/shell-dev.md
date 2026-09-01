@@ -20,9 +20,7 @@ Run `omarchy-restart-shell` after making changes to QML files.
   [`docs/omarchy-shell.md`](../../docs/omarchy-shell.md) and
   `shell/services/PluginRegistry.qml` for the current contract; fields such as
   `activation` are optional.
-- Entry-point QML files are `Item`s (not `ShellRoot`), and accept the
-  shell-injected properties `omarchyPath`, `shell`, `manifest`, and
-  `pluginRegistry` / `barWidgetRegistry` as appropriate.
+- Entry-point QML files are `Item`s (not `ShellRoot`), and accept the shell-injected properties `omarchyPath`, `shell`, `manifest`, and `pluginRegistry` / `barWidgetRegistry` as appropriate. First-party plugins receive the host objects. Third-party plugins receive capability-scoped facades: ordinary plugins may look up and control only their own service and lifecycle, menu plugins receive an application-library facade, and plugins can read detached scalar bar state; full-bar plugins additionally receive detached bar configuration and widget-catalog snapshots, narrow proxies for the non-authentication services used by built-in bar widgets, and lifecycle control over configured non-authentication UI plugins. Authentication capabilities must be stamped from trusted first-party manifests, and third-party registry views must be detached snapshots rather than shared objects. Do not expose host objects or authentication services through new third-party-facing properties.
 - Panel / overlay / menu plugins must expose `open(payloadJson)` and
   `close()` lifecycle methods for `shell summon` and `shell hide`.
 

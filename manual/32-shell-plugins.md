@@ -4,7 +4,7 @@ The Omarchy desktop runs as a single long-lived Quickshell process called `omarc
 
 That's not just an implementation detail. It means you can turn pieces of the desktop off, swap them out, or write your own without touching a line of Omarchy's source.
 
-The first-party plugins ship with Omarchy and live in `$OMARCHY_PATH/shell/plugins/`. Anything you add yourself — your own experiments, or something you found on GitHub — lives in `~/.config/omarchy/plugins/`. Both are discovered the same way at startup; the only difference is where they sit on disk.
+The first-party plugins ship with Omarchy and live in `$OMARCHY_PATH/shell/plugins/`. Anything you add yourself — your own experiments, or something you found on GitHub — lives in `~/.config/omarchy/plugins/`. Both are discovered the same way at startup, but built-ins receive trusted shell interfaces while third-party plugins receive a limited interface scoped to their own service and lifecycle.
 
 ## Seeing what you have
 
@@ -37,7 +37,7 @@ A third-party plugin is just a git repo with a `manifest.json` at its root.
 omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
 ```
 
-Before it does anything, it tells you plainly that plugins run as arbitrary, unsandboxed code inside your long-lived shell process, shows you the URL, and asks you to confirm. Take that seriously. A plugin isn't a config file — it's code that runs for as long as your session does, with everything your user account can reach. Only add repos you're willing to run, and read them before you enable them.
+Before it does anything, it tells you plainly that plugins run as arbitrary, unsandboxed code inside your long-lived shell process, shows you the URL, and asks you to confirm. Take that seriously. The shell does not expose its authentication state or raw host object tree through the third-party plugin interface. A replacement bar receives additional limited capabilities so it can render built-in widgets and orchestrate the configured non-authentication UI, but it still cannot reach authentication services. This is not an operating-system sandbox: plugin code still runs for as long as your session does, with everything your user account can reach. Only add repos you're willing to run, and read them before you enable them.
 
 Then it clones the repo into a staging directory, validates the manifest, refuses the install if another plugin already claims that id, and moves it into `~/.config/omarchy/plugins/<id>/`. Without `--enable` it asks whether you want it on now, and you can say no and go read the code first. It never runs anything from the plugin, never executes an install hook, and never asks for sudo — it clones files, checks the manifest, and flips a bit over IPC.
 

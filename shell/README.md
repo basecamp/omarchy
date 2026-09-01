@@ -89,6 +89,8 @@ to outlive a single summon can set `keepLoaded: true` (e.g. the image
 picker keeps its overlay window mounted between summons). First-party
 services are loaded at startup.
 
+Entry points may declare `omarchyPath`, `shell`, `manifest`, `pluginRegistry`, and `barWidgetRegistry` properties for host injection. Built-in plugins receive the trusted host objects. Third-party plugins receive capability-scoped facades: ordinary plugins can look up and control only their own service and lifecycle, menu plugins receive an application-library facade, and plugins can read detached scalar bar state. A full-bar plugin additionally receives detached bar configuration and widget-catalog snapshots, narrow proxies for the non-authentication services used by built-in bar widgets, and lifecycle control over configured non-authentication UI plugins. Authentication capabilities are stamped from trusted first-party manifests, authentication services are retained outside the host's public service map and QML object tree, and changing a third-party registry snapshot cannot mutate the host registry.
+
 The full schema lives in `services/PluginRegistry.qml`.
 
 ## Installing a third-party plugin
@@ -104,10 +106,7 @@ omarchy plugin update                    # updates every git-managed plugin
 omarchy plugin remove acme.weather
 ```
 
-> ⚠️ **Plugins run as unsandboxed code inside `omarchy-shell`.** Adding warns
-> you before cloning, plugins land disabled so you can review the code before
-> enabling, and updates show a diff of the changes before touching anything.
-> Only add repos whose code you are willing to run.
+> ⚠️ **Plugins run as unsandboxed code inside `omarchy-shell`.** Adding warns you before cloning, plugins land disabled so you can review the code before enabling, and updates show a diff of the changes before touching anything. The scoped QML interfaces protect shell-owned credentials and cross-plugin controls; they are not an operating-system sandbox. Only add repos whose code you are willing to run.
 
 Each command is **interactive** when run bare in a terminal (gum pickers,
 confirmation, a diff to review) and fully **non-interactive** when given

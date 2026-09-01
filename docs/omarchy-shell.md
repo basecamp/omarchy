@@ -41,10 +41,7 @@ Panels, overlays, and menus are loaded when summoned. Plugins can set the
 top-level manifest key `keepLoaded: true` to survive between summons.
 First-party services are loaded at startup.
 
-Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
-`open(payloadJson)` and `close()` for summon/hide; on load the host injects
-`omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
-`barWidgetRegistry`) as properties.
+Entry points are QML `Item`s. Panel, overlay, and menu entry points expose `open(payloadJson)` and `close()` for summon/hide; on load the host injects `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` / `barWidgetRegistry`) as properties. Built-in plugins receive the trusted host objects. Third-party plugins receive capability-scoped facades instead: ordinary plugins may look up and control only their own service and lifecycle, menu plugins receive an application-library facade, and plugins can read detached scalar bar state. A full-bar plugin additionally receives detached bar configuration and widget-catalog snapshots, narrow proxies for the non-authentication services used by built-in bar widgets, and lifecycle control over configured non-authentication UI plugins. Authentication capabilities are stamped from trusted first-party manifests, authentication services are kept out of the host's public service map and QML object tree, and third-party registry snapshots can be changed only locally without mutating the host registries.
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 
@@ -81,12 +78,7 @@ one replaces the active bar, and it is therefore never offered under Disable.
 Bar widgets may set `barWidget.defaultSection` to `left`, `center`, or `right`;
 widgets that omit it default to `center`.
 
-Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you
-before cloning, plugins land disabled so you can review the code before
-`omarchy plugin enable`, and updates show a diff before touching anything.
-Commands confirm in a terminal even when given arguments; without one they
-refuse rather than guess. Add `--yes` to skip every prompt (the path for
-scripts and agents).
+Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you before cloning, plugins land disabled so you can review the code before `omarchy plugin enable`, and updates show a diff before touching anything. Commands confirm in a terminal even when given arguments; without one they refuse rather than guess. Add `--yes` to skip every prompt (the path for scripts and agents). The scoped QML interfaces protect shell-owned credentials and cross-plugin controls; they are not an operating-system sandbox, so plugin code still has the same user-level file and process access as the shell.
 
 You can still install by hand: drop a plugin into
 `~/.config/omarchy/plugins/<id>/`, run `omarchy-shell shell rescanPlugins`, then
