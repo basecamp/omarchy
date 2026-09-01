@@ -6,8 +6,10 @@
 
 # Each omarchy-agent-usage-<agent> collector prints one display-ready JSON
 # record; this writes them to ~/.local/state/omarchy/agents/usage/ where the
-# agents panel watches them. Adding an agent is adding a collector — the
-# panel picks up any record that appears here.
+# agents panel watches them. Packaged collectors live in $OMARCHY_PATH/bin.
+# User collectors live in ${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/agents/collectors
+# and override a packaged collector with the same id. Adding an agent is adding
+# a collector — the panel picks up any record that appears here.
 
 USAGE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
 mkdir -p "$USAGE_DIR"
@@ -51,13 +53,28 @@ collect() {
   mv "$tmp" "$USAGE_DIR/$agent.json"
 }
 
-pids=()
+USER_COLLECTOR_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/agents/collectors"
+declare -A collectors
+
+register_collector() {
+  local collector="$1"
+  [[ -f $collector && -x $collector ]] || return 0
+  local agent="${collector##*/omarchy-agent-usage-}"
+  [[ $agent == "update" || $agent == "*" ]] && return 0
+  collectors[$agent]=$collector
+}
+
 for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
-  [[ -x $collector ]] || continue
-  agent="${collector##*/omarchy-agent-usage-}"
-  [[ $agent == "update" ]] && continue
+  register_collector "$collector"
+done
+for collector in "$USER_COLLECTOR_DIR"/omarchy-agent-usage-*; do
+  register_collector "$collector"
+done
+
+pids=()
+for agent in "${!collectors[@]}"; do
   wanted "$agent" || continue
-  collect "$collector" "$agent" &
+  collect "${collectors[$agent]}" "$agent" &
   pids+=($!)
 done
 
