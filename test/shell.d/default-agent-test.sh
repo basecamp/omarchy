@@ -46,6 +46,11 @@ cat >"$mock_bin/opencode" <<'SH'
 printf '%s\0' opencode "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
 SH
 
+cat >"$mock_bin/omarchy-fam" <<'SH'
+#!/bin/bash
+printf '%s\0' omarchy-fam "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
+SH
+
 cat >"$mock_bin/omarchy-mise-install" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$OMARCHY_TEST_STUB_LOG"
@@ -337,6 +342,18 @@ for selection in "${!expected_agents[@]}"; do
     fail "default agent opens $selection after selecting it"
 done
 pass "default agent selects and opens every supported provider and alias"
+
+for selection in fam fam-os; do
+  : >"$agent_open_log"
+  : >"$mise_log"
+  omarchy-default-agent "$selection"
+  [[ $(omarchy-default-agent) == "fam" ]] || fail "default agent canonicalizes $selection"
+  [[ ! -s $mise_log ]] || fail "default agent keeps FAM outside the mise lifecycle"
+  mapfile -d '' -t agent_open_args <"$agent_open_log"
+  [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
+    fail "default agent opens $selection after selecting it"
+done
+pass "default agent selects the externally packaged FAM launcher and alias"
 [[ -f $agent_file && ! -e $test_home/.local/state/omarchy/defaults/agent ]] ||
   fail "default agent stores its selection in Omarchy user config"
 pass "default agent stores its selection in Omarchy user config"
@@ -464,6 +481,7 @@ assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
+assert_launch fam omarchy-fam --prompt "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
 assert_bypass pi pi
@@ -476,6 +494,7 @@ assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
+assert_bypass fam omarchy-fam --interactive
 pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
@@ -531,3 +550,11 @@ fi
 grep -F "missing is not installed" "$test_tmp/missing-output" >/dev/null ||
   fail "agent launcher explains when the default command is missing"
 pass "agent launcher reports a missing default command"
+
+printf '%s\n' "fam" >"$agent_file"
+if OMARCHY_TEST_MISSING_COMMAND=omarchy-fam omarchy-agent >"$test_tmp/missing-fam-output" 2>&1; then
+  fail "agent launcher rejects a missing FAM launcher"
+fi
+grep -F "omarchy-fam is not installed" "$test_tmp/missing-fam-output" >/dev/null ||
+  fail "agent launcher checks FAM's packaged launcher name"
+pass "agent launcher maps the FAM provider to its packaged command"
