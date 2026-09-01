@@ -1,13 +1,15 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--group-by-dir] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>...
+# omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--group-by-dir] [--item-label <name>] [--variant-label <name>] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>...
 
 selected_image=""
 print_name=false
 show_labels=false
 filterable=false
 group_by_dir=false
+item_label=""
+variant_label=""
 lazy_thumbnails=false
 prepare_only=false
 preload=false
@@ -15,7 +17,7 @@ cache_only=false
 image_dirs=()
 
 usage() {
-  echo "Usage: omarchy-menu-images [--selected <image>] [--print-name] [--show-labels] [--filterable] [--group-by-dir] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>..."
+  echo "Usage: omarchy-menu-images [--selected <image>] [--print-name] [--show-labels] [--filterable] [--group-by-dir] [--item-label <name>] [--variant-label <name>] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>..."
 }
 
 while (( $# > 0 )); do
@@ -44,6 +46,20 @@ while (( $# > 0 )); do
     --group-by-dir)
       group_by_dir=true
       shift
+      ;;
+    --item-label | --variant-label)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      if [[ $1 == "--item-label" ]]; then
+        item_label="$2"
+      else
+        variant_label="$2"
+      fi
+
+      shift 2
       ;;
     --lazy-thumbnails)
       lazy_thumbnails=true
@@ -225,10 +241,9 @@ drain_thumbnails() {
     bash -c 'generate_thumbnail "$1" "$2"' _ >/dev/null 2>&1 || true
 }
 
-# The rows are already published against the original images, so the misses only
-# need to land before the next open. Draining them through one bounded batch
-# keeps a theme picker carrying every theme's backgrounds from forking a
-# generator per image the moment it opens.
+# Rows already point at the original images, so these only need to land before
+# the next open. One bounded batch keeps a picker carrying every theme's
+# backgrounds from forking a generator per image the moment it opens.
 drain_lazy_thumbnails() {
   local queue
 
@@ -237,8 +252,8 @@ drain_lazy_thumbnails() {
   queue=$(mktemp)
   mv "$lazy_file" "$queue"
 
-  # Detached from this script's stdout: a caller reading our selection back over
-  # a pipe must not wait on the generators to finish first.
+  # Detached from stdout: a caller reading our selection back over a pipe must
+  # not wait on the generators.
   (
     trap 'rm -f "$queue"' EXIT
     drain_thumbnails "$queue"
@@ -329,7 +344,9 @@ if ! open_result=$(omarchy-shell image-selector open \
      "$selection_file" \
      "$done_file" \
      "$show_labels" \
-     "$filterable"); then
+     "$filterable" \
+     "$item_label" \
+     "$variant_label"); then
   echo "Image selector failed to accept request" >&2
   exit 1
 fi

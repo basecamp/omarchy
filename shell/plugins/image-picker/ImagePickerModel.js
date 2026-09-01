@@ -10,11 +10,9 @@ function labelForPath(path) {
   return titleize(nameForPath(path))
 }
 
-// A row is `filePath \t thumbnailPath \t group`, where the group is optional.
-// Rows that share a group collapse into a single carousel item: the first is
-// what the carousel shows, the rest are variants the picker cycles through with
-// up/down. The theme picker groups by theme, so one item carries a theme's
-// preview along with every background that theme ships.
+// A row is `filePath \t thumbnailPath \t group`, the group optional. Rows
+// sharing a group collapse into one carousel item; the rest of the group
+// becomes variants the picker cycles through with up/down.
 function loadRows(rows) {
   var images = []
   var seen = {}
@@ -79,8 +77,19 @@ function variantAt(images, index, variant) {
   return variants[position]
 }
 
-// An item is named for its group when it has one: a grouped item's own file is
-// only the first of several, and the group is what the user is choosing.
+function maxVariantCount(images) {
+  var values = Array.isArray(images) ? images : []
+  var most = 0
+
+  for (var i = 0; i < values.length; i++) {
+    most = Math.max(most, variantCount(values, i))
+  }
+
+  return most
+}
+
+// A grouped item's own file is only the first of several; the group is what the
+// user is choosing.
 function nameForItem(images, index) {
   if (!Array.isArray(images) || index < 0 || index >= images.length) return ""
 
@@ -127,8 +136,7 @@ function selectedFilteredPosition(images, selectedIndex, filterText) {
   return itemMatches(images, selectedIndex, filterText) ? filteredPosition(images, selectedIndex, filterText) : 0
 }
 
-// Where a path sits in the carousel: which item, and which of that item's
-// variants. A path the rows don't carry opens the picker on the first item.
+// Which item a path sits in, and which of that item's variants.
 function locateImage(images, selectedImage) {
   var values = Array.isArray(images) ? images : []
   for (var i = 0; i < values.length; i++) {
@@ -158,6 +166,7 @@ if (typeof module !== "undefined") {
     variantsOf: variantsOf,
     variantCount: variantCount,
     variantAt: variantAt,
+    maxVariantCount: maxVariantCount,
     nameForItem: nameForItem,
     labelForItem: labelForItem,
     itemMatches: itemMatches,

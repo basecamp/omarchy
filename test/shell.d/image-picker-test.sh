@@ -61,6 +61,7 @@ assertEqual(picker.selectedFilteredPosition(images, 2, 'dark'), 0, 'image picker
 assertEqual(picker.nextSelectedIndexForFilter(images, 0, 'dark'), 1, 'image picker moves selection to first match when filter hides current item')
 
 assertEqual(picker.variantCount(images, 0), 1, 'an ungrouped row is a single variant')
+assertEqual(picker.maxVariantCount(images), 1, 'ungrouped rows never carry variants')
 
 // A third column groups rows into one carousel item: the theme picker hands one
 // group per theme, carrying that theme's preview and every background it ships.
@@ -86,6 +87,7 @@ assertEqual(
 assertEqual(picker.variantAt(grouped, 0, 1).thumbnailPath, '/cache/nord-city.jpg', 'variants resolve to their own thumbnail')
 assertEqual(picker.variantAt(grouped, 0, 3).filePath, '/previews/nord/000-preview.png', 'variant lookup wraps forward')
 assertEqual(picker.variantAt(grouped, 0, -1).filePath, '/previews/nord/002-moon.jpg', 'variant lookup wraps backward')
+assertEqual(picker.maxVariantCount(grouped), 3, 'the widest group decides whether the carousel makes room to peek')
 
 assertEqual(picker.nameForItem(grouped, 1), 'rose-pine', 'a grouped item is named for its group')
 assertEqual(picker.labelForItem(grouped, 1), 'Rose Pine', 'a grouped item is labelled for its group')
@@ -109,9 +111,28 @@ assert(
   /function preloadRows[\s\S]*if \(opened \|\| requestActive\) return/.test(imagePickerQml),
   'image picker ignores cache preloads while a request is visible'
 )
+const skewedImageQml = fs.readFileSync(path.join(root, 'shell/plugins/image-picker/SkewedImage.qml'), 'utf8')
 assert(
-  /source: item\.sourceActivated && item\.thumbnailPath \? Util\.fileUrl\(item\.thumbnailPath\) : ""[\s\S]*asynchronous: false/.test(imagePickerQml),
+  /source: item\.sourceActivated \? item\.thumbnailPath : ""/.test(imagePickerQml) &&
+    /asynchronous: false/.test(skewedImageQml),
   'image picker loads activated thumbnails synchronously to avoid carousel flicker'
+)
+
+// The peek bands and the preview have to lean at one angle, which they only do
+// while they share a column: their own heights differ by a factor of seven.
+assert(
+  /columnHeight: item\.selected \? root\.columnHeight : item\.height/.test(imagePickerQml) &&
+    /skewOffset: item\.selected \? root\.columnSkew : root\.skewOffset/.test(imagePickerQml),
+  'the selected preview leans as part of the column it shares with its peek bands'
+)
+assert(
+  /variantPeekHeight: Math\.round\(sliceWidth \* peekScale\)/.test(imagePickerQml) &&
+    /variantPeekOverlap: Math\.round\(-sliceSpacing \* peekScale\)/.test(imagePickerQml),
+  'the vertical peek is derived from the horizontal slice geometry'
+)
+assert(
+  /hints\.push\("\\u2191 \\u2193" \+ \(variantLabel/.test(imagePickerQml),
+  'the arrow hint names the axis the caller gave it'
 )
 assert(
   /event\.key === Qt\.Key_Up\)\s*\{\s*root\.cycleVariant\(-1\)/.test(imagePickerQml) &&

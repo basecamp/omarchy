@@ -83,10 +83,14 @@ pass "theme picker keeps a fallback preview out of the list twice"
 pass "theme picker includes user themes"
 
 grep -qx -- '--group-by-dir' "$test_tmp/args" || fail "theme picker groups the picker's rows by theme"
+[[ $(grep -A1 -x -- '--item-label' "$test_tmp/args" | tail -n 1) == "theme" ]] ||
+  fail "theme picker names what left and right walk"
+[[ $(grep -A1 -x -- '--variant-label' "$test_tmp/args" | tail -n 1) == "background" ]] ||
+  fail "theme picker names what up and down walk"
 grep -qx -- "$previews/nord" "$test_tmp/args" || fail "theme picker passes one directory per theme"
-[[ $(grep -A1 -x -- '--selected' "$test_tmp/args" | tail -n 1) == "$previews/nord/003-2-moon.jpg" ]] ||
-  fail "theme picker opens on the background that is currently up"
-pass "theme picker opens on the current theme and background"
+[[ $(grep -A1 -x -- '--selected' "$test_tmp/args" | tail -n 1) == "$previews/nord/000-preview.png" ]] ||
+  fail "theme picker opens on the current theme's preview, not on the background that is up"
+pass "theme picker opens on the current theme's preview"
 
 # A background added for a theme is a new image under that theme, and a theme
 # directory's own mtime never saw it.

@@ -82,10 +82,9 @@ choose_theme_background() {
 
   (( ${#backgrounds[@]} > 0 )) || return 1
 
-  # A requested background is matched by name: the theme picker points at a
-  # theme's own directory, while the background applied here comes from the
-  # copy staged under the current theme. Anything the theme does not carry --
-  # a preview image, a stale path -- falls through to the usual rotation.
+  # Matched by name: the picker points at a theme's own directory, while what is
+  # applied here is the staged copy. Anything the theme does not carry falls
+  # through to the rotation.
   if [[ -n $REQUESTED_BACKGROUND ]]; then
     for i in "${!backgrounds[@]}"; do
       if [[ ${backgrounds[$i]##*/} == "${REQUESTED_BACKGROUND##*/}" ]]; then

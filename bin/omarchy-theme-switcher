@@ -3,9 +3,7 @@
 # omarchy:summary=Open the Omarchy theme switcher
 
 # Prints the chosen theme and the background the user stopped on, tab separated,
-# or nothing when the picker is dismissed. The picker groups every image a theme
-# offers under that theme, so left/right walks the themes while up/down walks
-# that theme's backgrounds.
+# or nothing when the picker is dismissed.
 
 preload=false
 
@@ -42,10 +40,9 @@ find_preview() {
   fi
 }
 
-# Every image the picker offers for one theme, NUL separated: the preview first,
-# then the backgrounds that theme ships and the ones the user dropped in for it.
-# Same precedence omarchy-theme-set stages them with, so what the picker shows
-# under a theme is what selecting it can produce.
+# Every image the picker offers for one theme, NUL separated: the preview, then
+# its backgrounds, in the precedence omarchy-theme-set stages them with -- so
+# what the picker shows is what selecting it can produce.
 theme_images() {
   local theme_name="$1"
   local theme_path="$2"
@@ -74,8 +71,7 @@ theme_images() {
     preview=$(find_preview "$OMARCHY_THEMES_PATH/$theme_name")
   fi
 
-  # find_preview falls back to a theme's first background when the theme ships
-  # no preview image of its own; that image is already in the list below.
+  # find_preview falls back to a first background, which is already listed below.
   if [[ -n $preview && -z ${seen[${preview##*/}]} ]]; then
     printf '%s\0' "$preview"
   fi
@@ -83,9 +79,8 @@ theme_images() {
   (( ${#backgrounds[@]} > 0 )) && printf '%s\0' "${backgrounds[@]}"
 }
 
-# One directory of symlinks per theme. omarchy-menu-images --group-by-dir turns
-# each into a single carousel item named for the directory, so the index prefix
-# only fixes the order the picker cycles them in.
+# One directory of symlinks per theme: --group-by-dir turns each into a single
+# carousel item named for the directory, and the prefix fixes the cycle order.
 add_theme_images() {
   local theme_name="$1"
   local theme_path="$2"
@@ -103,9 +98,8 @@ add_theme_images() {
   done < <(theme_images "$theme_name" "$theme_path")
 }
 
-# A theme directory's mtime misses a background added to the theme's own
-# backgrounds directory, or to the user's directory for that theme, so stat
-# those alongside it -- in one call, since this runs before every open.
+# A theme directory's mtime misses a background added inside it, so stat the
+# backgrounds directories too -- in one call, since this runs before every open.
 background_signature() {
   local dir
   local dirs=()
@@ -170,18 +164,12 @@ done
 
 (( ${#theme_dirs[@]} > 0 )) || exit 0
 
-# Open on the desktop the user is already looking at: the current theme, and
-# within it the background that is actually up.
+# The preview the picker has always opened on, not whichever background is up.
 current_theme=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
-current_background=$(readlink -f "$HOME/.local/state/omarchy/current/background" 2>/dev/null)
 selected_image=""
 
 for link in "$preview_dir/$current_theme"/*; do
-  [[ -e $link ]] || continue
-  [[ -n $selected_image ]] || selected_image="$link"
-  link_name=${link##*/}
-
-  if [[ -n $current_background && ${link_name#*-} == "${current_background##*/}" ]]; then
+  if [[ -e $link ]]; then
     selected_image="$link"
     break
   fi
@@ -191,6 +179,8 @@ menu_args=(
   --show-labels
   --filterable
   --group-by-dir
+  --item-label theme
+  --variant-label background
   --lazy-thumbnails
   --selected "$selected_image"
 )
