@@ -8,6 +8,12 @@
 # timer — so without this hook the reader only recovers once the lock screen's
 # backoff leaves fprintd alone for long enough, about a minute at best.
 #
+# This is a workaround for an upstream fprintd defect, tracked at
+# https://gitlab.freedesktop.org/libfprint/fprintd/-/issues/173 (same shape in
+# fprintd#216): the daemon's own suspend handling kills the verify but the
+# release then fails, wedging the claim. Once fixed there, this hook and the
+# stop-timeout drop-in beside it can be removed.
+#
 # Restarting fprintd on resume drops the claim so the reader answers on the
 # first touch instead. Omarchy locks before every suspend and the lock screen
 # opens a verify at once, so fprintd is running and claimed at nearly every
