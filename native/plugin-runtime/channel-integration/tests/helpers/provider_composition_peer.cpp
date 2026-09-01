@@ -60,12 +60,15 @@ int main(int argc, char **argv) {
       return 2;
     if (mode == "crash")
       return 3;
+    if (mode == "delayed-pid")
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
     if (mode == "timeout" || mode == "late")
       std::this_thread::sleep_for(std::chrono::milliseconds(1200));
 
     const auto correlation = read64(request.data() + 8);
-    const std::string payload =
-        mode == "pid" ? std::to_string(::getpid()) : "composition-ok";
+    const std::string payload = (mode == "pid" || mode == "delayed-pid")
+                                    ? std::to_string(::getpid())
+                                    : "composition-ok";
     std::vector<std::byte> response;
     append32(response, mode == "malformed" ? 0U : kMagic);
     response.insert(response.end(),

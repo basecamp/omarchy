@@ -276,6 +276,7 @@ if(BUILD_TESTING)
     target_compile_definitions(omarchy-plugin-product-session-test PRIVATE
       OMARCHY_PLUGIN_SESSION_TESTING
       CHANNEL_PEER_PATH="$<TARGET_FILE:omarchy-plugin-channel-peer>"
+      PROVIDER_COMPOSITION_PEER_PATH="$<TARGET_FILE:omarchy-plugin-provider-composition-peer>"
       FAKE_BWRAP_PATH="$<TARGET_FILE:omarchy-plugin-channel-fake-bwrap>"
       QML_WORKER_PATH="$<TARGET_FILE:omarchy-plugin-qml-worker>"
       RUNTIME_ROOT_REVISION_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/../contracts/manifest/tests/fixtures/valid-minimal")
@@ -287,12 +288,18 @@ if(BUILD_TESTING)
     target_link_libraries(omarchy-plugin-product-session-test PRIVATE
       omarchy-plugin-provider-host)
     add_dependencies(omarchy-plugin-product-session-test
-      omarchy-plugin-channel-peer omarchy-plugin-channel-fake-bwrap
+      omarchy-plugin-channel-peer omarchy-plugin-provider-composition-peer
+      omarchy-plugin-channel-fake-bwrap
       omarchy-plugin-qml-worker)
     add_test(NAME plugin-product-session
       COMMAND omarchy-plugin-product-session-test)
     set_tests_properties(plugin-product-session PROPERTIES
       TIMEOUT 30 LABELS "unit;security;session;surface")
+    add_test(NAME plugin-product-session-provider-settlement
+      COMMAND omarchy-plugin-product-session-test --provider-settlement-only)
+    set_tests_properties(plugin-product-session-provider-settlement PROPERTIES
+      TIMEOUT 15
+      LABELS "integration;security;session;providers;protocol")
     add_test(NAME plugin-product-session-real-worker-invalid-qml
       COMMAND omarchy-plugin-product-session-test
               --real-worker-invalid-qml-only)

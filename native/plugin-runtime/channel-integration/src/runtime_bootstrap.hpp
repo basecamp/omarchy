@@ -81,7 +81,8 @@ private:
   std::shared_ptr<const definitions::TrustedDefinitionRegistry> definitions_;
   std::shared_ptr<const RuntimeServices> services_;
   const Limits runtime_limits_{};
-  const session::SessionLimits session_limits_{};
+  const session::SessionLimits session_limits_{
+      provider_backed_session_limits()};
 };
 
 #ifdef OMARCHY_RUNTIME_BOOTSTRAP_TESTING

@@ -260,6 +260,26 @@ void validate_empty_broker_reply(std::span<const std::byte> bytes,
     fail();
 }
 
+std::string validate_dynamic_reply(std::span<const std::byte> bytes,
+                                   std::uint64_t generation,
+                                   std::uint64_t correlation,
+                                   wire::SessionSequence &sequence) {
+  const auto decoded = wire::decode_packet(bytes, wire::EndpointRole::broker);
+  if (!decoded ||
+      sequence.accept_inbound(wire::EndpointRole::broker,
+                              decoded.packet.header.lane_sequence) !=
+          wire::FatalReason::none ||
+      decoded.packet.header.message_type != broker::kBrokerResultMessage ||
+      decoded.packet.header.role_protocol_version !=
+          broker::kBrokerRoleVersion ||
+      decoded.packet.header.correlation_id != correlation ||
+      decoded.packet.header.launch_generation != generation ||
+      decoded.packet.payload.empty())
+    fail();
+  return {reinterpret_cast<const char *>(decoded.packet.payload.data()),
+          decoded.packet.payload.size()};
+}
+
 void send_session_signal(int descriptor, wire::EndpointRole role,
                          std::uint16_t type, std::uint64_t generation,
                          std::span<const std::byte> payload,
@@ -394,6 +414,54 @@ bool accept_startup_permissions(std::uint64_t generation,
     send_bytes(4, notification_request(generation, 1, sequence));
     validate_empty_broker_reply(receive_bytes(4), generation, 1, sequence);
   }
+  wait_forever();
+}
+
+std::vector<std::byte> dynamic_request(std::uint64_t generation,
+                                       std::uint64_t correlation,
+                                       wire::SessionSequence &sequence) {
+  const int request =
+      openat(6, "dynamic-request", O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+  std::vector<std::byte> payload(64 * 1024);
+  const auto count =
+      request < 0 ? -1 : read(request, payload.data(), payload.size());
+  if (request >= 0)
+    close(request);
+  if (count <= 0 || static_cast<std::size_t>(count) == payload.size())
+    fail();
+  payload.resize(static_cast<std::size_t>(count));
+  const auto outbound = sequence.take_outbound(wire::EndpointRole::broker);
+  if (!outbound)
+    fail();
+  return packet({.envelope_version = wire::kEnvelopeVersion,
+                 .header_size = wire::kHeaderSize,
+                 .endpoint_role = wire::EndpointRole::broker,
+                 .message_type = broker::kDynamicInvokeMessage,
+                 .role_protocol_version = broker::kBrokerRoleVersion,
+                 .launch_generation = generation,
+                 .correlation_id = correlation,
+                 .lane_sequence = outbound.value},
+                payload);
+}
+
+[[noreturn]] void session_provider(std::uint64_t generation,
+                                   wire::SessionSequence &sequence) {
+  send_bytes(4, dynamic_request(generation, 81, sequence));
+  const auto first =
+      validate_dynamic_reply(receive_bytes(4), generation, 81, sequence);
+  send_bytes(4, dynamic_request(generation, 82, sequence));
+  const auto second =
+      validate_dynamic_reply(receive_bytes(4), generation, 82, sequence);
+  if (first != second)
+    fail();
+  const int result = openat(6, "provider-replies",
+                            O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+  const std::string report = "81 " + first + "\n82 " + second + "\n";
+  if (result < 0 ||
+      write(result, report.data(), report.size()) !=
+          static_cast<ssize_t>(report.size()) ||
+      close(result) < 0)
+    fail();
   wait_forever();
 }
 
@@ -609,6 +677,8 @@ int main() {
     session_replay(broker_generation, sequence);
   if (current == "session-notification")
     session_notification(broker_generation, sequence);
+  if (current == "session-provider")
+    session_provider(broker_generation, sequence);
   if (current == "multi-lane")
     send_multi_lane(broker_generation, sequence);
   if (current == "render-typed-error")

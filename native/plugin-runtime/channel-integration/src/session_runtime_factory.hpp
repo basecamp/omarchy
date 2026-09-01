@@ -5,6 +5,7 @@
 #include "omarchy/plugin_runtime/providers/provider_set.hpp"
 #include "omarchy/plugin_runtime/provider_host/provider_host.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -62,6 +63,22 @@ struct Limits final {
   std::uint64_t maximum_storage_bytes = 64 * 1024 * 1024;
   std::uint64_t maximum_storage_item_bytes = 1024 * 1024;
 };
+
+inline constexpr std::chrono::milliseconds kProviderSettlementMargin{250};
+static_assert(provider_host::kProviderInvocationTimeout +
+                  kProviderSettlementMargin <=
+              session::SessionLimits::kMaximumIoTimeout);
+
+// Provider dispatch is synchronous at the authenticated channel boundary.
+// Runtime sessions therefore retain a bounded transport/scheduling margin
+// after the provider's invocation contract, without changing generic sessions.
+[[nodiscard]] inline session::SessionLimits
+provider_backed_session_limits() noexcept {
+  session::SessionLimits limits;
+  limits.io_timeout =
+      provider_host::kProviderInvocationTimeout + kProviderSettlementMargin;
+  return limits;
+}
 
 // Sole concrete factory for the runtime authenticated-session path. Plugin
 // data supplies no callback, provider pointer, definition, quota, or path.

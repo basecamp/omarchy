@@ -3,10 +3,12 @@
 #include "broker_runtime.hpp"
 #include "dynamic_broker_runtime.hpp"
 #include "omarchy/plugin_runtime/launcher/test_supervisor.h"
+#include "omarchy/plugin_runtime/provider_host/provider_host.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 #include "plugin_permission_authority.hpp"
 #include "plugin_session.hpp"
 #include "plugin_runtime_root.hpp"
+#include "session_runtime_factory.hpp"
 #include "structured_broker.hpp"
 
 #include <QCoreApplication>
@@ -14,7 +16,9 @@
 #include <QEventLoop>
 
 #include <fcntl.h>
+#include <signal.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <array>
@@ -28,6 +32,7 @@
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <span>
 #include <stdexcept>
 #include <string_view>
 #include <thread>
@@ -43,6 +48,7 @@ namespace manifest = omarchy::plugins::manifest;
 namespace permissions = omarchy::plugins::permissions;
 namespace policy = omarchy::plugin_runtime::policy;
 namespace providers = omarchy::plugin_runtime::providers;
+namespace provider_host = omarchy::plugin_runtime::provider_host;
 namespace runtime = omarchy::plugin_runtime::runtime;
 namespace sandbox = omarchy::plugin_runtime::sandbox;
 namespace surface = omarchy::plugin_runtime::surface;
@@ -262,7 +268,12 @@ public:
 
 class ActivationFixture final {
 public:
-  explicit ActivationFixture(std::string_view worker_mode = "session-happy") {
+  explicit ActivationFixture(
+      std::string_view worker_mode = "session-happy",
+      std::span<const std::byte> dynamic_request = {},
+      permissions::ActivationBinding activation_binding = binding())
+      : live_(std::make_shared<host::LiveGenerationState>(
+            std::move(activation_binding))) {
     std::string pattern = "/tmp/omarchy-product-session-XXXXXX";
     const char *created = ::mkdtemp(pattern.data());
     require(created != nullptr, "cannot create product session fixture");
@@ -272,6 +283,16 @@ public:
     std::filesystem::create_directories(revision_);
     std::filesystem::create_directories(state_);
     std::ofstream(revision_ / "worker-mode") << worker_mode << '\n';
+    if (!dynamic_request.empty()) {
+      std::ofstream request(state_ / "dynamic-request", std::ios::binary);
+      request.write(reinterpret_cast<const char *>(dynamic_request.data()),
+                    static_cast<std::streamsize>(dynamic_request.size()));
+      request.close();
+      require(static_cast<bool>(request),
+              "cannot write dynamic request fixture");
+      require(::chmod((state_ / "dynamic-request").c_str(), 0600) == 0,
+              "cannot secure dynamic request fixture");
+    }
     require(::chmod((revision_ / "worker-mode").c_str(), 0444) == 0 &&
                 ::chmod(revision_.c_str(), 0555) == 0,
             "cannot make product revision immutable");
@@ -288,6 +309,12 @@ public:
     manifest::ManifestV2 verified_manifest;
     verified_manifest.id = std::string(snapshot_grants.binding.plugin.view());
     verified_manifest.surface_names = {"bar", "panel", "overlay"};
+    return snapshot(std::move(verified_manifest), std::move(snapshot_grants));
+  }
+
+  host::ActivationSnapshot
+  snapshot(manifest::ManifestV2 verified_manifest,
+           policy::GrantSnapshot snapshot_grants) const {
     const int record =
         ::open((revision_ / "worker-mode").c_str(), O_RDONLY | O_CLOEXEC);
     const int revision =
@@ -324,8 +351,173 @@ private:
   std::filesystem::path root_;
   std::filesystem::path revision_;
   std::filesystem::path state_;
-  std::shared_ptr<host::LiveGenerationState> live_ =
-      std::make_shared<host::LiveGenerationState>(binding());
+  std::shared_ptr<host::LiveGenerationState> live_;
+};
+
+std::string file_bytes(const std::filesystem::path &path) {
+  std::ifstream input(path, std::ios::binary);
+  return {std::istreambuf_iterator<char>(input),
+          std::istreambuf_iterator<char>()};
+}
+
+definitions::CapabilityDefinition provider_definition() {
+  definitions::CapabilityDefinition value{
+      .canonical_name = definitions::Name("service.echo"),
+      .authority_identity = definitions::Name("service.echo.authority"),
+      .enforcement_family = definitions::EnforcementFamily::network_fetch,
+      .display_category_id = definitions::Name("developer.services"),
+      .display_category_label = definitions::Label("Developer services"),
+      .scope_schema = definitions::ScopeSchema::https_origins_and_methods,
+      .title = definitions::Label("Echo"),
+      .risk_text = definitions::Label("Uses a trusted echo service"),
+      .risk = definitions::RiskLevel::moderate,
+      .revocation = definitions::RevocationPolicy::deny_new,
+      .audit = {},
+      .adapter = {.adapter_class = definitions::Name("service.echo.adapter"),
+                  .contract_digest = permissions::Digest(std::string(64, 'd')),
+                  .abi_version = 1},
+      .operations = {}};
+  require(
+      value.operations.insert({.name = definitions::Name("echo"),
+                               .label = definitions::Label("Echo payload")}),
+      "cannot define provider operation");
+  return value;
+}
+
+manifest::ManifestV2
+provider_manifest(const definitions::ResolvedDefinition &resolved) {
+  manifest::ManifestV2 value;
+  value.id = std::string(binding().plugin.view());
+  value.requests.push_back(
+      {.capability = std::string(resolved.definition->canonical_name.view()),
+       .reason = "exercise delayed provider settlement",
+       .canonical_scope = "exact",
+       .definition_generation = resolved.generation,
+       .definition_digest = std::string(resolved.digest.view()),
+       .operations = {"echo"},
+       .required = true});
+  return value;
+}
+
+policy::GrantSnapshot
+provider_grants(const definitions::ResolvedDefinition &resolved,
+                const manifest::ManifestV2 &verified_manifest) {
+  policy::GrantSnapshot value;
+  value.requests = permissions::requests_from_manifest(verified_manifest);
+  value.binding = binding();
+  value.binding.policy_fingerprint = permissions::Digest(
+      permissions::policy_request_fingerprint(value.requests));
+  value.source_request_fingerprint = permissions::Digest(
+      manifest::requested_capability_fingerprint(verified_manifest.requests));
+  definitions::DynamicRevisionGrant grant{
+      .binding = value.binding,
+      .request = {.definition = {.canonical_name =
+                                     resolved.definition->canonical_name,
+                                 .definition_generation = resolved.generation,
+                                 .definition_digest = resolved.digest},
+                  .operations = {},
+                  .scope = definitions::CanonicalScope("exact"),
+                  .required = true},
+      .grant = {}};
+  require(grant.request.operations.insert(definitions::Name("echo")),
+          "cannot grant provider operation");
+  grant.grant = {.definition = grant.request.definition,
+                 .operations = grant.request.operations,
+                 .scope = grant.request.scope,
+                 .state = permissions::GrantState::granted,
+                 .epoch = value.binding.generation};
+  value.dynamic_grants.push_back(std::move(grant));
+  return value;
+}
+
+std::vector<std::byte>
+provider_invocation(const policy::GrantSnapshot &snapshot) {
+  const definitions::DynamicInvocation call{
+      .definition = snapshot.dynamic_grants.front().request.definition,
+      .operation = definitions::Name("echo"),
+      .demand_scope = definitions::CanonicalScope("exact"),
+      .gesture = std::nullopt,
+      .payload = {}};
+  std::vector<std::byte> encoded(definitions::kMaximumDynamicEnvelopeBytes);
+  std::size_t written = 0;
+  require(definitions::encode_dynamic_invocation(call, encoded, written),
+          "cannot encode provider invocation");
+  encoded.resize(written);
+  return encoded;
+}
+
+class ProviderProfileFixture final {
+public:
+  ProviderProfileFixture() {
+    std::string pattern = "/tmp/omarchy-session-provider-XXXXXX";
+    const char *created = ::mkdtemp(pattern.data());
+    require(created != nullptr, "cannot create provider profile fixture");
+    root_ = created;
+    marker_ = root_ / "started";
+    const auto package = root_ / "pkg";
+    const auto admin = root_ / "admin";
+    const auto executable = root_ / "bin/provider-peer";
+    std::filesystem::create_directories(package);
+    std::filesystem::create_directories(admin);
+    std::filesystem::create_directories(executable.parent_path());
+    std::filesystem::copy_file(PROVIDER_COMPOSITION_PEER_PATH, executable);
+    require(::chmod(root_.c_str(), 0755) == 0 &&
+                ::chmod(package.c_str(), 0755) == 0 &&
+                ::chmod(admin.c_str(), 0755) == 0 &&
+                ::chmod(executable.parent_path().c_str(), 0755) == 0 &&
+                ::chmod(executable.c_str(), 0500) == 0,
+            "cannot secure provider profile fixture");
+    std::ofstream profile(package / "echo.profile");
+    profile << "schema=1\n"
+            << "adapter-class=service.echo.adapter\n"
+            << "contract-digest=" << std::string(64, 'd') << "\n"
+            << "abi-version=1\n"
+            << "group=echo.group\n"
+            << "executable=/bin/provider-peer\n"
+            << "executable-sha256="
+            << manifest::sha256_hex(file_bytes(executable)) << "\n"
+            << "arg=delayed-pid\n"
+            << "arg=" << marker_.string() << "\n";
+    profile.close();
+    require(static_cast<bool>(profile) &&
+                ::chmod((package / "echo.profile").c_str(), 0644) == 0,
+            "cannot write provider profile fixture");
+  }
+
+  ~ProviderProfileFixture() {
+    std::error_code ignored;
+    std::filesystem::remove_all(root_, ignored);
+  }
+
+  std::shared_ptr<const provider_host::ProviderCatalog> catalog() const {
+    const int root =
+        ::open(root_.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    require(root >= 0, "cannot open provider profile root");
+    const std::array<std::string_view, 1> package{"pkg"};
+    const std::array<std::string_view, 1> admin{"admin"};
+    provider_host::CatalogError error{};
+    auto result = provider_host::ProviderCatalog::load(
+        root, package, admin, static_cast<std::uint32_t>(::getuid()), error);
+    ::close(root);
+    require(result && error == provider_host::CatalogError::none,
+            "cannot load provider profile catalog");
+    return result;
+  }
+
+  std::size_t starts() const {
+    std::ifstream marker(marker_);
+    return static_cast<std::size_t>(
+        std::count(std::istreambuf_iterator<char>(marker),
+                   std::istreambuf_iterator<char>(), '\n'));
+  }
+
+  pid_t pid() const {
+    return static_cast<pid_t>(std::stol(file_bytes(marker_)));
+  }
+
+private:
+  std::filesystem::path root_;
+  std::filesystem::path marker_;
 };
 
 class InvalidQmlWorkerFixture final {
@@ -1383,6 +1575,78 @@ void prepared_commit_retains_activation_and_reuses_one_launch() {
         "owned broker/provider runtime outlived session teardown");
 }
 
+void delayed_provider_replies_settle_without_restarting_session() {
+  definitions::TrustedDefinitionRegistry definitions;
+  require(definitions.install(provider_definition(),
+                              definitions::DefinitionSource::omarchy_package,
+                              3),
+          "cannot install provider definition");
+  const auto resolved = definitions.find("service.echo");
+  require(resolved.has_value(), "cannot resolve provider definition");
+  auto verified_manifest = provider_manifest(*resolved);
+  auto snapshot = provider_grants(*resolved, verified_manifest);
+  const auto invocation = provider_invocation(snapshot);
+  ActivationFixture fixture("session-provider", invocation, snapshot.binding);
+  ProviderProfileFixture provider;
+  channel::RuntimeServices services;
+  services.provider_catalog = provider.catalog();
+  channel::SessionRuntimeFactory runtime_factory(std::move(definitions),
+                                                 std::move(services));
+  auto worker_scope = std::make_shared<Scope>();
+  channel::PluginSessionCreateError create_error{};
+  auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
+      launcher::test_support::make_supervisor(FAKE_BWRAP_PATH,
+                                              CHANNEL_PEER_PATH, worker_scope),
+      fixture.snapshot(std::move(verified_manifest), std::move(snapshot)),
+      runtime_factory, create_error, channel::provider_backed_session_limits());
+  require(prepared && create_error == channel::PluginSessionCreateError::none,
+          "provider-backed session did not prepare");
+  auto product = channel::PluginSessionTestAccess::commit(std::move(prepared),
+                                                          create_error);
+  require(product && create_error == channel::PluginSessionCreateError::none,
+          "provider-backed session did not commit");
+
+  product->start();
+  await([&] { return product->state() == host::SessionState::running; },
+        "provider-backed session did not start");
+  const auto replies = fixture.state_directory() / "provider-replies";
+  await(
+      [&] {
+        return std::filesystem::exists(replies) ||
+               product->state() == host::SessionState::failed;
+      },
+      "delayed provider replies did not cross the authenticated channel");
+  require(std::filesystem::exists(replies),
+          "delayed provider session failed with state " +
+              std::to_string(static_cast<unsigned>(product->state())) +
+              ", error " +
+              std::to_string(static_cast<unsigned>(product->error())) +
+              ", provider starts " + std::to_string(provider.starts()));
+  const auto provider_pid = provider.pid();
+  const auto expected = "81 " + std::to_string(provider_pid) + "\n82 " +
+                        std::to_string(provider_pid) + "\n";
+  require(file_bytes(replies) == expected && provider.starts() == 1 &&
+              ::kill(provider_pid, 0) == 0 &&
+              product->state() == host::SessionState::running &&
+              product->error() == host::SessionError::none &&
+              worker_scope->attachments == 1,
+          "delayed provider reply restarted or failed the running session");
+
+  product->stop();
+  await([&] { return product->state() == host::SessionState::stopped; },
+        "provider-backed session did not stop");
+  product.reset();
+  await(
+      [&] {
+        errno = 0;
+        return ::kill(provider_pid, 0) < 0 && errno == ESRCH;
+      },
+      "provider process survived session teardown");
+  errno = 0;
+  require(::waitpid(-1, nullptr, WNOHANG) < 0 && errno == ECHILD,
+          "provider process was not reaped after session teardown");
+}
+
 void startup_ack_failures_never_publish_product_session() {
   using namespace std::chrono_literals;
   for (const std::string_view mode : {
@@ -1987,6 +2251,12 @@ int main(int argc, char **argv) {
     if (argc == 2 && std::string_view(argv[1]) == "--prepared-session-only") {
       prepared_session_is_thread_agnostic_before_commit();
       std::cout << "prepared session test passed\n";
+      return 0;
+    }
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--provider-settlement-only") {
+      delayed_provider_replies_settle_without_restarting_session();
+      std::cout << "provider settlement test passed\n";
       return 0;
     }
     if (argc == 2 && std::string_view(argv[1]) == "--startup-fence-only") {

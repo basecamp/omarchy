@@ -19,6 +19,7 @@ namespace permissions = omarchy::plugins::permissions;
 namespace launcher = omarchy::plugin_runtime::launcher;
 
 constexpr std::size_t kMaximumProviderPayload = 64 * 1024;
+constexpr std::chrono::milliseconds kProviderInvocationTimeout{750};
 
 enum class CatalogError : std::uint8_t {
   none,
@@ -70,14 +71,14 @@ public:
   [[nodiscard]] static std::shared_ptr<ProviderActivation>
   create(std::shared_ptr<const ProviderCatalog> catalog,
          permissions::ActivationBinding binding,
-         std::chrono::milliseconds timeout = std::chrono::milliseconds(750));
+         std::chrono::milliseconds timeout = kProviderInvocationTimeout);
   // Trusted composition seam for tests and alternate host resource managers.
   // Plugin data never receives or selects this controller.
   [[nodiscard]] static std::shared_ptr<ProviderActivation>
   create(std::shared_ptr<const ProviderCatalog> catalog,
          permissions::ActivationBinding binding,
          std::shared_ptr<launcher::ResourceScopeController> resource_scope,
-         std::chrono::milliseconds timeout = std::chrono::milliseconds(750));
+         std::chrono::milliseconds timeout = kProviderInvocationTimeout);
   [[nodiscard]] std::shared_ptr<ProviderRoute>
   route(const definitions::AdapterBinding &binding);
   // Permanently closes invocation authority. False means exact process/scope
