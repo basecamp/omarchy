@@ -9,6 +9,9 @@
 # also make USB touchscreens) are left out to avoid nagging laptops with no
 # reader — those still match on the product string below when present.
 fingerprint_vendors=" 27c6 138a 06cb 08ff 1c7a 147e "
+# Exact IDs cover readers made by vendors whose wider USB catalog makes a
+# vendor-only match too broad. This is Dell's Broadcom ControlVault 3 reader.
+fingerprint_devices=" 0a5c:5843 "
 usb_devices_path="${OMARCHY_USB_DEVICES_PATH:-/sys/bus/usb/devices}"
 
 # libfprint drives every reader it supports from userspace over libusb, so a
@@ -48,7 +51,12 @@ for dev in "$usb_devices_path"/*; do
 
   if [[ -r $dev/idVendor ]]; then
     vendor=$(<"$dev/idVendor")
-    [[ $fingerprint_vendors == *" $vendor "* ]] &&
+    if [[ -r $dev/idProduct ]]; then
+      product_id=$(<"$dev/idProduct")
+    else
+      product_id=""
+    fi
+    [[ $fingerprint_vendors == *" $vendor "* || $fingerprint_devices == *" $vendor:$product_id "* ]] &&
       ! has_kernel_driver "$dev" && exit 0
   fi
 done
