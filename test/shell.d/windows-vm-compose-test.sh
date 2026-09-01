@@ -176,6 +176,22 @@ resolve_caller
 find "$CALLER_DATA_ROOT" -name 'rejected-*' -print -quit | grep -q . && fail "source was quarantined"
 pass "invalid second source leaves paths and anchors untouched and leaks no FD"
 
+# A set-ID bit on either source must not survive the privacy step. `chmod 0700`
+# leaves S_ISGID standing on a directory, and the exact mode 700 the elevated
+# path then demands would reject a source it had just been asked to secure.
+reset_case
+mkdir -p "$HOME/.windows" "$HOME/Windows"
+chmod 2700 "$HOME/.windows"
+chmod 6700 "$HOME/Windows"
+prepare_user_mount_sources
+[[ $(stat -Lc '%a' "$HOME/.windows") == 700 ]] || fail "setgid storage source was not cleared to 700"
+[[ $(stat -Lc '%a' "$HOME/Windows") == 700 ]] || fail "setuid/setgid shared source was not cleared to 700"
+chmod 2700 "$HOME/.windows"
+write 4G 2 64G setgid pw UTC
+resolve_caller
+[[ $(stat -Lc '%a' "$EXPECTED_STORAGE") == 700 && $(stat -Lc '%a' "$EXPECTED_SHARED") == 700 ]] || fail "mount leaves are not private after a set-ID source"
+pass "a set-ID bit on either source is cleared instead of failing the mount"
+
 # Distinct caller-owned symlink targets are supported and remain links.
 reset_case
 external_storage="$TMPDIR/external-storage"
@@ -476,6 +492,13 @@ unset -f mv
 [[ $(cat "$CREDENTIALS_FILE") == "$credentials_before" ]] || fail "failed credentials rename replaced the live file"
 ! find "$credentials_dir" -name '.credentials.*' -print -quit | grep -q . || fail "failed credentials write left a temporary file"
 pass "credentials are atomically replaced as a private regular file"
+
+# The directory holding the plaintext password is hardened the same way, so a
+# set-ID bit inherited from its parent cannot hand new credentials a group.
+chmod 2755 "$credentials_dir"
+write_credentials dave 'another-pw'
+[[ $(stat -c '%a' "$credentials_dir") == 700 ]] || fail "credentials directory kept a set-ID bit"
+pass "a set-ID bit on the credentials directory is cleared"
 
 # Free-space accounting follows the real storage target.
 reset_case
