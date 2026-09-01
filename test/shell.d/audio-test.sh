@@ -64,16 +64,24 @@ cat >"$tmp_dir/bin/pactl" <<'EOF'
 printf 'pactl %s\n' "$*" >>"$AUDIO_CALLS"
 
 if [[ $* == "--format=json list sources" ]]; then
-  attempts=0
-  [[ ! -f $AUDIO_ATTEMPTS ]] || attempts=$(<"$AUDIO_ATTEMPTS")
-  if (( attempts >= ${AUDIO_SOURCE_READY_AFTER:-3} )); then
-    printf '[{"name":"bluez_input.AA:BB:CC:DD:EE:FF","properties":{"device.name":"bluez_card.AA_BB_CC_DD_EE_FF","bluez5.loopback":"true"}},{"name":"bluez_input.AA_BB_CC_DD_EE_FF.0","properties":{"device.name":"bluez_card.AA_BB_CC_DD_EE_FF","bluez5.loopback":"false"}}]\n'
+  polls=0
+  [[ ! -f $AUDIO_SOURCE_POLLS ]] || polls=$(<"$AUDIO_SOURCE_POLLS")
+  (( polls += 1 ))
+  printf '%s\n' "$polls" >"$AUDIO_SOURCE_POLLS"
+  if (( polls >= ${AUDIO_SOURCE_READY_AFTER:-3} )); then
+    printf '[{"name":"bluez_input.AA:BB:CC:DD:EE:FF","properties":{"device.name":"bluez_card.AA_BB_CC_DD_EE_FF","media.class":"Audio/Source","bluez5.loopback":"true"}},{"name":"bluez_output.AA_BB_CC_DD_EE_FF.1.monitor","properties":{"device.name":"bluez_card.AA_BB_CC_DD_EE_FF","media.class":"Audio/Sink","device.class":"monitor"}},{"name":"bluez_input.AA_BB_CC_DD_EE_FF.0","properties":{"device.name":"bluez_card.AA_BB_CC_DD_EE_FF","media.class":"Audio/Source","bluez5.loopback":"false"}}]\n'
   else
-    printf '[{"name":"bluez_input.AA:BB:CC:DD:EE:FF","properties":{"device.name":"bluez_card.AA_BB_CC_DD_EE_FF","bluez5.loopback":"true"}}]\n'
+    printf '[{"name":"bluez_input.AA:BB:CC:DD:EE:FF","properties":{"device.name":"bluez_card.AA_BB_CC_DD_EE_FF","media.class":"Audio/Source","bluez5.loopback":"true"}},{"name":"bluez_output.AA_BB_CC_DD_EE_FF.1.monitor","properties":{"device.name":"bluez_card.AA_BB_CC_DD_EE_FF","media.class":"Audio/Sink","device.class":"monitor"}}]\n'
   fi
 elif [[ $* == "list short source-outputs" ]]; then
   printf '71\tPipeWire\n'
 elif [[ $1 == "move-source-output" && $3 == bluez_input.* ]]; then
+  polls=0
+  [[ ! -f $AUDIO_SOURCE_POLLS ]] || polls=$(<"$AUDIO_SOURCE_POLLS")
+  if (( polls < ${AUDIO_SOURCE_READY_AFTER:-3} )); then
+    printf 'early\n' >"$AUDIO_EARLY_MOVE"
+    exit 1
+  fi
   attempts=0
   [[ ! -f $AUDIO_ATTEMPTS ]] || attempts=$(<"$AUDIO_ATTEMPTS")
   (( attempts += 1 ))
@@ -84,6 +92,14 @@ fi
 EOF
 chmod +x "$tmp_dir/bin/pactl"
 
+cat >"$tmp_dir/bin/pw-record" <<'EOF'
+#!/bin/bash
+printf 'pw-record %s\n' "$*" >>"$AUDIO_CALLS"
+trap 'exit 0' TERM INT
+while true; do sleep 1; done
+EOF
+chmod +x "$tmp_dir/bin/pw-record"
+
 cat >"$tmp_dir/bin/omarchy-notification-send" <<'EOF'
 #!/bin/bash
 printf 'omarchy-notification-send %s\n' "$*" >>"$AUDIO_CALLS"
@@ -92,9 +108,12 @@ chmod +x "$tmp_dir/bin/omarchy-notification-send"
 
 audio_calls="$tmp_dir/calls"
 audio_attempts="$tmp_dir/attempts"
+audio_source_polls="$tmp_dir/source-polls"
+audio_early_move="$tmp_dir/early-move"
 
 run_input_switch() {
-  AUDIO_CALLS="$audio_calls" AUDIO_ATTEMPTS="$audio_attempts" \
+  AUDIO_CALLS="$audio_calls" AUDIO_ATTEMPTS="$audio_attempts" AUDIO_SOURCE_POLLS="$audio_source_polls" \
+    AUDIO_EARLY_MOVE="$audio_early_move" \
     AUDIO_SOURCE_READY_AFTER="${AUDIO_SOURCE_READY_AFTER:-3}" AUDIO_ALSA_MOVE_FAIL="${AUDIO_ALSA_MOVE_FAIL:-0}" \
     PATH="$tmp_dir/bin:$PATH" \
     "$ROOT/bin/omarchy-audio-input-set-default" "$@"
@@ -102,19 +121,22 @@ run_input_switch() {
 
 : >"$audio_calls"
 run_input_switch 43 bluez_input.AA:BB:CC:DD:EE:FF
-[[ $(<"$audio_attempts") == "4" ]] ||
-  fail "audio waits for the physical Bluetooth source before its final move" "$(<"$audio_calls")"
+[[ $(<"$audio_attempts") == "1" ]] ||
+  fail "audio moves the active stream once after Bluetooth is ready" "$(<"$audio_calls")"
+[[ ! -e $audio_early_move ]] ||
+  fail "audio does not move active streams during the Bluetooth graph rebuild" "$(<"$audio_calls")"
 ! grep -Fq 'set-card-profile' "$audio_calls" ||
   fail "audio leaves Bluetooth profile selection and restoration to WirePlumber" "$(<"$audio_calls")"
 pass "audio waits for the physical Bluetooth source without forcing a profile"
 
 : >"$audio_calls"
 : >"$audio_attempts"
+rm -f "$audio_source_polls" "$audio_early_move"
 if AUDIO_SOURCE_READY_AFTER=99 run_input_switch 43 bluez_input.AA:BB:CC:DD:EE:FF 2>/dev/null; then
   fail "audio reports an exhausted Bluetooth capture move"
 fi
-[[ $(<"$audio_attempts") == "15" ]] ||
-  fail "audio bounds Bluetooth capture move retries" "$(<"$audio_calls")"
+[[ ! -s $audio_attempts ]] ||
+  fail "audio leaves active streams untouched when Bluetooth readiness is exhausted" "$(<"$audio_calls")"
 grep -Fq 'omarchy-notification-send -u critical Bluetooth microphone unavailable' "$audio_calls" ||
   fail "audio notifies when Bluetooth capture routing is exhausted" "$(<"$audio_calls")"
 pass "audio reports an exhausted Bluetooth capture move after bounded retries"
