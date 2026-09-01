@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Apply the current theme keyboard color to Keychron keyboards
+# omarchy:hidden=true
+
+KEYCHRON_THEME=$HOME/.local/state/omarchy/current/theme/keyboard.rgb
+
+if [[ -f $KEYCHRON_THEME ]]; then
+  color=$(sed 's/^#//' "$KEYCHRON_THEME")
+  [[ $color =~ ^[0-9A-Fa-f]{6}$ ]] || exit 0
+  omarchy-keychron-rgb set "$color" 2>/dev/null
+fi
