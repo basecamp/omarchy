@@ -13,12 +13,30 @@ wake() {
   hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1 || true
 }
 
+# Clearing the toggle flag takes the disable out of the config, but it does not
+# turn the output back on. hl.monitor edits the rule it finds rather than
+# replacing it, so a monitor Hyprland has already disabled stays disabled until
+# a spec says so, and both callers below would otherwise report success over a
+# panel that is still dark. Same reason the Display panel has to send it.
+enable_output() {
+  [[ -n $INTERNAL ]] || return 0
+
+  # As in off(): the name goes into Lua, so only a plain connector name may pass.
+  if [[ ! $INTERNAL =~ ^[A-Za-z0-9._-]+$ ]]; then
+    omarchy-notification-send -g 󰍹 "Refusing unsafe monitor name"
+    return 1
+  fi
+
+  hyprctl eval "hl.monitor({ output = \"$INTERNAL\", disabled = false })" >/dev/null
+}
+
 on() {
   if omarchy-hyprland-toggle-enabled $TOGGLE; then
     omarchy-hyprland-toggle $TOGGLE off
     omarchy-notification-send -g 󰍹 "Laptop display enabled"
   fi
 
+  enable_output
   wake
 }
 
@@ -55,6 +73,7 @@ recover() {
   omarchy-hyprland-toggle-enabled $TOGGLE || return 0
 
   omarchy-hyprland-toggle $TOGGLE off
+  enable_output
   wake
 }
 
