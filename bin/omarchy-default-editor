@@ -27,7 +27,7 @@ cursor) selection="cursor"; editor="cursor"; name="Cursor"; glyph= ;;
 zed | zeditor) selection="zed"; editor="zeditor"; name="Zed"; glyph= ;;
 sublime_text | subl) selection="sublime_text"; editor="subl"; name="Sublime Text"; glyph= ;;
 helix) selection="helix"; editor="helix"; name="Helix"; glyph= ;;
-vim) selection="vim"; editor="vim"; name="Vim"; glyph= ;;
+vim) selection="vim"; editor="vim"; name="Vim"; glyph= ;;
 emacs) selection="emacs"; editor="emacs"; name="Emacs"; glyph= ;;
 nvim) selection="nvim"; editor="nvim"; name="Neovim"; glyph= ;;
 *)
