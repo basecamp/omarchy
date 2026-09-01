@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
@@ -6,6 +7,7 @@ import QtQuick.Effects
 import QtQuick.Shapes
 import qs.Commons
 import qs.Ui
+import "StartupBackgroundModel.js" as StartupBackgroundModel
 
 Item {
   id: root
@@ -26,12 +28,113 @@ Item {
   property string pendingShellRaw: ""
   property real revealProgress: 1
 
+  // Injected by the first-party service loader. Startup playback ends rather
+  // than pausing when the desktop is covered, so it never resumes unexpectedly
+  // after a lock or screensaver.
+  property var shell: null
+  readonly property var lockService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.lock") : null
+  readonly property var idleService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.idle") : null
+  readonly property bool lockActive: lockService ? lockService.locked : false
+  readonly property bool screensaverActive: idleService ? idleService.screensaverWindowCount > 0 : false
+  readonly property bool sessionObscured: lockActive || screensaverActive
+
+  readonly property string runtimeDirectory: Quickshell.env("XDG_RUNTIME_DIR")
+  readonly property string hyprlandSignature: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")
+  readonly property string startupSessionClaimPath: StartupBackgroundModel.sessionClaimPath(runtimeDirectory, hyprlandSignature)
+  property bool startupPrepared: false
+  property bool startupCancelled: false
+  property bool startupActive: false
+  property int startupScreenWaitAttempts: 0
+  property string startupBackgroundPath: ""
+  property string startupCandidateVideoPath: ""
+  property string startupCandidateFirstFramePath: ""
+  property string startupVideoPath: ""
+  property string startupFirstFramePath: ""
+  property var startupPendingScreens: []
+
+  onSessionObscuredChanged: if (sessionObscured && startupPrepared) cancelStartup()
+
   function imageUrl(path) {
     return Util.fileUrl(path)
   }
 
   function refreshBackground() {
     if (!readlinkProc.running) readlinkProc.running = true
+  }
+
+  function screenNames() {
+    var screens = Quickshell.screens || []
+    var names = []
+
+    for (var i = 0; i < screens.length; i++) {
+      var screen = screens[i]
+      var name = screen ? String(screen.name || "") : ""
+      if (name && screen.width > 0 && screen.height > 0 && names.indexOf(name) === -1) names.push(name)
+    }
+
+    return names
+  }
+
+  function prepareStartup(backgroundPath) {
+    backgroundPath = String(backgroundPath || "").trim()
+    if (startupPrepared || !backgroundPath) return
+
+    startupPrepared = true
+    startupBackgroundPath = backgroundPath
+
+    var assets = StartupBackgroundModel.assetsForBackground(backgroundPath)
+    startupCandidateVideoPath = assets.videoPath
+    startupCandidateFirstFramePath = assets.firstFramePath
+
+    if (!startupCandidateVideoPath || !startupSessionClaimPath || sessionObscured) {
+      cancelStartup()
+      return
+    }
+
+    startupVideoProbe.running = true
+  }
+
+  function waitForStartupScreens() {
+    if (startupCancelled || currentBackground !== startupBackgroundPath || sessionObscured) {
+      cancelStartup()
+      return
+    }
+
+    var names = screenNames()
+    if (names.length === 0) {
+      startupScreenWaitAttempts += 1
+      if (startupScreenWaitAttempts < 50) startupScreenWaitTimer.restart()
+      else cancelStartup()
+      return
+    }
+
+    startupPendingScreens = names
+    startupClaimProc.running = true
+  }
+
+  function startupPendingFor(screenName) {
+    return startupPendingScreens.indexOf(String(screenName || "")) !== -1
+  }
+
+  function finishStartupScreen(screenName) {
+    screenName = String(screenName || "")
+    if (!startupActive || !startupPendingFor(screenName)) return
+
+    var pending = []
+    for (var i = 0; i < startupPendingScreens.length; i++) {
+      if (startupPendingScreens[i] !== screenName) pending.push(startupPendingScreens[i])
+    }
+    startupPendingScreens = pending
+    if (pending.length === 0) cancelStartup()
+  }
+
+  function cancelStartup() {
+    startupCancelled = true
+    startupActive = false
+    startupPendingScreens = []
+    startupVideoPath = ""
+    startupFirstFramePath = ""
+    startupScreenWaitTimer.stop()
   }
 
   function setBackground(path, instant) {
@@ -43,6 +146,7 @@ Item {
     finalPath = String(finalPath || path).trim()
     fromPath = String(fromPath || "").trim()
     if (!path || (!force && finalPath === currentBackground)) return
+    if (startupPrepared && finalPath !== startupBackgroundPath) cancelStartup()
     currentBackground = finalPath
     backgroundVersion += 1
     revealStartedVersion = -1
@@ -124,8 +228,54 @@ Item {
     id: readlinkProc
     command: ["readlink", "-f", root.currentBackgroundLink]
     stdout: StdioCollector {
-      onStreamFinished: root.setBackground(String(text || "").trim(), false)
+      onStreamFinished: {
+        var path = String(text || "").trim()
+        root.setBackground(path, false)
+        root.prepareStartup(path)
+      }
     }
+  }
+
+  Process {
+    id: startupVideoProbe
+    command: ["test", "-f", root.startupCandidateVideoPath]
+    onExited: function(exitCode) {
+      if (root.startupCancelled) return
+      if (exitCode === 0) startupFirstFrameProbe.running = true
+      else root.cancelStartup()
+    }
+  }
+
+  Process {
+    id: startupFirstFrameProbe
+    command: ["test", "-f", root.startupCandidateFirstFramePath]
+    onExited: function(exitCode) {
+      if (root.startupCancelled) return
+      root.startupFirstFramePath = exitCode === 0 ? root.startupCandidateFirstFramePath : ""
+      root.waitForStartupScreens()
+    }
+  }
+
+  Process {
+    id: startupClaimProc
+    command: ["mkdir", root.startupSessionClaimPath]
+    onExited: function(exitCode) {
+      if (root.startupCancelled) return
+      if (exitCode !== 0 || root.currentBackground !== root.startupBackgroundPath || root.sessionObscured) {
+        root.cancelStartup()
+        return
+      }
+
+      root.startupVideoPath = root.startupCandidateVideoPath
+      root.startupActive = true
+    }
+  }
+
+  Timer {
+    id: startupScreenWaitTimer
+    interval: 100
+    repeat: false
+    onTriggered: root.waitForStartupScreens()
   }
 
   IpcHandler {
@@ -196,12 +346,18 @@ Item {
       color: "transparent"
       // Keep render updates enabled. The background layer has been observed to
       // lose its committed buffer while parked with updatesEnabled=false,
-      // leaving a black desktop until omarchy-shell is restarted. The wallpaper
-      // itself is static, so this favors correctness over a small render-loop
-      // optimization.
+      // leaving a black desktop until omarchy-shell is restarted. The startup
+      // player unloads after its short run, so correctness wins over parking
+      // the layer while the permanent wallpaper is static.
       updatesEnabled: true
 
+      readonly property bool fullscreenHere: ToplevelManager.activeToplevel
+        && ToplevelManager.activeToplevel.fullscreen
+        && !!Hyprland.focusedMonitor
+        && String(Hyprland.focusedMonitor.name || "") === String(modelData.name || "")
       property bool maskReady: false
+
+      Component.onDestruction: root.finishStartupScreen(String(modelData.name || ""))
 
       function maybeStartReveal() {
         if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
@@ -299,6 +455,15 @@ Item {
             PathLine { x: revealMask.centerTop - revealMask.spread; y: 0 }
           }
         }
+      }
+
+      StartupBackgroundVideo {
+        anchors.fill: parent
+        active: root.startupActive && root.startupPendingFor(String(panel.modelData.name || ""))
+        obscured: panel.fullscreenHere
+        videoPath: root.startupVideoPath
+        firstFramePath: root.startupFirstFramePath
+        onPlaybackComplete: root.finishStartupScreen(String(panel.modelData.name || ""))
       }
 
       Connections {

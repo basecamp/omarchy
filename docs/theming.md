@@ -45,6 +45,23 @@ Making a new app follow theme changes means adding its restart/retint command
 to that list. Runs serialize on a `flock`, so scripted theme changes queue
 instead of racing.
 
+## Startup background video
+
+A background can optionally provide a silent startup video that plays once when the desktop session starts and then fades into the selected static image. For `backgrounds/city.webp`, place the assets at:
+
+```text
+backgrounds/
+├── city.webp
+└── startup/
+    └── city/
+        ├── video.mp4
+        └── first-frame.webp
+```
+
+Only `video.mp4` is required. `first-frame.webp` is an optional still that covers decoder startup; it should match the video's first frame. The video's last frame should match `city.webp` so the final handoff appears continuous. A background without this directory remains a normal static background, and nested startup assets are not offered by the background picker.
+
+Startup playback is claimed once per Hyprland session, so restarting `omarchy-shell` does not replay it. Each connected output plays its own copy, and playback ends early on the focused output when the focused window goes fullscreen. Locking the session or starting the screensaver ends playback everywhere. The player does not decode audio and gives up safely if media cannot start or exceeds its time limit.
+
 ## What an installed theme may not ship
 
 `themes/<name>/` in this repo is Omarchy's own code and is trusted. So is a theme the user wrote by hand in `~/.config/omarchy/themes/<name>/`: it is their machine and their file, and both stage in full.
