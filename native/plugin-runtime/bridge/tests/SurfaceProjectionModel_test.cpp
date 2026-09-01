@@ -453,7 +453,7 @@ QtObject {
   QString last_target;
   QObject::connect(&service, &Service::toggleRequested,
                    [&toggles, &last_target](const QString &, const QString &target,
-                                            const QString &) {
+                                            const QString &, const QString &) {
                      ++toggles;
                      last_target = target;
                    });

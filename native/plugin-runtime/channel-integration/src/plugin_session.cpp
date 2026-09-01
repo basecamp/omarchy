@@ -5,6 +5,8 @@
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 #include "permission_projection.hpp"
 
+#include <QDebug>
+
 #include <sys/random.h>
 
 #include <algorithm>
@@ -16,6 +18,54 @@
 namespace omarchy::plugin_runtime::channel {
 namespace wire = omarchy::plugin::wire;
 namespace {
+
+const char *intent_failure_name(
+    host_session::SurfaceIntentAdmissionFailure failure) noexcept {
+  using Failure = host_session::SurfaceIntentAdmissionFailure;
+  switch (failure) {
+  case Failure::none:
+    return "none";
+  case Failure::malformed:
+    return "malformed";
+  case Failure::gesture_missing:
+    return "gesture-missing";
+  case Failure::stale_activation:
+    return "stale-activation";
+  case Failure::unknown_source:
+    return "unknown-source";
+  case Failure::unknown_target:
+    return "unknown-target";
+  case Failure::revoked:
+    return "revoked";
+  }
+  return "unknown";
+}
+
+const char *intent_action_name(
+    session::surface::SurfaceIntentAction action) noexcept {
+  switch (action) {
+  case session::surface::SurfaceIntentAction::open:
+    return "open";
+  case session::surface::SurfaceIntentAction::toggle:
+    return "toggle";
+  case session::surface::SurfaceIntentAction::dismiss:
+    return "dismiss";
+  }
+  return "invalid";
+}
+
+void log_intent_admission(std::string_view plugin,
+                          const session::surface::SurfaceIntentRequest &request,
+                          const char *decision, const char *reason) {
+  qInfo().noquote().nospace()
+      << "omarchy-plugin-security stage=host-surface-intent decision="
+      << decision << " reason=" << reason << " plugin="
+      << QString::fromUtf8(plugin.data(), static_cast<qsizetype>(plugin.size()))
+      << " source-id=" << request.source.id << " target-id="
+      << request.target.id << " generation=" << request.source.generation
+      << " input-sequence=" << request.input_sequence << " action="
+      << intent_action_name(request.action);
+}
 
 class SteadyGestureClock final : public runtime::GestureEligibilityClock {
 public:
@@ -412,17 +462,37 @@ void PluginSession::message_received(session::OwnedMessage message) {
       session::surface::SurfaceIntentRequest request{};
       if (message.correlation_id != 0 || !message.descriptors.empty() ||
           !session::surface::decode_surface_intent(message.payload, request)) {
+        log_intent_admission(token_.plugin_id, request, "rejected",
+                             "wire-invalid");
         gesture_eligibility_->clear();
         if (events_)
           events_->render_rejected(session::RouteResult::endpoint_rejected);
         return;
       }
       auto admission = gesture_intents_->admit(request);
-      if (!admission.intent || intent_sink_ == nullptr ||
-          !intent_sink_->accept(std::move(*admission.intent))) {
+      if (!admission.intent) {
+        log_intent_admission(token_.plugin_id, request, "rejected",
+                             intent_failure_name(admission.failure));
         if (events_)
           events_->render_rejected(session::RouteResult::endpoint_rejected);
+        return;
       }
+      if (intent_sink_ == nullptr) {
+        log_intent_admission(token_.plugin_id, request, "rejected",
+                             "sink-unavailable");
+        if (events_)
+          events_->render_rejected(session::RouteResult::endpoint_rejected);
+        return;
+      }
+      if (!intent_sink_->accept(std::move(*admission.intent))) {
+        log_intent_admission(token_.plugin_id, request, "rejected",
+                             "sink-rejected");
+        if (events_)
+          events_->render_rejected(session::RouteResult::endpoint_rejected);
+        return;
+      }
+      log_intent_admission(token_.plugin_id, request, "admitted",
+                           "eligibility-consumed");
       return;
     }
     const auto destination = render_destination(message);

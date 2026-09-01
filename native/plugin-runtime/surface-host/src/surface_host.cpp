@@ -2,6 +2,7 @@
 
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
 
+#include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -18,6 +19,42 @@
 namespace omarchy::plugin_runtime::surface_host {
 namespace wire = omarchy::plugin::wire;
 namespace {
+
+QString diagnostic_text(std::string_view value) {
+  return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
+}
+
+const char *input_kind(const bridge::HostInputPayload &payload) noexcept {
+  if (const auto *button = std::get_if<surface::PointerButton>(&payload))
+    return button->state == surface::ButtonState::pressed ? "pointer-press"
+                                                          : "pointer-release";
+  const auto *touch = std::get_if<bridge::HostTouchFrame>(&payload);
+  if (touch == nullptr || touch->phase == surface::TouchFramePhase::update)
+    return nullptr;
+  if (touch->phase == surface::TouchFramePhase::begin)
+    return "touch-begin";
+  if (touch->phase == surface::TouchFramePhase::end)
+    return "touch-end";
+  return "touch-cancel";
+}
+
+void log_input_decision(const NamedSurfacePolicy &policy,
+                        const surface::TrustedAllocation &allocation,
+                        const char *kind, bool trusted_physical,
+                        std::uint64_t sequence, const char *decision,
+                        const char *reason) {
+  if (kind == nullptr)
+    return;
+  qInfo().noquote().nospace()
+      << "omarchy-plugin-security stage=host-input decision=" << decision
+      << " reason=" << reason << " plugin="
+      << diagnostic_text(policy.plugin_id) << " surface="
+      << diagnostic_text(policy.surface_name) << " surface-id="
+      << allocation.surface.id << " generation="
+      << allocation.surface.generation << " input-sequence=" << sequence
+      << " input-kind=" << kind << " trusted-physical="
+      << (trusted_physical ? "true" : "false");
+}
 
 [[noreturn]] void fail(std::string_view detail) {
   throw std::runtime_error(std::string(detail));
@@ -358,8 +395,13 @@ bool HostSurface::active() const {
 bool HostSurface::terminated() const noexcept { return terminated_; }
 
 bool HostSurface::route_input(bridge::HostInputEvent input) {
-  if (!active())
+  const auto *kind = input_kind(input.payload);
+  const bool trusted_physical = input.trusted_physical;
+  if (!active()) {
+    log_input_decision(policy_, allocation_, kind, trusted_physical, 0,
+                       "rejected", "surface-inactive");
     return false;
+  }
   const bool pointer_capture = input_authority_.pointer_captured(
       allocation_.surface, input.device);
   const bool touch_capture = input_authority_.touch_captured(
@@ -399,21 +441,32 @@ bool HostSurface::route_input(bridge::HostInputEvent input) {
         }
       },
       input.payload);
-  if (!allowed)
+  if (!allowed) {
+    log_input_decision(policy_, allocation_, kind, trusted_physical, 0,
+                       "rejected", "policy-filter");
     return false;
+  }
   auto admission = input_authority_.admit(allocation_, std::move(input), true);
-  if (!admission)
+  if (!admission) {
+    log_input_decision(policy_, allocation_, kind, trusted_physical, 0,
+                       "rejected", "input-authority");
     return false;
+  }
+  const auto input_sequence = admission->event.sequence;
   const bool focus_after_gesture =
       admission->trusted_gesture &&
       policy_.keyboard_focus == KeyboardFocusPolicy::after_gesture;
   auto *bridge_item = bridge_item_.data();
   if (bridge_item == nullptr || !bridge_item->submitInput(admission->event)) {
+    log_input_decision(policy_, allocation_, kind, trusted_physical,
+                       input_sequence, "rejected", "worker-transport");
     close();
     return false;
   }
   if (focus_after_gesture && bridge_item_)
     bridge_item_->forceActiveFocus(Qt::MouseFocusReason);
+  log_input_decision(policy_, allocation_, kind, trusted_physical,
+                     input_sequence, "accepted", "delivered");
   return true;
 }
 

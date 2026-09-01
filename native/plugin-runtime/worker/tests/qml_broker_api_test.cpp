@@ -9,6 +9,7 @@
 #include <QGuiApplication>
 #include <QEventLoop>
 #include <QFile>
+#include <QLoggingCategory>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
@@ -37,6 +38,26 @@ namespace permissions = omarchy::plugins::permissions;
 namespace surface = omarchy::plugin_runtime::surface;
 namespace worker = omarchy::plugin_runtime::worker;
 namespace wire = omarchy::plugin::wire;
+
+std::vector<QString> diagnostic_messages;
+
+void capture_diagnostic(QtMsgType, const QMessageLogContext &,
+                        const QString &message) {
+  diagnostic_messages.push_back(message);
+}
+
+class DiagnosticCapture final {
+public:
+  DiagnosticCapture() {
+    diagnostic_messages.clear();
+    previous_ = qInstallMessageHandler(capture_diagnostic);
+  }
+
+  ~DiagnosticCapture() { qInstallMessageHandler(previous_); }
+
+private:
+  QtMessageHandler previous_ = nullptr;
+};
 
 class DuplicateApiBase : public QObject {
   Q_OBJECT
@@ -964,11 +985,20 @@ void run() {
           "post-readiness QML request did not complete");
   IntentSink intent_sink;
   IntentSink second_sink;
-  require(api.bindSurfaceIntentSink(intent_sink) &&
-              !api.bindSurfaceIntentSink(second_sink) &&
-              !api.requestSurfaceIntent(QStringLiteral("panel"),
-                                        QStringLiteral("toggle")),
-          "surface intent sink was rebound or accepted without input");
+  {
+    DiagnosticCapture diagnostics;
+    require(api.bindSurfaceIntentSink(intent_sink) &&
+                !api.bindSurfaceIntentSink(second_sink) &&
+                !api.requestSurfaceIntent(QStringLiteral("panel"),
+                                          QStringLiteral("toggle")) &&
+                intent_sink.calls == 0,
+            "surface intent diagnostics rebound or invoked the sink without input");
+  }
+  require(std::ranges::any_of(diagnostic_messages, [](const QString &message) {
+            return message.contains(
+                QStringLiteral("stage=worker-surface-intent decision=rejected reason=gesture-missing"));
+          }),
+          "gesture rejection did not produce a bounded diagnostic");
   api.beginTrustedGesture(3, 77, 9);
   require(!api.requestSurfaceIntent(QString(), QStringLiteral("toggle")) &&
               !api.requestSurfaceIntent(QStringLiteral("Panel.Widget"),

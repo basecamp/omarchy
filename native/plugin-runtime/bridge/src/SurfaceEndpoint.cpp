@@ -2,6 +2,7 @@
 
 #include "surface_host.hpp"
 
+#include <QDebug>
 #include <QThread>
 #include <QPointer>
 
@@ -13,6 +14,22 @@
 
 namespace omarchy::plugin_runtime::bridge {
 namespace {
+
+QString diagnostic_text(std::string_view value) {
+  return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size()));
+}
+
+void log_intent_eligibility(
+    const channel::SurfaceDescription &description,
+    std::uint64_t input_sequence, const char *decision, const char *reason) {
+  qInfo().noquote().nospace()
+      << "omarchy-plugin-security stage=host-intent-eligibility decision="
+      << decision << " reason=" << reason << " plugin="
+      << diagnostic_text(description.plugin_id) << " surface="
+      << diagnostic_text(description.surface_name) << " surface-id="
+      << description.key.id << " generation=" << description.key.generation
+      << " input-sequence=" << input_sequence;
+}
 
 } // namespace
 
@@ -222,6 +239,8 @@ bool SurfaceEndpoint::route(HostInputEvent event) {
   }
   const bool routed = value.host->route_input(std::move(event));
   if (armed && value.pending_gesture) {
+    log_intent_eligibility(*value.description, 0, "rejected",
+                           "host-input-rejected");
     session_.clear_surface_intent_eligibility(*value.description);
     value.pending_gesture.reset();
     return false;
@@ -253,6 +272,9 @@ bool SurfaceEndpoint::forward_input(
 
   surface::InputEvent input{};
   if (!surface::decode_input_event(payload, input)) {
+    if (value.pending_gesture)
+      log_intent_eligibility(*value.description, 0, "rejected",
+                             "input-decode");
     session_.clear_surface_intent_eligibility(*value.description);
     value.pending_gesture.reset();
     return false;
@@ -281,13 +303,25 @@ bool SurfaceEndpoint::forward_input(
                      std::get<surface::TouchFrame>(input.payload).phase ==
                          surface::TouchFramePhase::begin;
   if (input.surface != pending.surface || pointer == touch ||
-      touch != pending.touch ||
-      !session_.arm_surface_intent(*value.description, input.sequence)) {
+      touch != pending.touch) {
+    log_intent_eligibility(*value.description, input.sequence, "rejected",
+                           "input-mismatch");
     session_.clear_surface_intent_eligibility(*value.description);
     return false;
   }
-  if (forward_render(header, payload, {}))
+  if (!session_.arm_surface_intent(*value.description, input.sequence)) {
+    log_intent_eligibility(*value.description, input.sequence, "rejected",
+                           "authority-rejected");
+    session_.clear_surface_intent_eligibility(*value.description);
+    return false;
+  }
+  if (forward_render(header, payload, {})) {
+    log_intent_eligibility(*value.description, input.sequence, "armed",
+                           "trusted-input");
     return true;
+  }
+  log_intent_eligibility(*value.description, input.sequence, "rejected",
+                         "worker-transport");
   session_.clear_surface_intent_eligibility(*value.description);
   return false;
 }

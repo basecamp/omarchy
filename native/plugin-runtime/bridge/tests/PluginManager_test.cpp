@@ -3795,12 +3795,14 @@ void neutral_surfaces_share_one_real_sandbox_and_teardown() {
   QString intent_source;
   QString intent_target;
   QString intent_generation;
+  QString intent_input_sequence;
   QObject::connect(manager.get(), &bridge::PluginManager::toggleRequested,
                    [&](const QString &source, const QString &target,
-                       const QString &generation) {
+                       const QString &generation, const QString &input_sequence) {
                      intent_source = source;
                      intent_target = target;
                      intent_generation = generation;
+                     intent_input_sequence = input_sequence;
                    });
   require(bridge::PluginManagerTestAccess::routeTrustedPointer(
               *manager, plugin, running_epoch, bar_key, true),
@@ -3810,7 +3812,8 @@ void neutral_surfaces_share_one_real_sandbox_and_teardown() {
             return !intent_target.isEmpty();
           }) &&
               intent_source == bar_key && intent_target == panel_key &&
-              intent_generation == QString::number(exact_binding.generation),
+              intent_generation == QString::number(exact_binding.generation) &&
+              intent_input_sequence == QStringLiteral("1"),
           "neutral fixture trusted press did not publish its panel intent");
   require(bridge::PluginManagerTestAccess::routeTrustedPointer(
               *manager, plugin, running_epoch, bar_key, false),

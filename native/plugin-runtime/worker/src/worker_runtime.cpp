@@ -6,6 +6,7 @@
 #include "omarchy/plugin/wire/surface_name.hpp"
 
 #include <QCoreApplication>
+#include <QDebug>
 #include <QEventPoint>
 #include <QFile>
 #include <QImage>
@@ -45,6 +46,20 @@
 
 namespace omarchy::plugin_runtime::worker {
 namespace {
+
+const char *diagnostic_input_kind(const surface::InputPayload &payload) {
+  if (const auto *button = std::get_if<surface::PointerButton>(&payload))
+    return button->state == surface::ButtonState::pressed ? "pointer-press"
+                                                          : "pointer-release";
+  const auto *touch = std::get_if<surface::TouchFrame>(&payload);
+  if (touch == nullptr || touch->phase == surface::TouchFramePhase::update)
+    return nullptr;
+  if (touch->phase == surface::TouchFramePhase::begin)
+    return "touch-begin";
+  if (touch->phase == surface::TouchFramePhase::end)
+    return "touch-end";
+  return "touch-cancel";
+}
 
 RuntimeResult failure(RuntimeFailure code, std::string detail) {
   return {.failure = code, .detail = std::move(detail)};
@@ -750,6 +765,13 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
       surface::InputValidation::accepted)
     return failure(RuntimeFailure::invalid_input,
                    "input failed the global sequence/transition mirror");
+  if (const auto *kind = diagnostic_input_kind(event.payload)) {
+    qInfo().noquote().nospace()
+        << "omarchy-plugin-security stage=worker-input decision=received"
+        << " surface-id=" << event.surface.id << " generation="
+        << event.surface.generation << " input-sequence=" << event.sequence
+        << " input-kind=" << kind;
+  }
   if (active)
     implementation_->activate(*instance);
   const auto device_pixel_ratio = instance->device_pixel_ratio;

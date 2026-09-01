@@ -17,6 +17,15 @@ PanelWindow {
   required property bool dynamicInputRegions
   readonly property bool opened: panelController.open
   property var assignedScreen: null
+  property string lastIntentSequence: "0"
+
+  onOpenedChanged: console.info(
+    "omarchy-plugin-security stage=qml-overlay-state decision="
+      + (opened ? "opened" : "closed")
+      + " surface=" + surfaceKey
+      + " generation=" + generation
+      + " input-sequence=" + lastIntentSequence
+      + " screen=" + (assignedScreen ? String(assignedScreen.name || "") : "none"))
 
   function attachIfReady() {
     if (!remote.connected && remote.Window.window !== null && remote.width > 0 && remote.height > 0)
@@ -38,6 +47,24 @@ PanelWindow {
     }
   }
 
+  function handleIntent(action, sourceSurface, targetSurface, intentGeneration, inputSequence) {
+    if (targetSurface !== surfaceKey || intentGeneration !== generation) return
+
+    lastIntentSequence = inputSequence
+    console.info("omarchy-plugin-security stage=qml-overlay-signal decision=matched"
+      + " action=" + action + " source=" + sourceSurface
+      + " target=" + targetSurface + " generation=" + intentGeneration
+      + " input-sequence=" + inputSequence)
+
+    if (action === "open") {
+      showOnChosenScreen()
+    } else if (action === "toggle") {
+      toggleOnChosenScreen()
+    } else {
+      panelController.hide()
+    }
+  }
+
   screen: assignedScreen
   visible: screen !== null && opened
   anchors { top: true; right: true; bottom: true; left: true }
@@ -55,14 +82,14 @@ PanelWindow {
 
   Connections {
     target: window.surfaceService
-    function onOpenRequested(sourceSurface, targetSurface, generation) {
-      if (targetSurface === window.surfaceKey && generation === window.generation) window.showOnChosenScreen()
+    function onOpenRequested(sourceSurface, targetSurface, generation, inputSequence) {
+      window.handleIntent("open", sourceSurface, targetSurface, generation, inputSequence)
     }
-    function onToggleRequested(sourceSurface, targetSurface, generation) {
-      if (targetSurface === window.surfaceKey && generation === window.generation) window.toggleOnChosenScreen()
+    function onToggleRequested(sourceSurface, targetSurface, generation, inputSequence) {
+      window.handleIntent("toggle", sourceSurface, targetSurface, generation, inputSequence)
     }
-    function onDismissRequested(sourceSurface, targetSurface, generation) {
-      if (targetSurface === window.surfaceKey && generation === window.generation) panelController.hide()
+    function onDismissRequested(sourceSurface, targetSurface, generation, inputSequence) {
+      window.handleIntent("dismiss", sourceSurface, targetSurface, generation, inputSequence)
     }
   }
 

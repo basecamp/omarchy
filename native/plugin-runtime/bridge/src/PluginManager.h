@@ -80,11 +80,11 @@ signals:
   void availableChanged();
   void surfacesChanged();
   void openRequested(QString sourceSurface, QString targetSurface,
-                     QString generation);
+                     QString generation, QString inputSequence);
   void toggleRequested(QString sourceSurface, QString targetSurface,
-                       QString generation);
+                       QString generation, QString inputSequence);
   void dismissRequested(QString sourceSurface, QString targetSurface,
-                        QString generation);
+                        QString generation, QString inputSequence);
 
 private:
   class ProcessClaim final {
