@@ -56,6 +56,7 @@ ShellRoot {
   property var shellConfig: builtinShellConfig
   property bool pluginReloading: false
   property bool pluginReloadPending: false
+  property bool pluginRestartPending: false
 
   Timer {
     id: localPluginReloadTimer
@@ -754,8 +755,33 @@ ShellRoot {
       shell.pluginReloadPending = true
       return
     }
-    if (typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
+    // The QML engine's compiled-component cache is keyed by URL and is not
+    // invalidated by a file's mtime. `QQmlEngine::clearComponentCache()` is a
+    // C++-only method and is NOT exposed on the QML `Qt` object, so this call
+    // stays a no-op from QML. Without clearing it, the `Qt.createComponent()`
+    // in loadPluginWidget() returns the STALE compiled component for the
+    // plugin's unchanged URL, so edits to a plugin's .qml never take effect
+    // until a full shell restart. When the cache cannot be cleared, a full
+    // shell restart is the only reliable way to get a fresh engine to
+    // recompile from source.
+    if (typeof Qt.clearComponentCache === "function") {
+      Qt.clearComponentCache()
+    } else {
+      shell.restartShellForPluginReload()
+      return
+    }
     shell.pluginRegistry.rescan()
+  }
+
+  // Delegate to the omarchy supervisor so lock-client, session-environment,
+  // and no-duplicate launch races are handled by the same path the CLI uses.
+  // Coalesce: saves between the reload trigger and the process exiting must
+  // not pile up extra restarts.
+  function restartShellForPluginReload() {
+    if (shell.pluginRestartPending) return
+    shell.pluginRestartPending = true
+    console.warn("Plugin reload: cannot clear QML component cache from QML; restarting the shell to apply changes.")
+    Util.execDetached("'" + shell.omarchyPath + "/bin/omarchy-restart-shell'")
   }
 
   Connections {
