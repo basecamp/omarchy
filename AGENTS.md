@@ -28,7 +28,7 @@ Three documentation trees, split by genre and audience:
 - Prefer `(( ))` over numeric operators inside `[[ ]]` (e.g., `(( count < 50 ))`, not `[[ $count -lt 50 ]]`)
 - Prefer a full `if`/`else` conditional for simple two-path control flow; don't rely on `exec` or `exit` in one branch to make following statements unreachable
 - For strings/paths with spaces, quote them instead of escaping spaces with `\ ` (e.g., `"$APP_DIR/Disk Usage.desktop"`, not `$APP_DIR/Disk\ Usage.desktop`)
-- Shebangs must use `#!/bin/bash` consistently (never `#!/usr/bin/env bash`)
+- Shebangs must use `#!/bin/bash` consistently (never `#!/usr/bin/env bash`). A security-sensitive entrypoint may use the exact `#!/bin/bash -p` form only when it must suppress `BASH_ENV` and exported-function startup injection before its first command; that exception must be explained at the boundary and covered by a regression that rejects an ordinary Bash launch with a decoy `-p` argument.
 - Scripts under `install/` and `migrations/` may be sourced and intentionally omit shebangs
 
 # Command Naming
