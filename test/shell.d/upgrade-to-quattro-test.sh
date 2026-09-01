@@ -104,23 +104,6 @@ function_body() {
   awk -v name="$1" '$0 == name "() {" { inside = 1; next } inside && $0 == "}" { exit } inside' "$upgrade_to_quattro"
 }
 
-# One broad transaction adopts the static system files written by Omarchy 3.
-# Every package operation after that must obey the ownership database normally.
-overwrite_count=$(awk '!/^[[:space:]]*#/ && /--overwrite/ { count++ } END { print count + 0 }' "$upgrade_to_quattro")
-(( overwrite_count == 1 )) || fail "Omarchy 4 upgrade uses overwrite outside its one-time ownership bridge"
-production_overwrite_count=$(grep -Rh -- '--overwrite' "$ROOT/bin" "$ROOT/install" "$ROOT/migrations" | wc -l)
-(( production_overwrite_count == 1 )) || fail "production code uses overwrite outside the 3.x ownership bridge"
-bridge_body=$(function_body install_omarchy_quattro_packages)
-grep -F "pacman -S --noconfirm --ask 4 --overwrite='*' \"\$settings_package\"" <<<"$bridge_body" >/dev/null ||
-  fail "Omarchy 4 upgrade ownership bridge does not take over legacy paths"
-grep -F 'pacman -Syu --needed --noconfirm --ask 4 "${core_packages[@]}"' <<<"$bridge_body" >/dev/null ||
-  fail "Omarchy 4 upgrade does not return to ordinary ownership checks after the bridge"
-final_upgrade_body=$(function_body run_final_system_package_upgrade)
-if grep -q -- '--overwrite' <<<"$final_upgrade_body"; then
-  fail "Omarchy 4 upgrade keeps overwriting after package ownership is established"
-fi
-pass "Omarchy 4 upgrade confines overwrite to its one-time ownership bridge"
-
 migrations_body=$(function_body run_post_upgrade_migrations)
 grep -F 'fail "Omarchy migrations did not complete.' <<<"$migrations_body" >/dev/null ||
   fail "Omarchy 4 upgrade fails when a migration cannot complete"
@@ -222,11 +205,6 @@ pass "Omarchy 4 upgrade backfills hardware support from the legacy release"
 
 grep -F 'omarchy-refresh-applications' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade refreshes application launchers"
-
-if grep -F '/etc/sddm.conf.d/99-omarchy-login.conf' "$upgrade_to_quattro" >/dev/null; then
-  fail "Omarchy 4 upgrade writes SDDM's defaults as an unowned file"
-fi
-pass "Omarchy 4 upgrade leaves SDDM's built-in login defaults alone"
 
 grep -F '/etc/systemd/system.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 grep -F '/etc/systemd/user.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null

@@ -28,6 +28,7 @@ fi
 test_tmp=$(mktemp -d)
 mount -t tmpfs -o mode=0755 tmpfs "$test_tmp"
 cleanup() {
+  umount /usr/share/omarchy/default/omarchy 2>/dev/null || true
   umount /usr/share/omarchy/bin 2>/dev/null || true
   umount /usr/bin/lspci 2>/dev/null || true
   umount /usr/bin/id 2>/dev/null || true
@@ -46,10 +47,12 @@ chmod 0755 "$test_tmp"
 
 stub_bin="$test_tmp/bin"
 package_bin="$test_tmp/package-bin"
+package_defaults="$test_tmp/package-defaults"
 user_home="$test_tmp/user-home"
 user_state="$test_tmp/user-state"
 root_state="$test_tmp/root-state"
-mkdir -p "$stub_bin" "$package_bin" "$user_home/.local/bin" "$user_state" "$root_state"
+mkdir -p "$stub_bin" "$package_bin" "$package_defaults/sudo-no-update" \
+  "$user_home/.local/bin" "$user_state" "$root_state"
 chmod 0755 "$stub_bin" "$package_bin"
 chown -R 1000:1000 "$user_home" "$user_state"
 chmod 0700 "$user_home" "$user_state" "$root_state"
@@ -140,6 +143,18 @@ int main(int argc, char **argv) {
       return 1;
     }
     record("USER_SUDO_REUSED");
+    if (setgid(0) < 0 || setuid(0) < 0) return 125;
+    execv(argv[command_index], &argv[command_index]);
+    return 125;
+  }
+
+  if (!noninteractive && !no_update) {
+    if (validate() != 0) return 125;
+    record("ROOT_AUTHENTICATED");
+  }
+
+  if (!noninteractive && !no_update && argc > command_index && strcmp(argv[command_index], "/usr/bin/install") == 0) {
+    record("USER_SUDO_AUTHENTICATED");
     if (setgid(0) < 0 || setuid(0) < 0) return 125;
     execv(argv[command_index], &argv[command_index]);
     return 125;
@@ -314,7 +329,8 @@ case "$command_name" in
   omarchy-update-aur-pkgs)
     [[ ${OMARCHY_SUDO_NO_UPDATE:-} == 1 ]] || exit 99
     : >"$TEST_AUR_RAN"
-    if /usr/bin/sudo -n /usr/bin/install -o 0 -g 0 -m 0600 "$TEST_PAYLOAD" "$TEST_PROTECTED_TARGET"; then
+    sudo /usr/bin/install -o 0 -g 0 -m 0600 "$TEST_PAYLOAD" "$TEST_PROTECTED_TARGET" || true
+    if [[ -e $TEST_PROTECTED_TARGET ]]; then
       : >"$TEST_USER_REUSED_SUDO"
     fi
     ;;
@@ -345,6 +361,12 @@ esac
 exit 0
 STUB
 chmod 0755 "$package_bin/omarchy-audit-command"
+
+cat >"$package_defaults/sudo-no-update/sudo" <<'STUB'
+#!/bin/bash
+exec /usr/bin/sudo -N -- "$@"
+STUB
+chmod 0755 "$package_defaults/sudo-no-update/sudo"
 
 for command in \
   omarchy-apply-lock \
@@ -406,6 +428,7 @@ mount --bind "$stub_bin/getent" /usr/bin/getent
 mount --bind "$stub_bin/id" /usr/bin/id
 mount --bind "$stub_bin/lspci" /usr/bin/lspci
 mount --bind "$package_bin" /usr/share/omarchy/bin
+mount --bind "$package_defaults" /usr/share/omarchy/default/omarchy
 
 export TEST_SUDO_TOKEN="$token"
 export TEST_SUDO_TRACE="$trace"
@@ -533,6 +556,42 @@ if [[ -f $TEST_LD_PRELOAD_PID_FILE ]]; then
   /usr/bin/kill -KILL -- "$ld_preload_child" 2>/dev/null || true
 fi
 rm -f "$TEST_LD_PRELOAD_RAN" "$TEST_LD_PRELOAD_REUSED_SUDO" "$TEST_LD_PRELOAD_PID_FILE"
+
+# Mutation: replacing command-scoped sudo with ordinary sudo must recreate the
+# credential window observed on the vulnerable upgrader. The same hostile
+# pre-script constructor should then consume it before the injected failure.
+mutated_upgrader="$test_tmp/omarchy-upgrade-with-reusable-sudo"
+sed 's|/usr/bin/sudo -N -- "\$@"|/usr/bin/sudo -- "\$@"|' \
+  "$ROOT/bin/omarchy-upgrade-to-quattro" >"$mutated_upgrader"
+chmod 0755 "$mutated_upgrader"
+: >"$TEST_LD_PRELOAD_ARMED"
+: >"$trace"
+rm -f "$protected_target" "$TEST_LD_PRELOAD_RAN" "$TEST_LD_PRELOAD_REUSED_SUDO" "$TEST_LD_PRELOAD_PID_FILE"
+set +e
+setpriv --reuid 1000 --regid 1000 --clear-groups \
+  env HOME="$user_home" USER=quattro-audit LOGNAME=quattro-audit \
+  LD_PRELOAD="$test_tmp/hostile-preload.so" \
+  TEST_FAIL_ROOT_COMMAND=pacman \
+  PATH="$user_home/.local/bin:/usr/bin:/bin" \
+  /usr/bin/bash -p "$mutated_upgrader" \
+    --yes --reboot --channel stable --user quattro-audit \
+  >"$test_tmp/mutation-out" 2>"$test_tmp/mutation-err"
+mutation_status=$?
+set -e
+(( mutation_status != 0 )) || fail "the reusable-sudo mutation reached its injected root failure"
+for _ in {1..300}; do
+  [[ -e $protected_target ]] && break
+  /usr/bin/sleep 0.01
+done
+[[ -e $protected_target && -e $TEST_LD_PRELOAD_REUSED_SUDO ]] ||
+  fail "removing sudo --no-update did not recreate detached credential reuse"
+rm -f "$TEST_LD_PRELOAD_ARMED" "$token" "$protected_target"
+if [[ -f $TEST_LD_PRELOAD_PID_FILE ]]; then
+  mutation_child=$(cat "$TEST_LD_PRELOAD_PID_FILE")
+  /usr/bin/kill -KILL -- "$mutation_child" 2>/dev/null || true
+fi
+rm -f "$TEST_LD_PRELOAD_RAN" "$TEST_LD_PRELOAD_REUSED_SUDO" "$TEST_LD_PRELOAD_PID_FILE"
+pass "removing sudo --no-update recreates the Quattro credential leak"
 
 # A privileged-stage failure must invalidate
 # even a credential that predated this invocation, without entering user code.
