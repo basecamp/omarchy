@@ -1,0 +1,257 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the MiniMax Token Plan usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect MiniMax Token Plan limits into a display-ready JSON record."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "minimax"
+AGENT_NAME = "MiniMax"
+DEFAULT_BASE_URL = "https://api.minimax.io"
+AUTH_HELP = "Set MINIMAX_API_KEY, run `mmx auth login`, or sign in to MiniMax in opencode."
+
+
+class MiniMaxError(Exception):
+  pass
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    "hasPromptStats": False,
+    "scope": "account",
+    "tierLabel": "Token Plan",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+def read_json(path: Path) -> Any:
+  try:
+    return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+
+
+def mmx_config_dir() -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(os.environ.get("MMX_CONFIG_DIR", "~/.mmx"))))
+
+
+def mmx_config() -> dict[str, Any]:
+  config_dir = mmx_config_dir()
+  parsed = read_json(config_dir / "config.json")
+  if isinstance(parsed, dict):
+    return parsed
+
+  # Older mmx releases documented YAML configuration. Only read the one scalar
+  # we need, avoiding a runtime YAML dependency in the base installation.
+  try:
+    for line in (config_dir / "config.yaml").read_text(encoding="utf-8").splitlines():
+      key, separator, value = line.partition(":")
+      if separator and key.strip() == "api_key":
+        return {"api_key": value.strip().strip("'\"")}
+  except Exception:
+    pass
+  return {}
+
+
+def config_key(config: dict[str, Any]) -> str:
+  value = config.get("api_key") or config.get("apiKey")
+  if isinstance(value, str) and value.strip():
+    return value.strip()
+
+  oauth = config.get("oauth")
+  if isinstance(oauth, dict):
+    token = oauth.get("access_token")
+    if isinstance(token, str) and token.strip():
+      return token.strip()
+  return ""
+
+
+def config_base_url(config: dict[str, Any]) -> str:
+  oauth = config.get("oauth")
+  if isinstance(oauth, dict):
+    resource_url = oauth.get("resource_url")
+    if isinstance(resource_url, str) and resource_url.strip():
+      return resource_url.strip()
+    if oauth.get("region") == "cn":
+      return "https://api.minimaxi.com"
+  value = config.get("base_url")
+  if isinstance(value, str) and value.strip():
+    return value.strip()
+  if config.get("region") == "cn" or os.environ.get("MINIMAX_REGION") == "cn":
+    return "https://api.minimaxi.com"
+  return DEFAULT_BASE_URL
+
+
+def opencode_key() -> str:
+  data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local/share"))
+  parsed = read_json(data_home / "opencode" / "auth.json")
+  if not isinstance(parsed, dict):
+    return ""
+  for provider in ("minimax", "minimax-coding", "minimax-token-plan"):
+    entry = parsed.get(provider)
+    if isinstance(entry, dict):
+      value = entry.get("key") or entry.get("apiKey") or entry.get("token")
+      if isinstance(value, str) and value.strip():
+        return value.strip()
+  return ""
+
+
+def credentials() -> tuple[str, str]:
+  config = mmx_config()
+  api_key = os.environ.get("MINIMAX_API_KEY", "").strip() or config_key(config) or opencode_key()
+  base_url = os.environ.get("MINIMAX_BASE_URL", "").strip() or config_base_url(config)
+  return api_key, base_url
+
+
+def number(value: Any) -> float | None:
+  try:
+    result = float(value)
+    return result if result == result else None
+  except Exception:
+    return None
+
+
+def reset_at(entry: dict[str, Any], end_key: str, remains_key: str) -> str:
+  end_ms = number(entry.get(end_key))
+  if end_ms and end_ms > 0:
+    return datetime.fromtimestamp(end_ms / 1000, timezone.utc).isoformat()
+  remains_ms = number(entry.get(remains_key))
+  if remains_ms and remains_ms > 0:
+    return (datetime.now(timezone.utc) + timedelta(milliseconds=remains_ms)).isoformat()
+  return ""
+
+
+def used_fraction(remaining: Any) -> float | None:
+  percent = number(remaining)
+  if percent is None:
+    return None
+  return max(0.0, min(1.0, 1.0 - percent / 100.0))
+
+
+def quota_limits(payload: dict[str, Any]) -> list[dict[str, Any]]:
+  rows = payload.get("model_remains")
+  if not isinstance(rows, list):
+    raise MiniMaxError("MiniMax returned no Token Plan quotas")
+
+  # "general" is the language/agent quota. Other rows describe modalities
+  # whose daily limits do not map to the panel's coding-subscription meters.
+  general = next((row for row in rows if isinstance(row, dict) and row.get("model_name") == "general"), None)
+  if general is None:
+    general = next((row for row in rows if isinstance(row, dict)), None)
+  if not isinstance(general, dict):
+    raise MiniMaxError("MiniMax returned no usable Token Plan quota")
+
+  limits = []
+  interval = used_fraction(general.get("current_interval_remaining_percent"))
+  weekly = used_fraction(general.get("current_weekly_remaining_percent"))
+  if interval is not None:
+    limits.append({
+      "label": "Session (5-hour)",
+      "percent": interval,
+      "resetsAt": reset_at(general, "end_time", "remains_time"),
+    })
+  if weekly is not None:
+    limits.append({
+      "label": "Weekly (7-day)",
+      "percent": weekly,
+      "resetsAt": reset_at(general, "weekly_end_time", "weekly_remains_time"),
+    })
+  if not limits:
+    raise MiniMaxError("MiniMax returned no percentage-based Token Plan quotas")
+  return limits
+
+
+def fetch_quota(api_key: str, base_url: str) -> dict[str, Any]:
+  endpoint = base_url.rstrip("/") + "/v1/token_plan/remains"
+  request = urllib.request.Request(
+    endpoint,
+    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=12) as response:
+      payload = json.load(response)
+  except urllib.error.HTTPError as error:
+    if error.code in (401, 403):
+      raise MiniMaxError("MiniMax rejected the saved credentials; run `mmx auth login` or `mmx auth refresh`") from error
+    raise MiniMaxError(f"MiniMax API returned HTTP {error.code}") from error
+  except urllib.error.URLError as error:
+    raise MiniMaxError("Could not reach the MiniMax API") from error
+  except Exception as error:
+    raise MiniMaxError("MiniMax returned an invalid quota response") from error
+
+  if not isinstance(payload, dict):
+    raise MiniMaxError("MiniMax returned an invalid quota response")
+  base_response = payload.get("base_resp")
+  if isinstance(base_response, dict) and number(base_response.get("status_code")) not in (None, 0):
+    message = str(base_response.get("status_msg") or "MiniMax rejected the quota request")
+    raise MiniMaxError(message)
+  return payload
+
+
+def collect(api_key: str, base_url: str) -> dict[str, Any]:
+  if not api_key:
+    return base_record(usageStatusText="MiniMax unavailable", authHelpText=AUTH_HELP)
+  limits = quota_limits(fetch_quota(api_key, base_url))
+  return base_record(ready=True, limits=limits)
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the MiniMax Token Plan usage record as JSON")
+  # The API is point-in-time, so both common collector flags intentionally
+  # take the same path. Accepting them keeps usage-update provider-agnostic.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.add_argument("--base-url")
+  args = parser.parse_args()
+
+  try:
+    api_key, saved_base_url = credentials()
+    record = collect(api_key, args.base_url or saved_base_url)
+  except MiniMaxError as error:
+    record = base_record(usageStatusText="MiniMax limits unavailable", authHelpText=str(error))
+  except Exception as error:
+    record = base_record(usageStatusText="MiniMax limits unavailable", authHelpText="MiniMax usage scan failed")
+    print(f"omarchy-agent-usage-minimax: {type(error).__name__}", file=sys.stderr)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

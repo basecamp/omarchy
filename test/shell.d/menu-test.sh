@@ -205,6 +205,17 @@ assert(
   defaultById['setup.direct-boot'].action.includes('omarchy-setup-direct-boot'),
   'menu places Direct Boot directly under Setup'
 )
+assertDeepEqual(
+  defaultItems
+    .filter(item => item.parent === 'setup.ai.minimax')
+    .map(item => [item.label, item.action]),
+  [
+    ['Login', "omarchy-launch-floating-terminal-with-presentation 'mmx auth login'"],
+    ['Configure Agents', "omarchy-launch-floating-terminal-with-presentation 'mmx agent setup'"],
+    ['Token Plan Quota', "omarchy-launch-floating-terminal-with-presentation 'mmx quota'"],
+  ],
+  'menu exposes MiniMax login, agent setup, and quota under Setup > AI'
+)
 assert(
   defaultById['setup.reset'].action.includes('omarchy-system-factory-reset'),
   'menu exposes Reset Computer under Setup'

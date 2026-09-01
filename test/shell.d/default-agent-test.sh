@@ -98,6 +98,7 @@ omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
 agy_package="antigravity-cli"
 ori_package="github:OpenRouterLabs/ori-releases"
+mmx_package="npm:mmx-cli"
 
 assert_lazy_stub() {
   local package=$1
@@ -124,7 +125,12 @@ grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
 grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "user setup creates the Ori lazy stub"
+grep -Fx "$mmx_package mmx" "$stub_log" >/dev/null || fail "user setup creates the MiniMax lazy stub"
 pass "user setup creates the custom agent lazy stubs"
+
+: >"$stub_log"
+source "$ROOT/migrations/1788256455.sh" >/dev/null
+grep -Fx "$mmx_package mmx" "$stub_log" >/dev/null || fail "MiniMax migration creates a working lazy stub"
 
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
@@ -242,7 +248,7 @@ pass "agent migrations install working wrappers without overriding the preinstal
 
 touch "$test_home/.local/bin/agy" "$test_home/.local/bin/ori"
 omarchy-remove-preinstalls >/dev/null
-for command in agy omp ori grok crush; do
+for command in agy omp ori grok crush mmx; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
