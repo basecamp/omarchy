@@ -5,13 +5,23 @@
 
 set -e
 
+# Under sudo or pkexec $HOME is root's, so resolve the invoking user's home
+# before touching their data (same derivation as omarchy-apply-lock).
+target_user=${OMARCHY_INSTALL_USER:-${SUDO_USER:-}}
+if [[ -z $target_user && -n ${PKEXEC_UID:-} ]]; then
+  target_user=$(getent passwd "$PKEXEC_UID" | cut -d: -f1)
+fi
+target_user=${target_user:-$USER}
+target_home=$(getent passwd "$target_user" | cut -d: -f6)
+target_home=${target_home:-$HOME}
+
 omarchy-pkg-drop steam
 
 rm -rf \
-  "$HOME/.steam" \
-  "$HOME/.local/share/Steam" \
-  "$HOME/.config/steam" \
-  "$HOME/.cache/steam"
+  "$target_home/.steam" \
+  "$target_home/.local/share/Steam" \
+  "$target_home/.config/steam" \
+  "$target_home/.cache/steam"
 
 echo ""
 echo "Steam and its data have been removed."
