@@ -75,8 +75,14 @@ run_installer 0 || fail "installer failed with no desktop installed"
 [[ -x $test_home/.local/bin/hermes ]] || fail "installer writes a hermes stub when the desktop is absent"
 grep -qxF "$stub_marker" "$test_home/.local/bin/hermes" || fail "the stub records which command wrote it"
 tr '\0' ' ' <"$mise_log" | grep -q "use -g --quiet uv" &&
-  fail "writing the stub does not install uv"
+  fail "writing the stub does not add uv to the user's global config"
 pass "writing the Hermes stub provisions nothing"
+
+grep -qF 'mise install uv || exit 1' "$test_home/.local/bin/hermes" ||
+  fail "the Hermes stub installs the system-configured uv"
+grep -qF "mise x uv -- mise use -g --quiet --force 'pipx:hermes-agent[extras=all]'" "$test_home/.local/bin/hermes" ||
+  fail "the Hermes install receives uv without globally configuring it"
+pass "Hermes uses the system lazy uv without changing global config"
 
 # The desktop app owns Hermes, so our own stub must go rather than sit there
 # answering `hermes` until the app's bootstrap replaces it.

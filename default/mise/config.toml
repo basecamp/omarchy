@@ -11,6 +11,7 @@ claude = { version = "latest", lazy = true, minimum_release_age = "0s" }
 crush = { version = "latest", lazy = true, minimum_release_age = "0s" }
 antigravity-cli = { version = "latest", lazy = true, minimum_release_age = "0s" }
 gh = { version = "latest", lazy = true, minimum_release_age = "0s" }
+uv = { version = "latest", lazy = true, minimum_release_age = "0s" }
 copilot = { version = "latest", lazy = true, minimum_release_age = "0s" }
 opencode = { version = "latest", lazy = true, minimum_release_age = "0s" }
 playwright = { version = "latest", lazy = true, minimum_release_age = "0s" }

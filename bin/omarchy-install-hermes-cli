@@ -30,8 +30,8 @@ mode=${1:-}
 tool='pipx:hermes-agent[extras=all]'
 python='3.13'
 
-# TODO: Install uv and Hermes without `mise use -g`. They are Omarchy runtime
-# dependencies and should not add entries to the user's global mise config.
+# TODO: Install Hermes without `mise use -g`. It is an Omarchy runtime
+# dependency and should not add an entry to the user's global mise config.
 
 # The line that identifies the stub as this installer's; matched whole, so a
 # wrapper that merely mentions the command is not mistaken for ours.
@@ -251,14 +251,11 @@ export MISE_MINIMUM_RELEASE_AGE=0
 if ! [[ -d "\$(mise where '$tool' 2>/dev/null)/hermes-agent/lib/python$python" ]]; then
   echo "Installing Hermes on Python $python (this takes a minute)..." >&2
 
-  # mise's pipx backend shells out to uv, which a stock Omarchy does not have.
-  # It is fetched here rather than when this stub was written, so setting up a
-  # machine that never runs Hermes costs nothing.
-  if omarchy-cmd-missing uv && ! mise where uv >/dev/null 2>&1; then
-    mise use -g --quiet uv@latest || exit 1
-  fi
-
-  mise use -g --quiet --force '$tool' || exit 1
+  # mise's pipx backend shells out to uv. Omarchy declares uv as a system lazy
+  # tool, so install it without adding it to the user's global config, then put
+  # it on PATH only for the Hermes install.
+  mise install uv || exit 1
+  mise x uv -- mise use -g --quiet --force '$tool' || exit 1
 fi
 
 # The pin belongs to building Hermes, not to everything Hermes then runs.

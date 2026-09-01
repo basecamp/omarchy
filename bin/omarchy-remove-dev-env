@@ -56,7 +56,6 @@ python)
   echo -e "Removing Python...\n"
   mise uninstall python --all
   mise rm -g python
-  rm -rf ~/.local/bin/uv ~/.local/bin/uvx ~/.cargo/bin/uv 2>/dev/null || true
   ;;
 elixir|phoenix)
   echo -e "Removing Elixir/Erlang...\n"
