@@ -1,0 +1,2 @@
+-- Cursor theme. Managed by omarchy-cursor-set; this file is the shipped
+-- default before a cursor is chosen.

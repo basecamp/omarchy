@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# omarchy:summary=Show the active cursor theme name
+# omarchy:examples=omarchy cursor current
+
+# Show the active cursor theme name.
+
+state_file="$HOME/.config/omarchy/cursor-theme"
+
+if [[ -s $state_file ]]; then
+  tr -d '\n' <"$state_file"
+  echo
+  exit 0
+fi
+
+if command -v gsettings >/dev/null 2>&1; then
+  theme=$(gsettings get org.gnome.desktop.interface cursor-theme 2>/dev/null | tr -d "'")
+  if [[ -n $theme && $theme != default ]]; then
+    printf '%s\n' "$theme"
+    exit 0
+  fi
+fi
+
+echo Adwaita

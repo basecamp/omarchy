@@ -1,0 +1,112 @@
+#!/bin/bash
+
+# omarchy:summary=Download a missing cursor theme and apply it system-wide
+# omarchy:args=<theme-name>
+# omarchy:examples=omarchy cursor set Bibata-Modern-Classic
+
+# Download missing cursor themes and apply one system-wide.
+
+set -euo pipefail
+
+BIBATA_BASE_URL="https://github.com/ful1e5/Bibata_Cursor/releases/download/v2.0.7"
+ICONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons"
+STATE_FILE="$HOME/.config/omarchy/cursor-theme"
+HYPR_CURSOR_FILE="$HOME/.config/hypr/cursor.lua"
+
+usage() {
+  echo "Usage: omarchy-cursor-set <theme-name>"
+}
+
+theme_dir() {
+  local name="$1"
+  local dir
+  for dir in "$ICONS_DIR/$name" "$HOME/.icons/$name" "/usr/share/icons/$name"; do
+    if [[ -d $dir/cursors ]]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+  done
+  return 1
+}
+
+is_bibata() {
+  [[ $1 == Bibata-* ]]
+}
+
+ensure_bibata() {
+  local name="$1"
+  if theme_dir "$name" >/dev/null; then
+    return 0
+  fi
+
+  mkdir -p "$ICONS_DIR"
+  local tmp
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' RETURN
+
+  echo "Downloading $name..."
+  curl -fsSL --retry 3 --retry-delay 1 -o "$tmp/bibata.tar.xz" "$BIBATA_BASE_URL/$name.tar.xz"
+  tar -xJf "$tmp/bibata.tar.xz" -C "$ICONS_DIR"
+
+  if ! theme_dir "$name" >/dev/null; then
+    echo "Downloaded $name, but the cursors directory was not found." >&2
+    return 1
+  fi
+}
+
+lua_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+theme="${1:-}"
+
+case "$theme" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "")
+    usage >&2
+    exit 1
+    ;;
+esac
+
+if is_bibata "$theme"; then
+  ensure_bibata "$theme"
+fi
+
+if ! theme_dir "$theme" >/dev/null; then
+  echo "Cursor theme '$theme' not found." >&2
+  exit 1
+fi
+
+size="${XCURSOR_SIZE:-24}"
+lua_theme=$(lua_escape "$theme")
+
+mkdir -p "$(dirname "$STATE_FILE")" "$ICONS_DIR/default" "$(dirname "$HYPR_CURSOR_FILE")"
+printf '%s\n' "$theme" >"$STATE_FILE"
+
+cat >"$ICONS_DIR/default/index.theme" <<EOF
+[Icon Theme]
+Name=Default
+Comment=Default cursor theme
+Inherits=$theme
+EOF
+
+cat >"$HYPR_CURSOR_FILE" <<EOF
+-- Managed by omarchy-cursor-set. Do not edit by hand.
+hl.env("XCURSOR_THEME", "$lua_theme")
+hl.env("HYPRCURSOR_THEME", "$lua_theme")
+EOF
+
+if command -v gsettings >/dev/null 2>&1 && [[ -n ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
+  gsettings set org.gnome.desktop.interface cursor-theme "$theme" || true
+  gsettings set org.gnome.desktop.interface cursor-size "$size" || true
+fi
+
+if command -v hyprctl >/dev/null 2>&1; then
+  hyprctl reload >/dev/null
+  hyprctl setcursor "$theme" "$size" >/dev/null
+fi
+
+omarchy-hook cursor-set "$theme" 2>/dev/null || true
