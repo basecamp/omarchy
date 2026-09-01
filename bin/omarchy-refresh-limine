@@ -11,7 +11,10 @@ if sudo test -f /boot/EFI/Linux/omarchy_linux.efi && sudo test -f "$legacy_uki";
 fi
 echo "Resetting limine config"
 
-sudo mv /boot/limine.conf /boot/limine.conf.bak
+# Timestamped, the way omarchy-refresh-config names its backups. A fixed .bak
+# name means a second run overwrites the backup from the first, so the config
+# the machine booted with before any refresh cannot be recovered.
+sudo mv /boot/limine.conf "/boot/limine.conf.bak.$(date +%s)"
 
 sudo cp "$OMARCHY_PATH/default/limine/limine.conf" /boot/limine.conf
 
