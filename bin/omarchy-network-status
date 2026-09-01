@@ -19,10 +19,25 @@ case "${1:-}" in
     ;;
 esac
 
-print_status() {
-  local device nm state ssid signal freq
+wifi_device_from_nm() {
+  nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null |
+    awk -F: '$2 == "wifi" && $3 ~ /^connected/ { print $1; exit }'
+}
 
-  device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+print_status() {
+  local device nm state ssid signal freq route_device wifi_device
+
+  route_device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+  device=$route_device
+
+  # A TUN/VPN default route is not the link the bar should advertise. Prefer
+  # an active NetworkManager Wi-Fi device when the route device is not wireless.
+  if [[ -n $device && ! -d /sys/class/net/$device/wireless ]]; then
+    wifi_device=$(wifi_device_from_nm)
+    if [[ -n $wifi_device ]]; then
+      device=$wifi_device
+    fi
+  fi
 
   if [[ -z $device ]]; then
     printf 'disconnected\t\t\t\n'
