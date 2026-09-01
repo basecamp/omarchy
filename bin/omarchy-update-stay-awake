@@ -91,7 +91,10 @@ start() {
 
   if omarchy-cmd-present systemd-inhibit; then
     if (( EUID != 0 )); then
-      if [[ -t 0 ]]; then
+      if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 ]]; then
+        sudo -n -v 2>/dev/null || true
+        inhibit_runner=(sudo -n)
+      elif [[ -t 0 ]]; then
         sudo -v
         inhibit_runner=(sudo)
       else

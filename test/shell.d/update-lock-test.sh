@@ -51,6 +51,16 @@ for command in \
 done
 write_stub omarchy-update-available 'exit 1'
 write_stub pkexec 'exec "$@"'
+write_stub sudo '
+if [[ $1 == "-n" ]]; then
+  shift
+  if [[ ${1:-} == "-v" ]]; then
+    exit 0
+  else
+    exec "$@"
+  fi
+fi
+exit 1'
 
 # omarchy-update should hold the lock before snapshotting, so a second update
 # cannot even enter its pre-update snapshot.
@@ -135,9 +145,10 @@ exec "$@"'
   terminal_driver="$test_tmp/terminal-stay-awake"
   cat >"$terminal_driver" <<'SH'
 #!/bin/bash
+[[ -t 0 ]] || exit 97
 omarchy-update-stay-awake start
 for _ in {1..200}; do
-  grep -q '^systemd-inhibit ' "$SUDO_LOG" && break
+  grep -q 'systemd-inhibit ' "$SUDO_LOG" && break
   sleep 0.05
 done
 SH
@@ -151,6 +162,38 @@ SH
   [[ ! -e $pkexec_marker ]] || fail "terminal sleep inhibition does not use pkexec"
   run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
   pass "terminal updates use sudo instead of Polkit for sleep inhibition"
+
+  unattended_sudo_log="$test_tmp/unattended-sudo.log"
+  sudo_prompt_marker="$test_tmp/sudo-prompted"
+  rm -f "$pkexec_marker"
+  write_stub sudo '
+printf "%s\n" "$*" >>"$SUDO_LOG"
+if [[ $1 == "-n" && ${2:-} == "-v" ]]; then
+  exit 1
+elif [[ $1 == "-v" ]]; then
+  touch "$SUDO_PROMPT_MARKER"
+  sleep 10
+  exit 1
+elif [[ $1 == "-n" ]]; then
+  shift
+  exec "$@"
+fi
+exit 1'
+
+  set +e
+  SUDO_LOG="$unattended_sudo_log" SUDO_PROMPT_MARKER="$sudo_prompt_marker" PKEXEC_MARKER="$pkexec_marker" \
+    INHIBIT_PID_FILE="$terminal_inhibit_pid_file" OMARCHY_UPDATE_UNATTENDED=1 \
+    run_with_lock_env timeout 3 script -qefc "$terminal_driver" /dev/null >/dev/null
+  unattended_status=$?
+  set -e
+
+  (( unattended_status == 0 )) || fail "unattended terminal sleep inhibition does not wait for a sudo password"
+  grep -qx -- '-n -v' "$unattended_sudo_log" || fail "unattended sleep inhibition validates sudo non-interactively"
+  grep -q '^-n systemd-inhibit ' "$unattended_sudo_log" || fail "unattended sleep inhibition invokes sudo non-interactively"
+  [[ ! -e $sudo_prompt_marker ]] || fail "unattended sleep inhibition never reaches prompt-capable sudo"
+  [[ ! -e $pkexec_marker ]] || fail "unattended terminal sleep inhibition does not use pkexec"
+  run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
+  pass "unattended terminal updates do not prompt for sudo"
 fi
 
 # Update-owned Stay Awake state must be cleared before the restart helper can
