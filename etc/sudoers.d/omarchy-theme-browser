@@ -1,0 +1,8 @@
+# Theme switching is a menu action with no terminal to carry a password prompt,
+# and it repaints the browser accent on every switch, so this one write must not
+# stop for a password. The argument is spelled out as six hex digits rather than
+# a wildcard: the grant covers a color and nothing else, and sudoers matches a
+# command's arguments exactly, so it cannot be stretched into extra ones. The
+# helper revalidates the same shape, since the terminal path does not come
+# through this rule.
+%wheel ALL=(root) NOPASSWD: /usr/bin/omarchy-theme-set-browser-policy [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]
