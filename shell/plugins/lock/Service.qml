@@ -28,6 +28,7 @@ Item {
   property double fingerprintLastNudgeMs: 0
   property double fingerprintLastSettleMs: 0
   property double fingerprintResumedAtMs: 0
+  property int fingerprintProbeStreak: 0
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -120,6 +121,35 @@ Item {
     if (!fingerprintCheckProc.running) fingerprintCheckProc.running = true
   }
 
+  // An unreachable fprintd -- restarting under the resume hook, or still
+  // activating -- answers the probe with an error, not with "no prints".
+  // Concluding "not configured" from that stopped the retry loop and the
+  // sleep watch for the rest of the lock (#9453); keep the current state and
+  // ask again instead. Only a definitive answer changes anything.
+  function applyFingerprintProbe(text) {
+    var status = FingerprintModel.classifyProbe(text)
+    if (status === "unknown") {
+      fingerprintProbeStreak += 1
+      if (lockRequested) {
+        fingerprintRecheckTimer.interval = FingerprintModel.retryDelayMs(fingerprintProbeStreak)
+        fingerprintRecheckTimer.restart()
+      }
+      return
+    }
+    fingerprintProbeStreak = 0
+    fingerprintConfigured = status === "yes"
+    if (lockRequested && fingerprintConfigured) {
+      // A pending retry already owns the next attempt.
+      if (!fingerprintRetryTimer.running) startFingerprint()
+    } else if (!fingerprintConfigured) {
+      // abort() delivers no completion signal, so close the attempt here
+      // too; settle returns before arming a retry while unconfigured.
+      if (fingerprintPam.active) fingerprintPam.abort()
+      settleFingerprintAttempt()
+      fingerprintRetryTimer.stop()
+    }
+  }
+
   function logEvent(event) {
     lastEvent = event
     lastEventAt = new Date().toISOString()
@@ -137,6 +167,8 @@ Item {
     fingerprintLastNudgeMs = 0
     fingerprintLastSettleMs = 0
     fingerprintResumedAtMs = 0
+    fingerprintProbeStreak = 0
+    fingerprintRecheckTimer.stop()
     fingerprintRetryTimer.stop()
     fingerprintReachTimer.stop()
     if (passwordPam.active) passwordPam.abort()
@@ -545,28 +577,23 @@ Item {
     }
   }
 
-  // Configured means a print is actually enrolled: fprintd-list prints one
-  // " - #N: finger" line per print, while a user without any gets "has no
-  // fingers enrolled" or a ListEnrolledFingers failure, both of which a looser
-  // match would take as yes and then chase with a reader the account cannot
-  // use.
+  // The probe hands fprintd-list's raw output (errors included) to
+  // classifyProbe, which answers yes, no, or unknown; only a definitive
+  // answer may change fingerprintConfigured. See applyFingerprintProbe.
   Process {
     id: fingerprintCheckProc
-    command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1 && fprintd-list \"$USER\" 2>/dev/null | grep -q ' - #'; then echo yes; else echo no; fi"]
+    command: ["bash", "-c", "if [[ -f /etc/pam.d/omarchy-lock-fingerprint ]] && command -v fprintd-list >/dev/null 2>&1; then fprintd-list \"$USER\" 2>&1; else echo no; fi"]
     stdout: StdioCollector { id: fingerprintCheckStdout; waitForEnd: true }
-    onExited: {
-      root.fingerprintConfigured = String(fingerprintCheckStdout.text || "").trim() === "yes"
-      if (root.lockRequested && root.fingerprintConfigured) {
-        // A pending retry already owns the next attempt.
-        if (!fingerprintRetryTimer.running) root.startFingerprint()
-      } else if (!root.fingerprintConfigured) {
-        // abort() delivers no completion signal, so close the attempt here
-        // too; settle returns before arming a retry while unconfigured.
-        if (fingerprintPam.active) fingerprintPam.abort()
-        root.settleFingerprintAttempt()
-        fingerprintRetryTimer.stop()
-      }
-    }
+    onExited: root.applyFingerprintProbe(fingerprintCheckStdout.text)
+  }
+
+  // Retries a probe that could not reach fprintd, paced like the attempt
+  // retries so a daemon that stays unreachable is asked about ever less often.
+  Timer {
+    id: fingerprintRecheckTimer
+    interval: FingerprintModel.ERROR_RETRY_BASE_MS
+    repeat: false
+    onTriggered: root.refreshFingerprintStatus()
   }
 
   Process {

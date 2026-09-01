@@ -76,6 +76,22 @@ function shouldNudge(nowMs, lastNudgeMs, lastSettleMs, currentIntervalMs) {
   return true
 }
 
+// What a status probe's output means. "yes": an enrolled print exists
+// (fprintd-list prints one " - #N: finger" row per print). "no": definitely
+// not configured -- the probe script's own "no" (PAM file or fprintd-list
+// missing) or fprintd's explicit no-prints answer. Anything else is
+// "unknown": fprintd unreachable or restarting, which is exactly what the
+// resume hook produces, so a probe that could not tell must not overwrite
+// what the lock already knows -- concluding "no" switched off the retry
+// loop, the sleep watch and the notice for the rest of the lock (#9453).
+function classifyProbe(text) {
+  var s = String(text || "").trim()
+  if (s.indexOf(" - #") !== -1) return "yes"
+  if (s === "no") return "no"
+  if (/has no fingers enrolled/i.test(s)) return "no"
+  return "unknown"
+}
+
 // The streak after an attempt: a reached attempt clears it, an unreached one
 // advances it -- unless the machine just woke, in which case the miss is
 // most likely the resume restart landing under the attempt and the streak
@@ -123,6 +139,7 @@ if (typeof module !== "undefined") {
     SLEEP_GAP_MS: SLEEP_GAP_MS,
     RESUME_GRACE_MS: RESUME_GRACE_MS,
     spannedSleep: spannedSleep,
+    classifyProbe: classifyProbe,
     inResumeGrace: inResumeGrace,
     retryDelayMs: retryDelayMs,
     nextStreak: nextStreak,

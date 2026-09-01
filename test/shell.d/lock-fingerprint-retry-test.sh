@@ -160,6 +160,14 @@ assert(attempts >= 3, 'the loop keeps retrying through the restart window, got '
 assert(attemptAt - resumedAt < 3300 + model.ERROR_RETRY_BASE_MS + model.MATCH_RETRY_MS,
   'the first attempt after the daemon is back comes within a tier, at ' + (attemptAt - resumedAt) + 'ms')
 
+// Probe classification (#9453): only a definitive answer may change state.
+assertEqual(model.classifyProbe('found 1 devices\nFingerprints for user g on X:\n - #0: right-index-finger'), 'yes', 'an enrolled print row reads yes')
+assertEqual(model.classifyProbe('no'), 'no', "the probe script's own no reads no")
+assertEqual(model.classifyProbe('found 1 devices\nUser bob has no fingers enrolled.'), 'no', "fprintd's explicit no-prints answer reads no")
+assertEqual(model.classifyProbe('Impossible to get devices: GDBus.Error:org.freedesktop.DBus.Error.NameHasNoOwner: Could not activate remote peer'), 'unknown', 'an activation failure reads unknown, not unconfigured')
+assertEqual(model.classifyProbe('ListEnrolledFingers failed: Timeout was reached'), 'unknown', 'a D-Bus timeout reads unknown')
+assertEqual(model.classifyProbe(''), 'unknown', 'empty output reads unknown')
+
 assert(model.REACH_TIMEOUT_MS < model.ERROR_RETRY_CAP_MS,
   'the reach bound is shorter than the backoff cap, so a stuck attempt is caught well before the cap')
 assert(model.REACH_TIMEOUT_MS < 25000,
