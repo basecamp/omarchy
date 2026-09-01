@@ -34,10 +34,14 @@ fi
 SH
 chmod +x "$stub_bin/hyprctl"
 
+# The shape monitors.lua ships in: a catch-all rule reading the shared scale
+# variable, and no rule naming any output.
 write_monitor_config() {
   cat >"$monitor_lua" <<'LUA'
-local omarchy_gdk_scale = 2
 local omarchy_monitor_scale = 2
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+local omarchy_gdk_scale = 2
+hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
 LUA
 }
 
@@ -322,3 +326,20 @@ grep -Fx 'hl.monitor({ output = "desc:LG Electronics LG HDR 4K", mode = "preferr
 grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling leaves the catch-all alone once a desc: rule matched"
 pass "monitor scaling writes onto a rule naming the output by desc:"
+
+# The shared variable is only the catch-all when a catch-all rule reads it. A
+# connector name that has gone stale across a renumber leaves no rule naming
+# the focused output, and writing the variable then resizes whichever display
+# does read it.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({ output = "HDMI-A-1", mode = "preferred", position = "0x0", scale = omarchy_monitor_scale })
+hl.monitor({ output = "DP-9", mode = "preferred", position = "auto", scale = 1 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -F 'scale = 1.6' "$eval_out" >/dev/null ||
+  fail "monitor scaling still applies the scale with no rule naming the output"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves a scale variable another output's rule reads alone"
+pass "monitor scaling leaves a scale variable another output's rule reads alone"

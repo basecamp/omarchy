@@ -95,10 +95,12 @@ persist_gdk_scale() {
 # Rewrite `scale = ...` inside the hl.monitor rule naming this output, in both
 # the single-line form Omarchy writes and the multi-line form nwg-displays
 # writes. Commented-out examples and rules for other outputs are left alone. A
-# matching rule with no scale field gets one. Returns 3 when the file carries no
-# rule for this output, and 1 when the rewrite could not be run at all: a
-# caller that took those for the same thing would answer an unwritable config
-# by falling back to the catch-all and reporting success.
+# matching rule with no scale field gets one. Returns 3 when no rule names this
+# output and the shared scale variable is read only by a catch-all rule, 4 when
+# no rule names it and writing that variable would reach another output's rule
+# instead, and 1 when the rewrite could not be run at all: a caller that took
+# those for the same thing would answer an unwritable config by falling back to
+# the catch-all and reporting success.
 update_named_monitor_scale() {
   local monitor="$1"
   local description="$2"
@@ -115,11 +117,30 @@ update_named_monitor_scale() {
     # setups this matters on, because connectors renumber across hotplug. A
     # hand-written rule may also space its keys out, and matching a fixed
     # "output = " would send those to the catch-all the reload overrides.
-    function names_monitor(text,   value) {
-      if (!match(text, /output[[:space:]]*=[[:space:]]*"[^"]*"/)) return 0
+    function output_value(text,   value) {
+      has_output = 0
+      if (!match(text, /output[[:space:]]*=[[:space:]]*"[^"]*"/)) return ""
+      has_output = 1
       value = substr(text, RSTART, RLENGTH)
       sub(/^output[[:space:]]*=[[:space:]]*"/, "", value)
       sub(/"$/, "", value)
+      return value
+    }
+    # The shared variable is only the right place to write when a catch-all
+    # rule is what reads it. A rule naming another output reads it just as
+    # well, and then writing it resizes a display the user did not touch.
+    function note_scale_variable(text,   field, value) {
+      if (!match(text, /scale[[:space:]]*=[[:space:]]*[^,;[:space:]}]+/)) return
+      field = substr(text, RSTART, RLENGTH)
+      sub(/^scale[[:space:]]*=[[:space:]]*/, "", field)
+      if (field != "omarchy_monitor_scale") return
+      value = output_value(text)
+      if (has_output && value == "") catch_all_reads_variable = 1
+      else named_reads_variable = 1
+    }
+    function names_monitor(text,   value) {
+      value = output_value(text)
+      if (!has_output) return 0
       if (value == monitor) return 1
       # Compared literally rather than as a pattern: a description is EDID free
       # text and routinely carries . ( and +.
@@ -132,6 +153,8 @@ update_named_monitor_scale() {
     # then leaves the catch-all alone too, persisting the scale nowhere.
     # Comments are blanked rather than cut, so a position found in the blanked
     # copy still indexes the original. in_block carries the state between lines.
+    # Only the plain --[[ ]] form is recognised; a long bracket with an equals
+    # level is rare enough in a monitors.lua to leave to the reader.
     function blank(line,   out, i, n, pair) {
       out = ""
       n = length(line)
@@ -194,6 +217,7 @@ update_named_monitor_scale() {
       depth -= gsub(/[})]/, "", line)
       if (depth > 0) next
       depth = 0
+      note_scale_variable(bare_rule)
       replaced = rewrite(rule, bare_rule)
       if (replaced != "") { changed = 1; printf "%s", replaced } else printf "%s", rule
       rule = ""
@@ -201,14 +225,15 @@ update_named_monitor_scale() {
     }
     END {
       if (rule != "") printf "%s", rule
-      exit changed ? 0 : 3
+      if (changed) exit 0
+      exit (catch_all_reads_variable && !named_reads_variable) ? 3 : 4
     }
   ' "$file" >"$tmp"
   local status=$?
 
-  if (( status == 3 )); then
+  if (( status == 3 || status == 4 )); then
     rm -f "$tmp"
-    return 3
+    return "$status"
   elif (( status != 0 )); then
     rm -f "$tmp"
     echo "Could not read $file to persist the scale" >&2
@@ -259,13 +284,13 @@ set_scale() {
   if (( rewrite_status == 0 )); then
     persist_gdk_scale "$new_gdk_scale" "$monitor_lua"
     return 0
-  elif (( rewrite_status != 3 )); then
+  elif (( rewrite_status != 3 && rewrite_status != 4 )); then
     return 1
   fi
 
   # Persist to monitors.lua if the user still has Omarchy's generic catch-all
   # defaults, so the scale survives reboots.
-  if grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
+  if (( rewrite_status == 3 )) && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
     sed -i --follow-symlinks -E \
       -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" \
       "$monitor_lua"
