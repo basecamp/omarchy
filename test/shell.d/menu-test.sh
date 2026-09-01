@@ -202,6 +202,10 @@ assert(
   'menu keeps Input as a direct config action'
 )
 assert(
+  defaultById['setup.input-method.mozc'].action.includes('omarchy-setup-input-mozc'),
+  'menu exposes Mozc Japanese input setup under Setup > Input Method'
+)
+assert(
   defaultById['setup.direct-boot'].action.includes('omarchy-setup-direct-boot'),
   'menu places Direct Boot directly under Setup'
 )

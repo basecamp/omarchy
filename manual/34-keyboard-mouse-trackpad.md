@@ -59,7 +59,7 @@ On Dell XPS laptops with a haptic touchpad, you can also set the click strength 
 
 ### Typing in Chinese, Japanese, and other languages
 
-Omarchy runs the [fcitx5](https://fcitx-im.org/) input method framework as part of every session — it's what powers the CapsLock compose sequences. That means the plumbing for non-Latin input is already in place: install an input engine like `fcitx5-mozc` (Japanese) or `fcitx5-chinese-addons` (Chinese) with `omarchy pkg add`, plus `fcitx5-configtool` to add the engine to your input methods and set the key that switches between them.
+Omarchy runs the [fcitx5](https://fcitx-im.org/) input method framework as part of every session — it's what powers the CapsLock compose sequences. For Japanese, select _Setup > Input Method > Mozc (Japanese)_ in the Omarchy menu to install and configure Mozc, then press `Ctrl + Space` to switch between English and Japanese. For other languages, install an input engine like `fcitx5-chinese-addons` with `omarchy pkg add`, plus `fcitx5-configtool` to add the engine to your input methods and set the key that switches between them.
 
 ### Use ALT as SUPER
 

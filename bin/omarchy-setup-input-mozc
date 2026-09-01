@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# omarchy:summary=Set up Mozc Japanese input with Fcitx 5
+
+set -euo pipefail
+
+omarchy-pkg-add fcitx5-mozc
+omarchy-restart-xcompose
+
+fcitx_ready=false
+for _ in {1..50}; do
+  if fcitx5-remote --check; then
+    fcitx_ready=true
+    break
+  fi
+  sleep 0.1
+done
+
+if [[ $fcitx_ready == false ]]; then
+  echo "Fcitx 5 is not running. Log in to an Omarchy desktop session and try again." >&2
+  exit 1
+fi
+
+group=$(fcitx5-remote -q)
+group_info=$(busctl --user --json=short call \
+  org.fcitx.Fcitx5 \
+  /controller \
+  org.fcitx.Fcitx.Controller1 \
+  InputMethodGroupInfo \
+  s "$group")
+
+if ! jq -e '.data[1] | any(.[0] == "mozc")' <<<"$group_info" >/dev/null; then
+  layout=$(jq -r '.data[0]' <<<"$group_info")
+  mapfile -t input_methods < <(jq -r '.data[1][] | @tsv' <<<"$group_info")
+
+  args=("$group" "$layout" "$((${#input_methods[@]} + 1))")
+  for input_method in "${input_methods[@]}"; do
+    IFS=$'\t' read -r name item_layout <<<"$input_method"
+    args+=("$name" "$item_layout")
+  done
+  args+=(mozc "")
+
+  busctl --user call \
+    org.fcitx.Fcitx5 \
+    /controller \
+    org.fcitx.Fcitx.Controller1 \
+    SetInputMethodGroupInfo \
+    'ssa(ss)' "${args[@]}" >/dev/null
+  busctl --user call \
+    org.fcitx.Fcitx5 \
+    /controller \
+    org.fcitx.Fcitx.Controller1 \
+    Save >/dev/null
+fi
+
+echo "Japanese input is ready. Press Ctrl+Space to switch between English and Japanese."
