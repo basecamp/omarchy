@@ -20,7 +20,8 @@ wait).
   "author": "You",
   "description": "A clock that does cool things",
   "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "Widget.qml" }
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "hotReload": { "content": "Content.qml" }
 }
 ```
 
@@ -47,6 +48,8 @@ Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
 `barWidgetRegistry`) as properties.
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
+
+Bar widgets may declare optional `hotReload` boundaries. Each key maps to a QML file inside the plugin. When that exact file changes, the host calls `reloadEntryPoint(key, path)` on every live widget instance. Returning anything except `false` marks the change handled and keeps the widget, its windows, and its service state alive; returning `false` or omitting the method falls back to the normal targeted plugin reload. Imported QML and JavaScript files that are not declared boundaries still trigger a QML graph reload because Qt caches imported component definitions per engine.
 
 ## Installing a third-party plugin
 

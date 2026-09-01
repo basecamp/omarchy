@@ -72,6 +72,20 @@ dir=$(write_plugin "both" '["bar","bar-widget"]' '{"bar": "Bar.qml", "barWidget"
 validate "$dir" >/dev/null || fail "validate accepts a plugin that satisfies every kind it declares"
 pass "validate accepts a plugin that satisfies every kind it declares"
 
+dir=$(write_plugin "hot-reload" '["bar-widget"]' '{"barWidget": "Widget.qml"}')
+touch "$dir/Content.qml"
+jq '.hotReload = {content: "Content.qml"}' "$dir/manifest.json" >"$dir/manifest.json.tmp"
+mv "$dir/manifest.json.tmp" "$dir/manifest.json"
+validate "$dir" >/dev/null || fail "validate accepts safe hot-reload boundaries"
+pass "validate accepts safe hot-reload boundaries"
+
+jq '.hotReload = {content: "../Content.qml"}' "$dir/manifest.json" >"$dir/manifest.json.tmp"
+mv "$dir/manifest.json.tmp" "$dir/manifest.json"
+output=$(validate "$dir") && fail "validate refuses unsafe hot-reload boundaries" "$output"
+grep -qF "hot-reload path may not contain '..'" <<<"$output" \
+  || fail "validate explains unsafe hot-reload boundaries" "$output"
+pass "validate refuses unsafe hot-reload boundaries"
+
 dir=$(write_plugin "half" '["bar","bar-widget"]' '{"bar": "Bar.qml"}')
 output=$(validate "$dir") && fail "validate refuses a plugin that satisfies only one of its kinds" "$output"
 grep -qF "kind 'bar-widget' requires" <<<"$output" \

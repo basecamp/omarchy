@@ -79,11 +79,14 @@ ShellRoot {
 
   function runChecks() {
     var scan = ""
+    var thirdPanelSource = registry.pluginsDir + "/panel-source-directory"
     scan += block("firstparty", "/first/widgets/clock", manifest("omarchy.first-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
     scan += block("firstparty", "/first/bar", manifest("omarchy.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("firstparty", "/first/hybrid", manifest("omarchy.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" }))
-    scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
+    var thirdPanel = manifest("third.panel", ["panel"], { panel: "Panel.qml" })
+    thirdPanel.hotReload = { sidebar: "ui/Sidebar.qml" }
+    scan += block("thirdparty", thirdPanelSource, thirdPanel)
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
     scan += block("thirdparty", "/third/center-widget", manifest("third.center-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/right-widget", manifest("third.right-widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "right" }))
@@ -133,8 +136,20 @@ ShellRoot {
     root.assertTrue(registry.installedPlugins["omarchy.first-widget"].__isFirstParty === true, "first-party manifests are stamped")
     root.assertTrue(registry.installedPlugins["third.panel"].__isFirstParty === false, "third-party manifests are stamped")
     root.assertEqual(registry.installedPlugins["omarchy.grouped-panel"].__sourceDir, "/first/panels/grouped", "grouped plugin source paths are preserved")
-    root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.panel"], "panel"), "file:///third/panel/Panel.qml", "entryPointUrl resolves plugin-relative paths")
+    root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.panel"], "panel"), "file://" + thirdPanelSource + "/Panel.qml", "entryPointUrl resolves plugin-relative paths")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.widget"], "barWidget"), "file:///third/widget/Widget.qml", "entryPointUrl resolves bar widget paths")
+    root.assertEqual(registry.localPluginIdForPath(thirdPanelSource + "/Panel.qml"), "third.panel", "local changes resolve source directories to manifest ids")
+    root.assertEqual(registry.localPluginIdForPath(registry.pluginsDir + "/new-plugin/Panel.qml"), "new-plugin", "unscanned local changes fall back to directory names")
+    root.assertTrue(!registry.localPluginChangeNeedsGraphReload("third.panel", thirdPanelSource + "/manifest.json"), "manifest changes use targeted plugin reloads")
+    root.assertTrue(!registry.localPluginChangeNeedsGraphReload("third.panel", thirdPanelSource + "/Panel.qml"), "entry-point changes use targeted plugin reloads")
+    root.assertEqual(registry.localPluginHotReloadKey("third.panel", thirdPanelSource + "/ui/Sidebar.qml"), "sidebar", "hot-reload files resolve their handler key")
+    root.assertTrue(!registry.localPluginChangeNeedsGraphReload("third.panel", thirdPanelSource + "/ui/Sidebar.qml"), "hot-reload files avoid graph reloads")
+    root.assertTrue(registry.localPluginChangeIgnored("third.panel", thirdPanelSource + "/.agents/state.qml"), "hidden development paths are ignored")
+    root.assertTrue(!registry.localPluginChangeIgnored("third.panel", thirdPanelSource + "/ui/Sidebar.qml"), "runtime source paths remain watched")
+    root.assertTrue(registry.localPluginChangeNeedsGraphReload("third.panel", thirdPanelSource + "/ui/HelpOverlay.qml"), "imported QML changes reload the QML graph")
+    root.assertTrue(registry.localPluginChangeNeedsGraphReload("third.panel", thirdPanelSource + "/logic/State.js"), "imported JavaScript changes reload the QML graph")
+    root.assertTrue(!registry.localPluginChangeNeedsGraphReload("third.panel", thirdPanelSource + "/sedAbCdEf"), "atomic-save temporary files do not force graph reloads")
+    root.assertTrue(!registry.localPluginChangeNeedsGraphReload("omarchy.grouped-panel", "/first/panels/grouped/Child.qml"), "first-party changes do not use the local plugin reload path")
 
     root.assertTrue(!has("omarchy.reserved"), "third-party omarchy namespace ids are rejected")
     root.assertTrue(!has("third.unsafe"), "unsafe entry points are rejected")

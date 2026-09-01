@@ -86,6 +86,23 @@ while IFS= read -r ep_json; do
   [[ -f "$PLUGIN_DIR/$ep" ]] || fail "entry point file not found: '$ep'"
 done < <(jq -c '.entryPoints | to_entries[] | .value' "$MANIFEST")
 
+# Optional hot-reload boundaries use the same safe, existing relative paths as
+# loadable entry points. The object key is passed to reloadEntryPoint() on each
+# live bar-widget instance when the corresponding file changes.
+if jq -e 'has("hotReload")' "$MANIFEST" >/dev/null 2>&1; then
+  jq -e '(.hotReload | type) == "object"' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "'hotReload' must be an object"
+  while IFS= read -r ep_json; do
+    [[ -n $ep_json ]] || continue
+    ep=$(jq -r '.' <<<"$ep_json")
+    [[ -n $ep ]] || fail "hot-reload path is empty"
+    [[ $ep != *$'\n'* ]] || fail "hot-reload path may not contain a newline"
+    [[ $ep != /* ]] || fail "hot-reload path must be relative: '$ep'"
+    [[ $ep != *".."* ]] || fail "hot-reload path may not contain '..': '$ep'"
+    [[ -f "$PLUGIN_DIR/$ep" ]] || fail "hot-reload file not found: '$ep'"
+  done < <(jq -c '.hotReload | to_entries[] | .value' "$MANIFEST")
+fi
+
 # A kind is a promise to supply something to load, and the shell looks for that
 # something under a fixed key: entryPoints.bar to draw a bar, entryPoints.menu
 # to open a menu, and so on. Claiming a kind without its entry point is accepted

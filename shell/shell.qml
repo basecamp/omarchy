@@ -56,11 +56,23 @@ ShellRoot {
   property var shellConfig: builtinShellConfig
   property bool pluginReloading: false
   property bool pluginReloadPending: false
+  property var pluginReloadRevisions: ({})
+  property var pendingLocalPluginReloads: ({})
+  // Entry-point URL fragments do not invalidate QML or JavaScript files that
+  // the entry point imports. Those changes need Quickshell's native graph reload.
+  property bool localPluginGraphReloadPending: false
 
   Timer {
     id: localPluginReloadTimer
     interval: 150
-    onTriggered: shell.reloadPlugins()
+    onTriggered: {
+      if (shell.localPluginGraphReloadPending) {
+        console.log("Reloading QML graph for imported local plugin changes:", Object.keys(shell.pendingLocalPluginReloads).join(","))
+        Quickshell.reload(false)
+      } else {
+        shell.reloadLocalPlugins()
+      }
+    }
   }
 
   onShellConfigChanged: {
@@ -182,7 +194,7 @@ ShellRoot {
     var revision = shell.pluginRegistry.registryRevision
     return shell.barManifestFor(shell.activeBarId)
   }
-  readonly property string activeBarSourceUrl: activeBarId === defaultBarId ? "" : shell.pluginRegistry.entryPointUrl(activeBarManifest, "bar")
+  readonly property string activeBarSourceUrl: activeBarId === defaultBarId ? "" : shell.pluginEntryPointUrl(activeBarManifest, "bar")
   property var bar: null
 
   onSelectedBarIdChanged: if (failedBarId !== "") failedBarId = ""
@@ -190,6 +202,13 @@ ShellRoot {
   function barManifestFor(pluginId) {
     var plugins = shell.pluginRegistry ? shell.pluginRegistry.installedPlugins : null
     return plugins ? plugins[String(pluginId || "")] || null : null
+  }
+
+  function pluginEntryPointUrl(manifest, kind) {
+    var url = shell.pluginRegistry.entryPointUrl(manifest, kind)
+    if (!url || manifest.__isFirstParty === true) return url
+    var revision = shell.pluginReloadRevisions[String(manifest.id)] || 0
+    return url + "#reload=" + revision
   }
 
   function isBarOptionManifest(manifest) {
@@ -288,7 +307,7 @@ ShellRoot {
     if (!manifest) return null
     if (!Array.isArray(manifest.kinds) || manifest.kinds.indexOf("service") === -1) return null
     if (!manifest.entryPoints || !manifest.entryPoints.service) return null
-    var url = pluginRegistry.entryPointUrl(manifest, "service")
+    var url = shell.pluginEntryPointUrl(manifest, "service")
     if (!url) return null
 
     var comp = Qt.createComponent(url, Component.PreferSynchronous)
@@ -351,6 +370,16 @@ ShellRoot {
       if (inst && typeof inst.destroy === "function") inst.destroy()
     }
     _services = ({})
+  }
+
+  function unloadPluginService(pluginId) {
+    var key = String(pluginId)
+    var inst = _services[key]
+    if (!inst) return
+    if (typeof inst.destroy === "function") inst.destroy()
+    var next = ({})
+    for (var id in _services) if (id !== key) next[id] = _services[id]
+    _services = next
   }
 
   Connections {
@@ -618,7 +647,7 @@ ShellRoot {
       readonly property var manifest: modelData.manifest
       readonly property string entryKind: modelData.kind
       readonly property bool keepLoaded: modelData.keepLoaded === true
-      readonly property string sourceUrl: shell.pluginRegistry.entryPointUrl(manifest, entryKind)
+      readonly property string sourceUrl: shell.pluginEntryPointUrl(manifest, entryKind)
 
       property Loader panelLoader: Loader {
         source: panelEntry.sourceUrl
@@ -680,7 +709,7 @@ ShellRoot {
 
       // Already loaded with matching source — leave it alone.
       var existing = pluginWidgetComponents[registryKey]
-      var url = shell.pluginRegistry.entryPointUrl(manifest, "barWidget")
+      var url = shell.pluginEntryPointUrl(manifest, "barWidget")
       if (!url) {
         console.warn("Plugin " + manifest.id + " has no barWidget entry point")
         continue
@@ -731,21 +760,91 @@ ShellRoot {
     }
   }
 
-  function unloadPluginWidgets() {
-    for (var id in pluginWidgetComponents) shell.barWidgetRegistry.unregister(id)
-    pluginWidgetComponents = ({})
-  }
-
   function reloadPlugins() {
     if (shell.pluginReloading || shell.pluginRegistry.scanning) {
       shell.pluginReloadPending = true
       return
     }
     shell.pluginReloading = true
+    var revisions = ({})
+    for (var id in shell.pluginRegistry.installedPlugins) {
+      var manifest = shell.pluginRegistry.installedPlugins[id]
+      if (manifest && manifest.__isFirstParty !== true)
+        revisions[id] = (shell.pluginReloadRevisions[id] || 0) + 1
+    }
+    shell.pluginReloadRevisions = revisions
     shell.unloadPanels()
     shell.unloadPluginServices()
-    shell.unloadPluginWidgets()
     Qt.callLater(shell.finishPluginReload)
+  }
+
+  function queueLocalPluginReload(pluginId, path) {
+    var key = String(pluginId)
+    if (!key) return
+    if (shell.pluginRegistry.localPluginChangeIgnored(key, path)) return
+    var hotReloadKey = shell.pluginRegistry.localPluginHotReloadKey(key, path)
+    if (hotReloadKey && shell.reloadLocalPluginEntryPoint(key, hotReloadKey, path)) {
+      // Atomic saves emit temporary sibling events before the final path.
+      // Those siblings may already have queued a targeted plugin reload; drop
+      // this plugin from that queue once its declared boundary handled the
+      // real event, otherwise the parent widget is replaced after the debounce.
+      if (!shell.localPluginGraphReloadPending) {
+        var remaining = ({})
+        for (var pendingId in shell.pendingLocalPluginReloads) {
+          if (pendingId !== key) remaining[pendingId] = true
+        }
+        shell.pendingLocalPluginReloads = remaining
+        if (Object.keys(remaining).length === 0) localPluginReloadTimer.stop()
+      }
+      console.log("Reloaded local plugin entry point:", key,
+        "entry=" + hotReloadKey, "path=" + String(path || ""))
+      return
+    }
+    var next = ({})
+    for (var id in shell.pendingLocalPluginReloads) next[id] = true
+    next[key] = true
+    shell.pendingLocalPluginReloads = next
+    if (shell.pluginRegistry.localPluginChangeNeedsGraphReload(key, path))
+      shell.localPluginGraphReloadPending = true
+    console.log("Queued local plugin reload:", key,
+      "mode=" + (shell.localPluginGraphReloadPending ? "graph" : "targeted"),
+      "path=" + String(path || ""))
+    localPluginReloadTimer.restart()
+  }
+
+  function reloadLocalPluginEntryPoint(pluginId, entryPoint, path) {
+    if (!shell.bar || typeof shell.bar.moduleWidgets !== "function") return false
+    var items = shell.bar.moduleWidgets(pluginId)
+    var handled = false
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i]
+      if (!item || typeof item.reloadEntryPoint !== "function") continue
+      try {
+        if (item.reloadEntryPoint(entryPoint, path) !== false) handled = true
+      } catch (error) {
+        console.warn("Plugin hot reload failed:", pluginId, entryPoint, error)
+      }
+    }
+    return handled
+  }
+
+  function reloadLocalPlugins() {
+    if (shell.pluginReloading || shell.pluginRegistry.scanning) {
+      localPluginReloadTimer.restart()
+      return
+    }
+
+    var pending = shell.pendingLocalPluginReloads
+    shell.pendingLocalPluginReloads = ({})
+    var revisions = ({})
+    for (var knownId in shell.pluginReloadRevisions)
+      revisions[knownId] = shell.pluginReloadRevisions[knownId]
+    for (var pluginId in pending) {
+      revisions[pluginId] = (revisions[pluginId] || 0) + 1
+      shell.unloadPluginService(pluginId)
+    }
+    shell.pluginReloadRevisions = revisions
+    shell.pluginRegistry.rescan()
   }
 
   function finishPluginReload() {
@@ -754,15 +853,13 @@ ShellRoot {
       shell.pluginReloadPending = true
       return
     }
-    if (typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
     shell.pluginRegistry.rescan()
   }
 
   Connections {
     target: shell.pluginRegistry
-    function onLocalPluginChanged(pluginId) {
-      console.log("Local plugin changed, reloading:", pluginId)
-      localPluginReloadTimer.restart()
+    function onLocalPluginChanged(pluginId, path) {
+      shell.queueLocalPluginReload(pluginId, path)
     }
     function onScanFinished() {
       if (shell.pluginReloadPending) {
