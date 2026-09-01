@@ -143,6 +143,50 @@ authorize_pasted_key() {
   authorize_key "$key" || exit 1
 }
 
+# Only called after a key is authorized. Disabling password authentication
+# before then could lock the owner out of the machine.
+disable_password_auth() {
+  local config=/etc/ssh/sshd_config.d/10-omarchy-hardening.conf
+  local effective_config
+
+  if [[ ! -s $AUTHORIZED_KEYS ]]; then
+    echo -e "\e[31mCannot disable SSH password authentication without an authorized key.\e[0m" >&2
+    return 1
+  fi
+
+  echo "Disabling SSH password authentication, now that a key is authorized..."
+  sudo install -Dm644 /dev/stdin "$config" <<'CONF'
+# Written by omarchy-setup-security-sshd once an SSH key was authorized.
+# Delete this file and reload sshd to allow password logins again.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+CONF
+
+  # Validate before reloading: a config sshd rejects would otherwise take the
+  # service down on its next restart, potentially stranding a remote owner.
+  if ! sudo sshd -t; then
+    echo -e "\e[31msshd rejected the hardening config; removing it and leaving passwords on.\e[0m" >&2
+    sudo rm -f "$config"
+    return 1
+  fi
+
+  # Syntax alone is insufficient because sshd uses the first value it reads for
+  # these settings. An earlier administrator rule could leave passwords enabled.
+  # Match keywords case-insensitively: OpenSSH 9.x dumps them lowercase, 10.x
+  # in CamelCase.
+  if ! effective_config=$(sudo sshd -T) ||
+    ! grep -qixF "passwordauthentication no" <<<"$effective_config" ||
+    ! grep -qixF "kbdinteractiveauthentication no" <<<"$effective_config"; then
+    echo -e "\e[31msshd did not apply the password-authentication restrictions; removing the ineffective config.\e[0m" >&2
+    sudo rm -f "$config"
+    return 1
+  fi
+
+  # Reload rather than restart so an administrator already connected keeps
+  # their session.
+  sudo systemctl reload sshd.service
+}
+
 echo -e "\e[32mSetting up SSH server access with key-based authentication.\n\e[0m"
 
 setup_sshd
@@ -161,5 +205,8 @@ else
   esac
 fi
 
+disable_password_auth
+
 echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
+echo "Password logins are off; this machine now accepts authorized keys only."
 echo "You can now connect with: ssh $USER@$(hostname)"

@@ -41,6 +41,9 @@ setup_pam_config() {
     fi
   else
     echo "Creating polkit configuration with fingerprint authentication..."
+    # omarchy:heredoc-expands paths=none -- $fprintd_gate is the literal PAM
+    # line defined above, shared with the two sed insertions so the gate cannot
+    # drift between files. The only path in it is the fixed /usr/bin one.
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<EOF
 $fprintd_gate
 auth      sufficient pam_fprintd.so

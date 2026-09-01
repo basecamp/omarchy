@@ -23,16 +23,26 @@ omarchy-git-url-check "$REPO_URL" || exit 1
 
 THEMES_DIR="$HOME/.config/omarchy/themes"
 
-# Strip user@host: prefix from scp-style SSH URLs so basename sees just the path
+# Strip user@host: prefix from scp-style SSH URLs so basename sees just the path.
+# git reads a URL as scp-style when a colon appears before any slash, so the path
+# after it need not hold one: `git@host:omarchy-blue-theme.git` is a repo in that
+# user's home, and leaving its prefix on names the theme after the whole URL.
 REPO_PATH="$REPO_URL"
-[[ $REPO_PATH != *"://"* && $REPO_PATH == *:*/* ]] && REPO_PATH="${REPO_PATH#*:}"
+[[ $REPO_PATH != *"://"* && $REPO_PATH == *:* && ${REPO_PATH%%:*} != */* ]] && REPO_PATH="${REPO_PATH#*:}"
 THEME_NAME=$(basename -- "$REPO_PATH" .git | sed -E 's/^omarchy-//; s/-theme$//' | tr '[:upper:]' '[:lower:]')
 THEME_PATH="$THEMES_DIR/$THEME_NAME"
 
-# The name comes from the URL and is joined into a path that is about to be
-# removed, so a repo called `..` would take ~/.config/omarchy with it. A leading
-# dot is refused with it: `host:-s/foo.git` leaves basename with `.git`.
-if [[ -z $THEME_NAME || $THEME_NAME == .* || $THEME_NAME == */* ]]; then
+# The name comes from the URL, is joined into a path that is about to be
+# removed, and then names a directory the rest of Omarchy passes around by
+# name: Style > Unlock builds a command line out of the one the picker
+# returned. So it is held to the characters a theme name needs rather than
+# screened for the harm of the day -- a repo called `..` would take
+# ~/.config/omarchy with it, and one called `a';'id` would carry its own
+# command into that picker. The leading character is kept out of `.` and `-`,
+# which also covers `host:-s/foo.git` leaving basename with `.git`.
+# A bracket range follows the locale's collation, not ASCII: `[a-z]` takes in
+# `é` under en_US.UTF-8. Pin the locale so the set is the one written here.
+if ! (LC_ALL=C; [[ $THEME_NAME =~ ^[a-z0-9_][a-z0-9._+-]*$ ]]); then
   echo "Error: '$REPO_URL' does not give a usable theme name."
   exit 1
 fi

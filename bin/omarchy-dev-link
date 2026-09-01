@@ -34,8 +34,12 @@ systemd, shell, or app-launcher environment; reboot to make every layer agree.
 Affects only \$OMARCHY_PATH-resolved trees: bin/, default/, shell/,
 themes/, applications/, config/. Files installed at fixed system paths
 (/etc/, /usr/lib/systemd/, udev rule bodies, /etc/skel after user
-creation, /usr/share/plymouth) are NOT covered — for those, use
-omarchy-dev-pkg-test to build and install the package from the checkout.
+creation) are NOT covered — for those, use omarchy-dev-pkg-test to build
+and install the package from the checkout.
+
+The Plymouth and SDDM themes under /usr/share are the exception: omarchy
+plymouth set and omarchy refresh plymouth republish them from the checkout,
+reading this link's authorization out of the root-owned /etc/omarchy.conf.
 
 Also writes $sudoers_file so sudo resolves omarchy-*
 from the checkout instead of the packaged copies. That part takes effect
