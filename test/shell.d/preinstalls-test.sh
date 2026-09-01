@@ -36,7 +36,10 @@ SH
 
 chmod +x "$mock_bin"/*
 
-export PATH="$mock_bin:$PATH"
+# $ROOT/bin after the mocks: Remove Preinstalls asks omarchy-install-hermes-cli
+# whether the wrapper is Omarchy's rather than matching the marker itself, and
+# that is the real command at runtime. The mocks still shadow what they name.
+export PATH="$mock_bin:$ROOT/bin:$PATH"
 export HOME="$test_home"
 export OMARCHY_TEST_PKG_LOG="$pkg_log"
 
@@ -89,3 +92,43 @@ pass "declining Remove Preinstalls changes nothing"
 "$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
 [[ -f $marker ]] || fail "Remove Preinstalls records the opt-out"
 pass "Remove Preinstalls records the opt-out"
+
+# Hermes' wrapper is only a preinstall when omarchy-install-hermes-cli wrote it.
+# The desktop app's command and an official install live at the same path and
+# are the user's, whether or not any package says so.
+hermes="$test_home/.local/bin/hermes"
+mkdir -p "$(dirname "$hermes")"
+
+printf '%s\n' "#!/bin/bash" "# Written by omarchy-install-hermes-cli." >"$hermes"
+chmod +x "$hermes"
+"$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
+[[ ! -e $hermes ]] || fail "Remove Preinstalls deletes the Omarchy Hermes wrapper"
+pass "Remove Preinstalls deletes the Omarchy Hermes wrapper"
+
+printf '%s\n' "#!/bin/bash" "exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\"" >"$hermes"
+chmod +x "$hermes"
+"$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
+[[ -x $hermes ]] || fail "Remove Preinstalls keeps the desktop app's Hermes command"
+pass "Remove Preinstalls keeps the desktop app's Hermes command"
+
+official_body="#!/bin/bash
+unset PYTHONPATH
+unset PYTHONHOME
+exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\""
+printf '%s\n' "$official_body" >"$hermes"
+chmod +x "$hermes"
+"$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
+[[ -x $hermes && $(cat "$hermes") == "$official_body" ]] || fail "Remove Preinstalls keeps an official Hermes install"
+pass "Remove Preinstalls keeps an official Hermes install"
+
+printf '%s\n' "#!/bin/bash" "# Replaces the stub omarchy-install-hermes-cli used to write." >"$hermes"
+chmod +x "$hermes"
+"$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
+[[ -x $hermes ]] || fail "Remove Preinstalls keeps a wrapper that merely mentions the installer"
+pass "Remove Preinstalls keeps a wrapper that merely mentions the installer"
+
+rm -f "$hermes"
+ln -s "$test_home/nowhere/hermes" "$hermes"
+"$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
+[[ -L $hermes ]] || fail "Remove Preinstalls keeps a foreign hermes link"
+pass "Remove Preinstalls keeps a foreign hermes link"
