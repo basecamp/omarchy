@@ -68,6 +68,17 @@ Item {
     runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
   }
 
+  function requestShellLock() {
+    if (!root.shell || typeof root.shell.firstPartyServiceFor !== "function") return false
+
+    var lockService = root.shell.firstPartyServiceFor("omarchy.lock")
+    if (!lockService) return false
+    if (lockService.locked) return true
+    if (typeof lockService.beginLock !== "function") return false
+
+    return lockService.beginLock()
+  }
+
   function lockSystem(reason) {
     logEvent("lock-system", reason || "requested")
     screensaverTimer.stop()
@@ -76,7 +87,15 @@ Item {
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
     resetScreensaverWindows()
-    runProcess(lockProcess, "lock", "omarchy-system-lock")
+
+    // An IPC call from a child spawned by this Quickshell process can fail to
+    // re-enter the lock handler. Request the session lock in-process first;
+    // the helper still performs the keyboard, 1Password, and screensaver work.
+    var requestedDirectly = requestShellLock()
+    logEvent("lock-request", requestedDirectly ? "direct" : "ipc-fallback")
+    runProcess(lockProcess, "lock", requestedDirectly
+      ? "omarchy-system-lock --skip-shell-request"
+      : "omarchy-system-lock")
   }
 
   function startIdleCycle() {
