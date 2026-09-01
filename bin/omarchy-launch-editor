@@ -18,6 +18,9 @@ else
   editor="nvim"
 fi
 
+# sublime-text-4 ships `subl` on PATH, not `sublime_text`.
+[[ $editor == sublime_text ]] && editor=subl
+
 omarchy-cmd-present "$editor" || editor="nvim"
 
 case "${editor##*/}" in
