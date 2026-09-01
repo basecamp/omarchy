@@ -7,11 +7,12 @@ w_scan() {
   hw=$(hardware_matched) || oops "hardware scan failed"
   models=$(catalog "$hw")
   total=$(jq '.recipes|length' "$IDX")
-  sw '.hardware=$h | .models=$m | .gpus=$g | .registry={path:$p,revision:$rev,matching:($m|length),total:$t}
+  sw '.hardware=$h | .models=$m | .gpus=$g | .agents=$ag | .registry={path:$p,revision:$rev,matching:($m|length),total:$t}
       | .models|=map(.active=(.recipeId==($ss.active.recipeId//"")))
+      | .recommended=(([.models[]|select(.available and (.blocked|not))]) as $c | (($c|map(select(.recommended))|.[0]) // $c[0] // {recipeId:""}).recipeId)
       | .state=(if ($ss.active.apiReady//false) then "ready" else "idle" end)
       | .operation={name:"",recipeId:"",percent:0,indeterminate:false,detail:""} | .error=""' \
-    --argjson h "$hw" --argjson m "$models" --argjson g "$(gpus_json)" --arg p "$REG" --arg rev "$(reg_rev)" \
+    --argjson h "$hw" --argjson m "$models" --argjson g "$(gpus_json)" --argjson ag "$(agents_scan)" --arg p "$REG" --arg rev "$(reg_rev)" \
     --argjson t "$total" --argjson ss "$(sread)"
   trace "$(sread | jq -r .state)"
 }
@@ -28,8 +29,12 @@ do_remove() { # synchronous: delete one recipe's weights and image, keep the reg
   w_refresh_models
 }
 w_download() {
-  local id=$1 r img repo rev exp kind base hf file bytes pct pid free pexp psrc prepo prv pdir
   guard || oops "another operation is running"
+  dl_steps "$1"
+  [[ $(sread | jq -r '.active.apiReady') == true ]] && setstate ready || setstate downloaded
+}
+dl_steps() { # shared by download and load: image pull + primary and provisioned weights
+  local id=$1 r img repo rev exp kind base hf file bytes pct pid free pexp psrc prepo prv pdir
   r=$(resolve "$id" 2>"$ST/gate.err") || oops "$(sed -n '$s/^local-ai: //p' "$ST/gate.err" | grep . || printf 'recipe %s failed validation' "$id")"
   img=$(jq -r .launch.image <<<"$r"); repo=$(jq -r .model.repository <<<"$r")
   rev=$(jq -r .model.revision <<<"$r"); exp=$(jq -r .model.bytes <<<"$r")
@@ -75,17 +80,25 @@ w_download() {
     op download "$id" 100 false "${psrc##*/} complete"
   done < <(provision_rows "$r")
   w_refresh_models
-  [[ $(sread | jq -r '.active.apiReady') == true ]] && setstate ready || setstate downloaded
 }
 w_refresh_models() {
   local hw; hw=$(sread | jq -c '.hardware')
   [[ $(jq '.groups|length' <<<"$hw") -gt 0 ]] || hw=$(hardware_matched)
-  sw '.models=$m | .gpus=$g | .models|=map(.active=(.recipeId==$a))' \
+  sw '.models=$m | .gpus=$g | .models|=map(.active=(.recipeId==$a))
+      | .recommended=(([.models[]|select(.available and (.blocked|not))]) as $c | (($c|map(select(.recommended))|.[0]) // $c[0] // {recipeId:""}).recipeId)' \
     --argjson m "$(catalog "$hw")" --argjson g "$(gpus_json)" --arg a "$(sread | jq -r .active.recipeId)"
 }
-w_run() {
-  local id=$1 phase=$2 r was=false prev_active
+w_run() { guard || oops "another operation is running"; run_steps "$1" "$2"; }
+w_load() { # one button: download when needed, then start and accept
+  local id=$1 phase=starting
   guard || oops "another operation is running"
+  jq -e --arg i "$id" '[.models[]|select(.recipeId==$i and .imageDownloaded and .weightsDownloaded)]|length>0' >/dev/null <<<"$(sread)" || dl_steps "$id"
+  [[ $(sread | jq -r '.active.apiReady') == true ]] && phase=switching
+  setstate "$phase"; op "$phase" "$id" 0 true "starting"
+  run_steps "$id" "$phase"
+}
+run_steps() {
+  local id=$1 phase=$2 r was=false prev_active
   r=$(resolve "$id" 2>"$ST/gate.err") || oops "$(sed -n '$s/^local-ai: //p' "$ST/gate.err" | grep . || printf 'recipe %s failed validation' "$id")"
   jq -e --arg i "$id" '.models[]|select(.recipeId==$i and .imageDownloaded and .weightsDownloaded)' >/dev/null <<<"$(sread)" \
     || oops "model $id is not downloaded"
@@ -120,6 +133,7 @@ w_unload() {
     docker rm -f "$CTR" >/dev/null 2>&1 || true
   fi
   if exists "$PREV" && owned "$PREV"; then docker rm -f "$PREV" >/dev/null 2>&1; fi
+  share_off # a dead endpoint must not stay published on the tailnet
   unwire
   sw '.active=$e.active | .models|=map(.active=false)' --argjson e "$EMPTY"
   w_refresh_models
@@ -127,11 +141,12 @@ w_unload() {
   setstate idle
 }
 emit() {
-  local s g served ok=false; adopt; s=$(sread)
+  local s g served ok=false ag sh; adopt; s=$(sread); ag=$(agents_scan); sh=$(share_state)
   if jq -e '. as $s|$s.active.apiReady and (["scanning","downloading","starting","switching","unloading"]|index($s.state)|not)' >/dev/null <<<"$s"; then
     g=$(gpus_json 2>/dev/null || printf '[]'); owned "$CTR" && running "$CTR" && served=$(api models 2 2>/dev/null | jq -r '.data[0].id//empty') && [[ $served == "$(jq -r .active.servedModel <<<"$s")" ]] && ok=true
-    $ok && jq -c --argjson g "$g" '.gpus=$g' <<<"$s" || jq -c --argjson g "$g" '.gpus=$g|.state="error"|.error=(if .error=="" then "accepted runtime is unavailable" else .error end)|.active.apiReady=false|.active.toolCallReady=false' <<<"$s"
-  else printf '%s\n' "$s"; fi
+    $ok && jq -c --argjson g "$g" --argjson ag "$ag" --argjson sh "$sh" '.gpus=$g|.agents=$ag|.share=$sh' <<<"$s" \
+      || jq -c --argjson g "$g" --argjson ag "$ag" --argjson sh "$sh" '.gpus=$g|.agents=$ag|.share=$sh|.state="error"|.error=(if .error=="" then "accepted runtime is unavailable" else .error end)|.active.apiReady=false|.active.toolCallReady=false' <<<"$s"
+  else jq -c --argjson ag "$ag" --argjson sh "$sh" '.agents=$ag|.share=$sh' <<<"$s"; fi
 }
 adopt() {
   local s state rid r served ids; s=$(sread); state=$(jq -r .state <<<"$s"); [[ $(jq -r '.active.container' <<<"$s") == "" && $state =~ ^(uninitialized|idle|downloaded|error)$ ]] || return 0

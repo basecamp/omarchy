@@ -3,6 +3,16 @@
 owned() { [[ $(docker inspect -f "{{index .Config.Labels \"$LABEL\"}}" "$1" 2>/dev/null) == 1 ]]; }
 exists() { docker inspect "$1" >/dev/null 2>&1; }
 running() { [[ $(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null) == true ]]; }
+ts_bin() { command -v tailscale 2>/dev/null; }
+share_state() { # -> {available,active,dns}; stateless, read from tailscale each time
+  local b active=false dns=""
+  b=$(ts_bin) || { printf '{"available":false,"active":false,"dns":""}\n'; return; }
+  "$b" serve status 2>/dev/null | grep -q "127\.0\.0\.1:$PORT" && active=true
+  dns=$("$b" status --json 2>/dev/null | jq -r '(.Self.DNSName//"")|rtrimstr(".")')
+  jq -nc --argjson a "$active" --arg d "$dns" '{available:true,active:$a,dns:$d}'
+}
+share_on() { "$(ts_bin)" serve --bg --tcp "$PORT" "tcp://127.0.0.1:$PORT" >/dev/null 2>&1; }
+share_off() { local b; b=$(ts_bin) || return 0; "$b" serve --tcp "$PORT" off >/dev/null 2>&1 || true; }
 gpu_ids() {
   hardware_json | jq -r --argjson need "$(jq -r .hardware.count <<<"$1")" \
     --arg id "$(jq -r .hardware.id <<<"$1")" --argjson hw "$(hardware_matched)" '

@@ -137,6 +137,11 @@ assert jq -e '(.models[]|select(.recipeId=="multi-node")|.blocked and (.reason|t
   and (.models[]|select(.recipeId=="small-prov")|.blocked|not)
   and ([.models[-5:][]|.blocked]|all)' >/dev/null <<<"$(snap)"
 ok 'multi-node, host-networking, missing-draft, null-revision, and unpinned-provision recipes stay blocked; a provisioned draft does not block'
+assert jq -e '.recommended=="small-3090"' >/dev/null <<<"$(snap)"
+jq '.recommended=true' "$OMARCHY_AI_REGISTRY/recipe/small-3090-tools.json" >"$TMP/r" && mv "$TMP/r" "$OMARCHY_AI_REGISTRY/recipe/small-3090-tools.json"
+"$CLI" scan >/dev/null
+assert jq -e '.recommended=="small-3090-tools"' >/dev/null <<<"$(snap)"
+ok 'the recommended model is the registry-flagged recipe, or the first runnable one without a flag'
 mkdir -p "$OMARCHY_AI_USER_HOME/.cache/omarchy/local-ai/models/small-draft"
 "$CLI" scan >/dev/null
 assert jq -e '.models[]|select(.recipeId=="small-mr")|(.blocked|not)' >/dev/null <<<"$(snap)"
@@ -170,6 +175,23 @@ assert jq -e '.active.agents.pi=="wired" and .active.agents.omp=="wired"' >/dev/
 assert jq -e '.active.ctxTokens==131072 and .active.toksPerSec==42' >/dev/null <<<"$(snap)"
 ok 'run transitions to ready, confirms API identity, and wires the collision-safe omarchy-local provider'
 ok 'omp gets models.yml (the file it actually reads), never a shadowed models.json'
+tailscale() {
+  printf '%s\n' "$*" >>"$TMP/tailscale.log"
+  case "$1 ${2:-}" in
+    "serve status") [[ -f $TMP/ts-shared ]] && printf 'tcp://127.0.0.1:12434\n'; return 0 ;;
+    "serve --bg") touch "$TMP/ts-shared" ;;
+    "status --json") printf '{"Self":{"DNSName":"omarchy.tail.ts.net."}}\n' ;;
+    *) [[ $1 == serve && ${*: -1} == off ]] && rm -f "$TMP/ts-shared"; return 0 ;;
+  esac
+}
+export -f tailscale
+"$CLI" share
+assert jq -e '.share.available and .share.active and .share.dns=="omarchy.tail.ts.net"' >/dev/null <<<"$(snap)"
+"$CLI" share
+assert jq -e '.share.active|not' >/dev/null <<<"$(snap)"
+"$CLI" share
+assert jq -e '.share.active' >/dev/null <<<"$(snap)"
+ok 'share toggles tailscale serve for the loopback endpoint and reports the tailnet name'
 "$CLI" default >/dev/null
 assert jq -e '.defaultProvider=="omarchy-local" and .defaultModel=="org/small"' >/dev/null "$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
 assert jq -e '.defaultProvider=="omarchy-local" and .defaultModel=="org/small"' >/dev/null "$OMARCHY_AI_USER_HOME/.omp/agent/settings.json"
@@ -186,6 +208,22 @@ assert grep -q -- '--provider omarchy-local --model org/small --session-id' "$TM
 ok 'open-agent launches pi with explicit --provider/--model args, not unrelated defaults'; "$CLI" scan >/dev/null
 assert jq -e '.state=="ready" and .active.recipeId=="small-3090"' >/dev/null <<<"$(snap)"
 ok 'scanning while an accepted model is active finishes ready, not idle'; assert [ "$(jq -r .owned "$CD/containers/omarchy-local-ai")" = 1 ]
+( export XDG_RUNTIME_DIR="$TMP/xdg" HYPRLAND_INSTANCE_SIGNATURE=sig
+  mkdir -p "$XDG_RUNTIME_DIR/hypr/sig" "$OMARCHY_AI_USER_HOME/.local/bin"
+  : >"$OMARCHY_AI_USER_HOME/.local/bin/omp"; chmod +x "$OMARCHY_AI_USER_HOME/.local/bin/omp"
+  hyprctl() { printf '%s\n' "$*" >"$TMP/hyprctl2.out"; }; omarchy-default-agent() { printf 'omp\n'; }
+  export -f hyprctl omarchy-default-agent
+  "$CLI" open-agent >/dev/null
+)
+assert grep -q -- '--auto-approve --provider omarchy-local --model org/small' "$TMP/hyprctl2.out"
+( export XDG_RUNTIME_DIR="$TMP/xdg" HYPRLAND_INSTANCE_SIGNATURE=sig
+  hyprctl() { printf '%s\n' "$*" >"$TMP/hyprctl3.out"; }; omarchy-default-agent() { printf 'claude\n'; }
+  export -f hyprctl omarchy-default-agent
+  "$CLI" open-agent >/dev/null
+)
+assert grep -q 'omarchy-agent' "$TMP/hyprctl3.out"
+assert jq -e '(.agents.installed|index("pi")) and (.agents.installed|index("omp")) and .agents.default==""' >/dev/null <<<"$(snap)"
+ok 'open-agent follows the Omarchy default agent, and the snapshot reports which agents are installed'
 c_write "omarchy-local-ai" 0 1
 "$CLI" run small-3090 >/dev/null
 assert jq -e '.state=="error" and (.error|test("not managed"))' >/dev/null <<<"$(snap)"
@@ -221,6 +259,7 @@ assert [ ! -f "$CD/containers/omarchy-local-ai" ]
 assert [ -f "$CD/containers/omarchy-local-ai-previous" ]
 rm -f "$CD/containers/omarchy-local-ai-previous"
 assert jq -e '(.defaultProvider // "") == ""' >/dev/null "$OMARCHY_AI_USER_HOME/.pi/agent/settings.json"
+assert jq -e '.share.active|not' >/dev/null <<<"$(snap)"
 ok 'unload ignores an unowned <container>-previous instead of aborting mid-transition'
 assert [ -d "$OMARCHY_AI_USER_HOME/.cache/huggingface/hub/models--org--small" ]
 "$CLI" remove small-3090 >/dev/null
@@ -230,6 +269,16 @@ ok 'remove deletes an unloaded recipe'\''s weights and clears its downloaded fla
 "$CLI" download evil >/dev/null || true
 assert jq -e '.state=="error" and (.error|test("validation|unsafe"))' >/dev/null <<<"$(snap)"
 ok 'a recipe mount that traverses ~/.cache fails the safety gate'
+load_ok=0
+( export OMARCHY_AI_STATE="$TMP/state-load" OMARCHY_AI_TRACE="$TMP/lt.log"
+  mkdir -p "$OMARCHY_AI_STATE"
+  "$CLI" scan >/dev/null
+  "$CLI" load small-3090 >/dev/null
+  jq -e '.state=="ready" and .active.recipeId=="small-3090" and .active.apiReady' >/dev/null <<<"$("$CLI" snapshot)" \
+    && [[ $(paste -sd, "$TMP/lt.log") == scanning,idle,downloading,starting,ready ]]
+) && load_ok=1 || load_ok=0
+assert [ "$load_ok" = 1 ]
+ok 'load is one button: it downloads when needed, then starts and accepts the model'
 hw_ok=0
 ( unset OMARCHY_AI_HARDWARE_JSON
   export OMARCHY_AI_STATE="$TMP/state-hw" OMARCHY_AI_DRI_PATH="$TMP/dri"

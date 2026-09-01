@@ -34,7 +34,7 @@ resolve_raw() { # join recipe + instance + model + hardware + speed sweep; inter
   jq -nc --argjson r "$r" --argjson i "$i" --argjson m "$m" --argjson h "$h" --argjson tps "${tps:-0}" \
     --arg mr "$MODELS_SUB" --arg cr "$CACHE_SUB" '
     def arg($n): (.launch.arguments|index($n)) as $p | if $p==null then null else .launch.arguments[$p+1] end;
-    {id:$r.id,status:$r.status,engine:$r.engine,capabilities:$r.capabilities,
+    {id:$r.id,status:$r.status,engine:$r.engine,capabilities:$r.capabilities,recommended:($r.recommended//false),
      serving:{ctxTokens:($r.serving.max_context_tokens//0),concurrency:($r.serving.max_concurrency//0)},
      speed:{tps:($tps|floor)},
      model:{id:$m.id,name:$m.name,repository:($i.repository//""),revision:($i.revision//""),
@@ -163,7 +163,7 @@ catalog() {
               sizeGb:((($r.model.bytes + (([$r.launch.mounts[]?.provision.size_gb//0]|add//0)*1073741824))/107374182|floor)/10),
               ctxTokens:$r.serving.ctxTokens,toksPerSec:$r.speed.tps,
               tools:($r.capabilities.tools//false),vision:($r.capabilities.vision//false),reasoning:($r.capabilities.reasoning//false),
-              active:false,blocked:true,reason:$reason}]' <<<"$rows")
+              active:false,blocked:true,reason:$reason,recommended:false}]' <<<"$rows")
       continue
     fi
     bytes=$(progress_bytes "$r")
@@ -183,7 +183,7 @@ catalog() {
             sizeGb:((($r.model.bytes + (([$r.launch.mounts[]?.provision.size_gb//0]|add//0)*1073741824))/107374182|floor)/10),
             ctxTokens:$r.serving.ctxTokens,toksPerSec:$r.speed.tps,
             tools:($r.capabilities.tools//false),vision:($r.capabilities.vision//false),reasoning:($r.capabilities.reasoning//false),
-            active:false,blocked:false,reason:""}]' <<<"$rows")
+            active:false,blocked:false,reason:"",recommended:($r.recommended//false)}]' <<<"$rows")
   done < <(jq -r --argjson ids "$ids" '.recipes[]|select(.status=="validated" and .launch_kind=="docker")
     |select(.hardware_id as $h|$ids|index($h))|.id' "$IDX")
   jq -c 'sort_by([.blocked,.acceleratorCount,(.weightsDownloaded|not),.name])' <<<"$rows"

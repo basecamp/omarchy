@@ -60,14 +60,24 @@ launch_tui() {
   [[ -n $sig ]] || fail "Hyprland session not found"
   HYPRLAND_INSTANCE_SIGNATURE=$sig hyprctl dispatch "hl.dsp.exec_cmd($enc)" >/dev/null
 }
-open_agent() {
-  local name=${1:-pi} bin served sid; sid=${OMARCHY_AI_SESSION_ID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr A-Z a-z)}
+agents_scan() { # -> {default,installed}: Omarchy's default agent and which known agents exist
+  local a list='[]' def=""
+  for a in pi omp opencode ori claude codex grok agy copilot crush; do
+    bin_of "$a" >/dev/null 2>&1 && list=$(jq -c --arg a "$a" '.+[$a]' <<<"$list")
+  done
+  command -v omarchy-default-agent >/dev/null 2>&1 && def=$(omarchy-default-agent 2>/dev/null || true)
+  jq -nc --arg d "${def:-}" --argjson i "$list" '{default:$d,installed:$i}'
+}
+open_agent() { # no argument: Omarchy's default agent; pi/omp get the local model wired in explicitly
+  local name=${1:-} bin served sid; sid=${OMARCHY_AI_SESSION_ID:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen | tr A-Z a-z)}
   [[ $(sread | jq -r '.active.apiReady') == true ]] || fail "load a model first"
+  [[ -n $name ]] || { name=$(command -v omarchy-default-agent >/dev/null 2>&1 && omarchy-default-agent 2>/dev/null || true); name=${name:-pi}; }
   served=$(sread | jq -r .active.servedModel)
   case $name in
-    pi|omp) bin=$(bin_of "$name") || fail "$name is not installed" ;;
-    *) fail "choose pi or omp" ;;
+    pi) bin=$(bin_of pi) || fail "pi is not installed"
+        launch_tui "$bin" --provider omarchy-local --model "$served" --session-id "$sid" ;;
+    omp) bin=$(bin_of omp) || fail "omp is not installed"
+         launch_tui "$bin" --auto-approve --provider omarchy-local --model "$served" --session-id "$sid" ;;
+    *) launch_tui omarchy-agent ;; # their chosen agent, launched the way Omarchy launches it
   esac
-  if [[ $name == omp ]]; then launch_tui "$bin" --auto-approve --provider omarchy-local --model "$served" --session-id "$sid"
-  else launch_tui "$bin" --provider omarchy-local --model "$served" --session-id "$sid"; fi
 }

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # omarchy:summary=Run validated registry models on detected local hardware
 # omarchy:args=<load|unload|open-agent|share|scan|download|run|switch|remove|default|snapshot>
 set -euo pipefail

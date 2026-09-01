@@ -1,31 +1,37 @@
 # Local AI
 
-One bar icon and one full panel for running validated
-[local-ai-registry](https://github.com/0xSero/local-ai-registry) recipes on
-local GPUs. Both render only from `omarchy local ai snapshot` — no model
-names, launch flags, or fixed colors in the QML. `bin/omarchy-local-ai` is
-the controller; each library under `lib/` owns one concern: snapshot state,
+One button on the bar for local models. The widget detects hardware, shows
+the recommended [local-ai-registry](https://github.com/0xSero/local-ai-registry)
+recipe for it (plus up to four alternatives), and runs one validated model
+at a time in one labeled Docker container on a loopback OpenAI endpoint.
+The QML renders purely from `omarchy local ai snapshot` — no model names,
+launch flags, stats, or fixed colors. `bin/omarchy-local-ai` is the
+controller; each library under `lib/` owns one concern: snapshot state,
 hardware scan, registry gate, container runtime, agent wiring, and
 lifecycle workers.
 
 Put it on the bar with `omarchy bar put omarchy.local-ai --before omarchy.agents`;
-drop it with `omarchy plugin disable omarchy.local-ai`. The bar icon is an
-empty circle until a model is accepted, then a filled one. Left-click opens
-the compact popup, right-click opens Pi, Enter opens the dashboard.
-Dashboard: `j`/`k` select, Enter downloads/runs/switches, `p` opens Pi.
+drop it with `omarchy plugin disable omarchy.local-ai`. The icon is an empty
+circle until a model is accepted, then filled. Left-click opens the popup:
+one click loads (the download size is shown first — nothing lands on disk
+without that click), one click unloads, "Open agent" or right-click opens
+the Omarchy default agent on the running model (Pi and Oh My Pi get it
+passed explicitly; other agents launch through `omarchy-agent`), and "Share
+on Tailscale" publishes the endpoint on the user's tailnet — unload always
+unpublishes it.
 
 ## Commands
 
-`omarchy local ai` routes into the controller: `scan`, `download <recipe>`,
-`run <recipe>`, `switch <recipe>`, `unload`, `remove <recipe>` (reclaim
-disk), `open-agent [pi|omp]`, `default` (make the running model both
-agents' default), `snapshot`.
+`omarchy local ai` routes into the controller: `load <recipe>` (download if
+needed, then run), `unload`, `open-agent [name]`, `share`, `scan`,
+`download`, `run`, `switch`, `remove <recipe>`, `default` (make the running
+model both agents' default), `snapshot`.
 
 ```
 uninitialized -> scanning -> idle
-idle -> downloading -> downloaded
-downloaded|idle -> starting -> ready
-ready -> switching -> ready     # rollback restores the previous accepted model
+idle -> downloading -> starting -> ready      # load
+downloaded|idle -> starting -> ready          # run
+ready -> switching -> ready                   # rollback restores the previous model
 ready -> unloading -> idle
 any -> error
 ```
@@ -33,25 +39,27 @@ any -> error
 ## Trust and safety
 
 `scan` checks out the registry at the commit in `registry.pin` — the trust
-root is a revision reviewed with this plugin, not whatever `main` says at
-clone time (set `OMARCHY_AI_REGISTRY_PIN=` empty to track `main`). A recipe
-only launches if it is `validated`, pins its image by `@sha256` and its
-weights by full commit hash, and every mount resolves under the managed
-cache (`${MODEL_ROOT}`/`${CACHE_ROOT}`) or the registry checkout. Host
-networking, multi-node launches, unknown placeholders, and CUDA-graph
-disabling flags are refused; refused recipes stay visible as `blocked` with
-the reason. Only containers labeled `io.omarchy.local-ai=1` are ever
-adopted, started, stopped, or removed, and the endpoint binds to
-`127.0.0.1`. Ready means accepted: model identity on `/v1/models`, a real
-chat completion, and a real `shell` tool call for tool recipes.
+root is a revision reviewed with this plugin. A recipe only launches if it
+is `validated`, pins its image by `@sha256` and its weights by full commit
+hash, and every mount resolves under the managed cache
+(`${MODEL_ROOT}`/`${CACHE_ROOT}`) or the registry checkout. Host networking,
+multi-node launches, unknown placeholders, and CUDA-graph disabling flags
+are refused with the reason. The recommended model is the registry-flagged
+recipe for the matched hardware, or the first runnable one. Only containers
+labeled `io.omarchy.local-ai=1` are ever adopted, started, stopped, or
+removed; the endpoint binds `127.0.0.1` and is only reachable further via
+an explicit `tailscale serve` toggle that unload reverts. Ready means
+accepted: model identity, a real chat completion, and a real `shell` tool
+call for tool recipes.
 
 On run, an `omarchy-local` provider is written into `~/.pi/agent/models.json`
 and `~/.omp/agent/models.yml` (the file Oh My Pi actually reads; a
 hand-written YAML is never touched — the snapshot reports that agent as
-`manual`). The default provider is never changed except by the explicit
-`default` command; unload deletes exactly what run wrote.
+`manual`). The default provider changes only via the explicit `default`
+command; unload deletes exactly what run wrote.
 
 ## Tests
 
-`./test/shell.d/local-ai-test.sh` — an isolated temp registry with docker,
-curl, and hardware shims. No GPU, network, or Docker daemon involved.
+`./test/shell.d/local-ai-test.sh` — 34 cases against an isolated temp
+registry with docker, curl, tailscale, and hardware shims. No GPU, network,
+or Docker daemon involved.

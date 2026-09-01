@@ -3,7 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
-// Bar icon + keyboard panel. Renders purely from one `omarchy-local-ai snapshot` blob.
+// One button for local models. Renders purely from `omarchy-local-ai snapshot`.
 Panel {
   id: root
   moduleName: "omarchy.local-ai"
@@ -11,25 +11,38 @@ Panel {
   manageIpc: false
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
-  property var snap: JSON.parse('{"state":"uninitialized","operation":{},"active":{},"gpus":[],"registry":{},"hardware":{"groups":[]},"models":[],"error":""}')
+  property var snap: JSON.parse('{"state":"uninitialized","operation":{},"active":{},"models":[],"recommended":"","share":{},"error":""}')
   readonly property string cli: "omarchy-local-ai"
   readonly property var active: snap.active || ({})
   readonly property var operation: snap.operation || ({})
-  readonly property var gpus: snap.gpus || []
+  readonly property var share: snap.share || ({})
   readonly property string state: snap.state || "uninitialized"
+  readonly property var models: {
+    var rows = (snap.models || []).filter(function(m) { return m.available && !m.blocked })
+    rows.sort(function(a, b) { return (b.recipeId === snap.recommended) - (a.recipeId === snap.recommended) })
+    return rows.slice(0, 5)
+  }
   readonly property bool hasActive: Boolean(active.container); readonly property bool loaded: Boolean(active.apiReady) && hasActive
   readonly property bool busy: ["scanning", "downloading", "starting", "switching", "unloading"].indexOf(state) >= 0
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color dim: Util.alpha(foreground, 0.55)
   function refresh() { if (!poll.running) poll.running = true }
-  function openDashboard() { close(); Quickshell.execDetached(["omarchy-shell", "shell", "summon", "omarchy.local-ai", "{}"]) }
   function act(args, closeAfter) { if (busy || action.running) return; action.command = [cli].concat(args); action.closeAfter = closeAfter; action.running = true }
   function line() {
     if (snap.error) return "error · " + snap.error
     if (busy) return (operation.name || state) + (operation.indeterminate ? " · " + (operation.detail || "working") : " · " + (operation.percent || 0) + "%")
-    if (loaded) return active.servedModel + " · " + active.endpoint
-    return state
+    if (loaded) return active.endpoint + (share.active && share.dns ? " · shared on " + share.dns : "")
+    if (models.length) return models.length + (models.length === 1 ? " model runs" : " models run") + " on this hardware"
+    return state === "uninitialized" ? "not scanned yet" : state
   }
+  function rowText(m) {
+    var s = m.name
+    if (loaded && active.recipeId === m.recipeId) return s + " · running"
+    if (m.recipeId === snap.recommended) s += " · recommended"
+    if (!m.imageDownloaded || !m.weightsDownloaded) s += m.sizeGb > 0 ? " · " + m.sizeGb + " GB" : " · download"
+    return s
+  }
+  function loadModel(m) { if (loaded && active.recipeId === m.recipeId) return; act(["load", m.recipeId], false) }
   onOpenedChanged: if (opened) refresh()
   Process {
     id: poll
@@ -46,7 +59,7 @@ Panel {
       Item { Rectangle { anchors.centerIn: parent; width: Style.space(9); height: width; radius: width / 2; color: root.loaded ? root.foreground : "transparent"; border.width: root.loaded ? 0 : Math.max(1, Style.space(1)); border.color: root.foreground } }
     }
     tooltipText: root.loaded ? "Local AI · " + root.active.name : "Local AI · " + root.state
-    onPressed: function(code) { if (code === Qt.RightButton && root.loaded) root.act(["open-agent", "pi"], true); else root.toggle() }
+    onPressed: function(code) { if (code === Qt.RightButton && root.loaded) root.act(["open-agent"], true); else root.toggle() }
   }
   KeyboardPanel {
     id: panel
@@ -60,7 +73,7 @@ Panel {
     PanelKeyCatcher {
       id: keys
       anchors.fill: parent
-      onActivateRequested: root.openDashboard()
+      onActivateRequested: { if (root.loaded) root.act(["open-agent"], true); else if (root.models.length) root.loadModel(root.models[0]); else root.act(["scan"], false) }
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       Column {
@@ -72,22 +85,21 @@ Panel {
           width: parent.width; spacing: Style.space(3)
           Text { width: parent.width; text: root.loaded ? root.active.name : "Local AI"; color: root.foreground; font.family: root.bar.fontFamily; font.pixelSize: Style.font.heading; font.weight: Font.Medium; elide: Text.ElideRight }
           Meta { width: parent.width; text: root.line() }
-          Meta { width: parent.width; text: root.loaded ? "api " + (root.active.apiReady ? "ready" : "pending") + " · tools " + (root.active.toolCallReady ? "ready" : root.active.tools ? "pending" : "n/a") + (root.active.toksPerSec > 0 ? " · ~" + root.active.toksPerSec + " tok/s" : "") + (root.active.ctxTokens >= 1024 ? " · " + Math.round(root.active.ctxTokens / 1024) + "K ctx" : "") : (root.snap.models || []).filter(function(m) { return !m.blocked }).length + " runnable recipes" }
         }
         Column {
-          width: parent.width; spacing: Style.space(3)
+          width: parent.width; spacing: Style.space(6)
           Repeater {
-            model: root.gpus
-            Meta { required property var modelData; width: content.width; text: modelData.backend + " " + modelData.index + " · " + (modelData.usedMiB === null || modelData.usedMiB === undefined ? "unavailable" : modelData.usedMiB + " / " + modelData.totalMiB + " MiB") }
+            model: root.models
+            Link { required property var modelData; width: content.width; text: root.rowText(modelData); enabled: !root.busy && !(root.loaded && root.active.recipeId === modelData.recipeId); onTriggered: root.loadModel(modelData) }
           }
         }
         Column {
           width: parent.width; spacing: Style.space(10)
-          Link { text: "Open Local AI panel"; onTriggered: root.openDashboard() }
           Rule {}
+          Link { text: "Open agent"; enabled: root.loaded; onTriggered: root.act(["open-agent"], true) }
+          Link { visible: Boolean(root.share.available); text: root.share.active ? "Stop sharing on Tailscale" : "Share on Tailscale"; enabled: root.loaded && !root.busy; onTriggered: root.act(["share"], false) }
+          Link { text: "Unload"; enabled: root.hasActive && !root.busy; onTriggered: root.act(["unload"], false) }
           Link { text: "Scan"; enabled: !root.busy; onTriggered: root.act(["scan"], false) }
-          Link { text: "Open Pi"; enabled: root.loaded; onTriggered: root.act(["open-agent", "pi"], true) }
-          Link { text: "Unload"; enabled: root.hasActive; onTriggered: root.act(["unload"], false) }
         }
       }
     }
