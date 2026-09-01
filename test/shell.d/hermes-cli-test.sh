@@ -23,11 +23,28 @@ cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
 SH
 
 # `mise where` must fail so the installer sees no Hermes behind the stub.
+#
+# With OMARCHY_TEST_MISE_X_HERMES=1, `mise x -- hermes ...` emulates the Hermes
+# the Omarchy stub runs, so the readiness probe can be exercised through a
+# mise-installed hermes and not only the foreign and desktop wrappers. Off by
+# default, so `mise x` stays silent for every test that does not opt in.
 cat >"$mock_bin/mise" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >>"$OMARCHY_TEST_MISE_LOG"
 if [[ $1 == "where" && ${OMARCHY_TEST_MISE_WHERE_OK:-0} == 1 ]]; then
   printf '%s\n' "$OMARCHY_TEST_MISE_ROOT"
+  exit 0
+fi
+if [[ $1 == "x" && ${OMARCHY_TEST_MISE_X_HERMES:-0} == 1 ]]; then
+  # Args are `x <tool> -- hermes <hermes-args...>`; skip to what follows hermes.
+  shift
+  while (( $# )) && [[ $1 != "--" ]]; do shift; done
+  shift 2
+  if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+    [[ ${OMARCHY_TEST_HERMES_CAPABLE:-1} == 1 ]] && echo "[-q QUERY, --query QUERY] [--tui]"
+  else
+    echo "hermes-agent 0.0.0-test"
+  fi
   exit 0
 fi
 [[ $1 != "where" ]]
@@ -237,6 +254,26 @@ tr '\0' '\n' <"$mise_log" | grep -q '^rm$' || fail "an older owned Hermes enviro
 tr '\0' '\n' <"$mise_log" | grep -q '^uninstall$' || fail "an older owned Hermes environment is uninstalled"
 pass "reinstalling replaces an older owned Hermes environment"
 
+# The mise-installed path is what a machine without the desktop app runs, and
+# --check gates the default agent there too. The stub is present and its mise
+# environment resolves, so readiness turns on the hermes mise runs -- exercised
+# here in both directions, since the desktop and foreign cases cover only their
+# own wrappers.
+run_mise_check() {
+  OMARCHY_TEST_DESKTOP_INSTALLED=0 \
+    OMARCHY_TEST_MISE_WHERE_OK=1 \
+    OMARCHY_TEST_MISE_ROOT="$test_tmp/mise" \
+    OMARCHY_TEST_MISE_LOG="$mise_log" \
+    OMARCHY_TEST_MISE_X_HERMES=1 \
+    OMARCHY_TEST_HERMES_CAPABLE="$1" \
+    HOME="$test_home" \
+    PATH="$mock_bin:$PATH" \
+    bash "$ROOT/bin/omarchy-install-hermes-cli" --check >/dev/null 2>&1
+}
+run_mise_check 1 || fail "--check accepts a mise-installed hermes that runs the seeded session"
+run_mise_check 0 && fail "--check rejects a mise-installed hermes without the flags omarchy-agent passes"
+pass "--check follows the mise-installed hermes it would actually run"
+
 rm -f "$test_home/.local/bin/hermes"
 : >"$mise_log"
 OMARCHY_TEST_MISE_WHERE_OK=1 run_installer 0 &&
@@ -410,3 +447,18 @@ SH
 chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
 run_ready_check && fail "--check accepts a release without the flags omarchy-agent passes"
 pass "a release listing only --oneshot is not prompt-ready"
+
+# A release that lists --tui-theme and --query-log but has dropped the bare
+# --tui/--query omarchy-agent passes must not read as ready on the substring
+# alone. The probe matches at a flag boundary for exactly this case.
+cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "[--tui-theme THEME] [--query-log FILE]"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+run_ready_check && fail "--check accepts a release whose flags only contain --tui/--query as a substring"
+pass "a flag that merely contains --tui or --query is not prompt-ready"

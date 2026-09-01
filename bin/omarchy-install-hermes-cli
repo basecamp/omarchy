@@ -92,12 +92,17 @@ hermes_runs() {
 # session and --tui to keep it interactive -- rather than a flag that merely
 # shipped alongside them: the previous marker, --oneshot, was dropped in Hermes
 # v0.20 and left working installs stranded as "not ready".
+#
+# Matched at a flag boundary, not as a substring: a bare grep for --tui also
+# accepts a release that lists only --tui-theme while having dropped --tui
+# itself, which would call an install ready that omarchy-agent cannot drive --
+# the same false verdict this check exists to prevent, merely inverted.
 hermes_prompt_ready() {
   local help
   hermes_runs &&
     help=$(timeout 15 "$HOME/.local/bin/hermes" chat --help 2>/dev/null) &&
-    grep -qF -- '--tui' <<<"$help" &&
-    grep -qF -- '--query' <<<"$help"
+    grep -qE -- '--tui([^[:alnum:]-]|$)' <<<"$help" &&
+    grep -qE -- '--query([^[:alnum:]-]|$)' <<<"$help"
 }
 
 # --owns answers whether the wrapper on PATH is the one this command wrote, so
