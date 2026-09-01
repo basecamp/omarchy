@@ -1,1 +1,23 @@
-PLACEHOLDER_MENU
+{
+  // Omarchy menu definition.
+  // JSONC is used for Neovim-friendly highlighting, comments, and trailing commas.
+  // IDs are object keys. Dotted IDs imply hierarchy: trigger.share.file belongs
+  // under trigger.share.
+  // Kind is inferred: action -> action, target -> link, otherwise submenu.
+  // Dotted IDs define the tree. provider:"name" points a submenu at one of
+  // the shell's providers (the providers map in shell/plugins/menu/Menu.qml);
+  // new provider names cannot be declared here. See docs/menu.md.
+  // Optional fields:
+  //   aliases        alternate `omarchy menu summon <name>` routes; also searchable.
+  //                  Reserved for established names users already type; new entries
+  //                  should not normally add any.
+  //   iconFont       font family used for the icon glyph, when it differs from the menu font
+  //   title          header text shown when the submenu is open; defaults to label
+  //   when           shell condition; hide row when it fails
+  //   checked        shell condition; append ✓ when it succeeds
+  //   disabled       shell condition; when it succeeds the row stays listed but
+  //                  goes dim, takes a ✓ and can no longer be selected. Install
+  //                  rows use it so software already on the machine reads as
+  //                  installed instead of vanishing from the list.
+
+  // Root Menu
