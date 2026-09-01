@@ -176,3 +176,33 @@ second_intro=$(HOME="$intro_home" OMARCHY_BOOT_ID=video-test-boot "$ROOT/bin/oma
 [[ -z $second_intro ]] || fail "boot intro runs once for a boot id" "$second_intro"
 
 pass "boot intro resolves the selected still once per boot"
+
+migration="$ROOT/migrations/1788281348.sh"
+migration_home="$test_tmp/migration-home"
+migration_bin="$test_tmp/migration-bin"
+migration_calls="$test_tmp/migration-calls"
+mkdir -p "$migration_home/.local/state/omarchy/current" "$migration_bin"
+
+cat >"$migration_bin/omarchy-theme-refresh" <<'SH'
+#!/bin/bash
+printf 'refresh\n' >>"$MIGRATION_CALLS"
+SH
+chmod +x "$migration_bin/omarchy-theme-refresh"
+
+printf 'tokyo-night\n' >"$migration_home/.local/state/omarchy/current/theme.name"
+HOME="$migration_home" PATH="$migration_bin:$PATH" MIGRATION_CALLS="$migration_calls" \
+  bash -euo pipefail "$migration" >/dev/null
+[[ $(<"$migration_calls") == "refresh" ]] || fail "boot intro migration refreshes an active Tokyo Night theme"
+
+: >"$migration_calls"
+printf 'catppuccin\n' >"$migration_home/.local/state/omarchy/current/theme.name"
+HOME="$migration_home" PATH="$migration_bin:$PATH" MIGRATION_CALLS="$migration_calls" \
+  bash -euo pipefail "$migration" >/dev/null
+[[ ! -s $migration_calls ]] || fail "boot intro migration leaves another active theme alone"
+
+rm "$migration_home/.local/state/omarchy/current/theme.name"
+HOME="$migration_home" PATH="$migration_bin:$PATH" MIGRATION_CALLS="$migration_calls" \
+  bash -euo pipefail "$migration" >/dev/null
+[[ ! -s $migration_calls ]] || fail "boot intro migration tolerates missing theme state"
+
+pass "boot intro migration stages assets only for an active Tokyo Night theme"
