@@ -107,7 +107,8 @@ pass "Claude collector ignores prefix-colliding providers, user messages, and ma
 # Claude Code transcripts. Their compatible JSONL sessions must be included.
 PI_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$HISTORY_HOME" "$OPENCODE_HOME" "$PI_HOME"' EXIT
-mkdir -p "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project"
+mkdir -p "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project" \
+  "$PI_HOME/.omp/profiles/work/agent/sessions/project"
 
 cat >"$PI_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
 {"type":"message","id":"pi-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","api":"anthropic-messages","model":"claude-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
@@ -117,15 +118,20 @@ EOF
 cat >"$PI_HOME/.omp/agent/sessions/project/omp.jsonl" <<EOF
 { "type": "message", "id": "omp-1", "timestamp": "$timestamp", "message": { "role": "assistant", "provider": "anthropic", "model": "claude-omp", "usage": { "input": 20, "output": 5, "cacheRead": 4, "cacheWrite": 1, "totalTokens": 30 } } }
 EOF
+# `omp --profile=<name>` moves the whole agent tree under profiles/<name>/, so a
+# subscription spent entirely through a profile leaves the default root empty.
+cat >"$PI_HOME/.omp/profiles/work/agent/sessions/project/omp-profile.jsonl" <<EOF
+{"type":"message","id":"omp-profile-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","model":"claude-omp-profile","usage":{"input":7,"output":3,"cacheRead":2,"cacheWrite":1,"totalTokens":13}}}
+EOF
 
 result=$(HOME="$PI_HOME" XDG_CACHE_HOME="$PI_HOME/.cache" XDG_DATA_HOME="$PI_HOME/.local/share" \
   "$ROOT/bin/omarchy-agent-usage-claude" --force)
 
-[[ $(jq -r '.todayTotalTokens' <<<"$result") == "49" ]] ||
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "62" ]] ||
   fail "Claude collector counts usage from pi and omp sessions" "$result"
-[[ $(jq -c '.modelUsage' <<<"$result") == '{"claude-omp":{"cacheCreationInputTokens":1,"cacheReadInputTokens":4,"inputTokens":20,"outputTokens":5},"claude-pi":{"cacheCreationInputTokens":2,"cacheReadInputTokens":3,"inputTokens":10,"outputTokens":4}}' ]] ||
+[[ $(jq -c '.modelUsage' <<<"$result") == '{"claude-omp":{"cacheCreationInputTokens":1,"cacheReadInputTokens":4,"inputTokens":20,"outputTokens":5},"claude-omp-profile":{"cacheCreationInputTokens":1,"cacheReadInputTokens":2,"inputTokens":7,"outputTokens":3},"claude-pi":{"cacheCreationInputTokens":2,"cacheReadInputTokens":3,"inputTokens":10,"outputTokens":4}}' ]] ||
   fail "Claude collector filters pi and omp sessions to Anthropic providers" "$result"
-pass "Claude collector counts pi and omp subscription usage"
+pass "Claude collector counts pi and omp subscription usage, profiles included"
 
 # Collectors overlap in practice: the update command backgrounds one per agent
 # while the panel refreshes on its own. Two writers aiming at one cache file

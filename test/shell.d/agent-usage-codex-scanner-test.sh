@@ -72,7 +72,8 @@ pass "Codex collector identifies itself with an empty limits list"
 # Codex sessions. Their compatible JSONL transcripts must be included.
 PI_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$PI_HOME"' EXIT
-mkdir -p "$PI_HOME/bin" "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project"
+mkdir -p "$PI_HOME/bin" "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project" \
+  "$PI_HOME/.omp/profiles/codex/agent/sessions/project"
 cp "$TEST_HOME/bin/codex" "$PI_HOME/bin/codex"
 cat >"$PI_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
 {"type":"message","id":"pi-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
@@ -81,15 +82,20 @@ cat >"$PI_HOME/.omp/agent/sessions/project/omp.jsonl" <<EOF
 { "type": "message", "id": "omp-1", "timestamp": "$timestamp", "message": { "role": "assistant", "provider": "openai-codex", "model": "gpt-omp", "usage": { "input": 20, "output": 5, "cacheRead": 4, "cacheWrite": 1, "totalTokens": 30 } } }
 {"type":"message","id":"other-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","model":"claude-test","usage":{"input":999,"output":999}}}
 EOF
+# `omp --profile=<name>` moves the whole agent tree under profiles/<name>/, so a
+# subscription spent entirely through a profile leaves the default root empty.
+cat >"$PI_HOME/.omp/profiles/codex/agent/sessions/project/omp-profile.jsonl" <<EOF
+{"type":"message","id":"omp-profile-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-omp-profile","usage":{"input":7,"output":3,"cacheRead":2,"cacheWrite":1,"totalTokens":13}}}
+EOF
 
 result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" XDG_DATA_HOME="$PI_HOME/.local/share" \
   PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
 
-[[ $(jq -r '.todayTotalTokens' <<<"$result") == "49" ]] ||
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "62" ]] ||
   fail "Codex collector counts usage from pi and omp sessions" "$result"
-[[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1}}' ]] ||
+[[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1},"gpt-omp-profile":{"inputTokens":7,"outputTokens":3,"cacheReadInputTokens":2,"cacheCreationInputTokens":1}}' ]] ||
   fail "Codex collector filters pi and omp sessions to Codex providers" "$result"
-pass "Codex collector counts pi and omp subscription usage"
+pass "Codex collector counts pi and omp subscription usage, profiles included"
 
 # A subscription burned entirely through opencode has no native session files;
 # usage must come from opencode's message database, filtered to OpenAI.
