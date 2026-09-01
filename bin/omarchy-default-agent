@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set and launch the default coding agent
-# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush]
+# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush|afk]
 # omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
 
 installing=false
@@ -34,13 +34,20 @@ crush) agent="crush"; name="Crush" ;;
 grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
 agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
+afk) agent="afk"; name="AFK"; agent_package="forgejo:mooglest/public[api_url=https://git.mooglest.com/api/v1]" ;;
 *)
-  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush>"
+  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|copilot|crush|afk>"
   exit 1
   ;;
 esac
 
 agent_package=${agent_package:-$agent}
+
+# Forgejo releases are hidden by mise's default cooldown; the lazy wrapper
+# already exports this, and `mise where` / `mise use` here must agree with it.
+if [[ $agent == "afk" ]]; then
+  export MISE_MINIMUM_RELEASE_AGE=0
+fi
 
 if [[ $installing == "false" ]] && ! mise where "$agent_package" &>/dev/null; then
   exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"

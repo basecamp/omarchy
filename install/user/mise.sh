@@ -1,5 +1,6 @@
 omarchy-mise-install codex
 omarchy-mise-install claude
+omarchy-mise-install 'forgejo:mooglest/public[api_url=https://git.mooglest.com/api/v1]' afk
 omarchy-mise-install crush
 omarchy-mise-install antigravity-cli agy
 omarchy-mise-install gh
