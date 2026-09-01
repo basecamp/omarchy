@@ -7,6 +7,7 @@
   "license": "MIT",
   "description": "A compact Local AI widget and full registry lifecycle panel.",
   "kinds": ["bar-widget", "panel"],
+  "activation": "on-demand",
   "entryPoints": {"barWidget": "Panel.qml", "panel": "Dashboard.qml"},
   "barWidget": {
     "displayName": "Local AI",
@@ -14,6 +15,10 @@
     "category": "AI",
     "aliases": ["local-ai", "models", "gpu"],
     "defaultSection": "right",
-    "allowMultiple": false
+    "allowMultiple": false,
+    "defaults": {"refreshIntervalSec": 30},
+    "schema": [
+      {"key": "refreshIntervalSec", "type": "integer", "label": "Background refresh interval (seconds)", "min": 5, "max": 300, "step": 5, "defaultValue": 30}
+    ]
   }
 }
