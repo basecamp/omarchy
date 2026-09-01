@@ -897,8 +897,15 @@ __priv_up() { assert_mounts_safe && dc up -d; }
 
 __priv_down() { dc down; }
 
-# Bring the VM up and wait until the guest reports it is ready, all under a
-# single elevation so the readiness poll does not prompt on every iteration.
+# A successful TCP connection proves the forwarded RDP service is listening.
+# Keep this password-free: the privileged readiness path must not receive the
+# user's guest credentials or launch an authenticated FreeRDP process as root.
+rdp_port_ready() {
+  timeout 1 bash -c 'exec 3<>/dev/tcp/127.0.0.1/3389' >/dev/null 2>&1
+}
+
+# Bring the VM up and wait until the guest reports it booted and its RDP service
+# accepts connections, all under one elevation so polling never prompts again.
 __priv_up_wait() {
   assert_mounts_safe || return 1
   local status
@@ -909,17 +916,27 @@ __priv_up_wait() {
 
   # docker logs persists across restarts, so anchor the scan to the current
   # start time; an empty --since would match a stale "started successfully".
-  local started_at count=0
+  local started_at count=0 boot_reported=0
   while true; do
-    started_at=$(docker inspect --format='{{.State.StartedAt}}' "$CONTAINER" 2>/dev/null)
-    if [[ -n $started_at ]] && docker logs --since "$started_at" "$CONTAINER" 2>&1 | grep -qi "windows started successfully"; then
+    if ((boot_reported == 0)); then
+      started_at=$(docker inspect --format='{{.State.StartedAt}}' "$CONTAINER" 2>/dev/null)
+      if [[ -n $started_at ]] && docker logs --since "$started_at" "$CONTAINER" 2>&1 | grep -qi "windows started successfully"; then
+        boot_reported=1
+      fi
+    fi
+    if ((boot_reported == 1)) && rdp_port_ready; then
       return 0
     fi
     sleep 2
-    ((++count > 60)) && {
-      echo "Timeout: Windows VM did not report ready within 2 minutes" >&2
+    ((++count))
+    if ((count > 60)); then
+      if ((boot_reported == 1)); then
+        echo "Timeout: Windows VM booted but RDP did not become reachable within 2 minutes" >&2
+      else
+        echo "Timeout: Windows VM did not report ready within 2 minutes" >&2
+      fi
       return 1
-    }
+    fi
   done
 }
 
