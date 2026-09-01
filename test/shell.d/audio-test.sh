@@ -47,3 +47,60 @@ assertEqual(audio.unmatchedMprisStreamLabel('audio-src', players, streams), 'Spo
 assertEqual(audio.streamLabel(streams[1], players, streams), 'Spotify', 'audio labels generic streams from MPRIS')
 assert(audio.streamRepresentsPlayer(streams[1], players[0], players, streams), 'audio links generic streams to active player')
 JS
+
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+mkdir -p "$tmp_dir/bin"
+
+cat >"$tmp_dir/bin/wpctl" <<'EOF'
+#!/bin/bash
+printf 'wpctl %s\n' "$*" >>"$AUDIO_CALLS"
+EOF
+chmod +x "$tmp_dir/bin/wpctl"
+
+cat >"$tmp_dir/bin/pactl" <<'EOF'
+#!/bin/bash
+
+printf 'pactl %s\n' "$*" >>"$AUDIO_CALLS"
+
+if [[ $* == "list short source-outputs" ]]; then
+  printf '71\tPipeWire\n'
+elif [[ $1 == "move-source-output" && $3 == bluez_input.* ]]; then
+  attempts=0
+  [[ ! -f $AUDIO_ATTEMPTS ]] || attempts=$(<"$AUDIO_ATTEMPTS")
+  (( attempts += 1 ))
+  printf '%s\n' "$attempts" >"$AUDIO_ATTEMPTS"
+  (( attempts > ${AUDIO_MOVE_FAILURES:-0} ))
+fi
+EOF
+chmod +x "$tmp_dir/bin/pactl"
+
+audio_calls="$tmp_dir/calls"
+audio_attempts="$tmp_dir/attempts"
+
+run_input_switch() {
+  AUDIO_CALLS="$audio_calls" AUDIO_ATTEMPTS="$audio_attempts" AUDIO_MOVE_FAILURES="${AUDIO_MOVE_FAILURES:-0}" \
+    PATH="$tmp_dir/bin:$PATH" \
+    "$ROOT/bin/omarchy-audio-input-set-default" "$@"
+}
+
+: >"$audio_calls"
+run_input_switch 43 bluez_input.AA:BB:CC:DD:EE:FF
+[[ $(<"$audio_attempts") == "2" ]] ||
+  fail "audio retries a Bluetooth capture move after its graph is rebuilt" "$(<"$audio_calls")"
+pass "audio retries a Bluetooth capture move after its graph is rebuilt"
+
+: >"$audio_calls"
+: >"$audio_attempts"
+if AUDIO_MOVE_FAILURES=5 run_input_switch 43 bluez_input.AA:BB:CC:DD:EE:FF 2>/dev/null; then
+  fail "audio reports an exhausted Bluetooth capture move"
+fi
+[[ $(<"$audio_attempts") == "5" ]] ||
+  fail "audio bounds Bluetooth capture move retries" "$(<"$audio_calls")"
+pass "audio reports an exhausted Bluetooth capture move after bounded retries"
+
+: >"$audio_calls"
+run_input_switch 44 alsa_input.usb-Generic_USB_Audio-00.mono-fallback
+[[ $(grep -Fc 'pactl move-source-output 71 alsa_input.usb-Generic_USB_Audio-00.mono-fallback' "$audio_calls") == "1" ]] ||
+  fail "audio moves an ordinary capture stream once" "$(<"$audio_calls")"
+pass "audio moves an ordinary capture stream once"

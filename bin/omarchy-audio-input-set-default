@@ -12,9 +12,53 @@ if [[ -z $node_id || -z $source_name ]]; then
   exit 1
 fi
 
-wpctl set-default "$node_id" 2>/dev/null || true
-pactl set-default-source "$source_name" 2>/dev/null || true
+wpctl_status=0
+pactl_status=0
+wpctl set-default "$node_id" 2>/dev/null || wpctl_status=$?
+pactl set-default-source "$source_name" 2>/dev/null || pactl_status=$?
 
-pactl list short source-outputs 2>/dev/null | awk '{ print $1 }' | while read -r output; do
-  [[ -n $output ]] && pactl move-source-output "$output" "$source_name" 2>/dev/null || true
-done
+if (( wpctl_status != 0 && pactl_status != 0 )); then
+  echo "Failed to set default audio input: $source_name" >&2
+  exit 1
+fi
+
+if ! source_outputs=$(pactl list short source-outputs 2>/dev/null); then
+  echo "Failed to list active audio input streams" >&2
+  exit 1
+fi
+
+move_failed=0
+while read -r output; do
+  [[ -n $output ]] || continue
+
+  max_attempts=1
+  if [[ $source_name == bluez_input.* ]]; then
+    max_attempts=5
+  fi
+
+  moved=false
+  for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
+    if pactl move-source-output "$output" "$source_name" 2>/dev/null; then
+      moved=true
+
+      # The first link starts WirePlumber's A2DP-to-HFP graph rebuild. Relink
+      # once after it settles because that initial asynchronous link can vanish.
+      if (( max_attempts > 1 && attempt == 1 )); then
+        sleep 0.2
+        continue
+      fi
+
+      break
+    fi
+
+    moved=false
+    (( attempt == max_attempts )) || sleep 0.2
+  done
+
+  if [[ $moved == false ]]; then
+    echo "Failed to move audio input stream $output to $source_name after $max_attempts attempts" >&2
+    move_failed=1
+  fi
+done < <(awk '{ print $1 }' <<<"$source_outputs")
+
+exit "$move_failed"
