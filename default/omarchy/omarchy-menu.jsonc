@@ -21,3 +21,25 @@
   //                  installed instead of vanishing from the list.
 
   // Root Menu
+  "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"provider":"apps"},
+  "learn": {"icon":"󰓑","label":"Learn"},
+  "trigger": {"icon":"󰓞","label":"Trigger"},
+  "style": {"icon":"","label":"Style"},
+  "setup": {"icon":"","label":"Setup","aliases":["settings"]},
+  "install": {"icon":"󰉉","label":"Install"},
+  "remove": {"icon":"󰥌","label":"Remove","aliases":["uninstall"]},
+  "update": {"icon":"","label":"Update","aliases":["restart","refresh"]},
+  "about": {"icon":"","label":"About","action":"omarchy-launch-about"},
+  "system": {"icon":"","label":"System","aliases":["power-menu"]},
+
+  // System
+  "system.screensaver": {"icon":"󰔄","label":"Screensaver","action":"omarchy-launch-screensaver force"},
+  "system.lock": {"icon":"","label":"Lock","action":"omarchy-system-lock"},
+  "system.suspend": {"icon":"󰊲","label":"Suspend","when":"! omarchy-toggle-enabled suspend-off","action":"systemctl suspend"},
+  "system.hibernate": {"icon":"��","label":"Hibernate","when":"omarchy-hibernation-available","action":"systemctl hibernate"},
+  "system.logout": {"icon":"󰉃","label":"Logout","action":"omarchy-system-logout"},
+  "system.reboot": {"icon":"󰌉","label":"Reboot","action":"omarchy-system-reboot"},
+  "system.shutdown": {"icon":"󰈥","label":"Shutdown","action":"omarchy-system-shutdown"},
+
+PLACEHOLDER_REST_OF_FILE
+}
