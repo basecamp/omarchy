@@ -55,7 +55,7 @@ bluetooth_input_ready() {
   [[ -n $bluetooth_card_name ]] || return 1
   sources=$(pactl --format=json list sources 2>/dev/null) || return 1
   jq -e --arg card "$bluetooth_card_name" --arg loopback "$source_name" \
-    'any(.[]; .name != $loopback and .properties["device.name"] == $card and .properties["media.class"] == "Audio/Source" and .properties["bluez5.loopback"] != "true")' \
+    'any(.[]; .name != $loopback and (.monitor_source // "") == "" and .properties["device.name"] == $card and .properties["device.class"] != "monitor" and .properties["media.class"] == "Audio/Source" and .properties["bluez5.loopback"] != "true")' \
     <<<"$sources" >/dev/null 2>&1
 }
 
