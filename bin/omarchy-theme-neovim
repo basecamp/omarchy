@@ -1,0 +1,388 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Render a theme's declarative Neovim appearance
+# omarchy:hidden=true
+
+import argparse
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import tomllib
+
+MAX_INPUT_SIZE = 1024 * 1024
+MAX_HIGHLIGHTS = 512
+NAME_PATTERN = re.compile(r"[A-Za-z0-9_@.:-]{1,128}\Z")
+HEX_COLOR_PATTERN = re.compile(r"#[0-9A-Fa-f]{6}\Z")
+
+OPTION_KEYS = {
+    "transparent",
+    "terminal_colors",
+    "dim_inactive",
+    "lualine_bold",
+}
+STYLE_GROUPS = {"comments", "keywords", "functions", "variables"}
+STYLE_ATTRIBUTES = {"bold", "italic", "underline", "undercurl", "strikethrough"}
+STYLE_VARIANTS = {"dark", "transparent", "normal"}
+PALETTE_KEYS = {
+    "accent",
+    "cursor",
+    "foreground",
+    "background",
+    "selection_foreground",
+    "selection_background",
+    "bg",
+    "lighter_bg",
+    "selection",
+    "muted",
+    "dark_fg",
+    "fg",
+    "light_fg",
+    "bright_fg",
+    "red",
+    "yellow",
+    "orange",
+    "green",
+    "cyan",
+    "blue",
+    "purple",
+    "magenta",
+    "brown",
+    "dark_bg",
+    "darker_bg",
+    "bright_red",
+    "bright_yellow",
+    "bright_green",
+    "bright_cyan",
+    "bright_blue",
+    "bright_purple",
+    "bright_magenta",
+}
+HIGHLIGHT_ATTRIBUTES = {
+    "fg",
+    "bg",
+    "sp",
+    "bold",
+    "italic",
+    "underline",
+    "undercurl",
+    "strikethrough",
+    "blend",
+}
+BOOLEAN_HIGHLIGHT_ATTRIBUTES = STYLE_ATTRIBUTES
+
+BASE_PALETTE = (
+    ("bg", "background"),
+    ("dark_bg", "dark_background"),
+    ("darker_bg", "darker_background"),
+    ("lighter_bg", "lighter_background"),
+    ("fg", "foreground"),
+    ("dark_fg", "dark_foreground"),
+    ("light_fg", "light_foreground"),
+    ("bright_fg", "bright_foreground"),
+    ("muted", "muted"),
+    ("red", "red"),
+    ("yellow", "yellow"),
+    ("orange", "orange"),
+    ("green", "green"),
+    ("cyan", "cyan"),
+    ("blue", "blue"),
+    ("magenta", "magenta"),
+    ("brown", "brown"),
+    ("bright_red", "bright_red"),
+    ("bright_yellow", "bright_yellow"),
+    ("bright_green", "bright_green"),
+    ("bright_cyan", "bright_cyan"),
+    ("bright_blue", "bright_blue"),
+    ("bright_magenta", "bright_magenta"),
+    ("accent", "accent"),
+    ("cursor", "bright_foreground"),
+    ("foreground", "foreground"),
+    ("background", "background"),
+    ("selection", "selection"),
+    ("selection_foreground", "selection_foreground"),
+    ("selection_background", "selection_background"),
+)
+
+
+class DeclarationError(Exception):
+    pass
+
+
+def fail(message):
+    print(f"omarchy-theme-neovim: {message}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def expect_table(value, path):
+    if not isinstance(value, dict):
+        raise DeclarationError(f"{path} must be a table")
+    return value
+
+
+def reject_unknown(table, allowed, path):
+    unknown = sorted(set(table) - allowed)
+    if unknown:
+        raise DeclarationError(f"{path} does not support '{unknown[0]}'")
+
+
+def expect_boolean(value, path):
+    if not isinstance(value, bool):
+        raise DeclarationError(f"{path} must be true or false")
+
+
+def validate_name(value, path):
+    if not isinstance(value, str) or not NAME_PATTERN.fullmatch(value):
+        raise DeclarationError(f"{path} must match [A-Za-z0-9_@.:-]+ and be at most 128 characters")
+
+
+def validate_color(value, path, allow_none=False):
+    if not isinstance(value, str):
+        raise DeclarationError(f"{path} must be a palette name or #RRGGBB")
+    if value in PALETTE_KEYS or HEX_COLOR_PATTERN.fullmatch(value):
+        return
+    if allow_none and value == "NONE":
+        return
+    raise DeclarationError(f"{path} must be a known palette name or #RRGGBB")
+
+
+def validate_declaration(data):
+    reject_unknown(data, {"schema", "options", "styles", "colors", "highlights"}, "neovim.toml")
+
+    schema = data.get("schema")
+    if not isinstance(schema, int) or isinstance(schema, bool) or schema != 1:
+        raise DeclarationError("schema must be the integer 1")
+
+    options = expect_table(data.get("options", {}), "[options]")
+    reject_unknown(options, OPTION_KEYS, "[options]")
+    for key, value in options.items():
+        expect_boolean(value, f"options.{key}")
+
+    styles = expect_table(data.get("styles", {}), "[styles]")
+    reject_unknown(styles, STYLE_GROUPS | {"sidebars", "floats"}, "[styles]")
+    for key in ("sidebars", "floats"):
+        if key in styles and (not isinstance(styles[key], str) or styles[key] not in STYLE_VARIANTS):
+            raise DeclarationError(f"styles.{key} must be dark, transparent, or normal")
+    for group in STYLE_GROUPS:
+        if group not in styles:
+            continue
+        attributes = expect_table(styles[group], f"[styles.{group}]")
+        reject_unknown(attributes, STYLE_ATTRIBUTES, f"[styles.{group}]")
+        for key, value in attributes.items():
+            expect_boolean(value, f"styles.{group}.{key}")
+
+    colors = expect_table(data.get("colors", {}), "[colors]")
+    reject_unknown(colors, PALETTE_KEYS, "[colors]")
+    for key, value in colors.items():
+        if not isinstance(value, str) or not HEX_COLOR_PATTERN.fullmatch(value):
+            raise DeclarationError(f"colors.{key} must be #RRGGBB")
+    for canonical, alias in (("purple", "magenta"), ("bright_purple", "bright_magenta")):
+        if canonical in colors and alias in colors and colors[canonical].lower() != colors[alias].lower():
+            raise DeclarationError(f"colors.{canonical} and colors.{alias} must match when both are set")
+
+    highlights = expect_table(data.get("highlights", {}), "[highlights]")
+    if len(highlights) > MAX_HIGHLIGHTS:
+        raise DeclarationError(f"[highlights] may contain at most {MAX_HIGHLIGHTS} groups")
+    for group, value in highlights.items():
+        validate_name(group, f"highlight group {group!r}")
+        attributes = expect_table(value, f"[highlights.{group!r}]")
+        if not attributes:
+            raise DeclarationError(f"[highlights.{group!r}] must not be empty")
+        if "link" in attributes:
+            if set(attributes) != {"link"}:
+                raise DeclarationError(f"highlights.{group}.link cannot be combined with other fields")
+            validate_name(attributes["link"], f"highlights.{group}.link")
+            continue
+        reject_unknown(attributes, HIGHLIGHT_ATTRIBUTES, f"[highlights.{group!r}]")
+        for key, item in attributes.items():
+            if key in {"fg", "bg", "sp"}:
+                validate_color(item, f"highlights.{group}.{key}", allow_none=key == "bg")
+            elif key in BOOLEAN_HIGHLIGHT_ATTRIBUTES:
+                expect_boolean(item, f"highlights.{group}.{key}")
+            elif key == "blend":
+                if not isinstance(item, int) or isinstance(item, bool) or not 0 <= item <= 100:
+                    raise DeclarationError(f"highlights.{group}.blend must be an integer from 0 to 100")
+
+    return options, styles, colors, highlights
+
+
+def resolve_theme_colors(colors_path):
+    omarchy_path = os.environ.get("OMARCHY_PATH")
+    if not omarchy_path:
+        raise DeclarationError("OMARCHY_PATH is not set")
+
+    command = Path(omarchy_path) / "bin" / "omarchy-theme-color"
+    try:
+        result = subprocess.run(
+            [str(command), "--file", str(colors_path), "--all"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        detail = error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) else str(error)
+        raise DeclarationError(f"could not resolve colors.toml: {detail}") from error
+
+    resolved = {}
+    for line in result.stdout.splitlines():
+        key, separator, value = line.partition("\t")
+        if separator:
+            resolved[key] = value
+
+    palette = {}
+    for output_key, source_key in BASE_PALETTE:
+        value = resolved.get(source_key, "")
+        if not HEX_COLOR_PATTERN.fullmatch(value):
+            raise DeclarationError(f"colors.toml did not resolve {source_key} to #RRGGBB")
+        palette[output_key] = value
+    return palette
+
+
+def lua_string(value):
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def lua_value(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    return lua_string(value)
+
+
+def render_lua(options, styles, palette, color_overrides, highlights):
+    palette.update(color_overrides)
+    lines = [
+        "-- Generated by Omarchy from colors.toml and neovim.toml.",
+        "-- Aether and LazyVim are selected by Omarchy; theme declarations only control appearance.",
+        "",
+        "return {",
+        "  {",
+        '    "bjarneo/aether.nvim",',
+        '    branch = "v3",',
+        '    name = "aether",',
+        "    priority = 1000,",
+        "    opts = {",
+    ]
+
+    for key in ("transparent", "terminal_colors", "dim_inactive", "lualine_bold"):
+        if key in options:
+            lines.append(f"      {key} = {lua_value(options[key])},")
+
+    if styles:
+        lines.append("      styles = {")
+        for key in ("sidebars", "floats"):
+            if key in styles:
+                lines.append(f"        {key} = {lua_value(styles[key])},")
+        for group in ("comments", "keywords", "functions", "variables"):
+            if group not in styles:
+                continue
+            lines.append(f"        {group} = {{")
+            for key in ("bold", "italic", "underline", "undercurl", "strikethrough"):
+                if key in styles[group]:
+                    lines.append(f"          {key} = {lua_value(styles[group][key])},")
+            lines.append("        },")
+        lines.append("      },")
+
+    lines.append("      colors = {")
+    emitted = set()
+    for key, _ in BASE_PALETTE:
+        lines.append(f"        {key} = {lua_string(palette[key])},")
+        emitted.add(key)
+    for key in sorted(set(color_overrides) - emitted):
+        lines.append(f"        {key} = {lua_string(palette[key])},")
+    lines.append("      },")
+
+    if highlights:
+        lines.append("      on_highlights = function(highlight, colors)")
+        for group in sorted(highlights):
+            attributes = highlights[group]
+            if "link" in attributes:
+                value = lua_string(attributes["link"])
+            else:
+                fields = []
+                for key in ("fg", "bg", "sp", "bold", "italic", "underline", "undercurl", "strikethrough", "blend"):
+                    if key not in attributes:
+                        continue
+                    item = attributes[key]
+                    if key in {"fg", "bg", "sp"} and item in PALETTE_KEYS:
+                        fields.append(f"{key} = colors[{lua_string(item)}]")
+                    else:
+                        fields.append(f"{key} = {lua_value(item)}")
+                value = "{ " + ", ".join(fields) + " }"
+            lines.append(f"        highlight[{lua_string(group)}] = {value}")
+        lines.append("      end,")
+
+    lines.extend(
+        [
+            "    },",
+            "  },",
+            "  {",
+            '    "LazyVim/LazyVim",',
+            "    opts = {",
+            '      colorscheme = "aether",',
+            "    },",
+            "  },",
+            "}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def write_atomic(output_path, rendered):
+    output_path = output_path.absolute()
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=output_path.parent,
+            prefix=".neovim.lua.",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(rendered)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, output_path)
+    except OSError as error:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise DeclarationError(f"could not write {output_path}: {error}") from error
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Render declarative Neovim theme appearance")
+    parser.add_argument("--file", required=True, type=Path)
+    parser.add_argument("--colors", required=True, type=Path)
+    parser.add_argument("--out", required=True, type=Path)
+    args = parser.parse_args()
+
+    try:
+        with args.file.open("rb") as handle:
+            contents = handle.read(MAX_INPUT_SIZE + 1)
+        if len(contents) > MAX_INPUT_SIZE:
+            raise DeclarationError("neovim.toml must not exceed 1 MiB")
+        data = tomllib.loads(contents.decode("utf-8"))
+        options, styles, colors, highlights = validate_declaration(data)
+        palette = resolve_theme_colors(args.colors)
+        rendered = render_lua(options, styles, palette, colors, highlights)
+        write_atomic(args.out, rendered)
+    except FileNotFoundError as error:
+        fail(f"no such file: {error.filename}")
+    except OSError as error:
+        fail(f"could not read neovim.toml: {error}")
+    except UnicodeDecodeError:
+        fail("neovim.toml must be valid UTF-8")
+    except tomllib.TOMLDecodeError as error:
+        fail(f"invalid TOML: {error}")
+    except DeclarationError as error:
+        fail(str(error))
+
+
+if __name__ == "__main__":
+    main()

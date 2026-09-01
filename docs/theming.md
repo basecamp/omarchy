@@ -23,15 +23,12 @@ A theme installed from a git repo is held to a much shorter list; see [What an i
 1. Copy the first-party theme from `themes/<name>/`.
 2. Overlay `~/.config/omarchy/themes/<name>/`, in full when the user wrote it and filtered when it came from a git repo, naming anything it dropped on stderr.
 3. If needed, generate `colors.toml` from `alacritty.toml`.
-4. Run `omarchy-theme-set-templates` to render templates into the staging
-   theme.
+4. Run `omarchy-theme-set-templates` to render templates into the staging theme and materialize any valid `neovim.toml` declaration.
 5. Move the staging theme into `~/.local/state/omarchy/current/theme`, write
    `~/.local/state/omarchy/current/theme.name`, and notify the running shell.
 
 Template rendering only happens when the staged theme has `colors.toml`.
-Existing files are never overwritten by a template, so a hand-written
-`themes/<name>/shell.toml` or `hyprland.lua` wins over
-`default/themed/shell.toml.tpl` or `hyprland.lua.tpl`.
+Existing files are never overwritten by a template, so a hand-written `themes/<name>/shell.toml` or `hyprland.lua` wins over `default/themed/shell.toml.tpl` or `hyprland.lua.tpl`. A valid `neovim.toml` is the narrow exception: it replaces bundled or generated `neovim.lua`, while a trusted `neovim.lua` from a local user theme remains authoritative.
 
 User templates in `~/.config/omarchy/themed/*.tpl` are processed before the
 built-in templates. If a user template has the same output filename as a
@@ -55,7 +52,7 @@ instead of racing.
 - `alacritty.toml`, `foot.ini`, `ghostty.conf`, `kitty.conf` — each names the program the terminal launches
 - `vscode.json` — names the extension `omarchy-theme-set-vscode` installs, and a VS Code extension is arbitrary JavaScript
 
-Symlinks are dropped with them, at any depth; in a cloned theme they point wherever the theme author chose. Everything a cloned theme ships that is colour is kept, including files Omarchy would otherwise have generated — `btop.theme`, `chromium.theme`, `helix.toml`, `shell.toml`, `icons.theme`, `keyboard.rgb` and the rest — so a theme can still say exactly how it wants each app to look. What is dropped gets generated from `default/themed/*.tpl` instead, and is named on stderr.
+Symlinks are dropped with them, at any depth; in a cloned theme they point wherever the theme author chose. Everything a cloned theme ships that is colour is kept, including files Omarchy would otherwise have generated — `btop.theme`, `chromium.theme`, `helix.toml`, `shell.toml`, `icons.theme`, `keyboard.rgb` and the rest — so a theme can still say exactly how it wants each app to look. A cloned theme may also ship the validated appearance-only `neovim.toml` described below. What is dropped gets generated from `default/themed/*.tpl` instead, and is named on stderr.
 
 A denylist is only right while it is maintained. Adding a template for another terminal, or for another editor that loads Lua, means adding it to `INSTALLED_THEME_DENIED` in `bin/omarchy-theme-set`; `test/shell.d/theme-staging-test.sh` fails on any `default/themed/*.tpl` whose output is recorded as neither code nor colour, so a new template cannot be added without that decision being made.
 
@@ -127,6 +124,47 @@ in that ramp; Omarchy derives `selection_background = selection` and
 `selection_foreground = bright_foreground`. Use
 `omarchy dev theme-preview [theme]` to inspect that ramp, including
 `dark_background`, `darker_background`, and a selected-text sample.
+
+## `neovim.toml`
+
+A theme may add `neovim.toml` for Neovim-specific appearance without shipping executable Lua. Omarchy validates this file and generates the complete `neovim.lua` integration itself. The plugin remains `bjarneo/aether.nvim` on branch `v3`, and LazyVim remains configured to use the `aether` colorscheme; the declaration cannot select a plugin, repository, branch, build command, callback, dependency, import, path, or other executable behavior.
+
+A declaration starts with `schema = 1`. Every section is optional after that:
+
+```toml
+schema = 1
+
+[options]
+transparent = true
+dim_inactive = false
+
+[styles]
+sidebars = "transparent"
+floats = "dark"
+
+[styles.comments]
+italic = true
+
+[colors]
+bright_magenta = "#c1d7e3"
+
+[highlights.Keyword]
+fg = "bright_magenta"
+bold = true
+
+[highlights."@keyword.function"]
+link = "Function"
+```
+
+`[options]` accepts `transparent`, `terminal_colors`, `dim_inactive`, and `lualine_bold` booleans. `[styles]` accepts `sidebars` and `floats` as `dark`, `transparent`, or `normal`; its `comments`, `keywords`, `functions`, and `variables` tables accept the boolean attributes `bold`, `italic`, `underline`, `undercurl`, and `strikethrough`.
+
+`[colors]` is an optional Neovim-only override of the Aether v3 base palette. Its values must be `#RRGGBB`; omitted colors continue to come from `colors.toml`. The supported palette names are `accent`, `cursor`, `foreground`, `background`, `selection_foreground`, `selection_background`, `bg`, `lighter_bg`, `selection`, `muted`, `dark_fg`, `fg`, `light_fg`, `bright_fg`, `red`, `yellow`, `orange`, `green`, `cyan`, `blue`, `purple`, `magenta`, `brown`, `dark_bg`, `darker_bg`, and the `bright_` variants of `red`, `yellow`, `green`, `cyan`, `blue`, `purple`, and `magenta`. Aether treats `magenta` as an alias for `purple` (and likewise for their bright variants), so both names may only be set together when their values match.
+
+A highlight may set `fg`, `bg`, or `sp` to one of those palette names or `#RRGGBB`, plus the same boolean style attributes and an integer `blend` from 0 to 100. `bg = "NONE"` is also accepted. A highlight with `link` cannot contain any other field. Highlight group and link names must contain only ASCII letters, digits, `_`, `@`, `.`, `:`, or `-`, with a maximum length of 128 characters.
+
+The file is limited to 1 MiB and 512 non-empty highlight groups. Unknown fields, malformed TOML, invalid values, and unsupported schema versions are rejected. Rejection is reported on stderr and leaves the normal bundled or `colors.toml`-generated Neovim theme in place.
+
+A trusted local user theme may still ship handwritten `neovim.lua`; that file wins when both files exist. Repository-installed `neovim.lua` remains forbidden, so a valid repository `neovim.toml` replaces only Omarchy's bundled or generated Lua.
 
 ## Template placeholders
 
