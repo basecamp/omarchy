@@ -106,6 +106,7 @@ assertDeepEqual(
     previewImage: '/home/dhh/Videos/screenrecording-2026-05-29_13-56-43-720p.gif',
     path: '/home/dhh/Videos/screenrecording-2026-05-29_13-56-43-720p.gif',
     mime: 'text/plain',
+    favorite: false,
     index: 0
   },
   'clipboard display rows show file uri entries as files'
@@ -125,6 +126,78 @@ assertDeepEqual(
 
 assertDeepEqual(clipboard.displayRows(history, '', 0), [], 'clipboard display rows supports zero result limit')
 assertDeepEqual(clipboard.addEntry(history, 'next', 0), [], 'clipboard addEntry supports zero history limit')
+
+assertDeepEqual(
+  clipboard.normalizeEntry({ type: 'text', text: 'starred', favorite: true }),
+  { type: 'text', text: 'starred', favorite: true },
+  'clipboard normalizeEntry keeps the favorite flag on text entries'
+)
+
+assertDeepEqual(
+  clipboard.normalizeEntry({ type: 'text', text: 'plain', favorite: false }),
+  { type: 'text', text: 'plain' },
+  'clipboard normalizeEntry omits a false favorite flag'
+)
+
+assertDeepEqual(
+  clipboard.toggleFavorite([{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }], 1),
+  [{ type: 'text', text: 'a' }, { type: 'text', text: 'b', favorite: true }],
+  'clipboard toggleFavorite stars the entry at the given index'
+)
+
+assertDeepEqual(
+  clipboard.toggleFavorite([{ type: 'text', text: 'a', favorite: true }], 0),
+  [{ type: 'text', text: 'a', favorite: false }],
+  'clipboard toggleFavorite unstars an already favorited entry'
+)
+
+assertDeepEqual(
+  clipboard.toggleFavorite([{ type: 'text', text: 'a' }], 5),
+  [{ type: 'text', text: 'a' }],
+  'clipboard toggleFavorite ignores an out-of-range index'
+)
+
+assertDeepEqual(
+  clipboard.addEntry([{ type: 'text', text: 'dup', favorite: true }], 'dup', 100)[0],
+  { type: 'text', text: 'dup', favorite: true },
+  'clipboard addEntry keeps the favorite flag when a favorited entry is copied again'
+)
+
+assertDeepEqual(
+  clipboard.capHistory([
+    { type: 'text', text: 'keep-1', favorite: true },
+    { type: 'text', text: 'keep-2', favorite: true },
+    { type: 'text', text: 'old-1' },
+    { type: 'text', text: 'old-2' }
+  ], 3),
+  [
+    { type: 'text', text: 'keep-1', favorite: true },
+    { type: 'text', text: 'keep-2', favorite: true },
+    { type: 'text', text: 'old-1' }
+  ],
+  'clipboard capHistory exempts favorites from the history limit'
+)
+
+assertDeepEqual(
+  clipboard.displayRows([{ type: 'text', text: 'starred' }, { type: 'text', text: 'plain', favorite: true }], '', 50).map(row => row.favorite),
+  [false, true],
+  'clipboard display rows expose the favorite flag'
+)
+
+assertDeepEqual(
+  clipboard.displayRows([{ type: 'text', text: 'a', favorite: true }, { type: 'text', text: 'b' }], '', 50, true).map(row => row.previewText),
+  ['a'],
+  'clipboard display rows support filtering to favorites only'
+)
+
+assert(
+  /function toggleFavoriteAt\(index\)[\s\S]*ClipboardHistory\.toggleFavorite\(root\.history, row\.historyIndex\)/.test(clipboardQml),
+  'clipboard toggles the favorite flag on the underlying history entry'
+)
+assert(
+  /function toggleFavoritesOnly\(\)[\s\S]*root\.favoritesOnly = !root\.favoritesOnly/.test(clipboardQml),
+  'clipboard supports toggling a favorites-only filter'
+)
 
 assert(
   /function select\(delta\)[\s\S]*root\.disarmPointer\(\)[\s\S]*selectedIndex =/.test(clipboardQml),
