@@ -614,6 +614,30 @@ grep -Fq 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/defaul
 grep -Fq 'o.window("Example", { workspace = "1" })' "$HYPR_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" || fail "hyprland bootstrap migration preserves custom config"
 pass "hyprland bootstrap migration updates stale user entrypoint"
 
+make_tmpdir WORKSPACE_MIGRATION_TMPDIR
+mkdir -p "$WORKSPACE_MIGRATION_TMPDIR/.config/hypr"
+cat >"$WORKSPACE_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" <<'LUA'
+dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")
+
+require("default.hypr.omarchy")
+require("hypr.monitors")
+require("hypr.input")
+
+-- Keep this custom configuration.
+o.window("Example", { workspace = "1" })
+LUA
+
+HOME="$WORKSPACE_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1788129995.sh" >/dev/null
+grep -Fq 'local require_optional = require("default.hypr.require_optional")' "$WORKSPACE_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" || fail "workspace migration loads the optional module helper"
+grep -Fq 'require_optional.module("hypr.workspaces")' "$WORKSPACE_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" || fail "workspace migration loads nwg-displays workspace assignments"
+grep -Fq 'o.window("Example", { workspace = "1" })' "$WORKSPACE_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" || fail "workspace migration preserves custom config"
+
+before=$(sha256sum "$WORKSPACE_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" | awk '{print $1}')
+HOME="$WORKSPACE_MIGRATION_TMPDIR" bash -euo pipefail "$ROOT/migrations/1788129995.sh" >/dev/null
+after=$(sha256sum "$WORKSPACE_MIGRATION_TMPDIR/.config/hypr/hyprland.lua" | awk '{print $1}')
+[[ $before == "$after" ]] || fail "workspace migration is idempotent"
+pass "workspace migration enables nwg-displays assignments for existing users"
+
 cp "$NEXT_THEME/colors.toml" "$CURRENT_THEME/colors.toml"
 cp "$NEXT_THEME/vscode-theme.json" "$CURRENT_THEME/vscode-theme.json"
 
