@@ -247,6 +247,23 @@ assertDeepEqual(
   ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'omp', 'OpenCode', 'Ori', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
+assert(defaultById.agents && !defaultById.agents.action, 'menu places Agents on the root menu as a submenu')
+assertDeepEqual(
+  defaultItems
+    .filter(item => item.parent === 'agents')
+    .map(item => [item.id, item.label, item.description, item.action]),
+  [
+    ['agents.chatgpt', 'ChatGPT', 'Web', "omarchy-launch-webapp 'https://chatgpt.com'"],
+    ['agents.claude', 'Claude', 'Web', "omarchy-launch-webapp 'https://claude.ai'"],
+    ['agents.grok', 'Grok', 'Web', "omarchy-launch-webapp 'https://grok.com'"],
+    ['agents.gemini', 'Gemini', 'Web', "omarchy-launch-webapp 'https://gemini.google.com'"],
+    ['agents.pi', 'Pi', 'Terminal', 'omarchy-launch-tui pi'],
+    ['agents.codex', 'Codex', 'Terminal', 'omarchy-launch-tui codex'],
+    ['agents.claude-code', 'Claude Code', 'Terminal', 'omarchy-launch-tui claude'],
+    ['agents.opencode', 'OpenCode', 'Terminal', 'omarchy-launch-tui opencode']
+  ],
+  'menu launches web apps and coding CLIs from Agents'
+)
 const expectedDefaults = {
   browser: ['Chromium', 'Chrome', 'Brave', 'Brave Origin', 'Edge', 'Firefox', 'Zen'],
   terminal: ['Alacritty', 'Foot', 'Ghostty', 'Kitty'],

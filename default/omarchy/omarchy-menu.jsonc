@@ -22,6 +22,7 @@
 
   // Root Menu
   "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"provider":"apps"},
+  "agents": {"icon":"󱚤","label":"Agents"},
   "learn": {"icon":"󰧑","label":"Learn"},
   "trigger": {"icon":"󱓞","label":"Trigger"},
   "style": {"icon":"","label":"Style"},
@@ -51,6 +52,16 @@
   "learn.tmux-keybindings": {"icon":"","label":"Tmux","action":"omarchy-menu-tmux-keybindings"},
   "learn.herdr-keybindings": {"icon":"","label":"Herdr","action":"omarchy-menu-herdr-keybindings"},
   "learn.community": {"icon":"󰙯","label":"Community","action":"omarchy-launch-discord-community"},
+
+  // Agents
+  "agents.chatgpt": {"icon":"","iconFont":"omarchy","label":"ChatGPT","description":"Web","action":"omarchy-launch-webapp 'https://chatgpt.com'"},
+  "agents.claude": {"icon":"󰛄","label":"Claude","description":"Web","action":"omarchy-launch-webapp 'https://claude.ai'"},
+  "agents.grok": {"icon":"","iconFont":"omarchy","label":"Grok","description":"Web","action":"omarchy-launch-webapp 'https://grok.com'"},
+  "agents.gemini": {"icon":"󰫢","label":"Gemini","description":"Web","action":"omarchy-launch-webapp 'https://gemini.google.com'"},
+  "agents.pi": {"icon":"","iconFont":"omarchy","label":"Pi","description":"Terminal","action":"omarchy-launch-tui pi"},
+  "agents.codex": {"icon":"","iconFont":"omarchy","label":"Codex","description":"Terminal","action":"omarchy-launch-tui codex"},
+  "agents.claude-code": {"icon":"󰛄","label":"Claude Code","description":"Terminal","action":"omarchy-launch-tui claude"},
+  "agents.opencode": {"icon":"","iconFont":"omarchy","label":"OpenCode","description":"Terminal","action":"omarchy-launch-tui opencode"},
 
   // Trigger
   "trigger.emoji": {"icon":"","label":"Emoji","aliases":["emoji","emojis"],"action":"omarchy-menu-emoji"},
