@@ -268,3 +268,19 @@ grep -F 'position = "0x0", scale = 1.6 })' "$real_lua" >/dev/null ||
   fail "monitor scaling writes through a symlinked monitors.lua"
 pass "monitor scaling keeps a symlinked monitors.lua a symlink"
 rm -f "$monitor_lua"
+
+# A config that cannot be read is not a config with no rule for this output.
+# Taking the two for the same thing sends an unwritable setup down the
+# catch-all branch, which rewrites the shared scale and reports success.
+if (( EUID != 0 )); then
+  write_named_config
+  chmod 000 "$monitor_lua"
+  if OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6 2>/dev/null; then
+    chmod 644 "$monitor_lua"
+    fail "monitor scaling reports failure when monitors.lua cannot be read"
+  fi
+  chmod 644 "$monitor_lua"
+  grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+    fail "monitor scaling leaves the catch-all alone when monitors.lua cannot be read"
+  pass "monitor scaling reports failure when monitors.lua cannot be read"
+fi

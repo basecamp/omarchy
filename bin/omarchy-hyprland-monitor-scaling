@@ -95,8 +95,10 @@ persist_gdk_scale() {
 # Rewrite `scale = ...` inside the hl.monitor rule naming this output, in both
 # the single-line form Omarchy writes and the multi-line form nwg-displays
 # writes. Commented-out examples and rules for other outputs are left alone. A
-# matching rule with no scale field gets one. Returns 1 when the file carries
-# no rule for this output.
+# matching rule with no scale field gets one. Returns 3 when the file carries no
+# rule for this output, and 1 when the rewrite could not be run at all: a
+# caller that took those for the same thing would answer an unwritable config
+# by falling back to the catch-all and reporting success.
 update_named_monitor_scale() {
   local monitor="$1"
   local scale="$2"
@@ -181,9 +183,19 @@ update_named_monitor_scale() {
     }
     END {
       if (rule != "") printf "%s", rule
-      exit changed ? 0 : 1
+      exit changed ? 0 : 3
     }
-  ' "$file" >"$tmp" || { rm -f "$tmp"; return 1; }
+  ' "$file" >"$tmp"
+  local status=$?
+
+  if (( status == 3 )); then
+    rm -f "$tmp"
+    return 3
+  elif (( status != 0 )); then
+    rm -f "$tmp"
+    echo "Could not read $file to persist the scale" >&2
+    return 1
+  fi
 
   # cat rather than mv: monitors.lua is commonly a symlink into a dotfiles
   # repo, and mv would replace the link with a regular file.
@@ -222,9 +234,14 @@ set_scale() {
   # A rule naming this output overrides the catch-all, so the catch-all is the
   # wrong place to write: the reload that writing monitors.lua triggers would
   # re-apply the named rule and undo the scale just eval'd.
-  if update_named_monitor_scale "$active_monitor" "$new_scale" "$monitor_lua"; then
+  update_named_monitor_scale "$active_monitor" "$new_scale" "$monitor_lua"
+  local rewrite_status=$?
+
+  if (( rewrite_status == 0 )); then
     persist_gdk_scale "$new_gdk_scale" "$monitor_lua"
     return 0
+  elif (( rewrite_status != 3 )); then
+    return 1
   fi
 
   # Persist to monitors.lua if the user still has Omarchy's generic catch-all
