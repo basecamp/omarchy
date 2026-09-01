@@ -37,6 +37,9 @@ Item {
   // Lid shut right now — the reader is physically unreachable, so we fall back
   // to the password even when a sensor is enrolled. Refreshed per request.
   property bool laptopClosed: false
+  // Display name for org.omarchy.agent when a live pkexec is under that window.
+  // Empty keeps the stock authorization chip.
+  property string agentDisplayName: ""
   property int shakeOffset: 0
 
   readonly property bool dialogVisible: polkitAgent.isActive || closing
@@ -51,7 +54,7 @@ Item {
   readonly property int cardWidth: fingerprintMode ? cardHeight : Math.min(Style.space(312), Math.max(Style.space(260), panel.width - Style.gapsOut * 2))
 
   function authorizationLabel(message) {
-    return PolkitModel.authorizationLabel(message)
+    return PolkitModel.authorizationLabel(message, agentDisplayName)
   }
 
   function loadPamConfig(raw) {
@@ -60,6 +63,11 @@ Item {
 
   function refreshLidState() {
     if (!laptopClosedProc.running) laptopClosedProc.running = true
+  }
+
+  function refreshAgentSubject() {
+    agentDisplayName = ""
+    if (!agentSubjectProc.running) agentSubjectProc.running = true
   }
 
   function resetSnapshot() {
@@ -94,6 +102,7 @@ Item {
     submitted = false
     passwordInput.text = ""
     refreshLidState()
+    refreshAgentSubject()
     syncFromFlow()
     Qt.callLater(refocus)
   }
@@ -171,6 +180,16 @@ Item {
     command: ["bash", "-c", "omarchy-hw-laptop-closed && echo closed || echo open"]
     stdout: StdioCollector { id: laptopClosedOut; waitForEnd: true }
     onExited: root.laptopClosed = String(laptopClosedOut.text || "").trim() === "closed"
+  }
+
+  Process {
+    id: agentSubjectProc
+    command: ["bash", "-c", "omarchy-polkit-subject || true"]
+    stdout: StdioCollector { id: agentSubjectOut; waitForEnd: true }
+    onExited: {
+      var slug = String(agentSubjectOut.text || "").trim()
+      root.agentDisplayName = PolkitModel.displayNameForAgent(slug)
+    }
   }
 
   PolkitAgent {

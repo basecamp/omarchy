@@ -17,16 +17,39 @@ function fingerprintConfiguredFromPamConfig(raw) {
   return false
 }
 
-function authorizationLabel(message) {
+function displayNameForAgent(slug) {
+  switch (String(slug || "").trim()) {
+    case "pi": return "Pi"
+    case "omp": return "Oh My Pi"
+    case "opencode": return "OpenCode"
+    case "ori": return "Ori"
+    case "claude": return "Claude Code"
+    case "codex": return "Codex"
+    case "crush": return "Crush"
+    case "grok": return "Grok"
+    case "agy": return "Antigravity"
+    case "copilot": return "GitHub Copilot"
+    default: return ""
+  }
+}
+
+function authorizationLabel(message, agentDisplayName) {
   var text = String(message || "")
+  var agent = String(agentDisplayName || "").trim()
   var match = text.match(/^Authentication is (?:needed|required) to run [`']([^`']+)[`'] as /i)
-  return match ? "Authorize running '" + match[1] + "'" : text
+  if (match) {
+    return agent
+      ? agent + " wants: '" + match[1] + "'"
+      : "Authorize running '" + match[1] + "'"
+  }
+  return text
 }
 
 if (typeof module !== "undefined") {
   module.exports = {
     promptLooksFingerprint: promptLooksFingerprint,
     fingerprintConfiguredFromPamConfig: fingerprintConfiguredFromPamConfig,
+    displayNameForAgent: displayNameForAgent,
     authorizationLabel: authorizationLabel
   }
 }

@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# omarchy:summary=Prints the agent slug when a live pkexec is under org.omarchy.agent
+# omarchy:hidden=true
+
+set -euo pipefail
+
+mapfile -t agent_pids < <(hyprctl clients -j 2>/dev/null | jq -r '.[] | select(.class == "org.omarchy.agent") | .pid' | awk '$1 + 0 > 0')
+(( ${#agent_pids[@]} > 0 )) || exit 1
+
+declare -A agent_set=()
+for pid in "${agent_pids[@]}"; do
+  agent_set[$pid]=1
+done
+
+ppid_of() {
+  local status=/proc/$1/status
+  [[ -r $status ]] || return 1
+  awk '/^PPid:/ { print $2; exit }' "$status"
+}
+
+omarchy_agent_from_environ() {
+  local environ=/proc/$1/environ
+  [[ -r $environ ]] || return 1
+  tr '\0' '\n' <"$environ" | awk -F= '$1 == "OMARCHY_AGENT" && $2 != "" { print $2; exit }'
+}
+
+find_slug() {
+  local pid slug defaults
+  for pid in "$@"; do
+    slug=$(omarchy_agent_from_environ "$pid" || true)
+    [[ -n ${slug:-} ]] && { printf '%s\n' "$slug"; return 0; }
+  done
+
+  defaults=$HOME/.config/omarchy/defaults/agent
+  if [[ -r $defaults ]]; then
+    slug=$(tr -d '[:space:]' <"$defaults")
+    [[ -n $slug ]] && { printf '%s\n' "$slug"; return 0; }
+  fi
+  return 1
+}
+
+chain=()
+attributed=0
+for comm in /proc/[0-9]*/comm; do
+  [[ -r $comm ]] || continue
+  [[ $(<"$comm") == "pkexec" ]] || continue
+  pid=${comm%/comm}
+  pid=${pid#/proc/}
+
+  walk=$pid
+  seen=0
+  chain=()
+  while [[ -n $walk ]] && (( walk > 1 )); do
+    ((++seen > 64)) && break
+    chain+=("$walk")
+    if [[ -n ${agent_set[$walk]+x} ]]; then
+      attributed=1
+      break
+    fi
+    walk=$(ppid_of "$walk") || break
+  done
+  [[ $attributed -eq 1 ]] && break
+done
+
+[[ $attributed -eq 1 ]] || exit 1
+find_slug "${chain[@]}" "${agent_pids[@]}"
