@@ -28,13 +28,13 @@ report_bluetooth_failure() {
     "Reconnect the headset or select another input device." 2>/dev/null
 }
 
-if (( wpctl_status != 0 && pactl_status != 0 )) && [[ $is_bluetooth == true ]]; then
+if (( wpctl_status != 0 && pactl_status != 0 )) && [[ $is_bluetooth == "true" ]]; then
   report_bluetooth_failure "Failed to set default audio input: $source_name"
   exit 1
 fi
 
 if ! source_outputs=$(pactl list short source-outputs 2>/dev/null); then
-  if [[ $is_bluetooth == true ]]; then
+  if [[ $is_bluetooth == "true" ]]; then
     report_bluetooth_failure "Failed to list active audio input streams"
     list_status=1
   else
@@ -45,7 +45,7 @@ if ! source_outputs=$(pactl list short source-outputs 2>/dev/null); then
 fi
 
 bluetooth_card_name=""
-if [[ $is_bluetooth == true ]]; then
+if [[ $is_bluetooth == "true" ]]; then
   bluetooth_card_name=$(pactl --format=json list sources 2>/dev/null | jq -r --arg source "$source_name" \
     'first(.[] | select(.name == $source) | .properties["device.name"]) // empty' 2>/dev/null)
 fi
@@ -60,7 +60,7 @@ bluetooth_input_ready() {
 }
 
 move_failed=0
-if [[ $is_bluetooth == true && -n $source_outputs ]]; then
+if [[ $is_bluetooth == "true" && -n $source_outputs ]]; then
   pw-record --target "$source_name" --raw /dev/null >/dev/null 2>&1 &
   trigger_pid=$!
 
@@ -80,7 +80,7 @@ if [[ $is_bluetooth == true && -n $source_outputs ]]; then
     fi
   done
 
-  if [[ $input_ready == true ]]; then
+  if [[ $input_ready == "true" ]]; then
     while read -r source_output_id; do
       [[ -n $source_output_id ]] || continue
 
@@ -93,7 +93,7 @@ if [[ $is_bluetooth == true && -n $source_outputs ]]; then
         sleep 0.1
       done
 
-      if [[ $moved == false ]]; then
+      if [[ $moved == "false" ]]; then
         echo "Failed to move audio input stream $source_output_id to $source_name after 5 attempts" >&2
         move_failed=1
       fi
