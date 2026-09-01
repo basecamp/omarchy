@@ -82,7 +82,7 @@ case $cmd in
   remove) [[ -n ${1:-} ]] || fail 'choose a recipe'; do_remove "$1" ;;
   open-agent) open_agent "${1:-}" ;;
   default) set_default ;;
-  snapshot) emit ;;
+  snapshot) emit | head -c 262144 ;; # hard cap at the producer: the UI collector can never buffer more
   _worker-scan) w_scan ;;
   _worker-download) w_download "$1" ;;
   _worker-load) w_load "$1" ;;
