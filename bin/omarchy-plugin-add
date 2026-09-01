@@ -58,6 +58,117 @@ plugin_id_manifest() {
   '
 }
 
+# PKGBUILD-style dependencies declared in the manifest:
+#
+#   "dependencies": {
+#     "pacman": ["gum"],
+#     "aur": ["some-aur-package"],
+#     "optdepends": {
+#       "pacman": ["brightnessctl: needed for the brightness slider"],
+#       "aur": ["google-chrome: needed for the browser widget"]
+#     }
+#   }
+#
+# Required ones are plain package-name arrays split by source (pacman repo vs
+# AUR); optional ones use the PKGBUILD "name: reason" optdepends strings. Both
+# are checked against the local pacman database (AUR packages live there too
+# once installed) and offered for install when missing.
+install_dependency_group() {
+  local installer="$1"
+  shift
+  (( $# )) || return 0
+  echo "Installing: $*"
+  if "$installer" "$@"; then
+    echo "Installed: $*"
+  else
+    echo "Could not install: $*" >&2
+    echo "Install manually for the plugin to work" >&2
+  fi
+}
+
+check_plugin_dependencies() {
+  local manifest="$1" id="$2"
+  local -a required_pacman=() required_aur=() optional_pacman=() optional_aur=()
+  local source pkg entry name reason
+
+  for source in pacman aur; do
+    while IFS= read -r pkg; do
+      [[ -n $pkg ]] || continue
+      omarchy-pkg-missing "$pkg" || continue
+      if [[ $source == pacman ]]; then
+        required_pacman+=("$pkg")
+      else
+        required_aur+=("$pkg")
+      fi
+    done < <(jq -r --arg src "$source" '((.dependencies // {})[$src] // [])[]' "$manifest")
+  done
+
+  for source in pacman aur; do
+    while IFS= read -r entry; do
+      [[ -n $entry ]] || continue
+      name="${entry%%:*}"
+      reason=""
+      if [[ $entry == *:* ]]; then
+        reason="${entry#*:}"
+        reason="${reason#"${reason%%[![:space:]]*}"}"
+      fi
+      name="${name#"${name%%[![:space:]]*}"}"
+      name="${name%"${name##*[![:space:]]}"}"
+      [[ -n $name ]] || continue
+      omarchy-pkg-missing "$name" || continue
+      if [[ $source == pacman ]]; then
+        optional_pacman+=("$name:$reason")
+      else
+        optional_aur+=("$name:$reason")
+      fi
+    done < <(jq -r --arg src "$source" '((.dependencies.optdepends // {})[$src] // [])[]' "$manifest")
+  done
+
+  if (( ${#required_pacman[@]} == 0 && ${#required_aur[@]} == 0 )) &&
+    (( ${#optional_pacman[@]} == 0 && ${#optional_aur[@]} == 0 )); then
+    return 0
+  fi
+
+  echo
+  echo "Dependencies for '$id' missing from this system:"
+
+  if (( ${#required_pacman[@]} || ${#required_aur[@]} )); then
+    echo "  Required:"
+    for pkg in "${required_pacman[@]}"; do echo "    - $pkg"; done
+    for pkg in "${required_aur[@]}"; do echo "    - $pkg (AUR)"; done
+  fi
+
+  if (( ${#optional_pacman[@]} || ${#optional_aur[@]} )); then
+    echo "  Optional:"
+    for entry in "${optional_pacman[@]}" "${optional_aur[@]}"; do
+      name="${entry%%:*}"
+      reason="${entry#*:}"
+      echo "    - $name${reason:+ ($reason)}"
+    done
+  fi
+
+  if (( ${#required_pacman[@]} || ${#required_aur[@]} )); then
+    if (( ASSUME_YES )); then
+      install_dependency_group omarchy-pkg-add "${required_pacman[@]}"
+      install_dependency_group omarchy-pkg-aur-add "${required_aur[@]}"
+    elif interactive && confirm "Install the required dependencies for '$id'?"; then
+      install_dependency_group omarchy-pkg-add "${required_pacman[@]}"
+      install_dependency_group omarchy-pkg-aur-add "${required_aur[@]}"
+    else
+      echo "Skipping required dependencies; '$id' may not work until they are installed." >&2
+    fi
+  fi
+
+  if (( ${#optional_pacman[@]} || ${#optional_aur[@]} )); then
+    if (( ASSUME_YES )); then
+      echo "Skipping optional dependencies (pass them to omarchy pkg add to install)."
+    elif interactive && confirm "Install the optional dependencies for '$id'?"; then
+      install_dependency_group omarchy-pkg-add "${optional_pacman[@]%%:*}"
+      install_dependency_group omarchy-pkg-aur-add "${optional_aur[@]%%:*}"
+    fi
+  fi
+}
+
 url=""
 enable_after=""
 
@@ -136,6 +247,7 @@ if [[ -n $existing_manifest ]]; then
   rm -rf "$stage"
   fail "plugin id '$id' is already used by $existing_manifest"
 fi
+check_plugin_dependencies "$stage/manifest.json" "$id"
 
 target="$PLUGINS_DIR/$id"
 if [[ -e $target || -L $target ]]; then

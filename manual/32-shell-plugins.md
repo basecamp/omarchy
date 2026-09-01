@@ -85,15 +85,15 @@ A plugin is a directory with a `manifest.json` and some QML. The manifest declar
 
 A plugin can declare several kinds at once — the media plugin is both a `service` and a `bar-widget`. Bar widgets get an extra `barWidget` block with a display name, a category, an optional `defaultSection`, and `allowMultiple`, which says whether it makes sense to have more than one on the bar. Most widgets set it to `false`; spacers and indicators set it to `true`.
 
+A plugin can also declare the Arch packages it needs with a `dependencies` block, formatted like a PKGBUILD: required packages are plain name arrays split by source (`pacman` for repo packages, `aur` for AUR packages), and optional ones use the PKGBUILD `optdepends` strings of `"name: reason"` explaining why each package is needed. When someone runs `omarchy plugin add` and those packages are missing from the system, the installer lists them and asks whether to install them — with `--yes` it installs the required ones automatically and skips the optional ones. A missing package never blocks the install itself, so a plugin can be added first and its dependencies put in place later.
+
 Before you publish anything, check it:
 
 ```
 omarchy plugin validate ./my-plugin
 ```
 
-That runs the same checks the shell does at load time: the schema version, the required fields, an id that isn't reserved, entry points that are safe relative paths and actually exist, an entry point for every kind you claimed, and no symlinks anywhere inside the folder.
-
-For the full picture, the source is the documentation: `shell/README.md` in the Omarchy repo covers the manifest schema, the shell's IPC contract, and the exact shape of `shell.json`, and `shell/plugins/README.md` lists every first-party plugin with its id, kinds, and entry points.
+That runs the same checks the shell does at load time: the schema version, the required fields, an id that isn't reserved, entry points that are safe relative paths and actually exist, an entry point for every kind you claimed, no symlinks anywhere inside the folder, and a well-formed `dependencies` block.
 
 ## Sharing yours with the world
 
