@@ -20,6 +20,7 @@ const menuImages = fs.readFileSync(path.join(root, 'bin/omarchy-menu-images'), '
 const lockView = fs.readFileSync(path.join(root, 'shell/plugins/lock/LockView.qml'), 'utf8')
 const lockService = fs.readFileSync(path.join(root, 'shell/plugins/lock/Service.qml'), 'utf8')
 const bootIntro = fs.readFileSync(path.join(root, 'bin/omarchy-theme-bg-boot-intro'), 'utf8')
+const themeSet = fs.readFileSync(path.join(root, 'bin/omarchy-theme-set'), 'utf8')
 
 assert(
   /function isVideoPath\(path\)[\s\S]*\.test\(String\(path \|\| ""\)\)/.test(utilQml) &&
@@ -103,6 +104,14 @@ assert(
   'a stalled video cannot hold the picker shut, because its generator is time bounded'
 )
 assert(
+  themeSet.includes('choose_staged_theme_background') &&
+    themeSet.includes('background_transition_uses_snapshots') &&
+    themeSet.includes('BACKGROUND_TRANSITION_SNAPSHOTS=false') &&
+    /if \[\[ \$BACKGROUND_TRANSITION_SNAPSHOTS == "true" \]\]/.test(themeSet) &&
+    /if \[\[ -z \$CHOSEN_THEME_BACKGROUND \|\| ! -f \$CHOSEN_THEME_BACKGROUND \]\]/.test(themeSet),
+  'theme changes disable both transition snapshots whenever either side is a video'
+)
+assert(
   /function onScreensChanged\(\) \{[\s\S]*?root\.displaysBlank = false/.test(lockService),
   'a display coming back gives up the blank state instead of freezing a visible wallpaper'
 )
@@ -160,6 +169,58 @@ grep -qx 'qt6-multimedia-ffmpeg' "$ROOT/install/omarchy-base.packages" || fail "
 
 pass "video picker generates and reuses still thumbnails"
 pass "Qt Multimedia playback dependencies are declared"
+
+source <(awk '
+  /^(is_video_path|snapshot_background_path|background_transition_uses_snapshots|choose_theme_background|choose_staged_theme_background|set_theme_background)\(\) \{/ { copying=1 }
+  copying { print }
+  copying && /^}$/ { copying=0 }
+' "$ROOT/bin/omarchy-theme-set")
+
+transition_home="$test_tmp/transition-home"
+CURRENT_THEME_PATH="$transition_home/.local/state/omarchy/current/theme"
+NEXT_THEME_PATH="$transition_home/.local/state/omarchy/current/next-theme"
+CURRENT_BACKGROUND_LINK="$transition_home/.local/state/omarchy/current/background"
+BACKGROUND_TRANSITION_CACHE="$transition_home/.cache/omarchy/background-transitions"
+THEME_NAME="video-test"
+HOME="$transition_home"
+mkdir -p "$CURRENT_THEME_PATH/backgrounds" "$NEXT_THEME_PATH/backgrounds" "$HOME/.config/omarchy/backgrounds/$THEME_NAME"
+printf 'old image\n' >"$CURRENT_THEME_PATH/backgrounds/old.png"
+printf 'old image staged\n' >"$NEXT_THEME_PATH/backgrounds/old.png"
+printf 'new video\n' >"$NEXT_THEME_PATH/backgrounds/new.mp4"
+ln -s "$CURRENT_THEME_PATH/backgrounds/old.png" "$CURRENT_BACKGROUND_LINK"
+
+choose_staged_theme_background || fail "staged video background is selected before the theme swap"
+expected_staged_background="$CURRENT_THEME_PATH/backgrounds/new.mp4"
+[[ $CHOSEN_THEME_BACKGROUND == $expected_staged_background ]] || \
+  fail "staged background resolves to its durable post-swap path" "$CHOSEN_THEME_BACKGROUND"
+if background_transition_uses_snapshots "$CHOSEN_THEME_BACKGROUND"; then
+  fail "image to video theme transitions skip snapshots"
+fi
+background_transition_uses_snapshots "$CURRENT_THEME_PATH/backgrounds/new.png" || \
+  fail "image to image theme transitions retain snapshots"
+
+rm "$CURRENT_BACKGROUND_LINK"
+printf 'old video\n' >"$CURRENT_THEME_PATH/backgrounds/old.mp4"
+ln -s "$CURRENT_THEME_PATH/backgrounds/old.mp4" "$CURRENT_BACKGROUND_LINK"
+if background_transition_uses_snapshots "$CURRENT_THEME_PATH/backgrounds/new.png"; then
+  fail "video to image theme transitions skip snapshots"
+fi
+
+video_snapshot=$(snapshot_background_path "$CURRENT_THEME_PATH/backgrounds/old.mp4" "video")
+[[ -z $video_snapshot && ! -e $BACKGROUND_TRANSITION_CACHE ]] || fail "video files are never snapshotted"
+
+CHOSEN_THEME_BACKGROUND="$transition_home/disappeared.mp4"
+BACKGROUND_TRANSITION_SNAPSHOTS=false
+OLD_BACKGROUND_SNAPSHOT=""
+colors_payload=""
+shell_payload=""
+shell_ipc() { :; }
+set_theme_background
+[[ -f $CHOSEN_THEME_BACKGROUND && $(readlink "$CURRENT_BACKGROUND_LINK") == "$CHOSEN_THEME_BACKGROUND" ]] || \
+  fail "theme changes recover when a preselected background disappears" "$CHOSEN_THEME_BACKGROUND"
+
+pass "theme transitions skip snapshots whenever either side is a video"
+pass "theme changes recover from a missing preselected background"
 
 intro_home="$test_tmp/intro-home"
 intro_state="$intro_home/.local/state/omarchy/current"
