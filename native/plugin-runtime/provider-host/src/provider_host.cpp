@@ -40,6 +40,10 @@ constexpr std::uint64_t kProviderTasksMax = 8;
 constexpr std::uint64_t kProviderCpuQuotaUsec = 250000;
 constexpr std::uint64_t kProviderCpuWeight = 10;
 constexpr std::uint64_t kProviderIoWeight = 10;
+// Leave a bounded tail of every invocation for fail-closed process and scope
+// cleanup. The product's 750 ms aggregate budget gives provider work 650 ms
+// and cleanup 100 ms; shorter test policies retain half for provider work.
+constexpr std::chrono::milliseconds kProviderCleanupReserve{100};
 
 using detail::Descriptor;
 
@@ -174,10 +178,13 @@ std::string scope_name(const permissions::ActivationBinding &activation,
          ".scope";
 }
 
+bool wait_ready(int fd, short events, launcher::Deadline deadline);
+
 bool start(Process &process, const ProviderCatalog::Profile &profile,
            const permissions::ActivationBinding &activation,
            launcher::ResourceScopeController &resource_scope,
-           std::chrono::milliseconds timeout) {
+           launcher::Deadline operation_deadline,
+           launcher::Deadline cleanup_deadline) {
   std::vector<char *> arguments;
   arguments.reserve(profile.arguments.size() + 2);
   arguments.push_back(const_cast<char *>(profile.executable_path.c_str()));
@@ -245,7 +252,7 @@ bool start(Process &process, const ProviderCatalog::Profile &profile,
   process.channel = std::move(parent);
   auto pidfd = open_pidfd(pid);
   if (!pidfd) {
-    stop(process, resource_scope, std::chrono::steady_clock::now() + timeout);
+    stop(process, resource_scope, cleanup_deadline);
     return false;
   }
   process.pidfd = std::move(pidfd);
@@ -266,9 +273,10 @@ bool start(Process &process, const ProviderCatalog::Profile &profile,
                     .io_weight = kProviderIoWeight}};
   std::string scope_error;
   const auto attached = resource_scope.attach(
-      scope_request, std::chrono::steady_clock::now() + timeout, scope_error);
-  if (!attached.attached) {
-    stop(process, resource_scope, std::chrono::steady_clock::now() + timeout);
+      scope_request, operation_deadline, scope_error);
+  if (!attached.attached ||
+      std::chrono::steady_clock::now() >= operation_deadline) {
+    stop(process, resource_scope, cleanup_deadline);
     return false;
   }
   const unsigned char release = 0xa5;
@@ -278,19 +286,23 @@ bool start(Process &process, const ProviderCatalog::Profile &profile,
   release_message.msg_iov = &release_part;
   release_message.msg_iovlen = 1;
   ssize_t released = -1;
-  do {
-    released = ::sendmsg(barrier_write.get(), &release_message, MSG_NOSIGNAL);
-  } while (released < 0 && errno == EINTR);
+  while (wait_ready(barrier_write.get(), POLLOUT, operation_deadline)) {
+    released = ::sendmsg(barrier_write.get(), &release_message,
+                         MSG_NOSIGNAL | MSG_DONTWAIT);
+    if (released >= 0 ||
+        (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK))
+      break;
+  }
   barrier_write.reset();
-  if (released != static_cast<ssize_t>(sizeof(release))) {
-    stop(process, resource_scope, std::chrono::steady_clock::now() + timeout);
+  if (released != static_cast<ssize_t>(sizeof(release)) ||
+      std::chrono::steady_clock::now() >= operation_deadline) {
+    stop(process, resource_scope, cleanup_deadline);
     return false;
   }
   return true;
 }
 
-bool wait_ready(int fd, short events, std::chrono::milliseconds timeout) {
-  const auto deadline = std::chrono::steady_clock::now() + timeout;
+bool wait_ready(int fd, short events, launcher::Deadline deadline) {
   while (true) {
     const auto now = std::chrono::steady_clock::now();
     if (now >= deadline)
@@ -306,20 +318,38 @@ bool wait_ready(int fd, short events, std::chrono::milliseconds timeout) {
   }
 }
 
-ssize_t send_packet(int fd, const void *data, std::size_t size) {
-  iovec part{.iov_base = const_cast<void *>(data), .iov_len = size};
-  msghdr message{};
-  message.msg_iov = &part;
-  message.msg_iovlen = 1;
-  return ::sendmsg(fd, &message, MSG_NOSIGNAL);
+bool send_packet(int fd, const void *data, std::size_t size,
+                 launcher::Deadline deadline) {
+  while (wait_ready(fd, POLLOUT, deadline)) {
+    iovec part{.iov_base = const_cast<void *>(data), .iov_len = size};
+    msghdr message{};
+    message.msg_iov = &part;
+    message.msg_iovlen = 1;
+    const auto sent = ::sendmsg(fd, &message, MSG_NOSIGNAL | MSG_DONTWAIT);
+    if (sent == static_cast<ssize_t>(size))
+      return true;
+    if (sent < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+      continue;
+    return false;
+  }
+  return false;
 }
 
-ssize_t receive_packet(int fd, void *data, std::size_t size) {
-  iovec part{.iov_base = data, .iov_len = size};
-  msghdr message{};
-  message.msg_iov = &part;
-  message.msg_iovlen = 1;
-  return ::recvmsg(fd, &message, MSG_TRUNC);
+ssize_t receive_packet(int fd, void *data, std::size_t size,
+                       launcher::Deadline deadline) {
+  while (wait_ready(fd, POLLIN, deadline)) {
+    iovec part{.iov_base = data, .iov_len = size};
+    msghdr message{};
+    message.msg_iov = &part;
+    message.msg_iovlen = 1;
+    const auto received =
+        ::recvmsg(fd, &message, MSG_TRUNC | MSG_DONTWAIT);
+    if (received >= 0)
+      return received;
+    if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK)
+      return -1;
+  }
+  return -1;
 }
 
 std::vector<std::byte>
@@ -358,12 +388,15 @@ bool exchange(Process &process, const ProviderCatalog::Profile &profile,
               const definitions::AuthorizedDynamicRequest &request,
               std::span<std::byte> response, std::size_t &written,
               std::chrono::milliseconds timeout) noexcept {
+  const auto started = std::chrono::steady_clock::now();
+  const auto cleanup_reserve = std::min(kProviderCleanupReserve, timeout / 2);
+  const auto completion_deadline = started + timeout;
+  const auto operation_deadline = completion_deadline - cleanup_reserve;
   try {
     if (process.failed)
       return false;
     if (process.next_correlation == 0) {
-      stop(process, resource_scope,
-           std::chrono::steady_clock::now() + timeout);
+      stop(process, resource_scope, completion_deadline);
       return false;
     }
     const auto correlation = process.next_correlation;
@@ -371,30 +404,26 @@ bool exchange(Process &process, const ProviderCatalog::Profile &profile,
     std::vector<std::byte> incoming(kHeaderBytes + kMaximumProviderPayload + 1);
     if (frame.empty())
       return false;
+    if (std::chrono::steady_clock::now() >= operation_deadline)
+      return false;
     if (process.pid <= 0 &&
-        !start(process, profile, activation, resource_scope, timeout)) {
+        !start(process, profile, activation, resource_scope,
+               operation_deadline, completion_deadline)) {
       process.failed = true;
       return false;
     }
     ++process.next_correlation;
-    if (!wait_ready(process.channel.get(), POLLOUT, timeout) ||
-        send_packet(process.channel.get(), frame.data(), frame.size()) !=
-            static_cast<ssize_t>(frame.size())) {
-      stop(process, resource_scope,
-           std::chrono::steady_clock::now() + timeout);
+    if (!send_packet(process.channel.get(), frame.data(), frame.size(),
+                     operation_deadline)) {
+      stop(process, resource_scope, completion_deadline);
       return false;
     }
-    if (!wait_ready(process.channel.get(), POLLIN, timeout)) {
-      stop(process, resource_scope,
-           std::chrono::steady_clock::now() + timeout);
-      return false;
-    }
-    const auto count =
-        receive_packet(process.channel.get(), incoming.data(), incoming.size());
+    const auto count = receive_packet(process.channel.get(), incoming.data(),
+                                      incoming.size(), operation_deadline);
     if (count < static_cast<ssize_t>(kHeaderBytes) ||
-        count > static_cast<ssize_t>(incoming.size())) {
-      stop(process, resource_scope,
-           std::chrono::steady_clock::now() + timeout);
+        count > static_cast<ssize_t>(incoming.size()) ||
+        std::chrono::steady_clock::now() >= operation_deadline) {
+      stop(process, resource_scope, completion_deadline);
       return false;
     }
     incoming.resize(static_cast<std::size_t>(count));
@@ -412,17 +441,20 @@ bool exchange(Process &process, const ProviderCatalog::Profile &profile,
         body_size + kHeaderBytes != incoming.size() || body_size < 1 ||
         std::to_integer<std::uint8_t>(incoming[kHeaderBytes]) != 0 ||
         body_size - 1 > response.size()) {
-      stop(process, resource_scope,
-           std::chrono::steady_clock::now() + timeout);
+      stop(process, resource_scope, completion_deadline);
       return false;
     }
     written = body_size - 1;
     std::copy_n(incoming.begin() + kHeaderBytes + 1, written, response.begin());
+    if (std::chrono::steady_clock::now() >= operation_deadline) {
+      written = 0;
+      stop(process, resource_scope, completion_deadline);
+      return false;
+    }
     return true;
   } catch (...) {
     if (process.pid > 0)
-      stop(process, resource_scope,
-           std::chrono::steady_clock::now() + timeout);
+      stop(process, resource_scope, completion_deadline);
     return false;
   }
 }

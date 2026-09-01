@@ -91,7 +91,9 @@ public:
   bool cleanup_required = true;
   std::atomic_bool termination_succeeds = true;
   bool kill_child_during_attach = false;
+  std::chrono::milliseconds attachment_delay{};
   std::chrono::milliseconds termination_delay{};
+  std::atomic_int attachment_count = 0;
   int probe_count = 0;
   int prepare_count = 0;
   std::vector<std::string> units;
@@ -104,12 +106,16 @@ public:
 
 protected:
   AttachResult attach_validated(const launcher::ProcessScopeRequest &request,
-                                launcher::Deadline,
+                                launcher::Deadline deadline,
                                 std::string &) override {
+    ++attachment_count;
     units.emplace_back(request.unit);
     descriptions.emplace_back(request.description);
     attached_pids.emplace_back(request.pids.begin(), request.pids.end());
     resources.push_back(request.resources);
+    if (attachment_delay.count() > 0)
+      std::this_thread::sleep_until(std::min(
+          deadline, std::chrono::steady_clock::now() + attachment_delay));
     if (kill_child_during_attach)
       (void)::kill(request.pids.front(), SIGKILL);
     return {.attached = attach_succeeds,
@@ -449,6 +455,50 @@ void failure_modes() {
           "provider did not receive fixed sanitized environment");
 }
 
+void aggregate_invocation_deadline_bounds_cancel_wait() {
+  Fixture fixture;
+  fixture.profile("bounded", "test.adapter", digest('a'), "bounded.group",
+                  "late");
+  host::CatalogError error{};
+  auto catalog = load(fixture, error);
+  require(catalog != nullptr, "aggregate-deadline catalog rejected");
+  auto scope = recording_scope();
+  scope->attachment_delay = std::chrono::milliseconds(250);
+  constexpr auto timeout = std::chrono::milliseconds(400);
+  auto runtime =
+      host::ProviderActivation::create(catalog, activation(13), scope, timeout);
+  auto route = runtime->route(binding("test.adapter"));
+  require(route != nullptr, "aggregate-deadline route rejected");
+
+  bool invoked = true;
+  std::string output;
+  const auto started = std::chrono::steady_clock::now();
+  std::thread invocation(
+      [&] { invoked = invoke(route, activation(13), output); });
+  const auto attach_deadline = started + std::chrono::seconds(1);
+  while (scope->attachment_count.load() == 0 &&
+         std::chrono::steady_clock::now() < attach_deadline)
+    std::this_thread::yield();
+  require(scope->attachment_count.load() == 1,
+          "aggregate-deadline provider did not begin attachment");
+  const bool cancelled = runtime->cancel();
+  invocation.join();
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+
+  require(!invoked && cancelled && !runtime->cleanup_pending(),
+          "cancel was not released by the aggregate invocation bound");
+  require(elapsed < timeout + std::chrono::milliseconds(150),
+          "provider phases escaped the aggregate invocation deadline");
+  require(scope->units.size() == 1 && scope->terminated == scope->units,
+          "aggregate timeout did not clean the exact provider scope once");
+  require(!invoke(route, activation(13), output) &&
+              scope->units.size() == 1,
+          "cancelled aggregate-timeout provider restarted");
+  errno = 0;
+  require(::waitpid(-1, nullptr, WNOHANG) < 0 && errno == ECHILD,
+          "aggregate-timeout provider child was not reaped");
+}
+
 void launch_boundary() {
   Fixture lazy;
   const auto marker = lazy.root / "provider-started";
@@ -757,6 +807,7 @@ int main(int argc, char **argv) {
   catalog_security();
   protocol_and_lifecycle();
   failure_modes();
+  aggregate_invocation_deadline_bounds_cancel_wait();
   launch_boundary();
   scope_fail_closed();
   std::cout << "provider host tests passed\n";
