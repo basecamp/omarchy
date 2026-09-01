@@ -70,6 +70,16 @@ grep -Fx 'WantedBy=graphical-session.target' "$fcitx_service" >/dev/null ||
   fail "fcitx5 is never pulled in at login without a WantedBy"
 grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$fcitx_service" >/dev/null ||
   fail "an update over SSH has a live user manager and no display; starting fcitx5 there wedges the unit active-but-blind, and Wants= will not replace it at graphical login"
+grep -Fx 'Wants=omarchy-fcitx5-layout-sync.service' "$fcitx_service" >/dev/null ||
+  fail "fcitx5 is not paired with the service that follows Hyprland's active keyboard layout"
+
+fcitx_layout_sync_service="$ROOT/default/systemd/user/omarchy-fcitx5-layout-sync.service"
+grep -Fx 'After=omarchy-fcitx5.service' "$fcitx_layout_sync_service" >/dev/null ||
+  fail "layout synchronization can run before fcitx5 owns its controller bus name"
+grep -Fx 'BindsTo=omarchy-fcitx5.service' "$fcitx_layout_sync_service" >/dev/null ||
+  fail "layout synchronization can outlive the fcitx5 process it controls"
+grep -Fx 'ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE' "$fcitx_layout_sync_service" >/dev/null ||
+  fail "layout synchronization starts without a Hyprland event socket"
 
 fcitx_migration="$ROOT/migrations/1785167800.sh"
 grep -F 'is-active --quiet graphical-session.target' "$fcitx_migration" >/dev/null ||

@@ -61,6 +61,8 @@ On Dell XPS laptops with a haptic touchpad, you can also set the click strength 
 
 Omarchy runs the [fcitx5](https://fcitx-im.org/) input method framework as part of every session — it's what powers the CapsLock compose sequences. That means the plumbing for non-Latin input is already in place: install an input engine like `fcitx5-mozc` (Japanese) or `fcitx5-chinese-addons` (Chinese) with `omarchy pkg add`, plus `fcitx5-configtool` to add the engine to your input methods and set the key that switches between them.
 
+When the default fcitx5 group contains only Omarchy's keyboard engines, Omarchy keeps its active engine aligned with the layout selected by Hyprland. This makes `kb_layout = "us,dk"` and XKB group-switching shortcuts work in applications that receive their input through fcitx5 as well as native Wayland applications. Once you customize the fcitx5 group, Omarchy leaves its contents alone; add a keyboard engine matching each Hyprland layout in `fcitx5-configtool` if you want Hyprland to keep switching those engines.
+
 ### Use ALT as SUPER
 
 On some keyboards, it's not convenient to use the primary meta key (Windows/cmd key) as SUPER. You can change this to be ALT instead using this change:
