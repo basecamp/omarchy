@@ -75,6 +75,31 @@ for kept in .grok .claude.json .npm .local/share/opencode; do
 done
 pass "T3 Code removal keeps the agent state it bootstrapped"
 
+# Perplexity's other products (the CLI, Comet) share the perplexity-* cache
+# prefix; only the rpc-server runtime is the desktop app's own.
+fresh_home
+mkdir -p "$HOME/.config/Perplexity" "$HOME/.cache/Perplexity" "$HOME/.cache/perplexity-rpc-server" "$HOME/.cache/perplexity-personal-computer-poc"
+touch "$HOME/.config/perplexity-flags.conf"
+"$ROOT/bin/omarchy-remove-ai-perplexity" >/dev/null
+
+for gone in .config/Perplexity .cache/Perplexity .cache/perplexity-rpc-server .config/perplexity-flags.conf; do
+  [[ ! -e $HOME/$gone ]] || fail "Perplexity removal deletes the desktop app's own data" "$gone"
+done
+pass "Perplexity removal deletes the desktop app's own data"
+
+[[ -d $HOME/.cache/perplexity-personal-computer-poc ]] || fail "Perplexity removal keeps other Perplexity products' caches"
+pass "Perplexity removal keeps other Perplexity products' caches"
+
+grep -qx 'drop:perplexity' "$TEST_LOG" || fail "Perplexity removal drops the perplexity package"
+pass "Perplexity removal drops the perplexity package"
+
+# Without HOME the rm -rf paths would degrade to /-rooted ones; -u makes that a
+# refusal instead.
+if env -u HOME "$ROOT/bin/omarchy-remove-ai-perplexity" >/dev/null 2>&1; then
+  fail "Perplexity removal refuses to run without HOME"
+fi
+pass "Perplexity removal refuses to run without HOME"
+
 # ~/.grok belongs to the Grok CLI that omarchy-default-agent installs.
 fresh_home
 mkdir -p "$HOME/.config/Grok Bot" "$HOME/.grokbot" "$HOME/.grok"

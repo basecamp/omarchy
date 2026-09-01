@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Remove the Perplexity desktop app along with its configuration and caches.
+# omarchy:requires-sudo=true
+
+# -u so an unset HOME is an error rather than a set of rm -rf paths rooted at /.
+set -euo pipefail
+
+omarchy-pkg-drop perplexity
+
+# Of the perplexity-* dirs under ~/.cache, only the rpc-server runtime is the
+# desktop app's own download; the rest belong to Perplexity products that
+# outlive the desktop app.
+rm -rf \
+  "$HOME/.config/Perplexity" \
+  "$HOME/.cache/Perplexity" \
+  "$HOME/.cache/perplexity-rpc-server"
+rm -f "$HOME/.config/perplexity-flags.conf"
+
+echo ""
+echo "Perplexity has been removed."
