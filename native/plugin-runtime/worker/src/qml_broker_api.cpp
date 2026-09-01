@@ -381,33 +381,41 @@ bool QmlBrokerApi::bindSurfaceIntentSink(SurfaceIntentSink &sink) {
 
 bool QmlBrokerApi::requestSurfaceIntent(const QString &targetSurface,
                                         const QString &action) {
-  const auto log_result = [&](const char *decision, const char *reason,
+  using GestureClaim =
+      omarchy::plugins::definitions::DynamicInvocation::GestureClaim;
+  const auto log_result = [&](const GestureClaim &claim, const char *decision,
+                              const char *reason,
                               QStringView safe_target,
                               QStringView safe_action) {
-    const auto claim = trusted_gesture_.value_or(
-        omarchy::plugins::definitions::DynamicInvocation::GestureClaim{});
+    // Plugin QML can spoof worker console output. This record is diagnostic
+    // only; authoritative evidence is derived from the host input echo and
+    // host intent admission records.
     qInfo().noquote().nospace()
-        << "omarchy-plugin-security stage=worker-surface-intent decision="
+        << "omarchy-plugin-security stage=worker-diagnostic provenance=untrusted-worker decision="
         << decision << " reason=" << reason << " surface-id="
         << claim.surface_id << " generation=" << claim.surface_generation
         << " input-sequence=" << claim.input_sequence << " target="
         << safe_target << " action=" << safe_action;
   };
   if (status_ != QStringLiteral("ready")) {
-    log_result("rejected", "worker-not-ready", u"unvalidated", u"unvalidated");
+    log_result({}, "rejected", "worker-not-ready", u"unvalidated",
+               u"unvalidated");
     return false;
   }
   if (surface_intent_sink_ == nullptr) {
-    log_result("rejected", "sink-unavailable", u"unvalidated", u"unvalidated");
+    log_result({}, "rejected", "sink-unavailable", u"unvalidated",
+               u"unvalidated");
     return false;
   }
   if (!trusted_gesture_) {
-    log_result("rejected", "gesture-missing", u"unvalidated", u"unvalidated");
+    log_result({}, "rejected", "gesture-missing", u"unvalidated",
+               u"unvalidated");
     return false;
   }
   const auto encoded_target = targetSurface.toUtf8().toStdString();
   if (!wire::valid_surface_name(encoded_target)) {
-    log_result("rejected", "target-invalid", u"invalid", u"unvalidated");
+    log_result(*trusted_gesture_, "rejected", "target-invalid", u"invalid",
+               u"unvalidated");
     return false;
   }
   surface::SurfaceIntentAction parsed;
@@ -418,18 +426,18 @@ bool QmlBrokerApi::requestSurfaceIntent(const QString &targetSurface,
   else if (action == QStringLiteral("dismiss"))
     parsed = surface::SurfaceIntentAction::dismiss;
   else {
-    log_result("rejected", "action-invalid", targetSurface, u"invalid");
+    log_result(*trusted_gesture_, "rejected", "action-invalid", targetSurface,
+               u"invalid");
     return false;
   }
   const auto source = *trusted_gesture_;
   const bool sent = surface_intent_sink_->request_surface_intent(
       source, encoded_target, parsed);
-  log_result(sent ? "emitted" : "rejected",
-             sent ? "host-channel" : "sink-rejected", targetSurface,
-             action);
   if (deferred_gesture_ && deferred_gesture_->claim == source)
     deferred_gesture_.reset();
   trusted_gesture_.reset();
+  log_result(source, sent ? "emitted" : "rejected",
+             sent ? "host-channel" : "sink-rejected", targetSurface, action);
   return sent;
 }
 

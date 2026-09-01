@@ -456,6 +456,8 @@ bool HostSurface::route_input(bridge::HostInputEvent input) {
   const bool focus_after_gesture =
       admission->trusted_gesture &&
       policy_.keyboard_focus == KeyboardFocusPolicy::after_gesture;
+  log_input_decision(policy_, allocation_, kind, trusted_physical,
+                     input_sequence, "accepted", "input-authority");
   auto *bridge_item = bridge_item_.data();
   if (bridge_item == nullptr || !bridge_item->submitInput(admission->event)) {
     log_input_decision(policy_, allocation_, kind, trusted_physical,
@@ -465,8 +467,6 @@ bool HostSurface::route_input(bridge::HostInputEvent input) {
   }
   if (focus_after_gesture && bridge_item_)
     bridge_item_->forceActiveFocus(Qt::MouseFocusReason);
-  log_input_decision(policy_, allocation_, kind, trusted_physical,
-                     input_sequence, "accepted", "delivered");
   return true;
 }
 

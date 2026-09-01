@@ -40,10 +40,21 @@ namespace worker = omarchy::plugin_runtime::worker;
 namespace wire = omarchy::plugin::wire;
 
 std::vector<QString> diagnostic_messages;
+worker::QmlBrokerApi *diagnostic_replay_api = nullptr;
+bool diagnostic_replay_attempted = false;
+bool diagnostic_replay_accepted = false;
 
 void capture_diagnostic(QtMsgType, const QMessageLogContext &,
                         const QString &message) {
   diagnostic_messages.push_back(message);
+  if (diagnostic_replay_api != nullptr && !diagnostic_replay_attempted &&
+      message.contains(QStringLiteral(
+          "stage=worker-diagnostic provenance=untrusted-worker decision=emitted"))) {
+    diagnostic_replay_attempted = true;
+    diagnostic_replay_accepted =
+        diagnostic_replay_api->requestSurfaceIntent(
+            QStringLiteral("PanelWidget"), QStringLiteral("toggle"));
+  }
 }
 
 class DiagnosticCapture final {
@@ -996,7 +1007,7 @@ void run() {
   }
   require(std::ranges::any_of(diagnostic_messages, [](const QString &message) {
             return message.contains(
-                QStringLiteral("stage=worker-surface-intent decision=rejected reason=gesture-missing"));
+                QStringLiteral("stage=worker-diagnostic provenance=untrusted-worker decision=rejected reason=gesture-missing"));
           }),
           "gesture rejection did not produce a bounded diagnostic");
   api.beginTrustedGesture(3, 77, 9);
@@ -1012,8 +1023,18 @@ void run() {
                                         QStringLiteral("toggle")),
           "undeclared target was accepted or retained gesture eligibility");
   api.beginTrustedGesture(3, 77, 10);
-  require(api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
-                                   QStringLiteral("toggle")) &&
+  diagnostic_replay_attempted = false;
+  diagnostic_replay_accepted = false;
+  bool emitted = false;
+  {
+    DiagnosticCapture diagnostics;
+    diagnostic_replay_api = &api;
+    emitted = api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                       QStringLiteral("toggle"));
+    diagnostic_replay_api = nullptr;
+  }
+  require(emitted && diagnostic_replay_attempted &&
+              !diagnostic_replay_accepted &&
               intent_sink.calls == 2 &&
               intent_sink.last_source.surface_id == 3 &&
               intent_sink.last_source.surface_generation == 77 &&
@@ -1022,7 +1043,7 @@ void run() {
               intent_sink.last_action == surface::SurfaceIntentAction::toggle &&
               !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
                                         QStringLiteral("toggle")),
-          "QML intent request escaped its closed trusted sink contract");
+          "diagnostic reentry replayed or retained a trusted gesture");
   api.endTrustedGesture();
 
   const surface::SurfaceKey gesture_surface{.id = 3, .generation = 77};

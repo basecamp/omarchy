@@ -24,8 +24,7 @@ PanelWindow {
       + (opened ? "opened" : "closed")
       + " surface=" + surfaceKey
       + " generation=" + generation
-      + " input-sequence=" + lastIntentSequence
-      + " screen=" + (assignedScreen ? String(assignedScreen.name || "") : "none"))
+      + " input-sequence=" + lastIntentSequence)
 
   function attachIfReady() {
     if (!remote.connected && remote.Window.window !== null && remote.width > 0 && remote.height > 0)
@@ -60,7 +59,7 @@ PanelWindow {
       showOnChosenScreen()
     } else if (action === "toggle") {
       toggleOnChosenScreen()
-    } else {
+    } else if (action === "dismiss") {
       panelController.hide()
     }
   }

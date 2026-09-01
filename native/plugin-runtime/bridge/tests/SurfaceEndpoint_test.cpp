@@ -5,11 +5,13 @@
 #include "surface_host.hpp"
 
 #include <QCoreApplication>
+#include <QLoggingCategory>
 #include <QMouseEvent>
 
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <functional>
 #include <stdexcept>
@@ -17,6 +19,7 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace omarchy::plugin_runtime::bridge {
 
@@ -99,6 +102,26 @@ void require(bool condition, std::string_view message) {
   if (!condition)
     throw std::runtime_error(std::string(message));
 }
+
+std::vector<QString> diagnostic_messages;
+
+void capture_diagnostic(QtMsgType, const QMessageLogContext &,
+                        const QString &message) {
+  diagnostic_messages.push_back(message);
+}
+
+class DiagnosticCapture final {
+public:
+  DiagnosticCapture() {
+    diagnostic_messages.clear();
+    previous_ = qInstallMessageHandler(capture_diagnostic);
+  }
+
+  ~DiagnosticCapture() { qInstallMessageHandler(previous_); }
+
+private:
+  QtMessageHandler previous_ = nullptr;
+};
 
 permissions::ActivationBinding binding(std::uint64_t generation = 7) {
   return {.plugin = permissions::PluginId("org.example.endpoint"),
@@ -528,13 +551,34 @@ void gesture_arming_is_exact_and_send_failure_clears() {
           .buttons = static_cast<std::uint32_t>(Qt::LeftButton)},
       .device = 6,
       .trusted_physical = true};
-  require(bridge::SurfaceEndpointTestAccess::route_input(
-              *accepted.endpoint, accepted_press) &&
-              accepted.port.arm_calls == 1 &&
-              accepted.port.last_arm_sequence == 1 &&
-              accepted.input_authority.surface_has_physical_activation(
-                  accepted.port.description.key),
-          "physical activation did not arm its exact admitted input");
+  {
+    DiagnosticCapture diagnostics;
+    require(bridge::SurfaceEndpointTestAccess::route_input(
+                *accepted.endpoint, accepted_press) &&
+                accepted.port.arm_calls == 1 &&
+                accepted.port.last_arm_sequence == 1 &&
+                accepted.input_authority.surface_has_physical_activation(
+                    accepted.port.description.key),
+            "physical activation did not arm its exact admitted input");
+  }
+  const auto host_input = std::ranges::find_if(
+      diagnostic_messages, [](const QString &message) {
+        return message.contains(QStringLiteral(
+            "stage=host-input decision=accepted reason=input-authority")) &&
+               message.contains(QStringLiteral(
+                   "surface-id=1 generation=7 input-sequence=1"));
+      });
+  const auto input_echo = std::ranges::find_if(
+      diagnostic_messages, [](const QString &message) {
+        return message.contains(QStringLiteral(
+            "stage=host-intent-eligibility decision=armed reason=trusted-input")) &&
+               message.contains(QStringLiteral(
+                   "surface-id=1 generation=7 input-sequence=1"));
+      });
+  require(host_input != diagnostic_messages.end() &&
+              input_echo != diagnostic_messages.end() &&
+              host_input < input_echo,
+          "host input and authenticated echo lost tuple order");
   bridge::SurfaceEndpointTestAccess::close(*accepted.endpoint);
   require(!accepted.input_authority.surface_has_physical_activation(
               accepted.port.description.key) &&
