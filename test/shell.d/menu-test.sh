@@ -130,6 +130,17 @@ assertDeepEqual(
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
 
+assertEqual(
+  defaultById['install.development.javascript.pnpm'].action,
+  "omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env pnpm'",
+  'menu installs pnpm from the JavaScript development submenu'
+)
+assertEqual(
+  defaultById['remove.development.javascript.pnpm'].action,
+  "omarchy-launch-floating-terminal-with-presentation 'omarchy-remove-dev-env pnpm'",
+  'menu removes pnpm from the JavaScript development submenu'
+)
+
 // Needs the real menu: app rows sort after all menu items, and only at that
 // item count does the order tiebreak alone bury an installed app.
 const rankBase = menu.mergeMenuSources(defaultItems, [])
