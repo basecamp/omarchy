@@ -45,14 +45,8 @@ git -C "$repository" archive --format=tar.gz \
   --output="$source_archive" "$commit:native/plugin-runtime"
 
 bsdtar -xf "$source_archive" -C "$context"
-cmake -S "$context/plugin-runtime-${version}" \
-  -B "$context/dependency-config" -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX=/usr \
-  -DBUILD_TESTING=OFF
-
 dependency_contract="$context/runtime-dependencies-v1.txt"
-cp -- "$context/dependency-config/generated/runtime-dependencies-v1.txt" \
+cp -- "$context/plugin-runtime-${version}/packaging/runtime-dependencies-v1.txt" \
   "$dependency_contract"
 cp -- "$script_dir/PKGBUILD" "$context/PKGBUILD"
 

@@ -31,12 +31,24 @@ grep -Fx "arch = x86_64" <<<"$pkginfo" >/dev/null ||
 
 contract_path=usr/lib/omarchy/plugin-security/$version/metadata/runtime-dependencies-v1.txt
 contract=$(bsdtar -xOf "$archive" "$contract_path")
+expected_contract=$(cat <<'EOF'
+bubblewrap
+glibc
+libgcc
+libseccomp
+libstdc++
+omarchy
+qt6-base
+qt6-declarative
+quickshell
+systemd-libs
+EOF
+)
+[[ $contract == "$expected_contract" ]] ||
+  fail "archive runtime contract differs from the required Arch package set"
 archive_dependencies=$(sed -n 's/^depend = //p' <<<"$pkginfo" | LC_ALL=C sort)
 contract_dependencies=$(LC_ALL=C sort <<<"$contract")
 [[ $archive_dependencies == "$contract_dependencies" ]] ||
   fail "archive dependencies differ from the configured runtime contract"
-
-qt_pins=$(grep -Ec '^qt6-base=[^=[:space:]]+$' <<<"$contract" || true)
-(( qt_pins == 1 )) || fail "archive does not contain one exact qt6-base pin"
 
 echo "secure plugin archive metadata verification passed: $archive"

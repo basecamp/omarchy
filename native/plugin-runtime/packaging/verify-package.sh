@@ -147,23 +147,21 @@ canonical_worker=/usr/lib/omarchy/plugin-security/$version/bin/omarchy-plugin-qm
 [[ $(<"$runtime_paths") == "worker=$canonical_worker" ]] ||
   fail "runtime path contract is not canonical"
 
-if ! qt6_base_package=$(/usr/bin/pacman -Q -- qt6-base 2>/dev/null); then
-  fail "installed qt6-base package cannot be queried"
-fi
 expected_dependencies=$(cat <<EOF
 bubblewrap
 glibc
 libgcc
 libseccomp
 libstdc++
-${qt6_base_package/ /=}
+omarchy
+qt6-base
 qt6-declarative
 quickshell
 systemd-libs
 EOF
 )
 [[ $(<"$runtime_dependencies") == $expected_dependencies ]] ||
-  fail "runtime dependency contract differs from the required Arch package set or qt6-base build"
+  fail "runtime dependency contract differs from the required Arch package set"
 
 qt_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libxkbcommon\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6)$'
 bridge_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|DBus|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libsystemd\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6|ld-linux-x86-64\.so\.2)$'
@@ -209,9 +207,9 @@ set +e
 "$worker" >/dev/null 2>&1
 worker_status=$?
 set -e
-(( worker_status == 78 )) || fail "private worker does not reject direct execution"
+(( worker_status == 78 )) || fail "worker does not reject direct execution"
 readelf -Ws "$worker" | grep -F '@Qt_6_PRIVATE_API' >/dev/null ||
-  fail "omarchy-plugin-qml-worker omits expected Qt private ABI imports"
+  fail "touch worker does not expose its current Qt private ABI dependency"
 
 if ! python -m json.tool "$root/policy/builtin-capabilities-v1.json" >/dev/null 2>&1; then
   fail "builtin capability policy is not valid JSON"

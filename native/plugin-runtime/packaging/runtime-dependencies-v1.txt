@@ -3,7 +3,8 @@ glibc
 libgcc
 libseccomp
 libstdc++
-qt6-base=@OMARCHY_PLUGIN_QT6_BASE_PACKAGE_VERSION@
+omarchy
+qt6-base
 qt6-declarative
 quickshell
 systemd-libs

@@ -143,13 +143,13 @@ expect_failure "non-canonical bridge worker path" "bridge runtime path contract 
 
 reset_fixture
 root=$scratch/root/usr/lib/omarchy/plugin-security/$version
-sed -i 's/^qt6-base=.*/qt6-base=0.0.0-0/' "$root/metadata/runtime-dependencies-v1.txt"
-expect_failure "different Qt private ABI build" "runtime dependency contract differs from the required Arch package set or qt6-base build" "$verifier" --staging "$scratch/root" "$version"
+sed -i 's/^qt6-base$/qt6-base=0.0.0-0/' "$root/metadata/runtime-dependencies-v1.txt"
+expect_failure "version-pinned dependency" "runtime dependency contract differs from the required Arch package set" "$verifier" --staging "$scratch/root" "$version"
 
 reset_fixture
 root=$scratch/root/usr/lib/omarchy/plugin-security/$version
-sed -i 's/^qt6-base=.*/qt6-base/' "$root/metadata/runtime-dependencies-v1.txt"
-expect_failure "malformed dependency contract" "runtime dependency contract differs from the required Arch package set or qt6-base build" "$verifier" --staging "$scratch/root" "$version"
+sed -i '/^omarchy$/d' "$root/metadata/runtime-dependencies-v1.txt"
+expect_failure "missing Omarchy dependency" "runtime dependency contract differs from the required Arch package set" "$verifier" --staging "$scratch/root" "$version"
 
 reset_fixture
 root=$scratch/root/usr/lib/omarchy/plugin-security/$version
