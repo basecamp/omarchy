@@ -15,6 +15,8 @@ SCREEN_W=0
 SCREEN_H=0
 CANONICAL=""
 OUTPUT="json"
+MAX_SVG_RENDER_DIMENSION=16384
+MAX_SVG_RENDER_PIXELS=33554432
 
 usage() {
   echo "Usage: omarchy-theme-bg-resolve [--screen <W>x<H>] [--canonical <path>] [--fields]"
@@ -76,7 +78,7 @@ CANONICAL_NAME=$(basename "$CANONICAL")
 STEM="${CANONICAL_NAME%.*}"
 
 probe_dimensions() {
-  magick identify -ping -format '%w %h' "${1}[0]" 2>/dev/null
+  timeout --kill-after=2 10 magick identify -ping -format '%w %h' "${1}[0]" 2>/dev/null
 }
 
 # Candidates are the canonical file plus its aspect-ratio variants: sibling
@@ -264,6 +266,32 @@ FILL_COLOR=$(resolve_fill_color "$FILL_COLOR_SPEC")
 # path/mtime/screen/fill/fill_color/svg_layout combination and served from the
 # cache. A responsive SVG receives the screen itself as its viewport; other
 # SVGs retain their intrinsic aspect ratio and the normal fill behavior.
+bound_svg_target() {
+  local target="$1"
+
+  [[ $target =~ ^([1-9][0-9]*)\ ([1-9][0-9]*)$ ]] || return 1
+
+  # A hostile fixed-layout SVG can declare an extreme intrinsic size or aspect
+  # ratio. Keep the aspect but bound the raster before it reaches Cairo; the
+  # wallpaper layer can still scale/crop the result, while one downloaded
+  # theme can no longer ask the session to allocate a multi-gigabyte surface.
+  awk -v w="${BASH_REMATCH[1]}" -v h="${BASH_REMATCH[2]}" \
+    -v max_dimension="$MAX_SVG_RENDER_DIMENSION" -v max_pixels="$MAX_SVG_RENDER_PIXELS" '
+    BEGIN {
+      scale = 1
+      if (w > max_dimension) scale = max_dimension / w
+      if (h * scale > max_dimension) scale = max_dimension / h
+      if (w * h * scale * scale > max_pixels) scale *= sqrt(max_pixels / (w * h * scale * scale))
+
+      w = int(w * scale)
+      h = int(h * scale)
+      if (w < 1) w = 1
+      if (h < 1) h = 1
+      printf "%d %d", w, h
+    }
+  '
+}
+
 rasterize_svg() {
   local svg="$1"
   local cache_dir="$HOME/.cache/omarchy/background-renders"
@@ -286,11 +314,12 @@ rasterize_svg() {
       }
     ')
   fi
+  target=$(bound_svg_target "$target") || return 1
   [[ $target =~ ^([1-9][0-9]*)\ ([1-9][0-9]*)$ ]] || return 1
   local target_w=${BASH_REMATCH[1]} target_h=${BASH_REMATCH[2]}
 
   mtime=$(stat -c %Y "$svg" 2>/dev/null) || return 1
-  cache_key=$(printf '%s\t%s\t%s\t%s\t%s\t%s' "$svg" "$mtime" "${SCREEN_W}x${SCREEN_H}" "$FILL" "$FILL_COLOR" "$SVG_LAYOUT" | md5sum)
+  cache_key=$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$svg" "$mtime" "${SCREEN_W}x${SCREEN_H}" "$FILL" "$FILL_COLOR" "$SVG_LAYOUT" "$MAX_SVG_RENDER_DIMENSION" "$MAX_SVG_RENDER_PIXELS" | md5sum)
   cache_key=${cache_key%% *}
   cache_file="$cache_dir/$cache_key.png"
 
@@ -333,7 +362,7 @@ rasterize_svg() {
     rsvg_args+=(--keep-aspect-ratio)
   fi
 
-  if rsvg-convert "${rsvg_args[@]}" -o "$render_tmp" "$render_source" 2>/dev/null; then
+  if timeout --kill-after=2 30 rsvg-convert "${rsvg_args[@]}" -o "$render_tmp" "$render_source" 2>/dev/null; then
     [[ -z ${render_work:-} ]] || rm -rf -- "$render_work"
     mv "$render_tmp" "$cache_file"
     printf '%s' "$cache_file"
@@ -375,7 +404,7 @@ sample_edge_color() {
     fi
   fi
 
-  line=$(magick "${image}[0]" -background "$FILL_COLOR" -alpha remove -alpha off \
+  line=$(timeout --kill-after=2 10 magick "${image}[0]" -background "$FILL_COLOR" -alpha remove -alpha off \
     -colorspace sRGB -resize '64x64!' \
     -write mpr:source +delete \
     \( mpr:source -gravity north -crop '64x4+0+0' +repage \) \

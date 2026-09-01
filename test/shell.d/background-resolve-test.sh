@@ -166,6 +166,31 @@ output=$(resolve --fields)
 
 pass "SVG backgrounds rasterize to cached cover-sized PNGs per screen"
 
+# A downloaded theme controls an SVG's intrinsic dimensions. An extreme aspect
+# ratio must be bounded before rsvg-convert reaches Cairo instead of requesting
+# a multi-gigabyte surface (or falling back to Qt with the hostile SVG).
+cat >>"$backgrounds/backgrounds.toml" <<'TOML'
+
+["5-hostile-size"]
+fill = "crop"
+TOML
+
+cat >"$backgrounds/5-hostile-size.svg" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" width="10000" height="1" viewBox="0 0 10000 1">
+  <rect width="10000" height="1" fill="#ff0000"/>
+</svg>
+SVG
+
+output=$(resolve --fields --screen 200x200 --canonical "$backgrounds/5-hostile-size.svg")
+rendered=$(fields_value path "$output")
+[[ $rendered == "$home/.cache/omarchy/background-renders/"*.png ]] || fail "an extreme SVG still resolves through a bounded cached raster" "$output"
+dims=$(magick identify -ping -format '%wx%h' "$rendered")
+render_w=${dims%x*}
+render_h=${dims#*x}
+(( render_w <= 16384 && render_h <= 16384 && render_w * render_h <= 33554432 )) || fail "an extreme SVG raster is capped before conversion" "got $dims"
+
+pass "hostile SVG dimensions are bounded before rasterization"
+
 # A responsive SVG receives the exact screen as its viewport instead of being
 # rendered at a fixed intrinsic aspect. Relative sibling assets remain usable
 # from the temporary responsive source.
@@ -193,6 +218,29 @@ center=$(magick "$rendered" -format '%[pixel:p{100,100}]' info:)
 [[ $center == "srgb(0,0,255)" ]] || fail "a responsive SVG keeps relative sibling assets available" "got $center"
 
 pass "responsive SVG backgrounds render against the exact screen viewport"
+
+# Librsvg may load sibling assets, but its base-directory guard must keep a
+# downloaded SVG from climbing out of backgrounds/ to read another user file.
+magick -size 20x20 xc:blue "$state/theme/private.png"
+cat >>"$backgrounds/backgrounds.toml" <<'TOML'
+
+["5-parent-reference"]
+svg_layout = "responsive"
+TOML
+
+cat >"$backgrounds/5-parent-reference.svg" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <rect width="100%" height="100%" fill="red"/>
+  <image width="100%" height="100%" href="../private.png"/>
+</svg>
+SVG
+
+output=$(resolve --fields --screen 20x20 --canonical "$backgrounds/5-parent-reference.svg")
+rendered=$(fields_value path "$output")
+center=$(magick "$rendered" -format '%[pixel:p{10,10}]' info:)
+[[ $center == "srgb(255,0,0)" ]] || fail "an SVG cannot read an image above its background directory" "got $center"
+
+pass "SVG external resources stay confined to the background directory"
 
 # Edge backdrops sample the dominant perimeter colour from the per-screen
 # resolved asset, while blur backdrops leave fill_color as their solid fallback.

@@ -164,7 +164,7 @@ generate_thumbnail() {
   # Callers fan out one generator per image, so keep each vips single-threaded.
   # Close the lock fd for vips: an orphaned or hung vips must not keep holding
   # the lock after this shell is killed.
-  if VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]" {lock_fd}>&-; then
+  if VIPS_CONCURRENCY=1 timeout --kill-after=2 30 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]" {lock_fd}>&-; then
     mv -f "$tmp" "$thumbnail"
   else
     rm -f "$tmp" "$thumbnail"
