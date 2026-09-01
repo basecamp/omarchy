@@ -74,6 +74,7 @@ Item {
 
   Text {
     id: label
+    textFormat: Text.PlainText
     visible: root.labelVisible
     anchors.centerIn: parent
     text: root.text

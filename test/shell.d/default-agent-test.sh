@@ -63,6 +63,21 @@ cat >"$mock_bin/devin" <<'SH'
 printf '%s\0' devin "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
 SH
 
+cat >"$mock_bin/omarchy-install-devin-cli" <<'SH'
+#!/bin/bash
+mode=${1:-}
+if [[ $mode == "--check" ]]; then
+  [[ ${OMARCHY_TEST_MISSING_COMMAND:-} != "devin" ]]
+  exit $?
+fi
+if [[ $mode == "--now" ]]; then
+  printf '%s\0' "-fsSL" "https://cli.devin.ai/install.sh" >"$OMARCHY_TEST_CURL_LOG"
+  [[ ${OMARCHY_TEST_CURL_FAIL:-false} != "true" ]]
+  exit $?
+fi
+SH
+chmod +x "$mock_bin/omarchy-install-devin-cli"
+
 cat >"$mock_bin/mise" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >"$OMARCHY_TEST_MISE_LOG"
@@ -336,9 +351,9 @@ declare -A expected_packages=(
   [copilot]="copilot"
 )
 
-# Devin ships its own installer and is not available through mise, so the
-# default-agent script skips the mise install/activate flow for it.
-declare -A skip_mise_agents=(
+# Devin and Hermes ship their own installers and are not available through
+# mise, so the default-agent script calls agent_installer instead of mise.
+declare -A agent_installer_agents=(
   [devin]=1
 )
 
@@ -349,7 +364,7 @@ for selection in "${!expected_agents[@]}"; do
   OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
-  if [[ -z ${skip_mise_agents[$expected]:-} ]]; then
+  if [[ -z ${agent_installer_agents[$expected]:-} ]]; then
     mapfile -d '' -t mise_args <"$mise_log"
     [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
       fail "default agent installs $selection globally through mise"
@@ -510,8 +525,10 @@ assert_launched() {
     fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
 
   for ((index = 0; index < ${#expected[@]}; index++)); do
-    [[ ${actual[$index]} == ${expected[$index]} ]] ||
-      fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
+    case ${actual[$index]} in
+    "${expected[$index]}") ;;
+    *) fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}" ;;
+    esac
   done
 }
 
@@ -536,15 +553,23 @@ assert_bypass() {
 assert_launch pi pi "Review this project"
 assert_launch omp omp --auto-approve -- "Review this project"
 assert_launch opencode opencode --auto --prompt "Review this project"
-assert_launch ori ori code --prompt "Review this project"
+assert_launch ori ori code --interactive --prompt "Review this project"
 assert_launch claude claude --permission-mode auto -- "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
+assert_launch hermes env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
 assert_launch devin devin --permission-mode dangerous --respect-workspace-trust false -- "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
+
+literal_hermes_prompt=$' --help !Crash /quit {$(touch must-not-run)}\ntrailing\\ '
+printf '%s\n' "hermes" >"$agent_file"
+omarchy-agent-prompt "$literal_hermes_prompt"
+assert_launched hermes "binds its literal initial prompt" env -u HERMES_SESSION_SOURCE \
+  hermes chat --yolo --tui "--query=$literal_hermes_prompt"
+pass "Hermes receives prompted launches as one literal query argument"
 
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
@@ -554,6 +579,7 @@ assert_bypass claude claude --permission-mode auto
 assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
+assert_bypass hermes hermes --yolo
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 assert_bypass devin devin --permission-mode dangerous --respect-workspace-trust false

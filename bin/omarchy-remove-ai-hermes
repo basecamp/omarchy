@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# omarchy:summary=Remove the Hermes desktop app along with the Hermes runtime it installed.
+# omarchy:requires-sudo=true
+
+# -u so an unset HOME is an error rather than a set of rm -rf paths rooted at /.
+set -euo pipefail
+
+omarchy-pkg-drop hermes-desktop
+
+# The app writes this when the runtime it provisions under ~/.hermes has landed,
+# and it is the only thing that tells that runtime apart from one the user
+# installed themselves -- the paths are the same either way. Without it the app
+# never got that far: a machine where it was installed but never launched still
+# has whatever was there before, and none of it is ours to delete.
+if [[ -f $HOME/.hermes/hermes-agent/.hermes-bootstrap-complete ]]; then
+  # The checkout and venv, its own uv, its own node. None of it is any use once
+  # the app is gone. Not ~/.config/Hermes, which holds the gateway connections
+  # and their encrypted tokens, the active profile and the update settings. Not
+  # the rest of ~/.hermes either: the chats, memories and the skills Hermes
+  # wrote for itself are the user's, they are small, and finding them still
+  # there after a reinstall is the better surprise.
+  rm -rf \
+    "$HOME/.hermes/hermes-agent" \
+    "$HOME/.hermes/bootstrap-cache" \
+    "$HOME/.hermes/bin" \
+    "$HOME/.hermes/node"
+
+  # Only the wrappers pointing into ~/.hermes, matched as a plain string: the
+  # path carries a dot, so an unanchored pattern would also claim a wrapper
+  # pointing at a sibling like ~/xhermes.
+  for command in hermes hermes-agent hermes-acp; do
+    wrapper="$HOME/.local/bin/$command"
+
+    if [[ -f $wrapper && ! -L $wrapper ]] && grep -qF "$HOME/.hermes" "$wrapper"; then
+      rm -f "$wrapper"
+    fi
+  done
+
+  # When Hermes brought its own Node it symlinked these next to its own commands,
+  # and they point at what we just deleted. Only the links into ~/.hermes: a
+  # system Node, or someone else's, lives somewhere else entirely.
+  for command in node npm npx; do
+    link="$HOME/.local/bin/$command"
+
+    if [[ -L $link && $(readlink "$link") == "$HOME/.hermes"/* ]]; then
+      rm -f "$link"
+    fi
+  done
+
+  echo ""
+  echo "Hermes Desktop has been removed."
+  echo "Your chats, memories, and skills are still in ~/.hermes,"
+  echo "and your connections and settings in ~/.config/Hermes."
+else
+  echo ""
+  echo "Hermes Desktop has been removed."
+  echo "It never finished installing its own Hermes, so nothing in ~/.hermes was touched."
+fi
