@@ -36,10 +36,12 @@ fi
 if ! source_outputs=$(pactl list short source-outputs 2>/dev/null); then
   if [[ $is_bluetooth == true ]]; then
     report_bluetooth_failure "Failed to list active audio input streams"
-    exit 1
+    list_status=1
+  else
+    list_status=0
   fi
 
-  exit 0
+  exit "$list_status"
 fi
 
 bluetooth_card_name=""
@@ -49,40 +51,39 @@ if [[ $is_bluetooth == true ]]; then
 fi
 
 bluetooth_input_ready() {
-  local cards
+  local sources
   [[ -n $bluetooth_card_name ]] || return 1
-  cards=$(pactl --format=json list cards 2>/dev/null) || return 1
-  jq -e --arg card "$bluetooth_card_name" \
-    'any(.[]; .name == $card and ((.profiles[.active_profile].sources // 0) > 0))' \
-    <<<"$cards" >/dev/null 2>&1
+  sources=$(pactl --format=json list sources 2>/dev/null) || return 1
+  jq -e --arg card "$bluetooth_card_name" --arg loopback "$source_name" \
+    'any(.[]; .name != $loopback and .properties["device.name"] == $card and .properties["bluez5.loopback"] != "true")' \
+    <<<"$sources" >/dev/null 2>&1
 }
 
 move_failed=0
 while read -r source_output_id; do
   [[ -n $source_output_id ]] || continue
 
-  if [[ $is_bluetooth == false ]]; then
-    pactl move-source-output "$source_output_id" "$source_name" 2>/dev/null
-    continue
-  fi
+  if [[ $is_bluetooth == true ]]; then
+    moved=false
+    max_attempts=15
+    for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
+      # Linking to the loopback asks WirePlumber to replace A2DP with a capture
+      # profile. Poll for its physical source, then relink after the graph exists.
+      pactl move-source-output "$source_output_id" "$source_name" 2>/dev/null
+      sleep 0.2
 
-  moved=false
-  max_attempts=5
-  for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
-    # Linking to the loopback asks WirePlumber to replace A2DP with a capture
-    # profile. Poll that card's active profile, then relink once it has an input.
-    pactl move-source-output "$source_output_id" "$source_name" 2>/dev/null
-    sleep 0.2
+      if bluetooth_input_ready && pactl move-source-output "$source_output_id" "$source_name" 2>/dev/null; then
+        moved=true
+        break
+      fi
+    done
 
-    if bluetooth_input_ready && pactl move-source-output "$source_output_id" "$source_name" 2>/dev/null; then
-      moved=true
-      break
+    if [[ $moved == false ]]; then
+      echo "Failed to move audio input stream $source_output_id to $source_name after $max_attempts attempts" >&2
+      move_failed=1
     fi
-  done
-
-  if [[ $moved == false ]]; then
-    echo "Failed to move audio input stream $source_output_id to $source_name after $max_attempts attempts" >&2
-    move_failed=1
+  else
+    pactl move-source-output "$source_output_id" "$source_name" 2>/dev/null
   fi
 done < <(awk '{ print $1 }' <<<"$source_outputs")
 
