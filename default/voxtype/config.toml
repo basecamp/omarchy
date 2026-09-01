@@ -58,10 +58,14 @@ translate = false
 # threads = 4
 
 [output]
-# Primary output mode: "type" or "clipboard"
-# - type: Simulates keyboard input at cursor position (requires ydotool)
+# Primary output mode: "type", "clipboard", or "paste"
+# - type: Simulates keyboard input at cursor position (requires wtype or ydotool)
 # - clipboard: Copies text to clipboard (requires wl-copy)
-mode = "type"
+# - paste: Copies to clipboard, then pastes at the cursor (requires wl-copy and wtype)
+mode = "paste"
+
+# Use Omarchy's universal paste shortcut so this works in terminals too
+paste_keys = "super+v"
 
 # Fall back to clipboard if typing fails
 fallback_to_clipboard = true
