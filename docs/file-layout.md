@@ -203,7 +203,7 @@ It only does the things `/etc/skel` can't:
   directory there (currently `omarchy` and `diagnose-crash`) so new skills
   need no edit. Symlinks (not copies) so `omarchy dev link` against a dev
   checkout repoints them correctly.
-- `xdg-user-dirs-update` (Templates/Public/Desktop folded back into `$HOME`)
+- `xdg-user-dirs-update` (Templates/Public folded back into `$HOME`; Desktop redirected to `~/.local/share/desktop`)
   and `~/.config/gtk-3.0/bookmarks` (needs `$HOME` expansion).
 - Hyprland's package-owned default input reads `XKBLAYOUT` / `XKBVARIANT`
   from `/etc/vconsole.conf`; no per-user Hyprland config rewrite is needed.

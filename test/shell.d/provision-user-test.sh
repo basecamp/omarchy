@@ -10,7 +10,15 @@ trap 'rm -rf "$test_tmp"' EXIT
 mock_bin="$test_tmp/bin"
 mkdir -p "$mock_bin" "$test_tmp/home"
 
-for command in xdg-user-dirs-update xdg-settings xdg-mime; do
+export XDG_USER_DIR_CALLS="$test_tmp/xdg-user-dir-calls"
+
+cat >"$mock_bin/xdg-user-dirs-update" <<'STUB'
+#!/bin/bash
+
+printf '%s\n' "$*" >>"$XDG_USER_DIR_CALLS"
+STUB
+
+for command in xdg-settings xdg-mime; do
   printf '#!/bin/bash\nexit 0\n' >"$mock_bin/$command"
 done
 chmod +x "$mock_bin"/*
@@ -33,3 +41,10 @@ for skill in omarchy diagnose-crash; do
 done
 
 pass "omarchy-provision-user provisions Antigravity skills"
+
+desktop_dir="$test_tmp/home/.local/share/desktop"
+[[ -d $desktop_dir ]] || fail "omarchy-provision-user creates the hidden desktop directory"
+grep -qxF -- "--set DESKTOP $desktop_dir" "$XDG_USER_DIR_CALLS" ||
+  fail "omarchy-provision-user keeps desktop shortcuts out of the home directory" "$(cat "$XDG_USER_DIR_CALLS")"
+
+pass "omarchy-provision-user keeps desktop shortcuts out of the home directory"
