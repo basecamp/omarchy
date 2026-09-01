@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# omarchy:summary=Start the Hyprland session via uwsm after clearing a stale graphical-session target
+# omarchy:hidden=true
+
+set -euo pipefail
+
+# SDDM starts a Wayland greeter compositor (start-hyprland) before autologin.
+# On slower iGPUs — notably Apple Intel Haswell (Macmini7,1 / Iris 5100) — that
+# greeter can leave graphical-session.target active with no user compositor.
+# uwsm then refuses: "A compositor or graphical-session* target is already active!"
+# and SDDM's helper exits 1 (blank screen). Recurs when omarchy-settings restores
+# the packaged session file.
+#
+# Clear the leftover target only when Hyprland is not actually running, then
+# hand off to uwsm so logout (uwsm stop) still works.
+
+systemctl_user() {
+  systemctl --user "$@"
+}
+
+compositor_running() {
+  pgrep -u "$UID" -x Hyprland >/dev/null 2>&1 || pgrep -u "$UID" -x hyprland >/dev/null 2>&1
+}
+
+if systemctl_user is-active --quiet graphical-session.target; then
+  if ! compositor_running; then
+    systemctl_user stop graphical-session.target graphical-session-pre.target || true
+  fi
+fi
+
+exec uwsm start -e -D Hyprland hyprland.desktop
