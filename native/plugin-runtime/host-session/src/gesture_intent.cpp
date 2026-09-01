@@ -181,8 +181,20 @@ SurfaceDeclarationResult GestureIntentAuthority::declare_surface(
     return SurfaceDeclarationResult::duplicate_name;
   if (declarations_.size() == wire::kMaximumPluginSurfaces)
     return SurfaceDeclarationResult::capacity_exceeded;
-  declarations_.push_back({.key = key, .name = std::move(display_name)});
+  declarations_.push_back(
+      {.key = key, .name = std::move(display_name), .attached = false});
   return SurfaceDeclarationResult::declared;
+}
+
+bool GestureIntentAuthority::attach_surface(surface::SurfaceKey key) noexcept {
+  const auto found = std::ranges::find_if(
+      declarations_, [&](const Declaration &candidate) {
+        return candidate.key == key;
+      });
+  if (revoked_ || found == declarations_.end() || found->attached)
+    return false;
+  found->attached = true;
+  return true;
 }
 
 bool GestureIntentAuthority::detach_surface(surface::SurfaceKey key) noexcept {
@@ -190,17 +202,19 @@ bool GestureIntentAuthority::detach_surface(surface::SurfaceKey key) noexcept {
       declarations_, [&](const Declaration &candidate) {
         return candidate.key == key;
       });
-  if (found == declarations_.end())
+  if (found == declarations_.end() || !found->attached)
     return false;
   clear_surface_eligibility(key);
-  declarations_.erase(found);
+  found->attached = false;
   lifetime_->invalidate();
   return true;
 }
 
 bool GestureIntentAuthority::arm(surface::SurfaceKey source,
                                  std::uint64_t input_sequence) {
-  if (revoked_ || input_sequence == 0 || find(source) == nullptr)
+  const auto *declaration = find(source);
+  if (revoked_ || input_sequence == 0 || declaration == nullptr ||
+      !declaration->attached)
     return false;
   return eligibility_.arm(
       binding_, {.surface_id = source.id,

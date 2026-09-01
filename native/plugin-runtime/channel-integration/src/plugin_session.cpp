@@ -255,11 +255,14 @@ PluginSession::PluginSession(
         wire::manifest_surface_binding(name, index, token_.generation);
     if (!binding)
       throw std::invalid_argument("invalid canonical manifest surface binding");
-    surfaces_.push_back({
-        .name = name,
-        .key = {.id = binding->id, .generation = binding->generation},
-        .endpoint = nullptr,
-    });
+    const surface::SurfaceKey key{
+        .id = binding->id, .generation = binding->generation};
+    if (gesture_intents_->declare_surface(key, name) !=
+        host_session::SurfaceDeclarationResult::declared)
+      throw std::invalid_argument(
+          "invalid canonical manifest surface declaration");
+    surfaces_.push_back(
+        {.name = name, .key = key, .endpoint = nullptr});
   }
 }
 
@@ -314,11 +317,9 @@ PluginSession::attach(std::string_view declared_surface,
     return {.status = SurfaceAttachStatus::undeclared_surface, .key = {}};
   if (slot->endpoint != nullptr)
     return {.status = SurfaceAttachStatus::already_attached, .key = slot->key};
-  std::string display_name;
   session::AttachResult attached = session::AttachResult::invalid_registration;
   try {
     // Finish every allocation before the router publishes the endpoint.
-    display_name = slot->name;
     attached = router_.attach(slot->key, correlations, endpoint);
   } catch (...) {
     return {.status = SurfaceAttachStatus::allocation_failed, .key = slot->key};
@@ -326,24 +327,16 @@ PluginSession::attach(std::string_view declared_surface,
   if (attached != session::AttachResult::attached)
     return {.status = SurfaceAttachStatus::invalid_correlations,
             .key = slot->key};
-  host_session::SurfaceDeclarationResult declared;
-  try {
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING
-    if (surface_attach_fault_ == SurfaceAttachFault::after_router) {
-      surface_attach_fault_ = SurfaceAttachFault::none;
-      throw std::bad_alloc();
-    }
-#endif
-    declared =
-        gesture_intents_->declare_surface(slot->key, std::move(display_name));
-  } catch (...) {
+  if (surface_attach_fault_ == SurfaceAttachFault::after_router) {
+    surface_attach_fault_ = SurfaceAttachFault::none;
     static_cast<void>(router_.detach(slot->key, endpoint));
     return {.status = SurfaceAttachStatus::allocation_failed, .key = slot->key};
   }
-  if (declared != host_session::SurfaceDeclarationResult::declared) {
+#endif
+  if (!gesture_intents_->attach_surface(slot->key)) {
     static_cast<void>(router_.detach(slot->key, endpoint));
-    return {.status = SurfaceAttachStatus::invalid_correlations,
-            .key = slot->key};
+    return {.status = SurfaceAttachStatus::allocation_failed, .key = slot->key};
   }
   slot->endpoint = &endpoint;
   return {.status = SurfaceAttachStatus::attached, .key = slot->key};

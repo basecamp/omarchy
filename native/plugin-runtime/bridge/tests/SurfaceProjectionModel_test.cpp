@@ -323,6 +323,7 @@ QtObject {
   const surface::SurfaceKey cross_panel{.id = 2, .generation = 4};
   require(cross_authority.declare_surface(cross_panel, "PanelB") ==
                   host::SurfaceDeclarationResult::declared &&
+              cross_authority.attach_surface(cross_panel) &&
               cross_authority.arm(cross_panel, 1),
           "cross-plugin intent fixture did not arm");
   auto cross_intent = cross_authority.admit(
@@ -347,6 +348,7 @@ QtObject {
   const surface::SurfaceKey stale_panel{.id = 1, .generation = 4};
   require(stale_authority.declare_surface(stale_panel, "PanelA") ==
                   host::SurfaceDeclarationResult::declared &&
+              stale_authority.attach_surface(stale_panel) &&
               stale_authority.arm(stale_panel, 1),
           "stale delegate intent fixture did not arm");
   auto stale_intent = stale_authority.admit(
@@ -406,6 +408,7 @@ QtObject {
   const surface::SurfaceKey thread_panel{.id = 1, .generation = 3};
   require(thread_authority.declare_surface(thread_panel, "Panel") ==
                   host::SurfaceDeclarationResult::declared &&
+              thread_authority.attach_surface(thread_panel) &&
               thread_authority.arm(thread_panel, 1),
           "off-thread intent fixture did not arm");
   auto thread_intent = thread_authority.admit(
@@ -467,6 +470,8 @@ QtObject {
                   host::SurfaceDeclarationResult::declared &&
               authority.declare_surface(maximum, maximum_name_bytes) ==
                   host::SurfaceDeclarationResult::declared &&
+              authority.attach_surface(bar) &&
+              authority.attach_surface(panel) &&
               authority.arm(bar, 11),
           "bridge intent authority fixture failed");
   auto admitted = authority.admit(
@@ -518,8 +523,7 @@ QtObject {
                   service_manager, std::move(*detached_token.intent)) &&
               toggles == 2,
           "admitted intent survived surface detach");
-  require(authority.declare_surface(panel, "PanelWidget") ==
-                  host::SurfaceDeclarationResult::declared &&
+  require(authority.attach_surface(panel) &&
               authority.arm(bar, 14),
           "revoke invalidation fixture failed");
   auto revoked_token = authority.admit(

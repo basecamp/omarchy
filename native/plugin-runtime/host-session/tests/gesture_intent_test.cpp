@@ -47,7 +47,9 @@ int main() {
               authority.declare_surface(invalid, std::string(65, 'X')) ==
                   host::SurfaceDeclarationResult::invalid,
           "surface declarations failed");
-  require(authority.arm(bar, 11), "physical gesture did not arm");
+  require(!authority.arm(bar, 10) && authority.attach_surface(bar) &&
+              !authority.attach_surface(bar) && authority.arm(bar, 11),
+          "only an attached physical-input source could arm");
   const surface::SurfaceIntentRequest request{
       .source = bar,
       .target = panel,
@@ -76,13 +78,15 @@ int main() {
                   host::SurfaceIntentAdmissionFailure::gesture_missing,
           "denied target probe retained eligibility");
 
-  require(authority.arm(bar, 13) && authority.detach_surface(panel),
+  require(authority.attach_surface(panel) && authority.arm(bar, 13) &&
+              authority.detach_surface(panel),
           "detach fixture failed");
   auto surviving_source = request;
-  surviving_source.target = maximum;
   surviving_source.input_sequence = 13;
-  require(authority.admit(surviving_source).intent.has_value(),
-          "detaching another surface erased the source gesture");
+  auto detached_target = authority.admit(surviving_source);
+  require(detached_target.intent &&
+              detached_target.intent->target_name() == "PanelWidget",
+          "detached canonical target became unknown");
 
   surviving_source.input_sequence = 14;
   require(authority.arm(bar, 14),
@@ -104,8 +108,22 @@ int main() {
   require(authority.admit(surviving_source).failure ==
               host::SurfaceIntentAdmissionFailure::gesture_missing,
           "detaching the source retained gesture eligibility");
+  require(!authority.arm(bar, 17),
+          "detached source minted new gesture eligibility");
+  require(authority.attach_surface(bar) && authority.arm(bar, 18),
+          "reattached source could not regain physical-input authority");
+  auto stale_target = request;
+  stale_target.input_sequence = 18;
+  stale_target.target.generation++;
+  auto canonical_after_spoof = request;
+  canonical_after_spoof.input_sequence = 18;
+  require(authority.admit(stale_target).failure ==
+                  host::SurfaceIntentAdmissionFailure::stale_activation &&
+              authority.admit(canonical_after_spoof).failure ==
+                  host::SurfaceIntentAdmissionFailure::gesture_missing,
+          "spoofed target generation was accepted or retained eligibility");
   authority.revoke();
-  require(!authority.arm(bar, 17) &&
+  require(!authority.attach_surface(panel) && !authority.arm(bar, 19) &&
               authority.admit(request).failure ==
                   host::SurfaceIntentAdmissionFailure::revoked,
           "revoked intent authority remained usable");
@@ -119,6 +137,7 @@ int main() {
                 host::SurfaceDeclarationResult::declared &&
                 temporary.declare_surface(panel, "PanelWidget") ==
                     host::SurfaceDeclarationResult::declared &&
+                temporary.attach_surface(bar) &&
                 temporary.arm(bar, 21),
             "authority destruction fixture failed");
     auto result = temporary.admit(

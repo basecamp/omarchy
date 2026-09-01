@@ -121,9 +121,10 @@ struct SurfaceIntentAdmissionResult {
 };
 
 // Event-loop-confined authority for one authenticated plugin session. The
-// trusted host-input path arms it only after physical-input admission. The
-// render request path atomically spends that eligibility before resolving
-// targets.
+// Canonical manifest surfaces are declared for the session lifetime, including
+// targets that have not mapped a render endpoint yet. Attachment separately
+// controls which surfaces may arm from trusted physical input. The render
+// request path atomically spends that eligibility before resolving targets.
 class GestureIntentAuthority final {
 public:
   GestureIntentAuthority(permissions::ActivationBinding binding,
@@ -132,6 +133,7 @@ public:
 
   [[nodiscard]] SurfaceDeclarationResult
   declare_surface(surface::SurfaceKey key, std::string display_name) noexcept;
+  [[nodiscard]] bool attach_surface(surface::SurfaceKey key) noexcept;
   [[nodiscard]] bool detach_surface(surface::SurfaceKey key) noexcept;
   [[nodiscard]] bool arm(surface::SurfaceKey source,
                          std::uint64_t input_sequence);
@@ -144,6 +146,7 @@ private:
   struct Declaration {
     surface::SurfaceKey key{};
     std::string name;
+    bool attached = false;
   };
 
   [[nodiscard]] const Declaration *find(surface::SurfaceKey key) const;

@@ -1097,6 +1097,7 @@ void shared_gesture_authority_has_one_concurrent_winner() {
                     host::SurfaceDeclarationResult::declared &&
                 intents.declare_surface(target, "panel") ==
                     host::SurfaceDeclarationResult::declared &&
+                intents.attach_surface(source) &&
                 intents.arm(source, iteration),
             "concurrent gesture fixture did not arm");
     const definitions::DynamicInvocation::GestureClaim claim{
@@ -1254,7 +1255,7 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
   auto channel_state = std::make_shared<ChannelState>();
   manifest::ManifestV2 verified_manifest;
   verified_manifest.id = identity.plugin_id;
-  verified_manifest.surface_names = {"barWidget", "panel"};
+  verified_manifest.surface_names = {"barWidget", "panel", "overlay"};
   Events events;
   IntentSink sink;
   auto clock = std::make_shared<GestureClock>();
@@ -1278,23 +1279,51 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
   const std::array<std::uint64_t, 1> panel_correlations{702};
   const auto bar_attachment =
       product->attach("barWidget", bar_correlations, bar);
-  const auto panel_attachment =
-      product->attach("panel", panel_correlations, panel);
-  require(bar_attachment && panel_attachment, "intent surfaces did not attach");
+  require(static_cast<bool>(bar_attachment),
+          "intent source surface did not attach");
+  const surface::SurfaceKey panel_key{.id = 2,
+                                      .generation = identity.generation};
+  const surface::SurfaceKey overlay_key{.id = 3,
+                                        .generation = identity.generation};
   const surface::SurfaceIntentRequest request{
       .source = bar_attachment.key,
-      .target = panel_attachment.key,
+      .target = panel_key,
       .input_sequence = 91,
       .action = surface::SurfaceIntentAction::toggle,
   };
 
-  channel_state->publish(intent_message(identity, 1, request));
+  auto cold_target = request;
+  cold_target.input_sequence = 89;
+  require(product->arm_surface_intent(bar_attachment.key,
+                                      cold_target.input_sequence),
+          "attached bar could not arm a cold-target intent");
+  channel_state->publish(intent_message(identity, 1, cold_target));
+  await([&] { return sink.accepted == 1; },
+        "cold unattached panel intent did not reach the shell sink");
+  require(sink.was_fresh && sink.source == "barWidget" &&
+              sink.target == "panel" && sink.input_sequence == 89,
+          "cold target intent lost canonical manifest identity");
+
+  auto cold_overlay = request;
+  cold_overlay.target = overlay_key;
+  cold_overlay.input_sequence = 90;
+  require(product->arm_surface_intent(bar_attachment.key,
+                                      cold_overlay.input_sequence),
+          "attached bar could not arm a cold-overlay intent");
+  channel_state->publish(intent_message(identity, 2, cold_overlay));
+  await([&] { return sink.accepted == 2; },
+        "cold unattached overlay intent did not reach the shell sink");
+  require(sink.was_fresh && sink.source == "barWidget" &&
+              sink.target == "overlay" && sink.input_sequence == 90,
+          "cold overlay intent lost canonical manifest identity");
+
+  channel_state->publish(intent_message(identity, 3, request));
   await([&] { return events.rejected.size() == 1; },
         "intent without a gesture was not rejected");
 
   require(product->arm_surface_intent(bar_attachment.key, 90),
           "trusted input path could not arm intent eligibility");
-  auto malformed = intent_message(identity, 2, request);
+  auto malformed = intent_message(identity, 4, request);
   malformed.payload.pop_back();
   channel_state->publish(std::move(malformed));
   await([&] { return events.rejected.size() == 2; },
@@ -1303,7 +1332,7 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
       product->arm_surface_intent(bar_attachment.key, request.input_sequence),
           "malformed intent did not safely clear its eligibility");
   product->clear_surface_intent_eligibility(bar_attachment.key);
-  channel_state->publish(intent_message(identity, 3, request));
+  channel_state->publish(intent_message(identity, 5, request));
   await([&] { return events.rejected.size() == 3; },
         "failed input delivery did not clear intent eligibility");
   require(
@@ -1317,25 +1346,28 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
   require(shared_gesture->consume(product->binding(), claim).has_value(),
           "dynamic broker view did not receive the session gesture arm");
   const definitions::DynamicInvocation::GestureClaim panel_claim{
-      .surface_id = panel_attachment.key.id,
-      .surface_generation = panel_attachment.key.generation,
+      .surface_id = panel_key.id,
+      .surface_generation = panel_key.generation,
       .input_sequence = 92,
   };
-  require(product->arm_surface_intent(panel_attachment.key,
-                                      panel_claim.input_sequence),
-          "second surface could not arm intent eligibility");
+  const auto panel_attachment =
+      product->attach("panel", panel_correlations, panel);
+  require(panel_attachment && panel_attachment.key == panel_key &&
+              product->arm_surface_intent(panel_attachment.key,
+                                          panel_claim.input_sequence),
+          "attached second surface could not arm intent eligibility");
   product->clear_surface_intent_eligibility(bar_attachment.key);
   require(shared_gesture->consume(product->binding(), panel_claim).has_value(),
           "clearing one session surface erased another surface's gesture");
-  channel_state->publish(intent_message(identity, 4, request));
+  channel_state->publish(intent_message(identity, 6, request));
   await([&] { return events.rejected.size() == 4; },
         "surface intent reused a gesture consumed by the broker");
   require(
       product->arm_surface_intent(bar_attachment.key, request.input_sequence),
           "trusted path could not re-arm after broker consumption");
 
-  channel_state->publish(intent_message(identity, 5, request));
-  await([&] { return sink.accepted == 1; },
+  channel_state->publish(intent_message(identity, 7, request));
+  await([&] { return sink.accepted == 3; },
         "eligible intent did not reach the shell sink");
   require(sink.was_fresh && sink.source == "barWidget" &&
               sink.target == "panel" &&
@@ -1344,7 +1376,7 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
           "admitted intent lost trusted surface semantics");
   require(!shared_gesture->consume(product->binding(), claim),
           "broker reused a gesture consumed by a surface intent");
-  channel_state->publish(intent_message(identity, 6, request));
+  channel_state->publish(intent_message(identity, 8, request));
   await([&] { return events.rejected.size() == 5; },
         "replayed intent was not rejected");
 
@@ -1353,9 +1385,11 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
           "detach setup failed");
   auto detached_target = request;
   detached_target.input_sequence = 92;
-  channel_state->publish(intent_message(identity, 7, detached_target));
-  await([&] { return events.rejected.size() == 6; },
-        "intent targeting a detached surface was not rejected");
+  channel_state->publish(intent_message(identity, 9, detached_target));
+  await([&] { return sink.accepted == 4; },
+        "detached canonical target did not remain addressable");
+  require(sink.target == "panel" && sink.input_sequence == 92,
+          "detached target intent lost its canonical identity");
 
   require(product->attach("panel", panel_correlations, panel) &&
               product->arm_surface_intent(bar_attachment.key, 93) &&
@@ -1363,8 +1397,8 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
           "source detach setup failed");
   auto detached_source = request;
   detached_source.input_sequence = 93;
-  channel_state->publish(intent_message(identity, 8, detached_source));
-  await([&] { return events.rejected.size() == 7; },
+  channel_state->publish(intent_message(identity, 10, detached_source));
+  await([&] { return events.rejected.size() == 6; },
         "source detach did not clear intent eligibility");
 
   product->revoke();
@@ -1374,9 +1408,9 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
           "revoked session armed an intent");
   auto revoked = request;
   revoked.input_sequence = 94;
-  channel_state->publish(intent_message(identity, 9, revoked));
+  channel_state->publish(intent_message(identity, 11, revoked));
   QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
-  require(sink.accepted == 1 && bar.deliveries == 0 && panel.deliveries == 0,
+  require(sink.accepted == 4 && bar.deliveries == 0 && panel.deliveries == 0,
           "intent escaped through the render router");
 }
 
@@ -2283,6 +2317,12 @@ int main(int argc, char **argv) {
       if (!invalid_qml_worker_never_acknowledges_or_publishes())
         return 77;
       std::cout << "real worker invalid-QML startup test passed\n";
+      return 0;
+    }
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--gesture-intent-only") {
+      product_session_intercepts_gesture_intents_before_render_routing();
+      std::cout << "product session gesture-intent tests passed\n";
       return 0;
     }
     product_session_routes_two_surfaces_over_one_launch();

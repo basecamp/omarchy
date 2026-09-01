@@ -1563,6 +1563,7 @@ host::AdmittedSurfaceIntent admittedIntent(
   const surface::SurfaceKey key{.id = 1, .generation = binding.generation};
   require(authority.declare_surface(key, "bar") ==
                   host::SurfaceDeclarationResult::declared &&
+              authority.attach_surface(key) &&
               authority.arm(key, sequence),
           "surface intent fixture did not arm");
   auto admission = authority.admit({.source = key,
@@ -1684,7 +1685,8 @@ void surface_intent_mailbox_delivers_fifo_for_running_published_slot() {
   const surface::SurfaceKey key{.id = 1,
                                 .generation = binding.generation};
   require(authority.declare_surface(key, "bar") ==
-              host::SurfaceDeclarationResult::declared,
+                  host::SurfaceDeclarationResult::declared &&
+              authority.attach_surface(key),
           "positive surface intent fixture did not declare its source");
   const auto admit = [&](std::uint64_t sequence,
                          surface::SurfaceIntentAction action) {
@@ -3525,7 +3527,8 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
   const surface::SurfaceKey source{.id = 1,
                                    .generation = exact_binding.generation};
   require(intent_authority.declare_surface(source, "bar") ==
-              host::SurfaceDeclarationResult::declared,
+                  host::SurfaceDeclarationResult::declared &&
+              intent_authority.attach_surface(source),
           "running surface intent fixture did not declare its exact source");
   const auto admit = [&](std::uint64_t sequence,
                          surface::SurfaceIntentAction action) {
