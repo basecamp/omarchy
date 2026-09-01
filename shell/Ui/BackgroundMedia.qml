@@ -7,12 +7,15 @@ Item {
   property string path: ""
   property int version: 0
   property bool playbackEnabled: true
+  property bool loop: true
   readonly property var current: video ? videoLoader.item : imageLoader.item
   readonly property bool ready: current ? current.ready : false
   readonly property bool video: Util.isVideoPath(path)
   // Cache-bust images selected in a running lock session. FFmpeg treats the
   // query as part of a local filename, so videos must keep their plain URL.
   readonly property url mediaUrl: path ? Util.fileUrl(path) + (!video && version ? "?v=" + version : "") : ""
+
+  signal finished()
 
   Loader {
     id: imageLoader
@@ -44,12 +47,28 @@ Item {
     when: videoLoader.item !== null
   }
 
+  Binding {
+    target: videoLoader.item
+    property: "loop"
+    value: root.loop
+    when: videoLoader.item !== null
+  }
+
+  Connections {
+    target: videoLoader.item
+    function onFinished() {
+      root.finished()
+    }
+  }
+
   Component {
     id: imageComponent
 
     Image {
       readonly property bool ready: status === Image.Ready
-      source: root.mediaUrl
+      // Path and Loader.active bindings may settle in either order. Guard the
+      // source too so a departing image item never hands an MP4 to QQuickImage.
+      source: Util.isVideoPath(root.path) ? "" : root.mediaUrl
       fillMode: Image.PreserveAspectCrop
       asynchronous: true
       cache: root.version === 0

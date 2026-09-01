@@ -9,7 +9,10 @@ Item {
 
   property url mediaSource: ""
   property bool playbackEnabled: true
+  property bool loop: true
   readonly property bool ready: player.hasVideo
+
+  signal finished()
 
   onPlaybackEnabledChanged: {
     if (playbackEnabled) player.play()
@@ -27,7 +30,11 @@ Item {
     source: root.mediaSource
     videoOutput: output
     audioOutput: null
-    loops: MediaPlayer.Infinite
+    loops: root.loop ? MediaPlayer.Infinite : 1
     autoPlay: root.playbackEnabled
+    onMediaStatusChanged: {
+      if (mediaStatus === MediaPlayer.EndOfMedia) root.finished()
+    }
+    onErrorOccurred: root.finished()
   }
 }

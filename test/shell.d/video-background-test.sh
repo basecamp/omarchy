@@ -19,6 +19,7 @@ const barTextColor = fs.readFileSync(path.join(root, 'bin/omarchy-bar-text-color
 const menuImages = fs.readFileSync(path.join(root, 'bin/omarchy-menu-images'), 'utf8')
 const lockView = fs.readFileSync(path.join(root, 'shell/plugins/lock/LockView.qml'), 'utf8')
 const lockService = fs.readFileSync(path.join(root, 'shell/plugins/lock/Service.qml'), 'utf8')
+const bootIntro = fs.readFileSync(path.join(root, 'bin/omarchy-theme-bg-boot-intro'), 'utf8')
 
 assert(
   /function isVideoPath\(path\)[\s\S]*\.test\(String\(path \|\| ""\)\)/.test(utilQml) &&
@@ -26,15 +27,26 @@ assert(
   'shared media helper identifies video paths without truncating valid local names'
 )
 assert(
-  videoQml.includes('loops: MediaPlayer.Infinite') &&
+  videoQml.includes('loops: root.loop ? MediaPlayer.Infinite : 1') &&
     videoQml.includes('autoPlay: root.playbackEnabled') &&
     videoQml.includes('fillMode: VideoOutput.PreserveAspectCrop') &&
     mediaQml.includes('!video && version'),
   'background media plays aspect-cropped videos on a loop'
 )
 assert(
+  videoQml.includes('mediaStatus === MediaPlayer.EndOfMedia') &&
+    mediaQml.includes('property bool loop: true') &&
+    backgroundQml.includes('command: ["omarchy-theme-bg-boot-intro"]') &&
+    backgroundQml.includes('path: root.bootIntroActive ? root.bootIntroPath : ""') &&
+    backgroundQml.includes('loop: false') &&
+    backgroundQml.includes('onFinished: root.finishBootIntro()') &&
+    bootIntro.includes('background-intro.boot-id'),
+  'a matching theme intro plays once per boot and reveals the loaded still at end of media'
+)
+assert(
   !/^\s*import QtMultimedia/m.test(mediaQml) &&
-    mediaQml.includes('source: "BackgroundVideo.qml"'),
+    mediaQml.includes('source: "BackgroundVideo.qml"') &&
+    mediaQml.includes('source: Util.isVideoPath(root.path) ? "" : root.mediaUrl'),
   'the still-image path never imports QtMultimedia, so image-only sessions do not map it'
 )
 assert(
@@ -148,3 +160,19 @@ grep -qx 'qt6-multimedia-ffmpeg' "$ROOT/install/omarchy-base.packages" || fail "
 
 pass "video picker generates and reuses still thumbnails"
 pass "Qt Multimedia playback dependencies are declared"
+
+intro_home="$test_tmp/intro-home"
+intro_state="$intro_home/.local/state/omarchy/current"
+mkdir -p "$intro_state/theme/backgrounds" "$intro_state/theme/intros"
+printf 'still\n' >"$intro_state/theme/backgrounds/0-winding-road.webp"
+printf 'video\n' >"$intro_state/theme/intros/0-winding-road.mp4"
+ln -s "$intro_state/theme/backgrounds/0-winding-road.webp" "$intro_state/background"
+
+intro=$(HOME="$intro_home" OMARCHY_BOOT_ID=video-test-boot "$ROOT/bin/omarchy-theme-bg-boot-intro")
+[[ $intro == "$intro_state/theme/intros/0-winding-road.mp4" ]] || \
+  fail "boot intro resolves by the selected background stem" "$intro"
+
+second_intro=$(HOME="$intro_home" OMARCHY_BOOT_ID=video-test-boot "$ROOT/bin/omarchy-theme-bg-boot-intro")
+[[ -z $second_intro ]] || fail "boot intro runs once for a boot id" "$second_intro"
+
+pass "boot intro resolves the selected still once per boot"

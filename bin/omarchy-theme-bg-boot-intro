@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=Resolve the current background's one-shot boot intro
+# omarchy:hidden=true
+
+set -euo pipefail
+
+state_home="$HOME/.local/state"
+current_dir="$state_home/omarchy/current"
+current_theme="$current_dir/theme"
+current_background_link="$current_dir/background"
+marker="$state_home/omarchy/background-intro.boot-id"
+boot_id=${OMARCHY_BOOT_ID:-$(< /proc/sys/kernel/random/boot_id)}
+
+if [[ -f $marker && $(<"$marker") == "$boot_id" ]]; then
+  exit 0
+fi
+
+mkdir -p "$(dirname "$marker")"
+marker_staged="$marker.$$"
+trap 'rm -f "$marker_staged"' EXIT
+printf '%s\n' "$boot_id" >"$marker_staged"
+mv -f "$marker_staged" "$marker"
+
+backgrounds_dir=$(realpath -e "$current_theme/backgrounds" 2>/dev/null) || exit 0
+current_background=$(readlink -f "$current_background_link" 2>/dev/null) || exit 0
+[[ $(dirname "$current_background") == "$backgrounds_dir" ]] || exit 0
+
+case ${current_background,,} in
+*.jpg | *.jpeg | *.png | *.gif | *.bmp | *.webp) ;;
+*) exit 0 ;;
+esac
+
+intro_dir="$current_theme/intros"
+background_name=$(basename "$current_background")
+background_stem=${background_name%.*}
+
+for extension in mp4 m4v mov webm mkv avi; do
+  intro="$intro_dir/$background_stem.$extension"
+  if [[ -f $intro ]]; then
+    printf '%s\n' "$intro"
+    exit 0
+  fi
+done

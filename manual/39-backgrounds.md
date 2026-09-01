@@ -6,4 +6,6 @@ You can do this most easily by going to _Install > Style > Background_ in the Om
 
 Backgrounds can be videos as well as stills. Drop an `mp4`, `m4v`, `mov`, `webm`, `mkv`, or `avi` file in the same folder and it appears alongside the images, playing muted and looped. Playback stops on its own whenever nothing can see it — while a fullscreen window is focused, while the screensaver is up, and once a locked screen has gone dark — but a video wallpaper still costs far more power than a still one, and each monitor decodes its own copy.
 
+A theme can pair a still background such as `backgrounds/0-winding-road.webp` with `intros/0-winding-road.mp4`. When that still is selected at startup, the intro plays once per system boot and then reveals the already-loaded image. Intro videos stay out of the regular background picker.
+
 You can find a huge collection of cool curated backgrounds on https://github.com/dharmx/walls.
