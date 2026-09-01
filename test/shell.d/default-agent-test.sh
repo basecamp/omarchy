@@ -431,8 +431,10 @@ assert_launched() {
     fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
 
   for ((index = 0; index < ${#expected[@]}; index++)); do
-    [[ ${actual[$index]} == ${expected[$index]} ]] ||
-      fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}"
+    case ${actual[$index]} in
+    "${expected[$index]}") ;;
+    *) fail "$agent launch $description" "expected: ${expected[*]}\nactual: ${actual[*]}" ;;
+    esac
   done
 }
 
@@ -462,9 +464,17 @@ assert_launch claude claude --permission-mode auto -- "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
+assert_launch hermes env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
+
+literal_hermes_prompt=$' --help !Crash /quit {$(touch must-not-run)}\ntrailing\\ '
+printf '%s\n' "hermes" >"$agent_file"
+omarchy-agent-prompt "$literal_hermes_prompt"
+assert_launched hermes "binds its literal initial prompt" env -u HERMES_SESSION_SOURCE \
+  hermes chat --yolo --tui "--query=$literal_hermes_prompt"
+pass "Hermes receives prompted launches as one literal query argument"
 
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
@@ -474,6 +484,7 @@ assert_bypass claude claude --permission-mode auto
 assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
+assert_bypass hermes hermes --yolo
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"

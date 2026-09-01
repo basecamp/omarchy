@@ -1,1 +1,0 @@
-%wheel ALL=(ALL) NOPASSWD: /usr/bin/asdcontrol
