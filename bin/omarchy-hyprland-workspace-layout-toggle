@@ -16,6 +16,19 @@ esac
 mkdir -p "$LAYOUTS_DIR"
 printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ACTIVE_WORKSPACE" "$NEW_LAYOUT" >"$LAYOUT_FILE"
 
-hyprctl eval "hl.workspace_rule({ workspace = \"$ACTIVE_WORKSPACE\", layout = \"$NEW_LAYOUT\" })" >/dev/null 2>&1 || \
-  hyprctl keyword workspace "$ACTIVE_WORKSPACE, layout:$NEW_LAYOUT"
+# hl.workspace_rule merges rather than replaces, so a direction set earlier
+# lingers until the next reload; re-apply the configured default to reset now.
+DEFAULT_DIRECTION=$(hyprctl getoption scrolling:direction -j | jq -r '.str')
+case "$DEFAULT_DIRECTION" in
+  right | left | up | down)
+    RULE="hl.workspace_rule({ workspace = \"$ACTIVE_WORKSPACE\", layout = \"$NEW_LAYOUT\", layout_opts = { direction = \"$DEFAULT_DIRECTION\" } })"
+    KEYWORD="$ACTIVE_WORKSPACE, layout:$NEW_LAYOUT, layoutopt:direction:$DEFAULT_DIRECTION"
+    ;;
+  *)
+    RULE="hl.workspace_rule({ workspace = \"$ACTIVE_WORKSPACE\", layout = \"$NEW_LAYOUT\" })"
+    KEYWORD="$ACTIVE_WORKSPACE, layout:$NEW_LAYOUT"
+    ;;
+esac
+
+hyprctl eval "$RULE" >/dev/null 2>&1 || hyprctl keyword workspace "$KEYWORD"
 omarchy-notification-send -g 󱂬 "Workspace layout set to $NEW_LAYOUT"

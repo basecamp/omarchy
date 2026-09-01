@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle the split direction on the current active workspace
+
+ACTIVE_WORKSPACE_JSON=$(hyprctl activeworkspace -j)
+WORKSPACE=$(jq -r '.id' <<<"$ACTIVE_WORKSPACE_JSON")
+[[ $WORKSPACE =~ ^-?[0-9]+$ ]] || exit 1
+
+LAYOUT=$(jq -r '.tiledLayout // "dwindle"' <<<"$ACTIVE_WORKSPACE_JSON")
+
+LAYOUTS_DIR="$HOME/.local/state/omarchy/workspace-layouts"
+LAYOUT_FILE="$LAYOUTS_DIR/$WORKSPACE.lua"
+
+# Hyprland has no IPC query for the axis, so the saved rule is the only record;
+# take the first match, or a two-rule file reads as both and stops flipping.
+saved_direction() {
+  [[ -f $LAYOUT_FILE ]] || return 0
+
+  sed -n 's/.*direction = "\([a-z]*\)".*/\1/p' "$LAYOUT_FILE" | head -1
+}
+
+case "$LAYOUT" in
+  scrolling)
+    # Scrolling has no togglesplit; flipping its axis is the same intent.
+    if [[ $(saved_direction) == "down" ]]; then
+      NEW_DIRECTION=right
+      HEADLINE="Scrolling horizontally"
+    else
+      NEW_DIRECTION=down
+      HEADLINE="Scrolling vertically"
+    fi
+
+    RULE="hl.workspace_rule({ workspace = \"$WORKSPACE\", layout = \"scrolling\", layout_opts = { direction = \"$NEW_DIRECTION\" } })"
+    mkdir -p "$LAYOUTS_DIR"
+    printf '%s\n' "$RULE" >"$LAYOUT_FILE"
+
+    hyprctl eval "$RULE" >/dev/null 2>&1 ||
+      hyprctl keyword workspace "$WORKSPACE, layout:scrolling, layoutopt:direction:$NEW_DIRECTION"
+
+    omarchy-notification-send -g 󱂬 "$HEADLINE"
+    ;;
+  dwindle)
+    hyprctl dispatch 'hl.dsp.layout("togglesplit")' >/dev/null
+    ;;
+  *)
+    omarchy-notification-send -g 󱂬 "No split to toggle" "The $LAYOUT layout has no split direction"
+    ;;
+esac
