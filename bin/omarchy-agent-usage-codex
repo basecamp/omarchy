@@ -209,7 +209,10 @@ def scan_pi_sessions():
 def scan_opencode_sessions():
   # A subscription burned entirely through opencode leaves no native session
   # files, but opencode records per-message provider, model, and token usage
-  # in its own database. Read-only: opencode may be writing right now.
+  # in its own database. Newer releases migrate that history from message to
+  # session_message; once the new table exists it is authoritative, so reading
+  # both would double-count the migrated rows. Read-only: opencode may be
+  # writing right now.
   # Returns whether the scan ran to completion: a scan cut short by a
   # database error still contributes what it read, but must not be cached
   # as if it were the whole story.
@@ -222,13 +225,40 @@ def scan_opencode_sessions():
     return False
   try:
     conn.execute("PRAGMA query_only = ON")
+    tables = {
+      str(row[0])
+      for row in conn.execute(
+        "SELECT name FROM sqlite_master"
+        " WHERE type = 'table' AND name IN ('session_message', 'message')"
+      )
+    }
+    if "session_message" in tables:
+      rows = conn.execute(
+        "SELECT session_id, time_created, data FROM session_message"
+        " WHERE type = 'assistant'"
+        " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.model.providerID') END = 'openai'"
+      )
+      current_schema = True
+    elif "message" in tables:
+      rows = conn.execute(
+        "SELECT session_id, time_created, data FROM message"
+        " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+        " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'openai'"
+      )
+      current_schema = False
+    else:
+      return False
+
     # OpenCode DBs grow huge (every historical message, JSON included), and
     # Python-side json.loads of every row wasted ~600 MB of RSS on machines
     # whose subscription never ran on OpenAI. The json_extract conditions are
-    # the authority for the rows that reach them: role == "assistant" and
+    # the authority for the rows that reach them: an assistant message from
     # providerID == "openai", the same exact-match values the Python filter
-    # below checks. The guards in front are pure acceleration, not a perfect
-    # proxy for the Python filter:
+    # below checks. The LIKE guards are pure acceleration, not a perfect proxy
+    # for the Python filter:
     #   - The LIKE gates skip rows whose JSON cannot contain the two
     #     key/value pairs, avoiding the JSON parse of tens-of-MB blobs. They
     #     can differ from json.loads on duplicate keys (Python keeps the
@@ -244,25 +274,31 @@ def scan_opencode_sessions():
     #     well-formed JSON are skipped here; the per-row try/except below
     #     stays as the final safety net for rows that pass the SQL filter
     #     but fail json.loads.
-    for session_id, raw in conn.execute(
-      "SELECT session_id, data FROM message"
-      " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
-      " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
-      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
-      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'openai'"
-    ):
+    for session_id, row_created, raw in rows:
       # One malformed row must not abort the scan, so every shape assumption
       # lives inside the try.
       try:
         entry = json.loads(raw)
-        # Exact match: opencode provider ids are free-form, and a custom
-        # "openai-local" gateway is not this subscription.
-        if not isinstance(entry, dict) or entry.get("role") != "assistant":
+        if not isinstance(entry, dict):
           continue
-        if str(entry.get("providerID") or "") != "openai":
-          continue
+        if current_schema:
+          model = entry.get("model") or {}
+          if not isinstance(model, dict) or str(model.get("providerID") or "") != "openai":
+            continue
+          model_id = model.get("id")
+        else:
+          # Exact match: opencode provider ids are free-form, and a custom
+          # "openai-local" gateway is not this subscription.
+          if entry.get("role") != "assistant" or str(entry.get("providerID") or "") != "openai":
+            continue
+          model_id = entry.get("modelID")
+
         tokens = entry.get("tokens") or {}
+        if not isinstance(tokens, dict):
+          continue
         cache = tokens.get("cache") or {}
+        if not isinstance(cache, dict):
+          cache = {}
         input_tokens = number(tokens.get("input"))
         # opencode keeps thinking tokens out of output; both are generated.
         output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
@@ -270,8 +306,11 @@ def scan_opencode_sessions():
         cache_write = number(cache.get("write"))
         if not (input_tokens or output_tokens or cache_read or cache_write):
           continue
-        day = local_day((entry.get("time") or {}).get("created"))
-        model = model_name(str(entry.get("modelID") or "").rstrip("/").split("/")[-1])
+        entry_time = entry.get("time") or {}
+        if not isinstance(entry_time, dict):
+          entry_time = {}
+        day = local_day(entry_time.get("created") or row_created)
+        model = model_name(str(model_id or "").rstrip("/").split("/")[-1])
       except Exception:
         continue
       add_usage(day, "opencode:" + str(session_id), model, input_tokens, output_tokens, cache_read, cache_write)

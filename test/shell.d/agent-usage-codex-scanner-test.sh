@@ -142,6 +142,47 @@ pass "Codex collector counts OpenAI usage, reasoning included, from opencode ses
   fail "Codex collector ignores prefix-colliding providers, user messages, and malformed rows" "$result"
 pass "Codex collector ignores prefix-colliding providers, user messages, and malformed rows"
 
+# Newer opencode releases migrate messages into session_message. When both
+# tables exist, the migrated table is authoritative: falling through to the
+# legacy table as well would count the same history twice.
+python3 - "$OPENCODE_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+
+db = sys.argv[1]
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE session_message (id text PRIMARY KEY, session_id text NOT NULL, type text NOT NULL, seq integer NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)")
+now_ms = int(time.time() * 1000)
+
+def message(id, provider, model, type="assistant", input=0, output=0, reasoning=0, read=0, write=0):
+  return (id, "ses_2", type, 1, now_ms, now_ms, json.dumps({
+    "model": {"providerID": provider, "id": model},
+    "tokens": {"input": input, "output": output, "reasoning": reasoning, "cache": {"read": read, "write": write}},
+    "time": {"created": now_ms},
+  }))
+
+conn.executemany("INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)", [
+  message("v2_1", "openai", "openai/gpt-new", input=12, output=8, reasoning=3, read=4, write=2),
+  message("v2_2", "anthropic", "claude-opus-5", input=999, output=999),
+  message("v2_3", "openai", "gpt-new", type="user", input=999, output=999),
+  message("v2_4", "openai-local", "gpt-new", input=999, output=999),
+])
+conn.execute("INSERT INTO session_message VALUES ('v2_5', 'ses_2', 'assistant', 2, ?, ?, 'not json')", (now_ms, now_ms))
+conn.commit()
+conn.close()
+PY
+
+result=$(HOME="$OPENCODE_HOME" CODEX_HOME="$OPENCODE_HOME/.codex" XDG_DATA_HOME="$OPENCODE_HOME/.local/share" \
+  PATH="$OPENCODE_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "29" ]] ||
+  fail "Codex collector prefers migrated opencode messages over the legacy table" "$result"
+[[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-new":{"inputTokens":12,"outputTokens":11,"cacheReadInputTokens":4,"cacheCreationInputTokens":2}}' ]] ||
+  fail "Codex collector parses OpenAI usage from the migrated opencode schema" "$result"
+pass "Codex collector reads the authoritative migrated opencode schema"
+
 # A warm cache makes --limits-only cheap: local stats come from the last scan
 # instead of another walk over the opencode database, and --force bypasses it.
 CACHE_HOME=$(mktemp -d)
