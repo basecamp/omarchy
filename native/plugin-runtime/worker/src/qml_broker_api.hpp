@@ -181,6 +181,15 @@ private:
     std::vector<omarchy::plugin::wire::permission_snapshot::GrantState>
         operation_states;
   };
+  enum class DeferredGestureKind : std::uint8_t { pointer, touch };
+  // The host authorizes only this exact press/begin sequence. Keep it private
+  // between dispatches, then expose it once during the matching release/end so
+  // idiomatic QML click handlers work without granting timers ambient access.
+  struct DeferredGesture {
+    omarchy::plugins::definitions::DynamicInvocation::GestureClaim claim;
+    DeferredGestureKind kind = DeferredGestureKind::pointer;
+    std::uint32_t pointer_button = 0;
+  };
   std::vector<RequestedPermission> requested_permissions_;
   std::string manifest_request_fingerprint_;
   std::uint64_t activation_generation_ = 0;
@@ -188,6 +197,7 @@ private:
   bool host_snapshot_received_ = false;
   std::optional<omarchy::plugins::definitions::DynamicInvocation::GestureClaim>
       trusted_gesture_;
+  std::optional<DeferredGesture> deferred_gesture_;
   SurfaceIntentSink *surface_intent_sink_ = nullptr;
 };
 

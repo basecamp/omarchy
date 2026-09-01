@@ -25,7 +25,7 @@ Rectangle {
                 id: panelMouseArea
                 objectName: "panelToggle"
                 anchors.fill: parent
-                onPressed: runtime.requestSurfaceIntent("panel", "toggle")
+                onClicked: runtime.requestSurfaceIntent("panel", "toggle")
             }
         }
 
@@ -40,11 +40,10 @@ Rectangle {
                 color: "white"
             }
 
-            MouseArea {
+            TapHandler {
                 id: overlayMouseArea
                 objectName: "overlayToggle"
-                anchors.fill: parent
-                onPressed: runtime.requestSurfaceIntent("overlay", "toggle")
+                onTapped: runtime.requestSurfaceIntent("overlay", "toggle")
             }
         }
     }

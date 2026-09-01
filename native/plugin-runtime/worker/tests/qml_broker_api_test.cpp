@@ -805,20 +805,32 @@ void neutral_surface_trusted_input() {
               static_cast<bool>(runtime.input(panel_press)),
           "neutral panel press did not traverse trusted worker input");
   api.endTrustedGesture();
+  bool deferred_callback_accepted = true;
+  QTimer::singleShot(0, [&] {
+    deferred_callback_accepted = api.requestSurfaceIntent(
+        QStringLiteral("panel"), QStringLiteral("toggle"));
+  });
+  drain_events();
+  require(sink.targets.empty() && !deferred_callback_accepted,
+          "pointer press exposed its deferred claim outside input dispatch");
+
+  const auto panel_release =
+      pointer(3, 63, surface::ButtonState::released, 0);
+  require(api.beginTrustedGestureForInput(panel_release) &&
+              static_cast<bool>(runtime.input(panel_release)),
+          "neutral panel release did not traverse trusted worker input");
+  api.endTrustedGesture();
   require(sink.targets.size() == 1 && sink.targets[0] == "panel" &&
               sink.actions[0] == surface::SurfaceIntentAction::toggle &&
               sink.sources[0].surface_id == allocation->surface.id &&
               sink.sources[0].surface_generation ==
                   allocation->surface.generation &&
               sink.sources[0].input_sequence == 2,
-          "neutral panel press lost its exact trusted gesture claim");
+          "neutral panel click lost its exact press gesture claim");
+  require(!api.requestSurfaceIntent(QStringLiteral("panel"),
+                                    QStringLiteral("toggle")),
+          "neutral panel click replayed its consumed gesture claim");
 
-  const auto panel_release =
-      pointer(3, 63, surface::ButtonState::released, 0);
-  require(!api.beginTrustedGestureForInput(panel_release) &&
-              static_cast<bool>(runtime.input(panel_release)) &&
-              sink.targets.size() == 1,
-          "neutral panel release minted a trusted surface intent");
   const auto overlay_press =
       pointer(4, 189, surface::ButtonState::pressed,
               static_cast<std::uint32_t>(Qt::LeftButton));
@@ -826,16 +838,18 @@ void neutral_surface_trusted_input() {
               static_cast<bool>(runtime.input(overlay_press)),
           "neutral overlay press did not traverse trusted worker input");
   api.endTrustedGesture();
+  require(sink.targets.size() == 1,
+          "TapHandler requested its intent before the tap completed");
+  const auto overlay_release =
+      pointer(5, 189, surface::ButtonState::released, 0);
+  require(api.beginTrustedGestureForInput(overlay_release) &&
+              static_cast<bool>(runtime.input(overlay_release)),
+          "neutral overlay release did not traverse trusted worker input");
+  api.endTrustedGesture();
   require(sink.targets.size() == 2 && sink.targets[1] == "overlay" &&
               sink.actions[1] == surface::SurfaceIntentAction::toggle &&
               sink.sources[1].input_sequence == 4,
-          "neutral overlay press lost its exact trusted gesture claim");
-  const auto overlay_release =
-      pointer(5, 189, surface::ButtonState::released, 0);
-  require(!api.beginTrustedGestureForInput(overlay_release) &&
-              static_cast<bool>(runtime.input(overlay_release)) &&
-              sink.targets.size() == 2,
-          "neutral overlay release minted a trusted surface intent");
+          "neutral TapHandler lost its exact press gesture claim");
 }
 
 void run() {
@@ -981,6 +995,144 @@ void run() {
           "QML intent request escaped its closed trusted sink contract");
   api.endTrustedGesture();
 
+  const surface::SurfaceKey gesture_surface{.id = 3, .generation = 77};
+  const auto pointer = [&](std::uint64_t sequence, std::uint32_t button,
+                           surface::ButtonState state) {
+    return surface::InputEvent{
+        .surface = gesture_surface,
+        .sequence = sequence,
+        .payload = surface::PointerButton{
+            .position = {.x_q16 = 1U << 16, .y_q16 = 1U << 16},
+            .button = button,
+            .state = state,
+            .buttons = state == surface::ButtonState::pressed ? button : 0U}};
+  };
+  const auto left = static_cast<std::uint32_t>(Qt::LeftButton);
+  const auto right = static_cast<std::uint32_t>(Qt::RightButton);
+
+  const auto pressed_once = pointer(11, left, surface::ButtonState::pressed);
+  require(api.beginTrustedGestureForInput(pressed_once) &&
+              api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                       QStringLiteral("toggle")),
+          "onPressed compatibility did not consume the exact gesture");
+  api.endTrustedGesture();
+  require(!api.beginTrustedGestureForInput(
+              pointer(12, left, surface::ButtonState::released)) &&
+              !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                        QStringLiteral("toggle")),
+          "onPressed gesture was reusable during release");
+
+  intent_sink.accept = false;
+  require(api.beginTrustedGestureForInput(
+              pointer(13, left, surface::ButtonState::pressed)) &&
+              !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                        QStringLiteral("toggle")),
+          "sink failure was not surfaced to the press handler");
+  api.endTrustedGesture();
+  require(!api.beginTrustedGestureForInput(
+              pointer(14, left, surface::ButtonState::released)),
+          "failed surface-intent send retained a release-phase replay");
+  intent_sink.accept = true;
+
+  require(api.beginTrustedGestureForInput(
+              pointer(15, left, surface::ButtonState::pressed)),
+          "mismatch fixture did not retain its press claim");
+  api.endTrustedGesture();
+  require(!api.beginTrustedGestureForInput(
+              pointer(16, right, surface::ButtonState::released)) &&
+              !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                        QStringLiteral("toggle")),
+          "mismatched pointer release exposed a deferred gesture");
+
+  require(api.beginTrustedGestureForInput(
+              pointer(17, left, surface::ButtonState::pressed)),
+          "cancel fixture did not retain its press claim");
+  api.endTrustedGesture();
+  require(!api.beginTrustedGestureForInput(
+              {.surface = gesture_surface,
+               .sequence = 18,
+               .payload = surface::Cancel{}}) &&
+              !api.beginTrustedGestureForInput(
+                  pointer(19, left, surface::ButtonState::released)),
+          "Cancel did not erase the deferred pointer gesture");
+
+  require(api.beginTrustedGestureForInput(
+              pointer(20, left, surface::ButtonState::pressed)),
+          "focus-loss fixture did not retain its press claim");
+  api.endTrustedGesture();
+  require(!api.beginTrustedGestureForInput(
+              {.surface = gesture_surface,
+               .sequence = 21,
+               .payload = surface::FocusChanged{.focused = false}}) &&
+              !api.beginTrustedGestureForInput(
+                  pointer(22, left, surface::ButtonState::released)),
+          "focus loss did not erase the deferred pointer gesture");
+
+  require(api.beginTrustedGestureForInput(
+              pointer(23, left, surface::ButtonState::pressed)),
+          "replacement fixture did not retain its first press");
+  api.endTrustedGesture();
+  require(api.beginTrustedGestureForInput(
+              pointer(24, right, surface::ButtonState::pressed)),
+          "new press did not replace the prior deferred gesture");
+  api.endTrustedGesture();
+  require(api.beginTrustedGestureForInput(
+              pointer(25, right, surface::ButtonState::released)) &&
+              api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                       QStringLiteral("toggle")) &&
+              intent_sink.last_source.input_sequence == 24,
+          "matching release did not expose only the newest press claim");
+  api.endTrustedGesture();
+
+  const surface::InputEvent touch_begin{
+      .surface = gesture_surface,
+      .sequence = 26,
+      .payload = surface::TouchFrame{
+          .phase = surface::TouchFramePhase::begin}};
+  require(api.beginTrustedGestureForInput(touch_begin),
+          "touch begin did not retain its exact gesture claim");
+  bool touch_callback_accepted = true;
+  QTimer::singleShot(0, [&] {
+    touch_callback_accepted = api.requestSurfaceIntent(
+        QStringLiteral("PanelWidget"), QStringLiteral("toggle"));
+  });
+  api.endTrustedGesture();
+  drain_events();
+  require(!touch_callback_accepted,
+          "deferred touch claim escaped into a queued callback");
+  const surface::InputEvent touch_end{
+      .surface = gesture_surface,
+      .sequence = 27,
+      .payload = surface::TouchFrame{
+          .phase = surface::TouchFramePhase::end}};
+  require(api.beginTrustedGestureForInput(touch_end) &&
+              api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                       QStringLiteral("toggle")) &&
+              intent_sink.last_source.input_sequence == 26 &&
+              !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                        QStringLiteral("toggle")),
+          "touch end did not consume the original begin claim exactly once");
+  api.endTrustedGesture();
+
+  require(api.beginTrustedGestureForInput(
+              {.surface = gesture_surface,
+               .sequence = 28,
+               .payload = surface::TouchFrame{
+                   .phase = surface::TouchFramePhase::begin}}),
+          "touch-cancel fixture did not retain its begin claim");
+  api.endTrustedGesture();
+  require(!api.beginTrustedGestureForInput(
+              {.surface = gesture_surface,
+               .sequence = 29,
+               .payload = surface::TouchFrame{
+                   .phase = surface::TouchFramePhase::cancel}}) &&
+              !api.beginTrustedGestureForInput(
+                  {.surface = gesture_surface,
+                   .sequence = 30,
+                   .payload = surface::TouchFrame{
+                       .phase = surface::TouchFramePhase::end}}),
+          "touch cancel did not erase the deferred begin claim");
+
   QVariantMap arguments{{QStringLiteral("key"), QStringLiteral("timer-state")},
                         {QStringLiteral("value"), QByteArray("saved")}};
   auto *allowed = qobject_cast<worker::BrokerCall *>(
@@ -1114,7 +1266,14 @@ void run() {
   dynamic_qml_to_adapter();
   capability_qualified_collision();
   permission_awareness(endpoint, pair.descriptors[1], host_sequence);
+  require(api.beginTrustedGestureForInput(
+              pointer(31, left, surface::ButtonState::pressed)),
+          "disconnect fixture did not retain its press claim");
+  api.endTrustedGesture();
   api.disconnect(QStringLiteral("test-disconnect"));
+  require(!api.beginTrustedGestureForInput(
+              pointer(32, left, surface::ButtonState::released)),
+          "disconnect retained a deferred release-phase gesture");
   drain_events();
   auto *disconnected = qobject_cast<worker::BrokerCall *>(
       api.invoke(QStringLiteral("storage.private"), QStringLiteral("write"),

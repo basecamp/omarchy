@@ -398,6 +398,8 @@ bool QmlBrokerApi::requestSurfaceIntent(const QString &targetSurface,
   const auto source = *trusted_gesture_;
   const bool sent = surface_intent_sink_->request_surface_intent(
       source, encoded_target, parsed);
+  if (deferred_gesture_ && deferred_gesture_->claim == source)
+    deferred_gesture_.reset();
   trusted_gesture_.reset();
   return sent;
 }
@@ -570,25 +572,79 @@ QVariant QmlBrokerApi::invoke(const QString &capability,
 
 bool QmlBrokerApi::beginTrustedGestureForInput(
     const surface::InputEvent &event) {
-  const bool trusted_activation = std::visit(
-      [](const auto &payload) {
+  trusted_gesture_.reset();
+  return std::visit(
+      [this, &event](const auto &payload) {
         using Event = std::decay_t<decltype(payload)>;
-        if constexpr (std::is_same_v<Event, surface::PointerButton>)
-          return payload.state == surface::ButtonState::pressed;
-        if constexpr (std::is_same_v<Event, surface::TouchFrame>)
-          return payload.phase == surface::TouchFramePhase::begin;
+        if constexpr (std::is_same_v<Event, surface::PointerButton>) {
+          if (payload.state == surface::ButtonState::pressed) {
+            deferred_gesture_.reset();
+            beginTrustedGesture(event.surface.id, event.surface.generation,
+                                event.sequence);
+            if (!trusted_gesture_)
+              return false;
+            deferred_gesture_ = DeferredGesture{
+                .claim = *trusted_gesture_,
+                .kind = DeferredGestureKind::pointer,
+                .pointer_button = payload.button};
+            return true;
+          }
+          const bool matches =
+              deferred_gesture_ &&
+              deferred_gesture_->kind == DeferredGestureKind::pointer &&
+              deferred_gesture_->claim.surface_id == event.surface.id &&
+              deferred_gesture_->claim.surface_generation ==
+                  event.surface.generation &&
+              deferred_gesture_->pointer_button == payload.button;
+          if (matches)
+            trusted_gesture_ = deferred_gesture_->claim;
+          deferred_gesture_.reset();
+          return matches;
+        }
+        if constexpr (std::is_same_v<Event, surface::TouchFrame>) {
+          if (payload.phase == surface::TouchFramePhase::begin) {
+            deferred_gesture_.reset();
+            beginTrustedGesture(event.surface.id, event.surface.generation,
+                                event.sequence);
+            if (!trusted_gesture_)
+              return false;
+            deferred_gesture_ = DeferredGesture{
+                .claim = *trusted_gesture_,
+                .kind = DeferredGestureKind::touch,
+                .pointer_button = 0};
+            return true;
+          }
+          if (payload.phase == surface::TouchFramePhase::end) {
+            const bool matches =
+                deferred_gesture_ &&
+                deferred_gesture_->kind == DeferredGestureKind::touch &&
+                deferred_gesture_->claim.surface_id == event.surface.id &&
+                deferred_gesture_->claim.surface_generation ==
+                    event.surface.generation;
+            if (matches)
+              trusted_gesture_ = deferred_gesture_->claim;
+            deferred_gesture_.reset();
+            return matches;
+          }
+          if (payload.phase == surface::TouchFramePhase::cancel)
+            deferred_gesture_.reset();
+          return false;
+        }
+        if constexpr (std::is_same_v<Event, surface::Cancel>) {
+          deferred_gesture_.reset();
+        } else if constexpr (std::is_same_v<Event, surface::FocusChanged>) {
+          if (!payload.focused)
+            deferred_gesture_.reset();
+        }
         return false;
       },
       event.payload);
-  if (trusted_activation)
-    beginTrustedGesture(event.surface.id, event.surface.generation,
-                        event.sequence);
-  return trusted_activation;
 }
 
 void QmlBrokerApi::beginTrustedGesture(
     std::uint64_t surface_id, std::uint64_t surface_generation,
     std::uint64_t input_sequence) {
+  deferred_gesture_.reset();
   if (surface_id == 0 || surface_generation == 0 || input_sequence == 0) {
     trusted_gesture_.reset();
     return;
@@ -655,6 +711,8 @@ bool QmlBrokerApi::markBrokerReady() {
   return true;
 }
 void QmlBrokerApi::disconnect(QString reason) {
+  trusted_gesture_.reset();
+  deferred_gesture_.reset();
   if (status_ != QStringLiteral("ready")) return;
   status_ = std::move(reason);
   if (broker_ready_) {
