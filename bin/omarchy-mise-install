@@ -23,7 +23,16 @@ cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
 mise use -g --quiet "$package" || exit 1
-exec mise x "$package" -- "$bin" "\$@"
+
+# Resolve the binary to an absolute path. Passing the bare name lets mise
+# re-resolve it through PATH, which can land back on this wrapper and exec
+# forever when ~/.local/bin precedes mise's install dir.
+resolved=\$(mise which "$bin" 2>/dev/null)
+if [[ -n \$resolved ]]; then
+  exec mise x "$package" -- "\$resolved" "\$@"
+else
+  exec mise x "$package" -- "$bin" "\$@"
+fi
 EOF
 
 chmod +x "$HOME/.local/bin/$command"

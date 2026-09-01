@@ -61,6 +61,11 @@ if [[ $1 == "where" ]]; then
   exit
 fi
 
+if [[ $1 == "which" ]]; then
+  [[ -n ${OMARCHY_TEST_MISE_WHICH:-} ]] && printf '%s\n' "$OMARCHY_TEST_MISE_WHICH"
+  exit
+fi
+
 [[ ${OMARCHY_TEST_MISE_FAIL:-false} != "true" ]]
 SH
 
@@ -108,8 +113,27 @@ assert_lazy_stub() {
   "$test_home/.local/bin/$command" --version
   mapfile -t mise_calls <"$mise_history"
 
-  [[ ${mise_calls[0]} == "use -g --quiet $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
+  # The stub resolves the binary to an absolute path before exec'ing it, so the
+  # name is never handed back to mise to look up through PATH.
+  [[ ${mise_calls[0]} == "use -g --quiet $package" && ${mise_calls[1]} == "which $command" &&
+    ${mise_calls[2]} == "x $package -- $command --version" ]] ||
     fail "$command lazy stub preserves its mise package"
+}
+
+# A stub must never exec the bare command name when mise can resolve it: with
+# ~/.local/bin ahead of mise's install dir on PATH, the name finds the stub
+# again and it execs itself forever.
+assert_stub_execs_resolved_path() {
+  local package=$1
+  local command=$2
+
+  : >"$mise_history"
+  "$ROOT/bin/omarchy-mise-install" "$package" "$command"
+  OMARCHY_TEST_MISE_WHICH="/opt/resolved/$command" "$test_home/.local/bin/$command" --version
+  mapfile -t mise_calls <"$mise_history"
+
+  [[ ${mise_calls[2]} == "x $package -- /opt/resolved/$command --version" ]] ||
+    fail "$command lazy stub execs the resolved path, not the bare name"
 }
 
 assert_lazy_stub "$grok_package" grok
@@ -117,6 +141,9 @@ assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
 assert_lazy_stub "$ori_package" ori
 pass "custom agent lazy stubs preserve their mise packages"
+
+assert_stub_execs_resolved_path "$grok_package" grok
+pass "lazy stubs exec the resolved binary path"
 
 source "$ROOT/install/user/mise.sh"
 grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity lazy stub"
