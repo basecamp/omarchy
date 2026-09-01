@@ -1,0 +1,306 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Manage the automatic sunrise and sunset nightlight schedule
+# omarchy:hidden=true
+
+import argparse
+import json
+import math
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from datetime import date, datetime, time, timedelta, timezone
+from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+STATE_PATH = Path(
+  os.environ.get(
+    "OMARCHY_NIGHTLIGHT_STATE",
+    Path.home() / ".local/state/omarchy/settings/nightlight.json",
+  )
+)
+ZONEINFO_DIR = Path(os.environ.get("OMARCHY_ZONEINFO_DIR", "/usr/share/zoneinfo"))
+SUN_ALTITUDE = -0.833
+
+
+def schedule_enabled() -> bool:
+  try:
+    state = json.loads(STATE_PATH.read_text())
+    return isinstance(state, dict) and state.get("mode") == "solar"
+  except (FileNotFoundError, json.JSONDecodeError, OSError):
+    return False
+
+
+def set_schedule_enabled(enabled: bool) -> None:
+  STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+  contents = json.dumps({"mode": "solar" if enabled else "manual"}) + "\n"
+  with tempfile.NamedTemporaryFile(
+    mode="w", dir=STATE_PATH.parent, delete=False
+  ) as state_file:
+    state_file.write(contents)
+    temporary_path = Path(state_file.name)
+  temporary_path.replace(STATE_PATH)
+
+
+def selected_timezone() -> str:
+  override = os.environ.get("OMARCHY_NIGHTLIGHT_TIMEZONE")
+  if override:
+    return override
+
+  result = subprocess.run(
+    ["timedatectl", "show", "-p", "Timezone", "--value"],
+    check=False,
+    capture_output=True,
+    text=True,
+  )
+  if result.returncode == 0 and result.stdout.strip():
+    return result.stdout.strip()
+
+  localtime = Path("/etc/localtime")
+  try:
+    resolved = localtime.resolve()
+    return str(resolved.relative_to(ZONEINFO_DIR))
+  except (OSError, ValueError):
+    raise RuntimeError("Unable to determine the selected timezone")
+
+
+def canonical_timezone(timezone_name: str) -> str:
+  timezone_path = ZONEINFO_DIR / timezone_name
+  try:
+    return str(timezone_path.resolve().relative_to(ZONEINFO_DIR))
+  except (OSError, ValueError):
+    return timezone_name
+
+
+def compact_coordinate(value: str, degree_digits: int) -> float:
+  sign = -1 if value[0] == "-" else 1
+  digits = value[1:]
+  degrees = int(digits[:degree_digits])
+  minutes = int(digits[degree_digits : degree_digits + 2])
+  seconds = int(digits[degree_digits + 2 :]) if len(digits) > degree_digits + 2 else 0
+  return sign * (degrees + minutes / 60 + seconds / 3600)
+
+
+def coordinates_for_timezone(timezone_name: str) -> tuple[float, float]:
+  canonical_name = canonical_timezone(timezone_name)
+  for table_name in ("zone1970.tab", "zone.tab"):
+    table_path = ZONEINFO_DIR / table_name
+    try:
+      lines = table_path.read_text().splitlines()
+    except OSError:
+      continue
+
+    for line in lines:
+      if not line or line.startswith("#"):
+        continue
+      fields = line.split("\t")
+      if len(fields) < 3 or fields[2] != canonical_name:
+        continue
+      match = re.fullmatch(r"([+-]\d+)([+-]\d+)", fields[1])
+      if not match:
+        break
+      return compact_coordinate(match.group(1), 2), compact_coordinate(match.group(2), 3)
+
+  if canonical_name in ("UTC", "Etc/UTC", "Etc/GMT"):
+    return 51.4779, 0.0
+
+  raise RuntimeError(f"No location data is available for timezone {timezone_name}")
+
+
+def julian_day(day: date) -> float:
+  year = day.year
+  month = day.month
+  if month <= 2:
+    year -= 1
+    month += 12
+  century = year // 100
+  correction = 2 - century + century // 4
+  return (
+    math.floor(365.25 * (year + 4716))
+    + math.floor(30.6001 * (month + 1))
+    + day.day
+    + correction
+    - 1524.5
+  )
+
+
+def solar_parameters(julian_centuries: float) -> tuple[float, float]:
+  geom_long = (
+    280.46646
+    + julian_centuries * (36000.76983 + julian_centuries * 0.0003032)
+  ) % 360
+  geom_anomaly = 357.52911 + julian_centuries * (
+    35999.05029 - 0.0001537 * julian_centuries
+  )
+  eccentricity = 0.016708634 - julian_centuries * (
+    0.000042037 + 0.0000001267 * julian_centuries
+  )
+  anomaly_radians = math.radians(geom_anomaly)
+  center = (
+    math.sin(anomaly_radians)
+    * (1.914602 - julian_centuries * (0.004817 + 0.000014 * julian_centuries))
+    + math.sin(2 * anomaly_radians) * (0.019993 - 0.000101 * julian_centuries)
+    + math.sin(3 * anomaly_radians) * 0.000289
+  )
+  true_long = geom_long + center
+  omega = 125.04 - 1934.136 * julian_centuries
+  apparent_long = true_long - 0.00569 - 0.00478 * math.sin(math.radians(omega))
+  mean_obliquity = 23 + (
+    26
+    + (
+      21.448
+      - julian_centuries
+      * (46.815 + julian_centuries * (0.00059 - julian_centuries * 0.001813))
+    )
+    / 60
+  ) / 60
+  obliquity = mean_obliquity + 0.00256 * math.cos(math.radians(omega))
+  declination = math.degrees(
+    math.asin(
+      math.sin(math.radians(obliquity))
+      * math.sin(math.radians(apparent_long))
+    )
+  )
+  y = math.tan(math.radians(obliquity) / 2) ** 2
+  equation = 4 * math.degrees(
+    y * math.sin(2 * math.radians(geom_long))
+    - 2 * eccentricity * math.sin(anomaly_radians)
+    + 4
+    * eccentricity
+    * y
+    * math.sin(anomaly_radians)
+    * math.cos(2 * math.radians(geom_long))
+    - 0.5 * y * y * math.sin(4 * math.radians(geom_long))
+    - 1.25 * eccentricity * eccentricity * math.sin(2 * anomaly_radians)
+  )
+  return equation, declination
+
+
+def event_utc(day: date, latitude: float, longitude: float, sunrise: bool) -> datetime | None:
+  day_julian = julian_day(day)
+  centuries = (day_julian - 2451545.0) / 36525
+  equation, declination = solar_parameters(centuries)
+  solar_noon_minutes = 720 - 4 * longitude - equation
+
+  centuries = (day_julian + solar_noon_minutes / 1440 - 2451545.0) / 36525
+  equation, declination = solar_parameters(centuries)
+  latitude_radians = math.radians(latitude)
+  declination_radians = math.radians(declination)
+  hour_angle_cosine = (
+    math.cos(math.radians(90.833))
+    / (math.cos(latitude_radians) * math.cos(declination_radians))
+    - math.tan(latitude_radians) * math.tan(declination_radians)
+  )
+  if hour_angle_cosine < -1 or hour_angle_cosine > 1:
+    return None
+
+  hour_angle = math.degrees(math.acos(hour_angle_cosine))
+  event_minutes = 720 - 4 * (longitude + (hour_angle if sunrise else -hour_angle)) - equation
+  return datetime.combine(day, time.min, timezone.utc) + timedelta(minutes=event_minutes)
+
+
+def is_night(now: datetime, latitude: float, longitude: float) -> bool:
+  utc_now = now.astimezone(timezone.utc)
+  midnight = datetime.combine(utc_now.date(), time.min, timezone.utc)
+  julian = julian_day(utc_now.date()) + (utc_now - midnight).total_seconds() / 86400
+  equation, declination = solar_parameters((julian - 2451545.0) / 36525)
+  utc_minutes = (
+    utc_now.hour * 60 + utc_now.minute + utc_now.second / 60 + utc_now.microsecond / 60000000
+  )
+  true_solar_minutes = (utc_minutes + equation + 4 * longitude) % 1440
+  hour_angle = true_solar_minutes / 4 - 180
+  latitude_radians = math.radians(latitude)
+  declination_radians = math.radians(declination)
+  elevation = math.degrees(
+    math.asin(
+      math.sin(latitude_radians) * math.sin(declination_radians)
+      + math.cos(latitude_radians)
+      * math.cos(declination_radians)
+      * math.cos(math.radians(hour_angle))
+    )
+  )
+  return elevation <= SUN_ALTITUDE
+
+
+def evaluate(at: str | None = None) -> dict:
+  timezone_name = selected_timezone()
+  try:
+    selected_zone = ZoneInfo(timezone_name)
+  except ZoneInfoNotFoundError as error:
+    raise RuntimeError(f"Unknown timezone {timezone_name}") from error
+
+  latitude, longitude = coordinates_for_timezone(timezone_name)
+  if at:
+    now = datetime.fromisoformat(at)
+    now = now.replace(tzinfo=selected_zone) if now.tzinfo is None else now.astimezone(selected_zone)
+  else:
+    now = datetime.now(selected_zone)
+  next_event = None
+  for offset in range(371):
+    event_day = now.date() + timedelta(days=offset)
+    for event_name, sunrise in (("sunrise", True), ("sunset", False)):
+      event = event_utc(event_day, latitude, longitude, sunrise)
+      if event and event > now.astimezone(timezone.utc):
+        candidate = (event, event_name)
+        if next_event is None or candidate[0] < next_event[0]:
+          next_event = candidate
+    if next_event and next_event[0].astimezone(selected_zone).date() <= event_day:
+      break
+
+  if next_event is None:
+    raise RuntimeError(f"Unable to calculate a solar event for timezone {timezone_name}")
+
+  return {
+    "scheduled": schedule_enabled(),
+    "timezone": timezone_name,
+    "latitude": round(latitude, 6),
+    "longitude": round(longitude, 6),
+    "night": is_night(now, latitude, longitude),
+    "nextEvent": next_event[1],
+    "nextEventAt": next_event[0].astimezone(selected_zone).isoformat(timespec="seconds"),
+  }
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("command", choices=("enable", "disable", "toggle", "enabled", "evaluate"))
+  parser.add_argument("--at")
+  args = parser.parse_args()
+
+  if args.command == "enabled":
+    return 0 if schedule_enabled() else 1
+  if args.command == "enable":
+    evaluate(args.at)
+    set_schedule_enabled(True)
+  elif args.command == "disable":
+    set_schedule_enabled(False)
+  elif args.command == "toggle":
+    enabling = not schedule_enabled()
+    if enabling:
+      evaluate(args.at)
+    set_schedule_enabled(enabling)
+
+  if args.command in ("enable", "disable", "toggle"):
+    print("enabled" if schedule_enabled() else "disabled")
+  else:
+    print(json.dumps(evaluate(args.at), separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  try:
+    sys.exit(main())
+  except (OSError, RuntimeError) as error:
+    if len(sys.argv) > 1 and sys.argv[1] == "evaluate":
+      print(
+        json.dumps(
+          {"scheduled": schedule_enabled(), "error": str(error)},
+          separators=(",", ":"),
+        )
+      )
+      sys.exit(0)
+    print(f"Error: {error}", file=sys.stderr)
+    sys.exit(1)

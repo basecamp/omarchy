@@ -75,4 +75,9 @@ if rg -q 'Indicators.qml.*Binding loop detected for property "implicitWidth"' "$
   fail "indicator tray avoids implicit-width binding loops"
 fi
 
+if rg -q 'Plugin widget omarchy.indicators failed|Indicator loader error' "$log"; then
+  sed -n '1,200p' "$log" >&2
+  fail "indicator tray loads every configured indicator"
+fi
+
 pass "QML indicator contract checks pass"
