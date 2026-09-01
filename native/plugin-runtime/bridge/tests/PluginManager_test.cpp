@@ -1708,6 +1708,58 @@ void surface_intent_mailbox_delivers_fifo_for_running_published_slot() {
       *manager, slot.plugin, slot.epoch);
   require(callback.has_value(),
           "positive running slot lacked its exact callback mailbox");
+  auto *bar_model = manager->barSurfaces();
+  const auto surface_key =
+      bar_model
+          ->data(bar_model->index(0, 0),
+                 bridge::SurfaceProjectionModel::SurfaceKeyRole)
+          .toString();
+  const auto generation = QString::number(binding.generation);
+  QQmlEngine intent_engine;
+  QQmlComponent intent_component(&intent_engine);
+  intent_component.setData(R"(
+    import QtQml
+    QtObject {
+      id: root
+      required property var service
+      required property string targetSurface
+      required property string targetGeneration
+      property bool opened: false
+      property string history: ""
+      property string lastInputSequence: ""
+      function apply(action, source, target, generation, inputSequence) {
+        if (target !== targetSurface || generation !== targetGeneration) return
+        history += (history.length === 0 ? "" : ",") + action + "|" + source
+          + "|" + target + "|" + generation + "|" + inputSequence
+        lastInputSequence = inputSequence
+        if (action === "open") opened = true
+        else if (action === "toggle") opened = !opened
+        else if (action === "dismiss") opened = false
+      }
+      property Connections serviceConnections: Connections {
+        target: root.service
+        function onOpenRequested(source, target, generation, inputSequence) {
+          root.apply("open", source, target, generation, inputSequence)
+        }
+        function onToggleRequested(source, target, generation, inputSequence) {
+          root.apply("toggle", source, target, generation, inputSequence)
+        }
+        function onDismissRequested(source, target, generation, inputSequence) {
+          root.apply("dismiss", source, target, generation, inputSequence)
+        }
+      }
+    }
+  )", QUrl());
+  std::unique_ptr<QObject> qml_state(
+      intent_component.createWithInitialProperties(
+          {{QStringLiteral("service"), QVariant::fromValue(manager.get())},
+           {QStringLiteral("targetSurface"), surface_key},
+           {QStringLiteral("targetGeneration"), generation}}));
+  if (qml_state == nullptr)
+    throw std::runtime_error(
+        "end-to-end QML intent state fixture did not load: " +
+        intent_component.errorString().toStdString());
+
   auto wrong_binding = binding;
   wrong_binding.plugin = permissions::PluginId("org.example.wrong");
   auto stale_binding = binding;
@@ -1716,51 +1768,11 @@ void surface_intent_mailbox_delivers_fifo_for_running_published_slot() {
               callback->deliver(admittedIntent(stale_binding, 1)) &&
               callback->pending() == 1,
           "intent mailbox identity and epoch fences changed");
-  int stale_emissions = 0;
-  const auto stale_connection =
-      QObject::connect(manager.get(), &bridge::PluginManager::toggleRequested,
-                       [&] { ++stale_emissions; });
   bridge::PluginManagerTestAccess::drainRuntime(*manager);
-  QObject::disconnect(stale_connection);
-  require(callback->pending() == 0 && stale_emissions == 0,
-          "stale tuple survived publication rejection");
-
-  auto *bar_model = manager->barSurfaces();
-  const auto surface_key =
-      bar_model
-          ->data(bar_model->index(0, 0),
-                 bridge::SurfaceProjectionModel::SurfaceKeyRole)
-          .toString();
-  const auto generation = QString::number(binding.generation);
-  std::vector<QString> delivered;
-  const auto record = [&](QString action, const QString &source,
-                          const QString &target,
-                          const QString &intent_generation,
-                          const QString &input_sequence) {
-    delivered.push_back(action + u'|' + source + u'|' + target + u'|' +
-                        intent_generation + u'|' + input_sequence);
-  };
-  QObject::connect(manager.get(), &bridge::PluginManager::openRequested,
-                   [&](const QString &source, const QString &target,
-                       const QString &intent_generation,
-                       const QString &input_sequence) {
-                     record(QStringLiteral("open"), source, target,
-                            intent_generation, input_sequence);
-                   });
-  QObject::connect(manager.get(), &bridge::PluginManager::toggleRequested,
-                   [&](const QString &source, const QString &target,
-                       const QString &intent_generation,
-                       const QString &input_sequence) {
-                     record(QStringLiteral("toggle"), source, target,
-                            intent_generation, input_sequence);
-                   });
-  QObject::connect(manager.get(), &bridge::PluginManager::dismissRequested,
-                   [&](const QString &source, const QString &target,
-                       const QString &intent_generation,
-                       const QString &input_sequence) {
-                     record(QStringLiteral("dismiss"), source, target,
-                            intent_generation, input_sequence);
-                   });
+  require(callback->pending() == 0 &&
+              qml_state->property("history").toString().isEmpty() &&
+              !qml_state->property("opened").toBool(),
+          "wrong or stale tuple changed QML state");
   bool queued = false;
   std::thread worker([&] {
     queued = callback->deliver(std::move(open)) &&
@@ -1769,21 +1781,22 @@ void surface_intent_mailbox_delivers_fifo_for_running_published_slot() {
              callback->deliver(std::move(dismiss));
   });
   worker.join();
-  require(queued && callback->pending() == 4 && delivered.empty(),
+  require(queued && callback->pending() == 4 &&
+              qml_state->property("history").toString().isEmpty(),
           "callback thread bypassed the positive slot UI mailbox");
   bridge::PluginManagerTestAccess::drainRuntime(*manager);
-  require(delivered ==
-              std::vector<QString>{
-                  QStringLiteral("open|") + surface_key + u'|' + surface_key +
-                      u'|' + generation + QStringLiteral("|1"),
-                  QStringLiteral("toggle|") + surface_key + u'|' +
-                      surface_key + u'|' + generation + QStringLiteral("|2"),
-                  QStringLiteral("toggle|") + surface_key + u'|' +
-                      surface_key + u'|' + generation + QStringLiteral("|3"),
-                  QStringLiteral("dismiss|") + surface_key + u'|' +
-                      surface_key + u'|' + generation + QStringLiteral("|4")} &&
+  const auto tuple_prefix = surface_key + u'|' + surface_key + u'|' +
+                            generation + u'|';
+  const auto expected_history =
+      QStringLiteral("open|") + tuple_prefix + QStringLiteral("1,toggle|") +
+      tuple_prefix + QStringLiteral("2,toggle|") + tuple_prefix +
+      QStringLiteral("3,dismiss|") + tuple_prefix + QStringLiteral("4");
+  require(qml_state->property("history").toString() == expected_history &&
+              !qml_state->property("opened").toBool() &&
+              qml_state->property("lastInputSequence").toString() ==
+                  QStringLiteral("4") &&
               callback->pending() == 0,
-          "running slot lost ordered end-to-end intent tuple correlation");
+          "host intent lost tuple order or final QML state");
 }
 
 void blocked_replacement_preserves_independent_plugin() {
