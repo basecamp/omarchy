@@ -144,6 +144,16 @@ when its stats are account-global rather than machine-local (Fireworks'
 billing API); those merge by taking the widest value instead of summing, so
 the same account synced from two machines is not counted twice.
 
+Headless machines can publish the same privacy-reduced snapshot without Quickshell. Point `--output` at a directory shared with the desktop and run it from a timer or cron job:
+
+```bash
+omarchy agent usage-snapshot \
+  --device-id build-server \
+  --output ~/Sync/agent-usage/build-server.json
+```
+
+The command refreshes the collectors first and replaces the output atomically, so readers never observe a partial JSON file. Without `--output`, it prints the snapshot to stdout. Use positional agent names or `--except <agent>` to limit what is published. Snapshots contain aggregate usage metrics only; subscription limits, authentication state, balances, and collector errors stay local.
+
 One caveat on "all-time": the Codex collector only reads native session files
 touched in the last 30 days, and Fireworks requests the last 30 days from its
 billing API, so their totals and day counts cover that window. Claude's cover
