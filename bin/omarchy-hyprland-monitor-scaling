@@ -113,73 +113,78 @@ update_named_monitor_scale() {
       gsub(/\./, "[.]", named)
       named = "output[[:space:]]*=[[:space:]]*\"" named "\""
     }
-    function uncommented(text,   n, i, lines, out) {
-      n = split(text, lines, "\n")
+    # A --[[ ]] comment runs across lines, so a rule inside one has to be seen
+    # as commented out before it is matched: rewriting a scale in there reports
+    # a rule was written while the reload reads no such rule, and the caller
+    # then leaves the catch-all alone too, persisting the scale nowhere.
+    # Comments are blanked rather than cut, so a position found in the blanked
+    # copy still indexes the original. in_block carries the state between lines.
+    function blank(line,   out, i, n, pair) {
       out = ""
-      for (i = 1; i <= n; i++) {
-        sub(/--.*/, "", lines[i])
-        out = out lines[i] "\n"
+      n = length(line)
+      i = 1
+      while (i <= n) {
+        pair = substr(line, i, 2)
+        if (in_block) {
+          if (pair == "]]") { in_block = 0; out = out "  "; i += 2 } else { out = out " "; i++ }
+        } else if (substr(line, i, 4) == "--[[") {
+          in_block = 1
+          out = out "    "
+          i += 4
+        } else if (pair == "--") {
+          out = out sprintf("%" (n - i + 1) "s", "")
+          i = n + 1
+        } else {
+          out = out substr(line, i, 1)
+          i++
+        }
       }
       return out
     }
-    # The same text with comments blanked rather than cut, so a position found
-    # in it still indexes the original.
-    function blanked(text,   n, i, lines, line, cut, out) {
+    function rewrite(text, blanks,   n, i, lines, bare, line, out, done, pos, end) {
+      if (blanks !~ named) return ""
       n = split(text, lines, "\n")
-      out = ""
-      for (i = 1; i <= n; i++) {
-        line = lines[i]
-        cut = index(line, "--")
-        if (cut > 0) line = substr(line, 1, cut - 1) sprintf("%" (length(line) - cut + 1) "s", "")
-        out = (i == 1) ? line : out "\n" line
-      }
-      return out
-    }
-    function rewrite(text,   n, i, lines, line, head, out, done, pos, end, tail) {
-      if (uncommented(text) !~ named) return ""
-      n = split(text, lines, "\n")
+      split(blanks, bare, "\n")
       out = ""
       done = 0
       for (i = 1; i <= n; i++) {
         line = lines[i]
-        if (!done && line !~ /^[[:space:]]*--/) {
-          head = line
-          sub(/--.*/, "", head)
-          if (match(head, /scale[[:space:]]*=[[:space:]]*("[^"]*"|[^,[:space:]}]+)/)) {
-            line = substr(line, 1, RSTART - 1) "scale = " scale substr(line, RSTART + RLENGTH)
-            done = 1
-          }
+        if (!done && match(bare[i], /scale[[:space:]]*=[[:space:]]*("[^"]*"|[^,;[:space:]}]+)/)) {
+          line = substr(line, 1, RSTART - 1) "scale = " scale substr(line, RSTART + RLENGTH)
+          done = 1
         }
         out = (i == 1) ? line : out "\n" line
       }
       if (done) return out
       # Append against the blanked copy: a brace or a separator inside a
-      # trailing comment would otherwise take the field, leaving the rule with
-      # no scale while this reports one was written.
-      tail = blanked(out)
+      # comment would otherwise take the field, leaving the rule with no scale
+      # while this reports one was written.
       pos = 0
-      for (i = length(tail); i >= 1; i--)
-        if (substr(tail, i, 1) == "}") { pos = i; break }
+      for (i = length(blanks); i >= 1; i--)
+        if (substr(blanks, i, 1) == "}") { pos = i; break }
       if (pos == 0) return ""
       end = pos - 1
-      while (end > 0 && substr(tail, end, 1) ~ /[[:space:]]/) end--
+      while (end > 0 && substr(blanks, end, 1) ~ /[[:space:]]/) end--
       # Lua takes , and ; interchangeably between table fields, and so does the
       # rule reader in omarchy-hyprland-monitor-clamshell.
-      if (substr(tail, end, 1) ~ /[,;]/)
-        return substr(out, 1, end) " scale = " scale substr(out, end + 1)
-      return substr(out, 1, end) ", scale = " scale substr(out, end + 1)
+      if (substr(blanks, end, 1) ~ /[,;]/)
+        return substr(text, 1, end) " scale = " scale substr(text, end + 1)
+      return substr(text, 1, end) ", scale = " scale substr(text, end + 1)
     }
     {
-      if (depth == 0 && $0 !~ /hl\.monitor[[:space:]]*\(/) { print; next }
+      bare_line = blank($0)
+      if (depth == 0 && bare_line !~ /hl\.monitor[[:space:]]*\(/) { print; next }
       rule = (depth == 0) ? $0 "\n" : rule $0 "\n"
-      line = $0
+      bare_rule = (depth == 0) ? bare_line "\n" : bare_rule bare_line "\n"
+      line = bare_line
       depth += gsub(/[{(]/, "", line)
       depth -= gsub(/[})]/, "", line)
       if (depth > 0) next
       depth = 0
-      replaced = rewrite(rule)
+      replaced = rewrite(rule, bare_rule)
       if (replaced != "") { changed = 1; printf "%s", replaced } else printf "%s", rule
       rule = ""
+      bare_rule = ""
     }
     END {
       if (rule != "") printf "%s", rule

@@ -284,3 +284,21 @@ if (( EUID != 0 )); then
     fail "monitor scaling leaves the catch-all alone when monitors.lua cannot be read"
   pass "monitor scaling reports failure when monitors.lua cannot be read"
 fi
+
+# A rule inside a --[[ ]] block is commented out. Rewriting a scale in there
+# reports a rule was written, and the caller then leaves the catch-all alone
+# too, so the change is persisted nowhere and the reload undoes it.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+--[[
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 4 })
+]]
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 4 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves a rule inside a block comment alone"
+grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling falls back to the catch-all when the only named rule is block commented"
+pass "monitor scaling leaves a rule inside a block comment alone"
