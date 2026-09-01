@@ -272,6 +272,21 @@ lock_event_after=$(jq -r '.lastEvent // empty' <<<"$lock_status_after")
   fail_with_log "plugin rescan keeps the keepLoaded service instance mounted"
 pass "keepLoaded service instance survives plugin rescan"
 
+# Dropping the service entry point from the manifest must drop the kept
+# instance instead of leaving a zombie behind.
+jq 'del(.keepLoaded) | .kinds = ["overlay"] | .entryPoints = {"overlay": "Service.qml"}' \
+  "$keep_service_dir/manifest.json" >"$keep_service_dir/manifest.json.tmp"
+mv "$keep_service_dir/manifest.json.tmp" "$keep_service_dir/manifest.json"
+keep_gone=""
+for _ in {1..80}; do
+  keep_gone=$(shell_ipc acme-keep get 2>/dev/null || true)
+  [[ $keep_gone != "survived" ]] && break
+  sleep 0.1
+done
+[[ $keep_gone != "survived" ]] ||
+  fail_with_log "kept service is dropped when its plugin stops declaring a service"
+pass "kept service is dropped when its plugin stops declaring a service"
+
 shell_ipc_quiet omarchy.system-update refresh >/dev/null 2>&1 || true
 sleep 0.8
 
