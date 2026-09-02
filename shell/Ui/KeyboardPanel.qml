@@ -34,6 +34,14 @@ import qs.Commons
 // QsWindow.mask subtracting the bar strip so clicks on the bar still
 // reach the bar widgets (activePopout coordinator hands off to another
 // popup if the user clicks a different bar icon).
+//
+// ExclusionMode.Auto (not Ignore): Ignore stretches the overlay over other
+// surfaces' exclusive zones, so a layer-shell on-screen keyboard at the
+// bottom is covered by dismissArea. The first OSK tap then closes the
+// panel (wifi passphrase, bluetooth PIN, …) instead of typing. Auto keeps
+// the reserved OSK/bar bands clickable. Keyboard focus still primes
+// Exclusive then settles on OnDemand so Hyprland does not keep routing
+// every pointer event here.
 PanelWindow {
   id: root
 
@@ -80,7 +88,7 @@ PanelWindow {
   screen: anchorWindow ? anchorWindow.screen : null
   visible: open || card.opacity > 0 || popoutSwitching
   color: "transparent"
-  exclusionMode: ExclusionMode.Ignore
+  exclusionMode: ExclusionMode.Auto
 
   WlrLayershell.namespace: "omarchy-keyboard-panel"
   WlrLayershell.layer: WlrLayer.Overlay
@@ -352,7 +360,7 @@ PanelWindow {
         // twin maps, or a twin would cover the panel's own output.
         visible: root.open && !!root.screen && modelData.name !== root.screen.name
         color: "transparent"
-        exclusionMode: ExclusionMode.Ignore
+        exclusionMode: ExclusionMode.Auto
 
         WlrLayershell.namespace: "omarchy-keyboard-panel-dismiss"
         WlrLayershell.layer: WlrLayer.Overlay
