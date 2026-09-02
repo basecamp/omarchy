@@ -240,8 +240,8 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
   try:
     with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
       handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
-    # mkstemp opens at 0600; these caches were world-readable before.
-    tmp.chmod(0o644)
+    # mkstemp opens at 0600 — keep caches owner-only (usage may include
+    # model/plan details from the local agent config).
     tmp.replace(path)
   except BaseException:
     tmp.unlink(missing_ok=True)
