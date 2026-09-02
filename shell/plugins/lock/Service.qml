@@ -296,6 +296,8 @@ Item {
         backgroundPath: root.backgroundPath
         backgroundVersion: root.backgroundVersion
         fingerprintConfigured: root.fingerprintConfigured
+        facePamConfigured: root.facePamConfigured
+        faceAuthenticating: root.faceAuthenticating
         authenticatingPassword: root.authenticatingPassword
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
@@ -329,6 +331,8 @@ Item {
       backgroundPath: root.backgroundPath
       backgroundVersion: root.backgroundVersion
       fingerprintConfigured: root.fingerprintConfigured
+      facePamConfigured: root.facePamConfigured
+      faceAuthenticating: false
       authenticatingPassword: false
       failureMessage: ""
       failedAttempts: 0

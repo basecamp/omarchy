@@ -9,6 +9,8 @@ Item {
   property string backgroundPath: ""
   property int backgroundVersion: 0
   property bool fingerprintConfigured: false
+  property bool facePamConfigured: false
+  property bool faceAuthenticating: false
   property bool authenticatingPassword: false
   property string failureMessage: ""
   property int failedAttempts: 0
@@ -24,9 +26,9 @@ Item {
   readonly property int fieldFontSize: Math.round(Style.font.heading * 1.125)
   readonly property int passwordDotFontSize: Math.round(Style.font.heading * 1.33)
   readonly property int passwordDotLetterSpacing: Math.round(Style.font.heading * 0.19)
-  // Space to keep clear on each side of the field for the fingerprint icon
-  // (icon width plus a gap) so the centered dots never run under it.
-  readonly property real fingerprintReserve: fingerprintConfigured ? Math.round(fingerprintIcon.implicitWidth + 12) : 0
+  // Space to keep clear on each side of the field for auth indicators (icons
+  // plus gaps) so centered dots never run under them.
+  readonly property real fingerprintReserve: (fingerprintConfigured ? Math.round(18 + 8) : 0) + (facePamConfigured ? Math.round(18 + 8) : 0)
   // Shrink the dots to fit once the password outgrows the field, so every
   // keystroke stays visible — otherwise long passwords clip with no feedback.
   readonly property real passwordDotScale: dotMetrics.advanceWidth > 0
@@ -197,23 +199,53 @@ Item {
         elide: Text.ElideRight
       }
 
-      // Fingerprint hint pinned inside the field's right edge when a sensor is
-      // enrolled, so the user knows they can touch to unlock instead of typing.
-      // Matches hyprlock, which draws its fingerprint icon in the same spot.
-      Text {
-        id: fingerprintIcon
-        objectName: "fingerprintIndicator"
+      // Biometric indicators pinned inside the field's right edge.
+      Row {
+        id: biometricIndicators
         anchors.right: parent.right
-        anchors.rightMargin: inputField.borderRight + 18
+        anchors.rightMargin: inputField.borderRight + 14
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.fingerprintConfigured
-        text: "󰈷"
-        color: Color.lock.placeholder
-        font.family: Style.font.family
-        font.pixelSize: Math.round(root.fieldFontSize * 1.1)
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
+        spacing: 8
+
+        Text {
+          id: faceIcon
+          objectName: "faceIndicator"
+          visible: root.facePamConfigured
+          text: "󰄀"
+          color: root.faceAuthenticating ? Color.lock.text : Color.lock.placeholder
+          opacity: root.faceAuthenticating ? 1.0 : 0.4
+          font.family: Style.font.family
+          font.pixelSize: Math.round(root.fieldFontSize * 1.1)
+          horizontalAlignment: Text.AlignHCenter
+          verticalAlignment: Text.AlignVCenter
+
+          SequentialAnimation on opacity {
+            running: root.faceAuthenticating
+            loops: Animation.Infinite
+            NumberAnimation { from: 0.4; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
+            NumberAnimation { from: 1.0; to: 0.4; duration: 600; easing.type: Easing.InOutQuad }
+          }
+        }
+
+        Text {
+          id: fingerprintIcon
+          objectName: "fingerprintIndicator"
+          visible: root.fingerprintConfigured
+          text: "󰈷"
+          color: Color.lock.placeholder
+          font.family: Style.font.family
+          font.pixelSize: Math.round(root.fieldFontSize * 1.1)
+          horizontalAlignment: Text.AlignHCenter
+          verticalAlignment: Text.AlignVCenter
+        }
       }
     }
+  }
+
+  MouseArea {
+    anchors.fill: parent
+    hoverEnabled: true
+    acceptedButtons: Qt.NoButton
+    onPositionChanged: root.wakeRequested()
   }
 }

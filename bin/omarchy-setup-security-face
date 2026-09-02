@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# omarchy:summary=Set up Howdy face recognition authentication for lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+setup_lock_howdy_pam() {
+  echo "Configuring lock screen for face authentication..."
+  sudo tee /etc/pam.d/omarchy-lock-howdy >/dev/null <<'EOF'
+#%PAM-1.0
+auth       required                    /usr/local/lib/security/pam_howdy_face_only.so
+account    include                     system-local-login
+EOF
+}
+
+echo -e "\e[32mSetting up face recognition for lock screen authentication.\n\e[0m"
+
+# Bail before installing anything if there's no camera detected
+if ! omarchy-hw-face; then
+  echo -e "\e[31mNo camera or IR face sensor detected.\e[0m"
+  exit 1
+fi
+
+# Install required packages
+echo "Installing Howdy face authentication..."
+omarchy-pkg-add howdy
+
+# Add face model for current user
+echo -e "\e[32m\nLet's enroll your face model.\e[0m"
+echo -e "Look straight at the camera until the process completes.\n"
+
+if sudo howdy add; then
+  setup_lock_howdy_pam
+  echo -e "\e[32m\nPerfect! Face authentication is now configured.\e[0m"
+  echo "You can unlock your lock screen (Super + L) by looking at the camera."
+else
+  echo -e "\e[31m\nFace enrollment failed. Please try again.\e[0m"
+  exit 1
+fi
