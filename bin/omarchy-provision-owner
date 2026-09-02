@@ -658,6 +658,9 @@ user_form() {
     $REKEY_PENDING && say "It also unlocks the disk, so a parent can always get in."
     echo
     omarchy_prompt_parent_password || return $?
+    # The parent-password header would otherwise sit over the screens that
+    # follow, which are about the account again.
+    step "Let's finish your user account..."
   else
     omarchy_prompt_password || return $?
   fi
