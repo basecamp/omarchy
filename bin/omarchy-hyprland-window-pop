@@ -3,8 +3,8 @@
 # omarchy:summary=Toggle to pop-out a tile to stay fixed on a display basis.
 # omarchy:args=[width height x y]
 
-width=${1:-1300}
-height=${2:-900}
+width=${1:-}
+height=${2:-}
 x=${3:-}
 y=${4:-}
 
@@ -20,11 +20,57 @@ hypr_dispatch() {
   hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
 }
 
+set_default_size() {
+  local monitor_id monitors dimensions
+  local default_width=1300
+  local default_height=900
+
+  monitor_id=$(jq -er '.monitor | select(type == "number")' <<<"$active" 2>/dev/null) || return
+  monitors=$(hyprctl monitors -j 2>/dev/null) || return
+  dimensions=$(jq -er --argjson id "$monitor_id" '
+    first(.[] | select(.id == $id)) as $monitor |
+    ($monitor.transform // 0) as $transform |
+    ($monitor.reserved // [0, 0, 0, 0]) as $reserved |
+    if
+      ($monitor.width | type) != "number" or $monitor.width <= 0 or
+      ($monitor.height | type) != "number" or $monitor.height <= 0 or
+      ($monitor.scale | type) != "number" or $monitor.scale <= 0 or
+      ($transform | type) != "number" or $transform != ($transform | floor) or
+      any(range(0; 4); ($reserved[.] // 0) | type != "number" or . < 0)
+    then
+      error("invalid monitor geometry")
+    else
+      (if $transform % 2 == 1 then $monitor.height else $monitor.width end) as $physical_width |
+      (if $transform % 2 == 1 then $monitor.width else $monitor.height end) as $physical_height |
+      (($physical_width / $monitor.scale | floor) - ($reserved[0] // 0) - ($reserved[2] // 0)) as $usable_width |
+      (($physical_height / $monitor.scale | floor) - ($reserved[1] // 0) - ($reserved[3] // 0)) as $usable_height |
+      if $usable_width <= 0 or $usable_height <= 0 then
+        error("invalid usable monitor geometry")
+      else
+        [
+          ([1300, ($usable_width * 0.9 | floor)] | min),
+          ([900, ($usable_height * 0.9 | floor)] | min)
+        ] | @tsv
+      end
+    end
+  ' <<<"$monitors" 2>/dev/null) || return
+
+  read -r default_width default_height <<<"$dimensions"
+  [[ -n $width ]] || width=$default_width
+  [[ -n $height ]] || height=$default_height
+}
+
 if [[ $pinned == "true" ]]; then
   hypr_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
   hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
   hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
 elif [[ -n $addr ]]; then
+  if [[ -z $width || -z $height ]]; then
+    set_default_size
+    width=${width:-1300}
+    height=${height:-900}
+  fi
+
   hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
   hypr_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
 
