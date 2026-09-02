@@ -2,12 +2,12 @@
 
 # omarchy:summary=Install a supported development environment
 # omarchy:name=dev-env
-# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>
+# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala|embedded>
 # omarchy:examples=omarchy install dev-env ruby | omarchy install dev-env node
 # omarchy:requires-sudo=true
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala|embedded>" >&2
   exit 1
 fi
 
@@ -48,6 +48,46 @@ install_php() {
 install_node() {
   echo -e "Installing Node.js...\n"
   mise use --global node
+}
+
+install_embedded() {
+  echo -e "Installing embedded toolchain...\n"
+  omarchy-pkg-add arduino-cli platformio-core esptool avrdude picocom
+
+  # Serial devices belong to uucp on Arch, so without membership every upload
+  # and every serial monitor needs sudo. The group only takes effect on a new
+  # login, which is why this reports rather than silently succeeding.
+  if id -nG "$USER" | grep -qw uucp; then
+    echo "Already in the uucp group."
+  else
+    sudo usermod -aG uucp "$USER"
+    echo "Added $USER to the uucp group — log out and back in for it to apply."
+  fi
+
+  # ModemManager probes new serial devices on plug-in and holds them open long
+  # enough to break the first upload. Development boards are never modems, so
+  # they are marked to be left alone.
+  sudo tee /etc/udev/rules.d/70-omarchy-embedded.rules >/dev/null <<'RULES'
+# Development boards: readable by uucp, and never probed by ModemManager.
+# CH340/CH341 — the USB-serial chip on most low-cost ESP32 and Arduino clones
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", GROUP="uucp", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+# CP210x — Silicon Labs, used by most ESP32 DevKit boards
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", GROUP="uucp", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+# FTDI — official Arduino and many debug probes
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", GROUP="uucp", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+# Espressif and Arduino native USB (ESP32-S2/S3/C3, Leonardo, Micro)
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", GROUP="uucp", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", GROUP="uucp", MODE="0660", ENV{ID_MM_DEVICE_IGNORE}="1"
+RULES
+
+  sudo udevadm control --reload-rules
+  sudo udevadm trigger --subsystem-match=tty
+
+  arduino-cli config init --overwrite >/dev/null 2>&1
+  arduino-cli core update-index >/dev/null 2>&1
+
+  echo ""
+  echo "Boards appear as /dev/ttyUSB* or /dev/ttyACM*; 'arduino-cli board list' names them."
 }
 
 case "$1" in
@@ -151,5 +191,8 @@ scala)
   mise use --global java@latest
   mise use --global scala@latest
   mise use --global scala-cli@latest
+  ;;
+embedded)
+  install_embedded
   ;;
 esac
