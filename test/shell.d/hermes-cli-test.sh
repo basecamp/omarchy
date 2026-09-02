@@ -23,11 +23,28 @@ cat >"$mock_bin/omarchy-cmd-missing" <<'SH'
 SH
 
 # `mise where` must fail so the installer sees no Hermes behind the stub.
+#
+# With OMARCHY_TEST_MISE_X_HERMES=1, `mise x -- hermes ...` emulates the Hermes
+# the Omarchy stub runs, so the readiness probe can be exercised through a
+# mise-installed hermes and not only the foreign and desktop wrappers. Off by
+# default, so `mise x` stays silent for every test that does not opt in.
 cat >"$mock_bin/mise" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >>"$OMARCHY_TEST_MISE_LOG"
 if [[ $1 == "where" && ${OMARCHY_TEST_MISE_WHERE_OK:-0} == 1 ]]; then
   printf '%s\n' "$OMARCHY_TEST_MISE_ROOT"
+  exit 0
+fi
+if [[ $1 == "x" && ${OMARCHY_TEST_MISE_X_HERMES:-0} == 1 ]]; then
+  # Args are `x <tool> -- hermes <hermes-args...>`; skip to what follows hermes.
+  shift
+  while (( $# )) && [[ $1 != "--" ]]; do shift; done
+  shift 2
+  if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+    [[ ${OMARCHY_TEST_HERMES_CAPABLE:-1} == 1 ]] && echo "[-q QUERY, --query QUERY] [--tui]"
+  else
+    echo "hermes-agent 0.0.0-test"
+  fi
   exit 0
 fi
 [[ $1 != "where" ]]
@@ -98,7 +115,7 @@ mkdir -p "$test_home/.hermes/hermes-agent/venv/bin"
 cat >"$test_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
-  [[ ${OMARCHY_TEST_HERMES_CAPABLE:-1} == 1 ]] && echo "--oneshot"
+  [[ ${OMARCHY_TEST_HERMES_CAPABLE:-1} == 1 ]] && echo "[-q QUERY, --query QUERY] [--tui]"
 else
   echo "hermes-agent 0.0.0-test"
 fi
@@ -237,6 +254,26 @@ tr '\0' '\n' <"$mise_log" | grep -q '^rm$' || fail "an older owned Hermes enviro
 tr '\0' '\n' <"$mise_log" | grep -q '^uninstall$' || fail "an older owned Hermes environment is uninstalled"
 pass "reinstalling replaces an older owned Hermes environment"
 
+# The mise-installed path is what a machine without the desktop app runs, and
+# --check gates the default agent there too. The stub is present and its mise
+# environment resolves, so readiness turns on the hermes mise runs -- exercised
+# here in both directions, since the desktop and foreign cases cover only their
+# own wrappers.
+run_mise_check() {
+  OMARCHY_TEST_DESKTOP_INSTALLED=0 \
+    OMARCHY_TEST_MISE_WHERE_OK=1 \
+    OMARCHY_TEST_MISE_ROOT="$test_tmp/mise" \
+    OMARCHY_TEST_MISE_LOG="$mise_log" \
+    OMARCHY_TEST_MISE_X_HERMES=1 \
+    OMARCHY_TEST_HERMES_CAPABLE="$1" \
+    HOME="$test_home" \
+    PATH="$mock_bin:$PATH" \
+    bash "$ROOT/bin/omarchy-install-hermes-cli" --check >/dev/null 2>&1
+}
+run_mise_check 1 || fail "--check accepts a mise-installed hermes that runs the seeded session"
+run_mise_check 0 && fail "--check rejects a mise-installed hermes without the flags omarchy-agent passes"
+pass "--check follows the mise-installed hermes it would actually run"
+
 rm -f "$test_home/.local/bin/hermes"
 : >"$mise_log"
 OMARCHY_TEST_MISE_WHERE_OK=1 run_installer 0 &&
@@ -365,6 +402,71 @@ marker_copies=$(grep -rl "Written by omarchy-install-hermes-cli" \
   fail "only omarchy-install-hermes-cli spells out the ownership marker"
 pass "the ownership marker is written down once"
 
+# --remove tears down a Hermes CLI this installer owns, so Remove Hermes can
+# clear one the desktop app never superseded. It turns on the same ownership as
+# the rest of the file, so its cases mirror that split.
+remove_home="$test_tmp/remove-home"
+mkdir -p "$remove_home/.local/bin"
+
+run_remove() {
+  OMARCHY_TEST_DESKTOP_INSTALLED=0 \
+    OMARCHY_TEST_MISE_WHERE_OK="${OMARCHY_TEST_MISE_WHERE_OK:-0}" \
+    OMARCHY_TEST_MISE_ROOT="$test_tmp/mise" \
+    OMARCHY_TEST_MISE_LOG="$mise_log" \
+    HOME="$remove_home" \
+    PATH="$mock_bin:$PATH" \
+    bash "$ROOT/bin/omarchy-install-hermes-cli" --remove
+}
+
+rm -f "$remove_home/.local/bin/hermes"
+: >"$mise_log"
+run_remove || fail "--remove succeeds when there is nothing to remove"
+# No stub means no proof the mise environment -- if one even exists -- is
+# Omarchy's, so nothing may reach mise at all.
+tr '\0' '\n' <"$mise_log" | grep -Eq '^(rm|uninstall)$' &&
+  fail "--remove leaves mise alone when nothing proves ownership"
+pass "--remove is idempotent when no Hermes CLI is present"
+
+printf '%s\n' "#!/bin/bash" "$stub_marker" >"$remove_home/.local/bin/hermes"
+chmod +x "$remove_home/.local/bin/hermes"
+: >"$mise_log"
+run_remove || fail "--remove succeeds tearing down an owned CLI"
+tr '\0' '\n' <"$mise_log" | grep -q '^rm$' || fail "--remove drops the mise tool from config"
+tr '\0' '\n' <"$mise_log" | grep -q '^uninstall$' || fail "--remove uninstalls the mise tool"
+[[ ! -e $remove_home/.local/bin/hermes ]] || fail "--remove takes the stub it owns"
+pass "--remove tears down the mise CLI and the stub this installer owns"
+
+# When mise still resolves the tool after the teardown, the environment
+# survived whatever uninstall claimed, and --remove has to say so.
+printf '%s\n' "#!/bin/bash" "$stub_marker" >"$remove_home/.local/bin/hermes"
+chmod +x "$remove_home/.local/bin/hermes"
+OMARCHY_TEST_MISE_WHERE_OK=1 run_remove && fail "--remove claims success while mise still resolves the tool"
+pass "--remove fails when the mise environment survives the teardown"
+
+foreign_remove_body="#!/bin/bash
+exec /usr/local/bin/my-own-hermes \"\$@\""
+printf '%s\n' "$foreign_remove_body" >"$remove_home/.local/bin/hermes"
+chmod +x "$remove_home/.local/bin/hermes"
+: >"$mise_log"
+OMARCHY_TEST_MISE_WHERE_OK=1 run_remove || fail "--remove succeeds with a foreign hermes present"
+[[ -f $remove_home/.local/bin/hermes && $(cat "$remove_home/.local/bin/hermes") == "$foreign_remove_body" ]] ||
+  fail "--remove leaves a hermes it does not own untouched"
+# The wrapper may front a mise environment the user built against the very same
+# spec; without the marker there is no telling, so the environment stays too.
+tr '\0' '\n' <"$mise_log" | grep -Eq '^(rm|uninstall)$' &&
+  fail "--remove never removes a mise environment it cannot prove is Omarchy's"
+pass "--remove leaves a Hermes the user installed themselves"
+
+# Judged by what is left, not by what rm claimed: a stub that survives the
+# teardown is a CLI still installed, and --remove has to say so.
+printf '%s\n' "#!/bin/bash" "$stub_marker" >"$remove_home/.local/bin/hermes"
+chmod +x "$remove_home/.local/bin/hermes"
+chmod 555 "$remove_home/.local/bin"
+run_remove && fail "--remove claims success while the stub survives"
+chmod 755 "$remove_home/.local/bin"
+rm -f "$remove_home/.local/bin/hermes"
+pass "--remove fails when the stub cannot be removed"
+
 # The app's marker says its install once landed, not that it is still there. A
 # wrapper whose runtime has since gone answers for nothing, so readiness runs
 # the command, exactly as it does for a hermes the user installed themselves.
@@ -388,7 +490,7 @@ run_ready_check && fail "--check rejects the app's wrapper when its runtime is g
 cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
-  echo "--oneshot"
+  echo "[-q QUERY, --query QUERY] [--tui]"
 else
   echo "hermes-agent 0.0.0-test"
 fi
@@ -396,3 +498,79 @@ SH
 chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
 run_ready_check || fail "--check accepts the app's wrapper once it runs"
 pass "readiness runs the app's command rather than trusting its marker"
+
+# A release whose help lists only the old probe's --oneshot marker cannot run
+# the seeded --tui --query session omarchy-agent starts, so it is not ready.
+cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "--oneshot"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+run_ready_check && fail "--check accepts a release without the flags omarchy-agent passes"
+pass "a release listing only --oneshot is not prompt-ready"
+
+# A release that lists --tui-theme and --query-log but has dropped the bare
+# --tui/--query omarchy-agent passes must not read as ready on the substring
+# alone. The probe matches at a flag boundary for exactly this case.
+cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "[--tui-theme THEME] [--query-log FILE]"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+run_ready_check && fail "--check accepts a release whose flags only contain --tui/--query as a substring"
+pass "a flag that merely contains --tui or --query is not prompt-ready"
+
+# Each flag answers for itself: a release that kept --tui but dropped --query,
+# or the reverse, cannot run the seeded session either, so neither grep may
+# ride on the other's match.
+for kept in '--tui' '-q QUERY, --query QUERY'; do
+  cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<SH
+#!/bin/bash
+if [[ \${1:-} == "chat" && \${2:-} == "--help" ]]; then
+  echo "[$kept]"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+  chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+  run_ready_check && fail "--check accepts a release listing only $kept"
+done
+pass "either flag alone is not prompt-ready"
+
+# An underscore continues a flag name just as a dash does: --tui_mode is not
+# --tui.
+cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "[--tui_mode MODE] [--query_log FILE]"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+run_ready_check && fail "--check accepts flags that extend --tui/--query with an underscore"
+pass "an underscore continuation is not the bare flag"
+
+# A flag mentioned in another option's help text is not that option. Hermes
+# already writes "With --tui:" into --dev's description, so prose has to stay
+# prose even when both names appear in it.
+cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "  --dev                 With --tui: run sources via tsx"
+  echo "  --log FILE            Where --query output lands"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+run_ready_check && fail "--check accepts flags that appear only in option descriptions"
+pass "a flag mentioned in prose is not a defined option"

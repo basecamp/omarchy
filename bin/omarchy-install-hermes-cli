@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Install the Hermes CLI as a mise-backed wrapper in ~/.local/bin
-# omarchy:args=[--check|--now|--owns]
+# omarchy:args=[--check|--now|--owns|--remove]
 # omarchy:examples=omarchy install hermes cli | omarchy install hermes cli --now
 
 # Hermes pins every one of its dependencies exactly and declares
@@ -88,13 +88,28 @@ hermes_runs() {
     timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
 }
 
-# The chat subcommand's --oneshot opt-out arrived with native interactive -q,
-# so its presence is a stable capability check without relying on a version.
+# A flag counts only when the help defines it, not whenever it is mentioned:
+# what follows must be a shape argparse prints after a definition -- the usage
+# line's closing bracket, the gap before same-line help text, an uppercase
+# metavar, or the end of the line. Prose like "With --tui: run ..." stays
+# prose, and --tui-theme or --tui_mode never answers for --tui. Not probed by
+# parsing an actual invocation on purpose: a release that ignores unknown
+# arguments would turn the probe into a live session.
+help_defines_flag() {
+  grep -qE -- "$1(]|[[:space:]][[:upper:]]|[[:space:]]{2}|$)" <<<"$2"
+}
+
+# Probed for the flags omarchy-agent actually passes -- --query to seed the
+# session and --tui to keep it interactive -- rather than a marker standing in
+# for them: the old probe keyed on chat carrying --oneshot, which no released
+# Hermes did (it lived at the top level until v0.21 added chat's own), so
+# every release read as "not ready".
 hermes_prompt_ready() {
   local help
   hermes_runs &&
     help=$(timeout 15 "$HOME/.local/bin/hermes" chat --help 2>/dev/null) &&
-    grep -qF -- '--oneshot' <<<"$help"
+    help_defines_flag '--tui' "$help" &&
+    help_defines_flag '--query' "$help"
 }
 
 # --owns answers whether the wrapper on PATH is the one this command wrote, so
@@ -102,6 +117,42 @@ hermes_prompt_ready() {
 # marker and drift from it.
 if [[ $mode == "--owns" ]]; then
   if ours; then exit 0; else exit 1; fi
+fi
+
+# --remove tears down a Hermes CLI this installer put in place -- the mise tool
+# it installed and the stub it marked -- so Remove Hermes clears a CLI the app
+# never superseded (an interrupted install, or the terminal CLI from before the
+# app existed) rather than leaving it stranded on PATH. The whole teardown
+# turns on the marked stub, exactly as replacement does further down: without
+# it nothing proves the mise environment is Omarchy's rather than one the user
+# built against the same spec, and a user's stays theirs. The desktop takeover
+# removes the environment without asking, but that is its own bargain -- a
+# second Hermes has to go whoever built it, and the app still provides the
+# command afterwards; here nothing would. Idempotent: nothing owned, nothing
+# to do.
+if [[ $mode == "--remove" ]]; then
+  if ours; then
+    mise rm -g "$tool" >/dev/null 2>&1 || true
+    mise uninstall --all "$tool" >/dev/null 2>&1 || true
+    rm -f "$HOME/.local/bin/hermes" 2>/dev/null || true
+
+    # Every step is attempted before any is judged, and judged by what is left
+    # rather than by what the commands claimed: the marked stub still answering
+    # hermes, or mise still resolving the tool, is a CLI still installed no
+    # matter how the removal exited.
+    # Not "run --remove again": once the stub is gone nothing marks the mise
+    # environment as ours, so a rerun would find nothing it owns and succeed
+    # without touching what was left. Only the full commands finish the job.
+    if ours || mise where "$tool" >/dev/null 2>&1; then
+      echo "Could not remove the Hermes CLI Omarchy installed. Finish by hand:" >&2
+      echo "  rm -f ~/.local/bin/hermes" >&2
+      echo "  mise rm -g '$tool'" >&2
+      echo "  mise uninstall --all '$tool'" >&2
+      exit 1
+    fi
+  fi
+
+  exit 0
 fi
 
 # --check lets callers tell a cold stub from a working one before they commit

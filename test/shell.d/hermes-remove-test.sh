@@ -15,6 +15,15 @@ cat >"$mock_bin/omarchy-pkg-drop" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >>"$OMARCHY_TEST_DROP_LOG"
 SH
+
+# The CLI teardown is the installer's own, exercised in hermes-cli-test.sh; here
+# it is mocked to a logger so this test stays about what Remove Hermes does with
+# ~/.hermes, and to keep real mise out of a run with HOME pointed at a fixture.
+cat >"$mock_bin/omarchy-install-hermes-cli" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >>"$OMARCHY_TEST_INSTALLER_LOG"
+exit "${OMARCHY_TEST_INSTALLER_STATUS:-0}"
+SH
 chmod +x "$mock_bin"/*
 
 seed_install() {
@@ -35,7 +44,11 @@ seed_install() {
 }
 
 remove() {
-  OMARCHY_TEST_DROP_LOG="$test_tmp/drop-log" HOME="$test_home" PATH="$mock_bin:$PATH" \
+  : >"$test_tmp/installer-log"
+  OMARCHY_TEST_DROP_LOG="$test_tmp/drop-log" \
+    OMARCHY_TEST_INSTALLER_LOG="$test_tmp/installer-log" \
+    OMARCHY_TEST_INSTALLER_STATUS="${OMARCHY_TEST_INSTALLER_STATUS:-0}" \
+    HOME="$test_home" PATH="$mock_bin:$PATH" \
     bash "$ROOT/bin/omarchy-remove-ai-hermes" >/dev/null 2>&1
 }
 
@@ -67,6 +80,12 @@ pass "removal keeps what belongs to the user"
 [[ ! -e $test_home/.local/bin/hermes ]] || fail "the app's own hermes command is removed"
 pass "removal takes the command the app installed"
 
+# Removal also asks the installer to tear down a mise CLI the app superseded, so
+# a copy left from before the app took over does not linger once Hermes is gone.
+tr '\0' '\n' <"$test_tmp/installer-log" | grep -qx -- '--remove' ||
+  fail "removal asks the installer to tear down its own CLI"
+pass "removal tears down the mise CLI through the installer"
+
 # A hermes command the app did not write survives even when the app did install
 # a runtime of its own.
 seed_install
@@ -87,6 +106,10 @@ printf 'my local edit\n' >"$test_home/.hermes/hermes-agent/PATCH"
 printf '%s\n' "#!/bin/bash" "exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\"" \
   >"$test_home/.local/bin/hermes"
 remove || fail "remove succeeds when the app never finished installing Hermes"
+# The stranded pre-desktop CLI is exactly the interrupted-install case, so the
+# teardown must be asked for here too, not only when the app's runtime landed.
+tr '\0' '\n' <"$test_tmp/installer-log" | grep -qx -- '--remove' ||
+  fail "removal tears down the CLI even when the app never finished installing"
 [[ -d $test_home/.hermes/hermes-agent ]] ||
   fail "a Hermes runtime the app never installed survives removal"
 [[ -f $test_home/.hermes/hermes-agent/PATCH ]] ||
@@ -110,3 +133,14 @@ remove || fail "remove succeeds with a wrapper pointing at a sibling directory"
 [[ -f $test_home/.local/bin/hermes && $(cat "$test_home/.local/bin/hermes") == "$sibling_body" ]] ||
   fail "a wrapper pointing at ~/xhermes is not mistaken for one pointing into ~/.hermes"
 pass "removal matches the runtime path as a plain string"
+
+# A CLI teardown that fails must not stop the runtime handling, and must not be
+# papered over either: the data work still happens, and the failure reaches the
+# caller's exit code.
+seed_install
+printf '%s\n' "#!/bin/bash" "exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\"" \
+  >"$test_home/.local/bin/hermes"
+OMARCHY_TEST_INSTALLER_STATUS=1 remove && fail "a failed CLI teardown surfaces in the exit code"
+[[ ! -d $test_home/.hermes/hermes-agent ]] ||
+  fail "a failed CLI teardown does not stop the runtime removal"
+pass "a failed CLI teardown is reported after the runtime is handled"

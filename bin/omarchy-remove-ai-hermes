@@ -8,6 +8,16 @@ set -euo pipefail
 
 omarchy-pkg-drop hermes-desktop
 
+# The mise CLI is the app's predecessor, not the app itself: Hermes Desktop takes
+# it over on install and runs its own runtime instead, so a copy still here is one
+# the app never superseded -- an interrupted install, or the terminal CLI from
+# before the app existed. Remove Hermes clears that too, scoped by the installer
+# to what Omarchy owns so a hermes the user set up themselves is left alone.
+# Tolerated here rather than fatal, so the ~/.hermes handling below still runs;
+# the failure is answered for at the end instead of being swallowed.
+cli_removed=true
+omarchy-install-hermes-cli --remove || cli_removed=false
+
 # The app writes this when the runtime it provisions under ~/.hermes has landed,
 # and it is the only thing that tells that runtime apart from one the user
 # installed themselves -- the paths are the same either way. Without it the app
@@ -56,4 +66,10 @@ else
   echo ""
   echo "Hermes Desktop has been removed."
   echo "It never finished installing its own Hermes, so nothing in ~/.hermes was touched."
+fi
+
+# The messages above still hold -- the app and its runtime are gone -- but a CLI
+# teardown that failed already said so on stderr, and that stands.
+if [[ $cli_removed == "false" ]]; then
+  exit 1
 fi
