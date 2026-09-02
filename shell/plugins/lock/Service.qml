@@ -33,8 +33,15 @@ Item {
   property string lastEventAt: ""
   property bool strandedLock: false
   property bool strandedLockResolved: false
+  property bool strandedRestartAttempted: false
 
-  readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
+  // sessionLock.secure is also true for Hyprland's dead-client failsafe and
+  // for a stale Quickshell SessionLockManager after an in-process remount.
+  // A healthy lock is one this client is drawing.
+  readonly property bool lockOwned: sessionLock.locked
+  readonly property bool sessionSecured: sessionLock.secure
+  readonly property bool lockSurfaceOrphaned: sessionSecured && !lockOwned
+  readonly property bool locked: lockRequested || lockOwned || sessionSecured
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
 
   function realScreenCount() {
@@ -57,17 +64,26 @@ Item {
     pendingSessionLock = true
     if (!sessionLockStabilizeTimer.running) logEvent("lock-pending: screen-stabilizing")
     sessionLockStabilizeTimer.restart()
+    pendingSessionLockTimer.attempts = 0
     if (!pendingSessionLockTimer.running) pendingSessionLockTimer.start()
   }
 
   function requestSessionLock() {
-    if (!lockRequested || sessionLock.locked || sessionLock.secure) return
+    if (!lockRequested || sessionLock.locked) return
     if (sessionLockStabilizeTimer.running) return
 
     if (!hasRealScreen()) {
       if (!pendingSessionLock || lastEvent !== "lock-pending: no-real-screen") logEvent("lock-pending: no-real-screen")
       pendingSessionLock = true
       if (!pendingSessionLockTimer.running) pendingSessionLockTimer.start()
+      return
+    }
+
+    // secure without a surface this client owns is an orphan, not a lock.
+    // Setting sessionLock.locked here qFatal's in Quickshell (no active lock).
+    if (lockSurfaceOrphaned) {
+      logEvent("lock-stranded: compositor-secured-without-surface")
+      restartForOrphanedLock()
       return
     }
 
@@ -82,8 +98,9 @@ Item {
   function checkStrandedLock() {
     if (strandedLockResolved || strandedLockCheckProc.running) return
 
-    // A lock this shell took is nobody's orphan.
-    if (locked || lockRequested) {
+    // Only a surface this client owns (or a lock it has already requested)
+    // is ours. sessionLock.secure alone can be an orphan failsafe.
+    if (sessionLock.locked || lockRequested) {
       strandedLockResolved = true
       return
     }
@@ -92,11 +109,37 @@ Item {
   }
 
   function recoverStrandedLock() {
-    if (!strandedLock || locked || !passwordPamConfigured) return
+    if (!strandedLock || !passwordPamConfigured) return
+    if (sessionLock.locked) return
+
+    // A fresh process can take the compositor lock directly. Restarting
+    // here loops: every relaunch sees the same stranded compositor lock
+    // and kills itself again. Restart only the in-process orphan below.
+    if (lockSurfaceOrphaned) {
+      restartForOrphanedLock()
+      return
+    }
 
     strandedLock = false
     logEvent("lock-stranded: recovering")
     beginLock()
+  }
+
+  function restartForOrphanedLock() {
+    if (!passwordPamConfigured) return
+    if (sessionLock.locked || !lockSurfaceOrphaned) return
+    if (strandedRestartAttempted || restartShellProc.running) return
+
+    // Same-process beginLock() cannot retake the lock: Quickshell's
+    // SessionLockManager::active stays set after the previous WlSessionLock
+    // is destroyed, so lock() fails and updateSurfaces() aborts. A new
+    // process plus omarchy-restart-shell's relock path is the recovery.
+    strandedRestartAttempted = true
+    strandedLock = false
+    pendingSessionLockTimer.stop()
+    sessionLockStabilizeTimer.stop()
+    logEvent("lock-stranded: restarting-for-orphan")
+    restartShellProc.running = true
   }
 
   function refreshBackground() {
@@ -396,8 +439,17 @@ Item {
       root.strandedLockResolved = true
 
       // A lock taken while this was in flight is this shell's own.
-      root.strandedLock = exitCode === 0 && !root.locked && !root.lockRequested
-      root.recoverStrandedLock()
+      // Do not use `locked` here: stale sessionLock.secure would hide an orphan.
+      root.strandedLock = exitCode === 0 && !sessionLock.locked && !root.lockRequested
+      if (root.strandedLock) root.recoverStrandedLock()
+    }
+  }
+
+  Process {
+    id: restartShellProc
+    command: ["omarchy-restart-shell"]
+    onExited: function(exitCode) {
+      root.logEvent("lock-stranded: restart-shell=" + exitCode)
     }
   }
 
@@ -442,7 +494,18 @@ Item {
     id: pendingSessionLockTimer
     interval: 100
     repeat: true
-    onTriggered: root.requestSessionLock()
+    property int attempts: 0
+    onTriggered: {
+      attempts += 1
+      if (attempts > 50) {
+        stop()
+        attempts = 0
+        root.logEvent("lock-pending: gave-up")
+        if (root.lockSurfaceOrphaned) root.restartForOrphanedLock()
+        return
+      }
+      root.requestSessionLock()
+    }
   }
 
   Timer {

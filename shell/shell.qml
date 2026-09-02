@@ -345,12 +345,27 @@ ShellRoot {
     }
   }
 
+  function lockServiceOwned() {
+    var lockInst = _services["omarchy.lock"]
+    if (!lockInst) return false
+    if (lockInst.lockRequested) return true
+    return lockInst.lockOwned === true
+  }
+
   function unloadPluginServices() {
+    // Destroying omarchy.lock while it owns the session lock drops the
+    // lock surface and leaves Hyprland's ext-session-lock failsafe up.
+    // keepLoaded does not protect services; skip that instance instead.
+    var next = ({})
     for (var existingId in _services) {
       var inst = _services[existingId]
+      if (existingId === "omarchy.lock" && lockServiceOwned()) {
+        next[existingId] = inst
+        continue
+      }
       if (inst && typeof inst.destroy === "function") inst.destroy()
     }
-    _services = ({})
+    _services = next
   }
 
   Connections {
@@ -754,7 +769,9 @@ ShellRoot {
       shell.pluginReloadPending = true
       return
     }
-    if (typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
+    // Clearing the cache while the lock client is still mounted can
+    // invalidate the QML types it is drawing.
+    if (!lockServiceOwned() && typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
     shell.pluginRegistry.rescan()
   }
 

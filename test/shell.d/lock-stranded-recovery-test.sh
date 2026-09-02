@@ -31,8 +31,9 @@ assert(
 )
 
 // omarchy-restart-shell re-locks a fresh shell, possibly mid-question.
+// `locked` includes stale sessionLock.secure and would hide an orphan.
 assert(
-  /root\.strandedLock = exitCode === 0 && !root\.locked && !root\.lockRequested/.test(serviceQml),
+  /root\.strandedLock = exitCode === 0 && !sessionLock\.locked && !root\.lockRequested/.test(serviceQml),
   'a lock this shell took while the check was in flight is not stranded'
 )
 
@@ -58,15 +59,40 @@ assert(
   're-arming never restarts a check that already has its answer'
 )
 
-// A lock this shell owns ends the search.
+// A lock this shell owns ends the search. sessionLock.secure alone is not ours.
 assert(
-  /function checkStrandedLock\(\) \{\s*if \(strandedLockResolved \|\| strandedLockCheckProc\.running\) return[\s\S]*if \(locked \|\| lockRequested\) \{\s*strandedLockResolved = true/.test(serviceQml),
+  /function checkStrandedLock\(\) \{\s*if \(strandedLockResolved \|\| strandedLockCheckProc\.running\) return[\s\S]*if \(sessionLock\.locked \|\| lockRequested\) \{\s*strandedLockResolved = true/.test(serviceQml),
   'a lock this shell took is not treated as stranded'
 )
 
 assert(
-  /function recoverStrandedLock\(\) \{\s*if \(!strandedLock \|\| locked \|\| !passwordPamConfigured\) return/.test(serviceQml),
+  /readonly property bool lockSurfaceOrphaned: sessionSecured && !lockOwned/.test(serviceQml),
+  'an orphan is a compositor-secured session with no surface this client owns'
+)
+
+assert(
+  /function recoverStrandedLock\(\) \{\s*if \(!strandedLock \|\| !passwordPamConfigured\) return/.test(serviceQml),
   'recovery is skipped unless a stranded lock is waiting and PAM can authenticate it'
+)
+
+assert(
+  /function recoverStrandedLock\(\) \{[\s\S]*if \(lockSurfaceOrphaned\) \{\s*restartForOrphanedLock\(\)/.test(serviceQml),
+  'stranded recovery restarts only when the lock surface is an in-process orphan'
+)
+
+assert(
+  /function recoverStrandedLock\(\) \{[\s\S]*if \(sessionLock\.locked\) return/.test(serviceQml),
+  'recovery is skipped when this client already owns a lock surface'
+)
+
+assert(
+  /function requestSessionLock\(\) \{[\s\S]*if \(!lockRequested \|\| sessionLock\.locked\) return/.test(serviceQml),
+  'requesting a lock does not treat sessionLock.secure as proof this client owns it'
+)
+
+assert(
+  /lockSurfaceOrphaned[\s\S]*restartForOrphanedLock\(\)/.test(serviceQml),
+  'a compositor-secured session with no surface restarts instead of setting locked'
 )
 
 // The compositor answer and the PAM config land asynchronously, in either
@@ -83,7 +109,32 @@ assert(
 )
 
 assert(
-  /strandedLock = false\s*\n\s*logEvent\("lock-stranded: recovering"\)\s*\n\s*beginLock\(\)/.test(serviceQml),
-  'recovery takes the lock once and records it in the journal'
+  /logEvent\("lock-stranded: recovering"\)\s*\n\s*beginLock\(\)/.test(serviceQml),
+  'a fresh process takes the stranded compositor lock in-process'
+)
+
+assert(
+  /function restartForOrphanedLock\(\) \{[\s\S]*if \(sessionLock\.locked \|\| !lockSurfaceOrphaned\) return/.test(serviceQml),
+  'a shell restart is reserved for an orphaned lock surface'
+)
+
+assert(
+  /logEvent\("lock-stranded: restarting-for-orphan"\)\s*\n\s*restartShellProc\.running = true/.test(serviceQml),
+  'an in-process orphan restarts the shell instead of beginLock'
+)
+
+assert(
+  /id: restartShellProc[\s\S]*omarchy-restart-shell/.test(serviceQml),
+  'orphan recovery goes through omarchy-restart-shell so relock happens in a new process'
+)
+
+assert(
+  /property bool strandedRestartAttempted/.test(serviceQml),
+  'orphan recovery attempts a shell restart at most once per process'
+)
+
+assert(
+  /id: pendingSessionLockTimer[\s\S]*if \(attempts > 50\)/.test(serviceQml),
+  'a lock that never attaches gives up instead of spinning at 10 Hz'
 )
 JS

@@ -98,10 +98,12 @@ case "$*" in
     printf 'ok\n'
     ;;
   *'lock status')
-    if [[ -f $OMARCHY_TEST_QS_STATE.locked ]]; then
-      printf '{"secure": true, "requested": true}\n'
+    if [[ ${OMARCHY_TEST_LOCK_WEDGED:-0} == 1 && ! -f $OMARCHY_TEST_QS_STATE.locked ]]; then
+      printf '{"secure": true, "requested": true, "sessionLocked": false}\n'
+    elif [[ -f $OMARCHY_TEST_QS_STATE.locked ]]; then
+      printf '{"secure": true, "requested": true, "sessionLocked": true}\n'
     else
-      printf '{"secure": false, "requested": false}\n'
+      printf '{"secure": false, "requested": false, "sessionLocked": false}\n'
     fi
     ;;
 esac
@@ -265,3 +267,33 @@ restart_pid_one=""
 grep -F "ipc -n -p $restart_root/shell call -- lock lock" "$ipc_log" >/dev/null || fail "dead-lock recovery re-acquires the session lock"
 grep -F "ipc -n -p $restart_root/shell call -- lock status" "$ipc_log" >/dev/null || fail "dead-lock recovery waits for the lock to become secure"
 pass "restart recovers a locked session whose lock client died"
+
+# A wedged locker reports secure+requested with no surface. That is the
+# "lockscreen app died" wall, not a live lock — restart must recover it.
+sleep 30 &
+restart_pid_one=$!
+printf '%s\n' "$restart_pid_one" >"$restart_state"
+rm -f "$restart_state.locked"
+: >"$restart_log"
+: >"$ipc_log"
+
+PATH="$restart_bin:$PATH" \
+OMARCHY_PATH="$restart_root" \
+XDG_RUNTIME_DIR="$runtime_dir" \
+OMARCHY_TEST_SESSION_LOCKED=1 \
+OMARCHY_TEST_LOCK_WEDGED=1 \
+OMARCHY_TEST_QS_STATE="$restart_state" \
+OMARCHY_TEST_QS_LOG="$restart_log" \
+OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
+OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
+OMARCHY_TEST_IPC_LOG="$ipc_log" \
+OMARCHY_TEST_SESSION_PATH="$restart_root" \
+  timeout 5 "$ROOT/bin/omarchy-restart-shell" || fail "restart recovers a wedged lock that reports secure without a surface"
+
+if kill -0 "$restart_pid_one" 2>/dev/null; then
+  fail "wedged-lock recovery stops the stale shell instance"
+fi
+wait "$restart_pid_one" 2>/dev/null || true
+restart_pid_one=""
+grep -F "ipc -n -p $restart_root/shell call -- lock lock" "$ipc_log" >/dev/null || fail "wedged-lock recovery re-acquires the session lock"
+pass "restart recovers a wedged lock that reports secure without a surface"
