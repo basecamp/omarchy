@@ -18,6 +18,8 @@ The bar config lives under the `bar:` key of [`~/.config/omarchy/shell.json`](..
 
 The bar is configured directly on the bar itself: drag empty bar space (or click-and-hold) to move the bar to another screen edge, double-left-click empty center-bar space to toggle transparency, and drag widgets to reorder them. The `omarchy bar position`, `omarchy bar transparent`, `omarchy bar move`, and `omarchy bar set` commands do the same from scripts. Enable or disable widgets with `omarchy plugin enable` and `omarchy plugin disable` (widget ids come from `omarchy plugin list`).
 
+`bar.transparent` accepts `false` for an always-solid bar, `true` for an always-transparent bar, or `"dynamic"`. Dynamic mode keeps the bar transparent while the focused workspace is empty or floating-only and makes it solid when the workspace contains a visible tiled window. Set it with `omarchy bar transparent dynamic`; the regular transparency toggle exits dynamic mode to solid.
+
 Example `shell.json` (bar subtree only shown):
 
 ```json

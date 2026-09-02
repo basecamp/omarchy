@@ -158,16 +158,17 @@ Rules:
 1. The active bar option is `bar.id`. Omit it or set it to `omarchy.bar` for
    the built-in bar; set it to a plugin whose manifest declares `kind: "bar"`
    to replace the full bar.
-2. Every plugin instance is one entry — `bar.layout.<section>` for
+2. Set `bar.transparent` to `false` for solid, `true` for transparent, or `"dynamic"` to stay transparent on an empty or floating-only focused workspace and turn solid for a visible tiled client.
+3. Every plugin instance is one entry — `bar.layout.<section>` for
    bar widgets, `plugins[]` for everything else.
-3. Settings are inline on the entry. No `config:` sub-object, no
+4. Settings are inline on the entry. No `config:` sub-object, no
    merge layers.
-4. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …).
-5. Third-party enabled ⇔ present; for full bar options that means `bar.id`.
+5. Built-in bar widget ids are namespaced (`omarchy.clock`, `omarchy.audio`, …).
+6. Third-party enabled ⇔ present; for full bar options that means `bar.id`.
    First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
-6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
-7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
-8. `version: 1` is required.
+7. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
+8. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+9. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user

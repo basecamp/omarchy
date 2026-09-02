@@ -298,6 +298,19 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent toggle
 jq -e '.bar.transparent == false' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config toggles bar transparency"
 
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent dynamic
+jq -e '.bar.transparent == "dynamic"' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "shell config sets dynamic bar transparency"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent toggle
+jq -e '.bar.transparent == false' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar transparency toggle exits dynamic mode"
+
+if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent sometimes 2>/dev/null; then
+  fail "bar transparency accepted an unknown mode"
+fi
+pass "bar transparency rejects unknown modes"
+
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.bluetooth enabled false --json
 grep -Fqx 'shell setBarWidget omarchy.bluetooth enabled false {}' \
   "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls"

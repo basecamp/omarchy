@@ -2,7 +2,7 @@
 
 # omarchy:summary=Configure the bar and its widget layout
 # omarchy:group=bar
-# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false|toggle> | put <id> [placement] | move <id> [placement] | set <id> <key> <value> [--json] [placement]
+# omarchy:args=use <id> | reset | defaults | position <top|bottom|left|right> | transparent <true|false|dynamic|toggle> | put <id> [placement] | move <id> [placement] | set <id> <key> <value> [--json] [placement]
 # omarchy:examples=omarchy bar use local.neon-bar | omarchy bar put omarchy.keyboard-layout --after omarchy.clock | omarchy bar move omarchy.clock --section center --index 0 | omarchy bar set omarchy.clock format HH:mm
 
 set -euo pipefail
@@ -17,7 +17,8 @@ Usage: omarchy bar <command> [args...]
   reset                                Return to the built-in Omarchy bar
   defaults                             Restore the default bar and service widgets
   position <top|bottom|left|right>     Bar position
-  transparent <true|false|toggle>      Bar transparency
+  transparent <true|false|dynamic|toggle>
+                                       Bar transparency
   put <id> [placement]                 Put a widget on the bar, leaving one
                                        that is already there where it is
   move <id> [placement]                Move a widget within or between sections
@@ -208,10 +209,13 @@ cmd_transparent() {
   local transparent="${1:-}"
   [[ -n $transparent ]] || fail "transparent is required"
   (( $# == 1 )) || fail "transparent takes a single value"
-  [[ $transparent =~ ^(true|false|toggle)$ ]] || fail "transparent must be true, false, or toggle"
+  [[ $transparent =~ ^(true|false|dynamic|toggle)$ ]] || fail "transparent must be true, false, dynamic, or toggle"
   if [[ $transparent == "toggle" ]]; then
-    commit "$NORMALIZE | .bar.transparent = (.bar.transparent != true)"
+    commit "$NORMALIZE | .bar.transparent = (if .bar.transparent == true or .bar.transparent == \"dynamic\" then false else true end)"
     echo "Bar transparency toggled"
+  elif [[ $transparent == "dynamic" ]]; then
+    commit "$NORMALIZE | .bar.transparent = \"dynamic\""
+    echo "Bar transparency set to dynamic"
   else
     commit "$NORMALIZE | .bar.transparent = \$transparent" --argjson transparent "$transparent"
     echo "Bar transparency set to $transparent"
