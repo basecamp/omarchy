@@ -41,11 +41,14 @@ fi
 desktop_file=""
 for dir in "${desktop_dirs[@]}"; do
   [[ -d $dir ]] || continue
-  candidate="$(find "$dir" -type f -name "$desktop_file_name" -print -quit 2>/dev/null)"
-  if [[ -n $candidate ]]; then
-    desktop_file="$candidate"
-    break
-  fi
+  while IFS= read -r -d '' candidate; do
+    relative="${candidate#"$dir"/}"
+    candidate_id="${relative//\//-}"
+    if [[ $candidate_id == "$desktop_file_name" || ${candidate##*/} == "$desktop_file_name" ]]; then
+      desktop_file="$candidate"
+      break 2
+    fi
+  done < <(find "$dir" -type f -name '*.desktop' -print0 2>/dev/null)
 done
 
 if [[ -z $desktop_file ]]; then

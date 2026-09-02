@@ -83,7 +83,7 @@ export XDG_DATA_DIRS="$tmp_dir/system"
 "$ROOT/bin/omarchy-remove-launcher-entry" Docker.desktop Docker
 "$ROOT/bin/omarchy-remove-launcher-entry" native.desktop Native
 "$ROOT/bin/omarchy-remove-launcher-entry" aliens.desktop Aliens
-"$ROOT/bin/omarchy-remove-launcher-entry" example.desktop "Example App"
+"$ROOT/bin/omarchy-remove-launcher-entry" wine-Programs-Example\ App-example.desktop "Example App"
 
 mapfile -t lines <"$TEST_LOG"
 
