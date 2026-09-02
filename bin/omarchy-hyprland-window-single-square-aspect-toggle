@@ -1,8 +1,9 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle single-window square aspect ratio.
+# omarchy:summary=Toggle single-window left/right half tile.
+# omarchy:alias=omarchy hyprland window single half tile toggle
 
 case $(omarchy-hyprland-toggle single-window-aspect-ratio) in
-  on) omarchy-notification-send -g  "Enable single-window square aspect ratio" ;;
-  off) omarchy-notification-send -g  "Disable single-window square aspect ratio" ;;
+  on) omarchy-notification-send -g  "Enable single-window half tile" ;;
+  off) omarchy-notification-send -g  "Disable single-window half tile" ;;
 esac

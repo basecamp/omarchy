@@ -36,7 +36,7 @@
 -- https://wiki.hypr.land/Configuring/Basics/Variables/#layout
 -- hl.config({
 --   layout = {
---     -- Avoid overly wide single-window layouts on wide screens.
+--     -- Centered square. Super+Ctrl+Backspace is the left/right half toggle.
 --     single_window_aspect_ratio = { 1, 1 },
 --   },
 -- })

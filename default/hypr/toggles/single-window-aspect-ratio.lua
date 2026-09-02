@@ -1,6 +1,2 @@
--- Avoid overly wide single-window layouts on wide screens.
-hl.config({
-  layout = {
-    single_window_aspect_ratio = { 1, 1 },
-  },
-})
+-- Marker: a lone tiled window occupies the left or right half of the screen.
+-- default.hypr.half-tile applies the layout while this flag is present.
