@@ -14,6 +14,8 @@ Item {
   property int failedAttempts: 0
   property bool inputEnabled: true
   property bool loadBackground: true
+  property bool displayBlanked: false
+  property int focusRequestVersion: 0
   property string passwordText: ""
   property bool syncingPasswordText: false
 
@@ -56,6 +58,17 @@ Item {
     passwordInput.forceActiveFocus()
   }
 
+  function armPasswordFocusRetry() {
+    if (!inputEnabled || authenticatingPassword || displayBlanked) {
+      focusRetry.stop()
+      return
+    }
+
+    focusRetry.remaining = focusRetry.budget
+    Qt.callLater(forcePasswordFocus)
+    focusRetry.restart()
+  }
+
   function clearPassword() {
     passwordTextEdited("")
   }
@@ -68,12 +81,35 @@ Item {
   }
 
   onPasswordTextChanged: syncPasswordText()
-  onInputEnabledChanged: {
-    if (inputEnabled) Qt.callLater(forcePasswordFocus)
-  }
+  onInputEnabledChanged: armPasswordFocusRetry()
+  onAuthenticatingPasswordChanged: armPasswordFocusRetry()
+  onDisplayBlankedChanged: armPasswordFocusRetry()
+  onFocusRequestVersionChanged: armPasswordFocusRetry()
   Component.onCompleted: {
     syncPasswordText()
-    if (inputEnabled) Qt.callLater(forcePasswordFocus)
+    armPasswordFocusRetry()
+  }
+
+  // Cold mapping, resume, a failed PAM attempt, DPMS wake, and output hotplug
+  // can all take focus after the one-shot construction grab. Retry briefly on
+  // each loss or compositor input event. The budget prevents an unfocusable
+  // hotplugged surface from spinning for the lifetime of the lock.
+  Timer {
+    id: focusRetry
+    interval: 100
+    repeat: true
+    readonly property int budget: 50
+    property int remaining: 0
+    onTriggered: {
+      if (!root.inputEnabled || root.authenticatingPassword || root.displayBlanked || passwordInput.activeFocus) {
+        stop()
+        return
+      }
+
+      root.forcePasswordFocus()
+      remaining -= 1
+      if (remaining <= 0) stop()
+    }
   }
 
   // Measures the masked password at full size; passwordDotScale compares this
@@ -158,6 +194,11 @@ Item {
           width: 2
           color: Color.lock.text
           visible: passwordInput.cursorVisible
+        }
+
+        onActiveFocusChanged: {
+          if (activeFocus) focusRetry.stop()
+          else root.armPasswordFocusRetry()
         }
 
         onTextChanged: {

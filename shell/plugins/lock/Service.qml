@@ -15,6 +15,7 @@ Item {
   readonly property string stateHome: home + "/.local/state"
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
+  readonly property string lockOwnerPath: Quickshell.env("XDG_RUNTIME_DIR") + "/omarchy-lock-owner-" + Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE")
 
   property bool lockRequested: false
   property bool pendingSessionLock: false
@@ -23,6 +24,8 @@ Item {
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
   property bool previewVisible: false
+  property bool displayBlanked: false
+  property int focusRequestVersion: 0
   property string enteredPassword: ""
   property string pendingPassword: ""
   property string failureMessage: ""
@@ -33,8 +36,15 @@ Item {
   property string lastEventAt: ""
   property bool strandedLock: false
   property bool strandedLockResolved: false
+  property bool lockOwnerReady: false
+  property string lockOwnerInstance: ""
+  property bool strandedRestartAttempted: false
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
+  // This is the deterministic ownership signal used by the shell reload guard.
+  // `secure` is deliberately excluded: after an in-process lock teardown it
+  // reads through Quickshell's stale process-global session-lock pointer.
+  readonly property bool sessionLockOwned: lockRequested || sessionLock.locked
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
 
   function realScreenCount() {
@@ -74,6 +84,7 @@ Item {
     pendingSessionLock = false
     pendingSessionLockTimer.stop()
     sessionLock.locked = true
+    if (sessionLock.locked) markSessionLockOwner()
   }
 
   // ext-session-lock outlives its client, and a restart carries no lock over, so
@@ -83,7 +94,7 @@ Item {
     if (strandedLockResolved || strandedLockCheckProc.running) return
 
     // A lock this shell took is nobody's orphan.
-    if (locked || lockRequested) {
+    if (sessionLockOwned) {
       strandedLockResolved = true
       return
     }
@@ -92,11 +103,42 @@ Item {
   }
 
   function recoverStrandedLock() {
-    if (!strandedLock || locked || !passwordPamConfigured) return
+    if (!strandedLock || sessionLockOwned || !passwordPamConfigured || !lockOwnerReady) return
+
+    // A replacement service in the same Quickshell process cannot retake the
+    // lock: destroying its predecessor leaves the process-global lock manager
+    // poisoned. A detached restart gives recovery a clean manager and survives
+    // the shell it is replacing. A genuinely fresh shell has a different
+    // instance id and can safely take over the compositor's stranded lock.
+    if (lockOwnerInstance === String(Quickshell.instanceId)) {
+      restartForStrandedLock()
+      return
+    }
 
     strandedLock = false
     logEvent("lock-stranded: recovering")
     beginLock()
+  }
+
+  function restartForStrandedLock() {
+    if (strandedRestartAttempted || sessionLockOwned) return
+
+    strandedRestartAttempted = true
+    strandedLock = false
+    sessionLockStabilizeTimer.stop()
+    pendingSessionLockTimer.stop()
+    logEvent("lock-stranded: restarting-poisoned-shell")
+    Quickshell.execDetached(["omarchy-restart-shell"])
+  }
+
+  function markSessionLockOwner() {
+    lockOwnerInstance = String(Quickshell.instanceId)
+    lockOwnerFile.setText(lockOwnerInstance + "\n")
+  }
+
+  function clearSessionLockOwner() {
+    lockOwnerInstance = ""
+    lockOwnerFile.setText("")
   }
 
   function refreshBackground() {
@@ -155,6 +197,7 @@ Item {
     resetAuthenticationState()
     idleBlankTimer.stop()
     sessionLock.locked = false
+    clearSessionLockOwner()
     logEvent("unlocked")
     runWake()
   }
@@ -165,11 +208,17 @@ Item {
   }
 
   function runWake() {
-    if (!wakeProcess.running) wakeProcess.running = true
+    displayBlanked = false
+    focusRequestVersion += 1
+    // A wake dispatched while the blank is still running can observe a lit
+    // display, no-op, and then lose the race to the pending DPMS off. Let the
+    // blank land first and dispatch the wake from its completion handler.
+    if (!blankProcess.running && !wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    displayBlanked = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -246,6 +295,7 @@ Item {
       root.logEvent("session-locked=" + locked)
 
       if (locked) {
+        root.markSessionLockOwner()
         root.pendingSessionLock = false
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
@@ -277,6 +327,8 @@ Item {
         inputEnabled: root.lockRequested
         loadBackground: root.locked
         passwordText: root.enteredPassword
+        displayBlanked: root.displayBlanked
+        focusRequestVersion: root.focusRequestVersion
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
@@ -396,7 +448,7 @@ Item {
       root.strandedLockResolved = true
 
       // A lock taken while this was in flight is this shell's own.
-      root.strandedLock = exitCode === 0 && !root.locked && !root.lockRequested
+      root.strandedLock = exitCode === 0 && !root.sessionLockOwned
       root.recoverStrandedLock()
     }
   }
@@ -409,6 +461,21 @@ Item {
   Process {
     id: blankProcess
     command: ["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
+    onExited: if (!root.displayBlanked && !wakeProcess.running) wakeProcess.running = true
+  }
+
+  // Keyboard activity still reaches the compositor when no lock surface has
+  // focus. Keep this armed for the whole lock so the first key after DPMS-off
+  // can both wake the display and re-arm the bounded password-focus retry.
+  IdleMonitor {
+    enabled: root.lockRequested
+    timeout: 1
+    respectInhibitors: false
+    onIsIdleChanged: {
+      if (isIdle) return
+      root.focusRequestVersion += 1
+      if (root.displayBlanked) root.runWake()
+    }
   }
 
   Timer {
@@ -468,6 +535,7 @@ Item {
     target: Quickshell
     function onScreensChanged() {
       root.requestSessionLock()
+      if (root.lockRequested) root.focusRequestVersion += 1
 
       // A monitor still coming up has no workspace, so cannot answer yet.
       strandedLockRetryTimer.rearm()
@@ -479,6 +547,24 @@ Item {
     if (!lockRequested) return
     if (authenticatingPassword) idleBlankTimer.stop()
     else armBlankTimer()
+  }
+
+  FileView {
+    id: lockOwnerFile
+    path: root.lockOwnerPath
+    atomicWrites: true
+    blockWrites: true
+    printErrors: false
+    onLoaded: {
+      root.lockOwnerInstance = String(text() || "").trim()
+      root.lockOwnerReady = true
+      root.recoverStrandedLock()
+    }
+    onLoadFailed: {
+      root.lockOwnerInstance = ""
+      root.lockOwnerReady = true
+      root.recoverStrandedLock()
+    }
   }
 
   FileView {
