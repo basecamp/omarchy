@@ -75,6 +75,10 @@ crush)
   fi
   ;;
 claude)
+  if [[ -x ${OMARCHY_PATH:-}/bin/omarchy-agent-account ]]; then
+    claude_dir=$("$OMARCHY_PATH/bin/omarchy-agent-account" dir claude 2>/dev/null || true)
+    [[ -n $claude_dir ]] && export CLAUDE_CONFIG_DIR=$claude_dir
+  fi
   command=(claude --permission-mode auto)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;

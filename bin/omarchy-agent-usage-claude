@@ -37,8 +37,34 @@ USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage"
 PROBE_MIN_INTERVAL_SECONDS = 15
 
 
+def account_pointer_dir() -> Path | None:
+  root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+  index_path = root / "omarchy" / "agent-accounts" / "claude" / "index.json"
+  if not index_path.is_file():
+    return None
+  try:
+    data = json.loads(index_path.read_text())
+  except (OSError, json.JSONDecodeError):
+    return None
+  if not isinstance(data, dict):
+    return None
+  active_id = str(data.get("activeId") or "")
+  for row in data.get("accounts") or []:
+    if isinstance(row, dict) and str(row.get("id") or "") == active_id:
+      path = str(row.get("path") or "")
+      if path:
+        return expand_path(path)
+  return None
+
+
 def config_dir() -> Path:
-  return expand_path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude")
+  pointed = os.environ.get("CLAUDE_CONFIG_DIR")
+  if pointed:
+    return expand_path(pointed)
+  active = account_pointer_dir()
+  if active is not None:
+    return active
+  return expand_path("~/.claude")
 
 
 def expand_path(value: str) -> Path:
