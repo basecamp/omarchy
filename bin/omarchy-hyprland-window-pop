@@ -16,7 +16,9 @@ addr=$(echo "$active" | jq -r ".address")
 window="address:$addr"
 
 fit_defaults_to_work_area() {
-  local monitor_id monitor work_width work_height
+  local monitor_id monitor work_width work_height gaps_css border_size
+  local gap_top=0 gap_right=0 gap_bottom=0 gap_left=0
+  local -a gaps
 
   monitor_id=$(jq -er '.monitor | numbers' <<<"$active" 2>/dev/null) || return
   monitor=$(hyprctl monitors -j 2>/dev/null | jq -cer --argjson id "$monitor_id" 'first(.[] | select(.id == $id)) // empty' 2>/dev/null) || return
@@ -30,6 +32,22 @@ fit_defaults_to_work_area() {
   ' <<<"$monitor" 2>/dev/null)
 
   [[ $work_width =~ ^[0-9]+$ && $work_height =~ ^[0-9]+$ ]] || return
+  (( work_width > 0 && work_height > 0 )) || return
+
+  gaps_css=$(hyprctl -j getoption general:gaps_out 2>/dev/null | jq -er '.css' 2>/dev/null) || gaps_css=0
+  read -ra gaps <<<"$gaps_css"
+  if [[ ${gaps[*]} =~ ^-?[0-9]+(\ +-?[0-9]+){0,3}$ ]]; then
+    case ${#gaps[@]} in
+      1) gap_top=${gaps[0]}; gap_right=${gaps[0]}; gap_bottom=${gaps[0]}; gap_left=${gaps[0]} ;;
+      2) gap_top=${gaps[0]}; gap_right=${gaps[1]}; gap_bottom=${gaps[0]}; gap_left=${gaps[1]} ;;
+      3) gap_top=${gaps[0]}; gap_right=${gaps[1]}; gap_bottom=${gaps[2]}; gap_left=${gaps[1]} ;;
+      4) gap_top=${gaps[0]}; gap_right=${gaps[1]}; gap_bottom=${gaps[2]}; gap_left=${gaps[3]} ;;
+    esac
+  fi
+
+  border_size=$(hyprctl -j getoption general:border_size 2>/dev/null | jq -er '.int | numbers' 2>/dev/null) || border_size=0
+  work_width=$((work_width - gap_left - gap_right - border_size * 2))
+  work_height=$((work_height - gap_top - gap_bottom - border_size * 2))
   (( work_width > 0 && work_height > 0 )) || return
 
   if [[ -z ${1:-} ]] && (( width > work_width )); then

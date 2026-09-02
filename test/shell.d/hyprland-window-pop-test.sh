@@ -18,6 +18,16 @@ if [[ $1 == "monitors" && $2 == "-j" ]]; then
   exit 0
 fi
 
+if [[ $1 == "-j" && $2 == "getoption" && $3 == "general:gaps_out" ]]; then
+  printf '{"css":"10 10 10 10"}\n'
+  exit 0
+fi
+
+if [[ $1 == "-j" && $2 == "getoption" && $3 == "general:border_size" ]]; then
+  printf '{"int":2}\n'
+  exit 0
+fi
+
 if [[ $1 == "dispatch" ]]; then
   printf '%s\n' "$*" >>"$HYPRCTL_LOG"
   exit 0
@@ -42,19 +52,19 @@ assert_resize() {
 }
 
 run_pop '[{"id":0,"width":2880,"height":1800,"scale":2,"transform":0,"reserved":[0,26,0,0]}]'
-assert_resize 1300 874 "pop height fits the active monitor work area"
+assert_resize 1300 850 "pop height fits inside the work area gaps and borders"
 
 run_pop '[{"id":0,"width":3840,"height":2160,"scale":2,"transform":0,"reserved":[0,26,0,0]}]'
 assert_resize 1300 900 "pop keeps its preferred size when the work area is large enough"
 
 run_pop '[{"id":0,"width":2560,"height":1440,"scale":1.6,"transform":3,"reserved":[0,35,0,0]}]'
-assert_resize 900 900 "pop accounts for monitor scale and rotation"
+assert_resize 876 900 "pop accounts for monitor scale, rotation, gaps, and borders"
 
 run_pop '[{"id":0,"width":2880,"height":1800,"scale":2,"transform":0,"reserved":[0,26,0,0]}]' 1500 1000
 assert_resize 1500 1000 "pop preserves explicitly requested dimensions"
 
 run_pop '[{"id":0,"width":2880,"height":1800,"scale":2,"transform":0,"reserved":[0,26,0,0]}]' 1200
-assert_resize 1200 874 "pop fits an omitted height while preserving an explicit width"
+assert_resize 1200 850 "pop fits an omitted height while preserving an explicit width"
 
 run_pop '[]'
 assert_resize 1300 900 "pop retains its defaults when monitor information is unavailable"
