@@ -95,6 +95,7 @@
   "trigger.toggle.top-bar": {"icon":"󰍜","label":"Menu Bar","action":"omarchy-toggle-bar"},
   "trigger.toggle.battery-percentage": {"icon":"󰁹","label":"Battery Percentage","when":"omarchy-hw-laptop","action":"omarchy-shell omarchy.power togglePercentage"},
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
+  "trigger.toggle.workspace-fullwidth-repress": {"icon":"󰖯","label":"Workspace Full Width","checked":"! omarchy-toggle-enabled workspace-fullwidth-repress-off","action":"omarchy-toggle-workspace-fullwidth-repress"},
   "trigger.toggle.window-gaps": {"icon":"","label":"Window Gaps","action":"omarchy-hyprland-window-gaps-toggle"},
   "trigger.toggle.one-window-ratio": {"icon":"","label":"1-Window Ratio","action":"omarchy-hyprland-window-single-square-aspect-toggle"},
   "trigger.tests.network-speedtest": {"icon":"󰓅","label":"Network Speed Test","action":"omarchy-shell shell summon omarchy.speedtest"},

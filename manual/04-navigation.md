@@ -26,6 +26,8 @@ You close a window on `Super + W` or `Super + Q` (and close all windows on `Ctrl
 
 You can also go full screen with `Super + F` or even just full-width (keeping the top bar) with `Super + Alt + F` or full-screen within a window with `Super + Ctrl + F` (good for YouTube!).
 
+Pressing a workspace key a second time does the same full-width toggle: if you're already on workspace 2, `Super + 2` again flips the focused window between full width and tiled. Turn that off under _Trigger > Toggle > Workspace Full Width_ (or `omarchy toggle workspace fullwidth repress`) if you'd rather the key only switch workspaces.
+
 ### Dwindle vs scrolling layout
 
 Omarchy's default layout is called dwindle. It keeps all the windows you open on a single workspace visible at all time, even if it has to shrink them down.
