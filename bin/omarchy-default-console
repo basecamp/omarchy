@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# omarchy:summary=Set what the Quake console runs
+# omarchy:args=[agent|terminal|<command>...]
+# omarchy:examples=omarchy default console | omarchy default console terminal | omarchy default console omarchy-launch-tui btop
+
+console_file="$HOME/.config/omarchy/defaults/console"
+
+if (($# == 0)); then
+  if [[ -f $console_file ]]; then
+    read -r console <"$console_file"
+  fi
+
+  # Silent when unset, the way the default agent is: nothing has been chosen
+  # over the agent the console falls back to, so there is nothing to report.
+  [[ -n ${console:-} ]] && echo "$console"
+  exit 0
+fi
+
+# Two shorthands for what the console is usually pointed at, and anything else
+# is taken as the command to run. A TUI needs a terminal around it to be seen —
+# `omarchy default console omarchy-launch-tui btop` — while a graphical app is
+# its own window and can be named on its own.
+case "$*" in
+agent) console="omarchy-agent"; name="the coding agent" ;;
+terminal) console="omarchy-launch-terminal"; name="a terminal" ;;
+*) console="$*"; name="$*" ;;
+esac
+
+mkdir -p "$(dirname "$console_file")"
+printf '%s\n' "$console" >"$console_file"
+
+omarchy-notification-send "The console now runs $name"

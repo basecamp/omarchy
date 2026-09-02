@@ -59,6 +59,10 @@ No default coding agent set, so there is nothing to run here yet.
 
   Pick one from the menu:  SUPER + SHIFT + CTRL + A
   Or from a terminal:      omarchy default agent <name>
+
+The console can run something else instead:
+
+  omarchy default console terminal
 NOTICE
     )
 
