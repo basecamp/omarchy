@@ -3,8 +3,10 @@
 # omarchy:summary=Toggle to pop-out a tile to stay fixed on a display basis.
 # omarchy:args=[width height x y]
 
-width=${1:-1300}
-height=${2:-900}
+default_width=1300
+default_height=900
+width=${1:-$default_width}
+height=${2:-$default_height}
 x=${3:-}
 y=${4:-}
 
@@ -12,6 +14,32 @@ active=$(hyprctl activewindow -j)
 pinned=$(echo "$active" | jq ".pinned")
 addr=$(echo "$active" | jq -r ".address")
 window="address:$addr"
+
+fit_defaults_to_work_area() {
+  local monitor_id monitor work_width work_height
+
+  monitor_id=$(jq -er '.monitor | numbers' <<<"$active" 2>/dev/null) || return
+  monitor=$(hyprctl monitors -j 2>/dev/null | jq -cer --argjson id "$monitor_id" 'first(.[] | select(.id == $id)) // empty' 2>/dev/null) || return
+
+  read -r work_width work_height < <(jq -r '
+    . as $monitor
+    | ($monitor.reserved // [0, 0, 0, 0]) as $reserved
+    | (if ($monitor.transform % 2) == 1 then $monitor.height else $monitor.width end) / $monitor.scale - $reserved[2] - $reserved[3] as $width
+    | (if ($monitor.transform % 2) == 1 then $monitor.width else $monitor.height end) / $monitor.scale - $reserved[0] - $reserved[1] as $height
+    | "\($width | floor) \($height | floor)"
+  ' <<<"$monitor" 2>/dev/null)
+
+  [[ $work_width =~ ^[0-9]+$ && $work_height =~ ^[0-9]+$ ]] || return
+  (( work_width > 0 && work_height > 0 )) || return
+
+  if [[ -z ${1:-} ]] && (( width > work_width )); then
+    width=$work_width
+  fi
+
+  if [[ -z ${2:-} ]] && (( height > work_height )); then
+    height=$work_height
+  fi
+}
 
 hypr_dispatch() {
   local lua="$1"
@@ -25,6 +53,7 @@ if [[ $pinned == "true" ]]; then
   hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
   hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
 elif [[ -n $addr ]]; then
+  fit_defaults_to_work_area "$@"
   hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
   hypr_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
 
