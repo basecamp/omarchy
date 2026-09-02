@@ -63,6 +63,9 @@ update_env() {
     "OWNED_PATHS=" \
     "OMARCHY_UPDATE_UNATTENDED=${OMARCHY_UPDATE_UNATTENDED:-}" \
     "OMARCHY_UPDATE_INTERACTIVE=${OMARCHY_UPDATE_INTERACTIVE:-}" \
+    "OMARCHY_UPDATE_LOGGED=${OMARCHY_UPDATE_LOGGED:-}" \
+    "OMARCHY_UPDATE_CALLER_TTY0=${OMARCHY_UPDATE_CALLER_TTY0:-}" \
+    "OMARCHY_UPDATE_CALLER_TTY2=${OMARCHY_UPDATE_CALLER_TTY2:-}" \
     "PATH=$stub_bin:$ROOT/bin:$PATH"
 }
 
@@ -143,6 +146,14 @@ fi
 (($(cat "$test_tmp/attempts") == 1)) ||
   fail "an unattended update prompts anyway"
 pass "-y is kept: an unattended update never waits on an answer"
+
+write_conflict_report
+if OMARCHY_UPDATE_LOGGED=1 OMARCHY_UPDATE_CALLER_TTY0=0 OMARCHY_UPDATE_CALLER_TTY2=0 run_on_terminal; then
+  fail "the update logger pseudo-terminal enables a package-conflict prompt"
+fi
+(( $(cat "$test_tmp/attempts") == 1 )) ||
+  fail "a package conflict is retried despite the original caller lacking a terminal"
+pass "the original update caller controls package-conflict prompts"
 
 # The interactive upgrade skips the error capture the handler depends on, so
 # reaching it any other way would lose the report that drives every recovery.

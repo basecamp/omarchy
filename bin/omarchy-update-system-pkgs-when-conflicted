@@ -71,7 +71,7 @@ if grep -q 'unresolvable package conflicts detected' "$errors"; then
   # ask; either way pacman would sit on a prompt nobody answers. An upgrade that
   # isn't running --noconfirm puts its questions on stderr and reads the answers
   # from stdin, so those are the two that have to be a terminal.
-  if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 || ! -t 0 || ! -t 2 ]]; then
+  if ! omarchy-update-can-prompt 0 2; then
     echo -e "\e[33m\nThis upgrade needs an answer. Run omarchy update interactively to give it.\e[0m" >&2
     exit 1
   fi

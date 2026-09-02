@@ -1,10 +1,32 @@
 #!/bin/bash
 
 # omarchy:summary=Add the named packages to the system from the AUR if they're missing. Returns false if it couldn't be done.
-# omarchy:args=<packages...>
+# omarchy:args=[--reinstall] <packages...>
 
-if omarchy-pkg-missing "$@"; then
-  yay -S --noconfirm --needed "$@" || exit 1
+reinstall=false
+if [[ ${1:-} == "--reinstall" ]]; then
+  reinstall=true
+  shift
+fi
+
+(($#)) || {
+  echo "Usage: omarchy-pkg-aur-add [--reinstall] <packages...>" >&2
+  exit 2
+}
+
+if [[ $reinstall == true ]] || omarchy-pkg-missing "$@"; then
+  if ! omarchy-update-can-prompt 0 1; then
+    echo "AUR packages require an interactive PKGBUILD review before installation." >&2
+    echo "Run this command again from a terminal without unattended mode." >&2
+    exit 2
+  fi
+
+  yay_args=(-S)
+  if [[ $reinstall != true ]]; then
+    yay_args+=(--needed)
+  fi
+
+  omarchy-pkg-aur-run-reviewed "${yay_args[@]}" -- "$@" || exit 1
 fi
 
 for pkg in "$@"; do

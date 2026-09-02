@@ -115,6 +115,10 @@ case "$use_dev_packages" in
   *) fail "Invalid OMARCHY_UPGRADE_DEV value '$use_dev_packages'. Use 1/0, true/false, or pass --dev." ;;
 esac
 
+if (( yes )); then
+  export OMARCHY_UPDATE_UNATTENDED=1
+fi
+
 # Land on the Quattro equivalent of wherever the machine already is, unless the
 # caller said otherwise. Stable machines get the production packages off the
 # stable channel. rc and edge machines stay on their own mirror, but take the
@@ -1193,7 +1197,11 @@ run_post_upgrade_migrations() {
   local pending_status
 
   log "Running Omarchy migrations"
-  if ! run_as_user_omarchy OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 omarchy-migrate; then
+  if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 ]]; then
+    if ! run_as_user_omarchy OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 omarchy-migrate; then
+      fail "Omarchy migrations did not complete. Fix the error above and rerun the upgrade before rebooting."
+    fi
+  elif ! run_as_user_omarchy OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 omarchy-migrate </dev/tty; then
     fail "Omarchy migrations did not complete. Fix the error above and rerun the upgrade before rebooting."
   fi
   if run_as_user_omarchy omarchy-migrate --pending >/dev/null; then

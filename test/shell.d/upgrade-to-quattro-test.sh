@@ -92,6 +92,8 @@ fi
 pass "Omarchy 4 upgrade locks the Chromium policy directory to root"
 
 grep -F 'OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1' "$upgrade_to_quattro" >/dev/null
+grep -F 'export OMARCHY_UPDATE_UNATTENDED=1' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 --yes upgrades do not suppress interactive AUR review"
 grep -F 'systemd-networkd.service' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd.socket' "$upgrade_to_quattro" >/dev/null
 grep -F 'systemd-networkd-resolve-hook.socket' "$upgrade_to_quattro" >/dev/null
@@ -105,6 +107,8 @@ function_body() {
 }
 
 migrations_body=$(function_body run_post_upgrade_migrations)
+grep -F 'omarchy-migrate </dev/tty' <<<"$migrations_body" >/dev/null ||
+  fail "an interactive curl-piped Omarchy 4 upgrade cannot recover at the migration review"
 grep -F 'fail "Omarchy migrations did not complete.' <<<"$migrations_body" >/dev/null ||
   fail "Omarchy 4 upgrade fails when a migration cannot complete"
 grep -F 'omarchy-migrate --pending' <<<"$migrations_body" >/dev/null ||
@@ -123,6 +127,7 @@ exercise_post_upgrade_migrations() {
   local stub_migration_status="$1" stub_pending_status="$2"
 
   (
+    export OMARCHY_UPDATE_UNATTENDED=1
     log() { :; }
     fail() { exit 1; }
     run_as_user_omarchy() {

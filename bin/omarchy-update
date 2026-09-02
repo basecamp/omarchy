@@ -8,6 +8,13 @@
 set -e
 
 if [[ -z ${OMARCHY_UPDATE_LOGGED:-} ]]; then
+  export OMARCHY_UPDATE_CALLER_TTY0=0
+  export OMARCHY_UPDATE_CALLER_TTY1=0
+  export OMARCHY_UPDATE_CALLER_TTY2=0
+  [[ ! -t 0 ]] || OMARCHY_UPDATE_CALLER_TTY0=1
+  [[ ! -t 1 ]] || OMARCHY_UPDATE_CALLER_TTY1=1
+  [[ ! -t 2 ]] || OMARCHY_UPDATE_CALLER_TTY2=1
+
   script_command=$(printf '%q ' "$0" "$@")
   exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "/tmp/omarchy-update.log"
 fi

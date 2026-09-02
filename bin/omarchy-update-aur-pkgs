@@ -2,13 +2,55 @@
 
 # omarchy:summary=Update AUR packages if any are installed
 
-if pacman -Qem >/dev/null; then
-  if omarchy-pkg-aur-accessible; then
-    echo -e "\e[32m\nUpdate AUR packages\e[0m"
-    yay -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs
-    echo
-  else
-    echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"
-    echo
-  fi
+set -euo pipefail
+
+pacman -Qem >/dev/null || exit 0
+
+if ! omarchy-pkg-aur-accessible; then
+  echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"
+  echo
+  exit 0
 fi
+
+# Querying available versions does not download or execute PKGBUILDs. yay 13
+# returns 1 with no output when everything is current, so distinguish that
+# normal empty result from a real query error (which writes a diagnostic).
+query_errors=$(mktemp)
+trap 'rm -f "$query_errors"' EXIT
+if aur_updates=$(yay -Qua --color never --ignore gcc14,gcc14-libs 2>"$query_errors"); then
+  query_status=0
+else
+  query_status=$?
+fi
+
+if (( query_status != 0 )); then
+  if (( query_status == 1 )) && [[ -z $aur_updates && ! -s $query_errors ]]; then
+    exit 0
+  fi
+
+  echo -e "\e[33m\nUnable to determine which AUR packages need updates; continuing with the system update.\e[0m" >&2
+  cat "$query_errors" >&2
+  exit 0
+fi
+[[ -n $aur_updates ]] || exit 0
+
+echo -e "\e[32m\nAUR updates available\e[0m"
+printf '%s\n' "$aur_updates"
+
+if ! omarchy-update-can-prompt 0 1; then
+  echo -e "\e[33m\nHolding AUR updates until an interactive PKGBUILD review can be completed.\e[0m"
+  echo "Run 'omarchy update' from a terminal to review and apply them."
+  echo
+  exit 0
+fi
+
+echo -e "\e[32m\nReview and update AUR packages\e[0m"
+
+# Open complete recipes and available diffs in the blocking terminal viewer,
+# then require pacman's final confirmation. A declined confirmation or broken
+# AUR build is reported but remains optional to the trusted system update.
+if ! omarchy-pkg-aur-run-reviewed \
+  -Sua --cleanafter --ignore gcc14,gcc14-libs --; then
+  echo -e "\e[33m\nAUR packages were not updated. Continuing with the system update.\e[0m" >&2
+fi
+echo

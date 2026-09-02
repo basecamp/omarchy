@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Review complete AUR build files in a blocking terminal pager
+# omarchy:args=<build-files...>
+# omarchy:hidden=true
+
+# Ignore user pager flags such as -F that can make short files exit immediately.
+unset LESS
+if (($#)); then
+  exec /usr/bin/less -R -+F -+E -+e -- "$@"
+else
+  exec /usr/bin/less -R -+F -+E -+e
+fi

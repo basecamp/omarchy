@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# omarchy:summary=Check whether an update may prompt on the requested file descriptors
+# omarchy:args=<file-descriptors...>
+# omarchy:hidden=true
+
+(($#)) || {
+  echo "Usage: omarchy-update-can-prompt <file-descriptors...>" >&2
+  exit 2
+}
+
+[[ ${OMARCHY_UPDATE_UNATTENDED:-} != 1 ]] || exit 1
+
+for fd in "$@"; do
+  [[ $fd =~ ^[012]$ ]] || {
+    echo "Unsupported prompt file descriptor: $fd" >&2
+    exit 2
+  }
+
+  caller_tty="OMARCHY_UPDATE_CALLER_TTY$fd"
+  # Older update wrappers set the logged marker but did not capture the caller
+  # descriptors. Let a live terminal carry that one self-update transition.
+  if [[ ${OMARCHY_UPDATE_LOGGED:-} == 1 && -v $caller_tty ]]; then
+    [[ ${!caller_tty} == 1 ]] || exit 1
+  else
+    [[ -t $fd ]] || exit 1
+  fi
+done

@@ -127,6 +127,7 @@ New migration format:
 - Use `$OMARCHY_PATH` to reference the Omarchy directory.
 - Be idempotent. Check existing state before changing it.
 - Migrations are strictly ordered and synchronous. A migration that cannot finish must exit non-zero, remain pending, and stop the queue; never mark later migrations complete against state an earlier migration has not established.
+- Exit `75` only when a migration is safely deferred pending interactive input or another temporary condition. Never convert an arbitrary child-command failure to `75`: classify the expected temporary status explicitly and propagate every other failure. The migrator leaves its marker absent, stops the ordered queue, and lets the surrounding update continue. Other non-zero statuses fail the update.
 - Use helper commands such as `omarchy-cmd-present`, `omarchy-cmd-missing`,
   `omarchy-pkg-add`, `omarchy-pkg-drop`, `omarchy-pkg-present`, and
   `omarchy-pkg-missing` when appropriate.

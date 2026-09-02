@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# omarchy:summary=Run a yay AUR transaction with Omarchy's blocking review policy
+# omarchy:args=<yay-arguments...> -- [packages...]
+# omarchy:hidden=true
+
+yay_args=()
+targets=()
+separator_found=false
+
+while (($#)); do
+  if [[ $1 == "--" ]]; then
+    separator_found=true
+    shift
+    targets=("$@")
+    break
+  fi
+  yay_args+=("$1")
+  shift
+done
+
+[[ $separator_found == true ]] || {
+  echo "Usage: omarchy-pkg-aur-run-reviewed <yay-arguments...> -- [packages...]" >&2
+  exit 2
+}
+
+omarchy-update-can-prompt 0 1 || exit 2
+
+reviewer="$OMARCHY_PATH/bin/omarchy-pkg-aur-review"
+printf -v reviewer_command '%q' "$reviewer"
+
+review_args=(
+  --aur --confirm
+  --diffmenu --answerdiff All
+  --editmenu --answeredit All --editor "$reviewer"
+)
+
+# GIT_PAGER owns git's diff display; PAGER covers yay's own pager. The editor
+# override owns full-file display. All three block in the same terminal pager.
+PAGER="$reviewer_command" GIT_PAGER="$reviewer_command" \
+  yay "${yay_args[@]}" "${review_args[@]}" -- "${targets[@]}"
