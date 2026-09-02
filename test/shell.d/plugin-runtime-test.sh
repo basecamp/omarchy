@@ -56,6 +56,12 @@ grep -F 'model: PluginManager.barSurfaces' "$runtime_root/shell/SecurePluginHost
   fail "secure bar surfaces do not consume the typed role model"
 grep -F 'property var barEntries: []' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure bar surfaces do not expose a reactive plain-array layout projection"
+if ! perl -0ne 'exit(/function\s+configureBar\(target, manifest\).*?var\s+configuredBarId\s*=\s*shell\.activeBarId.*?shell\.securePluginHost\s*!==\s*null.*?configuredBarId\s*!==\s*shell\.defaultBarId.*?!\("securePluginHost"\s+in\s+target\).*?shell\.failedBarId\s*=\s*configuredBarId.*?return.*?shell\.bar\s*=\s*target/s ? 0 : 1)' \
+  "$ROOT/shell/shell.qml"; then
+  fail "schema-v2 activation does not reject an incompatible custom bar before publication"
+fi
+grep -F 'does not support sandboxed schema-v2 plugins; using ' "$ROOT/shell/shell.qml" >/dev/null ||
+  fail "incompatible custom-bar fallback is not explained to the session log"
 grep -F 'next.push({ id: entry.surfaceKey, section: entry.defaultSection })' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure bar layout projection does not preserve its typed id and section"
 ! grep -F 'barEntriesForScreen' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||

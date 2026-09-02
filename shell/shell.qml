@@ -216,6 +216,16 @@ ShellRoot {
 
   function configureBar(target, manifest) {
     if (!target) return
+    var configuredBarId = shell.activeBarId
+    if (shell.securePluginHost !== null
+        && configuredBarId !== shell.defaultBarId
+        && !("securePluginHost" in target)) {
+      console.warn("bar option " + configuredBarId
+        + " does not support sandboxed schema-v2 plugins; using "
+        + shell.defaultBarId + " for this session")
+      shell.failedBarId = configuredBarId
+      return
+    }
     if ("omarchyPath" in target) target.omarchyPath = shell.omarchyPath
     if ("shell" in target) target.shell = shell
     if ("manifest" in target) target.manifest = manifest
