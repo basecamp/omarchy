@@ -22,6 +22,13 @@ exit 1
 EOF
 chmod +x "$BIN_DIR/pactl"
 
+# Mock unlocked session by default
+cat >"$BIN_DIR/omarchy-hyprland-session-locked" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+chmod +x "$BIN_DIR/omarchy-hyprland-session-locked"
+
 # 1. Active playback claims stay-awake
 HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
   "$ROOT/bin/omarchy-audio-inhibit" --once
@@ -34,16 +41,26 @@ pass "audio inhibitor claims stay-awake when audio is playing"
   fail "audio inhibitor writes an ownership token"
 pass "audio inhibitor writes an ownership token"
 
+# 2. User explicitly removes stay-awake while audio is playing
+rm -f "$stay_awake_file"
+
+HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
+  "$ROOT/bin/omarchy-audio-inhibit" --once
+
+[[ ! -f $stay_awake_file ]] ||
+  fail "audio inhibitor does not re-assert stay-awake when user explicitly dismissed it"
+pass "audio inhibitor does not re-assert stay-awake when user explicitly dismissed it"
+
 status=$(HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
   "$ROOT/bin/omarchy-audio-inhibit" --status)
-[[ $status == "playing" ]] || fail "audio inhibitor --status reports playing during playback"
-pass "audio inhibitor --status reports playing during playback"
+[[ $status == *"suppressed"* ]] || fail "audio inhibitor status reflects user suppression"
+pass "audio inhibitor status reflects user suppression"
 
-# 2. Corked/paused playback releases owned stay-awake
+# 3. Audio stops completely -> resets suppression
 cat >"$BIN_DIR/pactl" <<'EOF'
 #!/bin/bash
 if [[ $1 == "--format=json" && $2 == "list" && $3 == "sink-inputs" ]]; then
-  echo '[{"index":1,"corked":true,"mute":false,"name":"Firefox"}]'
+  echo '[]'
   exit 0
 fi
 exit 1
@@ -52,17 +69,57 @@ EOF
 HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
   "$ROOT/bin/omarchy-audio-inhibit" --once
 
-[[ ! -f $stay_awake_file ]] || fail "audio inhibitor releases stay-awake when audio pauses"
-pass "audio inhibitor releases stay-awake when audio pauses"
+[[ ! -f "$TEST_RUNTIME/omarchy-audio-inhibit/suppressed" ]] ||
+  fail "stopping audio resets playback session suppression"
+pass "stopping audio resets playback session suppression"
 
-status=$(HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
-  "$ROOT/bin/omarchy-audio-inhibit" --status)
-[[ $status == "idle" ]] || fail "audio inhibitor --status reports idle when audio is paused"
-pass "audio inhibitor --status reports idle when audio is paused"
+# 4. Starting a new audio playback session re-engages stay-awake
+cat >"$BIN_DIR/pactl" <<'EOF'
+#!/bin/bash
+if [[ $1 == "--format=json" && $2 == "list" && $3 == "sink-inputs" ]]; then
+  echo '[{"index":2,"corked":false,"mute":false,"name":"Spotify"}]'
+  exit 0
+fi
+exit 1
+EOF
 
-# 3. User-owned stay-awake is preserved when audio stops
+HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
+  "$ROOT/bin/omarchy-audio-inhibit" --once
+
+[[ -f $stay_awake_file ]] ||
+  fail "new audio playback session re-claims stay-awake automatically"
+pass "new audio playback session re-claims stay-awake automatically"
+
+# 5. Session lock releases stay-awake to allow display sleep
+cat >"$BIN_DIR/omarchy-hyprland-session-locked" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+
+HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
+  "$ROOT/bin/omarchy-audio-inhibit" --once
+
+[[ ! -f $stay_awake_file ]] ||
+  fail "audio inhibitor releases stay-awake while session is locked"
+pass "audio inhibitor releases stay-awake while session is locked"
+
+# 6. User-owned stay-awake is preserved when audio stops
+cat >"$BIN_DIR/omarchy-hyprland-session-locked" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+
 mkdir -p "$TEST_HOME/.local/state/omarchy/indicators"
 echo "user-choice" >"$stay_awake_file"
+
+cat >"$BIN_DIR/pactl" <<'EOF'
+#!/bin/bash
+if [[ $1 == "--format=json" && $2 == "list" && $3 == "sink-inputs" ]]; then
+  echo '[]'
+  exit 0
+fi
+exit 1
+EOF
 
 HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
   "$ROOT/bin/omarchy-audio-inhibit" --once

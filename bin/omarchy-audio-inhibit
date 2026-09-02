@@ -9,6 +9,7 @@ export LC_ALL=C
 
 RUNTIME_STATE_DIR="${XDG_RUNTIME_DIR:-/tmp/omarchy-$UID}/omarchy-audio-inhibit"
 OWNER_FILE="$RUNTIME_STATE_DIR/owner"
+SUPPRESSED_FILE="$RUNTIME_STATE_DIR/suppressed"
 IDLE_STATE_DIR="$HOME/.local/state/omarchy/indicators"
 IDLE_STATE_FILE="$IDLE_STATE_DIR/stay-awake"
 
@@ -17,6 +18,10 @@ audio_is_playing() {
   streams=$(pactl --format=json list sink-inputs 2>/dev/null) || return 1
   jq -e 'any(.[]; (.corked == false) and (.mute == false))' \
     <<<"$streams" >/dev/null 2>&1
+}
+
+session_is_locked() {
+  omarchy-cmd-present omarchy-hyprland-session-locked && omarchy-hyprland-session-locked
 }
 
 owns_idle_state() {
@@ -29,8 +34,29 @@ owns_idle_state() {
   [[ -n $owner && $state_owner == "$owner" ]]
 }
 
+detect_user_dismissal() {
+  # If we previously claimed stay-awake but the indicator file was removed
+  # or modified, the user explicitly dismissed it for this playback session.
+  if [[ -f $OWNER_FILE ]] && ! owns_idle_state; then
+    mkdir -p "$RUNTIME_STATE_DIR"
+    touch "$SUPPRESSED_FILE"
+    rm -f "$OWNER_FILE"
+  fi
+}
+
 claim_stay_awake() {
   local owner=""
+
+  detect_user_dismissal
+
+  # Do not re-claim if user suppressed stay-awake for this playback session,
+  # or if the session is currently locked.
+  if [[ -f $SUPPRESSED_FILE ]] || session_is_locked; then
+    if owns_idle_state; then
+      rm -f "$IDLE_STATE_FILE"
+    fi
+    return 0
+  fi
 
   if owns_idle_state; then
     return 0
@@ -56,6 +82,9 @@ release_stay_awake() {
   fi
 
   rm -f "$OWNER_FILE"
+  # Reset suppression once playback has ended so the next media session
+  # automatically gets sleep protection again.
+  rm -f "$SUPPRESSED_FILE"
   rmdir "$RUNTIME_STATE_DIR" 2>/dev/null || true
 }
 
@@ -70,7 +99,11 @@ reconcile_audio_state() {
 case "${1:-}" in
   --status)
     if audio_is_playing; then
-      echo "playing"
+      if [[ -f $SUPPRESSED_FILE ]]; then
+        echo "playing (suppressed by user)"
+      else
+        echo "playing"
+      fi
     else
       echo "idle"
     fi
