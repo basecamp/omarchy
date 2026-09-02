@@ -31,6 +31,8 @@ grep -Fq 'echo 1 > /sys/bus/pci/rescan' "$tb_hook" ||
   fail "the Thunderbolt sleep hook re-enumerates the controllers after resume"
 grep -Fq 'BRIDGE_CONTROL' "$tb_hook" ||
   fail "the Thunderbolt sleep hook resets childless downstream ports for the xHCI"
+grep -Fq '(( count < previous )) && count=$previous' "$tb_hook" ||
+  fail "the Thunderbolt sleep hook keeps the controller count across back-to-back suspends"
 pass "fresh T2 setup uses t2bce-compatible suspend, fan, and Touch Bar defaults"
 
 test_tmp=$(mktemp -d)

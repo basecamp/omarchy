@@ -53,6 +53,12 @@ case $1 in
     for dev in $(tb_upstream_bridges); do
       echo 1 > "$dev/remove" && count=$((count + 1))
     done
+    # A controller the last resume's rescan has not brought back yet is still
+    # one to bring back. A suspend inside that window must not lower the count
+    # the next resume works from, or the controllers stay off the bus for good.
+    previous=$(cat "$state" 2>/dev/null)
+    [[ $previous =~ ^[0-9]+$ ]] || previous=0
+    (( count < previous )) && count=$previous
     echo "$count" > "$state"
     ;;
   post)
