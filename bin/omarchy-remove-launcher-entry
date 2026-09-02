@@ -40,8 +40,9 @@ fi
 
 desktop_file=""
 for dir in "${desktop_dirs[@]}"; do
-  candidate="$dir/$desktop_file_name"
-  if [[ -f $candidate ]]; then
+  [[ -d $dir ]] || continue
+  candidate="$(find "$dir" -type f -name "$desktop_file_name" -print -quit 2>/dev/null)"
+  if [[ -n $candidate ]]; then
     desktop_file="$candidate"
     break
   fi
@@ -57,7 +58,7 @@ is_user_desktop_file() {
 
   desktop_dir="${desktop_file%/*}"
   for dir in "${user_desktop_dirs[@]}"; do
-    [[ $desktop_dir == $dir ]] && return 0
+    [[ $desktop_dir == "$dir" || $desktop_dir == "$dir"/* ]] && return 0
   done
 
   return 1
