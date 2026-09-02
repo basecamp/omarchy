@@ -78,8 +78,7 @@ QtObject {
       }
     }
     // Every entry point must be a relative path inside the plugin's source
-    // directory. Reject the whole manifest if anything looks like an attempt
-    // to escape the plugin's sandbox.
+    // directory. Reject the whole manifest if an entry point escapes it.
     for (var key in manifest.entryPoints) {
       if (!isSafeEntryPoint(manifest.entryPoints[key])) {
         console.warn("PluginRegistry: unsafe entryPoint '" + key + "'='"

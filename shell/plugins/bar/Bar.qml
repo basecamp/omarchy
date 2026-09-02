@@ -232,10 +232,16 @@ Item {
     if (pluginBarApis[key]) return pluginBarApis[key]
 
     var pluginShell = null
-    if (registered && root.shell && typeof root.shell.pluginShellForId === "function")
+    if (registered && root.shell && typeof root.shell.pluginShellForId === "function") {
+      // Only the trusted built-in bar receives ShellRoot and can request a
+      // service-capable facade for the widget it is instantiating.
       pluginShell = root.shell.pluginShellForId(moduleName)
-    else if (!registered && root.shell && typeof root.shell.pluginShellForBarEntry === "function")
+    } else if (root.shell && typeof root.shell.pluginShellForBarEntry === "function") {
+      // Replacement bars receive a service-less entry facade. Giving an
+      // untrusted bar a generic facade factory would let it retrieve another
+      // third-party plugin's live service object.
       pluginShell = root.shell.pluginShellForBarEntry(key, moduleName)
+    }
 
     var api = pluginBarApiComponent.createObject(null, {
       pluginId: key,

@@ -5,9 +5,8 @@ import QtQuick
 // The callbacks are closed over one plugin id by shell.qml. A plugin can call
 // them directly, but it cannot widen their scope: ordinary plugins are limited
 // to their own id, and full-bar callbacks independently enforce their explicit
-// non-authentication UI scope. Keeping the host shell out of this object's
-// properties also prevents ordinary QML object traversal from turning the
-// facade back into the root ShellRoot.
+// non-authentication UI scope. This object avoids directly injecting the host
+// shell, but it is not a QML sandbox: visual plugins share the host object tree.
 QtObject {
   id: api
 
@@ -19,7 +18,6 @@ QtObject {
 
   property var _serviceLookup: null
   property var _firstPartyServiceLookup: null
-  property var _pluginShellLookup: null
   property var _barEntryShellLookup: null
   property var _summon: null
   property var _hide: null
@@ -37,10 +35,6 @@ QtObject {
   function firstPartyServiceFor(id) {
     return _firstPartyServiceLookup
       ? _firstPartyServiceLookup(String(id || "")) : null
-  }
-
-  function pluginShellForId(id) {
-    return _pluginShellLookup ? _pluginShellLookup(String(id || "")) : null
   }
 
   function pluginShellForBarEntry(ownerId, moduleName) {

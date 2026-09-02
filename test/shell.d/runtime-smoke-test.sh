@@ -112,6 +112,85 @@ Item {
 }
 QML
 
+# A replacement bar must not receive a generic factory for another plugin's
+# live service, and its barConfig must be a detached snapshot on both initial
+# injection and later host-config updates.
+victim_service_id="acme.victim-service"
+victim_service_dir="$test_home/.config/omarchy/plugins/$victim_service_id"
+mkdir -p "$victim_service_dir"
+cat >"$victim_service_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$victim_service_id",
+  "name": "Victim Service",
+  "version": "1.0.0",
+  "kinds": ["service"],
+  "entryPoints": {"service": "Service.qml"}
+}
+JSON
+cat >"$victim_service_dir/Service.qml" <<'QML'
+import QtQuick
+
+Item {
+  property string privateValue: "victim-secret"
+}
+QML
+
+review_bar_id="acme.review-bar"
+review_bar_dir="$test_home/.config/omarchy/plugins/$review_bar_id"
+mkdir -p "$review_bar_dir"
+cat >"$review_bar_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$review_bar_id",
+  "name": "Review Bar",
+  "version": "1.0.0",
+  "kinds": ["bar"],
+  "entryPoints": {"bar": "Bar.qml"}
+}
+JSON
+cat >"$review_bar_dir/Bar.qml" <<'QML'
+import QtQuick
+import Quickshell.Io
+
+Item {
+  id: root
+
+  property var shell: null
+  property var barConfig: ({})
+
+  IpcHandler {
+    target: "acme-review-bar"
+
+    function probeVictim(): string {
+      var genericFactory = root.shell
+        && typeof root.shell.pluginShellForId === "function"
+      var entryFacade = root.shell
+        && typeof root.shell.pluginShellForBarEntry === "function"
+        ? root.shell.pluginShellForBarEntry("probe", "acme.victim-service") : null
+      var victim = entryFacade && typeof entryFacade.serviceFor === "function"
+        ? entryFacade.serviceFor("acme.victim-service") : null
+      return JSON.stringify({
+        genericFactory: !!genericFactory,
+        entryFacade: !!entryFacade,
+        victimServiceReachable: !!victim
+      })
+    }
+
+    function snapshot(): string {
+      return JSON.stringify(root.barConfig || {})
+    }
+
+    function mutateSnapshot(): string {
+      if (root.barConfig && root.barConfig.layout
+          && root.barConfig.layout.left && root.barConfig.layout.left.length > 0)
+        root.barConfig.layout.left[0].id = "tampered.by.review-bar"
+      return snapshot()
+    }
+  }
+}
+QML
+
 cat >"$stub_bin/omarchy-update-available" <<'SH'
 #!/bin/bash
 echo "Omarchy update available (test)"
@@ -434,3 +513,57 @@ jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.keyboard-layout")' \
   <<<"$(shell_ipc shell listShellConfig)" >/dev/null ||
   fail_with_log "bar put added a second copy of a widget already on the bar"
 pass "bar put leaves a widget already on the bar alone"
+
+# Run the replacement-bar probes last: switching bar loaders can transiently
+# leave bar-aware panels without a visual host, which should not add noise to
+# the default-bar assertions above.
+[[ $(shell_ipc shell setPluginEnabled "$victim_service_id" true) == "ok" ]] ||
+  fail_with_log "victim service fixture could not be enabled"
+[[ $(shell_ipc shell enablePlugin "$review_bar_id" '{}') == "ok" ]] ||
+  fail_with_log "replacement-bar fixture could not be enabled"
+
+review_probe=""
+for _ in {1..80}; do
+  review_probe=$(shell_ipc acme-review-bar probeVictim 2>/dev/null || true)
+  if jq -e '.genericFactory == false and .entryFacade == false and .victimServiceReachable == false' \
+    <<<"$review_probe" >/dev/null 2>&1; then
+    break
+  fi
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while loading the replacement-bar fixture"
+  fi
+  sleep 0.1
+done
+jq -e '.genericFactory == false and .entryFacade == false and .victimServiceReachable == false' \
+  <<<"$review_probe" >/dev/null || {
+  printf 'Replacement-bar service probe: %s\n' "$review_probe" >&2
+  fail_with_log "replacement bar cannot recover another plugin's live service"
+}
+
+bar_config_before=$(shell_ipc shell listShellConfig | jq -c '.bar')
+shell_ipc acme-review-bar mutateSnapshot >/dev/null
+bar_config_after=$(shell_ipc shell listShellConfig | jq -c '.bar')
+[[ $bar_config_after == "$bar_config_before" ]] ||
+  fail_with_log "replacement bar mutated the initially injected host configuration"
+
+[[ $(shell_ipc shell setBarWidget omarchy.clock format '"HH:mm:ss"' '{}') == "ok" ]] ||
+  fail_with_log "host bar configuration could not be updated for snapshot testing"
+updated_snapshot=""
+for _ in {1..80}; do
+  updated_snapshot=$(shell_ipc acme-review-bar snapshot 2>/dev/null || true)
+  if jq -e 'any(.layout.center[]; (.id // .) == "omarchy.clock" and .format == "HH:mm:ss")' \
+    <<<"$updated_snapshot" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+jq -e 'any(.layout.center[]; (.id // .) == "omarchy.clock" and .format == "HH:mm:ss")' \
+  <<<"$updated_snapshot" >/dev/null ||
+  fail_with_log "replacement bar did not receive the refreshed configuration snapshot"
+bar_config_before=$(shell_ipc shell listShellConfig | jq -c '.bar')
+shell_ipc acme-review-bar mutateSnapshot >/dev/null
+bar_config_after=$(shell_ipc shell listShellConfig | jq -c '.bar')
+[[ $bar_config_after == "$bar_config_before" ]] ||
+  fail_with_log "replacement bar mutated a refreshed host configuration"
+
+pass "replacement-bar service and configuration boundaries hold at runtime"

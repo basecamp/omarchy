@@ -78,6 +78,7 @@ ShellRoot {
       authStoreOwnerUpdatesManifest: root.ownService.manifest
         && root.ownService.manifest.version === "kept",
       authStoreImportIsolated: authStoreReader.has("omarchy.lock") === false,
+      noGenericPluginShellFactory: typeof api.pluginShellForId !== "function",
       calls: root.calls
     }
     result.ok = Object.keys(result).every(function(key) {

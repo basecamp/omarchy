@@ -114,7 +114,10 @@ ShellRoot {
   }
 
   readonly property var barConfig: shellConfig && Util.isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
-  onBarConfigChanged: if (bar && "barConfig" in bar) bar.barConfig = shell.barConfig
+  onBarConfigChanged: {
+    if (bar && "barConfig" in bar)
+      bar.barConfig = shell.barConfigFor(shell.activeBarManifest)
+  }
   FileView {
     id: defaultsFile
     path: shell.defaultsPath
@@ -219,7 +222,7 @@ ShellRoot {
     if ("manifest" in target) target.manifest = shell.publicPluginManifest(manifest)
     if ("barWidgetRegistry" in target) target.barWidgetRegistry = shell.pluginBarWidgetRegistryFor(manifest)
     if ("pluginRegistry" in target) target.pluginRegistry = shell.pluginRegistryFor(manifest)
-    if ("barConfig" in target) target.barConfig = shell.barConfig
+    if ("barConfig" in target) target.barConfig = shell.barConfigFor(manifest)
     shell.bar = target
   }
 
@@ -321,6 +324,11 @@ ShellRoot {
 
   function publicBarConfig() {
     return JSON.parse(JSON.stringify(shell.barConfig || {}))
+  }
+
+  function barConfigFor(manifest) {
+    return !manifest || manifest.__isFirstParty
+      ? shell.barConfig : shell.publicBarConfig()
   }
 
   function publicBarWidgetSnapshot() {
@@ -513,9 +521,6 @@ ShellRoot {
       _firstPartyServiceLookup: function(requestedId) {
         return barCapabilities ? (firstPartyServices[requestedId] || null) : null
       },
-      _pluginShellLookup: function(requestedId) {
-        return barCapabilities ? shell.scopedPluginShellForId(requestedId) : null
-      },
       _barEntryShellLookup: function(ownerId, moduleName) {
         return barCapabilities
           ? shell.pluginShellForBarEntry(cacheKey + ":" + ownerId, moduleName) : null
@@ -575,11 +580,34 @@ ShellRoot {
     var owner = String(ownerId || "")
     var target = String(moduleName || "")
     if (!owner || !target) return null
+    if (!shell.barEntryConfigured(target)) return null
     var cacheKey = owner + "::" + target
     if (_pluginBarEntryShellApis[cacheKey]) return _pluginBarEntryShellApis[cacheKey]
+
+    function owns(requestedId) {
+      return shell.pluginRegistry.resolveEnabledId(String(requestedId || ""))
+        === shell.pluginRegistry.resolveEnabledId(target)
+    }
+
     var api = pluginShellApiComponent.createObject(null, {
       pluginId: target,
       barConfig: shell.publicBarConfig(),
+      _summon: function(requestedId, payloadJson) {
+        return owns(requestedId)
+          ? shell.summon(shell.pluginRegistry.resolveEnabledId(target), payloadJson) : false
+      },
+      _hide: function(requestedId) {
+        return owns(requestedId)
+          ? shell.hide(shell.pluginRegistry.resolveEnabledId(target)) : false
+      },
+      _toggle: function(requestedId, payloadJson) {
+        return owns(requestedId)
+          ? shell.toggle(shell.pluginRegistry.resolveEnabledId(target), payloadJson) : false
+      },
+      _isOpen: function(requestedId) {
+        return owns(requestedId)
+          ? shell.isPluginOpen(shell.pluginRegistry.resolveEnabledId(target)) : false
+      },
       _updateSettings: function(requestedId, settings) {
         return String(requestedId || "") === target
           ? shell.updateEntryInline(target, settings) : false

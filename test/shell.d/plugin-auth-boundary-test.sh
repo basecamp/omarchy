@@ -20,6 +20,7 @@ trap cleanup EXIT
 
 shell_qml="$ROOT/shell/shell.qml"
 bar_qml="$ROOT/shell/plugins/bar/Bar.qml"
+plugin_shell_api="$ROOT/shell/services/PluginShellApi.qml"
 
 # Normalize horizontal and vertical whitespace so the wiring assertions survive
 # harmless QML reflow. The runtime fixture below behaviorally covers
@@ -49,6 +50,19 @@ qml_matches "$shell_qml" 'item\.shell *= *shell\.pluginShellFor\( *panelEntry\.m
 qml_matches "$shell_qml" 'target\.shell *= *shell\.pluginShellFor\( *manifest *\)' ||
   fail "full-bar plugins receive a scoped shell facade"
 pass "third-party entry points receive scoped shell facades"
+
+if qml_matches "$plugin_shell_api" 'function +pluginShellForId\('; then
+  fail "replacement-bar facade exposes a generic plugin-shell factory"
+fi
+qml_matches "$bar_qml" 'else if *\( *root\.shell *&& *typeof root\.shell\.pluginShellForBarEntry *=== *"function" *\) *\{[^}]*pluginShell *= *root\.shell\.pluginShellForBarEntry\( *key, *moduleName *\)' ||
+  fail "replacement bars do not fall back to a service-less entry facade"
+pass "replacement bars cannot manufacture another plugin's service facade"
+
+qml_matches "$shell_qml" 'target\.barConfig *= *shell\.barConfigFor\( *manifest *\)' ||
+  fail "initial replacement-bar configuration is not detached"
+qml_matches "$shell_qml" 'bar\.barConfig *= *shell\.barConfigFor\( *shell\.activeBarManifest *\)' ||
+  fail "replacement-bar configuration updates are not detached"
+pass "replacement bars receive detached configuration snapshots"
 
 qml_matches "$bar_qml" 'target\.bar *= *firstParty *\? *root *: *root\.pluginBarApiFor\( *pluginApiId, *moduleName, *registered *\)' ||
   fail "third-party widgets receive a bar facade instead of the host bar"

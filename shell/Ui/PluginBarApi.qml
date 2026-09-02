@@ -2,7 +2,8 @@ import QtQuick
 
 // Bar surface exposed to an installed third-party widget. Scalar presentation
 // state is mirrored by Bar.qml and operations are delegated through scoped
-// callbacks, so the actual Bar (and its root-shell property) is never retained.
+// callbacks. The facade avoids direct host-Bar injection; it cannot isolate a
+// visual child from the parent hierarchy of the QML scene that renders it.
 QtObject {
   id: api
 
