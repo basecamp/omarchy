@@ -421,6 +421,10 @@ run_remove() {
 rm -f "$remove_home/.local/bin/hermes"
 : >"$mise_log"
 run_remove || fail "--remove succeeds when there is nothing to remove"
+# No stub means no proof the mise environment -- if one even exists -- is
+# Omarchy's, so nothing may reach mise at all.
+tr '\0' '\n' <"$mise_log" | grep -Eq '^(rm|uninstall)$' &&
+  fail "--remove leaves mise alone when nothing proves ownership"
 pass "--remove is idempotent when no Hermes CLI is present"
 
 printf '%s\n' "#!/bin/bash" "$stub_marker" >"$remove_home/.local/bin/hermes"
@@ -436,9 +440,14 @@ foreign_remove_body="#!/bin/bash
 exec /usr/local/bin/my-own-hermes \"\$@\""
 printf '%s\n' "$foreign_remove_body" >"$remove_home/.local/bin/hermes"
 chmod +x "$remove_home/.local/bin/hermes"
-run_remove || fail "--remove succeeds with a foreign hermes present"
+: >"$mise_log"
+OMARCHY_TEST_MISE_WHERE_OK=1 run_remove || fail "--remove succeeds with a foreign hermes present"
 [[ -f $remove_home/.local/bin/hermes && $(cat "$remove_home/.local/bin/hermes") == "$foreign_remove_body" ]] ||
   fail "--remove leaves a hermes it does not own untouched"
+# The wrapper may front a mise environment the user built against the very same
+# spec; without the marker there is no telling, so the environment stays too.
+tr '\0' '\n' <"$mise_log" | grep -Eq '^(rm|uninstall)$' &&
+  fail "--remove never removes a mise environment it cannot prove is Omarchy's"
 pass "--remove leaves a Hermes the user installed themselves"
 
 # The app's marker says its install once landed, not that it is still there. A
@@ -501,3 +510,34 @@ SH
 chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
 run_ready_check && fail "--check accepts a release whose flags only contain --tui/--query as a substring"
 pass "a flag that merely contains --tui or --query is not prompt-ready"
+
+# Each flag answers for itself: a release that kept --tui but dropped --query,
+# or the reverse, cannot run the seeded session either, so neither grep may
+# ride on the other's match.
+for kept in '--tui' '-q QUERY, --query QUERY'; do
+  cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<SH
+#!/bin/bash
+if [[ \${1:-} == "chat" && \${2:-} == "--help" ]]; then
+  echo "[$kept]"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+  chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+  run_ready_check && fail "--check accepts a release listing only $kept"
+done
+pass "either flag alone is not prompt-ready"
+
+# An underscore continues a flag name just as a dash does: --tui_mode is not
+# --tui.
+cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "[--tui_mode MODE] [--query_log FILE]"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+run_ready_check && fail "--check accepts flags that extend --tui/--query with an underscore"
+pass "an underscore continuation is not the bare flag"

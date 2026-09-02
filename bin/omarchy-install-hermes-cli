@@ -101,8 +101,8 @@ hermes_prompt_ready() {
   local help
   hermes_runs &&
     help=$(timeout 15 "$HOME/.local/bin/hermes" chat --help 2>/dev/null) &&
-    grep -qE -- '--tui([^[:alnum:]-]|$)' <<<"$help" &&
-    grep -qE -- '--query([^[:alnum:]-]|$)' <<<"$help"
+    grep -qE -- '--tui([^[:alnum:]_-]|$)' <<<"$help" &&
+    grep -qE -- '--query([^[:alnum:]_-]|$)' <<<"$help"
 }
 
 # --owns answers whether the wrapper on PATH is the one this command wrote, so
@@ -113,18 +113,20 @@ if [[ $mode == "--owns" ]]; then
 fi
 
 # --remove tears down a Hermes CLI this installer put in place -- the mise tool
-# it installs and the stub it marks -- so Remove Hermes clears a CLI the app
+# it installed and the stub it marked -- so Remove Hermes clears a CLI the app
 # never superseded (an interrupted install, or the terminal CLI from before the
-# app existed) rather than leaving it stranded on PATH. Scoped to what is ours:
-# the tool spec is this installer's, and the stub goes only when it carries the
-# marker, so a Hermes the user installed themselves is untouched. Idempotent --
-# nothing installed means nothing to do -- and it is the same teardown the
-# desktop takeover above performs, kept in one place so the two cannot drift.
+# app existed) rather than leaving it stranded on PATH. The whole teardown
+# turns on the marked stub, exactly as replacement does further down: without
+# it nothing proves the mise environment is Omarchy's rather than one the user
+# built against the same spec, and a user's stays theirs. The desktop takeover
+# removes the environment without asking, but that is its own bargain -- a
+# second Hermes has to go whoever built it, and the app still provides the
+# command afterwards; here nothing would. Idempotent: nothing owned, nothing
+# to do.
 if [[ $mode == "--remove" ]]; then
-  mise rm -g "$tool" >/dev/null 2>&1 || true
-  mise uninstall --all "$tool" >/dev/null 2>&1 || true
-
   if ours; then
+    mise rm -g "$tool" >/dev/null 2>&1 || true
+    mise uninstall --all "$tool" >/dev/null 2>&1 || true
     rm -f "$HOME/.local/bin/hermes"
   fi
 

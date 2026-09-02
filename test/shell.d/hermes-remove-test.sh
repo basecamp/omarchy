@@ -104,6 +104,10 @@ printf 'my local edit\n' >"$test_home/.hermes/hermes-agent/PATCH"
 printf '%s\n' "#!/bin/bash" "exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\"" \
   >"$test_home/.local/bin/hermes"
 remove || fail "remove succeeds when the app never finished installing Hermes"
+# The stranded pre-desktop CLI is exactly the interrupted-install case, so the
+# teardown must be asked for here too, not only when the app's runtime landed.
+tr '\0' '\n' <"$test_tmp/installer-log" | grep -qx -- '--remove' ||
+  fail "removal tears down the CLI even when the app never finished installing"
 [[ -d $test_home/.hermes/hermes-agent ]] ||
   fail "a Hermes runtime the app never installed survives removal"
 [[ -f $test_home/.hermes/hermes-agent/PATCH ]] ||
