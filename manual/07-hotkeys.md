@@ -10,7 +10,11 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + Alt + Space` | Apps menu |
 | `Super + Escape` | System menu (suspend, restart, etc)  |
 | `Super + Ctrl + L` | Lock computer |
-| `Super + W` or `Super + Q` | Close window             |
+| `Super + W` | Safely close window into the Window Vault |
+| `Super + Shift + T` | Restore the last safely closed window |
+| `Super + Alt + W` | Show or hide the Window Vault |
+| `Super + Q` | Close window permanently |
+| `Super + Shift + Q` | Permanently close the last vaulted window |
 | `Ctrl + Alt + Del` | Close all windows |
 | `Super + T`               | Toggle window between tiling/floating             |
 | `Super + J` | Toggle window position (horizontal/vertical) |
@@ -57,6 +61,8 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Alt + Shift + Tab` | Cycle backward through windows on the active workspace |
 | `Ctrl + Alt + Tab`| Cycle focus forward through monitors |
 | `Ctrl + Alt + Shift + Tab`| Cycle focus backwards through monitors |
+
+`Super + W` keeps the window and its application running on a hidden special workspace, so its live state can be restored with `Super + Shift + T`, like reopening a closed browser tab. Use `Super + Q` when you intend to close an application normally. The vault protects Omarchy's safe-close shortcut; it cannot intercept an application's own close button or recover a process that has already exited. To make a window rule bypass the vault, give it the `+omarchy-no-window-vault` tag.
 
 ## System controls
 
