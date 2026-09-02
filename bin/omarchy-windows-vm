@@ -554,6 +554,14 @@ bind_mount_leaf() {
   }
 }
 
+# Make a directory mode 700, including leftover setuid/setgid. GNU chmod keeps
+# those bits on directories for numeric modes of four digits or fewer, so
+# `chmod 0700` cannot satisfy the exact-700 checks when ~/Windows was created
+# setgid (omacom/omarchy#9698).
+chmod_private_dir() {
+  chmod a-s,u=rwx,go= -- "$@"
+}
+
 prepare_caller_mounts() {
   local storage_fd storage_id shared_fd shared_id storage_mode shared_mode
   CALLER_MOUNTS_NEW_STORAGE=0
@@ -580,7 +588,7 @@ prepare_caller_mounts() {
   # Privacy is an explicit preflight step for both already-pinned sources, not
   # a side effect halfway through the two-mount transaction. Old umask-022
   # installs are hardened together before either Docker-facing anchor changes.
-  chmod 0700 -- "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
+  chmod_private_dir "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
@@ -588,6 +596,7 @@ prepare_caller_mounts() {
   storage_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$storage_fd" 2>/dev/null) || storage_mode=""
   shared_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$shared_fd" 2>/dev/null) || shared_mode=""
   if [[ $storage_mode != 700 || $shared_mode != 700 ]]; then
+    echo "omarchy-windows-vm: VM source directories must be mode 700 (storage=$storage_mode shared=$shared_mode)" >&2
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
@@ -1015,7 +1024,7 @@ prepare_user_mount_sources() {
     echo "omarchy-windows-vm: storage and shared must be different directories" >&2
     return 1
   }
-  chmod 0700 -- "$storage" "$shared"
+  chmod_private_dir "$storage" "$shared" || return 1
 }
 
 storage_space_path() {
@@ -1058,7 +1067,7 @@ write_credentials() {
   local username="$1" password="$2" old_umask dir tmp
   dir=$(dirname -- "$CREDENTIALS_FILE")
   mkdir -p "$dir" || return 1
-  chmod 0700 "$dir" || return 1
+  chmod_private_dir "$dir" || return 1
   old_umask=$(umask)
   umask 077
   tmp=$(mktemp "$dir/.credentials.XXXXXX") || { umask "$old_umask"; return 1; }

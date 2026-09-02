@@ -123,6 +123,18 @@ if setpriv --reuid=1001 --regid=1001 --clear-groups cat "$EXPECTED_SHARED/shared
 fi
 pass "cross-filesystem symlink sources bind by identity and migrated 0700 leaves deny another account"
 
+# GNU chmod 0700 leaves directory setgid; leftover g+s used to fail the
+# exact-700 check and block every privileged action (omacom/omarchy#9698).
+chmod 2700 /home/storage-target
+chmod 2777 /home/shared-target
+chown 1000:1000 /home/storage-target /home/shared-target
+with_vm_lock prepare_caller_mounts || fail "root could not harden setgid VM source directories"
+[[ $(command stat -Lc '%a' /home/storage-target) == 700 ]] || fail "storage still had special bits after hardening"
+[[ $(command stat -Lc '%a' /home/shared-target) == 700 ]] || fail "shared still had special bits after hardening"
+[[ $(command stat -Lc '%u:%a' "$EXPECTED_STORAGE") == 1000:700 &&
+  $(command stat -Lc '%u:%a' "$EXPECTED_SHARED") == 1000:700 ]] || fail "setgid hardening did not leave caller-owned 0700 anchors"
+pass "setgid VM source directories harden to exactly 700"
+
 # Existing production boundary components are never repaired in place when
 # their ownership or write permissions are unsafe. Both the preparation path
 # and the final pre-Docker guard must fail closed without disturbing the binds.
