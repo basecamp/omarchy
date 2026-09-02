@@ -20,6 +20,10 @@ ConditionEnvironment=WAYLAND_DISPLAY
 
 [Service]
 Type=simple
+# fcitx5 draws its candidate window as an X11 window for XWayland apps and
+# sizes the font from Xft.dpi, which nothing else in the session publishes.
+# The leading - keeps a failed xprop from taking the input method down with it.
+ExecStartPre=-/usr/bin/omarchy-hyprland-xwayland-dpi
 # notificationitem duplicates the tray entry omarchy already renders itself.
 ExecStart=/usr/bin/fcitx5 --disable notificationitem
 # always, not on-failure: fcitx5 exits 0 when it detects another instance owning
