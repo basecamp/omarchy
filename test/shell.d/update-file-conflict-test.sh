@@ -40,7 +40,13 @@ fi
 echo "upgrade complete"
 STUB
 
-chmod +x "$stub_bin/sudo" "$stub_bin/pacman"
+# The hardware gate, answered by the case rather than the machine running it.
+cat >"$stub_bin/omarchy-hw-apple-silicon" <<'STUB'
+#!/bin/bash
+[[ ${APPLE_SILICON:-0} == 1 ]]
+STUB
+
+chmod +x "$stub_bin/sudo" "$stub_bin/pacman" "$stub_bin/omarchy-hw-apple-silicon"
 
 replaced="$test_tmp/replaced"
 
@@ -51,6 +57,7 @@ run_update() {
     PACMAN_ATTEMPTS="$test_tmp/attempts" \
     CONFLICT_REPORT="$test_tmp/report" \
     OWNED_PATHS="${OWNED_PATHS:-}" \
+    APPLE_SILICON="${APPLE_SILICON:-0}" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
     bash "$ROOT/bin/omarchy-update-system-pkgs"
 }
@@ -139,6 +146,19 @@ if run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
   fail "a conflict from an unrelated package is auto-resolved"
 fi
 pass "a conflict from a non-Omarchy package is left for a human"
+
+# Platform-owned paths on Apple Silicon are never eligible for automatic
+# takeover, even when an Omarchy package reports them as unowned.
+fresh_work
+write_report omarchy-settings-dev /boot/omarchy-test
+if APPLE_SILICON=1 run_update >"$test_tmp/out" 2>"$test_tmp/err"; then
+  fail "an Apple Silicon boot path is auto-resolved"
+fi
+grep -Fq 'Refusing to replace Apple Silicon platform path' "$test_tmp/err" ||
+  fail "an Apple Silicon platform-path refusal is not actionable"
+[[ $(<"$test_tmp/attempts") == 1 ]] ||
+  fail "an Apple Silicon platform-path conflict reaches a retry"
+pass "Apple Silicon platform paths are never moved for package conflicts"
 
 # The path is used literally, so glob characters in a name mean nothing.
 fresh_work

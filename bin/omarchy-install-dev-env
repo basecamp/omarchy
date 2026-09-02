@@ -119,7 +119,11 @@ phoenix)
   ;;
 rust)
   echo -e "Installing Rust...\n"
-  bash -c "$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)" -- -y
+  rustup_env=()
+  # rustup's reqwest backend resets component downloads on current Asahi kernels;
+  # the curl backend completes them.
+  omarchy-hw-apple-silicon && rustup_env+=(RUSTUP_USE_CURL=1)
+  env "${rustup_env[@]}" bash -c "$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)" -- -y
   ;;
 java)
   echo -e "Installing Java...\n"
