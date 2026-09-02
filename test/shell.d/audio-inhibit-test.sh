@@ -15,7 +15,7 @@ PATH="$BIN_DIR:$PATH"
 cat >"$BIN_DIR/pactl" <<'EOF'
 #!/bin/bash
 if [[ $1 == "--format=json" && $2 == "list" && $3 == "sink-inputs" ]]; then
-  echo '[{"index":1,"corked":false,"mute":false,"name":"Firefox"}]'
+  echo '[{"index":1,"corked":false,"mute":false,"name":"Firefox","properties":{"application.name":"Firefox"}}]'
   exit 0
 fi
 exit 1
@@ -41,7 +41,36 @@ pass "audio inhibitor claims stay-awake when audio is playing"
   fail "audio inhibitor writes an ownership token"
 pass "audio inhibitor writes an ownership token"
 
-# 2. User explicitly removes stay-awake while audio is playing
+# 2. Background daemon audio (e.g. Voxtype) and event sounds do not trigger stay-awake
+cat >"$BIN_DIR/pactl" <<'EOF'
+#!/bin/bash
+if [[ $1 == "--format=json" && $2 == "list" && $3 == "sink-inputs" ]]; then
+  echo '[{"index":2,"corked":false,"mute":false,"properties":{"application.name":"PipeWire ALSA [voxtype-vulkan]","node.name":"alsa_playback.voxtype-vulkan"}},{"index":3,"corked":false,"mute":false,"properties":{"media.role":"event"}}]'
+  exit 0
+fi
+exit 1
+EOF
+
+HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
+  "$ROOT/bin/omarchy-audio-inhibit" --once
+
+[[ ! -f $stay_awake_file ]] ||
+  fail "audio inhibitor ignores background daemons and event sounds"
+pass "audio inhibitor ignores background daemons and event sounds"
+
+# 3. User explicitly removes stay-awake while audio is playing
+cat >"$BIN_DIR/pactl" <<'EOF'
+#!/bin/bash
+if [[ $1 == "--format=json" && $2 == "list" && $3 == "sink-inputs" ]]; then
+  echo '[{"index":1,"corked":false,"mute":false,"name":"Firefox","properties":{"application.name":"Firefox"}}]'
+  exit 0
+fi
+exit 1
+EOF
+
+HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
+  "$ROOT/bin/omarchy-audio-inhibit" --once
+
 rm -f "$stay_awake_file"
 
 HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
@@ -56,7 +85,7 @@ status=$(HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
 [[ $status == *"suppressed"* ]] || fail "audio inhibitor status reflects user suppression"
 pass "audio inhibitor status reflects user suppression"
 
-# 3. Audio stops completely -> resets suppression
+# 4. Audio stops completely -> resets suppression
 cat >"$BIN_DIR/pactl" <<'EOF'
 #!/bin/bash
 if [[ $1 == "--format=json" && $2 == "list" && $3 == "sink-inputs" ]]; then
@@ -73,11 +102,11 @@ HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
   fail "stopping audio resets playback session suppression"
 pass "stopping audio resets playback session suppression"
 
-# 4. Starting a new audio playback session re-engages stay-awake
+# 5. Starting a new audio playback session re-claims stay-awake
 cat >"$BIN_DIR/pactl" <<'EOF'
 #!/bin/bash
 if [[ $1 == "--format=json" && $2 == "list" && $3 == "sink-inputs" ]]; then
-  echo '[{"index":2,"corked":false,"mute":false,"name":"Spotify"}]'
+  echo '[{"index":4,"corked":false,"mute":false,"name":"Spotify","properties":{"application.name":"Spotify"}}]'
   exit 0
 fi
 exit 1
@@ -90,7 +119,7 @@ HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
   fail "new audio playback session re-claims stay-awake automatically"
 pass "new audio playback session re-claims stay-awake automatically"
 
-# 5. Session lock releases stay-awake to allow display sleep
+# 6. Session lock releases stay-awake to allow display sleep
 cat >"$BIN_DIR/omarchy-hyprland-session-locked" <<'EOF'
 #!/bin/bash
 exit 0
@@ -103,7 +132,7 @@ HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
   fail "audio inhibitor releases stay-awake while session is locked"
 pass "audio inhibitor releases stay-awake while session is locked"
 
-# 6. User-owned stay-awake is preserved when audio stops
+# 7. User-owned stay-awake is preserved when audio stops
 cat >"$BIN_DIR/omarchy-hyprland-session-locked" <<'EOF'
 #!/bin/bash
 exit 1
@@ -127,3 +156,18 @@ HOME="$TEST_HOME" XDG_RUNTIME_DIR="$TEST_RUNTIME" \
 [[ $(<"$stay_awake_file") == "user-choice" ]] ||
   fail "audio inhibitor does not clear user-set stay-awake on audio pause"
 pass "audio inhibitor does not clear user-set stay-awake on audio pause"
+
+# 8. Stranded token from prior boot/run is cleaned up at startup when no audio is playing
+BOOT_HOME=$(mktemp -d)
+BOOT_RUNTIME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$TEST_RUNTIME" "$BIN_DIR" "$BOOT_HOME" "$BOOT_RUNTIME"' EXIT
+
+mkdir -p "$BOOT_HOME/.local/state/omarchy/indicators"
+echo "omarchy-audio-inhibit:99999:1234:5678" >"$BOOT_HOME/.local/state/omarchy/indicators/stay-awake"
+
+HOME="$BOOT_HOME" XDG_RUNTIME_DIR="$BOOT_RUNTIME" \
+  "$ROOT/bin/omarchy-audio-inhibit" --once
+
+[[ ! -f "$BOOT_HOME/.local/state/omarchy/indicators/stay-awake" ]] ||
+  fail "audio inhibitor cleans up stranded tokens from previous boots on startup"
+pass "audio inhibitor cleans up stranded tokens from previous boots on startup"

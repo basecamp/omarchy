@@ -16,8 +16,17 @@ IDLE_STATE_FILE="$IDLE_STATE_DIR/stay-awake"
 audio_is_playing() {
   local streams=""
   streams=$(pactl --format=json list sink-inputs 2>/dev/null) || return 1
-  jq -e 'any(.[]; (.corked == false) and (.mute == false))' \
-    <<<"$streams" >/dev/null 2>&1
+  # Filter out corked/muted streams, notification/event sounds, and background daemons (like Voxtype dictation)
+  jq -e '
+    any(.[];
+      (.corked == false) and
+      (.mute == false) and
+      ((.properties["media.role"] // "") != "event") and
+      ((.properties["media.role"] // "") != "notification") and
+      ((.properties["application.name"] // "") | test("voxtype|speech-dispatcher"; "i") | not) and
+      ((.properties["node.name"] // "") | test("voxtype|speech-dispatcher"; "i") | not)
+    )
+  ' <<<"$streams" >/dev/null 2>&1
 }
 
 session_is_locked() {
@@ -25,18 +34,30 @@ session_is_locked() {
 }
 
 owns_idle_state() {
-  local owner=""
   local state_owner=""
-
-  [[ -s $OWNER_FILE && -f $IDLE_STATE_FILE ]] || return 1
-  owner=$(<"$OWNER_FILE")
+  [[ -f $IDLE_STATE_FILE ]] || return 1
   state_owner=$(<"$IDLE_STATE_FILE")
-  [[ -n $owner && $state_owner == "$owner" ]]
+
+  # Current daemon run owns the state
+  if [[ -s $OWNER_FILE ]]; then
+    local owner
+    owner=$(<"$OWNER_FILE")
+    if [[ -n $owner && $state_owner == "$owner" ]]; then
+      return 0
+    fi
+  fi
+
+  # Stranded token from a prior daemon instance or previous boot
+  if [[ $state_owner == omarchy-audio-inhibit:* ]]; then
+    return 0
+  fi
+
+  return 1
 }
 
 detect_user_dismissal() {
   # If we previously claimed stay-awake but the indicator file was removed
-  # or modified, the user explicitly dismissed it for this playback session.
+  # or modified to something else, the user explicitly dismissed it.
   if [[ -f $OWNER_FILE ]] && ! owns_idle_state; then
     mkdir -p "$RUNTIME_STATE_DIR"
     touch "$SUPPRESSED_FILE"
@@ -58,12 +79,15 @@ claim_stay_awake() {
     return 0
   fi
 
-  if owns_idle_state; then
+  if owns_idle_state && [[ -s $OWNER_FILE ]]; then
     return 0
   fi
 
   rm -f "$OWNER_FILE"
-  [[ -e $IDLE_STATE_FILE ]] && return 0
+  # If a user-owned stay-awake exists (not matching omarchy-audio-inhibit:*), leave it alone
+  if [[ -e $IDLE_STATE_FILE ]] && ! owns_idle_state; then
+    return 0
+  fi
 
   mkdir -p "$RUNTIME_STATE_DIR" "$IDLE_STATE_DIR"
   owner="omarchy-audio-inhibit:$$:$RANDOM:$RANDOM"
