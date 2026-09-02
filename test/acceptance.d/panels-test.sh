@@ -73,9 +73,8 @@ while IFS='|' read -r name plugin; do
   fi
 done <<<"$panels"
 
-# The power widget intentionally disappears on desktops and VMs without a
-# battery. Exercise it on laptops, and verify that hardware-less sessions take
-# the supported no-panel path instead of treating that as a shell failure.
+# Power panel must open everywhere: battery chrome when present, power
+# profiles always (desktops/VMs without a battery used to self-close, #7119).
 if upower -e | grep '/battery_' >/dev/null; then
   if ! (trap - EXIT; open_and_capture_panel "power" "omarchy.power"); then
     status=1
@@ -83,8 +82,20 @@ if upower -e | grep '/battery_' >/dev/null; then
     wait_until "power failed panel is dismissed" 15 layer_absent "omarchy-keyboard-panel"
   fi
 else
-  pass "power panel is hidden without battery hardware"
-  screenshot "success-panel-power-unavailable"
+  if ! (
+    trap - EXIT
+    omarchy-shell shell summon omarchy.power >/dev/null
+    wait_until "power panel opens without battery" 15 layer_present "omarchy-keyboard-panel"
+    wait_until "power profiles are visible without battery" 15 screen_contains "POWER PROFILE"
+    sleep 1
+    screenshot "success-panel-power-no-battery"
+    omarchy-shell shell hide omarchy.power >/dev/null
+    wait_until "power panel closes without battery" 15 layer_absent "omarchy-keyboard-panel"
+  ); then
+    status=1
+    hide_panels
+    wait_until "power failed panel is dismissed" 15 layer_absent "omarchy-keyboard-panel"
+  fi
 fi
 
 # The common panel keyboard contract uses Tab to move to the next bar panel.
