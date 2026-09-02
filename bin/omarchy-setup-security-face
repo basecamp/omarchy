@@ -5,6 +5,43 @@
 
 set -e
 
+configure_howdy_settings() {
+  local config_file="/etc/howdy/config.ini"
+  [[ -f $config_file ]] || return 0
+
+  echo "Optimizing Howdy settings for lock screen responsiveness..."
+  # Clean up notices and synthetic inputs that glitch GUI lock screens
+  sudo sed -i -E \
+    -e 's/^[# ]*detection_notice\s*=.*/detection_notice = false/' \
+    -e 's/^[# ]*timeout_notice\s*=.*/timeout_notice = false/' \
+    -e 's/^[# ]*no_confirmation\s*=.*/no_confirmation = true/' \
+    -e 's/^[# ]*suppress_unknown\s*=.*/suppress_unknown = true/' \
+    -e 's/^[# ]*workaround\s*=.*/workaround = off/' \
+    -e 's/^[# ]*max_height\s*=.*/max_height = 320/' \
+    -e 's/^[# ]*timeout\s*=.*/timeout = 3/' \
+    -e 's/^[# ]*dark_threshold\s*=.*/dark_threshold = 60/' \
+    "$config_file"
+
+  # Find stable IR camera path if not already configured
+  local ir_device=""
+  if [[ -d /dev/v4l/by-path ]]; then
+    for dev in /dev/v4l/by-path/*; do
+      [[ -e $dev ]] || continue
+      local dev_name
+      dev_name=$(v4l2-ctl --device="$dev" --all 2>/dev/null | grep -i 'card' || true)
+      if [[ ${dev_name,,} == *ir* || ${dev_name,,} == *infra* ]]; then
+        ir_device="$dev"
+        break
+      fi
+    done
+  fi
+
+  if [[ -n $ir_device ]]; then
+    echo "Found IR camera device: $ir_device"
+    sudo sed -i -E "s|^[# ]*device_path\s*=.*|device_path = $ir_device|" "$config_file"
+  fi
+}
+
 setup_lock_howdy_pam() {
   echo "Configuring lock screen for face authentication..."
   sudo tee /etc/pam.d/omarchy-lock-howdy >/dev/null <<'EOF'
@@ -24,7 +61,9 @@ fi
 
 # Install required packages
 echo "Installing Howdy face authentication..."
-omarchy-pkg-add howdy
+omarchy-pkg-add howdy v4l-utils
+
+configure_howdy_settings
 
 # Add face model for current user
 echo -e "\e[32m\nLet's enroll your face model.\e[0m"
@@ -34,6 +73,9 @@ if sudo howdy add; then
   setup_lock_howdy_pam
   echo -e "\e[32m\nPerfect! Face authentication is now configured.\e[0m"
   echo "You can unlock your lock screen (Super + L) by looking at the camera."
+  echo ""
+  echo "Tip: For best accuracy in dark rooms or varying postures, enroll additional angles with:"
+  echo "  sudo howdy add"
 else
   echo -e "\e[31m\nFace enrollment failed. Please try again.\e[0m"
   exit 1
