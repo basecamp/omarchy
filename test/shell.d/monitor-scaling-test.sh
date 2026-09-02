@@ -327,6 +327,22 @@ grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling leaves the catch-all alone once a desc: rule matched"
 pass "monitor scaling writes onto a rule naming the output by desc:"
 
+# Hyprland trims the desc: selector before comparing, so a rule that spaces one
+# out does name the output. Missing it here sends the write to the catch-all
+# the reload then overrides, which is the defect this command exists to remove.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+hl.monitor({ output = "desc:  BOE NE180WUM  ", mode = "preferred", position = "0x0", scale = 2 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'hl.monitor({ output = "desc:  BOE NE180WUM  ", mode = "preferred", position = "0x0", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling matches a desc: selector whose spacing Hyprland trims"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves the catch-all alone for a spaced-out desc: rule"
+pass "monitor scaling matches a desc: selector whose spacing Hyprland trims"
+
 # The shared variable is only the catch-all when a catch-all rule reads it. A
 # connector name that has gone stale across a renumber leaves no rule naming
 # the focused output, and writing the variable then resizes whichever display

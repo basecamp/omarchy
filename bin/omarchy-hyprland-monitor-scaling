@@ -144,8 +144,13 @@ update_named_monitor_scale() {
       if (value == monitor) return 1
       # Compared literally rather than as a pattern: a description is EDID free
       # text and routinely carries . ( and +.
-      if (substr(value, 1, 5) != "desc:" || length(value) == 5) return 0
-      return index(description, substr(value, 6)) == 1
+      if (substr(value, 1, 5) != "desc:") return 0
+      # Hyprland trims the selector before comparing, so a rule that spaces one
+      # out names the output there and has to name it here too.
+      value = substr(value, 6)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value == "") return 0
+      return index(description, value) == 1
     }
     # A --[[ ]] comment runs across lines, so a rule inside one has to be seen
     # as commented out before it is matched: rewriting a scale in there reports
