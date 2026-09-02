@@ -1,0 +1,3 @@
+# Apple Studio Display: on every DRM hotplug, pin its DisplayPort link to HBR3 so
+# 5K runs without DSC, which flickers on amdgpu. See omarchy-hw-apple-display-link.
+ACTION=="change", SUBSYSTEM=="drm", ENV{DEVTYPE}=="drm_minor", RUN+="/usr/bin/systemctl --no-block start omarchy-apple-display-link.service"

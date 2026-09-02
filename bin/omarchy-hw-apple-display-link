@@ -1,0 +1,58 @@
+#!/bin/bash
+
+# omarchy:summary=Pin an Apple Studio Display's DisplayPort link to HBR3 so 5K runs without DSC
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+# The Studio Display advertises an HBR2 link through its Thunderbolt tunnel.
+# 5120x2880@60 does not fit HBR2 uncompressed, so amdgpu turns on DSC, and that
+# path flickers and blacks out on the Radeon Pro in T2 MacBooks. The panel
+# trains fine at HBR3, where 5K needs no compression, so prefer that rate on
+# every connector carrying a Studio Display.
+#
+# The preferred rate sticks to the connector until reboot, across replugs and
+# suspend, so one pass per connector is enough. Writing it retrains the link at
+# once; when the compositor had already lit the panel over the compressed link,
+# a simulated replug makes it set the mode again over the new one.
+#
+# Runs as root from omarchy-apple-display-link.service, at boot and on every
+# DRM hotplug via udev. Without a Studio Display it does nothing.
+
+drm_path="${OMARCHY_DRM_PATH:-/sys/class/drm}"
+debug_path="${OMARCHY_DRI_DEBUG_PATH:-/sys/kernel/debug/dri}"
+settle="${OMARCHY_APPLE_DISPLAY_SETTLE:-2}"
+
+# debugfs is root-only; a test pointing at its own tree needs no privileges.
+if (( EUID != 0 )) && [[ -z ${OMARCHY_DRI_DEBUG_PATH:-} ]]; then
+  exec sudo "$0" "$@"
+fi
+
+shopt -s nullglob
+
+for edid in "$drm_path"/card*-DP-*/edid; do
+  connector=${edid%/edid}
+  [[ $(<"$connector/status") == connected ]] || continue
+  grep -aq StudioDisplay "$edid" || continue
+
+  name=${connector##*/}
+  card=${name%%-*}
+  debug="$debug_path/${card#card}/${name#"$card"-}"
+  [[ -w $debug/link_settings ]] || continue
+
+  preferred=$(tr -d '\0' <"$debug/link_settings" |
+    sed -nE 's/.*Preferred:[[:space:]]+[0-9]+[[:space:]]+(0x[0-9a-fA-F]+).*/\1/p')
+  [[ $preferred == 0x1e ]] && continue
+
+  echo "4 0x1e" >"$debug/link_settings"
+  echo "$name: DisplayPort link pinned to HBR3"
+
+  # Give a modeset that raced this write time to finish before judging it.
+  sleep "$settle"
+  [[ $(tr -d '\0' <"$debug/dsc_clock_en") == 1 ]] || continue
+  echo "$name: stream still compressed, replugging for a fresh modeset"
+  echo 0 >"$debug/trigger_hotplug"
+  sleep 1
+  echo 1 >"$debug/trigger_hotplug"
+done
+
+exit 0

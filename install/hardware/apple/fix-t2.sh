@@ -47,4 +47,12 @@ high_temp=75
 speed_curve=linear
 always_full_speed=false
 EOF
+
+  # The Studio Display flickers at 5K over the HBR2+DSC link amdgpu picks by
+  # default; the service pins the link to HBR3, where 5K needs no compression.
+  install -Dm644 "$OMARCHY_PATH/default/udev/apple-display-link.rules" \
+    /etc/udev/rules.d/90-omarchy-apple-display-link.rules
+  install -Dm644 "$OMARCHY_PATH/default/systemd/system/omarchy-apple-display-link.service" \
+    /etc/systemd/system/omarchy-apple-display-link.service
+  systemctl enable omarchy-apple-display-link.service
 fi
