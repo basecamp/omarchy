@@ -27,7 +27,7 @@ configure_howdy_settings() {
     -e 's/^[# ]*timeout_notice\s*=.*/timeout_notice = false/' \
     -e 's/^[# ]*no_confirmation\s*=.*/no_confirmation = true/' \
     -e 's/^[# ]*suppress_unknown\s*=.*/suppress_unknown = true/' \
-    -e 's/^[# ]*workaround\s*=.*/workaround = off/' \
+    -e 's/^[# ]*dark_threshold\s*=.*/dark_threshold = 0/' \
     -e 's/^[# ]*max_height\s*=.*/max_height = 320/' \
     -e 's/^[# ]*timeout\s*=.*/timeout = 3/' \
     -e 's/^[# ]*dark_threshold\s*=.*/dark_threshold = 60/' \
