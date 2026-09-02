@@ -5,13 +5,14 @@
 #
 # Sourced from ~/.config/uwsm/env-hyprland.d after the wiki-documented
 # env-hyprland export. zz- sorts after numeric prefixes and letter-named
-# files like my_vars under POSIX ls (uwsm's loader). Colon-free pins
-# (cardN, udev names) are left alone. A set-but-empty value is unset:
-# getenv non-null takes the explicit path, and CVarList on "" yields no GPUs.
+# files like my_vars under POSIX ls (uwsm's loader); a later name such as
+# zzz- still loads after this file. Colon-free pins (cardN, udev names)
+# are left alone. A set-but-empty value is unset: getenv non-null takes
+# the explicit path, and CVarList on "" yields no GPUs.
 #
-# Split on ':' like Aquamarine (removeEmpty). A by-path name runs to the
-# next '/', so keep absorbing colon fragments until the accumulated path
-# exists. Anything absolute starts a new entry.
+# Split on ':' like Aquamarine (removeEmpty). A by-path name absorbs colon
+# fragments until it exists or ends in udev's -card/-control/-render suffix.
+# A continuation containing '/' starts a new entry.
 
 omarchy_sanitize_aq_drm_emit() {
   _omarchy_aq_path=$1
@@ -60,15 +61,16 @@ omarchy_sanitize_aq_drm_devices() {
       if [[ -z $_omarchy_aq_cur ]]; then
         _omarchy_aq_cur=$_omarchy_aq_part
       else
-        # A by-path name runs to the next '/', so keep absorbing colon
-        # fragments until the accumulated path exists. Anything absolute
-        # starts a new entry.
+        # Keep absorbing colon fragments until the by-path exists or hits
+        # udev's DRM suffix. A continuation containing '/' is a new entry.
         _omarchy_aq_glue=
         case "$_omarchy_aq_cur" in
+          */by-path/*-card|*/by-path/*-control|*/by-path/*-render)
+            ;;
           */by-path/*)
             if [[ ! -e $_omarchy_aq_cur ]]; then
               case "$_omarchy_aq_part" in
-                /*) ;;
+                */*) ;;
                 *) _omarchy_aq_glue=1 ;;
               esac
             fi

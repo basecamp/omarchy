@@ -69,6 +69,15 @@ pass "missing by-path is dropped so Aquamarine cannot split it"
 [[ $(run_sanitize "/dev/dri/by-path/pci-0000:13:00.0-card:/dev/dri/by-path/pci-0000:03:00.0-card") == "__UNSET__" ]] || fail "missing by-path list is dropped"
 pass "missing by-path list is dropped"
 
+[[ $(run_sanitize "/dev/dri/by-path/pci-0000:13:00.0-card:rel/mygpu") == "rel/mygpu" ]] || fail "stale by-path does not swallow a following relative entry"
+pass "stale by-path does not swallow a following relative entry"
+
+[[ $(run_sanitize "/dev/dri/by-path/pci-0000:13:00.0-card:card1") == "card1" ]] || fail "stale by-path does not swallow a following cardN pin"
+pass "stale by-path does not swallow a following cardN pin"
+
+[[ $(run_sanitize "/dev/dri/by-path/pci-0000:13:00.0:rel/mygpu") == "rel/mygpu" ]] || fail "incomplete by-path does not absorb a slash-containing continuation"
+pass "incomplete by-path does not absorb a slash-containing continuation"
+
 usb_missing="/dev/dri/by-path/pci-0000:00:14.0-usb-0:8:1.0-card"
 [[ $(run_sanitize "$usb_missing") == "__UNSET__" ]] || fail "missing USB by-path is dropped instead of exporting debris"
 pass "missing USB by-path is dropped instead of exporting debris"
@@ -106,6 +115,9 @@ if mkdir -p "$by_dir" && ln -s "$dir/dri/card0" "$by_path" 2>/dev/null; then
 
     [[ $(run_sanitize "$by_path:$dir/dri/card1") == "$dir/dri/card0:$dir/dri/card1" ]] || fail "resolved by-path keeps a following colon-free pin"
     pass "resolved by-path keeps a following colon-free pin"
+
+    [[ $(run_sanitize "$by_path:rel/mygpu") == "$dir/dri/card0:rel/mygpu" ]] || fail "resolved by-path keeps a following relative entry"
+    pass "resolved by-path keeps a following relative entry"
 
     usb_path="$by_dir/pci-0000:00:14.0-usb-0:8:1.0-card"
     if ln -s "$dir/dri/card0" "$usb_path" 2>/dev/null; then
@@ -184,6 +196,20 @@ dst="$test_home/.config/uwsm/env-hyprland.d/zz-omarchy-aq-drm"
 old="$test_home/.config/uwsm/env-hyprland.d/99-omarchy-aq-drm"
 mkdir -p "$(dirname "$old")"
 printf '%s\n' '# leftover' '[ -r "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices" ] && . "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices"' >"$old"
+HOME=$test_home OMARCHY_PATH=$ROOT bash -euo pipefail "$migration" >/dev/null
+[[ -f $dst ]] || fail "migration installs the zz- drop-in beside an edited leftover 99-"
+[[ -f $old ]] || fail "migration leaves a 99- file that is not the exact shipped drop-in"
+pass "migration leaves a 99- file that is not the exact shipped drop-in"
+rm -rf "$test_home"
+
+test_home=$(mktemp -d)
+dst="$test_home/.config/uwsm/env-hyprland.d/zz-omarchy-aq-drm"
+old="$test_home/.config/uwsm/env-hyprland.d/99-omarchy-aq-drm"
+mkdir -p "$(dirname "$old")"
+printf '%s\n' \
+  '# Rewrite PCI by-path AQ_DRM_DEVICES after user env-hyprland.' \
+  "# Aquamarine splits on ':' (hyprwm/aquamarine#167)." \
+  '[ -r "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices" ] && . "${OMARCHY_PATH%/}/default/uwsm/sanitize-aq-drm-devices"' >"$old"
 HOME=$test_home OMARCHY_PATH=$ROOT bash -euo pipefail "$migration" >/dev/null
 [[ -f $dst ]] || fail "migration installs the zz- drop-in"
 [[ ! -e $old ]] || fail "migration removes the leftover sanitizer 99- drop-in"
