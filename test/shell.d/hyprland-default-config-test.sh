@@ -105,6 +105,27 @@ grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default applicat
 grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
 pass "default application bindings load from package defaults"
 
+OMARCHY_PATH="$ROOT" lua <<'LUA' || fail "LocalSend rules match its current Wayland app ID"
+package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
+
+local rules = {}
+hl = {
+  window_rule = function(rule)
+    table.insert(rules, rule)
+  end,
+}
+
+require("default.hypr.helpers")
+require("default.hypr.apps.localsend")
+
+assert(#rules == 2)
+assert(rules[1].match.class == "^(Share|localsend|org\\.localsend\\.localsend_app)$")
+assert(rules[1].float == true and rules[1].center == true)
+assert(rules[2].match.class == "^(localsend|org\\.localsend\\.localsend_app)$")
+assert(rules[2].size[1] == 1100 and rules[2].size[2] == 700)
+LUA
+pass "LocalSend rules match its current Wayland app ID"
+
 grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
   fail "universal clipboard shortcuts send explicit mods to the focused surface"
 pass "universal clipboard shortcuts send explicit mods to the focused surface"
