@@ -8,6 +8,13 @@ set -euo pipefail
 
 omarchy-pkg-drop hermes-desktop
 
+# The mise CLI is the app's predecessor, not the app itself: Hermes Desktop takes
+# it over on install and runs its own runtime instead, so a copy still here is one
+# the app never superseded -- an interrupted install, or the terminal CLI from
+# before the app existed. Remove Hermes clears that too, scoped by the installer
+# to what Omarchy owns so a hermes the user set up themselves is left alone.
+omarchy-install-hermes-cli --remove
+
 # The app writes this when the runtime it provisions under ~/.hermes has landed,
 # and it is the only thing that tells that runtime apart from one the user
 # installed themselves -- the paths are the same either way. Without it the app

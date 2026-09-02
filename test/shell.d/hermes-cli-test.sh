@@ -402,6 +402,45 @@ marker_copies=$(grep -rl "Written by omarchy-install-hermes-cli" \
   fail "only omarchy-install-hermes-cli spells out the ownership marker"
 pass "the ownership marker is written down once"
 
+# --remove tears down a Hermes CLI this installer owns, so Remove Hermes can
+# clear one the desktop app never superseded. It turns on the same ownership as
+# the rest of the file, so its cases mirror that split.
+remove_home="$test_tmp/remove-home"
+mkdir -p "$remove_home/.local/bin"
+
+run_remove() {
+  OMARCHY_TEST_DESKTOP_INSTALLED=0 \
+    OMARCHY_TEST_MISE_WHERE_OK="${OMARCHY_TEST_MISE_WHERE_OK:-0}" \
+    OMARCHY_TEST_MISE_ROOT="$test_tmp/mise" \
+    OMARCHY_TEST_MISE_LOG="$mise_log" \
+    HOME="$remove_home" \
+    PATH="$mock_bin:$PATH" \
+    bash "$ROOT/bin/omarchy-install-hermes-cli" --remove
+}
+
+rm -f "$remove_home/.local/bin/hermes"
+: >"$mise_log"
+run_remove || fail "--remove succeeds when there is nothing to remove"
+pass "--remove is idempotent when no Hermes CLI is present"
+
+printf '%s\n' "#!/bin/bash" "$stub_marker" >"$remove_home/.local/bin/hermes"
+chmod +x "$remove_home/.local/bin/hermes"
+: >"$mise_log"
+OMARCHY_TEST_MISE_WHERE_OK=1 run_remove || fail "--remove succeeds tearing down an owned CLI"
+tr '\0' '\n' <"$mise_log" | grep -q '^rm$' || fail "--remove drops the mise tool from config"
+tr '\0' '\n' <"$mise_log" | grep -q '^uninstall$' || fail "--remove uninstalls the mise tool"
+[[ ! -e $remove_home/.local/bin/hermes ]] || fail "--remove takes the stub it owns"
+pass "--remove tears down the mise CLI and the stub this installer owns"
+
+foreign_remove_body="#!/bin/bash
+exec /usr/local/bin/my-own-hermes \"\$@\""
+printf '%s\n' "$foreign_remove_body" >"$remove_home/.local/bin/hermes"
+chmod +x "$remove_home/.local/bin/hermes"
+run_remove || fail "--remove succeeds with a foreign hermes present"
+[[ -f $remove_home/.local/bin/hermes && $(cat "$remove_home/.local/bin/hermes") == "$foreign_remove_body" ]] ||
+  fail "--remove leaves a hermes it does not own untouched"
+pass "--remove leaves a Hermes the user installed themselves"
+
 # The app's marker says its install once landed, not that it is still there. A
 # wrapper whose runtime has since gone answers for nothing, so readiness runs
 # the command, exactly as it does for a hermes the user installed themselves.

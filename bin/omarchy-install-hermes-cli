@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Install the Hermes CLI as a mise-backed wrapper in ~/.local/bin
-# omarchy:args=[--check|--now|--owns]
+# omarchy:args=[--check|--now|--owns|--remove]
 # omarchy:examples=omarchy install hermes cli | omarchy install hermes cli --now
 
 # Hermes pins every one of its dependencies exactly and declares
@@ -110,6 +110,25 @@ hermes_prompt_ready() {
 # marker and drift from it.
 if [[ $mode == "--owns" ]]; then
   if ours; then exit 0; else exit 1; fi
+fi
+
+# --remove tears down a Hermes CLI this installer put in place -- the mise tool
+# it installs and the stub it marks -- so Remove Hermes clears a CLI the app
+# never superseded (an interrupted install, or the terminal CLI from before the
+# app existed) rather than leaving it stranded on PATH. Scoped to what is ours:
+# the tool spec is this installer's, and the stub goes only when it carries the
+# marker, so a Hermes the user installed themselves is untouched. Idempotent --
+# nothing installed means nothing to do -- and it is the same teardown the
+# desktop takeover above performs, kept in one place so the two cannot drift.
+if [[ $mode == "--remove" ]]; then
+  mise rm -g "$tool" >/dev/null 2>&1 || true
+  mise uninstall --all "$tool" >/dev/null 2>&1 || true
+
+  if ours; then
+    rm -f "$HOME/.local/bin/hermes"
+  fi
+
+  exit 0
 fi
 
 # --check lets callers tell a cold stub from a working one before they commit

@@ -15,6 +15,14 @@ cat >"$mock_bin/omarchy-pkg-drop" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >>"$OMARCHY_TEST_DROP_LOG"
 SH
+
+# The CLI teardown is the installer's own, exercised in hermes-cli-test.sh; here
+# it is mocked to a logger so this test stays about what Remove Hermes does with
+# ~/.hermes, and to keep real mise out of a run with HOME pointed at a fixture.
+cat >"$mock_bin/omarchy-install-hermes-cli" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >>"$OMARCHY_TEST_INSTALLER_LOG"
+SH
 chmod +x "$mock_bin"/*
 
 seed_install() {
@@ -35,7 +43,10 @@ seed_install() {
 }
 
 remove() {
-  OMARCHY_TEST_DROP_LOG="$test_tmp/drop-log" HOME="$test_home" PATH="$mock_bin:$PATH" \
+  : >"$test_tmp/installer-log"
+  OMARCHY_TEST_DROP_LOG="$test_tmp/drop-log" \
+    OMARCHY_TEST_INSTALLER_LOG="$test_tmp/installer-log" \
+    HOME="$test_home" PATH="$mock_bin:$PATH" \
     bash "$ROOT/bin/omarchy-remove-ai-hermes" >/dev/null 2>&1
 }
 
@@ -66,6 +77,12 @@ pass "removal keeps what belongs to the user"
 
 [[ ! -e $test_home/.local/bin/hermes ]] || fail "the app's own hermes command is removed"
 pass "removal takes the command the app installed"
+
+# Removal also asks the installer to tear down a mise CLI the app superseded, so
+# a copy left from before the app took over does not linger once Hermes is gone.
+tr '\0' '\n' <"$test_tmp/installer-log" | grep -qx -- '--remove' ||
+  fail "removal asks the installer to tear down its own CLI"
+pass "removal tears down the mise CLI through the installer"
 
 # A hermes command the app did not write survives even when the app did install
 # a runtime of its own.
