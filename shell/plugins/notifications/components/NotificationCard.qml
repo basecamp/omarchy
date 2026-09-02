@@ -32,8 +32,15 @@ BorderSurface {
 
   readonly property bool hovered: hoverTracker.hovered
 
+  // Freedesktop actions other than "default" (which is the whole-card click),
+  // as JSON from NotificationLogic.actionsJson. Empty for history rows and
+  // restored toasts, whose sender is gone — so they render no buttons.
+  property string actionsJson: ""
+  readonly property var actionList: NotificationLogic.parseActions(actionsJson)
+
   signal closeRequested()
   signal cardClicked()
+  signal actionInvoked(string identifier)
   // Prefer per-notification media/avatar data, then fall back to the app icon.
   // The `check` flag avoids Qt's missing-texture placeholder for unknown names.
   readonly property string smallIconSource: image.length > 0 ? image : iconSource(appIcon)
@@ -190,6 +197,36 @@ BorderSurface {
           wrapMode: Text.WordWrap
           elide: Text.ElideRight
           maximumLineCount: 3
+        }
+      }
+    }
+
+    // Action buttons. Inside mainColumn but declared after the card-wide
+    // MouseArea, so a button takes its own click instead of falling through
+    // to the default action.
+    RowLayout {
+      Layout.fillWidth: true
+      Layout.leftMargin: Style.space(12)
+      Layout.rightMargin: Style.space(12)
+      Layout.bottomMargin: Style.space(10)
+      spacing: Style.space(8)
+      visible: root.actionList.length > 0
+
+      Item { Layout.fillWidth: true }
+
+      Repeater {
+        model: root.actionList
+
+        delegate: Button {
+          required property var modelData
+          text: modelData.text
+          bordered: true
+          focusable: false
+          fontFamily: "Liberation Sans"
+          fontSize: Style.font.body
+          foreground: Color.notifications.text
+          accent: root.accentColor
+          onClicked: root.actionInvoked(modelData.id)
         }
       }
     }
