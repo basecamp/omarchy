@@ -60,6 +60,12 @@ assert_resize 1300 900 "pop keeps its preferred size when the work area is large
 run_pop '[{"id":0,"width":2560,"height":1440,"scale":1.6,"transform":3,"reserved":[0,35,0,0]}]'
 assert_resize 876 900 "pop accounts for monitor scale, rotation, gaps, and borders"
 
+run_pop '[{"id":0,"width":2880,"height":1800,"scale":2,"transform":0,"reserved":[0,0,0,26]}]'
+assert_resize 1300 850 "pop subtracts a bottom reserved edge from the height"
+
+run_pop '[{"id":0,"width":2880,"height":1800,"scale":2,"transform":0,"reserved":[200,0,0,0]}]'
+assert_resize 1216 876 "pop subtracts a left reserved edge from the width"
+
 run_pop '[{"id":0,"width":2880,"height":1800,"scale":2,"transform":0,"reserved":[0,26,0,0]}]' 1500 1000
 assert_resize 1500 1000 "pop preserves explicitly requested dimensions"
 

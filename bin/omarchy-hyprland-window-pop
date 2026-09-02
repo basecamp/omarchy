@@ -25,9 +25,10 @@ fit_defaults_to_work_area() {
 
   read -r work_width work_height < <(jq -r '
     . as $monitor
+    # Hyprland reports reserved as [left, top, right, bottom], in logical pixels.
     | ($monitor.reserved // [0, 0, 0, 0]) as $reserved
-    | (if ($monitor.transform % 2) == 1 then $monitor.height else $monitor.width end) / $monitor.scale - $reserved[2] - $reserved[3] as $width
-    | (if ($monitor.transform % 2) == 1 then $monitor.width else $monitor.height end) / $monitor.scale - $reserved[0] - $reserved[1] as $height
+    | (if ($monitor.transform % 2) == 1 then $monitor.height else $monitor.width end) / $monitor.scale - $reserved[0] - $reserved[2] as $width
+    | (if ($monitor.transform % 2) == 1 then $monitor.width else $monitor.height end) / $monitor.scale - $reserved[1] - $reserved[3] as $height
     | "\($width | floor) \($height | floor)"
   ' <<<"$monitor" 2>/dev/null)
 
