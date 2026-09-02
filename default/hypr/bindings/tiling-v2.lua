@@ -15,8 +15,20 @@ o.bind("SUPER + RIGHT", "Focus on right window", hl.dsp.focus({ direction = "r" 
 o.bind("SUPER + UP", "Focus on above window", hl.dsp.focus({ direction = "u" }))
 o.bind("SUPER + DOWN", "Focus on below window", hl.dsp.focus({ direction = "d" }))
 
--- Physical numpad keycodes matching the alphanumeric digits 1 through 10.
-local numpad_keycodes = { 79, 80, 81, 83, 84, 85, 87, 88, 89, 90 }
+-- Physical numpad keycodes for workspace selection:
+-- workspaces 1-9 map to numpad 1-9, and workspace 10 maps to numpad 0.
+local numpad_keycodes = {
+  79, -- numpad 1 -> workspace 1
+  80, -- numpad 2 -> workspace 2
+  81, -- numpad 3 -> workspace 3
+  83, -- numpad 4 -> workspace 4
+  84, -- numpad 5 -> workspace 5
+  85, -- numpad 6 -> workspace 6
+  87, -- numpad 7 -> workspace 7
+  88, -- numpad 8 -> workspace 8
+  89, -- numpad 9 -> workspace 9
+  90, -- numpad 0 -> workspace 10
+}
 
 for workspace = 1, 10 do
   local keys = { "code:" .. tostring(workspace + 9), "code:" .. tostring(numpad_keycodes[workspace]) }
