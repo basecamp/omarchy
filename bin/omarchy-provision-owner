@@ -636,7 +636,8 @@ apply_keyboard() {
   fi
 }
 
-# The same username/password/name/email form as the ISO configurator's Step 2.
+# The same username/password/name/email form as the ISO configurator's Step 2,
+# minus the name and email on a child install.
 user_form() {
   step "Let's setup your user account..."
 
@@ -664,7 +665,16 @@ user_form() {
   else
     omarchy_prompt_password || return $?
   fi
-  omarchy_prompt_identity || return $?
+
+  # Full name and email only feed git identity and the compose shortcuts, and
+  # it is a parent at the keyboard on a child install, so an answer would be
+  # theirs: a child install asks for neither.
+  if $CHILD_INSTALL; then
+    full_name=""
+    email_address=""
+  else
+    omarchy_prompt_identity || return $?
+  fi
 
   # Hostname and timezone are deferred to first boot with the rest of the user
   # step: the deferred install seeds neutral placeholders (omarchy/UTC) and the
@@ -678,10 +688,12 @@ user_form() {
 confirm_form() {
   # Fixed-width masks: one asterisk per character would put both passwords'
   # lengths on the screen.
-  local mask="********" password_label="Password" parent_row=""
+  local mask="********" password_label="Password" parent_row="" identity_rows
+  identity_rows="Full name,${full_name:-[Skipped]}"$'\n'"Email address,${email_address:-[Skipped]}"$'\n'
   if $CHILD_INSTALL; then
     password_label="Kid password"
     parent_row="Parent password,$mask"$'\n'
+    identity_rows="" # never asked
   fi
 
   clear_logo
@@ -690,9 +702,7 @@ confirm_form() {
 Keyboard,${keyboard_label:-English (US)}
 Username,$username
 $password_label,$mask
-${parent_row}Full name,${full_name:-[Skipped]}
-Email address,${email_address:-[Skipped]}
-Hostname,${hostname:-omarchy}
+${parent_row}${identity_rows}Hostname,${hostname:-omarchy}
 Timezone,${timezone:-UTC}" |
     gum table -s "," -p | sed "s/^/${PADDING_LEFT_SPACES}/"
 
