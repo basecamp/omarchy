@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Hyprland
 import qs.Commons
 import qs.Ui
@@ -17,7 +18,32 @@ BarWidget {
     return null
   }
 
+  // With monitorOnly on, each bar lists only the workspaces Hyprland has
+  // bound to the monitor that bar sits on, matching persistent workspace
+  // rules like `hl.workspace_rule({ workspace = "2", monitor = ... })`.
+  function barScreenName() {
+    var window = root.QsWindow ? root.QsWindow.window : null
+    return window && window.screen ? String(window.screen.name || "") : ""
+  }
+
+  function monitorWorkspaceIds() {
+    var screenName = barScreenName()
+    var ids = []
+    var values = Hyprland.workspaces.values
+
+    for (var i = 0; i < values.length; i++) {
+      var ws = values[i]
+      if (ws.id <= 0 || ws.id > 10) continue
+      if (!screenName || (ws.monitor && String(ws.monitor.name) === screenName)) ids.push(ws.id)
+    }
+
+    ids.sort(function(left, right) { return left - right })
+    return ids
+  }
+
   function workspaceIds() {
+    if (root.setting("monitorOnly", false)) return monitorWorkspaceIds()
+
     var ids = [1, 2, 3, 4, 5]
     var values = Hyprland.workspaces.values
 
