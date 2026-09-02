@@ -88,21 +88,27 @@ hermes_runs() {
     timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
 }
 
+# A flag counts only when the help defines it, not whenever it is mentioned:
+# what follows must be a shape argparse prints after a definition -- the usage
+# line's closing bracket, the gap before same-line help text, an uppercase
+# metavar, or the end of the line. Prose like "With --tui: run ..." stays
+# prose, and --tui-theme or --tui_mode never answers for --tui. Not probed by
+# parsing an actual invocation on purpose: a release that ignores unknown
+# arguments would turn the probe into a live session.
+help_defines_flag() {
+  grep -qE -- "$1(]|[[:space:]][[:upper:]]|[[:space:]]{2}|$)" <<<"$2"
+}
+
 # Probed for the flags omarchy-agent actually passes -- --query to seed the
 # session and --tui to keep it interactive -- rather than a flag that merely
 # shipped alongside them: the previous marker, --oneshot, was dropped in Hermes
 # v0.20 and left working installs stranded as "not ready".
-#
-# Matched at a flag boundary, not as a substring: a bare grep for --tui also
-# accepts a release that lists only --tui-theme while having dropped --tui
-# itself, which would call an install ready that omarchy-agent cannot drive --
-# the same false verdict this check exists to prevent, merely inverted.
 hermes_prompt_ready() {
   local help
   hermes_runs &&
     help=$(timeout 15 "$HOME/.local/bin/hermes" chat --help 2>/dev/null) &&
-    grep -qE -- '--tui([^[:alnum:]_-]|$)' <<<"$help" &&
-    grep -qE -- '--query([^[:alnum:]_-]|$)' <<<"$help"
+    help_defines_flag '--tui' "$help" &&
+    help_defines_flag '--query' "$help"
 }
 
 # --owns answers whether the wrapper on PATH is the one this command wrote, so
@@ -127,7 +133,17 @@ if [[ $mode == "--remove" ]]; then
   if ours; then
     mise rm -g "$tool" >/dev/null 2>&1 || true
     mise uninstall --all "$tool" >/dev/null 2>&1 || true
-    rm -f "$HOME/.local/bin/hermes"
+    rm -f "$HOME/.local/bin/hermes" 2>/dev/null || true
+
+    # Every step is attempted before any is judged, and judged by what is left
+    # rather than by what the commands claimed: the marked stub still answering
+    # hermes, or mise still resolving the tool, is a CLI still installed no
+    # matter how the removal exited.
+    if ours || mise where "$tool" >/dev/null 2>&1; then
+      echo "Could not remove the Hermes CLI Omarchy installed." >&2
+      echo "Remove ~/.local/bin/hermes and the mise tool '$tool', then run omarchy-install-hermes-cli --remove again." >&2
+      exit 1
+    fi
   fi
 
   exit 0

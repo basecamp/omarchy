@@ -22,6 +22,7 @@ SH
 cat >"$mock_bin/omarchy-install-hermes-cli" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >>"$OMARCHY_TEST_INSTALLER_LOG"
+exit "${OMARCHY_TEST_INSTALLER_STATUS:-0}"
 SH
 chmod +x "$mock_bin"/*
 
@@ -46,6 +47,7 @@ remove() {
   : >"$test_tmp/installer-log"
   OMARCHY_TEST_DROP_LOG="$test_tmp/drop-log" \
     OMARCHY_TEST_INSTALLER_LOG="$test_tmp/installer-log" \
+    OMARCHY_TEST_INSTALLER_STATUS="${OMARCHY_TEST_INSTALLER_STATUS:-0}" \
     HOME="$test_home" PATH="$mock_bin:$PATH" \
     bash "$ROOT/bin/omarchy-remove-ai-hermes" >/dev/null 2>&1
 }
@@ -131,3 +133,14 @@ remove || fail "remove succeeds with a wrapper pointing at a sibling directory"
 [[ -f $test_home/.local/bin/hermes && $(cat "$test_home/.local/bin/hermes") == "$sibling_body" ]] ||
   fail "a wrapper pointing at ~/xhermes is not mistaken for one pointing into ~/.hermes"
 pass "removal matches the runtime path as a plain string"
+
+# A CLI teardown that fails must not stop the runtime handling, and must not be
+# papered over either: the data work still happens, and the failure reaches the
+# caller's exit code.
+seed_install
+printf '%s\n' "#!/bin/bash" "exec $test_home/.hermes/hermes-agent/venv/bin/hermes \"\$@\"" \
+  >"$test_home/.local/bin/hermes"
+OMARCHY_TEST_INSTALLER_STATUS=1 remove && fail "a failed CLI teardown surfaces in the exit code"
+[[ ! -d $test_home/.hermes/hermes-agent ]] ||
+  fail "a failed CLI teardown does not stop the runtime removal"
+pass "a failed CLI teardown is reported after the runtime is handled"

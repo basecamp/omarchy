@@ -430,11 +430,18 @@ pass "--remove is idempotent when no Hermes CLI is present"
 printf '%s\n' "#!/bin/bash" "$stub_marker" >"$remove_home/.local/bin/hermes"
 chmod +x "$remove_home/.local/bin/hermes"
 : >"$mise_log"
-OMARCHY_TEST_MISE_WHERE_OK=1 run_remove || fail "--remove succeeds tearing down an owned CLI"
+run_remove || fail "--remove succeeds tearing down an owned CLI"
 tr '\0' '\n' <"$mise_log" | grep -q '^rm$' || fail "--remove drops the mise tool from config"
 tr '\0' '\n' <"$mise_log" | grep -q '^uninstall$' || fail "--remove uninstalls the mise tool"
 [[ ! -e $remove_home/.local/bin/hermes ]] || fail "--remove takes the stub it owns"
 pass "--remove tears down the mise CLI and the stub this installer owns"
+
+# When mise still resolves the tool after the teardown, the environment
+# survived whatever uninstall claimed, and --remove has to say so.
+printf '%s\n' "#!/bin/bash" "$stub_marker" >"$remove_home/.local/bin/hermes"
+chmod +x "$remove_home/.local/bin/hermes"
+OMARCHY_TEST_MISE_WHERE_OK=1 run_remove && fail "--remove claims success while mise still resolves the tool"
+pass "--remove fails when the mise environment survives the teardown"
 
 foreign_remove_body="#!/bin/bash
 exec /usr/local/bin/my-own-hermes \"\$@\""
@@ -449,6 +456,16 @@ OMARCHY_TEST_MISE_WHERE_OK=1 run_remove || fail "--remove succeeds with a foreig
 tr '\0' '\n' <"$mise_log" | grep -Eq '^(rm|uninstall)$' &&
   fail "--remove never removes a mise environment it cannot prove is Omarchy's"
 pass "--remove leaves a Hermes the user installed themselves"
+
+# Judged by what is left, not by what rm claimed: a stub that survives the
+# teardown is a CLI still installed, and --remove has to say so.
+printf '%s\n' "#!/bin/bash" "$stub_marker" >"$remove_home/.local/bin/hermes"
+chmod +x "$remove_home/.local/bin/hermes"
+chmod 555 "$remove_home/.local/bin"
+run_remove && fail "--remove claims success while the stub survives"
+chmod 755 "$remove_home/.local/bin"
+rm -f "$remove_home/.local/bin/hermes"
+pass "--remove fails when the stub cannot be removed"
 
 # The app's marker says its install once landed, not that it is still there. A
 # wrapper whose runtime has since gone answers for nothing, so readiness runs
@@ -541,3 +558,19 @@ SH
 chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
 run_ready_check && fail "--check accepts flags that extend --tui/--query with an underscore"
 pass "an underscore continuation is not the bare flag"
+
+# A flag mentioned in another option's help text is not that option. Hermes
+# already writes "With --tui:" into --dev's description, so prose has to stay
+# prose even when both names appear in it.
+cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then
+  echo "  --dev                 With --tui: run sources via tsx"
+  echo "  --log FILE            Where --query output lands"
+else
+  echo "hermes-agent 0.0.0-test"
+fi
+SH
+chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
+run_ready_check && fail "--check accepts flags that appear only in option descriptions"
+pass "a flag mentioned in prose is not a defined option"
