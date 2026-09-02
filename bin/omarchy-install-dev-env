@@ -75,15 +75,21 @@ install_php() {
     "pdo_mysql"
   )
 
-  /usr/bin/sudo -N -- /usr/bin/sed -i \
-    -e 's/^;zend_extension=xdebug.so/zend_extension=xdebug.so/' \
-    -e 's/^;xdebug.mode=debug/xdebug.mode=debug/' \
-    /etc/php/conf.d/xdebug.ini
-
+  # Keep the trusted configuration phase to one command-scoped authorization.
+  # sudo --no-update deliberately cannot reuse or publish a timestamp, so one
+  # sed process avoids prompting once per extension without opening a reusable
+  # credential window.
+  local -a sed_expressions=(
+    -e 's/^;zend_extension=xdebug.so/zend_extension=xdebug.so/'
+    -e 's/^;xdebug.mode=debug/xdebug.mode=debug/'
+  )
   local ext
   for ext in "${extensions_to_enable[@]}"; do
-    /usr/bin/sudo -N -- /usr/bin/sed -i "s/^;extension=${ext}/extension=${ext}/" "$php_ini_path"
+    sed_expressions+=(-e "s/^;extension=${ext}/extension=${ext}/")
   done
+
+  /usr/bin/sudo -N -- /usr/bin/sed -i "${sed_expressions[@]}" \
+    /etc/php/conf.d/xdebug.ini "$php_ini_path"
 }
 
 configure_composer_path() {

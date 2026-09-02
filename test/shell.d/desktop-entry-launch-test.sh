@@ -52,7 +52,9 @@ SH
 chmod +x "$mock_bin"/*
 
 font_script="$test_tmp/omarchy-install-font"
-cp "$ROOT/bin/omarchy-security-functions" "$ROOT/bin/omarchy-install-security-functions" "$test_tmp/"
+for helper in omarchy-security-functions omarchy-install-security-functions; do
+  sed "s#/usr/bin/sudo#$mock_bin/sudo#g" "$ROOT/bin/$helper" >"$test_tmp/$helper"
+done
 sed \
   -e "s#/usr/bin/omarchy-launch-floating-terminal-with-presentation#$mock_bin/omarchy-launch-floating-terminal-with-presentation#g" \
   -e "s#/usr/bin/omarchy-pkg-add#$mock_bin/omarchy-pkg-add#g" \
@@ -61,6 +63,10 @@ sed \
   -e "s#/usr/bin/sleep#/usr/bin/true#g" \
   "$ROOT/bin/omarchy-install-font" >"$font_script"
 chmod 0755 "$font_script"
+if grep -Fq '/usr/bin/sudo' "$test_tmp/omarchy-security-functions" "$test_tmp/omarchy-install-security-functions"; then
+  fail "desktop-entry test helpers still reach host sudo"
+fi
+pass "desktop-entry test routes installer helpers through its sudo mock"
 
 export HOME="$test_home"
 export OMARCHY_TEST_LOG="$test_tmp/launch.log"

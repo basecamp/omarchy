@@ -347,6 +347,11 @@ if grep -q '^UNTRUSTED:bashrc$' "$test_tmp"/events-*; then
 fi
 grep -q '^UNTRUSTED:composer$' "$test_tmp/events-laravel" || fail "Laravel Composer phase did not run"
 grep -q '^AUTH_NO_UPDATE$' "$test_tmp/events-clojure" || fail "Clojure prerequisite did not use command-scoped authentication"
+for branch in php laravel symfony; do
+  config_authorizations=$(grep -c '^PRIVILEGED_CONFIG_NO_UPDATE$' "$test_tmp/events-$branch")
+  (( config_authorizations == 1 )) ||
+    fail "$branch did not consolidate PHP configuration into one command-scoped authorization" "count=$config_authorizations"
+done
 pass "all development branches keep user and downloaded code beyond the sudo boundary"
 
 # A pre-existing timestamp is intentionally revoked by the documented command
