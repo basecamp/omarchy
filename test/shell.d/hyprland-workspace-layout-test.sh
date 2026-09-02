@@ -50,6 +50,18 @@ fi
   fail "workspace layout toggle does not persist a rule without a workspace id"
 pass "workspace layout toggle ignores broken hyprctl output"
 
+# When XDG_STATE_HOME is set, saves must follow paths.state_home (not bare HOME).
+xdg_home="$tmpdir/xdg-home"
+xdg_state="$tmpdir/xdg-state"
+rm -f "$log_file"
+HOME="$xdg_home" XDG_STATE_HOME="$xdg_state" HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" \
+  "$ROOT/bin/omarchy-hyprland-workspace-layout-toggle"
+xdg_layout="$xdg_state/omarchy/workspace-layouts/3.lua"
+[[ -f $xdg_layout ]] || fail "workspace layout toggle saves under XDG_STATE_HOME"
+[[ -e $xdg_home/.local/state/omarchy/workspace-layouts/3.lua ]] &&
+  fail "workspace layout toggle does not also write under HOME when XDG_STATE_HOME is set"
+pass "workspace layout toggle respects XDG_STATE_HOME"
+
 HOME="$home_dir" OMARCHY_PATH="$ROOT" lua <<'LUA'
 local rules = {}
 
@@ -62,8 +74,29 @@ hl = {
 dofile(os.getenv("OMARCHY_PATH") .. "/default/hypr/bootstrap.lua")
 require("default.hypr.workspace-layouts")
 
-assert(#rules == 1)
+assert(#rules == 1, "expected 1 layout rule, got " .. #rules)
 assert(rules[1].workspace == "3")
 assert(rules[1].layout == "scrolling")
 LUA
 pass "saved workspace layouts load into Hyprland configuration"
+
+# Production loads layouts through toggles.lua. XDG_STATE_HOME can diverge from
+# HOME/.local/state; bootstrap only puts HOME on package.path, so the layouts
+# directory itself must be on package.path (nil module prefix), matching toggles.
+HOME="$xdg_home" XDG_STATE_HOME="$xdg_state" OMARCHY_PATH="$ROOT" lua <<'LUA'
+local rules = {}
+
+hl = {
+  workspace_rule = function(rule)
+    table.insert(rules, rule)
+  end,
+}
+
+dofile(os.getenv("OMARCHY_PATH") .. "/default/hypr/bootstrap.lua")
+local ok, err = pcall(require, "default.hypr.toggles")
+assert(ok, err)
+assert(#rules == 1, "expected 1 layout rule via toggles, got " .. #rules)
+assert(rules[1].workspace == "3")
+assert(rules[1].layout == "scrolling")
+LUA
+pass "saved workspace layouts load via toggles when XDG_STATE_HOME diverges from HOME"
