@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "BorderGeometry.js" as Geometry
 
 // Shared structural style tokens for the shell. Color is the palette
 // singleton; Style holds everything else themes can influence — corner
@@ -312,6 +313,20 @@ QtObject {
     return Math.max(0, Math.round(base))
   }
 
+  // margin takes the same CSS-style list as the border widths — N, "Y X",
+  // "T X B", or "T R B L" — because a bar is usually set further off the edges
+  // it spans than off the one it hangs from.
+  function barMarginToken() {
+    var widths = Geometry.parseWidthSpec(barOverrides["margin"], 0)
+    var scale = barScaleWithFont ? fontScale : 1
+    return {
+      top: Math.max(0, Math.round(widths.top * scale)),
+      right: Math.max(0, Math.round(widths.right * scale)),
+      bottom: Math.max(0, Math.round(widths.bottom * scale)),
+      left: Math.max(0, Math.round(widths.left * scale))
+    }
+  }
+
   function boolToken(value, fallback) {
     if (value === undefined || value === null) return fallback
     var s = String(value).replace(/^\s+|\s+$/g, "").toLowerCase()
@@ -352,10 +367,7 @@ QtObject {
   readonly property QtObject bar: QtObject {
     readonly property int sizeHorizontal: root.barToken("size-horizontal", 26)
     readonly property int sizeVertical:   root.barToken("size-vertical",   28)
-    // Gap between the bar and the screen edges it would otherwise sit flush
-    // against, and the corner rounding of the bar surface. Both default to 0,
-    // which is the flush, square bar.
-    readonly property int margin:         root.barInsetToken("margin",     0)
+    readonly property var margins:        root.barMarginToken()
     readonly property int radius:         root.barInsetToken("radius",     0)
     readonly property int iconSlot:       root.barToken("icon-slot",       27)
     readonly property int iconCanvas:     root.barToken("icon-canvas",     16)
@@ -421,8 +433,11 @@ QtObject {
       } else if (section === "bar") {
         if (key === "scale-with-font") {
           nextBarScaleWithFont = boolToken(raw, nextBarScaleWithFont)
+        } else if (key === "margin") {
+          // Kept verbatim: the width spec is a list as often as a number.
+          barOut[key] = raw
         } else if (key === "size-horizontal" || key === "size-vertical"
-          || key === "margin" || key === "radius") {
+          || key === "radius") {
           var b = parseInt(raw, 10)
           if (isFinite(b)) barOut[key] = b
         }
