@@ -53,6 +53,7 @@ fi
 
 # Agents launched from the keybinding or menu run unattended, so each one starts
 # with its own spelling of "don't stop to ask". Pi and Ori have none to skip.
+# DSH's is an env var rather than a flag: DSH_PERMISSION_MODE=danger-full-access.
 case "$agent" in
 opencode)
   command=(opencode --auto)
@@ -72,6 +73,15 @@ crush)
     command=(crush run "$prompt")
   else
     command=(crush --yolo)
+  fi
+  ;;
+dsh)
+  # `dsh web` is the interactive surface (opens the browser; the process holds
+  # the server). `--profile headless` is the one-shot, like `crush run`.
+  if [[ -n ${prompt:-} ]]; then
+    command=(env DSH_PERMISSION_MODE=danger-full-access dsh --profile headless "$prompt")
+  else
+    command=(env DSH_PERMISSION_MODE=danger-full-access dsh web)
   fi
   ;;
 claude)
