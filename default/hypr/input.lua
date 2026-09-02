@@ -62,7 +62,11 @@ hl.config({
     numlock_by_default = true,
 
     touchpad = {
+      -- Use traditional scrolling and physical clicks. On the Asahi
+      -- touchpad, disable_while_typing alone does not stop stray taps while
+      -- typing; turning off tap_to_click does.
       natural_scroll = false,
+      tap_to_click = false,
       clickfinger_behavior = true,
       scroll_factor = 0.4,
     },
