@@ -34,6 +34,10 @@ You start it (or reattach to your existing session) with `Super + Ctrl + Return`
 
 Omarchy has packaged this as _About_ in the Omarchy menu (`Super + Space`).
 
+## Hyfetch
+
+[Hyfetch](https://github.com/hykilpikonna/hyfetch) is Neofetch with pride flags. Install it from the Omarchy menu under _Install > Hyfetch_ (`Super + Space`), then run `hyfetch` in any terminal to show your system info in full color.
+
 ## Disk Usage
 
 When the drive fills up and you have no idea what's eating it, launch _Disk Usage_ from the app launcher (`Super + Space`). It's [dua](https://github.com/Byron/dua-cli) in interactive mode pointed at the whole file system, so you can walk down into whatever directory is the culprit, sorted biggest first, and delete from right inside it.
