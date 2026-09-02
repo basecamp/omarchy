@@ -1,0 +1,19 @@
+[Unit]
+Description=Keep the speaker and mic mute LEDs in step with PipeWire
+# Only meaningful where the hardware exposes a mute LED. "|" makes these
+# triggering conditions, so either node on its own is enough to start.
+ConditionPathExists=|/sys/class/leds/platform::mute/brightness
+ConditionPathExists=|/sys/class/leds/platform::micmute/brightness
+# PipeWire lives in the user session. Restart=always covers the gap if pactl
+# is not answering yet at start, and a pipewire restart later on.
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-audio-mute-led-watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

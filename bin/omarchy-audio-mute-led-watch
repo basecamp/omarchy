@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# omarchy:summary=Keep the speaker and mic mute LEDs in step with PipeWire
+# omarchy:hidden=true
+
+# Two things keep these LEDs from tracking mute on their own. The kernel's
+# audio-mute trigger is attached on some laptops but never fires, and syncing
+# inside the mute commands only covers the keybindings -- the bar's audio panel
+# sets the PipeWire node directly and never runs them. Follow PipeWire itself so
+# the LEDs match the real state no matter what changed it.
+
+set -uo pipefail
+
+readonly speaker_led=/sys/class/leds/platform::mute/brightness
+readonly mic_led=/sys/class/leds/platform::micmute/brightness
+
+# Nothing to drive on hardware without the nodes. The unit carries the same
+# condition; this keeps a manual run harmless too.
+[[ -e $speaker_led || -e $mic_led ]] || exit 0
+
+speaker_state=""
+mic_state=""
+
+sync_leds() {
+  local sink state
+
+  if [[ -e $speaker_led ]]; then
+    # Resolve through any DSP sink the same way the volume keys do, so the LED
+    # follows the sink whose mute the user actually toggles.
+    sink=$(omarchy-audio-output-sink)
+
+    if [[ -n $sink && $(pactl get-sink-mute "$sink" 2>/dev/null) == *yes ]]; then
+      state="on"
+    else
+      state="off"
+    fi
+
+    # Only write on an actual change. pactl reports every volume step as well,
+    # and each brightness write detaches whatever trigger owns the LED.
+    if [[ $state != $speaker_state ]]; then
+      omarchy-brightness-speaker-mute "$state"
+      speaker_state=$state
+    fi
+  fi
+
+  if [[ -e $mic_led ]]; then
+    if wpctl get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null | grep -q MUTED; then
+      state="on"
+    else
+      state="off"
+    fi
+
+    if [[ $state != $mic_state ]]; then
+      omarchy-brightness-keyboard-mute "$state"
+      mic_state=$state
+    fi
+  fi
+}
+
+# A session can start with either device already muted, so begin from the real
+# state rather than assuming the LEDs are off.
+sync_leds
+
+# pactl emits an event for every sink, source, and server change alike: mutes
+# from the bar, from a keybinding, and from any other client. A default-output
+# change arrives as a server event, which re-resolves the sink above.
+while read -r event; do
+  case $event in
+    *"on sink"* | *"on source"* | *"on server"*) sync_leds ;;
+  esac
+done < <(pactl subscribe 2>/dev/null)
