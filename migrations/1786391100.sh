@@ -1,5 +1,10 @@
 echo "Run the WPA handshake in software on Macs with Broadcom Wi-Fi"
 
+# This quirk targets Intel Macs. Apple Silicon uses brcmfmac too, but disabling
+# the BCM4387 firmware supplicant makes firmware commands time out and breaks
+# scanning entirely.
+omarchy-hw-apple-silicon && exit 0
+
 # The install-time quirk only reaches machines set up after it shipped, and it
 # never covered Macs without a T2 at all, so an existing install on one still
 # cannot join a WPA2/WPA3 transition-mode network. See

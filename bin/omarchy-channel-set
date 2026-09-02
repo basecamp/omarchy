@@ -41,6 +41,13 @@ link_dev_checkout() {
 
 (( $# > 0 )) || { usage; exit 1; }
 
+# Channels are pacman.conf/mirrorlist pairs, and every one of them is x86_64.
+# Until there is an aarch64 repository per channel, switching would swap the
+# Arch Linux ARM and Asahi repositories out from under the kernel.
+if omarchy-hw-apple-silicon; then
+  fail "There is no per-channel aarch64 repository for Apple Silicon yet; preserving the existing Arch Linux ARM repositories."
+fi
+
 dev_checkout=""
 channel="$1"
 leaving_dev=0

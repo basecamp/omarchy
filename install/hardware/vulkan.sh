@@ -4,10 +4,15 @@
 declare -A VULKAN_DRIVERS=(
   [Intel]=vulkan-intel
   [AMD]=vulkan-radeon
-  [Apple]=vulkan-asahi
 )
 
 PACKAGES=()
+
+# The Apple GPU is not a PCI device, so lspci never lists it: detect the
+# machine instead of the vendor.
+if omarchy-hw-apple-silicon; then
+  PACKAGES+=(vulkan-asahi)
+fi
 
 for vendor in "${!VULKAN_DRIVERS[@]}"; do
   if lspci | grep -iE "(VGA|Display).*$vendor" > /dev/null; then

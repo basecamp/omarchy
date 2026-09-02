@@ -9,6 +9,11 @@ fix_t2="$ROOT/install/hardware/apple/fix-t2.sh"
 all="$ROOT/install/hardware/all.sh"
 migration="$ROOT/migrations/1786391100.sh"
 
+# Apple Silicon's BCM4387 is in the ID list, but there the firmware supplicant
+# is the one that works; both the leaf and the migration have to step aside.
+grep -Fq 'omarchy-hw-apple-silicon && exit 0' "$migration" || fail "Broadcom migration excludes Apple Silicon"
+grep -Fq 'omarchy-hw-apple-silicon && return 0' "$leaf" || fail "Broadcom install quirk excludes Apple Silicon"
+
 grep -q 'apple/fix-brcmfmac-supplicant.sh' "$all" ||
   fail "the brcmfmac quirk runs during hardware setup"
 
@@ -61,13 +66,19 @@ printf '\t%s' "$@" >>"$TEST_LOG"
 printf '\n' >>"$TEST_LOG"
 SH
 
+cat >"$stub_bin/omarchy-hw-apple-silicon" <<'SH'
+#!/bin/bash
+
+(( ${APPLE_SILICON:-0} == 1 ))
+SH
+
 chmod +x "$stub_bin"/*
 
 # The leaf reads the vendor from an absolute path, so point it at a fixture by
 # running with a fake root on PATH-independent state. pipefail is on, so a
 # grep -q gate would go silent here the way #6608 did.
 run_leaf() {
-  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}"
+  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}" apple_silicon="${4:-0}"
   rm -rf "$test_tmp/etc"
   mkdir -p "$test_tmp/etc"
   printf '%s' "$vendor" >"$test_tmp/dmi/sys_vendor"
@@ -78,7 +89,7 @@ run_leaf() {
       -e "s|/etc/modprobe.d|$test_tmp/etc/modprobe.d|g" \
       "$leaf" >"$script"
 
-  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" PATH="$stub_bin:$PATH" \
+  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" APPLE_SILICON="$apple_silicon" PATH="$stub_bin:$PATH" \
     bash -eE -o pipefail -c 'source "$1"' bash "$script" </dev/null
 }
 
@@ -96,6 +107,10 @@ for wifi_id in 43ba 43bb 43bc 43a3 43dc 4464 4425 4433; do
   [[ -f $conf ]] || fail "a Mac without a T2 gets the quirk" "14e4:$wifi_id"
 done
 pass "every brcmfmac part on a Mac without a T2 gets the quirk"
+
+run_leaf "Apple Inc." 4433 0 1 >/dev/null
+[[ ! -f $conf ]] || fail "Apple Silicon is excluded from the Intel Mac quirk"
+pass "Apple Silicon is excluded from the Intel Mac quirk"
 
 # Older Macs report the vendor differently.
 run_leaf "Apple Computer, Inc." 43ba 0 >/dev/null
@@ -120,11 +135,11 @@ pass "a Mac with no wireless device is left alone"
 # Installs that predate the quirk never ran the leaf, so the migration has to
 # reach them. It runs as the user under pipefail, the context #6608 was about.
 run_migration() {
-  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}"
+  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}" apple_silicon="${4:-0}"
   printf '%s' "$vendor" >"$test_tmp/dmi/sys_vendor"
   : >"$calls"
 
-  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" PATH="$stub_bin:$PATH" TEST_LOG="$calls" \
+  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" APPLE_SILICON="$apple_silicon" PATH="$stub_bin:$PATH" TEST_LOG="$calls" \
     OMARCHY_BRCMFMAC_DMI_VENDOR="$test_tmp/dmi/sys_vendor" \
     OMARCHY_BRCMFMAC_CONF="$conf" \
     bash -euo pipefail "$migration" >/dev/null
@@ -147,6 +162,12 @@ run_migration "Apple Inc." 4488 1
   fail "the migration is idempotent" "$(cat "$conf")"
 [[ ! -s $calls ]] || fail "a repaired install is left untouched" "$(cat "$calls")"
 pass "the migration is idempotent"
+
+rm -rf "$test_tmp/etc"
+run_migration "Apple Inc." 4433 0 1
+[[ ! -e $conf ]] || fail "the migration leaves Apple Silicon Wi-Fi alone"
+[[ ! -s $calls ]] || fail "the migration escalates nothing on Apple Silicon" "$(cat "$calls")"
+pass "the migration leaves Apple Silicon Wi-Fi alone"
 
 # The machine this was written for, with no T2 to fall back on.
 rm -rf "$test_tmp/etc"
