@@ -204,7 +204,8 @@ ShellRoot {
         root.injectBar(dictation)
         dictation.triggerPress(Qt.LeftButton)
         dictation.triggerPress(Qt.RightButton)
-        root.assertTrue(root.commandCount("omarchy-voxtype-config") === 2, "Dictation clicks run config command")
+        root.assertTrue(root.commandCount("voxtype record toggle") === 1, "Dictation left click toggles dictation")
+        root.assertTrue(root.commandCount("omarchy-voxtype-config") === 1, "Dictation right click opens the Voxtype config")
         root.assertTrue(root.commandCount("omarchy-voxtype-model") === 0, "Dictation clicks do not run model command")
       }
 
