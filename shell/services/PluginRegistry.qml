@@ -166,6 +166,28 @@ QtObject {
     return findEntryLocation(config, id).kind === "bar"
   }
 
+  function inPlugins(id) {
+    var config = shellConfigProvider ? shellConfigProvider() : null
+    return findEntryLocation(config, id).kind === "plugin"
+  }
+
+  // What `omarchy plugin list` reports. A bar-only widget's on/off switch is
+  // its place in bar.layout. A plugin that is also an overlay, service, panel,
+  // or menu can be on via plugins[] without a layout slot — its glyph may sit
+  // inside another widget — so inBar alone would list a running overlay as
+  // disabled. First-party hybrids stay loadable off the bar (isEnabled) but
+  // still list from the widget slot, matching enable/disable.
+  function listedEnabled(id) {
+    var key = String(id)
+    var manifest = installedPlugins[key]
+    if (!manifest) return false
+    var kinds = manifest.kinds || []
+    if (Array.isArray(kinds) && kinds.indexOf("bar") !== -1) return isEnabled(key)
+    if (Array.isArray(kinds) && kinds.indexOf("bar-widget") !== -1)
+      return inBar(key) || inPlugins(key)
+    return isEnabled(key)
+  }
+
   function defaultBarWidgetSection(manifest) {
     var metadata = manifest && Util.isPlainObject(manifest.barWidget) ? manifest.barWidget : null
     var section = metadata ? String(metadata.defaultSection || "") : ""
