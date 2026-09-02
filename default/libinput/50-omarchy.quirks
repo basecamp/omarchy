@@ -1,0 +1,22 @@
+# Shokz USB headset dongles declare their vendor control channel as a single
+# Consumer "Power" usage, which the kernel maps to KEY_POWER on every byte of
+# that channel, so headset telemetry arrives as phantom power-key presses. The
+# dongles have no host power button, so only KEY_POWER is dropped.
+
+[Shokz OpenComm2 UC Dongle]
+MatchBus=usb
+MatchVendor=0x3511
+MatchProduct=0x2B1E
+AttrEventCode=-KEY_POWER
+
+[Shokz Loop120 Dongle (2EF2)]
+MatchBus=usb
+MatchVendor=0x3511
+MatchProduct=0x2EF2
+AttrEventCode=-KEY_POWER
+
+[Shokz Loop120 Dongle (2F06)]
+MatchBus=usb
+MatchVendor=0x3511
+MatchProduct=0x2F06
+AttrEventCode=-KEY_POWER

@@ -120,6 +120,7 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ environment.d/*.conf                               /usr/lib/environment.d/
   ├─ fontconfig/conf.avail/50-omarchy.conf              /usr/share/fontconfig/conf.avail/
   │                                                       + symlink /etc/fonts/conf.d/50-omarchy.conf
+  ├─ libinput/50-omarchy.quirks                         /usr/share/libinput/
   ├─ xdg-terminal-exec/*.list                           /usr/share/xdg-terminal-exec/
   ├─ applications/mimeapps.list                         /usr/share/applications/mimeapps.list
   ├─ systemd/user/*.service                             /usr/lib/systemd/user/
