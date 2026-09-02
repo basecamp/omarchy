@@ -8,6 +8,21 @@ end
 
 o.shell_quote = shell_quote
 
+local function append_shell_args(command, args)
+  if args == nil then
+    return command
+  end
+
+  assert(type(args) == "table", "webapp flags must be a list")
+
+  for _, arg in ipairs(args) do
+    assert(type(arg) == "string", "webapp flags must contain only strings")
+    command = command .. " " .. shell_quote(arg)
+  end
+
+  return command
+end
+
 local function file_exists(path)
   local file = io.open(path, "r")
   if file then
@@ -66,9 +81,9 @@ local function command_from(value, description)
     return o.launch(value.launch)
   elseif value.webapp then
     if value.focus then
-      return o.launch_webapp_sole(description, value.webapp)
+      return o.launch_webapp_sole(description, value.webapp, value.flags)
     else
-      return o.launch_webapp(value.webapp)
+      return o.launch_webapp(value.webapp, value.flags)
     end
   elseif value.tui then
     if value.focus then
@@ -119,12 +134,12 @@ function o.launch_on_start(command)
   o.exec_on_start(o.launch(command))
 end
 
-function o.launch_webapp(url)
-  return "omarchy-launch-webapp " .. shell_quote(url)
+function o.launch_webapp(url, flags)
+  return append_shell_args("omarchy-launch-webapp " .. shell_quote(url), flags)
 end
 
-function o.launch_webapp_sole(name, url)
-  return "omarchy-launch-or-focus-webapp " .. shell_quote(name) .. " " .. shell_quote(url)
+function o.launch_webapp_sole(name, url, flags)
+  return append_shell_args("omarchy-launch-or-focus-webapp " .. shell_quote(name) .. " " .. shell_quote(url), flags)
 end
 
 function o.launch_sole(match, command)

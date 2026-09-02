@@ -71,6 +71,15 @@ hl.unbind("SUPER + SHIFT + O")
 o.bind("SUPER + SHIFT + O", "Joplin", "joplin-desktop")
 ```
 
+Web app bindings can pass additional arguments to the Chromium-family browser as a list. For example, to open YouTube Music with an existing browser profile:
+
+```lua
+o.bind("SUPER + SHIFT + M", "YouTube Music", {
+  webapp = "https://music.youtube.com",
+  flags = { "--profile-directory=Profile 1" },
+})
+```
+
 If you insist on hacking on the internal Omarchy files, switch to the dev channel via _Update > Channel > Dev_. That links Omarchy to a git checkout of the source code in `~/omarchy`, which you're free to change to your heart's content. Ain't nobody here to tell you what to do!
 
 ### Resetting any changes
