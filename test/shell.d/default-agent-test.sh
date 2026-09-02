@@ -52,6 +52,11 @@ cat >"$mock_bin/omarchy-mise-install" <<'SH'
 printf '%s\n' "$*" >>"$OMARCHY_TEST_STUB_LOG"
 SH
 
+cat >"$mock_bin/omarchy-afk-plugin-install" <<'SH'
+#!/bin/bash
+printf 'plugin\n' >>"$OMARCHY_TEST_STUB_LOG"
+SH
+
 cat >"$mock_bin/mise" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >"$OMARCHY_TEST_MISE_LOG"
@@ -111,7 +116,7 @@ assert_lazy_stub() {
   "$test_home/.local/bin/$command" --version
   mapfile -t mise_calls <"$mise_history"
 
-  [[ ${mise_calls[0]} == "use -g --quiet $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
+  [[ ${mise_calls[0]} == "use -g --quiet $package" && ${mise_calls[-1]} == "x $package -- $command --version" ]] ||
     fail "$command lazy stub preserves its mise package"
 }
 
@@ -120,6 +125,8 @@ assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
 assert_lazy_stub "$ori_package" ori
 assert_lazy_stub "$afk_package" afk
+grep -q 'omarchy-afk-plugin-install' "$test_home/.local/bin/afk" ||
+  fail "AFK lazy stub installs the AFK Monitor plugin on first run"
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
@@ -142,6 +149,11 @@ grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "Ori migration create
 : >"$stub_log"
 source "$ROOT/migrations/1787709254.sh" >/dev/null
 grep -Fx "$afk_package afk" "$stub_log" >/dev/null || fail "AFK migration creates a working lazy stub"
+grep -Fx "plugin" "$stub_log" >/dev/null || fail "AFK migration installs the AFK Monitor plugin"
+
+: >"$stub_log"
+source "$ROOT/migrations/1788281166.sh" >/dev/null
+grep -Fx "plugin" "$stub_log" >/dev/null || fail "AFK plugin migration installs the AFK Monitor plugin"
 
 : >"$stub_log"
 source "$ROOT/migrations/1785846769.sh" >/dev/null

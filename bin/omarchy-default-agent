@@ -62,6 +62,10 @@ if ! mise use -g "$agent_package"; then
   exit 1
 fi
 
+if [[ $agent == "afk" ]]; then
+  omarchy-afk-plugin-install || true
+fi
+
 mkdir -p "$(dirname "$agent_file")"
 printf '%s\n' "$agent" >"$agent_file"
 
