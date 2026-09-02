@@ -41,6 +41,13 @@ def config_dir() -> Path:
   return expand_path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude")
 
 
+def default_agent_is_openzoo() -> bool:
+  try:
+    return (Path.home() / ".config" / "omarchy" / "defaults" / "agent").read_text().strip() == "openzoo"
+  except OSError:
+    return False
+
+
 def expand_path(value: str) -> Path:
   return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
 
@@ -808,7 +815,15 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
   # showing the last numbers whose window has not since reset.
   if access_token == "":
     result["limits"] = fallback
-    result["usageStatusText"] = "Waiting for auth"
+    # Under the openzoo agent the Claude Code CLI is real but never signed in
+    # to Anthropic: each call is paid over x402 through the local proxy, so
+    # there is no OAuth token to wait for and no limit bucket to probe.
+    # "Waiting for auth" would describe that state as broken; say what it is.
+    if default_agent_is_openzoo():
+      result["usageStatusText"] = "Paid per call via openzoo"
+      result["authHelpText"] = "No Anthropic sign-in: openzoo pays each call over x402 from a local wallet. Spend shows in the openzoo bar widget."
+    else:
+      result["usageStatusText"] = "Waiting for auth"
     return result
   if expires_at_ms > 0 and expires_at_ms <= time.time() * 1000:
     result["limits"] = fallback
