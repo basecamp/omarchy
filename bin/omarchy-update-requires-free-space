@@ -11,6 +11,11 @@ elif read -r available_bytes < <(df --output=avail --block-size=1 / 2>/dev/null 
   [[ $available_bytes =~ ^[0-9]+$ ]] &&
   (( available_bytes < 10 * 1024 * 1024 * 1024 )); then
   echo "You need at least 10 GiB free to safely update Omarchy."
+
+  if findmnt -no OPTIONS / 2>/dev/null | grep -q 'subvol=.*\.snapshots/.*/snapshot'; then
+    echo "It looks like you are booted from a Btrfs snapshot. Reboot into the regular Omarchy entry, then update from there."
+  fi
+
   exit 1
 else
   exit 0
