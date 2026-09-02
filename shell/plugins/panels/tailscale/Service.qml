@@ -7,6 +7,9 @@ import "Model.js" as Model
 Item {
   id: root
 
+  signal authUrlOpened()
+  signal loginCompleted()
+
   property var settings: ({})
 
   property bool installed: false
@@ -18,6 +21,7 @@ Item {
   // the real state, or 0/1 while a toggle is still catching up.
   property int _desired: -1
   readonly property bool active: _desired === -1 ? running : (_desired === 1)
+  readonly property bool connecting: _desired === 1 && !running && !needsLogin
   property bool refreshing: false
   property string backendState: "Unknown"
   property string statusText: "Checking…"
@@ -57,6 +61,7 @@ Item {
   property string _loginError: ""
   property bool _loginInProgress: false
   property bool _loginUrlOpened: false
+  property bool _reopenAfterLogin: false
   property string _preLoginAuthUrl: ""
   property double _lastAccountsRefreshMs: 0
   property string _switchOutput: ""
@@ -157,17 +162,43 @@ Item {
     }
   }
 
+  function startStatusRefresh() {
+    if (!installed || statusProcess.running) return false
+    _statusOutput = ""
+    _statusError = ""
+    refreshing = true
+    statusProcess.command = ["tailscale", "status", "--json"]
+    statusProcess.running = true
+    return true
+  }
+
+  function refreshStatusOnly() {
+    if (startStatusRefresh() && !pollWatchdog.running) pollWatchdog.start()
+  }
+
+  function startStateWatch() {
+    if (!installed || stateWatchProcess.running) return
+    stateWatchProcess.command = ["tailscale", "debug", "localapi", "GET", "/localapi/v0/watch-ipn-bus?mask=2"]
+    stateWatchProcess.running = true
+  }
+
+  function handleStateWatchData(data) {
+    var text = String(data || "").trim()
+    if (text === "") return
+
+    try {
+      var notification = JSON.parse(text)
+      var browseUrl = String(notification.BrowseToURL || "")
+      if (browseUrl !== "" && _loginInProgress && !_loginUrlOpened) openAuthUrl(browseUrl)
+      stateWatchRefreshTimer.restart()
+    } catch (e) {
+      console.warn("tailscale: failed to parse IPN notification", e)
+    }
+  }
+
   function refreshStatusAndAccounts(forceAccounts) {
     if (!installed) return
-    var launched = false
-    if (!statusProcess.running) {
-      _statusOutput = ""
-      _statusError = ""
-      refreshing = true
-      statusProcess.command = ["tailscale", "status", "--json"]
-      statusProcess.running = true
-      launched = true
-    }
+    var launched = startStatusRefresh()
     if (!mullvadExitNodesProcess.running) {
       _mullvadExitNodesOutput = ""
       _mullvadExitNodesError = ""
@@ -241,7 +272,7 @@ Item {
     if (_desired !== -1 && running === (_desired === 1)) _desired = -1
     needsLogin = parsed.needsLogin
     authUrl = parsed.authUrl
-    if (needsLogin && _loginInProgress && !_loginUrlOpened && authUrl !== "" && authUrl !== _preLoginAuthUrl) openAuthUrlFrom(authUrl, false)
+    if (needsLogin && _loginInProgress && !_loginUrlOpened && authUrl !== "" && authUrl !== _preLoginAuthUrl) openAuthUrl(authUrl)
     selfName = parsed.selfName
     selfDnsName = parsed.selfDnsName
     selfIp = parsed.selfIp
@@ -258,6 +289,10 @@ Item {
       _loginUrlOpened = false
       _preLoginAuthUrl = ""
       loginTimeoutTimer.stop()
+      if (_reopenAfterLogin) {
+        _reopenAfterLogin = false
+        loginCompleted()
+      }
     } else if (backendState === "Stopped") {
       statusText = "Disconnected"
     } else {
@@ -299,7 +334,7 @@ Item {
     var plan = Model.loginPlan(needsLogin, authUrl)
     if (plan.authUrl !== "") {
       _loginUrlOpened = false
-      openAuthUrlFrom(plan.authUrl, true)
+      openAuthUrl(plan.authUrl)
       return
     }
     _loginOutput = ""
@@ -363,27 +398,27 @@ Item {
     actionProcess.running = true
   }
 
-  function openAuthUrlFrom(text, allowFallback) {
+  function openAuthUrl(value) {
     if (_loginUrlOpened) return true
-    var match = String(text || "").match(/https?:\/\/\S+/)
-    var url = match && match[0] ? match[0] : (allowFallback === true ? authUrl : "")
-    if (url !== "") {
-      // Turning on ended up needing browser auth — stop pretending we're up.
-      _desired = -1
-      _loginUrlOpened = true
-      _loginInProgress = false
-      loginTimeoutTimer.stop()
-      Quickshell.execDetached(["omarchy-launch-browser", url])
-      return true
-    }
-    return false
+    var url = String(value || "").trim()
+    if (!/^https?:\/\/\S+$/.test(url)) return false
+
+    _loginUrlOpened = true
+    _loginInProgress = false
+    _reopenAfterLogin = true
+    loginTimeoutTimer.stop()
+    Quickshell.execDetached(["omarchy-launch-browser", url])
+    // Close the panel before dropping the optimistic state so its connected
+    // sections do not visibly collapse on the way out.
+    authUrlOpened()
+    _desired = -1
+    return true
   }
 
   function handleLoginOutput(data, isError) {
     var text = String(data || "")
     if (isError) _loginError += text + "\n"
     else _loginOutput += text + "\n"
-    if (_loginInProgress && !_loginUrlOpened) openAuthUrlFrom(text, false)
   }
 
   Timer {
@@ -442,12 +477,31 @@ Item {
   }
 
   Timer {
+    // State notifications update the icon immediately. Debounce the heavier
+    // status query that fills in peers, account details, and addresses.
+    id: stateWatchRefreshTimer
+    interval: 150
+    repeat: false
+    onTriggered: {
+      if (statusProcess.running) restart()
+      else root.refreshStatusOnly()
+    }
+  }
+
+  Timer {
+    id: stateWatchRestartTimer
+    interval: 2000
+    repeat: false
+    onTriggered: root.startStateWatch()
+  }
+
+  Timer {
     id: loginTimeoutTimer
     interval: 10000
     repeat: false
     onTriggered: {
       if (!root._loginInProgress || root._loginUrlOpened) return
-      if (!root.openAuthUrlFrom(root.authUrl, true)) {
+      if (!root.openAuthUrl(root.authUrl)) {
         root._loginInProgress = false
         root.actionStatus = "Tailscale login link not available yet"
       }
@@ -460,11 +514,24 @@ Item {
     command: []
     onExited: function(exitCode) {
       root.installed = exitCode === 0
-      if (root.installed) root.refreshStatusAndAccounts()
+      if (root.installed) {
+        root.startStateWatch()
+        root.refreshStatusAndAccounts()
+      }
       else {
         root.refreshing = false
         root.resetUnavailable("Not installed")
       }
+    }
+  }
+
+  Process {
+    id: stateWatchProcess
+    running: false
+    command: []
+    stdout: SplitParser { onRead: function(data) { root.handleStateWatchData(data) } }
+    onExited: function(exitCode) {
+      if (root.installed) stateWatchRestartTimer.restart()
     }
   }
 
@@ -551,14 +618,13 @@ Item {
     stderr: SplitParser { onRead: function(data) { root.handleLoginOutput(data, true) } }
     onExited: function(exitCode) {
       var combined = String(root._loginOutput || "") + "\n" + String(root._loginError || "")
-      var opened = root.openAuthUrlFrom(combined, true)
-      if (exitCode !== 0 && !opened) {
+      if (exitCode !== 0 && !root._loginUrlOpened) {
         root._desired = -1
         root._loginInProgress = false
-        root.lastError = elideStatus(combined || "tailscale up failed")
+        root.lastError = elideStatus(combined || "Could not start Tailscale")
         root.actionStatus = root.lastError
         actionStatusTimer.restart()
-      } else if (!opened) {
+      } else {
         root.lastError = ""
         root.actionStatus = ""
       }

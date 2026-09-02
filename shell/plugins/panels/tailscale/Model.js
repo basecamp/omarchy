@@ -70,7 +70,14 @@ function loginPlan(needsLogin, authUrl) {
   if (needsLogin === true && /^https?:\/\//.test(url)) {
     return { authUrl: url, command: [] }
   }
-  return { authUrl: "", command: ["tailscale", "up"] }
+  if (needsLogin === true) {
+    // The IPN watcher receives the authorization URL asynchronously.
+    return { authUrl: "", command: ["tailscale", "debug", "localapi", "POST", "/localapi/v0/login-interactive"] }
+  }
+  // Resume using the persisted preferences. `tailscale up` reconstructs the
+  // full preference set from its flag defaults, so it refuses to run when a
+  // saved option such as accept-routes differs from that default.
+  return { authUrl: "", command: ["tailscale", "debug", "localapi", "PATCH", "/localapi/v0/prefs", "{\"WantRunning\":true,\"WantRunningSet\":true}"] }
 }
 
 // Taildrop is a tailnet feature the admin can turn off, so the button for it
