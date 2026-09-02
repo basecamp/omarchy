@@ -61,6 +61,16 @@ assert(merged.items.root, 'menu injects root when merging sources')
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')
 assertEqual(menu.parentPathFor(merged.items, 'style.theme'), 'Style', 'menu builds parent paths')
+const appSearchItems = {
+  apps: { id: 'apps', parent: 'root', kind: 'menu', label: 'Apps' },
+  'apps.contacts': { id: 'apps.contacts', parent: 'apps', kind: 'app', label: 'Google Contacts', description: 'Address Book' },
+  'apps.unnamed': { id: 'apps.unnamed', parent: 'apps', kind: 'app', label: 'Aether', description: '' },
+  'apps.repeated': { id: 'apps.repeated', parent: 'apps', kind: 'app', label: 'Calculator', description: 'Calculator' }
+}
+assertEqual(menu.searchDetail(appSearchItems, appSearchItems['apps.contacts']), 'Address Book', 'app search uses a distinct GenericName as its detail')
+assertEqual(menu.searchDetail(appSearchItems, appSearchItems['apps.unnamed']), 'Apps', 'app search falls back to its parent path without GenericName')
+assertEqual(menu.searchDetail(appSearchItems, appSearchItems['apps.repeated']), 'Apps', 'app search avoids repeating the application name')
+assertEqual(menu.searchDetail(merged.items, merged.items['style.theme']), 'Style', 'non-app search keeps its parent path')
 assert(menu.isDescendantOf(merged.items, 'style.theme', 'style'), 'menu detects descendants')
 assertEqual(menu.childCount(merged.items, merged.itemOrder, 'style'), 1, 'menu counts children')
 assertEqual(menu.labelFor({ id: 'style.theme', label: 'Theme', checked: 'cmd' }, { 'style.theme': true }), 'Theme ✓', 'menu appends checked marker')
