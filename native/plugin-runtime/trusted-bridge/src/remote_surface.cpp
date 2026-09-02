@@ -330,7 +330,9 @@ void RemotePluginSurface::logInputRejectionOnce(std::uint32_t reason_bit,
       << " event-type=" << static_cast<int>(event.type())
       << " spontaneous=" << (event.spontaneous() ? "true" : "false")
       << " source=" << static_cast<int>(event.source())
-      << " device-type=" << static_cast<int>(event.deviceType());
+      << " device-type="
+      << (event.device() == nullptr ? -1
+                                    : static_cast<int>(event.deviceType()));
 }
 
 void RemotePluginSurface::wheelEvent(QWheelEvent *event) {
