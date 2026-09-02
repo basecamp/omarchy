@@ -77,15 +77,16 @@ Panel {
   property var cachedAudioSources: []
 
   readonly property var rawAudioSinks: {
-    var list = []
+    var available = []
     for (var i = 0; i < candidateSinks.length; i++)
-      if (sinkAvailable(candidateSinks[i])) list.push(candidateSinks[i])
+      if (sinkAvailable(candidateSinks[i])) available.push(candidateSinks[i])
+    var list = Model.deduplicateNodes(available, sink)
     if (sink && list.indexOf(sink) < 0) list.unshift(sink)
     return list
   }
 
   readonly property var rawAudioSources: {
-    var list = candidateSources.slice()
+    var list = Model.deduplicateNodes(candidateSources, source)
     if (source && list.indexOf(source) < 0) list.unshift(source)
     return list
   }

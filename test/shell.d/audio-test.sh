@@ -46,4 +46,10 @@ assertEqual(audio.matchingMprisStreamLabel('Chromium', players), 'Chromium', 'au
 assertEqual(audio.unmatchedMprisStreamLabel('audio-src', players, streams), 'Spotify', 'audio uses unmatched MPRIS player for generic streams')
 assertEqual(audio.streamLabel(streams[1], players, streams), 'Spotify', 'audio labels generic streams from MPRIS')
 assert(audio.streamRepresentsPlayer(streams[1], players[0], players, streams), 'audio links generic streams to active player')
+
+const node1 = { id: 10, name: 'alsa_output.hdmi' }
+const node2 = { id: 20, name: 'alsa_output.hdmi' }
+const node3 = { id: 30, name: 'alsa_output.speakers' }
+assertDeepEqual(audio.deduplicateNodes([node1, node2, node3]), [node2, node3], 'deduplicateNodes picks highest id by default')
+assertDeepEqual(audio.deduplicateNodes([node1, node2, node3], node1), [node1, node3], 'deduplicateNodes prefers current active node')
 JS
