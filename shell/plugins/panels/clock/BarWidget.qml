@@ -57,7 +57,8 @@ BarWidget {
   }
 
   function formatted(date) {
-    return Qt.formatDateTime(date, activeFormat.replace(/ww/g, Model.isoWeekLiteral(date.getFullYear(), date.getMonth(), date.getDate())))
+    var withWeek = activeFormat.replace(/ww/g, Model.isoWeekLiteral(date.getFullYear(), date.getMonth(), date.getDate()))
+    return Qt.formatDateTime(date, Model.applyOrdinalToken(withWeek, date.getDate()))
   }
 
   // ---- Calendar popup. Shape contract for shell.summon/hide/toggle
