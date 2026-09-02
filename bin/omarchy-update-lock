@@ -6,7 +6,9 @@
 
 set -e
 
-lock_dir="${XDG_RUNTIME_DIR:-/tmp}"
+# Prefer the private runtime dir; never fall back to shared /tmp where
+# another user could pre-create the lock path.
+lock_dir="${XDG_RUNTIME_DIR:-$HOME/.local/state/omarchy}"
 lock_path="$lock_dir/omarchy-update.lock"
 
 lock_is_held() {
@@ -31,6 +33,7 @@ case "${1:-}" in
     fi
 
     mkdir -p "$lock_dir" 2>/dev/null || true
+    chmod 700 "$lock_dir" 2>/dev/null || true
     exec {OMARCHY_UPDATE_LOCK_FD}>"$lock_path"
     if ! flock -n "$OMARCHY_UPDATE_LOCK_FD"; then
       echo "An Omarchy update is already running."
