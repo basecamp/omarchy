@@ -562,22 +562,16 @@ chmod_private_dir() {
   chmod a-s,u=rwx,go= -- "$@"
 }
 
-# dockur samba.sh does `chmod 2777` on an empty /shared bind at container start.
-# A hidden sentinel keeps the share non-empty so that path is skipped, and the
-# host privacy mode 700 is restored after `docker compose up`.
-SHARED_SENTINEL=.omarchy-keep
-
-ensure_shared_sentinel() {
-  local shared="$1" sentinel
-  [[ -d $shared ]] || return 0
-  sentinel="$shared/$SHARED_SENTINEL"
-  [[ -e $sentinel ]] || : >"$sentinel" || return 1
-}
-
+# dockur samba.sh chmod 2777s an empty /shared at container start. Re-harden
+# the already-pinned directory inodes only — never create files in the
+# caller-owned share as root (that is a symlink-follow write primitive).
+# Best-effort: a failed chmod must not fail a VM that already started.
 restore_shared_privacy() {
-  local shared="${1:-$EXPECTED_SHARED}"
-  [[ -n $shared && -d $shared ]] || return 0
-  chmod_private_dir "$shared" || return 1
+  local dir
+  for dir in "$EXPECTED_SHARED" "$LEGACY_SHARED"; do
+    [[ -n $dir && -d $dir && ! -L $dir ]] || continue
+    chmod_private_dir "$dir" || true
+  done
 }
 
 prepare_caller_mounts() {
@@ -619,11 +613,6 @@ prepare_caller_mounts() {
     exec {shared_fd}<&-
     return 1
   fi
-  ensure_shared_sentinel "/proc/$BASHPID/fd/$shared_fd" || {
-    exec {storage_fd}<&-
-    exec {shared_fd}<&-
-    return 1
-  }
 
   if bind_mount_leaf "$storage_fd" "$storage_id" "$EXPECTED_STORAGE"; then
     CALLER_MOUNTS_NEW_STORAGE=$MOUNT_LEAF_NEW
@@ -925,11 +914,7 @@ assert_mounts_safe() {
   }
 }
 
-__priv_up() {
-  assert_mounts_safe || return 1
-  dc up -d || return 1
-  restore_shared_privacy
-}
+__priv_up() { assert_mounts_safe && dc up -d; }
 
 __priv_down() { dc down; }
 
@@ -942,7 +927,6 @@ __priv_up_wait() {
   if [[ $status != "running" ]]; then
     dc up -d || return 1
   fi
-  restore_shared_privacy || return 1
 
   # docker logs persists across restarts, so anchor the scan to the current
   # start time; an empty --since would match a stale "started successfully".
@@ -950,6 +934,9 @@ __priv_up_wait() {
   while true; do
     started_at=$(docker inspect --format='{{.State.StartedAt}}' "$CONTAINER" 2>/dev/null)
     if [[ -n $started_at ]] && docker logs --since "$started_at" "$CONTAINER" 2>&1 | grep -qi "windows started successfully"; then
+      # samba.sh has already run by the time the guest reports ready, so this
+      # chmod lands after the 2777 rather than racing `dc up -d`.
+      restore_shared_privacy
       return 0
     fi
     sleep 2
@@ -1053,7 +1040,6 @@ prepare_user_mount_sources() {
     return 1
   }
   chmod_private_dir "$storage" "$shared" || return 1
-  ensure_shared_sentinel "$shared" || return 1
 }
 
 storage_space_path() {
