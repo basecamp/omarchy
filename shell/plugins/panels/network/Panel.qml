@@ -190,8 +190,8 @@ Panel {
   property bool hotspotSetupOpen: false
   // Reveal the passphrase in the setup dropdown (eye toggle).
   property bool hotspotPasswordVisible: false
-  // Keyboard cursor row inside the hotspot section. 0=toggle 1=cog 2=QR. The
-  // band selector is deliberately outside this cycle: it is mouse-only.
+  // Keyboard cursor row inside the hotspot section. 0=toggle 1=cog, and 2=QR
+  // only while the AP is on air. The band selector is mouse-only.
   property int hotspotFocusIndex: 0
   // The status poll carries the saved profile's ssid/band/password. They
   // prefill the editable fields once per open; after that the poll must leave
@@ -207,6 +207,12 @@ Panel {
   // internet -- that is a warning, not a blocker.
   readonly property bool hotspotHasUpstream: hotspot.upstream !== "wifi" && hotspot.upstream !== "none" && hotspot.upstream !== ""
   readonly property var hotspotClients: Model.hotspotClients(hotspot)
+  // Keyboard cycle is toggle / cog, plus QR only while the AP is on air.
+  readonly property int hotspotFocusMax: hotspotActive ? 2 : 1
+
+  onHotspotActiveChanged: {
+    if (hotspotFocusIndex > hotspotFocusMax) hotspotFocusIndex = hotspotFocusMax
+  }
 
   onHeaderActionCountChanged: clampHeaderIndex()
 
@@ -867,7 +873,9 @@ Panel {
     if (next.ap_capable !== "1" && hotspot.ap_capable === "1") next.ap_capable = "1"
     var wasActive = hotspot.active === "1"
     hotspot = next
-    hotspotError = ""
+    // Leave hotspotError alone: the 2s status poll (and the refresh after a
+    // failed action) would otherwise wipe the command's reason before it can
+    // be read. Callers clear it when the user starts a new action.
     // Refresh the card's AP bands every poll (hardware state, cheap); the
     // chosen band itself is only prefilled once per open so the poll never
     // fights a band the user picked mid-session.
@@ -891,15 +899,13 @@ Panel {
 
   function startHotspot() {
     if (hotspotBusy) return
-    var ssid = hotspotSsid.trim()
-    if (ssid === "") { hotspotError = "Enter a hotspot name"; return }
-    if (hotspotPassword.length < 8) { hotspotError = "Password needs 8+ characters"; return }
-    if (hotspotPassword.length > 63) { hotspotError = "Password can't exceed 63 characters"; return }
+    var err = Model.hotspotCredentialsError(hotspotSsid, hotspotPassword)
+    if (err !== "") { hotspotError = err; return }
     hotspotActionKind = "start"
     hotspotBusy = true
     hotspotError = ""
     hotspotActionProc.secret = hotspotPassword
-    hotspotActionProc.command = [hotspotCommand, "start", ssid, hotspotBand]
+    hotspotActionProc.command = [hotspotCommand, "start", hotspotSsid.trim(), hotspotBand]
     hotspotActionProc.running = true
   }
 
@@ -934,15 +940,13 @@ Panel {
   // profile is the single source of truth; no plaintext copy is kept.
   function applyHotspot() {
     if (hotspotBusy) return
-    var ssid = hotspotSsid.trim()
-    if (ssid === "") { hotspotError = "Enter a hotspot name"; return }
-    if (hotspotPassword.length < 8) { hotspotError = "Password needs 8+ characters"; return }
-    if (hotspotPassword.length > 63) { hotspotError = "Password can't exceed 63 characters"; return }
+    var err = Model.hotspotCredentialsError(hotspotSsid, hotspotPassword)
+    if (err !== "") { hotspotError = err; return }
     hotspotActionKind = "apply"
     hotspotBusy = true
     hotspotError = ""
     hotspotActionProc.secret = hotspotPassword
-    hotspotActionProc.command = [hotspotCommand, "apply", ssid, hotspotBand]
+    hotspotActionProc.command = [hotspotCommand, "apply", hotspotSsid.trim(), hotspotBand]
     hotspotActionProc.running = true
   }
 
@@ -971,6 +975,9 @@ Panel {
     // Same floating card the hero's Wi-Fi QR button opens, aimed at the
     // hotspot's interface. The wifiqr plugin reads the active connection on
     // that interface, so the card shows the hotspot's join QR while it runs.
+    // Hidden while the AP is down: the same iface would otherwise QR the
+    // station network the radio is joined to.
+    if (!hotspotActive) return
     controller.hide()
     cancelPasswordPrompt()
     var payload = {}
@@ -1298,12 +1305,12 @@ Panel {
               if (root.selectedIndex < 0) root.selectedIndex = 0
             }
           } else if (root.focusSection === "hotspot") {
-            // Hotspot is a small vertical block (toggle / cog / QR). k walks
-            // back up to DNS, j down into the wifi list.
+            // Hotspot is a small vertical block (toggle / cog, plus QR while
+            // the AP is on). k walks back up to DNS, j down into the wifi list.
             if (dy < 0) {
               if (root.hotspotFocusIndex > 0) root.hotspotFocusIndex--
               else root.focusSection = "dns"
-            } else if (root.hotspotFocusIndex < 2) {
+            } else if (root.hotspotFocusIndex < root.hotspotFocusMax) {
               root.hotspotFocusIndex++
             } else if (root.wifiNetworks.length > 0) {
               root.focusSection = "wifi"
@@ -1315,7 +1322,7 @@ Panel {
             if (dy < 0 && root.selectedIndex <= 0) {
               if (root.hotspotAvailable) {
                 root.focusSection = "hotspot"
-                root.hotspotFocusIndex = 2
+                root.hotspotFocusIndex = root.hotspotFocusMax
               } else {
                 root.focusSection = "dns"
               }
@@ -1825,11 +1832,12 @@ Panel {
 
           Button {
             id: hotspotQrButton
+            visible: root.hotspotActive
             anchors.right: hotspotToggle.left
-            anchors.rightMargin: Style.space(8)
+            anchors.rightMargin: visible ? Style.space(8) : 0
             anchors.verticalCenter: parent.verticalCenter
             iconText: "󰐲"
-            width: Style.space(30)
+            width: visible ? Style.space(30) : 0
             height: Style.spacing.controlHeight
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily

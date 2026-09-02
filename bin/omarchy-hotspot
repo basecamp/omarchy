@@ -109,7 +109,7 @@ band_supported() {
 
 first_wifi_device() {
   LC_ALL=C nmcli -t -f DEVICE,TYPE device status 2>/dev/null |
-    awk -F: '$2 == "wifi" && $1 != "p2p-dev-" { print $1; exit }'
+    awk -F: '$2 == "wifi" && $1 !~ /^p2p-dev-/ { print $1; exit }'
 }
 
 profile_configured() {
@@ -320,49 +320,16 @@ generate_password() {
 }
 
 # Password arrives on stdin (never argv). band is optional, default 2.4.
+# apply() writes the profile; start() writes it the same way, then brings the AP up.
 start() {
-  local ssid=$1 band=${2:-2.4} password
-  local device nm_band nm_channel
+  local ssid=$1 band=${2:-2.4}
 
-  ap_capable || fail "no Wi-Fi adapter supports AP mode"
-  band_supported "$band" || fail "band '$band' is not available on this adapter"
-  device=$(first_wifi_device)
-  [[ -n $device ]] || fail "no Wi-Fi device found"
-
-  IFS= read -r password || true
-  [[ -n $ssid ]] || fail "SSID required"
-  [[ ${#password} -ge 8 && ${#password} -le 63 ]] ||
-    fail "password must be 8-63 characters"
-  nm_band=$(nm_band_for "$band") || fail "unknown band '$band' (use 2.4, 5 or 6)"
-  nm_channel=$(nm_channel_for "$band")
   if omarchy-cmd-missing dnsmasq; then
     fail "dnsmasq is missing; run 'omarchy migrate' to install the hotspot dependency"
   fi
 
   firewall_ensure
-
-  if profile_configured; then
-    nmcli connection modify "$PROFILE" ssid "$ssid" 802-11-wireless.band "$nm_band" \
-      wifi-sec.psk "$password" >/dev/null 2>&1 || {
-      printf 'set wifi-sec.psk %s\nsave\nquit\n' "$password" |
-        nmcli connection edit "$PROFILE" >/dev/null 2>&1 ||
-        fail "could not update hotspot profile"
-    }
-  else
-    # Create the profile without a secret, then write the passphrase through
-    # the scriptable editor so it never shows up in /proc.
-    nmcli connection add type wifi ifname "$device" con-name "$PROFILE" ssid "$ssid" \
-      mode ap 802-11-wireless.band "$nm_band" wifi-sec.key-mgmt wpa-psk \
-      ipv4.method shared autoconnect no >/dev/null ||
-      fail "could not create hotspot profile"
-    printf 'set wifi-sec.psk %s\nsave\nquit\n' "$password" |
-      nmcli connection edit "$PROFILE" >/dev/null 2>&1 ||
-      fail "could not set hotspot password"
-  fi
-
-  if [[ -n $nm_channel ]]; then
-    nmcli connection modify "$PROFILE" 802-11-wireless.channel "$nm_channel" >/dev/null 2>&1
-  fi
+  apply "$ssid" "$band"
 
   if ! nmcli connection up "$PROFILE" >/dev/null 2>&1; then
     fail "could not start hotspot (does this adapter allow AP mode on band '$band'?)"
@@ -425,9 +392,9 @@ qr() {
 }
 
 # Persist credentials to the NetworkManager profile without starting the AP.
-# Password arrives on stdin, exactly like start(). Edits survive shell
-# restarts even when the user never turns the hotspot on. `apply` is
-# idempotent: it creates the profile on first use, then updates it.
+# Password arrives on stdin (never argv). Edits survive shell restarts even
+# when the user never turns the hotspot on. `apply` is idempotent: it creates
+# the profile on first use, then updates it. start() reuses this path.
 apply() {
   local ssid=$1 band=${2:-2.4} password device nm_band nm_channel
 

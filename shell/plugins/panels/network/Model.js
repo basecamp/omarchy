@@ -404,6 +404,14 @@ function hotspotClientLabel(client) {
   return mac
 }
 
+function hotspotCredentialsError(ssid, password) {
+  if (String(ssid || "").trim() === "") return "Enter a hotspot name"
+  var length = String(password || "").length
+  if (length < 8) return "Password needs 8+ characters"
+  if (length > 63) return "Password can't exceed 63 characters"
+  return ""
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     parseNetworkStatus: parseNetworkStatus,
@@ -437,6 +445,7 @@ if (typeof module !== "undefined") {
     hotspotBands: hotspotBands,
     hotspotDefaultBand: hotspotDefaultBand,
     hotspotClients: hotspotClients,
-    hotspotClientLabel: hotspotClientLabel
+    hotspotClientLabel: hotspotClientLabel,
+    hotspotCredentialsError: hotspotCredentialsError
   }
 }
