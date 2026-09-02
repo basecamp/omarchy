@@ -112,3 +112,17 @@ result=$(HOME="$OPENCODE_HOME" XDG_CACHE_HOME="$OPENCODE_HOME/.cache" XDG_DATA_H
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "520" ]] ||
   fail "Gemini collector reuses cached scan data on --limits-only" "$result"
 pass "Gemini collector reuses cached scan data on --limits-only"
+
+# 5. Plan tier detection
+python3 - "$ROOT/bin/omarchy-agent-usage-gemini" <<'PY' || fail "Gemini plan tier parser maps subscription tiers accurately"
+import sys
+from importlib.machinery import SourceFileLoader
+
+mod = SourceFileLoader("gemini_usage", sys.argv[1]).load_module()
+assert mod.plan_label({"paidTier": {"id": "g1-pro-tier", "name": "Google AI Pro"}}) == "Pro"
+assert mod.plan_label({"paidTier": {"id": "g1-ultra-tier", "name": "Google AI Ultra"}}) == "Ultra"
+assert mod.plan_label({"currentTier": {"id": "standard-tier", "name": "Antigravity"}}) == "Standard"
+assert mod.plan_label({"currentTier": {"id": "free-tier", "name": "Antigravity"}}) == "Free"
+assert mod.plan_label({}) == "Free"
+PY
+pass "Gemini plan tier parser maps subscription tiers accurately"

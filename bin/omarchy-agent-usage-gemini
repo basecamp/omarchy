@@ -207,6 +207,36 @@ def refresh_google_token(refresh_token: str, client_id: str, client_secret: str)
 # ------------------------------------------------------------- Limits & Tier
 
 
+def plan_label(data: dict[str, Any]) -> str:
+  paid_tier = data.get("paidTier") or {}
+  paid_id = str(paid_tier.get("id") or "").lower()
+  paid_name = str(paid_tier.get("name") or "")
+
+  if "ultra" in paid_id or "ultra" in paid_name.lower():
+    return "Ultra"
+  if "pro" in paid_id or "pro" in paid_name.lower():
+    return "Pro"
+  if paid_name:
+    return paid_name.replace("Google AI ", "").replace("Antigravity ", "")
+
+  current_tier = data.get("currentTier") or {}
+  current_id = str(current_tier.get("id") or "").lower()
+  current_name = str(current_tier.get("name") or "")
+
+  if "ultra" in current_id or "ultra" in current_name.lower():
+    return "Ultra"
+  if "pro" in current_id or "pro" in current_name.lower():
+    return "Pro"
+  if "standard" in current_id:
+    return "Standard"
+  if current_id == "free-tier" or "free" in current_id:
+    return "Free"
+  if current_name and current_name != "Antigravity":
+    return current_name.replace("Google AI ", "").replace("Antigravity ", "")
+
+  return "Free"
+
+
 def probe_limits(access_token: str) -> dict[str, Any]:
   headers = {
     "Authorization": f"Bearer {access_token}",
@@ -225,13 +255,7 @@ def probe_limits(access_token: str) -> dict[str, Any]:
     )
     with urllib.request.urlopen(req, timeout=10) as resp:
       data = json.loads(resp.read().decode("utf-8"))
-      current_tier = data.get("currentTier") or {}
-      paid_tier = data.get("paidTier") or {}
-      tier_name = current_tier.get("name") or paid_tier.get("name") or current_tier.get("id") or ""
-      if current_tier.get("id") == "free-tier":
-        tier_label = "Free"
-      elif tier_name:
-        tier_label = tier_name
+      tier_label = plan_label(data)
   except Exception:
     pass
 
