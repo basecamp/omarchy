@@ -1,7 +1,12 @@
+// QTimer/QQmlTimer intervals are milliseconds in a signed 32-bit int.
+// Values above floor(INT32_MAX / 1000) wrap negative, Qt clamps them to 1ms,
+// and the idle service floods the journal until shmem is exhausted.
+var MAX_TIMER_SECONDS = 2147483
+
 function secondsFromConfig(value, fallback) {
   var n = Number(value)
   if (!isFinite(n) || n < 0) return fallback
-  return Math.floor(n)
+  return Math.min(Math.floor(n), MAX_TIMER_SECONDS)
 }
 
 function eventParts(event, count) {
@@ -45,6 +50,7 @@ function screensaverWindowsAfter(windows, address, visible) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    MAX_TIMER_SECONDS: MAX_TIMER_SECONDS,
     secondsFromConfig: secondsFromConfig,
     eventParts: eventParts,
     screensaverWindowsAfter: screensaverWindowsAfter
