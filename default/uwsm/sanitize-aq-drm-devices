@@ -7,8 +7,9 @@
 # env-hyprland export. zz- sorts after numeric prefixes and letter-named
 # files like my_vars under POSIX ls (uwsm's loader); a later name such as
 # zzz- still loads after this file. Colon-free pins (cardN, udev names)
-# are left alone. A set-but-empty value is unset: getenv non-null takes
-# the explicit path, and CVarList on "" yields no GPUs.
+# are left alone, but every by-path entry is resolved so a stale one is
+# dropped. A set-but-empty value is unset: getenv non-null takes the
+# explicit path, and CVarList on "" yields no GPUs.
 #
 # Split on ':' like Aquamarine (removeEmpty). A by-path name absorbs colon
 # fragments until it exists or ends in udev's -card/-control/-render suffix.
@@ -18,8 +19,10 @@ omarchy_sanitize_aq_drm_emit() {
   _omarchy_aq_path=$1
   [[ -n $_omarchy_aq_path ]] || return 0
 
+  # Resolve every by-path entry, not just the colon-bearing ones: a colon-free
+  # name like platform-vkms-card is still unusable once the device is gone.
   case "$_omarchy_aq_path" in
-    *:*)
+    *:*|*/by-path/*)
       _omarchy_aq_real=$(readlink -e "$_omarchy_aq_path" 2>/dev/null || true)
       case "${_omarchy_aq_real:-}" in
         ""|*:* ) return 0 ;;

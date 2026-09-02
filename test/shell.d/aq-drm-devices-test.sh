@@ -78,6 +78,12 @@ pass "stale by-path does not swallow a following cardN pin"
 [[ $(run_sanitize "/dev/dri/by-path/pci-0000:13:00.0:rel/mygpu") == "rel/mygpu" ]] || fail "incomplete by-path does not absorb a slash-containing continuation"
 pass "incomplete by-path does not absorb a slash-containing continuation"
 
+[[ $(run_sanitize "/dev/dri/by-path/platform-omarchy-test-card") == "__UNSET__" ]] || fail "missing colon-free by-path is dropped instead of exported"
+pass "missing colon-free by-path is dropped instead of exported"
+
+[[ $(run_sanitize "/dev/dri/by-path/platform-omarchy-test-card:card1") == "card1" ]] || fail "missing colon-free by-path does not export an unusable list"
+pass "missing colon-free by-path does not export an unusable list"
+
 usb_missing="/dev/dri/by-path/pci-0000:00:14.0-usb-0:8:1.0-card"
 [[ $(run_sanitize "$usb_missing") == "__UNSET__" ]] || fail "missing USB by-path is dropped instead of exporting debris"
 pass "missing USB by-path is dropped instead of exporting debris"
@@ -118,6 +124,14 @@ if mkdir -p "$by_dir" && ln -s "$dir/dri/card0" "$by_path" 2>/dev/null; then
 
     [[ $(run_sanitize "$by_path:rel/mygpu") == "$dir/dri/card0:rel/mygpu" ]] || fail "resolved by-path keeps a following relative entry"
     pass "resolved by-path keeps a following relative entry"
+
+    plat_path="$by_dir/platform-omarchy-test-card"
+    if ln -s "$dir/dri/card0" "$plat_path" 2>/dev/null; then
+      [[ $(run_sanitize "$plat_path") == "$dir/dri/card0" ]] || fail "colon-free by-path is resolved to the DRM node"
+      pass "colon-free by-path is resolved to the DRM node"
+    else
+      printf 'skip - cannot create a colon-free by-path symlink here\n'
+    fi
 
     usb_path="$by_dir/pci-0000:00:14.0-usb-0:8:1.0-card"
     if ln -s "$dir/dri/card0" "$usb_path" 2>/dev/null; then
