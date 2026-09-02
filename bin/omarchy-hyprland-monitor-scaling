@@ -182,6 +182,22 @@ update_named_monitor_scale() {
       }
       return out
     }
+    # A description is free text, so a desc: value can carry a bracket that
+    # closes nothing -- a prefix cut mid-parenthesis is enough. Counting it
+    # leaves the rule open, swallows every rule after it, and the catch-all is
+    # written as if none of them named this output. The depth counter reads the
+    # line with quoted values emptied for that reason, and nothing else does:
+    # matching a rule still needs to see what the value says.
+    function outside_strings(line,   out, i, n, quoted) {
+      out = ""
+      n = length(line)
+      quoted = 0
+      for (i = 1; i <= n; i++) {
+        if (substr(line, i, 1) == "\"") quoted = !quoted
+        out = out (quoted ? " " : substr(line, i, 1))
+      }
+      return out
+    }
     function rewrite(text, blanks,   n, i, lines, bare, line, out, done, pos, end) {
       if (!names_monitor(blanks)) return ""
       n = split(text, lines, "\n")
@@ -214,10 +230,10 @@ update_named_monitor_scale() {
     }
     {
       bare_line = blank($0)
-      if (depth == 0 && bare_line !~ /hl\.monitor[[:space:]]*\(/) { print; next }
+      line = outside_strings(bare_line)
+      if (depth == 0 && line !~ /hl\.monitor[[:space:]]*\(/) { print; next }
       rule = (depth == 0) ? $0 "\n" : rule $0 "\n"
       bare_rule = (depth == 0) ? bare_line "\n" : bare_rule bare_line "\n"
-      line = bare_line
       depth += gsub(/[{(]/, "", line)
       depth -= gsub(/[})]/, "", line)
       if (depth > 0) next

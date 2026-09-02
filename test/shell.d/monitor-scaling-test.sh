@@ -343,6 +343,23 @@ grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling leaves the catch-all alone for a spaced-out desc: rule"
 pass "monitor scaling matches a desc: selector whose spacing Hyprland trims"
 
+# A desc: prefix cut mid-parenthesis is ordinary selector text to Hyprland. Read
+# as a table delimiter it leaves the rule open, so every rule below it goes
+# unseen and the catch-all is rewritten as if none of them named this output.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+hl.monitor({ output = "desc:LG Electronics (LG HDR", mode = "preferred", position = "auto-right", scale = 1 })
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 2 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "0x0", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling reads past a bracket inside a quoted value"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves the catch-all alone past a bracket inside a quoted value"
+pass "monitor scaling reads past a bracket inside a quoted value"
+
 # The shared variable is only the catch-all when a catch-all rule reads it. A
 # connector name that has gone stale across a renumber leaves no rule naming
 # the focused output, and writing the variable then resizes whichever display
