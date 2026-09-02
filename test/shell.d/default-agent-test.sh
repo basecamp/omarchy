@@ -250,14 +250,37 @@ pass "Remove Preinstalls deletes every optional agent lazy stub"
 [[ -z $(omarchy-default-agent) ]] || fail "default agent is unset until one is chosen"
 pass "default agent is unset until one is chosen"
 
-: >"$launch_log"
-if omarchy-agent >"$test_tmp/no-agent-output" 2>&1; then
-  fail "agent launcher refuses to launch without a default"
+# Whether a terminal is there to read stderr in decides how the missing default
+# gets reported. A pty is the only way to test the terminal case from a suite
+# that may itself be running without one, the same guard plugin-add-test makes.
+if script -qec true /dev/null >/dev/null 2>&1; then
+  : >"$launch_log"
+  status=0
+  script -qec omarchy-agent /dev/null >"$test_tmp/no-agent-output" 2>&1 || status=$?
+  ((status != 0)) || fail "agent launcher refuses to launch without a default"
+  grep -Fq "Choose default agent with" "$test_tmp/no-agent-output" ||
+    fail "agent launcher explains that no default is set"
+  [[ ! -s $launch_log ]] || fail "agent launcher starts nothing without a default"
+  pass "agent launcher refuses to launch without a default"
+else
+  pass "script -qec unavailable; skipping the terminal case for a missing default"
 fi
-grep -Fq "Choose default agent with" "$test_tmp/no-agent-output" ||
-  fail "agent launcher explains that no default is set"
-[[ ! -s $launch_log ]] || fail "agent launcher starts nothing without a default"
-pass "agent launcher refuses to launch without a default"
+
+# The Quake console seeds itself by spawning the launcher from Hyprland, where
+# nothing reads stderr and an exit leaves a dimmed, empty console. setsid drops
+# the controlling terminal the way that spawn does, so the notice has to be a
+# window instead. It opens the way an agent would, to land where one would have.
+: >"$launch_log"
+setsid --wait omarchy-agent >"$test_tmp/no-terminal-output" 2>&1 ||
+  fail "agent launcher opens a notice when no terminal can read the error"
+mapfile -d '' -t notice_args <"$launch_log"
+[[ ${notice_args[0]} == "--app-id=org.omarchy.agent" ]] ||
+  fail "agent launcher opens the notice as the agent window"
+[[ ${notice_args[*]} == *"No default coding agent set"* ]] ||
+  fail "agent launcher notice says that no default is set"
+[[ ${notice_args[*]} == *"omarchy default agent <name>"* ]] ||
+  fail "agent launcher notice says how to choose one"
+pass "agent launcher opens a notice when no terminal can read the error"
 
 # The keybinding uses --pick, where an error on stderr nobody sees would make
 # the keypress look broken. It offers the choice instead.

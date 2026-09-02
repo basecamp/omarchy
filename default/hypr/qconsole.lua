@@ -9,9 +9,9 @@ local share = 0.5
 -- at boot, so nothing is running until it is wanted. The exec rule has to pin
 -- the workspace itself: Hyprland only tags a spawn with the workspace it came
 -- from while misc.initial_workspace_tracking is on, and looknfeel turns it off.
--- Omarchy ships without a default agent, and omarchy-agent exits without
--- opening anything when none is set, so until one is picked this just opens an
--- empty console.
+-- Omarchy ships without a default agent, and omarchy-agent has no terminal to
+-- report that in when Hyprland spawns it, so until one is picked it fills the
+-- console with a notice on how to choose one rather than leaving it empty.
 local seed = "[workspace special:scratchpad silent] omarchy-agent"
 
 -- Dimming only applies while a special workspace is open, so the console gets
