@@ -7,7 +7,10 @@ ShellRoot {
   id: root
 
   property var calls: []
-  property QtObject ownService: QtObject { property string marker: "own" }
+  property QtObject ownService: QtObject {
+    property string marker: "own"
+    property var manifest: null
+  }
 
   AuthStoreOwner { id: authStoreOwner }
   AuthStoreReader { id: authStoreReader }
@@ -26,6 +29,7 @@ ShellRoot {
   Component.onCompleted: {
     var caller = "example.safe"
     authStoreOwner.retain("omarchy.lock", root.ownService)
+    authStoreOwner.updateManifest("omarchy.lock", { version: "kept" })
     var api = apiComponent.createObject(null, {
       pluginId: caller,
       _serviceLookup: function(requestedId) {
@@ -71,6 +75,8 @@ ShellRoot {
       ownSettings: api.updateEntryInline(caller, {}) === true,
       foreignSettings: api.updateEntryInline("omarchy.lock", {}) === false,
       authStoreOwnerRetains: authStoreOwner.has("omarchy.lock") === true,
+      authStoreOwnerUpdatesManifest: root.ownService.manifest
+        && root.ownService.manifest.version === "kept",
       authStoreImportIsolated: authStoreReader.has("omarchy.lock") === false,
       calls: root.calls
     }

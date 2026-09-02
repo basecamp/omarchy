@@ -9,4 +9,8 @@ QtObject {
   function has(id) {
     return AuthServiceStore.has(id)
   }
+
+  function updateManifest(id, manifest) {
+    AuthServiceStore.updateManifest(id, manifest)
+  }
 }

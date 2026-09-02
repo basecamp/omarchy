@@ -86,8 +86,12 @@ Only one `bar` plugin is active at a time. Missing or invalid selections fall
 back to the built-in `omarchy.bar`, so users always have a safe path home.
 Panels, overlays, and menus are loaded when summoned. Plugins that need
 to outlive a single summon can set `keepLoaded: true` (e.g. the image
-picker keeps its overlay window mounted between summons). First-party
-services are loaded at startup.
+picker keeps its overlay window mounted between summons). The same flag
+keeps a service mounted across plugin hot-reload, so tearing down a
+changed bar widget cannot destroy `omarchy.lock` while Hyprland still
+holds the session lock. The kept instance is not replaced, so code
+changes to a `keepLoaded` service itself only take effect on a shell
+restart. First-party services are loaded at startup.
 
 Entry points may declare `omarchyPath`, `shell`, `manifest`, `pluginRegistry`, and `barWidgetRegistry` properties for host injection. Built-in plugins receive the trusted host objects. Third-party plugins receive capability-scoped facades: ordinary plugins can look up and control only their own service and lifecycle, menu plugins receive an application-library facade, and plugins can read detached scalar bar state. A full-bar plugin additionally receives detached bar configuration and widget-catalog snapshots, narrow proxies for the non-authentication services used by built-in bar widgets, and lifecycle control over configured non-authentication UI plugins. Authentication capabilities are stamped from trusted first-party manifests, authentication services are retained outside the host's public service map and QML object tree, and changing a third-party registry snapshot cannot mutate the host registry.
 

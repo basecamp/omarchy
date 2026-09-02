@@ -21,6 +21,11 @@ function ids() {
   return Object.keys(services)
 }
 
+function updateManifest(id, manifest) {
+  var service = services[String(id || "")]
+  if (service && "manifest" in service) service.manifest = manifest
+}
+
 function destroy(id) {
   var key = String(id || "")
   var service = services[key]

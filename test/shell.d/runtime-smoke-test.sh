@@ -74,6 +74,44 @@ Item {
 }
 QML
 
+# A keepLoaded service must keep its instance (and in-memory state) across a
+# plugin rescan. The marker below can only survive if the object does.
+keep_service_id="acme.keep-service"
+keep_service_dir="$test_home/.config/omarchy/plugins/$keep_service_id"
+mkdir -p "$keep_service_dir"
+cat >"$keep_service_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$keep_service_id",
+  "name": "Keep Service",
+  "version": "1.0.0",
+  "kinds": ["service"],
+  "keepLoaded": true,
+  "entryPoints": {"service": "Service.qml"}
+}
+JSON
+cat >"$keep_service_dir/Service.qml" <<'QML'
+import QtQuick
+import Quickshell.Io
+
+Item {
+  property string marker: ""
+
+  IpcHandler {
+    target: "acme-keep"
+
+    function set(value: string): string {
+      marker = value
+      return "ok"
+    }
+
+    function get(): string {
+      return marker
+    }
+  }
+}
+QML
+
 cat >"$stub_bin/omarchy-update-available" <<'SH'
 #!/bin/bash
 echo "Omarchy update available (test)"
@@ -188,6 +226,15 @@ pass "shell IPC summon and hide contract works"
 jq -e '.hasPlayer | type == "boolean"' <<<"$(shell_ipc media status)" >/dev/null || fail_with_log "media IPC returns status JSON"
 jq -e '.enabled | type == "boolean"' <<<"$(shell_ipc idle status)" >/dev/null || fail_with_log "idle IPC returns status JSON"
 jq -e '.locked | type == "boolean"' <<<"$(shell_ipc lock status)" >/dev/null || fail_with_log "lock IPC returns status JSON"
+[[ $(shell_ipc shell setPluginEnabled "$keep_service_id" true) == "ok" ]] ||
+  fail_with_log "keepLoaded fixture service could not be enabled"
+keep_marker_set=""
+for _ in {1..80}; do
+  keep_marker_set=$(shell_ipc acme-keep set "survived" 2>/dev/null || true)
+  [[ $keep_marker_set == "ok" ]] && break
+  sleep 0.1
+done
+[[ $keep_marker_set == "ok" ]] || fail_with_log "keepLoaded fixture service IPC responds"
 [[ $(shell_ipc image-selector ping) == "ok" ]] || fail_with_log "image selector IPC responds"
 [[ $(shell_ipc osd ping) == "ok" ]] || fail_with_log "OSD IPC responds"
 [[ $(shell_ipc osd show '{"message":"Runtime smoke","duration":0}') == "ok" ]] || fail_with_log "OSD IPC opens"
@@ -214,6 +261,31 @@ done
 shell_ipc_quiet image-selector cancel "$selector_done_file" >/dev/null
 rm -f "$selector_selection_file" "$selector_done_file"
 pass "image selector IPC survives plugin rescan"
+
+lock_status_after=$(shell_ipc lock status)
+jq -e '.locked | type == "boolean"' <<<"$lock_status_after" >/dev/null || fail_with_log "lock IPC survives plugin rescan"
+lock_event_after=$(jq -r '.lastEvent // empty' <<<"$lock_status_after")
+[[ $lock_event_after != lock-stranded* ]] ||
+  fail_with_log "plugin rescan does not strand the session lock ($lock_event_after)"
+# A recreated instance would answer with a fresh, empty marker.
+[[ $(shell_ipc acme-keep get) == "survived" ]] ||
+  fail_with_log "plugin rescan keeps the keepLoaded service instance mounted"
+pass "keepLoaded service instance survives plugin rescan"
+
+# Dropping the service entry point from the manifest must drop the kept
+# instance instead of leaving a zombie behind.
+jq 'del(.keepLoaded) | .kinds = ["overlay"] | .entryPoints = {"overlay": "Service.qml"}' \
+  "$keep_service_dir/manifest.json" >"$keep_service_dir/manifest.json.tmp"
+mv "$keep_service_dir/manifest.json.tmp" "$keep_service_dir/manifest.json"
+keep_gone=""
+for _ in {1..80}; do
+  keep_gone=$(shell_ipc acme-keep get 2>/dev/null || true)
+  [[ $keep_gone != "survived" ]] && break
+  sleep 0.1
+done
+[[ $keep_gone != "survived" ]] ||
+  fail_with_log "kept service is dropped when its plugin stops declaring a service"
+pass "kept service is dropped when its plugin stops declaring a service"
 
 shell_ipc_quiet omarchy.system-update refresh >/dev/null 2>&1 || true
 sleep 0.8

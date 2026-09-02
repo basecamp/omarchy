@@ -36,6 +36,10 @@ qml_matches "$shell_qml" 'comp\.createObject\( *manifest\.__isFirstParty *&& *!a
   fail "third-party and authentication services are detached from the host object tree"
 qml_matches "$shell_qml" 'AuthServiceStore\.put\( *key, *inst *\)' ||
   fail "authentication services are retained outside the host service map"
+qml_matches "$shell_qml" 'AuthServiceStore\.updateManifest\( *id, *shell\.publicPluginManifest\( *m *\) *\)' ||
+  fail "kept authentication services receive only a public manifest snapshot"
+qml_matches "$shell_qml" 'if *\( *!serviceKeepLoaded\( *authenticationId *\) *\) *AuthServiceStore\.destroy\( *authenticationId *\)' ||
+  fail "keepLoaded authentication services survive plugin rescans"
 pass "third-party and authentication services are detached from the host object tree"
 
 qml_matches "$shell_qml" 'inst\.shell *= *shell\.pluginShellFor\( *manifest *\)' ||

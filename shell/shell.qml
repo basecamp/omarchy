@@ -802,14 +802,44 @@ ShellRoot {
       if (!Array.isArray(m.kinds) || m.kinds.indexOf("service") === -1) continue
       if (!m.entryPoints || !m.entryPoints.service) continue
       if (!pluginRegistry.isEnabled(id)) continue
-      if (_services[id] || (shell.isAuthenticationService(m) && AuthServiceStore.has(id))) continue
+      var authenticationService = shell.isAuthenticationService(m)
+      if (_services[id]) {
+        if (authenticationService) {
+          // A service that gains a trusted authentication capability must move
+          // out of the host's public service map before it is recreated.
+          var published = _services[id]
+          if (published && typeof published.destroy === "function") published.destroy()
+          var withoutPublished = ({})
+          for (var publishedId in _services)
+            if (publishedId !== id) withoutPublished[publishedId] = _services[publishedId]
+          _services = withoutPublished
+        } else {
+          // A kept instance outlives the rescan; hand it the fresh manifest.
+          var kept = _services[id]
+          if (kept && "manifest" in kept) kept.manifest = shell.publicPluginManifest(m)
+          continue
+        }
+      }
+      if (AuthServiceStore.has(id)) {
+        if (authenticationService) {
+          AuthServiceStore.updateManifest(id, shell.publicPluginManifest(m))
+          continue
+        }
+        // A service that loses its trusted authentication capability can move
+        // back to the ordinary service map only after the isolated copy dies.
+        AuthServiceStore.destroy(id)
+      }
       ensureService(id)
     }
-    // Drop services for plugins that have been disabled or removed.
+    // Drop services for plugins that have been disabled or removed, or that
+    // no longer declare a service entry point.
     for (var existingId in _services) {
       var stillThere = plugins[existingId]
+      var stillService = stillThere && Array.isArray(stillThere.kinds)
+        && stillThere.kinds.indexOf("service") !== -1
+        && stillThere.entryPoints && stillThere.entryPoints.service
       var stillEnabled = stillThere && pluginRegistry.isEnabled(existingId)
-      if (stillThere && stillEnabled) continue
+      if (stillService && stillEnabled) continue
       var inst = _services[existingId]
       if (inst && typeof inst.destroy === "function") inst.destroy()
       var next = ({})
@@ -822,19 +852,43 @@ ShellRoot {
     for (var ai = 0; ai < authenticationIds.length; ai++) {
       var authenticationId = authenticationIds[ai]
       var authenticationManifest = plugins[authenticationId]
-      if (authenticationManifest && pluginRegistry.isEnabled(authenticationId)
+      var stillAuthenticationService = authenticationManifest
+        && Array.isArray(authenticationManifest.kinds)
+        && authenticationManifest.kinds.indexOf("service") !== -1
+        && authenticationManifest.entryPoints
+        && authenticationManifest.entryPoints.service
+      if (stillAuthenticationService && pluginRegistry.isEnabled(authenticationId)
           && shell.isAuthenticationService(authenticationManifest)) continue
       AuthServiceStore.destroy(authenticationId)
     }
   }
 
+  function serviceKeepLoaded(pluginId) {
+    var plugins = pluginRegistry && pluginRegistry.installedPlugins
+    var manifest = plugins ? plugins[pluginId] : null
+    return !!(manifest && manifest.keepLoaded === true)
+  }
+
+  // keepLoaded services (lock, idle, polkit) must survive plugin hot-reload.
+  // Destroying omarchy.lock drops the ext-session-lock client while Hyprland
+  // still holds the lock, which surfaces the crashed-lockscreen fallback.
   function unloadPluginServices() {
+    var next = ({})
     for (var existingId in _services) {
+      if (serviceKeepLoaded(existingId)) {
+        next[existingId] = _services[existingId]
+        continue
+      }
       var inst = _services[existingId]
       if (inst && typeof inst.destroy === "function") inst.destroy()
     }
-    _services = ({})
-    AuthServiceStore.destroyAll()
+    _services = next
+    var authenticationIds = AuthServiceStore.ids()
+    for (var ai = 0; ai < authenticationIds.length; ai++) {
+      var authenticationId = authenticationIds[ai]
+      if (!serviceKeepLoaded(authenticationId))
+        AuthServiceStore.destroy(authenticationId)
+    }
   }
 
   Connections {
