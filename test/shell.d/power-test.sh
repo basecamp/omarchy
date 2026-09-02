@@ -42,10 +42,22 @@ assertEqual(
   'power shows battery icon when unplugged before battery state refreshes'
 )
 
-assert(/if \(b === Qt\.RightButton\) root\.togglePercentage\(\)/.test(panelSource), 'power right click toggles the bar percentage')
-assert(/Object\.assign\([^\n]+showPercentage: !root\.showPercentage[^\n]+\)[\s\S]*updateEntryInline/.test(panelSource), 'power persists the bar percentage setting')
-assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon\(\)/.test(panelSource), 'power places the percentage before the battery icon')
-assert(/openPanelIndicatorWidth:.*showPercentage.*button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
+assertEqual(power.batteryDisplayMode(undefined, false), 'icon', 'power defaults to the icon-only display')
+assertEqual(power.batteryDisplayMode(undefined, true), 'percentage-before', 'power preserves the legacy percentage setting')
+assertEqual(power.batteryDisplayMode('invalid', true), 'percentage-before', 'power falls back from an invalid display mode')
+assertEqual(power.nextBatteryDisplayMode('icon'), 'percentage-before', 'power cycles from icon to percentage before icon')
+assertEqual(power.nextBatteryDisplayMode('percentage-before'), 'percentage-after', 'power cycles from percentage before icon to percentage after icon')
+assertEqual(power.nextBatteryDisplayMode('percentage-after'), 'icon', 'power cycles from percentage after icon back to icon')
+assertEqual(power.batteryBarText('icon', 0.51, 'BATTERY', false), 'BATTERY', 'power renders the icon-only display')
+assertEqual(power.batteryBarText('percentage-before', 0.51, 'BATTERY', false), '51% BATTERY', 'power renders percentage before the icon')
+assertEqual(power.batteryBarText('percentage-after', 0.51, 'BATTERY', false), 'BATTERY 51%', 'power renders percentage after the icon')
+assertEqual(power.batteryBarText('percentage-after', 0.51, 'BATTERY', true), 'BATTERY', 'power hides percentage in vertical bars')
+
+assert(/if \(b === Qt\.RightButton\) root\.togglePercentage\(\)/.test(panelSource), 'power right click cycles the bar display')
+assert(/displayMode: Model\.nextBatteryDisplayMode\(root\.displayMode\)[\s\S]*updateEntryInline/.test(panelSource), 'power persists the selected display mode')
+assert(/Model\.batteryBarText\(root\.displayMode, root\.batteryFraction, root\.batteryIcon\(\), vertical\)/.test(panelSource), 'power delegates bar text placement to the display model')
+assert(/slotSize: Style\.bar\.iconSlot \* \(root\.percentageShown && !vertical \? 2 : 1\)/.test(panelSource), 'power keeps percentage hidden and icon-sized in vertical bars')
+assert(/openPanelIndicatorWidth:.*percentageShown.*button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
 assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentage\(\) \}/.test(panelSource), 'power exposes togglePercentage over IPC')
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
 JS
