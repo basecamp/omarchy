@@ -499,8 +499,8 @@ chmod +x "$ready_home/.hermes/hermes-agent/venv/bin/hermes"
 run_ready_check || fail "--check accepts the app's wrapper once it runs"
 pass "readiness runs the app's command rather than trusting its marker"
 
-# A release whose help lists only the retired --oneshot marker cannot run the
-# seeded --tui --query session omarchy-agent starts, so it is not ready.
+# A release whose help lists only the old probe's --oneshot marker cannot run
+# the seeded --tui --query session omarchy-agent starts, so it is not ready.
 cat >"$ready_home/.hermes/hermes-agent/venv/bin/hermes" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == "chat" && ${2:-} == "--help" ]]; then

@@ -100,9 +100,10 @@ help_defines_flag() {
 }
 
 # Probed for the flags omarchy-agent actually passes -- --query to seed the
-# session and --tui to keep it interactive -- rather than a flag that merely
-# shipped alongside them: the previous marker, --oneshot, was dropped in Hermes
-# v0.20 and left working installs stranded as "not ready".
+# session and --tui to keep it interactive -- rather than a marker standing in
+# for them: the old probe keyed on chat carrying --oneshot, which no released
+# Hermes did (it lived at the top level until v0.21 added chat's own), so
+# every release read as "not ready".
 hermes_prompt_ready() {
   local help
   hermes_runs &&
@@ -139,9 +140,14 @@ if [[ $mode == "--remove" ]]; then
     # rather than by what the commands claimed: the marked stub still answering
     # hermes, or mise still resolving the tool, is a CLI still installed no
     # matter how the removal exited.
+    # Not "run --remove again": once the stub is gone nothing marks the mise
+    # environment as ours, so a rerun would find nothing it owns and succeed
+    # without touching what was left. Only the full commands finish the job.
     if ours || mise where "$tool" >/dev/null 2>&1; then
-      echo "Could not remove the Hermes CLI Omarchy installed." >&2
-      echo "Remove ~/.local/bin/hermes and the mise tool '$tool', then run omarchy-install-hermes-cli --remove again." >&2
+      echo "Could not remove the Hermes CLI Omarchy installed. Finish by hand:" >&2
+      echo "  rm -f ~/.local/bin/hermes" >&2
+      echo "  mise rm -g '$tool'" >&2
+      echo "  mise uninstall --all '$tool'" >&2
       exit 1
     fi
   fi
