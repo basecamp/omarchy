@@ -37,6 +37,11 @@ assert(!picker.itemMatches(images, 2, 'river'), 'image picker rejects non-matchi
 assertEqual(picker.firstMatchingIndex(images, 'plain'), 2, 'image picker finds first matching index')
 assertEqual(picker.indexForSelectedImage(images, '/themes/a/gruvbox-dark.jpeg'), 1, 'image picker finds selected image')
 assertEqual(picker.indexForSelectedImage(images, '/missing.png'), 0, 'image picker defaults selected image to first row')
+assertEqual(picker.indexForCursor(images, '/themes/a/gruvbox-dark.jpeg'), 1, 'image picker finds a remote cursor by path')
+assertEqual(picker.indexForCursor(images, 'gruvbox-dark.jpeg'), 1, 'image picker finds a remote cursor by file name')
+assertEqual(picker.indexForCursor(images, 'gruvbox-dark'), 1, 'image picker finds a remote cursor by name')
+assertEqual(picker.indexForCursor(images, 'Gruvbox Dark'), -1, 'image picker cursor matching stays exact')
+assertEqual(picker.indexForCursor(images, 'missing'), -1, 'image picker rejects an unknown remote cursor')
 
 assertEqual(picker.filteredPosition(images, 2, 'dark'), 1, 'image picker computes filtered position')
 assertEqual(picker.selectedFilteredPosition(images, 2, 'dark'), 0, 'image picker selected filtered position falls back when selected is hidden')
@@ -51,4 +56,27 @@ assert(
   /source: item\.sourceActivated && item\.thumbnailPath \? Util\.fileUrl\(item\.thumbnailPath\) : ""[\s\S]*asynchronous: false/.test(imagePickerQml),
   'image picker loads activated thumbnails synchronously to avoid carousel flicker'
 )
+assert(
+  /function cursorState\(\)[\s\S]*opened: opened[\s\S]*cursorPath: path[\s\S]*cursorName: path \? nameForPath\(path\) : ""/.test(imagePickerQml),
+  'image picker exposes live cursor state'
+)
+assert(
+  /function setCursor\(cursor\)[\s\S]*if \(!opened\) return "closed"[\s\S]*indexForCursor\(imageArray, cursor\)[\s\S]*select\(index, true\)/.test(imagePickerQml),
+  'image picker moves a remote cursor without applying it'
+)
+assert(
+  /function applyCursor\(\)[\s\S]*if \(!opened\) return "closed"[\s\S]*applySelected\(\)/.test(imagePickerQml),
+  'image picker remote apply reuses the existing selection flow'
+)
+
+const shellQml = fs.readFileSync(path.join(root, 'shell/shell.qml'), 'utf8')
+assert(
+  /target: "image-selector"[\s\S]*function state\(\): string[\s\S]*function setCursor\(cursor: string\): string[\s\S]*function apply\(\): string/.test(shellQml),
+  'image selector IPC exposes state, setCursor, and apply'
+)
+
+const themeSwitcher = fs.readFileSync(path.join(root, 'bin/omarchy-theme-switcher'), 'utf8')
+const backgroundSwitcher = fs.readFileSync(path.join(root, 'bin/omarchy-theme-bg-switcher'), 'utf8')
+assert(/menu_args=\([\s\S]*--context theme/.test(themeSwitcher), 'theme picker declares its semantic context')
+assert(/omarchy-menu-images[\s\S]*--context background/.test(backgroundSwitcher), 'background picker declares its semantic context')
 JS
