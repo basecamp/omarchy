@@ -5,6 +5,17 @@
 
 set -e
 
+configure_ir_emitter() {
+  # If an IR emitter tool is present or installable, ensure it is configured
+  if omarchy-cmd-present linux-enable-ir-emitter; then
+    echo "Configuring hardware IR emitter..."
+    sudo linux-enable-ir-emitter configure || true
+    if systemctl list-unit-files | grep -q linux-enable-ir-emitter; then
+      sudo systemctl enable --now linux-enable-ir-emitter.service || true
+    fi
+  fi
+}
+
 configure_howdy_settings() {
   local config_file="/etc/howdy/config.ini"
   [[ -f $config_file ]] || return 0
@@ -63,20 +74,31 @@ fi
 echo "Installing Howdy face authentication..."
 omarchy-pkg-add howdy v4l-utils
 
+configure_ir_emitter
 configure_howdy_settings
 
-# Add face model for current user
-echo -e "\e[32m\nLet's enroll your face model.\e[0m"
-echo -e "Look straight at the camera until the process completes.\n"
+# Enroll initial model
+echo -e "\e[32m\nStep 1: Baseline Face Model\e[0m"
+echo -e "Look straight at the camera with normal lighting.\n"
 
 if sudo howdy add; then
   setup_lock_howdy_pam
-  echo -e "\e[32m\nPerfect! Face authentication is now configured.\e[0m"
-  echo "You can unlock your lock screen (Super + L) by looking at the camera."
-  echo ""
-  echo "Tip: For best accuracy in dark rooms or varying postures, enroll additional angles with:"
-  echo "  sudo howdy add"
+  echo -e "\e[32m\nBaseline model enrolled successfully!\e[0m"
 else
   echo -e "\e[31m\nFace enrollment failed. Please try again.\e[0m"
   exit 1
 fi
+
+# Offer optional multi-angle / lighting enrollment
+echo -e "\n\e[34mTip: Enrolling a second angle (e.g. low-light or slouched posture) ensures instant unlock in all conditions.\e[0m"
+read -r -p "Would you like to enroll an additional face angle now? (y/N) " -n 1 -r || true
+echo ""
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  echo -e "\e[32m\nStep 2: Secondary Face Model\e[0m"
+  echo -e "Look at the camera from a slight angle, with glasses, or in dimmer light.\n"
+  sudo howdy add || true
+fi
+
+echo -e "\e[32m\nPerfect! Face authentication is now completely configured.\e[0m"
+echo "You can unlock your lock screen (Super + L) instantly by looking at the camera."
