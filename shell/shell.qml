@@ -275,6 +275,7 @@ ShellRoot {
 
   property var _services: ({})
   property var _pluginShellApis: ({})
+  property var _pluginShellApiDescriptors: ({})
   property var _pluginBarEntryShellApis: ({})
   property var _pluginRegistryApis: ({})
   property var _pluginBarWidgetRegistryApis: ({})
@@ -434,7 +435,9 @@ ShellRoot {
     var proxyKey = cacheKey + "::" + id
     if (_pluginFirstPartyServiceApis[proxyKey]) return _pluginFirstPartyServiceApis[proxyKey]
 
-    function service() { return shell.serviceFor(id) }
+    function service() {
+      return shell.serviceFor(shell.pluginRegistry.resolveEnabledId(id))
+    }
     var api = pluginFirstPartyServiceApiComponent.createObject(null, {
       ownerPluginId: pluginId,
       serviceId: id,
@@ -491,10 +494,67 @@ ShellRoot {
     return api
   }
 
+  function pluginShellCapabilityProfile(manifest, allowOwnService, barCapabilities) {
+    return [
+      allowOwnService ? "own-service" : "no-own-service",
+      barCapabilities ? "bar" : "no-bar",
+      shell.manifestHasKind(manifest, "menu") ? "menu" : "no-menu"
+    ].join("|")
+  }
+
+  function cacheWithoutKey(cache, key, destroyValue) {
+    var next = ({})
+    for (var existing in cache) {
+      if (existing === key) {
+        var value = cache[existing]
+        if (destroyValue && value && typeof value.destroy === "function") value.destroy()
+      } else {
+        next[existing] = cache[existing]
+      }
+    }
+    return next
+  }
+
+  function cacheWithoutPrefix(cache, prefix) {
+    var next = ({})
+    for (var existing in cache) {
+      if (existing.indexOf(prefix) === 0) {
+        var value = cache[existing]
+        if (value && typeof value.destroy === "function") value.destroy()
+      } else {
+        next[existing] = cache[existing]
+      }
+    }
+    return next
+  }
+
+  function revokePluginShellApi(cacheKey) {
+    var key = String(cacheKey || "")
+    if (!key) return
+    _pluginAppLibraryApis = shell.cacheWithoutKey(_pluginAppLibraryApis, key, true)
+    _pluginFirstPartyServiceApis = shell.cacheWithoutPrefix(_pluginFirstPartyServiceApis, key + "::")
+    _pluginBarEntryShellApis = shell.cacheWithoutPrefix(_pluginBarEntryShellApis, key + ":")
+    _pluginShellApis = shell.cacheWithoutKey(_pluginShellApis, key, true)
+    _pluginShellApiDescriptors = shell.cacheWithoutKey(_pluginShellApiDescriptors, key, false)
+  }
+
   function createScopedPluginShell(manifest, cacheKey, allowOwnService, barCapabilities) {
-    if (_pluginShellApis[cacheKey]) return _pluginShellApis[cacheKey]
     var key = String(manifest && manifest.id || "")
     if (!key) return null
+    var profile = shell.pluginShellCapabilityProfile(manifest, allowOwnService, barCapabilities)
+    var cached = _pluginShellApis[cacheKey]
+    var descriptor = _pluginShellApiDescriptors[cacheKey]
+    if (cached && descriptor && descriptor.pluginId === key
+        && descriptor.profile === profile) return cached
+    if (cached || descriptor) shell.revokePluginShellApi(cacheKey)
+
+    function currentManifest() {
+      return shell.pluginRegistry.installedPlugins[key] || null
+    }
+
+    function hasCurrentBarCapabilities() {
+      return barCapabilities && shell.pluginHasBarCapabilities(currentManifest())
+    }
 
     // Construct the narrow service proxies before any plugin binding can call
     // firstPartyServiceFor(). Creating a QObject while evaluating that binding
@@ -519,40 +579,42 @@ ShellRoot {
         return allowOwnService ? shell.pluginServiceFor(key, requestedId) : null
       },
       _firstPartyServiceLookup: function(requestedId) {
-        return barCapabilities ? (firstPartyServices[requestedId] || null) : null
+        if (allowOwnService && shell.pluginOwnsTarget(key, requestedId))
+          return shell.pluginServiceFor(key, requestedId)
+        return hasCurrentBarCapabilities() ? (firstPartyServices[requestedId] || null) : null
       },
       _barEntryShellLookup: function(ownerId, moduleName) {
-        return barCapabilities
+        return hasCurrentBarCapabilities()
           ? shell.pluginShellForBarEntry(cacheKey + ":" + ownerId, moduleName) : null
       },
       _summon: function(requestedId, payloadJson) {
         if (!shell.pluginOwnsTarget(key, requestedId)
-            && !shell.barPluginMayControl(manifest, requestedId)) return false
+            && !shell.barPluginMayControl(currentManifest(), requestedId)) return false
         return shell.summon(shell.pluginRegistry.resolveEnabledId(requestedId), payloadJson)
       },
       _hide: function(requestedId) {
         if (!shell.pluginOwnsTarget(key, requestedId)
-            && !shell.barPluginMayControl(manifest, requestedId)) return false
+            && !shell.barPluginMayControl(currentManifest(), requestedId)) return false
         return shell.hide(shell.pluginRegistry.resolveEnabledId(requestedId))
       },
       _toggle: function(requestedId, payloadJson) {
         if (!shell.pluginOwnsTarget(key, requestedId)
-            && !shell.barPluginMayControl(manifest, requestedId)) return false
+            && !shell.barPluginMayControl(currentManifest(), requestedId)) return false
         return shell.toggle(shell.pluginRegistry.resolveEnabledId(requestedId), payloadJson)
       },
       _isOpen: function(requestedId) {
         if (!shell.pluginOwnsTarget(key, requestedId)
-            && !shell.barPluginMayControl(manifest, requestedId)) return false
+            && !shell.barPluginMayControl(currentManifest(), requestedId)) return false
         return shell.isPluginOpen(shell.pluginRegistry.resolveEnabledId(requestedId))
       },
       _updateSettings: function(requestedId, settings) {
         if (shell.pluginOwnsTarget(key, requestedId)) return shell.updateEntryInline(key, settings)
-        if (barCapabilities && shell.barEntryConfigured(requestedId))
+        if (hasCurrentBarCapabilities() && shell.barEntryConfigured(requestedId))
           return shell.updateEntryInline(requestedId, settings)
         return false
       },
       _mutateBarConfig: function(mutator) {
-        return barCapabilities ? shell.mutatePluginBarConfig(mutator) : false
+        return hasCurrentBarCapabilities() ? shell.mutatePluginBarConfig(mutator) : false
       }
     })
     if (!api) return null
@@ -561,6 +623,15 @@ ShellRoot {
     for (var id in _pluginShellApis) next[id] = _pluginShellApis[id]
     next[cacheKey] = api
     _pluginShellApis = next
+    var descriptorNext = ({})
+    for (var descriptorKey in _pluginShellApiDescriptors)
+      descriptorNext[descriptorKey] = _pluginShellApiDescriptors[descriptorKey]
+    descriptorNext[cacheKey] = {
+      pluginId: key,
+      allowOwnService: allowOwnService === true,
+      profile: profile
+    }
+    _pluginShellApiDescriptors = descriptorNext
     return api
   }
 
@@ -679,13 +750,20 @@ ShellRoot {
 
   function prunePluginApis() {
     var plugins = shell.pluginRegistry.installedPlugins
-    var shellNext = ({})
-    for (var shellKey in _pluginShellApis) {
+    var shellKeys = Object.keys(_pluginShellApis)
+    for (var si = 0; si < shellKeys.length; si++) {
+      var shellKey = shellKeys[si]
       var shellApi = _pluginShellApis[shellKey]
-      if (shell.pluginApiActive(shellApi, plugins)) shellNext[shellKey] = shellApi
-      else if (shellApi && typeof shellApi.destroy === "function") shellApi.destroy()
+      var descriptor = _pluginShellApiDescriptors[shellKey]
+      var manifest = descriptor ? plugins[descriptor.pluginId] : null
+      var barCapabilities = descriptor && descriptor.allowOwnService
+        && shell.pluginHasBarCapabilities(manifest)
+      var expectedProfile = descriptor
+        ? shell.pluginShellCapabilityProfile(manifest, descriptor.allowOwnService, barCapabilities) : ""
+      var active = descriptor && manifest && shell.pluginRegistry.isEnabled(descriptor.pluginId)
+      if (!active || descriptor.profile !== expectedProfile)
+        shell.revokePluginShellApi(shellKey)
     }
-    _pluginShellApis = shellNext
 
     var registryNext = ({})
     for (var registryKey in _pluginRegistryApis) {
@@ -761,7 +839,7 @@ ShellRoot {
   }
 
   function firstPartyServiceFor(pluginId) {
-    return serviceFor(pluginId)
+    return serviceFor(shell.pluginRegistry.resolveEnabledId(pluginId))
   }
 
   function isAuthenticationService(manifest) {
@@ -844,6 +922,7 @@ ShellRoot {
         } else {
           // A kept instance outlives the rescan; hand it the fresh manifest.
           var kept = _services[id]
+          if (kept && "shell" in kept) kept.shell = shell.pluginShellFor(m)
           if (kept && "manifest" in kept) kept.manifest = shell.publicPluginManifest(m)
           continue
         }

@@ -95,6 +95,22 @@ qml_matches "$shell_qml" 'shell\.prunePluginApis\( *\)' ||
   fail "disabled plugin facade caches are pruned"
 pass "plugin facade synchronization is bounded"
 
+qml_matches "$shell_qml" 'descriptor\.profile *!== *expectedProfile[^}]*shell\.revokePluginShellApi\( *shellKey *\)' ||
+  fail "manifest capability changes do not revoke cached plugin facades"
+qml_matches "$shell_qml" 'shell\.barPluginMayControl\( *currentManifest\( *\), *requestedId *\)' ||
+  fail "bar lifecycle callbacks do not validate the current manifest"
+qml_matches "$shell_qml" 'return hasCurrentBarCapabilities\( *\) *\? *shell\.mutatePluginBarConfig\( *mutator *\) *: *false' ||
+  fail "bar configuration mutation does not validate the current manifest"
+pass "manifest changes revoke cached facade capabilities"
+
+qml_matches "$shell_qml" 'shell\.serviceFor\( *shell\.pluginRegistry\.resolveEnabledId\( *id *\) *\)' ||
+  fail "narrow first-party service proxies do not resolve enabled clones"
+qml_matches "$shell_qml" 'return serviceFor\( *shell\.pluginRegistry\.resolveEnabledId\( *pluginId *\) *\)' ||
+  fail "trusted first-party service lookups do not resolve enabled clones"
+qml_matches "$shell_qml" 'allowOwnService *&& *shell\.pluginOwnsTarget\( *key, *requestedId *\)[^}]*return shell\.pluginServiceFor\( *key, *requestedId *\)' ||
+  fail "cloned widgets cannot use a source id to reach their own service"
+pass "service facades resolve enabled clones without widening replacement-bar access"
+
 require_compositor "plugin authentication boundary runtime test"
 
 if ! command -v quickshell >/dev/null 2>&1; then
