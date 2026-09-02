@@ -72,6 +72,34 @@ case "$channel" in
     ;;
 esac
 
+# Idempotence guard — re-setting the CURRENT channel is a no-op (round-trip).
+# The active channel is read from /etc/pacman.d/mirrorlist, which
+# omarchy-refresh-pacman writes verbatim per channel (user customization targets
+# pacman.conf, not the mirrorlist).
+detect_active_channel() {
+  local m
+  m=$(grep -oE 'https?://[^/]*mirror\.omarchy\.org' /etc/pacman.d/mirrorlist 2>/dev/null | head -1)
+  case "$m" in
+    *stable-mirror*) echo stable ;;
+    *rc-mirror*)     echo rc ;;
+    *mirror*)        echo edge ;;
+    *)               echo "" ;;
+  esac
+}
+
+if [[ -n $dev_checkout && $OMARCHY_PATH == "$dev_checkout" ]]; then
+  echo "Already on the dev channel (linked checkout in $dev_checkout)."
+  exit 0
+fi
+
+if [[ -z $dev_checkout ]]; then
+  active=$(detect_active_channel)
+  if [[ -n $active && $active == "$channel" ]]; then
+    echo "Already on the $channel channel."
+    exit 0
+  fi
+fi
+
 if [[ -z $dev_checkout && $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
   leaving_dev=1
 fi
