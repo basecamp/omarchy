@@ -1,0 +1,52 @@
+# Menu id|Complete pacman transaction requested by the optional installer
+install.style.font.cascadia|ttf-cascadia-mono-nerd
+install.style.font.meslo|ttf-meslo-nerd
+install.style.font.fira|ttf-firacode-nerd
+install.style.font.victor|ttf-victor-mono-nerd
+install.style.font.bitstream|ttf-bitstream-vera-mono-nerd
+install.style.font.iosevka|ttf-iosevka-nerd
+install.preinstalls|aether cliamp libreoffice-fresh xournalpp pinta obsidian obs-studio kdenlive moonlight-qt lazydocker omacut omacalc omawrite
+install.browser.chrome|google-chrome
+install.browser.edge|microsoft-edge-stable-bin
+install.browser.brave|brave-bin
+install.browser.brave-origin|brave-origin-bin
+install.browser.firefox|firefox
+install.browser.zen|zen-browser-bin
+install.service.1password|1password 1password-cli
+install.service.dropbox|dropbox dropbox-cli libappindicator-gtk3 python-gpgme nautilus-dropbox
+install.service.spotify|spotify
+install.service.signal|signal-desktop
+install.service.tailscale|tailscale
+install.service.once|once-bin
+install.service.bitwarden|bitwarden bitwarden-cli
+install.editor.vscode|visual-studio-code-bin
+install.editor.cursor|cursor-bin
+install.editor.zed|zed
+install.editor.sublime|sublime-text-4
+install.editor.helix|helix
+install.editor.vim|vim
+install.editor.emacs|omarchy-emacs
+install.terminal.alacritty|alacritty
+install.terminal.foot|foot
+install.terminal.ghostty|ghostty
+install.terminal.kitty|kitty
+install.ai.chatgpt|openai-codex-desktop
+install.ai.dictation|wtype voxtype-bin
+install.ai.grok-bot|grok-bot
+install.ai.hermes|hermes-desktop
+install.ai.lm-studio|lmstudio-bin
+install.ai.ollama|ollama
+install.ai.t3-code|t3code-bin
+install.gaming.steam|steam
+install.gaming.retroarch|retroarch retroarch-assets-glui retroarch-assets-ozone retroarch-assets-xmb libretro-beetle-pce libretro-beetle-pce-fast libretro-beetle-psx libretro-beetle-psx-hw libretro-beetle-supergrafx libretro-blastem libretro-bsnes libretro-bsnes-hd libretro-core-info libretro-desmume libretro-dolphin libretro-flycast libretro-gambatte libretro-genesis-plus-gx libretro-kronos libretro-mame libretro-melonds libretro-mesen libretro-mesen-s libretro-mgba libretro-mupen64plus-next libretro-nestopia libretro-overlays libretro-parallel-n64 libretro-picodrive libretro-play libretro-ppsspp libretro-sameboy libretro-scummvm libretro-shaders-slang libretro-snes9x libretro-yabause libretro-cap32-git libretro-fbneo-git libretro-uae-git libretro-vice-x128-git libretro-vice-x64-git libretro-vice-x64dtv-git libretro-vice-x64sc-git libretro-vice-xcbm2-git libretro-vice-xcbm5x0-git libretro-vice-xpet-git libretro-vice-xplus4-git libretro-vice-xscpu64-git libretro-vice-xvic-git libretro-database-git retroarch-joypad-autoconfig-git
+install.gaming.minecraft|minecraft-launcher
+install.gaming.geforce-now|flatpak
+install.gaming.xbox-controllers|xpadneo-dkms
+install.gaming.battlenet|umu-launcher
+install.gaming.lutris|lutris umu-launcher wine-staging wine-mono wine-gecko winetricks python-protobuf
+install.gaming.heroic|heroic-games-launcher-bin
+install.development.rails|libyaml
+install.development.clojure|rlwrap
+install.development.php.php|php composer php-sqlite xdebug
+install.development.php.laravel|php composer php-sqlite xdebug
+install.development.php.symfony|php composer php-sqlite xdebug symfony-cli
