@@ -61,6 +61,8 @@ for command in codex playwright omp agy; do
 done
 grep -Fx 'echo user-owned' "$test_home/.local/bin/hunk" >/dev/null || fail "lazy-tool migration preserves a user-owned command"
 [[ -f $mise_config ]] || fail "lazy-tool migration installs the system mise config"
+grep -Fx 'locked_scopes = ["project", "global"]' "$mise_config" >/dev/null ||
+  fail "lazy-tool migration excludes system tools from invocation-wide locked mode"
 grep -Eq '^uv = \{ version = "latest", lazy = true, minimum_release_age = "0s" \}$' "$mise_config" ||
   fail "lazy-tool migration declares uv"
 [[ $(grep -c 'lazy = true' "$mise_config") == 16 ]] || fail "lazy-tool migration declares every default tool"

@@ -80,9 +80,11 @@ pass "writing the Hermes stub provisions nothing"
 
 grep -qF 'mise install uv || exit 1' "$test_home/.local/bin/hermes" ||
   fail "the Hermes stub installs the system-configured uv"
-grep -qF "mise x uv -- mise use -g --quiet --force 'pipx:hermes-agent[extras=all]'" "$test_home/.local/bin/hermes" ||
-  fail "the Hermes install receives uv without globally configuring it"
-pass "Hermes uses the system lazy uv without changing global config"
+grep -qF "MISE_LOCKED=0 mise x uv -- mise install --force 'pipx:hermes-agent[extras=all]'" "$test_home/.local/bin/hermes" ||
+  fail "the Hermes install receives uv without changing global config or inheriting locked mode"
+grep -qF "exec env -u UV_PYTHON MISE_LOCKED=0 mise x 'pipx:hermes-agent[extras=all]'" "$test_home/.local/bin/hermes" ||
+  fail "the Hermes command runs without depending on global config or inheriting locked mode"
+pass "Hermes uses mise without changing global config or inheriting locked mode"
 
 # The desktop app owns Hermes, so our own stub must go rather than sit there
 # answering `hermes` until the app's bootstrap replaces it.
@@ -247,10 +249,12 @@ pass "ownership needs the exact marker line, not a mention"
 rm -f "$test_home/.local/bin/hermes"
 printf '%s\n' "#!/bin/bash" "$stub_marker" "# stale template" >"$test_home/.local/bin/hermes"
 chmod +x "$test_home/.local/bin/hermes"
+: >"$mise_log"
 run_installer 0 || fail "reinstalling over our own stub succeeds"
 grep -qxF "$stub_marker" "$test_home/.local/bin/hermes" || fail "the refreshed stub still carries the marker"
 grep -q "stale template" "$test_home/.local/bin/hermes" && fail "reinstalling rewrites our own stub"
-grep -q "exec env -u UV_PYTHON mise x" "$test_home/.local/bin/hermes" || fail "the refreshed stub is the current template"
+grep -q "exec env -u UV_PYTHON MISE_LOCKED=0 mise x" "$test_home/.local/bin/hermes" || fail "the refreshed stub is the current template"
+tr '\0' '\n' <"$mise_log" | grep -q '^rm$' || fail "reinstalling retires the old global Hermes declaration"
 pass "reinstalling refreshes the Omarchy stub"
 
 mkdir -p "$test_tmp/mise/hermes-agent/lib/python$python_pin"

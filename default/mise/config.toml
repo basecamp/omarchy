@@ -1,6 +1,7 @@
 # Managed by Omarchy. Override individual tools in ~/.config/mise/config.toml.
 
 [settings]
+locked_scopes = ["project", "global"]
 system_installs_dir = "~/.local/share/mise/installs"
 shims_dir = "~/.local/share/mise/shims"
 system_shims_dir = "~/.local/share/mise/shims"

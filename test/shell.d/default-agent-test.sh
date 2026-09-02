@@ -128,6 +128,8 @@ pass "custom agent lazy stubs preserve their mise packages"
 source "$ROOT/install/user/mise.sh"
 lazy_config="$ROOT/default/mise/config.toml"
 [[ -f $lazy_config ]] || fail "Omarchy ships the system mise config"
+grep -Fx 'locked_scopes = ["project", "global"]' "$lazy_config" >/dev/null ||
+  fail "system tools remain installable when the user enables locked mode"
 for tool in "$agy_package" "$grok_package" "$omp_package" "$crush_package" "$ori_package"; do
   grep -Eq "^$tool = \\{ version = \"latest\", lazy = true, minimum_release_age = \"0s\" \\}$" "$lazy_config" ||
     fail "user setup declares $tool as a native lazy tool"
