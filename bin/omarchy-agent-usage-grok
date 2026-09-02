@@ -8,9 +8,11 @@ Local stats come from session files under $GROK_HOME/sessions (default
 ~/.grok/sessions). Each updates.jsonl turn_completed event is one prompt
 and carries the billed token ledger. pi/omp and opencode sessions that
 ran on an xAI provider are merged in, the same way Claude and Codex pick
-up those agents. The SuperGrok weekly pool, plan label, and any leftover
-prepaid credits come from Grok's ACP `_x.ai/billing` method — the same
-source `/usage` uses. The agents panel only ever reads the JSON this prints.
+up those agents. The SuperGrok weekly pool, plan label, product splits
+(Grok Build / Chat / Imagine / Voice), and leftover prepaid credits come
+from Grok ACP `_x.ai/billing`, with the same CLI-proxy billing endpoint
+`/usage` uses as a fallback. The agents panel only ever reads the JSON
+this prints.
 """
 
 from __future__ import annotations
@@ -27,6 +29,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +39,19 @@ from typing import Any
 AGENT_ID = "grok"
 AGENT_NAME = "Grok"
 AUTH_HELP = "Run `grok login` to sign in."
+BILLING_HOST = "cli-chat-proxy.grok.com"
+BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
+TOKEN_AUTH = "xai-grok-cli"
+PRODUCT_TITLES = {
+  "GrokBuild": "Grok Build",
+  "GrokChat": "Chat",
+  "Chat": "Chat",
+  "GrokImagine": "Imagine",
+  "Imagine": "Imagine",
+  "GrokVoice": "Voice",
+  "Voice": "Voice",
+}
 
 # Same freshness contract as the Claude/Codex collectors: a scan this recent
 # is only reused to dedup concurrent collector runs. --limits-only reuses the
@@ -219,6 +237,10 @@ def scan_updates(path: Path) -> list[dict[str, Any]]:
         if usage is None:
           continue
         prompt_id = str(update.get("prompt_id") or f"{path}:{line_number}")
+        # Parent turn_completed already includes finished child spend; Grok
+        # also writes synthetic task-completed prompt ids for the same work.
+        if prompt_id.startswith("task-completed"):
+          continue
         if prompt_id in seen:
           continue
         seen.add(prompt_id)
@@ -372,8 +394,13 @@ def scan_native_sessions(sessions_root: Path) -> list[dict[str, Any]]:
   contribs: list[dict[str, Any]] = []
   if not sessions_root.is_dir():
     return contribs
-  for path in sessions_root.rglob("updates.jsonl"):
-    if not path.is_file():
+  walker = sessions_root.rglob("updates.jsonl")
+  try:
+    walker = sessions_root.rglob("updates.jsonl", follow_symlinks=False)
+  except TypeError:
+    walker = sessions_root.rglob("updates.jsonl")
+  for path in walker:
+    if not path.is_file() or path.is_symlink():
       continue
     session_dir = path.parent
     if is_subagent(session_kind(session_dir)):
@@ -611,6 +638,125 @@ def period_label(period_type: str) -> str:
   return "Weekly"
 
 
+def product_title(product: str) -> str:
+  raw = str(product or "").strip()
+  if raw in PRODUCT_TITLES:
+    return PRODUCT_TITLES[raw]
+  spaced = "".join((" " + ch if ch.isupper() and i else ch) for i, ch in enumerate(raw)).strip()
+  if spaced.lower().startswith("grok chat"):
+    return "Chat"
+  return spaced or raw or "Product"
+
+
+def parse_product_usage(config: dict[str, Any], resets_at: str) -> list[dict[str, Any]]:
+  # grok.com splits the weekly pool into products (Grok Build, Chat, Imagine,
+  # Voice). Marketplace collectors surface those as extra limit meters; the
+  # stock panel already knows how to draw extra limits[].
+  rows = config.get("productUsage")
+  if not isinstance(rows, list):
+    return []
+  out: list[dict[str, Any]] = []
+  seen: set[str] = set()
+  for entry in rows:
+    if not isinstance(entry, dict):
+      continue
+    product = str(entry.get("product") or "").strip()
+    title = product_title(product)
+    if title == "" or title in seen:
+      continue
+    percent = usage_percent(entry.get("usagePercent"))
+    if percent < 0:
+      continue
+    seen.add(title)
+    out.append({"label": title, "percent": percent, "resetsAt": resets_at})
+  return out
+
+
+class SameOriginRedirectHandler(urllib.request.HTTPRedirectHandler):
+  """Refuse redirects that would leave cli-chat-proxy.grok.com."""
+
+  def redirect_request(self, req, fp, code, msg, headers, newurl):
+    parsed = urllib.parse.urlparse(newurl)
+    if parsed.scheme != "https" or parsed.hostname != BILLING_HOST:
+      raise urllib.error.HTTPError(newurl, code, "cross-origin redirect refused", headers, fp)
+    return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def oauth_login(home: Path) -> dict[str, Any] | None:
+  """Pick the live grok.com OIDC session. Skip API-key entries."""
+  auth = read_json(home / "auth.json")
+  if not isinstance(auth, dict):
+    return None
+  best: dict[str, Any] | None = None
+  for entry in auth.values():
+    if not isinstance(entry, dict):
+      continue
+    mode = str(entry.get("auth_mode") or "")
+    if mode not in ("oidc", "oauth", ""):
+      continue
+    key = str(entry.get("key") or "").strip()
+    if key == "" or key.startswith("sk-") or key.startswith("xai-"):
+      continue
+    if best is None:
+      best = entry
+      continue
+    best_exp = str(best.get("expires_at") or "")
+    this_exp = str(entry.get("expires_at") or "")
+    if this_exp > best_exp:
+      best = entry
+  return best
+
+
+def fetch_proxy_json(url: str, headers: dict[str, str], timeout: float = 10) -> dict[str, Any]:
+  request = urllib.request.Request(url, headers=headers, method="GET")
+  opener = urllib.request.build_opener(SameOriginRedirectHandler)
+  with opener.open(request, timeout=timeout) as response:
+    final = getattr(response, "geturl", lambda: url)()
+    host = urllib.parse.urlparse(final).hostname
+    if host != BILLING_HOST:
+      raise ValueError("redirected off the billing host")
+    payload = json.loads(response.read().decode("utf-8", errors="replace"))
+  if not isinstance(payload, dict):
+    raise ValueError("invalid JSON object")
+  return payload
+
+
+def collect_limits_http(home: Path) -> dict[str, Any] | None:
+  login = oauth_login(home)
+  if login is None:
+    return None
+  token = str(login.get("key") or "").strip()
+  if token == "":
+    return None
+  headers = {
+    "Authorization": "Bearer " + token,
+    "X-XAI-Token-Auth": TOKEN_AUTH,
+    "Accept": "application/json",
+  }
+  user_id = str(login.get("user_id") or "").strip()
+  if user_id:
+    headers["x-userid"] = user_id
+  try:
+    payload = fetch_proxy_json(BILLING_URL, headers)
+  except urllib.error.HTTPError as error:
+    if error.code in (401, 403):
+      return {"limits": [], "tierLabel": "", "usageStatusText": "Sign-in expired", "authHelpText": AUTH_HELP, "balance": None}
+    return None
+  except Exception:
+    return None
+  parsed = parse_billing(payload)
+  if not parsed.get("tierLabel"):
+    try:
+      settings = fetch_proxy_json(SETTINGS_URL, headers)
+      parsed["tierLabel"] = display_label(
+        settings.get("subscription_tier_display") or settings.get("subscription_tier")
+      ) or parsed["tierLabel"]
+    except Exception:
+      pass
+  parsed["authHelpText"] = ""
+  return parsed
+
+
 def display_label(value: Any) -> str:
   if not isinstance(value, str):
     return ""
@@ -679,13 +825,14 @@ def parse_billing(payload: dict[str, Any]) -> dict[str, Any]:
 
   percent = usage_percent(config.get("creditUsagePercent"))
   period = config.get("currentPeriod") if isinstance(config.get("currentPeriod"), dict) else {}
+  reset = str((period or {}).get("end") or config.get("billingPeriodEnd") or "")
   if percent >= 0:
-    reset = str((period or {}).get("end") or config.get("billingPeriodEnd") or "")
     result["limits"].append({
       "label": period_label(str((period or {}).get("type") or "")),
       "percent": percent,
       "resetsAt": reset,
     })
+  result["limits"].extend(parse_product_usage(config, reset))
 
   prepaid = money(config.get("prepaidBalance"))
   cap = money(config.get("onDemandCap"))
@@ -720,6 +867,9 @@ def collect_limits() -> dict[str, Any]:
   }
   grok = grok_command()
   if not grok:
+    http = collect_limits_http(grok_home())
+    if http is not None:
+      return http
     result["usageStatusText"] = "Grok unavailable"
     return result
 
@@ -786,6 +936,17 @@ def collect_limits() -> dict[str, Any]:
     parsed = parse_billing(payload)
     result.update(parsed)
     result["authHelpText"] = ""
+    # ACP often omits productUsage. The CLI-proxy billing endpoint is what
+    # /usage and marketplace collectors use for Grok Build / Chat / Imagine.
+    if not any(entry.get("label") in PRODUCT_TITLES.values() for entry in result["limits"]):
+      http = collect_limits_http(grok_home())
+      if http and http.get("limits"):
+        labels = {entry.get("label") for entry in result["limits"]}
+        for extra in http["limits"]:
+          if extra.get("label") not in labels:
+            result["limits"].append(extra)
+        if not result.get("tierLabel") and http.get("tierLabel"):
+          result["tierLabel"] = http["tierLabel"]
     return result
   except TimeoutError as exc:
     result["usageStatusText"] = "Grok limits unavailable"

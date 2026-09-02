@@ -140,6 +140,23 @@ result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_H
   fail "Grok collector does not add subagent tokens" "$result"
 pass "Grok collector skips subagent session_kind"
 
+# Synthetic task-completed prompt ids are the parent turn again.
+task="$TEST_HOME/.grok/sessions/%2Ftmp/task-session"
+mkdir -p "$task"
+cat >"$task/summary.json" <<EOF
+{"info":{"id":"task-session"}}
+EOF
+cat >"$task/updates.jsonl" <<EOF
+{"timestamp":"${today}T16:30:00Z","params":{"update":{"sessionUpdate":"turn_completed","prompt_id":"task-completed-abc","usage":{"inputTokens":777,"outputTokens":777}}}}
+EOF
+
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_HOME/.grok" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+
+[[ $(jq -r '.totalPrompts' <<<"$result") == "4" ]] ||
+  fail "Grok collector skips task-completed prompt ids" "$result"
+pass "Grok collector skips task-completed prompt ids"
+
 # events.jsonl turn_started alone must not invent tokens (the previous scanner's bug).
 events_only="$TEST_HOME/.grok/sessions/%2Ftmp/events-only"
 mkdir -p "$events_only"
@@ -188,6 +205,16 @@ result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_H
 [[ $(jq 'has("balance")' <<<"$result") == "false" ]] ||
   fail "Grok collector omits a zero prepaid ledger" "$result"
 pass "Grok collector maps a SuperGrok weekly pool onto the panel meter"
+
+# Marketplace collectors surface grok.com's product split as extra meters.
+install_grok_stub '{"config":{"creditUsagePercent":31,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_WEEKLY","end":"2026-08-22T23:23:37.992320+00:00"},"productUsage":[{"product":"GrokBuild","usagePercent":12},{"product":"GrokChat","usagePercent":8},{"product":"GrokImagine","usagePercent":2}]},"subscription_tier":"SuperGrok Heavy"}'
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" GROK_HOME="$TEST_HOME/.grok" \
+  "$ROOT/bin/omarchy-agent-usage-grok" --force)
+[[ $(jq -r '[.limits[].label] | join("/")' <<<"$result") == "Weekly/Grok Build/Chat/Imagine" ]] ||
+  fail "Grok collector maps productUsage into extra limit meters" "$result"
+[[ $(jq -r '.limits[] | select(.label=="Grok Build") | .percent * 100 | round' <<<"$result") == "12" ]] ||
+  fail "Grok collector maps Grok Build product percent" "$result"
+pass "Grok collector maps productUsage into extra limit meters"
 
 # Internal SuperGrokPro enum is rewritten; monthly periods keep their label.
 install_grok_stub '{"config":{"creditUsagePercent":8,"currentPeriod":{"type":"USAGE_PERIOD_TYPE_MONTHLY","end":"2026-09-01T00:00:00+00:00"}},"subscriptionTier":"SuperGrokPro"}'
