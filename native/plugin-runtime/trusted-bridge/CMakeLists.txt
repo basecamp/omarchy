@@ -14,6 +14,7 @@ endif()
 add_library(omarchy-plugin-trusted-bridge STATIC
   src/TrustedInputAuthority.cpp
   src/TrustedInputAuthority.h
+  src/pointer_provenance.hpp
   src/remote_surface.cpp
   src/remote_surface.hpp
   src/render_input_transport.cpp

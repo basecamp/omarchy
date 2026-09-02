@@ -1,7 +1,10 @@
 #include "remote_surface.hpp"
 
+#include "pointer_provenance.hpp"
+
 #include "omarchy/plugin_runtime/surface/profile.hpp"
 
+#include <QDebug>
 #include <QFocusEvent>
 #include <QHoverEvent>
 #include <QKeyEvent>
@@ -66,11 +69,30 @@ std::uint64_t device_token(const QInputEvent &event) {
       reinterpret_cast<std::uintptr_t>(event.device()));
 }
 
-bool trusted_pointer(const QMouseEvent &event) {
-  return event.spontaneous() &&
-         event.source() == Qt::MouseEventNotSynthesized &&
-         event.device() != nullptr &&
-         event.deviceType() == QInputDevice::DeviceType::Mouse;
+detail::PointerProvenance pointer_provenance(const QMouseEvent &event) {
+  return detail::classify_pointer_provenance(
+      event.spontaneous(), event.source(), event.device());
+}
+
+const char *pointer_failure_name(detail::PointerProvenanceFailure failure) {
+  using Failure = detail::PointerProvenanceFailure;
+  switch (failure) {
+  case Failure::none:
+    return "none";
+  case Failure::not_spontaneous:
+    return "not-spontaneous";
+  case Failure::synthesized:
+    return "synthesized";
+  case Failure::missing_device:
+    return "missing-device";
+  case Failure::unsupported_device:
+    return "unsupported-device";
+  }
+  return "unknown";
+}
+
+std::uint32_t pointer_failure_bit(detail::PointerProvenanceFailure failure) {
+  return std::uint32_t{1} << static_cast<unsigned>(failure);
 }
 
 } // namespace
@@ -216,7 +238,15 @@ bool RemotePluginSurface::childMouseEventFilter(QQuickItem *item,
       input_proxy_->height() == height() &&
       width() == state_->allocation().logical_width &&
       height() == state_->allocation().logical_height;
-  if (!exact_geometry || !trusted_pointer(mouse)) {
+  const auto provenance = pointer_provenance(mouse);
+  if (!exact_geometry || !provenance.trusted()) {
+    if (!exact_geometry) {
+      logInputRejectionOnce(std::uint32_t{1} << 8, "geometry-mismatch",
+                            mouse);
+    } else {
+      logInputRejectionOnce(pointer_failure_bit(provenance.failure),
+                            pointer_failure_name(provenance.failure), mouse);
+    }
     event->ignore();
     return true;
   }
@@ -273,15 +303,34 @@ void RemotePluginSurface::hoverMoveEvent(QHoverEvent *event) {
 }
 
 void RemotePluginSurface::mouseMoveEvent(QMouseEvent *event) {
-  event->setAccepted(routeMouseInput(*event, trusted_pointer(*event)));
+  event->setAccepted(
+      routeMouseInput(*event, pointer_provenance(*event).trusted()));
 }
 
 void RemotePluginSurface::mousePressEvent(QMouseEvent *event) {
-  event->setAccepted(routeMouseInput(*event, trusted_pointer(*event)));
+  event->setAccepted(
+      routeMouseInput(*event, pointer_provenance(*event).trusted()));
 }
 
 void RemotePluginSurface::mouseReleaseEvent(QMouseEvent *event) {
-  event->setAccepted(routeMouseInput(*event, trusted_pointer(*event)));
+  event->setAccepted(
+      routeMouseInput(*event, pointer_provenance(*event).trusted()));
+}
+
+void RemotePluginSurface::logInputRejectionOnce(std::uint32_t reason_bit,
+                                                const char *reason,
+                                                const QMouseEvent &event) {
+  if ((logged_input_rejections_ & reason_bit) != 0)
+    return;
+  logged_input_rejections_ |= reason_bit;
+  qInfo().noquote().nospace()
+      << "omarchy-plugin-security stage=host-input-pre-router decision=deny"
+      << " reason=" << reason << " surface-id=" << surfaceId()
+      << " generation=" << surfaceGeneration()
+      << " event-type=" << static_cast<int>(event.type())
+      << " spontaneous=" << (event.spontaneous() ? "true" : "false")
+      << " source=" << static_cast<int>(event.source())
+      << " device-type=" << static_cast<int>(event.deviceType());
 }
 
 void RemotePluginSurface::wheelEvent(QWheelEvent *event) {
@@ -474,6 +523,7 @@ bool RemotePluginSurface::configure(
     return false;
   }
   state_ = std::move(state);
+  logged_input_rejections_ = 0;
   connected_ = true;
   focused_ = false;
   failure_ = InspectionFailure::none;

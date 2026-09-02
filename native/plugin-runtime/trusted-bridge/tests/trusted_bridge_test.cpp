@@ -1,4 +1,5 @@
 #include "remote_surface.hpp"
+#include "pointer_provenance.hpp"
 #include "render_input_transport.hpp"
 
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
@@ -8,6 +9,7 @@
 #include <QImage>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointingDevice>
 #include <QQuickWindow>
 #include <QSizeF>
 #include <QTest>
@@ -241,6 +243,58 @@ void test_qpa_pointer_provenance_is_captured_before_quick_redispatch() {
   require(touch_frames == 2 && touch_was_untrusted &&
               pointer_events() == after_replay,
           "localized QPA touch did not traverse the fail-closed parent path");
+}
+
+void test_physical_pointer_device_classification() {
+  using bridge::detail::classify_pointer_provenance;
+
+  const QPointingDevice mouse(
+      QStringLiteral("mouse"), 1, QInputDevice::DeviceType::Mouse,
+      QPointingDevice::PointerType::Generic, QInputDevice::Capability::Position,
+      1, 5);
+  const QPointingDevice touchpad(
+      QStringLiteral("touchpad"), 2, QInputDevice::DeviceType::TouchPad,
+      QPointingDevice::PointerType::Finger,
+      QInputDevice::Capability::Position, 5, 3);
+  const QPointingDevice touchscreen(
+      QStringLiteral("touchscreen"), 3, QInputDevice::DeviceType::TouchScreen,
+      QPointingDevice::PointerType::Finger,
+      QInputDevice::Capability::Position, 10, 0);
+  const QPointingDevice unknown(
+      QStringLiteral("unknown"), 4, QInputDevice::DeviceType::Unknown,
+      QPointingDevice::PointerType::Unknown, QInputDevice::Capability::None, 1,
+      0);
+
+  require(classify_pointer_provenance(
+              true, Qt::MouseEventNotSynthesized, &mouse)
+              .trusted(),
+          "physical mouse device was rejected");
+  require(classify_pointer_provenance(
+              true, Qt::MouseEventNotSynthesized, &touchpad)
+              .trusted(),
+          "physical touchpad device was rejected");
+  require(!classify_pointer_provenance(
+               true, Qt::MouseEventSynthesizedBySystem, &touchpad)
+               .trusted() &&
+              !classify_pointer_provenance(
+                   true, Qt::MouseEventSynthesizedByApplication, &mouse)
+                   .trusted(),
+          "synthesized pointer input gained physical provenance");
+  require(!classify_pointer_provenance(
+               true, Qt::MouseEventNotSynthesized, &unknown)
+               .trusted(),
+          "unknown pointer device gained physical provenance");
+  require(!classify_pointer_provenance(
+               true, Qt::MouseEventNotSynthesized, &touchscreen)
+               .trusted(),
+          "touchscreen mouse emulation gained physical provenance");
+  require(!classify_pointer_provenance(
+               true, Qt::MouseEventNotSynthesized, nullptr)
+               .trusted() &&
+              !classify_pointer_provenance(
+                   false, Qt::MouseEventNotSynthesized, &touchpad)
+                   .trusted(),
+          "missing-device or non-spontaneous input gained provenance");
 }
 
 void test_quick_item_pointer_delivery() {
@@ -834,6 +888,7 @@ int main(int argc, char **argv) {
   (void)application;
   try {
     test_qpa_pointer_provenance_is_captured_before_quick_redispatch();
+    test_physical_pointer_device_classification();
     test_quick_item_pointer_delivery();
     test_router_unbind_is_idempotent_and_identity_checked();
     test_router_destruction_orders();

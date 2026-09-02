@@ -132,6 +132,8 @@ private:
                                      bool trusted_physical);
   [[nodiscard]] bool cancelHostInput(const QInputEvent &event);
   void fail(InspectionFailure failure, bool terminal);
+  void logInputRejectionOnce(std::uint32_t reason_bit, const char *reason,
+                             const QMouseEvent &event);
   void resetFrame();
   void resetInputRegions();
 
@@ -141,6 +143,7 @@ private:
   RemoteSurfaceLifetimeObserver *lifetime_observer_ = nullptr;
   QQuickItem *input_proxy_ = nullptr;
   std::uint64_t input_region_generation_ = 0;
+  std::uint32_t logged_input_rejections_ = 0;
   QList<QRect> input_regions_;
   std::optional<surface::SurfaceState> state_;
   QImage image_;
