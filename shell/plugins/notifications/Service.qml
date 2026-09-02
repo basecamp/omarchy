@@ -90,9 +90,10 @@ Item {
   // to it. QML ids aren't visible to external consumers without the alias.
   property alias popupModel: popupModel
   ListModel { id: popupModel }
+  property int historyRevision: 0
 
-  // How many notifications the history directory keeps, and therefore how
-  // many `showHistory` can replay.
+  // How many archived notifications `showHistory` replays as simultaneous
+  // toasts. The notification-center widget reads the complete boot archive.
   readonly property int historyLimit: 10
 
   readonly property int lowPopupDuration: 5000
@@ -396,6 +397,12 @@ Item {
     dismissPopup(index)
   }
 
+  function activateHistoryEntry(entry) {
+    var argv = NotificationLogic.parseExecArgv(entry ? entry.execArgv : "")
+    if (argv) Util.execArgv(argv)
+    else focusApp(entry)
+  }
+
   // Try to focus an existing Hyprland window matching the notification's
   // sender. The helper handles case-insensitive class matching.
   function focusApp(entry) {
@@ -411,7 +418,14 @@ Item {
 
   Process {
     id: ensureDirsProc
-    command: ["mkdir", "-p", service.stateDir, service.popupStateDir, service.historyDir, service.imagesDir]
+    // History belongs to the current boot. The boot id survives shell
+    // restarts but changes after reboot, when the previous archive is cleared.
+    command: ["bash", "-c",
+      "mkdir -p \"$1\" \"$2\" \"$3\" \"$4\" || exit 0\n" +
+      "boot=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null)\n" +
+      "old=$(cat \"$3/.boot-id\" 2>/dev/null)\n" +
+      "if [[ -n $boot && $boot != $old ]]; then rm -f \"$2\"/*.json \"$3\"/*.json \"$4\"/*; printf '%s\\n' \"$boot\" > \"$3/.boot-id\"; fi",
+      "--", service.stateDir, service.popupStateDir, service.historyDir, service.imagesDir]
     running: false
   }
 
@@ -513,7 +527,7 @@ Item {
       NotificationLogic.popupFileName(snapshot)]
     for (var i = 0; i < persistable.copies.length; i++)
       command.push(persistable.copies[i].from, persistable.copies[i].to)
-    enqueuePopupFileJob(command)
+    enqueuePopupFileJob(command, function() { service.historyRevision++ })
   }
 
   function deletePopupFileFor(row) {
@@ -528,28 +542,22 @@ Item {
   // ---------------------------------------------------- history
   //
   // A popup that leaves the screen keeps its file — it just moves one level
-  // down, into historyDir. Trimming happens right there in the same shell
-  // job: the names sort numerically by their leading millisecond timestamp,
-  // so everything but the newest historyLimit files is the tail to drop,
-  // image copies included. Callers set $hist, $limit and $imgs first.
-  readonly property string trimHistoryScript:
-    "ls -1 \"$hist\" 2>/dev/null | sort -n | head -n \"-$limit\" | while IFS= read -r stale; do rm -f \"$hist/$stale\" \"$imgs/${stale%.json}\"-*; done"
+  // down, into historyDir. The archive is cleared when the boot id changes;
+  // showHistory still limits toast replay while the bar panel can show all.
 
   function archivePopupFileFor(row) {
     if (!row) return
     // A history replay or the empty-history placeholder has no file to move;
-    // the failed mv leaves the history untouched, trimming included. Image
+    // the failed mv leaves the history untouched. Image
     // copies stay put — live and archived entries share imagesDir.
     enqueuePopupFileJob(["bash", "-c",
       "mkdir -p \"$1\" || exit 0\n" +
-      "hist=\"$1\" limit=\"$2\" imgs=\"$5\"\n" +
-      "mv -f \"$4/$3\" \"$1/$3\" 2>/dev/null || exit 0\n" +
-      trimHistoryScript, "--",
+      "mv -f \"$4/$3\" \"$1/$3\" 2>/dev/null", "--",
       historyDir,
       String(historyLimit),
       NotificationLogic.popupFileName(row),
       popupStateDir,
-      imagesDir])
+      imagesDir], function() { service.historyRevision++ })
   }
 
   // Record a notification that never made it to the screen (DND silenced it),
@@ -559,7 +567,7 @@ Item {
   // A silenced notification is untracked the moment it arrives, so the server
   // has nothing left for a later replaces_id to replace and hands the sender a
   // fresh id instead. Every update from a chatty thread is therefore its own
-  // notification here, and several can sit in the ten slots together — there
+  // notification here, and several can sit in the archive together — there
   // is no id to recognize them by, and guessing from app and summary would
   // merge genuinely separate messages.
   function writeHistoryFile(entry, done) {
@@ -570,11 +578,10 @@ Item {
     var persistable = NotificationLogic.persistablePopup(entry, imagesDir)
     var command = ["bash", "-c",
       "mkdir -p \"$1\" \"$5\" || exit 0\n" +
-      "hist=\"$1\" limit=\"$2\" name=\"$3\" json=\"$4\" imgs=\"$5\"\n" +
+      "name=\"$3\" json=\"$4\"\n" +
       "shift 5\n" +
       copyImagesScript +
-      "printf '%s\\n' \"$json\" > \"$hist/$name\" || exit 0\n" +
-      trimHistoryScript, "--",
+      "printf '%s\\n' \"$json\" > \"$1/$name\"", "--",
       historyDir,
       String(historyLimit),
       NotificationLogic.popupFileName(entry),
@@ -582,7 +589,10 @@ Item {
       imagesDir]
     for (var i = 0; i < persistable.copies.length; i++)
       command.push(persistable.copies[i].from, persistable.copies[i].to)
-    enqueuePopupFileJob(command, done)
+    enqueuePopupFileJob(command, function() {
+      service.historyRevision++
+      if (done) done()
+    })
   }
 
   function clearHistory() {
@@ -591,7 +601,7 @@ Item {
       "  [[ -e $f ]] || continue\n" +
       "  stale=\"${f##*/}\"\n" +
       "  rm -f \"$f\" \"$2/${stale%.json}\"-*\n" +
-      "done", "--", historyDir, imagesDir])
+      "done", "--", historyDir, imagesDir], function() { service.historyRevision++ })
   }
 
   // A restart can kill a queued job between its cp and its JSON write,
