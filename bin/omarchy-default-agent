@@ -31,7 +31,7 @@ ori | openrouter) agent="ori"; name="Ori"; agent_package="github:OpenRouterLabs/
 claude | claude-code) agent="claude"; name="Claude Code" ;;
 codex) agent="codex"; name="Codex" ;;
 crush) agent="crush"; name="Crush" ;;
-grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
+grok) agent="grok"; name="Grok Build"; agent_package="npm:@xai-official/grok" ;;
 agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
 hermes) agent="hermes"; name="Hermes"; agent_installer="omarchy-install-hermes-cli" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
