@@ -3,7 +3,22 @@
 # omarchy:summary=Returns true when the laptop lid is closed
 # omarchy:hidden=true
 
-for state in /proc/acpi/button/lid/*/state; do
+# logind reads the lid switch through evdev with hardware quirk handling, so
+# its answer beats raw ACPI, whose _LID method can report stale state.
+lid_closed=$(busctl get-property org.freedesktop.login1 /org/freedesktop/login1 org.freedesktop.login1.Manager LidClosed 2>/dev/null)
+if [[ -n $lid_closed ]]; then
+  if [[ $lid_closed == "b true" ]]; then
+    exit 0
+  else
+    exit 1
+  fi
+fi
+
+# Fall back to ACPI for contexts without a running logind, such as install
+# chroots.
+lid_path="${OMARCHY_ACPI_LID_PATH:-/proc/acpi/button/lid}"
+
+for state in "$lid_path"/*/state; do
   [[ -r $state ]] || continue
   [[ $(< "$state") == *"closed"* ]] && exit 0
 done
