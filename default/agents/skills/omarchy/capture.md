@@ -15,7 +15,9 @@ omarchy capture screenshot fullscreen save    # Full screen, straight to disk (n
 The first argument picks the mode (`smart|region|windows|fullscreen`), the
 second what happens with it (`slurp|copy|save`). `save` skips the annotation
 editor and prints the saved path. Screenshots land in the configured Pictures
-directory (override with `OMARCHY_SCREENSHOT_DIR`).
+directory (override with `OMARCHY_SCREENSHOT_DIR`). Set
+`OMARCHY_SCREENSHOT_SAVE_FILE=false` to make the default flow clipboard-only;
+explicit `copy` and `save` are unaffected.
 
 ## Screen Recording
 

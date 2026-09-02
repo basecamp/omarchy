@@ -9,14 +9,24 @@
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
 
-if [[ ! -d $OUTPUT_DIR ]]; then
-  mkdir -p "$OUTPUT_DIR"
-  omarchy-notification-send "Created screenshot directory: $OUTPUT_DIR" -t 2000
-fi
+# The directory is only created when a shot is actually written there, so
+# turning saving off doesn't leave an empty pictures directory behind.
+ensure_output_dir() {
+  if [[ ! -d $OUTPUT_DIR ]]; then
+    mkdir -p "$OUTPUT_DIR"
+    omarchy-notification-send "Created screenshot directory: $OUTPUT_DIR" -t 2000
+  fi
+}
 
 pkill slurp && exit 0
 
 SCREENSHOT_EDITOR="${OMARCHY_SCREENSHOT_EDITOR:-tensaku-edit}"
+
+# The default flow keeps a file alongside the clipboard copy. Only an explicit
+# "false" turns the file off, so a typo can't silently discard screenshots.
+# The positional copy/save arguments still say what they mean either way.
+SAVE_FILE=true
+[[ ${OMARCHY_SCREENSHOT_SAVE_FILE:-true} == "false" ]] && SAVE_FILE=false
 
 # Parse --editor flag from any position
 ARGS=()
@@ -62,20 +72,29 @@ FILEPATH="$OUTPUT_DIR/$FILENAME"
 
 case "$PROCESSING" in
   slurp)
-    grim -g "$SELECTION" "$FILEPATH" || exit 1
-    echo "$FILEPATH"
-    wl-copy --type image/png <"$FILEPATH"
+    if [[ $SAVE_FILE == true ]]; then
+      ensure_output_dir
+      grim -g "$SELECTION" "$FILEPATH" || exit 1
+      echo "$FILEPATH"
+      wl-copy --type image/png <"$FILEPATH"
 
-    # Best-effort: the screenshot is already saved and on the clipboard, so a
-    # notification outage must not report the capture itself as failed.
-    omarchy-notification-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" \
-      --image "$FILEPATH" \
-      --exec "$SCREENSHOT_EDITOR" "$FILEPATH" || true
+      # Best-effort: the screenshot is already saved and on the clipboard, so a
+      # notification outage must not report the capture itself as failed.
+      omarchy-notification-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" \
+        --image "$FILEPATH" \
+        --exec "$SCREENSHOT_EDITOR" "$FILEPATH" || true
+    else
+      grim -g "$SELECTION" - | wl-copy --type image/png || exit 1
+
+      # Nothing was written, so the notification can't offer the editor.
+      omarchy-notification-send "Screenshot copied to clipboard" -t 2000 || true
+    fi
     ;;
   copy)
     grim -g "$SELECTION" - | wl-copy --type image/png
     ;;
   save)
+    ensure_output_dir
     grim -g "$SELECTION" "$FILEPATH" || exit 1
     echo "$FILEPATH"
     ;;

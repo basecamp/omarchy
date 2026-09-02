@@ -13,5 +13,8 @@ export EDITOR="omarchy-launch-editor --inline"
 # Use a custom directory for screenshots (remember to make the directory!)
 # export OMARCHY_SCREENSHOT_DIR="$HOME/Pictures/Screenshots"
 
+# Keep screenshots on the clipboard only, without writing a file
+# export OMARCHY_SCREENSHOT_SAVE_FILE=false
+
 # Use a custom directory for screenrecordings (remember to make the directory!)
 # export OMARCHY_SCREENRECORD_DIR="$HOME/Videos/Screencasts"
