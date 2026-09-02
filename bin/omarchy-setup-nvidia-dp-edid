@@ -1,0 +1,208 @@
+#!/bin/bash
+
+# omarchy:summary=Force a real EDID for an NVIDIA DisplayPort monitor stuck on a dummy 640x480 mode
+# omarchy:args=[-y]
+# omarchy:examples=omarchy setup nvidia dp-edid | omarchy setup nvidia dp-edid -y
+# omarchy:requires-sudo=true
+
+set -e
+
+ASSUME_YES=0
+
+while (( $# > 0 )); do
+  case "$1" in
+  -y | --yes)
+    ASSUME_YES=1
+    ;;
+  -h | --help)
+    cat <<'EOF'
+Usage: omarchy setup nvidia dp-edid [-y]
+
+NVIDIA drivers on DisplayPort 1.4 can read a 128-byte dummy EDID and fall
+back to a 640x480 mode even when the monitor is capable of much more. The
+monitor's real EDID is only reported when its input is switched to DisplayPort
+1.2, so this wizard walks through capturing that real EDID and forcing it at
+the kernel level with drm.edid_firmware.
+
+What it does:
+
+  1. Finds the connected DisplayPort connector NVIDIA is mis-reading.
+  2. Asks you to switch that monitor's input to DisplayPort 1.2 in its OSD.
+  3. Copies the real 384-byte EDID to /lib/firmware/edid/.
+  4. Uses that EDID from boot: an mkinitcpio FILES entry plus
+     drm.edid_firmware=<connector>:edid/<file>.bin appended to
+     /etc/default/limine, then regenerates the initramfs and Limine config.
+  5. Asks for a reboot.
+
+Passing -y skips the confirmations and applies the fix directly once the
+capture step has run. The monitor must still be switched to DisplayPort 1.2
+before the real EDID can be read, so that step is never skippable.
+EOF
+    exit 0
+    ;;
+  *)
+    echo "omarchy-setup-nvidia-dp-edid: unknown option '$1'. Try --help." >&2
+    exit 2
+    ;;
+  esac
+  shift
+done
+
+# Paths are overridable so tests can run the wizard against a scratch tree.
+drm_path="${OMARCHY_DRM_PATH:-/sys/class/drm}"
+firmware_dir="${OMARCHY_EDID_FIRMWARE_DIR:-/lib/firmware/edid}"
+mkinitcpio_dir="${OMARCHY_MKINITCPIO_DIR:-/etc/mkinitcpio.conf.d}"
+default_limine="${OMARCHY_DEFAULT_LIMINE:-/etc/default/limine}"
+
+# A dummy EDID is the 128-byte, "NVD"-tagged block NVIDIA fabricates on DP1.4.
+# Anything else that comes back from the kernel is a real EDID we can use.
+is_dummy_edid() {
+  local edid="$1"
+
+  [[ -f $edid ]] || return 1
+
+  local size
+  size=$(wc -c <"$edid" 2>/dev/null || echo 0)
+
+  (( size <= 128 )) || return 1
+
+  # "NVD" is the first three bytes of the descriptor at offset 0x10.
+  [[ $(od -An -tx1 -j16 -N3 "$edid" | tr -d ' ') == "4e5644" ]]
+}
+
+# Return the connector name (e.g. "DP-2") for the first connected DisplayPort
+# connector NVIDIA is reading a dummy EDID from.
+find_bad_connector() {
+  local connector edid result=""
+
+  shopt -s nullglob
+  for connector in "$drm_path"/card*-DP-*; do
+    [[ $(<"$connector/status") == "connected" ]] || continue
+    edid="$connector/edid"
+    if is_dummy_edid "$edid"; then
+      result="${connector##*/}"
+      result="${result#card*-}"
+      break
+    fi
+  done
+  shopt -u nullglob
+
+  printf '%s' "$result"
+}
+
+# Resolve the absolute edid sysfs path for a connector name like "DP-2".
+# OMARCHY_EDID_CAPTURE_DRM_PATH lets a caller (or a test) present a different
+# sysfs tree for the post-switch capture than the one used for detection.
+find_connector_edid() {
+  local name="$1"
+  local base="${OMARCHY_EDID_CAPTURE_DRM_PATH:-$drm_path}"
+
+  shopt -s nullglob
+  compgen -G "$base/card*-${name}/edid" | head -1
+  shopt -u nullglob
+}
+
+install_firmware() {
+  local real_edid="$1" firmware="$2"
+
+  sudo mkdir -p "$firmware_dir"
+  sudo cp "$real_edid" "$firmware"
+  sudo chmod 644 "$firmware"
+}
+
+configure_mkinitcpio() {
+  local firmware="$1" dropin="$mkinitcpio_dir/edid-firmware.conf"
+
+  sudo mkdir -p "$mkinitcpio_dir"
+  sudo tee "$dropin" >/dev/null <<EOF
+# Written by omarchy-setup-nvidia-dp-edid so the forced EDID reaches userspace
+# and the kernel at boot. Remove this file to stop bundling it.
+FILES+=($firmware)
+EOF
+}
+
+append_limine_param() {
+  local connector="$1" firmware_name="$2" param
+  param="drm.edid_firmware=${connector}:edid/${firmware_name}"
+
+  if [[ -f $default_limine ]] && grep -q "$param" "$default_limine"; then
+    echo "Already in /etc/default/limine: $param"
+    return 0
+  fi
+
+  sudo sed -i "s|^KERNEL_CMDLINE\[default\]+=.*|& ${param}|" "$default_limine" || true
+
+  if ! grep -q "$param" "$default_limine"; then
+    echo -e "\e[31mCould not append '$param' to KERNEL_CMDLINE[default] in $default_limine.\e[0m" >&2
+    echo "Add it manually, then run: sudo limine-update" >&2
+    return 1
+  fi
+}
+
+connector=$(find_bad_connector)
+
+if [[ -z $connector ]]; then
+  echo -e "\e[31mNo NVIDIA DisplayPort connector is reading a dummy EDID right now.\e[0m" >&2
+  echo "This wizard is for DisplayPort monitors stuck at 640x480 read a fabricated EDID." >&2
+  echo "Nothing to fix if the monitor already has its full mode list." >&2
+  exit 1
+fi
+
+edid=$(find_connector_edid "$connector")
+
+echo -e "\e[32mFound DisplayPort connector $connector reading a 128-byte dummy EDID.\e[0m"
+echo "The monitor's real EDID is only reported when its input is DisplayPort 1.2."
+echo
+
+if (( ASSUME_YES == 0 )); then
+  if ! gum confirm "Switch the monitor's input to DisplayPort 1.2 in its OSD now, then continue?"; then
+    echo "Exiting. Re-run after switching the monitor to DisplayPort 1.2." >&2
+    exit 1
+  fi
+fi
+
+# Give the driver a moment to re-read the EDID after the OSD switch.
+sleep "${OMARCHY_EDID_CAPTURE_SLEEP:-2}"
+
+if is_dummy_edid "$edid" || [[ ! -s $edid ]]; then
+  echo -e "\e[31m$connector is still reading a small or dummy EDID.\e[0m" >&2
+  echo "Make sure the monitor input is set to DisplayPort 1.2, then re-run." >&2
+  exit 1
+fi
+
+real_size=$(wc -c <"$edid")
+firmware_name="${connector}.bin"
+firmware="$firmware_dir/$firmware_name"
+
+echo -e "\e[32mCaptured a real ${real_size}-byte EDID for $connector.\e[0m"
+
+if (( ASSUME_YES == 0 )); then
+  if ! gum confirm "Install this EDID as $firmware and force it at boot?"; then
+    echo "Exiting. Nothing was changed." >&2
+    exit 0
+  fi
+fi
+
+install_firmware "$edid" "$firmware"
+echo "Installed $firmware"
+
+configure_mkinitcpio "$firmware"
+echo "Added mkinitcpio FILES entry for $firmware"
+
+append_limine_param "$connector" "$firmware_name"
+echo "Appended drm.edid_firmware=${connector}:edid/${firmware_name} to $default_limine"
+
+echo
+echo "Regenerating initramfs and Limine configuration..."
+sudo limine-update
+
+echo -e "\e[32m\nDone. The forced EDID takes effect at the next boot.\e[0m"
+if (( ASSUME_YES == 0 )); then
+  if gum confirm "Reboot now to apply the fix?"; then
+    sudo systemctl reboot
+  else
+    echo "Reboot when ready. Until then the monitor stays on its current mode."
+  fi
+else
+  echo "Reboot when ready to apply the fix."
+fi
