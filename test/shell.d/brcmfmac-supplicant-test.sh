@@ -67,14 +67,16 @@ chmod +x "$stub_bin"/*
 # running with a fake root on PATH-independent state. pipefail is on, so a
 # grep -q gate would go silent here the way #6608 did.
 run_leaf() {
-  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}"
+  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}" product="${4:-Unknown}"
   rm -rf "$test_tmp/etc"
   mkdir -p "$test_tmp/etc"
   printf '%s' "$vendor" >"$test_tmp/dmi/sys_vendor"
+  printf '%s' "$product" >"$test_tmp/dmi/product_name"
 
   # Redirect both absolute paths the leaf touches into the sandbox.
   local script="$test_tmp/leaf.sh"
   sed -e "s|/sys/class/dmi/id/sys_vendor|$test_tmp/dmi/sys_vendor|g" \
+      -e "s|/sys/class/dmi/id/product_name|$test_tmp/dmi/product_name|g" \
       -e "s|/etc/modprobe.d|$test_tmp/etc/modprobe.d|g" \
       "$leaf" >"$script"
 
@@ -88,6 +90,13 @@ run_leaf "Apple Inc." 4488 1 >/dev/null
 grep -q 'feature_disable=0x82000' "$conf" 2>/dev/null ||
   fail "a T2 Mac still gets the quirk" "$(ls -R "$test_tmp/etc" 2>&1)"
 pass "a T2 Mac still gets the quirk"
+
+# BCM4364 firmware on the 2019 16-inch Intel Mac needs its firmware SAE
+# offload to join WPA3-only networks. 0x82000 disables SAE (bit 19), leaving
+# wpa_supplicant with no SAE path on firmware that does not advertise SAE_EXT.
+run_leaf "Apple Inc." 4464 1 "MacBookPro16,1" >/dev/null
+[[ ! -f $conf ]] || fail "a MacBookPro16,1 keeps WPA3 firmware offload"
+pass "a MacBookPro16,1 keeps WPA3 firmware offload"
 
 # Every Broadcom part brcmfmac drives, on a Mac with no T2 to detect: BCM43602
 # and its single-band variants, BCM4350, BCM4355, BCM4364, BCM4378, BCM4387.
@@ -120,12 +129,14 @@ pass "a Mac with no wireless device is left alone"
 # Installs that predate the quirk never ran the leaf, so the migration has to
 # reach them. It runs as the user under pipefail, the context #6608 was about.
 run_migration() {
-  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}"
+  local vendor="$1" wifi_id="${2:-}" t2="${3:-0}" product="${4:-Unknown}"
   printf '%s' "$vendor" >"$test_tmp/dmi/sys_vendor"
+  printf '%s' "$product" >"$test_tmp/dmi/product_name"
   : >"$calls"
 
   WIFI_ID="$wifi_id" T2_HARDWARE="$t2" PATH="$stub_bin:$PATH" TEST_LOG="$calls" \
     OMARCHY_BRCMFMAC_DMI_VENDOR="$test_tmp/dmi/sys_vendor" \
+    OMARCHY_BRCMFMAC_DMI_PRODUCT="$test_tmp/dmi/product_name" \
     OMARCHY_BRCMFMAC_CONF="$conf" \
     bash -euo pipefail "$migration" >/dev/null
 }
@@ -147,6 +158,12 @@ run_migration "Apple Inc." 4488 1
   fail "the migration is idempotent" "$(cat "$conf")"
 [[ ! -s $calls ]] || fail "a repaired install is left untouched" "$(cat "$calls")"
 pass "the migration is idempotent"
+
+rm -rf "$test_tmp/etc"
+run_migration "Apple Inc." 4464 1 "MacBookPro16,1"
+[[ ! -e $conf ]] || fail "the migration leaves MacBookPro16,1 WPA3 support enabled" "$(cat "$conf")"
+[[ ! -s $calls ]] || fail "the migration escalates nothing on MacBookPro16,1" "$(cat "$calls")"
+pass "the migration leaves MacBookPro16,1 WPA3 support enabled"
 
 # The machine this was written for, with no T2 to fall back on.
 rm -rf "$test_tmp/etc"
