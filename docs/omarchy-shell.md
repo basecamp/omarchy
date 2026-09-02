@@ -198,20 +198,12 @@ text/background palette, exposed to QML as `Color.foreground` and
 The shell exposes these tokens to QML via three singletons in
 `qs.Commons`:
 
-- `Color` — palette (`foreground`, `background`, `accent`, `urgent`)
-  and per-surface roles (`Color.bar.*`, `Color.popups.*`,
-  `Color.tooltip.*`, `Color.notifications.*`, `Color.menu.*`,
-  `Color.polkit.*`, `Color.lock.*`, `Color.imagePicker.*`). Clipboard
-  and emojis share `Color.menu.*`; the `[launcher]` section is consumed
-  by the launcher outside shell QML.
+- `Color` — palette (`foreground`, `background`, `accent`, `urgent`) and per-surface roles (`Color.bar.*`, `Color.popups.*`, `Color.tooltip.*`, `Color.notifications.*`, `Color.menu.*`, `Color.polkit.*`, `Color.lock.*`, `Color.imagePicker.*`). `Color.menu.backgroundSpec` and `selectedBackgroundSpec` preserve gradient fill data while the corresponding color properties expose the first stop. Clipboard, emojis, and reminders share `Color.menu.*`; the `[launcher]` section is consumed by the launcher outside shell QML.
 - `Style` — structural tokens (`cornerRadius`), shared interactive
   state tokens/helpers, spacing (`Style.spacing.*` / `Style.space(px)`),
   the type scale (`Style.font.*`), and bar dimensions
   (`Style.bar.sizeHorizontal` / `Style.bar.sizeVertical`).
-- `Border` — border-spec helpers for QML surfaces. Use with
-  `BorderSurface` from `qs.Ui` when a border should honor shell theme
-  gradients or per-side widths. `Color.<section>.border` is only the
-  flat-color fallback for code that cannot render a real border.
+- `Border` — border-spec helpers for QML surfaces. Use with `BorderSurface` from `qs.Ui` when a border should honor shell theme gradients or per-side widths. `BorderSurface.fillSpec` similarly renders surface-fill specs such as the menu gradients, with `fillColor` providing the solid fallback. `Color.<section>.border` is only the flat-color fallback for code that cannot render a real border.
 
 ### Interactive states
 

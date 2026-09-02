@@ -48,10 +48,15 @@ QtObject {
     return value
   }
 
-  function flatColor(value, fallback) {
+  function flatColor(value, fallback, seen) {
     var token = firstColorToken(value)
     var role = String(token || "").replace(/^\s+|\s+$/g, "").toLowerCase()
-    if (root.shellValues[role] && root.shellValues[role] !== token) return flatColor(root.shellValues[role], fallback)
+    var visited = seen || ({})
+    if (root.shellValues[role] && root.shellValues[role] !== token) {
+      if (visited[role]) return fallback
+      visited[role] = true
+      return flatColor(root.shellValues[role], fallback, visited)
+    }
     if (role === "foreground" || role === "text") return root.foreground
     if (role === "accent") return root.accent
     if (role === "urgent") return root.urgent
@@ -68,6 +73,47 @@ QtObject {
   // base token is a gradient, color-only consumers use the first stop.
   function composed(colorKey, alphaKey, colorFallback, alphaFallback) {
     return Util.alpha(flatColor(pick(colorKey, colorFallback), colorFallback), pickAlpha(alphaKey, alphaFallback))
+  }
+
+  // Resolve a surface fill that may be either a solid color or the same
+  // space-separated gradient syntax used by shell borders. The companion
+  // alpha multiplies every stop's own alpha. Color-only consumers keep using
+  // the first stop through the existing typed color properties below.
+  function resolveShellRef(raw) {
+    var value = String(raw || "").replace(/^\s+|\s+$/g, "")
+    var seen = {}
+    while (value.match(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/) && !seen[value]) {
+      seen[value] = true
+      var next = shellValues[value]
+      if (next === undefined || next === null || String(next).length === 0) break
+      value = String(next).replace(/^\s+|\s+$/g, "")
+    }
+    return value
+  }
+
+  function multipliedAlpha(color, alpha) {
+    if (color && typeof color === "object" && color.r !== undefined)
+      return Qt.rgba(color.r, color.g, color.b, (color.a === undefined ? 1 : color.a) * Util.clampAlpha(alpha))
+    return Util.alpha(color, alpha)
+  }
+
+  function fillSpec(colorKey, alphaKey, colorFallback, alphaFallback) {
+    var raw = resolveShellRef(pick(colorKey, colorFallback))
+    var alpha = pickAlpha(alphaKey, alphaFallback)
+    var parts = String(raw || "").split(/\s+/)
+    var colors = []
+    var angle = 0
+    for (var i = 0; i < parts.length; i++) {
+      if (!parts[i]) continue
+      var angleMatch = parts[i].match(/^(-?\d+(?:\.\d+)?)deg$/)
+      if (angleMatch) angle = Number(angleMatch[1])
+      else if (colors.length < 10) colors.push(multipliedAlpha(flatColor(parts[i], colorFallback), alpha))
+    }
+    if (colors.length === 0) colors.push(multipliedAlpha(flatColor(colorFallback, colorFallback), alpha))
+    return {
+      color: colors[0],
+      gradient: { colors: colors, angle: angle, enabled: colors.length > 1 }
+    }
   }
 
   readonly property QtObject bar: QtObject {
@@ -93,10 +139,12 @@ QtObject {
   }
   readonly property QtObject menu: QtObject {
     property color background: root.composed("menu.background", "menu.background-alpha", root.background, 1.0)
+    property var backgroundSpec: root.fillSpec("menu.background", "menu.background-alpha", root.background, 1.0)
     property color text: root.pick("menu.text", root.foreground)
     property color border: root.composed("menu.border", "menu.border-alpha", root.foreground, 1.0)
     property color scrim: root.composed("menu.scrim", "menu.scrim-alpha", root.background, 0.5)
     property color selectedBackground: root.composed("menu.selected-background", "menu.selected-background-alpha", root.foreground, 0.08)
+    property var selectedBackgroundSpec: root.fillSpec("menu.selected-background", "menu.selected-background-alpha", root.foreground, 0.08)
     property color selectedText: root.pick("menu.selected-text", root.accent)
     property color selectedBorder: root.composed("menu.selected-border", "menu.selected-border-alpha", root.foreground, 0.0)
   }

@@ -85,11 +85,13 @@ Item {
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
   property color background: Color.menu.background
+  property var backgroundSpec: Color.menu.backgroundSpec
   property color foreground: Color.menu.text
   property color border: Color.menu.border
   property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   property color scrim: Color.menu.scrim
   property color selectedBackground: Color.menu.selectedBackground
+  property var selectedBackgroundSpec: Color.menu.selectedBackgroundSpec
   property color selectedText: Color.menu.selectedText
   property color selectedBorder: Color.menu.selectedBorder
   property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", selectedBorder, 0)
@@ -1107,7 +1109,8 @@ Item {
       radius: root.cornerRadius
       anchors.horizontalCenter: parent.horizontalCenter
       y: panel.effectiveCardTop
-      color: root.background
+      fillColor: root.background
+      fillSpec: root.backgroundSpec
       borderSpec: root.borderSpec
       padding: root.contentMargin
 
@@ -1272,7 +1275,8 @@ Item {
               // installed, not to be picked.
               opacity: row.disabled ? 0.4 : 1
               radius: root.cornerRadius
-              color: row.hasCursor ? root.selectedBackground : "transparent"
+              fillColor: row.hasCursor ? root.selectedBackground : "transparent"
+              fillSpec: row.hasCursor ? root.selectedBackgroundSpec : null
               borderSpec: row.hasCursor ? root.selectedBorderSpec : Border.none()
 
               Rectangle {
@@ -1417,7 +1421,7 @@ Item {
             anchors.right: parent.right
             anchors.top: parent.top
             height: Math.min(Style.space(28), parent.height / 2)
-            visible: opacity > 0
+            visible: opacity > 0 && !root.backgroundSpec.gradient.enabled
             opacity: resultList.contentHeight > resultList.height
               ? Math.max(0, Math.min(1, (resultList.contentY - resultList.originY) / height))
               : 0
@@ -1432,7 +1436,7 @@ Item {
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             height: Math.min(Style.space(28), parent.height / 2)
-            visible: opacity > 0
+            visible: opacity > 0 && !root.backgroundSpec.gradient.enabled
             opacity: resultList.contentHeight > resultList.height
               ? Math.max(0, Math.min(1, (resultList.originY + resultList.contentHeight - resultList.height - resultList.contentY) / height))
               : 0
