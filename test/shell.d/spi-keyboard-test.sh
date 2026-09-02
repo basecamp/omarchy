@@ -1,0 +1,61 @@
+#!/bin/bash
+
+set -euo pipefail
+
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+
+# The leaf reads /sys/class/dmi/id/product_name and writes under
+# /etc/mkinitcpio.conf.d, so a sandboxed copy with those paths rewritten is
+# used, like the other install/hardware tests.
+leaf="$tmp_dir/leaf.sh"
+sed -e "s|/sys/class/dmi/id/product_name|$tmp_dir/product_name|g" \
+  -e "s|/etc/mkinitcpio.conf.d|$tmp_dir/mkinitcpio.conf.d|g" \
+  "$ROOT/install/hardware/apple/fix-spi-keyboard.sh" >"$leaf"
+chmod +x "$leaf"
+
+mkdir -p "$tmp_dir/bin"
+cat >"$tmp_dir/bin/omarchy-pkg-add" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >>"$PKG_ADD_LOG"
+EOF
+cat >"$tmp_dir/bin/sudo" <<'EOF'
+#!/bin/bash
+exec "$@"
+EOF
+chmod +x "$tmp_dir/bin"/*
+
+run_leaf() {
+  printf '%s\n' "$1" >"$tmp_dir/product_name"
+  : >"$tmp_dir/pkg-add.log"
+  PKG_ADD_LOG="$tmp_dir/pkg-add.log" \
+    PATH="$tmp_dir/bin:$PATH" \
+    bash "$leaf"
+}
+
+# A matched MacBook: the initramfs drop-in has to keep the SPI modules (this
+# is what makes the keyboard work at the LUKS prompt), but the DKMS package is
+# obsolete — applespi is in-tree and the out-of-tree copy cannot build on
+# modern kernels — so it must not be installed anymore.
+run_leaf "MacBookPro14,1"
+[[ -s $tmp_dir/pkg-add.log ]] &&
+  fail "a matched MacBook no longer installs the obsolete DKMS package" \
+    "$(cat "$tmp_dir/pkg-add.log")"
+grep -q '^MODULES=(applespi intel_lpss_pci spi_pxa2xx_platform)$' \
+  "$tmp_dir/mkinitcpio.conf.d/macbook_spi_modules.conf" ||
+  fail "the SPI initramfs drop-in is still written" \
+    "$(cat "$tmp_dir/mkinitcpio.conf.d/macbook_spi_modules.conf" 2>/dev/null || echo missing)"
+pass "matched MacBook keeps the initramfs drop-in and skips the DKMS package"
+
+# An unmatched machine must be left completely alone.
+rm -rf "$tmp_dir/mkinitcpio.conf.d"
+run_leaf "MacBookPro15,2"
+[[ -s $tmp_dir/pkg-add.log ]] &&
+  fail "an unmatched machine does not install the DKMS package"
+[[ -e $tmp_dir/mkinitcpio.conf.d ]] &&
+  fail "an unmatched machine does not write the drop-in"
+pass "unmatched hardware is untouched"
+
+pass "SPI keyboard detection writes only the needed initramfs drop-in"
