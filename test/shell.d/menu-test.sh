@@ -20,7 +20,12 @@ const parsed = menu.parseMenuJsonc(`
       "label": "Themes",
       "aliases": "theme",
       "description": "appearance colors",
-      "action": "omarchy-theme-set"
+      "action": "omarchy-theme-set",
+      "confirmation": {
+        "message": "Apply this theme?",
+        "confirmText": "Apply",
+        "seconds": 3
+      }
     },
   },
 }
@@ -40,6 +45,11 @@ assertDeepEqual(
     target: '',
     description: 'appearance colors',
     action: 'omarchy-theme-set',
+    confirmation: {
+      message: 'Apply this theme?',
+      confirmText: 'Apply',
+      seconds: 3
+    },
     provider: '',
     aliases: ['theme'],
     when: '',
@@ -120,6 +130,7 @@ assertDeepEqual(
     path: 'Style › Theme picker',
     childCount: 0,
     action: 'custom-theme',
+    confirmation: null,
     provider: '',
     score: 12,
     section: 'search'
@@ -129,6 +140,20 @@ assertDeepEqual(
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+assertDeepEqual(
+  defaultById['system.reboot'].confirmation,
+  { message: 'Reboot this computer?', confirmText: 'Reboot', seconds: 5 },
+  'menu requires a five-second confirmation before reboot'
+)
+assertDeepEqual(
+  defaultById['system.shutdown'].confirmation,
+  { message: 'Shut down this computer?', confirmText: 'Shut down', seconds: 5 },
+  'menu requires a five-second confirmation before shutdown'
+)
+assert(
+  /property int countdownSeconds: 0/.test(fs.readFileSync(path.join(root, 'shell/Ui/ConfirmDialog.qml'), 'utf8')),
+  'confirmation dialog supports an optional countdown'
+)
 
 // Needs the real menu: app rows sort after all menu items, and only at that
 // item count does the order tiebreak alone bury an installed app.

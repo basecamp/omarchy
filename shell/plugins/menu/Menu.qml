@@ -80,7 +80,14 @@ Item {
   readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
   property bool deleteConfirmOpen: false
   property var deleteTarget: null
-  onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
+  property bool actionConfirmOpen: false
+  property var actionConfirmTarget: null
+  onOpenedChanged: if (!opened) {
+    deleteConfirmOpen = false
+    deleteTarget = null
+    actionConfirmOpen = false
+    actionConfirmTarget = null
+  }
   // Bound to the central [menu] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
@@ -585,6 +592,7 @@ Item {
         path: "",
         childCount: 0,
         action: "",
+        confirmation: null,
         provider: "",
         score: i,
         section: ""
@@ -757,7 +765,7 @@ Item {
   }
 
   function activateIndex(index, fromPointer) {
-    if (root.deleteConfirmOpen) return
+    if (root.deleteConfirmOpen || root.actionConfirmOpen) return
     if (root.dmenuActive) {
       if (root.mode === "input") {
         root.applyDmenuSelection(root.filterText)
@@ -782,8 +790,40 @@ Item {
       filterText = ""
       if (root.appLibrary) root.appLibrary.launch(appId, label)
     } else {
-      root.applySelected(row.itemId, row.action)
+      root.requestAction(row)
     }
+  }
+
+  function requestAction(row) {
+    if (!row || !row.itemId) return
+    if (!row.confirmation) {
+      root.applySelected(row.itemId, row.action)
+      return
+    }
+
+    root.actionConfirmTarget = {
+      itemId: row.itemId,
+      action: row.action,
+      confirmation: row.confirmation
+    }
+    actionConfirm.selectedIndex = 0
+    root.actionConfirmOpen = true
+  }
+
+  function cancelAction() {
+    root.actionConfirmOpen = false
+    root.actionConfirmTarget = null
+    actionConfirm.selectedIndex = 0
+    root.disarmPointer()
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function confirmAction() {
+    var target = root.actionConfirmTarget
+    root.actionConfirmOpen = false
+    root.actionConfirmTarget = null
+    if (!target) return
+    root.applySelected(target.itemId, target.action)
   }
 
   function requestDeleteSelected() {
@@ -899,8 +939,13 @@ Item {
     // a leaf, e.g. `omarchy menu summon screenrecord-stop`), run it directly
     // instead of opening an action with no children.
     if (entry && entry.kind === "action" && entry.action) {
-      root.cancel()
-      root.runAction(entry.action)
+      if (entry.confirmation) {
+        root.openExistingMenu(entry.parent || "root")
+        root.requestAction(root.displayRow(entry, entry.description, entry.order))
+      } else {
+        root.cancel()
+        root.runAction(entry.action)
+      }
       return "ok"
     }
     // If it's a link (a redirect to another menu), follow the link.
@@ -1116,13 +1161,17 @@ Item {
       Item {
         id: keyCatcher
         anchors.fill: parent
-        z: root.deleteConfirmOpen ? 20 : 0
+        z: root.deleteConfirmOpen || root.actionConfirmOpen ? 20 : 0
         focus: true
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
           if (root.deleteConfirmOpen) {
             if (deleteConfirm.handleKey(event)) event.accepted = true
+            return
+          }
+          if (root.actionConfirmOpen) {
+            if (actionConfirm.handleKey(event)) event.accepted = true
             return
           }
 
@@ -1181,6 +1230,27 @@ Item {
           cornerRadius: root.cornerRadius
           onCanceled: root.cancelDelete()
           onConfirmed: root.confirmDelete()
+        }
+
+        ConfirmDialog {
+          id: actionConfirm
+
+          anchors.fill: parent
+          opened: root.actionConfirmOpen
+          z: 10
+          message: (root.actionConfirmTarget && root.actionConfirmTarget.confirmation && root.actionConfirmTarget.confirmation.message) || "Are you sure?"
+          cancelText: (root.actionConfirmTarget && root.actionConfirmTarget.confirmation && root.actionConfirmTarget.confirmation.cancelText) || "Cancel"
+          confirmText: (root.actionConfirmTarget && root.actionConfirmTarget.confirmation && root.actionConfirmTarget.confirmation.confirmText) || "Confirm"
+          countdownSeconds: (root.actionConfirmTarget && root.actionConfirmTarget.confirmation && root.actionConfirmTarget.confirmation.seconds) || 0
+          background: root.background
+          foreground: root.foreground
+          scrim: root.scrim
+          selectedBackground: root.selectedBackground
+          selectedText: root.selectedText
+          fontFamily: root.fontFamily
+          cornerRadius: root.cornerRadius
+          onCanceled: root.cancelAction()
+          onConfirmed: root.confirmAction()
         }
       }
 
@@ -1259,6 +1329,7 @@ Item {
               required property string detail
               required property string path
               required property string action
+              required property var confirmation
               required property int childCount
               required property bool disabled
 
