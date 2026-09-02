@@ -193,6 +193,15 @@ rm -rf "$conf_tmp"
 unset OMARCHY_PARENT_CONF OMARCHY_POLKIT_RULES_DIR
 pass "the Wi-Fi rule asks the parent by default and hands the kid the school's network on request"
 
+# Two menu entries would hand the invoking account passwordless root, which
+# on a child install is the kid's account once a parent has typed the
+# password: they stay off the menu there.
+menu="$ROOT/default/omarchy/omarchy-menu.jsonc"
+grep -q '"setup.security.passwordless-sudo": {[^}]*"when":"! omarchy-profile-child"' "$menu" || fail "Passwordless Sudo stays off a child install's menu"
+grep -q '"setup.security.sudoless-docker": {[^}]*"when":"! omarchy-profile-child && omarchy-sudo-docker --configured"' "$menu" || fail "Sudoless Docker stays off a child install's menu"
+grep -q '"setup.security.fido2": {[^}]*"when":"! omarchy-profile-child"' "$menu" || fail "Fido2 setup stays off a child install's menu"
+pass "the menu keeps the grants that would land on the kid account off a child install"
+
 # Features plug in as omarchy-parent-<name> beside this command: help lists
 # them by summary (hidden plumbing excepted), an unknown core command is handed
 # to the matching one before any elevation, and a name with no command is
