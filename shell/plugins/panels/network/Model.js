@@ -73,13 +73,15 @@ function bandLabel(band) {
 // Under Automatic the pills are hidden, so the header carries the live band
 // instead -- "WI-FI BAND: 2.4GHZ". Once a band is pinned the pills are on
 // screen and say it themselves, so the header drops back to a plain label.
-function bandSectionTitle(selected, current) {
+// When the radio is on a Wi-Fi 7 Multi-Link Device, the live band is followed
+// by "· MLO" so the split-link state is visible at a glance.
+function bandSectionTitle(selected, current, mlo) {
   if (selected !== "auto") return "WI-FI BAND"
 
   var label = bandLabel(current)
   if (label === "") return "WI-FI BAND"
 
-  return "WI-FI BAND: " + label.toUpperCase()
+  return "WI-FI BAND: " + label.toUpperCase() + (mlo ? " · MLO" : "")
 }
 
 function bandTooltip(band) {
@@ -100,7 +102,8 @@ function parseBandStatus(raw) {
   return {
     band: next.band || "",
     selected: next.selected || "auto",
-    available: available
+    available: available,
+    mlo: next.mlo === "1"
   }
 }
 

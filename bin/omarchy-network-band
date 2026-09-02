@@ -67,13 +67,16 @@ selected_band() {
   band_from_nm "$(nm_get 802-11-wireless.band connection show "$1")"
 }
 
-# Sets $ssid and $freq from one `iw dev <device> link`. iw prints the SSID as
-# the rest of its line, so an SSID containing ':' needs no special handling.
+# Sets $ssid, $freq, and $mlo from one `iw dev <device> link`. iw prints the
+# SSID as the rest of its line, so an SSID containing ':' needs no special
+# handling. Under Wi-Fi 7 MLO, iw lists one freq per radio link (2.4+5, 5+6,
+# ...) instead of a single one: the max is the fast data path and matches what
+# NetworkManager reports as the in-use BSSID, and more than one link is MLO.
 read_link() {
   local link
   link=$(iw dev "$1" link 2>/dev/null)
   ssid=$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")
-  freq=$(awk '/freq:/ { print $2; exit }' <<<"$link")
+  read -r freq mlo <<<"$(awk '/freq:/ { v = $2 + 0; if (v > max) max = v; links++ } END { print max, (links > 1 ? 1 : 0) }' <<<"$link")"
 }
 
 # Every band the SSID is reachable on, low to high, always including the one
@@ -107,7 +110,7 @@ available_bands() {
 }
 
 print_status() {
-  local device profile band available
+  local device profile band available mlo
 
   device=$(wifi_device)
   [[ -n $device ]] || return 0
@@ -120,6 +123,7 @@ print_status() {
   profile=$(wifi_profile "$device")
 
   printf 'band\t%s\n' "$band"
+  printf 'mlo\t%s\n' "${mlo:-0}"
   printf 'available\t%s\n' "$available"
   if [[ -n $profile ]]; then printf 'selected\t%s\n' "$(selected_band "$profile")"; fi
 }

@@ -19,6 +19,12 @@ case "${1:-}" in
     ;;
 esac
 
+# Under Wi-Fi 7 MLO, iw prints one freq per link; the max is the fast path and
+# matches what NetworkManager reports as the in-use BSSID.
+max_link_freq() {
+  awk '/freq:/ { v = $2 + 0; if (v > max) max = v } END { print max }'
+}
+
 print_status() {
   local device nm state ssid signal freq
 
@@ -38,7 +44,7 @@ print_status() {
   state=$(awk -F: '$1 == "GENERAL.STATE" { print $2; exit }' <<<"$nm")
   ssid=$(awk -F: '$1 == "GENERAL.CONNECTION" { print $2; exit }' <<<"$nm")
   signal=$(nmcli -t -f IN-USE,SIGNAL dev wifi list ifname "$device" --rescan no 2>/dev/null | awk -F: '$1 == "*" { print $2; exit }')
-  freq=$(iw dev "$device" link 2>/dev/null | awk '/freq:/ { print $2; exit }')
+  freq=$(iw dev "$device" link 2>/dev/null | max_link_freq)
 
   if [[ $state != 100* ]]; then
     printf 'disconnected\t\t\t\n'
@@ -117,7 +123,7 @@ print_verbose() {
       if [[ -n $link ]]; then
         printf 'ssid\t%s\n' "$(awk '/SSID:/ { sub(/.*SSID: /, ""); print; exit }' <<<"$link")"
         printf 'signal_dbm\t%s\n' "$(awk '/signal:/ { print $2; exit }' <<<"$link")"
-        printf 'freq\t%s\n' "$(awk '/freq:/ { print $2; exit }' <<<"$link")"
+        printf 'freq\t%s\n' "$(max_link_freq <<<"$link")"
         printf 'bitrate\t%s %s\n' "$(awk '/tx bitrate:/ { print $3; exit }' <<<"$link")" "$(awk '/tx bitrate:/ { print $4; exit }' <<<"$link")"
       fi
     fi
