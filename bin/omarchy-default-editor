@@ -17,6 +17,9 @@ if (($# == 0)); then
     read -r editor <"$editor_file"
   fi
 
+  # sublime-text-4 puts `subl` on PATH, not the desktop id sublime_text.
+  [[ $editor == "sublime_text" ]] && editor="subl"
+
   [[ -n $editor ]] && echo "$editor" || echo "nvim"
   exit 0
 fi

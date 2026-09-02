@@ -297,6 +297,13 @@ for entry in "${editor_cases[@]}"; do
 done
 pass "editor defaults install every missing editor before selection"
 
+mkdir -p "$test_home/.local/state/omarchy/defaults"
+printf '%s\n' sublime_text >"$test_home/.local/state/omarchy/defaults/editor"
+touch "$installed_dir/subl"
+[[ $(omarchy-default-editor) == subl ]] || fail "stored sublime_text reports as subl"
+pass "legacy sublime_text default reports as subl"
+
+
 : >"$install_log"
 : >"$terminal_log"
 omarchy-default-browser zen
