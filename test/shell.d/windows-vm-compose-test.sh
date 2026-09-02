@@ -4,6 +4,17 @@
 set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+# This test performs real bind mounts, unmounts and recursive deletions
+# against the paths it sets up. Inside an unprivileged user namespace the
+# kernel confines all of that to files the caller already owns; as real root
+# there is no such confinement, and a mismatch between the script's privileged
+# defaults and the test's fake HOME/OMARCHY_WINDOWS_DIR deletes real trees.
+# Refuse to run as root rather than rely on every path being right.
+if (( EUID == 0 )); then
+  pass "windows VM mount runtime tests must not run as root; skipping (run the suite as a normal user)"
+  exit 0
+fi
+
 # Bind mounts need CAP_SYS_ADMIN in a private mount namespace. Keep the
 # caller's uid so the non-root development path is exercised.
 if [[ ${OMARCHY_WINDOWS_TEST_NAMESPACE:-0} != 1 ]]; then

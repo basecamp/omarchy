@@ -5,6 +5,15 @@ set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 TEST_DIR="$ROOT/test/shell.d"
 
+# Some tests mount, unmount and delete for real inside an unprivileged user
+# namespace, where the kernel keeps them to files the caller owns. As root
+# nothing does, and one wrong default deletes real system trees. Refuse
+# unless the caller says this is a throwaway machine or container.
+if (( EUID == 0 )) && [[ ${OMARCHY_TEST_ALLOW_ROOT:-0} != 1 ]]; then
+  echo "test/shell: refusing to run as root; run as a normal user, or set OMARCHY_TEST_ALLOW_ROOT=1 on a throwaway system" >&2
+  exit 1
+fi
+
 shopt -s nullglob
 tests=()
 for test in "$TEST_DIR"/*-test.sh; do
