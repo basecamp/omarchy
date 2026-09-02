@@ -12,12 +12,14 @@ step="${2:-}"
 cache_dir="${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display-ddc"
 cache_name="${monitor//[^[:alnum:]_.-]/_}"
 cache_file="$cache_dir/$cache_name.bus"
+full_checks_cache_file="$cache_dir/$cache_name.full-checks"
 unavailable_cache_seconds=60
 range_cache_seconds=10
 
 cache_unavailable() {
   mkdir -p "$cache_dir" 2>/dev/null || true
   printf 'unavailable %s\n' "$(date +%s)" >"$cache_file" 2>/dev/null || true
+  rm -f "$full_checks_cache_file"
 }
 
 detect_bus() {
@@ -101,6 +103,30 @@ read_brightness() {
   printf '%s %s\n' "$bus" "$values"
 }
 
+write_vcp() {
+  local bus="$1"
+  local raw_target="$2"
+  local full_checks_bus=""
+
+  if [[ -r $full_checks_cache_file ]]; then
+    read -r full_checks_bus <"$full_checks_cache_file" || true
+  fi
+
+  if [[ $full_checks_bus == "$bus" ]]; then
+    if ddcutil --bus "$bus" --verify setvcp 10 "$raw_target" >/dev/null 2>&1; then
+      return 0
+    fi
+  elif ddcutil --bus "$bus" --skip-ddc-checks --verify setvcp 10 "$raw_target" >/dev/null 2>&1; then
+    return 0
+  elif ddcutil --bus "$bus" --verify setvcp 10 "$raw_target" >/dev/null 2>&1; then
+    printf '%s\n' "$bus" >"$full_checks_cache_file" 2>/dev/null || true
+    return 0
+  fi
+
+  cache_unavailable
+  return 1
+}
+
 bus=""
 current=""
 maximum=""
@@ -160,9 +186,5 @@ fi
 (( target > 100 )) && target=100
 (( raw_target = (target * maximum + 50) / 100 ))
 
-if ! ddcutil --bus "$bus" --skip-ddc-checks --noverify setvcp 10 "$raw_target" >/dev/null 2>&1; then
-  rm -f "$cache_file"
-  exit 1
-fi
-
+write_vcp "$bus" "$raw_target" || exit 1
 printf '%s\n' "$target"
