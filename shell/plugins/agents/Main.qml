@@ -715,7 +715,7 @@ Item {
   }
 
   function modelWordCase(word) {
-    if (word === "gpt") return "GPT"
+    if (word === "gpt" || word === "oss" || word === "api") return word.toUpperCase()
     if (word === "deepseek") return "DeepSeek"
     return word.charAt(0).toUpperCase() + word.slice(1)
   }
@@ -725,7 +725,7 @@ Item {
   // version and title-case the words around it.
   function friendlyModelName(id) {
     if (!id) return "Unknown"
-    var name = String(id).replace(/^claude-/, "").replace(/-\d{8}$/, "")
+    var name = String(id).replace(/^(google-antigravity|google|anthropic|openai)\//, "").replace(/^claude-/, "").replace(/-\d{8}$/, "")
     var parts = name.split("-")
     var words = []
     var version = []
