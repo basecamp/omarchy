@@ -37,6 +37,8 @@ It is necessary to disable Apple's Secure Boot in order to boot the bootable USB
 
 The installer detects Mac hardware and applies the needed fixes automatically: Broadcom Wi-Fi drivers and firmware, the SPI keyboard driver on the MacBook models that need it, and an NVMe suspend fix for those same models.
 
+The 12-inch Early 2015 (MacBook8,1) needs a USB keyboard for the installer itself. After the first reboot the built-in keyboard and trackpad work: DMA on that board never completes SPI transfers, so the installer forces the controller into PIO and defaults sleep to s2idle.
+
 ### Known Limitations
 
 Members of the community are constantly working on solutions to these challenges so if these are problematic for you, join #omarchy-on-other in our [Discord](https://discord.gg/tXFUdasqhY) and see if there's any up-to-date methods for resolving these.
