@@ -1,0 +1,178 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the OpenClaw Agent usage record as JSON
+# omarchy:args=[--write]
+"""Collect OpenClaw Gateway usage into one display-ready JSON record.
+
+Everything the agents panel shows for OpenClaw comes from this one command:
+session stats (sessions, per-model input/output tokens) from
+`openclaw sessions --json --all-agents` and run counts from the gateway audit
+log (`openclaw audit`, agent.run.started events). It prints the same record
+contract as the packaged claude/codex collectors; with --write it updates the
+record file atomically.
+
+Chat sessions that arrived over messaging gateways count too: the gateway
+treats them as first-class sessions and so does this record.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
+
+USAGE_DIR = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "omarchy/agents/usage"
+RECENT_DAYS = 7
+AUDIT_MAX_PAGES = 50
+
+
+def day_bounds(day) -> tuple[float, float]:
+    start = datetime(day.year, day.month, day.day).astimezone()
+    return start.timestamp(), start.timestamp() + 86400
+
+
+def cli_json(args: list[str]) -> dict:
+    out = subprocess.run(["openclaw"] + args, capture_output=True, text=True, timeout=60)
+    if out.returncode != 0:
+        raise RuntimeError((out.stderr or out.stdout).strip().splitlines()[-1] if (out.stderr or out.stdout) else "cli failed")
+    return json.loads(out.stdout)
+
+
+def collect_run_events() -> tuple[int, int, dict[str, int]]:
+    """Return (totalPrompts, todayPrompts, perDayCounts for the recent window)."""
+    now = datetime.now().astimezone()
+    today_start, _ = day_bounds(now.date())
+    week_start, _ = day_bounds(now.date() - timedelta(days=RECENT_DAYS - 1))
+
+    total = 0
+    today = 0
+    per_day: dict[str, int] = {}
+    cursor = None
+    for _ in range(AUDIT_MAX_PAGES):
+        args = ["audit", "--json"]
+        if cursor:
+            args += ["--cursor", str(cursor)]
+        data = cli_json(args)
+        events = data.get("events") or []
+        for ev in events:
+            if ev.get("action") != "agent.run.started":
+                continue
+            ts = ev.get("occurredAt")
+            if not ts:
+                continue
+            total += 1
+            if ts >= today_start * 1000:
+                today += 1
+            if ts >= week_start * 1000:
+                day = datetime.fromtimestamp(ts / 1000).astimezone().date().isoformat()
+                per_day[day] = per_day.get(day, 0) + 1
+        cursor = data.get("nextCursor") or data.get("cursor")
+        if not cursor or not events:
+            break
+    return total, today, per_day
+
+
+def collect() -> dict:
+    now = datetime.now().astimezone()
+    record = {
+        "schemaVersion": 1,
+        "id": "openclaw",
+        "name": "OpenClaw",
+        "updatedAt": now.isoformat(),
+        "ready": shutil.which("openclaw") is not None,
+        "hasLocalStats": False,
+        "todayPrompts": 0,
+        "todaySessions": 0,
+        "todayTotalTokens": 0,
+        "todayTokensByModel": {},
+        "recentDays": [],
+        "totalPrompts": 0,
+        "totalSessions": 0,
+        "activeDays": 0,
+        "activeDates": [],
+        "modelUsage": {},
+        "limits": [],
+        "tierLabel": "",
+        "usageStatusText": "" if shutil.which("openclaw") else "OpenClaw CLI not found",
+        "authHelpText": "",
+    }
+    if not record["ready"]:
+        return record
+
+    today_start, _ = day_bounds(now.date())
+
+    try:
+        sessions = cli_json(["sessions", "--json", "--all-agents", "--limit", "all"]).get("sessions") or []
+        total_prompts, today_prompts, run_days = collect_run_events()
+    except (RuntimeError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        record["usageStatusText"] = f"OpenClaw CLI error: {exc}"
+        return record
+
+    record["hasLocalStats"] = True
+    record["totalPrompts"] = total_prompts
+    record["todayPrompts"] = today_prompts
+    record["totalSessions"] = len(sessions)
+
+    started_dates = []
+    for s in sessions:
+        started = s.get("sessionStartedAt")
+        if started:
+            started_dates.append(datetime.fromtimestamp(started / 1000).astimezone().date().isoformat())
+        if s.get("updatedAt", 0) >= today_start * 1000:
+            record["todaySessions"] += 1
+            model = s.get("model") or "unknown"
+            provider = s.get("modelProvider")
+            ref = f"{provider}/{model}" if provider else model
+            tokens = int(s.get("totalTokens") or 0)
+            if tokens:
+                record["todayTokensByModel"][ref] = record["todayTokensByModel"].get(ref, 0) + tokens
+        mu = record["modelUsage"].setdefault(
+            f"{s.get('modelProvider')}/{s.get('model')}" if s.get("modelProvider") else s.get("model") or "unknown",
+            {"inputTokens": 0, "outputTokens": 0, "cacheReadInputTokens": 0, "cacheCreationInputTokens": 0},
+        )
+        mu["inputTokens"] += int(s.get("inputTokens") or 0)
+        mu["outputTokens"] += int(s.get("outputTokens") or 0)
+
+    record["todayTotalTokens"] = sum(record["todayTokensByModel"].values())
+    record["recentDays"] = [
+        {
+            "date": (now.date() - timedelta(days=offset)).isoformat(),
+            "messageCount": int(run_days.get((now.date() - timedelta(days=offset)).isoformat(), 0)),
+        }
+        for offset in range(RECENT_DAYS - 1, -1, -1)
+    ]
+    active_dates = sorted(set(started_dates))
+    record["activeDays"] = len(active_dates)
+    record["activeDates"] = active_dates[-400:]
+    return record
+
+
+def main() -> int:
+    record = collect()
+    payload = json.dumps(record, separators=(",", ":"))
+
+    if "--write" not in sys.argv[1:]:
+        print(payload)
+        return 0
+
+    USAGE_DIR.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".openclaw.", dir=USAGE_DIR)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(payload + "\n")
+        os.replace(tmp, USAGE_DIR / "openclaw.json")
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

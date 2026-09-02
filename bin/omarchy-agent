@@ -104,6 +104,10 @@ ori)
   command=(ori code)
   [[ -n ${prompt:-} ]] && command+=(--interactive --prompt "$prompt")
   ;;
+openclaw)
+  command=(openclaw tui)
+  [[ -n ${prompt:-} ]] && command+=(--message "$prompt")
+  ;;
 pi)
   command=(pi)
   [[ -n ${prompt:-} ]] && command+=("$prompt")
