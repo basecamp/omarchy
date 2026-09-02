@@ -1133,6 +1133,11 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
+          } else if (event.key === Qt.Key_Back) {
+            // The standard "back" key (XF86Back: gamepad B, TV remotes, Chromebooks):
+            // up one level, and close once there is nothing above.
+            if (!root.goBack()) root.cancel()
+            event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
