@@ -508,6 +508,19 @@ assertDeepEqual(
   'notifications restore nothing from an empty popup dir'
 )
 
+// Floors are the urgency defaults the service passes in: 0 (critical, never
+// expires), 5000 (low), 8000 (normal), capped at 30000. A floor of forever is
+// the one a request has to be able to override rather than merely stretch,
+// which is the whole reason `omarchy-battery-low -t 30000` reaches the screen
+// as a toast that leaves on its own.
+assertEqual(notifications.popupDuration(0, 0, 30000), 0, 'critical toasts stay up when the sender names no window')
+assertEqual(notifications.popupDuration(0, -1, 30000), 0, 'a server-decides expire timeout leaves critical toasts sticky')
+assertEqual(notifications.popupDuration(0, 3000, 30000), 3000, 'a critical toast leaves after the window its sender asked for')
+assertEqual(notifications.popupDuration(0, 60000, 30000), 30000, 'a critical toast cannot outstay the cap')
+assertEqual(notifications.popupDuration(8000, 3000, 30000), 8000, 'a request under the urgency floor does not cut a toast short')
+assertEqual(notifications.popupDuration(5000, 12000, 30000), 12000, 'a request over the urgency floor stretches the toast')
+assertEqual(notifications.popupDuration(5000, 0, 30000), 5000, 'an untimed toast lives exactly its urgency floor')
+
 assert(!notifications.popupExpired({ timestamp: 0 }, 0, 999999), 'critical popups never expire on restore')
 assert(!notifications.popupExpired({ timestamp: 1000 }, 8000, 5000), 'popups within their lifetime are restored')
 assert(notifications.popupExpired({ timestamp: 1000 }, 8000, 9000), 'popups past their lifetime are not restored')

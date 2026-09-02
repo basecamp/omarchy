@@ -381,6 +381,28 @@ function parsePopupFiles(raw, normalUrgency) {
   return entries
 }
 
+// Urgency sets the floor a toast stays up for, and a floor of 0 means it never
+// leaves on its own. expire_timeout is the sender saying how long it wants,
+// so it decides against that floor rather than only stretching it: a critical
+// toast that asked for 30s is asking to leave after 30s, and overruling it is
+// what left `omarchy-battery-low -t 30000` pinned to the screen until clicked.
+// The spec spends -1 on "server decides" and 0 on "never expire", so only a
+// positive request counts as the sender having named a window at all — which
+// keeps the untimed critical alerts (a crash, a pending migration) sticky.
+function popupDuration(floor, expireTimeout, cap) {
+  var minimum = Number(floor || 0)
+  if (!isFinite(minimum) || minimum <= 0) minimum = 0
+
+  // Quickshell reports expireTimeout in milliseconds, as the spec does.
+  var requested = Number(expireTimeout || 0)
+  if (!isFinite(requested) || requested <= 0) return minimum
+
+  var wanted = Math.max(minimum, Math.round(requested))
+  var limit = Number(cap || 0)
+  if (!isFinite(limit) || limit <= 0) return wanted
+  return Math.min(limit, wanted)
+}
+
 // A persisted popup whose lifetime already ran out would have expired on
 // screen had the shell kept running, so it is not restored. duration 0 means
 // the popup never expires (critical urgency) and always survives restarts.
@@ -473,6 +495,7 @@ if (typeof module !== "undefined") {
     persistablePopup: persistablePopup,
     serializePopup: serializePopup,
     parsePopupFiles: parsePopupFiles,
+    popupDuration: popupDuration,
     popupExpired: popupExpired,
     popupPlacement: popupPlacement
   }

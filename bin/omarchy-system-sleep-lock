@@ -92,14 +92,18 @@ sync_clamshell() {
 
 # logind suspends whether or not this wait succeeded, so a failure here means
 # the machine slept with the session exposed. The notification is the only way
-# anyone finds out, and it lands on the screen they unlock into.
+# anyone finds out, and it lands on the screen they unlock into. It names the
+# longest window a toast can have rather than taking the never-expires an
+# untimed critical alert defaults to: there is nothing to act on by the time it
+# arrives, and a notice about a lock that already failed should not have to be
+# clicked away. It moves into the notification history either way.
 report_unsecured() {
   printf 'omarchy-system-sleep-lock: suspending without a secure lock (%s)\n' \
     "$1" >&2
 
   omarchy-notification-send -u critical -g 󰌾 \
     "Screen did not lock before suspend" \
-    "The session was left unlocked ($1)." >/dev/null 2>&1 || true
+    "The session was left unlocked ($1)." -t 30000 >/dev/null 2>&1 || true
 
   exit 1
 }
