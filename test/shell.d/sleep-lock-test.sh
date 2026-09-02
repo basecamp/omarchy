@@ -99,6 +99,10 @@ pass "sleep lock requests the session lock first"
   fail "sleep lock checks security after clamshell reconciliation"
 pass "sleep lock checks security after clamshell reconciliation"
 
+[[ ${calls[3]} == "shell lock blank" ]] ||
+  fail "sleep lock blanks the display once the session is secure" "calls: ${calls[*]}"
+pass "sleep lock blanks the display once the session is secure"
+
 (( elapsed_us < 1500000 )) ||
   fail "sleep lock bounds a stalled clamshell sync" "elapsed: ${elapsed_us}us"
 pass "sleep lock bounds a stalled clamshell sync"
@@ -144,6 +148,10 @@ done
 (( polls > 1 )) ||
   fail "sleep lock keeps polling until the deadline" "polls: $polls"
 pass "sleep lock keeps polling until the deadline"
+
+[[ ${calls[*]} != *"lock blank"* ]] ||
+  fail "sleep lock does not blank a session that never secured" "calls: ${calls[*]}"
+pass "sleep lock does not blank a session that never secured"
 
 # A lock request that times out may never have landed, so the wait retries it
 # instead of suspending an unlocked session over one slow IPC call.

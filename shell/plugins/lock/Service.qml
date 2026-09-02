@@ -17,6 +17,9 @@ Item {
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
 
   property bool lockRequested: false
+  // True from runBlank() until runWake(), so a key at a dark panel wakes it
+  // instead of becoming the first character of the password.
+  property bool displayBlanked: false
   property bool pendingSessionLock: false
   property bool authenticatingPassword: false
   property bool fingerprintAuthenticating: false
@@ -165,11 +168,13 @@ Item {
   }
 
   function runWake() {
+    displayBlanked = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    displayBlanked = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -275,6 +280,7 @@ Item {
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
         inputEnabled: root.lockRequested
+        displayBlanked: root.displayBlanked
         loadBackground: root.locked
         passwordText: root.enteredPassword
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
@@ -513,6 +519,12 @@ Item {
     function lock(): string {
       if (!root.passwordPamConfigured) return "missing-pam"
       if (!root.locked && !root.beginLock()) return "failed"
+      return "ok"
+    }
+
+    function blank(): string {
+      if (!root.lockRequested) return "not-locked"
+      root.runBlank()
       return "ok"
     }
 

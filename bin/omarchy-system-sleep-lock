@@ -113,7 +113,13 @@ sync_clamshell
 # inside the reserve derive_budget_ms already held back for logind.
 while (( $(remaining_ms) > 0 )); do
   case $(lock_state) in
-    secure) exit 0 ;;
+    secure)
+      # Lid-close suspend often wins the race against the lock's five-second
+      # blank timer. Mark the panel blanked before the machine goes down so
+      # the first key after resume wakes the display instead of typing.
+      lock_ipc "$status_timeout_ms" lock blank >/dev/null || true
+      exit 0
+      ;;
     locking) ;;
     *) request_lock ;;
   esac

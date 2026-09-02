@@ -13,6 +13,8 @@ Item {
   property string failureMessage: ""
   property int failedAttempts: 0
   property bool inputEnabled: true
+  property bool displayBlanked: false
+  property bool swallowingWakeKey: false
   property bool loadBackground: true
   property string passwordText: ""
   property bool syncingPasswordText: false
@@ -175,11 +177,27 @@ Item {
         }
 
         Keys.onPressed: function(event) {
-          root.wakeRequested()
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")
             event.accepted = true
+            return
           }
+
+          // A key at a dark panel is there to wake it, not to type. Sample
+          // before wakeRequested() clears the flag, and keep swallowing
+          // auto-repeats until that key is released.
+          var waking = root.displayBlanked || root.swallowingWakeKey
+          root.wakeRequested()
+          if (waking) {
+            root.swallowingWakeKey = true
+            event.accepted = true
+          }
+        }
+
+        Keys.onReleased: function(event) {
+          if (!root.swallowingWakeKey) return
+          root.swallowingWakeKey = false
+          event.accepted = true
         }
       }
 
