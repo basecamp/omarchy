@@ -95,10 +95,15 @@ grep -qF 'omarchy-snapshot create || (($? == 127))' "$ROOT/bin/omarchy-update" |
   fail "update ignores only the missing-snapper exit code"
 pass "snapshot create keeps the quiet 127 path for systems without snapper"
 
-# The quattro upgrade runs under set -e, so a failed snapshot has to be warned
-# past there too or it aborts the whole upgrade at the snapshot step.
-grep -qF 'omarchy-snapshot create || (($? == 127))' "$ROOT/bin/omarchy-upgrade-to-quattro" ||
-  fail "upgrade ignores only the missing-snapper exit code"
-grep -qF 'Continuing the upgrade without a snapshot' "$ROOT/bin/omarchy-upgrade-to-quattro" ||
+# The quattro upgrade cannot rely on the post-migration snapshot wrapper being
+# installed yet. It performs the same operations through fixed system paths,
+# and a failed snapshot has to be warned past instead of aborting the upgrade.
+grep -qF 'as_root /usr/bin/snapper --csvout list-configs' "$ROOT/bin/omarchy-upgrade-to-quattro" ||
+  fail "upgrade lists Snapper configs through its no-update root boundary"
+grep -qF 'as_root /usr/bin/snapper -c "$config" create' "$ROOT/bin/omarchy-upgrade-to-quattro" ||
+  fail "upgrade creates each snapshot through its no-update root boundary"
+! grep -qF '/usr/bin/omarchy-snapshot' "$ROOT/bin/omarchy-upgrade-to-quattro" ||
+  fail "upgrade must not call a snapshot wrapper absent from the legacy layout"
+grep -qF 'Continuing the upgrade without a pre-upgrade snapshot' "$ROOT/bin/omarchy-upgrade-to-quattro" ||
   fail "upgrade continues past a failed snapshot instead of aborting"
 pass "upgrade to quattro survives a failed snapshot without passing it off"

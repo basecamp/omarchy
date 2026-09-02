@@ -165,6 +165,30 @@ int main(int argc, char **argv) {
     puts("fpr:::::::::40DFB630FF42BCFFB047046CF0134EE680CAC571:");
     return 0;
   }
+  if (argc > command_index && strcmp(argv[command_index], "/usr/bin/snapper") == 0) {
+    if (!no_update) {
+      record("SNAPPER_REUSABLE_AUTH");
+      return 125;
+    }
+    if (argc > command_index + 2 && strcmp(argv[command_index + 1], "--csvout") == 0 &&
+        strcmp(argv[command_index + 2], "list-configs") == 0) {
+      record("SNAPPER_LIST_NO_UPDATE");
+      puts("Config,Subvolume");
+      puts("root,/");
+      return 0;
+    }
+    if (argc > command_index + 3 && strcmp(argv[command_index + 1], "-c") == 0 &&
+        strcmp(argv[command_index + 3], "create") == 0) {
+      record("SNAPPER_CREATE_NO_UPDATE");
+      return 0;
+    }
+    if (argc > command_index + 3 && strcmp(argv[command_index + 1], "-c") == 0 &&
+        strcmp(argv[command_index + 3], "cleanup") == 0) {
+      record("SNAPPER_CLEANUP_NO_UPDATE");
+      return 0;
+    }
+    return 125;
+  }
   if (argc > command_index && strcmp(argv[command_index], "test") == 0) {
     execv("/usr/bin/test", &argv[command_index]);
     return 125;
@@ -668,16 +692,27 @@ fi
   fail "a privileged packaged script resolved a target-home executable"
 [[ ! -e $protected_target && ! -e $TEST_USER_REUSED_SUDO && ! -e $TEST_DETACHED_REUSED_SUDO ]] ||
   fail "user or detached tooling reused the Quattro sudo timestamp"
+for snapshot_event in SNAPPER_LIST_NO_UPDATE SNAPPER_CREATE_NO_UPDATE SNAPPER_CLEANUP_NO_UPDATE; do
+  grep -qx "$snapshot_event" "$trace" ||
+    fail "the pre-upgrade snapshot did not complete through sudo --no-update" "missing=$snapshot_event"
+done
+if grep -q '^SNAPPER_REUSABLE_AUTH$' "$trace"; then
+  fail "the pre-upgrade snapshot published reusable sudo authorization"
+fi
 no_update_count=$(grep -c '^NO_UPDATE_AUTH$' "$trace")
 ((no_update_count >= 10)) ||
   fail "the real orchestration did not complete many sequential sudo --no-update authorizations" "count=$no_update_count"
 
 first_invalidation=$(grep -n '^INVALIDATE$' "$trace" | head -n1 | cut -d: -f1)
+first_snapshot=$(grep -n '^SNAPPER_LIST_NO_UPDATE$' "$trace" | head -n1 | cut -d: -f1)
+first_system_mutation=$(grep -n '^ROOT_NO_UPDATE_OPERATION$' "$trace" | head -n1 | cut -d: -f1)
 first_no_update=$(grep -n '^NO_UPDATE_AUTH$' "$trace" | head -n1 | cut -d: -f1)
-[[ -n $first_invalidation && -n $first_no_update ]] ||
-  fail "the real orchestration did not exercise cold invalidation and sudo --no-update"
+[[ -n $first_invalidation && -n $first_snapshot && -n $first_system_mutation && -n $first_no_update ]] ||
+  fail "the real orchestration did not exercise cold invalidation, snapshot, and sudo --no-update"
 ((first_invalidation < first_no_update)) ||
   fail "a root command was authorized before the old sudo timestamp was invalidated"
+((first_invalidation < first_snapshot && first_snapshot < first_system_mutation)) ||
+  fail "the trusted snapshot did not run after cold invalidation and before system mutation"
 if tail -n "+$((first_invalidation + 1))" "$trace" | grep -qE '^(VALIDATE|KEEPALIVE_OK|USER_SUDO_REUSED)$'; then
   fail "a later upgrade action reopened or reused sudo"
 fi

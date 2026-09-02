@@ -755,10 +755,28 @@ configure_lock_authentication() {
 }
 
 create_pre_upgrade_snapshot() {
-  # Run the package-owned snapshot command before opening this upgrade's sudo
-  # window. Its own authorization is revoked by open_privilege_window below.
-  /usr/bin/omarchy-snapshot create || (($? == 127)) ||
-    echo -e "\e[33mContinuing the upgrade without a snapshot.\e[0m" >&2
+  local configs_output config
+  local -a configs=()
+
+  [[ -x /usr/bin/snapper ]] || return 127
+
+  # Do not execute the legacy, user-owned Omarchy tree or the newer
+  # omarchy-snapshot wrapper here. Keep the pre-mutation snapshot entirely in
+  # fixed system paths and authorize each root operation without publishing a
+  # reusable sudo timestamp.
+  configs_output=$(as_root /usr/bin/snapper --csvout list-configs) || return 1
+  mapfile -t configs < <(/usr/bin/printf '%s\n' "$configs_output" | /usr/bin/awk -F, 'NR > 1 { print $1 }')
+
+  if ((${#configs[@]} == 0)); then
+    warn "No Snapper configs found, so no pre-upgrade snapshot was created."
+    return 0
+  fi
+
+  log "Creating pre-upgrade system snapshot"
+  for config in "${configs[@]}"; do
+    as_root /usr/bin/snapper -c "$config" create -c number -d "Omarchy pre-Quattro upgrade" || return 1
+    as_root /usr/bin/snapper -c "$config" cleanup number || return 1
+  done
 }
 
 remove_conflicting_legacy_packages() {
@@ -2467,12 +2485,13 @@ refresh_current_theme_after_upgrade() {
 # before any sudo credential exists.
 upgrade_started=1
 suppress_hyprland_config_reload
-create_pre_upgrade_snapshot
 
 # Cold-invalidate any older ticket, then authorize each trusted system/package
 # command with sudo --no-update. No reusable credential exists at any point,
 # even if caller startup code already spawned a detached waiter.
 open_privilege_window
+create_pre_upgrade_snapshot ||
+  warn "Continuing the upgrade without a pre-upgrade snapshot."
 configure_pacman_channel
 install_keyrings
 remove_legacy_installer_package
