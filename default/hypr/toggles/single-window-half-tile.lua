@@ -1,0 +1,2 @@
+-- Marker: a lone tiled window occupies the left or right half of the screen.
+-- default.hypr.half-tile applies the layout while this flag is present.

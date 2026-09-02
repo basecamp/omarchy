@@ -77,8 +77,19 @@ run_half_tile 'omarchy_half_tile_check = function(ctx)
 end' || fail "disabled half-tile leaves a lone window full width"
 pass "disabled half-tile leaves a lone window full width"
 
-# Same flag the square toggle used, now a marker for left/right half.
+# The square-aspect flag must not turn half-tile on by itself.
 cat >"$home/.local/state/omarchy/toggles/hypr/single-window-aspect-ratio.lua" <<'LUA'
+hl.config({ layout = { single_window_aspect_ratio = { 1, 1 } } })
+LUA
+run_half_tile 'omarchy_half_tile_check = function(ctx)
+  assert(#ctx.rules == 0, "square aspect does not write half-tile workspace rules")
+  assert(o.half_tile_move("left") == false, "square aspect does not steal Super+Shift+Left")
+end' || fail "square aspect stays independent of half-tile"
+pass "square aspect stays independent of half-tile"
+rm -f "$home/.local/state/omarchy/toggles/hypr/single-window-aspect-ratio.lua"
+
+# Half-tile is its own opt-in flag.
+cat >"$home/.local/state/omarchy/toggles/hypr/single-window-half-tile.lua" <<'LUA'
 -- marker
 LUA
 
@@ -165,3 +176,32 @@ run_half_tile 'omarchy_half_tile_check = function(ctx)
   assert(#ctx.rules == before, "an expired monitor handle is not read to pieces")
 end' || fail "half-tile ignores expired monitor handles"
 pass "half-tile ignores expired monitor handles"
+
+stub="$home/bin"
+mkdir -p "$stub"
+cat >"$stub/hyprctl" <<'EOF'
+#!/bin/bash
+:
+EOF
+cat >"$stub/omarchy-notification-send" <<'EOF'
+#!/bin/bash
+:
+EOF
+chmod +x "$stub/hyprctl" "$stub/omarchy-notification-send"
+
+flag_dir="$home/.local/state/omarchy/toggles/hypr"
+run_toggle() {
+  HOME="$home" OMARCHY_PATH="$ROOT" PATH="$stub:$ROOT/bin:$PATH" "$@" >/dev/null
+}
+
+rm -f "$flag_dir"/*.lua
+cp "$ROOT/default/hypr/toggles/single-window-aspect-ratio.lua" "$flag_dir/"
+run_toggle "$ROOT/bin/omarchy-hyprland-window-single-half-tile-toggle"
+[[ -f $flag_dir/single-window-half-tile.lua ]] || fail "enabling half-tile writes its flag"
+[[ ! -e $flag_dir/single-window-aspect-ratio.lua ]] || fail "enabling half-tile drops square aspect"
+pass "enabling half-tile turns square aspect off"
+
+run_toggle "$ROOT/bin/omarchy-hyprland-window-single-square-aspect-toggle"
+[[ -f $flag_dir/single-window-aspect-ratio.lua ]] || fail "enabling square aspect writes its flag"
+[[ ! -e $flag_dir/single-window-half-tile.lua ]] || fail "enabling square aspect drops half-tile"
+pass "enabling square aspect turns half-tile off"

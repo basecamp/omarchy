@@ -1,4 +1,4 @@
--- When the single-window-aspect-ratio flag is on, a lone tiled window occupies
+-- When the single-window-half-tile flag is on, a lone tiled window occupies
 -- the left or right half of the screen. Super+Shift+Left/Right parks it on that
 -- half, and still swaps when there is a real neighbor.
 
@@ -6,7 +6,7 @@ local paths = require("default.hypr.paths")
 
 o = o or {}
 
-local flag = paths.state_home .. "/omarchy/toggles/hypr/single-window-aspect-ratio.lua"
+local flag = paths.state_home .. "/omarchy/toggles/hypr/single-window-half-tile.lua"
 local sides_path = paths.state_home .. "/omarchy/half-tile-sides"
 local sides = {}
 local applied = {}
