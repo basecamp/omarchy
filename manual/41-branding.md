@@ -12,6 +12,8 @@ omarchy plymouth preview '#1d2021' '#ebdbb2' logo.png preview.png
 
 Then apply the setup with `omarchy plymouth set '#1d2021' '#ebdbb2' logo.png`, which will also give the SDDM login screen the same colors and logo. If you want to revert, you can use `omarchy plymouth reset`.
 
+Your logo also goes on the EFI boot splash, the still image that you see in the seconds before the unlock prompt. Both `omarchy plymouth set` and `omarchy plymouth reset` update it for you.
+
  ![branding-plymouth-shopify](images/branding-plymouth-shopify.webp)
 
 ### Screensaver

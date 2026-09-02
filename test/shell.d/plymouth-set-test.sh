@@ -12,6 +12,7 @@ trap 'chmod 0600 "$secret" 2>/dev/null || true; rm -rf -- "$test_tmp"' EXIT
 
 plymouth_theme_assets=(
   bullet.png
+  efi-splash.bmp
   entry.png
   lock.png
   logo.png
