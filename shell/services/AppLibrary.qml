@@ -12,6 +12,9 @@ Item {
   id: root
 
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
+  // The shell that owns this library; launch feedback drives the OSD plugin
+  // through it in-process rather than through a spawned omarchy-shell call.
+  property var shell: null
 
   property var configuredHiddenEntryIds: ({})
   property var desktopHiddenEntryIds: ({})
@@ -171,7 +174,7 @@ Item {
     launchDelay.stop()
     launchTimeout.stop()
     if (root.launchOsdOpen) {
-      Quickshell.execDetached(["omarchy-shell", "osd", "close"])
+      root.shell.hide("omarchy.osd")
       root.launchOsdOpen = false
     }
   }
@@ -242,7 +245,7 @@ Item {
     onTriggered: {
       if (root.toplevelCount() > root.launchToplevelCount || ToplevelManager.activeToplevel !== root.launchActiveToplevel) return
       root.launchOsdOpen = true
-      Quickshell.execDetached(["omarchy-shell", "osd", "show", JSON.stringify({ icon: "󱓞", message: root.launchOsdMessage, duration: 0 })])
+      root.shell.summon("omarchy.osd", JSON.stringify({ icon: "󱓞", message: root.launchOsdMessage, duration: 0 }))
     }
   }
 
