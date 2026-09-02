@@ -23,6 +23,7 @@
         "codex": { "enabled": true },
         "fireworks": { "enabled": true }
       },
+      "notifyOnLimitReset": true,
       "refreshIntervalSec": 900,
       "syncMode": "Off",
       "syncDir": "",
@@ -30,6 +31,7 @@
       "syncDeviceId": ""
     },
     "schema": [
+      { "key": "notifyOnLimitReset", "type": "boolean", "label": "Notify when limits reset", "defaultValue": true, "description": "Show a desktop notification when a tracked rate-limit window becomes available again." },
       { "key": "refreshIntervalSec", "type": "integer", "label": "Refresh interval (seconds)", "min": 30, "max": 3600, "step": 30, "defaultValue": 900 },
       { "key": "syncMode", "type": "enum", "label": "Synced aggregation", "options": ["Off", "On"], "defaultValue": "Off", "description": "When On, write this machine's local usage snapshot and merge snapshots from other machines." },
       { "key": "syncDir", "type": "path", "label": "Sync folder", "defaultValue": "", "description": "A folder synced by Syncthing, Dropbox, rsync, etc." },
