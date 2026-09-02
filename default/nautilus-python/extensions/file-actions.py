@@ -5,7 +5,7 @@ from gi import require_version
 
 require_version("Nautilus", "4.1")
 
-from gi.repository import GObject, Nautilus
+from gi.repository import Gio, GObject, Nautilus
 
 
 class FileActions(GObject.GObject, Nautilus.MenuProvider):
@@ -16,22 +16,29 @@ class FileActions(GObject.GObject, Nautilus.MenuProvider):
         )
 
     def _new_file(self, _menu, folder_path):
-        result = subprocess.run(
+        process = Gio.Subprocess.new(
             [
                 "zenity",
                 "--entry",
                 "--title=New File",
-                "--text=Enter a filename (for example, main.py):",
+                "--text=Enter a filename (for example, notes.txt):",
                 "--ok-label=Create",
             ],
-            check=False,
-            capture_output=True,
-            text=True,
+            Gio.SubprocessFlags.STDOUT_PIPE,
         )
-        if result.returncode != 0:
+        process.communicate_utf8_async(
+            None,
+            None,
+            self._finish_new_file,
+            folder_path,
+        )
+
+    def _finish_new_file(self, process, result, folder_path):
+        _successful, stdout, _stderr = process.communicate_utf8_finish(result)
+        if not process.get_successful():
             return
 
-        filename = result.stdout.rstrip("\n")
+        filename = stdout.rstrip("\n")
         if not filename or filename in {".", ".."} or os.path.basename(filename) != filename:
             self._show_error("Enter a single filename without slashes.")
             return
@@ -44,6 +51,11 @@ class FileActions(GObject.GObject, Nautilus.MenuProvider):
             self._show_error(f"A file named ‘{filename}’ already exists.")
         except OSError as error:
             self._show_error(str(error))
+        else:
+            subprocess.Popen(
+                ["nautilus", "--select", path],
+                start_new_session=True,
+            )
 
     def _copy_paths(self, _menu, paths):
         subprocess.run(
