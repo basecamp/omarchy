@@ -2,13 +2,52 @@
 
 # omarchy:summary=Update AUR packages if any are installed
 
-if pacman -Qem >/dev/null; then
-  if omarchy-pkg-aur-accessible; then
-    echo -e "\e[32m\nUpdate AUR packages\e[0m"
-    yay -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs
-    echo
-  else
-    echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"
-    echo
-  fi
+set -euo pipefail
+
+pacman -Qem >/dev/null || exit 0
+
+if ! omarchy-pkg-aur-accessible; then
+  echo -e "\e[31m\nAUR is unavailable (so skipping updates)\e[0m"
+  echo
+  exit 0
 fi
+
+# Querying available versions does not download or execute PKGBUILDs. Keep
+# this report separate from the reviewed transaction below so unattended runs
+# can hold AUR changes without silently claiming they were applied.
+if ! aur_updates=$(yay -Qua --color never); then
+  echo -e "\e[31m\nUnable to determine which AUR packages need updates.\e[0m" >&2
+  exit 1
+fi
+[[ -n $aur_updates ]] || exit 0
+
+echo -e "\e[32m\nAUR updates available\e[0m"
+printf '%s\n' "$aur_updates"
+
+if [[ -n ${OMARCHY_UPDATE_CALLER_TTY+x} ]]; then
+  caller_has_terminal=$OMARCHY_UPDATE_CALLER_TTY
+elif [[ -t 0 && -t 1 ]]; then
+  caller_has_terminal=1
+else
+  caller_has_terminal=0
+fi
+
+if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == "1" ]] || [[ $caller_has_terminal != "1" ]]; then
+  echo -e "\e[33m\nHolding AUR updates until an interactive PKGBUILD review can be completed.\e[0m"
+  echo "Run 'omarchy update' from a terminal to review and apply them."
+  echo
+  exit 0
+fi
+
+echo -e "\e[32m\nReview and update AUR packages\e[0m"
+
+# Show the full build recipes as well as every changed build file, then require
+# pacman's final confirmation even when the user's yay configuration is more
+# permissive. The full view covers first-seen package bases and dependencies,
+# for which there is no previous tree to diff. This remains an emergency review
+# gate, not a sandbox or an attestation boundary: PKGBUILDs still run as the user
+# after approval.
+yay -Sua --aur --confirm --cleanafter \
+  --diffmenu --answerdiff All --editmenu --answeredit All \
+  --ignore gcc14,gcc14-libs
+echo

@@ -2,7 +2,11 @@
 
 Omarchy and your packages are kept up to date via _Update > Omarchy_ in the Omarchy menu (`Super + Space`).
 
-Omarchy itself is installed as regular pacman packages from the [Omarchy Package Repository](https://github.com/omacom-io/omarchy-pkgs), so an update installs [the latest Omarchy release](https://github.com/basecamp/omarchy/releases), runs any pending migrations to get your system in sync with the latest, and updates all system packages from the [Omarchy Arch Mirror](https://github.com/omacom-io/omarchy-mirror) and [AUR](https://aur.archlinux.org/) (if you have installed any AUR packages).
+Omarchy itself is installed as regular pacman packages from the [Omarchy Package Repository](https://github.com/omacom-io/omarchy-pkgs), so an update installs [the latest Omarchy release](https://github.com/basecamp/omarchy/releases), runs any pending migrations to get your system in sync with the latest, and updates all system packages from the [Omarchy Arch Mirror](https://github.com/omacom-io/omarchy-mirror). If you have installed packages from the [AUR](https://aur.archlinux.org/), an interactive update lists the pending versions, shows the complete build recipes and every available change, and requires confirmation before building them.
+
+Unattended updates (`omarchy update -y`) and updates without a terminal hold AUR changes instead of installing unreviewed PKGBUILDs. Run `omarchy update` interactively later to review and apply them. This review gate does not sandbox AUR build code or prove that a package is safe.
+
+If a pending system migration needs to install a new AUR package, an unattended update stops and leaves that migration pending. Rerun `omarchy update` interactively so the required recipe can be reviewed; later migrations do not skip past an incomplete one.
 
 When new releases are made, a circle arrow icon will appear to the right of your clock. Click it and the update process will start.
 

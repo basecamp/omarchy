@@ -3,7 +3,11 @@ echo "Switch Brave Origin from the beta to the stable release"
 if omarchy-pkg-present brave-origin-beta-bin; then
   default_browser=$(xdg-settings get default-web-browser 2>/dev/null || true)
 
-  omarchy-pkg-aur-add brave-origin-bin
+  if ! omarchy-pkg-aur-add brave-origin-bin; then
+    echo "Keeping Brave Origin Beta because its AUR replacement was not reviewed."
+    echo "Install brave-origin-bin interactively when you are ready to review it."
+    exit 1
+  fi
   omarchy-pkg-drop brave-origin-beta-bin
 
   mkdir -p ~/.config

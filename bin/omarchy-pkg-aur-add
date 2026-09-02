@@ -4,7 +4,27 @@
 # omarchy:args=<packages...>
 
 if omarchy-pkg-missing "$@"; then
-  yay -S --noconfirm --needed "$@" || exit 1
+  if [[ -n ${OMARCHY_UPDATE_CALLER_TTY+x} ]]; then
+    caller_has_terminal=$OMARCHY_UPDATE_CALLER_TTY
+  elif [[ -t 0 && -t 1 ]]; then
+    caller_has_terminal=1
+  else
+    caller_has_terminal=0
+  fi
+
+  if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == "1" ]] || [[ $caller_has_terminal != "1" ]]; then
+    echo "AUR packages require an interactive PKGBUILD review before installation." >&2
+    echo "Run this command again from a terminal without unattended mode." >&2
+    exit 2
+  fi
+
+  # Show full build recipes (including first-seen package bases and
+  # dependencies), show every available diff, and require pacman's final
+  # confirmation even when the user's yay configuration is more permissive.
+  # The option separator keeps package names from being interpreted as a way
+  # around this policy.
+  yay -S --aur --confirm --needed \
+    --diffmenu --answerdiff All --editmenu --answeredit All -- "$@" || exit 1
 fi
 
 for pkg in "$@"; do
