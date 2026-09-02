@@ -6,7 +6,7 @@ It's also the one piece of the desktop that's always on screen, so it's worth kn
 
 ## What's on it by default
 
-The bar has three sections. On the left sits the Omarchy logo (the menu launcher) and the workspace indicators. In the center you get the status indicators, the clock, the keyboard layout, the weather, and an Omarchy update badge. On the right: the system tray, agents, bluetooth, network, audio, display, and power.
+The bar has three sections. On the left sits the Omarchy logo (the menu launcher) and the workspace indicators. Each workspace shows a number, or a filled square for the one you're on, with a row of smaller squares underneath — one per open window, hollow unless that window is focused. In the center you get the status indicators, the clock, the keyboard layout, the weather, and an Omarchy update badge. On the right: the system tray, agents, bluetooth, network, audio, display, and power.
 
 A few of those only show up when they have something to say. The keyboard layout appears only if you've configured more than one layout. The update badge appears only when there's an Omarchy update waiting. And the agents icon appears the first time Omarchy finds AI coding usage on the machine (see [AI](17-ai.md)).
 
