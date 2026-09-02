@@ -1225,6 +1225,19 @@ Item {
             spacing: root.rowSpacing
             boundsBehavior: Flickable.StopAtBounds
 
+            // Qt's default Flickable touchpad scrolling is too slow on long
+            // lists (e.g. keybindings). Scale the wheel delta so each gesture
+            // moves the list meaningfully instead of a few pixels at a time.
+            WheelHandler {
+              onWheel: function(event) {
+                var step = event.angleDelta.y * 3
+                var minY = resultList.originY
+                var maxY = resultList.originY + resultList.contentHeight - resultList.height
+                if (maxY <= minY) return
+                resultList.contentY = Math.max(minY, Math.min(resultList.contentY - step, maxY))
+              }
+            }
+
             section.property: "section"
             section.criteria: ViewSection.FullString
             section.delegate: Item {
