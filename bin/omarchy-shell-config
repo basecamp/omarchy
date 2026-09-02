@@ -54,8 +54,15 @@ commit() {
   local program="$1"
   shift
   mkdir -p "$(dirname "$CONFIG_FILE")"
+  # mktemp is 0600; preserve an existing config's mode (or default 0600) so
+  # replace doesn't publish a previously private shell.json as the staging umask.
   _SHELL_CONFIG_TMP=$(mktemp)
   jq -S -e "$@" "$program" "$(source_file)" >"$_SHELL_CONFIG_TMP" || fail "could not update shell config"
+  if [[ -e $CONFIG_FILE ]]; then
+    chmod --reference="$CONFIG_FILE" "$_SHELL_CONFIG_TMP" 2>/dev/null || chmod 600 "$_SHELL_CONFIG_TMP"
+  else
+    chmod 600 "$_SHELL_CONFIG_TMP"
+  fi
   mv "$_SHELL_CONFIG_TMP" "$CONFIG_FILE"
   _SHELL_CONFIG_TMP=""
   refresh_shell_config
