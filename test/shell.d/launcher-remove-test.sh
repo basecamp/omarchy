@@ -22,6 +22,7 @@ SCRIPT
 
 write_fake_command omarchy-webapp-remove web
 write_fake_command omarchy-tui-remove tui
+write_fake_command omarchy-appimage-remove appimage
 write_fake_command omarchy-launch-floating-terminal-with-presentation terminal
 
 cat >"$tmp_dir/bin/omarchy-notification-send" <<'SCRIPT'
@@ -56,6 +57,13 @@ Name=Docker
 Exec=xdg-terminal-exec --app-id=TUI.tile -e lazydocker
 DESKTOP
 
+cat >"$tmp_dir/data/applications/appimage-inkscape.desktop" <<'DESKTOP'
+[Desktop Entry]
+Name=Inkscape
+Exec="/home/example/Applications/Inkscape-1.4-x86_64.AppImage" %f
+X-AppImage-Source=/home/example/Applications/Inkscape-1.4-x86_64.AppImage
+DESKTOP
+
 cat >"$tmp_dir/system/applications/native.desktop" <<'DESKTOP'
 [Desktop Entry]
 Name=Native
@@ -76,6 +84,7 @@ export XDG_DATA_DIRS="$tmp_dir/system"
 "$ROOT/bin/omarchy-remove-launcher-entry" Basecamp.desktop Basecamp
 "$ROOT/bin/omarchy-remove-launcher-entry" Docker.desktop Docker
 "$ROOT/bin/omarchy-remove-launcher-entry" native.desktop Native
+"$ROOT/bin/omarchy-remove-launcher-entry" appimage-inkscape.desktop Inkscape
 "$ROOT/bin/omarchy-remove-launcher-entry" aliens.desktop Aliens
 
 mapfile -t lines <"$TEST_LOG"
@@ -92,5 +101,8 @@ pass "launcher remove opens package uninstall flow"
 [[ ! -e $tmp_dir/data/applications/aliens.desktop ]] || fail "launcher remove deletes user-owned desktop files"
 pass "launcher remove deletes user-owned desktop files"
 
-(( ${#lines[@]} == 3 )) || fail "launcher remove does not notify for user-owned desktop files" "$(printf '%s\n' "${lines[@]}")"
+[[ ${lines[3]} == "appimage:false:appimage-inkscape" ]] || fail "launcher remove routes AppImages by desktop name" "${lines[3]}"
+pass "launcher remove routes AppImages by desktop name"
+
+(( ${#lines[@]} == 4 )) || fail "launcher remove does not notify for user-owned desktop files" "$(printf '%s\n' "${lines[@]}")"
 pass "launcher remove does not notify for user-owned desktop files"

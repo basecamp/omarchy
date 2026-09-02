@@ -1,0 +1,90 @@
+#!/bin/bash
+
+# omarchy:summary=Remove an installed AppImage, its launcher, and its icon
+# omarchy:args=[name]
+
+set -euo pipefail
+
+DESKTOP_DIR="$HOME/.local/share/applications"
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+
+read_key() {
+  awk -v key="$2" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }' "$1"
+}
+
+# Index the launchers rather than rebuilding a path from a chosen name: the id
+# is what addresses the icon and the image, and the launcher file is what gets
+# deleted, so nothing here depends on a display name round-tripping.
+shopt -s nullglob
+ENTRIES=("$DESKTOP_DIR"/appimage-*.desktop)
+shopt -u nullglob
+
+if (( ${#ENTRIES[@]} == 0 )); then
+  echo "No AppImages to remove."
+  exit 1
+fi
+
+NAMES=()
+IDS=()
+for entry in "${ENTRIES[@]}"; do
+  id=$(basename "$entry" .desktop)
+  name=$(read_key "$entry" Name)
+  [[ -n $name ]] || name="$id"
+  NAMES+=("$name")
+  IDS+=("$id")
+done
+
+# The launcher for a chosen row, addressed by the display name the picker shows
+# or by the launcher id the app launcher hands back. Empty when nothing was
+# indexed under either (an app removed between the scan and the pick, say).
+entry_for() {
+  local wanted="${1%.desktop}" i
+
+  for i in "${!ENTRIES[@]}"; do
+    if [[ ${NAMES[$i]} == "$wanted" || ${IDS[$i]} == "$wanted" ]]; then
+      printf '%s\n' "${ENTRIES[$i]}"
+      return 0
+    fi
+  done
+}
+
+CONFIRMED=false
+if (( $# == 0 )); then
+  APP_NAME=$(printf '%s\n' "${NAMES[@]}" | sort | gum choose --header "AppImage to remove" --height 15)
+else
+  APP_NAME="$*"
+  CONFIRMED=true
+fi
+
+if [[ -z $APP_NAME ]]; then
+  echo "You must select an AppImage to remove."
+  exit 1
+fi
+
+SELECTED=$(entry_for "$APP_NAME")
+
+if [[ -z $SELECTED ]]; then
+  echo "No installed AppImage matches '$APP_NAME'."
+  exit 1
+fi
+
+APP_ID=$(basename "$SELECTED" .desktop)
+APP_PATH=$(read_key "$SELECTED" X-AppImage-Source)
+APP_NAME=$(read_key "$SELECTED" Name)
+[[ -n $APP_NAME ]] || APP_NAME="$APP_ID"
+
+if [[ $CONFIRMED == "false" ]]; then
+  gum confirm "Remove $APP_NAME and delete ${APP_PATH:-its launcher}?" || exit 1
+fi
+
+rm -f "$SELECTED"
+rm -f "$ICON_DIR/$APP_ID.png" "$ICON_DIR/$APP_ID.svg"
+if [[ -n $APP_PATH && -f $APP_PATH ]]; then
+  rm -f "$APP_PATH"
+fi
+
+if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
+  omarchy-notification-send -g 󰣇 "AppImage removed" "$APP_NAME"
+fi
+
+update-desktop-database "$DESKTOP_DIR" &>/dev/null || true

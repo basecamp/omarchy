@@ -310,6 +310,7 @@ assertDeepEqual(
     'remove.browser',
     'remove.webapp',
     'remove.tui',
+    'remove.appimage',
     'remove.windows',
     'remove.preinstalls',
     'remove.security'
