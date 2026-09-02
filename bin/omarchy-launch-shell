@@ -3,9 +3,42 @@
 # omarchy:summary=Launch the Omarchy shell with its log kept in the journal
 # omarchy:hidden=true
 
+# Quickshell never collects a dead instance's runtime dir, so every restart or
+# crash relaunch abandons the previous instance there, detailed log included,
+# until the tmpfs fills. Collect the dead instances of this shell's config
+# before launching the replacement. Liveness comes from `quickshell list`,
+# which checks the instance lock properly: it is a POSIX fcntl lock, which
+# flock(1) cannot test. Other configs' instances — a user's own Quickshell,
+# the dev gallery — are left alone.
+reap_dead_shell_instances() {
+  local by_id=${XDG_RUNTIME_DIR:-/run/user/$UID}/quickshell/by-id
+  [[ -d $by_id ]] || return 0
+
+  local all alive dead id
+  all=$(quickshell list --all --show-dead --json 2>/dev/null) || return 0
+  alive=$(quickshell list --all --json 2>/dev/null) || return 0
+
+  dead=$(jq -r --arg config "$OMARCHY_PATH/shell/shell.qml" \
+    '.[] | select(.config_path == $config) | .id' <<<"$all" 2>/dev/null)
+
+  for id in $dead; do
+    [[ $id == */* || $id == .* ]] && continue
+    jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$alive" >/dev/null 2>&1 && continue
+    rm -rf "${by_id:?}/$id"
+  done
+}
+
 # Quickshell only logs to its instance runtime dir (tmpfs), so when the shell
 # dies the idle/lock event trail is gone after a reboot. The journal keeps it
 # across sessions, bounded and timestamped, under the omarchy-shell tag.
+#
+# The detailed log Quickshell keeps in that dir besides stdout has no cap or
+# rotation, and log rules deliberately don't apply to quickshell.* categories,
+# so it grows by hundreds of megabytes a day against a runtime dir capped at
+# 10% of RAM; a week of session uptime exhausts the tmpfs, and the compositor
+# dies on the next shm write with SIGBUS. The journal above already keeps the
+# trail, so drop the file with --no-detailed-logs, which also stops the debug
+# messages from being generated at all.
 #
 # Backgrounded because bash defers a trap until a foreground command returns but
 # interrupts wait. systemd-cat execs, so the job is Quickshell itself.
@@ -15,8 +48,10 @@
 # against a half-written tree, and that failed reload leaves a second engine
 # generation behind that turns the next restart's IPC kill into a crash.
 run_shell() {
+  reap_dead_shell_instances
+
   QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1 \
-    systemd-cat -t omarchy-shell -- quickshell -n -p "$OMARCHY_PATH/shell" &
+    systemd-cat -t omarchy-shell -- quickshell -n --no-detailed-logs -p "$OMARCHY_PATH/shell" &
   shell_pid=$!
 
   local status
