@@ -91,8 +91,11 @@ start() {
 
   if omarchy-cmd-present systemd-inhibit; then
     if (( EUID != 0 )); then
-      if [[ -t 0 ]]; then
-        sudo -v
+      # sudo -v hangs scripted updates: it demands a password even under
+      # NOPASSWD, and the update always runs under a pty, so a tty check
+      # cannot tell a human from a script. Probe instead and fall back to
+      # pkexec when sudo would need an interactive password.
+      if sudo -n true 2>/dev/null; then
         inhibit_runner=(sudo)
       else
         inhibit_runner=(pkexec)
