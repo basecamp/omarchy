@@ -46,11 +46,18 @@ device=$(hw_display)
 [[ $device == "gmux_backlight" ]] || fail "a T2 Mac uses gmux instead of the Touch Bar" "actual: $device"
 pass "a T2 Mac uses gmux instead of the Touch Bar"
 
-write_backlights appletb_backlight
-if hw_display >/dev/null 2>&1; then
-  fail "the Touch Bar is never used as the display backlight"
-fi
-pass "the Touch Bar is never used as the display backlight"
+write_backlights 228600000.dsi.0 apple-panel-bl
+device=$(hw_display)
+[[ $device == "apple-panel-bl" ]] || fail "Apple Silicon uses the Retina panel instead of the Touch Bar" "actual: $device"
+pass "Apple Silicon uses the Retina panel instead of the Touch Bar"
+
+for touch_bar in appletb_backlight display-pipe 228600000.dsi.0; do
+  write_backlights "$touch_bar"
+  if hw_display >/dev/null 2>&1; then
+    fail "a Touch Bar is never used as the display backlight" "actual: $touch_bar"
+  fi
+done
+pass "Touch Bars are never used as the display backlight"
 
 write_backlights acpi_video0 amdgpu_bl0 appletb_backlight gmux_backlight intel_backlight
 device=$(hw_display)
