@@ -44,6 +44,7 @@ pass "Windows VM stays fully opaque"
   prepare_user_mount_sources || fail "user mount source hardening failed on setgid directories"
   [[ $(stat -Lc '%a' "$HOME/.windows") == 700 ]] || fail "storage mode is $(stat -Lc '%a' "$HOME/.windows"), expected 700"
   [[ $(stat -Lc '%a' "$HOME/Windows") == 700 ]] || fail "shared mode is $(stat -Lc '%a' "$HOME/Windows"), expected 700"
+  [[ -f $HOME/Windows/.omarchy-keep ]] || fail "shared sentinel was not created"
   write_credentials alice secret || fail "write_credentials failed on a setgid config dir"
   [[ $(stat -Lc '%a' "$HOME/.config/windows") == 700 ]] || fail "credentials dir mode is $(stat -Lc '%a' "$HOME/.config/windows"), expected 700"
 )
