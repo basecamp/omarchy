@@ -57,15 +57,23 @@ if [[ -n ${TAKEN_USERS:-} ]]; then
   omarchy_username_taken() { [[ " $TAKEN_USERS " == *" $1 "* ]]; }
 fi
 
+# The parent prompt checks its answer against the kid password already
+# collected, so a test can stage one the way the real callers leave it.
+if [[ -n ${PRESET_PASSWORD:-} ]]; then
+  password=$PRESET_PASSWORD
+fi
+
 trap 'if [[ ${FUNCNAME[0]:-} == "$PROMPT_FN" ]]; then printf "returned\n" >>"$MARKER"; fi' RETURN
 
-"$PROMPT_FN"
+"$PROMPT_FN" ${PROMPT_ARG:-}
 
+printf 'computer_for=%s\n' "${computer_for:-}"
 printf 'keyboard=%s\n' "${keyboard:-}"
 printf 'keyboard_label=%s\n' "${keyboard_label:-}"
 printf 'username=%s\n' "${username:-}"
 printf 'password=%s\n' "${password:-}"
 printf 'password_confirmation=%s\n' "${password_confirmation:-}"
+printf 'parent_password=%s\n' "${parent_password:-}"
 printf 'full_name=%s\n' "${full_name:-}"
 printf 'email_address=%s\n' "${email_address:-}"
 printf 'hostname=%s\n' "${hostname:-}"
@@ -123,6 +131,31 @@ source "$ROOT/install/provisioning/setup-form.sh"
   fail "English (US) leads the keyboard layouts so gum choose opens on the default"
 pass "the form publishes the 0/1/130 status contract and leads with English (US)"
 
+# Who is this computer for — the first question, ahead of the keyboard
+
+run_prompt omarchy_prompt_computer_for "0:Child"
+assert_status 0 "computer-for prompt accepts an answer"
+[[ $(field computer_for) == "child" ]] || fail "computer-for prompt maps the chosen label to its value"
+[[ $(cat "$tmp_dir/stdin.1") == $'Me\nChild\nAnother owner' ]] ||
+  fail "computer-for prompt offers Me, Child, and Another owner in that order"
+grep -qF -- '--selected Me' "$GUM_ARGS" || fail "computer-for prompt preselects Me"
+pass "computer-for prompt offers the three answers and maps the chosen one"
+
+run_prompt omarchy_prompt_computer_for "0:Me"
+[[ $(field computer_for) == "me" ]] || fail "computer-for prompt maps Me to me"
+run_prompt omarchy_prompt_computer_for "0:Another owner"
+[[ $(field computer_for) == "other" ]] || fail "computer-for prompt maps Another owner to other"
+pass "computer-for prompt maps every answer"
+
+run_prompt omarchy_prompt_computer_for "1:"
+assert_status "$OMARCHY_FORM_BACK" "computer-for prompt reports Esc as back"
+assert_returned "computer-for prompt survives Esc under set -e"
+
+run_prompt omarchy_prompt_computer_for "130:"
+assert_status "$OMARCHY_FORM_SIGNAL" "computer-for prompt reports Ctrl+C as the caller's signal"
+assert_returned "computer-for prompt survives Ctrl+C under set -e"
+pass "computer-for prompt propagates Esc and Ctrl+C without dying under set -e"
+
 # Keyboard
 
 run_prompt omarchy_prompt_keyboard "0:German"
@@ -179,6 +212,45 @@ run_prompt omarchy_prompt_password "0:s3cret" "130:"
 assert_status "$OMARCHY_FORM_SIGNAL" "password prompt reports Ctrl+C on the confirmation as the caller's signal"
 assert_returned "password confirmation survives Ctrl+C under set -e"
 pass "password confirmation propagates Esc and Ctrl+C without dying under set -e"
+
+# Kid mode: the same prompt and variable, labelled for a child install and no
+# longer promising root
+
+PROMPT_ARG=kid run_prompt omarchy_prompt_password "0:s3cret" "0:s3cret"
+assert_status 0 "kid password prompt accepts a confirmed password"
+[[ $(field password) == "s3cret" ]] || fail "kid password prompt writes the same variable as the plain prompt"
+grep -qF -- '--prompt Kid password>' "$GUM_ARGS" || fail "kid password prompt is labelled as the kid's"
+! grep -qF 'root' "$GUM_ARGS" || fail "kid password prompt no longer promises root"
+pass "password prompt takes the kid mode for child installs"
+
+run_prompt omarchy_prompt_password "0:s3cret" "0:s3cret"
+grep -qF -- '--prompt Password>' "$GUM_ARGS" || fail "plain password prompt keeps its label"
+grep -qF 'Used for user + root' "$GUM_ARGS" || fail "plain password prompt still promises user + root"
+pass "plain password prompt is unchanged for Me installs"
+
+# Parent password
+
+run_prompt omarchy_prompt_parent_password "0:one" "0:two" "0:" "0:" "0:parent" "0:parent"
+assert_status 0 "parent password prompt accepts a confirmed password"
+[[ $(field parent_password) == "parent" ]] || fail "parent password prompt keeps the confirmed password"
+assert_notices "parent password prompt explains each rejection" "Parent passwords didn't match!
+The parent password can't be blank!"
+pass "parent password prompt rejects mismatched and blank passwords"
+
+PRESET_PASSWORD=same run_prompt omarchy_prompt_parent_password "0:same" "0:same" "0:different" "0:different"
+assert_status 0 "parent password prompt accepts a password that differs from the kid's"
+[[ $(field parent_password) == "different" ]] || fail "parent password prompt keeps re-asking until the passwords differ"
+assert_notices "parent password prompt explains the rejection" "The parent password must differ from the kid password"
+pass "parent password prompt refuses to reuse the kid password"
+
+run_prompt omarchy_prompt_parent_password "0:parent" "1:"
+assert_status "$OMARCHY_FORM_BACK" "parent password prompt reports Esc on the confirmation as back"
+assert_returned "parent password confirmation survives Esc under set -e"
+
+run_prompt omarchy_prompt_parent_password "0:parent" "130:"
+assert_status "$OMARCHY_FORM_SIGNAL" "parent password prompt reports Ctrl+C on the confirmation as the caller's signal"
+assert_returned "parent password confirmation survives Ctrl+C under set -e"
+pass "parent password confirmation propagates Esc and Ctrl+C without dying under set -e"
 
 # Identity — both fields are skippable, so empty is an answer and not a cancel
 

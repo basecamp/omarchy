@@ -17,6 +17,20 @@ function fingerprintConfiguredFromPamConfig(raw) {
   return false
 }
 
+// What the password field asks for. polkit names the identity it is
+// authenticating: on a child install its admin rule names root, whose
+// password is the parent password, so say that; another account's password
+// is named outright; the session user's own stays the plain prompt. An
+// unknown identity (a Quickshell without selectedIdentity) keeps the plain
+// prompt too.
+function passwordPlaceholder(identityName, sessionUser, childInstall) {
+  var identity = String(identityName || "")
+  if (!identity) return "Enter password"
+  if (childInstall && identity === "root") return "Parent password"
+  if (identity !== String(sessionUser || "")) return "Password for " + identity
+  return "Enter password"
+}
+
 function authorizationLabel(message) {
   var text = String(message || "")
   var match = text.match(/^Authentication is (?:needed|required) to run [`']([^`']+)[`'] as /i)
@@ -27,6 +41,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     promptLooksFingerprint: promptLooksFingerprint,
     fingerprintConfiguredFromPamConfig: fingerprintConfiguredFromPamConfig,
+    passwordPlaceholder: passwordPlaceholder,
     authorizationLabel: authorizationLabel
   }
 }

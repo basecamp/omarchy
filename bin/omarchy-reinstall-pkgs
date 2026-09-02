@@ -13,6 +13,9 @@ omarchy-refresh-pacman
 # Downgrade any packages to the stable setup
 sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Suu --noconfirm
 
-# Ensure all packages are installed
-mapfile -t packages < <(grep -v '^#' "$OMARCHY_PATH/install/omarchy-base.packages" | grep -v '^$')
+# Ensure all packages are installed. A child install (kids mode) also carries
+# the child list the ISO installed on top of the base set.
+package_lists=("$OMARCHY_PATH/install/omarchy-base.packages")
+omarchy-profile-child && package_lists+=("$OMARCHY_PATH/install/omarchy-child.packages")
+mapfile -t packages < <(grep -hv '^#' "${package_lists[@]}" | grep -v '^$')
 sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syu --noconfirm --needed "${packages[@]}"

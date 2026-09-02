@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true on a child install, Omarchy's kids mode profile
+
+# The install profile is recorded once, by omarchy-apply-system --profile, as
+# one word in a marker under /etc. It rides along in the @factory snapshot, so
+# a factory reset of a child machine still asks for both passwords at first
+# boot. A machine installed before profiles existed has no marker and counts
+# as the default profile.
+profile_file="${OMARCHY_PROFILE_FILE:-/etc/omarchy/profile}"
+
+[[ -f $profile_file ]] || exit 1
+[[ $(<"$profile_file") == "child" ]]

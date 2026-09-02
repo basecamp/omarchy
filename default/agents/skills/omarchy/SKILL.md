@@ -93,6 +93,10 @@ enter a password there, such as a command launched by an agent or a graphical
 background process. Do not replace `sudo` with `pkexec` merely because a
 command changes system state.
 
+On a child install (kids mode; `omarchy-profile-child` succeeds), `sudo` and
+`pkexec` ask for the parent password, which is root's, rather than the session
+user's own. The kid account is not in `wheel`.
+
 ## System Architecture
 
 Omarchy is built on:

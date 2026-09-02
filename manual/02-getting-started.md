@@ -20,9 +20,13 @@ Now you're ready to Omarchy!
 
 The full-disk encryption won't allow you to enter the password from a Bluetooth keyboard at startup. Just like you can't use a Bluetooth keyboard to enter the BIOS on a PC. You'll need a keyboard that either uses a 2.4ghz dongle or a cable (which is much nicer for latency anyway!). I personally love the [Lofree Flow84](https://www.lofree.co/products/lofree-flow-the-smoothest-mechanical-keyboard)!
 
+### Setting up for a child
+
+The installer's very first question is who the computer is for: you, a child, or another owner. Pick _Child_ and it asks for two passwords instead of one. The **kid password** is the everyday one: it logs in, unlocks the screen, and unlocks the disk at boot. The **parent password** is what `sudo`, updates, installs, and system prompts ask for, so keep it from the kid. It unlocks the disk too, so a parent can always get in and reset a forgotten kid password. The kid's account is deliberately not an administrator; see [child installs](48-security.md) for what that means day to day.
+
 ### Installing for another owner
 
-If you're setting up a machine for someone else — a family member, a new employee, a buyer — you shouldn't be answering the personal questions on their behalf. Hit `Ctrl + C` on the very first screen of the installer (the keyboard selection), and Omarchy will offer to prepare the machine for another owner instead. The system installs right away, but all the personal setup — keyboard layout, username, password — is deferred until the machine boots for the first time. The drive is still encrypted by default, and the password the new owner picks on that first boot becomes the encryption password too. (A machine you've already been using can be handed over without a reinstall too — see [resetting the computer](48-security.md).)
+If you're setting up a machine for someone else — a family member, a new employee, a buyer — you shouldn't be answering the personal questions on their behalf. Pick _Another owner_ at the installer's first question, and Omarchy will prepare the machine for another owner instead. The system installs right away, but all the personal setup — keyboard layout, username, password — is deferred until the machine boots for the first time. The drive is still encrypted by default, and the password the new owner picks on that first boot becomes the encryption password too. (A machine you've already been using can be handed over without a reinstall too — see [resetting the computer](48-security.md).)
 
 ### Unattended installs
 

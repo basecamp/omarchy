@@ -3,10 +3,17 @@
 set -e
 
 # Only invite when there's a reader to use and it isn't set up yet (the lock
-# PAM file is the last thing the setup writes on success).
+# PAM file is the last thing the setup writes on success). On a child install
+# sudo and system prompts keep asking for the parent password, so the print
+# only ever unlocks the screen; say just that.
 if omarchy-hw-fingerprint && [[ ! -f /etc/pam.d/omarchy-lock-fingerprint ]] &&
   omarchy-done ensure fingerprint-setup-invitation; then
+  if omarchy-profile-child; then
+    body="Unlock with your fingerprint."
+  else
+    body="Enable sudo and unlocking with your fingerprint."
+  fi
   omarchy-notification-send -u critical -g 󰈷 "Setup Fingerprint Reader" \
-    "Enable sudo and unlocking with your fingerprint." \
+    "$body" \
     --exec omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fingerprint
 fi

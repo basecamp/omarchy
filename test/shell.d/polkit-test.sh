@@ -11,6 +11,17 @@ assert(polkit.promptLooksFingerprint('Swipe your finger'), 'polkit detects finge
 assert(polkit.promptLooksFingerprint('fprintd verification'), 'polkit detects fprint prompts')
 assert(!polkit.promptLooksFingerprint('Password:'), 'polkit ignores password prompts')
 
+assertEqual(polkit.passwordPlaceholder('root', 'kid', true), 'Parent password',
+  'polkit asks for the parent password when a child install authenticates root')
+assertEqual(polkit.passwordPlaceholder('kid', 'kid', true), 'Enter password',
+  'polkit keeps the plain prompt for the session user on a child install')
+assertEqual(polkit.passwordPlaceholder('root', 'dhh', false), 'Password for root',
+  'polkit names another identity outside kids mode')
+assertEqual(polkit.passwordPlaceholder('dhh', 'dhh', false), 'Enter password',
+  'polkit keeps the plain prompt for the session user')
+assertEqual(polkit.passwordPlaceholder('', 'dhh', true), 'Enter password',
+  'polkit keeps the plain prompt when the identity is unknown')
+
 assertEqual(
   polkit.authorizationLabel("Authentication is needed to run `/usr/bin/true' as the super user"),
   "Authorize running '/usr/bin/true'",

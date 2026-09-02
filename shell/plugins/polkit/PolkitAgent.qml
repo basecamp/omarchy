@@ -31,6 +31,14 @@ Item {
   property bool responseRequired: false
   property bool responseVisible: false
   property bool failed: false
+  // The identity polkit is authenticating, by name. On a child install the
+  // admin rule names root, whose password is the parent password; the field
+  // says so. Empty on a Quickshell without selectedIdentity.
+  property string currentIdentity: ""
+  readonly property string sessionUser: Quickshell.env("USER")
+  // omarchy-profile-child succeeds on a child install (kids mode).
+  property bool childInstall: false
+  readonly property bool identityIsSessionUser: currentIdentity === "" || currentIdentity === sessionUser
   property bool errorFlash: false
   // pam_fprintd appears in the polkit PAM stack (a sensor is enrolled).
   property bool fingerprintConfigured: false
@@ -44,7 +52,9 @@ Item {
   // waiting on the reader (lid open, sensor enrolled); the moment PAM asks for
   // a password — including immediately when the lid is shut and the clamshell
   // gate skips pam_fprintd — we switch to the password field instead.
-  readonly property bool fingerprintMode: fingerprintConfigured && !laptopClosed && dialogVisible && !responseRequired && !submitted && !errorFlash
+  // Only the session user has prints enrolled: authenticating anyone else,
+  // root on a child install included, falls straight through to the password.
+  readonly property bool fingerprintMode: fingerprintConfigured && !laptopClosed && identityIsSessionUser && dialogVisible && !responseRequired && !submitted && !errorFlash
   readonly property int cardHeight: panel.height > 0 ? Math.min(fieldHeight + contentMargin * 2, panel.height - Style.gapsOut * 2) : fieldHeight + contentMargin * 2
   // Password mode is a wide field; fingerprint mode collapses to a square that
   // just frames the centered sensor icon.
@@ -52,6 +62,10 @@ Item {
 
   function authorizationLabel(message) {
     return PolkitModel.authorizationLabel(message)
+  }
+
+  function passwordPlaceholder() {
+    return PolkitModel.passwordPlaceholder(currentIdentity, sessionUser, childInstall)
   }
 
   function loadPamConfig(raw) {
@@ -71,6 +85,7 @@ Item {
     failed = false
     errorFlash = false
     submitted = false
+    currentIdentity = ""
     passwordInput.text = ""
   }
 
@@ -84,6 +99,9 @@ Item {
     responseRequired = !!flow.isResponseRequired
     responseVisible = !!flow.responseVisible
     failed = !!flow.failed
+
+    var identity = flow.selectedIdentity
+    currentIdentity = identity && identity.string ? String(identity.string) : ""
 
     if (responseRequired) submitted = false
   }
@@ -164,6 +182,14 @@ Item {
     onLoaded: root.loadPamConfig(text())
     onLoadFailed: root.fingerprintConfigured = false
     onFileChanged: reload()
+  }
+
+  Process {
+    id: childInstallProc
+    command: ["bash", "-c", "omarchy-profile-child && echo child || echo default"]
+    stdout: StdioCollector { id: childInstallOut; waitForEnd: true }
+    onExited: root.childInstall = String(childInstallOut.text || "").trim() === "child"
+    Component.onCompleted: running = true
   }
 
   Process {
@@ -336,7 +362,7 @@ Item {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            text: root.errorFlash ? "Wrong" : (root.submitted ? "Checking..." : "Enter password")
+            text: root.errorFlash ? "Wrong" : (root.submitted ? "Checking..." : root.passwordPlaceholder())
             color: root.errorFlash ? Color.polkit.textError : root.foreground
             opacity: root.errorFlash ? 1 : 0.36
             font.family: root.fontFamily

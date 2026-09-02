@@ -22,17 +22,33 @@ as_root() {
 
 echo "Configuring lock screen password authentication..."
 
-as_root tee /etc/pam.d/omarchy-lock-password >/dev/null <<'EOF'
-#%PAM-1.0
-auth       required                    pam_faillock.so preauth silent deny=10 unlock_time=120
--auth      [success=2 default=ignore]  pam_systemd_home.so
-auth       [success=1 default=bad]     pam_unix.so try_first_pass nullok
+# On a child install the parent password opens the lock screen too, after the
+# kid's own has been refused: omarchy-parent-unlock checks the typed password
+# against root's through sudo. The jumps skip the failure line on either
+# success; a wrong password falls through to it as before. The kid's password
+# is tried first so a normal unlock never touches sudo or root's faillock
+# tally. Decided here, inside the writer, so every rerun keeps it.
+lock_password_stack() {
+  echo '#%PAM-1.0'
+  echo 'auth       required                    pam_faillock.so preauth silent deny=10 unlock_time=120'
+  if omarchy-profile-child; then
+    echo '-auth      [success=3 default=ignore]  pam_systemd_home.so'
+    echo 'auth       [success=2 default=ignore]  pam_unix.so try_first_pass nullok'
+    echo 'auth       [success=1 default=ignore]  pam_exec.so quiet expose_authtok /usr/bin/omarchy-parent-unlock'
+  else
+    echo '-auth      [success=2 default=ignore]  pam_systemd_home.so'
+    echo 'auth       [success=1 default=bad]     pam_unix.so try_first_pass nullok'
+  fi
+  cat <<'EOF'
 auth       [default=die]               pam_faillock.so authfail deny=10 unlock_time=120
 auth       optional                    pam_permit.so
 auth       required                    pam_env.so
 auth       required                    pam_faillock.so authsucc
 account    include                     system-local-login
 EOF
+}
+
+lock_password_stack | as_root tee /etc/pam.d/omarchy-lock-password >/dev/null
 
 if omarchy-cmd-present fprintd-list && fprintd-list "$target_user" 2>/dev/null | grep -qi finger; then
   echo "Configuring lock screen fingerprint authentication..."

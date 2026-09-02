@@ -31,6 +31,7 @@ chmod +x "$test_bin/omarchy-hw-fingerprint"
 cat >"$test_bin/omarchy-notification-send" <<'EOF'
 #!/bin/bash
 echo notification >>"$TEST_LOG"
+echo "args:$*" >>"$TEST_LOG"
 exec_args=()
 while (($# > 0)); do
   if [[ $1 == "--exec" ]]; then shift; exec_args=("$@"); break; fi
@@ -48,9 +49,12 @@ echo "systemd-run:$*" >>"$TEST_LOG"
 EOF
 chmod +x "$test_bin/systemd-run"
 
+# The profile marker is pinned away from the host's own so the wording under
+# test is the default install's unless a case says otherwise.
 run_invitation_hook() {
   cp "$ROOT/install/user/first-run/setup-fingerprint.hook" "$hook_path"
-  HOME="$test_home" PATH="$test_bin:$ROOT/bin:$PATH" TEST_LOG="$log_file" TEST_HW_MARKER="$hw_marker" bash "$hook_path"
+  HOME="${HOOK_HOME:-$test_home}" OMARCHY_PROFILE_FILE="${OMARCHY_PROFILE_FILE:-$test_home/no-profile}" \
+    PATH="$test_bin:$ROOT/bin:$PATH" TEST_LOG="$log_file" TEST_HW_MARKER="$hw_marker" bash "$hook_path"
 }
 
 run_invitation_hook
@@ -68,8 +72,26 @@ grep -qx 'exec:omarchy-launch-floating-terminal-with-presentation omarchy-setup-
   fail "fingerprint invitation attaches the setup to the notification"
 grep -q '^systemd-run:' "$log_file" && fail "fingerprint invitation needs no unit to hold an unanswered toast"
 
-HOME="$test_home" PATH="$test_bin:$ROOT/bin:$PATH" TEST_LOG="$log_file" TEST_HW_MARKER="$hw_marker" bash "$hook_path"
+run_invitation_hook
 
 [[ $(grep -c '^notification$' "$log_file") -eq 1 ]] || fail "completed fingerprint invitation hook does not notify again"
 
 pass "fingerprint invitation waits for a reader and only runs once"
+
+# On a child install the print only ever unlocks the screen: sudo and system
+# prompts keep asking for the parent password, so the invitation says just that.
+grep -q 'Enable sudo and unlocking with your fingerprint\.' "$log_file" ||
+  fail "fingerprint invitation promises sudo and unlocking on a default install"
+
+child_home=$(mktemp -d)
+child_profile=$(mktemp)
+printf 'child\n' >"$child_profile"
+: >"$log_file"
+HOOK_HOME="$child_home" OMARCHY_PROFILE_FILE="$child_profile" run_invitation_hook
+rm -rf "$child_home" "$child_profile"
+
+[[ $(grep -c '^notification$' "$log_file") -eq 1 ]] || fail "fingerprint invitation still notifies on a child install"
+grep -q 'Unlock with your fingerprint\.' "$log_file" || fail "fingerprint invitation on a child install offers unlocking only"
+! grep -q 'sudo' "$log_file" || fail "fingerprint invitation on a child install does not promise sudo"
+
+pass "fingerprint invitation drops the sudo promise on a child install"

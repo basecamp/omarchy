@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Accept the parent password at the lock screen (PAM helper)
+# omarchy:hidden=true
+
+# Run by pam_exec (expose_authtok) from the lock screen's password stack on a
+# child install, as the session user, after the kid's own password has been
+# refused, with the typed password on stdin. It succeeds when that is the
+# parent password: under Defaults rootpw, sudo checks a password against
+# root's, and -k makes it neither use nor write the credential cache, so a
+# parent's unlock leaves the kid's session with no passwordless sudo behind.
+# faillock's limit on root applies to guesses, the same as for sudo itself.
+
+set -euo pipefail
+
+user="${PAM_USER:-}"
+[[ -n $user && $user != "root" ]] || exit 1
+[[ ${PAM_TYPE:-auth} == "auth" ]] || exit 1
+
+password=$(cat)
+[[ -n $password ]] || exit 1
+
+printf '%s\n' "$password" | /usr/bin/sudo -k -S -u root -- /usr/bin/true >/dev/null 2>&1
