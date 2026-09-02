@@ -61,4 +61,16 @@ pass "only the browser accent write stays passwordless for the kid"
 [[ $(cat /etc/omarchy/profile) == "child" ]] || fail "the install profile marker records a child install"
 pass "the install profile marker records a child install"
 
+# The parent password opens the lock screen and the login screen: both PAM
+# stacks carry the helper after the kid's own password, run with seteuid, and
+# SDDM's packaged file is kept beside it. The harness proves the login itself
+# by typing the parent password at SDDM on a child run.
+helper='pam_exec.so quiet seteuid expose_authtok /usr/bin/omarchy-parent-unlock'
+sudo -n grep -qF "$helper" /etc/pam.d/omarchy-lock-password || fail "the lock screen's stack hands the parent password to omarchy-parent-unlock"
+sudo -n grep -qF "$helper" /etc/pam.d/sddm || fail "the login screen's stack hands the parent password to omarchy-parent-unlock"
+sudo -n grep -qE '^auth[[:space:]]+\[success=2 default=ignore\][[:space:]]+pam_unix\.so' /etc/pam.d/sddm || fail "the login screen tries the kid's password first"
+sudo -n test -f /etc/pam.d/sddm.omarchy-orig || fail "the packaged login stack is kept beside the child one"
+sudo -n grep -qE '^auth[[:space:]]+requisite[[:space:]]+pam_nologin\.so' /etc/pam.d/sddm || fail "the login stack keeps the nologin check"
+pass "the parent password is wired into the lock screen and the login screen"
+
 sudo -K

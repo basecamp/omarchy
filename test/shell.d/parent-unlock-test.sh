@@ -116,7 +116,7 @@ run_apply_lock() {
 packaged_sddm=$'#%PAM-1.0\n\nauth\t\tinclude\t\tsystem-login\naccount\t\tinclude\t\tsystem-login\npassword\tinclude\t\tsystem-login\nsession\t\toptional\tpam_keyinit.so force revoke\nsession\t\tinclude\t\tsystem-login\n-session\toptional\tpam_gnome_keyring.so auto_start'
 printf '%s\n' "$packaged_sddm" >"$pam_dir/sddm"
 
-parent_line='auth       [success=1 default=ignore]  pam_exec.so quiet expose_authtok /usr/bin/omarchy-parent-unlock'
+parent_line='auth       [success=1 default=ignore]  pam_exec.so quiet seteuid expose_authtok /usr/bin/omarchy-parent-unlock'
 
 STUB_PROFILE=default run_apply_lock
 ! grep -qF 'omarchy-parent-unlock' "$pam_dir/omarchy-lock-password" || fail "a default install's lock screen knows no parent password"
@@ -147,6 +147,7 @@ grep -qE $'^account\t\tinclude\t\tsystem-login$' "$pam_dir/sddm" && grep -qE $'^
 [[ $(grep -c 'omarchy-parent-unlock' "$pam_dir/sddm") == 1 ]] || fail "the helper appears once"
 STUB_PROFILE=child run_apply_lock
 [[ $(grep -c 'omarchy-parent-unlock' "$pam_dir/sddm") == 1 && $(<"$pam_dir/sddm.omarchy-orig") == "$packaged_sddm" ]] || fail "a rerun rebuilds from the kept copy rather than stacking"
+grep -q 'pam_exec.so quiet seteuid expose_authtok' "$pam_dir/omarchy-lock-password" && grep -q 'pam_exec.so quiet seteuid expose_authtok' "$pam_dir/sddm" || fail "both stacks run the helper with seteuid"
 pass "a child install's login screen takes the parent password too"
 
 STUB_PROFILE=default run_apply_lock

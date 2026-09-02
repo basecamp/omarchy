@@ -34,7 +34,7 @@ lock_password_stack() {
   if omarchy-profile-child; then
     echo '-auth      [success=3 default=ignore]  pam_systemd_home.so'
     echo 'auth       [success=2 default=ignore]  pam_unix.so try_first_pass nullok'
-    echo 'auth       [success=1 default=ignore]  pam_exec.so quiet expose_authtok /usr/bin/omarchy-parent-unlock'
+    echo 'auth       [success=1 default=ignore]  pam_exec.so quiet seteuid expose_authtok /usr/bin/omarchy-parent-unlock'
   else
     echo '-auth      [success=2 default=ignore]  pam_systemd_home.so'
     echo 'auth       [success=1 default=bad]     pam_unix.so try_first_pass nullok'
@@ -64,7 +64,7 @@ auth       requisite                   pam_nologin.so
 auth       required                    pam_faillock.so preauth silent deny=10 unlock_time=120
 -auth      [success=3 default=ignore]  pam_systemd_home.so
 auth       [success=2 default=ignore]  pam_unix.so try_first_pass nullok
-auth       [success=1 default=ignore]  pam_exec.so quiet expose_authtok /usr/bin/omarchy-parent-unlock
+auth       [success=1 default=ignore]  pam_exec.so quiet seteuid expose_authtok /usr/bin/omarchy-parent-unlock
 auth       [default=die]               pam_faillock.so authfail deny=10 unlock_time=120
 auth       optional                    pam_permit.so
 auth       required                    pam_env.so
