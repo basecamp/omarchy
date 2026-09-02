@@ -19,11 +19,42 @@
 #include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
+
+namespace omarchy::plugin_runtime::bridge {
+class RemotePluginSurfaceTestAccess final {
+public:
+  static bool quickRedispatch(RemotePluginSurface &surface,
+                              QMouseEvent &event) {
+    return surface.childMouseEventFilter(surface.input_proxy_, &event);
+  }
+  static unsigned claimMismatch(const RemotePluginSurface &surface,
+                                const QMouseEvent &event) {
+    if (!surface.window_pointer_claim_)
+      return 1U << 7;
+    const auto &claim = *surface.window_pointer_claim_;
+    return (claim.type != event.type() ? 1U : 0U) |
+           (claim.timestamp != event.timestamp() ? 1U << 1 : 0U) |
+           (claim.device != event.pointingDevice() ? 1U << 2 : 0U) |
+           (claim.button != event.button() ? 1U << 3 : 0U) |
+           (claim.buttons != event.buttons() ? 1U << 4 : 0U) |
+           (claim.modifiers != event.modifiers() ? 1U << 5 : 0U) |
+           (claim.global_position != event.globalPosition() ? 1U << 6 : 0U);
+  }
+  static bool hasClaim(const RemotePluginSurface &surface) {
+    return surface.window_pointer_claim_.has_value();
+  }
+  static bool isBoundTo(const RemotePluginSurface &surface,
+                        const QQuickWindow &window) {
+    return surface.input_window_ == &window;
+  }
+};
+} // namespace omarchy::plugin_runtime::bridge
 
 namespace {
 
@@ -103,11 +134,16 @@ public:
   bool eventFilter(QObject *watched, QEvent *event) override {
     (void)watched;
     if (event->type() == QEvent::MouseButtonPress) {
-      const auto &mouse = *static_cast<QMouseEvent *>(event);
+      auto &mouse = *static_cast<QMouseEvent *>(event);
       saw_press = true;
       press_was_spontaneous = mouse.spontaneous();
       press_source = mouse.source();
       press_device_type = mouse.deviceType();
+      press_timestamp = mouse.timestamp();
+      press_device = mouse.pointingDevice();
+      press_global_position = mouse.globalPosition();
+      if (on_press)
+        on_press(mouse);
     }
     return false;
   }
@@ -117,6 +153,10 @@ public:
   Qt::MouseEventSource press_source = Qt::MouseEventSynthesizedByApplication;
   QInputDevice::DeviceType press_device_type =
       QInputDevice::DeviceType::Unknown;
+  ulong press_timestamp = 0;
+  const QPointingDevice *press_device = nullptr;
+  QPointF press_global_position;
+  std::function<void(QMouseEvent &)> on_press;
 };
 
 class AbsorbingItem final : public QQuickItem {
@@ -243,6 +283,248 @@ void test_qpa_pointer_provenance_is_captured_before_quick_redispatch() {
   require(touch_frames == 2 && touch_was_untrusted &&
               pointer_events() == after_replay,
           "localized QPA touch did not traverse the fail-closed parent path");
+}
+
+void test_window_provenance_survives_one_quick_redispatch_only() {
+  QQuickWindow window;
+  window.resize(96, 96);
+  WindowInputProbe probe;
+  window.installEventFilter(&probe);
+
+  bridge::RemotePluginSurface item(window.contentItem());
+  item.setPosition({0, 0});
+  item.setSize({64, 64});
+  RecordingInputRouter router;
+  auto sink = std::make_shared<RecordingSink>();
+  auto transport =
+      std::make_shared<bridge::AuthenticatedInputTransport>(19, sink);
+  const auto allocation = surface::make_allocation(
+      {.id = 13, .generation = 7}, 64, 64, 64, 64, 1, 1, 4096);
+  require(allocation && item.bindTransport(transport) &&
+              item.configure(*allocation) && item.bindHostInputRouter(router),
+          "redispatch provenance fixture did not configure");
+
+  AbsorbingItem blocker(window.contentItem());
+  blocker.setPosition({0, 0});
+  blocker.setSize({64, 64});
+  blocker.setZ(100);
+  bool redispatch_routed = false;
+  probe.on_press = [&](QMouseEvent &physical) {
+    QMouseEvent redispatched(
+        QEvent::MouseButtonPress, QPointF(12, 18), QPointF(12, 18),
+        physical.globalPosition(), Qt::LeftButton, Qt::LeftButton,
+        Qt::NoModifier, Qt::MouseEventNotSynthesized,
+        physical.pointingDevice());
+    redispatched.setTimestamp(physical.timestamp());
+    const auto mismatch =
+        bridge::RemotePluginSurfaceTestAccess::claimMismatch(item,
+                                                             redispatched);
+    redispatch_routed =
+        mismatch == 0 && !redispatched.spontaneous() &&
+        bridge::RemotePluginSurfaceTestAccess::quickRedispatch(item,
+                                                               redispatched) &&
+        redispatched.isAccepted();
+  };
+  window.show();
+  QCoreApplication::processEvents();
+  require(bridge::RemotePluginSurfaceTestAccess::isBoundTo(item, window),
+          "redispatch surface did not bind its window boundary");
+
+  QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+  require(probe.saw_press && probe.press_was_spontaneous &&
+              probe.press_device != nullptr && redispatch_routed &&
+              router.events.size() == 1 &&
+              router.events.back().trusted_physical,
+          "one exact stripped Quick redispatch did not carry window provenance");
+  probe.on_press = {};
+
+  QMouseEvent replay(
+      QEvent::MouseButtonPress, QPointF(12, 18), QPointF(12, 18),
+      probe.press_global_position, Qt::LeftButton, Qt::LeftButton,
+      Qt::NoModifier, Qt::MouseEventNotSynthesized, probe.press_device);
+  replay.setTimestamp(probe.press_timestamp);
+  require(bridge::RemotePluginSurfaceTestAccess::quickRedispatch(item,
+                                                                 replay) &&
+              !replay.isAccepted() && router.events.size() == 1,
+          "an exact replay reused consumed window provenance");
+
+  QMouseEvent application_event(
+      QEvent::MouseButtonPress, QPointF(12, 18), QPointF(12, 18),
+      probe.press_global_position, Qt::LeftButton, Qt::LeftButton,
+      Qt::NoModifier, Qt::MouseEventSynthesizedByApplication,
+      probe.press_device);
+  application_event.setTimestamp(probe.press_timestamp);
+  QCoreApplication::sendEvent(&window, &application_event);
+  QMouseEvent application_redispatch(
+      QEvent::MouseButtonPress, QPointF(12, 18), QPointF(12, 18),
+      probe.press_global_position, Qt::LeftButton, Qt::LeftButton,
+      Qt::NoModifier, Qt::MouseEventNotSynthesized, probe.press_device);
+  application_redispatch.setTimestamp(probe.press_timestamp);
+  require(bridge::RemotePluginSurfaceTestAccess::quickRedispatch(
+              item, application_redispatch) &&
+              !application_redispatch.isAccepted() && router.events.size() == 1,
+          "application input minted window provenance");
+
+  QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+}
+
+void test_window_provenance_mismatch_and_overlap_expire_fail_closed() {
+  QQuickWindow window;
+  window.resize(96, 96);
+  WindowInputProbe probe;
+  window.installEventFilter(&probe);
+
+  bridge::RemotePluginSurface first(window.contentItem());
+  bridge::RemotePluginSurface second(window.contentItem());
+  for (auto *item : {&first, &second}) {
+    item->setPosition({0, 0});
+    item->setSize({64, 64});
+  }
+  RecordingInputRouter first_router;
+  RecordingInputRouter second_router;
+  auto first_sink = std::make_shared<RecordingSink>();
+  auto second_sink = std::make_shared<RecordingSink>();
+  auto first_transport =
+      std::make_shared<bridge::AuthenticatedInputTransport>(20, first_sink);
+  auto second_transport =
+      std::make_shared<bridge::AuthenticatedInputTransport>(21, second_sink);
+  const auto first_allocation = surface::make_allocation(
+      {.id = 14, .generation = 8}, 64, 64, 64, 64, 1, 1, 4096);
+  const auto second_allocation = surface::make_allocation(
+      {.id = 15, .generation = 8}, 64, 64, 64, 64, 1, 1, 4096);
+  require(first_allocation && second_allocation &&
+              first.bindTransport(first_transport) &&
+              second.bindTransport(second_transport) &&
+              first.configure(*first_allocation) &&
+              second.configure(*second_allocation) &&
+              first.bindHostInputRouter(first_router) &&
+              second.bindHostInputRouter(second_router),
+          "overlap expiry fixture did not configure");
+
+  AbsorbingItem blocker(window.contentItem());
+  blocker.setPosition({0, 0});
+  blocker.setSize({64, 64});
+  blocker.setZ(100);
+  window.show();
+  QCoreApplication::processEvents();
+
+  enum class Mutation {
+    type,
+    timestamp,
+    device,
+    button,
+    buttons,
+    modifiers,
+    global_position,
+  };
+  constexpr std::array mutations{
+      Mutation::type,    Mutation::timestamp, Mutation::device,
+      Mutation::button,  Mutation::buttons,   Mutation::modifiers,
+      Mutation::global_position,
+  };
+  const QPointingDevice other_device(
+      QStringLiteral("other-mouse"), 55, QInputDevice::DeviceType::Mouse,
+      QPointingDevice::PointerType::Generic,
+      QInputDevice::Capability::Position, 1, 5);
+
+  for (const auto mutation : mutations) {
+    bool mismatch_rejected = false;
+    bool consumed_claim_rejected = false;
+    bool overlapping_claim_seen = false;
+    probe.on_press = [&](QMouseEvent &physical) {
+      auto type = QEvent::MouseButtonPress;
+      auto timestamp = physical.timestamp();
+      const QPointingDevice *device = physical.pointingDevice();
+      auto button = Qt::LeftButton;
+      auto buttons = Qt::MouseButtons(Qt::LeftButton);
+      auto modifiers = Qt::KeyboardModifiers(Qt::NoModifier);
+      auto global_position = physical.globalPosition();
+      switch (mutation) {
+      case Mutation::type:
+        type = QEvent::MouseButtonRelease;
+        break;
+      case Mutation::timestamp:
+        ++timestamp;
+        break;
+      case Mutation::device:
+        device = &other_device;
+        break;
+      case Mutation::button:
+        button = Qt::RightButton;
+        break;
+      case Mutation::buttons:
+        buttons = Qt::NoButton;
+        break;
+      case Mutation::modifiers:
+        modifiers = Qt::ShiftModifier;
+        break;
+      case Mutation::global_position:
+        global_position += QPointF(1, 0);
+        break;
+      }
+
+      QMouseEvent mismatch(type, QPointF(12, 18), QPointF(12, 18),
+                           global_position, button, buttons, modifiers,
+                           Qt::MouseEventNotSynthesized, device);
+      mismatch.setTimestamp(timestamp);
+      mismatch_rejected =
+          bridge::RemotePluginSurfaceTestAccess::quickRedispatch(second,
+                                                                 mismatch) &&
+          !mismatch.isAccepted();
+
+      QMouseEvent exact(
+          QEvent::MouseButtonPress, QPointF(12, 18), QPointF(12, 18),
+          physical.globalPosition(), Qt::LeftButton, Qt::LeftButton,
+          Qt::NoModifier, Qt::MouseEventNotSynthesized,
+          physical.pointingDevice());
+      exact.setTimestamp(physical.timestamp());
+      consumed_claim_rejected =
+          bridge::RemotePluginSurfaceTestAccess::quickRedispatch(second,
+                                                                 exact) &&
+          !exact.isAccepted();
+      overlapping_claim_seen =
+          bridge::RemotePluginSurfaceTestAccess::hasClaim(first);
+    };
+
+    QTest::mousePress(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+    probe.on_press = {};
+    require(mismatch_rejected && consumed_claim_rejected &&
+                overlapping_claim_seen && first_router.events.empty() &&
+                second_router.events.empty() &&
+                !bridge::RemotePluginSurfaceTestAccess::hasClaim(second),
+            "claim-field mismatch did not consume and deny redispatch");
+    QTest::mouseRelease(&window, Qt::LeftButton, Qt::NoModifier, {12, 18});
+    QCoreApplication::processEvents();
+    require(!bridge::RemotePluginSurfaceTestAccess::hasClaim(first) &&
+                !bridge::RemotePluginSurfaceTestAccess::hasClaim(second),
+            "overlapping non-target claim survived its event-loop turn");
+  }
+}
+
+void test_window_boundary_disconnects_before_base_teardown() {
+  QQuickWindow first_window;
+  QQuickWindow second_window;
+  for (auto *window : {&first_window, &second_window}) {
+    window->resize(96, 96);
+    window->show();
+  }
+  QCoreApplication::processEvents();
+
+  auto item =
+      std::make_unique<bridge::RemotePluginSurface>(first_window.contentItem());
+  item->setSize({64, 64});
+  require(bridge::RemotePluginSurfaceTestAccess::isBoundTo(*item,
+                                                            first_window),
+          "teardown fixture did not bind its first window");
+  item->setParentItem(second_window.contentItem());
+  QCoreApplication::processEvents();
+  require(bridge::RemotePluginSurfaceTestAccess::isBoundTo(*item,
+                                                            second_window),
+          "teardown fixture retained its previous window");
+
+  item.reset();
+  QCoreApplication::processEvents();
+  QTest::mouseClick(&second_window, Qt::LeftButton, Qt::NoModifier, {12, 18});
 }
 
 void test_physical_pointer_device_classification() {
@@ -888,6 +1170,9 @@ int main(int argc, char **argv) {
   (void)application;
   try {
     test_qpa_pointer_provenance_is_captured_before_quick_redispatch();
+    test_window_provenance_survives_one_quick_redispatch_only();
+    test_window_provenance_mismatch_and_overlap_expire_fail_closed();
+    test_window_boundary_disconnects_before_base_teardown();
     test_physical_pointer_device_classification();
     test_quick_item_pointer_delivery();
     test_router_unbind_is_idempotent_and_identity_checked();

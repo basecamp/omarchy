@@ -11,6 +11,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPointer>
+#include <QQuickWindow>
 #include <QTouchEvent>
 #include <QWheelEvent>
 
@@ -117,12 +118,79 @@ RemotePluginSurface::RemotePluginSurface(QQuickItem *parent)
       Qt::LeftButton | Qt::RightButton | Qt::MiddleButton | Qt::BackButton |
       Qt::ForwardButton);
   input_proxy_->setSize(size());
+  window_changed_connection_ =
+      connect(this, &QQuickItem::windowChanged, this,
+              [this](QQuickWindow *window) { bindWindowInputBoundary(window); });
+  window_pointer_claim_expiry_.setSingleShot(true);
+  connect(&window_pointer_claim_expiry_, &QTimer::timeout, this, [this] {
+    if (window_pointer_claim_ && window_pointer_claim_->generation ==
+                                     expiring_window_pointer_claim_generation_)
+      window_pointer_claim_.reset();
+  });
+  bindWindowInputBoundary(window());
 }
 
 RemotePluginSurface::~RemotePluginSurface() {
+  QObject::disconnect(window_changed_connection_);
+  bindWindowInputBoundary(nullptr);
   auto *observer = std::exchange(lifetime_observer_, nullptr);
   if (observer != nullptr)
     observer->remote_surface_destroying();
+}
+
+void RemotePluginSurface::bindWindowInputBoundary(QQuickWindow *window) {
+  if (input_window_ == window)
+    return;
+  if (input_window_)
+    input_window_->removeEventFilter(this);
+  input_window_ = window;
+  window_pointer_claim_.reset();
+  window_pointer_claim_expiry_.stop();
+  if (input_window_)
+    input_window_->installEventFilter(this);
+}
+
+bool RemotePluginSurface::eventFilter(QObject *watched, QEvent *event) {
+  if (watched != input_window_ || event == nullptr)
+    return false;
+  const bool pointer = event->type() == QEvent::MouseMove ||
+                       event->type() == QEvent::MouseButtonPress ||
+                       event->type() == QEvent::MouseButtonRelease;
+  if (!pointer)
+    return false;
+
+  window_pointer_claim_.reset();
+  const auto &mouse = *static_cast<QMouseEvent *>(event);
+  if (!pointer_provenance(mouse).trusted() || !isVisible() ||
+      !contains(mapFromScene(mouse.position())))
+    return false;
+  if (++next_window_pointer_claim_generation_ == 0)
+    ++next_window_pointer_claim_generation_;
+  const auto generation = next_window_pointer_claim_generation_;
+  window_pointer_claim_ = WindowPointerClaim{
+      .generation = generation,
+      .type = mouse.type(),
+      .timestamp = mouse.timestamp(),
+      .device = mouse.pointingDevice(),
+      .button = mouse.button(),
+      .buttons = mouse.buttons(),
+      .modifiers = mouse.modifiers(),
+      .global_position = mouse.globalPosition(),
+  };
+  expiring_window_pointer_claim_generation_ = generation;
+  window_pointer_claim_expiry_.start(0);
+  return false;
+}
+
+bool RemotePluginSurface::consumeWindowPointerClaim(
+    const QMouseEvent &event) {
+  const auto claim = std::exchange(window_pointer_claim_, std::nullopt);
+  return claim && claim->type == event.type() &&
+         claim->timestamp == event.timestamp() &&
+         claim->device == event.pointingDevice() &&
+         claim->button == event.button() && claim->buttons == event.buttons() &&
+         claim->modifiers == event.modifiers() &&
+         claim->global_position == event.globalPosition();
 }
 
 bool RemotePluginSurface::bindLifetimeObserver(
@@ -239,7 +307,12 @@ bool RemotePluginSurface::childMouseEventFilter(QQuickItem *item,
       width() == state_->allocation().logical_width &&
       height() == state_->allocation().logical_height;
   const auto provenance = pointer_provenance(mouse);
-  if (!exact_geometry || !provenance.trusted()) {
+  const bool trusted = provenance.trusted() ||
+                       (provenance.failure ==
+                            detail::PointerProvenanceFailure::not_spontaneous &&
+                        consumeWindowPointerClaim(mouse));
+  if (!exact_geometry || !trusted) {
+    window_pointer_claim_.reset();
     if (!exact_geometry) {
       logInputRejectionOnce(std::uint32_t{1} << 8, "geometry-mismatch",
                             mouse);
@@ -251,6 +324,7 @@ bool RemotePluginSurface::childMouseEventFilter(QQuickItem *item,
     return true;
   }
 
+  window_pointer_claim_.reset();
   event->setAccepted(routeMouseInput(mouse, true));
   return true;
 }

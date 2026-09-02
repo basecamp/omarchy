@@ -9,8 +9,11 @@
 #include <QImage>
 #include <QInputMethodEvent>
 #include <QList>
+#include <QMetaObject>
+#include <QPointer>
 #include <QQuickPaintedItem>
 #include <QRect>
+#include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
 #include <cstdint>
@@ -37,6 +40,7 @@ public:
   // trusted sink, transport and QQuickItem base are still alive.
   virtual void remote_surface_destroying() noexcept = 0;
 };
+class RemotePluginSurfaceTestAccess;
 
 class RemotePluginSurface : public QQuickPaintedItem,
                             public surface::TrustedFrameSink {
@@ -111,6 +115,8 @@ signals:
   void inputRegionsChanged();
 
 private:
+  friend class RemotePluginSurfaceTestAccess;
+  bool eventFilter(QObject *watched, QEvent *event) override;
   bool childMouseEventFilter(QQuickItem *item, QEvent *event) override;
   void geometryChange(const QRectF &new_geometry,
                       const QRectF &old_geometry) override;
@@ -130,6 +136,8 @@ private:
                                     bool trusted_physical);
   [[nodiscard]] bool routeMouseInput(QMouseEvent &event,
                                      bool trusted_physical);
+  [[nodiscard]] bool consumeWindowPointerClaim(const QMouseEvent &event);
+  void bindWindowInputBoundary(QQuickWindow *window);
   [[nodiscard]] bool cancelHostInput(const QInputEvent &event);
   void fail(InspectionFailure failure, bool terminal);
   void logInputRejectionOnce(std::uint32_t reason_bit, const char *reason,
@@ -142,6 +150,22 @@ private:
   HostInputRegionRouter *host_input_region_router_ = nullptr;
   RemoteSurfaceLifetimeObserver *lifetime_observer_ = nullptr;
   QQuickItem *input_proxy_ = nullptr;
+  QMetaObject::Connection window_changed_connection_;
+  QPointer<QQuickWindow> input_window_;
+  struct WindowPointerClaim {
+    std::uint64_t generation = 0;
+    QEvent::Type type = QEvent::None;
+    ulong timestamp = 0;
+    const QPointingDevice *device = nullptr;
+    Qt::MouseButton button = Qt::NoButton;
+    Qt::MouseButtons buttons = Qt::NoButton;
+    Qt::KeyboardModifiers modifiers = Qt::NoModifier;
+    QPointF global_position;
+  };
+  std::optional<WindowPointerClaim> window_pointer_claim_;
+  std::uint64_t next_window_pointer_claim_generation_ = 0;
+  std::uint64_t expiring_window_pointer_claim_generation_ = 0;
+  QTimer window_pointer_claim_expiry_;
   std::uint64_t input_region_generation_ = 0;
   std::uint32_t logged_input_rejections_ = 0;
   QList<QRect> input_regions_;
