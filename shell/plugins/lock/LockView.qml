@@ -12,6 +12,7 @@ Item {
   property bool facePamConfigured: false
   property bool faceAuthenticating: false
   property bool authenticatingPassword: false
+  property real facePulseOpacity: 1.0
   property string failureMessage: ""
   property int failedAttempts: 0
   property bool inputEnabled: true
@@ -34,6 +35,13 @@ Item {
   readonly property real passwordDotScale: dotMetrics.advanceWidth > 0
     ? Math.min(1, (passwordInput.width - 4) / dotMetrics.advanceWidth)
     : 1
+
+  SequentialAnimation on facePulseOpacity {
+    running: root.faceAuthenticating
+    loops: Animation.Infinite
+    NumberAnimation { from: 0.3; to: 1.0; duration: 500; easing.type: Easing.InOutQuad }
+    NumberAnimation { from: 1.0; to: 0.3; duration: 500; easing.type: Easing.InOutQuad }
+  }
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
   readonly property bool errorState: failureMessage.length > 0
   readonly property var inputBorderSpec: errorState
@@ -188,9 +196,9 @@ Item {
       Text {
         textFormat: Text.PlainText
         anchors.fill: passwordInput
-        text: root.authenticatingPassword ? "Checking…" : (root.failureMessage.length > 0 ? root.failureMessage : root.placeholderText)
+        text: root.authenticatingPassword ? "Checking…" : (root.failureMessage.length > 0 ? root.failureMessage : (root.faceAuthenticating ? "Scanning face…" : root.placeholderText))
         visible: passwordInput.text.length === 0
-        color: root.authenticatingPassword ? Color.lock.text : (root.failureMessage.length > 0 ? Color.lock.textError : Color.lock.placeholder)
+        color: root.faceAuthenticating ? Color.lock.text : (root.authenticatingPassword ? Color.lock.text : (root.failureMessage.length > 0 ? Color.lock.textError : Color.lock.placeholder))
         font.family: Style.font.family
         font.pixelSize: root.fieldFontSize
         font.italic: !root.authenticatingPassword && root.failureMessage.length > 0
@@ -212,19 +220,12 @@ Item {
           objectName: "faceIndicator"
           visible: root.facePamConfigured
           text: "󰄀"
-          color: root.faceAuthenticating ? Color.lock.text : Color.lock.placeholder
-          opacity: root.faceAuthenticating ? 1.0 : 0.4
+          color: root.faceAuthenticating ? (Color.accent || Color.lock.text) : Color.lock.placeholder
+          opacity: root.faceAuthenticating ? root.facePulseOpacity : 0.6
           font.family: Style.font.family
           font.pixelSize: Math.round(root.fieldFontSize * 1.1)
           horizontalAlignment: Text.AlignHCenter
           verticalAlignment: Text.AlignVCenter
-
-          SequentialAnimation on opacity {
-            running: root.faceAuthenticating
-            loops: Animation.Infinite
-            NumberAnimation { from: 0.4; to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
-            NumberAnimation { from: 1.0; to: 0.4; duration: 600; easing.type: Easing.InOutQuad }
-          }
         }
 
         Text {
