@@ -8,6 +8,11 @@ BarWidget {
   id: root
   moduleName: "omarchy.workspaces"
 
+  readonly property int count: {
+    var raw = Number(setting("count", 5))
+    return isNaN(raw) ? 5 : Math.max(1, Math.min(10, Math.floor(raw)))
+  }
+
   function workspaceById(id) {
     var values = Hyprland.workspaces.values
     for (var i = 0; i < values.length; i++) {
@@ -18,7 +23,9 @@ BarWidget {
   }
 
   function workspaceIds() {
-    var ids = [1, 2, 3, 4, 5]
+    var ids = []
+    for (var n = 1; n <= root.count; n++) ids.push(n)
+
     var values = Hyprland.workspaces.values
 
     for (var i = 0; i < values.length; i++) {
