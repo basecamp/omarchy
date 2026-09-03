@@ -59,22 +59,44 @@ assert len(module.article_text("x" * (module.MAX_ARTICLE_CHARS + 1))) == module.
 assert module.canonical_news_url("http://omarchy.org/news/no") == ""
 assert module.canonical_news_url("https://omarchy.org/not-news/no") == ""
 
-bbc_xml = b'''<?xml version="1.0"?><rss version="2.0"><channel><item>
-  <title>BBC headline</title>
-  <link>https://www.bbc.com/news/articles/example</link>
-  <guid>https://www.bbc.com/news/articles/example?at_medium=RSS</guid>
+ars_xml = b'''<?xml version="1.0"?><rss version="2.0"><channel><item>
+  <title>Ars headline</title>
+  <link>https://arstechnica.com/gadgets/2026/09/example/</link>
+  <guid>https://arstechnica.com/gadgets/2026/09/example/?utm_source=rss</guid>
   <description>A publisher-provided summary.</description>
 </item><item><title>Wrong publisher</title><link>https://example.com/news/no</link></item></channel></rss>'''
-bbc_items = module.parse_feed(bbc_xml, module.SOURCE_CATALOG["bbc-news"])
-assert len(bbc_items) == 1, bbc_items
-assert bbc_items[0]["sourceId"] == "bbc-news"
-assert bbc_items[0]["sourceName"] == "BBC News"
-assert bbc_items[0]["id"] == "bbc-news:https://www.bbc.com/news/articles/example"
-assert module.source_article_url("https://news.bbc.co.uk/story", module.SOURCE_CATALOG["bbc-news"])
-assert module.source_article_url("https://notbbc.co.uk/story", module.SOURCE_CATALOG["bbc-news"]) == ""
-assert module.source_article_url("https://attacker@bbc.com/story", module.SOURCE_CATALOG["bbc-news"]) == ""
-assert module.source_article_url("https://bbc.com:444/story", module.SOURCE_CATALOG["bbc-news"]) == ""
-assert [source["id"] for source in module.selected_sources("bbc-news,unknown,bbc-news")] == ["omarchy", "bbc-news"]
+ars_items = module.parse_feed(ars_xml, module.SOURCE_CATALOG["ars-technica"])
+assert len(ars_items) == 1, ars_items
+assert ars_items[0]["sourceId"] == "ars-technica"
+assert ars_items[0]["sourceName"] == "Ars Technica"
+assert ars_items[0]["id"] == "ars-technica:https://arstechnica.com/gadgets/2026/09/example/"
+assert module.source_article_url("https://www.arstechnica.com/story", module.SOURCE_CATALOG["ars-technica"])
+assert module.source_article_url("https://notarstechnica.com/story", module.SOURCE_CATALOG["ars-technica"]) == ""
+assert module.source_article_url("https://attacker@arstechnica.com/story", module.SOURCE_CATALOG["ars-technica"]) == ""
+assert module.source_article_url("https://arstechnica.com:444/story", module.SOURCE_CATALOG["ars-technica"]) == ""
+
+hn_source = module.SOURCE_CATALOG["hacker-news"]
+assert module.source_article_url("https://example.com/story?id=42#section", hn_source) == "https://example.com/story?id=42"
+assert module.source_article_url("http://example.com:80/story", hn_source) == "http://example.com/story"
+assert module.source_article_url("https://attacker@example.com/story", hn_source) == ""
+assert module.source_article_url("file:///tmp/story", hn_source) == ""
+assert [source["id"] for source in module.selected_sources("ars-technica,unknown,ars-technica")] == ["omarchy", "ars-technica"]
+assert tuple(source_id for source_id in module.TECH_FEED_IDS) == (
+    "hacker-news", "ars-technica", "techcrunch", "the-verge", "wired",
+    "phoronix", "its-foss", "openai-news", "hugging-face", "mit-ai",
+)
+assert [module.SOURCE_CATALOG[source_id]["url"] for source_id in module.TECH_FEED_IDS] == [
+    "https://news.ycombinator.com/rss",
+    "https://feeds.arstechnica.com/arstechnica/index",
+    "https://techcrunch.com/feed/",
+    "https://www.theverge.com/rss/index.xml",
+    "https://www.wired.com/feed/rss",
+    "https://www.phoronix.com/rss.php",
+    "https://itsfoss.com/rss/",
+    "https://openai.com/news/rss.xml",
+    "https://huggingface.co/blog/feed.xml",
+    "https://news.mit.edu/rss/topic/artificial-intelligence2",
+]
 assert module.published_key({"published": "not a date"}) == 0.0
 
 original_fetch = module.fetch
@@ -85,13 +107,13 @@ module.atomic_write = lambda path, data: None
 module.cached_result = lambda source, error: None
 output = io.StringIO()
 with redirect_stdout(output):
-    assert module.main(["--sources", "bbc-news"]) == 0
+    assert module.main(["--sources", "ars-technica"]) == 0
 partial_result = json.loads(output.getvalue())
 assert partial_result["partial"] is True
 assert len(partial_result["items"]) == 1
 assert partial_result["sources"][0]["id"] == "omarchy"
 assert partial_result["sources"][0]["error"] == ""
-assert partial_result["sources"][1]["id"] == "bbc-news"
+assert partial_result["sources"][1]["id"] == "ars-technica"
 assert partial_result["sources"][1]["error"] == "offline"
 module.fetch = original_fetch
 module.atomic_write = original_atomic_write
@@ -109,7 +131,7 @@ jq -e '
   .entryPoints.service == "Service.qml" and
   .entryPoints.barWidget == "BarWidget.qml" and
   .barWidget.defaultSection == "right" and
-  (.barWidget.schema | map(select(.key == "publisherFeeds" and .type == "enum")) | length) == 1
+  (.barWidget.schema | map(select(.key == "feedPack" and .type == "enum")) | length) == 1
 ' "$ROOT/shell/plugins/panels/news/manifest.json" >/dev/null || fail "news plugin manifest pairs the bar widget with a desktop reader"
 
 grep -qF 'implicitWidth: 1040' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
@@ -139,8 +161,10 @@ grep -qF 'urllib.request.ProxyHandler({})' "$ROOT/shell/plugins/panels/news/fetc
   fail "news fetcher ignores inherited proxy redirection"
 grep -qF 'SYSTEM_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "news fetcher pins the system CA bundle"
-grep -qF '"https://feeds.bbci.co.uk/news/rss.xml"' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
-  fail "news fetcher includes the curated BBC News source"
+grep -qF '"https://news.ycombinator.com/rss"' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
+  fail "news fetcher includes the ranked tech feed pack"
+! grep -qF 'bbc' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
+  fail "news fetcher does not promote BBC into the initial tech feed pack"
 
 pass "news feed parser accepts canonical items from curated sources"
 pass "news plugin manifest pairs the bar widget with a multi-source desktop reader"

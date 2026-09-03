@@ -71,6 +71,12 @@ Item {
 
   function selectSource(sourceId) {
     selectedSourceId = String(sourceId || "all")
+    for (var i = 0; i < sourceFilters.length; i++) {
+      if (String(sourceFilters[i].id || "") === selectedSourceId) {
+        sourceRail.positionViewAtIndex(i, ListView.Contain)
+        break
+      }
+    }
     selectedIndex = 0
     currentArticle = articles.length > 0 ? articles[0] : null
     headlineList.positionViewAtBeginning()
@@ -102,10 +108,13 @@ Item {
 
   function statusLabel() {
     if (!news) return "LOADING NEWS SERVICE"
-    if (news.refreshing && news.items.length === 0) return "CHECKING FOR ANNOUNCEMENTS"
+    if (news.refreshing && news.items.length === 0) return "CHECKING FOR NEWS"
     if (news.partial) return "SOME SOURCES COULD NOT REFRESH"
     if (news.stale) return "OFFLINE · SHOWING LAST UPDATE"
-    if (news.unreadCount > 0) return news.unreadCount + (news.unreadCount === 1 ? " UNREAD ANNOUNCEMENT" : " UNREAD ANNOUNCEMENTS")
+    if (news.unreadCount > 0) {
+      if (news.sources.length > 1) return news.unreadCount + (news.unreadCount === 1 ? " UNREAD STORY" : " UNREAD STORIES")
+      return news.unreadCount + (news.unreadCount === 1 ? " UNREAD ANNOUNCEMENT" : " UNREAD ANNOUNCEMENTS")
+    }
     if (news.sources.length > 1) return news.sources.length + " NEWS SOURCES"
     return "OFFICIAL OMARCHY NEWS"
   }

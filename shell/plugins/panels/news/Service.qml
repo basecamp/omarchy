@@ -23,14 +23,14 @@ Item {
   readonly property string statePath: stateDir + "/read.json"
   readonly property int refreshIntervalMin: intSetting("refreshIntervalMin", 15, 5, 120)
   readonly property int itemLimit: intSetting("itemLimit", 10, 5, 20)
-  readonly property string publisherFeeds: String(setting("publisherFeeds", "Omarchy only"))
-  readonly property var enabledSourceIds: publisherFeeds === "Omarchy + BBC News"
-    ? ["omarchy", "bbc-news"]
+  readonly property string feedPack: String(setting("feedPack", "Omarchy only"))
+  readonly property var enabledSourceIds: feedPack === "Omarchy + Tech top 10"
+    ? ["omarchy", "hacker-news", "ars-technica", "techcrunch", "the-verge", "wired", "phoronix", "its-foss", "openai-news", "hugging-face", "mit-ai"]
     : ["omarchy"]
   readonly property var visibleItems: items.slice(0, itemLimit)
   readonly property int unreadCount: countUnread()
 
-  onPublisherFeedsChanged: if (stateLoaded) refresh()
+  onFeedPackChanged: if (stateLoaded) refresh()
 
   property string _stdout: ""
   property string _stderr: ""

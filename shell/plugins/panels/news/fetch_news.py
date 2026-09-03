@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import ssl
@@ -32,14 +33,91 @@ SOURCE_CATALOG = {
         "article_hosts": ("omarchy.org",),
         "article_path_prefix": "/news/",
     },
-    "bbc-news": {
-        "id": "bbc-news",
-        "name": "BBC News",
-        "url": "https://feeds.bbci.co.uk/news/rss.xml",
-        "article_hosts": ("bbc.co.uk", "bbc.com"),
+    "hacker-news": {
+        "id": "hacker-news",
+        "name": "Hacker News",
+        "url": "https://news.ycombinator.com/rss",
+        "article_hosts": (),
+        "allow_external_articles": True,
+        "article_path_prefix": "/",
+    },
+    "ars-technica": {
+        "id": "ars-technica",
+        "name": "Ars Technica",
+        "url": "https://feeds.arstechnica.com/arstechnica/index",
+        "article_hosts": ("arstechnica.com",),
+        "article_path_prefix": "/",
+    },
+    "techcrunch": {
+        "id": "techcrunch",
+        "name": "TechCrunch",
+        "url": "https://techcrunch.com/feed/",
+        "article_hosts": ("techcrunch.com",),
+        "article_path_prefix": "/",
+    },
+    "the-verge": {
+        "id": "the-verge",
+        "name": "The Verge",
+        "url": "https://www.theverge.com/rss/index.xml",
+        "article_hosts": ("theverge.com",),
+        "article_path_prefix": "/",
+    },
+    "wired": {
+        "id": "wired",
+        "name": "WIRED",
+        "url": "https://www.wired.com/feed/rss",
+        "article_hosts": ("wired.com",),
+        "article_path_prefix": "/",
+    },
+    "phoronix": {
+        "id": "phoronix",
+        "name": "Phoronix",
+        "url": "https://www.phoronix.com/rss.php",
+        "article_hosts": ("phoronix.com",),
+        "article_path_prefix": "/",
+    },
+    "its-foss": {
+        "id": "its-foss",
+        "name": "It's FOSS",
+        "url": "https://itsfoss.com/rss/",
+        "article_hosts": ("itsfoss.com",),
+        "article_path_prefix": "/",
+    },
+    "openai-news": {
+        "id": "openai-news",
+        "name": "OpenAI News",
+        "url": "https://openai.com/news/rss.xml",
+        "article_hosts": ("openai.com",),
+        "article_path_prefix": "/",
+    },
+    "hugging-face": {
+        "id": "hugging-face",
+        "name": "Hugging Face",
+        "url": "https://huggingface.co/blog/feed.xml",
+        "article_hosts": ("huggingface.co",),
+        "article_path_prefix": "/blog/",
+    },
+    "mit-ai": {
+        "id": "mit-ai",
+        "name": "MIT News: AI",
+        "url": "https://news.mit.edu/rss/topic/artificial-intelligence2",
+        "article_hosts": ("news.mit.edu",),
         "article_path_prefix": "/",
     },
 }
+
+TECH_FEED_IDS = (
+    "hacker-news",
+    "ars-technica",
+    "techcrunch",
+    "the-verge",
+    "wired",
+    "phoronix",
+    "its-foss",
+    "openai-news",
+    "hugging-face",
+    "mit-ai",
+)
 
 
 class ArticleTextParser(HTMLParser):
@@ -184,18 +262,24 @@ def source_article_url(value: str | None, source: dict[str, object]) -> str:
     url = clean_text(value, 2048)
     parsed = urlparse(url)
     host = (parsed.hostname or "").lower()
+    allow_external = source.get("allow_external_articles") is True
     allowed_hosts = tuple(str(host) for host in source["article_hosts"])
-    if parsed.scheme != "https" or not host_matches(host, allowed_hosts):
+    allowed_schemes = {"http", "https"} if allow_external else {"https"}
+    if parsed.scheme not in allowed_schemes or not host:
+        return ""
+    if not allow_external and not host_matches(host, allowed_hosts):
         return ""
     try:
         port = parsed.port
     except ValueError:
         return ""
-    if parsed.username or parsed.password or port not in (None, 443):
+    default_port = 80 if parsed.scheme == "http" else 443
+    if parsed.username or parsed.password or port not in (None, default_port):
         return ""
     if not parsed.path.startswith(str(source["article_path_prefix"])):
         return ""
-    return parsed._replace(netloc=host, params="", query="", fragment="").geturl()
+    query = parsed.query if allow_external else ""
+    return parsed._replace(netloc=host, params="", query=query, fragment="").geturl()
 
 
 def canonical_news_url(value: str | None) -> str:
@@ -321,6 +405,36 @@ def published_key(item: dict[str, str]) -> float:
         return 0.0
 
 
+def load_source(
+    source: dict[str, object], fetched_at: str
+) -> tuple[list[dict[str, str]], dict[str, object], str]:
+    error = ""
+    stale = False
+    try:
+        source_items = parse_feed(fetch(source), source)
+        atomic_write(
+            cache_path(str(source["id"])),
+            {"fetchedAt": fetched_at, "items": source_items},
+        )
+    except (OSError, ValueError, ET.ParseError) as exc:
+        error = clean_text(str(exc), 180)
+        cached = cached_result(source, error)
+        source_items = [] if cached is None else [
+            item for item in cached["items"] if isinstance(item, dict)
+        ]
+        stale = cached is not None
+
+    state: dict[str, object] = {
+        "id": source["id"],
+        "name": source["name"],
+        "url": source["url"],
+        "stale": stale,
+        "error": error,
+        "itemCount": len(source_items),
+    }
+    return source_items, state, error
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sources", default="omarchy")
@@ -331,33 +445,14 @@ def main(argv: list[str] | None = None) -> int:
     errors: list[str] = []
     fetched_at = datetime.now(timezone.utc).isoformat()
 
-    for source in selected_sources(args.sources):
-        error = ""
-        stale = False
-        try:
-            source_items = parse_feed(fetch(source), source)
-            atomic_write(
-                cache_path(str(source["id"])),
-                {"fetchedAt": fetched_at, "items": source_items},
-            )
-        except (OSError, ValueError, ET.ParseError) as exc:
-            error = clean_text(str(exc), 180)
-            cached = cached_result(source, error)
-            source_items = [] if cached is None else list(cached["items"])
-            stale = cached is not None
-            errors.append(f'{source["name"]}: {error}')
-
-        items.extend(item for item in source_items if isinstance(item, dict))
-        source_states.append(
-            {
-                "id": source["id"],
-                "name": source["name"],
-                "url": source["url"],
-                "stale": stale,
-                "error": error,
-                "itemCount": len(source_items),
-            }
-        )
+    sources = selected_sources(args.sources)
+    with ThreadPoolExecutor(max_workers=min(4, len(sources))) as executor:
+        loaded_sources = executor.map(lambda source: load_source(source, fetched_at), sources)
+        for source, (source_items, state, error) in zip(sources, loaded_sources):
+            items.extend(source_items)
+            source_states.append(state)
+            if error:
+                errors.append(f'{source["name"]}: {error}')
 
     if not items and errors:
         print(clean_text("; ".join(errors), 180), file=sys.stderr)

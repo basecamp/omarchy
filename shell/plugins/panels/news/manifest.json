@@ -26,7 +26,7 @@
     "defaults": {
       "refreshIntervalMin": 15,
       "itemLimit": 10,
-      "publisherFeeds": "Omarchy only"
+      "feedPack": "Omarchy only"
     },
     "schema": [
       {
@@ -48,15 +48,15 @@
         "defaultValue": 10
       },
       {
-        "key": "publisherFeeds",
+        "key": "feedPack",
         "type": "enum",
-        "label": "News sources",
+        "label": "Feed pack",
         "options": [
           "Omarchy only",
-          "Omarchy + BBC News"
+          "Omarchy + Tech top 10"
         ],
         "defaultValue": "Omarchy only",
-        "description": "Add the curated BBC News RSS feed alongside official Omarchy announcements."
+        "description": "Add Hacker News, Ars Technica, TechCrunch, The Verge, WIRED, Phoronix, It's FOSS, OpenAI News, Hugging Face and MIT News: AI."
       }
     ]
   }
