@@ -74,9 +74,9 @@ fi
 mkdir -p "$(dirname "$agent_file")"
 printf '%s\n' "$agent" >"$agent_file"
 
-if [[ $installing == "true" ]]; then
-  printf '\033[2J\033[3J\033[H'
-  exec omarchy-agent --inline
-else
-  exec omarchy-agent
-fi
+# The installation terminal is a floating one-off under org.omarchy.terminal,
+# so opening the agent inline there left the first session fixed at 875x600
+# under an app-id the agent window rules never match. Handing off to the
+# normal launch replaces it with the same tiled org.omarchy.agent window
+# every later launch gets.
+exec omarchy-agent

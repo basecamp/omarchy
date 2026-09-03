@@ -359,12 +359,12 @@ mapfile -d '' -t mise_args <"$mise_log"
   fail "visible agent installation activates the provider globally through mise"
 [[ $(omarchy-default-agent) == "copilot" ]] || fail "visible agent installation changes the selection after mise succeeds"
 [[ ! -s $notification_history ]] || fail "visible agent installation leaves progress to the terminal"
-[[ $(<"$test_tmp/install-output") == $'\033[2J\033[3J\033[H' ]] ||
-  fail "visible agent installation clears its terminal before opening the agent"
+[[ ! -s $test_tmp/install-output ]] ||
+  fail "visible agent installation leaves its terminal for the normal launch to replace"
 mapfile -d '' -t agent_open_args <"$agent_open_log"
-[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
-  fail "newly installed agent opens in the installation terminal"
-pass "missing agents install visibly and open in the same terminal"
+[[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
+  fail "newly installed agent opens through the normal launch"
+pass "missing agents install visibly and open like every later launch"
 
 : >"$notification_history"
 : >"$agent_open_log"
