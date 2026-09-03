@@ -24,6 +24,7 @@ cat >"$wrapper_bin/qs" <<'SH'
 #!/bin/bash
 
 [[ -n ${OMARCHY_TEST_QS_ARGS:-} ]] && printf '%s\n' "$*" >"$OMARCHY_TEST_QS_ARGS"
+[[ -n ${OMARCHY_TEST_QS_ARGV:-} ]] && printf '%s\n' "$@" >"$OMARCHY_TEST_QS_ARGV"
 
 if [[ ${OMARCHY_TEST_QS_HANG:-0} == 1 ]]; then
   sleep 5
@@ -66,6 +67,21 @@ OMARCHY_TEST_QS_ARGS="$wrapper_args" \
 
 grep -F -- 'ipc -n -p' "$wrapper_args" >/dev/null || fail "shell IPC targets the newest live Quickshell instance"
 pass "shell IPC targets the newest live Quickshell instance"
+
+wrapper_argv="$test_tmp/wrapper-argv"
+PATH="$wrapper_bin:$PATH" \
+OMARCHY_PATH="$wrapper_root" \
+OMARCHY_TEST_QS_ARGV="$wrapper_argv" \
+  "$ROOT/bin/omarchy-shell" shell setBarWidget omarchy.tray hidden '[]' '{}' >/dev/null
+
+mapfile -t qs_argv <"$wrapper_argv"
+expected_qs_argv=(ipc -n -p "$wrapper_root/shell" call -- shell setBarWidget omarchy.tray hidden "[[]]" "{}")
+(( ${#qs_argv[@]} == ${#expected_qs_argv[@]} )) || fail "shell IPC records the full Quickshell argument vector"
+for index in "${!expected_qs_argv[@]}"; do
+  [[ ${qs_argv[$index]} == "${expected_qs_argv[$index]}" ]] ||
+    fail "shell IPC preserves the exact Quickshell argument vector" "argument $index: ${qs_argv[$index]}"
+done
+pass "shell IPC transports empty arrays without dropping an argument"
 
 restart_root="$test_tmp/restart-root"
 restart_bin="$restart_root/bin"

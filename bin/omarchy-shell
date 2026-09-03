@@ -55,8 +55,18 @@ fi
 # The -- keeps function names that shadow qs subcommands (e.g. show) as
 # positionals. qs reports connection failures with a nonzero exit, but IPC-level
 # failures (unknown target/function, bad arguments) go to stdout with exit 0.
+# CLI11 drops a standalone [] as an empty variadic argument list. Its [[]]
+# escape transports the intended empty JSON array as one positional argument.
+ipc_args=()
+for arg in "$@"; do
+  if [[ $arg == "[]" ]]; then
+    arg="[[]]"
+  fi
+  ipc_args+=("$arg")
+done
+
 ipc_timeout=${OMARCHY_SHELL_IPC_TIMEOUT:-2s}
-output=$(timeout --kill-after=1s "$ipc_timeout" qs ipc -n -p "$OMARCHY_PATH/shell" call -- "$@" 2>/dev/null)
+output=$(timeout --kill-after=1s "$ipc_timeout" qs ipc -n -p "$OMARCHY_PATH/shell" call -- "${ipc_args[@]}" 2>/dev/null)
 ipc_status=$?
 
 if (( ipc_status == 124 || ipc_status == 137 )); then
