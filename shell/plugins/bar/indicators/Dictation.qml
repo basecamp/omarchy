@@ -8,7 +8,9 @@ BarIndicator {
   property string state: "idle"
   property string icon: ""
 
-  active: state === "recording"
+  // Keep the indicator in the always-visible active block while voxtype is
+  // either recording or still transcribing (#9675).
+  active: state === "recording" || state === "transcribing"
   activeText: icon
   inactiveText: "󰍬"
   activeTooltipText: state
