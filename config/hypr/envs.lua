@@ -1,0 +1,5 @@
+-- Personal environment overrides.
+-- Loaded after Omarchy's default.hypr.envs (including nvidia.lua), so these hl.env() calls win.
+--
+-- Example (hybrid laptop, decode on the iGPU):
+-- hl.env("LIBVA_DRIVER_NAME", "iHD")

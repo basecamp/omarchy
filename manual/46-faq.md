@@ -16,6 +16,16 @@ hl.config({
 
 The bar will automatically show your current keyboard layout once you have multiple layouts configured (and you can click it to switch too).
 
+### How do I override environment variables Omarchy sets for Hyprland?
+
+Files under `~/.config/uwsm/env.d/` are exported before Hyprland starts, so they cannot override values Omarchy later sets with `hl.env` — including `LIBVA_DRIVER_NAME` on NVIDIA. Put those in `~/.config/hypr/envs.lua`:
+
+```
+hl.env("LIBVA_DRIVER_NAME", "iHD")
+```
+
+The file is optional and is loaded after Omarchy's hardware defaults. Start a new session after changing it; `hyprctl reload` does not rewrite the environment of processes that are already running.
+
 ### How do I change the clock format to 12-hour?
 
 Right-click the clock in the bar to cycle through the common formats, including the 12-hour ones. You can also set the format directly:
