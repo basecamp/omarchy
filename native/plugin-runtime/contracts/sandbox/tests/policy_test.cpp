@@ -111,6 +111,13 @@ void verify_mounts(const SandboxPlan &plan, std::string_view worker) {
   require(qml_bind_count ==
               omarchy::plugin_runtime::sandbox::trusted_qml_files().size(),
           "certified QML bind set is incomplete or contains extras");
+  require(omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+              "QtQuick.Layouts") &&
+              omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+                  "QtQuick.Effects") &&
+              !omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+                  "Quickshell"),
+          "authority-free Qt module or ambient Quickshell classification drifted");
   require(std::ranges::none_of(plan.argv, [](const std::string &argument) {
             return argument.find("QtQuick/Controls") != std::string::npos;
           }),

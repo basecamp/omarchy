@@ -1581,6 +1581,60 @@ void trusted_shapes_load_after_steady_state() {
           "certified system QtQuick.Shapes did not defeat plugin shadowing");
 }
 
+void trusted_layouts_load_after_steady_state() {
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "trusted Layouts seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("trusted-layouts"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    if (!prepared)
+      _exit(23);
+    std::string error;
+    if (!worker::install_steady_state_seccomp(error))
+      _exit(24);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded)
+      static_cast<void>(write(STDERR_FILENO, loaded.detail.data(),
+                              loaded.detail.size()));
+    _exit(loaded && runtime.loaded() &&
+                  runtime.root_object_name() == "trusted-layouts"
+              ? 0
+              : 25);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "certified system QtQuick.Layouts did not defeat plugin shadowing");
+}
+
+void trusted_effects_load_after_steady_state() {
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "trusted Effects seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("trusted-effects"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    if (!prepared)
+      _exit(26);
+    std::string error;
+    if (!worker::install_steady_state_seccomp(error))
+      _exit(27);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded)
+      static_cast<void>(write(STDERR_FILENO, loaded.detail.data(),
+                              loaded.detail.size()));
+    _exit(loaded && runtime.loaded() &&
+                  runtime.root_object_name() == "trusted-effects"
+              ? 0
+              : 28);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "certified system QtQuick.Effects did not defeat plugin shadowing");
+}
+
 void dynamic_module_resolution_stays_certified() {
   const pid_t unrestricted = fork();
   require(unrestricted >= 0, "dynamic module positive-control fork failed");
@@ -1652,6 +1706,58 @@ void dynamic_certified_shapes_succeeds() {
           "runtime-created certified QtQuick.Shapes module failed");
 }
 
+void dynamic_certified_layouts_succeeds() {
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "dynamic Layouts seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("dynamic-layouts"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    std::string error;
+    if (!prepared || !worker::install_steady_state_seccomp(error))
+      _exit(42);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded || runtime.root_object_name() != "layouts-loaded") {
+      const auto detail = std::string("dynamic Layouts marker=") +
+                          runtime.root_object_name() + " objects=" +
+                          std::to_string(runtime.object_count()) + " " +
+                          loaded.detail + "\n";
+      static_cast<void>(write(STDERR_FILENO, detail.data(), detail.size()));
+    }
+    _exit(loaded && runtime.root_object_name() == "layouts-loaded" ? 0 : 43);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "runtime-created certified QtQuick.Layouts module failed");
+}
+
+void dynamic_certified_effects_succeeds() {
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "dynamic Effects seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("dynamic-effects"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    std::string error;
+    if (!prepared || !worker::install_steady_state_seccomp(error))
+      _exit(44);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded || runtime.root_object_name() != "effects-loaded") {
+      const auto detail = std::string("dynamic Effects marker=") +
+                          runtime.root_object_name() + " objects=" +
+                          std::to_string(runtime.object_count()) + " " +
+                          loaded.detail + "\n";
+      static_cast<void>(write(STDERR_FILENO, detail.data(), detail.size()));
+    }
+    _exit(loaded && runtime.root_object_name() == "effects-loaded" ? 0 : 45);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "runtime-created certified QtQuick.Effects module failed");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -1687,8 +1793,12 @@ int main(int argc, char **argv) {
     bounded_image_decoding();
     steady_state_denies_exec();
     trusted_shapes_load_after_steady_state();
+    trusted_layouts_load_after_steady_state();
+    trusted_effects_load_after_steady_state();
     dynamic_module_resolution_stays_certified();
     dynamic_certified_shapes_succeeds();
+    dynamic_certified_layouts_succeeds();
+    dynamic_certified_effects_succeeds();
     std::cout << "plugin worker runtime: ok\n";
     return 0;
   } catch (const std::exception &error) {

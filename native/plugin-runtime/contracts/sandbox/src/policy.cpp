@@ -26,6 +26,10 @@ constexpr std::array quick_files{"libqtquick2plugin.so"sv,
                                  "plugins.qmltypes"sv, "qmldir"sv};
 constexpr std::array shapes_files{"libqmlshapesplugin.so"sv,
                                   "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array layouts_files{"libqquicklayoutsplugin.so"sv,
+                                   "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array effects_files{"libeffectsplugin.so"sv,
+                                   "plugins.qmltypes"sv, "qmldir"sv};
 
 constexpr std::array qml_trees{
     TrustedQmlResourceTree{"QtQml", qml_files, false},
@@ -36,6 +40,10 @@ constexpr std::array quick_trees{
     TrustedQmlResourceTree{"QtQuick", quick_files, false}};
 constexpr std::array shapes_trees{
     TrustedQmlResourceTree{"QtQuick/Shapes", shapes_files, true}};
+constexpr std::array layouts_trees{
+    TrustedQmlResourceTree{"QtQuick/Layouts", layouts_files, false}};
+constexpr std::array effects_trees{
+    TrustedQmlResourceTree{"QtQuick/Effects", effects_files, false}};
 
 constexpr std::array qt_qml_modules{
     TrustedQmlModule{"QtQml", R"(
@@ -54,6 +62,18 @@ constexpr std::array qt_qml_modules{
       Shape { ShapePath { PathSvg { path: "M 0 0 L 1 1" } } }
     )",
                      shapes_trees},
+    TrustedQmlModule{"QtQuick.Layouts", R"(
+      import QtQuick
+      import QtQuick.Layouts
+      RowLayout { Rectangle { Layout.preferredWidth: 1 } }
+    )",
+                     layouts_trees},
+    TrustedQmlModule{"QtQuick.Effects", R"(
+      import QtQuick
+      import QtQuick.Effects
+      MultiEffect { source: Rectangle { width: 1; height: 1 } }
+    )",
+                     effects_trees},
 };
 
 const std::vector<std::string> qt_qml_files = [] {
