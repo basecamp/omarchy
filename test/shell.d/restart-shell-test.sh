@@ -131,6 +131,10 @@ SH
 cat >"$restart_bin/hyprctl" <<'SH'
 #!/bin/bash
 
+# Record the instance signature each call sees so stale-env coverage can prove
+# the restart re-bound to the live compositor before dispatching.
+printf '%s\n' "${HYPRLAND_INSTANCE_SIGNATURE:-}" >>"$OMARCHY_TEST_HYPR_SIG_LOG"
+
 if [[ ${1:-} == "-j" && ${2:-} == "monitors" ]]; then
   # Hyprland reports an active session lock as a reason the monitor cannot hand
   # a client the whole screen, not as a workspace.
@@ -140,6 +144,12 @@ if [[ ${1:-} == "-j" && ${2:-} == "monitors" ]]; then
     printf '[{"name":"eDP-1","solitaryBlockedBy":["WINDOWED","CANDIDATE"]}]\n'
   fi
 elif [[ ${1:-} == "dispatch" && ${2:-} == hl.dsp.exec_cmd* ]]; then
+  # A dead socket must not silently succeed the way a discarded stderr would.
+  if [[ -n ${OMARCHY_TEST_LIVE_SIGNATURE:-} && ${HYPRLAND_INSTANCE_SIGNATURE:-} != "$OMARCHY_TEST_LIVE_SIGNATURE" ]]; then
+    printf "Couldn't connect to %s/hypr/%s/.socket.sock. (4)\n" \
+      "${XDG_RUNTIME_DIR:-}" "${HYPRLAND_INSTANCE_SIGNATURE:-}" >&2
+    exit 1
+  fi
   printf '%s\n' "${2:-}" >>"$OMARCHY_TEST_DISPATCH_LOG"
   OMARCHY_PATH="$OMARCHY_TEST_SESSION_PATH" \
     env -u OMARCHY_TEST_TRANSIENT_ENV omarchy-launch-shell
@@ -148,7 +158,6 @@ elif [[ ${1:-} == "dispatch" ]]; then
   exit 1
 fi
 SH
-
 # Keep the test hermetic where journald has no usable stream socket.
 cat >"$restart_bin/systemd-cat" <<'SH'
 #!/bin/bash
@@ -165,6 +174,13 @@ cat >"$restart_bin/systemctl" <<'SH'
 
 if [[ ${1:-} == "--user" && ${2:-} == "show-environment" ]]; then
   printf 'OMARCHY_PATH=%s\n' "$OMARCHY_TEST_SESSION_PATH"
+  # Empty means "session env has no signature"; the restart must fall through.
+  if [[ -n ${OMARCHY_TEST_SESSION_HYPR_SIGNATURE+x} ]]; then
+    [[ -n $OMARCHY_TEST_SESSION_HYPR_SIGNATURE ]] &&
+      printf 'HYPRLAND_INSTANCE_SIGNATURE=%s\n' "$OMARCHY_TEST_SESSION_HYPR_SIGNATURE"
+  else
+    printf 'HYPRLAND_INSTANCE_SIGNATURE=%s\n' "${OMARCHY_TEST_LIVE_SIGNATURE:-live-signature}"
+  fi
 elif [[ ${1:-} == "--user" && ${2:-} == "try-restart" ]]; then
   exit 0
 else
@@ -174,6 +190,23 @@ SH
 
 chmod +x "$restart_bin/qs" "$restart_bin/quickshell" "$restart_bin/hyprctl" "$restart_bin/systemd-cat" "$restart_bin/systemctl"
 
+# Bind a live Hyprland IPC socket under the test runtime. A plain file fails the
+# -S check the restart uses to reject stale signatures.
+hypr_sig_log="$test_tmp/hypr-sig.log"
+live_signature=live-signature
+stale_signature=stale-signature
+live_hypr_dir="$runtime_dir/hypr/$live_signature"
+stale_hypr_dir="$runtime_dir/hypr/$stale_signature"
+mkdir -p "$live_hypr_dir" "$stale_hypr_dir"
+: >"$hypr_sig_log"
+
+if command -v python3 >/dev/null; then
+  python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' \
+    "$live_hypr_dir/.socket.sock" 2>/dev/null ||
+    fail "test fixture can bind a live Hyprland IPC socket"
+else
+  fail "python3 is required to build the live Hyprland socket fixture"
+fi
 sleep 30 &
 restart_pid_one=$!
 sleep 30 &
@@ -184,9 +217,13 @@ caller_root="$test_tmp/caller-root"
 mkdir -p "$caller_root/shell"
 touch "$caller_root/shell/shell.qml"
 
+: >"$hypr_sig_log"
 PATH="$restart_bin:$PATH" \
 OMARCHY_PATH="$caller_root" \
 XDG_RUNTIME_DIR="$runtime_dir" \
+HYPRLAND_INSTANCE_SIGNATURE="$live_signature" \
+OMARCHY_TEST_LIVE_SIGNATURE="$live_signature" \
+OMARCHY_TEST_HYPR_SIG_LOG="$hypr_sig_log" \
 OMARCHY_TEST_QS_STATE="$restart_state" \
 OMARCHY_TEST_QS_LOG="$restart_log" \
 OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
@@ -221,6 +258,9 @@ touch "$restart_state.locked"
 locked_error=$(PATH="$restart_bin:$PATH" \
   OMARCHY_PATH="$restart_root" \
   XDG_RUNTIME_DIR="$runtime_dir" \
+  HYPRLAND_INSTANCE_SIGNATURE="$live_signature" \
+  OMARCHY_TEST_LIVE_SIGNATURE="$live_signature" \
+  OMARCHY_TEST_HYPR_SIG_LOG="$hypr_sig_log" \
   OMARCHY_TEST_SESSION_LOCKED=1 \
   OMARCHY_TEST_QS_STATE="$restart_state" \
   OMARCHY_TEST_QS_LOG="$restart_log" \
@@ -228,7 +268,6 @@ locked_error=$(PATH="$restart_bin:$PATH" \
   OMARCHY_TEST_IPC_LOG="$ipc_log" \
   OMARCHY_TEST_SESSION_PATH="$restart_root" \
   "$ROOT/bin/omarchy-restart-shell" 2>&1) && fail "restart refuses while the shell lock is active"
-
 [[ $locked_error == "Refusing to restart Omarchy shell while the session is locked." ]] || fail "locked restart explains why it was refused" "$locked_error"
 [[ $(<"$restart_state") == 303 ]] || fail "locked restart preserves the running shell"
 [[ ! -s $restart_log ]] || fail "locked restart does not stop or launch Quickshell"
@@ -247,6 +286,9 @@ rm -f "$restart_state.locked"
 PATH="$restart_bin:$PATH" \
 OMARCHY_PATH="$restart_root" \
 XDG_RUNTIME_DIR="$runtime_dir" \
+HYPRLAND_INSTANCE_SIGNATURE="$live_signature" \
+OMARCHY_TEST_LIVE_SIGNATURE="$live_signature" \
+OMARCHY_TEST_HYPR_SIG_LOG="$hypr_sig_log" \
 OMARCHY_TEST_SESSION_LOCKED=1 \
 OMARCHY_TEST_QS_STATE="$restart_state" \
 OMARCHY_TEST_QS_LOG="$restart_log" \
@@ -255,7 +297,6 @@ OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
 OMARCHY_TEST_IPC_LOG="$ipc_log" \
 OMARCHY_TEST_SESSION_PATH="$restart_root" \
   timeout 5 "$ROOT/bin/omarchy-restart-shell" || fail "locked restart recovers when the lock client is dead"
-
 if kill -0 "$restart_pid_one" 2>/dev/null; then
   fail "dead-lock recovery stops the stale shell instance"
 fi
@@ -265,3 +306,95 @@ restart_pid_one=""
 grep -F "ipc -n -p $restart_root/shell call -- lock lock" "$ipc_log" >/dev/null || fail "dead-lock recovery re-acquires the session lock"
 grep -F "ipc -n -p $restart_root/shell call -- lock status" "$ipc_log" >/dev/null || fail "dead-lock recovery waits for the lock to become secure"
 pass "restart recovers a locked session whose lock client died"
+
+# A terminal that outlived a Hyprland restart still exports the old signature.
+# The user-manager environment holds the live one; prefer it over the stale var.
+sleep 30 &
+restart_pid_one=$!
+printf '%s\n' "$restart_pid_one" >"$restart_state"
+: >"$restart_log"
+: >"$dispatch_log"
+: >"$hypr_sig_log"
+
+PATH="$restart_bin:$PATH" \
+OMARCHY_PATH="$restart_root" \
+XDG_RUNTIME_DIR="$runtime_dir" \
+HYPRLAND_INSTANCE_SIGNATURE="$stale_signature" \
+OMARCHY_TEST_LIVE_SIGNATURE="$live_signature" \
+OMARCHY_TEST_SESSION_HYPR_SIGNATURE="$live_signature" \
+OMARCHY_TEST_HYPR_SIG_LOG="$hypr_sig_log" \
+OMARCHY_TEST_QS_STATE="$restart_state" \
+OMARCHY_TEST_QS_LOG="$restart_log" \
+OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
+OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
+OMARCHY_TEST_IPC_LOG="$ipc_log" \
+OMARCHY_TEST_SESSION_PATH="$restart_root" \
+  timeout 5 "$ROOT/bin/omarchy-restart-shell" ||
+  fail "restart recovers when the caller exports a stale Hyprland signature"
+
+if kill -0 "$restart_pid_one" 2>/dev/null; then
+  fail "stale-signature restart stops the old shell instance"
+fi
+wait "$restart_pid_one" 2>/dev/null || true
+restart_pid_one=""
+grep -Fx -- "$live_signature" "$hypr_sig_log" >/dev/null ||
+  fail "stale-signature restart rebinds hyprctl to the live instance" "$(cat "$hypr_sig_log")"
+if grep -Fx -- "$stale_signature" "$hypr_sig_log" >/dev/null; then
+  fail "stale-signature restart must not dispatch against the dead instance" "$(cat "$hypr_sig_log")"
+fi
+grep -F 'hl.dsp.exec_cmd("omarchy-launch-shell")' "$dispatch_log" >/dev/null ||
+  fail "stale-signature restart still launches through Hyprland"
+pass "restart prefers the live systemd Hyprland signature over a stale shell export"
+
+# No session env signature: fall through to the newest runtime dir that still
+# has a socket, even when the caller's export points at a corpse.
+sleep 30 &
+restart_pid_one=$!
+printf '%s\n' "$restart_pid_one" >"$restart_state"
+: >"$restart_log"
+: >"$dispatch_log"
+: >"$hypr_sig_log"
+# Make the live dir newer than the stale corpse so "newest dir" picks it.
+touch "$live_hypr_dir"
+
+PATH="$restart_bin:$PATH" \
+OMARCHY_PATH="$restart_root" \
+XDG_RUNTIME_DIR="$runtime_dir" \
+HYPRLAND_INSTANCE_SIGNATURE="$stale_signature" \
+OMARCHY_TEST_LIVE_SIGNATURE="$live_signature" \
+OMARCHY_TEST_SESSION_HYPR_SIGNATURE= \
+OMARCHY_TEST_HYPR_SIG_LOG="$hypr_sig_log" \
+OMARCHY_TEST_QS_STATE="$restart_state" \
+OMARCHY_TEST_QS_LOG="$restart_log" \
+OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
+OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
+OMARCHY_TEST_IPC_LOG="$ipc_log" \
+OMARCHY_TEST_SESSION_PATH="$restart_root" \
+  timeout 5 "$ROOT/bin/omarchy-restart-shell" ||
+  fail "restart recovers a stale signature from the newest live runtime dir"
+
+if kill -0 "$restart_pid_one" 2>/dev/null; then
+  fail "runtime-dir fallback stops the old shell instance"
+fi
+wait "$restart_pid_one" 2>/dev/null || true
+restart_pid_one=""
+grep -Fx -- "$live_signature" "$hypr_sig_log" >/dev/null ||
+  fail "runtime-dir fallback rebinds hyprctl to the live instance" "$(cat "$hypr_sig_log")"
+pass "restart falls back to the newest live Hyprland runtime dir"
+
+# Nothing live at all: fail closed with a clear reason instead of polling a
+# dead dispatch for two seconds and saying the shell never came up.
+no_hypr_error=$(PATH="$restart_bin:$PATH" \
+  OMARCHY_PATH="$restart_root" \
+  XDG_RUNTIME_DIR="$test_tmp/empty-runtime" \
+  env -u HYPRLAND_INSTANCE_SIGNATURE \
+  OMARCHY_TEST_SESSION_HYPR_SIGNATURE= \
+  OMARCHY_TEST_HYPR_SIG_LOG="$hypr_sig_log" \
+  OMARCHY_TEST_QS_STATE="$restart_state" \
+  OMARCHY_TEST_QS_LOG="$restart_log" \
+  OMARCHY_TEST_SESSION_PATH="$restart_root" \
+  "$ROOT/bin/omarchy-restart-shell" 2>&1) && fail "restart fails closed with no live Hyprland instance"
+
+[[ $no_hypr_error == "Could not find a live Hyprland instance to restart the shell." ]] ||
+  fail "missing Hyprland instance explains the failure" "$no_hypr_error"
+pass "restart fails closed when no live Hyprland instance exists"
