@@ -257,6 +257,20 @@ std::size_t descendants(QObject *object, std::size_t limit) {
 
 struct WorkerRuntime::Impl {
   struct SurfaceInstance {
+    // Pointer grabs, touch delivery, and active focus belong to a QQuickWindow.
+    // Keep each surface in one scene for its full allocation lifetime so
+    // rendering a sibling cannot interrupt an in-flight interaction.
+    SurfaceInstance() : render_control(), window(&render_control) {
+      window.setColor(Qt::transparent);
+      render_root.setParentItem(window.contentItem());
+      render_root.setTransformOrigin(QQuickItem::TopLeft);
+      QObject::connect(&render_control,
+                       &QQuickRenderControl::renderRequested,
+                       [this] { dirty = true; });
+      QObject::connect(&render_control, &QQuickRenderControl::sceneChanged,
+                       [this] { dirty = true; });
+    }
+
     std::string name;
     std::unique_ptr<QQmlComponent> component;
     QQuickItem *root_item = nullptr;
@@ -269,6 +283,9 @@ struct WorkerRuntime::Impl {
     std::uint64_t frame_sequence = 0;
     std::uint32_t next_slot = 0;
     bool dirty = true;
+    QQuickRenderControl render_control;
+    QQuickWindow window;
+    QQuickItem render_root;
   };
 
   explicit Impl(std::filesystem::path requested_root,
@@ -277,30 +294,16 @@ struct WorkerRuntime::Impl {
         software_backend([] {
           QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
           return true;
-        }()),
-        render_control(), window(&render_control) {
+        }()) {
     QImageReader::setAllocationLimit(kMaximumDecodedImageMiB);
     source_policy.configure(engine);
-    window.setColor(Qt::transparent);
-    render_root.setParentItem(window.contentItem());
-    render_root.setTransformOrigin(QQuickItem::TopLeft);
-    QObject::connect(&render_control, &QQuickRenderControl::renderRequested,
-                     [this] {
-                       for (auto &surface : surfaces)
-                         surface->dirty = true;
-                     });
-    QObject::connect(&render_control, &QQuickRenderControl::sceneChanged,
-                     [this] {
-                       for (auto &surface : surfaces)
-                         surface->dirty = true;
-                     });
   }
 
   ~Impl() {
-    QObject::disconnect(&render_control, nullptr, nullptr, nullptr);
-    window.setRenderTarget({});
-    render_control.invalidate();
     for (auto &surface : surfaces) {
+      QObject::disconnect(&surface->render_control, nullptr, nullptr, nullptr);
+      surface->window.setRenderTarget({});
+      surface->render_control.invalidate();
       if (surface->root_item != nullptr) {
         surface->root_item->setParentItem(nullptr);
         delete surface->root_item;
@@ -333,32 +336,27 @@ struct WorkerRuntime::Impl {
     return found == surfaces.end() ? nullptr : found->get();
   }
 
-  void activate(SurfaceInstance &selected) {
-    for (auto &entry : surfaces) {
-      if (entry->root_item != nullptr && entry.get() != &selected)
-        entry->root_item->setParentItem(nullptr);
-    }
-    if (selected.state) {
-      const auto &allocation = selected.state->allocation();
-      window.setGeometry(0, 0, static_cast<int>(allocation.pixel_width),
-                         static_cast<int>(allocation.pixel_height));
-      render_root.setSize(
-          QSizeF(allocation.logical_width, allocation.logical_height));
-      render_root.setScale(selected.device_pixel_ratio);
-      selected.root_item->setParentItem(&render_root);
-      selected.root_item->setSize(
-          QSizeF(allocation.logical_width, allocation.logical_height));
-      window.setRenderTarget(
-          QQuickRenderTarget::fromPaintDevice(&selected.image));
-    }
+  void configure_scene(SurfaceInstance &instance) {
+    if (!instance.state)
+      return;
+    const auto &allocation = instance.state->allocation();
+    instance.window.setGeometry(0, 0,
+                                static_cast<int>(allocation.pixel_width),
+                                static_cast<int>(allocation.pixel_height));
+    instance.render_root.setSize(
+        QSizeF(allocation.logical_width, allocation.logical_height));
+    instance.render_root.setScale(instance.device_pixel_ratio);
+    instance.root_item->setParentItem(&instance.render_root);
+    instance.root_item->setSize(
+        QSizeF(allocation.logical_width, allocation.logical_height));
+    instance.window.setRenderTarget(
+        QQuickRenderTarget::fromPaintDevice(&instance.image));
   }
 
   void cancel_input(SurfaceInstance &instance, bool touch_was_active) {
-    if (touch_was_active) {
-      activate(instance);
-      touch_injector.cancel(window);
-    }
-    auto *mouse_grabber = window.mouseGrabberItem();
+    if (touch_was_active)
+      touch_injector.cancel(instance.window);
+    auto *mouse_grabber = instance.window.mouseGrabberItem();
     if (item_belongs_to(instance.root_item, mouse_grabber))
       mouse_grabber->ungrabMouse();
     std::vector<QQuickItem *> pending{instance.root_item};
@@ -371,10 +369,10 @@ struct WorkerRuntime::Impl {
       if (item != mouse_grabber)
         item->ungrabMouse();
       item->ungrabTouchPoints();
+      item->setFocus(false, Qt::OtherFocusReason);
       for (QQuickItem *child : item->childItems())
         pending.push_back(child);
     }
-    instance.root_item->setFocus(false, Qt::OtherFocusReason);
     if (instance.bound_key)
       input_mirror.release(*instance.bound_key);
   }
@@ -382,9 +380,6 @@ struct WorkerRuntime::Impl {
   PluginSourcePolicy source_policy;
   QQmlEngine engine;
   [[maybe_unused]] bool software_backend;
-  QQuickRenderControl render_control;
-  QQuickWindow window;
-  QQuickItem render_root;
   QtTouchInjector touch_injector;
   surface::InputMirror input_mirror;
   std::vector<std::unique_ptr<SurfaceInstance>> surfaces;
@@ -682,7 +677,7 @@ WorkerRuntime::allocate(const surface::TrustedAllocation &allocation,
   }
   instance->state = std::move(state);
   instance->dirty = true;
-  implementation_->activate(*instance);
+  implementation_->configure_scene(*instance);
   return {};
 }
 
@@ -727,7 +722,7 @@ RuntimeResult WorkerRuntime::release(surface::SurfaceKey key) {
     return failure(RuntimeFailure::invalid_transition,
                    "surface cannot release in current phase");
   instance->root_item->setParentItem(nullptr);
-  implementation_->window.setRenderTarget({});
+  instance->window.setRenderTarget({});
   instance->mapping.reset();
   instance->image = {};
   instance->device_pixel_ratio = 1.0;
@@ -750,8 +745,6 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
       surface::InputValidation::accepted)
     return failure(RuntimeFailure::invalid_input,
                    "input failed the global sequence/transition mirror");
-  if (active)
-    implementation_->activate(*instance);
   const auto device_pixel_ratio = instance->device_pixel_ratio;
   std::visit(
       [&](const auto &payload) {
@@ -763,7 +756,7 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
               QEvent::MouseMove, point, point, Qt::NoButton,
               static_cast<Qt::MouseButtons>(payload.buttons),
               static_cast<Qt::KeyboardModifiers>(payload.modifiers));
-          QCoreApplication::sendEvent(&implementation_->window, &translated);
+          QCoreApplication::sendEvent(&instance->window, &translated);
         } else if constexpr (std::is_same_v<Event, surface::PointerButton>) {
           const auto point = input_position(payload.position,
                                             device_pixel_ratio);
@@ -774,7 +767,7 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
               static_cast<Qt::MouseButton>(payload.button),
               static_cast<Qt::MouseButtons>(payload.buttons),
               static_cast<Qt::KeyboardModifiers>(payload.modifiers));
-          QCoreApplication::sendEvent(&implementation_->window, &translated);
+          QCoreApplication::sendEvent(&instance->window, &translated);
         } else if constexpr (std::is_same_v<Event, surface::Wheel>) {
           const auto point = input_position(payload.position,
                                             device_pixel_ratio);
@@ -790,7 +783,7 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
               static_cast<Qt::KeyboardModifiers>(payload.modifiers),
               scroll_phase(payload.phase), payload.inverted,
               Qt::MouseEventNotSynthesized);
-          QCoreApplication::sendEvent(&implementation_->window, &translated);
+          QCoreApplication::sendEvent(&instance->window, &translated);
         } else if constexpr (std::is_same_v<Event, surface::Key>) {
           const bool pressed = payload.state == surface::ButtonState::pressed;
           QKeyEvent translated(
@@ -801,7 +794,7 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
               QString::fromUtf8(payload.text.data(),
                                 static_cast<qsizetype>(payload.text.size())),
               payload.auto_repeat, 1);
-          QCoreApplication::sendEvent(&implementation_->window, &translated);
+          QCoreApplication::sendEvent(&instance->window, &translated);
         } else if constexpr (std::is_same_v<Event, surface::TextCommit>) {
           QInputMethodEvent translated;
           translated.setCommitString(
@@ -809,10 +802,10 @@ RuntimeResult WorkerRuntime::input(const surface::InputEvent &event) {
                                 static_cast<qsizetype>(payload.text.size())),
               payload.replacement_start,
               static_cast<int>(payload.replacement_length));
-          QCoreApplication::sendEvent(&implementation_->window, &translated);
+          QCoreApplication::sendEvent(&instance->window, &translated);
         } else if constexpr (std::is_same_v<Event, surface::TouchFrame>) {
-          implementation_->touch_injector.deliver(
-              implementation_->window, payload, device_pixel_ratio);
+          implementation_->touch_injector.deliver(instance->window, payload,
+                                                  device_pixel_ratio);
         } else if constexpr (std::is_same_v<Event, surface::FocusChanged>) {
           if (payload.focused)
             instance->root_item->forceActiveFocus(Qt::OtherFocusReason);
@@ -853,11 +846,10 @@ std::optional<PublishedFrame> WorkerRuntime::render() {
     implementation_->last_error = "QML object limit exceeded before render";
     return std::nullopt;
   }
-  implementation_->activate(*instance);
   instance->image.fill(Qt::transparent);
-  implementation_->render_control.polishItems();
-  implementation_->render_control.sync();
-  implementation_->render_control.render();
+  instance->render_control.polishItems();
+  instance->render_control.sync();
+  instance->render_control.render();
   const auto &allocation = instance->state->allocation();
   const auto slot = instance->next_slot;
   instance->next_slot = (slot + 1) % surface::kSlotCount;
