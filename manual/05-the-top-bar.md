@@ -28,6 +28,7 @@ Nearly every widget does something on left, right, and middle click, and several
 | Power | Power panel | Toggle the battery percentage | — |
 | Media | Play/pause | Cover-art popup | Middle: next · scroll: prev/next |
 | Agents | Agents panel | Launch your agent | Middle: next subscription |
+| News | Omarchy news reader | Refresh the feed | — |
 | Tray | Hover to reveal the drawer | Right on the chevron to manage | — |
 | Omarchy update | Run the update | — | — |
 
@@ -45,6 +46,7 @@ Clicking a bar icon opens a panel, which is a proper popup with sliders, lists, 
 | `Super + Ctrl + D` | Display |
 | `Super + Ctrl + P` | Power |
 | `Super + Ctrl + Alt + D` | Calendar |
+| `Super + Alt + N` | Omarchy News |
 | `Super + Ctrl + 1-9` | Toggle the nth panel in the right section |
 
 The panels aren't read-outs. They're where you actually do the thing:
@@ -55,6 +57,7 @@ The panels aren't read-outs. They're where you actually do the thing:
 - **Power** shows battery stats, switches power profiles (it remembers a separate choice for battery and AC), and prints some system info.
 - **Display** carries a brightness slider, text size, monitor scaling presets, and — when you have more than one screen — per-monitor controls. See [monitors](33-monitors.md) for the deeper story.
 - **Clock** opens a month grid with ISO week numbers and month stepping.
+- **News** reads official Omarchy and Omacom Foundation announcements from the RSS feed in a two-pane desktop reader. It refreshes every 15 minutes by default, and the bar icon marks unread announcements.
 
 Every panel takes the keyboard as well as the mouse: arrows move, Return activates, Tab steps to the neighbouring panel, and Escape closes.
 
