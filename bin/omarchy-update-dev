@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+# sudo env_reset drops session exports. Treat a missing path as the packaged
+# install so this step is a no-op there instead of aborting under `set -u`.
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+
 [[ $OMARCHY_PATH != "/usr/share/omarchy" ]] || exit 0
 
 if ! git -C "$OMARCHY_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
