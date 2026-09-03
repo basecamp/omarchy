@@ -33,6 +33,26 @@ assertDeepEqual(
   { windows: { a: true }, count: 1 },
   'idle leaves screensaver windows unchanged without an address'
 )
+assertEqual(
+  idle.screensaverDismissAction(false, true, true),
+  'arm',
+  'idle arms screensaver dismissal once input goes quiet'
+)
+assertEqual(
+  idle.screensaverDismissAction(false, false, true),
+  'ignore',
+  'idle ignores the screensaver launching itself as input'
+)
+assertEqual(
+  idle.screensaverDismissAction(true, false, true),
+  'dismiss',
+  'idle dismisses the screensaver on input once armed'
+)
+assertEqual(
+  idle.screensaverDismissAction(true, false, false),
+  'ignore',
+  'idle ignores input when no screensaver is on screen'
+)
 JS
 
 test_tmp=$(mktemp -d)
