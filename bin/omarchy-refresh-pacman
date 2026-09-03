@@ -23,8 +23,13 @@ sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirr
 # Macs) must survive the template restore above; the install path re-applies
 # them from this same file. It is idempotent and no-ops on other hardware,
 # but appends to /etc/pacman.conf, so it has to run as root like the copies.
+# A failure here is exactly the silent-failure class this issue is about:
+# the refresh must stop rather than run the upgrade with hardware repos gone.
 if [[ -f $OMARCHY_PATH/install/hardware/pacman.sh ]]; then
-  sudo bash -c "source '$OMARCHY_PATH/install/hardware/pacman.sh'"
+  if ! sudo bash -c "source '$OMARCHY_PATH/install/hardware/pacman.sh'"; then
+    echo "Failed to re-apply hardware pacman repositories; aborting refresh" >&2
+    exit 1
+  fi
 fi
 
 # Allow user customization of /etc/pacman.conf before the upgrade runs

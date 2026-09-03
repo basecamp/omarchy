@@ -61,7 +61,7 @@ run_refresh() {
     HOOK_LOG="$tmp_dir/hook.log" \
     OMARCHY_PATH="$tmp_dir/omarchy" \
     PATH="$tmp_dir/bin:$PATH" \
-    bash -euo pipefail "$tmp_dir/leaf.sh"
+    bash "$tmp_dir/leaf.sh"
 }
 
 # On Apple T2 hardware (lspci shows 106b:1801) the [arch-mact2] repository must
@@ -90,5 +90,33 @@ run_refresh "0000:01:00.0 VGA compatible controller: NVIDIA Corporation"
 grep -q '^\[arch-mact2\]' "$sandbox_conf" &&
   fail "non-T2 hardware gets no arch-mact2 stanza" "$(cat "$sandbox_conf")"
 pass "non-T2 hardware is untouched"
+
+# If the hardware re-apply itself fails (say a future pacman.sh cannot fetch
+# a signing key), the refresh must stop before the upgrade: continuing and
+# running pacman -Syyuu with the repo missing is the same silent failure
+# #9853 reports. The command has no set -e, so this only holds if the
+# re-apply step is checked explicitly.
+mkdir -p "$tmp_dir/omarchy-broken/install/hardware" \
+  "$tmp_dir/omarchy-broken/default/pacman"
+printf '#%%generated\n' >"$tmp_dir/omarchy-broken/default/pacman/pacman-stable.conf"
+printf 'Server = https://example.org/mirror\n' \
+  >"$tmp_dir/omarchy-broken/default/pacman/mirrorlist-stable"
+printf 'echo "key import failed" >&2\nexit 1\n' \
+  >"$tmp_dir/omarchy-broken/install/hardware/pacman.sh"
+chmod +x "$tmp_dir/omarchy-broken/install/hardware/pacman.sh"
+rm -f "$tmp_dir/pacman.log" "$tmp_dir/hook.log"
+if LSPCI_OUT="" PACMAN_LOG="$tmp_dir/pacman.log" HOOK_LOG="$tmp_dir/hook.log" \
+  SUDO_LOG="$tmp_dir/sudo.log" OMARCHY_PATH="$tmp_dir/omarchy-broken" \
+  PATH="$tmp_dir/bin:$PATH" \
+  bash "$tmp_dir/leaf.sh" >"$tmp_dir/broken.out" 2>&1; then
+  fail "a failed hardware re-apply aborts the refresh" \
+    "$(cat "$tmp_dir/broken.out")"
+fi
+[[ ! -s $tmp_dir/pacman.log ]] ||
+  fail "the upgrade does not run after a failed re-apply" \
+    "$(cat "$tmp_dir/pacman.log")"
+grep -q "Failed to re-apply hardware pacman repos" "$tmp_dir/broken.out" ||
+  fail "the failure is reported before aborting" "$(cat "$tmp_dir/broken.out")"
+pass "a failed hardware re-apply aborts before the upgrade"
 
 pass "refresh pacman re-applies hardware repos and upgrades cleanly"
