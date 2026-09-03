@@ -6,6 +6,14 @@ screensaver_in_focus() {
   hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
 }
 
+# `hyprctl activewindow` only ever reports toplevels. A layer surface holding
+# keyboard focus -- an open bar panel -- leaves the previously focused terminal
+# as the active window, so a screensaver that maps behind one never becomes
+# active at all. Only a screensaver that has actually held focus can have lost
+# it, so latch that first and treat the absence of focus as a dismissal only
+# afterwards.
+was_focused=0
+
 exit_screensaver() {
   hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
   pkill -x ttfx 2>/dev/null
@@ -41,7 +49,13 @@ while true; do
     --random-effect --no-eol --no-restore-cursor &
 
   while pgrep -t "${tty#/dev/}" -x ttfx >/dev/null; do
-    if read -n1 -t 1 || ! screensaver_in_focus; then
+    if screensaver_in_focus; then
+      was_focused=1
+    elif ((was_focused)); then
+      exit_screensaver
+    fi
+
+    if read -n1 -t 1; then
       exit_screensaver
     fi
   done
