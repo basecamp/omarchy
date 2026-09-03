@@ -826,6 +826,7 @@ void neutral_surface_trusted_input() {
   }
   require(sibling_rendered,
           "panel sibling was not rendered between bar press and release");
+  drain_events();
   const auto interleaved_release = interleaved_pointer(
       2, surface::ButtonState::released, 0);
   require(api.beginTrustedGestureForInput(interleaved_release) &&
