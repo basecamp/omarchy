@@ -31,7 +31,10 @@ cat >"$stub_dir/omarchy-notification-send" <<'EOF'
 EOF
 chmod +x "$stub_dir/omarchy-notification-send"
 
-HOME="$home_dir" HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" \
+# The toggle and paths.lua both follow XDG_STATE_HOME now, so the cases that
+# assert the HOME default have to clear it: inherited from the developer's own
+# environment it sends these writes into their real state directory.
+HOME="$home_dir" XDG_STATE_HOME="" HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" \
   "$ROOT/bin/omarchy-hyprland-workspace-layout-toggle"
 
 layout_file="$home_dir/.local/state/omarchy/workspace-layouts/3.lua"
@@ -42,7 +45,7 @@ grep -Fx 'eval hl.workspace_rule({ workspace = "3", layout = "scrolling" })' "$l
   fail "workspace layout toggle applies the selected layout immediately"
 pass "workspace layout toggle persists and applies the selected layout"
 
-if HOME="$home_dir" HYPRCTL_LOG="$log_file" HYPRCTL_BROKEN=1 PATH="$stub_dir:$PATH" \
+if HOME="$home_dir" XDG_STATE_HOME="" HYPRCTL_LOG="$log_file" HYPRCTL_BROKEN=1 PATH="$stub_dir:$PATH" \
   "$ROOT/bin/omarchy-hyprland-workspace-layout-toggle" 2>/dev/null; then
   fail "workspace layout toggle exits nonzero without a workspace id"
 fi
@@ -62,7 +65,7 @@ xdg_layout="$xdg_state/omarchy/workspace-layouts/3.lua"
   fail "workspace layout toggle does not also write under HOME when XDG_STATE_HOME is set"
 pass "workspace layout toggle respects XDG_STATE_HOME"
 
-HOME="$home_dir" OMARCHY_PATH="$ROOT" lua <<'LUA'
+HOME="$home_dir" XDG_STATE_HOME="" OMARCHY_PATH="$ROOT" lua <<'LUA'
 local rules = {}
 
 hl = {
