@@ -92,6 +92,9 @@ pass "root dispatch rejects missing/invalid uid, passwd, owner, symlink, and wri
 mkdir /home/storage-target /home/shared-target
 mount -t tmpfs -o uid=1000,gid=1000,mode=0755,size=3g storage-test /home/storage-target
 mount -t tmpfs -o uid=1000,gid=1000,mode=0755,size=64m shared-test /home/shared-target
+# dockur/windows can leave the shared directory setgid. Numeric chmod preserves
+# directory set-ID bits, so exercise the mode the next launch must normalize.
+chmod 2755 /home/shared-target
 ln -s /home/storage-target /home/alice/.windows
 ln -s /home/shared-target /home/alice/Windows
 chown -h 1000:1000 /home/alice/.windows /home/alice/Windows
