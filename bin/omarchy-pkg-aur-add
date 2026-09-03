@@ -8,16 +8,33 @@
 # by a sync repo (yay's --noconfirm silently prefers the repo provider in
 # that case, which defeats callers that specifically want the AUR build).
 
-names=("${@#*/}")
+# pacman -Q resolves provides: with voxtype-bin installed, "pacman -Q voxtype"
+# answers "voxtype-bin" and exits 0. A prefixed target is therefore checked by
+# the exact name pacman prints back, or the provider the prefix exists to
+# bypass satisfies both checks below and nothing is ever built.
+installed() {
+  local name=${1#*/}
 
-if omarchy-pkg-missing "${names[@]}"; then
+  if [[ $1 == */* ]]; then
+    [[ $(pacman -Qq "$name" 2>/dev/null) == "$name" ]]
+  else
+    pacman -Q "$name" &>/dev/null
+  fi
+}
+
+missing=0
+for pkg in "$@"; do
+  installed "$pkg" || missing=1
+done
+
+if (( missing )); then
   yay -S --noconfirm --needed "$@" || exit 1
 fi
 
-for pkg in "${names[@]}"; do
+for pkg in "$@"; do
   # Secondary check to handle states where pacman doesn't actually register an error
-  if ! pacman -Q "$pkg" &>/dev/null; then
-    echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2
+  if ! installed "$pkg"; then
+    echo -e "\033[31mError: Package '${pkg#*/}' did not install\033[0m" >&2
     exit 1
   fi
 done
