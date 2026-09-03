@@ -123,6 +123,12 @@
   "style.screensaver.default": {"icon":"","label":"Restore Default","action":"omarchy-branding-screensaver reset"},
 
   // Setup
+  "setup.quick-settings": {"icon":"󰒓","label":"Quick Settings"},
+  "setup.quick-settings.wifi": {"icon":"󰖩","label":"Wi-Fi","action":"omarchy-shell shell summon omarchy.network"},
+  "setup.quick-settings.bluetooth": {"icon":"󰂯","label":"Bluetooth","action":"omarchy-shell shell summon omarchy.bluetooth"},
+  "setup.quick-settings.audio": {"icon":"󰕾","label":"Audio","action":"omarchy-shell shell summon omarchy.audio"},
+  "setup.quick-settings.display": {"icon":"󰍹","label":"Display","action":"omarchy-shell shell summon omarchy.monitor"},
+  "setup.quick-settings.power": {"icon":"󰐥","label":"Power","when":"omarchy-hw-laptop","action":"omarchy-shell shell summon omarchy.power"},
   "setup.monitors": {"icon":"󰍹","label":"Monitors","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/monitors.lua\""},
   "setup.keybindings": {"icon":"","label":"Keybindings","when":"[[ -f ~/.config/hypr/bindings.lua ]]","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/bindings.lua\""},
   "setup.input": {"icon":"","label":"Input","when":"[[ -f ~/.config/hypr/input.lua ]]","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/input.lua\""},

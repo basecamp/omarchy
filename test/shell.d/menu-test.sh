@@ -201,6 +201,29 @@ assert(
   defaultById['setup.input'].action.includes('input.lua'),
   'menu keeps Input as a direct config action'
 )
+const quickSettingsPanels = {
+  wifi: 'omarchy.network',
+  bluetooth: 'omarchy.bluetooth',
+  audio: 'omarchy.audio',
+  display: 'omarchy.monitor',
+  power: 'omarchy.power'
+}
+assertEqual(
+  defaultById['setup.quick-settings'].kind,
+  'menu',
+  'menu exposes Quick Settings under Setup'
+)
+assert(
+  Object.entries(quickSettingsPanels).every(([entry, panel]) =>
+    defaultById[`setup.quick-settings.${entry}`].action === `omarchy-shell shell summon ${panel}`
+  ),
+  'menu opens every Quick Settings panel from Setup'
+)
+assertEqual(
+  defaultById['setup.quick-settings.power'].when,
+  'omarchy-hw-laptop',
+  'menu only offers the battery-dependent Power panel on laptops'
+)
 assert(
   defaultById['setup.direct-boot'].action.includes('omarchy-setup-direct-boot'),
   'menu places Direct Boot directly under Setup'
