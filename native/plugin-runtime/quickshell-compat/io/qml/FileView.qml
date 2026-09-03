@@ -25,6 +25,8 @@ QtObject {
     var candidate = String(value || "")
     if (candidate.indexOf("file:///plugin/") === 0)
       candidate = candidate.slice("file:///plugin/".length)
+    else if (candidate.indexOf("/plugin/") === 0)
+      candidate = candidate.slice("/plugin/".length)
     if (!candidate || candidate.length > 240 || candidate[0] === "/"
         || candidate.indexOf("\\") !== -1 || candidate.indexOf("\0") !== -1)
       return ""

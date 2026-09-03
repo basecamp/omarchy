@@ -11,6 +11,7 @@ Item {
     collector.setText("abcdef")
     objectName = view.packagedPath("assets/data.json") === "assets/data.json"
       && view.packagedPath("file:///plugin/assets/data.json") === "assets/data.json"
+      && view.packagedPath("/plugin/assets/data.json") === "assets/data.json"
       && view.packagedPath("../data.json") === ""
       && view.packagedPath("/etc/passwd") === ""
       && view.packagedPath("file:///home/plugin/.ssh/id") === ""

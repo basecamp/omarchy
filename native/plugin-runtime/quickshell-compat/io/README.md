@@ -2,7 +2,7 @@
 
 This worker-owned module preserves the authority-free portion of the familiar `Quickshell.Io` API without loading the host Quickshell plugin.
 
-`FileView` reads only UTF-8 regular files inside the immutable plugin package through `runtime.readPackagedText`. Relative paths and canonical `file:///plugin/` URLs are accepted. Absolute host paths, traversal, symlinks, writes, and watching are unavailable. Private mutable state remains available through `Omarchy.PluginPresentation.PrivateStorage`, whose keys and quotas are broker-enforced.
+`FileView` reads only UTF-8 regular files inside the immutable plugin package through `runtime.readPackagedText`. Relative paths, canonical `file:///plugin/` URLs, and the `/plugin/` paths commonly produced by stripping a resolved file URL are accepted. Other absolute paths, traversal, symlinks, writes, and watching are unavailable. Private mutable state remains available through `Omarchy.PluginPresentation.PrivateStorage`, whose keys and quotas are broker-enforced.
 
 `StdioCollector` is bounded plugin-local text state. Pure QML has no `QByteArray` value source, so `data` is a string compatibility projection. Adapters should use `setText`, `append`, and `clear`; collected text is capped at one MiB even if a plugin raises `maximumBytes`.
 

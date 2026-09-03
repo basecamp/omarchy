@@ -37,7 +37,6 @@ qt_add_resources(omarchy-plugin-worker-runtime plugin_presentation_qml
     ../presentation/qml/PackagedText.qml
     ../presentation/qml/PanelSlider.qml
     ../presentation/qml/PrivateStorage.qml
-    ../presentation/qml/StdioCollector.qml
     ../presentation/qml/Style.qml
     ../presentation/qml/TextField.qml
     ../presentation/qml/ToolTip.qml
@@ -92,13 +91,12 @@ qt_add_qml_module(omarchy-plugin-qml-worker
   URI Omarchy.PluginWorker
   VERSION 1.0
   RESOURCE_PREFIX /qt/qml
+  NO_IMPORT_SCAN
   QML_FILES Runtime.qml
 )
-# Resolve the worker-owned pure-QML compatibility modules before the system
-# Quickshell metadata during build-time import scanning. This prevents even an
-# optional native Quickshell link edge from entering the worker target graph.
-set_property(TARGET omarchy-plugin-qml-worker APPEND PROPERTY
-  QT_QML_IMPORT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../compatibility/qml")
+# Worker compatibility modules are exact manually embedded resources, not link
+# dependencies. Avoid scanning the host's authority-rich Quickshell metadata
+# and accidentally introducing a native plugin edge into the worker target.
 
 omarchy_plugin_target_defaults(omarchy-plugin-qml-worker)
 omarchy_plugin_worker_sanitize(omarchy-plugin-qml-worker)

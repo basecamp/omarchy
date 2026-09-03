@@ -1,12 +1,13 @@
 import QtQuick
+import Quickshell.Io 1.0 as QsIo
 
 QtObject {
   id: root
 
   property bool running: false
   property var command: []
-  property StdioCollector stdout: null
-  property StdioCollector stderr: null
+  property QsIo.StdioCollector stdout: null
+  property QsIo.StdioCollector stderr: null
   property var call: null
   property int serial: 0
   signal exited(int exitCode)
@@ -19,11 +20,11 @@ QtObject {
 
   function finish(exitCode, output, error) {
     if (stdout) {
-      stdout.text = output || ""
+      stdout.setText(output || "")
       stdout.streamFinished()
     }
     if (stderr) {
-      stderr.text = error || ""
+      stderr.setText(error || "")
       stderr.streamFinished()
     }
     running = false

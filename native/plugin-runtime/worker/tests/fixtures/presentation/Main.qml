@@ -1,5 +1,6 @@
 import QtQuick
 import Omarchy.PluginPresentation 1.0
+import Quickshell.Io 1.0
 
 Item {
   objectName: "presentation-loaded"
