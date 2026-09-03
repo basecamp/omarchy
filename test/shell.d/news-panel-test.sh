@@ -38,8 +38,16 @@ assert items[0]["url"] == "https://omarchy.org/news/2026/09/a-new-thing"
 assert items[0]["author"] == "DHH"
 assert items[0]["summary"] == "One useful sentence."
 assert items[0]["content"] == "First paragraph with an inline link.\n\nSecond paragraph.\n\n• First point\n\n• Second point"
+assert '<a href="https://example.com">inline link</a>' in items[0]["contentHtml"]
 assert "<" not in items[0]["content"]
 assert "https://example.com" not in items[0]["content"]
+assert module.external_url("javascript:alert(1)") == ""
+assert module.external_url("https://example.com/path") == "https://example.com/path"
+unsafe_markup = module.article_markup('<img src="https://bad.example/pixel"><script>bad()</script><a href="javascript:alert(1)">plain label</a>')
+assert "img" not in unsafe_markup
+assert "bad()" not in unsafe_markup
+assert "javascript" not in unsafe_markup
+assert unsafe_markup == "plain label"
 assert len(module.article_text("x" * (module.MAX_ARTICLE_CHARS + 1))) == module.MAX_ARTICLE_CHARS
 assert module.canonical_news_url("http://omarchy.org/news/no") == ""
 assert module.canonical_news_url("https://omarchy.org/not-news/no") == ""
@@ -66,6 +74,8 @@ grep -qF '"↑↓ SELECT  ·  → READ"' "$ROOT/shell/plugins/panels/news/Panel.
   fail "news feed pane explains headline navigation"
 grep -qF '"↑↓ SCROLL  ·  ← FEED"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news story pane explains article scrolling"
+grep -qF 'onLinkActivated: function(link) { Qt.openUrlExternally(link) }' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news story opens deliberately activated links"
 
 grep -qF 'FEED_URL = "https://omarchy.org/news/rss.xml"' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "news fetcher pins the official RSS URL"

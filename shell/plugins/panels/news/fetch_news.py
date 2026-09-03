@@ -11,6 +11,7 @@ import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
@@ -50,6 +51,70 @@ class ArticleTextParser(HTMLParser):
         self.parts.append(data)
 
 
+class ArticleMarkupParser(HTMLParser):
+    """Keep readable spacing and safe HTTP links; discard active markup."""
+
+    block_tags = {"article", "blockquote", "br", "div", "h1", "h2", "h3", "h4", "li", "p", "pre"}
+    skipped_tags = {"script", "style"}
+
+    def __init__(self, limit: int) -> None:
+        super().__init__(convert_charrefs=True)
+        self.limit = limit
+        self.visible_chars = 0
+        self.parts: list[str] = []
+        self.link_stack: list[bool] = []
+        self.skip_depth = 0
+
+    def newline(self) -> None:
+        if self.parts and self.parts[-1] != "<br><br>":
+            self.parts.append("<br><br>")
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
+        if tag in self.skipped_tags:
+            self.skip_depth += 1
+            return
+        if self.skip_depth:
+            return
+        if tag in self.block_tags:
+            self.newline()
+        if tag == "li":
+            self.parts.append("• ")
+        if tag == "a":
+            href = next((value for name, value in attrs if name.lower() == "href"), None)
+            safe_href = external_url(href)
+            self.link_stack.append(bool(safe_href))
+            if safe_href:
+                self.parts.append(f'<a href="{escape(safe_href, quote=True)}">')
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        if tag in self.skipped_tags:
+            self.skip_depth = max(0, self.skip_depth - 1)
+            return
+        if self.skip_depth:
+            return
+        if tag == "a" and self.link_stack:
+            if self.link_stack.pop():
+                self.parts.append("</a>")
+        if tag in self.block_tags:
+            self.newline()
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth or self.visible_chars >= self.limit:
+            return
+        remaining = self.limit - self.visible_chars
+        value = data[:remaining]
+        self.visible_chars += len(value)
+        self.parts.append(escape(value))
+
+    def markup(self) -> str:
+        while self.link_stack:
+            if self.link_stack.pop():
+                self.parts.append("</a>")
+        return "".join(self.parts).strip().removeprefix("<br><br>").removesuffix("<br><br>")
+
+
 def article_text(value: str | None, limit: int = MAX_ARTICLE_CHARS) -> str:
     parser = ArticleTextParser()
     parser.feed(value or "")
@@ -57,6 +122,19 @@ def article_text(value: str | None, limit: int = MAX_ARTICLE_CHARS) -> str:
     lines = [" ".join(line.split()) for line in "".join(parser.parts).splitlines()]
     paragraphs = [line for line in lines if line]
     return "\n\n".join(paragraphs)[:limit]
+
+
+def external_url(value: str | None) -> str:
+    url = clean_text(value, 2048)
+    parsed = urlparse(url)
+    return url if parsed.scheme in {"http", "https"} and parsed.netloc else ""
+
+
+def article_markup(value: str | None, limit: int = MAX_ARTICLE_CHARS) -> str:
+    parser = ArticleMarkupParser(limit)
+    parser.feed(value or "")
+    parser.close()
+    return parser.markup()
 
 
 def element_text(node: ET.Element | None) -> str:
@@ -105,7 +183,9 @@ def parse_feed(payload: bytes) -> list[dict[str, str]]:
             continue
         guid = canonical_news_url(node.findtext("guid")) or link
         summary = article_text(element_text(node.find("description")), 500)
-        content = article_text(node.findtext(content_tag)) or summary
+        raw_content = node.findtext(content_tag)
+        content = article_text(raw_content) or summary
+        content_html = article_markup(raw_content) if raw_content else ""
         items.append(
             {
                 "id": guid,
@@ -113,6 +193,7 @@ def parse_feed(payload: bytes) -> list[dict[str, str]]:
                 "url": link,
                 "summary": summary,
                 "content": content,
+                "contentHtml": content_html,
                 "author": clean_text(node.findtext(creator_tag), 80),
                 "published": clean_text(node.findtext("pubDate"), 100),
             }

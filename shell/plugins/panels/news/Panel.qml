@@ -433,15 +433,24 @@ Item {
                 }
 
                 Text {
+                  id: articleBody
                   visible: !!root.currentArticle
                   width: parent.width
-                  textFormat: Text.PlainText
-                  text: root.currentArticle ? String(root.currentArticle.content || root.currentArticle.summary || "") : ""
+                  textFormat: root.currentArticle && root.currentArticle.contentHtml ? Text.StyledText : Text.PlainText
+                  text: root.currentArticle
+                    ? String(root.currentArticle.contentHtml || root.currentArticle.content || root.currentArticle.summary || "")
+                    : ""
                   color: root.foreground
+                  linkColor: root.accent
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
                   lineHeight: 1.35
                   wrapMode: Text.WordWrap
+                  onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+
+                  HoverHandler {
+                    cursorShape: articleBody.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                  }
                 }
 
                   Text {
