@@ -51,5 +51,11 @@ pass "Windows VM stays fully opaque"
   [[ $(stat -Lc '%a' "$HOME/Windows") == 700 ]] || fail "restore_shared_privacy left mode $(stat -Lc '%a' "$HOME/Windows")"
   mkdir -p "$HOME/missing-parent"
   EXPECTED_SHARED=$HOME/missing-parent/nope LEGACY_SHARED="" restore_shared_privacy || fail "restore_shared_privacy failed on a missing path"
+  # The home pathname is caller-controlled, so root must never chmod it directly.
+  mkdir -p "$HOME/legacy-only"
+  chmod 2777 "$HOME/legacy-only"
+  EXPECTED_SHARED="" LEGACY_SHARED=$HOME/legacy-only restore_shared_privacy
+  [[ $(stat -Lc '%a' "$HOME/legacy-only") == 2777 ]] ||
+    fail "restore_shared_privacy chmodded the caller-controlled home pathname"
 )
 pass "user mount sources with leftover setgid harden to exactly 700"

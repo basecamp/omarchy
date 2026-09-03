@@ -563,15 +563,14 @@ chmod_private_dir() {
 }
 
 # dockur samba.sh chmod 2777s an empty /shared at container start. Re-harden
-# the already-pinned directory inodes only — never create files in the
-# caller-owned share as root (that is a symlink-follow write primitive).
+# only the protected anchor, which sits in the root-owned boundary tree the
+# caller cannot write: it is a bind of the same inode as $LEGACY_SHARED, so this
+# is what ~/Windows ends up at. Never chmod $LEGACY_SHARED by pathname — the
+# caller can swap it for a symlink between the test and the chmod.
 # Best-effort: a failed chmod must not fail a VM that already started.
 restore_shared_privacy() {
-  local dir
-  for dir in "$EXPECTED_SHARED" "$LEGACY_SHARED"; do
-    [[ -n $dir && -d $dir && ! -L $dir ]] || continue
-    chmod_private_dir "$dir" || true
-  done
+  [[ -n $EXPECTED_SHARED && -d $EXPECTED_SHARED && ! -L $EXPECTED_SHARED ]] || return 0
+  chmod_private_dir "$EXPECTED_SHARED" || true
 }
 
 prepare_caller_mounts() {
