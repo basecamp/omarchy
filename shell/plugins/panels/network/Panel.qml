@@ -130,14 +130,42 @@ Panel {
   // radio to switch. On a wired box it would otherwise sit there reading
   // "off" beside a perfectly live Ethernet connection.
   readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
+  // Ethernet has no radio to switch, so this toggles the wired connection
+  // profile's own autoconnect instead — the closest per-connection
+  // equivalent. Only shown when a wired device actually exists, same
+  // reasoning as canToggleWifi.
+  readonly property bool canToggleWired: networkManagerAvailable && !!linkedWiredDevice
+  // Mirrors the *connection profile's* persisted autoconnect (queried via
+  // omarchy-network-wired), not WiredDevice.autoconnect -- that QML property
+  // is NetworkManager's device-level Autoconnect flag, which is runtime-only
+  // and resets on reboot/replug, so it cannot be what "off" means here.
+  property bool wiredAutoconnect: false
+  // Set while a killed process's stdout-finished is still expected to
+  // arrive -- see the comment on wiredProc for why toggleWired() cannot
+  // just restart it in the same tick. queryWiredAutoconnect() must not
+  // start a fresh query into that same window either, so it checks
+  // wiredTogglePending too.
+  property bool wiredExpectedStop: false
+  property bool wiredTogglePending: false
+  // True only for the user-initiated on/off action, like bandBusy -- not for
+  // the background status query, which reuses the same process but runs far
+  // more often (every refresh()) and should not make the switch ignore
+  // clicks for its own brief round trip.
+  readonly property bool wiredBusy: wiredTogglePending || (wiredProc.running && wiredProc.mode === "toggle")
   readonly property int qrHeaderIndex: canShareWifi ? 0 : -1
   readonly property int speedHeaderIndex: canRunSpeedTest ? (canShareWifi ? 1 : 0) : -1
   readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) : -1
-  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  readonly property int wiredHeaderIndex: canToggleWired
+    ? (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
+    : -1
+  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0)
+    + (canToggleWifi ? 1 : 0) + (canToggleWired ? 1 : 0)
   readonly property bool qrHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === qrHeaderIndex
   readonly property bool speedHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === speedHeaderIndex
   readonly property bool toggleHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === toggleHeaderIndex
+  readonly property bool wiredHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === wiredHeaderIndex
   readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
+  readonly property string toggleWiredHint: wiredAutoconnect ? "Turn Ethernet off" : "Turn Ethernet on"
   readonly property var dnsProviders: ["DHCP", "Cloudflare", "Google", "Custom"]
   property int dnsIndex: 0
   // ["2.4", "5", ...], or empty when there is nothing to choose between.
@@ -207,6 +235,55 @@ Panel {
     Qt.callLater(function() { root.refresh(true) })
   }
 
+  // Ethernet has no radio-wide enable flag, so "off" is persisted on the
+  // connection profile itself: autoconnect=false plus an explicit
+  // disconnect, so a dock plugged into a captive-portal or unwanted wired
+  // network stays off until switched back on, the same way
+  // Networking.wifiEnabled stays off across reboots rather than silently
+  // reconnecting. Shells out to omarchy-network-wired because
+  // Quickshell.Networking's WiredDevice.autoconnect is NetworkManager's
+  // device-level flag, not the connection profile's -- see wiredAutoconnect.
+  function toggleWired() {
+    if (!networkManagerAvailable || !linkedWiredDevice) return
+    if (wiredProc.running) {
+      // An in-flight toggle keeps running -- this is just a repeat click.
+      if (wiredProc.mode === "toggle") return
+      // An in-flight status query loses to user intent rather than silently
+      // swallowing the click. It cannot simply be restarted with the new
+      // command in this same tick, though: killing a process and its
+      // stream-finished signal have no guaranteed order (see wiredProc's
+      // comment, and wifiqr/Panel.qml's qrProc for the same shape), so the
+      // old query's output could still land after wiredProc.mode has
+      // already flipped to "toggle" and get misread as the toggle's own
+      // result. Queue it for onExited instead.
+      wiredExpectedStop = true
+      wiredTogglePending = true
+      wiredProc.running = false
+      return
+    }
+    startWiredToggle()
+  }
+
+  function startWiredToggle() {
+    if (!linkedWiredDevice) return
+    wiredProc.mode = "toggle"
+    wiredProc.command = ["omarchy-network-wired", linkedWiredDevice.name, wiredAutoconnect ? "off" : "on"]
+    wiredProc.running = true
+  }
+
+  function queryWiredAutoconnect() {
+    if (!linkedWiredDevice) {
+      wiredAutoconnect = false
+      return
+    }
+    // A toggle queued behind a killed status query (see toggleWired()) must
+    // not be raced by a fresh query starting in the same now-idle window.
+    if (wiredProc.running || wiredTogglePending) return
+    wiredProc.mode = "status"
+    wiredProc.command = ["omarchy-network-wired", linkedWiredDevice.name]
+    wiredProc.running = true
+  }
+
   IpcHandler {
     target: "omarchy.network"
 
@@ -216,6 +293,7 @@ Panel {
     function hide() { root.close() }
     function toggle() { root.toggle() }
     function toggleNetwork() { root.toggleNetwork() }
+    function toggleWired() { root.toggleWired() }
     // Compat routes for configs that summon the centered cards through the
     // network target; both cards are their own plugins now.
     function showQr() { root.summonWifiQr(true) }
@@ -228,6 +306,7 @@ Panel {
     if (headerIndex === qrHeaderIndex) summonWifiQr()
     else if (headerIndex === speedHeaderIndex) summonSpeedTest()
     else if (headerIndex === toggleHeaderIndex) toggleNetwork()
+    else if (headerIndex === wiredHeaderIndex) toggleWired()
   }
 
   function setHeaderCursor(index) {
@@ -438,6 +517,13 @@ Panel {
   // icon reflects connection changes without polling. Wired is preferred
   // when both are up, matching the default-route device.
   readonly property var wiredDevice: findDevice(DeviceType.Wired)
+  // wiredDevice falls back to any known wired device once none is connected,
+  // which on hardware with an onboard NIC that has no exposed jack (or any
+  // idle port) would otherwise show the wired toggle for a device that can
+  // never carry a cable. Gate the toggle on hasLink instead, so it only
+  // appears once something is actually plugged in.
+  readonly property var linkedWiredDevice: findLinkedWiredDevice()
+  onLinkedWiredDeviceChanged: queryWiredAutoconnect()
   readonly property string kind: {
     if (wiredDevice && wiredDevice.connected) return "ethernet"
     if (connectedWifiNetwork) return "wifi"
@@ -534,6 +620,7 @@ Panel {
       bandProc.command = ["omarchy-network-band"]
       bandProc.running = true
     }
+    queryWiredAutoconnect()
     // A closed panel has no nearby-network list to fill, and bare refresh()
     // reaches here from action completion, timeouts and construction.
     if (opened && wifiDevice) {
@@ -626,17 +713,33 @@ Panel {
 
   // Prefer a connected device: a machine can expose several NICs of the
   // same type (e.g. an idle onboard port alongside the active adapter),
-  // and the first-enumerated one may be carrierless.
-  function findDevice(type) {
+  // and the first-enumerated one may be carrierless. `extraFilter`, when
+  // given, narrows candidates further (see findLinkedWiredDevice()).
+  //
+  // Known limitation: this exposes exactly one device of a given type. With
+  // two candidates equally eligible at once (e.g. two wired NICs both
+  // linked, neither connected yet), whichever enumerates first wins with no
+  // way to reach the other. Accepted for now as consistent with the rest of
+  // the panel treating each connection kind as a single hero connection
+  // rather than a multi-NIC manager; revisit if that stops being true.
+  function findDevice(type, extraFilter) {
     var devices = networkDevices || []
     var fallback = null
     for (var i = 0; i < devices.length; i++) {
       var device = devices[i]
       if (!device || device.type !== type) continue
+      if (extraFilter && !extraFilter(device)) continue
       if (device.connected) return device
       if (!fallback) fallback = device
     }
     return fallback
+  }
+
+  // Restricted to wired devices that currently detect a physical link — a
+  // device with no cable plugged in is never a toggle target, however many
+  // wired NICs the system happens to have.
+  function findLinkedWiredDevice() {
+    return findDevice(DeviceType.Wired, function(device) { return device.hasLink })
   }
 
   function findConnectedWifiNetwork() {
@@ -906,6 +1009,38 @@ Panel {
     }
   }
 
+  // Drives both the wired-autoconnect readout and the on/off action, since
+  // omarchy-network-wired covers both and the two only overlap when a click
+  // preempts an in-flight status query (see toggleWired()) -- wiredExpectedStop
+  // covers exactly that window, the same way wifiqr/Panel.qml's qrProc uses
+  // its own expectedStop: killing a process and its stream-finished signal
+  // firing have no guaranteed order, so output from the query that was just
+  // killed could otherwise arrive after mode has already moved on to
+  // "toggle" and get misread as that toggle's result.
+  Process {
+    id: wiredProc
+    property string mode: "status"
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (root.wiredExpectedStop) return
+        if (wiredProc.mode === "status") {
+          root.wiredAutoconnect = text.trim() === "yes"
+        } else {
+          // refresh() itself calls queryWiredAutoconnect(), so this alone
+          // re-syncs status after the toggle -- no separate call needed.
+          Qt.callLater(function() { root.refresh(true) })
+        }
+      }
+    }
+    onExited: {
+      if (!root.wiredTogglePending) return
+      root.wiredTogglePending = false
+      root.wiredExpectedStop = false
+      root.startWiredToggle()
+    }
+  }
+
   // Slower than detailsPoll on purpose: this shells out to nmcli several times,
   // and band availability only moves when a scan turns up a new BSSID.
   Timer {
@@ -1145,6 +1280,7 @@ Panel {
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refresh()
         else if (t === "w" || t === "W") root.toggleNetwork()
+        else if (t === "e" || t === "E") root.toggleWired()
       }
 
     Column {
@@ -1212,20 +1348,69 @@ Panel {
             onClicked: root.summonSpeedTest()
           }
 
-          ToggleSwitch {
-            id: powerSwitch
+          // Two bare switches read as identical controls side by side, so each
+          // gets its own caption -- otherwise telling Wi-Fi and Ethernet apart
+          // requires hovering for the tooltip.
+          Column {
             visible: root.canToggleWifi
-            checked: Networking.wifiEnabled
-            hasCursor: root.toggleHeaderHasCursor
-            foreground: root.bar.foreground
+            spacing: 0
             Layout.alignment: Qt.AlignVCenter
-            onHovered: function(on) { if (on) root.setHeaderCursor(root.toggleHeaderIndex) }
-            onToggled: root.toggleNetwork()
 
-            PanelToolTip {
-              visible: powerSwitch.containsMouse
-              text: root.toggleHint
-              fontFamily: root.bar.fontFamily
+            Text {
+              textFormat: Text.PlainText
+              text: "Wi-Fi"
+              color: Qt.darker(root.bar.foreground, 1.4)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+              anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            ToggleSwitch {
+              id: powerSwitch
+              checked: Networking.wifiEnabled
+              anchors.horizontalCenter: parent.horizontalCenter
+              hasCursor: root.toggleHeaderHasCursor
+              foreground: root.bar.foreground
+              onHovered: function(on) { if (on) root.setHeaderCursor(root.toggleHeaderIndex) }
+              onToggled: root.toggleNetwork()
+
+              PanelToolTip {
+                visible: powerSwitch.containsMouse
+                text: root.toggleHint
+                fontFamily: root.bar.fontFamily
+              }
+            }
+          }
+
+          Column {
+            visible: root.canToggleWired
+            spacing: 0
+            Layout.alignment: Qt.AlignVCenter
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Ethernet"
+              color: Qt.darker(root.bar.foreground, 1.4)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+              anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            ToggleSwitch {
+              id: wiredSwitch
+              checked: root.wiredAutoconnect
+              busy: root.wiredBusy
+              anchors.horizontalCenter: parent.horizontalCenter
+              hasCursor: root.wiredHeaderHasCursor
+              foreground: root.bar.foreground
+              onHovered: function(on) { if (on) root.setHeaderCursor(root.wiredHeaderIndex) }
+              onToggled: root.toggleWired()
+
+              PanelToolTip {
+                visible: wiredSwitch.containsMouse
+                text: root.toggleWiredHint
+                fontFamily: root.bar.fontFamily
+              }
             }
           }
         }

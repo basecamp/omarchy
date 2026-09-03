@@ -1,0 +1,109 @@
+#!/bin/bash
+
+# omarchy:summary=Show or set persistent autoconnect for a wired interface
+# omarchy:group=network
+# omarchy:args=<interface> [on|off]
+# omarchy:examples=omarchy network wired enp59s0u1u4i5 | omarchy network wired enp59s0u1u4i5 off
+
+set -euo pipefail
+
+# Duplicated verbatim from omarchy-network-band's identical helper rather
+# than factored into a shared file -- there is no established shared-helper
+# convention for bin/ scripts in this repo, and introducing one would mean
+# touching that unrelated, already-shipped script for a 3-line function.
+# Happy to factor it out if a reviewer would rather have that.
+nm_get() {
+  LC_ALL=C nmcli -e no -g "$@" 2>/dev/null
+}
+
+# NetworkManager's auto-created ethernet profiles bind to a specific
+# interface by name, so the profile for a given NIC can be found
+# deterministically even while it is disconnected -- nmcli's device-to-
+# connection mapping (GENERAL.CONNECTION) only covers the active connection.
+#
+# This is one nmcli call per saved connection profile (Wi-Fi, VPN, everything
+# -- nmcli's bulk `connection show` listing only exposes a fixed compact
+# field set that does not include connection.interface-name, so finding the
+# wired one means asking each profile individually). Deliberately left this
+# way rather than collapsing to a combined bulk query: doing so only works by
+# parsing colon-joined multi-field nmcli output, which mis-parses a
+# connection name that itself contains a colon. For the handful of profiles
+# a typical machine has, the added cost here is not perceptible; happy to
+# revisit if a reviewer wants it optimized.
+wired_profile() {
+  local iface=$1 name
+
+  while IFS= read -r name; do
+    [[ $(nm_get connection.interface-name connection show "$name") == $iface ]] && { echo "$name"; return; }
+  done < <(nm_get NAME connection show)
+
+  # No profile for this interface is a normal outcome (a freshly linked
+  # device NetworkManager has not created one for yet), not a failure --
+  # callers branch on an empty result. Without this, the while loop's own
+  # exit status (1, from the final failed read/match) becomes this
+  # function's return value, and set -e would abort the whole script on
+  # `profile=$(wired_profile ...)` before either caller's empty check runs.
+  return 0
+}
+
+print_status() {
+  local iface=$1 profile
+
+  profile=$(wired_profile "$iface")
+  if [[ -z $profile ]]; then
+    echo "no"
+    return
+  fi
+
+  nm_get connection.autoconnect connection show "$profile"
+}
+
+# Toggling off must persist past a reboot, so this modifies the connection
+# profile's own autoconnect flag rather than the device's runtime-only
+# autoconnect state (nmcli device set --autoconnect), which resets on reboot
+# or replug and would silently let the connection come back.
+set_autoconnect() {
+  local iface=$1 desired=$2 profile
+
+  profile=$(wired_profile "$iface")
+  if [[ -n $profile ]]; then
+    nmcli connection modify "$profile" connection.autoconnect "$desired" >/dev/null
+  elif [[ $desired == "no" ]]; then
+    # No profile exists yet to carry the "off" choice (e.g. a device just
+    # linked for the first time). NetworkManager auto-creates a fresh,
+    # autoconnect-enabled profile the next time this device gets a link if
+    # none exists, which would silently undo "off" on the next boot/replug --
+    # create an explicitly disabled one now instead of leaving nothing
+    # behind for the disconnect below to mean anything past this session.
+    nmcli connection add type ethernet ifname "$iface" con-name "$iface" autoconnect no >/dev/null 2>&1 || true
+  fi
+
+  if [[ $desired == "yes" ]]; then
+    nmcli device connect "$iface" >/dev/null 2>&1 || true
+  else
+    nmcli device disconnect "$iface" >/dev/null 2>&1 || true
+  fi
+}
+
+usage() {
+  echo "Usage: omarchy-network-wired <interface> [on|off]" >&2
+}
+
+iface=${1:-}
+[[ -n $iface ]] || { usage; exit 1; }
+
+case "${2:-}" in
+  "")
+    print_status "$iface"
+    ;;
+  on)
+    set_autoconnect "$iface" yes
+    ;;
+  off)
+    set_autoconnect "$iface" no
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
