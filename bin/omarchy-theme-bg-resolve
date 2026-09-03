@@ -292,10 +292,34 @@ bound_svg_target() {
   '
 }
 
+# Newline-free digest of a directory's files (name + mtime), excluding one file.
+# Folded into the SVG raster cache key so a render is invalidated when a sibling
+# asset the SVG may reference changes, not only when the SVG itself does. Bounded
+# in cost: a backgrounds directory holds a handful of files.
+sibling_digest() {
+  local dir="$1" self="$2" file out=""
+  for file in "$dir"/*; do
+    [[ -f $file && $file != "$self" ]] || continue
+    out+="${file##*/}:$(stat -c %Y "$file" 2>/dev/null):"
+  done
+  printf '%s' "$out" | md5sum | cut -d ' ' -f 1
+}
+
+# Bound a cache directory by entry count as well as age. Deletes the oldest
+# files past the cap, newest kept. Runs after the age prune so a just-written
+# render survives. The optional pattern scopes it away from in-flight temp files.
+trim_cache_dir() {
+  local dir="$1" keep="$2" pattern="${3:-*}"
+  local -a files
+  mapfile -t files < <(find "$dir" -maxdepth 1 -type f -name "$pattern" ! -name '.*' -printf '%T@\t%p\n' 2>/dev/null | sort -rn | cut -f2-)
+  (( ${#files[@]} > keep )) || return 0
+  rm -f -- "${files[@]:keep}" 2>/dev/null
+}
+
 rasterize_svg() {
   local svg="$1"
   local cache_dir="$HOME/.cache/omarchy/background-renders"
-  local dims target mtime cache_key cache_file render_tmp render_source render_work asset
+  local dims target mtime siblings cache_key cache_file render_tmp render_source render_work asset
 
   if [[ $SVG_LAYOUT == "responsive" ]]; then
     target="$SCREEN_W $SCREEN_H"
@@ -319,12 +343,14 @@ rasterize_svg() {
   local target_w=${BASH_REMATCH[1]} target_h=${BASH_REMATCH[2]}
 
   mtime=$(stat -c %Y "$svg" 2>/dev/null) || return 1
-  cache_key=$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$svg" "$mtime" "${SCREEN_W}x${SCREEN_H}" "$FILL" "$FILL_COLOR" "$SVG_LAYOUT" "$MAX_SVG_RENDER_DIMENSION" "$MAX_SVG_RENDER_PIXELS" | md5sum)
+  siblings=$(sibling_digest "$(dirname "$svg")" "$svg")
+  cache_key=$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$svg" "$mtime" "${SCREEN_W}x${SCREEN_H}" "$FILL" "$FILL_COLOR" "$SVG_LAYOUT" "$MAX_SVG_RENDER_DIMENSION" "$MAX_SVG_RENDER_PIXELS" "$siblings" | md5sum)
   cache_key=${cache_key%% *}
   cache_file="$cache_dir/$cache_key.png"
 
   mkdir -p "$cache_dir"
   find "$cache_dir" -maxdepth 1 -type f -name '*.png' -mtime +30 -delete 2>/dev/null
+  trim_cache_dir "$cache_dir" 200 '*.png'
 
   if [[ -f $cache_file ]]; then
     # Keep renders that are still being served ahead of the age-based prune.
@@ -419,6 +445,7 @@ sample_edge_color() {
 
   mkdir -p "$cache_dir"
   find "$cache_dir" -maxdepth 1 -type f -mtime +30 -delete 2>/dev/null
+  trim_cache_dir "$cache_dir" 500
   cache_tmp=$(mktemp "$cache_dir/.edge-XXXXXX") || return 1
   printf '%s\n' "$line" >"$cache_tmp"
   mv "$cache_tmp" "$cache_file"

@@ -166,6 +166,23 @@ output=$(resolve --fields)
 
 pass "SVG backgrounds rasterize to cached cover-sized PNGs per screen"
 
+# An SVG may reference a sibling asset, so the raster cache key folds in the
+# sibling files' mtimes: changing a sibling re-rasterizes even when the SVG's
+# own mtime is unchanged.
+magick -size 8x8 xc:'#00ff00' "$backgrounds/5-asset.png"
+touch -d '2020-01-01 00:00:00' "$backgrounds/5-asset.png"
+render_before=$(fields_value path "$(resolve --fields --screen 200x200)")
+[[ $render_before == "$home/.cache/omarchy/background-renders/"*.png ]] || fail "the SVG resolves to a cached render before the sibling changes" "$render_before"
+
+touch -d '2020-06-01 00:00:00' "$backgrounds/5-asset.png"
+render_after=$(fields_value path "$(resolve --fields --screen 200x200)")
+[[ $render_after == "$home/.cache/omarchy/background-renders/"*.png ]] || fail "the SVG still resolves to a cached render after the sibling changes" "$render_after"
+[[ $render_before != "$render_after" ]] || fail "a changed sibling asset invalidates the SVG raster cache" "both resolved to $render_after"
+[[ $(fields_value path "$(resolve --fields --screen 200x200)") == "$render_after" ]] || fail "an unchanged sibling reuses the cached render"
+
+rm -f "$backgrounds/5-asset.png"
+pass "a changed sibling asset invalidates the cached SVG render"
+
 # A downloaded theme controls an SVG's intrinsic dimensions. An extreme aspect
 # ratio must be bounded before rsvg-convert reaches Cairo instead of requesting
 # a multi-gigabyte surface (or falling back to Qt with the hostile SVG).
