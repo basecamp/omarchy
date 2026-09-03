@@ -63,3 +63,34 @@ pass "update succeeds when the requested collectors all pass"
 [[ -e $usage_dir/skipped.json && ! -e $usage_dir/noisy.json ]] ||
   fail "update with agent arguments only runs the named collectors"
 pass "update with agent arguments only runs the named collectors"
+
+# A collector signed in to several accounts nests the others under
+# `accounts`. Each lands as its own file inside the collector's namespace,
+# nothing else does, and a namespaced file it stops reporting goes away.
+cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-multi" <<'EOF2'
+#!/bin/bash
+echo '{"id":"multi","name":"Multi","accounts":[{"id":"multi-work","name":"Multi · work"},{"id":"other-work","name":"Escapee"},{"id":"multi-bad/../x","name":"Traversal"}]}'
+EOF2
+chmod +x "$FAKE_OMARCHY/bin/omarchy-agent-usage-multi"
+echo '{"id":"multi-old"}' >"$usage_dir/multi-old.json"
+
+HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" \
+  "$ROOT/bin/omarchy-agent-usage-update" multi 2>/dev/null ||
+  fail "update succeeds for a collector that nests account records"
+pass "update succeeds for a collector that nests account records"
+
+[[ $(jq -r '.name' "$usage_dir/multi-work.json") == "Multi · work" ]] ||
+  fail "update writes each nested account record as its own file"
+pass "update writes each nested account record as its own file"
+
+[[ $(jq -r 'has("accounts")' "$usage_dir/multi.json") == "false" ]] ||
+  fail "update strips the nested records from the collector's own file"
+pass "update strips the nested records from the collector's own file"
+
+[[ ! -e $usage_dir/other-work.json && -z $(find "$usage_dir" -name '*bad*') ]] ||
+  fail "update refuses nested records outside the collector's namespace"
+pass "update refuses nested records outside the collector's namespace"
+
+[[ ! -e $usage_dir/multi-old.json ]] ||
+  fail "update removes namespaced records the collector no longer reports"
+pass "update removes namespaced records the collector no longer reports"

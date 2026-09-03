@@ -10,6 +10,12 @@ history fallbacks for machines without transcripts, pi/omp and opencode
 sessions that ran on an Anthropic provider, and the authoritative rate
 limits from Anthropic's OAuth usage endpoint. The panel itself only ever
 reads the JSON this prints; it never talks to disk formats or endpoints.
+
+A machine signed in to more than one Claude account keeps each in its own
+config directory (`CLAUDE_CONFIG_DIR=~/.claude-work claude`). Every
+`~/.claude-<name>` directory holding a sign-in is collected as well and
+nested under `accounts` in the record, one record each; the updater writes
+them out as `claude-<name>.json` so the panel gains a tab per account.
 """
 
 from __future__ import annotations
@@ -39,6 +45,62 @@ PROBE_MIN_INTERVAL_SECONDS = 15
 
 def config_dir() -> Path:
   return expand_path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude")
+
+
+# ------------------------------------------------------------------ accounts
+#
+# The CLI keeps one sign-in per config directory, so a second account is a
+# second directory: `~/.claude-work`, selected with CLAUDE_CONFIG_DIR. The
+# suffix names the account in the panel, and the directory's own
+# `.claude.json` says which account it is — the default directory's lives at
+# `~/.claude.json` instead — so two directories signed in to the same account
+# are shown once.
+
+def account_suffix(claude_dir: Path) -> str:
+  name = claude_dir.name
+  return name[len(".claude-"):] if name.startswith(".claude-") else ""
+
+
+def account_record_id(suffix: str) -> str:
+  cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", suffix).strip("-.")
+  return AGENT_ID + "-" + cleaned if cleaned else ""
+
+
+def account_identity(claude_dir: Path, default: bool) -> str:
+  candidates = [claude_dir / ".claude.json"]
+  if default:
+    candidates.append(Path.home() / ".claude.json")
+  for path in candidates:
+    try:
+      account = json.loads(path.read_text(encoding="utf-8")).get("oauthAccount")
+    except Exception:
+      continue
+    if not isinstance(account, dict):
+      continue
+    identity = str(account.get("accountUuid") or account.get("emailAddress") or "").strip()
+    if identity:
+      return identity
+  return ""
+
+
+def extra_account_dirs(default_dir: Path) -> list[tuple[str, Path]]:
+  seen = {account_identity(default_dir, True)}
+  out: list[tuple[str, Path]] = []
+  for candidate in sorted(Path.home().glob(".claude-*")):
+    if not candidate.is_dir() or not (candidate / ".credentials.json").is_file():
+      continue
+    claude_dir = candidate.resolve()
+    if claude_dir == default_dir:
+      continue
+    record_id = account_record_id(account_suffix(candidate))
+    if record_id == "" or any(record_id == existing for existing, _ in out):
+      continue
+    identity = account_identity(claude_dir, False)
+    if identity and identity in seen:
+      continue
+    seen.add(identity)
+    out.append((record_id, claude_dir))
+  return out
 
 
 def expand_path(value: str) -> Path:
@@ -791,13 +853,14 @@ def usable_cached_limits(cached: dict[str, Any]) -> list[dict[str, Any]]:
   return [entry for entry in entries if isinstance(entry, dict) and limit_window_open(entry, now)]
 
 
-def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[str, Any]:
+def collect_limits(access_token: str, expires_at_ms: int, force: bool, cache_key: str = "") -> dict[str, Any]:
   result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP}
 
   # A panel that is opened and shut repeatedly must not turn into a request
   # per flick, so recent probe results are reused for a short window — and
-  # kept as the answer of record when a later probe fails.
-  probe_cache = cache_root() / "claude-limits.json"
+  # kept as the answer of record when a later probe fails. Every account
+  # keeps its own cache: one sign-in's numbers must never answer for another.
+  probe_cache = cache_root() / ("claude-limits" + ("-" + cache_key if cache_key else "") + ".json")
   cached = read_fresh_json(probe_cache, float("inf")) or {}
   fallback = usable_cached_limits(cached)
 
@@ -849,15 +912,7 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
 # -------------------------------------------------------------------- record
 
 
-def main() -> int:
-  parser = argparse.ArgumentParser()
-  parser.add_argument("--force", action="store_true", help="rescan transcripts and re-probe limits, ignoring caches")
-  parser.add_argument("--limits-only", action="store_true", help="reuse any recent transcript scan; only the limits probe must be fresh")
-  parser.add_argument("--cache-seconds", type=float, default=20)
-  args = parser.parse_args()
-
-  claude_dir = config_dir()
-  scan_age = 0 if args.force else (900 if args.limits_only else args.cache_seconds)
+def collect_record(claude_dir: Path, scan_age: float, force: bool, record_id: str, name: str, shared: bool) -> dict[str, Any]:
   stats = cached_scan(claude_dir / "projects", scan_age)
 
   if number(stats.get("totalPrompts")) <= 0:
@@ -871,21 +926,24 @@ def main() -> int:
       if today_prompts or today_sessions:
         stats = dict(stats, todayPrompts=today_prompts, todaySessions=today_sessions)
 
-  pi_usage = scan_pi_usage(scan_age)
-  if pi_usage is not None:
-    stats = merge_stats(stats, pi_usage)
+  # Pi, omp, and opencode keep no per-account split, so their sessions
+  # count once, toward the default account, never toward every account.
+  if shared:
+    pi_usage = scan_pi_usage(scan_age)
+    if pi_usage is not None:
+      stats = merge_stats(stats, pi_usage)
 
-  opencode = scan_opencode_usage(scan_age)
-  if opencode is not None:
-    stats = merge_stats(stats, opencode)
+    opencode = scan_opencode_usage(scan_age)
+    if opencode is not None:
+      stats = merge_stats(stats, opencode)
 
   access_token, expires_at_ms, plan = oauth_login(claude_dir)
-  limits = collect_limits(access_token, expires_at_ms, args.force)
+  limits = collect_limits(access_token, expires_at_ms, force, "" if shared else record_id)
 
   record = {
     "schemaVersion": 1,
-    "id": AGENT_ID,
-    "name": AGENT_NAME,
+    "id": record_id,
+    "name": name,
     "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
     "ready": number(stats.get("totalPrompts")) > 0 or len(limits["limits"]) > 0,
     "hasLocalStats": True,
@@ -897,6 +955,27 @@ def main() -> int:
   if limits.get("retryAdvised"):
     record["retryAdvised"] = True
   record.update(stats)
+  return record
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true", help="rescan transcripts and re-probe limits, ignoring caches")
+  parser.add_argument("--limits-only", action="store_true", help="reuse any recent transcript scan; only the limits probe must be fresh")
+  parser.add_argument("--cache-seconds", type=float, default=20)
+  args = parser.parse_args()
+
+  claude_dir = config_dir()
+  scan_age = 0 if args.force else (900 if args.limits_only else args.cache_seconds)
+  record = collect_record(claude_dir, scan_age, args.force, AGENT_ID, AGENT_NAME, True)
+
+  accounts = [
+    collect_record(account_dir, scan_age, args.force, record_id, "Claude · " + account_suffix(account_dir), False)
+    for record_id, account_dir in extra_account_dirs(claude_dir)
+  ]
+  if accounts:
+    record["accounts"] = accounts
+
   print(json.dumps(record, separators=(",", ":"), sort_keys=True))
   return 0
 
