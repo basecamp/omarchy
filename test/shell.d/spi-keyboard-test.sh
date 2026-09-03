@@ -63,4 +63,34 @@ pass "unmatched hardware is untouched"
   fail "the ISO no longer caches macbook12-spi-driver-dkms"
 pass "the obsolete DKMS package is gone from the ISO package cache list"
 
+# The install script no longer adds the package, but machines that ran the
+# old installer still carry one that fails to build on every kernel update
+# once linux-headers is present. The migration drops it idempotently,
+# following the tiny-dfr precedent.
+cat >"$tmp_dir/bin/omarchy-pkg-present" <<'EOF'
+#!/bin/bash
+[[ -e $PKG_STATE ]] && [[ ${1:-} == macbook12-spi-driver-dkms ]]
+EOF
+cat >"$tmp_dir/bin/omarchy-pkg-drop" <<'EOF'
+#!/bin/bash
+printf '%s\n' "$*" >>"$PKG_DROP_LOG"
+rm -f "$PKG_STATE"
+EOF
+chmod +x "$tmp_dir/bin/omarchy-pkg-present" "$tmp_dir/bin/omarchy-pkg-drop"
+
+migration="$ROOT/migrations/1788476400.sh"
+: >"$tmp_dir/pkg.installed"
+: >"$tmp_dir/pkg-drop.log"
+PKG_STATE="$tmp_dir/pkg.installed" PKG_DROP_LOG="$tmp_dir/pkg-drop.log" \
+  PATH="$tmp_dir/bin:$PATH" HOME="$tmp_dir" bash "$migration"
+grep -qx macbook12-spi-driver-dkms "$tmp_dir/pkg-drop.log" ||
+  fail "the migration drops the obsolete DKMS package" \
+    "$(cat "$tmp_dir/pkg-drop.log")"
+drops_before=$(wc -l <"$tmp_dir/pkg-drop.log")
+PKG_STATE="$tmp_dir/pkg.installed" PKG_DROP_LOG="$tmp_dir/pkg-drop.log" \
+  PATH="$tmp_dir/bin:$PATH" HOME="$tmp_dir" bash "$migration"
+(( $(wc -l <"$tmp_dir/pkg-drop.log") == drops_before )) ||
+  fail "the migration only drops the package once" "$(cat "$tmp_dir/pkg-drop.log")"
+pass "installed machines get the obsolete DKMS package removed once"
+
 pass "SPI keyboard detection writes only the needed initramfs drop-in"
