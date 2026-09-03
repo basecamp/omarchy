@@ -72,6 +72,11 @@ void parser_contract(const std::filesystem::path &fixtures) {
   require(!omarchy::plugins::manifest::validate_settings_entry(
               product_settings, invalid_settings),
           "out-of-range settings entry was accepted");
+  auto off_step_settings = product_settings.settings.defaults;
+  off_step_settings["refreshIntervalSec"] = std::int64_t{901};
+  require(omarchy::plugins::manifest::validate_settings_entry(
+              product_settings, off_step_settings),
+          "in-range integer was rejected because it is off the UI step");
   invalid_settings = product_settings.settings.defaults;
   invalid_settings["mode"] = std::string("Other");
   require(!omarchy::plugins::manifest::validate_settings_entry(
@@ -93,8 +98,14 @@ void parser_contract(const std::filesystem::path &fixtures) {
               product_settings, invalid_settings),
           "missing settings entry key was accepted");
 
+  const auto off_step_default =
+      omarchy::plugins::manifest::parse_manifest_v2(
+          R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"settings":{"defaults":{"value":2},"schema":[{"key":"value","type":"integer","label":"Value","min":1,"max":5,"step":2,"defaultValue":2}]},"permissions":{"required":[],"optional":[]}})");
+  require(off_step_default.settings.defaults.at("value") ==
+              omarchy::plugins::manifest::SettingValue(std::int64_t{2}),
+          "in-range default was rejected because it is off the UI step");
+
   for (const auto malformed : {
-           R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"settings":{"defaults":{"value":2},"schema":[{"key":"value","type":"integer","label":"Value","min":1,"max":5,"step":2,"defaultValue":2}]},"permissions":{"required":[],"optional":[]}})",
            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"settings":{"defaults":{"mode":"Unknown"},"schema":[{"key":"mode","type":"enum","label":"Mode","options":["Known"],"defaultValue":"Unknown"}]},"permissions":{"required":[],"optional":[]}})",
            R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"settings":{"defaults":{"enabled":false},"schema":[{"key":"enabled","type":"boolean","label":"Enabled","defaultValue":false,"typo":true}]},"permissions":{"required":[],"optional":[]}})"}) {
     expect_rejected(

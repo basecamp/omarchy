@@ -511,8 +511,7 @@ bool valid_setting_value(const SettingDefinition &definition,
     const auto *integer = std::get_if<std::int64_t>(&value);
     return integer != nullptr && definition.minimum && definition.maximum &&
            definition.step && *integer >= *definition.minimum &&
-           *integer <= *definition.maximum &&
-           (*integer - *definition.minimum) % *definition.step == 0;
+           *integer <= *definition.maximum;
   }
   case SettingType::enumeration: {
     const auto *text = std::get_if<std::string>(&value);
