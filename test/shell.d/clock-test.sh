@@ -212,7 +212,13 @@ assert(/function close\(\) \{\s*\n\s*setCenterHoverRevealSuppressed\(false\)/.te
 assert(/width: Math\.max\(calendarScroll\.width, gridColumn\.width\)/.test(panelSource), 'calendar scrolls rather than clipping the grid on a narrow popup')
 assert(/enabled: !root\.viewingCurrentMonth/.test(panelSource) && /onClicked: root\.goToToday\(\)/.test(panelSource), 'calendar hero returns to today once the view has stepped away')
 assert(!/clampMonth/.test(panelSource), 'calendar steps freely into future months')
-assert(/Qt\.formatDate\(root\.today, "MMMM d"\)/.test(panelSource), 'calendar hero spells out today')
+assert(/root\.today\.toLocaleDateString\(Qt\.locale\(\), "MMMM d"\)/.test(panelSource), 'calendar hero spells out today')
+// Qt.formatDate/formatDateTime have no locale overload and always name days
+// and months in English, so neither may survive anywhere in the clock.
+assert(!/Qt\.formatDate(Time)?\(/.test(panelSource), 'calendar keeps no locale-blind date formatting')
+assert(!/Qt\.formatDate(Time)?\(/.test(widgetSource), 'clock bar label keeps no locale-blind date formatting')
+assert(/toLocaleString\(Qt\.locale\(\), activeFormat/.test(widgetSource), 'clock bar label formats through the system locale')
+assert(/root\.viewDate\.toLocaleDateString\(Qt\.locale\(\), "MMMM yyyy"\)/.test(panelSource), 'calendar month header follows the system locale')
 assert(/id: yearLabel/.test(panelSource) && /root\.yearDone/.test(panelSource), 'calendar panel shows the year progress bar')
 
 // The memento mori bar is opt-in: double-tapping the year bar asks for an age,
