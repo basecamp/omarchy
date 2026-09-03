@@ -46,3 +46,13 @@ o.bind("SUPER + C", "Universal copy", universal_clipboard_shortcut("CTRL", "C", 
 o.bind("SUPER + V", "Universal paste", universal_clipboard_shortcut("CTRL", "V", "SHIFT", "Insert"))
 o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", "X"))
 o.bind("SUPER + CTRL + V", "Clipboard manager", "omarchy-shell shell toggle omarchy.clipboard")
+
+-- Skipped in terminals: CTRL+A there is readline's "move to start of line",
+-- not select-all, so forwarding it would silently move the cursor instead.
+o.bind("SUPER + A", "Universal select all", function()
+  if active_window_is_terminal() then
+    return
+  end
+
+  send_shortcut_once("CTRL", "A")()
+end)
