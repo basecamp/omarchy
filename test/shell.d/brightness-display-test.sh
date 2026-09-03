@@ -31,7 +31,11 @@ cat >"$mock_bin/brightnessctl" <<'SH'
 #!/bin/bash
 printf 'brightnessctl %s\n' "$*" >>"$CALL_LOG"
 if [[ $* == *" -m"* ]]; then
-  printf 'mock_backlight,backlight,40,40%%\n'
+  if [[ -f "${MOCK_BRIGHTNESS_FILE:-}" ]]; then
+    cat "$MOCK_BRIGHTNESS_FILE"
+  else
+    printf 'mock_backlight,backlight,40,40%%\n'
+  fi
 fi
 SH
 
@@ -144,3 +148,11 @@ if PATH="$mock_bin:$PATH" "$ROOT/bin/omarchy-hyprland-monitor-focused-apple"; th
   fail "focused non-Apple display is not detected as Apple"
 fi
 pass "named Apple display is detected independently of focus"
+
+mock_bfile="$test_tmp/mbright"
+printf 'mock_backlight,backlight,0,0%%\n' >"$mock_bfile"
+MOCK_BRIGHTNESS_FILE="$mock_bfile" run_brightness --no-osd --monitor eDP-1 +5% >/dev/null
+grep -F 'brightnessctl -d mock_backlight set +1' "$call_log" >/dev/null || \
+  fail "stepping up from 0% falls back to +1 raw step when target percentage rounds down"
+pass "stepping up from 0% falls back to +1 raw step when target percentage rounds down"
+
