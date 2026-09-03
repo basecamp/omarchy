@@ -198,6 +198,14 @@ assertEqual(
   'menu hides Extra Themes until a theme cloned from git is there to update'
 )
 assert(
+  defaultById['update.plugin'].action.includes('omarchy-plugin-update'),
+  'menu updates git-managed plugins alongside the other things the user installed'
+)
+assert(
+  defaultById['update.plugin'].when.includes('.config/omarchy/plugins'),
+  'menu hides Plugins until a plugin with a git remote to pull from exists'
+)
+assert(
   defaultById['setup.input'].action.includes('input.lua'),
   'menu keeps Input as a direct config action'
 )

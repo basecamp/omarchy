@@ -345,6 +345,9 @@
   "update.channel": {"icon":"󰔫","label":"Channel"},
   "update.config": {"icon":"","label":"Config","title":"Reset to default"},
   "update.themes": {"icon":"󰸌","label":"Extra Themes","when":"omarchy-theme-extras","action":"omarchy-launch-floating-terminal-with-presentation omarchy-theme-update"},
+  // Only a plugin you cloned from git has somewhere to pull from, so Plugins
+  // stays hidden until there is one.
+  "update.plugin": {"icon":"󰐱","label":"Plugins","when":"compgen -G \"$HOME/.config/omarchy/plugins/*/.git\"","action":"omarchy-launch-floating-terminal-with-presentation omarchy-plugin-update"},
   "update.process": {"icon":"","label":"Process","title":"Restart"},
   "update.hardware": {"icon":"󰇅","label":"Hardware","title":"Restart"},
   "update.firmware": {"icon":"","label":"Firmware","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update-firmware"},
