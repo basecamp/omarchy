@@ -12,7 +12,7 @@ From the terminal, the same switches are `omarchy toggle <thing>`. Run `omarchy 
 | ------ | ------ | ------- |
 | Night light | `Super + Ctrl + N` | `omarchy toggle nightlight` |
 | Silence notifications | `Super + Ctrl + ,` | `omarchy toggle notification silencing` |
-| Stay awake (no idle lock) | `Super + Ctrl + I` | `omarchy toggle idle` |
+| Stay awake (no idle actions) | `Super + Ctrl + I` | `omarchy toggle idle` |
 | Crash capture | — | `omarchy toggle crash-capture` |
 | Screensaver | — | `omarchy toggle screensaver` |
 | Menu bar | `Super + Shift + Space` | `omarchy toggle bar` |
@@ -31,7 +31,7 @@ Most of these are just a flag file under `~/.local/state/omarchy/toggles/`. If y
 omarchy-toggle-enabled screensaver-off && echo "screensaver is off"
 ```
 
-The flags are named for the off state — `screensaver-off`, `suspend-off`, `bar-off` — so their presence means the feature is disabled.
+The flags are named for the off state — `screensaver-off`, `suspend-off`, `bar-off` — but their scope differs: `screensaver-off` disables the idle screensaver, `bar-off` hides the bar, and `suspend-off` hides the manual Suspend action. Automatic idle suspend is configured separately in `shell.json`.
 
 ### Indicators in the bar
 
@@ -71,18 +71,19 @@ The Omarchy shell owns idle behavior, and the timings are a top-level `idle` blo
   "version": 1,
   "idle": {
     "screensaver": 150,
-    "lock": 300
+    "lock": 300,
+    "suspend": 900
   }
 }
 ```
 
-Both numbers are seconds counted from the moment you went idle — not from each other. So with the defaults, the screensaver comes up after two and a half minutes and the lock screen takes over at five minutes, whether or not the screensaver ran. Save the file and the shell picks up the new timings right away.
+All three numbers are seconds counted from the moment you went idle — not from each other. With the defaults, the screensaver comes up after two and a half minutes, the lock screen takes over at five minutes, and the computer suspends at fifteen minutes. Save the file and the shell picks up the new timings right away.
 
-If you dismiss the screensaver before the lock deadline, that counts as activity and the pending lock is cancelled. You don't get locked out for glancing at your machine.
+If you dismiss the screensaver while the idle cycle is armed, that counts as activity and cancels the pending lock and suspend. You don't get locked out—or suspended—for glancing at your machine.
 
-To stop locking on idle entirely, `Super + Ctrl + I` — or `omarchy toggle idle` — flips stay awake on, and the coffee cup indicator appears in the bar. That's the one to hit before a long presentation or a build you want to watch. Hit it again to go back to normal. `omarchy toggle idle status` prints the current state as JSON if you need it from a script.
+To stop all idle actions temporarily, `Super + Ctrl + I` — or `omarchy toggle idle` — flips Stay Awake on, and the coffee cup indicator appears in the bar. That pauses the screensaver, lock, and automatic suspend, so it's the one to hit before a long presentation or a build you want to watch. Hit it again to go back to normal. `omarchy toggle idle status` prints the current state as JSON if you need it from a script.
 
-This is about locking and the screensaver, not power. Suspend and hibernation have their own setup in [system sleep](36-system-sleep.md).
+The idle suspend deadline uses the same system suspend path as the manual action and locks the session before sleep. See [system sleep](36-system-sleep.md) for the manual Suspend action and hibernation setup.
 
 ### The screensaver
 

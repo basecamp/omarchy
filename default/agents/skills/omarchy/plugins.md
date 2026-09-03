@@ -13,7 +13,8 @@ $OMARCHY_PATH/config/omarchy/shell.json  # Canonical defaults
 ```
 
 The shell hot-reloads `shell.json` on save — no restart needed for layout
-changes. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+changes. `idle.screensaver`, `idle.lock`, and `idle.suspend` are seconds since
+user idle began.
 
 **Commands:** `omarchy restart shell`, `omarchy refresh shell`
 
@@ -45,8 +46,13 @@ Saving a file anywhere under `~/.config/omarchy/plugins/` reloads plugin code
 automatically. If a change somehow fails to apply, force a reload with
 `omarchy-shell shell rescanPlugins`.
 
-## Idle and Lock
+## Idle, Lock, and Suspend
 
-Set `idle.screensaver` and `idle.lock` in `~/.config/omarchy/shell.json`,
-in seconds since user idle began. Example: "lock after ten minutes" means
-setting `idle.lock` to `600`.
+Set `idle.screensaver`, `idle.lock`, and `idle.suspend` in
+`~/.config/omarchy/shell.json`, in seconds since user idle began. Example:
+"lock after ten minutes and suspend after thirty" means setting `idle.lock`
+to `600` and `idle.suspend` to `1800`.
+
+Stay Awake (`omarchy toggle idle`) disables all three idle actions. `omarchy
+toggle suspend` only shows or hides the manual Suspend action in the system
+menu; it does not change the automatic idle deadline.

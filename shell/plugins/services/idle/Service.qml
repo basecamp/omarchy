@@ -16,12 +16,15 @@ Item {
   readonly property string stayAwakeStatePath: stayAwakeStateDir + "/stay-awake"
   readonly property int defaultScreensaverSeconds: 150
   readonly property int defaultLockSeconds: 300
+  readonly property int defaultSuspendSeconds: 900
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
   readonly property int screensaverTimeoutSeconds: secondsFromConfig(idleConfig.screensaver, defaultScreensaverSeconds)
   readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
-  readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
+  readonly property int suspendTimeoutSeconds: secondsFromConfig(idleConfig.suspend, defaultSuspendSeconds)
+  readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds, suspendTimeoutSeconds)
   readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
+  readonly property int suspendDelaySeconds: Math.max(0, suspendTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
@@ -73,10 +76,20 @@ Item {
     screensaverTimer.stop()
     lockTimer.stop()
     screensaverLaunchGraceTimer.stop()
-    root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
     resetScreensaverWindows()
     runProcess(lockProcess, "lock", "omarchy-system-lock")
+  }
+
+  function suspendSystem() {
+    logEvent("suspend system requested")
+    screensaverTimer.stop()
+    lockTimer.stop()
+    suspendTimer.stop()
+    root.idledThisCycle = false
+    root.screensaverStartedThisCycle = false
+    resetScreensaverWindows()
+    runProcess(suspendProcess, "suspend", "systemctl suspend")
   }
 
   function startIdleCycle() {
@@ -85,7 +98,7 @@ Item {
       return
     }
 
-    logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds)
+    logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds + " suspend=" + root.suspendTimeoutSeconds)
     root.idledThisCycle = true
     root.screensaverStartedThisCycle = false
     resetScreensaverWindows()
@@ -95,12 +108,16 @@ Item {
 
     if (root.lockDelaySeconds === 0) lockSystem("lock-timeout-immediate")
     else lockTimer.restart()
+
+    if (root.suspendTimeoutSeconds === 0) suspendSystem()
+    else suspendTimer.restart()
   }
 
   function cancelIdleCycle(reason) {
     logEvent("idle-cycle-cancel", reason || "requested")
     screensaverTimer.stop()
     lockTimer.stop()
+    suspendTimer.stop()
     screensaverLaunchGraceTimer.stop()
 
     if (root.idledThisCycle) runProcess(wakeProcess, "wake", "omarchy-system-wake")
@@ -188,13 +205,16 @@ Item {
       screensaverStarted: root.screensaverStartedThisCycle,
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,
+      suspend: root.suspendTimeoutSeconds,
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
+      suspendDelay: root.suspendDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
       timers: {
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
-        screensaverLaunchGrace: screensaverLaunchGraceTimer.running
+        screensaverLaunchGrace: screensaverLaunchGraceTimer.running,
+        suspend: suspendTimer.running
       },
       processes: {
         screensaver: screensaverProcess.running,
@@ -280,6 +300,13 @@ Item {
     }
   }
 
+  Timer {
+    id: suspendTimer
+    interval: root.suspendDelaySeconds * 1000
+    repeat: false
+    onTriggered: if (root.idleEnabled && root.idledThisCycle) root.suspendSystem()
+  }
+
   Connections {
     target: Hyprland
     function onRawEvent(event) { root.handleHyprlandEvent(event) }
@@ -296,6 +323,10 @@ Item {
   Process {
     id: wakeProcess
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "wake exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: suspendProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "suspend exitCode="+ exitCode + " status=" + exitStatus) }
   }
 
   Process {

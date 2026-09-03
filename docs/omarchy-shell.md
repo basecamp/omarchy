@@ -134,7 +134,8 @@ string on a miss.
   "version": 1,
   "idle": {
     "screensaver": 150,
-    "lock": 300
+    "lock": 300,
+    "suspend": 900
   },
   "bar": {
     "id": "omarchy.bar",
@@ -166,12 +167,19 @@ Rules:
 5. Third-party enabled ⇔ present; for full bar options that means `bar.id`.
    First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
 6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
-7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+7. `idle.screensaver`, `idle.lock`, and `idle.suspend` are seconds since user
+   idle began. The defaults start the screensaver at 150 seconds, lock at 300,
+   and suspend at 900.
 8. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user
 customizes, `shell.json` is canonical — there is no deep-merge.
+
+The idle monitor respects application inhibitors. Stay Awake (`omarchy toggle
+idle`) disables the complete idle cycle, including automatic suspend. The
+separate `omarchy toggle suspend` command only controls whether the manual
+Suspend action is shown in the system menu.
 
 `shell.json` is shell configuration; theme tokens live in `shell.toml`
 (next section). Both are current — they answer different questions. A

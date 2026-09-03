@@ -1,6 +1,6 @@
 # System sleep
 
-Omarchy enables suspend and hibernation by default, but if you're having issues with either on your machine, you can toggle them off.
+Omarchy exposes manual suspend by default and can suspend automatically after fifteen minutes of inactivity. Hibernation becomes available after you set it up.
 
 ### Power profiles
 
@@ -8,9 +8,11 @@ On a laptop, Omarchy remembers your power profile separately for plugged in and 
 
 You can see what your machine offers with `omarchy powerprofiles list`, and set the one you want for the state you're currently in with `omarchy powerprofiles set autodetect power-saver`. To set the other state without unplugging anything, name it directly: `omarchy powerprofiles set battery power-saver`. Whatever you pick is what you'll get back the next time you're in that state.
 
-### Toggle suspend
+### Toggle the suspend action
 
-You toggle suspend by running `omarchy toggle suspend` from the terminal. That just reveals/hides the option under _System_ (or `Super + Esc`), and then you can see if it works consistently on your system. If not, you can hide it again with the same command.
+You toggle the manual Suspend action by running `omarchy toggle suspend` from the terminal. That reveals or hides the option under _System_ (or `Super + Esc`); it does not change automatic idle suspend.
+
+Automatic suspend is controlled by `idle.suspend` in `~/.config/omarchy/shell.json`. The value is the number of seconds since your last activity, with a default of `900`. Stay Awake (`Super + Ctrl + I` or `omarchy toggle idle`) temporarily disables the complete idle cycle, including automatic suspend. See [toggles and idle](13-toggles-idle-screensaver.md) for the full configuration.
 
 ### Toggle hibernation
 
