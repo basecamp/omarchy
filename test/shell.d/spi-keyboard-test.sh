@@ -58,4 +58,9 @@ run_leaf "MacBookPro15,2"
   fail "an unmatched machine does not write the drop-in"
 pass "unmatched hardware is untouched"
 
+# Nothing installs the package now, so the ISO has no reason to cache it.
+! grep -qx 'macbook12-spi-driver-dkms' "$ROOT/install/omarchy-other.packages" ||
+  fail "the ISO no longer caches macbook12-spi-driver-dkms"
+pass "the obsolete DKMS package is gone from the ISO package cache list"
+
 pass "SPI keyboard detection writes only the needed initramfs drop-in"
