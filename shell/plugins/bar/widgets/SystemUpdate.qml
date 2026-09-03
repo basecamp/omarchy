@@ -39,8 +39,16 @@ BarWidget {
   Process {
     id: updateProc
     command: ["omarchy-update-available"]
+    // exit 0: updates available. exit 1: "up to date". exit 2+: check failed
+    // (e.g. checkupdates error from concurrent runs). Preserve the last known
+    // state on failure so a pending update is not hidden (#9798).
     onExited: function(exitCode) {
-      root.updateAvailable = exitCode === 0
+      if (exitCode === 0) {
+        root.updateAvailable = true
+      } else if (exitCode === 1) {
+        root.updateAvailable = false
+      }
+      // exit 2+: keep root.updateAvailable as-is
     }
   }
 
