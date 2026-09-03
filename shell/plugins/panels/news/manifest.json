@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.news",
+  "name": "Omarchy News",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "Recent Omarchy and Omacom Foundation announcements from the official news feed.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "News",
+    "description": "Follow official Omarchy and Omacom Foundation announcements.",
+    "category": "Info",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "refreshIntervalMin": 15,
+      "itemLimit": 10
+    },
+    "schema": [
+      {
+        "key": "refreshIntervalMin",
+        "type": "integer",
+        "label": "Refresh interval (minutes)",
+        "min": 5,
+        "max": 120,
+        "step": 5,
+        "defaultValue": 15
+      },
+      {
+        "key": "itemLimit",
+        "type": "integer",
+        "label": "Headlines shown",
+        "min": 5,
+        "max": 20,
+        "step": 1,
+        "defaultValue": 10
+      }
+    ]
+  }
+}
