@@ -196,6 +196,26 @@ Item {
             }
           }
 
+          BorderSurface {
+            implicitWidth: modeText.implicitWidth + Style.space(20)
+            implicitHeight: modeText.implicitHeight + Style.space(10)
+            color: Style.selectedFillFor(root.foreground, root.accent)
+            borderSpec: Border.controlSpec("selected", root.foreground, root.accent)
+            radius: Style.cornerRadius
+
+            Text {
+              id: modeText
+              anchors.centerIn: parent
+              textFormat: Text.PlainText
+              text: root.focusArea === "article" ? "READING STORY · ↑↓ SCROLL" : "BROWSING FEED · ↑↓ SELECT"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              font.letterSpacing: 0.6
+            }
+          }
+
           PanelActionButton {
             iconText: "󰑐"
             tooltipText: "Refresh news (R)"
@@ -225,10 +245,13 @@ Item {
           spacing: Style.space(16)
 
           BorderSurface {
+            id: feedPane
             Layout.preferredWidth: Math.min(Style.space(340), window.width * 0.38)
             Layout.fillHeight: true
-            color: "transparent"
-            borderSpec: Border.surfaceSpec("news-list", "border", root.foreground, 1)
+            color: root.focusArea === "headlines" ? Style.focusFillFor(root.foreground, root.accent) : "transparent"
+            borderSpec: root.focusArea === "headlines"
+              ? Border.controlSpec("focus", root.foreground, root.accent)
+              : Border.surfaceSpec("news-list", "border", root.foreground, 1)
             radius: Style.cornerRadius
 
             ColumnLayout {
@@ -236,13 +259,28 @@ Item {
               anchors.margins: Style.space(10)
               spacing: Style.space(8)
 
-              Text {
-                text: "LATEST"
-                color: root.dim
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                font.letterSpacing: 1.0
+              RowLayout {
+                Layout.fillWidth: true
+                spacing: Style.space(8)
+
+                Text {
+                  text: "BROWSE FEED"
+                  color: root.focusArea === "headlines" ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                  font.letterSpacing: 1.0
+                }
+
+                Text {
+                  Layout.fillWidth: true
+                  textFormat: Text.PlainText
+                  text: root.focusArea === "headlines" ? "↑↓ SELECT  ·  → READ" : "← RETURN"
+                  color: root.focusArea === "headlines" ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  horizontalAlignment: Text.AlignRight
+                }
               }
 
               ListView {
@@ -310,24 +348,60 @@ Item {
             }
           }
 
-          Item {
+          BorderSurface {
+            id: storyPane
             Layout.fillWidth: true
             Layout.fillHeight: true
+            color: root.focusArea === "article" ? Style.focusFillFor(root.foreground, root.accent) : "transparent"
+            borderSpec: root.focusArea === "article"
+              ? Border.controlSpec("focus", root.foreground, root.accent)
+              : Border.surfaceSpec("news-story", "border", root.foreground, 1)
+            radius: Style.cornerRadius
 
-            Flickable {
-              id: articleFlick
+            ColumnLayout {
               anchors.fill: parent
-              contentWidth: width
-              contentHeight: articleColumn.implicitHeight
-              clip: true
-              boundsBehavior: Flickable.StopAtBounds
-              flickableDirection: Flickable.VerticalFlick
-              ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+              anchors.margins: Style.space(10)
+              spacing: Style.space(8)
 
-              Column {
-                id: articleColumn
-                width: articleFlick.width - Style.space(12)
-                spacing: Style.space(14)
+              RowLayout {
+                Layout.fillWidth: true
+                spacing: Style.space(8)
+
+                Text {
+                  text: "READ STORY"
+                  color: root.focusArea === "article" ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                  font.letterSpacing: 1.0
+                }
+
+                Text {
+                  Layout.fillWidth: true
+                  textFormat: Text.PlainText
+                  text: root.focusArea === "article" ? "↑↓ SCROLL  ·  ← FEED" : "→ START READING"
+                  color: root.focusArea === "article" ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  horizontalAlignment: Text.AlignRight
+                }
+              }
+
+              Flickable {
+                id: articleFlick
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: width
+                contentHeight: articleColumn.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.VerticalFlick
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                Column {
+                  id: articleColumn
+                  width: articleFlick.width - Style.space(12)
+                  spacing: Style.space(14)
 
                 Text {
                   visible: !root.currentArticle
@@ -390,25 +464,26 @@ Item {
                   wrapMode: Text.WordWrap
                 }
 
-                Text {
-                  visible: !!root.currentArticle
-                  width: parent.width
-                  text: "←/→ switch focus  ·  ↑/↓ navigate or scroll  ·  R refresh  ·  Esc close"
-                  color: root.dim
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  horizontalAlignment: Text.AlignHCenter
-                  wrapMode: Text.WordWrap
+                  Text {
+                    visible: !!root.currentArticle
+                    width: parent.width
+                    text: "R refresh  ·  Esc close"
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                  }
                 }
               }
-            }
 
-            MouseArea {
-              anchors.fill: parent
-              acceptedButtons: Qt.NoButton
-              onWheel: function(wheel) {
-                root.focusArea = "article"
-                wheel.accepted = false
+              MouseArea {
+                anchors.fill: articleFlick
+                acceptedButtons: Qt.NoButton
+                onWheel: function(wheel) {
+                  root.focusArea = "article"
+                  wheel.accepted = false
+                }
               }
             }
           }
