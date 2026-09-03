@@ -832,6 +832,112 @@ void touch_input_reaches_qml_handlers() {
   QCoreApplication::instance()->removeEventFilter(&probe);
 }
 
+enum class SiblingInteraction { focused_text, pointer_grab };
+
+void sibling_render_preserves_interaction(SiblingInteraction interaction) {
+  worker::WorkerRuntime runtime(fixture("expressive"));
+  require(static_cast<bool>(runtime.load_surface_entry(
+              "target", "InteractionState.qml")) &&
+              static_cast<bool>(runtime.load_surface_entry(
+                  "sibling", "InteractionState.qml")) &&
+              static_cast<bool>(runtime.select_software_profile(
+                  surface::software_profile_offer())),
+          "sibling-render interaction surfaces did not load");
+  const auto page_size = sysconf(_SC_PAGESIZE);
+  const auto target = surface::make_allocation(
+      {.id = 81, .generation = 15}, 64, 32, 64, 32, 1, 1,
+      static_cast<std::uint64_t>(page_size));
+  const auto sibling = surface::make_allocation(
+      {.id = 82, .generation = 15}, 64, 32, 64, 32, 1, 1,
+      static_cast<std::uint64_t>(page_size));
+  require(page_size > 0 && target && sibling &&
+              static_cast<bool>(runtime.bind_surface("target",
+                                                     target->surface)) &&
+              static_cast<bool>(runtime.bind_surface("sibling",
+                                                     sibling->surface)),
+          "sibling-render interaction surfaces did not bind");
+  const int target_fd = static_cast<int>(
+      syscall(SYS_memfd_create, "worker-interaction-target", MFD_CLOEXEC));
+  const int sibling_fd = static_cast<int>(
+      syscall(SYS_memfd_create, "worker-interaction-sibling", MFD_CLOEXEC));
+  require(target_fd >= 0 && sibling_fd >= 0 &&
+              ftruncate(target_fd,
+                        static_cast<off_t>(target->mapping_bytes)) == 0 &&
+              ftruncate(sibling_fd,
+                        static_cast<off_t>(sibling->mapping_bytes)) == 0 &&
+              static_cast<bool>(runtime.allocate(*target, target_fd)) &&
+              static_cast<bool>(runtime.allocate(*sibling, sibling_fd)),
+          "sibling-render interaction surfaces did not allocate");
+
+  std::uint64_t sequence = 1;
+  const auto accepted = [&](surface::InputPayload payload) {
+    return static_cast<bool>(runtime.input(
+        {.surface = target->surface,
+         .sequence = sequence++,
+         .payload = std::move(payload)}));
+  };
+  const auto render_sibling = [&] {
+    runtime.request_render();
+    for (int attempt = 0; attempt < 4; ++attempt) {
+      const auto frame = runtime.render();
+      require(frame.has_value(), "interleaved sibling frame was absent");
+      if (frame->ready.surface == sibling->surface)
+        return;
+    }
+    throw std::runtime_error("interleaved sibling surface was not rendered");
+  };
+
+  require(accepted(surface::FocusChanged{.focused = true}),
+          "interaction target did not acquire focus");
+  if (interaction == SiblingInteraction::focused_text) {
+    require(runtime.root_object_name() ==
+                "focused=true;keys=0;text=;drag=0",
+            "focused child did not receive the trusted focus event");
+    render_sibling();
+    require(runtime.root_object_name() ==
+                "focused=true;keys=0;text=;drag=0",
+            "sibling render cleared the focused child");
+    const surface::Key key_press{
+        .key = static_cast<std::uint32_t>(Qt::Key_A),
+        .native_scan_code = 30,
+        .state = surface::ButtonState::pressed,
+        .text = "a"};
+    auto key_release = key_press;
+    key_release.state = surface::ButtonState::released;
+    key_release.text.clear();
+    require(accepted(key_press) && accepted(key_release) &&
+                accepted(surface::TextCommit{.text = "é"}),
+            "focused child key or text input was rejected after sibling render");
+    require(runtime.root_object_name() ==
+                "focused=true;keys=1;text=é;drag=0",
+            "focused child lost key or text input after sibling render");
+    return;
+  }
+
+  const surface::PointerButton press{
+      .position = {.x_q16 = 10U << 16, .y_q16 = 24U << 16},
+      .button = static_cast<std::uint32_t>(Qt::LeftButton),
+      .state = surface::ButtonState::pressed,
+      .buttons = static_cast<std::uint32_t>(Qt::LeftButton)};
+  require(accepted(press) &&
+              runtime.root_object_name() ==
+                  "focused=true;keys=0;text=;drag=1",
+          "interaction target did not establish its pointer grab");
+  render_sibling();
+  const surface::PointerMotion motion{
+      .position = {.x_q16 = 20U << 16, .y_q16 = 24U << 16},
+      .buttons = static_cast<std::uint32_t>(Qt::LeftButton)};
+  auto release = press;
+  release.position.x_q16 = 20U << 16;
+  release.state = surface::ButtonState::released;
+  release.buttons = 0;
+  require(accepted(motion) && accepted(release),
+          "pointer drag input was rejected after sibling render");
+  require(runtime.root_object_name() ==
+              "focused=true;keys=0;text=;drag=3",
+          "sibling render canceled the active child pointer grab");
+}
+
 void mouse_grab_cleanup_is_surface_scoped() {
   worker::WorkerRuntime runtime(fixture("expressive"));
   require(static_cast<bool>(
@@ -1499,6 +1605,18 @@ int main(int argc, char **argv) {
     if (argc == 2 && std::string_view(argv[1]) == "--headless-only") {
       headless_entry_has_no_surface_authority();
       std::cout << "plugin worker headless boundary: ok\n";
+      return 0;
+    }
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--sibling-focus-only") {
+      sibling_render_preserves_interaction(SiblingInteraction::focused_text);
+      std::cout << "plugin worker sibling focus: ok\n";
+      return 0;
+    }
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--sibling-grab-only") {
+      sibling_render_preserves_interaction(SiblingInteraction::pointer_grab);
+      std::cout << "plugin worker sibling grab: ok\n";
       return 0;
     }
     render_and_input();

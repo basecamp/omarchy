@@ -102,6 +102,18 @@ if(BUILD_TESTING)
     TIMEOUT 30
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
   )
+  add_test(NAME plugin-worker-runtime-sibling-focus
+    COMMAND omarchy-plugin-worker-runtime-test --sibling-focus-only)
+  add_test(NAME plugin-worker-runtime-sibling-grab
+    COMMAND omarchy-plugin-worker-runtime-test --sibling-grab-only)
+  set_tests_properties(
+    plugin-worker-runtime-sibling-focus
+    plugin-worker-runtime-sibling-grab
+    PROPERTIES
+      LABELS "unit;integration;render;input"
+      TIMEOUT 20
+      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
+  )
 
   add_executable(omarchy-plugin-worker-channel-test tests/worker_channel_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-worker-channel-test)
