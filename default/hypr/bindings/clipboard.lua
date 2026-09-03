@@ -42,7 +42,15 @@ local function universal_clipboard_shortcut(default_mods, default_key, terminal_
   end
 end
 
-o.bind("SUPER + C", "Universal copy", universal_clipboard_shortcut("CTRL", "C", "CTRL", "Insert"))
-o.bind("SUPER + V", "Universal paste", universal_clipboard_shortcut("CTRL", "V", "SHIFT", "Insert"))
-o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", "X"))
+-- Inject letters by keycode, not keysym: Hyprland resolves keysyms against the
+-- active layout, so on a non-Latin layout (Cyrillic, Greek, ...) no key produces
+-- "C"/"V"/"X" and the injection silently does nothing. Hyprland's code: prefix
+-- takes XKB keycodes (evdev scancode + 8), verifiable with `wev`.
+local KEYCODE_C = "code:54"
+local KEYCODE_V = "code:55"
+local KEYCODE_X = "code:53"
+
+o.bind("SUPER + C", "Universal copy", universal_clipboard_shortcut("CTRL", KEYCODE_C, "CTRL", "Insert"))
+o.bind("SUPER + V", "Universal paste", universal_clipboard_shortcut("CTRL", KEYCODE_V, "SHIFT", "Insert"))
+o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", KEYCODE_X))
 o.bind("SUPER + CTRL + V", "Clipboard manager", "omarchy-shell shell toggle omarchy.clipboard")
