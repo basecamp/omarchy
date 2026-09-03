@@ -757,32 +757,95 @@ void neutral_surface_trusted_input() {
   require(api.bindSurfaceIntentSink(sink),
           "neutral fixture intent sink did not bind");
 
-  worker::WorkerRuntime runtime(fixture);
-  require(static_cast<bool>(runtime.bind_runtime_api(api)) &&
-              static_cast<bool>(
-                  runtime.load_surface_entry("bar", "ui/Bar.qml")) &&
-              static_cast<bool>(runtime.select_software_profile(
-                  surface::software_profile_offer())),
-          "neutral bar did not load through the real worker runtime");
   const auto page_size = sysconf(_SC_PAGESIZE);
   require(page_size > 0, "neutral input fixture page size was unavailable");
   const auto allocation = surface::make_allocation(
       {.id = 71, .generation = 9}, 252, 48, 252, 48, 1, 1,
       static_cast<std::uint64_t>(page_size));
-  require(allocation.has_value() &&
+  const auto panel_allocation = surface::make_allocation(
+      {.id = 72, .generation = 9}, 320, 480, 320, 480, 1, 1,
+      static_cast<std::uint64_t>(page_size));
+  require(allocation.has_value() && panel_allocation.has_value(),
+          "neutral surface allocations were invalid");
+
+  worker::WorkerRuntime runtime(fixture);
+  require(static_cast<bool>(runtime.bind_runtime_api(api)) &&
+              static_cast<bool>(
+                  runtime.load_surface_entry("bar", "ui/Bar.qml")) &&
+              static_cast<bool>(
+                  runtime.load_surface_entry("panel", "ui/Panel.qml")) &&
+              static_cast<bool>(runtime.select_software_profile(
+                  surface::software_profile_offer())) &&
               static_cast<bool>(runtime.bind_surface("bar",
-                                                     allocation->surface)),
-          "neutral bar did not bind its trusted surface identity");
+                                                     allocation->surface)) &&
+              static_cast<bool>(runtime.bind_surface(
+                  "panel", panel_allocation->surface)),
+          "neutral surfaces did not load and bind through the real worker");
   const int descriptor = static_cast<int>(
       syscall(SYS_memfd_create, "neutral-input-frame", MFD_CLOEXEC));
+  const int panel_descriptor = static_cast<int>(
+      syscall(SYS_memfd_create, "neutral-panel-frame", MFD_CLOEXEC));
   require(descriptor >= 0 &&
               ftruncate(descriptor,
                         static_cast<off_t>(allocation->mapping_bytes)) == 0 &&
-              static_cast<bool>(runtime.allocate(*allocation, descriptor)),
-          "neutral bar did not receive its trusted frame allocation");
+              panel_descriptor >= 0 &&
+              ftruncate(panel_descriptor,
+                        static_cast<off_t>(panel_allocation->mapping_bytes)) ==
+                  0 &&
+              static_cast<bool>(runtime.allocate(*allocation, descriptor)) &&
+              static_cast<bool>(
+                  runtime.allocate(*panel_allocation, panel_descriptor)),
+          "neutral surfaces did not receive trusted frame allocations");
+
+  auto interleaved_pointer = [&](std::uint64_t sequence,
+                                 surface::ButtonState state,
+                                 std::uint32_t buttons) {
+    return surface::InputEvent{
+        .surface = allocation->surface,
+        .sequence = sequence,
+        .payload = surface::PointerButton{
+            .position = {.x_q16 = 63U << 16, .y_q16 = 24U << 16},
+            .button = static_cast<std::uint32_t>(Qt::LeftButton),
+            .state = state,
+            .buttons = buttons}};
+  };
+  const auto interleaved_press = interleaved_pointer(
+      1, surface::ButtonState::pressed,
+      static_cast<std::uint32_t>(Qt::LeftButton));
+  require(api.beginTrustedGestureForInput(interleaved_press) &&
+              static_cast<bool>(runtime.input(interleaved_press)),
+          "interleaved MouseArea press did not reach the worker");
+  api.endTrustedGesture();
+  runtime.request_render();
+  bool sibling_rendered = false;
+  for (int attempt = 0; attempt < 4 && !sibling_rendered; ++attempt) {
+    const auto frame = runtime.render();
+    require(frame.has_value(),
+            "interleaved sibling surface did not produce a frame");
+    sibling_rendered = frame->ready.surface == panel_allocation->surface;
+  }
+  require(sibling_rendered,
+          "panel sibling was not rendered between bar press and release");
+  const auto interleaved_release = interleaved_pointer(
+      2, surface::ButtonState::released, 0);
+  require(api.beginTrustedGestureForInput(interleaved_release) &&
+              static_cast<bool>(runtime.input(interleaved_release)),
+          "interleaved MouseArea release did not reach the worker");
+  api.endTrustedGesture();
+  require(sink.targets.size() == 1 && sink.targets[0] == "panel" &&
+              sink.actions[0] == surface::SurfaceIntentAction::toggle &&
+              sink.sources[0].surface_id == allocation->surface.id &&
+              sink.sources[0].surface_generation ==
+                  allocation->surface.generation &&
+              sink.sources[0].input_sequence == 1,
+          "interleaved secure-surface click did not reach the worker MouseArea");
+  sink.sources.clear();
+  sink.targets.clear();
+  sink.actions.clear();
+
   require(static_cast<bool>(runtime.input(
               {.surface = allocation->surface,
-               .sequence = 1,
+               .sequence = 3,
                .payload = surface::FocusChanged{.focused = true}})) &&
               sink.targets.empty(),
           "neutral bar requested a surface before pointer input");
@@ -799,7 +862,7 @@ void neutral_surface_trusted_input() {
             .buttons = buttons}};
   };
   const auto panel_press =
-      pointer(2, 63, surface::ButtonState::pressed,
+      pointer(4, 63, surface::ButtonState::pressed,
               static_cast<std::uint32_t>(Qt::LeftButton));
   require(api.beginTrustedGestureForInput(panel_press) &&
               static_cast<bool>(runtime.input(panel_press)),
@@ -815,7 +878,7 @@ void neutral_surface_trusted_input() {
           "pointer press exposed its deferred claim outside input dispatch");
 
   const auto panel_release =
-      pointer(3, 63, surface::ButtonState::released, 0);
+      pointer(5, 63, surface::ButtonState::released, 0);
   require(api.beginTrustedGestureForInput(panel_release) &&
               static_cast<bool>(runtime.input(panel_release)),
           "neutral panel release did not traverse trusted worker input");
@@ -825,14 +888,14 @@ void neutral_surface_trusted_input() {
               sink.sources[0].surface_id == allocation->surface.id &&
               sink.sources[0].surface_generation ==
                   allocation->surface.generation &&
-              sink.sources[0].input_sequence == 2,
+              sink.sources[0].input_sequence == 4,
           "neutral panel click lost its exact press gesture claim");
   require(!api.requestSurfaceIntent(QStringLiteral("panel"),
                                     QStringLiteral("toggle")),
           "neutral panel click replayed its consumed gesture claim");
 
   const auto overlay_press =
-      pointer(4, 189, surface::ButtonState::pressed,
+      pointer(6, 189, surface::ButtonState::pressed,
               static_cast<std::uint32_t>(Qt::LeftButton));
   require(api.beginTrustedGestureForInput(overlay_press) &&
               static_cast<bool>(runtime.input(overlay_press)),
@@ -841,14 +904,14 @@ void neutral_surface_trusted_input() {
   require(sink.targets.size() == 1,
           "TapHandler requested its intent before the tap completed");
   const auto overlay_release =
-      pointer(5, 189, surface::ButtonState::released, 0);
+      pointer(7, 189, surface::ButtonState::released, 0);
   require(api.beginTrustedGestureForInput(overlay_release) &&
               static_cast<bool>(runtime.input(overlay_release)),
           "neutral overlay release did not traverse trusted worker input");
   api.endTrustedGesture();
   require(sink.targets.size() == 2 && sink.targets[1] == "overlay" &&
               sink.actions[1] == surface::SurfaceIntentAction::toggle &&
-              sink.sources[1].input_sequence == 4,
+              sink.sources[1].input_sequence == 6,
           "neutral TapHandler lost its exact press gesture claim");
 }
 
