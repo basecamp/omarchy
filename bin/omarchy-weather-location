@@ -21,7 +21,12 @@ case "${1:-}" in
   [[ -f $LOC_FILE ]] && name=$(jq -r '.name // "" | if type == "string" then . else "" end' "$LOC_FILE" 2>/dev/null)
   if [[ -z $name ]]; then
     name=$(curl -fsS --max-time 4 "https://wttr.in/?format=%l" 2>/dev/null)
-    name=${name%%,*}
+    # wttr %l is usually "City, Country". When it cannot resolve a city it
+    # returns raw "lat,lon" instead — stripping at the first comma then leaves
+    # a bare latitude (#9706). Keep coordinate pairs intact.
+    if [[ -n $name && ! $name =~ $COORDS_PATTERN ]]; then
+      name=${name%%,*}
+    fi
   fi
   [[ -n $name ]] && echo "$name"
   ;;
