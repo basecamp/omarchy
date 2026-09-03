@@ -12,6 +12,7 @@ if _G.omarchy_default_bindings ~= false then
   require("default.hypr.bindings.utilities")
   require("default.hypr.bindings.voxtype")
   require_optional.module("default.hypr.bindings.applications")
+  require("default.hypr.webapp-shortcuts")
 end
 require("default.hypr.envs")
 require("default.hypr.looknfeel")

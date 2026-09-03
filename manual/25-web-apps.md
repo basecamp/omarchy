@@ -1,6 +1,6 @@
 # Web Apps
 
-You can add your own web apps using _Install > Web App_ in the Omarchy menu (`Super + Space`). It'll ask you for the app name, app URL, and the icon URL, if it can't retrieve it via favicon. You can get great PNG icons for many popular web apps on [Dashboard Icons](https://dashboardicons.com).
+You can add your own web apps using _Install > Web App_ in the Omarchy menu (`Super + Space`). It'll ask you for the app name, app URL, the icon URL if it can't retrieve it via favicon, and an optional keyboard shortcut. You can get great PNG icons for many popular web apps on [Dashboard Icons](https://dashboardicons.com).
 
 They'll then be accessible through the app launcher (`Super + Space`), and use the beautiful frameless web-app window.
 
@@ -9,6 +9,8 @@ If you wish to remove a web app, just go to _Remove > Web App_ in the Omarchy me
 It's best if you log into all your accounts using a regular browser before using the web app shortcuts. The thin wrapper frame doesn't work well with 1password, so just easier to be logged in directly first.
 
 All the keyboard hotkeys for these web apps can be changed in `~/.config/hypr/bindings.lua`.
+
+For web apps you added yourself, assign or change a shortcut at any time with `omarchy webapp shortcut set "<app name>" SUPER SHIFT G`, drop one with `omarchy webapp shortcut unset "<app name>"`, and list them with `omarchy webapp shortcut list`. These shortcuts are stored on the web app itself, so they survive reinstalls and are removed with the app.
 
 When you're in a web app, you can copy the current URL to the clipboard using `Shift + Alt + L`.
 
