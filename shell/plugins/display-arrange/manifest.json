@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.display-arrange",
+  "name": "Display arrangement",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Drag displays into position, with edge snapping and a revert timer",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "DisplayArrange.qml"
+  }
+}

@@ -1,0 +1,238 @@
+#!/bin/bash
+
+# omarchy:summary=Write a display's current geometry into hypr/monitors.lua
+# omarchy:args=<output>
+# omarchy:examples=omarchy hyprland monitor rule DP-1
+
+# Geometry belongs in the user's own monitors.lua, which is where they already
+# write it and where they expect to edit it afterwards. Keeping it anywhere else
+# means two files describing the same display, and whichever Hyprland loads last
+# silently wins — so a config edit stops taking effect with nothing to say why.
+#
+# The rule for a display is rewritten in place, keeping whichever identifier the
+# user already wrote for it. Only a display with no rule of its own gets a new
+# line appended.
+
+monitor_lua="$HOME/.config/hypr/monitors.lua"
+
+usage() {
+  echo "Usage: omarchy-hyprland-monitor-rule <output>" >&2
+}
+
+output="${1:-}"
+if [[ -z $output ]]; then
+  usage
+  exit 1
+fi
+
+if [[ ! -f $monitor_lua ]]; then
+  echo "No monitors.lua to write to: $monitor_lua" >&2
+  exit 1
+fi
+
+monitor="$(hyprctl monitors all -j | jq -e -c --arg name "$output" '[.[] | select(.name == $name)][0]')" || {
+  echo "No such display: $output" >&2
+  exit 1
+}
+
+description="$(printf '%s' "$monitor" | jq -r '.description // ""')"
+x="$(printf '%s' "$monitor" | jq -r '.x')"
+y="$(printf '%s' "$monitor" | jq -r '.y')"
+scale="$(printf '%s' "$monitor" | jq -r '.scale')"
+transform="$(printf '%s' "$monitor" | jq -r '.transform // 0')"
+
+# Hyprland reports scales as floats, and a rule reading `scale = 2.00000` is
+# noise in a file the user reads.
+scale="$(awk -v value="$scale" 'BEGIN { printf "%g", value }')"
+
+# Every rule that configures this display, whatever shape it is written in, as
+# a "first last" line range.
+#
+# A rule is a Lua statement, not a line: `hl.monitor({ … })` is as valid split
+# over six lines as it is on one, and both are ordinary things to write. So read
+# whole statements — track quoting and delimiter depth from `hl.monitor` to its
+# closing brace — rather than assuming the whole rule fits on the line its
+# `output` key happens to sit on. Lua also allows `hl.monitor { … }` without
+# parentheses, spacing is free, and a rule may be indented.
+#
+# Hyprland matches `desc:` by prefix and users abbreviate, so a rule saying
+# "desc:Acme Wide" configures a display reporting "Acme Wide 42 SN123".
+matching_rule_lines() {
+  awk -v name="$output" -v description="$description" '
+    function report(first, last, text,   identifier, key) {
+      if (match(text, /output[[:space:]]*=[[:space:]]*"[^"]*"/) == 0) {
+        # A rule whose display is named by something other than a literal, a
+        # variable say. It may or may not be this display, and guessing wrong
+        # means either mangling an unrelated rule or adding a second one for
+        # this display. Report it so the caller can decline.
+        print "?"
+        return
+      }
+
+      identifier = substr(text, RSTART, RLENGTH)
+      sub(/^output[[:space:]]*=[[:space:]]*"/, "", identifier)
+      sub(/"$/, "", identifier)
+
+      if (identifier == name) { print first " " last; return }
+      if (substr(identifier, 1, 5) == "desc:") {
+        key = substr(identifier, 6)
+        if (key != "" && description != "" && substr(description, 1, length(key)) == key)
+          print first " " last
+      }
+    }
+
+    {
+      line = $0
+      len = length(line)
+      i = 1
+
+      while (i <= len) {
+        c = substr(line, i, 1)
+
+        # A quote flips string state, and nothing inside a string counts as
+        # syntax: a description may hold braces, parentheses or a "--".
+        if (c == "\"") {
+          in_string = !in_string
+          if (collecting) buffer = buffer c
+          i++
+          continue
+        }
+
+        if (!in_string && substr(line, i, 2) == "--") break   # comment to end of line
+
+        if (in_string) {
+          if (collecting) buffer = buffer c
+          i++
+          continue
+        }
+
+        if (!collecting) {
+          if (substr(line, i, 10) == "hl.monitor") {
+            collecting = 1
+            depth = 0
+            first = NR
+            buffer = "hl.monitor"
+            i += 10
+            continue
+          }
+          i++
+          continue
+        }
+
+        buffer = buffer c
+        if (c == "(" || c == "{") depth++
+        else if (c == ")" || c == "}") {
+          depth--
+          if (depth <= 0) {
+            report(first, NR, buffer)
+            collecting = 0
+            buffer = ""
+          }
+        }
+        i++
+      }
+
+      # A statement continuing onto the next line: keep the tokens either side
+      # of the break apart.
+      if (collecting) buffer = buffer " "
+    }
+
+    END {
+      # An unterminated hl.monitor( … . Refuse to place this display rather than
+      # append a second rule below a broken one.
+      if (collecting) print "?"
+    }
+  ' "$monitor_lua"
+}
+
+identifier_for() {
+  local first="$1" last="$2"
+
+  # Keep the identifier the user chose for this display rather than swapping it
+  # for ours: theirs may be deliberate, and rewriting it would leave their other
+  # references — comments, notes — pointing at something that no longer exists.
+  # The key can be on any line of the rule, so read the whole range.
+  if [[ -n $first ]]; then
+    sed -n "${first},${last}p" "$monitor_lua" |
+      tr '\n' ' ' |
+      sed -E 's/.*output[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/'
+    return
+  fi
+
+  if [[ -n $description ]]; then
+    printf 'desc:%s\n' "$description"
+  else
+    printf '%s\n' "$output"
+  fi
+}
+
+# Keep the mode the user wrote, the same way the identifier is kept. Hyprland
+# merges monitor rules per identifier and drops whatever a rule leaves out, so
+# the rewritten rule has to restate a mode: saying "preferred" over a display
+# pinned to 2560x1440@144 would quietly drop it to whatever the monitor calls
+# best. This command changes geometry, so the mode it finds is the mode it
+# writes back. A rule that named no mode was already running the preferred one.
+mode_for() {
+  local first="$1" last="$2" existing
+
+  if [[ -n $first ]]; then
+    existing="$(sed -n "${first},${last}p" "$monitor_lua" | tr '\n' ' ')"
+    if [[ $existing =~ mode[[:space:]]*=[[:space:]]*\"([^\"]*)\" ]]; then
+      printf '%s\n' "${BASH_REMATCH[1]}"
+      return
+    fi
+  fi
+
+  printf 'preferred\n'
+}
+
+# The indentation the rule already sits at, so replacing it does not shove it
+# against the margin in a file the user reads.
+indent_of() {
+  local first="$1"
+
+  [[ -n $first ]] || return 0
+  sed -n "${first}p" "$monitor_lua" | sed -E 's/^([[:space:]]*).*/\1/'
+}
+
+mapfile -t matches < <(matching_rule_lines)
+
+# Decline rather than guess. Rewriting the wrong rule, or adding a second one
+# for a display that already has one, is worse than leaving the file alone and
+# saying so: two rules for one display means whichever Hyprland loads last wins
+# and silently drops whatever the other one said.
+for match in "${matches[@]}"; do
+  if [[ $match == "?" ]]; then
+    echo "Not editing $monitor_lua: it configures a display by something other than a literal name" >&2
+    exit 1
+  fi
+done
+
+if ((${#matches[@]} > 1)); then
+  echo "Not editing $monitor_lua: $output already has ${#matches[@]} rules" >&2
+  exit 1
+fi
+
+read -r first last <<<"${matches[0]:-}"
+identifier="$(identifier_for "$first" "$last")"
+mode="$(mode_for "$first" "$last")"
+
+rule="$(indent_of "$first")hl.monitor({ output = \"$identifier\", mode = \"$mode\", position = \"${x}x${y}\", scale = $scale"
+((transform != 0)) && rule+=", transform = $transform"
+rule+=" })"
+
+# A rule written across several lines collapses to the one line replacing it,
+# which is the shape every rule this command writes takes.
+tmp="$(mktemp)"
+if [[ -n $first ]]; then
+  awk -v first="$first" -v last="$last" -v rule="$rule" '
+    NR == first { print rule }
+    NR >= first && NR <= last { next }
+    { print }
+  ' "$monitor_lua" >"$tmp"
+else
+  cat "$monitor_lua" >"$tmp"
+  printf '%s\n' "$rule" >>"$tmp"
+fi
+
+mv "$tmp" "$monitor_lua"

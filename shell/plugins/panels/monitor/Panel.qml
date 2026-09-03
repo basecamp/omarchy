@@ -229,6 +229,14 @@ Panel {
     function hide() { root.close() }
   }
 
+  // Arranging displays needs more room than a bar dropdown, and moving a display
+  // under the panel that is moving it would be its own problem, so it opens as a
+  // fullscreen overlay and this panel gets out of the way.
+  function openArrangement() {
+    root.close()
+    if (bar && bar.shell) bar.shell.summon("omarchy.display-arrange", "")
+  }
+
   function refresh() {
     if (!stateProc.running) stateProc.running = true
   }
@@ -470,7 +478,12 @@ Panel {
     anchors.fill: parent
     bar: root.bar
     text: Quickshell.screens.length > 1 ? "󰍺" : "󰍹"
-    onPressed: function(b) { root.toggle() }
+    // Right-click opens the arrangement overlay, matching how the bluetooth and
+    // audio widgets hang their secondary action off the same button.
+    onPressed: function(b) {
+      if (b === Qt.RightButton) root.openArrangement()
+      else root.toggle()
+    }
     onWheelMoved: function(delta) {
       if (!root.brightnessAvailable) return
       var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
