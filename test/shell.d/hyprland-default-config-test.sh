@@ -109,6 +109,22 @@ grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$RO
   fail "universal clipboard shortcuts send explicit mods to the focused surface"
 pass "universal clipboard shortcuts send explicit mods to the focused surface"
 
+grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "up" })' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
+  fail "universal clipboard shortcuts release the injected key"
+
+if grep -F 'hl.timer' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null; then
+  fail "universal clipboard shortcuts resolve press and release in the same keymap"
+fi
+pass "universal clipboard shortcuts resolve press and release in the same keymap"
+
+grep -F 'o.bind("SUPER + C", "Universal copy", send_shortcut_once("CTRL", "Insert"))' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
+  fail "universal copy uses a layout-independent chord"
+grep -F 'o.bind("SUPER + V", "Universal paste", send_shortcut_once("SHIFT", "Insert"))' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
+  fail "universal paste uses a layout-independent chord"
+grep -F 'o.bind("SUPER + X", "Universal cut", send_shortcut_once("SHIFT", "Delete"))' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
+  fail "universal cut uses a layout-independent chord"
+pass "universal clipboard shortcuts avoid layout-sensitive letter keys"
+
 if grep -E 'send_key_state\(\{[^}]*window' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null; then
   fail "universal clipboard shortcuts do not target only normal windows"
 fi
