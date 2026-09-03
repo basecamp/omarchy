@@ -1,0 +1,272 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the OpenCode usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect OpenCode usage into one display-ready JSON record.
+
+Reads session data from OpenCode's SQLite database and computes per-day
+and per-model token usage. The agents panel only ever reads the JSON
+this prints.
+"""
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+AGENT_ID = "opencode"
+AGENT_NAME = "OpenCode"
+AUTH_HELP = ""
+
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+
+def local_day(ms_timestamp):
+  if ms_timestamp is None:
+    return datetime.now().strftime("%Y-%m-%d")
+  try:
+    ts = int(ms_timestamp) / 1000
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+  except Exception:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def number(value):
+  try:
+    return int(value or 0)
+  except Exception:
+    return 0
+
+
+def parse_model(raw):
+  if not raw:
+    return "opencode"
+  try:
+    obj = json.loads(raw)
+    if isinstance(obj, dict):
+      return obj.get("id") or "opencode"
+  except Exception:
+    pass
+  return str(raw)
+
+
+now = datetime.now()
+today = now.strftime("%Y-%m-%d")
+recent_dates = [(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+today_tokens_by_model = {}
+model_usage = {}
+today_sessions = set()
+active_days = set()
+
+today_prompts = 0
+today_total_tokens = 0
+total_prompts = 0
+total_sessions = set()
+
+
+def add_usage(day, session_id, model, input_tokens, output_tokens, reasoning, cache_read, cache_write):
+  global today_prompts, today_total_tokens, total_prompts
+  total = input_tokens + output_tokens + reasoning + cache_read + cache_write
+  total_prompts += 1
+  total_sessions.add(session_id)
+  active_days.add(day)
+
+  bucket = model_usage.setdefault(model, {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  })
+  bucket["inputTokens"] += input_tokens
+  bucket["outputTokens"] += output_tokens + reasoning
+  bucket["cacheReadInputTokens"] += cache_read
+  bucket["cacheCreationInputTokens"] += cache_write
+
+  if day in recent:
+    recent[day]["messageCount"] += total
+
+  if day == today:
+    today_prompts += 1
+    today_sessions.add(session_id)
+    today_total_tokens += total
+    today_tokens_by_model[model] = today_tokens_by_model.get(model, 0) + total
+
+
+def scan_opencode_db():
+  db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  if not db.is_file():
+    return True
+  try:
+    conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return False
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    for row in conn.execute(
+      "SELECT id, model, tokens_input, tokens_output, tokens_reasoning,"
+      " tokens_cache_read, tokens_cache_write, time_created"
+      " FROM session"
+      " WHERE (tokens_input > 0 OR tokens_output > 0 OR tokens_reasoning > 0"
+      " OR tokens_cache_read > 0 OR tokens_cache_write > 0)"
+    ):
+      try:
+        session_id, model_raw, t_in, t_out, t_reason, cache_r, cache_w, ts = row
+        if not (t_in or t_out or t_reason or cache_r or cache_w):
+          continue
+        model = parse_model(model_raw)
+        day = local_day(ts)
+        add_usage(day, str(session_id), model, number(t_in), number(t_out), number(t_reason), number(cache_r), number(cache_w))
+      except Exception:
+        continue
+  except sqlite3.Error:
+    return False
+  finally:
+    conn.close()
+  return True
+
+
+def cache_root():
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def scan_cache_paths():
+  db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  digest = hashlib.sha1((str(db)).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"opencode-scan-{digest}.json", root / f"opencode-scan-{digest}.lock"
+
+
+def read_fresh_json(path, max_age_seconds):
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path, payload):
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def read_cached_stats(cache_file, max_age_seconds):
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+    return None
+  if cached.get("scanDate") != today:
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+    return None
+  return stats
+
+
+def write_cached_stats(cache_file, stats):
+  try:
+    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
+  except Exception as exc:
+    print(f"omarchy-agent-usage-opencode: could not write usage cache ({exc})", file=sys.stderr)
+
+
+def local_stats():
+  return {
+    "todayPrompts": today_prompts,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_total_tokens,
+    "todayTokensByModel": today_tokens_by_model,
+    "recentDays": [recent[day] for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": len(total_sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+    "modelUsage": model_usage,
+  }
+
+
+def run_local_scan():
+  complete = scan_opencode_db()
+  return local_stats(), complete
+
+
+def cached_local_stats(max_age):
+  try:
+    return _cached_local_stats(max_age)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-opencode: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    stats, _ = run_local_scan()
+    return stats
+
+
+def _cached_local_stats(max_age):
+  cache_file, lock_file = scan_cache_paths()
+
+  cached = read_cached_stats(cache_file, max_age)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age)
+    if cached is not None:
+      return cached
+    stats, complete = run_local_scan()
+    if complete:
+      write_cached_stats(cache_file, stats)
+    return stats
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+  stats = cached_local_stats(max_age)
+
+  has_stats = stats.get("totalPrompts", 0) > 0 or stats.get("totalSessions", 0) > 0
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": has_stats,
+    "hasLocalStats": has_stats,
+  }
+  record.update(stats)
+  record.update({
+    "limits": [],
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": AUTH_HELP,
+  })
+  print(json.dumps(record, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+  main()
