@@ -1,0 +1,8 @@
+# apple-gmux registers gmux_backlight on the PNP bus (APP000b). systemd's
+# 99-systemd.rules imports path_id on the same line as SYSTEMD_WANTS, and
+# that builtin fails for PNP, so the whole rule is skipped.
+# Keyboard backlight on PCI/SPI is unaffected. systemd-backlight already
+# falls back to backlight:<name> when ID_PATH is missing — it just never
+# gets asked to.
+ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="gmux_backlight", \
+  TAG+="systemd", ENV{SYSTEMD_WANTS}+="systemd-backlight@backlight:gmux_backlight.service"

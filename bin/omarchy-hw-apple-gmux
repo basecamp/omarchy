@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Detect the old IO-port apple-gmux panel backlight
+# omarchy:hidden=true
+
+# Pre-T2 dual-GPU Macs register gmux_backlight on PNP APP000b. T2 Macs also
+# expose that HID, but apple-gmux does not bind there (no IORESOURCE_IO) and
+# never creates this class device — so the sysfs node is the discriminator,
+# not the PNP id. Observed on MacBookPro14,3.
+[[ -e ${OMARCHY_GMUX_BACKLIGHT:-/sys/class/backlight/gmux_backlight} ]]
