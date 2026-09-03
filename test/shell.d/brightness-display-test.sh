@@ -84,40 +84,33 @@ grep -F 'ddcutil --bus 7 --skip-ddc-checks --verify setvcp 10 24' "$call_log" >/
   fail "external brightness verifies every write"
 pass "absolute external brightness reuses its range and verifies its write"
 
-printf '6\n' >"$runtime_dir/omarchy-brightness-display-ddc/DP-1.full-checks"
 set_count=$(grep -c ' setvcp 10 ' "$call_log")
-run_brightness --no-osd --monitor DP-1 32%
-(( $(grep -c ' setvcp 10 ' "$call_log") == set_count + 1 )) || \
-  fail "a full-checks marker for another bus is ignored"
-grep -F 'ddcutil --bus 7 --skip-ddc-checks --verify setvcp 10 26' "$call_log" >/dev/null || \
-  fail "a remapped DDC bus probes the fast path"
-pass "full DDC checks are cached for one connector and bus"
-
-DDC_FAST_WRITE_FAIL=1 run_brightness --no-osd --monitor DP-1 35%
+DDC_FAST_WRITE_FAIL=1 run_brightness --no-osd --monitor DP-1 35% || \
+  fail "a rejected fast DDC write is retried with full checks"
+(( $(grep -c ' setvcp 10 ' "$call_log") == set_count + 2 )) || \
+  fail "external brightness retries a rejected fast DDC write once"
 grep -F 'ddcutil --bus 7 --skip-ddc-checks --verify setvcp 10 28' "$call_log" >/dev/null || \
   fail "external brightness probes the fast DDC path"
 grep -F 'ddcutil --bus 7 --verify setvcp 10 28' "$call_log" >/dev/null || \
   fail "external brightness retries with full DDC checks"
-set_count=$(grep -c ' setvcp 10 ' "$call_log")
-DDC_FAST_WRITE_FAIL=1 run_brightness --no-osd --monitor DP-1 40%
-(( $(grep -c ' setvcp 10 ' "$call_log") == set_count + 1 )) || \
-  fail "external brightness skips a known broken fast DDC path"
-grep -F 'ddcutil --bus 7 --verify setvcp 10 32' "$call_log" >/dev/null || \
-  fail "external brightness remembers that full DDC checks are required"
 pass "external brightness falls back to full DDC checks"
 
-rm -f "$runtime_dir/omarchy-brightness-display-ddc/DP-1.full-checks"
 set_count=$(grep -c ' setvcp 10 ' "$call_log")
+detect_count=$(grep -c ' detect --brief' "$call_log")
 if DDC_WRITE_FAIL=1 run_brightness --no-osd --monitor DP-1 45% >/dev/null 2>&1; then
   fail "rejected external brightness write is reported"
 fi
-if DDC_WRITE_FAIL=1 run_brightness --no-osd --monitor DP-1 45% >/dev/null 2>&1; then
-  fail "cached rejected external brightness write is reported"
-fi
 (( $(grep -c ' setvcp 10 ' "$call_log") == set_count + 2 )) || \
-  fail "rejected external brightness writes are temporarily cached"
-pass "rejected external brightness writes are temporarily cached"
-rm -f "$runtime_dir/omarchy-brightness-display-ddc/DP-1.bus" "$runtime_dir/omarchy-brightness-display-ddc/DP-1.full-checks"
+  fail "a rejected write tries both DDC paths"
+get_count=$(grep -c ' getvcp 10 ' "$call_log")
+brightness=$(run_brightness --monitor DP-1) || fail "external brightness stays readable after a rejected write"
+[[ $brightness == "50" ]] || fail "external brightness stays readable after a rejected write" "actual: $brightness"
+(( $(grep -c ' getvcp 10 ' "$call_log") == get_count + 1 )) || \
+  fail "external brightness is re-read after a rejected write"
+(( $(grep -c ' detect --brief' "$call_log") == detect_count )) || \
+  fail "a rejected write keeps the cached DDC bus"
+pass "rejected external brightness writes leave the display readable"
+rm -f "$runtime_dir/omarchy-brightness-display-ddc/DP-1.bus"
 
 brightness=$(run_brightness --monitor eDP-1)
 [[ $brightness == "40" ]] || fail "internal monitor uses the kernel backlight" "actual: $brightness"
