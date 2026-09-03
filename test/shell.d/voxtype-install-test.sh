@@ -99,12 +99,21 @@ run_install() {
     TEST_LOG="$log_file" CONFIRM_QUEUE="$confirm_queue" AUR_ACCESSIBLE="${2:-0}" \
     TEST_UNAME_M="${3:-x86_64}" \
     bash "$ROOT/bin/omarchy-voxtype-install"
+  install_status=$?
+  return $install_status
+}
+
+# The installer's exit status is what the menu and any caller act on, so every
+# path asserts it rather than only the commands it logged along the way.
+assert_status() {
+  (( install_status == $1 )) || fail "$2 (exited $install_status, expected $1)"
 }
 
 # A CPU with the x86-64-v3 baseline installs the prebuilt binary as before.
 write_hw_x86_64_v3 0
 write_voxtype_stub 0
 run_install "yes"
+assert_status 0 "a successful install on a v3-capable CPU succeeds"
 grep -qx 'omarchy-pkg-add:wtype' "$log_file" || fail "v3-capable CPU installs wtype"
 grep -qx 'omarchy-pkg-add:voxtype-bin' "$log_file" || fail "v3-capable CPU installs voxtype-bin"
 grep -q '^omarchy-notification-send:' "$log_file" || fail "v3-capable CPU install sends the ready notification"
@@ -115,6 +124,7 @@ grep -q '^omarchy-pkg-drop:' "$log_file" && fail "v3-capable CPU install does no
 # installs nothing.
 write_hw_x86_64_v3 1
 run_install "yes no"
+assert_status 0 "declining the source build is not an error"
 grep -q '^omarchy-pkg-add:' "$log_file" && fail "declining the source build installs no packages at all, wtype included"
 grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "declining the source build does not touch the AUR"
 
@@ -123,6 +133,7 @@ grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "declining the source build 
 write_hw_x86_64_v3 1
 write_voxtype_stub 0
 run_install "yes yes" 0
+assert_status 0 "a successful source build succeeds"
 grep -qx 'omarchy-pkg-add:wtype' "$log_file" || fail "accepting the source build installs wtype"
 grep -qx 'omarchy-pkg-aur-add:aur/voxtype' "$log_file" || fail "accepting the source build installs voxtype via the AUR"
 grep -q '^omarchy-pkg-add:voxtype-bin' "$log_file" && fail "accepting the source build does not install voxtype-bin"
@@ -137,6 +148,7 @@ fi
 # If the AUR is unreachable, the source-build offer fails cleanly.
 write_hw_x86_64_v3 1
 run_install "yes yes" 1
+assert_status 1 "an unreachable AUR fails the install"
 grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "an unreachable AUR does not attempt the source install"
 grep -q '^omarchy-pkg-add:' "$log_file" && fail "an unreachable AUR leaves no packages behind"
 
@@ -156,6 +168,7 @@ grep -qxF 'confirm:Build Voxtype from source instead? This can take 20+ minutes.
 write_hw_x86_64_v3 0
 write_voxtype_stub 1
 run_install "yes"
+assert_status 1 "a failed setup step fails the install"
 grep -q '^omarchy-voxtype-remove:' "$log_file" || fail "a failed setup step triggers a rollback"
 
 pass "Voxtype install gates on CPU capability and rolls back on failure"
