@@ -1,0 +1,22 @@
+[Unit]
+Description=Reconnect trusted Bluetooth keyboards and mice
+Documentation=man:bluetoothctl(1)
+ConditionPathIsDirectory=/sys/class/bluetooth
+# bluez must be reachable on the system bus before bluetoothctl can ask it for
+# anything.
+After=dbus.socket
+Requires=dbus.socket
+# The peripherals this connects are the ones the user is about to type on, so it
+# belongs to the login rather than to boot. Running after the target means the
+# oneshot cannot hold it open while it waits for the adapter.
+After=graphical-session.target
+
+[Service]
+Type=oneshot
+# If bluetoothd is unavailable (for example in VMs or machines without a usable
+# adapter), skip cleanly rather than spending the adapter wait on nothing.
+ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service
+ExecStart=/usr/bin/omarchy-bluetooth-reconnect
+
+[Install]
+WantedBy=graphical-session.target
