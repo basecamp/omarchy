@@ -690,10 +690,12 @@ Item {
     }
 
     var candidates = []
+    var seenRegions = {}
     for (var i = 0; i < moduleSlots.length; i++) {
       var slot = moduleSlots[i]
       if (!slot || slot === sourceSlot || !slot.visible || slot.width <= 0 || slot.height <= 0) continue
       if (sourceWindow && !root.sameWindow(root.slotWindow(slot), sourceWindow)) continue
+      seenRegions[slot.region] = true
 
       var slotPoint = { x: slot.x, y: slot.y }
       try {
@@ -708,6 +710,37 @@ Item {
         width: slot.width,
         height: slot.height
       })
+    }
+
+    // Every section needs a drop-zone, even when empty (#9842).
+    // Add a thin reference candidate at the expected section edge so that
+    // nearestDropTarget can resolve the correct region when no real slots
+    // occupy that area. The candidate is 1 px wide and sits flush with the
+    // section boundary; it only wins when the cursor is inside an empty zone.
+    var barBounds = { x: 0, y: 0, width: 1, height: 1 }
+    try {
+      barBounds = root.mapToItem(null, 0, 0)
+      barBounds.width = root.width
+      barBounds.height = root.height
+    } catch (e) {}
+
+    function addEmptyRegionCandidate(region, edgeX, edgeY) {
+      if (seenRegions[region]) return
+      candidates.push({
+        slot: { region: region, moduleName: "" },
+        x: edgeX, y: edgeY,
+        width: 1, height: 1
+      })
+    }
+
+    if (root.vertical) {
+      addEmptyRegionCandidate("left",   barBounds.x, barBounds.y)
+      addEmptyRegionCandidate("center", barBounds.x, barBounds.y + barBounds.height / 2)
+      addEmptyRegionCandidate("right",  barBounds.x, barBounds.y + barBounds.height - 1)
+    } else {
+      addEmptyRegionCandidate("left",   barBounds.x, barBounds.y)
+      addEmptyRegionCandidate("center", barBounds.x + barBounds.width / 2, barBounds.y)
+      addEmptyRegionCandidate("right",  barBounds.x + barBounds.width - 1, barBounds.y)
     }
 
     return BarModel.nearestDropTarget(candidates, scenePoint, root.vertical)
