@@ -94,6 +94,18 @@ set_scale() {
   local new_gdk_scale="$(awk -v scale="$new_scale" 'BEGIN { printf "%d", int(scale + 0.5) }')"
   local monitor_lua="$HOME/.config/hypr/monitors.lua"
 
+  # A monitors.lua with explicit per-output lines is managed by hand: the
+  # single-value persistence below cannot represent it, and writing the
+  # generic line would leave the explicit lines winning on the next reload.
+  # Refuse loudly before applying anything, instead of changing the scale and
+  # silently reverting (issue #9950). Explicit lines are detected directly, so
+  # a file that keeps the catch-all variable alongside them is caught too.
+  if [[ -f $monitor_lua ]] &&
+    grep -Eq '^hl\.monitor\(\{ output = "[^"]+", mode = ' "$monitor_lua"; then
+    echo "omarchy-hyprland-monitor-scaling cannot manage a customised monitors.lua (explicit per-output hl.monitor lines); edit $monitor_lua directly" >&2
+    exit 1
+  fi
+
   hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
   audit_scale_change "$requested" "$active_monitor" "$current_scale" "$new_scale"
 
