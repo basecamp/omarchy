@@ -153,6 +153,50 @@ ShellRoot {
     // case the user dir already existed at startup.
     pluginRegistry.rescan()
     shell._syncServices()
+    shell.refreshBundledI18n()
+  }
+
+  // Plugins may ship their own translations in i18n.json next to
+  // manifest.json: { "<locale>": { "": {language, plural-forms}, "msgid":
+  // "msgstr" } }. The scan stamps it on the manifest as __i18n; here it is
+  // registered under the plugin's own domain so plain I18n.tr() calls in the
+  // plugin resolve through the global merge. Intended for strings the system
+  // gettext catalogs do not cover — those stay the default source.
+  // Precedence 100 (lower number wins): a plugin override beats the system
+  // gettext merge (200); language packs would sit below and the startup
+  // snapshot at 1000.
+  property var _bundledI18nOwners: []
+
+  function refreshBundledI18n() {
+    var active = {}
+    var plugins = pluginRegistry.installedPlugins
+    for (var id in plugins) {
+      var manifest = plugins[id]
+      var bundled = manifest ? manifest.__i18n : null
+      if (!bundled || !pluginRegistry.isEnabled(id)) continue
+      for (var i = 0; i < I18n.candidates.length; i++) {
+        var catalog = bundled[I18n.candidates[i]]
+        if (!catalog) catalog = bundled[I18n.candidates[i].split("_")[0]]
+        if (!catalog) continue
+        var domains = {}
+        domains[id] = catalog
+        I18n.setCatalogs(id + ":i18n", domains, { precedence: 100 })
+        active[id + ":i18n"] = true
+        break
+      }
+    }
+    for (var j = 0; j < _bundledI18nOwners.length; j++) {
+      var owner = _bundledI18nOwners[j]
+      if (!active[owner]) I18n.clearCatalogs(owner)
+    }
+    var owners = []
+    for (var k in active) owners.push(k)
+    _bundledI18nOwners = owners
+  }
+
+  Connections {
+    target: pluginRegistry
+    function onPluginsChanged() { shell.refreshBundledI18n() }
   }
 
   function mutateShellConfig(mutator) {
