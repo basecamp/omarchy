@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Install ble.sh for enhanced bash autocompletion and line editing
+
+echo "Installing ble.sh..."
+omarchy-pkg-aur-add blesh-git
+
+# Source ble.sh from the user's bashrc so interactive shells get syntax
+# highlighting, autosuggestions, and menu completion. The grep keeps this
+# idempotent across repeated runs.
+if ! grep -q 'share/blesh/ble.sh' ~/.bashrc 2>/dev/null; then
+  cat >>~/.bashrc <<'EOF'
+
+# Added by omarchy-install-blesh (https://github.com/akinomyoga/ble.sh)
+if [[ $- == *i* && -r /usr/share/blesh/ble.sh ]]; then
+  source /usr/share/blesh/ble.sh
+  ble-bind -f 'TAB' 'menu-complete'
+  ble-bind -f 'S-TAB' 'menu-complete backward'
+fi
+EOF
+fi
+
+echo "ble.sh installed. Restart your shell to activate it."
