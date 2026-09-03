@@ -65,6 +65,8 @@ _Trigger > Capture > QR Code_ does the same trick for QR codes. Select the regio
 
 `Super + Print Screen` (or _Trigger > Capture > Color_) turns the cursor into an eyedropper. Click anything on screen and the colour lands on the clipboard. Press the hotkey again to back out without picking.
 
+_Trigger > Capture > Transform_ (also under `Super + Ctrl + C`) changes the case of the text you've highlighted: UPPERCASE, lowercase, Title Case, Sentence case, or Swap Case. Select the text, open the menu, pick a transformation, and the result is pasted back over the selection.
+
 ## Transcoding before you share
 
 A 4K screen recording or a raw HEIC off your phone is often too big to just send. `Super + Ctrl + .` (or _Trigger > Transcode_) fixes that. It offers you a fuzzy file picker over `~/Pictures` and `~/Videos`, then asks for a format and a size.
