@@ -4,6 +4,7 @@ import Quickshell.Io
 import Quickshell.Services.Pam
 import Quickshell.Wayland
 import qs.Commons
+import "LockModel.js" as LockModel
 
 Item {
   id: root
@@ -15,6 +16,9 @@ Item {
   readonly property string stateHome: home + "/.local/state"
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
+  readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
+  readonly property int defaultBlankSeconds: 5
+  readonly property int blankTimeoutSeconds: LockModel.secondsFromConfig(idleConfig.blank, defaultBlankSeconds)
 
   property bool lockRequested: false
   property bool pendingSessionLock: false
@@ -413,9 +417,14 @@ Item {
 
   Timer {
     id: idleBlankTimer
-    interval: 5000
+    interval: root.blankTimeoutSeconds * 1000
     repeat: false
     property double armedAt: 0
+    // A hot-reloaded timeout restarts the countdown from zero, so the arming
+    // timestamp has to move with it. Left behind, it reads to the guard below
+    // as a suspend gap, and the lock screen stays lit for another full
+    // interval after the edit.
+    onIntervalChanged: if (running) root.armBlankTimer()
     onTriggered: {
       // A countdown frozen by suspend fires right after resume, which would
       // blank the freshly woken unlock screen under the user. Wall-clock time
@@ -531,6 +540,7 @@ Item {
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
         authenticating: root.authenticating,
+        blank: root.blankTimeoutSeconds,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt
       })
