@@ -60,30 +60,32 @@ public:
 class IntentSink final : public worker::SurfaceIntentSink {
 public:
   bool request_surface_intent(
-      const definitions::DynamicInvocation::GestureClaim &source,
+      std::optional<definitions::DynamicInvocation::GestureClaim> source,
       std::string_view target,
-      surface::SurfaceIntentAction action) override {
+      surface::SurfaceIntentAction action, const QVariantMap &data) override {
     ++calls;
     last_source = source;
     last_target = target;
     last_action = action;
+    last_data = data;
     return accept && target == declared_target;
   }
 
   int calls = 0;
   bool accept = true;
   std::string declared_target = "PanelWidget";
-  definitions::DynamicInvocation::GestureClaim last_source{};
+  std::optional<definitions::DynamicInvocation::GestureClaim> last_source;
   std::string last_target;
   surface::SurfaceIntentAction last_action = surface::SurfaceIntentAction::open;
+  QVariantMap last_data;
 };
 
 class FixtureIntentSink final : public worker::SurfaceIntentSink {
 public:
   bool request_surface_intent(
-      const definitions::DynamicInvocation::GestureClaim &source,
+      std::optional<definitions::DynamicInvocation::GestureClaim> source,
       std::string_view target,
-      surface::SurfaceIntentAction action) override {
+      surface::SurfaceIntentAction action, const QVariantMap &) override {
     sources.push_back(source);
     targets.emplace_back(target);
     actions.push_back(action);
@@ -91,7 +93,8 @@ public:
            action == surface::SurfaceIntentAction::toggle;
   }
 
-  std::vector<definitions::DynamicInvocation::GestureClaim> sources;
+  std::vector<std::optional<definitions::DynamicInvocation::GestureClaim>>
+      sources;
   std::vector<std::string> targets;
   std::vector<surface::SurfaceIntentAction> actions;
 };
@@ -854,10 +857,11 @@ void neutral_surface_trusted_input() {
   api.endTrustedGesture();
   require(sink.targets.size() == 1 && sink.targets[0] == "panel" &&
               sink.actions[0] == surface::SurfaceIntentAction::toggle &&
-              sink.sources[0].surface_id == allocation->surface.id &&
-              sink.sources[0].surface_generation ==
+              sink.sources[0] &&
+              sink.sources[0]->surface_id == allocation->surface.id &&
+              sink.sources[0]->surface_generation ==
                   allocation->surface.generation &&
-              sink.sources[0].input_sequence == 1,
+              sink.sources[0]->input_sequence == 1,
           "interleaved secure-surface click did not reach the worker MouseArea");
   sink.sources.clear();
   sink.targets.clear();
@@ -905,10 +909,11 @@ void neutral_surface_trusted_input() {
   api.endTrustedGesture();
   require(sink.targets.size() == 1 && sink.targets[0] == "panel" &&
               sink.actions[0] == surface::SurfaceIntentAction::toggle &&
-              sink.sources[0].surface_id == allocation->surface.id &&
-              sink.sources[0].surface_generation ==
+              sink.sources[0] &&
+              sink.sources[0]->surface_id == allocation->surface.id &&
+              sink.sources[0]->surface_generation ==
                   allocation->surface.generation &&
-              sink.sources[0].input_sequence == 4,
+              sink.sources[0]->input_sequence == 4,
           "neutral panel click lost its exact press gesture claim");
   require(!api.requestSurfaceIntent(QStringLiteral("panel"),
                                     QStringLiteral("toggle")),
@@ -931,7 +936,7 @@ void neutral_surface_trusted_input() {
   api.endTrustedGesture();
   require(sink.targets.size() == 2 && sink.targets[1] == "overlay" &&
               sink.actions[1] == surface::SurfaceIntentAction::toggle &&
-              sink.sources[1].input_sequence == 6,
+              sink.sources[1] && sink.sources[1]->input_sequence == 6,
           "neutral TapHandler lost its exact press gesture claim");
 }
 
@@ -1053,6 +1058,14 @@ void run() {
                                         QStringLiteral("toggle")) &&
               intent_sink.calls == 0,
           "surface intent sink was rebound or invoked without trusted input");
+  require(api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                   QStringLiteral("dismiss")) &&
+              intent_sink.calls == 1 && !intent_sink.last_source &&
+              intent_sink.last_target == "PanelWidget" &&
+              intent_sink.last_action == surface::SurfaceIntentAction::dismiss,
+          "declared self-dismiss incorrectly required a trusted gesture");
+  intent_sink.calls = 0;
+  intent_sink.last_source.reset();
   api.beginTrustedGesture(3, 77, 9);
   require(!api.requestSurfaceIntent(QString(), QStringLiteral("toggle")) &&
               !api.requestSurfaceIntent(QStringLiteral("Panel.Widget"),
@@ -1069,14 +1082,35 @@ void run() {
   require(api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
                                    QStringLiteral("toggle")) &&
               intent_sink.calls == 2 &&
-              intent_sink.last_source.surface_id == 3 &&
-              intent_sink.last_source.surface_generation == 77 &&
-              intent_sink.last_source.input_sequence == 10 &&
+              intent_sink.last_source &&
+              intent_sink.last_source->surface_id == 3 &&
+              intent_sink.last_source->surface_generation == 77 &&
+              intent_sink.last_source->input_sequence == 10 &&
               intent_sink.last_target == "PanelWidget" &&
               intent_sink.last_action == surface::SurfaceIntentAction::toggle &&
               !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
                                         QStringLiteral("toggle")),
           "QML intent request escaped its closed trusted sink contract");
+  api.beginTrustedGesture(3, 77, 11);
+  const QVariantMap intent_data{
+      {QStringLiteral("screen"), QStringLiteral("DP-1")},
+      {QStringLiteral("resume"), true}};
+  require(api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                   QStringLiteral("open"), intent_data) &&
+              intent_sink.calls == 3 && intent_sink.last_source &&
+              intent_sink.last_source->input_sequence == 11 &&
+              intent_sink.last_data == intent_data,
+          "bounded same-plugin intent data was not preserved");
+  api.beginTrustedGesture(3, 77, 12);
+  require(!api.requestSurfaceIntent(
+              QStringLiteral("PanelWidget"), QStringLiteral("open"),
+              {{QStringLiteral("oversized"), QString(4097, QLatin1Char('x'))}}) &&
+              intent_sink.calls == 3 &&
+              api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                       QStringLiteral("open")) &&
+              intent_sink.calls == 4 && intent_sink.last_source &&
+              intent_sink.last_source->input_sequence == 12,
+          "oversized intent data was accepted or consumed gesture authority");
   api.endTrustedGesture();
 
   const surface::SurfaceKey gesture_surface{.id = 3, .generation = 77};
@@ -1164,7 +1198,8 @@ void run() {
               pointer(25, right, surface::ButtonState::released)) &&
               api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
                                        QStringLiteral("toggle")) &&
-              intent_sink.last_source.input_sequence == 24,
+              intent_sink.last_source &&
+              intent_sink.last_source->input_sequence == 24,
           "matching release did not expose only the newest press claim");
   api.endTrustedGesture();
 
@@ -1192,7 +1227,8 @@ void run() {
   require(api.beginTrustedGestureForInput(touch_end) &&
               api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
                                        QStringLiteral("toggle")) &&
-              intent_sink.last_source.input_sequence == 26 &&
+              intent_sink.last_source &&
+              intent_sink.last_source->input_sequence == 26 &&
               !api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
                                         QStringLiteral("toggle")),
           "touch end did not consume the original begin claim exactly once");

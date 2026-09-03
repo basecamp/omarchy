@@ -6,4 +6,7 @@ Rectangle {
   height: 200
   color: "#8f4b24"
   property int sharedActivationCount: Shared.activate()
+  function receiveSurfaceIntent(data) {
+    if (data && data.color) color = data.color
+  }
 }

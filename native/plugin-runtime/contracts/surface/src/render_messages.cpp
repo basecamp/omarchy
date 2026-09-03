@@ -560,9 +560,12 @@ bool decode_surface_intent(std::span<const std::byte> bytes,
                  .generation = get<std::uint64_t>(bytes, 24)},
       .input_sequence = get<std::uint64_t>(bytes, 32),
       .action = action};
-  return output.source.id != 0 && output.source.generation != 0 &&
-         output.target.id != 0 && output.target.generation != 0 &&
-         output.input_sequence != 0;
+  if (output.source.id == 0 || output.source.generation == 0 ||
+      output.target.id == 0 || output.target.generation == 0)
+    return false;
+  if (action == SurfaceIntentAction::dismiss)
+    return output.source == output.target && output.input_sequence == 0;
+  return output.input_sequence != 0;
 }
 
 std::array<std::byte, 24> encode_render_error(const RenderTypedError &payload) {

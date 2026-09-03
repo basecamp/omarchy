@@ -122,6 +122,31 @@ int main() {
               authority.admit(canonical_after_spoof).failure ==
                   host::SurfaceIntentAdmissionFailure::gesture_missing,
           "spoofed target generation was accepted or retained eligibility");
+  auto dismiss = authority.admit(
+      {.source = panel,
+       .target = panel,
+       .input_sequence = 0,
+       .action = surface::SurfaceIntentAction::dismiss});
+  require(dismiss.intent && dismiss.intent->source_name() == "PanelWidget" &&
+              dismiss.intent->target_name() == "PanelWidget" &&
+              dismiss.intent->input_sequence() == 0 &&
+              dismiss.intent->take_if_fresh().has_value(),
+          "declared self-dismiss required ambient gesture authority");
+  require(authority
+                  .admit({.source = bar,
+                          .target = panel,
+                          .input_sequence = 0,
+                          .action = surface::SurfaceIntentAction::dismiss})
+                  .failure == host::SurfaceIntentAdmissionFailure::malformed &&
+              authority
+                      .admit({.source = panel,
+                              .target = panel,
+                              .input_sequence = 18,
+                              .action =
+                                  surface::SurfaceIntentAction::dismiss})
+                      .failure ==
+                  host::SurfaceIntentAdmissionFailure::malformed,
+          "self-dismiss accepted a forged source or gesture sequence");
   authority.revoke();
   require(!authority.attach_surface(panel) && !authority.arm(bar, 19) &&
               authority.admit(request).failure ==

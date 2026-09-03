@@ -27,10 +27,11 @@ class SurfaceIntentSink {
 public:
   virtual ~SurfaceIntentSink() = default;
   [[nodiscard]] virtual bool request_surface_intent(
-      const omarchy::plugins::definitions::DynamicInvocation::GestureClaim
-          &source,
+      std::optional<
+          omarchy::plugins::definitions::DynamicInvocation::GestureClaim>
+          source,
       std::string_view target_surface,
-      surface::SurfaceIntentAction action) = 0;
+      surface::SurfaceIntentAction action, const QVariantMap &data) = 0;
 };
 
 struct EncodedInvoke {
@@ -131,6 +132,9 @@ public:
                                        int maximumBytes) const;
   Q_INVOKABLE bool requestSurfaceIntent(const QString &targetSurface,
                                         const QString &action);
+  Q_INVOKABLE bool requestSurfaceIntent(const QString &targetSurface,
+                                        const QString &action,
+                                        const QVariantMap &data);
   Q_INVOKABLE bool updateSettings(const QVariantMap &entry);
   void setPackagedAssetRoot(std::filesystem::path root);
   [[nodiscard]] bool bindSurfaceIntentSink(SurfaceIntentSink &sink);

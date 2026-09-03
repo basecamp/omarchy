@@ -139,25 +139,39 @@ public:
 
 private:
   bool request_surface_intent(
-      const omarchy::plugins::definitions::DynamicInvocation::GestureClaim
-          &source,
+      std::optional<
+          omarchy::plugins::definitions::DynamicInvocation::GestureClaim>
+          source,
       std::string_view target_surface,
-      surface::SurfaceIntentAction action) override {
-    if (!startup_.loaded() || source.surface_id == 0 ||
-        source.surface_generation == 0 || source.input_sequence == 0)
+      surface::SurfaceIntentAction action, const QVariantMap &data) override {
+    if (!startup_.loaded())
       return false;
     const auto target = runtime_.surface_key(target_surface);
-    if (!target || target->generation != source.surface_generation)
+    if (!target ||
+        (source &&
+         (source->surface_id == 0 || source->surface_generation == 0 ||
+          source->input_sequence == 0 ||
+          target->generation != source->surface_generation)) ||
+        (!source && action != surface::SurfaceIntentAction::dismiss) ||
+        (!data.empty() &&
+         !runtime_.can_deliver_surface_intent(target_surface)))
       return false;
+    const auto source_key = source
+                                ? surface::SurfaceKey{
+                                      .id = source->surface_id,
+                                      .generation = source->surface_generation}
+                                : *target;
     const auto payload = surface::encode_surface_intent(
-        {.source = {.id = source.surface_id,
-                    .generation = source.surface_generation},
+        {.source = source_key,
          .target = *target,
-         .input_sequence = source.input_sequence,
+         .input_sequence = source ? source->input_sequence : 0,
          .action = action});
-    return send_render(
+    if (!send_render(
         static_cast<std::uint16_t>(surface::RenderMessageType::surface_intent),
-        payload, 0);
+        payload, 0))
+      return false;
+    return data.empty() ||
+           runtime_.deliver_surface_intent(target_surface, data);
   }
 
   void receive_broker_if_ready() {

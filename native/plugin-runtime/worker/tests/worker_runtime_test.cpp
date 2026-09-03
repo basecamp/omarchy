@@ -1194,6 +1194,24 @@ void two_surface_activation() {
               bar_consumer->last_frame()->pixels !=
                   atlas_consumer->last_frame()->pixels,
           "distinct QML roots did not publish distinct trusted frames");
+  const auto bar_before_intent = bar_consumer->last_frame()->pixels;
+  const auto atlas_before_intent = atlas_consumer->last_frame()->pixels;
+  require(!runtime.can_deliver_surface_intent("bar") &&
+              runtime.can_deliver_surface_intent("atlas") &&
+              !runtime.can_deliver_surface_intent("missing") &&
+              !runtime.deliver_surface_intent("bar", {}) &&
+              runtime.deliver_surface_intent(
+                  "atlas", {{QStringLiteral("color"),
+                              QStringLiteral("#24733f")}}),
+          "intent data did not target only the declared receiving root");
+  const auto intent_frame = runtime.render();
+  require(intent_frame && intent_frame->ready.surface == atlas->surface &&
+              atlas_consumer->consume(atlas_mapping.bytes(),
+                                      intent_frame->ready) ==
+                  surface::ConsumeResult::accepted &&
+              atlas_consumer->last_frame()->pixels != atlas_before_intent &&
+              bar_consumer->last_frame()->pixels == bar_before_intent,
+          "target-only intent data did not repaint only its receiving surface");
 
   require(static_cast<bool>(runtime.input(
               {.surface = bar->surface,

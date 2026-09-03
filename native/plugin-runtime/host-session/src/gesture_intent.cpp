@@ -132,7 +132,10 @@ AdmittedSurfaceIntent::expires_monotonic_ns() const noexcept {
 
 std::optional<SurfaceIntentPublication>
 AdmittedSurfaceIntent::take_if_fresh() {
-  if (!available_ || !eligibility_.current() || lifetime_ == nullptr ||
+  const bool requires_gesture =
+      request_.action != surface::SurfaceIntentAction::dismiss;
+  if (!available_ || (requires_gesture && !eligibility_.current()) ||
+      lifetime_ == nullptr ||
       !lifetime_->current(lifetime_epoch_)) {
     invalidate();
     return std::nullopt;
@@ -234,7 +237,28 @@ GestureIntentAuthority::admit(const surface::SurfaceIntentRequest &request) {
             .failure = SurfaceIntentAdmissionFailure::revoked};
   if (request.source.id == 0 || request.source.generation == 0 ||
       request.target.id == 0 || request.target.generation == 0 ||
-      request.input_sequence == 0 || !valid_action(request.action))
+      !valid_action(request.action))
+    return {.intent = std::nullopt,
+            .failure = SurfaceIntentAdmissionFailure::malformed};
+
+  if (request.action == surface::SurfaceIntentAction::dismiss) {
+    if (request.input_sequence != 0 || request.source != request.target)
+      return {.intent = std::nullopt,
+              .failure = SurfaceIntentAdmissionFailure::malformed};
+    if (request.target.generation != binding_.generation)
+      return {.intent = std::nullopt,
+              .failure = SurfaceIntentAdmissionFailure::stale_activation};
+    const auto *target = find(request.target);
+    if (target == nullptr)
+      return {.intent = std::nullopt,
+              .failure = SurfaceIntentAdmissionFailure::unknown_target};
+    return {.intent = AdmittedSurfaceIntent(
+                binding_, request, target->name, target->name, {}, lifetime_,
+                lifetime_->epoch()),
+            .failure = SurfaceIntentAdmissionFailure::none};
+  }
+
+  if (request.input_sequence == 0)
     return {.intent = std::nullopt,
             .failure = SurfaceIntentAdmissionFailure::malformed};
 

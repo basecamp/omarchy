@@ -6,11 +6,11 @@
 
 #include <QByteArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QStringDecoder>
 
 #include <algorithm>
 #include <cmath>
-#include <type_traits>
 #include <fstream>
 #include <limits>
 #include <type_traits>
@@ -21,6 +21,58 @@ namespace broker = omarchy::plugin_runtime::broker;
 namespace permissions = omarchy::plugins::permissions;
 namespace wire = omarchy::plugin::wire;
 namespace snapshot_wire = wire::permission_snapshot;
+
+constexpr qsizetype kMaximumSurfaceIntentDataBytes = 4096;
+constexpr qsizetype kMaximumSurfaceIntentDataItems = 32;
+constexpr int kMaximumSurfaceIntentDataDepth = 4;
+
+bool valid_surface_intent_value(const QVariant &value, int depth) {
+  if (depth > kMaximumSurfaceIntentDataDepth)
+    return false;
+  switch (value.metaType().id()) {
+  case QMetaType::Bool:
+  case QMetaType::Int:
+  case QMetaType::UInt:
+  case QMetaType::LongLong:
+  case QMetaType::ULongLong:
+    return true;
+  case QMetaType::QString:
+    return value.toString().toUtf8().size() <= 1024;
+  case QMetaType::Double:
+    return std::isfinite(value.toDouble());
+  case QMetaType::QVariantList: {
+    const auto list = value.toList();
+    return list.size() <= kMaximumSurfaceIntentDataItems &&
+           std::ranges::all_of(list, [depth](const QVariant &item) {
+             return valid_surface_intent_value(item, depth + 1);
+           });
+  }
+  case QMetaType::QVariantMap: {
+    const auto map = value.toMap();
+    return map.size() <= kMaximumSurfaceIntentDataItems &&
+           std::ranges::all_of(
+               map.asKeyValueRange(), [depth](const auto &item) {
+                 return !item.first.isEmpty() && item.first.size() <= 64 &&
+                        !item.first.contains(QChar::Null) &&
+                        valid_surface_intent_value(item.second, depth + 1);
+               });
+  }
+  default:
+    return false;
+  }
+}
+
+std::optional<QVariantMap>
+bounded_surface_intent_data(const QVariantMap &candidate) {
+  if (!valid_surface_intent_value(QVariant(candidate), 0))
+    return std::nullopt;
+  const auto document = QJsonDocument::fromVariant(candidate);
+  if (!document.isObject() ||
+      document.toJson(QJsonDocument::Compact).size() >
+          kMaximumSurfaceIntentDataBytes)
+    return std::nullopt;
+  return document.object().toVariantMap();
+}
 
 void put16(std::span<std::byte> bytes, std::size_t offset, std::uint16_t value) {
   bytes[offset] = static_cast<std::byte>(value >> 8U);
@@ -452,8 +504,14 @@ bool QmlBrokerApi::bindSurfaceIntentSink(SurfaceIntentSink &sink) {
 
 bool QmlBrokerApi::requestSurfaceIntent(const QString &targetSurface,
                                         const QString &action) {
+  return requestSurfaceIntent(targetSurface, action, {});
+}
+
+bool QmlBrokerApi::requestSurfaceIntent(const QString &targetSurface,
+                                        const QString &action,
+                                        const QVariantMap &data) {
   if (status_ != QStringLiteral("ready") || surface_intent_sink_ == nullptr ||
-      !trusted_gesture_)
+      targetSurface.isEmpty())
     return false;
   const auto encoded_target = targetSurface.toUtf8().toStdString();
   if (!wire::valid_surface_name(encoded_target))
@@ -467,12 +525,20 @@ bool QmlBrokerApi::requestSurfaceIntent(const QString &targetSurface,
     parsed = surface::SurfaceIntentAction::dismiss;
   else
     return false;
-  const auto source = *trusted_gesture_;
+  const auto bounded_data = bounded_surface_intent_data(data);
+  if (!bounded_data || (parsed != surface::SurfaceIntentAction::dismiss &&
+                        !trusted_gesture_))
+    return false;
+  const auto source = parsed == surface::SurfaceIntentAction::dismiss
+                          ? std::nullopt
+                          : trusted_gesture_;
   const bool sent = surface_intent_sink_->request_surface_intent(
-      source, encoded_target, parsed);
-  if (deferred_gesture_ && deferred_gesture_->claim == source)
-    deferred_gesture_.reset();
-  trusted_gesture_.reset();
+      source, encoded_target, parsed, *bounded_data);
+  if (source) {
+    if (deferred_gesture_ && deferred_gesture_->claim == *source)
+      deferred_gesture_.reset();
+    trusted_gesture_.reset();
+  }
   return sent;
 }
 

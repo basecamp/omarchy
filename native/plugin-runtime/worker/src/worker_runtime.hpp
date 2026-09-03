@@ -13,6 +13,8 @@
 #include <string_view>
 #include <vector>
 
+#include <QVariantMap>
+
 class QObject;
 class QQmlComponent;
 class QQuickItem;
@@ -91,6 +93,10 @@ public:
   [[nodiscard]] RuntimeResult resume(surface::SurfaceKey surface);
   [[nodiscard]] RuntimeResult release(surface::SurfaceKey surface);
   [[nodiscard]] RuntimeResult input(const surface::InputEvent &event);
+  [[nodiscard]] bool can_deliver_surface_intent(
+      std::string_view surface_name) const;
+  [[nodiscard]] bool deliver_surface_intent(std::string_view surface_name,
+                                            const QVariantMap &data);
   void request_render();
   [[nodiscard]] std::optional<PublishedFrame> render();
   [[nodiscard]] std::optional<surface::InputRegionUpdate>

@@ -93,6 +93,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
   std::size_t call_finished = 0;
   std::size_t read_packaged_text = 0;
   std::size_t request_surface_intent = 0;
+  std::size_t request_surface_intent_data = 0;
   std::size_t update_settings = 0;
   std::size_t broker_ready_changed = 0;
   std::size_t settings_changed = 0;
@@ -119,6 +120,16 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::QString) {
       ++request_surface_intent;
+    } else if (own_properties == 4 &&
+               method.methodSignature() == QByteArrayLiteral(
+                   "requestSurfaceIntent(QString,QString,QVariantMap)") &&
+               method.methodType() == QMetaMethod::Method &&
+               method.returnMetaType().id() == QMetaType::Bool &&
+               method.parameterCount() == 3 &&
+               method.parameterMetaType(0).id() == QMetaType::QString &&
+               method.parameterMetaType(1).id() == QMetaType::QString &&
+               method.parameterMetaType(2).id() == QMetaType::QVariantMap) {
+      ++request_surface_intent_data;
     } else if (own_properties == 4 &&
                method.methodSignature() ==
                    QByteArrayLiteral("readPackagedText(QString,int)") &&
@@ -184,7 +195,8 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
          (own_properties == 0 ||
           (has_permission == 1 && permission_state == 1 &&
            read_packaged_text == 1 && call_finished == 1 &&
-           request_surface_intent == 1 && update_settings == 1 &&
+           request_surface_intent == 1 && request_surface_intent_data == 1 &&
+           update_settings == 1 &&
            broker_ready_changed == 1 && settings_changed == 1));
 }
 
@@ -606,6 +618,29 @@ WorkerRuntime::surface_key(std::string_view surface_name) const {
   if (instance == nullptr)
     return std::nullopt;
   return instance->bound_key;
+}
+
+bool WorkerRuntime::can_deliver_surface_intent(
+    std::string_view surface_name) const {
+  const auto *instance = implementation_->by_name(surface_name);
+  return instance != nullptr && instance->bound_key &&
+         instance->root_item != nullptr &&
+         instance->root_item->metaObject()->indexOfMethod(
+             "receiveSurfaceIntent(QVariant)") >= 0;
+}
+
+bool WorkerRuntime::deliver_surface_intent(std::string_view surface_name,
+                                           const QVariantMap &data) {
+  auto *instance = implementation_->by_name(surface_name);
+  if (instance == nullptr || !instance->bound_key ||
+      instance->root_item == nullptr)
+    return false;
+  const bool delivered = QMetaObject::invokeMethod(
+      instance->root_item, "receiveSurfaceIntent", Qt::DirectConnection,
+      Q_ARG(QVariant, QVariant(data)));
+  if (delivered)
+    instance->dirty = true;
+  return delivered;
 }
 
 void WorkerRuntime::request_render() {

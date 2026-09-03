@@ -1751,7 +1751,14 @@ void surface_intent_mailbox_delivers_fifo_for_running_published_slot() {
   auto open = admit(1, surface::SurfaceIntentAction::open);
   auto first_toggle = admit(2, surface::SurfaceIntentAction::toggle);
   auto second_toggle = admit(3, surface::SurfaceIntentAction::toggle);
-  auto dismiss = admit(4, surface::SurfaceIntentAction::dismiss);
+  auto dismiss_admission = authority.admit(
+      {.source = key,
+       .target = key,
+       .input_sequence = 0,
+       .action = surface::SurfaceIntentAction::dismiss});
+  require(dismiss_admission.intent.has_value(),
+          "gesture-free self-dismiss was not admitted");
+  auto dismiss = std::move(*dismiss_admission.intent);
   auto callback = bridge::PluginManagerTestAccess::surfaceIntentCallback(
       *manager, slot.plugin, slot.epoch);
   require(callback.has_value(),
@@ -1838,11 +1845,11 @@ void surface_intent_mailbox_delivers_fifo_for_running_published_slot() {
   const auto expected_history =
       QStringLiteral("open|") + tuple_prefix + QStringLiteral("1,toggle|") +
       tuple_prefix + QStringLiteral("2,toggle|") + tuple_prefix +
-      QStringLiteral("3,dismiss|") + tuple_prefix + QStringLiteral("4");
+      QStringLiteral("3,dismiss|") + tuple_prefix + QStringLiteral("0");
   require(qml_state->property("history").toString() == expected_history &&
               !qml_state->property("opened").toBool() &&
               qml_state->property("lastInputSequence").toString() ==
-                  QStringLiteral("4") &&
+                  QStringLiteral("0") &&
               callback->pending() == 0,
           "host intent lost tuple order or final QML state");
 }
@@ -3660,7 +3667,14 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
   auto open = admit(1, surface::SurfaceIntentAction::open);
   auto first_toggle = admit(2, surface::SurfaceIntentAction::toggle);
   auto second_toggle = admit(3, surface::SurfaceIntentAction::toggle);
-  auto dismiss = admit(4, surface::SurfaceIntentAction::dismiss);
+  auto dismiss_admission = intent_authority.admit(
+      {.source = source,
+       .target = source,
+       .input_sequence = 0,
+       .action = surface::SurfaceIntentAction::dismiss});
+  require(dismiss_admission.intent.has_value(),
+          "running gesture-free self-dismiss was not admitted");
+  auto dismiss = std::move(*dismiss_admission.intent);
   const auto running =
       bridge::PluginManagerTestAccess::runtimeSlots(*manager).front();
   auto callback = bridge::PluginManagerTestAccess::surfaceIntentCallback(

@@ -224,6 +224,19 @@ int main() {
   bad_intent[43] = std::byte{9};
   require(!decode_surface_intent(bad_intent, decoded_intent),
           "unknown surface intent action accepted");
+  const SurfaceIntentRequest dismiss_intent{
+      .source = allocation->surface,
+      .target = allocation->surface,
+      .input_sequence = 0,
+      .action = SurfaceIntentAction::dismiss};
+  const auto dismiss_bytes = encode_surface_intent(dismiss_intent);
+  require(decode_surface_intent(dismiss_bytes, decoded_intent) &&
+              decoded_intent == dismiss_intent,
+          "gesture-free self-dismiss did not round trip");
+  auto forged_dismiss = dismiss_bytes;
+  forged_dismiss[32] = std::byte{1};
+  require(!decode_surface_intent(forged_dismiss, decoded_intent),
+          "self-dismiss accepted a forged gesture sequence");
 
   const RenderTypedError error{
       .reason = RenderErrorReason::invalid_allocation,
