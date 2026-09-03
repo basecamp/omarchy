@@ -11,6 +11,7 @@ import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -19,6 +20,47 @@ MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_ITEMS = 40
 USER_AGENT = "Omarchy-News-Panel/1.0"
 SYSTEM_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
+MAX_ARTICLE_CHARS = 12_000
+
+
+class ArticleTextParser(HTMLParser):
+    """Turn trusted-feed markup into readable text without rendering HTML."""
+
+    block_tags = {"article", "blockquote", "br", "div", "h1", "h2", "h3", "h4", "li", "p", "pre"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def newline(self) -> None:
+        if self.parts and self.parts[-1] != "\n":
+            self.parts.append("\n")
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in self.block_tags:
+            self.newline()
+        if tag == "li":
+            self.parts.append("• ")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self.block_tags:
+            self.newline()
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+
+def article_text(value: str | None, limit: int = MAX_ARTICLE_CHARS) -> str:
+    parser = ArticleTextParser()
+    parser.feed(value or "")
+    parser.close()
+    lines = [" ".join(line.split()) for line in "".join(parser.parts).splitlines()]
+    paragraphs = [line for line in lines if line]
+    return "\n\n".join(paragraphs)[:limit]
+
+
+def element_text(node: ET.Element | None) -> str:
+    return "" if node is None else "".join(node.itertext())
 
 
 def state_dir() -> Path:
@@ -55,18 +97,22 @@ def parse_feed(payload: bytes) -> list[dict[str, str]]:
 
     items: list[dict[str, str]] = []
     creator_tag = "{http://purl.org/dc/elements/1.1/}creator"
+    content_tag = "{http://purl.org/rss/1.0/modules/content/}encoded"
     for node in channel.findall("item")[:MAX_ITEMS]:
         link = canonical_news_url(node.findtext("link"))
         title = clean_text(node.findtext("title"), 240)
         if not link or not title:
             continue
         guid = canonical_news_url(node.findtext("guid")) or link
+        summary = article_text(element_text(node.find("description")), 500)
+        content = article_text(node.findtext(content_tag)) or summary
         items.append(
             {
                 "id": guid,
                 "title": title,
                 "url": link,
-                "summary": clean_text(node.findtext("description"), 500),
+                "summary": summary,
+                "content": content,
                 "author": clean_text(node.findtext(creator_tag), 80),
                 "published": clean_text(node.findtext("pubDate"), 100),
             }

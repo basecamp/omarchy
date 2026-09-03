@@ -14,6 +14,7 @@ Panel {
   property int selectedIndex: 0
   property int visualUnreadCount: 0
   property bool cursorActive: false
+  property var currentArticle: null
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
@@ -36,13 +37,26 @@ Panel {
   }
 
   function activateCursor() {
-    if (articles.length > 0) openArticle(articles[selectedIndex])
+    if (articles.length > 0) showArticle(articles[selectedIndex])
   }
 
-  function openArticle(article) {
-    if (!article || !article.url) return
-    Qt.openUrlExternally(String(article.url))
-    close()
+  function showArticle(article) {
+    if (!article) return
+    currentArticle = article
+    panelFlick.contentY = 0
+    cursorActive = false
+  }
+
+  function showHeadlines() {
+    currentArticle = null
+    panelFlick.contentY = 0
+    cursorActive = false
+  }
+
+  function scrollArticle(dy) {
+    var step = Style.space(72)
+    var maxY = Math.max(0, panelFlick.contentHeight - panelFlick.height)
+    panelFlick.contentY = Math.max(0, Math.min(maxY, panelFlick.contentY + dy * step))
   }
 
   function scrollCursorIntoView() {
@@ -75,6 +89,7 @@ Panel {
   }
 
   onOpenedChanged: if (opened) {
+    currentArticle = null
     cursorActive = false
     selectedIndex = 0
     visualUnreadCount = news.unreadCount
@@ -137,12 +152,17 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(420))
-    contentHeight: panel.fittedContentHeight(content.implicitHeight, Style.space(590))
+    contentHeight: panel.fittedContentHeight(root.currentArticle ? readerContent.implicitHeight : listContent.implicitHeight, Style.space(590))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
+        if (root.currentArticle) {
+          if (dx < 0) root.showHeadlines()
+          else if (dy !== 0) root.scrollArticle(dy)
+          return
+        }
         if (!root.cursorActive) {
           root.setCursor(0)
           return
@@ -150,18 +170,25 @@ Panel {
         if (dy !== 0) root.moveCursor(dy)
         else if (dx > 0) root.activateCursor()
       }
-      onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.close()
-      onTabRequested: function(direction) { root.switchPanel(direction) }
+      onActivateRequested: if (!root.currentArticle && root.cursorActive) root.activateCursor()
+      onCloseRequested: {
+        if (root.currentArticle) root.showHeadlines()
+        else root.close()
+      }
+      onTabRequested: function(direction) {
+        if (root.currentArticle) root.showHeadlines()
+        else root.switchPanel(direction)
+      }
       onTextKey: function(text) {
-        if (text === "r" || text === "R") news.refresh()
+        if ((text === "b" || text === "B") && root.currentArticle) root.showHeadlines()
+        else if (text === "r" || text === "R") news.refresh()
       }
 
       Flickable {
         id: panelFlick
         anchors.fill: parent
         contentWidth: width
-        contentHeight: content.implicitHeight
+        contentHeight: root.currentArticle ? readerContent.implicitHeight : listContent.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
@@ -169,7 +196,8 @@ Panel {
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
         Column {
-          id: content
+          id: listContent
+          visible: !root.currentArticle
           width: panelFlick.width
           spacing: Style.space(12)
 
@@ -243,6 +271,113 @@ Panel {
             }
           }
         }
+
+        Column {
+          id: readerContent
+          visible: !!root.currentArticle
+          width: panelFlick.width
+          spacing: Style.space(12)
+
+          CursorSurface {
+            width: parent.width
+            implicitHeight: backLabel.implicitHeight + Style.space(12)
+            foreground: root.foreground
+
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.showHeadlines()
+            }
+
+            RowLayout {
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.leftMargin: Style.space(8)
+              anchors.rightMargin: Style.space(8)
+              spacing: Style.space(7)
+
+              Text {
+                text: "󰁍"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+              }
+
+              Text {
+                id: backLabel
+                Layout.fillWidth: true
+                text: "ALL NEWS"
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.0
+              }
+            }
+          }
+
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            text: root.currentArticle ? String(root.currentArticle.title || "Untitled") : ""
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.title
+            font.bold: true
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            text: {
+              if (!root.currentArticle) return ""
+              var parts = []
+              var published = root.publishedLabel(root.currentArticle.published)
+              if (published !== "") parts.push(published)
+              var author = String(root.currentArticle.author || "")
+              if (author !== "") parts.push(author)
+              return parts.join(" · ").toUpperCase()
+            }
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 0.8
+          }
+
+          PanelSeparator {
+            foreground: root.foreground
+          }
+
+          Text {
+            width: parent.width
+            textFormat: Text.PlainText
+            text: root.currentArticle ? String(root.currentArticle.content || root.currentArticle.summary || "") : ""
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            lineHeight: 1.25
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
+            width: parent.width
+            text: "←  Back to all news"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            horizontalAlignment: Text.AlignHCenter
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.showHeadlines()
+            }
+          }
+        }
       }
     }
   }
@@ -262,7 +397,7 @@ Panel {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onEntered: root.setCursor(articleRow.rowIndex)
-      onClicked: root.openArticle(articleRow.article)
+      onClicked: root.showArticle(articleRow.article)
     }
 
     RowLayout {
@@ -336,7 +471,7 @@ Panel {
       }
 
       Text {
-        text: "󰅂"
+        text: "󰁔"
         color: root.dim
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
