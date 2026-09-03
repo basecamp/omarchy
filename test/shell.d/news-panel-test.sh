@@ -80,6 +80,8 @@ grep -qF 'onLinkActivated: function(link) { Qt.openUrlExternally(link) }' "$ROOT
   fail "news story opens deliberately activated links"
 grep -qF 'tooltipText: "Close (Esc)"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news reader exposes its right-side window actions"
+grep -qF 'o.bind("SUPER + ALT + N", "Omarchy News", "omarchy-shell shell toggle omarchy.news")' "$ROOT/default/hypr/bindings/utilities.lua" ||
+  fail "news reader has a default Hyprland shortcut"
 
 grep -qF 'FEED_URL = "https://omarchy.org/news/rss.xml"' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "news fetcher pins the official RSS URL"
