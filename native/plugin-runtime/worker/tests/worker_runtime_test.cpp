@@ -1406,7 +1406,14 @@ void hostile_loading() {
   worker::WorkerRuntime unknown(fixture("unknown-module"), exact_qml.root());
   require(static_cast<bool>(unknown.prepare_trusted_qt_types()) &&
               !static_cast<bool>(unknown.load_manifest_entry()),
-          "uncertified QtQuick.Controls loaded from the synthetic tree");
+          "uncertified QtQuick.Dialogs loaded from the synthetic tree");
+
+  worker::WorkerRuntime controls_shadow(fixture("controls-shadow"),
+                                         exact_qml.root());
+  require(static_cast<bool>(controls_shadow.prepare_trusted_qt_types()) &&
+              static_cast<bool>(controls_shadow.load_manifest_entry()) &&
+              controls_shadow.root_object_name() == "trusted",
+          "plugin-local module shadowed certified QtQuick.Controls");
 
   worker::WorkerRuntime host_shell(fixture("host-shell-module"),
                                    exact_qml.root());
@@ -1635,6 +1642,33 @@ void trusted_effects_load_after_steady_state() {
           "certified system QtQuick.Effects did not defeat plugin shadowing");
 }
 
+void trusted_controls_load_after_steady_state() {
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "trusted Controls seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("trusted-controls"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    if (!prepared)
+      _exit(46);
+    std::string error;
+    if (!worker::install_steady_state_seccomp(error))
+      _exit(47);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded)
+      static_cast<void>(write(STDERR_FILENO, loaded.detail.data(),
+                              loaded.detail.size()));
+    _exit(loaded && runtime.loaded() &&
+                  runtime.root_object_name() == "basic-controls-1"
+              ? 0
+              : 48);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "certified QtQuick.Controls did not load after steady-state seccomp");
+}
+
 void dynamic_module_resolution_stays_certified() {
   const pid_t unrestricted = fork();
   require(unrestricted >= 0, "dynamic module positive-control fork failed");
@@ -1645,14 +1679,14 @@ void dynamic_module_resolution_stays_certified() {
                                 (fixture("dynamic-module") / "Main.qml")
                                     .string())));
     std::unique_ptr<QObject> root(component.create());
-    _exit(root && root->objectName() == QStringLiteral("controls-loaded") ? 0
-                                                                          : 29);
+    _exit(root && root->objectName() == QStringLiteral("dialog-loaded") ? 0
+                                                                         : 29);
   }
   int unrestricted_status = 0;
   require(waitpid(unrestricted, &unrestricted_status, 0) == unrestricted &&
               WIFEXITED(unrestricted_status) &&
               WEXITSTATUS(unrestricted_status) == 0,
-          "dynamic Controls adversary lacks a working positive control");
+          "dynamic Dialogs adversary lacks a working positive control");
 
   ExactQmlTree qml_tree;
   const pid_t child = fork();
@@ -1758,6 +1792,32 @@ void dynamic_certified_effects_succeeds() {
           "runtime-created certified QtQuick.Effects module failed");
 }
 
+void dynamic_certified_controls_succeeds() {
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "dynamic Controls seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("dynamic-controls"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    std::string error;
+    if (!prepared || !worker::install_steady_state_seccomp(error))
+      _exit(49);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded || runtime.root_object_name() != "dynamic-loaded") {
+      const auto detail = std::string("dynamic Controls marker=") +
+                          runtime.root_object_name() + " objects=" +
+                          std::to_string(runtime.object_count()) + " " +
+                          loaded.detail + "\n";
+      static_cast<void>(write(STDERR_FILENO, detail.data(), detail.size()));
+    }
+    _exit(loaded && runtime.root_object_name() == "dynamic-loaded" ? 0 : 50);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "runtime-created certified QtQuick.Controls module failed");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -1795,10 +1855,12 @@ int main(int argc, char **argv) {
     trusted_shapes_load_after_steady_state();
     trusted_layouts_load_after_steady_state();
     trusted_effects_load_after_steady_state();
+    trusted_controls_load_after_steady_state();
     dynamic_module_resolution_stays_certified();
     dynamic_certified_shapes_succeeds();
     dynamic_certified_layouts_succeeds();
     dynamic_certified_effects_succeeds();
+    dynamic_certified_controls_succeeds();
     std::cout << "plugin worker runtime: ok\n";
     return 0;
   } catch (const std::exception &error) {

@@ -83,6 +83,7 @@ bool trusted_launch_environment() {
          exact_environment("HOME", "/home/plugin") &&
          exact_environment("PWD", "/plugin") &&
          exact_environment("QT_QPA_PLATFORM", "offscreen") &&
+         exact_environment("QT_QUICK_CONTROLS_STYLE", "Basic") &&
          exact_environment("QSG_RHI_BACKEND", "software") &&
          exact_environment("XDG_RUNTIME_DIR", "/run/plugin");
 }

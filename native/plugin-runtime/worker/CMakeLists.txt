@@ -120,7 +120,7 @@ if(BUILD_TESTING)
   set_tests_properties(plugin-worker-runtime PROPERTIES
     LABELS "unit;integration;adversarial;render;security"
     TIMEOUT 30
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QT_QUICK_CONTROLS_STYLE=Basic;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
   )
   add_test(NAME plugin-worker-runtime-sibling-focus
     COMMAND omarchy-plugin-worker-runtime-test --sibling-focus-only)
@@ -132,7 +132,7 @@ if(BUILD_TESTING)
     PROPERTIES
       LABELS "unit;integration;render;input"
       TIMEOUT 20
-      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
+      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QT_QUICK_CONTROLS_STYLE=Basic;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
   )
 
   add_executable(omarchy-plugin-worker-channel-test tests/worker_channel_test.cpp)
@@ -160,5 +160,5 @@ if(BUILD_TESTING)
     LABELS "unit;integration;protocol;broker;qml;security"
     TIMEOUT 20
     SKIP_RETURN_CODE 77
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software")
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QT_QUICK_CONTROLS_STYLE=Basic;QSG_RHI_BACKEND=software")
 endif()

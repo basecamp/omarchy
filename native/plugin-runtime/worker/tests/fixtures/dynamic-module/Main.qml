@@ -3,10 +3,10 @@ import QtQuick
 Item {
     Component.onCompleted: {
         try {
-            const created = Qt.createQmlObject("import QtQuick.Controls\nButton {}", this,
-                                               "dynamic-controls.qml")
+            const created = Qt.createQmlObject("import QtQuick.Dialogs\nFileDialog {}", this,
+                                               "dynamic-dialog.qml")
             if (created !== null)
-                objectName = "controls-loaded"
+                objectName = "dialog-loaded"
         } catch (error) {
         }
     }

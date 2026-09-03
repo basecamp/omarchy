@@ -30,6 +30,18 @@ constexpr std::array layouts_files{"libqquicklayoutsplugin.so"sv,
                                    "plugins.qmltypes"sv, "qmldir"sv};
 constexpr std::array effects_files{"libeffectsplugin.so"sv,
                                    "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array controls_files{"libqtquickcontrols2plugin.so"sv,
+                                    "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array templates_files{"libqtquicktemplates2plugin.so"sv,
+                                     "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array controls_impl_files{"libqtquickcontrols2implplugin.so"sv,
+                                         "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array basic_files{
+    "libqtquickcontrols2basicstyleplugin.so"sv, "plugins.qmltypes"sv,
+    "qmldir"sv};
+constexpr std::array basic_impl_files{
+    "libqtquickcontrols2basicstyleimplplugin.so"sv, "plugins.qmltypes"sv,
+    "qmldir"sv};
 
 constexpr std::array qml_trees{
     TrustedQmlResourceTree{"QtQml", qml_files, false},
@@ -44,6 +56,13 @@ constexpr std::array layouts_trees{
     TrustedQmlResourceTree{"QtQuick/Layouts", layouts_files, false}};
 constexpr std::array effects_trees{
     TrustedQmlResourceTree{"QtQuick/Effects", effects_files, false}};
+constexpr std::array controls_trees{
+    TrustedQmlResourceTree{"QtQuick/Controls", controls_files, false},
+    TrustedQmlResourceTree{"QtQuick/Templates", templates_files, false},
+    TrustedQmlResourceTree{"QtQuick/Controls/impl", controls_impl_files, false},
+    TrustedQmlResourceTree{"QtQuick/Controls/Basic", basic_files, false},
+    TrustedQmlResourceTree{"QtQuick/Controls/Basic/impl", basic_impl_files,
+                           false}};
 
 constexpr std::array qt_qml_modules{
     TrustedQmlModule{"QtQml", R"(
@@ -74,6 +93,17 @@ constexpr std::array qt_qml_modules{
       MultiEffect { source: Rectangle { width: 1; height: 1 } }
     )",
                      effects_trees},
+    TrustedQmlModule{"QtQuick.Controls", R"(
+      import QtQuick
+      import QtQuick.Controls
+      Item {
+        Button { text: "probe" }
+        TextField { text: "probe" }
+        Slider { value: 0.5 }
+        ScrollView { width: 1; height: 1 }
+      }
+    )",
+                     controls_trees},
 };
 
 const std::vector<std::string> qt_qml_files = [] {
@@ -251,6 +281,7 @@ SandboxPlan build_plan_for_worker(std::string worker_path) {
       "PATH=/runtime",
       "PWD=/plugin",
       "QT_QPA_PLATFORM=offscreen",
+      "QT_QUICK_CONTROLS_STYLE=Basic",
       "QSG_RHI_BACKEND=software",
       "XDG_CACHE_HOME=/tmp/cache",
       "XDG_CONFIG_HOME=/state/config",

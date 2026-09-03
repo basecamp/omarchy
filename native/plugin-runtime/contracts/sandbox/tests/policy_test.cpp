@@ -55,6 +55,8 @@ void verify_environment(const SandboxPlan &plan) {
           "worker inherits the manager environment");
   require(contains(plan.worker_environment, "QT_QPA_PLATFORM=offscreen"),
           "offscreen Qt platform is not pinned");
+  require(contains(plan.worker_environment, "QT_QUICK_CONTROLS_STYLE=Basic"),
+          "Qt Quick Controls style is not pinned to Basic");
   require(contains(plan.worker_environment, "QSG_RHI_BACKEND=software"),
           "software renderer is not pinned");
   require(contains(plan.worker_environment, "HOME=/home/plugin"),
@@ -115,13 +117,23 @@ void verify_mounts(const SandboxPlan &plan, std::string_view worker) {
               "QtQuick.Layouts") &&
               omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
                   "QtQuick.Effects") &&
+              omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+                  "QtQuick.Controls") &&
+              !omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+                  "QtQuick.Dialogs") &&
               !omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
                   "Quickshell"),
           "authority-free Qt module or ambient Quickshell classification drifted");
-  require(std::ranges::none_of(plan.argv, [](const std::string &argument) {
-            return argument.find("QtQuick/Controls") != std::string::npos;
-          }),
-          "uncertified QtQuick.Controls is exposed");
+  require(omarchy::plugin_runtime::sandbox::trusted_qml_files().size() == 36 &&
+              omarchy::plugin_runtime::sandbox::trusted_qml_resource(
+                  "QtQuick/Controls/Basic/Button.qml") &&
+              omarchy::plugin_runtime::sandbox::trusted_qml_resource(
+                  "QtQuick/Controls/Basic/impl/TextEditingContextMenu.qml") &&
+              !omarchy::plugin_runtime::sandbox::trusted_qml_resource(
+                  "QtQuick/Dialogs/qmldir") &&
+              !omarchy::plugin_runtime::sandbox::trusted_qml_resource(
+                  "QtQuick/Controls/Fusion/qmldir"),
+          "Basic Controls closure or excluded Qt modules drifted");
   for (std::string_view forbidden :
        {"/run/user", "/home", "/sys", "/dev/dri", "/dev/input", "/etc/ssh"}) {
     require(std::ranges::none_of(plan.argv,

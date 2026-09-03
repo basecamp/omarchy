@@ -132,6 +132,7 @@ int sandbox_probe() {
       "HOME=/home/plugin",       "LANG=C.UTF-8",
       "LC_ALL=C.UTF-8",         "PATH=/runtime",
       "PWD=/plugin",            "QT_QPA_PLATFORM=offscreen",
+      "QT_QUICK_CONTROLS_STYLE=Basic",
       "QSG_RHI_BACKEND=software", "XDG_CACHE_HOME=/tmp/cache",
       "XDG_CONFIG_HOME=/state/config", "XDG_DATA_HOME=/state/data",
       "XDG_RUNTIME_DIR=/run/plugin",
