@@ -169,6 +169,7 @@
   "setup.default.editor.vim": {"icon":"","label":"Vim","checked":"[[ \"$(omarchy-default-editor)\" == \"vim\" ]]","action":"omarchy-default-editor vim"},
   "setup.default.editor.emacs": {"icon":"","label":"Emacs","checked":"[[ \"$(omarchy-default-editor)\" == \"emacs\" ]]","action":"omarchy-default-editor emacs"},
   "setup.plugin": {"icon":"󰐱","label":"Plugins","aliases":["plugin","plugins"]},
+  "setup.plugin.browse": {"icon":"󰈈","label":"Browse Marketplace","action":"omarchy-plugin-browse"},
   "setup.plugin.enable": {"icon":"󰄬","label":"Enable Plugin","action":"omarchy-menu-plugin enable"},
   "setup.plugin.disable": {"icon":"󰅖","label":"Disable Plugin","action":"omarchy-menu-plugin disable"},
   "setup.plugin.add": {"icon":"󰖟","label":"Add Plugin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-plugin-add'"},

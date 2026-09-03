@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# omarchy:summary=Browse and install community shell plugins
+# omarchy:group=plugin
+
+set -euo pipefail
+
+catalog_url="https://plugins.omarchy.org/catalog.json"
+plugin_url="https://plugins.omarchy.org/plugin.html"
+
+catalog=$(curl -fsSL --max-time 10 "$catalog_url" 2>/dev/null) || {
+  omarchy-notification-send "Could not load the Omarchy plugin marketplace"
+  exit 1
+}
+
+jq -e '.plugins | type == "array"' <<<"$catalog" >/dev/null || {
+  omarchy-notification-send "The Omarchy plugin marketplace returned invalid data"
+  exit 1
+}
+
+installed=$(omarchy-plugin-list --json 2>/dev/null || printf '[]')
+jq -e 'type == "array"' <<<"$installed" >/dev/null || installed='[]'
+
+rows=$(jq -r --argjson installed "$installed" '
+  .plugins[]
+  | select((.sourceType // "community") == "community")
+  | select((.id // "") != "")
+  | . as $plugin
+  | "󰐱\t" + (.name // .id) + (if $installed | any(.id == $plugin.id) then " (installed)" else "" end) + "\t" + .id
+' <<<"$catalog")
+
+if [[ -z $rows ]]; then
+  omarchy-notification-send "No community plugins are currently listed"
+  exit 0
+fi
+
+selection=$(omarchy-menu-select "Browse plugins" <<<"$rows") || exit 0
+id=$(cut -f2 <<<"$selection")
+[[ -n $id ]] || exit 1
+
+plugin=$(jq -cer --arg id "$id" '.plugins[] | select(.id == $id)' <<<"$catalog") || {
+  omarchy-notification-send "That plugin is no longer in the marketplace"
+  exit 1
+}
+
+repo=$(jq -r '.repo // empty' <<<"$plugin")
+install_available=$(jq -r '.installAvailable // false' <<<"$plugin")
+if jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$installed" >/dev/null; then
+  installed_plugin=true
+else
+  installed_plugin=false
+fi
+
+if [[ $installed_plugin == "true" ]]; then
+  omarchy-launch-webapp "$plugin_url?id=$(jq -rn --arg id "$id" '$id | @uri')"
+elif [[ $install_available == "true" && -n $repo ]]; then
+  omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-add $(printf '%q' "$repo")"
+else
+  omarchy-launch-webapp "$plugin_url?id=$(jq -rn --arg id "$id" '$id | @uri')"
+fi

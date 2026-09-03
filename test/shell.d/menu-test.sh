@@ -339,8 +339,13 @@ assertEqual(
 )
 assertDeepEqual(
   defaultItems.filter(item => item.parent === 'setup.plugin').map(item => item.label),
-  ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Clone Plugin', 'Remove Plugin'],
-  'menu manages plugins from Setup > Plugins'
+  ['Browse Marketplace', 'Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Clone Plugin', 'Remove Plugin'],
+  'menu manages and browses plugins from Setup > Plugins'
+)
+assertEqual(
+  defaultById['setup.plugin.browse'].action,
+  'omarchy-plugin-browse',
+  'menu opens the native plugin marketplace browser'
 )
 assert(
   ['enable', 'disable', 'clone', 'remove'].every(
