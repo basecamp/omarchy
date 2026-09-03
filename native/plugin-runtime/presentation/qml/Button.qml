@@ -9,16 +9,22 @@ Rectangle {
   property bool selected: false
   property bool active: false
   property bool focusable: false
+  property bool bordered: false
   property color foreground: Color.foreground
   property color accent: Color.accent
+  property color hoverColor: accent
+  property string fontFamily: Style.font.menuFamily
   property int fontSize: 14
+  property real verticalPadding: 0
   signal clicked()
 
   implicitWidth: Math.max(32, label.implicitWidth + 20)
-  implicitHeight: 32
+  implicitHeight: Math.max(32, label.implicitHeight + verticalPadding * 2)
   radius: 6
   color: selected || active ? Style.selectedFillFor(foreground, accent)
-    : (pointer.containsMouse ? Style.hoverFillFor(foreground, accent) : "transparent")
+    : (pointer.containsMouse ? Style.hoverFillFor(foreground, hoverColor) : "transparent")
+  border.color: bordered ? Color.alpha(foreground, 0.18) : "transparent"
+  border.width: bordered ? 1 : 0
   opacity: enabled ? 1 : 0.45
   activeFocusOnTab: focusable
 
@@ -27,7 +33,7 @@ Rectangle {
     anchors.centerIn: parent
     text: root.iconText || root.text
     color: root.foreground
-    font.family: Style.font.menuFamily
+    font.family: root.fontFamily
     font.pixelSize: root.fontSize
     textFormat: Text.PlainText
   }

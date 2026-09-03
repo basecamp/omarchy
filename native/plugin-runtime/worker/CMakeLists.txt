@@ -34,13 +34,24 @@ qt_add_resources(omarchy-plugin-worker-runtime plugin_presentation_qml
     ../presentation/qml/BrokerProcess.qml
     ../presentation/qml/Button.qml
     ../presentation/qml/Color.qml
+    ../presentation/qml/CursorSurface.qml
+    ../presentation/qml/Dropdown.qml
+    ../presentation/qml/KeyboardPanel.qml
     ../presentation/qml/PackagedText.qml
+    ../presentation/qml/Panel.qml
+    ../presentation/qml/PanelActionButton.qml
+    ../presentation/qml/PanelHero.qml
+    ../presentation/qml/PanelKeyCatcher.qml
+    ../presentation/qml/PanelSectionHeader.qml
+    ../presentation/qml/PanelSeparator.qml
     ../presentation/qml/PanelSlider.qml
     ../presentation/qml/PrivateStorage.qml
     ../presentation/qml/StdioCollector.qml
     ../presentation/qml/Style.qml
     ../presentation/qml/TextField.qml
     ../presentation/qml/ToolTip.qml
+    ../presentation/qml/Toggle.qml
+    ../presentation/qml/Util.qml
     ../presentation/qml/WidgetButton.qml)
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)

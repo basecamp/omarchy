@@ -2,7 +2,7 @@
 
 `Omarchy.PluginPresentation 1.0` is a pure-QML compatibility module embedded in the versioned schema-v2 worker. It exists to keep ordinary plugin presentation code familiar without importing Omarchy's trusted shell implementation into the sandbox.
 
-The module currently provides authority-free theme and sizing defaults, controls used by existing Omarchy plugins, packaged-text reads, a private-storage wrapper, and a Process-shaped asynchronous broker-call base. `BrokerProcess`, `PrivateStorage`, and `PackagedText` call only the worker's manifest-bound `runtime` API; they cannot widen a manifest request or bypass broker authorization. All other module types are presentation-only.
+The module currently provides authority-free theme and sizing defaults, controls used by existing Omarchy plugins, keyboard/panel presentation primitives, packaged-text reads, a private-storage wrapper, and a Process-shaped asynchronous broker-call base. `BrokerProcess`, `PrivateStorage`, `PackagedText`, and `Panel` call only the worker's manifest-bound `runtime` API; they cannot widen a manifest request or bypass broker authorization. `Panel` is an in-scene item, not a native window: it projects host settings and asks the host to apply lifecycle intents to an explicitly named manifest surface. All other module types are presentation-only.
 
 This module is not `qs.Commons` or `qs.Ui`. Those URIs identify private modules in the trusted shell and may contain ambient host integrations. A schema-v2 plugin must import `Omarchy.PluginPresentation` explicitly so review can distinguish sandbox compatibility from trusted shell access.
 

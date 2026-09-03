@@ -8,6 +8,7 @@ FocusScope {
   property alias maximumLength: editor.maximumLength
   property color foreground: Color.foreground
   property color accent: Color.accent
+  property string fontFamily: Style.font.menuFamily
   signal textEdited()
   signal accepted()
 
@@ -31,7 +32,7 @@ FocusScope {
     anchors.verticalCenter: parent.verticalCenter
     visible: editor.text.length === 0 && !editor.activeFocus
     color: Color.alpha(root.foreground, 0.55)
-    font.family: Style.font.menuFamily
+    font.family: root.fontFamily
     font.pixelSize: Style.font.body
     textFormat: Text.PlainText
   }
@@ -44,7 +45,7 @@ FocusScope {
     color: root.foreground
     selectionColor: root.accent
     selectedTextColor: Color.background
-    font.family: Style.font.menuFamily
+    font.family: root.fontFamily
     font.pixelSize: Style.font.body
     focus: root.activeFocus
     onTextEdited: root.textEdited()

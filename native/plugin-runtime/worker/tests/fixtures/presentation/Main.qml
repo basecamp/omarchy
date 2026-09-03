@@ -10,11 +10,21 @@ Item {
   BarWidget {}
   BrokerProcess {}
   Button {}
+  CursorSurface {}
+  Dropdown {}
+  KeyboardPanel {}
   PackagedText { preload: false }
+  Panel {}
+  PanelActionButton {}
+  PanelHero {}
+  PanelKeyCatcher {}
+  PanelSectionHeader {}
+  PanelSeparator {}
   PanelSlider {}
   PrivateStorage {}
   StdioCollector {}
   TextField {}
   ToolTip {}
+  Toggle {}
   WidgetButton {}
 }
