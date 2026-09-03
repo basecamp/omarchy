@@ -511,7 +511,7 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               anchors.leftMargin: Style.space(12)
               anchors.rightMargin: Style.space(12)
-              text: root.provider ? String(root.provider.authHelpText || "") : ""
+              text: root.provider ? String(root.provider.usageStatusText || root.provider.authHelpText || "") : ""
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
