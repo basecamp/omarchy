@@ -46,6 +46,13 @@ assertDeepEqual(
   { level: 8, notify: false, notifiedLowBattery: false },
   'battery does not latch from AC-only low readings without a discharge warning'
 )
+// A missing reading is another blip the latch has to survive, or a dropped
+// UPower device re-arms the same storm the AC flap used to.
+assertDeepEqual(
+  battery.shouldWarnLowBattery({ isPresent: false, percentage: 0.08, state: discharging }, true, discharging, 10, true),
+  { level: -1, notify: false, notifiedLowBattery: true },
+  'battery keeps the low latch while the device reading is missing'
+)
 
 // Simulate the issue #9670 flap loop: one warning, then many AC toggles.
 ;(function () {
