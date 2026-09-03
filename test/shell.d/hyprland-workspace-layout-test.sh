@@ -65,7 +65,10 @@ xdg_layout="$xdg_state/omarchy/workspace-layouts/3.lua"
   fail "workspace layout toggle does not also write under HOME when XDG_STATE_HOME is set"
 pass "workspace layout toggle respects XDG_STATE_HOME"
 
-HOME="$home_dir" XDG_STATE_HOME="" OMARCHY_PATH="$ROOT" lua <<'LUA'
+# lua reading a bare heredoc exits 0 even when the chunk raises, and base-test.sh
+# does not set -e, so both loader checks have to fail the file themselves or the
+# pass below runs on a module-not-found error. Same shape as hyprland-qconsole-test.sh.
+HOME="$home_dir" XDG_STATE_HOME="" OMARCHY_PATH="$ROOT" lua - <<'LUA' || fail "saved workspace layouts load into Hyprland configuration"
 local rules = {}
 
 hl = {
@@ -86,7 +89,7 @@ pass "saved workspace layouts load into Hyprland configuration"
 # Production loads layouts through toggles.lua. XDG_STATE_HOME can diverge from
 # HOME/.local/state; bootstrap only puts HOME on package.path, so the layouts
 # directory itself must be on package.path (nil module prefix), matching toggles.
-HOME="$xdg_home" XDG_STATE_HOME="$xdg_state" OMARCHY_PATH="$ROOT" lua <<'LUA'
+HOME="$xdg_home" XDG_STATE_HOME="$xdg_state" OMARCHY_PATH="$ROOT" lua - <<'LUA' || fail "saved workspace layouts load via toggles when XDG_STATE_HOME diverges from HOME"
 local rules = {}
 
 hl = {
