@@ -111,4 +111,27 @@ grep -q -- "--load-extension=$others,$slim-backup$" "$home/.config/brave-flags.c
     "$(cat "$home/.config/brave-flags.conf")"
 pass "only the slim entry itself is stripped"
 
+# Remove -> Preinstalls runs omarchy-webapp-remove-all, which has its own
+# loop and never called the single-command path: it must surface the same
+# paired cleanup, or the "I want none of the web apps" route still leaves the
+# extension behind (issue #9856).
+cat >"$home/.local/share/applications/WhatsApp.desktop" <<EOF
+[Desktop Entry]
+Name=WhatsApp
+Exec=omarchy-launch-webapp https://web.whatsapp.com/
+Icon=whatsapp
+EOF
+cat >"$home/.config/chromium-flags.conf" <<EOF
+--load-extension=$others,$slim
+EOF
+HOME="$home" OMARCHY_PATH="$opath" OMARCHY_REMOVE_NOTIFY=false \
+  "$ROOT/bin/omarchy-webapp-remove-all" "$home/.local/share/applications" >/dev/null
+grep -q "whatsapp-slim" "$home/.config/chromium-flags.conf" &&
+  fail "remove-all strips the slim flags too" "$(cat "$home/.config/chromium-flags.conf")"
+grep -q -- "--load-extension=$others$" "$home/.config/chromium-flags.conf" ||
+  fail "remove-all keeps the other extensions" "$(cat "$home/.config/chromium-flags.conf")"
+[[ ! -e $home/.local/share/applications/WhatsApp.desktop ]] ||
+  fail "remove-all removes the WhatsApp launcher"
+pass "the remove-all path pairs the extension flags with the web apps"
+
 pass "web app removal pairs the WhatsApp launcher with its slim extension"
