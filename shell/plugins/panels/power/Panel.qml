@@ -47,14 +47,15 @@ Panel {
     setProfile(profiles[profileIndex])
   }
 
+  readonly property string batteryIconGlyph: Model.batteryIcon(UPower.displayDevice, root.discharging, upowerStates(), root.batteryInfo)
+
   function batteryIcon() {
-    var device = UPower.displayDevice
-    return Model.batteryIcon(device, root.discharging, upowerStates())
+    return root.batteryIconGlyph
   }
 
   function modeLabel() {
     var device = UPower.displayDevice
-    return Model.modeLabel(device, root.discharging, upowerStates())
+    return Model.modeLabel(device, root.discharging, upowerStates(), root.batteryInfo)
   }
 
   function profileIcon(name) {
@@ -62,6 +63,7 @@ Panel {
   }
 
   readonly property bool fullyCharged: {
+    if (Model.statusState(root.batteryInfo) === "fully-charged") return true
     var device = UPower.displayDevice
     return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged && !root.chargeThresholdActive
   }
@@ -71,15 +73,14 @@ Panel {
   }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
-    return Model.chargeThresholdActive(device, root.discharging, upowerStates())
+    return Model.chargeThresholdActive(device, root.discharging, upowerStates(), root.batteryInfo)
   }
-  readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
+  readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 0.99)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
 
   // 0..1 charge level, used by the visual progress bar.
   readonly property real batteryFraction: {
-    var d = UPower.displayDevice
-    return Model.batteryFraction(d)
+    return Model.batteryFraction(UPower.displayDevice, root.batteryInfo)
   }
 
   readonly property bool charging: {
@@ -132,10 +133,16 @@ Panel {
     return modeLabel()
   }
 
+  function refreshBattery() {
+    if (!batteryPresent) return
+    if (!batteryProc.running) batteryProc.running = true
+  }
+
   function refresh() {
     if (!batteryPresent) return
 
-    if (!batteryProc.running) batteryProc.running = true
+    refreshBattery()
+    if (!root.opened) return
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
   }
@@ -211,6 +218,16 @@ Panel {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateKeyValue(text, "battery") }
   }
 
+  Timer {
+    interval: 3000
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refreshBattery()
+  }
+
+  Component.onCompleted: root.refreshBattery()
+
   Process {
     id: profilesProc
     command: ["omarchy-powerprofiles-list", "--active-state"]
@@ -279,7 +296,7 @@ Panel {
     bar: root.bar
     text: root.showPercentage && !vertical
       ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
-      : root.batteryIcon()
+      : root.batteryIconGlyph
     slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
     tooltipText: ""
     onPressed: function(b) {
@@ -326,7 +343,7 @@ Panel {
           Text {
             id: heroIcon
             textFormat: Text.PlainText
-            text: root.batteryIcon()
+            text: root.batteryIconGlyph
             color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.display
