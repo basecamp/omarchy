@@ -3,29 +3,64 @@
 # omarchy:summary=Install a hook into ~/.config/omarchy/hooks/<type>.d/
 # omarchy:group=hook
 # omarchy:name=install
-# omarchy:args=<type> <file>
-# omarchy:examples=omarchy hook install post-update ~/my-hook
+# omarchy:args=[--symlink] <type> <file>
+# omarchy:examples=omarchy hook install post-update ~/my-hook | omarchy hook install --symlink post-boot ~/my-hook
 
 set -e
 
-if (( $# != 2 )); then
-  echo "Usage: omarchy-hook-install <type> <file>"
+use_symlink=0
+positional=()
+
+while (($#)); do
+  case "$1" in
+    -s|--symlink)
+      use_symlink=1
+      shift
+      ;;
+    --)
+      shift
+      while (($#)); do
+        positional+=("$1")
+        shift
+      done
+      break
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      exit 1
+      ;;
+    *)
+      positional+=("$1")
+      shift
+      ;;
+  esac
+done
+
+if (( ${#positional[@]} != 2 )); then
+  echo "Usage: omarchy-hook-install [--symlink|-s] <type> <file>" >&2
   exit 1
 fi
 
-HOOK_TYPE=$1
-HOOK_FILE=$2
+HOOK_TYPE="${positional[0]}"
+HOOK_FILE="${positional[1]}"
 HOOK_DIR="$HOME/.config/omarchy/hooks/$HOOK_TYPE.d"
 HOOK_NAME=$(basename "$HOOK_FILE")
 HOOK_PATH="$HOOK_DIR/$HOOK_NAME"
 
 if [[ ! -f $HOOK_FILE ]]; then
-  echo "Hook file not found: $HOOK_FILE"
+  echo "Hook file not found: $HOOK_FILE" >&2
   exit 1
 fi
 
 mkdir -p "$HOOK_DIR"
-cp "$HOOK_FILE" "$HOOK_PATH"
-chmod 755 "$HOOK_PATH"
 
-echo "Installed $HOOK_TYPE hook: $HOOK_PATH"
+if (( use_symlink )); then
+  HOOK_TARGET=$(realpath "$HOOK_FILE")
+  ln -sfn "$HOOK_TARGET" "$HOOK_PATH"
+  chmod +x "$HOOK_PATH"
+  echo "Symlinked $HOOK_TYPE hook: $HOOK_PATH -> $HOOK_TARGET"
+else
+  cp "$HOOK_FILE" "$HOOK_PATH"
+  chmod 755 "$HOOK_PATH"
+  echo "Installed $HOOK_TYPE hook: $HOOK_PATH"
+fi
