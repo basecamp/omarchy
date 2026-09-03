@@ -5,7 +5,6 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
-import "../../../Ui/Cursor.js" as Cursor
 
 Panel {
   id: root
@@ -1073,7 +1072,7 @@ Panel {
               width: parent.width
               label: String(modelData.label || "")
               selected: peerRow.copyIndex === index
-              onHovered: peerRow.copyIndex = index
+              onHovered: function(on) { if (on) peerRow.copyIndex = index }
               onChosen: peerRow.copyOption(String(modelData.kind || ""))
             }
           }
@@ -1085,7 +1084,6 @@ Panel {
   component CopyChoice: CursorSurface {
     id: copyChoice
     signal chosen()
-    signal hovered()
     property string label: ""
     property bool selected: false
 
@@ -1099,7 +1097,6 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onEntered: copyChoice.hovered()
       onClicked: copyChoice.chosen()
     }
 

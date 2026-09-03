@@ -1,4 +1,5 @@
-.pragma library
+pragma Singleton
+import QtQuick
 
 // Shared pointer-vs-keyboard cursor policy for panel rows and buttons.
 //
@@ -7,11 +8,12 @@
 // leaving a row unpaints hover and drops arrow-key selection. Moving
 // from one row to another claims the new row first, so the old row's
 // leave does not clear the new cursor.
-
-function applyHover(on, owns, claim, release) {
-  if (on) {
-    if (typeof claim === "function") claim()
-    return
+QtObject {
+  function applyHover(on, owns, claim, release) {
+    if (on) {
+      if (typeof claim === "function") claim()
+      return
+    }
+    if (owns && typeof release === "function") release()
   }
-  if (owns && typeof release === "function") release()
 }

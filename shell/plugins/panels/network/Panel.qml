@@ -7,7 +7,6 @@ import Quickshell.Networking
 import qs.Ui
 import qs.Commons
 import "Model.js" as Model
-import "../../../Ui/Cursor.js" as Cursor
 
 Panel {
   id: root
