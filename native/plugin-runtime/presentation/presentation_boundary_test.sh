@@ -17,7 +17,7 @@ for file in "$root"/*.qml; do
   fi
 done
 
-expected='BarWidget Border BorderSurface BrokerProcess Button Color PackagedText PanelSlider PrivateStorage ScrollBar StdioCollector Style TextField ToolTip WidgetButton'
+expected='BarWidget Border BorderSurface BrokerProcess Button Color PackagedText PanelSlider PrivateStorage StdioCollector Style TextField ToolTip WidgetButton'
 actual=$(find "$root" -maxdepth 1 -name '*.qml' -printf '%f\n' | sed 's/\.qml$//' | sort | tr '\n' ' ' | sed 's/ $//')
 [[ $actual == "$expected" ]]
 

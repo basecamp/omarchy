@@ -37,7 +37,6 @@ qt_add_resources(omarchy-plugin-worker-runtime plugin_presentation_qml
     ../presentation/qml/PackagedText.qml
     ../presentation/qml/PanelSlider.qml
     ../presentation/qml/PrivateStorage.qml
-    ../presentation/qml/ScrollBar.qml
     ../presentation/qml/StdioCollector.qml
     ../presentation/qml/Style.qml
     ../presentation/qml/TextField.qml

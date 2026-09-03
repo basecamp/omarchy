@@ -17,6 +17,4 @@ Item {
   TextField {}
   ToolTip {}
   WidgetButton {}
-  ListView { id: list }
-  ScrollBar { flickable: list }
 }
