@@ -165,6 +165,8 @@ if [[ $1 == "show" ]]; then
   [[ -n ${2:-} && -f "$POWERED_FILE.$2" ]] && state="$POWERED_FILE.$2"
   printf '\tPowered: %s\n' "$(cat "$state")"
 fi
+# The bond is what pair waits on and trust follows; MOCK_BONDED stands in for it.
+[[ $1 == "info" ]] && printf '\tBonded: %s\n' "${MOCK_BONDED:-no}"
 exit 0
 SH
 
@@ -190,7 +192,7 @@ bluetooth_run() {
   echo "$powered" >"$POWERED_FILE"
   : >"$device_tmp/log"
   PATH="$mock_bin:$ROOT/bin:$PATH" BLUETOOTHCTL_LOG="$device_tmp/log" \
-    OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 "$@" ||
+    OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 OMARCHY_BLUETOOTH_BOND_WAIT_SECONDS=0 "$@" ||
     fail "$* exits cleanly with Powered: $powered"
   printf '%s' "$device_tmp/log"
 }
@@ -299,6 +301,52 @@ pass "bluetooth does not open the pairing window to connect"
 [[ $(tail -n1 "$connect_window_log") == "pairable off" ]] ||
   fail "bluetooth closes the pairing window even when it never opened it" "$(cat "$connect_window_log")"
 pass "bluetooth closes the pairing window even when it never opened it"
+
+# The window has to outlast the handshake, not the commands. Some peripherals
+# ignore a host-initiated pair and bond only through their own security request
+# once connected, and connect itself returns at once with InProgress when BlueZ
+# is already connecting a device it knows. Closing on either return leaves
+# Paired-but-not-Bonded: a session key gone at the next disconnect. So the
+# script asks the device for its bond after connecting and before it closes.
+pair_log=$(bluetooth_run yes "$ROOT/bin/omarchy-bluetooth-device" pair AA:BB:CC:DD:EE:FF)
+
+awk '/^connect AA:BB:CC:DD:EE:FF$/ { connected = 1 }
+     /^pairable off$/ { closed = 1 }
+     /^info AA:BB:CC:DD:EE:FF$/ && connected && !closed { ok = 1 }
+     END { exit ok ? 0 : 1 }' "$pair_log" ||
+  fail "bluetooth checks for the bond after connecting and before closing the window" "$(cat "$pair_log")"
+pass "bluetooth checks for the bond after connecting and before closing the window"
+
+# Trust is what makes BlueZ reconnect a device on its own, and only a bond can
+# honour that. Trusting a device that never bonded leaves BlueZ auto-connecting
+# it and failing every few seconds until the user forgets it.
+grep -q "^trust " "$pair_log" &&
+  fail "bluetooth does not trust a device that never bonded" "$(cat "$pair_log")"
+pass "bluetooth does not trust a device that never bonded"
+
+bonded_pair_log=$(MOCK_BONDED=yes bluetooth_run yes "$ROOT/bin/omarchy-bluetooth-device" pair AA:BB:CC:DD:EE:FF)
+
+awk '/^info AA:BB:CC:DD:EE:FF$/ { seen = 1 }
+     /^trust AA:BB:CC:DD:EE:FF$/ && !done { ok = seen; done = 1 }
+     END { exit ok ? 0 : 1 }' "$bonded_pair_log" ||
+  fail "bluetooth trusts a device once it reports a bond" "$(cat "$bonded_pair_log")"
+pass "bluetooth trusts a device once it reports a bond"
+
+[[ $(tail -n1 "$bonded_pair_log") == "pairable off" ]] ||
+  fail "bluetooth closes the pairing window after the bond" "$(cat "$bonded_pair_log")"
+pass "bluetooth closes the pairing window after the bond"
+
+# The same rule on connect: a known device that lost its bond must not be
+# re-trusted into that loop by a plain connect, while a bonded one still is.
+connect_log=$(bluetooth_device_log yes)
+grep -q "^trust " "$connect_log" &&
+  fail "bluetooth does not trust an unbonded device on connect" "$(cat "$connect_log")"
+pass "bluetooth does not trust an unbonded device on connect"
+
+bonded_connect_log=$(MOCK_BONDED=yes bluetooth_device_log yes)
+grep -qx "trust AA:BB:CC:DD:EE:FF" "$bonded_connect_log" ||
+  fail "bluetooth trusts a bonded device on connect" "$(cat "$bonded_connect_log")"
+pass "bluetooth trusts a bonded device on connect"
 
 # Blocking hits every radio at once, so the read has to span them too. A bare
 # bluetoothctl show reports the default controller and misses a powered dongle.
