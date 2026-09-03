@@ -1,17 +1,22 @@
 #!/bin/bash
 
-# omarchy:summary=Send the low battery warning notification and run battery-low hooks.
-# omarchy:args=<percentage>
+# omarchy:summary=Send the low battery warning with hooks, or dismiss it.
+# omarchy:args=<percentage|--dismiss>
 # omarchy:hidden=true
 
 set -euo pipefail
 
 if (($# != 1)); then
-  echo "Usage: omarchy-battery-low <percentage>" >&2
+  echo "Usage: omarchy-battery-low <percentage|--dismiss>" >&2
   exit 1
 fi
 
-level=$1
+notification_summary="Time to recharge!"
 
-omarchy-notification-send -g 󱐋 -u critical "Time to recharge!" "Battery is down to ${level}%" -i battery-caution -t 30000
-omarchy-hook battery-low "$level"
+if [[ $1 == "--dismiss" ]]; then
+  omarchy-notification-dismiss "$notification_summary"
+else
+  level=$1
+  omarchy-notification-send -g 󱐋 -u critical "$notification_summary" "Battery is down to ${level}%" -i battery-caution -t 30000
+  omarchy-hook battery-low "$level"
+fi
