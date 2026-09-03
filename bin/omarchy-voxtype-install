@@ -35,6 +35,10 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
   if [[ $voxtype_pkg == voxtype-bin ]]; then
     omarchy-pkg-add voxtype-bin || exit 1
   else
+    # voxtype-bin conflicts with voxtype, and pacman answers no to the conflict
+    # prompt under --noconfirm, so a machine still carrying the prebuilt binary
+    # would build for 20 minutes and then fail to install what it built.
+    omarchy-pkg-drop voxtype-bin
     omarchy-pkg-aur-add aur/voxtype || exit 1
   fi
 

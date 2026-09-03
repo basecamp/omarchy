@@ -32,7 +32,7 @@ exit 0
 EOF
 chmod +x "$test_bin/gum"
 
-for cmd in omarchy-pkg-add omarchy-pkg-aur-add omarchy-restart-shell omarchy-notification-send omarchy-voxtype-remove; do
+for cmd in omarchy-pkg-add omarchy-pkg-aur-add omarchy-pkg-drop omarchy-restart-shell omarchy-notification-send omarchy-voxtype-remove; do
   cat >"$test_bin/$cmd" <<EOF
 #!/bin/bash
 echo "$cmd:\$*" >>"\$TEST_LOG"
@@ -108,6 +108,7 @@ run_install "yes"
 grep -qx 'omarchy-pkg-add:voxtype-bin' "$log_file" || fail "v3-capable CPU installs voxtype-bin"
 grep -q '^omarchy-notification-send:' "$log_file" || fail "v3-capable CPU install sends the ready notification"
 grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "v3-capable CPU install does not touch the AUR"
+grep -q '^omarchy-pkg-drop:' "$log_file" && fail "v3-capable CPU install does not drop anything"
 
 # A CPU missing the baseline, with the user declining the source build,
 # installs nothing.
@@ -123,6 +124,13 @@ write_voxtype_stub 0
 run_install "yes yes" 0
 grep -qx 'omarchy-pkg-aur-add:aur/voxtype' "$log_file" || fail "accepting the source build installs voxtype via the AUR"
 grep -q '^omarchy-pkg-add:voxtype-bin' "$log_file" && fail "accepting the source build does not install voxtype-bin"
+# voxtype-bin conflicts with voxtype, so it has to go before the build's output
+# can be installed over it.
+drop_line=$(grep -n '^omarchy-pkg-drop:voxtype-bin$' "$log_file" | cut -d: -f1)
+aur_line=$(grep -n '^omarchy-pkg-aur-add:aur/voxtype$' "$log_file" | cut -d: -f1)
+if [[ -z $drop_line ]] || (( drop_line > aur_line )); then
+  fail "the conflicting prebuilt binary is dropped before the source build installs"
+fi
 
 # If the AUR is unreachable, the source-build offer fails cleanly.
 write_hw_x86_64_v3 1
