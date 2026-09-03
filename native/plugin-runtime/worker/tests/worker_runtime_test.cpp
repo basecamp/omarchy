@@ -33,6 +33,7 @@
 #include <array>
 #include <cerrno>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <span>
 #include <stdexcept>
@@ -1406,6 +1407,42 @@ void hostile_loading() {
   require(static_cast<bool>(unknown.prepare_trusted_qt_types()) &&
               !static_cast<bool>(unknown.load_manifest_entry()),
           "uncertified QtQuick.Controls loaded from the synthetic tree");
+
+  worker::WorkerRuntime host_shell(fixture("host-shell-module"),
+                                   exact_qml.root());
+  require(static_cast<bool>(host_shell.prepare_trusted_qt_types()) &&
+              !static_cast<bool>(host_shell.load_manifest_entry()),
+          "trusted shell qs.Commons module crossed the worker boundary");
+
+  const auto quickshell_root =
+      std::filesystem::temp_directory_path() /
+      ("omarchy-worker-quickshell-module-" +
+       std::to_string(static_cast<long long>(getpid())));
+  std::filesystem::create_directory(quickshell_root);
+  std::ofstream(quickshell_root / "Main.qml")
+      << "import QtQuick\nimport Quickshell\nItem {}\n";
+  std::ofstream(quickshell_root / "manifest.json")
+      << R"({"schemaVersion":2,"id":"example.quickshell-module","name":"Quickshell module fixture","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{"main":{"role":"panel"}},"permissions":{"required":[],"optional":[]}})";
+  worker::WorkerRuntime quickshell(quickshell_root, exact_qml.root());
+  require(static_cast<bool>(quickshell.prepare_trusted_qt_types()) &&
+              !static_cast<bool>(quickshell.load_manifest_entry()),
+          "ambient Quickshell module crossed the worker boundary");
+  std::filesystem::remove_all(quickshell_root);
+
+  worker::WorkerRuntime presentation(fixture("presentation"),
+                                     exact_qml.root());
+  require(static_cast<bool>(presentation.prepare_trusted_qt_types()) &&
+              static_cast<bool>(presentation.load_manifest_entry()) &&
+              presentation.root_object_name() == "presentation-loaded",
+          "worker-owned presentation SDK did not load");
+
+  worker::WorkerRuntime shadowed_presentation(fixture("presentation-shadow"),
+                                              exact_qml.root());
+  require(static_cast<bool>(shadowed_presentation.prepare_trusted_qt_types()) &&
+              static_cast<bool>(shadowed_presentation.load_manifest_entry()) &&
+              shadowed_presentation.root_object_name() ==
+                  "trusted-presentation",
+          "plugin-local module shadowed the worker presentation SDK");
 
   worker::WorkerRuntime local_module(fixture("local-module"));
   require(static_cast<bool>(local_module.prepare_trusted_qt_types()) &&

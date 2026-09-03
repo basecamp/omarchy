@@ -58,6 +58,8 @@ qt_policy(SET QTP0004 NEW)
 
 set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
 
+add_subdirectory(presentation)
+
 function(omarchy_plugin_target_defaults target)
   target_compile_features(${target} PUBLIC cxx_std_20)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)

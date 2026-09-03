@@ -79,7 +79,8 @@ PluginSourcePolicy::PluginSourcePolicy(std::filesystem::path source_root,
 void PluginSourcePolicy::configure(QQmlEngine &engine) {
   engine.addUrlInterceptor(this);
   engine.setImportPathList(
-      {QString::fromStdString(qt_import_root_.string()),
+      {QStringLiteral("qrc:/qt/qml"),
+       QString::fromStdString(qt_import_root_.string()),
        QString::fromStdString(source_root_.string())});
 }
 
@@ -163,6 +164,19 @@ PluginSourcePolicy::preload_trusted_modules(QQmlEngine &engine) const {
       return failure("trusted QML module probe could not instantiate: " +
                      std::string(module.uri));
   }
+  QQmlComponent presentation_probe(&engine);
+  presentation_probe.setData(
+      QByteArrayLiteral("import QtQuick\n"
+                        "import Omarchy.PluginPresentation 1.0\n"
+                        "Item { width: Style.space(1) }"),
+      QUrl(QStringLiteral(
+          "qrc:/qt/qml/Omarchy/PluginPresentationProbe.qml")));
+  if (!presentation_probe.isReady())
+    return failure("trusted worker presentation preload failed: " +
+                   presentation_probe.errorString().left(1024).toStdString());
+  std::unique_ptr<QObject> presentation(presentation_probe.create());
+  if (!presentation)
+    return failure("trusted worker presentation probe could not instantiate");
   return {};
 }
 
@@ -194,6 +208,10 @@ QUrl PluginSourcePolicy::intercept(const QUrl &url, DataType) {
     const std::string_view value(encoded.constData(), encoded.size());
     if (value.starts_with(imports) &&
         sandbox::trusted_qml_resource(value.substr(imports.size())))
+      return url;
+    constexpr std::string_view presentation =
+        "/qt/qml/Omarchy/PluginPresentation/";
+    if (value.starts_with(presentation))
       return url;
     return denied_url();
   }

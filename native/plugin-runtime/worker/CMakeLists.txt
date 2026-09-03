@@ -23,6 +23,26 @@ add_library(omarchy-plugin-worker-runtime STATIC
   src/worker_runtime.cpp
   src/steady_seccomp.cpp
 )
+qt_add_resources(omarchy-plugin-worker-runtime plugin_presentation_qml
+  PREFIX "/qt/qml/Omarchy/PluginPresentation"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml"
+  FILES
+    ../presentation/qml/qmldir
+    ../presentation/qml/BarWidget.qml
+    ../presentation/qml/Border.qml
+    ../presentation/qml/BorderSurface.qml
+    ../presentation/qml/BrokerProcess.qml
+    ../presentation/qml/Button.qml
+    ../presentation/qml/Color.qml
+    ../presentation/qml/PackagedText.qml
+    ../presentation/qml/PanelSlider.qml
+    ../presentation/qml/PrivateStorage.qml
+    ../presentation/qml/ScrollBar.qml
+    ../presentation/qml/StdioCollector.qml
+    ../presentation/qml/Style.qml
+    ../presentation/qml/TextField.qml
+    ../presentation/qml/ToolTip.qml
+    ../presentation/qml/WidgetButton.qml)
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC
