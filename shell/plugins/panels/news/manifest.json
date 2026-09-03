@@ -7,10 +7,15 @@
   "license": "MIT",
   "description": "Recent Omarchy and Omacom Foundation announcements from the official news feed.",
   "kinds": [
+    "panel",
+    "service",
     "bar-widget"
   ],
+  "keepLoaded": true,
   "entryPoints": {
-    "barWidget": "Panel.qml"
+    "panel": "Panel.qml",
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "News",

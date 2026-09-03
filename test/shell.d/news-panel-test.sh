@@ -50,10 +50,18 @@ PY
 jq -e '
   .schemaVersion == 1 and
   .id == "omarchy.news" and
-  .kinds == ["bar-widget"] and
-  .entryPoints.barWidget == "Panel.qml" and
+  .kinds == ["panel", "service", "bar-widget"] and
+  .keepLoaded == true and
+  .entryPoints.panel == "Panel.qml" and
+  .entryPoints.service == "Service.qml" and
+  .entryPoints.barWidget == "BarWidget.qml" and
   .barWidget.defaultSection == "right"
-' "$ROOT/shell/plugins/panels/news/manifest.json" >/dev/null || fail "news panel manifest follows the bar-widget contract"
+' "$ROOT/shell/plugins/panels/news/manifest.json" >/dev/null || fail "news plugin manifest pairs the bar widget with a desktop reader"
+
+grep -qF 'implicitWidth: 1040' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news reader uses a desktop-sized window"
+grep -qF 'omarchy-shell shell toggle omarchy.news' "$ROOT/shell/plugins/panels/news/BarWidget.qml" ||
+  fail "news bar widget summons the desktop reader"
 
 grep -qF 'FEED_URL = "https://omarchy.org/news/rss.xml"' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "news fetcher pins the official RSS URL"
@@ -65,5 +73,5 @@ grep -qF 'SYSTEM_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"' "$ROOT/shell/
   fail "news fetcher pins the system CA bundle"
 
 pass "news feed parser accepts only canonical Omarchy news items"
-pass "news panel manifest follows the bar-widget contract"
+pass "news plugin manifest pairs the bar widget with a desktop reader"
 pass "news fetcher pins and bounds the official feed and ignores environment redirection"
