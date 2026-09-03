@@ -33,6 +33,22 @@ pass "Claude collector keeps mutually exclusive token categories"
   fail "Claude collector identifies itself and reports missing auth" "$result"
 pass "Claude collector identifies itself and reports missing auth"
 
+# A cache stamped in the future can happen when NTP moves the clock backwards
+# after an early boot scan. Its age is not trustworthy, so it must be a miss
+# rather than freezing the usage snapshot until wall time catches up.
+cat >>"$projects/session.jsonl" <<EOF
+{"timestamp":"$timestamp","type":"assistant","sessionId":"session-1","uuid":"event-4","message":{"id":"message-3","role":"assistant","model":"claude-test","usage":{"input_tokens":7,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":3}}}
+EOF
+cache_file=$(find "$TEST_HOME/.cache/omarchy/agent-usage" -name 'claude-scan-*.json' -print -quit)
+touch -d "@$(( $(date +%s) + 3600 ))" "$cache_file"
+
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "58803" ]] ||
+  fail "Claude collector treats a future-dated scan cache as a miss" "$result"
+pass "Claude collector treats a future-dated scan cache as a miss"
+
 # A machine with no transcripts and no stats-cache still gets today's counts
 # from history.jsonl alone.
 HISTORY_HOME=$(mktemp -d)
