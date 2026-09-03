@@ -1,0 +1,135 @@
+#!/bin/bash
+
+# omarchy:summary=Set up face authentication for sudo, polkit, and lock screen
+# omarchy:args=[facelock]
+# omarchy:requires-sudo=true
+
+set -e
+
+# Omarchy owns the lock service; the backend inserts its own auth line above
+# pam_deny. The terminator matters: the shell runs password as a separate PAM
+# context, so this lane has to fail on a non-match rather than abstain.
+# The backend's line goes in as `sufficient`; a `required` line would hand its
+# own error code to the shell instead of a clean denial from pam_deny.
+create_lock_face_service() {
+  # Never clobber: a backend may already be wired into it.
+  [[ -f /etc/pam.d/omarchy-lock-face ]] && return 0
+
+  echo "Configuring the lock screen for face authentication..."
+  sudo tee /etc/pam.d/omarchy-lock-face >/dev/null <<'EOF'
+#%PAM-1.0
+auth       required                    pam_deny.so
+account    include                     system-local-login
+EOF
+}
+
+# One backend at a time: two face stacks in one PAM chain means two camera grabs
+# and two prompts, and removal could no longer tell whose line is whose.
+other_backend_configured() {
+  grep -E '^[[:space:]]*auth' /etc/pam.d/omarchy-lock-face 2>/dev/null |
+    grep -v 'pam_deny\.so' | grep -qv "$pam_module"
+}
+
+# --- facelock ---
+
+# PROTOTYPE: swap to facelock-bin once 0.1.5 ships is-enrolled and setup --no-*.
+FACELOCK_AUR_PACKAGE="facelock-git"
+
+install_facelock() {
+  # A hand-built facelock is not pacman's to overwrite; the feature check gates it.
+  if omarchy-cmd-present facelock; then
+    echo "Using the facelock already installed ($(facelock --version))."
+  else
+    echo "Installing facelock..."
+    omarchy-pkg-aur-add "$FACELOCK_AUR_PACKAGE"
+  fi
+
+  require_facelock_features
+}
+
+require_facelock_features() {
+  local capabilities feature missing=()
+
+  # One name per line; a build without the command answers nothing.
+  capabilities=$(facelock capabilities 2>/dev/null) || true
+
+  for feature in is-enrolled pam-multi-service pam-if-present setup-no-pam setup-systemd; do
+    grep -qx "$feature" <<<"$capabilities" || missing+=("$feature")
+  done
+
+  if (( ${#missing[@]} > 0 )); then
+    echo -e "\e[31mThis facelock ($(facelock --version)) is missing: ${missing[*]}\e[0m" >&2
+    echo "Install $FACELOCK_AUR_PACKAGE, or upgrade to facelock 0.1.5 or newer." >&2
+    return 1
+  fi
+}
+
+setup_facelock() {
+  echo "This works best with an infrared camera. facelock will pick one during"
+  echo -e "setup, and refuses a plain RGB webcam unless you relax that yourself.\n"
+
+  # --no-pam keeps Omarchy the author of every PAM edit. The wizard still owns
+  # models, encryption, the daemon, and enrollment, and asks before enrolling.
+  sudo facelock setup --no-pam --systemd
+}
+
+configure_facelock_pam() {
+  echo "Configuring sudo, polkit, and the lock screen for face authentication..."
+
+  # One call: facelock validates every service, including its sensitive-service
+  # gate, before it writes any. --no-confirm only skips the per-file prompt.
+  if ! sudo facelock pam add --service omarchy-lock-face --service sudo --service polkit-1 --no-confirm; then
+    echo -e "\e[31m\nFailed to configure face authentication.\e[0m" >&2
+    echo "Fix the cause facelock names above and re-run, or undo with:" >&2
+    echo "  omarchy-remove-security-face" >&2
+    return 1
+  fi
+}
+
+facelock_is_enrolled() {
+  facelock is-enrolled --quiet 2>/dev/null
+}
+
+# --- howdy ---
+#
+# install_howdy() { ... }
+# setup_howdy() { ... }
+# configure_howdy_pam() { ... }
+# howdy_is_enrolled() { ... }
+
+# ---
+
+provider="${1:-facelock}"
+
+case $provider in
+facelock) pam_module="pam_facelock.so"; enroll_command="facelock enroll" ;;
+# howdy) pam_module="pam_howdy.so"; enroll_command="..." ;;
+*)
+  echo "Usage: omarchy-setup-security-face [facelock]"
+  exit 1
+  ;;
+esac
+
+if other_backend_configured; then
+  echo -e "\e[31mAnother face backend is already set up. Remove it first:\e[0m" >&2
+  echo "  omarchy-remove-security-face" >&2
+  exit 1
+fi
+
+echo -e "\e[32mSetting up face authentication.\n\e[0m"
+
+# No hardware precheck: whether a camera is usable is the backend's call.
+"install_$provider"
+"setup_$provider"
+create_lock_face_service
+"configure_${provider}_pam"
+
+if "${provider}_is_enrolled"; then
+  echo -e "\e[32m\nFace authentication is now configured.\e[0m"
+else
+  echo -e "\e[32m\nFace authentication is set up, but no face is enrolled yet.\e[0m"
+  echo -e "It starts working the moment you enrol:\n\n  $enroll_command\n"
+fi
+
+omarchy-notification-send -g 󰱻 "Face Authentication Ready" \
+  "Your face now works for sudo, polkit, and the lock screen."
