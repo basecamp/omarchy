@@ -31,6 +31,62 @@ Panel {
   readonly property var provider: providers.length > 0 ? providers[providerIndex] : null
 
   property bool cursorActive: false
+  property bool gatewayLoginOpen: false
+  property string gatewayLoginError: ""
+  property bool gatewayRemoteMode: true
+  readonly property bool gatewayActionAvailable: !!provider
+    && provider.gatewayLoginAvailable === true
+
+  function openGatewayLogin() {
+    gatewayLoginError = ""
+    gatewayLoginOpen = true
+    gatewayRemoteMode = provider && (provider.remoteGateway === true || provider.authRequired === true)
+    gatewayUrl.text = provider ? String(provider.gatewayUrl || "") : ""
+    Qt.callLater(function() {
+      if (gatewayRemoteMode) {
+        if (gatewayUrl.text === "") gatewayUrl.forceActiveFocus()
+        else gatewayUsername.forceActiveFocus()
+      }
+    })
+  }
+
+  function submitGatewayLogin() {
+    if (!provider || gatewayLoginProcess.running) return
+    var url = gatewayUrl.text.trim()
+    var username = gatewayUsername.text.trim()
+    if (url === "" || username === "" || gatewayPassword.text === "") {
+      gatewayLoginError = "Enter the gateway URL, username, and password."
+      return
+    }
+    gatewayLoginError = ""
+    gatewayLoginProcess.sourceId = provider.providerId
+    gatewayLoginProcess.credentials = JSON.stringify({
+      url: url,
+      username: username,
+      password: gatewayPassword.text
+    })
+    gatewayPassword.text = ""
+    gatewayLoginProcess.command = ["omarchy-agent-meter", "login", provider.providerId, "--stdin"]
+    gatewayLoginProcess.running = true
+  }
+
+  function useLocalUsage() {
+    if (!provider || gatewayLoginProcess.running) return
+    gatewayLoginError = ""
+    gatewayLoginProcess.sourceId = provider.providerId
+    gatewayLoginProcess.credentials = ""
+    gatewayLoginProcess.command = ["omarchy-agent-meter", "local", provider.providerId]
+    gatewayLoginProcess.running = true
+  }
+
+  function useRemoteUsage() {
+    if (!provider || gatewayLoginProcess.running) return
+    gatewayLoginError = ""
+    gatewayLoginProcess.sourceId = provider.providerId
+    gatewayLoginProcess.credentials = ""
+    gatewayLoginProcess.command = ["omarchy-agent-meter", "remote", provider.providerId]
+    gatewayLoginProcess.running = true
+  }
 
   // Countdowns and "updated" read this instead of Date.now() so the
   // panel keeps telling the truth while it sits open.
@@ -231,6 +287,7 @@ Panel {
 
   function modelRows(p) {
     var usageByModel = p ? (p.modelUsage || {}) : {}
+    var labelsByModel = p ? (p.modelLabels || {}) : {}
     var rows = []
     for (var id in usageByModel) {
       var bucket = usageByModel[id] || {}
@@ -239,7 +296,7 @@ Panel {
       var cacheRead = Number(bucket.cacheReadInputTokens || 0)
       var cacheWrite = Number(bucket.cacheCreationInputTokens || 0)
       rows.push({
-        name: usage.friendlyModelName(id),
+        name: usage.friendlyModelName(id, labelsByModel[id]),
         total: input + output + cacheRead + cacheWrite,
         input: input,
         output: output,
@@ -253,7 +310,7 @@ Panel {
 
   function modelTooltip(row) {
     if (!row) return ""
-    return "In " + usage.formatTokenCount(row.input)
+    return row.name + "\nIn " + usage.formatTokenCount(row.input)
       + " · out " + usage.formatTokenCount(row.output)
       + " · cache read " + usage.formatTokenCount(row.cacheRead)
       + " · cache write " + usage.formatTokenCount(row.cacheWrite)
@@ -302,6 +359,12 @@ Panel {
   implicitHeight: button.implicitHeight
 
   onProviderIndexChanged: if (panelFlick) panelFlick.contentY = 0
+  onSelectedProviderIdChanged: {
+    gatewayLoginOpen = false
+    gatewayLoginError = ""
+    gatewayUrl.text = ""
+    gatewayPassword.text = ""
+  }
   onOpenedChanged: if (opened) {
     cursorActive = false
     nowMs = Date.now()
@@ -313,6 +376,35 @@ Panel {
   Main {
     id: usage
     settings: root.settings
+  }
+
+  Process {
+    id: gatewayLoginProcess
+    property string sourceId: ""
+    property string credentials: ""
+    stdinEnabled: true
+    running: false
+
+    onStarted: {
+      if (credentials !== "") write(credentials + "\n")
+      credentials = ""
+    }
+
+    stdout: StdioCollector { id: gatewayLoginStdout; waitForEnd: true }
+    stderr: StdioCollector { id: gatewayLoginStderr; waitForEnd: true }
+
+    onExited: function(exitCode) {
+      if (exitCode === 0) {
+        root.gatewayLoginOpen = false
+        root.gatewayLoginError = ""
+        usage.refreshAll(true)
+      } else {
+        var message = String(gatewayLoginStderr.text || gatewayLoginStdout.text || "Login failed").trim()
+        root.gatewayLoginError = message.replace(/^omarchy-agent-meter:\s*/, "")
+        if (root.gatewayRemoteMode)
+          Qt.callLater(function() { gatewayPassword.forceActiveFocus() })
+      }
+    }
   }
 
   // Cheap enough to keep running: it only re-evaluates text bindings, and a
@@ -363,6 +455,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      blocked: gatewayUrl.activeFocus || gatewayUsername.activeFocus || gatewayPassword.activeFocus
 
       onMoveRequested: function(dx, dy) {
         if (dx !== 0) {
@@ -373,7 +466,10 @@ Panel {
           panelFlick.contentY = root.clamp(panelFlick.contentY + dy * Style.space(56), 0,
                                            Math.max(0, panelFlick.contentHeight - panelFlick.height))
       }
-      onActivateRequested: root.refreshNow()
+      onActivateRequested: {
+        if (root.gatewayActionAvailable) root.openGatewayLogin()
+        else root.refreshNow()
+      }
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) { if (t === "r" || t === "R") root.refreshNow() }
@@ -516,6 +612,190 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               wrapMode: Text.WordWrap
+            }
+          }
+
+          Button {
+            visible: root.gatewayActionAvailable && !root.gatewayLoginOpen
+            width: parent.width
+            text: root.provider && root.provider.authRequired === true
+              ? "Remote Gateway Login"
+              : (root.provider && root.provider.remoteGateway === true
+                  ? "Usage Source · Remote Gateway" : "Usage Source · This Computer")
+            iconText: root.provider && root.provider.remoteGateway === true ? "󰒍" : "󰍹"
+            bordered: true
+            leftAlign: true
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: root.openGatewayLogin()
+          }
+
+          BorderSurface {
+            visible: root.gatewayActionAvailable && root.gatewayLoginOpen
+            width: parent.width
+            implicitHeight: gatewayLoginColumn.implicitHeight + Style.space(24)
+            color: root.alpha(root.foreground, 0.04)
+            borderSpec: Border.flat(root.alpha(root.foreground, 0.15), 1)
+            radius: Style.cornerRadius
+
+            Column {
+              id: gatewayLoginColumn
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              anchors.leftMargin: Style.space(12)
+              anchors.rightMargin: Style.space(12)
+              spacing: Style.space(8)
+
+              Text {
+                text: "Hermes Usage Source"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.subtitle
+                font.bold: true
+              }
+
+              Row {
+                width: parent.width
+                spacing: Style.space(8)
+
+                Button {
+                  width: (parent.width - parent.spacing) / 2
+                  text: "This Computer"
+                  iconText: "󰍹"
+                  selected: !root.gatewayRemoteMode
+                  bordered: true
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: {
+                    root.gatewayRemoteMode = false
+                    gatewayPassword.text = ""
+                    if (root.provider && (root.provider.remoteGateway === true || root.provider.authRequired === true))
+                      root.useLocalUsage()
+                  }
+                }
+
+                Button {
+                  width: (parent.width - parent.spacing) / 2
+                  text: "Remote Gateway"
+                  iconText: "󰒍"
+                  selected: root.gatewayRemoteMode
+                  bordered: true
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  onClicked: {
+                    if (root.provider && root.provider.remoteGateway !== true
+                        && root.provider.authRequired !== true)
+                      root.useRemoteUsage()
+                    else {
+                      root.gatewayRemoteMode = true
+                      Qt.callLater(function() {
+                        if (gatewayUrl.text === "") gatewayUrl.forceActiveFocus()
+                        else gatewayUsername.forceActiveFocus()
+                      })
+                    }
+                  }
+                }
+              }
+
+              Text {
+                width: parent.width
+                text: root.gatewayRemoteMode
+                  ? "Read account-wide usage from Hermes running on another computer or server."
+                  : "Read usage directly from Hermes on this computer. No gateway login is required."
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+              }
+
+              TextField {
+                id: gatewayUrl
+                visible: root.gatewayRemoteMode
+                width: parent.width
+                placeholderText: "Gateway URL · http://192.168.1.50:9119"
+                foreground: root.foreground
+                accent: Color.accent
+                enabled: !gatewayLoginProcess.running
+                onAccepted: gatewayUsername.forceActiveFocus()
+                Keys.onEscapePressed: {
+                  root.gatewayLoginOpen = false
+                  gatewayPassword.text = ""
+                }
+              }
+
+              TextField {
+                id: gatewayUsername
+                visible: root.gatewayRemoteMode
+                width: parent.width
+                placeholderText: "Username"
+                foreground: root.foreground
+                accent: Color.accent
+                enabled: !gatewayLoginProcess.running
+                onAccepted: gatewayPassword.forceActiveFocus()
+                Keys.onEscapePressed: {
+                  root.gatewayLoginOpen = false
+                  gatewayPassword.text = ""
+                }
+              }
+
+              TextField {
+                id: gatewayPassword
+                visible: root.gatewayRemoteMode
+                width: parent.width
+                password: true
+                placeholderText: "Password"
+                foreground: root.foreground
+                accent: Color.accent
+                enabled: !gatewayLoginProcess.running
+                onAccepted: root.submitGatewayLogin()
+                Keys.onEscapePressed: {
+                  root.gatewayLoginOpen = false
+                  text = ""
+                }
+              }
+
+              Text {
+                visible: root.gatewayLoginError !== ""
+                width: parent.width
+                text: root.gatewayLoginError
+                color: root.urgent
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+              }
+
+              Row {
+                visible: root.gatewayRemoteMode
+                width: parent.width
+                spacing: Style.space(8)
+
+                Button {
+                  width: (parent.width - parent.spacing) / 2
+                  text: "Cancel"
+                  bordered: true
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  enabled: !gatewayLoginProcess.running
+                  onClicked: {
+                    root.gatewayLoginOpen = false
+                    gatewayPassword.text = ""
+                  }
+                }
+
+                Button {
+                  width: (parent.width - parent.spacing) / 2
+                  text: gatewayLoginProcess.running ? "Signing in…" : "Sign In"
+                  iconText: gatewayLoginProcess.running ? "󰑮" : "󰌾"
+                  iconSpinning: gatewayLoginProcess.running
+                  bordered: true
+                  active: true
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  enabled: !gatewayLoginProcess.running
+                  onClicked: root.submitGatewayLogin()
+                }
+              }
             }
           }
 

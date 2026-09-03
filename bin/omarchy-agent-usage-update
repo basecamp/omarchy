@@ -15,6 +15,7 @@ mkdir -p "$USAGE_DIR"
 flags=()
 only=()
 declare -A excluded
+declare -A managed
 
 while (( $# > 0 )); do
   case "$1" in
@@ -51,12 +52,24 @@ collect() {
   mv "$tmp" "$USAGE_DIR/$agent.json"
 }
 
+meter="$OMARCHY_PATH/bin/omarchy-agent-meter"
+meter_config="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/agent-meter.json"
+if [[ -x $meter && -f $meter_config ]]; then
+  while IFS= read -r source; do
+    wanted "$source" || continue
+    if "$meter" --config "$meter_config" collect "$source" >/dev/null; then
+      managed[$source]=1
+    fi
+  done < <(jq -r '.sources | to_entries[] | select(.value.enabled != false) | .key' "$meter_config" 2>/dev/null)
+fi
+
 pids=()
 for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
   [[ -x $collector ]] || continue
   agent="${collector##*/omarchy-agent-usage-}"
   [[ $agent == "update" ]] && continue
   wanted "$agent" || continue
+  [[ -n ${managed[$agent]} ]] && continue
   collect "$collector" "$agent" &
   pids+=($!)
 done

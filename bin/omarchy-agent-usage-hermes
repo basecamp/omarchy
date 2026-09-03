@@ -1,0 +1,438 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Hermes usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Hermes model usage into one display-ready JSON record.
+
+Hermes can switch providers and models inside one session, and auxiliary
+tasks can use a different route from the main agent. Read its SQLite usage
+ledger directly so the Omarchy agents panel preserves that attribution.
+"""
+
+import argparse
+import json
+import os
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+
+AGENT_ID = "hermes"
+AGENT_NAME = "Hermes"
+BUCKET_FIELDS = {
+  "input_tokens": "inputTokens",
+  "output_tokens": "outputTokens",
+  "cache_read_tokens": "cacheReadInputTokens",
+  "cache_write_tokens": "cacheCreationInputTokens",
+}
+
+
+def configured_gateway_url():
+  path = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "omarchy" / "agent-meter.json"
+  try:
+    config = json.loads(path.read_text(encoding="utf-8"))
+  except (FileNotFoundError, OSError, json.JSONDecodeError):
+    return ""
+  sources = config.get("sources") if isinstance(config, dict) else None
+  source = sources.get(AGENT_ID) if isinstance(sources, dict) else None
+  return str(source.get("url") or "") if isinstance(source, dict) else ""
+
+
+def hermes_installed(paths):
+  return bool(paths) or shutil.which("hermes") is not None or (
+    Path.home() / ".local" / "share" / "applications" / "hermes.desktop"
+  ).is_file()
+
+
+def database_recently_active(path, window_seconds=300):
+  now = time.time()
+  for candidate in (path, Path(str(path) + "-wal")):
+    try:
+      if 0 <= now - candidate.stat().st_mtime <= window_seconds:
+        return True
+    except OSError:
+      pass
+  return False
+
+LABEL_HELPER = r"""
+import json
+import sys
+
+from agent.models_dev import PROVIDER_TO_MODELS_DEV, fetch_models_dev
+from hermes_cli.models import provider_label
+
+routes = json.load(sys.stdin)
+catalog = fetch_models_dev(allow_network=False)
+labels = {}
+for route in routes:
+  key = str(route.get("key") or "")
+  provider = str(route.get("provider") or "unknown")
+  model = str(route.get("model") or "unknown")
+  provider_name = provider_label(provider) or provider
+  model_name = model
+
+  catalog_provider = PROVIDER_TO_MODELS_DEV.get(provider.lower(), provider.lower())
+  provider_data = catalog.get(catalog_provider)
+  models = provider_data.get("models") if isinstance(provider_data, dict) else None
+  if isinstance(models, dict):
+    model_data = models.get(model)
+    if not isinstance(model_data, dict):
+      lowered = model.lower()
+      model_data = next(
+        (value for model_id, value in models.items()
+         if str(model_id).lower() == lowered and isinstance(value, dict)),
+        None,
+      )
+    if isinstance(model_data, dict):
+      model_name = str(model_data.get("name") or model)
+
+  labels[key] = {"provider": provider_name, "model": model_name}
+
+json.dump(labels, sys.stdout, separators=(",", ":"))
+"""
+
+
+def number(value):
+  try:
+    return max(0, int(value or 0))
+  except (TypeError, ValueError):
+    return 0
+
+
+def local_day(value):
+  try:
+    return datetime.fromtimestamp(float(value)).astimezone().strftime("%Y-%m-%d")
+  except (TypeError, ValueError, OSError, OverflowError):
+    return ""
+
+
+def empty_bucket():
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def route_key(provider, model):
+  provider_id = str(provider or "unknown").strip() or "unknown"
+  model_id = str(model or "unknown").strip() or "unknown"
+  return f"{provider_id}::{model_id}", provider_id, model_id
+
+
+def hermes_runtime():
+  hermes_home = Path(os.environ.get("HERMES_HOME") or (Path.home() / ".hermes"))
+  candidates = []
+  if os.environ.get("HERMES_INSTALL_DIR"):
+    candidates.append(Path(os.environ["HERMES_INSTALL_DIR"]))
+  candidates.extend([
+    hermes_home / "hermes-agent",
+    Path.home() / ".hermes" / "hermes-agent",
+    Path("/usr/local/lib/hermes-agent"),
+  ])
+
+  seen = set()
+  for root in candidates:
+    try:
+      resolved = root.resolve()
+    except OSError:
+      resolved = root
+    if resolved in seen:
+      continue
+    seen.add(resolved)
+    for environment in ("venv", ".venv"):
+      python = root / environment / "bin" / "python"
+      if python.is_file() and os.access(python, os.X_OK):
+        return root, python
+  return None, None
+
+
+def route_labels(routes):
+  fallback = {
+    key: {"provider": provider, "model": model}
+    for key, (provider, model) in routes.items()
+  }
+  if not routes:
+    return fallback
+
+  root, python = hermes_runtime()
+  if root is None or python is None:
+    return fallback
+
+  payload = [
+    {"key": key, "provider": provider, "model": model}
+    for key, (provider, model) in routes.items()
+  ]
+  env = os.environ.copy()
+  env.pop("PYTHONHOME", None)
+  env.pop("PYTHONPATH", None)
+  try:
+    result = subprocess.run(
+      [str(python), "-c", LABEL_HELPER],
+      cwd=root,
+      env=env,
+      input=json.dumps(payload),
+      text=True,
+      capture_output=True,
+      timeout=5,
+      check=False,
+    )
+    if result.returncode != 0:
+      return fallback
+    resolved = json.loads(result.stdout)
+  except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+    return fallback
+
+  if not isinstance(resolved, dict):
+    return fallback
+  for key, label in resolved.items():
+    if key not in fallback or not isinstance(label, dict):
+      continue
+    provider = str(label.get("provider") or "").strip()
+    model = str(label.get("model") or "").strip()
+    if provider:
+      fallback[key]["provider"] = provider
+    if model:
+      fallback[key]["model"] = model
+  return fallback
+
+
+def state_paths():
+  hermes_home = Path(os.environ.get("HERMES_HOME") or (Path.home() / ".hermes"))
+  candidates = [hermes_home / "state.db"]
+
+  # Hermes intentionally anchors named profiles under ~/.hermes regardless
+  # of HERMES_HOME, so profile discovery must do the same.
+  profiles_root = Path.home() / ".hermes" / "profiles"
+  if profiles_root.is_dir():
+    candidates.extend(path / "state.db" for path in profiles_root.iterdir() if path.is_dir())
+
+  paths = []
+  seen = set()
+  for candidate in candidates:
+    try:
+      resolved = candidate.resolve()
+    except OSError:
+      resolved = candidate
+    if resolved in seen or not candidate.is_file():
+      continue
+    seen.add(resolved)
+    paths.append(candidate)
+  return sorted(paths, key=lambda path: str(path))
+
+
+def table_columns(conn, table):
+  try:
+    return {str(row[1]) for row in conn.execute(f'PRAGMA table_info("{table}")')}
+  except sqlite3.Error:
+    return set()
+
+
+def column(columns, name, fallback):
+  return f'"{name}"' if name in columns else fallback
+
+
+class Usage:
+  def __init__(self):
+    now = datetime.now()
+    self.today = now.strftime("%Y-%m-%d")
+    self.recent_dates = [
+      (now - timedelta(days=offset)).strftime("%Y-%m-%d")
+      for offset in range(6, -1, -1)
+    ]
+    self.recent = {day: 0 for day in self.recent_dates}
+    self.model_usage = {}
+    self.today_tokens = {}
+    self.total_sessions = set()
+    self.today_sessions = set()
+    self.active_dates = set()
+    self.providers = set()
+    self.models = set()
+    self.routes = {}
+    self.retry_advised = False
+
+  def add(self, day, session_key, provider, model, tokens):
+    total = sum(tokens.values())
+    if total <= 0:
+      return
+
+    key, provider_id, model_id = route_key(provider, model)
+    bucket = self.model_usage.setdefault(key, empty_bucket())
+    for source, target in BUCKET_FIELDS.items():
+      bucket[target] += number(tokens.get(source))
+
+    self.providers.add(provider_id)
+    self.models.add(model_id)
+    self.routes[key] = (provider_id, model_id)
+    self.total_sessions.add(session_key)
+    if day:
+      self.active_dates.add(day)
+    if day in self.recent:
+      self.recent[day] += total
+    if day == self.today:
+      self.today_sessions.add(session_key)
+      self.today_tokens[key] = self.today_tokens.get(key, 0) + total
+
+  def record(self, has_databases, installed, gateway_url):
+    model_usage = {key: self.model_usage[key] for key in sorted(self.model_usage)}
+    today_tokens = {key: self.today_tokens[key] for key in sorted(self.today_tokens)}
+    today_total = sum(today_tokens.values())
+    tier = ""
+    if self.model_usage:
+      provider_count = len(self.providers)
+      model_count = len(self.models)
+      tier = (
+        f"{provider_count} provider{'s' if provider_count != 1 else ''}"
+        f" · {model_count} model{'s' if model_count != 1 else ''}"
+      )
+
+    return {
+      "schemaVersion": 1,
+      "id": AGENT_ID,
+      "name": AGENT_NAME,
+      "updatedAt": datetime.now(timezone.utc).isoformat(),
+      "ready": installed,
+      "remoteGateway": False,
+      "gatewayLoginAvailable": installed,
+      "gatewayConfigured": gateway_url != "",
+      "gatewayUrl": gateway_url,
+      "retryAdvised": self.retry_advised,
+      "hasLocalStats": has_databases,
+      "hasPromptStats": False,
+      "tierLabel": tier or ("Local" if installed else ""),
+      "limits": [],
+      "todayPrompts": 0,
+      "todaySessions": len(self.today_sessions),
+      "todayTotalTokens": today_total,
+      "todayTokensByModel": today_tokens,
+      "modelLabels": route_labels(self.routes),
+      "recentDays": [
+        {"date": day, "messageCount": self.recent[day]}
+        for day in self.recent_dates
+      ],
+      "totalPrompts": 0,
+      "totalSessions": len(self.total_sessions),
+      "activeDays": len(self.active_dates),
+      "activeDates": sorted(self.active_dates),
+      "modelUsage": model_usage,
+    }
+
+
+def scan_database(path, usage):
+  try:
+    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except (OSError, sqlite3.Error) as exc:
+    print(f"Ignoring unreadable Hermes database {path}: {exc}", file=sys.stderr)
+    return
+
+  conn.row_factory = sqlite3.Row
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    session_columns = table_columns(conn, "sessions")
+    if not {"id", "started_at"}.issubset(session_columns):
+      return
+
+    session_query = f"""
+      SELECT "id" AS id,
+             {column(session_columns, 'model', "'unknown'")} AS model,
+             {column(session_columns, 'billing_provider', "''")} AS billing_provider,
+             "started_at" AS started_at,
+             {column(session_columns, 'input_tokens', '0')} AS input_tokens,
+             {column(session_columns, 'output_tokens', '0')} AS output_tokens,
+             {column(session_columns, 'cache_read_tokens', '0')} AS cache_read_tokens,
+             {column(session_columns, 'cache_write_tokens', '0')} AS cache_write_tokens
+      FROM sessions
+    """
+    sessions = {}
+    database_id = str(path.resolve())
+    for row in conn.execute(session_query):
+      session_id = str(row["id"] or "")
+      if not session_id:
+        continue
+      sessions[session_id] = {
+        "key": database_id + "::" + session_id,
+        "day": local_day(row["started_at"]),
+        "model": row["model"],
+        "provider": row["billing_provider"],
+        "tokens": {field: number(row[field]) for field in BUCKET_FIELDS},
+      }
+
+    # Only main-loop rows participate in residual reconciliation. Auxiliary
+    # rows are absent from sessions totals, so subtracting them would hide
+    # legitimate main-loop usage when vision/compression spend is larger.
+    attributed_main = {
+      session_id: {field: 0 for field in BUCKET_FIELDS}
+      for session_id in sessions
+    }
+
+    model_columns = table_columns(conn, "session_model_usage")
+    if "session_id" in model_columns:
+      model_query = f"""
+        SELECT "session_id" AS session_id,
+               {column(model_columns, 'model', "'unknown'")} AS model,
+               {column(model_columns, 'billing_provider', "''")} AS billing_provider,
+               {column(model_columns, 'task', "''")} AS task,
+               {column(model_columns, 'input_tokens', '0')} AS input_tokens,
+               {column(model_columns, 'output_tokens', '0')} AS output_tokens,
+               {column(model_columns, 'cache_read_tokens', '0')} AS cache_read_tokens,
+               {column(model_columns, 'cache_write_tokens', '0')} AS cache_write_tokens
+        FROM session_model_usage
+      """
+      for row in conn.execute(model_query):
+        session_id = str(row["session_id"] or "")
+        session = sessions.get(session_id)
+        if session is None:
+          continue
+        tokens = {field: number(row[field]) for field in BUCKET_FIELDS}
+        usage.add(
+          session["day"], session["key"], row["billing_provider"],
+          row["model"], tokens,
+        )
+        if str(row["task"] or "") == "":
+          for field in BUCKET_FIELDS:
+            attributed_main[session_id][field] += tokens[field]
+
+    # Legacy and absolute-update sessions have aggregate counters that are
+    # not fully represented by per-route rows. Attribute only positive
+    # residuals to the route stored on the session itself.
+    for session_id, session in sessions.items():
+      residual = {
+        field: max(0, session["tokens"][field] - attributed_main[session_id][field])
+        for field in BUCKET_FIELDS
+      }
+      usage.add(
+        session["day"], session["key"], session["provider"],
+        session["model"], residual,
+      )
+  except sqlite3.Error as exc:
+    print(f"Ignoring unreadable Hermes database {path}: {exc}", file=sys.stderr)
+  finally:
+    conn.close()
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  # SQLite scans are local and cheap; accept the shared collector flags even
+  # though Hermes has no separate limits probe or cache to bypass.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.parse_args()
+
+  paths = state_paths()
+  usage = Usage()
+  usage.retry_advised = any(database_recently_active(path) for path in paths)
+  for path in paths:
+    scan_database(path, usage)
+  print(json.dumps(
+    usage.record(bool(paths), hermes_installed(paths), configured_gateway_url()),
+    separators=(",", ":"),
+  ))
+
+
+if __name__ == "__main__":
+  main()

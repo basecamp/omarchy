@@ -1,0 +1,489 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Collect remote AI gateway usage for the Omarchy agents panel
+# omarchy:args=<login|local|remote|collect> [source...]
+# omarchy:examples=omarchy agent meter login hermes | omarchy agent meter local hermes | omarchy agent meter remote hermes
+
+"""Lightweight system-wide collector for remote AI gateway usage.
+
+The meter owns authentication and normalized token accounting independently of
+the applications it observes. Provider adapters return the display-ready
+record contract consumed by omarchy.agents; no prompt or response content is
+read, stored, or written to the panel.
+"""
+
+import argparse
+import getpass
+import http.cookiejar
+import json
+import os
+import re
+import sys
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+
+CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "omarchy" / "agent-meter.json"
+STATE_ROOT = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")) / "omarchy" / "agent-meter"
+USAGE_ROOT = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state")) / "omarchy" / "agents" / "usage"
+USER_AGENT = "omarchy-agent-meter/1"
+
+
+class MeterError(RuntimeError):
+  pass
+
+
+class AuthenticationRequired(MeterError):
+  pass
+
+
+def number(value):
+  try:
+    return max(0, int(value or 0))
+  except (TypeError, ValueError):
+    return 0
+
+
+def safe_id(value):
+  cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "").strip()).strip("._-")
+  if not cleaned:
+    raise MeterError("source and record ids must contain a letter or number")
+  return cleaned[:80]
+
+
+def token_total(row):
+  # Reasoning is a subset of output in Hermes accounting, not another billable
+  # lane. Keep the detail on model buckets but never add it twice.
+  return sum(number(row.get(key)) for key in ("inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens"))
+
+
+def request_json(url, *, opener, method="GET", body=None, timeout=8):
+  payload = None
+  headers = {"Accept": "application/json", "User-Agent": USER_AGENT}
+  if body is not None:
+    payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
+    headers["Content-Type"] = "application/json"
+  request = urllib.request.Request(url, data=payload, headers=headers, method=method)
+  try:
+    with opener.open(request, timeout=timeout) as response:
+      raw = response.read(4_000_000)
+  except urllib.error.HTTPError as error:
+    detail = ""
+    try:
+      detail = error.read(4096).decode("utf-8", "replace")
+    except OSError:
+      pass
+    if error.code == 401:
+      raise AuthenticationRequired("remote gateway login required") from error
+    raise MeterError(f"HTTP {error.code} from {url}: {detail or error.reason}") from error
+  except (OSError, urllib.error.URLError) as error:
+    raise MeterError(f"could not reach {url}: {error}") from error
+
+  try:
+    parsed = json.loads(raw)
+  except json.JSONDecodeError as error:
+    raise MeterError(f"invalid JSON from {url}") from error
+  if not isinstance(parsed, (dict, list)):
+    raise MeterError(f"unexpected response from {url}")
+  return parsed
+
+
+def source_url(raw):
+  value = str(raw or "").strip().rstrip("/")
+  if "://" not in value:
+    value = "http://" + value
+  parsed = urllib.parse.urlparse(value)
+  if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+    raise MeterError(f"invalid gateway URL: {value!r}")
+  if parsed.username or parsed.password:
+    raise MeterError("putting gateway credentials in the URL is not supported")
+  return value
+
+
+def load_config(path):
+  try:
+    config = json.loads(path.read_text(encoding="utf-8"))
+  except FileNotFoundError as error:
+    raise MeterError(f"configuration not found: {path}") from error
+  except (OSError, json.JSONDecodeError) as error:
+    raise MeterError(f"could not read configuration {path}: {error}") from error
+  if not isinstance(config, dict) or not isinstance(config.get("sources"), dict):
+    raise MeterError("configuration must contain a sources object")
+  return config
+
+
+def write_config(path, config):
+  path.parent.mkdir(parents=True, exist_ok=True)
+  descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent, text=True)
+  try:
+    os.fchmod(descriptor, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+      json.dump(config, stream, indent=2)
+      stream.write("\n")
+    os.replace(temporary, path)
+  finally:
+    try:
+      os.unlink(temporary)
+    except FileNotFoundError:
+      pass
+
+
+def configure_hermes(path, source_id, url):
+  config = load_config(path) if path.is_file() else {"sources": {}}
+  source_id = safe_id(source_id)
+  previous = config["sources"].get(source_id)
+  previous = previous if isinstance(previous, dict) else {}
+  config["sources"][source_id] = {
+    **previous,
+    "type": "hermes",
+    "url": source_url(url),
+    "name": str(previous.get("name") or "Hermes"),
+    "periodDays": number(previous.get("periodDays") or 365),
+    "enabled": True,
+  }
+  write_config(path, config)
+
+
+def use_local_source(path, source_id):
+  if not path.is_file():
+    return
+  config = load_config(path)
+  source = config["sources"].get(safe_id(source_id))
+  if isinstance(source, dict):
+    source["enabled"] = False
+    write_config(path, config)
+
+
+def use_remote_source(path, source_id):
+  config = load_config(path)
+  source_id = safe_id(source_id)
+  source = config["sources"].get(source_id)
+  if not isinstance(source, dict):
+    raise MeterError(f"unknown source: {source_id}")
+  source["enabled"] = True
+  write_config(path, config)
+
+
+class HermesAdapter:
+  def __init__(self, source_id, config):
+    self.source_id = safe_id(source_id)
+    self.record_id = self.source_id
+    self.name = str(config.get("name") or "Hermes").strip() or "Hermes"
+    self.base_url = source_url(config.get("url"))
+    self.period_days = min(365, max(1, number(config.get("periodDays") or 365)))
+    self.cookie_path = STATE_ROOT / "credentials" / f"{self.source_id}.cookies"
+    self.cookies = http.cookiejar.MozillaCookieJar(str(self.cookie_path))
+    try:
+      self.cookies.load(ignore_discard=True, ignore_expires=True)
+    except (FileNotFoundError, http.cookiejar.LoadError, OSError):
+      pass
+    self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cookies))
+
+  def save_cookies(self):
+    self.cookie_path.parent.mkdir(parents=True, exist_ok=True)
+    self.cookies.save(ignore_discard=True, ignore_expires=True)
+    self.cookie_path.chmod(0o600)
+
+  def get(self, path):
+    result = request_json(f"{self.base_url}{path}", opener=self.opener)
+    self.save_cookies()
+    return result
+
+  def login(self, username, password=None):
+    providers = request_json(f"{self.base_url}/api/auth/providers", opener=self.opener)
+    available = providers.get("providers") if isinstance(providers, dict) else []
+    password_provider = next(
+      (provider for provider in available if isinstance(provider, dict) and provider.get("supports_password")),
+      None,
+    )
+    if password_provider is None:
+      raise MeterError("this Hermes gateway does not advertise password login")
+    provider_id = str(password_provider.get("name") or "")
+    selected_username = str(username or "").strip()
+    if password is None:
+      selected_username = selected_username or input("Hermes gateway username: ").strip()
+      password = getpass.getpass("Hermes gateway password: ")
+    if not selected_username:
+      raise MeterError("username is required")
+    if not password:
+      raise MeterError("password is required")
+    result = request_json(
+      f"{self.base_url}/auth/password-login",
+      opener=self.opener,
+      method="POST",
+      body={"provider": provider_id, "username": selected_username, "password": password, "next": "/"},
+    )
+    if not isinstance(result, dict) or result.get("ok") is not True:
+      raise MeterError("Hermes gateway login failed")
+    self.save_cookies()
+    identity = self.get("/api/auth/me")
+    return str(identity.get("display_name") or identity.get("user_id") or selected_username)
+
+  def authentication_record(self):
+    return {
+      "schemaVersion": 1,
+      "id": self.record_id,
+      "name": self.name,
+      "updatedAt": datetime.now(timezone.utc).isoformat(),
+      "ready": False,
+      "remoteGateway": True,
+      "gatewayLoginAvailable": True,
+      "authRequired": True,
+      "gatewayUrl": self.base_url,
+      "usageStatusText": "Remote gateway login required",
+      "authHelpText": "Sign in below to restore remote Hermes usage.",
+      "hasLocalStats": False,
+      "hasPromptStats": False,
+      "limits": [],
+      "recentDays": [],
+      "modelUsage": {},
+    }
+
+  def sessions(self):
+    rows = []
+    offset = 0
+    limit = 100
+    while True:
+      query = urllib.parse.urlencode({
+        "limit": limit,
+        "offset": offset,
+        "archived": "include",
+        "order": "recent",
+      })
+      response = self.get(f"/api/sessions?{query}")
+      page = response.get("sessions") if isinstance(response.get("sessions"), list) else []
+      rows.extend(row for row in page if isinstance(row, dict))
+      offset += len(page)
+      total = number(response.get("total"))
+      if not page or len(page) < limit or (total and offset >= total):
+        return rows
+
+  def collect(self):
+    session_rows = self.sessions()
+    models_response = self.get(f"/api/analytics/models?days={self.period_days}")
+    model_rows = models_response.get("models") if isinstance(models_response.get("models"), list) else []
+    now = datetime.now().astimezone()
+    cutoff = now.timestamp() - self.period_days * 86400
+    today = now.strftime("%Y-%m-%d")
+    recent_dates = [(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+    recent = {day: 0 for day in recent_dates}
+    daily = {}
+    active_dates = set()
+
+    for raw in session_rows:
+      try:
+        started_at = float(raw.get("started_at"))
+      except (TypeError, ValueError):
+        continue
+      if started_at <= cutoff:
+        continue
+      day = datetime.fromtimestamp(started_at).astimezone().strftime("%Y-%m-%d")
+      row = daily.setdefault(day, {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cacheReadTokens": 0,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 0,
+        "sessions": 0,
+        "apiCalls": 0,
+      })
+      row["inputTokens"] += number(raw.get("input_tokens"))
+      row["outputTokens"] += number(raw.get("output_tokens"))
+      row["cacheReadTokens"] += number(raw.get("cache_read_tokens"))
+      row["cacheWriteTokens"] += number(raw.get("cache_write_tokens"))
+      row["reasoningTokens"] += number(raw.get("reasoning_tokens"))
+      row["sessions"] += 1
+      row["apiCalls"] += number(raw.get("api_call_count"))
+      total = token_total(row)
+      if total > 0:
+        active_dates.add(day)
+      if day in recent:
+        recent[day] = total
+
+    model_usage = {}
+    model_labels = {}
+    providers = set()
+    models = set()
+    for raw in model_rows:
+      if not isinstance(raw, dict):
+        continue
+      provider = str(raw.get("provider") or "unknown").strip() or "unknown"
+      model = str(raw.get("model") or "unknown").strip() or "unknown"
+      key = f"{provider}::{model}"
+      reasoning = number(raw.get("reasoning_tokens"))
+      bucket = {
+        "inputTokens": number(raw.get("input_tokens")),
+        "outputTokens": number(raw.get("output_tokens")),
+        "cacheReadInputTokens": number(raw.get("cache_read_tokens")),
+        "cacheCreationInputTokens": number(raw.get("cache_write_tokens")),
+        "reasoningOutputTokens": reasoning,
+      }
+      if not any(number(bucket.get(field)) for field in (
+        "inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens",
+      )):
+        continue
+      model_usage[key] = bucket
+      model_labels[key] = {"provider": provider, "model": model}
+      providers.add(provider)
+      models.add(model)
+
+    today_row = daily.get(today, {})
+    total_prompts = sum(number(row.get("apiCalls")) for row in daily.values())
+    total_sessions = sum(number(row.get("sessions")) for row in daily.values())
+    tier = "Remote"
+    if model_usage:
+      tier += (
+        f" · {len(providers)} provider{'s' if len(providers) != 1 else ''}"
+        f" · {len(models)} model{'s' if len(models) != 1 else ''}"
+      )
+    return {
+      "schemaVersion": 1,
+      "id": self.record_id,
+      "name": self.name,
+      "updatedAt": datetime.now(timezone.utc).isoformat(),
+      "ready": True,
+      "remoteGateway": True,
+      "gatewayLoginAvailable": True,
+      "authRequired": False,
+      "gatewayUrl": self.base_url,
+      "hasLocalStats": True,
+      "hasPromptStats": True,
+      "tierLabel": tier,
+      "limits": [],
+      "todayPrompts": number(today_row.get("apiCalls")),
+      "todaySessions": number(today_row.get("sessions")),
+      "todayTotalTokens": token_total(today_row),
+      "todayTokensByModel": {},
+      "modelLabels": model_labels,
+      "recentDays": [{"date": day, "messageCount": recent[day]} for day in recent_dates],
+      "totalPrompts": total_prompts,
+      "totalSessions": total_sessions,
+      "activeDays": len(active_dates),
+      "activeDates": sorted(active_dates),
+      "modelUsage": model_usage,
+      "sourceLabel": f"Remote Hermes analytics · {self.base_url}",
+    }
+
+
+def adapters(config):
+  result = {}
+  for source_id, source in config.get("sources", {}).items():
+    if not isinstance(source, dict) or source.get("enabled") is False:
+      continue
+    kind = str(source.get("type") or "").strip().lower()
+    if kind == "hermes":
+      result[safe_id(source_id)] = HermesAdapter(source_id, source)
+    else:
+      raise MeterError(f"unsupported source type {kind!r} for {source_id}")
+  return result
+
+
+def atomic_write_record(record):
+  USAGE_ROOT.mkdir(parents=True, exist_ok=True)
+  record = dict(record)
+  record_id = safe_id(record.get("id"))
+  descriptor, temporary = tempfile.mkstemp(prefix=f".{record_id}.", dir=USAGE_ROOT, text=True)
+  try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+      json.dump(record, stream, separators=(",", ":"))
+      stream.write("\n")
+      stream.flush()
+      os.fsync(stream.fileno())
+    os.replace(temporary, USAGE_ROOT / f"{record_id}.json")
+  finally:
+    try:
+      os.unlink(temporary)
+    except FileNotFoundError:
+      pass
+
+
+def select_adapters(all_adapters, selected):
+  if not selected:
+    return all_adapters
+  wanted = {}
+  for source_id in selected:
+    key = safe_id(source_id)
+    if key not in all_adapters:
+      raise MeterError(f"unknown source: {source_id}")
+    wanted[key] = all_adapters[key]
+  return wanted
+
+
+def collect(selected):
+  failures = 0
+  for source_id, adapter in selected.items():
+    try:
+      atomic_write_record(adapter.collect())
+      print(source_id)
+    except AuthenticationRequired:
+      atomic_write_record(adapter.authentication_record())
+      print(source_id)
+    except MeterError as error:
+      failures += 1
+      print(f"omarchy-agent-meter: {source_id}: {error}", file=sys.stderr)
+  return failures
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--config", type=Path, default=CONFIG_PATH)
+  subparsers = parser.add_subparsers(dest="command", required=True)
+  login_parser = subparsers.add_parser("login")
+  login_parser.add_argument("source")
+  login_parser.add_argument("--username")
+  login_parser.add_argument("--stdin", action="store_true")
+  local_parser = subparsers.add_parser("local")
+  local_parser.add_argument("source")
+  remote_parser = subparsers.add_parser("remote")
+  remote_parser.add_argument("source")
+  collect_parser = subparsers.add_parser("collect")
+  collect_parser.add_argument("sources", nargs="*")
+  args = parser.parse_args()
+
+  try:
+    if args.command == "local":
+      use_local_source(args.config, args.source)
+      print(args.source)
+      return 0
+    if args.command == "remote":
+      use_remote_source(args.config, args.source)
+    credentials = {}
+    if args.command == "login" and args.stdin:
+      try:
+        credentials = json.loads(sys.stdin.readline())
+      except json.JSONDecodeError as error:
+        raise MeterError("invalid credentials input") from error
+      if not isinstance(credentials, dict):
+        raise MeterError("invalid credentials input")
+      if str(credentials.get("url") or "").strip():
+        configure_hermes(args.config, args.source, credentials["url"])
+    config = load_config(args.config)
+    available = adapters(config)
+    if args.command == "login":
+      selected = select_adapters(available, [args.source])
+      adapter = next(iter(selected.values()))
+      if not isinstance(adapter, HermesAdapter):
+        raise MeterError(f"{args.source} does not support interactive login")
+      password = None
+      username = args.username
+      if args.stdin:
+        username = str(credentials.get("username") or "")
+        password = str(credentials.get("password") or "")
+      identity = adapter.login(username, password)
+      print(f"Authenticated {args.source} as {identity}")
+      return 0
+    if args.command == "collect":
+      return 1 if collect(select_adapters(available, args.sources)) else 0
+    if args.command == "remote":
+      return 1 if collect(select_adapters(available, [args.source])) else 0
+  except (MeterError, KeyboardInterrupt) as error:
+    print(f"omarchy-agent-meter: {error}", file=sys.stderr)
+    return 1
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

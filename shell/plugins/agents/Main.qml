@@ -80,12 +80,11 @@ Item {
     scheduleSync()
   }
 
-  // A collector that could not reach its limits endpoint at all — typically
-  // the seconds after login before the network is up — writes retryAdvised
-  // into its record. Honor it with one sooner try instead of waiting out the
-  // full refresh interval; a run that reaches the endpoint clears the flag.
-  // Only the advising agents rerun, so an outage at one provider does not
-  // put every other collector on a 30-second treadmill.
+  // A collector that expects fresher data shortly writes retryAdvised into its
+  // record — usually while a login settles or a local agent finishes flushing
+  // its live token ledger. Honor it with one sooner try instead of waiting out
+  // the full refresh interval. Only the advising agents rerun, so activity at
+  // one provider does not put every collector on a 30-second treadmill.
   property var retryAgentIds: []
 
   Timer {
@@ -220,7 +219,7 @@ Item {
     return numberValue(p.totalPrompts) > 0 || numberValue(p.totalSessions) > 0
       || numberValue(p.activeDays) > 0 || numberValue(p.todayPrompts) > 0
       || numberValue(p.todaySessions) > 0 || (p.limits && p.limits.length > 0)
-      || !!p.balance
+      || !!p.balance || p.gatewayLoginAvailable === true
   }
 
   // A prepaid agent's credit ledger. Like rate limits, the balance is
@@ -250,6 +249,11 @@ Item {
       ready: record.ready === true || synced,
       usageStatusText: String(record.usageStatusText || ""),
       authHelpText: String(record.authHelpText || ""),
+      remoteGateway: record.remoteGateway === true,
+      gatewayLoginAvailable: record.gatewayLoginAvailable === true,
+      gatewayConfigured: record.gatewayConfigured === true,
+      authRequired: record.authRequired === true,
+      gatewayUrl: String(record.gatewayUrl || ""),
 
       // Rate limits and balances stay per-account and are never merged
       // across devices.
@@ -261,6 +265,7 @@ Item {
       todaySessions: synced ? numberValue(stats.todaySessions) : numberValue(record.todaySessions),
       todayTotalTokens: synced ? numberValue(stats.todayTotalTokens) : numberValue(record.todayTotalTokens),
       todayTokensByModel: synced ? (stats.todayTokensByModel || ({})) : (record.todayTokensByModel || ({})),
+      modelLabels: synced ? (stats.modelLabels || ({})) : (record.modelLabels || ({})),
       recentDays: synced ? (stats.recentDays || []) : (record.recentDays || []),
       totalPrompts: synced ? numberValue(stats.totalPrompts) : numberValue(record.totalPrompts),
       totalSessions: synced ? numberValue(stats.totalSessions) : numberValue(record.totalSessions),
@@ -566,6 +571,7 @@ Item {
         todaySessions: 0,
         todayTotalTokens: 0,
         todayTokensByModel: ({}),
+        modelLabels: ({}),
         recentByDay: recentByDay,
         totalPrompts: 0,
         totalSessions: 0,
@@ -605,6 +611,10 @@ Item {
         for (var ad = 0; ad < activeDates.length; ad++) acc.activeDates[String(activeDates[ad])] = true
         acc.activeDays = Math.max(acc.activeDays, numberValue(stats.activeDays))
         combineObjectNumbers(additive, acc.todayTokensByModel, stats.todayTokensByModel || {})
+        var labels = stats.modelLabels || {}
+        for (var labelId in labels) {
+          if (!acc.modelLabels[labelId]) acc.modelLabels[labelId] = cloneValue(labels[labelId], ({}))
+        }
 
         var recent = Array.isArray(stats.recentDays) ? stats.recentDays : []
         for (var r = 0; r < recent.length; r++) {
@@ -639,6 +649,7 @@ Item {
         todaySessions: acc.todaySessions,
         todayTotalTokens: acc.todayTotalTokens,
         todayTokensByModel: acc.todayTokensByModel,
+        modelLabels: acc.modelLabels,
         recentDays: recentDays,
         totalPrompts: acc.totalPrompts,
         totalSessions: acc.totalSessions,
@@ -673,6 +684,7 @@ Item {
       todaySessions: numberValue(record.todaySessions),
       todayTotalTokens: numberValue(record.todayTotalTokens),
       todayTokensByModel: cloneValue(record.todayTokensByModel, ({})),
+      modelLabels: cloneValue(record.modelLabels, ({})),
       recentDays: cloneValue(record.recentDays, []),
       totalPrompts: numberValue(record.totalPrompts),
       totalSessions: numberValue(record.totalSessions),
@@ -720,12 +732,26 @@ Item {
     return word.charAt(0).toUpperCase() + word.slice(1)
   }
 
-  // Model ids arrive hyphenated with the version split across segments
-  // (`claude-opus-4-8`, `gpt-5.6-sol`). Rejoin the numeric run into one
-  // version and title-case the words around it.
-  function friendlyModelName(id) {
+  // Collectors may supply authoritative display labels for route ids. The
+  // raw provider and model remain the fallback, so evolving catalogues and
+  // custom endpoints never require a matching list in Omarchy. Other
+  // collectors retain the compact labels used before route ids existed.
+  function friendlyModelName(id, routeLabel) {
     if (!id) return "Unknown"
-    var name = String(id).replace(/^claude-/, "").replace(/-\d{8}$/, "")
+    if (routeLabel && typeof routeLabel === "object") {
+      var labelProvider = String(routeLabel.provider || "").trim()
+      var labelModel = String(routeLabel.model || "").trim()
+      if (labelProvider && labelModel) return labelProvider + " · " + labelModel
+    }
+    var route = String(id)
+    var separator = route.indexOf("::")
+    if (separator >= 0) {
+      var provider = route.slice(0, separator) || "unknown"
+      var model = route.slice(separator + 2) || "unknown"
+      return provider + " · " + model
+    }
+
+    var name = route.replace(/^claude-/, "").replace(/-\d{8}$/, "")
     var parts = name.split("-")
     var words = []
     var version = []

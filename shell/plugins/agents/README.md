@@ -50,11 +50,16 @@ prints the record contract (see the `claude` and `codex` collectors in
 with an `assets/<id>-light.svg` twin if the mark needs a dark variant for
 light surfaces — and the bar glyph stands in when there is none.
 
+Collectors may include a `modelLabels` object keyed like `modelUsage`, with
+`model` and `provider` display strings. The panel uses those source-provided
+labels and falls back to formatting the model key when they are absent.
+
 | Collector | Limits | Local stats |
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `hermes` | None — Hermes has no unified multi-provider quota | `~/.hermes/state.db` plus named-profile databases, split by billing provider and model |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -63,6 +68,32 @@ falls back to local stats only. A non-default Claude directory is honored via
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+### Remote gateways
+
+Hermes defaults to **This Computer**, reading its local usage ledger without a
+login. The popup's **Usage Source** control can switch to account-wide data
+from a **Remote Gateway**, or back to local tracking later. The meter runs only
+during the panel's normal refresh and leaves no background process. Enter the
+remote URL, username, and password in the popup; the URL is prefilled on later
+logins and stored in
+`~/.config/omarchy/agent-meter.json`:
+
+```json
+{"sources":{"hermes":{"type":"hermes","url":"http://hermes:9119","name":"Hermes","periodDays":365}}}
+```
+
+The meter paginates the gateway's existing session-metadata endpoint and
+groups its timestamped token counters into this computer's local calendar
+days, matching Codex's seven-day layout without requiring gateway changes.
+Session titles, previews, prompts, and responses are never written to the
+agents panel record.
+
+When authentication expires, use **Remote Gateway Login** in the same popup;
+the credentials travel to the meter over stdin and are never command-line
+arguments. They stay in `~/.local/state/omarchy/agent-meter/`; nothing is
+installed in the gateway application's own configuration directory. If the
+remote collection fails, the matching local collector runs instead.
 
 ### Fireworks balance
 
