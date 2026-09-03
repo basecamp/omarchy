@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set and launch the default coding agent
-# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush]
+# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush|muse]
 # omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
 
 installing=false
@@ -35,8 +35,9 @@ grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
 agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
 hermes) agent="hermes"; name="Hermes"; agent_installer="omarchy-install-hermes-cli" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
+muse | muse-code | musecode) agent="muse"; name="Muse Code"; agent_aur_package="muse-code-bin" ;;
 *)
-  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush>"
+  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush|muse>"
   exit 1
   ;;
 esac
@@ -53,6 +54,11 @@ if [[ -n ${agent_installer:-} ]]; then
   # inside the menu action instead.
   agent_present() { "$agent_installer" --check; }
   agent_install() { "$agent_installer" --now; }
+elif [[ -n ${agent_aur_package:-} ]]; then
+  # Muse has no mise-installable distribution — Meta ships it only as a
+  # binary — so it installs from the AUR instead.
+  agent_present() { omarchy-pkg-present "$agent_aur_package"; }
+  agent_install() { omarchy-pkg-aur-add "$agent_aur_package"; }
 else
   agent_present() { mise where "$agent_package" &>/dev/null; }
   agent_install() { mise use -g "$agent_package"; }
@@ -63,12 +69,21 @@ if [[ $installing == "false" ]] && ! agent_present; then
 fi
 
 if ! agent_install; then
-  if [[ $installing == "true" ]]; then
+  if [[ $installing == "true" && -n ${agent_aur_package:-} ]]; then
+    echo "Could not install $name from the AUR" >&2
+  elif [[ $installing == "true" ]]; then
     echo "Could not install $name with mise" >&2
   else
     echo "Could not set $name as the default coding agent" >&2
   fi
   exit 1
+fi
+
+# A fresh Muse install has no credentials, so the browser login runs here in
+# the install terminal instead of stopping the first agent launch. A declined
+# login still opens the agent, which asks again itself.
+if [[ $installing == "true" && $agent == "muse" ]]; then
+  muse login
 fi
 
 mkdir -p "$(dirname "$agent_file")"

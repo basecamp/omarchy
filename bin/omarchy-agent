@@ -93,6 +93,11 @@ hermes)
     command=(hermes --yolo)
   fi
   ;;
+muse)
+  # --approval-mode never skips the tool prompts but keeps Muse's own sandbox.
+  command=(muse --approval-mode never)
+  [[ -n ${prompt:-} ]] && command+=("$prompt")
+  ;;
 omp)
   command=(omp --auto-approve)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
