@@ -204,16 +204,26 @@ cmd_position() {
   echo "Bar position set to $position"
 }
 
+try_bar_transparency_ipc() {
+  local result
+  result=$(omarchy-shell shell "$@" 2>/dev/null) || return 1
+  [[ $result == "ok" ]]
+}
+
 cmd_transparent() {
   local transparent="${1:-}"
   [[ -n $transparent ]] || fail "transparent is required"
   (( $# == 1 )) || fail "transparent takes a single value"
   [[ $transparent =~ ^(true|false|toggle)$ ]] || fail "transparent must be true, false, or toggle"
   if [[ $transparent == "toggle" ]]; then
-    commit "$NORMALIZE | .bar.transparent = (.bar.transparent != true)"
+    if ! try_bar_transparency_ipc toggleBarTransparency; then
+      commit "$NORMALIZE | .bar.transparent = (.bar.transparent != true)"
+    fi
     echo "Bar transparency toggled"
   else
-    commit "$NORMALIZE | .bar.transparent = \$transparent" --argjson transparent "$transparent"
+    if ! try_bar_transparency_ipc setBarTransparency "$transparent"; then
+      commit "$NORMALIZE | .bar.transparent = \$transparent" --argjson transparent "$transparent"
+    fi
     echo "Bar transparency set to $transparent"
   fi
 }
