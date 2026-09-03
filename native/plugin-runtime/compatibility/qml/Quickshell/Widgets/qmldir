@@ -1,0 +1,5 @@
+module Quickshell.Widgets
+IconImage 1.0 IconImage.qml
+WrapperItem 1.0 WrapperItem.qml
+WrapperMouseArea 1.0 WrapperMouseArea.qml
+WrapperRectangle 1.0 WrapperRectangle.qml

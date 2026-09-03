@@ -1,0 +1,6 @@
+module Quickshell
+ShellRoot 1.0 ShellRoot.qml
+Scope 1.0 Scope.qml
+Singleton 1.0 Singleton.qml
+LazyLoader 1.0 LazyLoader.qml
+SystemClock 1.0 SystemClock.qml

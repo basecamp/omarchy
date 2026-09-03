@@ -50,6 +50,25 @@ qt_add_resources(omarchy-plugin-worker-runtime quickshell_io_compat_qml
     ../quickshell-compat/io/qml/FileView.qml
     ../quickshell-compat/io/qml/FileViewError.qml
     ../quickshell-compat/io/qml/StdioCollector.qml)
+qt_add_resources(omarchy-plugin-worker-runtime quickshell_compatibility_core_qml
+  PREFIX "/qt/qml/Quickshell"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../compatibility/qml/Quickshell"
+  FILES
+    ../compatibility/qml/Quickshell/qmldir
+    ../compatibility/qml/Quickshell/LazyLoader.qml
+    ../compatibility/qml/Quickshell/Scope.qml
+    ../compatibility/qml/Quickshell/ShellRoot.qml
+    ../compatibility/qml/Quickshell/Singleton.qml
+    ../compatibility/qml/Quickshell/SystemClock.qml)
+qt_add_resources(omarchy-plugin-worker-runtime quickshell_compatibility_widgets_qml
+  PREFIX "/qt/qml/Quickshell/Widgets"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../compatibility/qml/Quickshell/Widgets"
+  FILES
+    ../compatibility/qml/Quickshell/Widgets/qmldir
+    ../compatibility/qml/Quickshell/Widgets/IconImage.qml
+    ../compatibility/qml/Quickshell/Widgets/WrapperItem.qml
+    ../compatibility/qml/Quickshell/Widgets/WrapperMouseArea.qml
+    ../compatibility/qml/Quickshell/Widgets/WrapperRectangle.qml)
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC
@@ -75,6 +94,11 @@ qt_add_qml_module(omarchy-plugin-qml-worker
   RESOURCE_PREFIX /qt/qml
   QML_FILES Runtime.qml
 )
+# Resolve the worker-owned pure-QML compatibility modules before the system
+# Quickshell metadata during build-time import scanning. This prevents even an
+# optional native Quickshell link edge from entering the worker target graph.
+set_property(TARGET omarchy-plugin-qml-worker APPEND PROPERTY
+  QT_QML_IMPORT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../compatibility/qml")
 
 omarchy_plugin_target_defaults(omarchy-plugin-qml-worker)
 omarchy_plugin_worker_sanitize(omarchy-plugin-qml-worker)
