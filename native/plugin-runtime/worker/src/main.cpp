@@ -229,7 +229,27 @@ private:
       return;
     }
     if (endpoint.role() == wire::EndpointRole::control && broker_api_) {
-      apply_permission_snapshot(std::move(packet));
+      if (packet.header.message_type == wire::kSettingsSnapshotMessage) {
+        if (settings_snapshot_received_ || packet.header.correlation_id != 0 ||
+            !packet.descriptors.empty() ||
+            !broker_api_->applySettingsSnapshot(
+                packet.header.launch_generation, packet.payload) ||
+            !control_.send(wire::kSettingsSnapshotAcceptedMessage, {}, 0)) {
+          fatal("settings snapshot failed runtime validation");
+          return;
+        }
+        settings_snapshot_received_ = true;
+      } else if (packet.header.message_type ==
+                 wire::kSettingsUpdateResultMessage) {
+        if (!broker_api_->receiveSettingsResult(std::move(packet)))
+          fatal("settings update result failed runtime validation");
+      } else {
+        if (!settings_snapshot_received_) {
+          fatal("permission snapshot preceded settings authority");
+          return;
+        }
+        apply_permission_snapshot(std::move(packet));
+      }
       return;
     }
     if (endpoint.role() != wire::EndpointRole::render || !render_state_) {
@@ -341,7 +361,7 @@ private:
     }
     broker_api_ = std::make_unique<worker::QmlBrokerApi>(
         broker_, std::make_unique<worker::ManifestInvokeEncoder>(manifest_),
-        manifest_, broker_.generation());
+        manifest_, broker_.generation(), nullptr, &control_);
     if (!broker_api_->bindSurfaceIntentSink(*this)) {
       fatal("surface intent sink binding failed");
       return;
@@ -544,6 +564,7 @@ private:
   wire::RoleSchemaRegistryView registry_;
   std::unique_ptr<wire::SelectedEndpointState<32>> render_state_;
   std::unique_ptr<worker::QmlBrokerApi> broker_api_;
+  bool settings_snapshot_received_ = false;
   worker::StartupState startup_;
   std::optional<worker::ReceivedPacket> pending_permission_snapshot_;
   QSocketNotifier control_notifier_;

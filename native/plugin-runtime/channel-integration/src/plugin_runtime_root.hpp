@@ -72,6 +72,7 @@ private:
   [[nodiscard]] PluginSession *running_session_unlocked() const noexcept;
   struct Configuration final {
     std::shared_ptr<PluginPermissionAuthority> permissions;
+    std::optional<std::string> settings;
     Limits runtime_limits;
     session::SessionLimits session_limits;
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING

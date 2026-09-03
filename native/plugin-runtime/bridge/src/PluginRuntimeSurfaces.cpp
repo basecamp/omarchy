@@ -12,8 +12,16 @@ PluginRuntimeController::HookState::HookState(std::string plugin,
                                               std::uint64_t epoch)
     : plugin(std::move(plugin)), epoch(epoch) {}
 
-PluginRuntimeController::Hook::Hook(std::shared_ptr<HookState> state)
-    : state(std::move(state)) {}
+PluginRuntimeController::Hook::Hook(std::shared_ptr<HookState> state,
+                                    PluginManager &manager)
+    : state(std::move(state)), manager(manager) {}
+
+bool PluginRuntimeController::Hook::update_settings(
+    const plugins::permissions::ActivationBinding &binding,
+    std::string_view canonical_entry) {
+  return binding.plugin.view() == state->plugin &&
+         manager.persistSettings(state->plugin, canonical_entry);
+}
 
 void PluginRuntimeController::Hook::state_changed(
     host_session::SessionState session_state,

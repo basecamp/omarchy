@@ -433,6 +433,64 @@ ShellRoot {
     return true
   }
 
+  // Trusted schema-v2 host callback. A secure worker can replace only the
+  // already-configured entry for its authenticated plugin id; it cannot add a
+  // plugin, move a widget, or write arbitrary shell configuration.
+  function readSecurePluginSettings(pluginId) {
+    var id = String(pluginId || "")
+    if (id === "") return undefined
+    var config = shellConfig || builtinShellConfig
+    var selected = undefined
+    var selectedJson = ""
+    function consider(entry) {
+      if (!entry || Util.canonicalWidgetId(entry.id) !== id) return true
+      var keys = Object.keys(entry).filter(function(key) { return key !== "id" }).sort()
+      var settings = {}
+      for (var k = 0; k < keys.length; k++) settings[keys[k]] = entry[keys[k]]
+      var encoded = JSON.stringify(settings)
+      if (selected === undefined) {
+        selected = settings
+        selectedJson = encoded
+        return true
+      }
+      return selectedJson === encoded
+    }
+    var sections = ["left", "center", "right"]
+    var layout = config.bar && config.bar.layout ? config.bar.layout : ({})
+    for (var s = 0; s < sections.length; s++) {
+      var entries = layout[sections[s]] || []
+      for (var i = 0; i < entries.length; i++)
+        if (!consider(entries[i])) return undefined
+    }
+    var plugins = Array.isArray(config.plugins) ? config.plugins : []
+    for (var p = 0; p < plugins.length; p++)
+      if (!consider(plugins[p])) return undefined
+    return selected
+  }
+
+  function updateSecurePluginSettings(pluginId, settings) {
+    var id = String(pluginId || "")
+    if (id === "" || !Util.isPlainObject(settings)) return false
+    var config = shellConfig || builtinShellConfig
+    var found = false
+    var sections = ["left", "center", "right"]
+    var layout = config.bar && config.bar.layout ? config.bar.layout : ({})
+    for (var s = 0; s < sections.length; s++) {
+      var entries = layout[sections[s]] || []
+      for (var i = 0; i < entries.length; i++)
+        if (entries[i] && Util.canonicalWidgetId(entries[i].id) === id)
+          found = true
+    }
+    var plugins = Array.isArray(config.plugins) ? config.plugins : []
+    for (var p = 0; p < plugins.length; p++)
+      if (plugins[p] && plugins[p].id === id) found = true
+    if (!found) return false
+    var entry = { id: id }
+    for (var key in settings) entry[key] = settings[key]
+    updateEntryInline(id, entry)
+    return true
+  }
+
   // ---------------------------------------------------------- on-demand panels
 
   // openPanelIds is a plain object treated as a set. A plugin id maps to

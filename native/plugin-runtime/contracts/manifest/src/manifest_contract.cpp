@@ -476,6 +476,54 @@ bool valid_identifier(std::string_view value) {
   return !previous_separator && value.front() >= 'a' && value.front() <= 'z';
 }
 
+bool valid_setting_key(std::string_view value) {
+  if (value.empty() || value.size() > 128 ||
+      !((value.front() >= 'a' && value.front() <= 'z') ||
+        (value.front() >= 'A' && value.front() <= 'Z'))) {
+    return false;
+  }
+  return std::ranges::all_of(value, [](const unsigned char character) {
+    return (character >= 'a' && character <= 'z') ||
+           (character >= 'A' && character <= 'Z') ||
+           (character >= '0' && character <= '9') || character == '_' ||
+           character == '-';
+  });
+}
+
+SettingValue setting_value(const Json &json, std::string_view field) {
+  if (const auto *value = std::get_if<bool>(&json.value))
+    return *value;
+  if (const auto *value = std::get_if<std::int64_t>(&json.value))
+    return *value;
+  if (const auto *value = std::get_if<std::string>(&json.value)) {
+    bounded_text(*value, 4096, field);
+    return *value;
+  }
+  fail(std::string(field) + " must be a boolean, integer, or string");
+}
+
+bool valid_setting_value(const SettingDefinition &definition,
+                         const SettingValue &value) {
+  switch (definition.type) {
+  case SettingType::boolean:
+    return std::holds_alternative<bool>(value);
+  case SettingType::integer: {
+    const auto *integer = std::get_if<std::int64_t>(&value);
+    return integer != nullptr && definition.minimum && definition.maximum &&
+           definition.step && *integer >= *definition.minimum &&
+           *integer <= *definition.maximum &&
+           (*integer - *definition.minimum) % *definition.step == 0;
+  }
+  case SettingType::enumeration: {
+    const auto *text = std::get_if<std::string>(&value);
+    return text != nullptr &&
+           std::ranges::find(definition.options, *text) !=
+               definition.options.end();
+  }
+  }
+  return false;
+}
+
 bool safe_relative_path(std::string_view value) {
   if (value.empty() || value.size() > 4096 || value.front() == '/' ||
       value.find('\\') != std::string_view::npos ||
@@ -693,7 +741,8 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   const Object &root = as_object(document, "manifest");
   known_keys(root,
              {"schemaVersion", "id", "name", "version", "description",
-              "runtime", "surfaces", "permissions"},
+              "author", "license", "homepage", "repository", "keywords",
+              "runtime", "surfaces", "settings", "permissions"},
              "manifest");
   require(as_integer(required(root, "schemaVersion"), "schemaVersion") == 2,
           "unsupported schemaVersion");
@@ -708,6 +757,32 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   if (const auto found = root.find("description"); found != root.end()) {
     result.description = as_string(found->second, "description");
     require(result.description.size() <= 4096, "description is too long");
+  }
+  for (const auto &[key, maximum, destination] :
+       std::array<std::tuple<std::string_view, std::size_t, std::string *>, 4>{
+           {{"author", 256, &result.author},
+            {"license", 128, &result.license},
+            {"homepage", 2048, &result.homepage},
+            {"repository", 2048, &result.repository}}}) {
+    if (const auto found = root.find(key); found != root.end()) {
+      *destination = as_string(found->second, key);
+      bounded_text(*destination, maximum, key);
+      if (key == "homepage" || key == "repository")
+        require(destination->starts_with("https://"),
+                std::string(key) + " must use https");
+    }
+  }
+  if (const auto found = root.find("keywords"); found != root.end()) {
+    const auto &keywords = as_array(found->second, "keywords");
+    require(keywords.size() <= 32, "too many keywords");
+    for (const auto &keyword : keywords) {
+      auto value = as_string(keyword, "keyword");
+      bounded_text(value, 64, "keyword");
+      require(std::ranges::find(result.keywords, value) ==
+                  result.keywords.end(),
+              "duplicate keyword");
+      result.keywords.push_back(std::move(value));
+    }
   }
 
   const Object &runtime = as_object(required(root, "runtime"), "runtime");
@@ -797,6 +872,93 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   }
   result.canonical_surfaces = canonical(surfaces);
 
+  if (const auto found = root.find("settings"); found != root.end()) {
+    const auto &settings = as_object(found->second, "settings");
+    known_keys(settings, {"defaults", "schema"}, "settings");
+    const Json &defaults_json = required(settings, "defaults");
+    const auto &defaults = as_object(defaults_json, "settings.defaults");
+    const auto &schema = as_array(required(settings, "schema"),
+                                  "settings.schema");
+    require(!schema.empty() && schema.size() <= 64 &&
+                defaults.size() == schema.size(),
+            "settings has invalid length");
+    for (const auto &[key, value] : defaults) {
+      require(valid_setting_key(key), "invalid settings default key");
+      result.settings.defaults.emplace(
+          key, setting_value(value, "settings default"));
+    }
+    std::set<std::string, std::less<>> keys;
+    for (const auto &item : schema) {
+      const auto &definition = as_object(item, "settings schema entry");
+      known_keys(definition,
+                 {"key", "type", "label", "description", "min", "max",
+                  "step", "options", "defaultValue"},
+                 "settings schema entry");
+      SettingDefinition parsed;
+      parsed.key = as_string(required(definition, "key"), "settings key");
+      require(valid_setting_key(parsed.key), "invalid settings schema key");
+      require(keys.insert(parsed.key).second, "duplicate settings schema key");
+      parsed.label =
+          as_string(required(definition, "label"), "settings label");
+      bounded_text(parsed.label, 256, "settings label");
+      if (const auto description = definition.find("description");
+          description != definition.end()) {
+        parsed.description =
+            as_string(description->second, "settings description");
+        require(parsed.description.size() <= 1024,
+                "settings description is too long");
+      }
+      const auto type =
+          as_string(required(definition, "type"), "settings type");
+      parsed.default_value = setting_value(
+          required(definition, "defaultValue"), "settings defaultValue");
+      if (type == "boolean") {
+        parsed.type = SettingType::boolean;
+        require(!definition.contains("min") && !definition.contains("max") &&
+                    !definition.contains("step") &&
+                    !definition.contains("options"),
+                "boolean setting has incompatible constraints");
+      } else if (type == "integer") {
+        parsed.type = SettingType::integer;
+        parsed.minimum = as_integer(required(definition, "min"),
+                                    "settings minimum");
+        parsed.maximum = as_integer(required(definition, "max"),
+                                    "settings maximum");
+        parsed.step = as_integer(required(definition, "step"),
+                                 "settings step");
+        require(*parsed.minimum <= *parsed.maximum && *parsed.step > 0 &&
+                    !definition.contains("options"),
+                "integer setting has invalid constraints");
+      } else if (type == "enum") {
+        parsed.type = SettingType::enumeration;
+        require(!definition.contains("min") && !definition.contains("max") &&
+                    !definition.contains("step"),
+                "enum setting has incompatible constraints");
+        const auto &options =
+            as_array(required(definition, "options"), "settings options");
+        require(!options.empty() && options.size() <= 64,
+                "enum setting has invalid option count");
+        for (const auto &option : options) {
+          auto value = as_string(option, "settings option");
+          bounded_text(value, 256, "settings option");
+          require(std::ranges::find(parsed.options, value) ==
+                      parsed.options.end(),
+                  "duplicate settings option");
+          parsed.options.push_back(std::move(value));
+        }
+      } else {
+        fail("unsupported settings type");
+      }
+      const auto default_value = result.settings.defaults.find(parsed.key);
+      require(default_value != result.settings.defaults.end() &&
+                  default_value->second == parsed.default_value &&
+                  valid_setting_value(parsed, parsed.default_value),
+              "settings default does not satisfy schema");
+      result.settings.schema.push_back(std::move(parsed));
+    }
+    result.settings.canonical_defaults = canonical(defaults_json);
+  }
+
   const Object &permissions =
       as_object(required(root, "permissions"), "permissions");
   known_keys(permissions, {"required", "optional"}, "permissions");
@@ -878,6 +1040,51 @@ ManifestV2 parse_manifest_v2(std::string_view bytes) {
   }
   result.canonical_json = canonical(document);
   return result;
+}
+
+bool validate_settings_entry(
+    const ManifestV2 &manifest,
+    const std::map<std::string, SettingValue, std::less<>> &entry) noexcept {
+  try {
+    if (entry.size() != manifest.settings.schema.size())
+      return false;
+    for (const auto &definition : manifest.settings.schema) {
+      const auto found = entry.find(definition.key);
+      if (found == entry.end() || !valid_setting_value(definition,
+                                                       found->second))
+        return false;
+    }
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+std::optional<std::map<std::string, SettingValue, std::less<>>>
+parse_settings_entry(const ManifestV2 &manifest,
+                     std::string_view bytes) noexcept {
+  try {
+    const auto document = Parser(bytes).parse();
+    const auto &object = as_object(document, "settings entry");
+    std::map<std::string, SettingValue, std::less<>> entry;
+    for (const auto &[key, value] : object)
+      entry.emplace(key, setting_value(value, "settings entry value"));
+    if (!validate_settings_entry(manifest, entry))
+      return std::nullopt;
+    return entry;
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
+std::string canonical_settings_entry(
+    const std::map<std::string, SettingValue, std::less<>> &entry) {
+  Object object;
+  for (const auto &[key, value] : entry) {
+    object.emplace(key, std::visit([](const auto &item) { return Json{item}; },
+                                   value));
+  }
+  return canonical(Json{std::move(object)});
 }
 
 std::vector<CapabilityRequest>

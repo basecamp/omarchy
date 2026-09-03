@@ -61,9 +61,57 @@ namespace definitions = omarchy::plugins::definitions;
 namespace runtime = omarchy::plugin_runtime::runtime;
 namespace surface = omarchy::plugin_runtime::surface;
 
+class SettingsHost final : public QObject {
+  Q_OBJECT
+
+public:
+  QVariantMap current;
+  QString updated_plugin;
+  QVariantMap updated_settings;
+
+  Q_INVOKABLE QVariant readSecurePluginSettings(const QVariant &plugin) {
+    return plugin.toString() == QStringLiteral("org.example.widget")
+               ? QVariant(current)
+               : QVariant{};
+  }
+
+  Q_INVOKABLE QVariant updateSecurePluginSettings(const QVariant &plugin,
+                                                  const QVariant &settings) {
+    updated_plugin = plugin.toString();
+    updated_settings = settings.toMap();
+    return true;
+  }
+};
+
 void require(bool condition, std::string_view message) {
   if (!condition)
     throw std::runtime_error(std::string(message));
+}
+
+void host_owned_settings_are_read_and_replaced_atomically() {
+  auto manager = bridge::PluginManagerTestAccess::create();
+  SettingsHost host;
+  host.current = {{QStringLiteral("enabled"), true},
+                  {QStringLiteral("mode"), QStringLiteral("full")}};
+  require(manager->configureSettingsHost(&host) &&
+              !manager->configureSettingsHost(&host),
+          "settings host was not configured exactly once");
+  const auto current = bridge::PluginManagerTestAccess::currentSettings(
+      *manager, "org.example.widget");
+  require(current && *current == R"({"enabled":true,"mode":"full"})" &&
+              !bridge::PluginManagerTestAccess::currentSettings(
+                  *manager, "org.example.other"),
+          "manager did not read the exact host-owned settings entry");
+  require(bridge::PluginManagerTestAccess::persistSettings(
+              *manager, "org.example.widget",
+              R"({"enabled":false,"mode":"compact"})") &&
+              host.updated_plugin == QStringLiteral("org.example.widget") &&
+              host.updated_settings.value(QStringLiteral("enabled")) == false &&
+              host.updated_settings.value(QStringLiteral("mode")) ==
+                  QStringLiteral("compact") &&
+              !bridge::PluginManagerTestAccess::persistSettings(
+                  *manager, "org.example.widget", "[]"),
+          "manager did not atomically replace host-owned settings");
 }
 
 std::size_t openDescriptorCount() {
@@ -4209,6 +4257,7 @@ void run_plugin_manager_tests() {
           "real RemotePluginSurface QML type registration failed");
   secure_bar_retries_only_on_readiness_events();
   secure_bar_cannot_expand_the_host_bar();
+  host_owned_settings_are_read_and_replaced_atomically();
   process_singleton_factory_is_exact_and_recoverable();
   concurrent_engines_have_one_process_winner();
   singleton_boundary_is_inert_and_not_configurable();
@@ -4241,3 +4290,5 @@ void run_public_permission_lifecycle_test() {
 void run_neutral_surfaces_real_bwrap_test() {
   neutral_surfaces_share_one_real_sandbox_and_teardown();
 }
+
+#include "PluginManager_test.moc"

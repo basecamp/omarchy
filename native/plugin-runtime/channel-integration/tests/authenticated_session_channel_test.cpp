@@ -111,6 +111,8 @@ struct BackendState final {
   std::size_t startup_prepare_count = 0;
   std::size_t startup_send_count = 0;
   std::size_t startup_receive_count = 0;
+  std::vector<std::uint16_t> startup_types;
+  std::vector<std::vector<std::byte>> startup_payloads;
   std::size_t arm_count = 0;
   std::size_t terminate_count = 0;
   int readiness_override = -2;
@@ -164,10 +166,14 @@ public:
     if (state_->prepared)
       return false;
     state_->prepared = true;
-    if (type == wire::kPermissionSnapshotMessage)
+    if (type == wire::kPermissionSnapshotMessage ||
+        type == wire::kSettingsSnapshotMessage) {
       ++state_->startup_prepare_count;
-    else
+      state_->startup_types.push_back(type);
+      state_->startup_payloads.emplace_back(payload.begin(), payload.end());
+    } else {
       ++state_->prepare_count;
+    }
     state_->prepared_role = role;
     state_->prepared_type = type;
     state_->prepared_correlation = correlation;
@@ -180,7 +186,8 @@ public:
                                launcher::Deadline deadline) override {
     std::lock_guard lock(state_->mutex);
     const bool startup =
-        state_->prepared_type == wire::kPermissionSnapshotMessage;
+        state_->prepared_type == wire::kPermissionSnapshotMessage ||
+        state_->prepared_type == wire::kSettingsSnapshotMessage;
     if (startup)
       state_->startup_send_deadline = deadline;
     else
@@ -216,7 +223,9 @@ public:
           reply.message_type =
               state_->startup_reply == BackendState::StartupReply::wrong_type
                   ? 0xffffU
-                  : wire::kPermissionSnapshotAcceptedMessage;
+                  : state_->prepared_type == wire::kSettingsSnapshotMessage
+                        ? wire::kSettingsSnapshotAcceptedMessage
+                        : wire::kPermissionSnapshotAcceptedMessage;
           reply.correlation_id =
               state_->startup_reply ==
                       BackendState::StartupReply::wrong_correlation
@@ -350,9 +359,16 @@ void test_startup_snapshot_is_exact_and_uses_one_deadline() {
               state->handshake_deadline == deadline &&
               state->startup_send_deadline == deadline &&
               state->startup_receive_deadline == deadline &&
-              state->startup_prepare_count == 1 &&
-              state->startup_send_count == 2 &&
-              state->startup_receive_count == 1 &&
+              state->startup_prepare_count == 2 &&
+              state->startup_send_count == 3 &&
+              state->startup_receive_count == 2 &&
+              state->startup_types ==
+                  std::vector<std::uint16_t>{
+                      wire::kSettingsSnapshotMessage,
+                      wire::kPermissionSnapshotMessage} &&
+              state->startup_payloads ==
+                  std::vector<std::vector<std::byte>>{
+                      {std::byte{0x7b}, std::byte{0x7d}}, snapshot} &&
               state->prepared_role == wire::EndpointRole::control &&
               state->prepared_type == wire::kPermissionSnapshotMessage &&
               state->prepared_correlation == 0 &&
@@ -408,7 +424,7 @@ void test_startup_types_are_one_shot() {
   require(value.send(duplicate, deadline) == session::SendStatus::fatal,
           "second host permission snapshot reached the transport");
   std::lock_guard lock(state->mutex);
-  require(state->startup_prepare_count == 1 && state->prepare_count == 0 &&
+  require(state->startup_prepare_count == 2 && state->prepare_count == 0 &&
               state->terminate_count == 1,
           "second host snapshot made transport progress");
 }

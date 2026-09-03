@@ -25,6 +25,13 @@ Item {
 
   visible: false
 
+  Component.onCompleted: {
+    if (root.shell) PluginManager.configureSettingsHost(root.shell)
+  }
+  onShellChanged: {
+    if (root.shell) PluginManager.configureSettingsHost(root.shell)
+  }
+
   // Same-UID session IPC is trusted host control and is intentionally outside
   // the isolated v2 worker boundary. It receives only plugin ids, opaque
   // operation/row ids, and bounded choice JSON; the manager retains exact

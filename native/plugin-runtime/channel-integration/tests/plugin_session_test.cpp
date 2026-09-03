@@ -1634,7 +1634,8 @@ void delayed_provider_replies_settle_without_restarting_session() {
       fixture.snapshot(std::move(verified_manifest), std::move(snapshot)),
       runtime_factory, create_error, channel::provider_backed_session_limits());
   require(prepared && create_error == channel::PluginSessionCreateError::none,
-          "provider-backed session did not prepare");
+          "provider-backed session did not prepare: " +
+              std::to_string(static_cast<int>(create_error)));
   auto product = channel::PluginSessionTestAccess::commit(std::move(prepared),
                                                           create_error);
   require(product && create_error == channel::PluginSessionCreateError::none,

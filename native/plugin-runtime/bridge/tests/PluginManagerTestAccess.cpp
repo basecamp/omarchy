@@ -111,7 +111,7 @@ bool PluginManagerTestAccess::queueStaleRunningCallback(
     auto state = std::make_shared<detail::PluginRuntimeController::HookState>(
         found->plugin, found->epoch);
     found->callback_state = state;
-    detail::PluginRuntimeController::Hook hook(std::move(state));
+    detail::PluginRuntimeController::Hook hook(std::move(state), manager);
     hook.state_changed(host_session::SessionState::running,
                        host_session::SessionError::none);
     return true;
@@ -164,8 +164,8 @@ PluginManagerTestAccess::surfaceIntentCallback(PluginManager &manager,
     const auto state = slot->callback_state;
     return SurfaceIntentCallback{
         .deliver =
-            [state](host_session::AdmittedSurfaceIntent intent) {
-              detail::PluginRuntimeController::Hook hook(state);
+            [state, &manager](host_session::AdmittedSurfaceIntent intent) {
+              detail::PluginRuntimeController::Hook hook(state, manager);
               return hook.accept(std::move(intent));
             },
         .pending =
@@ -285,7 +285,7 @@ bool PluginManagerTestAccess::deliverLifecycle(PluginManager &manager,
       slot->callback_state =
           std::make_shared<detail::PluginRuntimeController::HookState>(
               slot->plugin, slot->epoch);
-    detail::PluginRuntimeController::Hook hook(slot->callback_state);
+    detail::PluginRuntimeController::Hook hook(slot->callback_state, manager);
     hook.state_changed(static_cast<host_session::SessionState>(state),
                        static_cast<host_session::SessionError>(error));
     return true;

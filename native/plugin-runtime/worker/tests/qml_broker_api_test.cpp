@@ -370,7 +370,7 @@ void dynamic_qml_to_adapter() {
 void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
                           wire::SessionSequence &host_sequence) {
   const std::string document =
-      R"({"schemaVersion":2,"id":"org.example.widget","name":"Widget","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"storage.private","reason":"save","quotaBytes":1024}],"optional":[{"capability":"notifications.send","reason":"alerts","categories":["status"]}]}})";
+      R"({"schemaVersion":2,"id":"org.example.widget","name":"Widget","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"settings":{"defaults":{"enabled":true,"mode":"compact"},"schema":[{"key":"enabled","type":"boolean","label":"Enabled","defaultValue":true},{"key":"mode","type":"enum","label":"Mode","options":["compact","full"],"defaultValue":"compact"}]},"permissions":{"required":[{"capability":"storage.private","reason":"save","quotaBytes":1024}],"optional":[{"capability":"notifications.send","reason":"alerts","categories":["status"]}]}})";
   const auto parsed = manifest::parse_manifest_v2(document);
   worker::QmlBrokerApi api(
       endpoint, std::make_unique<worker::ManifestInvokeEncoder>(parsed),
@@ -403,6 +403,22 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
   require(api.permissionState("storage.private", "read") == "unavailable" &&
               !api.hasPermission("notifications.send", "send"),
           "permissions became available before a host snapshot");
+  const auto settings_document =
+      manifest::canonical_settings_entry(parsed.settings.defaults);
+  const auto settings_bytes = std::as_bytes(std::span(settings_document));
+  require(api.applySettingsSnapshot(77, settings_bytes),
+          "host settings snapshot was rejected");
+  require(api.settings().value(QStringLiteral("id")).toString() ==
+              QStringLiteral("org.example.widget"),
+          "settings projection lost the plugin identity");
+  require(api.settings().value(QStringLiteral("enabled")).toBool(),
+          "settings projection lost the boolean value");
+  require(api.settings().value(QStringLiteral("mode")).toString() ==
+              QStringLiteral("compact"),
+          "settings projection lost the enum value");
+  require(!api.applySettingsSnapshot(77, settings_bytes) &&
+              !api.applySettingsSnapshot(78, settings_bytes),
+          "duplicate or wrong-generation settings snapshot was accepted");
   const auto payload = wire::permission_snapshot::encode({
       .manifest_request_fingerprint =
           manifest::requested_capability_fingerprint(parsed.requests),
@@ -769,18 +785,21 @@ void neutral_surface_trusted_input() {
           "neutral surface allocations were invalid");
 
   worker::WorkerRuntime runtime(fixture);
-  require(static_cast<bool>(runtime.bind_runtime_api(api)) &&
-              static_cast<bool>(
-                  runtime.load_surface_entry("bar", "ui/Bar.qml")) &&
-              static_cast<bool>(
-                  runtime.load_surface_entry("panel", "ui/Panel.qml")) &&
-              static_cast<bool>(runtime.select_software_profile(
-                  surface::software_profile_offer())) &&
-              static_cast<bool>(runtime.bind_surface("bar",
-                                                     allocation->surface)) &&
-              static_cast<bool>(runtime.bind_surface(
-                  "panel", panel_allocation->surface)),
-          "neutral surfaces did not load and bind through the real worker");
+  require(static_cast<bool>(runtime.bind_runtime_api(api)),
+          "neutral runtime API did not bind");
+  require(static_cast<bool>(runtime.load_surface_entry("bar", "ui/Bar.qml")),
+          "neutral bar surface did not load");
+  require(
+      static_cast<bool>(runtime.load_surface_entry("panel", "ui/Panel.qml")),
+      "neutral panel surface did not load");
+  require(static_cast<bool>(runtime.select_software_profile(
+              surface::software_profile_offer())),
+          "neutral software profile was rejected");
+  require(static_cast<bool>(runtime.bind_surface("bar", allocation->surface)),
+          "neutral bar surface did not bind");
+  require(static_cast<bool>(
+              runtime.bind_surface("panel", panel_allocation->surface)),
+          "neutral panel surface did not bind");
   const int descriptor = static_cast<int>(
       syscall(SYS_memfd_create, "neutral-input-frame", MFD_CLOEXEC));
   const int panel_descriptor = static_cast<int>(

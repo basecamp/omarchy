@@ -8,6 +8,8 @@
 #include "surface_host.hpp"
 
 #include <QQmlEngine>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QThread>
 #include <QThreadPool>
 #include <QTimer>
@@ -215,6 +217,51 @@ int PluginManager::count() const noexcept { return surfaces_.count(); }
 bool PluginManager::attach(const QString &surface_key,
                            QObject *surface) noexcept {
   return runtime_ && runtime_->attach(surface_key, surface);
+}
+
+bool PluginManager::configureSettingsHost(QObject *host) noexcept {
+  if (!host || host->thread() != thread() || QThread::currentThread() != thread() ||
+      settings_host_)
+    return false;
+  settings_host_ = host;
+  return true;
+}
+
+std::optional<std::string>
+PluginManager::currentSettings(std::string_view plugin) const noexcept {
+  if (!settings_host_ || QThread::currentThread() != thread())
+    return std::nullopt;
+  QVariant returned;
+  const bool invoked = QMetaObject::invokeMethod(
+      settings_host_, "readSecurePluginSettings", Qt::DirectConnection,
+      Q_RETURN_ARG(QVariant, returned),
+      Q_ARG(QVariant, QString::fromUtf8(plugin.data(),
+                                        static_cast<qsizetype>(plugin.size()))));
+  if (!invoked || !returned.canConvert<QVariantMap>())
+    return std::nullopt;
+  const auto document = QJsonDocument::fromVariant(returned);
+  if (!document.isObject())
+    return std::nullopt;
+  const auto bytes = document.toJson(QJsonDocument::Compact);
+  return std::string(bytes.constData(), static_cast<std::size_t>(bytes.size()));
+}
+
+bool PluginManager::persistSettings(std::string_view plugin,
+                                    std::string_view canonical_entry) noexcept {
+  if (!settings_host_ || QThread::currentThread() != thread())
+    return false;
+  const auto document = QJsonDocument::fromJson(QByteArray(
+      canonical_entry.data(), static_cast<qsizetype>(canonical_entry.size())));
+  if (!document.isObject())
+    return false;
+  QVariant returned;
+  const bool invoked = QMetaObject::invokeMethod(
+      settings_host_, "updateSecurePluginSettings", Qt::DirectConnection,
+      Q_RETURN_ARG(QVariant, returned),
+      Q_ARG(QVariant, QString::fromUtf8(plugin.data(),
+                                        static_cast<qsizetype>(plugin.size()))),
+      Q_ARG(QVariant, document.object().toVariantMap()));
+  return invoked && returned.toBool();
 }
 
 bool PluginManager::publishIntent(host_session::AdmittedSurfaceIntent intent) {

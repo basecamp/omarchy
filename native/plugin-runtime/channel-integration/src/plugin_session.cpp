@@ -186,7 +186,8 @@ AuthenticatedSessionRuntimeFactory::project_permissions(
 std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
     launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
     AuthenticatedSessionRuntimeFactory &runtime_factory,
-    PluginSessionCreateError &error, session::SessionLimits limits) {
+    PluginSessionCreateError &error, session::SessionLimits limits,
+    std::optional<std::string> settings) {
   error = PluginSessionCreateError::invalid_activation;
   try {
     if (!valid_snapshot(snapshot))
@@ -209,6 +210,18 @@ std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
     auto permission_snapshot = wire::permission_snapshot::encode(*projected);
     if (permission_snapshot.empty())
       return {};
+    auto settings_entry = snapshot.manifest.settings.defaults;
+    if (settings) {
+      const auto parsed =
+          plugins::manifest::parse_settings_entry(snapshot.manifest, *settings);
+      if (parsed)
+        settings_entry = *parsed;
+    }
+    const auto canonical_settings =
+        plugins::manifest::canonical_settings_entry(settings_entry);
+    const auto settings_bytes = std::as_bytes(std::span(canonical_settings));
+    std::vector<std::byte> settings_snapshot(settings_bytes.begin(),
+                                             settings_bytes.end());
     auto gesture_clock = std::make_shared<SteadyGestureClock>();
     auto gesture_eligibility =
         std::make_shared<runtime::GestureEligibilityLatch>(gesture_clock);
@@ -235,6 +248,7 @@ std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
         .private_state_directory =
             session::OwnedFd(snapshot.state_directory.release()),
         .permission_snapshot = std::move(permission_snapshot),
+        .settings_snapshot = std::move(settings_snapshot),
     };
     auto channel = std::make_unique<AuthenticatedSessionChannel>(
         std::move(supervisor), std::move(launch), std::move(authority),
@@ -341,6 +355,30 @@ bool PluginSession::send_render(
   ++outbound_sequence_;
   return true;
 }
+
+namespace {
+bool send_settings_result(session::PluginSessionIo &io,
+                          const session::SessionToken &token,
+                          std::uint64_t &sequence, std::uint64_t correlation,
+                          bool accepted) {
+  if (correlation == 0 ||
+      sequence == std::numeric_limits<std::uint64_t>::max())
+    return false;
+  session::OwnedMessage reply{
+      .token = token,
+      .lane = session::ChannelLane::control,
+      .message_type = wire::kSettingsUpdateResultMessage,
+      .correlation_id = correlation,
+      .sequence = sequence + 1,
+      .payload = {accepted ? std::byte{1} : std::byte{0}},
+      .descriptors = {},
+  };
+  if (!io.enqueue(std::move(reply)))
+    return false;
+  ++sequence;
+  return true;
+}
+} // namespace
 
 void PluginSession::revoke() {
   (void)live_->revoke_and_drain();
@@ -455,6 +493,26 @@ void PluginSession::state_changed(session::SessionState state,
 }
 
 void PluginSession::message_received(session::OwnedMessage message) {
+  if (message.lane == session::ChannelLane::control &&
+      message.message_type == wire::kSettingsUpdateMessage) {
+    bool accepted = false;
+    if (message.correlation_id != 0 && message.descriptors.empty() &&
+        message.payload.size() <= 64 * 1024) {
+      const std::string bytes(
+          reinterpret_cast<const char *>(message.payload.data()),
+          message.payload.size());
+      const auto entry = plugins::manifest::parse_settings_entry(manifest_,
+                                                                  bytes);
+      if (entry && events_)
+        accepted = events_->update_settings(
+            grants_.binding,
+            plugins::manifest::canonical_settings_entry(*entry));
+    }
+    if (!send_settings_result(*io_, token_, outbound_sequence_,
+                              message.correlation_id, accepted))
+      io_->stop();
+    return;
+  }
   if (message.lane == session::ChannelLane::render) {
     if (message.message_type ==
         static_cast<std::uint16_t>(
@@ -537,9 +595,11 @@ std::unique_ptr<PreparedPluginSession>
 PluginSessionTestAccess::prepare_from_activation(
     launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
     AuthenticatedSessionRuntimeFactory &runtime_factory,
-    PluginSessionCreateError &error, session::SessionLimits limits) {
+    PluginSessionCreateError &error, session::SessionLimits limits,
+    std::optional<std::string> settings) {
   return PluginSession::prepare(std::move(supervisor), std::move(snapshot),
-                                runtime_factory, error, limits);
+                                runtime_factory, error, limits,
+                                std::move(settings));
 }
 
 std::unique_ptr<PreparedPluginSession>

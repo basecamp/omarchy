@@ -122,15 +122,26 @@ bool valid_typed_packet(const wire::PacketView &packet,
                         wire::Direction direction) {
   const auto *schema = role_schema(packet.header.endpoint_role);
   if (schema == nullptr) {
-    if (packet.header.endpoint_role != wire::EndpointRole::control ||
-        packet.header.correlation_id != 0)
+    if (packet.header.endpoint_role != wire::EndpointRole::control)
       return false;
-    if (direction == wire::Direction::worker_to_host)
-      return packet.header.message_type ==
-                 wire::kPermissionSnapshotAcceptedMessage &&
-             packet.payload.empty();
-    return packet.header.message_type == wire::kPermissionSnapshotMessage &&
-           !packet.payload.empty();
+    if (direction == wire::Direction::worker_to_host) {
+      if ((packet.header.message_type ==
+               wire::kPermissionSnapshotAcceptedMessage ||
+           packet.header.message_type ==
+               wire::kSettingsSnapshotAcceptedMessage) &&
+          packet.header.correlation_id == 0)
+        return packet.payload.empty();
+      return packet.header.message_type == wire::kSettingsUpdateMessage &&
+             packet.header.correlation_id != 0 && !packet.payload.empty();
+    }
+    if ((packet.header.message_type == wire::kPermissionSnapshotMessage ||
+         packet.header.message_type == wire::kSettingsSnapshotMessage) &&
+        packet.header.correlation_id == 0)
+      return !packet.payload.empty();
+    return packet.header.message_type == wire::kSettingsUpdateResultMessage &&
+           packet.header.correlation_id != 0 && packet.payload.size() == 1 &&
+           (packet.payload.front() == std::byte{0} ||
+            packet.payload.front() == std::byte{1});
   }
   const auto type = packet.header.message_type;
   if (type == static_cast<std::uint16_t>(wire::CommonMessageType::cancel))

@@ -59,16 +59,23 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
     return false;
   const int inherited_properties = QObject::staticMetaObject.propertyCount();
   const int own_properties = meta->propertyCount() - inherited_properties;
-  if (own_properties != 0 && own_properties != 3)
+  if (own_properties != 0 && own_properties != 4)
     return false;
-  if (own_properties == 3) {
+  if (own_properties == 4) {
     const QMetaProperty permissions = meta->property(inherited_properties);
-    const QMetaProperty generation = meta->property(inherited_properties + 1);
-    const QMetaProperty ready = meta->property(inherited_properties + 2);
+    const QMetaProperty settings = meta->property(inherited_properties + 1);
+    const QMetaProperty generation = meta->property(inherited_properties + 2);
+    const QMetaProperty ready = meta->property(inherited_properties + 3);
     if (permissions.name() != QByteArrayLiteral("permissions") ||
         permissions.metaType().id() != QMetaType::QVariantMap ||
         !permissions.isReadable() || permissions.isWritable() ||
         !permissions.isConstant() || permissions.hasNotifySignal() ||
+        settings.name() != QByteArrayLiteral("settings") ||
+        settings.metaType().id() != QMetaType::QVariantMap ||
+        !settings.isReadable() || settings.isWritable() ||
+        settings.isConstant() || !settings.hasNotifySignal() ||
+        settings.notifySignal().methodSignature() !=
+            QByteArrayLiteral("settingsChanged()") ||
         generation.name() != QByteArrayLiteral("permissionGeneration") ||
         generation.metaType().id() != QMetaType::ULongLong ||
         !generation.isReadable() || generation.isWritable() ||
@@ -86,7 +93,9 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
   std::size_t call_finished = 0;
   std::size_t read_packaged_text = 0;
   std::size_t request_surface_intent = 0;
+  std::size_t update_settings = 0;
   std::size_t broker_ready_changed = 0;
+  std::size_t settings_changed = 0;
   for (int index = QObject::staticMetaObject.methodCount();
        index < meta->methodCount(); ++index) {
     const QMetaMethod method = meta->method(index);
@@ -101,7 +110,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
         method.parameterMetaType(1).id() == QMetaType::QString &&
         method.parameterMetaType(2).id() == QMetaType::QVariantMap) {
       ++invoke;
-    } else if (own_properties == 3 &&
+    } else if (own_properties == 4 &&
                method.methodSignature() ==
                    QByteArrayLiteral("requestSurfaceIntent(QString,QString)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -110,7 +119,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::QString) {
       ++request_surface_intent;
-    } else if (own_properties == 3 &&
+    } else if (own_properties == 4 &&
                method.methodSignature() ==
                    QByteArrayLiteral("readPackagedText(QString,int)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -119,7 +128,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::Int) {
       ++read_packaged_text;
-    } else if (own_properties == 3 &&
+    } else if (own_properties == 4 &&
                method.methodSignature() ==
                    QByteArrayLiteral("callFinished(QObject*)") &&
                method.methodType() == QMetaMethod::Signal &&
@@ -127,7 +136,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterCount() == 1 &&
                method.parameterMetaType(0).id() == QMetaType::QObjectStar) {
       ++call_finished;
-    } else if (own_properties == 3 &&
+    } else if (own_properties == 4 &&
                method.methodSignature() ==
                    QByteArrayLiteral("hasPermission(QString,QString)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -136,7 +145,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::QString) {
       ++has_permission;
-    } else if (own_properties == 3 &&
+    } else if (own_properties == 4 &&
                method.methodSignature() ==
                    QByteArrayLiteral("permissionState(QString,QString)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -145,13 +154,28 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::QString) {
       ++permission_state;
-    } else if (own_properties == 3 &&
+    } else if (own_properties == 4 &&
+               method.methodSignature() ==
+                   QByteArrayLiteral("updateSettings(QVariantMap)") &&
+               method.methodType() == QMetaMethod::Method &&
+               method.returnMetaType().id() == QMetaType::Bool &&
+               method.parameterCount() == 1 &&
+               method.parameterMetaType(0).id() == QMetaType::QVariantMap) {
+      ++update_settings;
+    } else if (own_properties == 4 &&
                method.methodSignature() ==
                    QByteArrayLiteral("brokerReadyChanged()") &&
                method.methodType() == QMetaMethod::Signal &&
                method.returnMetaType().id() == QMetaType::Void &&
                method.parameterCount() == 0) {
       ++broker_ready_changed;
+    } else if (own_properties == 4 &&
+               method.methodSignature() ==
+                   QByteArrayLiteral("settingsChanged()") &&
+               method.methodType() == QMetaMethod::Signal &&
+               method.returnMetaType().id() == QMetaType::Void &&
+               method.parameterCount() == 0) {
+      ++settings_changed;
     } else {
       return false;
     }
@@ -160,7 +184,8 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
          (own_properties == 0 ||
           (has_permission == 1 && permission_state == 1 &&
            read_packaged_text == 1 && call_finished == 1 &&
-           request_surface_intent == 1 && broker_ready_changed == 1));
+           request_surface_intent == 1 && update_settings == 1 &&
+           broker_ready_changed == 1 && settings_changed == 1));
 }
 
 class Mapping {
@@ -468,7 +493,8 @@ RuntimeResult WorkerRuntime::bind_runtime_api(QObject &runtime_api) {
   if (!valid_runtime_api_surface(runtime_api))
     return failure(RuntimeFailure::invalid_runtime_api,
                    "runtime API must expose only "
-                   "invoke(QString,QString,QVariantMap)");
+                   "the exact trusted broker, permission, settings, and "
+                   "surface API");
   implementation_->engine.rootContext()->setContextProperty(
       QStringLiteral("runtime"), &runtime_api);
   implementation_->runtime_api_bound = true;

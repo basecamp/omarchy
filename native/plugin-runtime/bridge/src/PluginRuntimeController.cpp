@@ -132,7 +132,7 @@ void PluginRuntimeController::drainCompletions() noexcept {
     try {
       auto callback_state =
           std::make_shared<HookState>(slot->plugin, slot->epoch);
-      auto hook = std::make_unique<Hook>(callback_state);
+      auto hook = std::make_unique<Hook>(callback_state, manager_);
       auto root = channel::PluginRuntimeRoot::commit(
           std::move(result->prepared), *hook, manager_);
       if (!root) {

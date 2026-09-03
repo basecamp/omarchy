@@ -30,6 +30,7 @@ struct AuthenticatedSessionLaunch final {
   // The channel sends it exactly once during authenticated startup and does
   // not become ready until the worker acknowledges loading its QML with it.
   std::vector<std::byte> permission_snapshot;
+  std::vector<std::byte> settings_snapshot;
 };
 
 // Owns the broker and every object referenced by it (audit sink, trusted

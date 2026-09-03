@@ -50,6 +50,60 @@ void parser_contract(const std::filesystem::path &fixtures) {
   require(manifest.requests[0].canonical_scope == "{\"quotaBytes\":1048576}",
           "scope did not canonicalize");
 
+  const auto product_settings =
+      omarchy::plugins::manifest::parse_manifest_v2(
+          R"({"schemaVersion":2,"id":"robzolkos.github","name":"GitHub","version":"0.4.0","author":"Rob Zolkos","license":"MIT","homepage":"https://example.test/plugin","repository":"https://example.test/repository","keywords":["github","inbox"],"runtime":{"apiVersion":1,"qml":"Panel.qml"},"surfaces":{},"settings":{"defaults":{"enabled":false,"mode":"Owned","refreshIntervalSec":900},"schema":[{"key":"refreshIntervalSec","type":"integer","label":"Refresh interval","min":60,"max":3600,"step":60,"defaultValue":900},{"key":"mode","type":"enum","label":"Scope","options":["Owned","All"],"defaultValue":"Owned"},{"key":"enabled","type":"boolean","label":"Enabled","defaultValue":false}]},"permissions":{"required":[],"optional":[]}})");
+  require(product_settings.author == "Rob Zolkos" &&
+              product_settings.license == "MIT" &&
+              product_settings.homepage == "https://example.test/plugin" &&
+              product_settings.repository ==
+                  "https://example.test/repository" &&
+              product_settings.keywords ==
+                  std::vector<std::string>{"github", "inbox"},
+          "standard metadata was not retained");
+  require(product_settings.settings.schema.size() == 3 &&
+              product_settings.settings.canonical_defaults ==
+                  R"({"enabled":false,"mode":"Owned","refreshIntervalSec":900})" &&
+              omarchy::plugins::manifest::validate_settings_entry(
+                  product_settings, product_settings.settings.defaults),
+          "settings were not canonicalized and schema validated");
+  auto invalid_settings = product_settings.settings.defaults;
+  invalid_settings["refreshIntervalSec"] = std::int64_t{30};
+  require(!omarchy::plugins::manifest::validate_settings_entry(
+              product_settings, invalid_settings),
+          "out-of-range settings entry was accepted");
+  invalid_settings = product_settings.settings.defaults;
+  invalid_settings["mode"] = std::string("Other");
+  require(!omarchy::plugins::manifest::validate_settings_entry(
+              product_settings, invalid_settings),
+          "unknown enum settings value was accepted");
+  invalid_settings = product_settings.settings.defaults;
+  invalid_settings["enabled"] = std::string("false");
+  require(!omarchy::plugins::manifest::validate_settings_entry(
+              product_settings, invalid_settings),
+          "wrong-typed settings entry was accepted");
+  invalid_settings = product_settings.settings.defaults;
+  invalid_settings["unknown"] = true;
+  require(!omarchy::plugins::manifest::validate_settings_entry(
+              product_settings, invalid_settings),
+          "unknown settings entry key was accepted");
+  invalid_settings = product_settings.settings.defaults;
+  invalid_settings.erase("enabled");
+  require(!omarchy::plugins::manifest::validate_settings_entry(
+              product_settings, invalid_settings),
+          "missing settings entry key was accepted");
+
+  for (const auto malformed : {
+           R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"settings":{"defaults":{"value":2},"schema":[{"key":"value","type":"integer","label":"Value","min":1,"max":5,"step":2,"defaultValue":2}]},"permissions":{"required":[],"optional":[]}})",
+           R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"settings":{"defaults":{"mode":"Unknown"},"schema":[{"key":"mode","type":"enum","label":"Mode","options":["Known"],"defaultValue":"Unknown"}]},"permissions":{"required":[],"optional":[]}})",
+           R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"settings":{"defaults":{"enabled":false},"schema":[{"key":"enabled","type":"boolean","label":"Enabled","defaultValue":false,"typo":true}]},"permissions":{"required":[],"optional":[]}})"}) {
+    expect_rejected(
+        [malformed] {
+          (void)omarchy::plugins::manifest::parse_manifest_v2(malformed);
+        },
+        "malformed settings schema was accepted");
+  }
+
   const auto dynamic = omarchy::plugins::manifest::parse_manifest_v2(
       R"({"schemaVersion":2,"id":"a.b","name":"x","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[{"capability":"local.status","definitionGeneration":7,"definitionDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","operations":["status.read"],"resource":4,"reason":"status"}],"optional":[]}})");
   require(dynamic.requests.size() == 1 &&

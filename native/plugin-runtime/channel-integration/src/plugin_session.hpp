@@ -55,6 +55,9 @@ public:
   virtual void state_changed(session::SessionState state,
                              session::SessionError error) = 0;
   virtual void render_rejected(session::RouteResult result) = 0;
+  [[nodiscard]] virtual bool update_settings(
+      const permissions::ActivationBinding &,
+      std::string_view) { return false; }
 };
 
 // The shell-side consumer performs the final freshness check immediately
@@ -137,7 +140,8 @@ private:
   [[nodiscard]] static std::unique_ptr<PreparedPluginSession>
   prepare(launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
           AuthenticatedSessionRuntimeFactory &runtime_factory,
-          PluginSessionCreateError &error, session::SessionLimits limits);
+          PluginSessionCreateError &error, session::SessionLimits limits,
+          std::optional<std::string> settings = std::nullopt);
   [[nodiscard]] static std::unique_ptr<PluginSession>
   commit(std::unique_ptr<PreparedPluginSession> prepared,
          PluginSessionCreateError &error, PluginSessionEvents *events,
@@ -236,7 +240,8 @@ public:
                           session::ActivationSnapshot snapshot,
                           AuthenticatedSessionRuntimeFactory &runtime_factory,
                           PluginSessionCreateError &error,
-                          session::SessionLimits limits = {});
+                          session::SessionLimits limits = {},
+                          std::optional<std::string> settings = std::nullopt);
   [[nodiscard]] static std::unique_ptr<PreparedPluginSession>
   prepare_from_parts(
       session::SessionToken token, plugins::manifest::ManifestV2 manifest,

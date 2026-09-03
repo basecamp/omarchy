@@ -2,12 +2,15 @@
 
 #include "omarchy/plugin_runtime/broker/broker_schema.hpp"
 #include "permission_contract.hpp"
+#include "omarchy/plugin/wire/control.hpp"
 
 #include <QByteArray>
 #include <QJsonDocument>
 #include <QStringDecoder>
 
 #include <algorithm>
+#include <cmath>
+#include <type_traits>
 #include <fstream>
 #include <limits>
 #include <type_traits>
@@ -88,6 +91,73 @@ QString capability_state(
       }))
     return permission_state(operations.front());
   return QStringLiteral("partial");
+}
+
+QVariantMap to_variant_settings(
+    const std::map<std::string, omarchy::plugins::manifest::SettingValue,
+                   std::less<>> &entry,
+    std::string_view plugin_id) {
+  QVariantMap result;
+  result.insert(QStringLiteral("id"), QString::fromStdString(
+                                          std::string(plugin_id)));
+  for (const auto &[key, value] : entry) {
+    result.insert(
+        QString::fromStdString(key),
+        std::visit(
+            [](const auto &item) -> QVariant {
+              using Value = std::decay_t<decltype(item)>;
+              if constexpr (std::is_same_v<Value, std::string>)
+                return QString::fromStdString(item);
+              return QVariant::fromValue(item);
+            },
+            value));
+  }
+  return result;
+}
+
+std::optional<std::map<std::string,
+                       omarchy::plugins::manifest::SettingValue, std::less<>>>
+from_variant_settings(const omarchy::plugins::manifest::ManifestV2 &manifest,
+                      const QVariantMap &candidate) {
+  if (candidate.size() !=
+          static_cast<qsizetype>(manifest.settings.schema.size() + 1) ||
+      candidate.value(QStringLiteral("id")).toString().toStdString() !=
+          manifest.id)
+    return std::nullopt;
+  std::map<std::string, omarchy::plugins::manifest::SettingValue, std::less<>>
+      entry;
+  for (const auto &definition : manifest.settings.schema) {
+    const auto key = QString::fromStdString(definition.key);
+    const auto found = candidate.constFind(key);
+    if (found == candidate.cend())
+      return std::nullopt;
+    const QVariant &value = found.value();
+    switch (definition.type) {
+    case omarchy::plugins::manifest::SettingType::boolean:
+      if (value.metaType().id() != QMetaType::Bool)
+        return std::nullopt;
+      entry.emplace(definition.key, value.toBool());
+      break;
+    case omarchy::plugins::manifest::SettingType::integer: {
+      bool converted = false;
+      const double number = value.toDouble(&converted);
+      if (!converted || !std::isfinite(number) || std::trunc(number) != number ||
+          number < static_cast<double>(std::numeric_limits<std::int64_t>::min()) ||
+          number > static_cast<double>(std::numeric_limits<std::int64_t>::max()))
+        return std::nullopt;
+      entry.emplace(definition.key, static_cast<std::int64_t>(number));
+      break;
+    }
+    case omarchy::plugins::manifest::SettingType::enumeration:
+      if (value.metaType().id() != QMetaType::QString)
+        return std::nullopt;
+      entry.emplace(definition.key, value.toString().toStdString());
+      break;
+    }
+  }
+  return omarchy::plugins::manifest::validate_settings_entry(manifest, entry)
+             ? std::optional(std::move(entry))
+             : std::nullopt;
 }
 
 std::optional<EncodedInvoke> storage(permissions::OperationId operation,
@@ -317,12 +387,14 @@ void BrokerCall::reject(QString error) {
 QmlBrokerApi::QmlBrokerApi(
     WorkerEndpoint &endpoint, std::unique_ptr<InvokeEncoder> encoder,
     const omarchy::plugins::manifest::ManifestV2 &manifest,
-    std::uint64_t activation_generation, QObject *parent)
-    : QObject(parent), endpoint_(endpoint), encoder_(std::move(encoder)),
+    std::uint64_t activation_generation, QObject *parent,
+    WorkerEndpoint *control)
+    : QObject(parent), endpoint_(endpoint), control_(control),
+      encoder_(std::move(encoder)),
       manifest_request_fingerprint_(
           omarchy::plugins::manifest::requested_capability_fingerprint(
               manifest.requests)),
-      activation_generation_(activation_generation) {
+      activation_generation_(activation_generation), manifest_(manifest) {
   const auto ordered =
       omarchy::plugins::manifest::canonical_capability_requests(
           manifest.requests);
@@ -460,6 +532,60 @@ QVariantMap QmlBrokerApi::permissions() const {
     result.insert(item.capability, capability);
   }
   return result;
+}
+
+QVariantMap QmlBrokerApi::settings() const { return settings_; }
+
+bool QmlBrokerApi::applySettingsSnapshot(
+    std::uint64_t envelope_generation, std::span<const std::byte> payload) {
+  if (envelope_generation != activation_generation_ || !settings_.isEmpty())
+    return false;
+  const std::string bytes(reinterpret_cast<const char *>(payload.data()),
+                          payload.size());
+  const auto parsed =
+      omarchy::plugins::manifest::parse_settings_entry(manifest_, bytes);
+  if (!parsed)
+    return false;
+  settings_ = to_variant_settings(*parsed, manifest_.id);
+  return true;
+}
+
+bool QmlBrokerApi::updateSettings(const QVariantMap &candidate) {
+  if (!control_ || settings_.isEmpty() || settings_correlation_ != 0 ||
+      status_ != QStringLiteral("ready"))
+    return false;
+  const auto parsed = from_variant_settings(manifest_, candidate);
+  if (!parsed)
+    return false;
+  const auto canonical =
+      omarchy::plugins::manifest::canonical_settings_entry(*parsed);
+  const auto bytes = std::as_bytes(std::span(canonical));
+  const auto correlation = next_settings_correlation_++;
+  if (correlation == 0 ||
+      !control_->send(wire::kSettingsUpdateMessage, bytes, correlation))
+    return false;
+  pending_settings_ = candidate;
+  settings_correlation_ = correlation;
+  return true;
+}
+
+bool QmlBrokerApi::receiveSettingsResult(ReceivedPacket packet) {
+  if (!packet || packet.header.endpoint_role != wire::EndpointRole::control ||
+      packet.header.message_type != wire::kSettingsUpdateResultMessage ||
+      packet.header.launch_generation != activation_generation_ ||
+      packet.header.correlation_id != settings_correlation_ ||
+      packet.payload.size() != 1 || !packet.descriptors.empty())
+    return false;
+  const bool accepted = packet.payload.front() == std::byte{1};
+  if (!accepted && packet.payload.front() != std::byte{0})
+    return false;
+  if (accepted) {
+    settings_ = std::move(pending_settings_);
+    emit settingsChanged();
+  }
+  pending_settings_.clear();
+  settings_correlation_ = 0;
+  return true;
 }
 
 qulonglong QmlBrokerApi::permissionGeneration() const {
@@ -713,6 +839,8 @@ bool QmlBrokerApi::markBrokerReady() {
 void QmlBrokerApi::disconnect(QString reason) {
   trusted_gesture_.reset();
   deferred_gesture_.reset();
+  pending_settings_.clear();
+  settings_correlation_ = 0;
   if (status_ != QStringLiteral("ready")) return;
   status_ = std::move(reason);
   if (broker_ready_) {

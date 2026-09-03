@@ -91,12 +91,16 @@ private:
   };
 
   struct Hook final : channel::PluginRuntimeHooks {
-    explicit Hook(std::shared_ptr<HookState> state);
+    Hook(std::shared_ptr<HookState> state, PluginManager &manager);
     void state_changed(host_session::SessionState state,
                        host_session::SessionError error) override;
     void render_rejected(host_session::RouteResult) override;
     bool accept(host_session::AdmittedSurfaceIntent intent) override;
+    bool update_settings(
+        const plugins::permissions::ActivationBinding &binding,
+        std::string_view canonical_entry) override;
     std::shared_ptr<HookState> state;
+    PluginManager &manager;
   };
 
   struct ScanResult final {
@@ -106,6 +110,7 @@ private:
     std::string plugin;
     std::uint64_t epoch = 0;
     std::shared_ptr<channel::PluginPermissionAuthority> permissions;
+    std::optional<std::string> settings;
     std::unique_ptr<channel::PreparedPluginRuntime> prepared;
     bool permission_disabled = false;
   };
