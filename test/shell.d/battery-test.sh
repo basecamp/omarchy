@@ -28,4 +28,19 @@ assertDeepEqual(
   { level: 40, notify: false, notifiedLowBattery: false },
   'battery clears notified state after recovery'
 )
+assertDeepEqual(
+  battery.shouldWarnLowBattery({ isPresent: true, percentage: 0.1, state: discharging }, false, discharging, 10, true),
+  { level: 10, notify: false, notifiedLowBattery: true },
+  'battery holds the latch through a non-discharging blip at a still-low level'
+)
+assertDeepEqual(
+  battery.shouldWarnLowBattery({ isPresent: true, percentage: 0.15, state: discharging }, true, discharging, 10, true),
+  { level: 15, notify: false, notifiedLowBattery: true },
+  'battery holds the latch above the threshold until it recovers past the re-arm level'
+)
+assertDeepEqual(
+  battery.shouldWarnLowBattery({ isPresent: true, percentage: 0.2, state: discharging }, true, discharging, 10, true),
+  { level: 20, notify: false, notifiedLowBattery: false },
+  'battery clears the latch once it recovers to the re-arm level'
+)
 JS
