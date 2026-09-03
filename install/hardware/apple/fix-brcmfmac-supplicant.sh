@@ -18,11 +18,22 @@
 # machines including the T2-less iMac19,1 and iMac19,2, and BCM4377/4378/4387
 # from the T2 era on. The BCM4360 in 2013-2015 Macs is deliberately absent: it
 # runs the out-of-tree wl driver, which never reads a brcmfmac option.
+#
+# Intel Macs only, hence the architecture gate. Two of the IDs below are Apple
+# Silicon parts as well, BCM4378 (4425) and BCM4387 (4433), and there the
+# offload is the half that works: disable FWSUP and FWAUTH on a BCM4387 and it
+# never gets past authentication, then the firmware wedges in
+# brcmf_msgbuf_query_dcmd timeouts (#7439).
+#
+# Testing the architecture rather than pruning those two IDs keeps this list
+# brcmfmac's own, so the next ID copied out of brcm_hw_ids.h cannot bring the
+# breakage back.
 sys_vendor="$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true)"
 
-if lspci -nn | grep "106b:180[12]" >/dev/null ||
-  { [[ $sys_vendor == Apple* ]] &&
-    lspci -nn | grep -E "14e4:(43ba|43bb|43bc|43a3|43dc|4464|4488|4425|4433)" >/dev/null; }; then
+if [[ $(uname -m) == "x86_64" ]] &&
+  { lspci -nn | grep "106b:180[12]" >/dev/null ||
+    { [[ $sys_vendor == Apple* ]] &&
+      lspci -nn | grep -E "14e4:(43ba|43bb|43bc|43a3|43dc|4464|4488|4425|4433)" >/dev/null; }; }; then
   echo "Detected a Mac with Broadcom Wi-Fi; running the WPA handshake in software"
 
   mkdir -p /etc/modprobe.d
