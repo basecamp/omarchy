@@ -1,3 +1,4 @@
+run_logged "$OMARCHY_INSTALL/hardware/acer-turbo-key.sh"
 run_logged "$OMARCHY_INSTALL/hardware/asus-rog.sh"
 run_logged "$OMARCHY_INSTALL/hardware/framework16.sh"
 run_logged "$OMARCHY_INSTALL/hardware/dell-xps-touchpad-haptics.sh"
