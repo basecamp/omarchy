@@ -18,10 +18,10 @@ case "${1:-}" in
     ;;
 esac
 
-battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
-[[ -z $battery ]] && exit 0
-
-battery_info=$(upower -i "$battery")
+battery=/org/freedesktop/UPower/devices/DisplayDevice
+battery_info=$(upower -i "$battery" 2>/dev/null)
+[[ -z $battery_info ]] && exit 0
+grep -q 'present:\s*yes' <<<"$battery_info" || exit 0
 
 percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
 capacity=$(awk '/energy-full:/ { printf "%d", $2; exit }' <<<"$battery_info")
