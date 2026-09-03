@@ -39,7 +39,7 @@ STUB
 chmod +x "$fake_bin"/*
 
 hybrid_gpu() {
-  PATH="$fake_bin:$PATH" timeout --kill-after=1s 10s bash "$ROOT/bin/omarchy-hw-hybrid-gpu"
+  PATH="$fake_bin:$ROOT/bin:$PATH" timeout --kill-after=1s 10s bash "$ROOT/bin/omarchy-hw-hybrid-gpu"
 }
 
 hybrid_gpu ||
