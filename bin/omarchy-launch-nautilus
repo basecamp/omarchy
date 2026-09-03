@@ -1,5 +1,6 @@
 #!/bin/bash
 
 # omarchy:summary=Launch Files
+# omarchy:launches=nautilus
 
 exec setsid uwsm-app -- nautilus --new-window

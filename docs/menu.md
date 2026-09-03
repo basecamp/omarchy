@@ -60,6 +60,81 @@ The sample extension at `config/omarchy/extensions/omarchy-menu.jsonc`
 (refreshed into `~/.config/`) documents the format in its header and ships
 only comments, so the default state adds nothing.
 
+## Shortcuts
+
+A row that a keybinding also reaches shows that key beside its label — Style >
+Theme reads `⌘⇧⌃ SPACE` — so the menu teaches the shortcut for the thing you
+just came to it for. Nothing declares this: no menu entry names a key and no
+binding names a row.
+
+The pairing comes from `o.bind` in `default/hypr/helpers.lua`, the single funnel
+every Omarchy binding passes through and the only place a key combination and
+the command it runs are both in hand. `hyprctl binds` is not that place:
+Hyprland reports Lua binds as dispatcher `__lua` and keeps the command to
+itself. So `o.bind` records each `<keys>\t<command>` pair as the config loads and
+writes `~/.local/state/omarchy/keybindings.tsv` once it has, on `hyprland.start`
+and `config.reloaded` alike. The shell watches that file the way it watches the
+JSONC, so a reloaded binding relabels the rows without a shell restart, and a
+machine whose config predates the file loses the shortcuts and nothing else.
+
+`resolveShortcuts` in `MenuModel.js` matches a binding to a row three ways, once
+per (re)load rather than per row:
+
+- the binding runs the row's `action` verbatim — `omarchy-system-lock` labels
+  System > Lock, `PRINT` labels Trigger > Capture > Screenshot
+- the binding opens the row by route — `omarchy-menu toggle theme` goes through
+  the same alias resolution `omarchy menu summon` uses, so it finds `style.theme`
+- the binding and an app row launch the same application, which is what puts a
+  key on Chromium and ChatGPT in the Apps list
+
+An action match wins, since it names one row while a route names whatever
+currently answers to that name. Two keys for one command keep the first, so a
+user file adding a second reads as an alternative rather than a replacement.
+Bindings on a raw `code:34` are dropped: the keycode names nothing a reader
+could press, and resolving one costs a keymap compile the open path will not pay.
+
+## Matching an app row
+
+An app row launches through its desktop entry, a binding through whatever
+`o.bind` was handed, and `launchKeys` reduces both to the same key. Session
+wrappers (`uwsm-app --`, `setsid -f`) come off, a program is compared by name
+rather than by path, and a trailing slash on a URL is ignored, since a desktop
+entry and a binding disagree about one often enough that it cannot be what
+separates them. That is the whole of it for a web app, whose two halves already
+run the same `omarchy-launch-webapp <url>`.
+
+Omarchy's own launchers are the rest of the distance, and they say what they
+open rather than being guessed at. A launcher name is not evidence:
+`omarchy-launch-signal` runs `signal-desktop`, and `omarchy-launch-browser` runs
+whichever browser is currently the default. So the launcher declares it, beside
+the `omarchy:summary=` metadata it already carries:
+
+```bash
+# omarchy:launches=signal-desktop      # a fixed app
+# omarchy:launches=default:browser     # ask omarchy-default-browser --command
+```
+
+`default:X` defers to `omarchy-default-X --command`, which is the only place
+that knows the browser you picked as `chrome` runs `google-chrome-stable`, or
+that `zed` runs `zeditor`. Those scripts keep one table for both questions —
+what is selected, and what that selection runs — so the two cannot drift.
+
+The shell collects the declarations in one bash pass when the bindings file
+loads, which is to say once per Hyprland config reload, never on the open path.
+A launcher that declares nothing matches nothing.
+
+The `-or-focus` wrappers take a window pattern first and delegate the rest, so
+they unwrap to what they delegate to, and resolution is depth-bounded so a
+launcher declaring itself cannot loop.
+
+A binding that runs a bare program claims the app that *is* that program,
+whatever arguments the desktop entry adds — Spotify keeps its key off
+`spotify --uri=%u`. A binding carrying arguments of its own has to match in
+full, so `omarchy-launch-browser --private` never claims the browser the plain
+binding does. Where several apps run one program — every Chrome web app runs the
+browser with arguments after it — the entry that runs it plainly owns the name,
+and a name several entries claim alike belongs to none of them.
+
 ## Guards
 
 `when`, `checked`, and `disabled` are bash conditions. The shell never

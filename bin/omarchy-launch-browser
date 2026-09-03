@@ -2,6 +2,7 @@
 
 # omarchy:summary=Launch the default browser as determined by xdg-settings.
 # omarchy:args=[url]
+# omarchy:launches=default:browser
 
 default_browser=$(env -u BROWSER xdg-settings get default-web-browser)
 if [[ -z $default_browser ]]; then

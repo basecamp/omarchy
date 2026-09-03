@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Launch Signal or start its installer when missing.
+# omarchy:launches=signal-desktop
 
 set -e
 

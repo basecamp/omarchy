@@ -10,7 +10,23 @@ if [[ ${1:-} == "--install" ]]; then
   shift
 fi
 
-if (($# == 0)); then
+# The selection is a short name; the command behind it is what actually runs, and
+# only this table knows the difference (chrome is google-chrome-stable). Both are
+# asked for, so keep one table and let the query reach it.
+browser_spec() {
+  case "$1" in
+  chromium) browser="chromium"; command="chromium"; desktop_id="chromium.desktop"; name="Chromium"; glyph= ;;
+  chrome) browser="chrome"; command="google-chrome-stable"; desktop_id="google-chrome.desktop"; name="Chrome"; glyph=󰊯 ;;
+  brave) browser="brave"; command="brave"; desktop_id="brave-browser.desktop"; name="Brave"; glyph=󰖟 ;;
+  brave-origin) browser="brave-origin"; command="brave-origin"; desktop_id="brave-origin.desktop"; name="Brave Origin"; glyph=󰖟 ;;
+  edge) browser="edge"; command="microsoft-edge-stable"; desktop_id="microsoft-edge.desktop"; name="Edge"; glyph=󰇩 ;;
+  firefox) browser="firefox"; command="firefox"; desktop_id="firefox.desktop"; name="Firefox"; glyph=󰈹 ;;
+  zen) browser="zen"; command="zen-browser"; desktop_id="zen.desktop"; name="Zen"; glyph=󰖟 ;;
+  *) return 1 ;;
+  esac
+}
+
+current_browser() {
   case "$(env -u BROWSER xdg-settings get default-web-browser)" in
   chromium.desktop) echo "chromium" ;;
   google-chrome.desktop) echo "chrome" ;;
@@ -21,22 +37,23 @@ if (($# == 0)); then
   zen.desktop) echo "zen" ;;
   *) env -u BROWSER xdg-settings get default-web-browser ;;
   esac
+}
+
+if (($# == 0)); then
+  current_browser
   exit 0
 fi
 
-case "$1" in
-chromium) browser="chromium"; command="chromium"; desktop_id="chromium.desktop"; name="Chromium"; glyph= ;;
-chrome) browser="chrome"; command="google-chrome-stable"; desktop_id="google-chrome.desktop"; name="Chrome"; glyph=󰊯 ;;
-brave) browser="brave"; command="brave"; desktop_id="brave-browser.desktop"; name="Brave"; glyph=󰖟 ;;
-brave-origin) browser="brave-origin"; command="brave-origin"; desktop_id="brave-origin.desktop"; name="Brave Origin"; glyph=󰖟 ;;
-edge) browser="edge"; command="microsoft-edge-stable"; desktop_id="microsoft-edge.desktop"; name="Edge"; glyph=󰇩 ;;
-firefox) browser="firefox"; command="firefox"; desktop_id="firefox.desktop"; name="Firefox"; glyph=󰈹 ;;
-zen) browser="zen"; command="zen-browser"; desktop_id="zen.desktop"; name="Zen"; glyph=󰖟 ;;
-*)
+# What the menu needs to label the Browser keybinding with the app it opens.
+if [[ $1 == "--command" ]]; then
+  browser_spec "$(current_browser)" && echo "$command"
+  exit 0
+fi
+
+if ! browser_spec "$1"; then
   echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
   exit 1
-  ;;
-esac
+fi
 
 if omarchy-cmd-missing "$command"; then
   if [[ $installing == "false" ]]; then

@@ -10,6 +10,29 @@ if [[ ${1:-} == "--install" ]]; then
   shift
 fi
 
+# The selection is a short name; the command behind it is what actually runs, and
+# only this table knows the difference (zed is zeditor). Both are asked for, so
+# keep one table and let the query reach it.
+editor_spec() {
+  case "$1" in
+  code) selection="code"; editor="code"; name="VSCode"; glyph= ;;
+  cursor) selection="cursor"; editor="cursor"; name="Cursor"; glyph= ;;
+  zed | zeditor) selection="zed"; editor="zeditor"; name="Zed"; glyph= ;;
+  sublime_text) selection="sublime_text"; editor="sublime_text"; name="Sublime Text"; glyph= ;;
+  helix) selection="helix"; editor="helix"; name="Helix"; glyph= ;;
+  vim) selection="vim"; editor="vim"; name="Vim"; glyph= ;;
+  emacs) selection="emacs"; editor="emacs"; name="Emacs"; glyph= ;;
+  nvim) selection="nvim"; editor="nvim"; name="Neovim"; glyph= ;;
+  *) return 1 ;;
+  esac
+}
+
+# What the menu needs to label the Editor keybinding with the app it opens.
+if [[ ${1:-} == "--command" ]]; then
+  editor_spec "$(omarchy-default-editor)" && echo "$editor"
+  exit 0
+fi
+
 editor_file="$HOME/.local/state/omarchy/defaults/editor"
 
 if (($# == 0)); then
@@ -21,20 +44,10 @@ if (($# == 0)); then
   exit 0
 fi
 
-case "$1" in
-code) selection="code"; editor="code"; name="VSCode"; glyph= ;;
-cursor) selection="cursor"; editor="cursor"; name="Cursor"; glyph= ;;
-zed | zeditor) selection="zed"; editor="zeditor"; name="Zed"; glyph= ;;
-sublime_text) selection="sublime_text"; editor="sublime_text"; name="Sublime Text"; glyph= ;;
-helix) selection="helix"; editor="helix"; name="Helix"; glyph= ;;
-vim) selection="vim"; editor="vim"; name="Vim"; glyph= ;;
-emacs) selection="emacs"; editor="emacs"; name="Emacs"; glyph= ;;
-nvim) selection="nvim"; editor="nvim"; name="Neovim"; glyph= ;;
-*)
+if ! editor_spec "$1"; then
   echo "Usage: omarchy-default-editor <code|cursor|zed|sublime_text|helix|vim|emacs|nvim>"
   exit 1
-  ;;
-esac
+fi
 
 if omarchy-cmd-missing "$editor"; then
   if [[ $installing == "false" ]]; then

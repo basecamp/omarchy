@@ -89,6 +89,44 @@ function o.preinstalled_bindings_enabled()
   return not file_exists((os.getenv("HOME") or "") .. "/.local/state/omarchy/preinstalls-removed")
 end
 
+-- o.bind is the only place that sees a key combination and the command it runs
+-- together: Hyprland reports Lua binds as dispatcher `__lua`, so `hyprctl binds`
+-- carries the keys and drops the command. Record the pairs while the config
+-- loads and hand them to the shell, which labels menu rows with the shortcut
+-- that reaches them (see docs/menu.md).
+local keybindings_dir = (os.getenv("HOME") or "") .. "/.local/state/omarchy"
+local keybindings_path = keybindings_dir .. "/keybindings.tsv"
+local keybindings = {}
+
+local function open_keybindings_file()
+  local file = io.open(keybindings_path .. ".new", "w")
+  if file then
+    return file
+  end
+
+  -- Only reached before the state directory exists, so the fork is a one-off
+  -- rather than part of every config load.
+  os.execute("mkdir -p " .. shell_quote(keybindings_dir))
+  return io.open(keybindings_path .. ".new", "w")
+end
+
+local function write_keybindings()
+  local file = open_keybindings_file()
+  if not file then
+    return
+  end
+
+  file:write(table.concat(keybindings, "\n"), "\n")
+  file:close()
+  -- Renamed into place so a shell reading the file never sees half a snapshot.
+  os.rename(keybindings_path .. ".new", keybindings_path)
+end
+
+-- Both events fire once per config load, and Hyprland drops the handlers a
+-- reload registers again, so this stays one write per load however it started.
+hl.on("hyprland.start", write_keybindings)
+hl.on("config.reloaded", write_keybindings)
+
 function o.bind(keys, description, dispatcher, options)
   local opts = options or {}
 
@@ -99,6 +137,7 @@ function o.bind(keys, description, dispatcher, options)
   dispatcher = command_from(dispatcher, description)
 
   if type(dispatcher) == "string" then
+    keybindings[#keybindings + 1] = keys .. "\t" .. dispatcher
     dispatcher = hl.dsp.exec_cmd(dispatcher)
   end
 

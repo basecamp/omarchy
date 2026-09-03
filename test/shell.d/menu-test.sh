@@ -89,7 +89,7 @@ assert(menu.isDisabled({ 'install.browser.zen': true }, installed), 'menu disabl
 assert(!menu.isDisabled({ 'install.browser.zen': false }, installed), 'menu leaves a row selectable when its disabled: failed')
 assert(!menu.isDisabled({ 'install.browser.zen': true }, visibilityItems.laptop), 'menu never disables a row that declares no disabled:')
 assert(
-  menu.displayRow({ 'install.browser.zen': installed }, ['install.browser.zen'], {}, { 'install.browser.zen': true }, installed, '', 0).disabled,
+  menu.displayRow({ 'install.browser.zen': installed }, ['install.browser.zen'], {}, { 'install.browser.zen': true }, {}, installed, '', 0).disabled,
   'menu display rows carry their disabled state'
 )
 assert(
@@ -105,10 +105,11 @@ assert(!menu.matchesQuery(entry, 'theme', false), 'menu hides invisible matches'
 assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
 
 assertDeepEqual(
-  menu.displayRow(merged.items, merged.itemOrder, {}, {}, entry, 'Style', 12, 'search'),
+  menu.displayRow(merged.items, merged.itemOrder, {}, {}, { 'style.theme': '⌘⇧⌃ SPACE' }, entry, 'Style', 12, 'search'),
   {
     itemId: 'style.theme',
     disabled: false,
+    shortcut: '⌘⇧⌃ SPACE',
     kind: 'action',
     icon: '',
     iconFont: '',
@@ -126,6 +127,123 @@ assertDeepEqual(
   },
   'menu builds display rows'
 )
+
+// Shortcuts come from the file `o.bind` writes as Hyprland loads its config,
+// because Hyprland reports Lua binds as dispatcher __lua and drops the command.
+const keybindings = menu.parseKeybindings([
+  'SUPER + SHIFT + CTRL + SPACE\tomarchy-menu toggle theme',
+  'SUPER + ESCAPE\tomarchy-menu toggle system',
+  'SUPER + CTRL + L\tomarchy-system-lock',
+  'SUPER + ALT + code:34\tomarchy-capture-webcam-resize smaller',
+  'SUPER + CTRL + ALT + T\tomarchy-notification-time',
+  'SUPER + SHIFT + ALT + T\tomarchy-notification-time'
+].join('\n'))
+
+assertEqual(keybindings.byRoute['theme'], '⌘⇧⌃ SPACE', 'menu reads the route a binding opens')
+assertEqual(keybindings.byCommand['omarchy-system-lock'], '⌘⌃ L', 'menu reads the command a binding runs')
+assertEqual(keybindings.byCommand['omarchy-notification-time'], '⌘⌃⌥ T', 'menu keeps the first of two keys for one command')
+assert(
+  !keybindings.byCommand['omarchy-capture-webcam-resize smaller'],
+  'menu drops a binding on a raw keycode, which names nothing a reader could press'
+)
+
+// An app row launches through its desktop entry, a binding through whatever
+// o.bind was handed; both reduce to the same key. What a launcher opens is
+// declared by the launcher (`# omarchy:launches=`) and collected into targets,
+// never inferred from its name.
+const targets = {
+  'omarchy-launch-browser': 'chromium',
+  'omarchy-launch-signal': 'signal-desktop',
+  'omarchy-launch-spotify': 'spotify'
+}
+const launchKey = command => menu.launchKeys(command, targets).command
+
+assertEqual(launchKey('omarchy-launch-browser'), 'chromium', 'menu resolves a launcher to the app it declares')
+assertEqual(
+  launchKey('omarchy-launch-signal'),
+  'signal-desktop',
+  'menu takes the declared app over the launcher name, which does not match it'
+)
+assertEqual(
+  launchKey('omarchy-launch-obscure'),
+  'omarchy-launch-obscure',
+  'menu never guesses an app out of an undeclared launcher name'
+)
+assertEqual(launchKey('uwsm-app -- omawrite'), 'omawrite', 'menu looks past the session wrapper')
+// o.shell_quote writes an apostrophe as '\'' -- three fragments that are one word.
+assertEqual(
+  launchKey("omarchy-launch-webapp 'https://x.test/o'\\''h'"),
+  launchKey(['omarchy-launch-webapp', "https://x.test/o'h"]),
+  'menu splits a command into words the way a shell does, escapes included'
+)
+assertEqual(launchKey('setsid -f chromium'), 'chromium', 'menu looks past the wrapper flags too')
+assertEqual(launchKey('/usr/bin/chromium'), 'chromium', 'menu compares programs by name, not by path')
+assertEqual(
+  launchKey("omarchy-launch-or-focus '^obsidian$' 'uwsm-app -- obsidian'"),
+  'obsidian',
+  'menu unwraps a launcher that delegates past its window pattern'
+)
+assertEqual(
+  launchKey("omarchy-launch-or-focus-webapp 'Google Maps' 'https://maps.google.com/'"),
+  launchKey('omarchy-launch-webapp https://maps.google.com'),
+  'menu reads the focusing webapp launcher as the webapp launcher it delegates to'
+)
+assertEqual(
+  launchKey("omarchy-launch-webapp 'https://chatgpt.com'"),
+  launchKey(['omarchy-launch-webapp', 'https://chatgpt.com/']),
+  'menu does not let a trailing slash separate a binding from its desktop entry'
+)
+assert(!menu.launchKeys('omarchy-launch-browser --private', targets).bare, 'menu keeps a binding carrying its own arguments off the program match')
+assertEqual(
+  menu.launchKeys('omarchy-launch-loop', { 'omarchy-launch-loop': 'omarchy-launch-loop' }).command,
+  '',
+  'menu gives up on a launcher declaring itself rather than recursing forever'
+)
+
+// A command may contain a tab; only the first one separates it from the keys.
+const tabbed = menu.parseKeybindings("SUPER + T\tomarchy-launch-webapp 'https://x.test/a\tb'")
+assertEqual(
+  tabbed.byCommand["omarchy-launch-webapp 'https://x.test/a\tb'"],
+  '⌘ T',
+  'menu keeps a command that contains a tab intact'
+)
+
+const appBindings = menu.parseKeybindings([
+  'SUPER + SHIFT + B\tomarchy-launch-browser',
+  'SUPER + SHIFT + ALT + B\tomarchy-launch-browser --private',
+  'SUPER + SHIFT + A\tomarchy-launch-webapp \'https://chatgpt.com\'',
+  'SUPER + SHIFT + M\tomarchy-launch-spotify',
+  'SUPER + SHIFT + G\tomarchy-launch-signal'
+].join('\n'))
+const appItems = {
+  'apps.chromium': { id: 'apps.chromium', parent: 'apps', kind: 'app', label: 'Chromium', action: '', exec: ['/usr/bin/chromium'] },
+  'apps.ChatGPT': { id: 'apps.ChatGPT', parent: 'apps', kind: 'app', label: 'ChatGPT', action: '', exec: ['omarchy-launch-webapp', 'https://chatgpt.com/'] },
+  'apps.spotify': { id: 'apps.spotify', parent: 'apps', kind: 'app', label: 'Spotify', action: '', exec: ['spotify', '--uri='] },
+  'apps.signal-desktop': { id: 'apps.signal-desktop', parent: 'apps', kind: 'app', label: 'Signal', action: '', exec: ['/usr/bin/signal-desktop'] },
+  'apps.firefox': { id: 'apps.firefox', parent: 'apps', kind: 'app', label: 'Firefox', action: '', exec: ['/usr/bin/firefox'] }
+}
+const appShortcuts = menu.resolveShortcuts(appItems, Object.keys(appItems), appBindings, targets)
+assertEqual(appShortcuts['apps.chromium'], '⌘⇧ B', 'menu labels the app the default browser currently resolves to')
+assertEqual(appShortcuts['apps.ChatGPT'], '⌘⇧ A', 'menu labels a web app by the launcher its desktop entry runs')
+assertEqual(appShortcuts['apps.spotify'], '⌘⇧ M', 'menu labels an app whose desktop entry adds arguments of its own')
+assertEqual(appShortcuts['apps.signal-desktop'], '⌘⇧ G', 'menu labels an app whose launcher name differs from its executable')
+assert(!appShortcuts['apps.firefox'], 'menu leaves an app alone when no binding reaches it')
+
+// Every Chrome web app runs the browser with arguments after it, and none of
+// them is the browser.
+const pwaItems = {}
+for (const id in appItems) pwaItems[id] = appItems[id]
+pwaItems['apps.chrome-hey'] = { id: 'apps.chrome-hey', parent: 'apps', kind: 'app', label: 'HEY', action: '', exec: ['/usr/bin/chromium', '--app-id=ipcjik'] }
+const pwaShortcuts = menu.resolveShortcuts(pwaItems, Object.keys(pwaItems), appBindings, targets)
+assertEqual(pwaShortcuts['apps.chromium'], '⌘⇧ B', 'menu keeps the browser key on the entry that runs the browser plainly')
+assert(!pwaShortcuts['apps.chrome-hey'], 'menu does not hand the browser key to a web app that runs the browser with arguments')
+
+const shortcutBase = menu.mergeMenuSources(menu.parseMenuJsonc(defaultMenuJsonc), [])
+const shortcuts = menu.resolveShortcuts(shortcutBase.items, shortcutBase.itemOrder, keybindings)
+assertEqual(shortcuts['style.theme'], '⌘⇧⌃ SPACE', 'menu resolves a route through the alias it was bound to')
+assertEqual(shortcuts['system'], '⌘ ESCAPE', 'menu resolves a route naming an id outright')
+assertEqual(shortcuts['system.lock'], '⌘⌃ L', 'menu labels a row whose own action is bound')
+assertDeepEqual(menu.resolveShortcuts(shortcutBase.items, shortcutBase.itemOrder, null), {}, 'menu carries no shortcuts before the bindings file is read')
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))

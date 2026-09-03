@@ -2,6 +2,7 @@
 
 # omarchy:summary=Launch the default editor selected via Omarchy defaults.
 # omarchy:args=[--inline] <path>
+# omarchy:launches=default:editor
 
 default_editor="$HOME/.local/state/omarchy/defaults/editor"
 

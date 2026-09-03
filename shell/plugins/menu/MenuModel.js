@@ -190,6 +190,237 @@ function resolveRoute(items, itemOrder, input) {
   return raw
 }
 
+// ------------------------------------------------------------- shortcuts
+//
+// `o.bind` writes ~/.local/state/omarchy/keybindings.tsv as it registers each
+// binding, one `<keys>\t<command>` line per bind, because Hyprland reports Lua
+// binds as dispatcher `__lua` and keeps the command to itself. A row earns its
+// shortcut two ways: the binding runs the row's own `action`, or it opens the
+// row by route — the `omarchy menu toggle theme` that Style > Theme answers to.
+var MENU_ROUTE_PATTERN = /^omarchy(?:-menu|\s+menu)\s+(?:toggle|summon)\s+(\S+)$/
+
+// A `code:34` key names an XKB keycode, not anything a reader could press, and
+// resolving one costs a keymap compile the open path will not pay.
+function keysArePressable(keys) {
+  return keys.indexOf("code:") < 0 && keys.indexOf("mouse:") < 0
+}
+
+function menuRouteFor(command) {
+  var match = MENU_ROUTE_PATTERN.exec(command)
+  return match ? match[1] : ""
+}
+
+// Keys as authored ("SUPER + SHIFT + CTRL + SPACE") are four times as wide as
+// the label they sit beside. Modifiers become their symbols, which the menu has
+// room for; the key itself stays spelled out so the row still reads as a key to
+// press. Media keys drop the XF86 vendor prefix nobody has printed on a keycap.
+var MODIFIER_SYMBOLS = ({
+  SUPER: "⌘",
+  SHIFT: "⇧",
+  CTRL: "⌃",
+  CONTROL: "⌃",
+  ALT: "⌥"
+})
+
+function shortcutLabel(keys) {
+  var parts = String(keys || "").split("+")
+  var modifiers = ""
+  var key = ""
+
+  for (var i = 0; i < parts.length; i++) {
+    var part = parts[i].trim().toUpperCase()
+    if (!part) continue
+    if (MODIFIER_SYMBOLS[part]) modifiers += MODIFIER_SYMBOLS[part]
+    else key = part.indexOf("XF86") === 0 ? part.slice(4) : part
+  }
+
+  return modifiers && key ? modifiers + " " + key : modifiers + key
+}
+
+function parseKeybindings(raw) {
+  var byCommand = ({})
+  var byRoute = ({})
+  var lines = String(raw || "").split("\n")
+
+  for (var i = 0; i < lines.length; i++) {
+    var tab = lines[i].indexOf("\t")
+    if (tab < 0) continue
+    // Split on the first tab only: a command may well contain one of its own.
+    var keys = lines[i].substring(0, tab).trim()
+    var command = lines[i].substring(tab + 1).trim()
+    if (!keys || !command || !keysArePressable(keys)) continue
+
+    var label = shortcutLabel(keys)
+    // First binding wins, so a user file that adds a second key for a command
+    // reads as an alternative rather than a replacement.
+    if (!byCommand[command]) byCommand[command] = label
+    var route = menuRouteFor(command)
+    if (route && !byRoute[route]) byRoute[route] = label
+  }
+
+  return { byCommand: byCommand, byRoute: byRoute }
+}
+
+// An app row and a binding reach the same application by different routes: the
+// row runs the desktop entry's Exec, the binding runs whatever `o.bind` was
+// handed. Both reduce to the same key.
+//
+// Omarchy's launchers are the rest of the distance, and they say what they open
+// rather than being guessed at: `# omarchy:launches=` in the launcher itself,
+// collected into `targets` (see Menu.qml). A launcher that declares nothing
+// matches nothing, because a name is not evidence — `omarchy-launch-signal`
+// runs signal-desktop, and `omarchy-launch-browser` runs whichever browser is
+// currently the default. The `-or-focus` wrappers take a window pattern first
+// and delegate the rest, so they unwrap to what they delegate to.
+var SESSION_WRAPPERS = ["setsid", "uwsm-app", "systemd-cat"]
+var LAUNCHER_PREFIX = "omarchy-launch-"
+
+// Words the way a shell splits them, because a pattern matching quoted runs on
+// their own gets `'o'\''h'` — what shell_quote writes for an apostrophe — wrong:
+// the fragments around the escape belong to one word, not three.
+function commandTokens(command) {
+  if (Array.isArray(command)) return command.slice()
+
+  var text = String(command || "")
+  var tokens = []
+  var word = ""
+  var open = false
+  var quote = ""
+
+  for (var i = 0; i < text.length; i++) {
+    var character = text.charAt(i)
+
+    if (quote) {
+      if (character === quote) quote = ""
+      else if (character === "\\" && quote === "\"") { word += text.charAt(i + 1); i += 1 }
+      else word += character
+      continue
+    }
+
+    if (character === "'" || character === "\"") { quote = character; open = true; continue }
+    if (character === "\\") { word += text.charAt(i + 1); i += 1; open = true; continue }
+    if (character === " " || character === "\t") {
+      if (word || open) tokens.push(word)
+      word = ""
+      open = false
+      continue
+    }
+
+    word += character
+    open = true
+  }
+
+  if (word || open) tokens.push(word)
+
+  return tokens
+}
+
+// Two keys come back: the whole command, and the program on its own. Only a
+// binding that runs a bare program is allowed to match on the program — it then
+// claims the app that is that program whatever arguments the desktop entry adds
+// (`spotify --uri=%u`). A binding carrying arguments of its own has to match in
+// full, so `omarchy-launch-browser --private` never claims the browser that the
+// plain binding does.
+function launchKeys(command, targets, depth) {
+  var tokens = commandTokens(command)
+  var stripped = false
+
+  if (tokens[0] === "uwsm" && tokens[1] === "app") { tokens = tokens.slice(2); stripped = true }
+  while (tokens.length && (tokens[0] === "--" || SESSION_WRAPPERS.indexOf(tokens[0]) >= 0)) {
+    tokens = tokens.slice(1)
+    stripped = true
+  }
+  // `setsid -f chromium` runs chromium, not -f.
+  while (stripped && tokens.length && tokens[0].charAt(0) === "-") tokens = tokens.slice(1)
+  if (!tokens.length) return { command: "", program: "", bare: false }
+
+  // Bounded: a launcher that resolves to another launcher cannot loop forever.
+  var next = (depth || 0) + 1
+  if (next > 4) return { command: "", program: "", bare: false }
+
+  if (tokens[0] === LAUNCHER_PREFIX + "or-focus" && tokens.length > 1) return launchKeys(tokens[tokens.length - 1], targets, next)
+  if (tokens[0] === LAUNCHER_PREFIX + "or-focus-webapp") tokens = [LAUNCHER_PREFIX + "webapp"].concat(tokens.slice(2))
+
+  var program = String(tokens[0] || "").replace(/^.*\//, "")
+
+  if (tokens.length === 1 && targets && targets[program]) return launchKeys(targets[program], targets, next)
+
+  // A desktop entry and a binding disagree over a trailing slash on the same
+  // URL often enough that it cannot be what separates them.
+  tokens[0] = program
+  var whole = tokens.map(function(token) { return String(token).replace(/\/+$/, "") }).join(" ")
+
+  return { command: whole, program: program, bare: tokens.length === 1 }
+}
+
+// Several apps can run one program: every Chrome web app runs the browser with
+// arguments after it. Only one of them is that program, and it is the one that
+// runs it plainly — so a bare entry owns the name, an argument-carrying entry
+// owns it only when it is the sole claimant, and a name several entries claim
+// alike belongs to none of them. Spotify keeps its key off `spotify --uri=%u`;
+// `chromium --app=...` does not inherit the browser's.
+function programOwner(program) {
+  if (!program) return ""
+  if (program.bare === 1) return program.bareId
+  return program.bare === 0 && program.count === 1 ? program.id : ""
+}
+
+// id → shortcut label, resolved once per (re)load instead of per row. Routes go
+// through the same alias resolution `omarchy menu summon` uses, so a binding on
+// `theme` finds `style.theme`. An action match wins: it names one row, while a
+// route names whatever currently answers to that name.
+function resolveShortcuts(items, itemOrder, shortcuts, targets) {
+  var byId = ({})
+  if (!shortcuts) return byId
+
+  var byLaunch = ({})
+  var byProgram = ({})
+  for (var command in shortcuts.byCommand) {
+    var launch = launchKeys(command, targets)
+    if (launch.command && !byLaunch[launch.command]) byLaunch[launch.command] = shortcuts.byCommand[command]
+    if (launch.bare && !byProgram[launch.program]) byProgram[launch.program] = shortcuts.byCommand[command]
+  }
+
+  // Several apps can run one program: every Chrome web app runs the browser
+  // with arguments. Only one of them is that program, and it is the one running
+  // it plainly, so a bare entry owns the name outright and an argument-carrying
+  // entry owns it only when nothing else claims it — which is how Spotify keeps
+  // its key while `chromium --app=...` does not inherit the browser's.
+  var order = Array.isArray(itemOrder) ? itemOrder : []
+  var launches = ({})
+  var programs = ({})
+
+  for (var i = 0; i < order.length; i++) {
+    var entry = item(items, order[i])
+    if (!entry || !entry.exec) continue
+
+    var launch = launches[entry.id] = launchKeys(entry.exec, targets)
+    if (!launch.program) continue
+
+    var program = programs[launch.program] || (programs[launch.program] = { bare: 0, bareId: "", count: 0, id: "" })
+    program.count += 1
+    program.id = entry.id
+    if (launch.bare) { program.bare += 1; program.bareId = entry.id }
+  }
+
+  for (var j = 0; j < order.length; j++) {
+    var row = item(items, order[j])
+    if (!row) continue
+
+    var keys = row.action ? shortcuts.byCommand[row.action] : ""
+    var rowLaunch = launches[row.id]
+    if (!keys && rowLaunch) keys = byLaunch[rowLaunch.command] || (programOwner(programs[rowLaunch.program]) === row.id ? byProgram[rowLaunch.program] : "") || ""
+    if (keys) byId[row.id] = keys
+  }
+
+  for (var route in shortcuts.byRoute) {
+    var id = resolveRoute(items, itemOrder, route)
+    if (item(items, id) && !byId[id]) byId[id] = shortcuts.byRoute[route]
+  }
+
+  return byId
+}
+
 function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item"
 }
@@ -362,11 +593,12 @@ function searchScore(items, entry, query) {
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }
 
-function displayRow(items, itemOrder, checkedResults, disabledResults, entry, detail, score, section) {
+function displayRow(items, itemOrder, checkedResults, disabledResults, shortcutsById, entry, detail, score, section) {
   var target = entry.kind === "link" ? entry.target : entry.id
   return {
     itemId: entry.id,
     disabled: isDisabled(disabledResults, entry),
+    shortcut: (shortcutsById && shortcutsById[entry.id]) || "",
     kind: entry.kind,
     icon: entry.icon,
     iconFont: entry.iconFont || "",
@@ -503,6 +735,10 @@ if (typeof module !== "undefined") {
     swapProviderRows: swapProviderRows,
     item: item,
     resolveRoute: resolveRoute,
+    parseKeybindings: parseKeybindings,
+    shortcutLabel: shortcutLabel,
+    launchKeys: launchKeys,
+    resolveShortcuts: resolveShortcuts,
     slugify: slugify,
     depthFor: depthFor,
     pathFor: pathFor,
