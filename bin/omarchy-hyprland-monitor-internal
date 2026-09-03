@@ -51,7 +51,9 @@ recover() {
   # Runs from the clamshell watcher every few seconds, so it must be a no-op
   # unless it actually re-enables a display: an unconditional wake here undoes
   # lock-screen blanking and races the resume modeset into a visible flash.
-  omarchy-hyprland-monitor-external-active && return 0
+  # Require both views to agree before leaving the panel disabled: Hyprland can
+  # retain a just-unplugged external output as active after DRM reports it gone.
+  omarchy-hw-external-monitors && omarchy-hyprland-monitor-external-active && return 0
   omarchy-hyprland-toggle-enabled $TOGGLE || return 0
 
   omarchy-hyprland-toggle $TOGGLE off

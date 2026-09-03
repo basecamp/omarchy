@@ -56,9 +56,10 @@ toggle() {
 }
 
 recover() {
-  if ! omarchy-hyprland-monitor-external-active && omarchy-hyprland-toggle-enabled $TOGGLE; then
-    omarchy-hyprland-toggle $TOGGLE off
-  fi
+  omarchy-hw-external-monitors && omarchy-hyprland-monitor-external-active && return 0
+  omarchy-hyprland-toggle-enabled $TOGGLE || return 0
+
+  omarchy-hyprland-toggle $TOGGLE off
 }
 
 case "$1" in
