@@ -253,8 +253,13 @@ ShellRoot {
     onActiveChanged: if (!active) shell.bar = null
     onStatusChanged: {
       if (status === Loader.Error) {
-        var detail = errorString && errorString() ? errorString() : ""
-        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId + ":", detail)
+        // A Loader has no errorString() of its own. The component it built
+        // from `source` holds the failure, so the reason has to come from
+        // there — without it a plugin author is told only that their bar
+        // failed, never why.
+        var detail = sourceComponent ? sourceComponent.errorString() : ""
+        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to "
+          + shell.defaultBarId + (detail ? ": " + detail : ""))
         shell.failedBarId = shell.activeBarId
       }
     }
@@ -662,11 +667,11 @@ ShellRoot {
         }
         onStatusChanged: {
           if (status === Loader.Error) {
-            // Loader.errorString() reflects the source-load failure even when
-            // sourceComponent is null. Surface both so the user sees something
-            // actionable instead of a panel that silently refuses to open.
-            var detail = errorString && errorString() ? errorString() : ""
-            if (!detail && sourceComponent) detail = sourceComponent.errorString()
+            // A Loader has no errorString() of its own; the component it built
+            // from `source` holds the failure. Reading it off the Loader threw
+            // a ReferenceError here, which skipped the hide() below and left
+            // the panel stuck in openPanelIds with nothing logged.
+            var detail = sourceComponent ? sourceComponent.errorString() : ""
             console.warn("panel plugin " + panelEntry.pluginId + " failed to load:", detail)
             shell.hide(panelEntry.pluginId)
           }
