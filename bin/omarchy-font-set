@@ -40,8 +40,14 @@ if [[ -f ~/.config/ghostty/config ]]; then
   pkill -SIGUSR2 ghostty
 fi
 
+# Only swap the family. Size is owned by omarchy-display-text-size; rewriting
+# `:size=9` here desyncs foot from the other terminals after a text-size set.
 if [[ -f ~/.config/foot/foot.ini ]]; then
-  sed -i "s/^font=.*/font=$font_name:size=9/g" ~/.config/foot/foot.ini
+  if grep -qE '^font=.*:size=' ~/.config/foot/foot.ini; then
+    sed -i -E "s/^font=.*(:size=[0-9.]+)/font=$font_name\1/" ~/.config/foot/foot.ini
+  else
+    sed -i -E "s/^font=.*/font=$font_name/" ~/.config/foot/foot.ini
+  fi
 fi
 
 # fontconfig is the canonical source of truth — the omarchy shell, Qt apps,
