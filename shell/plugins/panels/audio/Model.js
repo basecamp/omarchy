@@ -69,6 +69,48 @@ function nodeLabel(node) {
   return friendlyDeviceLabel(node.description || p["node.description"] || node.name || "Unknown")
 }
 
+// PipeWire can expose one physical device as several nodes (ALSA vs Pulse
+// names, profile variants, or a default handle distinct from the catalog
+// entry). Collapse those before the menu renders so output/input rows stay
+// unique by node.name and by the friendly label the row would show.
+function dedupeAudioNodes(list) {
+  var out = []
+  var seenName = {}
+  var seenLabel = {}
+  var values = Array.isArray(list) ? list : []
+
+  for (var i = 0; i < values.length; i++) {
+    var n = values[i]
+    if (!n) continue
+
+    var name = String(n.name || "")
+    if (name !== "" && seenName[name]) continue
+
+    var label = String(nodeLabel(n) || "").trim().toLowerCase()
+    if (label !== "" && seenLabel[label]) continue
+
+    if (name !== "") seenName[name] = true
+    if (label !== "") seenLabel[label] = true
+    out.push(n)
+  }
+
+  return out
+}
+
+// Sink monitors are capture nodes that mirror an output; they are not
+// selectable inputs and must not appear beside the real microphone entries.
+function isMonitorSource(node) {
+  if (!node) return false
+  var name = String(node.name || "")
+  if (/\.monitor$/i.test(name)) return true
+
+  var p = nodeProps(node)
+  var mediaClass = String(node.type || p["media.class"] || "")
+  if (mediaClass.indexOf("Monitor") !== -1) return true
+  var description = String(node.description || p["node.description"] || "")
+  return /\bmonitor\b/i.test(description)
+}
+
 function isHeadphones(node) {
   if (!node) return false
   var p = nodeProps(node)
@@ -243,6 +285,8 @@ if (typeof module !== "undefined") {
     friendlyDeviceLabel: friendlyDeviceLabel,
     nodeProps: nodeProps,
     nodeLabel: nodeLabel,
+    dedupeAudioNodes: dedupeAudioNodes,
+    isMonitorSource: isMonitorSource,
     isHeadphones: isHeadphones,
     sinkGlyph: sinkGlyph,
     sourceGlyph: sourceGlyph,
