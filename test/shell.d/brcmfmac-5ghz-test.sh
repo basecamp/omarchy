@@ -106,6 +106,13 @@ provide_mac() {
   printf 'aa:bb:cc:dd:ee:ff\n' >"$pci_devices/0000:03:00.0/net/wlp3s0/address"
 }
 
+# The wiphy's permanent address, as opposed to the netdev's current one.
+provide_perm_mac() {
+  local mac=$1
+  mkdir -p "$pci_devices/0000:03:00.0/ieee80211/phy0"
+  printf '%s\n' "$mac" >"$pci_devices/0000:03:00.0/ieee80211/phy0/macaddress"
+}
+
 # Production run_logged uses bash -eE with no pipefail.
 invoke_leaf() {
   local wifi_id="${1:-}"
@@ -182,6 +189,36 @@ invoke_leaf 43ba >/dev/null
 [[ -f "$(dmi_file "Apple Computer, Inc." "MacBookPro14,3")" ]] ||
   fail "the older Apple vendor string is recognized"
 pass "the older Apple vendor string is recognized"
+
+# NetworkManager randomises the netdev address while scanning; the wiphy's
+# permanent address is the one to persist.
+rm -rf "$fwdir" "$packaged" "$pci_devices"
+mkdir -p "$fwdir" "$packaged"
+provide_perm_mac 11:22:33:44:55:66
+mkdir -p "$pci_devices/0000:03:00.0/net/wlp3s0"
+printf 'f2:11:22:33:44:55\n' >"$pci_devices/0000:03:00.0/net/wlp3s0/address"
+printf '%s' "Apple Inc." >"$test_tmp/dmi/sys_vendor"
+printf '%s' "MacBookPro14,3" >"$test_tmp/dmi/product_name"
+invoke_leaf 43ba >/dev/null
+grep -qx 'macaddr=11:22:33:44:55:66' "$(generic)" ||
+  fail "the permanent address wins over a randomised netdev address" "$(grep '^macaddr' "$(generic)")"
+pass "the permanent address wins over a randomised netdev address"
+
+# A card with no usable OTP boots on Broadcom's 00:90:4c placeholder and
+# reports it as its own address; persisting that would share it across
+# machines.
+rm -rf "$fwdir" "$packaged" "$pci_devices"
+mkdir -p "$fwdir" "$packaged"
+provide_perm_mac 00:90:4c:0d:f4:3e
+mkdir -p "$pci_devices/0000:03:00.0/net/wlp3s0"
+printf '00:90:4C:0D:F4:3E\n' >"$pci_devices/0000:03:00.0/net/wlp3s0/address"
+printf '%s' "Apple Inc." >"$test_tmp/dmi/sys_vendor"
+printf '%s' "MacBookPro14,3" >"$test_tmp/dmi/product_name"
+invoke_leaf 43ba >/dev/null
+[[ -f "$(generic)" ]] || fail "a card on the placeholder address still gets the NVRAM"
+! grep -q '^macaddr=' "$(generic)" ||
+  fail "the Broadcom placeholder address is never persisted" "$(grep '^macaddr' "$(generic)")"
+pass "the Broadcom placeholder address is never persisted"
 
 # No MAC discoverable: drop the line rather than shipping the donor address.
 rm -rf "$fwdir" "$packaged" "$pci_devices"
@@ -260,8 +297,10 @@ invoke_leaf 43ba >/dev/null
 [[ ! -e "$(generic)" ]] || fail "a compressed packaged NVRAM prevents writing the override"
 pass "a compressed packaged NVRAM prevents writing the override"
 
-# A failed install must not look like success. Stub install(1) to fail after
-# the gate has matched, so the leaf's set -e surfaces the error.
+# A failed install must not look like success. Stub install(1) to truncate its
+# destination and then fail, the shape ENOSPC takes, after the gate has
+# matched, so the leaf's set -e surfaces the error and nothing partial is left
+# under a name the driver loads or the skip guard honours.
 rm -rf "$fwdir" "$packaged" "$pci_devices"
 mkdir -p "$fwdir" "$packaged"
 provide_mac
@@ -269,6 +308,7 @@ printf '%s' "Apple Inc." >"$test_tmp/dmi/sys_vendor"
 printf '%s' "MacBookPro14,3" >"$test_tmp/dmi/product_name"
 cat >"$stub_bin/install" <<'SH'
 #!/bin/bash
+: >"${@: -1}"
 exit 1
 SH
 chmod +x "$stub_bin/install"
@@ -277,7 +317,31 @@ if invoke_leaf 43ba >/dev/null 2>&1; then
 fi
 rm -f "$stub_bin/install"
 [[ ! -e "$(generic)" ]] || fail "a failed install leaves no dest file"
+[[ -z $(ls -A "$fwdir") ]] || fail "a failed install leaves nothing behind" "$(ls -A "$fwdir")"
 pass "a failed install does not look like success"
+
+# The generic and DMI-specific names land together or not at all: one file on
+# disk would satisfy the skip guard while the migration's reboot prompt is lost.
+rm -rf "$fwdir" "$packaged" "$pci_devices"
+mkdir -p "$fwdir" "$packaged"
+provide_mac
+printf '%s' "Apple Inc." >"$test_tmp/dmi/sys_vendor"
+printf '%s' "MacBookPro14,3" >"$test_tmp/dmi/product_name"
+cat >"$stub_bin/install" <<SH
+#!/bin/bash
+if [[ -e "$test_tmp/install-once" ]]; then
+  exit 1
+fi
+touch "$test_tmp/install-once"
+exec /usr/bin/install "\$@"
+SH
+chmod +x "$stub_bin/install"
+if invoke_leaf 43ba >/dev/null 2>&1; then
+  fail "a half-written NVRAM pair does not look like success"
+fi
+rm -f "$stub_bin/install" "$test_tmp/install-once"
+[[ -z $(ls -A "$fwdir") ]] || fail "a half-written NVRAM pair is rolled back" "$(ls -A "$fwdir")"
+pass "a half-written NVRAM pair is rolled back"
 
 rm -rf "$fwdir" "$packaged" "$pci_devices"
 mkdir -p "$fwdir" "$packaged"
@@ -325,12 +389,14 @@ run_migration "LENOVO" "ThinkPad" 43ba
 [[ ! -s $calls ]] || fail "the migration escalates nothing on unaffected machines" "$(cat "$calls")"
 pass "the migration skips non-Apple hardware"
 
-# A failed migration install must not mark the migration done via reboot-required.
+# A failed migration install must not mark the migration done via reboot-required,
+# and the rerun omarchy-migrate then makes must do the work it skipped.
 rm -rf "$fwdir" "$packaged" "$pci_devices"
 mkdir -p "$fwdir" "$packaged"
 provide_mac
 cat >"$stub_bin/install" <<'SH'
 #!/bin/bash
+: >"${@: -1}"
 exit 1
 SH
 chmod +x "$stub_bin/install"
@@ -341,3 +407,10 @@ rm -f "$stub_bin/install"
 grep -q 'omarchy-state' "$calls" &&
   fail "a failed migration does not ask for a reboot" "$(cat "$calls")"
 pass "a failed migration install does not look like success"
+
+run_migration "Apple Inc." "MacBookPro14,3" 43ba
+grep -qx 'aa5g=7' "$(generic)" ||
+  fail "the rerun after a failed migration installs the NVRAM" "$(ls -A "$fwdir")"
+grep -Fq $'omarchy-state\tset\treboot-required' "$calls" ||
+  fail "the rerun after a failed migration asks for the reboot" "$(cat "$calls")"
+pass "the rerun after a failed migration installs and asks for the reboot"

@@ -15,8 +15,9 @@
 #
 # Destinations live under /usr/lib/firmware/updates so they override, and do
 # not collide with, linux-firmware-broadcom. A file already at either the
-# override path or the packaged path wins: user-placed or a future
-# linux-firmware board file both outrank this copy.
+# override path or the packaged path when this runs wins, user-placed or
+# package-shipped. Once this copy is installed the override path is searched
+# first, so a board file linux-firmware ships later does not replace it.
 
 brcmfmac43602_as_root() {
   if (( EUID == 0 )); then
@@ -86,36 +87,48 @@ brcmfmac43602_installed() {
 }
 
 # The NIC bound to 14e4:43ba, not the first wireless interface in glob order
-# (a USB adapter at install time would otherwise donate its address).
+# (a USB adapter at install time would otherwise donate its address). The
+# wiphy's macaddress is the permanent address; net/*/address is whatever is
+# current, which NetworkManager randomises while scanning. 00:90:4c is the
+# Broadcom OUI the firmware falls back to when the card has no usable OTP
+# address, so it is a placeholder and never worth persisting.
 brcmfmac43602_wifi_mac() {
-  local bdf pci_devices net_addrs mac
+  local bdf pci_devices candidate mac
   pci_devices=$(brcmfmac43602_pci_devices)
   bdf=$(lspci -Dnn | awk '/14e4:43ba/ { if (!found) { print $1; found=1 } }')
   [[ -n $bdf ]] || return 1
-  net_addrs=("$pci_devices/$bdf"/net/*/address)
-  mac=$(cat "${net_addrs[0]}" 2>/dev/null || true)
-  if [[ $mac =~ ^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$ ]]; then
+  for candidate in "$pci_devices/$bdf"/ieee80211/phy*/macaddress "$pci_devices/$bdf"/net/*/address; do
+    mac=$(cat "$candidate" 2>/dev/null || true)
+    [[ $mac =~ ^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$ ]] || continue
+    if [[ ${mac,,} == 00:90:4c:* ]]; then
+      return 1
+    fi
     printf '%s\n' "$mac"
     return 0
-  fi
+  done
   return 1
 }
 
 # Reloading brcmfmac here would drop a live Wi-Fi connection, including the
 # one carrying an update. Callers must not wrap this in `if`; bash would then
 # disable errexit for the body and a failed install would look like success.
+#
+# Both names are staged under temporary names and renamed into place together.
+# A write that fails part-way (ENOSPC truncates its destination) must not leave
+# a partial file under the name the driver loads, where brcmfmac43602_installed
+# would keep it forever and the migration would never ask for the reboot.
 brcmfmac43602_install() {
-  local src fwdir generic dmi mac work name
+  local src fwdir mac work name target
+  local -a targets
 
   src=$(brcmfmac43602_nvram_src)
   [[ -f $src ]] || return 1
 
   fwdir=$(brcmfmac43602_fwdir)
-  generic="$fwdir/brcmfmac43602-pcie.txt"
-  dmi=""
+  targets=("$fwdir/brcmfmac43602-pcie.txt")
   name=$(brcmfmac43602_dmi_name)
   if [[ -n $name ]]; then
-    dmi="$fwdir/$name"
+    targets+=("$fwdir/$name")
   fi
 
   work=$(mktemp) || return 1
@@ -137,15 +150,18 @@ brcmfmac43602_install() {
     rm -f "$work"
     return 1
   fi
-  if ! brcmfmac43602_as_root install -m 644 "$work" "$generic"; then
-    rm -f "$work"
-    return 1
-  fi
-  if [[ -n $dmi ]]; then
-    if ! brcmfmac43602_as_root install -m 644 "$work" "$dmi"; then
+  for target in "${targets[@]}"; do
+    if ! brcmfmac43602_as_root install -m 644 "$work" "$target.tmp"; then
+      brcmfmac43602_as_root rm -f "${targets[@]/%/.tmp}"
       rm -f "$work"
       return 1
     fi
-  fi
+  done
   rm -f "$work"
+  for target in "${targets[@]}"; do
+    if ! brcmfmac43602_as_root mv -f "$target.tmp" "$target"; then
+      brcmfmac43602_as_root rm -f "${targets[@]}" "${targets[@]/%/.tmp}"
+      return 1
+    fi
+  done
 }

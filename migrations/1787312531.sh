@@ -8,15 +8,10 @@ echo "Unlock 5 GHz Wi-Fi on 2017 Touch Bar MacBook Pros"
 # shellcheck source=../install/hardware/apple/brcmfmac-43602.sh
 source "$OMARCHY_INSTALL/hardware/apple/brcmfmac-43602.sh"
 
-if ! brcmfmac43602_needed; then
-  exit 0
-fi
-if brcmfmac43602_installed; then
-  exit 0
-fi
+if brcmfmac43602_needed && ! brcmfmac43602_installed; then
+  brcmfmac43602_install
 
-brcmfmac43602_install
-
-# The driver only rereads NVRAM when brcmfmac next loads. Reloading it here
-# would drop a Wi-Fi connection that works on the network carrying this update.
-omarchy-state set reboot-required
+  # The driver only rereads NVRAM when brcmfmac next loads. Reloading it here
+  # would drop a Wi-Fi connection that works on the network carrying this update.
+  omarchy-state set reboot-required
+fi

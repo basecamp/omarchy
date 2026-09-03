@@ -11,12 +11,7 @@
 # shellcheck source=brcmfmac-43602.sh
 source "$OMARCHY_INSTALL/hardware/apple/brcmfmac-43602.sh"
 
-if ! brcmfmac43602_needed; then
-  return 0
+if brcmfmac43602_needed && ! brcmfmac43602_installed; then
+  brcmfmac43602_install
+  echo "Installed BCM43602 5 GHz NVRAM"
 fi
-if brcmfmac43602_installed; then
-  return 0
-fi
-
-echo "Installed BCM43602 5 GHz NVRAM"
-brcmfmac43602_install
