@@ -364,6 +364,43 @@ const settings = notifications.parseSettings(JSON.stringify({ version: 3, dnd: t
 assertEqual(settings.dnd, true, 'notifications parse the persisted DND state')
 assertEqual(settings.legacy, false, 'notifications do not flag a current settings file as legacy')
 assertEqual(notifications.parseSettings('').dnd, null, 'notifications leave DND unset without a settings file')
+assertEqual(notifications.parseSettings('').popupMonitor, null, 'notifications leave popupMonitor unset without a settings file')
+assertEqual(
+  notifications.parseSettings(JSON.stringify({ version: 3, dnd: false })).popupMonitor,
+  null,
+  'notifications leave popupMonitor unset on a pre-v4 settings file'
+)
+assertEqual(
+  notifications.parseSettings(JSON.stringify({ popupMonitor: 'focused' })).popupMonitor,
+  'focused',
+  'notifications parse focused toast display'
+)
+assertEqual(
+  notifications.parseSettings(JSON.stringify({ popupMonitor: 'nope' })).popupMonitor,
+  'all',
+  'notifications fall unknown popupMonitor values back to all'
+)
+assertEqual(
+  notifications.normalizePopupMonitor(''),
+  null,
+  'notifications treat a blank popupMonitor as unset'
+)
+assert(
+  notifications.showsOnScreen('all', 'HDMI-A-1', 'DP-1'),
+  'notifications show toasts on every output in all mode'
+)
+assert(
+  notifications.showsOnScreen('focused', 'DP-1', 'DP-1'),
+  'notifications show toasts on the focused output'
+)
+assert(
+  !notifications.showsOnScreen('focused', 'HDMI-A-1', 'DP-1'),
+  'notifications hide toasts on unfocused outputs'
+)
+assert(
+  notifications.showsOnScreen('focused', 'HDMI-A-1', ''),
+  'notifications fail-open to every output before Hyprland reports a focused monitor'
+)
 assertEqual(
   notifications.parseSettings(JSON.stringify({ dnd: false, pending: [], past: [] })).legacy,
   true,
@@ -722,5 +759,13 @@ assert(
 assert(
   !/pendingModel|pastModel/.test(serviceQml),
   'notifications service keeps no in-memory history models'
+)
+assert(
+  /visible: popupModel\.count > 0 && NotificationLogic\.showsOnScreen\(/.test(serviceQml),
+  'notifications service gates toast overlays with the popupMonitor setting'
+)
+assert(
+  /function togglePopupMonitor\(\): string \{/.test(serviceQml),
+  'notifications IPC can switch toast overlays between every display and the focused one'
 )
 JS

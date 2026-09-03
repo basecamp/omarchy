@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# omarchy:summary=Show notification toasts on every display or only the focused one
+# omarchy:group=toggle
+# omarchy:args=[toggle|all|focused|status]
+# omarchy:examples=omarchy toggle notification popups | omarchy toggle notification popups focused
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: omarchy-toggle-notification-popups [toggle|all|focused|status]" >&2
+}
+
+case "${1:-toggle}" in
+  toggle)
+    omarchy-shell notifications togglePopupMonitor
+    ;;
+  all)
+    omarchy-shell notifications setPopupMonitor all
+    ;;
+  focused)
+    omarchy-shell notifications setPopupMonitor focused
+    ;;
+  status)
+    omarchy-shell notifications popupMonitor
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
