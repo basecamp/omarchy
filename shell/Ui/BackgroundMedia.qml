@@ -8,9 +8,11 @@ Item {
   property int version: 0
   property bool playbackEnabled: true
   property bool loop: true
+  property int fadeOutDuration: 0
   readonly property var current: video ? videoLoader.item : imageLoader.item
   readonly property bool ready: current ? current.ready : false
   readonly property bool video: Util.isVideoPath(path)
+  readonly property real fadeOutProgress: videoLoader.item ? videoLoader.item.fadeOutProgress : 0
   // Cache-bust images selected in a running lock session. FFmpeg treats the
   // query as part of a local filename, so videos must keep their plain URL.
   readonly property url mediaUrl: path ? Util.fileUrl(path) + (!video && version ? "?v=" + version : "") : ""
@@ -51,6 +53,13 @@ Item {
     target: videoLoader.item
     property: "loop"
     value: root.loop
+    when: videoLoader.item !== null
+  }
+
+  Binding {
+    target: videoLoader.item
+    property: "fadeOutDuration"
+    value: root.fadeOutDuration
     when: videoLoader.item !== null
   }
 

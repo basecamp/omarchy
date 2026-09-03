@@ -10,7 +10,11 @@ Item {
   property url mediaSource: ""
   property bool playbackEnabled: true
   property bool loop: true
+  property int fadeOutDuration: 0
   readonly property bool ready: player.hasVideo
+  readonly property real fadeOutProgress: fadeOutDuration > 0 && player.duration > 0
+    ? Math.max(0, Math.min(1, (player.position - (player.duration - fadeOutDuration)) / fadeOutDuration))
+    : 0
 
   signal finished()
 

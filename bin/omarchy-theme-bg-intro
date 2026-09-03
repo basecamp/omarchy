@@ -1,0 +1,195 @@
+#!/bin/bash
+
+# omarchy:summary=Manage the current background's boot intro
+# omarchy:args=<set [video]|remove|reset|current|enable|disable|toggle|status|available>
+# omarchy:examples=omarchy theme bg intro set | omarchy theme bg intro remove | omarchy theme bg intro reset | omarchy theme bg intro disable
+
+set -euo pipefail
+
+state_home="$HOME/.local/state"
+current_dir="$state_home/omarchy/current"
+current_background_link="$current_dir/background"
+theme_name_path="$current_dir/theme.name"
+toggle="$state_home/omarchy/toggles/background-intros-off"
+video_extensions=(mp4 m4v mov webm mkv avi)
+
+usage() {
+  echo "Usage: omarchy-theme-bg-intro <set [video]|remove|reset|current|enable|disable|toggle|status|available>" >&2
+}
+
+notify() {
+  omarchy-notification-send "Boot Intro" "$1"
+}
+
+load_current_background() {
+  [[ -s $theme_name_path ]] || {
+    echo "No current theme found" >&2
+    exit 1
+  }
+
+  theme_name=$(<"$theme_name_path")
+  [[ -n $theme_name && $theme_name != */* && $theme_name != .* ]] || {
+    echo "Invalid current theme name" >&2
+    exit 1
+  }
+
+  current_background=$(readlink -f "$current_background_link" 2>/dev/null) || {
+    echo "No current background found" >&2
+    exit 1
+  }
+  [[ -f $current_background ]] || {
+    echo "Current background is not a regular file" >&2
+    exit 1
+  }
+
+  case ${current_background,,} in
+  *.jpg | *.jpeg | *.png | *.gif | *.bmp | *.webp) ;;
+  *)
+    echo "Boot intros can only be paired with a still background" >&2
+    exit 1
+    ;;
+  esac
+
+  background_name=$(basename "$current_background")
+  background_stem=${background_name%.*}
+  background_hash=$(sha256sum "$current_background")
+  background_hash=${background_hash%% *}
+  intro_dir="$HOME/.config/omarchy/backgrounds/$theme_name/intros/$background_hash"
+}
+
+remove_user_intro() {
+  local extension
+
+  for extension in "${video_extensions[@]}"; do
+    rm -f -- "$intro_dir/$background_stem.$extension"
+  done
+}
+
+set_intro() {
+  local video=${1:-}
+  local extension
+  local staged_video
+
+  load_current_background
+
+  if [[ -z $video ]]; then
+    video=$(omarchy-file-select --title "Select boot intro" --extensions "mp4 m4v mov webm mkv avi") || exit $?
+  fi
+
+  video=$(realpath -e -- "$video" 2>/dev/null) || {
+    echo "Boot intro video not found: $video" >&2
+    exit 1
+  }
+  [[ -f $video ]] || {
+    echo "Boot intro is not a regular file: $video" >&2
+    exit 1
+  }
+  extension=${video##*.}
+  extension=${extension,,}
+  [[ " ${video_extensions[*]} " == *" $extension "* ]] || {
+    echo "Unsupported boot intro format: $extension" >&2
+    exit 1
+  }
+
+  mkdir -p "$intro_dir"
+  staged_video=$(mktemp "$intro_dir/.$background_stem.video.XXXXXX")
+  trap 'rm -f "$staged_video"' EXIT
+  cp -- "$video" "$staged_video"
+  chmod 0644 "$staged_video"
+
+  remove_user_intro
+  mv -f "$staged_video" "$intro_dir/$background_stem.$extension"
+  rm -f -- "$intro_dir/$background_stem.disabled"
+  trap - EXIT
+
+  notify "Set for $(omarchy-theme-bg-current)"
+}
+
+remove_intro() {
+  local staged_disabled
+
+  load_current_background
+  mkdir -p "$intro_dir"
+  staged_disabled=$(mktemp "$intro_dir/.$background_stem.disabled.XXXXXX")
+  trap 'rm -f "$staged_disabled"' EXIT
+  chmod 0644 "$staged_disabled"
+  remove_user_intro
+  mv -f "$staged_disabled" "$intro_dir/$background_stem.disabled"
+  trap - EXIT
+
+  omarchy-shell -q background cancelBootIntro || true
+  notify "Removed from $(omarchy-theme-bg-current)"
+}
+
+reset_intro() {
+  load_current_background
+  remove_user_intro
+  rm -f -- "$intro_dir/$background_stem.disabled"
+  rmdir "$intro_dir" 2>/dev/null || true
+  notify "Restored theme default for $(omarchy-theme-bg-current)"
+}
+
+enable_intros() {
+  rm -f -- "$toggle"
+  notify "Enabled"
+}
+
+disable_intros() {
+  mkdir -p "$(dirname "$toggle")"
+  touch "$toggle"
+  omarchy-shell -q background cancelBootIntro || true
+  notify "Disabled"
+}
+
+action=${1:-}
+case $action in
+  set)
+    (( $# <= 2 )) || { usage; exit 1; }
+    set_intro "${2:-}"
+    ;;
+  remove)
+    (( $# == 1 )) || { usage; exit 1; }
+    remove_intro
+    ;;
+  reset)
+    (( $# == 1 )) || { usage; exit 1; }
+    reset_intro
+    ;;
+  current)
+    (( $# == 1 )) || { usage; exit 1; }
+    if [[ -f $toggle ]]; then
+      echo "Disabled"
+    else
+      intro=$(omarchy-theme-bg-boot-intro --resolve-only)
+      printf '%s\n' "${intro:-None}"
+    fi
+    ;;
+  enable)
+    (( $# == 1 )) || { usage; exit 1; }
+    enable_intros
+    ;;
+  disable)
+    (( $# == 1 )) || { usage; exit 1; }
+    disable_intros
+    ;;
+  toggle)
+    (( $# == 1 )) || { usage; exit 1; }
+    if [[ -f $toggle ]]; then
+      enable_intros
+    else
+      disable_intros
+    fi
+    ;;
+  status)
+    (( $# == 1 )) || { usage; exit 1; }
+    [[ ! -f $toggle ]]
+    ;;
+  available)
+    (( $# == 1 )) || { usage; exit 1; }
+    load_current_background
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac

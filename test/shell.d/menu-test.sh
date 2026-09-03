@@ -337,6 +337,23 @@ assertEqual(
   'menu exposes Menu Bar transparency as a toggle'
 )
 assertDeepEqual(
+  defaultItems.filter(item => item.parent === 'style.background-intro').map(item => item.id),
+  [
+    'style.background-intro.set',
+    'style.background-intro.remove',
+    'style.background-intro.reset',
+    'style.background-intro.enabled'
+  ],
+  'menu exposes the complete boot intro workflow under Style'
+)
+assert(
+  defaultById['style.background-intro.set'].action === 'omarchy-theme-bg-intro set'
+    && defaultById['style.background-intro.set'].when === 'omarchy-theme-bg-intro available >/dev/null 2>&1'
+    && defaultById['style.background-intro.enabled'].checked === 'omarchy-theme-bg-intro status >/dev/null'
+    && defaultById['style.background-intro.enabled'].action === 'omarchy-theme-bg-intro toggle',
+  'menu delegates boot intro selection and its global toggle to the public command'
+)
+assertDeepEqual(
   defaultItems.filter(item => item.parent === 'setup.plugin').map(item => item.label),
   ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Clone Plugin', 'Remove Plugin'],
   'menu manages plugins from Setup > Plugins'

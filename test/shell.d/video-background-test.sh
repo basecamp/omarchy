@@ -41,9 +41,17 @@ assert(
     backgroundQml.includes('command: ["omarchy-theme-bg-boot-intro"]') &&
     backgroundQml.includes('path: root.bootIntroActive ? root.bootIntroPath : ""') &&
     backgroundQml.includes('loop: false') &&
-    backgroundQml.includes('onFinished: root.finishBootIntro()') &&
+    backgroundQml.includes('fadeOutDuration: 750') &&
+    backgroundQml.includes('opacity: 1 - fadeOutProgress') &&
+    backgroundQml.includes('onFinished: panel.handleBootIntroFinished()') &&
     bootIntro.includes('background-intro.boot-id'),
   'a matching theme intro plays once per boot and reveals the loaded still at end of media'
+)
+assert(
+  videoQml.includes('readonly property real fadeOutProgress:') &&
+    mediaQml.includes('property int fadeOutDuration: 0') &&
+    mediaQml.includes('property: "fadeOutDuration"'),
+  'one-shot media can fade into the exact still instead of reframing abruptly at its final frame'
 )
 assert(
   !/^\s*import QtMultimedia/m.test(mediaQml) &&
@@ -271,13 +279,16 @@ intro_state="$intro_home/.local/state/omarchy/current"
 mkdir -p "$intro_state/theme/backgrounds" "$intro_state/theme/intros"
 printf 'still\n' >"$intro_state/theme/backgrounds/0-winding-road.webp"
 printf 'video\n' >"$intro_state/theme/intros/0-winding-road.mp4"
+printf 'tokyo-night\n' >"$intro_state/theme.name"
+intro_hash=$(sha256sum "$intro_state/theme/backgrounds/0-winding-road.webp")
+printf '%s\n' "${intro_hash%% *}" >"$intro_state/theme/intros/0-winding-road.sha256"
 ln -s "$intro_state/theme/backgrounds/0-winding-road.webp" "$intro_state/background"
 
-intro=$(HOME="$intro_home" OMARCHY_BOOT_ID=video-test-boot "$ROOT/bin/omarchy-theme-bg-boot-intro")
+intro=$(HOME="$intro_home" XDG_RUNTIME_DIR="$test_tmp" OMARCHY_BOOT_ID=video-test-boot "$ROOT/bin/omarchy-theme-bg-boot-intro")
 [[ $intro == "$intro_state/theme/intros/0-winding-road.mp4" ]] || \
   fail "boot intro resolves by the selected background stem" "$intro"
 
-second_intro=$(HOME="$intro_home" OMARCHY_BOOT_ID=video-test-boot "$ROOT/bin/omarchy-theme-bg-boot-intro")
+second_intro=$(HOME="$intro_home" XDG_RUNTIME_DIR="$test_tmp" OMARCHY_BOOT_ID=video-test-boot "$ROOT/bin/omarchy-theme-bg-boot-intro")
 [[ -z $second_intro ]] || fail "boot intro runs once for a boot id" "$second_intro"
 
 pass "boot intro resolves the selected still once per boot"
@@ -298,6 +309,7 @@ printf 'tokyo-night\n' >"$migration_home/.local/state/omarchy/current/theme.name
 HOME="$migration_home" PATH="$migration_bin:$PATH" MIGRATION_CALLS="$migration_calls" \
   bash -euo pipefail "$migration" >/dev/null
 [[ $(<"$migration_calls") == "refresh" ]] || fail "boot intro migration refreshes an active Tokyo Night theme"
+[[ -s $migration_home/.local/state/omarchy/background-intro.boot-id ]] || fail "boot intro migration records the current boot after refreshing"
 
 : >"$migration_calls"
 printf 'catppuccin\n' >"$migration_home/.local/state/omarchy/current/theme.name"

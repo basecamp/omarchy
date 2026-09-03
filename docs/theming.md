@@ -6,12 +6,9 @@ Omarchy themes live under `themes/<name>/` in the source tree (installed at
 `colors.toml`; Omarchy generates the active theme files from
 `default/themed/*.tpl` when `omarchy-theme-set <name>` runs.
 
-Beyond `colors.toml` and hand-written config overrides, a first-party theme can
-ship `backgrounds/` (users overlay their own via
-`~/.config/omarchy/backgrounds/<name>/`; the active image is the
-`~/.local/state/omarchy/current/background` symlink), `preview.png` and
-`preview-unlock.png` for the theme switcher, `icons.theme`, `keyboard.rgb`,
-`unlock.png`, and a `light.mode` marker file.
+Beyond `colors.toml` and hand-written config overrides, a first-party theme can ship `backgrounds/` (users overlay their own via `~/.config/omarchy/backgrounds/<name>/`; the active image is the `~/.local/state/omarchy/current/background` symlink), `preview.png` and `preview-unlock.png` for the theme switcher, `icons.theme`, `keyboard.rgb`, `unlock.png`, and a `light.mode` marker file.
+
+A first-party theme can pair a still background with a one-shot boot intro. For `backgrounds/0-winding-road.webp`, place the video at `intros/0-winding-road.mp4` and the still image's SHA-256 at `intros/0-winding-road.sha256`. The hash binding prevents a same-named user background from receiving a mismatched packaged intro. User-managed intros are stored under `~/.config/omarchy/backgrounds/<name>/intros/<background-sha256>/` and take precedence over first-party intros without colliding when multiple backgrounds share a filename stem.
 
 A theme installed from a git repo is held to a much shorter list; see [What an installed theme may not ship](#what-an-installed-theme-may-not-ship).
 
