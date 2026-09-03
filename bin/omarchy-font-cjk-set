@@ -1,0 +1,187 @@
+#!/bin/bash
+
+# omarchy:summary=Set the preferred CJK font variant
+# omarchy:args=<variant>
+# omarchy:examples=omarchy font cjk set jp | omarchy font cjk set auto
+
+usage() {
+  cat <<'EOF'
+Usage: omarchy font cjk set <variant>
+
+Variants:
+  jp    Japanese (Noto Sans CJK JP)
+  kr    Korean (Noto Sans CJK KR)
+  sc    Simplified Chinese (Noto Sans CJK SC)
+  tc    Traditional Chinese (Noto Sans CJK TC)
+  hk    Hong Kong Chinese (Noto Sans CJK HK)
+  auto  Detect from LANG environment variable (prompts if LANG is en_*)
+EOF
+}
+
+variant="${1:-}"
+
+case "$variant" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "")
+    usage >&2
+    exit 1
+    ;;
+esac
+
+# --- Resolve variant name ---
+
+resolve_auto() {
+  local lang="${LANG:-en_US.UTF-8}"
+  local base="${lang%%.*}"
+  base="${base%%@*}"
+  local territory="${base##*_}"
+  local language="${base%%_*}"
+
+  case "$language" in
+    ja)
+      echo "jp"
+      ;;
+    ko)
+      echo "kr"
+      ;;
+    zh)
+      case "$territory" in
+        CN|SG) echo "sc" ;;
+        TW|HK) echo "tc" ;;  # zh_HK defaults to TC per design decision
+        *)     echo "sc" ;;
+      esac
+      ;;
+    *)
+      # en_* or unknown — prompt the user
+      echo ""
+      ;;
+  esac
+}
+
+case "$variant" in
+  auto)
+    resolved=$(resolve_auto)
+    if [[ -z "$resolved" ]]; then
+      echo "LANG=$LANG does not map to a CJK variant."
+      echo ""
+      echo "Select CJK variant:"
+      echo "  1) jp  — Japanese (Noto Sans CJK JP)"
+      echo "  2) kr  — Korean (Noto Sans CJK KR)"
+      echo "  3) sc  — Simplified Chinese (Noto Sans CJK SC)"
+      echo "  4) tc  — Traditional Chinese (Noto Sans CJK TC)"
+      echo "  5) hk  — Hong Kong Chinese (Noto Sans CJK HK)"
+      echo ""
+      read -rp "Number [1-5]: " choice
+      case "$choice" in
+        1) resolved="jp" ;;
+        2) resolved="kr" ;;
+        3) resolved="sc" ;;
+        4) resolved="tc" ;;
+        5) resolved="hk" ;;
+        *)
+          echo "Invalid choice." >&2
+          exit 1
+          ;;
+      esac
+    fi
+    variant="$resolved"
+    ;;
+  jp|kr|sc|tc|hk)
+    ;;
+  *)
+    echo "Unknown variant: $variant" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
+
+# --- Map variant to font family names ---
+
+upper=$(echo "$variant" | tr '[:lower:]' '[:upper:]')
+sans_family="Noto Sans CJK $upper"
+serif_family="Noto Serif CJK $upper"
+mono_family="Noto Sans Mono CJK $upper"
+
+# For the lang match, map variant back to BCP 47 language tag.
+case "$variant" in
+  jp) lang_tag="ja" ;;
+  kr) lang_tag="ko" ;;
+  sc) lang_tag="zh-cn" ;;
+  tc) lang_tag="zh-tw" ;;
+  hk) lang_tag="zh-hk" ;;
+esac
+
+# --- Check that the font is installed ---
+
+if ! fc-list | grep -Fqi -- "$sans_family"; then
+  echo "Font '$sans_family' not found. Install noto-fonts-cjk first." >&2
+  exit 1
+fi
+
+# --- Write the CJK section into fonts.conf ---
+#
+# fonts.conf is the only per-user fontconfig file this system loads, so the
+# CJK rules live here in a marker-delimited section. The monospace section
+# managed by `omarchy font set` is preserved.
+
+section_file=$(mktemp)
+cat >"$section_file" <<XML
+  <!-- omarchy:begin-cjk -->
+  <!-- omarchy-cjk-variant: $variant -->
+  <match target="pattern">
+    <test name="family" qual="any">
+      <string>sans-serif</string>
+    </test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>$sans_family</string>
+    </edit>
+  </match>
+  <match target="pattern">
+    <test name="family" qual="any">
+      <string>serif</string>
+    </test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>$serif_family</string>
+    </edit>
+  </match>
+  <match target="pattern">
+    <test name="family" qual="any">
+      <string>monospace</string>
+    </test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>$mono_family</string>
+    </edit>
+  </match>
+  <!-- Backup for Chromium/Electron: they resolve glyphs one character at a
+       time without lang on the pattern, so the rules above never fire.
+       The lang-targeted rule covers that path. -->
+  <match target="pattern">
+    <test name="lang" compare="contains">
+      <string>$lang_tag</string>
+    </test>
+    <edit name="family" mode="prepend" binding="strong">
+      <string>$sans_family</string>
+    </edit>
+  </match>
+  <!-- omarchy:end-cjk -->
+XML
+
+omarchy-fontconfig-replace-section cjk "$section_file"
+rm -f -- "$section_file"
+
+echo "CJK variant set to: $variant ($sans_family)"
+
+omarchy-restart-shell 2>/dev/null || true
+
+if pgrep -x foot; then
+  omarchy-notification-send -g "You must restart Foot to see CJK font change" 2>/dev/null || true
+fi
+
+if pgrep -x ghostty; then
+  omarchy-notification-send -g "You must restart Ghostty to see CJK font change" 2>/dev/null || true
+fi
+
+omarchy-hook font-set "cjk-$variant" 2>/dev/null || true

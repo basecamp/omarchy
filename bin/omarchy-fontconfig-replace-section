@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# omarchy:hidden=true
+# omarchy:summary=Replace a marker-delimited section in fonts.conf (internal helper)
+
+# Usage: omarchy-fontconfig-replace-section <name> <section-file>
+#
+# <name> is "mono" or "cjk". <section-file> holds the complete replacement
+# block, INCLUDING its begin/end marker lines:
+#   <!-- omarchy:begin-<name> --> ... <!-- omarchy:end-<name> -->
+# The other section (if any) is preserved byte-for-byte.
+#
+# fonts.conf is the only per-user fontconfig file this system loads
+# (~/.config/fontconfig/conf.d/ is not read), so both `font set` and
+# `font cjk set` cooperate through marker sections in this one file.
+#
+# A fonts.conf with no omarchy markers is treated as legacy (hand-written):
+# it is backed up once and replaced.
+
+if (( $# != 2 )); then
+  echo "Usage: omarchy-fontconfig-replace-section <name> <section-file>" >&2
+  exit 1
+fi
+
+name="$1"
+section_file="$2"
+fonts_conf="$HOME/.config/fontconfig/fonts.conf"
+begin="<!-- omarchy:begin-$name -->"
+end="<!-- omarchy:end-$name -->"
+
+if [[ ! -f $section_file ]]; then
+  echo "Section file '$section_file' not found." >&2
+  exit 1
+fi
+
+mkdir -p "$(dirname "$fonts_conf")"
+
+write_skeleton() {
+  {
+    echo '<?xml version="1.0"?>'
+    echo '<!DOCTYPE fontconfig SYSTEM "fonts.dtd">'
+    echo '<fontconfig>'
+    cat -- "$section_file"
+    echo '</fontconfig>'
+  } >"$fonts_conf"
+}
+
+if [[ ! -f $fonts_conf ]]; then
+  write_skeleton
+  exit 0
+fi
+
+if ! grep -q "omarchy:begin-" "$fonts_conf"; then
+  backup="$fonts_conf.bak-$(date +%Y%m%d%H%M%S)"
+  cp -- "$fonts_conf" "$backup"
+  echo "Backed up legacy fonts.conf to $backup"
+  write_skeleton
+  exit 0
+fi
+
+tmp=$(mktemp "$(dirname "$fonts_conf")/.fonts.conf.XXXXXX")
+# Marker lines may carry leading indentation; compare stripped.
+if grep -qF -- "$begin" "$fonts_conf"; then
+  awk -v begin="$begin" -v end="$end" -v section="$section_file" '
+    { stripped = $0; sub(/^[ \t]+/, "", stripped) }
+    stripped == begin { while ((getline line < section) > 0) print line; skip = 1; next }
+    stripped == end { skip = 0; next }
+    !skip { print }
+  ' "$fonts_conf" >"$tmp" && mv -- "$tmp" "$fonts_conf"
+else
+  if ! grep -q "</fontconfig>" "$fonts_conf"; then
+    echo "fonts.conf is malformed (no </fontconfig>); aborting." >&2
+    rm -f -- "$tmp"
+    exit 1
+  fi
+  awk -v section="$section_file" '
+    { stripped = $0; sub(/^[ \t]+/, "", stripped) }
+    stripped == "</fontconfig>" { while ((getline line < section) > 0) print line }
+    { print }
+  ' "$fonts_conf" >"$tmp" && mv -- "$tmp" "$fonts_conf"
+fi
