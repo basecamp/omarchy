@@ -16,7 +16,9 @@ Item {
   property bool stateLoaded: false
 
   readonly property string helperPath: (omarchyPath || "") + "/shell/plugins/panels/news/fetch_news.py"
-  readonly property string statePath: Quickshell.env("HOME") + "/.local/state/omarchy/news/read.json"
+  readonly property string stateRoot: Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")
+  readonly property string stateDir: stateRoot + "/omarchy/news"
+  readonly property string statePath: stateDir + "/read.json"
   readonly property int refreshIntervalMin: intSetting("refreshIntervalMin", 15, 5, 120)
   readonly property int itemLimit: intSetting("itemLimit", 10, 5, 20)
   readonly property var visibleItems: items.slice(0, itemLimit)
@@ -101,7 +103,7 @@ Item {
 
   Process {
     id: prepareState
-    command: ["mkdir", "-p", Quickshell.env("HOME") + "/.local/state/omarchy/news"]
+    command: ["mkdir", "-p", root.stateDir]
     running: true
     onExited: function() {
       readState.reload()
