@@ -274,10 +274,17 @@ assertDeepEqual(
   'menu never hides an Install row because the software is already there'
 )
 assert(
-  ['install.browser.zen', 'install.editor.vscode', 'install.gaming.steam', 'install.development.rust', 'install.windows'].every(
+  ['install.browser.zen', 'install.editor.vscode', 'install.gaming.steam', 'install.development.rust', 'install.development.swift', 'install.windows'].every(
     id => defaultById[id].disabled && !defaultById[id].when
   ),
   'menu dims the Install rows for software that is already installed'
+)
+assert(
+  defaultById['install.development.swift'].disabled === 'omarchy-pkg-present swift-bin' &&
+    defaultById['install.development.swift'].action.includes("omarchy-install-dev-env swift") &&
+    defaultById['remove.development.swift'].when === 'omarchy-pkg-present swift-bin' &&
+    defaultById['remove.development.swift'].action.includes("omarchy-remove-dev-env swift"),
+  'menu wires Swift install and removal to the same package state'
 )
 assertEqual(
   defaultById['install.browser.zen'].disabled,
