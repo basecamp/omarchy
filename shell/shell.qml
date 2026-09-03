@@ -979,6 +979,8 @@ ShellRoot {
         var kinds = plugins[id].kinds || []
         var isBarOption = Array.isArray(kinds) && kinds.indexOf("bar") !== -1
         var isBarWidget = Array.isArray(kinds) && kinds.indexOf("bar-widget") !== -1
+        var isWidgetOnly = isBarWidget && Array.isArray(kinds)
+          && !kinds.some(function(kind) { return kind !== "bar-widget" })
         var active = isBarOption && shell.isActiveBarOption(id)
         var metadata = plugins[id].omarchy
         var clonedFrom = Util.isPlainObject(metadata) ? String(metadata.clonedFrom || "") : ""
@@ -986,10 +988,12 @@ ShellRoot {
           id: id,
           name: plugins[id].name,
           kinds: kinds,
-          // What `omarchy plugin enable/disable` toggles: for a widget that is
-          // its place in the bar, not whether its component is loadable.
+          // What `omarchy plugin enable/disable` toggles: for a plugin that is
+          // only a widget that is its place in the bar, not whether its
+          // component is loadable. A plugin that also has a panel/overlay/menu
+          // kind outlives its bar icon, so ask whether it is enabled at all.
           enabled: isBarOption ? active
-            : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)),
+            : (isWidgetOnly ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)),
           active: active,
           // A bar has no off, only a successor: you leave one by enabling
           // another, so there is nothing for disable to do to it. Said here so
