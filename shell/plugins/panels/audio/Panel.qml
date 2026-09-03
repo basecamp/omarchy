@@ -324,8 +324,12 @@ Panel {
   onAudioSourcesChanged: scheduleDisplayAudioModelRefresh()
   onAudioStreamsChanged: scheduleDisplayAudioModelRefresh()
 
+  // Snapshots are taken against the live PipeWire node list so that a node
+  // destroyed since the list was built -- most often one still held by
+  // cachedAudioSinks/cachedAudioSources after a PipeWire restart -- never
+  // reaches a Repeater delegate. See Model.liveNodeSnapshot.
   function listSnapshot(list) {
-    return Model.listSnapshot(list)
+    return Model.liveNodeSnapshot(list, nodes)
   }
 
   function refreshDisplayAudioModels() {

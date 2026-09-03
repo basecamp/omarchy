@@ -46,4 +46,18 @@ assertEqual(audio.matchingMprisStreamLabel('Chromium', players), 'Chromium', 'au
 assertEqual(audio.unmatchedMprisStreamLabel('audio-src', players, streams), 'Spotify', 'audio uses unmatched MPRIS player for generic streams')
 assertEqual(audio.streamLabel(streams[1], players, streams), 'Spotify', 'audio labels generic streams from MPRIS')
 assert(audio.streamRepresentsPlayer(streams[1], players[0], players, streams), 'audio links generic streams to active player')
+
+// A PwNode destroyed by PipeWire must never survive into a Repeater's model:
+// Qt dereferences it as a null QObject* during delegate incubation and the
+// shell segfaults (basecamp/omarchy#9914, #9647, #9256).
+const speakers = { name: 'alsa_output' }
+const headset = { name: 'bluez_output' }
+const destroyed = { name: 'raop_sink' }
+
+assertDeepEqual(audio.liveNodeSnapshot([speakers, headset], [speakers, headset]), [speakers, headset], 'audio keeps nodes PipeWire still lists')
+assertDeepEqual(audio.liveNodeSnapshot([speakers, destroyed], [speakers, headset]), [speakers], 'audio drops nodes PipeWire has destroyed')
+assertDeepEqual(audio.liveNodeSnapshot([speakers, destroyed], []), [], 'audio empties the snapshot when PipeWire drops every node')
+assertDeepEqual(audio.liveNodeSnapshot([null, speakers], [speakers]), [speakers], 'audio drops null entries')
+assertDeepEqual(audio.liveNodeSnapshot(null, [speakers]), [], 'audio tolerates a missing list')
+assertDeepEqual(audio.liveNodeSnapshot([speakers], null), [], 'audio tolerates a missing live node list')
 JS
