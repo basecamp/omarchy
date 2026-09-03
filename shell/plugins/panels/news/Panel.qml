@@ -21,7 +21,7 @@ Item {
   readonly property var news: service
   readonly property var articles: news ? news.itemsForSource(selectedSourceId) : []
   readonly property var sourceFilters: news && news.sources.length > 1
-    ? [{ "id": "all", "name": "All" }].concat(news.sources)
+    ? [{ "id": "all", "name": "All", "category": "all" }].concat(news.sources)
     : (news ? news.sources : [])
   readonly property color foreground: Color.foreground
   readonly property color background: Color.background
@@ -106,9 +106,33 @@ Item {
     return Qt.formatDate(date, "ddd d MMM yyyy")
   }
 
+  function categoryColor(category) {
+    var value = String(category || "custom")
+    if (value === "official") return Color.accent
+    if (value === "developer") return Color.cyan
+    if (value === "startup") return Color.yellow
+    if (value === "technology") return Color.blue
+    if (value === "linux") return Color.green
+    if (value === "ai") return Color.magenta
+    if (value === "all") return root.foreground
+    return Color.muted
+  }
+
+  function categoryLabel(category) {
+    var value = String(category || "custom")
+    if (value === "official") return "Official"
+    if (value === "developer") return "Developer"
+    if (value === "startup") return "Startups"
+    if (value === "technology") return "Technology"
+    if (value === "linux") return "Linux"
+    if (value === "ai") return "AI"
+    return "Custom"
+  }
+
   function statusLabel() {
     if (!news) return "LOADING NEWS SERVICE"
     if (news.refreshing && news.items.length === 0) return "CHECKING FOR NEWS"
+    if (news.configurationError !== "") return "CHECK CUSTOM FEED SETTINGS"
     if (news.partial) return "SOME SOURCES COULD NOT REFRESH"
     if (news.stale) return "OFFLINE · SHOWING LAST UPDATE"
     if (news.unreadCount > 0) {
@@ -332,14 +356,16 @@ Item {
                   height: sourceRail.height
                   current: String(modelData.id || "") === root.selectedSourceId
                   hasCursor: current && root.focusArea === "headlines"
-                  foreground: root.foreground
+                  foreground: root.categoryColor(modelData.category)
 
                   Text {
                     id: sourceLabel
                     anchors.centerIn: parent
                     textFormat: Text.PlainText
                     text: String(sourceChip.modelData.name || "Source").toUpperCase()
-                    color: sourceChip.current ? root.foreground : root.dim
+                    color: sourceChip.current
+                      ? root.categoryColor(sourceChip.modelData.category)
+                      : Util.alpha(root.categoryColor(sourceChip.modelData.category), 0.68)
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
                     font.bold: sourceChip.current
@@ -416,7 +442,7 @@ Item {
                         if (published !== "") parts.push(published)
                         return parts.join(" · ").toUpperCase()
                       }
-                      color: root.dim
+                      color: root.categoryColor(headline.modelData.sourceCategory)
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
                     }
@@ -513,13 +539,14 @@ Item {
                     var parts = []
                     var sourceName = String(root.currentArticle.sourceName || "")
                     if (sourceName !== "") parts.push(sourceName)
+                    parts.push(root.categoryLabel(root.currentArticle.sourceCategory))
                     var published = root.publishedLabel(root.currentArticle.published)
                     if (published !== "") parts.push(published)
                     var author = String(root.currentArticle.author || "")
                     if (author !== "") parts.push(author)
                     return parts.join(" · ").toUpperCase()
                   }
-                  color: root.dim
+                  color: root.categoryColor(root.currentArticle ? root.currentArticle.sourceCategory : "custom")
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   font.bold: true

@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
+import ipaddress
 import json
 import os
+import socket
 import ssl
 import sys
 import tempfile
@@ -29,6 +32,7 @@ SOURCE_CATALOG = {
     "omarchy": {
         "id": "omarchy",
         "name": "Omarchy",
+        "category": "official",
         "url": FEED_URL,
         "article_hosts": ("omarchy.org",),
         "article_path_prefix": "/news/",
@@ -36,6 +40,7 @@ SOURCE_CATALOG = {
     "hacker-news": {
         "id": "hacker-news",
         "name": "Hacker News",
+        "category": "developer",
         "url": "https://news.ycombinator.com/rss",
         "article_hosts": (),
         "allow_external_articles": True,
@@ -44,6 +49,7 @@ SOURCE_CATALOG = {
     "ars-technica": {
         "id": "ars-technica",
         "name": "Ars Technica",
+        "category": "technology",
         "url": "https://feeds.arstechnica.com/arstechnica/index",
         "article_hosts": ("arstechnica.com",),
         "article_path_prefix": "/",
@@ -51,6 +57,7 @@ SOURCE_CATALOG = {
     "techcrunch": {
         "id": "techcrunch",
         "name": "TechCrunch",
+        "category": "startup",
         "url": "https://techcrunch.com/feed/",
         "article_hosts": ("techcrunch.com",),
         "article_path_prefix": "/",
@@ -58,6 +65,7 @@ SOURCE_CATALOG = {
     "the-verge": {
         "id": "the-verge",
         "name": "The Verge",
+        "category": "technology",
         "url": "https://www.theverge.com/rss/index.xml",
         "article_hosts": ("theverge.com",),
         "article_path_prefix": "/",
@@ -65,6 +73,7 @@ SOURCE_CATALOG = {
     "wired": {
         "id": "wired",
         "name": "WIRED",
+        "category": "technology",
         "url": "https://www.wired.com/feed/rss",
         "article_hosts": ("wired.com",),
         "article_path_prefix": "/",
@@ -72,6 +81,7 @@ SOURCE_CATALOG = {
     "phoronix": {
         "id": "phoronix",
         "name": "Phoronix",
+        "category": "linux",
         "url": "https://www.phoronix.com/rss.php",
         "article_hosts": ("phoronix.com",),
         "article_path_prefix": "/",
@@ -79,6 +89,7 @@ SOURCE_CATALOG = {
     "its-foss": {
         "id": "its-foss",
         "name": "It's FOSS",
+        "category": "linux",
         "url": "https://itsfoss.com/rss/",
         "article_hosts": ("itsfoss.com",),
         "article_path_prefix": "/",
@@ -86,6 +97,7 @@ SOURCE_CATALOG = {
     "openai-news": {
         "id": "openai-news",
         "name": "OpenAI News",
+        "category": "ai",
         "url": "https://openai.com/news/rss.xml",
         "article_hosts": ("openai.com",),
         "article_path_prefix": "/",
@@ -93,6 +105,7 @@ SOURCE_CATALOG = {
     "hugging-face": {
         "id": "hugging-face",
         "name": "Hugging Face",
+        "category": "ai",
         "url": "https://huggingface.co/blog/feed.xml",
         "article_hosts": ("huggingface.co",),
         "article_path_prefix": "/blog/",
@@ -100,6 +113,7 @@ SOURCE_CATALOG = {
     "mit-ai": {
         "id": "mit-ai",
         "name": "MIT News: AI",
+        "category": "ai",
         "url": "https://news.mit.edu/rss/topic/artificial-intelligence2",
         "article_hosts": ("news.mit.edu",),
         "article_path_prefix": "/",
@@ -118,6 +132,8 @@ TECH_FEED_IDS = (
     "hugging-face",
     "mit-ai",
 )
+MAX_CUSTOM_FEEDS = 10
+MAX_CUSTOM_FEEDS_SETTING_CHARS = 4096
 
 
 class ArticleTextParser(HTMLParser):
@@ -223,7 +239,15 @@ def article_text(value: str | None, limit: int = MAX_ARTICLE_CHARS) -> str:
 def external_url(value: str | None) -> str:
     url = clean_text(value, 2048)
     parsed = urlparse(url)
-    return url if parsed.scheme in {"http", "https"} and parsed.netloc else ""
+    try:
+        parsed.port
+    except ValueError:
+        return ""
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return ""
+    if parsed.username or parsed.password:
+        return ""
+    return url
 
 
 def article_markup(value: str | None, limit: int = MAX_ARTICLE_CHARS) -> str:
@@ -282,6 +306,72 @@ def source_article_url(value: str | None, source: dict[str, object]) -> str:
     return parsed._replace(netloc=host, params="", query=query, fragment="").geturl()
 
 
+def canonical_feed_url(value: str | None) -> str:
+    url = clean_text(value, 2048)
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    try:
+        port = parsed.port
+    except ValueError:
+        return ""
+    try:
+        literal_ip = ipaddress.ip_address(host)
+    except ValueError:
+        literal_ip = None
+    if parsed.scheme != "https" or not host or parsed.username or parsed.password:
+        return ""
+    if port not in (None, 443) or literal_ip is not None:
+        return ""
+    if host == "localhost" or host.endswith(".localhost") or host.endswith(".local"):
+        return ""
+    return parsed._replace(netloc=host, params="", fragment="").geturl()
+
+
+def parse_custom_sources(value: str) -> tuple[list[dict[str, object]], list[str]]:
+    entries = value[:MAX_CUSTOM_FEEDS_SETTING_CHARS].replace("\n", ";").split(";")
+    sources: list[dict[str, object]] = []
+    errors: list[str] = []
+    seen: set[str] = set()
+    for index, entry in enumerate(entries):
+        raw = entry.strip()
+        if not raw:
+            continue
+        name, separator, raw_url = raw.partition("|")
+        if not separator:
+            raw_url = name
+            name = ""
+        url = canonical_feed_url(raw_url)
+        if not url:
+            errors.append(f"Custom feed {index + 1} must be a public HTTPS URL")
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        host = (urlparse(url).hostname or "").lower()
+        source_id = "custom-" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
+        sources.append(
+            {
+                "id": source_id,
+                "name": clean_text(name, 48) or host,
+                "category": "custom",
+                "url": url,
+                "article_hosts": (),
+                "allow_external_articles": True,
+                "article_path_prefix": "/",
+                "custom": True,
+            }
+        )
+        if len(sources) >= MAX_CUSTOM_FEEDS:
+            if any(remaining.strip() for remaining in entries[index + 1 :]):
+                errors.append(f"Custom feeds are limited to {MAX_CUSTOM_FEEDS}")
+            break
+    return sources, errors
+
+
+def custom_sources(value: str) -> list[dict[str, object]]:
+    return parse_custom_sources(value)[0]
+
+
 def canonical_news_url(value: str | None) -> str:
     return source_article_url(value, SOURCE_CATALOG["omarchy"])
 
@@ -311,6 +401,7 @@ def parse_feed(payload: bytes, source: dict[str, object] | None = None) -> list[
                 "id": f'{source["id"]}:{guid}',
                 "sourceId": str(source["id"]),
                 "sourceName": str(source["name"]),
+                "sourceCategory": str(source["category"]),
                 "sourceUrl": str(source["url"]),
                 "title": title,
                 "url": link,
@@ -327,6 +418,15 @@ def parse_feed(payload: bytes, source: dict[str, object] | None = None) -> list[
 def fetch(source: dict[str, object] | None = None) -> bytes:
     source = source or SOURCE_CATALOG["omarchy"]
     feed_url = str(source["url"])
+    if source.get("custom") is True:
+        host = urlparse(feed_url).hostname or ""
+        addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        if not addresses:
+            raise ValueError("custom feed host could not be resolved")
+        for address in addresses:
+            ip = ipaddress.ip_address(address[4][0])
+            if not ip.is_global:
+                raise ValueError("custom feed host does not resolve to a public address")
     request = urllib.request.Request(
         feed_url,
         headers={"Accept": "application/rss+xml, application/xml", "User-Agent": USER_AGENT},
@@ -376,6 +476,7 @@ def cached_result(source: dict[str, object], error: str) -> dict[str, object] | 
             continue
         item["sourceId"] = str(source["id"])
         item["sourceName"] = str(source["name"])
+        item["sourceCategory"] = str(source["category"])
         item["sourceUrl"] = str(source["url"])
         item_id = str(item.get("id", ""))
         if item_id and not item_id.startswith(f'{source["id"]}:'):
@@ -383,7 +484,7 @@ def cached_result(source: dict[str, object], error: str) -> dict[str, object] | 
     return cached
 
 
-def selected_sources(value: str) -> list[dict[str, object]]:
+def selected_sources(value: str, custom_value: str = "") -> list[dict[str, object]]:
     requested = [part.strip() for part in value.split(",") if part.strip()]
     ids = ["omarchy", *requested]
     seen: set[str] = set()
@@ -393,6 +494,11 @@ def selected_sources(value: str) -> list[dict[str, object]]:
             continue
         seen.add(source_id)
         sources.append(SOURCE_CATALOG[source_id])
+    for source in custom_sources(custom_value):
+        if str(source["id"]) in seen:
+            continue
+        seen.add(str(source["id"]))
+        sources.append(source)
     return sources
 
 
@@ -427,6 +533,7 @@ def load_source(
     state: dict[str, object] = {
         "id": source["id"],
         "name": source["name"],
+        "category": source["category"],
         "url": source["url"],
         "stale": stale,
         "error": error,
@@ -438,14 +545,16 @@ def load_source(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sources", default="omarchy")
+    parser.add_argument("--custom-feeds", default="")
     args = parser.parse_args(argv)
 
     items: list[dict[str, str]] = []
     source_states: list[dict[str, object]] = []
-    errors: list[str] = []
+    _, configuration_errors = parse_custom_sources(args.custom_feeds)
+    errors: list[str] = list(configuration_errors)
     fetched_at = datetime.now(timezone.utc).isoformat()
 
-    sources = selected_sources(args.sources)
+    sources = selected_sources(args.sources, args.custom_feeds)
     with ThreadPoolExecutor(max_workers=min(4, len(sources))) as executor:
         loaded_sources = executor.map(lambda source: load_source(source, fetched_at), sources)
         for source, (source_items, state, error) in zip(sources, loaded_sources):
@@ -463,6 +572,7 @@ def main(argv: list[str] | None = None) -> int:
         "ok": True,
         "stale": any(bool(source["stale"]) for source in source_states),
         "partial": bool(errors),
+        "configurationError": clean_text("; ".join(configuration_errors), 180),
         "error": clean_text("; ".join(errors), 180),
         "fetchedAt": fetched_at,
         "sources": source_states,

@@ -12,9 +12,11 @@ Item {
   property var lastSeenBySource: ({})
   property string fetchedAt: ""
   property string lastError: ""
+  property string configurationError: ""
   property bool stale: false
   property bool partial: false
   property bool refreshing: false
+  property bool refreshPending: false
   property bool stateLoaded: false
 
   readonly property string helperPath: (omarchyPath || "") + "/shell/plugins/panels/news/fetch_news.py"
@@ -23,14 +25,15 @@ Item {
   readonly property string statePath: stateDir + "/read.json"
   readonly property int refreshIntervalMin: intSetting("refreshIntervalMin", 15, 5, 120)
   readonly property int itemLimit: intSetting("itemLimit", 10, 5, 20)
-  readonly property string feedPack: String(setting("feedPack", "Omarchy only"))
-  readonly property var enabledSourceIds: feedPack === "Omarchy + Tech top 10"
-    ? ["omarchy", "hacker-news", "ars-technica", "techcrunch", "the-verge", "wired", "phoronix", "its-foss", "openai-news", "hugging-face", "mit-ai"]
-    : ["omarchy"]
+  readonly property var techFeedIds: ["hacker-news", "ars-technica", "techcrunch", "the-verge", "wired", "phoronix", "its-foss", "openai-news", "hugging-face", "mit-ai"]
+  readonly property var enabledFeedIds: listSetting("enabledFeeds")
+  readonly property var enabledSourceIds: ["omarchy"].concat(enabledFeedIds)
+  readonly property string customFeeds: String(setting("customFeeds", "")).substring(0, 4096)
+  readonly property string sourceConfigSignature: enabledSourceIds.join(",") + "|" + customFeeds
   readonly property var visibleItems: items.slice(0, itemLimit)
   readonly property int unreadCount: countUnread()
 
-  onFeedPackChanged: if (stateLoaded) refresh()
+  onSourceConfigSignatureChanged: if (stateLoaded) refresh()
 
   property string _stdout: ""
   property string _stderr: ""
@@ -44,6 +47,20 @@ Item {
     var value = parseInt(String(setting(name, fallback)), 10)
     if (!isFinite(value)) value = fallback
     return Math.max(min, Math.min(max, value))
+  }
+
+  function listSetting(name) {
+    var value = setting(name, undefined)
+    if (value === undefined) {
+      return String(setting("feedPack", "")) === "Omarchy + Tech top 10" ? techFeedIds.slice() : []
+    }
+    if (!value || typeof value.length !== "number" || typeof value === "string") return []
+    var result = []
+    for (var i = 0; i < value.length; i++) {
+      var sourceId = String(value[i] || "")
+      if (techFeedIds.indexOf(sourceId) !== -1 && result.indexOf(sourceId) === -1) result.push(sourceId)
+    }
+    return result
   }
 
   function countUnread() {
@@ -77,7 +94,11 @@ Item {
   }
 
   function refresh() {
-    if (fetchProcess.running || helperPath === "/shell/plugins/panels/news/fetch_news.py") return
+    if (fetchProcess.running) {
+      refreshPending = true
+      return
+    }
+    if (helperPath === "/shell/plugins/panels/news/fetch_news.py") return
     _stdout = ""
     _stderr = ""
     refreshing = true
@@ -93,6 +114,7 @@ Item {
       fetchedAt = String(parsed.fetchedAt || "")
       stale = parsed.stale === true
       partial = parsed.partial === true
+      configurationError = String(parsed.configurationError || "")
       lastError = String(parsed.error || "")
     } catch (error) {
       lastError = "Could not read the Omarchy news feed"
@@ -160,7 +182,7 @@ Item {
 
   Process {
     id: fetchProcess
-    command: ["python3", root.helperPath, "--sources", root.enabledSourceIds.join(",")]
+    command: ["python3", root.helperPath, "--sources", root.enabledSourceIds.join(","), "--custom-feeds", root.customFeeds]
     running: false
     stdout: StdioCollector {
       id: fetchStdout
@@ -178,6 +200,10 @@ Item {
       var error = String(fetchStderr.text || root._stderr || "")
       if (output.trim() !== "") root.applyResult(output)
       else if (exitCode !== 0) root.lastError = root.shortError(error || "Could not fetch Omarchy news")
+      if (root.refreshPending) {
+        root.refreshPending = false
+        Qt.callLater(function() { root.refresh() })
+      }
     }
   }
 

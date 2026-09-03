@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "license": "MIT",
-  "description": "Read Omarchy announcements and optional curated publisher feeds without leaving the desktop.",
+  "description": "Read Omarchy announcements, selected publisher feeds and custom RSS without leaving the desktop.",
   "kinds": [
     "panel",
     "service",
@@ -19,14 +19,13 @@
   },
   "barWidget": {
     "displayName": "News",
-    "description": "Follow Omarchy announcements and optional curated publisher feeds.",
+    "description": "Follow Omarchy announcements and the RSS sources you choose.",
     "category": "Info",
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
       "refreshIntervalMin": 15,
-      "itemLimit": 10,
-      "feedPack": "Omarchy only"
+      "itemLimit": 10
     },
     "schema": [
       {
@@ -48,15 +47,33 @@
         "defaultValue": 10
       },
       {
-        "key": "feedPack",
-        "type": "enum",
-        "label": "Feed pack",
+        "key": "enabledFeeds",
+        "type": "multiselect",
+        "label": "Additional feeds",
+        "noSelectionText": "Omarchy only",
+        "placeholderText": "Search feeds...",
+        "emptyText": "No feeds",
         "options": [
-          "Omarchy only",
-          "Omarchy + Tech top 10"
+          { "value": "hacker-news", "label": "Hacker News", "description": "Developer and startup news" },
+          { "value": "ars-technica", "label": "Ars Technica", "description": "Deep technology, science and security" },
+          { "value": "techcrunch", "label": "TechCrunch", "description": "Startups, business and AI" },
+          { "value": "the-verge", "label": "The Verge", "description": "Mainstream technology and platforms" },
+          { "value": "wired", "label": "WIRED", "description": "Technology, science, security and culture" },
+          { "value": "phoronix", "label": "Phoronix", "description": "Linux kernel, hardware and performance" },
+          { "value": "its-foss", "label": "It's FOSS", "description": "Accessible Linux and open-source coverage" },
+          { "value": "openai-news", "label": "OpenAI News", "description": "Official OpenAI product and research news" },
+          { "value": "hugging-face", "label": "Hugging Face", "description": "Open models, tooling and AI research" },
+          { "value": "mit-ai", "label": "MIT News: AI", "description": "Academic AI research and developments" }
         ],
-        "defaultValue": "Omarchy only",
-        "description": "Add Hacker News, Ars Technica, TechCrunch, The Verge, WIRED, Phoronix, It's FOSS, OpenAI News, Hugging Face and MIT News: AI."
+        "defaultValue": [],
+        "description": "Choose any combination. Omarchy remains pinned."
+      },
+      {
+        "key": "customFeeds",
+        "type": "string",
+        "label": "Custom RSS feeds",
+        "defaultValue": "",
+        "description": "Semicolon-separated HTTPS feeds. Use Name|URL to set a label; URL-only entries use the host name."
       }
     ]
   }

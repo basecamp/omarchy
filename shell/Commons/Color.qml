@@ -21,6 +21,11 @@ QtObject {
   property color accent: "#cacccc"
   property color urgent: "#a55555"
   property color muted: "#707880"
+  property color green: "#88a36f"
+  property color yellow: "#c9a55a"
+  property color cyan: "#6fa6a6"
+  property color blue: "#6f8fbf"
+  property color magenta: "#a884b8"
 
   // Flat dictionary of "section.key" -> raw string from shell.toml.
   // Reassigning this whole property is what makes surface bindings below
@@ -136,6 +141,11 @@ QtObject {
     var lines = String(raw || "").split("\n")
     var foundAccent = false
     var foundMuted = false
+    var foundGreen = false
+    var foundYellow = false
+    var foundCyan = false
+    var foundBlue = false
+    var foundMagenta = false
     var loadedForeground = false
     var loadedBackground = false
     var color0Value = ""
@@ -157,11 +167,21 @@ QtObject {
       else if (match[1] === "color7") color7Value = match[2]
       else if (match[1] === "color8") color8Value = match[2]
       else if (match[1] === "red" || match[1] === "color1") urgent = match[2]
+      else if (match[1] === "green" || match[1] === "color2") { green = match[2]; foundGreen = true }
+      else if (match[1] === "yellow" || match[1] === "color3") { yellow = match[2]; foundYellow = true }
+      else if (match[1] === "blue") { blue = match[2]; foundBlue = true }
+      else if (match[1] === "magenta" || match[1] === "color5") { magenta = match[2]; foundMagenta = true }
+      else if (match[1] === "cyan" || match[1] === "color6") { cyan = match[2]; foundCyan = true }
     }
     if (!loadedBackground && color0Value.length > 0) background = color0Value
     if (!loadedForeground && color7Value.length > 0) foreground = color7Value
     if (!foundAccent && color4Value.length > 0) accent = color4Value
     if (!foundMuted) muted = color8Value.length > 0 ? color8Value : foreground
+    if (!foundGreen) green = accent
+    if (!foundYellow) yellow = urgent
+    if (!foundCyan) cyan = foreground
+    if (!foundBlue) blue = color4Value.length > 0 ? color4Value : accent
+    if (!foundMagenta) magenta = accent
   }
 
   // Last theme-supplied and user-supplied shell.toml dicts, kept separate so

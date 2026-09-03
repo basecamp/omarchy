@@ -57,7 +57,7 @@ The panels aren't read-outs. They're where you actually do the thing:
 - **Power** shows battery stats, switches power profiles (it remembers a separate choice for battery and AC), and prints some system info.
 - **Display** carries a brightness slider, text size, monitor scaling presets, and — when you have more than one screen — per-monitor controls. See [monitors](33-monitors.md) for the deeper story.
 - **Clock** opens a month grid with ISO week numbers and month stepping.
-- **News** reads official Omarchy and Omacom Foundation announcements from the RSS feed in a two-pane desktop reader. It refreshes every 15 minutes by default, and the bar icon marks unread announcements. Its widget settings can also add a curated top-ten pack spanning developer, technology, Linux and AI news; use `[` and `]` to switch between sources in the reader.
+- **News** reads official Omarchy and Omacom Foundation announcements from the RSS feed in a two-pane desktop reader. It refreshes every 15 minutes by default, and the bar icon marks unread announcements. Its widget settings let you enable any combination of the curated developer, technology, Linux and AI feeds or add up to ten custom HTTPS RSS feeds using `Name|URL` entries separated by semicolons. The source rail uses the active theme's palette to distinguish feed categories; use `[` and `]` to switch between sources.
 
 Every panel takes the keyboard as well as the mouse: arrows move, Return activates, Tab steps to the neighbouring panel, and Escape closes.
 
