@@ -51,6 +51,9 @@ pass "Windows VM stays fully opaque"
   [[ $(stat -Lc '%a' "$HOME/Windows") == 700 ]] || fail "restore_shared_privacy left mode $(stat -Lc '%a' "$HOME/Windows")"
   mkdir -p "$HOME/missing-parent"
   EXPECTED_SHARED=$HOME/missing-parent/nope LEGACY_SHARED="" restore_shared_privacy || fail "restore_shared_privacy failed on a missing path"
+  chmod 2777 "$HOME/Windows"
+  CONTAINER=omarchy-windows-does-not-exist EXPECTED_SHARED=$HOME/Windows wait_then_restore_shared_privacy
+  [[ $(stat -Lc '%a' "$HOME/Windows") == 700 ]] || fail "wait_then_restore_shared_privacy left mode $(stat -Lc '%a' "$HOME/Windows") without a container"
   # The home pathname is caller-controlled, so root must never chmod it directly.
   mkdir -p "$HOME/legacy-only"
   chmod 2777 "$HOME/legacy-only"

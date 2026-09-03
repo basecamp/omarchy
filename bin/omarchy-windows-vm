@@ -573,6 +573,33 @@ restore_shared_privacy() {
   chmod_private_dir "$EXPECTED_SHARED" || true
 }
 
+# `dc up -d` returns when the container is started, not when samba.sh has
+# chmodded /shared. Wait until that has happened (or a short timeout) so the
+# restore lands after 2777 rather than before it. Used by `up` (install) which
+# cannot wait for the full guest-ready line.
+wait_then_restore_shared_privacy() {
+  local i mode started_at
+  [[ -n $EXPECTED_SHARED ]] || return 0
+  started_at=$(docker inspect --format='{{.State.StartedAt}}' "$CONTAINER" 2>/dev/null) || started_at=""
+  if [[ -z $started_at ]]; then
+    restore_shared_privacy
+    return 0
+  fi
+  for i in {1..60}; do
+    mode=$(stat -Lc '%a' "$EXPECTED_SHARED" 2>/dev/null) || mode=""
+    if [[ $mode == 2777 || $mode == 777 ]]; then
+      restore_shared_privacy
+      return 0
+    fi
+    if docker logs --since "$started_at" "$CONTAINER" 2>&1 | grep -qiE 'shared folder|samba'; then
+      restore_shared_privacy
+      return 0
+    fi
+    sleep 0.25
+  done
+  restore_shared_privacy
+}
+
 prepare_caller_mounts() {
   local storage_fd storage_id shared_fd shared_id storage_mode shared_mode
   CALLER_MOUNTS_NEW_STORAGE=0
@@ -913,9 +940,19 @@ assert_mounts_safe() {
   }
 }
 
-__priv_up() { assert_mounts_safe && dc up -d; }
+__priv_up() {
+  assert_mounts_safe || return 1
+  dc up -d || return 1
+  wait_then_restore_shared_privacy
+  return 0
+}
 
-__priv_down() { dc down; }
+__priv_down() {
+  local rc=0
+  dc down || rc=$?
+  resolve_caller && restore_shared_privacy
+  return "$rc"
+}
 
 # Bring the VM up and wait until the guest reports it is ready, all under a
 # single elevation so the readiness poll does not prompt on every iteration.
@@ -941,6 +978,7 @@ __priv_up_wait() {
     sleep 2
     ((++count > 60)) && {
       echo "Timeout: Windows VM did not report ready within 2 minutes" >&2
+      restore_shared_privacy
       return 1
     }
   done
