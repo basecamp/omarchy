@@ -105,6 +105,7 @@ run_install() {
 write_hw_x86_64_v3 0
 write_voxtype_stub 0
 run_install "yes"
+grep -qx 'omarchy-pkg-add:wtype' "$log_file" || fail "v3-capable CPU installs wtype"
 grep -qx 'omarchy-pkg-add:voxtype-bin' "$log_file" || fail "v3-capable CPU installs voxtype-bin"
 grep -q '^omarchy-notification-send:' "$log_file" || fail "v3-capable CPU install sends the ready notification"
 grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "v3-capable CPU install does not touch the AUR"
@@ -114,7 +115,7 @@ grep -q '^omarchy-pkg-drop:' "$log_file" && fail "v3-capable CPU install does no
 # installs nothing.
 write_hw_x86_64_v3 1
 run_install "yes no"
-grep -q '^omarchy-pkg-add:voxtype-bin' "$log_file" && fail "declining the source build does not install the prebuilt binary"
+grep -q '^omarchy-pkg-add:' "$log_file" && fail "declining the source build installs no packages at all, wtype included"
 grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "declining the source build does not touch the AUR"
 
 # A CPU missing the baseline, with the user accepting the source build,
@@ -122,6 +123,7 @@ grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "declining the source build 
 write_hw_x86_64_v3 1
 write_voxtype_stub 0
 run_install "yes yes" 0
+grep -qx 'omarchy-pkg-add:wtype' "$log_file" || fail "accepting the source build installs wtype"
 grep -qx 'omarchy-pkg-aur-add:aur/voxtype' "$log_file" || fail "accepting the source build installs voxtype via the AUR"
 grep -q '^omarchy-pkg-add:voxtype-bin' "$log_file" && fail "accepting the source build does not install voxtype-bin"
 # voxtype-bin conflicts with voxtype, so it has to go before the build's output
@@ -136,6 +138,7 @@ fi
 write_hw_x86_64_v3 1
 run_install "yes yes" 1
 grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "an unreachable AUR does not attempt the source install"
+grep -q '^omarchy-pkg-add:' "$log_file" && fail "an unreachable AUR leaves no packages behind"
 
 # On a non-x86_64 machine nothing is missing and the source build is native, so
 # neither message may leak into the other architecture's branch.

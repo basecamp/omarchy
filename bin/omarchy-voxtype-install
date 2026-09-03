@@ -6,8 +6,6 @@
 # Install voxtype and configure it for use.
 
 if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
-  omarchy-pkg-add wtype || exit 1
-
   voxtype_pkg=voxtype-bin
   if ! omarchy-hw-x86-64-v3; then
     if [[ $(uname -m) == "x86_64" ]]; then
@@ -31,6 +29,10 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
       exit 0
     fi
   fi
+
+  # wtype is only useful once Voxtype is actually going to be installed, so it
+  # waits until after the CPU decision: declining the build now installs nothing.
+  omarchy-pkg-add wtype || exit 1
 
   if [[ $voxtype_pkg == voxtype-bin ]]; then
     omarchy-pkg-add voxtype-bin || exit 1
