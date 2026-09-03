@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle the focused window split or scrolling column stack
+
+set -euo pipefail
+
+layout=$(hyprctl activeworkspace -j | jq -r '.tiledLayout // empty')
+
+case "$layout" in
+  dwindle) layout_message="togglesplit" ;;
+  scrolling) layout_message="consume_or_expel prev" ;;
+  *) exit 0 ;;
+esac
+
+hyprctl dispatch "hl.dsp.layout(\"$layout_message\")" >/dev/null
