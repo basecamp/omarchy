@@ -62,6 +62,7 @@ Item {
   property bool _loginInProgress: false
   property bool _loginUrlOpened: false
   property bool _reopenAfterLogin: false
+  property int _stateWatchBackoffMs: 2000
   property string _preLoginAuthUrl: ""
   property double _lastAccountsRefreshMs: 0
   property string _switchOutput: ""
@@ -178,13 +179,25 @@ Item {
 
   function startStateWatch() {
     if (!installed || stateWatchProcess.running) return
-    stateWatchProcess.command = ["tailscale", "debug", "localapi", "GET", "/localapi/v0/watch-ipn-bus?mask=2"]
+    // mask 18 = NotifyInitialState (2) | NotifyNoPrivateKeys (16). Only the
+    // State and BrowseToURL fields are read here, and the Prefs and NetMap
+    // notifications otherwise carry the node's private key.
+    stateWatchProcess.command = ["tailscale", "debug", "localapi", "GET", "/localapi/v0/watch-ipn-bus?mask=18"]
     stateWatchProcess.running = true
+  }
+
+  function scheduleStateWatchRestart() {
+    if (!installed) return
+    stateWatchRestartTimer.interval = _stateWatchBackoffMs
+    _stateWatchBackoffMs = Math.min(_stateWatchBackoffMs * 2, 60000)
+    stateWatchRestartTimer.restart()
   }
 
   function handleStateWatchData(data) {
     var text = String(data || "").trim()
     if (text === "") return
+    // A live stream means the daemon is reachable again.
+    _stateWatchBackoffMs = 2000
 
     try {
       var notification = JSON.parse(text)
@@ -291,6 +304,7 @@ Item {
       loginTimeoutTimer.stop()
       if (_reopenAfterLogin) {
         _reopenAfterLogin = false
+        reopenExpiryTimer.stop()
         loginCompleted()
       }
     } else if (backendState === "Stopped") {
@@ -325,6 +339,7 @@ Item {
     // No progress status here — the greyed icon and hero line already convey
     // the optimistic off; only surface a message if the command fails.
     _desired = 0
+    connectTimeoutTimer.stop()
     runAction(["tailscale", "down"])
   }
 
@@ -340,7 +355,10 @@ Item {
     _loginOutput = ""
     _loginError = ""
     if (needsLogin) actionStatus = "Starting Tailscale login…"
-    else _desired = 1
+    else {
+      _desired = 1
+      connectTimeoutTimer.restart()
+    }
     _loginInProgress = needsLogin
     _loginUrlOpened = false
     _preLoginAuthUrl = authUrl
@@ -405,18 +423,28 @@ Item {
 
     _loginUrlOpened = true
     _loginInProgress = false
-    _reopenAfterLogin = true
     loginTimeoutTimer.stop()
+    connectTimeoutTimer.stop()
     Quickshell.execDetached(["omarchy-launch-browser", url])
     // Close the panel before dropping the optimistic state so its connected
-    // sections do not visibly collapse on the way out.
+    // sections do not visibly collapse on the way out. The panel answers with
+    // requestReopenAfterLogin, so only a panel the user had open comes back.
     authUrlOpened()
     _desired = -1
     return true
   }
 
+  function requestReopenAfterLogin(wasOpen) {
+    _reopenAfterLogin = wasOpen === true
+    if (_reopenAfterLogin) reopenExpiryTimer.restart()
+    else reopenExpiryTimer.stop()
+  }
+
   function handleLoginOutput(data, isError) {
     var text = String(data || "")
+    // `tailscale debug localapi` narrates the request on stderr as
+    // "# doing request …" and "# Response status …"; the body is the message.
+    if (/^\s*#/.test(text)) return
     if (isError) _loginError += text + "\n"
     else _loginOutput += text + "\n"
   }
@@ -489,10 +517,36 @@ Item {
   }
 
   Timer {
+    // Interval is set by scheduleStateWatchRestart: 2 s, doubling to a minute
+    // while the daemon stays unreachable, back to 2 s once data flows again.
     id: stateWatchRestartTimer
     interval: 2000
     repeat: false
     onTriggered: root.startStateWatch()
+  }
+
+  Timer {
+    // The prefs PATCH returns before the backend has connected, so the
+    // optimistic "on" needs its own deadline. Past it, follow the real state
+    // again rather than showing a switch stuck on "Connecting…".
+    id: connectTimeoutTimer
+    interval: 20000
+    repeat: false
+    onTriggered: {
+      if (root._desired !== 1 || root.running) return
+      root._desired = -1
+      root.actionStatus = "Tailscale is still starting"
+      actionStatusTimer.restart()
+    }
+  }
+
+  Timer {
+    // A login the user walked away from should not pop the panel open when
+    // Tailscale eventually comes up some other way.
+    id: reopenExpiryTimer
+    interval: 300000
+    repeat: false
+    onTriggered: root._reopenAfterLogin = false
   }
 
   Timer {
@@ -531,7 +585,7 @@ Item {
     command: []
     stdout: SplitParser { onRead: function(data) { root.handleStateWatchData(data) } }
     onExited: function(exitCode) {
-      if (root.installed) stateWatchRestartTimer.restart()
+      root.scheduleStateWatchRestart()
     }
   }
 
@@ -618,10 +672,14 @@ Item {
     stderr: SplitParser { onRead: function(data) { root.handleLoginOutput(data, true) } }
     onExited: function(exitCode) {
       var combined = String(root._loginOutput || "") + "\n" + String(root._loginError || "")
+      // The success body is the full prefs object; nothing here needs it.
+      root._loginOutput = ""
+      root._loginError = ""
       if (exitCode !== 0 && !root._loginUrlOpened) {
         root._desired = -1
         root._loginInProgress = false
-        root.lastError = elideStatus(combined || "Could not start Tailscale")
+        connectTimeoutTimer.stop()
+        root.lastError = elideStatus(combined) || "Could not start Tailscale"
         root.actionStatus = root.lastError
         actionStatusTimer.restart()
       } else {

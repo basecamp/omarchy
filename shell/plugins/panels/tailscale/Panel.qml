@@ -361,7 +361,11 @@ Panel {
     function onPeersChanged() { root.ensureCursor() }
     function onAccountsChanged() { root.ensureCursor() }
     function onAccountsAccessDeniedChanged() { root.ensureCursor() }
-    function onAuthUrlOpened() { root.close() }
+    function onAuthUrlOpened() {
+      var wasOpen = root.opened
+      root.close()
+      tailscale.requestReopenAfterLogin(wasOpen)
+    }
     function onLoginCompleted() { root.open() }
   }
 
