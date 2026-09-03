@@ -13,5 +13,9 @@ if [[ -z $name || -z $package || -z $family ]]; then
   exit 1
 fi
 
+printf -v install_message '%q' "Installing ${name}..."
+printf -v package_arg '%q' "$package"
+printf -v family_arg '%q' "$family"
+
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo 'Installing ${name}...'; omarchy-pkg-add ${package} && sleep 2 && omarchy-font-set '${family}'"
+  "echo ${install_message}; omarchy-pkg-add ${package_arg} && sleep 2 && omarchy-font-set ${family_arg}"

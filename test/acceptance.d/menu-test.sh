@@ -75,7 +75,7 @@ wtype -k Return
 wait_until "style submenu is visible" 15 screen_contains "Theme"
 screenshot "success-menu-03-style-submenu"
 
-wtype -k Down -k Down -k Down -k Return
+wtype -k Down -k Down -k Down -k Down -k Return
 sleep 1
 screenshot "success-menu-04-menu-bar-submenu"
 

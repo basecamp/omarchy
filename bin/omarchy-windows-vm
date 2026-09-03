@@ -28,6 +28,23 @@ LEGACY_COMPOSE_FILE="$HOME/.config/windows/docker-compose.yml"
 CREDENTIALS_FILE="$HOME/.config/windows/credentials"
 IMAGE="dockurr/windows"
 CONTAINER="omarchy-windows"
+VM_LOCK_DIR=/run/lock/omarchy-windows-vm
+# Removal is the only path that recursively proves there are no bind aliases.
+# Bound every metadata walk so a large or hostile caller tree fails closed
+# instead of hanging a privileged action indefinitely.
+TREE_SCAN_TIMEOUT_SECONDS=5
+TREE_SCAN_KILL_AFTER_SECONDS=1
+TREE_SCAN_TIMEOUT=/usr/bin/timeout
+TREE_SCAN_FIND=/usr/bin/find
+
+# The privileged process must not resolve mount, stat, Docker, or any other
+# helper from a caller-controlled PATH, and validation must not change with an
+# inherited locale. pkexec normally sanitizes both; pin them here as defense in
+# depth for every direct __priv entry as well.
+if ((EUID == 0)); then
+  export PATH=/usr/bin:/usr/sbin:/bin:/sbin
+  export LC_ALL=C.UTF-8
+fi
 
 # --- privilege helpers -------------------------------------------------------
 
@@ -45,17 +62,19 @@ docker_needs_sudo() { omarchy-sudo-docker; }
 # prompt the user grants for the trusted helper could run an attacker's binary
 # as root. Fails closed (empty output) when no trustworthy target is found.
 priv_target() {
-  local candidate owner mode
-  for candidate in /usr/bin/omarchy-windows-vm "$(type -P omarchy-windows-vm 2>/dev/null)"; do
-    [[ -n $candidate && -x $candidate ]] || continue
-    owner=$(stat -Lc '%u' "$candidate" 2>/dev/null) || continue
-    mode=$(stat -Lc '%a' "$candidate" 2>/dev/null) || continue
-    [[ $owner == "0" ]] || continue
-    ((8#$mode & 022)) && continue # writable by group or other -> reject
-    printf '%s\n' "$candidate"
-    return 0
+  local candidate=/usr/bin/omarchy-windows-vm canonical probe owner mode
+  [[ -f $candidate && ! -L $candidate && -x $candidate ]] || return 1
+  canonical=$(realpath -e -- "$candidate" 2>/dev/null) || return 1
+  [[ $canonical == "$candidate" ]] || return 1
+  probe=$candidate
+  while :; do
+    owner=$(stat -Lc '%u' "$probe" 2>/dev/null) || return 1
+    mode=$(stat -Lc '%a' "$probe" 2>/dev/null) || return 1
+    [[ $owner == 0 ]] && ! ((8#$mode & 022)) || return 1
+    [[ $probe == / ]] && break
+    probe=$(dirname -- "$probe")
   done
-  return 1
+  printf '%s\n' "$candidate"
 }
 
 # Run a privileged VM action. write_compose always elevates (the compose is
@@ -67,9 +86,18 @@ priv_target() {
 priv() {
   local action="$1"
   shift
-  if [[ $action != write_compose ]] && ! docker_needs_sudo; then
-    "__priv_$action" "$@"
-    return
+  if [[ $action != write_compose && $action != remove ]] && ! docker_needs_sudo; then
+    # Bring-up normally runs directly for a docker-group user, but recreating
+    # the protected bind anchors after reboot (or migrating an old compose)
+    # still needs one privileged invocation.
+    if [[ -d $VM_LOCK_DIR && ! -L $VM_LOCK_DIR && -r $VM_LOCK_DIR && -x $VM_LOCK_DIR ]] && {
+      [[ $action != up && $action != up_wait ]] || {
+        ! compose_needs_security_migration && mounts_ready >/dev/null 2>&1
+      }
+    }; then
+      with_vm_lock "__priv_$action" "$@"
+      return
+    fi
   fi
   local target
   target=$(priv_target) || {
@@ -81,6 +109,28 @@ priv() {
 
 dc() { docker-compose -f "$COMPOSE_FILE" "$@"; }
 
+with_vm_lock() {
+  local fd rc=0
+  if ((EUID == 0)); then
+    assert_boundary_dir /run 0 && assert_boundary_dir /run/lock 0 || return 1
+    if getent group docker >/dev/null 2>&1; then
+      install -d -o root -g docker -m 0750 -- "$VM_LOCK_DIR" || return 1
+    else
+      install -d -o root -g root -m 0700 -- "$VM_LOCK_DIR" || return 1
+    fi
+  fi
+  assert_boundary_dir "$VM_LOCK_DIR" 0 || return 1
+  # Flock the directory inode itself. Concurrent first callers may both run
+  # install -d, but mkdir is atomic and they necessarily open the same stable
+  # inode below the root-owned /run/lock parent.
+  exec {fd}<"$VM_LOCK_DIR/." || return 1
+  flock -x "$fd" || { exec {fd}<&-; return 1; }
+  "$@" || rc=$?
+  flock -u "$fd" || rc=1
+  exec {fd}<&-
+  return "$rc"
+}
+
 # --- validation (shared by the user-side prompts and the root-side writer) ----
 
 valid_ram() { [[ $1 =~ ^[0-9]{1,3}G$ ]]; }
@@ -88,16 +138,6 @@ valid_cores() { [[ $1 =~ ^[0-9]{1,2}$ ]] && ((10#$1 >= 1)); }
 valid_disk() { [[ $1 =~ ^[0-9]{1,4}G$ ]]; }
 valid_username() { [[ $1 =~ ^[A-Za-z0-9_-]{1,20}$ ]]; }
 valid_tz() { [[ $1 =~ ^[A-Za-z0-9_/.+-]{1,64}$ ]]; }
-valid_path() {
-  [[ $1 =~ ^/[A-Za-z0-9._/-]+$ ]] || return 1
-  # Reject non-normalized paths: a . or .. component canonicalizes at mount time
-  # (e.g. /./ or /a/../ -> /), which would bind-mount a sensitive directory —
-  # host / included — into the guest. Volumes must be given already-normalized.
-  case "$1" in
-  *//* | */./* | */../* | */. | */..) return 1 ;;
-  esac
-  return 0
-}
 valid_password() { [[ $1 =~ ^[[:print:]]{1,64}$ ]]; }
 
 # The only privileged sub-actions __priv may dispatch. A bash command name
@@ -113,35 +153,531 @@ valid_priv_action() {
 
 # --- privileged actions (run as root via pkexec, or directly when sudoless) ---
 
-# Reads KEY=VALUE lines on stdin, re-validates every field, and writes the
-# compose atomically as root. Re-validation here is the security boundary: the
-# writer refuses rather than emit a compose an attacker could have influenced.
-# Only these fixed keys are honored; image, container name, devices, caps, and
-# port bindings are hard-coded and never taken from input.
-__priv_write_compose() {
-  local ram cores disk username password tz storage shared key value
+# Resolve the account that authorized pkexec. Never trust HOME or a caller-
+# supplied mount path in the privileged process: pkexec can reset HOME, and the
+# old path arguments were the source of an arbitrary host bind-mount primitive.
+resolve_caller() {
+  local entry canonical parent owner mode
 
-  while IFS='=' read -r key value; do
-    case "$key" in
-    RAM) ram="$value" ;;
-    CORES) cores="$value" ;;
-    DISK) disk="$value" ;;
-    USERNAME) username="$value" ;;
-    PASSWORD) password="$value" ;;
-    TZ) tz="$value" ;;
-    STORAGE) storage="$value" ;;
-    SHARED) shared="$value" ;;
-    esac
+  if ((EUID == 0)); then
+    [[ ${PKEXEC_UID:-} =~ ^[0-9]{1,10}$ ]] && ((10#$PKEXEC_UID > 0)) || {
+      echo "omarchy-windows-vm: cannot identify the user who authorized this action" >&2
+      return 1
+    }
+    CALLER_UID=$((10#$PKEXEC_UID))
+  else
+    CALLER_UID=$(id -u)
+  fi
+
+  entry=$(getent passwd "$CALLER_UID") || {
+    echo "omarchy-windows-vm: no account exists for uid $CALLER_UID" >&2
+    return 1
+  }
+  IFS=: read -r _ _ _ CALLER_GID _ CALLER_HOME _ <<<"$entry"
+  [[ $CALLER_GID =~ ^[0-9]+$ && $CALLER_HOME == /* && -d $CALLER_HOME ]] || {
+    echo "omarchy-windows-vm: invalid home directory for uid $CALLER_UID" >&2
+    return 1
+  }
+
+  # A direct, non-root development invocation with a non-standard runtime has
+  # no privilege boundary and may use its current HOME (which also keeps these
+  # functions testable). Production always uses the account database value.
+  if ((EUID != 0)) && [[ $RUNTIME_DIR != /var/lib/omarchy/windows ]]; then
+    CALLER_HOME=${HOME:-$CALLER_HOME}
+  fi
+  canonical=$(realpath -e -- "$CALLER_HOME" 2>/dev/null) || return 1
+  [[ $canonical == "$CALLER_HOME" ]] || {
+    echo "omarchy-windows-vm: refusing a home directory reached through a symlink" >&2
+    return 1
+  }
+
+  if ((EUID == 0)); then
+    owner=$(stat -Lc '%u' "$CALLER_HOME") || return 1
+    [[ $owner == "$CALLER_UID" ]] || {
+      echo "omarchy-windows-vm: caller does not own $CALLER_HOME" >&2
+      return 1
+    }
+    # The user must not be able to rename or replace their home while root is
+    # opening and pinning the familiar data entries below it.
+    parent=$(dirname -- "$CALLER_HOME")
+    while :; do
+      owner=$(stat -Lc '%u' "$parent") || return 1
+      mode=$(stat -Lc '%a' "$parent") || return 1
+      [[ $owner == 0 ]] && ! ((8#$mode & 022)) || {
+        echo "omarchy-windows-vm: unsafe writable parent in home path: $parent" >&2
+        return 1
+      }
+      [[ $parent == / ]] && break
+      parent=$(dirname -- "$parent")
+    done
+  fi
+
+  # Docker only ever sees fixed paths below the root-owned runtime tree. The
+  # user's real data stays wherever ~/.windows and ~/Windows resolve (including
+  # separately mounted homes and legitimate symlinks); those sources are pinned
+  # into these anchors with bind mounts before Docker is allowed to start.
+  MOUNT_ROOT="$RUNTIME_DIR/mounts"
+  USERS_DIR="$MOUNT_ROOT/users"
+  CALLER_DATA_ROOT="$USERS_DIR/$CALLER_UID"
+  EXPECTED_STORAGE="$CALLER_DATA_ROOT/storage"
+  EXPECTED_SHARED="$CALLER_DATA_ROOT/shared"
+  LEGACY_STORAGE="$CALLER_HOME/.windows"
+  LEGACY_SHARED="$CALLER_HOME/Windows"
+  # The first protected-anchor implementation used a root-owned sibling of
+  # home. Recognize that exact derived pair during upgrade, but never accept a
+  # path read from user input.
+  OLD_MOUNT_ROOT="$(dirname -- "$CALLER_HOME")/.omarchy-windows"
+  OLD_EXPECTED_STORAGE="$OLD_MOUNT_ROOT/users/$CALLER_UID/storage"
+  OLD_EXPECTED_SHARED="$OLD_MOUNT_ROOT/users/$CALLER_UID/shared"
+}
+
+boundary_owner() {
+  # Production boundaries remain root-owned even when a docker-group user runs
+  # the read-only bring-up checks directly. A non-standard runtime is supported
+  # only for unprivileged tests/development and is owned by that caller.
+  if ((EUID == 0)) || [[ $RUNTIME_DIR == /var/lib/omarchy/windows ]]; then
+    printf '0'
+  else
+    printf '%s' "$CALLER_UID"
+  fi
+}
+
+assert_boundary_dir() {
+  local path="$1" expected_owner="$2" owner mode canonical
+  [[ -d $path && ! -L $path ]] || return 1
+  canonical=$(realpath -e -- "$path" 2>/dev/null) || return 1
+  [[ $canonical == "$path" ]] || return 1
+  owner=$(stat -Lc '%u' "$path") || return 1
+  mode=$(stat -Lc '%a' "$path") || return 1
+  [[ $owner == "$expected_owner" ]] && ! ((8#$mode & 022))
+}
+
+prepare_boundary_component() {
+  local path="$1" parent="$2" owner="$3" mode="$4"
+  assert_boundary_dir "$parent" "$owner" || return 1
+  if [[ -e $path || -L $path ]]; then
+    assert_boundary_dir "$path" "$owner" || return 1
+  else
+    if ((EUID == 0)); then
+      install -d -o root -g root -m "$mode" -- "$path" || return 1
+    else
+      install -d -m "$mode" -- "$path" || return 1
+    fi
+  fi
+  chmod "$mode" -- "$path" || return 1
+  if ((EUID == 0)); then chown root:root -- "$path" || return 1; fi
+  assert_boundary_dir "$path" "$owner"
+}
+
+prepare_runtime_tree() {
+  local owner probe runtime_parent
+  owner=$(boundary_owner)
+  if ((EUID == 0)); then
+    [[ $RUNTIME_DIR == /var/lib/omarchy/windows ]] || {
+      echo "omarchy-windows-vm: refusing a non-standard privileged runtime path" >&2
+      return 1
+    }
+    # Check the nearest existing ancestor before mkdir can follow anything.
+    # Every new component is then created by root and checked again below.
+    probe=$RUNTIME_DIR
+    while [[ ! -e $probe && ! -L $probe ]]; do probe=$(dirname -- "$probe"); done
+    while :; do
+      assert_boundary_dir "$probe" 0 || {
+        echo "omarchy-windows-vm: unsafe runtime parent: $probe" >&2
+        return 1
+      }
+      [[ $probe == / ]] && break
+      probe=$(dirname -- "$probe")
+    done
+  fi
+
+  runtime_parent=$(dirname -- "$RUNTIME_DIR")
+  if ((EUID == 0)) && [[ ! -e $runtime_parent && ! -L $runtime_parent ]]; then
+    [[ $runtime_parent == /var/lib/omarchy ]] || return 1
+    assert_boundary_dir /var/lib 0 || return 1
+    install -d -o root -g root -m 0755 -- "$runtime_parent" || return 1
+  fi
+  prepare_boundary_component "$RUNTIME_DIR" "$runtime_parent" "$owner" 0755 &&
+    prepare_boundary_component "$MOUNT_ROOT" "$RUNTIME_DIR" "$owner" 0711 &&
+    prepare_boundary_component "$USERS_DIR" "$MOUNT_ROOT" "$owner" 0711 &&
+    prepare_boundary_component "$CALLER_DATA_ROOT" "$USERS_DIR" "$owner" 0711 || {
+    echo "omarchy-windows-vm: unsafe VM mount boundary" >&2
+    return 1
+  }
+}
+
+# Open the source directory itself and keep the descriptor alive until after the
+# bind. /proc/$BASHPID/fd refers to this exact shell process (including when a
+# function runs in a pipeline subshell), not the short-lived mount subprocess,
+# so a rename or symlink swap after open cannot change which inode is mounted.
+open_mount_source() {
+  local path="$1" label="$2" fd record uid identity
+  [[ -d $path ]] || {
+    echo "omarchy-windows-vm: $label source is not a directory: $path" >&2
+    return 1
+  }
+  # Appending /. makes a directory-to-FIFO swap fail with ENOTDIR instead of
+  # leaving the privileged helper blocked while opening an attacker-held pipe.
+  exec {fd}<"$path/." || {
+    echo "omarchy-windows-vm: cannot open $label source: $path" >&2
+    return 1
+  }
+  [[ -d /proc/$BASHPID/fd/$fd ]] || {
+    exec {fd}<&-
+    return 1
+  }
+  record=$(stat -Lc '%u|%d:%i' "/proc/$BASHPID/fd/$fd" 2>/dev/null) || {
+    exec {fd}<&-
+    return 1
+  }
+  IFS='|' read -r uid identity <<<"$record"
+  [[ $uid == "$CALLER_UID" ]] || {
+    exec {fd}<&-
+    echo "omarchy-windows-vm: $label source must be a directory owned by uid $CALLER_UID" >&2
+    return 1
+  }
+  OPENED_MOUNT_FD=$fd
+  OPENED_MOUNT_ID=$identity
+}
+
+# Return 0 when ancestor_id contains the already-open descendant directory, 1
+# when the walk reaches the namespace root without finding it, and 2 on any
+# error or an implausibly deep walk. Every hop is opened relative to a pinned
+# directory FD; no caller-mutable pathname is re-resolved.
+pinned_dir_contains() {
+  local ancestor_id="$1" descendant_fd="$2" walk_fd parent_fd current_id parent_id depth
+  exec {walk_fd}<"/proc/$BASHPID/fd/$descendant_fd/." || return 2
+  for ((depth = 0; depth < 256; depth++)); do
+    current_id=$(stat -Lc '%d:%i' "/proc/$BASHPID/fd/$walk_fd" 2>/dev/null) || {
+      exec {walk_fd}<&-
+      return 2
+    }
+    if [[ $current_id == "$ancestor_id" ]]; then
+      exec {walk_fd}<&-
+      return 0
+    fi
+    exec {parent_fd}<"/proc/$BASHPID/fd/$walk_fd/.." || {
+      exec {walk_fd}<&-
+      return 2
+    }
+    parent_id=$(stat -Lc '%d:%i' "/proc/$BASHPID/fd/$parent_fd" 2>/dev/null) || {
+      exec {parent_fd}<&-
+      exec {walk_fd}<&-
+      return 2
+    }
+    if [[ $parent_id == "$current_id" ]]; then
+      exec {parent_fd}<&-
+      exec {walk_fd}<&-
+      return 1
+    fi
+    exec {walk_fd}<&-
+    walk_fd=$parent_fd
+  done
+  exec {walk_fd}<&-
+  return 2
+}
+
+# A bind alias can give the same directory inode a second parent chain, so an
+# upward walk alone is insufficient for destructive removal. Search from a
+# pinned tree root for the other pinned inode without following symlinks or
+# crossing the removal traversal's filesystem boundary. Return 0 when found, 1
+# when absent, and 2 on timeout, traversal error, or unexpected output.
+pinned_tree_contains() {
+  local root_fd="$1" needle_fd="$2" found rc
+  # -xdev still evaluates a nested mountpoint itself before pruning its
+  # children, so a direct different-filesystem alias of the needle is found too.
+  # This matches removal's traversal boundary without skipping mount aliases.
+  if found=$("$TREE_SCAN_TIMEOUT" --signal=TERM --kill-after="${TREE_SCAN_KILL_AFTER_SECONDS}s" \
+    "${TREE_SCAN_TIMEOUT_SECONDS}s" "$TREE_SCAN_FIND" -P "/proc/$BASHPID/fd/$root_fd/." \
+    -xdev -type d -samefile "/proc/$BASHPID/fd/$needle_fd/." \
+    -printf 'found\n' -quit 2>/dev/null); then
+    rc=0
+  else
+    rc=$?
+  fi
+  ((rc == 0)) || return 2
+  case "$found" in
+  found) return 0 ;;
+  "") return 1 ;;
+  *) return 2 ;;
+  esac
+}
+
+validate_pinned_sources_disjoint() {
+  local storage_fd="$1" storage_id="$2" shared_fd="$3" shared_id="$4" rc
+  if [[ $storage_id == "$shared_id" ]]; then
+    echo "omarchy-windows-vm: storage and shared must be different directories" >&2
+    return 1
+  fi
+  if pinned_dir_contains "$storage_id" "$shared_fd"; then
+    echo "omarchy-windows-vm: shared directory must not be inside storage" >&2
+    return 1
+  else
+    rc=$?
+    ((rc == 1)) || {
+      echo "omarchy-windows-vm: could not verify storage/shared ancestry" >&2
+      return 1
+    }
+  fi
+  if pinned_dir_contains "$shared_id" "$storage_fd"; then
+    echo "omarchy-windows-vm: storage directory must not be inside shared" >&2
+    return 1
+  else
+    rc=$?
+    ((rc == 1)) || {
+      echo "omarchy-windows-vm: could not verify storage/shared ancestry" >&2
+      return 1
+    }
+  fi
+}
+
+removal_trees_disjoint() {
+  local storage_fd shared_fd anchor_storage_fd anchor_shared_fd storage_id shared_id rc=1 scan_rc
+  local scan scan_root_fd scan_needle_fd scan_label
+  open_mount_source "$LEGACY_STORAGE" storage || return 1
+  storage_fd=$OPENED_MOUNT_FD
+  storage_id=$OPENED_MOUNT_ID
+  if ! open_mount_source "$LEGACY_SHARED" shared; then
+    exec {storage_fd}<&-
+    return 1
+  fi
+  shared_fd=$OPENED_MOUNT_FD
+  shared_id=$OPENED_MOUNT_ID
+  if ! validate_pinned_sources_disjoint "$storage_fd" "$storage_id" "$shared_fd" "$shared_id" ||
+    ! mounted_leaf_matches "$EXPECTED_STORAGE" "$storage_id" ||
+    ! mounted_leaf_matches "$EXPECTED_SHARED" "$shared_id"; then
+    exec {storage_fd}<&-
+    exec {shared_fd}<&-
+    return 1
+  fi
+  if ! exec {anchor_storage_fd}<"$EXPECTED_STORAGE/."; then
+    exec {storage_fd}<&-
+    exec {shared_fd}<&-
+    return 1
+  fi
+  if ! exec {anchor_shared_fd}<"$EXPECTED_SHARED/."; then
+    exec {anchor_storage_fd}<&-
+    exec {storage_fd}<&-
+    exec {shared_fd}<&-
+    return 1
+  fi
+
+  # Scan the protected anchor views first. Also scan the pinned caller views:
+  # a submount attached after the original non-recursive bind is intentionally
+  # absent from the anchor view, but removal must still refuse that alias.
+  rc=0
+  for scan in \
+    "$anchor_storage_fd:$anchor_shared_fd:shared below protected storage" \
+    "$anchor_shared_fd:$anchor_storage_fd:storage below protected shared" \
+    "$storage_fd:$shared_fd:shared below storage source" \
+    "$shared_fd:$storage_fd:storage below shared source"; do
+    IFS=: read -r scan_root_fd scan_needle_fd scan_label <<<"$scan"
+    if pinned_tree_contains "$scan_root_fd" "$scan_needle_fd"; then
+      echo "omarchy-windows-vm: refusing removal: $scan_label" >&2
+      rc=1
+      break
+    else
+      scan_rc=$?
+      if ((scan_rc != 1)); then
+        echo "omarchy-windows-vm: removal containment scan failed or timed out" >&2
+        rc=1
+        break
+      fi
+    fi
   done
 
-  valid_ram "$ram" || { echo "invalid RAM: $ram" >&2; exit 2; }
-  valid_cores "$cores" || { echo "invalid CPU cores: $cores" >&2; exit 2; }
-  valid_disk "$disk" || { echo "invalid disk size: $disk" >&2; exit 2; }
-  valid_username "$username" || { echo "invalid username: $username" >&2; exit 2; }
-  valid_password "$password" || { echo "invalid password" >&2; exit 2; }
-  valid_tz "$tz" || tz="UTC"
-  valid_path "$storage" || { echo "invalid storage path: $storage" >&2; exit 2; }
-  valid_path "$shared" || { echo "invalid shared path: $shared" >&2; exit 2; }
+  exec {anchor_storage_fd}<&-
+  exec {anchor_shared_fd}<&-
+  exec {storage_fd}<&-
+  exec {shared_fd}<&-
+  return "$rc"
+}
+
+prepare_mount_anchor() {
+  local path="$1" owner
+  owner=$(boundary_owner)
+  [[ ! -L $path ]] || return 1
+  if mountpoint -q -- "$path" 2>/dev/null; then return 0; fi
+  prepare_boundary_component "$path" "$CALLER_DATA_ROOT" "$owner" 0700 || return 1
+  [[ -z $(find "$path" -mindepth 1 -print -quit) ]] || {
+    echo "omarchy-windows-vm: refusing to hide data below mount anchor: $path" >&2
+    return 1
+  }
+}
+
+mounted_leaf_matches() {
+  local stable="$1" identity="$2" actual owner mode canonical
+  [[ -d $stable && ! -L $stable ]] || return 1
+  canonical=$(realpath -e -- "$stable" 2>/dev/null) || return 1
+  [[ $canonical == "$stable" ]] || return 1
+  mountpoint -q -- "$stable" 2>/dev/null || return 1
+  [[ $(mount_layer_count "$stable") == 1 ]] || return 1
+  actual=$(stat -Lc '%d:%i' "$stable" 2>/dev/null) || return 1
+  owner=$(stat -Lc '%u' "$stable" 2>/dev/null) || return 1
+  mode=$(stat -Lc '%a' "$stable" 2>/dev/null) || return 1
+  [[ $actual == "$identity" && $owner == "$CALLER_UID" && $mode == 700 ]]
+}
+
+bind_mount_leaf() {
+  local fd="$1" identity="$2" stable="$3" actual owner
+  MOUNT_LEAF_NEW=0
+  if mountpoint -q -- "$stable" 2>/dev/null; then
+    mounted_leaf_matches "$stable" "$identity" || {
+      echo "omarchy-windows-vm: protected mount at $stable no longer matches its home source" >&2
+      return 1
+    }
+    return 0
+  fi
+
+  # util-linux normally canonicalizes a /proc/<pid>/fd link back to a pathname,
+  # which would throw away the FD pin. Pass the procfd to mount(2) unchanged.
+  mount --no-canonicalize --bind "/proc/$BASHPID/fd/$fd" "$stable" || return 1
+  MOUNT_LEAF_NEW=1
+  actual=$(stat -Lc '%d:%i' "$stable" 2>/dev/null) || actual=""
+  owner=$(stat -Lc '%u' "$stable" 2>/dev/null) || owner=""
+  if [[ $actual != "$identity" || $owner != "$CALLER_UID" ]]; then
+    if umount -- "$stable"; then
+      MOUNT_LEAF_NEW=0
+    else
+      echo "omarchy-windows-vm: could not roll back unverified bind at $stable" >&2
+    fi
+    echo "omarchy-windows-vm: bind verification failed for $stable" >&2
+    return 1
+  fi
+  mounted_leaf_matches "$stable" "$identity" || {
+    if umount -- "$stable"; then
+      MOUNT_LEAF_NEW=0
+    else
+      echo "omarchy-windows-vm: could not roll back invalid bind at $stable" >&2
+    fi
+    return 1
+  }
+}
+
+prepare_caller_mounts() {
+  local storage_fd storage_id shared_fd shared_id storage_mode shared_mode
+  CALLER_MOUNTS_NEW_STORAGE=0
+  CALLER_MOUNTS_NEW_SHARED=0
+  resolve_caller && prepare_runtime_tree || return 1
+  prepare_mount_anchor "$EXPECTED_STORAGE" && prepare_mount_anchor "$EXPECTED_SHARED" || return 1
+
+  # Pre-open and validate both sources before changing either mount anchor.
+  open_mount_source "$LEGACY_STORAGE" storage || return 1
+  storage_fd=$OPENED_MOUNT_FD
+  storage_id=$OPENED_MOUNT_ID
+  if ! open_mount_source "$LEGACY_SHARED" shared; then
+    exec {storage_fd}<&-
+    return 1
+  fi
+  shared_fd=$OPENED_MOUNT_FD
+  shared_id=$OPENED_MOUNT_ID
+  if ! validate_pinned_sources_disjoint "$storage_fd" "$storage_id" "$shared_fd" "$shared_id"; then
+    exec {storage_fd}<&-
+    exec {shared_fd}<&-
+    return 1
+  fi
+
+  # Privacy is an explicit preflight step for both already-pinned sources, not
+  # a side effect halfway through the two-mount transaction. Old umask-022
+  # installs are hardened together before either Docker-facing anchor changes.
+  chmod 0700 -- "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
+    exec {storage_fd}<&-
+    exec {shared_fd}<&-
+    return 1
+  }
+  storage_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$storage_fd" 2>/dev/null) || storage_mode=""
+  shared_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$shared_fd" 2>/dev/null) || shared_mode=""
+  if [[ $storage_mode != 700 || $shared_mode != 700 ]]; then
+    exec {storage_fd}<&-
+    exec {shared_fd}<&-
+    return 1
+  fi
+
+  if bind_mount_leaf "$storage_fd" "$storage_id" "$EXPECTED_STORAGE"; then
+    CALLER_MOUNTS_NEW_STORAGE=$MOUNT_LEAF_NEW
+  else
+    CALLER_MOUNTS_NEW_STORAGE=$MOUNT_LEAF_NEW
+    rollback_new_caller_mounts || true
+    exec {storage_fd}<&-
+    exec {shared_fd}<&-
+    return 1
+  fi
+  if ! bind_mount_leaf "$shared_fd" "$shared_id" "$EXPECTED_SHARED"; then
+    CALLER_MOUNTS_NEW_SHARED=$MOUNT_LEAF_NEW
+    rollback_new_caller_mounts || true
+    exec {storage_fd}<&-
+    exec {shared_fd}<&-
+    return 1
+  fi
+  CALLER_MOUNTS_NEW_SHARED=$MOUNT_LEAF_NEW
+
+  exec {storage_fd}<&-
+  exec {shared_fd}<&-
+}
+
+mounts_ready() {
+  local storage_fd storage_id shared_fd shared_id rc=1
+  resolve_caller || return 1
+  open_mount_source "$LEGACY_STORAGE" storage || return 1
+  storage_fd=$OPENED_MOUNT_FD
+  storage_id=$OPENED_MOUNT_ID
+  if ! open_mount_source "$LEGACY_SHARED" shared; then
+    exec {storage_fd}<&-
+    return 1
+  fi
+  shared_fd=$OPENED_MOUNT_FD
+  shared_id=$OPENED_MOUNT_ID
+  if ! validate_pinned_sources_disjoint "$storage_fd" "$storage_id" "$shared_fd" "$shared_id"; then
+    exec {storage_fd}<&-
+    exec {shared_fd}<&-
+    return 1
+  fi
+  if assert_boundary_dir "$RUNTIME_DIR" "$(boundary_owner)" &&
+    assert_boundary_dir "$MOUNT_ROOT" "$(boundary_owner)" &&
+    assert_boundary_dir "$USERS_DIR" "$(boundary_owner)" &&
+    assert_boundary_dir "$CALLER_DATA_ROOT" "$(boundary_owner)" &&
+    mounted_leaf_matches "$EXPECTED_STORAGE" "$storage_id" &&
+    mounted_leaf_matches "$EXPECTED_SHARED" "$shared_id"; then
+    rc=0
+  fi
+  exec {storage_fd}<&-
+  exec {shared_fd}<&-
+  return "$rc"
+}
+
+mount_layer_count() {
+  local path="$1"
+  awk -v path="$path" '$5 == path { count++ } END { print count + 0 }' /proc/self/mountinfo
+}
+
+mount_descendant_count() {
+  local path="$1"
+  awk -v prefix="$path/" 'index($5, prefix) == 1 { count++ } END { print count + 0 }' /proc/self/mountinfo
+}
+
+rollback_new_caller_mounts() {
+  local failed=0
+  if ((CALLER_MOUNTS_NEW_SHARED)); then
+    if umount -- "$EXPECTED_SHARED"; then CALLER_MOUNTS_NEW_SHARED=0; else failed=1; fi
+  fi
+  if ((CALLER_MOUNTS_NEW_STORAGE)); then
+    if umount -- "$EXPECTED_STORAGE"; then CALLER_MOUNTS_NEW_STORAGE=0; else failed=1; fi
+  fi
+  ((failed == 0)) || echo "omarchy-windows-vm: could not roll back newly created VM mounts" >&2
+  return "$failed"
+}
+
+write_compose_atomically() (
+  local ram="$1" cores="$2" disk="$3" username="$4" password="$5" tz="$6"
+  local tmp="" rc esc_password
+  cleanup_writer() {
+    rc=$?
+    trap - EXIT
+    [[ -z $tmp ]] || rm -f -- "$tmp" || true
+    if ((rc != 0)) && ! rollback_new_caller_mounts; then rc=1; fi
+    exit "$rc"
+  }
+  trap cleanup_writer EXIT
 
   # Neutralize anything in the password that could be misread when the compose
   # is parsed. Two layers apply, in this order at parse time: docker compose
@@ -150,17 +686,16 @@ __priv_write_compose() {
   # double-quote) and the interpolation layer last ($ -> $$), so a password
   # containing " \ or $ reaches the guest verbatim. unescape() reverses this in
   # the opposite order for the RDP credentials.
-  local esc_password=${password//\\/\\\\}
+  esc_password=${password//\\/\\\\}
   esc_password=${esc_password//\"/\\\"}
   esc_password=${esc_password//\$/\$\$}
 
-  mkdir -p "$RUNTIME_DIR"
-  chmod 0755 "$RUNTIME_DIR" 2>/dev/null || true
-  chown root:root "$RUNTIME_DIR" 2>/dev/null || true
-
-  local tmp
-  tmp=$(mktemp "$RUNTIME_DIR/.compose.XXXXXX")
-  cat >"$tmp" <<EOF
+  tmp=$(mktemp "$RUNTIME_DIR/.compose.XXXXXX") || exit 1
+  # omarchy:heredoc-expands paths=EXPECTED_STORAGE,EXPECTED_SHARED -- both are
+  # root-protected anchors derived from the authenticated caller uid and bound
+  # to source inodes that were opened and validated before this compose is
+  # written. The remaining expansions are revalidated scalar settings.
+  cat >"$tmp" <<EOF || exit 1
 services:
   windows:
     image: $IMAGE
@@ -172,6 +707,7 @@ services:
       DISK_SIZE: "$disk"
       USERNAME: "$username"
       PASSWORD: "$esc_password"
+      PROTECT: "Y"
       TZ: "$tz"
       ARGUMENTS: "-rtc base=localtime,clock=host,driftfix=slew"
     devices:
@@ -184,57 +720,177 @@ services:
       - 127.0.0.1:3389:3389/tcp
       - 127.0.0.1:3389:3389/udp
     volumes:
-      - $storage:/storage
-      - $shared:/shared
+      - $EXPECTED_STORAGE:/storage
+      - $EXPECTED_SHARED:/shared
     restart: "no"
     stop_grace_period: 2m
 EOF
-  # Readable by root and the docker group only. In sudoless mode the user is in
-  # the docker group and runs docker-compose against this file directly; in the
-  # default mode the elevated helper (root) reads it, and other local users
-  # cannot read the guest password. chown falls back to root:root if the docker
-  # group somehow does not exist (sudoless mode could not be enabled anyway).
-  chmod 0640 "$tmp" 2>/dev/null || true
-  chown root:docker "$tmp" 2>/dev/null || chown root:root "$tmp" 2>/dev/null || true
-  mv -f "$tmp" "$COMPOSE_FILE"
+  chmod 0640 "$tmp" || exit 1
+  if ((EUID == 0)); then
+    chown root:docker "$tmp" 2>/dev/null || chown root:root "$tmp" || exit 1
+  fi
+  mv -fT -- "$tmp" "$COMPOSE_FILE" || exit 1
+  tmp=""
+  trap - EXIT
+)
+
+# Reads KEY=VALUE lines on stdin, re-validates every field, and writes the
+# compose atomically as root. Re-validation here is the security boundary: the
+# writer refuses rather than emit a compose an attacker could have influenced.
+# Only these fixed keys are honored; image, container name, devices, caps, and
+# port bindings are hard-coded and never taken from input.
+__priv_write_compose() {
+  local ram cores disk username password tz key value
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+    RAM) ram="$value" ;;
+    CORES) cores="$value" ;;
+    DISK) disk="$value" ;;
+    USERNAME) username="$value" ;;
+    PASSWORD) password="$value" ;;
+    TZ) tz="$value" ;;
+    esac
+  done
+
+  valid_ram "$ram" || { echo "invalid RAM: $ram" >&2; exit 2; }
+  valid_cores "$cores" || { echo "invalid CPU cores: $cores" >&2; exit 2; }
+  valid_disk "$disk" || { echo "invalid disk size: $disk" >&2; exit 2; }
+  valid_username "$username" || { echo "invalid username: $username" >&2; exit 2; }
+  valid_password "$password" || { echo "invalid password" >&2; exit 2; }
+  valid_tz "$tz" || tz="UTC"
+  prepare_caller_mounts || exit 2
+  # Readable by root and the docker group only. Any failure after mounting rolls
+  # back just the binds this writer created and leaves an old compose untouched.
+  write_compose_atomically "$ram" "$cores" "$disk" "$username" "$password" "$tz" || exit 2
 }
 
 # Read the host source of a bind mount out of the compose (e.g. /storage).
-# valid_path kept a ':' out of the stored path, so splitting on it is safe.
 get_mount_source() {
   sed -n "s|^[[:space:]]*-[[:space:]]*\(/[^:]*\):$1\$|\1|p" "$COMPOSE_FILE" | head -n1
 }
 
-# Refuse to bring the VM up if a bind-mount source is a symlink, or reached
-# through one. valid_path keeps a traversal string like /./ out of the compose,
-# but a symlink planted at ~/.windows or ~/Windows would redirect the privileged
-# mount just the same — docker follows it — and a string check cannot see that.
-# So verify the real directories here, as root, immediately before the mount. A
-# source that does not exist is fine: docker creates it as a plain directory.
-assert_mounts_safe() {
-  local mnt src real
-  for mnt in /storage /shared; do
-    src=$(get_mount_source "$mnt")
-    [[ -n $src ]] || {
-      echo "omarchy-windows-vm: missing $mnt mount source in the compose" >&2
+# True only when a trusted compose has an exact security upgrade path. The
+# result forces a one-time elevated migration for sudoless-Docker users. An
+# arbitrary or mixed bind pair is never classified as migratable.
+compose_needs_security_migration() {
+  local storage shared
+  [[ -f $COMPOSE_FILE ]] || return 1
+  resolve_caller || return 1
+  [[ $(mount_source_count /storage) == 1 && $(mount_source_count /shared) == 1 ]] || return 1
+  storage=$(get_mount_source /storage)
+  shared=$(get_mount_source /shared)
+  if compose_mount_pair_is_migratable "$storage" "$shared"; then
+    return 0
+  fi
+  [[ $storage == "$EXPECTED_STORAGE" && $shared == "$EXPECTED_SHARED" ]] && ! compose_web_protected
+}
+
+compose_mount_pair_is_migratable() {
+  local storage="$1" shared="$2"
+  [[ $storage == "$LEGACY_STORAGE" && $shared == "$LEGACY_SHARED" ]] ||
+    [[ $storage == "$OLD_EXPECTED_STORAGE" && $shared == "$OLD_EXPECTED_SHARED" ]]
+}
+
+mount_source_count() {
+  local destination="$1"
+  sed -n "s|^[[:space:]]*-[[:space:]]*\(/[^:]*\):$destination\$|x|p" "$COMPOSE_FILE" | wc -l
+}
+
+compose_web_protected() {
+  [[ $(sed -n 's/^[[:space:]]*PROTECT:.*$/x/p' "$COMPOSE_FILE" | wc -l) == 1 &&
+    $(sed -n 's/^[[:space:]]*PROTECT:[[:space:]]*"Y"[[:space:]]*$/x/p' "$COMPOSE_FILE" | wc -l) == 1 ]]
+}
+
+rewrite_compose_security() {
+  local tmp
+  tmp=$(mktemp "$RUNTIME_DIR/.compose.XXXXXX") || return 1
+  awk -v storage="$EXPECTED_STORAGE" -v shared="$EXPECTED_SHARED" '
+    /^    environment:$/ { print; print "      PROTECT: \"Y\""; next }
+    /^[[:space:]]+PROTECT:/ { next }
+    /^[[:space:]]*-[[:space:]]*\/[^:]*:\/storage$/ { print "      - " storage ":/storage"; next }
+    /^[[:space:]]*-[[:space:]]*\/[^:]*:\/shared$/  { print "      - " shared ":/shared"; next }
+    { print }
+  ' "$COMPOSE_FILE" >"$tmp" || { rm -f "$tmp"; return 1; }
+  [[ $(sed -n 's/^[[:space:]]*PROTECT:.*$/x/p' "$tmp" | wc -l) == 1 &&
+    $(sed -n 's/^[[:space:]]*PROTECT:[[:space:]]*"Y"[[:space:]]*$/x/p' "$tmp" | wc -l) == 1 ]] || {
+    rm -f "$tmp"
+    return 1
+  }
+  chmod 0640 "$tmp" || { rm -f "$tmp"; return 1; }
+  if ((EUID == 0)); then
+    chown root:docker "$tmp" 2>/dev/null || chown root:root "$tmp" || {
+      rm -f "$tmp"
       return 1
     }
-    if [[ -L $src ]]; then
-      echo "omarchy-windows-vm: refusing to start — $src is a symlink; the VM mount source must be a real directory" >&2
+  fi
+  mv -fT -- "$tmp" "$COMPOSE_FILE" || { rm -f "$tmp"; return 1; }
+}
+
+assert_compose_trusted() {
+  local owner expected mode
+  [[ -f $COMPOSE_FILE && ! -L $COMPOSE_FILE ]] || return 1
+  owner=$(stat -Lc '%u' "$COMPOSE_FILE") || return 1
+  mode=$(stat -Lc '%a' "$COMPOSE_FILE") || return 1
+  expected=$(boundary_owner)
+  [[ $owner == "$expected" ]] && ! ((8#$mode & 022))
+}
+
+assert_mounts_safe() {
+  local storage shared needs_rewrite=0 mounts_prepared=0
+  resolve_caller || return 1
+  assert_compose_trusted || {
+    echo "omarchy-windows-vm: refusing an untrusted compose file" >&2
+    return 1
+  }
+  storage=$(get_mount_source /storage)
+  shared=$(get_mount_source /shared)
+
+  [[ $(mount_source_count /storage) == 1 && $(mount_source_count /shared) == 1 ]] || {
+    echo "omarchy-windows-vm: refusing duplicate or missing VM mounts in the compose" >&2
+    return 1
+  }
+
+  if compose_mount_pair_is_migratable "$storage" "$shared"; then
+    ((EUID == 0)) || {
+      echo "omarchy-windows-vm: legacy VM data needs an authorized migration" >&2
       return 1
-    fi
-    if [[ -e $src ]]; then
-      [[ -d $src ]] || {
-        echo "omarchy-windows-vm: refusing to start — $src is not a directory" >&2
-        return 1
-      }
-      real=$(realpath "$src" 2>/dev/null)
-      [[ $real == "$src" ]] || {
-        echo "omarchy-windows-vm: refusing to start — $src resolves through a symlink to $real" >&2
-        return 1
-      }
-    fi
-  done
+    }
+    prepare_caller_mounts || return 1
+    mounts_prepared=1
+    needs_rewrite=1
+    storage=$EXPECTED_STORAGE
+    shared=$EXPECTED_SHARED
+  fi
+
+  [[ $storage == "$EXPECTED_STORAGE" && $shared == "$EXPECTED_SHARED" ]] || {
+    echo "omarchy-windows-vm: refusing unexpected host paths in the compose" >&2
+    return 1
+  }
+
+  if ! compose_web_protected; then
+    ((EUID == 0)) || {
+      echo "omarchy-windows-vm: web-console protection needs an authorized migration" >&2
+      return 1
+    }
+    needs_rewrite=1
+  fi
+
+  if ((needs_rewrite)) && ! rewrite_compose_security; then
+    if ((mounts_prepared)); then rollback_new_caller_mounts || true; fi
+    return 1
+  fi
+
+  # Mounts disappear at reboot. Root recreates them from the already-opened,
+  # caller-owned sources; a docker-group invocation may proceed directly only
+  # while the exact pinned pair is still present.
+  if ((EUID == 0)); then
+    prepare_caller_mounts || return 1
+  fi
+  mounts_ready || {
+    echo "omarchy-windows-vm: refusing an unsafe VM mount anchor" >&2
+    return 1
+  }
 }
 
 __priv_up() { assert_mounts_safe && dc up -d; }
@@ -273,19 +929,114 @@ __priv_up_wait() {
 __priv_status() { docker inspect --format='{{.State.Status}}' "$CONTAINER" 2>/dev/null || true; }
 
 __priv_remove() {
-  dc down 2>/dev/null || true
+  # Rebuild/verify both pinned binds before deleting through the storage anchor.
+  # In particular, a legitimate ~/.windows symlink means deleting only the link
+  # from the user side would strand the virtual disk in its external target.
+  assert_mounts_safe || return 1
+  [[ $EXPECTED_STORAGE == "$USERS_DIR/$CALLER_UID/storage" ]] || return 1
+  [[ $EXPECTED_SHARED == "$USERS_DIR/$CALLER_UID/shared" ]] || return 1
+  [[ $(mount_layer_count "$EXPECTED_STORAGE") == 1 &&
+    $(mount_layer_count "$EXPECTED_SHARED") == 1 &&
+    $(mount_descendant_count "$EXPECTED_STORAGE") == 0 &&
+    $(mount_descendant_count "$EXPECTED_SHARED") == 0 ]] || {
+    echo "omarchy-windows-vm: refusing removal with unknown or stacked VM mounts" >&2
+    return 1
+  }
+
+  dc down || {
+    echo "omarchy-windows-vm: could not stop the Windows VM; storage was not deleted" >&2
+    return 1
+  }
+  if docker inspect "$CONTAINER" >/dev/null 2>&1; then
+    echo "omarchy-windows-vm: Windows container still exists; storage was not deleted" >&2
+    return 1
+  fi
+  docker info >/dev/null 2>&1 || {
+    echo "omarchy-windows-vm: cannot verify Docker state; storage was not deleted" >&2
+    return 1
+  }
+  mounts_ready || {
+    echo "omarchy-windows-vm: VM mount identity changed during removal" >&2
+    return 1
+  }
+  removal_trees_disjoint || return 1
+
+  # find -xdev deliberately empties the verified disk source without crossing
+  # into another mounted filesystem. Shared files are never traversed.
+  find "$EXPECTED_STORAGE" -xdev -mindepth 1 -delete || return 1
+  [[ -z $(find "$EXPECTED_STORAGE" -mindepth 1 -print -quit) ]] || return 1
+
+  # Release only the single known top mounts checked above. Unmount shared first
+  # so a storage-unmount failure cannot expose shared data to deletion.
+  umount -- "$EXPECTED_SHARED" || return 1
+  umount -- "$EXPECTED_STORAGE" || return 1
   docker rmi "$IMAGE" 2>/dev/null || true
   rm -f "$COMPOSE_FILE"
-  rmdir "$RUNTIME_DIR" 2>/dev/null || true
+  rmdir -- "$EXPECTED_STORAGE" "$EXPECTED_SHARED" "$CALLER_DATA_ROOT" 2>/dev/null || true
 }
 
 # --- config helpers ----------------------------------------------------------
 
+# Validate both familiar home entries before creating or changing either. A
+# legitimate symlink is kept exactly as-is; only its caller-owned directory
+# target is used. The privileged half repeats the ownership check on pinned FDs.
+preflight_user_mount_source() {
+  local path="$1" label="$2" uid owner
+  uid=$(id -u)
+  if [[ -L $path ]]; then
+    [[ -d $path ]] || {
+      echo "omarchy-windows-vm: $label is a broken or non-directory symlink: $path" >&2
+      return 1
+    }
+  elif [[ -e $path ]]; then
+    [[ -d $path ]] || {
+      echo "omarchy-windows-vm: $label is not a directory: $path" >&2
+      return 1
+    }
+  else
+    return 0
+  fi
+  owner=$(stat -Lc '%u' -- "$path") || return 1
+  [[ $owner == "$uid" ]] || {
+    echo "omarchy-windows-vm: $label must be owned by uid $uid: $path" >&2
+    return 1
+  }
+}
+
+prepare_user_mount_sources() {
+  local storage="$HOME/.windows" shared="$HOME/Windows" storage_id shared_id
+  preflight_user_mount_source "$storage" storage &&
+    preflight_user_mount_source "$shared" shared || return 1
+  [[ -e $storage || -L $storage ]] || install -d -m 0700 -- "$storage" || return 1
+  [[ -e $shared || -L $shared ]] || install -d -m 0700 -- "$shared" || return 1
+  storage_id=$(stat -Lc '%d:%i' -- "$storage") || return 1
+  shared_id=$(stat -Lc '%d:%i' -- "$shared") || return 1
+  [[ $storage_id != "$shared_id" ]] || {
+    echo "omarchy-windows-vm: storage and shared must be different directories" >&2
+    return 1
+  }
+  chmod 0700 -- "$storage" "$shared"
+}
+
+storage_space_path() {
+  if [[ -d $HOME/.windows ]]; then
+    realpath -e -- "$HOME/.windows"
+  else
+    printf '%s\n' "$HOME"
+  fi
+}
+
+available_storage_gb() {
+  local path
+  path=$(storage_space_path) || return 1
+  df -P -- "$path" | awk 'NR==2 {print int($4/1024/1024)}'
+}
+
 # Feed the collected settings to the elevated writer.
 write_compose() {
-  local ram="$1" cores="$2" disk="$3" username="$4" password="$5" tz="$6" storage="$7" shared="$8"
-  printf 'RAM=%s\nCORES=%s\nDISK=%s\nUSERNAME=%s\nPASSWORD=%s\nTZ=%s\nSTORAGE=%s\nSHARED=%s\n' \
-    "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared" |
+  local ram="$1" cores="$2" disk="$3" username="$4" password="$5" tz="$6"
+  printf 'RAM=%s\nCORES=%s\nDISK=%s\nUSERNAME=%s\nPASSWORD=%s\nTZ=%s\n' \
+    "$ram" "$cores" "$disk" "$username" "$password" "$tz" |
     priv write_compose
 }
 
@@ -304,12 +1055,19 @@ unescape() {
 # password is not world-readable. The password is one validated printable line
 # (no newline), so plain KEY=VALUE is safe.
 write_credentials() {
-  local username="$1" password="$2" old_umask
-  mkdir -p "$(dirname "$CREDENTIALS_FILE")"
+  local username="$1" password="$2" old_umask dir tmp
+  dir=$(dirname -- "$CREDENTIALS_FILE")
+  mkdir -p "$dir" || return 1
+  chmod 0700 "$dir" || return 1
   old_umask=$(umask)
   umask 077
-  printf 'USERNAME=%s\nPASSWORD=%s\n' "$username" "$password" >"$CREDENTIALS_FILE"
-  chmod 600 "$CREDENTIALS_FILE" 2>/dev/null || true
+  tmp=$(mktemp "$dir/.credentials.XXXXXX") || { umask "$old_umask"; return 1; }
+  if ! printf 'USERNAME=%s\nPASSWORD=%s\n' "$username" "$password" >"$tmp" ||
+    ! chmod 0600 "$tmp" || ! mv -fT -- "$tmp" "$CREDENTIALS_FILE"; then
+    rm -f -- "$tmp"
+    umask "$old_umask"
+    return 1
+  fi
   umask "$old_umask"
 }
 
@@ -340,27 +1098,26 @@ migrate_legacy_compose() {
   [[ -f $LEGACY_COMPOSE_FILE ]] || return 1
 
   echo "Migrating Windows VM configuration to $COMPOSE_FILE ..."
-  local ram cores disk username password tz storage shared
+  local ram cores disk username password tz
   ram=$(read_compose_value RAM_SIZE "$LEGACY_COMPOSE_FILE")
   cores=$(read_compose_value CPU_CORES "$LEGACY_COMPOSE_FILE")
   disk=$(read_compose_value DISK_SIZE "$LEGACY_COMPOSE_FILE")
   username=$(read_compose_value USERNAME "$LEGACY_COMPOSE_FILE")
   password=$(read_compose_value PASSWORD "$LEGACY_COMPOSE_FILE")
   tz=$(read_compose_value TZ "$LEGACY_COMPOSE_FILE")
-  # The VM's data always lived in the user's own ~/.windows and ~/Windows; the
-  # old compose only ever recorded those. Reconstruct them from $HOME (trusted —
-  # this runs as the user) rather than reading host paths back from a file a
-  # rogue process could have rewritten to bind-mount, say, / into the guest.
-  storage="$HOME/.windows"
-  shared="$HOME/Windows"
-
   [[ -z $tz ]] && tz="UTC"
-  if ! write_compose "$ram" "$cores" "$disk" "$username" "$password" "$tz" "$storage" "$shared"; then
+  prepare_user_mount_sources || {
+    echo "Could not validate the existing Windows VM data directories." >&2
+    return 1
+  }
+  write_credentials "$username" "$password" || return 1
+  # The elevated writer derives both mount anchors from the authenticated uid;
+  # it never consumes volume paths from this user-owned legacy file.
+  if ! write_compose "$ram" "$cores" "$disk" "$username" "$password" "$tz"; then
     echo "Could not migrate the existing configuration automatically." >&2
     echo "Re-run: omarchy-windows-vm install" >&2
     return 1
   fi
-  write_credentials "$username" "$password"
   rm -f "$LEGACY_COMPOSE_FILE"
 }
 
@@ -385,7 +1142,10 @@ check_prerequisites() {
   fi
 
   # Check disk space
-  AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
+  AVAILABLE_SPACE=$(available_storage_gb) || {
+    echo "❌ Could not determine available space for $HOME/.windows" >&2
+    exit 1
+  }
   if ((AVAILABLE_SPACE < REQUIRED_SPACE)); then
     echo "❌ Insufficient disk space!"
     echo "   Available: ${AVAILABLE_SPACE}GB"
@@ -400,11 +1160,11 @@ install_windows() {
   # Set up trap to handle Ctrl+C
   trap "echo ''; echo 'Installation cancelled by user'; exit 1" INT
 
+  prepare_user_mount_sources || exit 1
   check_prerequisites
 
   omarchy-pkg-add freerdp openbsd-netcat gum
 
-  mkdir -p "$HOME/.windows"
   mkdir -p "$HOME/.local/share/applications"
 
   cat <<EOF | tee "$HOME/.local/share/applications/windows-vm.desktop" >/dev/null
@@ -457,7 +1217,10 @@ EOF
     SELECTED_CORES=2
   fi
 
-  AVAILABLE_SPACE=$(df "$HOME" | awk 'NR==2 {print int($4/1024/1024)}')
+  AVAILABLE_SPACE=$(available_storage_gb) || {
+    echo "❌ Could not determine available space for $HOME/.windows" >&2
+    exit 1
+  }
   MAX_DISK_GB=$((AVAILABLE_SPACE - 10)) # Leave 10GB for Windows image
 
   # Check if we have enough space for minimum
@@ -540,19 +1303,21 @@ EOF
     exit 1
   fi
 
-  mkdir -p "$HOME/Windows"
-
   local tz
   tz=$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
 
   # Write the root-owned compose from the validated settings (one prompt if
-  # sudoless Docker is off), then bring the stack up.
+  # sudoless Docker is off). The writer pins the familiar home directories (or
+  # their legitimate symlink targets) into root-protected bind anchors.
   write_compose "$SELECTED_RAM" "$SELECTED_CORES" "$SELECTED_DISK" \
-    "$USERNAME" "$PASSWORD" "$tz" "$HOME/.windows" "$HOME/Windows" || {
+    "$USERNAME" "$PASSWORD" "$tz" || {
     echo "❌ Failed to write the Windows VM configuration."
     exit 1
   }
-  write_credentials "$USERNAME" "$PASSWORD"
+  write_credentials "$USERNAME" "$PASSWORD" || {
+    echo "❌ Failed to store private RDP credentials." >&2
+    exit 1
+  }
 
   echo ""
   echo "Starting Windows VM installation..."
@@ -597,9 +1362,17 @@ remove_windows() {
 
   echo "Removing Windows VM..."
 
-  migrate_legacy_compose 2>/dev/null || true
+  if [[ ! -f $COMPOSE_FILE && -f $LEGACY_COMPOSE_FILE ]]; then
+    migrate_legacy_compose || {
+      echo "❌ Could not safely migrate the VM before removal." >&2
+      exit 1
+    }
+  fi
   if [[ -f $COMPOSE_FILE ]]; then
-    priv remove || true
+    priv remove || {
+      echo "❌ Windows VM removal stopped before user-side cleanup; inspect the VM data before retrying." >&2
+      exit 1
+    }
   fi
 
   rm -f "$HOME/.local/share/applications/windows-vm.desktop"
@@ -789,7 +1562,7 @@ __priv)
     echo "omarchy-windows-vm: unknown privileged action" >&2
     exit 1
   }
-  "__priv_${action}" "$@"
+  with_vm_lock "__priv_${action}" "$@"
   ;;
 install)
   install_windows

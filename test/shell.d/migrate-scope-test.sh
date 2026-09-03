@@ -75,3 +75,31 @@ set -e
 grep -q '^before-fail$' "$calls" || fail "migration runner started failing migration"
 ! grep -q '^after-fail$' "$calls" || fail "migration runner stops failing migration under strict mode"
 pass "migration runner does not mark failed migrations complete"
+
+stdin_root="$test_tmp/stdin-omarchy"
+stdin_home="$test_tmp/stdin-home"
+stdin_calls="$test_tmp/stdin-calls"
+mkdir -p "$stdin_root/migrations" "$stdin_home"
+
+cat >"$stdin_root/migrations/100-reader.sh" <<'SH'
+IFS= read -r value
+printf 'reader:%s\n' "$value" >>"$TEST_CALLS"
+SH
+cat >"$stdin_root/migrations/200-after.sh" <<'SH'
+echo after-reader >>"$TEST_CALLS"
+SH
+
+printf 'migration input\n' | \
+  HOME="$stdin_home" \
+  OMARCHY_PATH="$stdin_root" \
+  TEST_CALLS="$stdin_calls" \
+  "$ROOT/bin/omarchy-migrate" >"$test_tmp/stdin.out"
+
+grep -q '^reader:migration input$' "$stdin_calls" ||
+  fail "migration runner preserves the caller's stdin for a migration" "$(cat "$stdin_calls")"
+grep -q '^after-reader$' "$stdin_calls" ||
+  fail "a migration reading stdin does not swallow later queue entries" "$(cat "$stdin_calls")"
+[[ -f $stdin_home/.local/state/omarchy/migrations/100-reader.sh &&
+  -f $stdin_home/.local/state/omarchy/migrations/200-after.sh ]] ||
+  fail "migration runner marks both stdin-isolated migrations complete"
+pass "migration queue uses a private file descriptor instead of migration stdin"

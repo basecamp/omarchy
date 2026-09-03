@@ -332,6 +332,7 @@ Item {
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
@@ -374,6 +375,7 @@ Item {
 
       Text {
         id: justificationText
+        textFormat: Text.PlainText
         anchors.fill: parent
         anchors.leftMargin: Style.space(12)
         anchors.rightMargin: Style.space(12)

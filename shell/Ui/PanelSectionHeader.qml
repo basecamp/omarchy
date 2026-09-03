@@ -11,6 +11,10 @@ Text {
   property string fontFamily: Style.font.family
   property real fontSize: Style.font.caption
 
+  // Callers bind `text` from outside this file, so the default has to be set
+  // here. AutoText would let a section title that happens to carry a device or
+  // network name promote itself to rich text.
+  textFormat: Text.PlainText
   color: Qt.darker(foreground, 1.4)
   font.family: fontFamily
   font.pixelSize: fontSize

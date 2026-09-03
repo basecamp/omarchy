@@ -144,10 +144,11 @@ pass "keyboard prompt propagates Esc and Ctrl+C without dying under set -e"
 
 # Username
 
-TAKEN_USERS=dhh run_prompt omarchy_prompt_username "0:Not A Username" "0:root" "0:dhh" "0:david"
+TAKEN_USERS=dhh run_prompt omarchy_prompt_username "0:Not A Username" "0:root" "0:cups-browsed" "0:dhh" "0:david"
 assert_status 0 "username prompt accepts a valid name"
 [[ $(field username) == "david" ]] || fail "username prompt keeps re-asking until the name is valid"
 assert_notices "username prompt explains each rejection" "Username must be alphanumeric with no spaces
+Username is reserved for system
 Username is reserved for system
 That username already exists on this machine"
 pass "username prompt rejects malformed, reserved, and taken names"

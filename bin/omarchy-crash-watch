@@ -48,12 +48,17 @@ announce() {
 # -n 0 so a restart does not re-announce crashes already dealt with.
 journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
   while IFS= read -r entry; do
+    # A dash for a field that is empty as well as one that is missing: tab is
+    # IFS whitespace, so an empty field collapses into the next delimiter and
+    # every field after it shifts along one. A process can set its own comm to
+    # nothing, and that crash used to be read as somebody else's and dropped.
     IFS=$'\t' read -r uid comm pid exe signal < <(
-      jq -r '[(._UID // "-"),
-              (.COREDUMP_COMM // "-"),
-              (.COREDUMP_PID // "-"),
-              (.COREDUMP_EXE // "-"),
-              (.COREDUMP_SIGNAL_NAME // "-")] | @tsv' <<<"$entry" 2>/dev/null
+      jq -r 'def field: if . == null or . == "" then "-" else . end;
+             [(._UID | field),
+              (.COREDUMP_COMM | field),
+              (.COREDUMP_PID | field),
+              (.COREDUMP_EXE | field),
+              (.COREDUMP_SIGNAL_NAME | field)] | @tsv' <<<"$entry" 2>/dev/null
     )
 
     [[ $pid =~ ^[0-9]+$ ]] || continue
@@ -71,10 +76,28 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
     name=$comm
     [[ $exe == /* ]] && name=${exe##*/}
 
+    # A process can set its own comm to anything prctl takes, slashes included,
+    # and a crash with no recorded executable falls back to it. The mute below
+    # turns this name into a path, so keep it one component: a crash must not
+    # reach a flag outside crash-ignore/, nor have a diagnosis write one there.
+    name=${name##*/}
+
+    # What that leaves is not always a name. "/" leaves nothing, which is no
+    # kind of array subscript and no kind of toast; a dot component names a
+    # directory rather than a flag, so a mute on it would touch that directory
+    # and then never match; and a dash is what the read above puts there when
+    # the crash recorded no name at all.
+    [[ -n $name && $name != "-" && $name != "." && $name != ".." ]] || name=unknown
+
     [[ -n $ignore_pattern && $name =~ $ignore_pattern ]] && continue
 
     # Never announce our own machinery, or it notifies about itself.
     [[ $name == omarchy-crash-* || $name == omarchy-agent-* ]] && continue
+
+    # Muted at the end of a diagnosis, when the user was offered it and said
+    # yes. A flag per program rather than one list, so omarchy-crash-mute can
+    # lift one without reading, rewriting and re-parsing the rest.
+    omarchy-toggle-enabled "crash-ignore/$name" && continue
 
     now=$EPOCHSECONDS
     (((now - ${last_notified[$name]:-0}) < dedupe_seconds)) && continue

@@ -149,6 +149,9 @@ write_networkmanager_dns() {
   local servers="$1"
 
   install -d -m 0755 "$(dirname "$NM_DNS_CONF")"
+  # omarchy:heredoc-expands paths=none -- $servers is a normalized, single-line
+  # DNS server list written as data, not a path or command; nothing user-writable
+  # is resolved or executed from the root-owned drop-in.
   cat >"$NM_DNS_CONF" <<EOF
 # Managed by omarchy-dns. Remove this file or run omarchy dns DHCP to use DHCP DNS again.
 [global-dns]
@@ -302,6 +305,9 @@ Custom)
   split_dns_servers "$dns_servers"
   write_networkmanager_dns "$dns_servers"
   set_connection_dns "$ipv4_dns" "$ipv6_dns"
+  # omarchy:heredoc-expands paths=none -- $dns_servers is a normalized,
+  # single-line DNS server list; the //,/ turns its comma separators into the
+  # spaces resolved.conf wants. It is written as data, not a path or command.
   tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=${dns_servers//,/ }
