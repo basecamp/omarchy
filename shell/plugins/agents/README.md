@@ -18,8 +18,13 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
 - **Balance** — prepaid agents report a credit ledger instead of limits:
   remaining credit, a fuel-gauge meter that drains toward empty, and
   funded-versus-spent detail.
+- **Savings**: for an agent that costs nothing to run, the section that
+  replaces limits. Saved today, saved all time against a reference price, saved
+  against renting the same models, and what was actually paid, with the monthly
+  pace underneath. Only a record that reports savings draws it.
 - **Tokens by day** — one row per day for the last week: day, bar, tokens, with today
-  bolded at the bottom. Hover today for its prompt and session count.
+  bolded at the bottom. A record with per-day savings puts the amount saved
+  between the bar and the token count. Hover today for its prompt and session count.
 - **Tokens by model** — tokens per model with the bar behind each row scaled
   to the heaviest model,
   the same way the weekly chart scales to its busiest day. Hover for the
@@ -46,7 +51,31 @@ record that lands in the directory regardless of who wrote it.
 
 Adding an agent therefore never touches this plugin: ship a collector that
 prints the record contract (see the `claude` and `codex` collectors in
-`bin/`), and the panel gains a tab. An `assets/<id>.svg` mark is optional —
+`bin/`), and the panel gains a tab.
+
+A locally hosted agent has no allowance to meter and no invoice to read, so
+`limits` and `balance` leave it with nothing to report. Such a collector can
+send `savings` instead, and the panel swaps the limits section for it:
+
+```json
+{
+  "savingsCurrency": "USD",
+  "savingsBaselineName": "the reference the comparison is quoted against",
+  "savings": {
+    "spent": 0.0,
+    "savedVsBaseline": 28.7,
+    "savedVsEquivalent": 1.57,
+    "today": 16.93,
+    "monthlyPace": 174.35
+  },
+  "savingsByDay": [{ "date": "2026-09-03", "saved": 16.93 }]
+}
+```
+
+Every field is optional and every amount is the collector's own estimate; the
+panel formats and lays them out, and says nothing when they are absent. Dates
+in `savingsByDay` are matched against `recentDays`, so a day the collector
+skips simply has no amount beside its bar. An `assets/<id>.svg` mark is optional —
 with an `assets/<id>-light.svg` twin if the mark needs a dark variant for
 light surfaces — and the bar glyph stands in when there is none.
 

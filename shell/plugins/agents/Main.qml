@@ -269,6 +269,14 @@ Item {
       hasLocalStats: synced ? (stats.hasLocalStats !== false) : (record.hasLocalStats !== false),
       hasPromptStats: synced ? (stats.hasPromptStats !== false) : (record.hasPromptStats !== false),
 
+      // An agent that costs nothing to run has no allowance to meter, so its
+      // collector may report what the traffic would have cost instead. Passed
+      // through untouched; a record without these fields draws as before.
+      savings: record.savings || null,
+      savingsByDay: Array.isArray(record.savingsByDay) ? record.savingsByDay : [],
+      savingsCurrency: String(record.savingsCurrency || "USD"),
+      savingsBaselineName: String(record.savingsBaselineName || ""),
+
       syncEnabled: synced,
       syncDeviceCount: deviceCount,
       syncUpdatedAt: aggregateData && aggregateData.updatedAt ? aggregateData.updatedAt : ""

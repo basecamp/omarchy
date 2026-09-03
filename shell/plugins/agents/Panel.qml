@@ -46,6 +46,25 @@ Panel {
     && balance.remaining / balance.funded <= 0.1
   readonly property bool alarming: (!!headline && headline.percent >= 0.9) || balanceAlarming
 
+  // ---------------------------------------------------------------- savings
+  //
+  // A model you host yourself fills no window and sends no invoice, which
+  // leaves the limits and balance sections with nothing to say. Such a
+  // collector reports savings instead: what the same traffic would have cost
+  // rented from a provider, against what it actually did.
+  readonly property var savings: provider ? (provider.savings || null) : null
+  readonly property var savingsByDay: provider ? (provider.savingsByDay || []) : []
+  readonly property string savingsCurrency: provider ? String(provider.savingsCurrency || "USD") : "USD"
+  readonly property string savingsBaseline: provider ? String(provider.savingsBaselineName || "") : ""
+
+  function savedFor(date) {
+    var key = String(date || "")
+    for (var i = 0; i < savingsByDay.length; i++) {
+      if (String(savingsByDay[i].date || "") === key) return Number(savingsByDay[i].saved || 0)
+    }
+    return -1
+  }
+
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
@@ -611,6 +630,81 @@ Panel {
             }
           }
 
+          // ---------- Savings ----------
+          PanelSeparator {
+            visible: savingsSection.visible
+            foreground: root.foreground
+          }
+
+          Column {
+            id: savingsSection
+            visible: !!root.savings
+            width: parent.width
+            spacing: Style.space(10)
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "SAVINGS"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Repeater {
+              model: root.savings ? [
+                { label: "Today", value: Number(root.savings.today || 0), strong: true },
+                { label: "All time vs " + (root.savingsBaseline || "cloud"),
+                  value: Number(root.savings.savedVsBaseline || 0), strong: false },
+                { label: "All time vs same model in cloud",
+                  value: Number(root.savings.savedVsEquivalent || 0), strong: false },
+                { label: "Actually paid",
+                  value: Number(root.savings.spent || 0), strong: false }
+              ] : []
+
+              Item {
+                required property var modelData
+                width: savingsSection.width
+                implicitHeight: Math.max(savingsLabel.implicitHeight, savingsValue.implicitHeight)
+
+                Text {
+                  id: savingsLabel
+                  textFormat: Text.PlainText
+                  text: modelData.label
+                  color: modelData.strong ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: modelData.strong ? Style.font.body : Style.font.caption
+                  anchors.left: parent.left
+                  anchors.verticalCenter: parent.verticalCenter
+                  elide: Text.ElideRight
+                  width: parent.width - savingsValue.width - Style.space(8)
+                }
+
+                Text {
+                  id: savingsValue
+                  textFormat: Text.PlainText
+                  text: root.formatMoney(modelData.value, root.savingsCurrency)
+                  color: modelData.strong ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: modelData.strong
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              visible: !!root.savings && Number(root.savings.monthlyPace || 0) > 0
+              width: parent.width
+              text: root.savings
+                ? root.formatMoney(root.savings.monthlyPace, root.savingsCurrency) + " / month at this pace"
+                : ""
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+
           // ---------- Usage ----------
           PanelSeparator {
             visible: usageSection.visible
@@ -628,7 +722,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "TOKENS BY DAY"
+              text: root.savingsByDay.length > 0 ? "TOKENS & SAVINGS BY DAY" : "TOKENS BY DAY"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -642,6 +736,7 @@ Panel {
 
                 width: usageSection.width
                 day: modelData
+                saved: root.savedFor(modelData.date)
                 ratio: Number(modelData.messageCount || 0) / usageSection.peak
                 // By date, not by position: the Claude stats-cache fallback can
                 // hand us a window that stops short of today.
@@ -801,6 +896,9 @@ Panel {
     property var day: null
     property real ratio: 0
     property bool today: false
+    // Below zero when the agent reports no savings, which hides the column
+    // rather than filling the row with zeroes.
+    property real saved: -1
 
     implicitHeight: Math.max(dayLabel.implicitHeight, dayValue.implicitHeight) + Style.spacing.sm
 
@@ -820,7 +918,7 @@ Panel {
     Rectangle {
       id: dayTrack
       anchors.left: dayLabel.right
-      anchors.right: dayValue.left
+      anchors.right: daySaved.visible ? daySaved.left : dayValue.left
       anchors.leftMargin: Style.space(8)
       anchors.rightMargin: Style.space(10)
       anchors.verticalCenter: parent.verticalCenter
@@ -840,6 +938,22 @@ Panel {
           NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
         }
       }
+    }
+
+    Text {
+      id: daySaved
+      textFormat: Text.PlainText
+      visible: dayRow.saved >= 0
+      text: visible ? root.formatMoney(dayRow.saved, root.savingsCurrency) : ""
+      color: dayRow.today ? root.foreground : root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      font.bold: dayRow.today
+      horizontalAlignment: Text.AlignRight
+      anchors.right: dayValue.left
+      anchors.rightMargin: visible ? Style.space(10) : 0
+      anchors.verticalCenter: parent.verticalCenter
+      width: visible ? Style.space(48) : 0
     }
 
     Text {
