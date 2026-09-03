@@ -39,7 +39,7 @@ function normalizeItem(id, raw) {
   }
 }
 
-function parseMenuJsonc(raw) {
+function parseMenuSource(raw, preserveMissingFields) {
   var stripped = stripJsonc(raw)
   if (!stripped.trim()) return []
 
@@ -58,9 +58,24 @@ function parseMenuJsonc(raw) {
   for (var id in source) {
     var entry = source[id]
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue
-    out.push(normalizeItem(id, entry))
+    if (preserveMissingFields) {
+      var override = {}
+      for (var key in entry) override[key] = entry[key]
+      override.id = id
+      out.push(override)
+    } else {
+      out.push(normalizeItem(id, entry))
+    }
   }
   return out
+}
+
+function parseMenuJsonc(raw) {
+  return parseMenuSource(raw, false)
+}
+
+function parseMenuOverridesJsonc(raw) {
+  return parseMenuSource(raw, true)
 }
 
 function mergeMenuSources(defaultItems, userItems) {
@@ -84,10 +99,14 @@ function mergeMenuSources(defaultItems, userItems) {
   }
 
   if (!nextItems.root) {
-    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", description: "", aliases: [], when: "", checked: "", disabled: "", action: "", provider: "" }
+    nextItems.root = { id: "root", label: "Go" }
     nextOrder.unshift("root")
   }
-  for (var k3 = 0; k3 < nextOrder.length; k3++) nextItems[nextOrder[k3]].order = k3
+  for (var k3 = 0; k3 < nextOrder.length; k3++) {
+    var id = nextOrder[k3]
+    nextItems[id] = normalizeItem(id, nextItems[id])
+    nextItems[id].order = k3
+  }
 
   return {
     items: nextItems,
@@ -498,6 +517,7 @@ if (typeof module !== "undefined") {
     normalizeAliases: normalizeAliases,
     normalizeItem: normalizeItem,
     parseMenuJsonc: parseMenuJsonc,
+    parseMenuOverridesJsonc: parseMenuOverridesJsonc,
     mergeMenuSources: mergeMenuSources,
     mergeAppRows: mergeAppRows,
     swapProviderRows: swapProviderRows,
