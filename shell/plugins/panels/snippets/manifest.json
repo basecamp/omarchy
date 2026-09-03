@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.snippets",
+  "name": "Snippets",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Save and one-click copy frequently used text and commands",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Snippets",
+    "description": "Save and one-click copy frequently used text and commands",
+    "category": "Files",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
