@@ -338,6 +338,20 @@ assert(
   'bar consults the inline settings delta before rebuilding the layout'
 )
 
+// Double-clicking empty bar space toggles transparency, but only when the
+// gesture is enabled: transparencyToggle false keeps the bar as configured
+// for users who always want it opaque.
+const gestureArea = barSource.slice(barSource.indexOf('component CenterGestureArea'))
+const gestureBody = gestureArea.slice(0, gestureArea.indexOf('\n  }\n'))
+assert(
+  /if \(root\.transparencyToggle && mouse\.button === Qt\.LeftButton\)/.test(gestureBody),
+  'double-click toggles transparency only when the gesture is enabled'
+)
+assert(
+  /transparencyToggle = config\.transparencyToggle !== false/.test(barSource),
+  'the transparency gesture stays on unless the config turns it off'
+)
+
 assertEqual(bar.moduleString({ id: 'custom', label: 42 }, 'label', 'fallback'), '42', 'bar stringifies module settings')
 assertEqual(bar.entryIndex(entries, 'b'), 2, 'bar finds entry indexes')
 assertDeepEqual(bar.entriesBefore(entries, 'b').map(bar.entryId), ['a', 'omarchy.tray'], 'bar returns entries before target')
