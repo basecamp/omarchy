@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# omarchy:summary=Apply current Omarchy theme colors to mpv
+# omarchy:hidden=true
+
+CURRENT_THEME_DIR="$HOME/.local/state/omarchy/current/theme"
+COLORS_FILE="$CURRENT_THEME_DIR/colors.toml"
+MPV_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/mpv"
+SCRIPT_OPTS_DIR="$MPV_DIR/script-opts"
+MPV_CONFIG="$MPV_DIR/mpv.conf"
+
+if [[ ! -f $COLORS_FILE ]]; then
+  exit 0
+fi
+
+theme_color() {
+  omarchy-theme-color --file "$COLORS_FILE" "$@"
+}
+
+mkdir -p "$SCRIPT_OPTS_DIR"
+
+# The oscc player bar and its icon font ship as Omarchy defaults. Seed them
+# for users who predate the shipped mpv config; new users already have them
+# through /etc/skel.
+if [[ ! -f $MPV_DIR/scripts/oscc.lua && -f $OMARCHY_PATH/config/mpv/scripts/oscc.lua ]]; then
+  mkdir -p "$MPV_DIR/scripts"
+  cp -f "$OMARCHY_PATH/config/mpv/scripts/oscc.lua" "$MPV_DIR/scripts/oscc.lua"
+fi
+if [[ ! -f $MPV_DIR/fonts/oscc.ttf && -f $OMARCHY_PATH/config/mpv/fonts/oscc.ttf ]]; then
+  mkdir -p "$MPV_DIR/fonts"
+  cp -f "$OMARCHY_PATH/config/mpv/fonts/oscc.ttf" "$MPV_DIR/fonts/oscc.ttf"
+fi
+
+if [[ -f $CURRENT_THEME_DIR/mpv-osc.conf ]]; then
+  cp -f "$CURRENT_THEME_DIR/mpv-osc.conf" "$SCRIPT_OPTS_DIR/osc.conf"
+fi
+if [[ -f $CURRENT_THEME_DIR/mpv-console.conf ]]; then
+  cp -f "$CURRENT_THEME_DIR/mpv-console.conf" "$SCRIPT_OPTS_DIR/console.conf"
+fi
+if [[ -f $CURRENT_THEME_DIR/mpv-context_menu.conf ]]; then
+  cp -f "$CURRENT_THEME_DIR/mpv-context_menu.conf" "$SCRIPT_OPTS_DIR/context_menu.conf"
+fi
+
+foreground=$(theme_color foreground "#cdd6f4")
+background=$(theme_color background "#1e1e2e")
+accent=$(theme_color accent "#89b4fa")
+
+tmp_config=$(mktemp)
+if [[ -f $MPV_CONFIG ]]; then
+  in_block=0
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line == "# >>> omarchy-mpv-theme >>>" ]]; then
+      in_block=1
+      continue
+    fi
+    if [[ $line == "# <<< omarchy-mpv-theme <<<" ]]; then
+      in_block=0
+      continue
+    fi
+    if (( in_block == 0 )); then
+      printf '%s\n' "$line"
+    fi
+  done <"$MPV_CONFIG" >"$tmp_config"
+fi
+{
+  printf '\n# >>> omarchy-mpv-theme >>>\n'
+  printf 'osc=no\n'
+  printf 'osd-bar=no\n'
+  printf 'cursor-autohide=3500\n'
+  printf 'osd-color=#FF%s\n' "${foreground#\#}"
+  printf 'osd-back-color=#E6%s\n' "${background#\#}"
+  printf 'osd-outline-color=#FF%s\n' "${background#\#}"
+  printf 'osd-selected-color=#FF%s\n' "${accent#\#}"
+  printf 'osd-selected-outline-color=#FF%s\n' "${accent#\#}"
+  printf '# <<< omarchy-mpv-theme <<<\n'
+} >>"$tmp_config"
+mv "$tmp_config" "$MPV_CONFIG"
