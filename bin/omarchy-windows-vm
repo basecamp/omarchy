@@ -580,14 +580,18 @@ prepare_caller_mounts() {
   # Privacy is an explicit preflight step for both already-pinned sources, not
   # a side effect halfway through the two-mount transaction. Old umask-022
   # installs are hardened together before either Docker-facing anchor changes.
+  # dockurr/windows sets ~/Windows to 2777; GNU chmod 0700 keeps setgid (2700),
+  # so clear g-s explicitly or the literal 700 check fails forever (#9943).
   chmod 0700 -- "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
   }
+  chmod g-s,o-t -- "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" 2>/dev/null || true
   storage_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$storage_fd" 2>/dev/null) || storage_mode=""
   shared_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$shared_fd" 2>/dev/null) || shared_mode=""
   if [[ $storage_mode != 700 || $shared_mode != 700 ]]; then
+    echo "omarchy-windows-vm: refusing VM mount source with unexpected mode (storage=$storage_mode shared=$shared_mode; want 700)" >&2
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
@@ -1015,7 +1019,9 @@ prepare_user_mount_sources() {
     echo "omarchy-windows-vm: storage and shared must be different directories" >&2
     return 1
   }
-  chmod 0700 -- "$storage" "$shared"
+  chmod 0700 -- "$storage" "$shared" || return 1
+  # Clear setgid/sticky the container may have left on ~/Windows (#9943).
+  chmod g-s,o-t -- "$storage" "$shared" 2>/dev/null || true
 }
 
 storage_space_path() {
