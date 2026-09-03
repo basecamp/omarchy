@@ -20,6 +20,8 @@ Panel {
   property int profileIndex: 0
   property bool cursorActive: false
   readonly property bool showPercentage: setting("showPercentage", false) === true
+  readonly property var powerDevices: UPower.devices ? UPower.devices.values : []
+  readonly property var batteryPacks: Model.parsePacks(root.batteryInfo)
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
   // icon-sized fraction of the slot the fallback assumes.
@@ -49,7 +51,14 @@ Panel {
 
   function batteryIcon() {
     var device = UPower.displayDevice
-    return Model.batteryIcon(device, root.discharging, upowerStates())
+    if (!device || !device.isPresent) return ""
+    return Model.batteryIcon({
+      isPresent: true,
+      percentage: root.batteryFraction,
+      state: device.state,
+      changeRate: device.changeRate,
+      timeToFull: device.timeToFull
+    }, root.discharging, upowerStates(), root.chargeThresholdActive)
   }
 
   function modeLabel() {
@@ -70,19 +79,22 @@ Panel {
     return !!(device && device.isPresent && UPower.onBattery)
   }
   readonly property bool chargeThresholdActive: {
-    var device = UPower.displayDevice
-    return Model.chargeThresholdActive(device, root.discharging, upowerStates())
+    return Model.chargeThresholdActiveForPacks(root.powerDevices, root.discharging, upowerStates(), root.batteryInfo)
   }
   readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
 
   // 0..1 charge level, used by the visual progress bar.
   readonly property real batteryFraction: {
-    var d = UPower.displayDevice
-    return Model.batteryFraction(d)
+    var fromStatus = Model.combinedFractionFromStatus(root.batteryInfo)
+    if (fromStatus >= 0) return fromStatus
+    var fromPacks = Model.combinedEnergyFraction(root.powerDevices)
+    if (fromPacks >= 0) return fromPacks
+    return Model.batteryFraction(UPower.displayDevice)
   }
 
   readonly property bool charging: {
+    if (Model.anyPackCharging(root.powerDevices, upowerStates())) return true
     var d = UPower.displayDevice
     return d && d.isPresent && !UPower.onBattery && !root.batteryFlowIdle
   }
@@ -447,6 +459,31 @@ Panel {
             InfoPair {
               label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")
               value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
+            }
+          }
+        }
+
+        Column {
+          visible: root.batteryPacks.length > 1
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSeparator {
+            foreground: root.bar.foreground
+          }
+
+          PanelSectionHeader {
+            text: "PACKS"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Repeater {
+            model: root.batteryPacks
+            InfoPair {
+              required property var modelData
+              label: modelData.path || "Battery"
+              value: Model.packSummary(modelData)
             }
           }
         }
