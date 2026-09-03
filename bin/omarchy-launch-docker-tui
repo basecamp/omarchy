@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Open the Docker TUI (lazydocker) with access to the Docker daemon
+# omarchy:hidden=true
+
+# By default the install user is NOT in the docker group: membership is
+# root-equivalent (a container can bind-mount / and rewrite the host as root),
+# so a single process running as the user could otherwise escalate to root with
+# no prompt. lazydocker needs the root-owned Docker socket, so when the group is
+# absent, gate that access behind a polkit prompt. If the user has opted into
+# sudoless Docker (omarchy-setup-security-sudoless-docker), the socket is already
+# reachable, so run lazydocker directly — omarchy-sudo-docker answers that for
+# this session, so the prompt stays until the reboot that grants the group.
+# pkexec sanitizes the environment, so carry TERM through for the TUI to render
+# and run lazydocker from root's PATH.
+if omarchy-sudo-docker; then
+  exec pkexec /usr/bin/env TERM="${TERM:-xterm-256color}" lazydocker
+else
+  exec lazydocker
+fi

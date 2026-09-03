@@ -3,5 +3,6 @@
 # omarchy:summary=Refresh the SDDM theme from default
 # omarchy:requires-sudo=true
 
-sudo rm -rf /usr/share/sddm/themes/omarchy
-sudo cp -r "$OMARCHY_PATH/default/sddm/omarchy" /usr/share/sddm/themes/omarchy
+# Reuse the fixed-file publisher so root never resolves an untrusted source or
+# follows a destination symlink while restoring the packaged SDDM theme.
+exec "$OMARCHY_PATH/bin/omarchy-plymouth-set" --refresh-sddm-default

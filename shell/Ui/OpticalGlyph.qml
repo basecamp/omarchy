@@ -25,6 +25,7 @@ Item {
 
   Text {
     id: glyph
+    textFormat: Text.PlainText
     // Keep the shared line box and baseline intact. Correcting only the
     // horizontal painted bounds avoids per-glyph vertical drift.
     anchors.centerIn: parent

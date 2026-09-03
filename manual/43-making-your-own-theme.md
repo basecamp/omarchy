@@ -38,6 +38,8 @@ There's a fully commented `alacritty.toml.tpl.sample` in that folder to copy fro
 
 If you want to distribute your theme so others can use it, you need to put it on a public git server, like GitHub. Then people can install it using _Install > Style > Theme_ in the Omarchy menu using that URL. It's recommended that you follow the naming convention of `omarchy-[themename]-theme`, as the theme will show correctly as just `[themename]` in the theme selection menu after installation.
 
+That leftover `[themename]` becomes the theme's directory name, so it has to be one Omarchy can hand around safely: it must start with a letter, a digit, or an underscore, and the rest may hold letters, digits, `.`, `_`, `+`, and `-`. Capitals are lowercased for you, but anything else — a space, a quote, a non-English character — is refused at install time rather than turned into a directory name. So `omarchy-tokyo-night-theme`, `omarchy-flexoki_light-theme`, and `omarchy-c++-theme` all install fine.
+
 Remember that once it's installed from a repo, any `.lua`, terminal config or `vscode.json` it ships is dropped, so don't build the theme around those.
 
 You can have your theme added to [the extra themes page](https://omarchy.org/themes/) by sending a pull request to [the omarchy-site repo](https://github.com/omacom-io/omarchy-site).

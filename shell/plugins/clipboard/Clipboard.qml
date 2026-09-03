@@ -432,6 +432,7 @@ Item {
           color: "transparent"
 
           Text {
+            textFormat: Text.PlainText
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
@@ -500,6 +501,7 @@ Item {
                     }
 
                     Text {
+                      textFormat: Text.PlainText
                       width: parent.width - (parent.parent.previewImage.length > 0 ? parent.height + parent.spacing : 0)
                       height: parent.height
                       text: parent.parent.previewText
@@ -546,6 +548,7 @@ Item {
               }
 
               Text {
+                textFormat: Text.PlainText
                 visible: parent.activeRow && !parent.activeRow.previewImage
                 anchors.fill: parent
                 anchors.leftMargin: root.contentMargin
@@ -593,6 +596,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               text: root.history.length === 0 ? "Clipboard is empty" : "No matches for “" + root.filterText + "”"
               color: root.foreground
               opacity: 0.7

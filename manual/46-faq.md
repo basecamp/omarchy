@@ -44,7 +44,13 @@ The plain open source Chromium build doesn't ship with the OAuth credentials tha
 
 ### How do I add a printer?
 
-Printing is set up and running out of the box, so a printer on your network is usually already discovered. Launch _Print Settings_ from the app launcher (`Super + Space`) to see what's there, add one by hand, or set the default. Printing to a PDF file works without any printer at all.
+Printing is set up and running out of the box, and you add each printer yourself from _Print Settings_ in the app launcher (`Super + Space`).
+
+Choose _Add_, and give it a moment to look: a printer plugged in over USB, and most network printers, are found for you. If yours isn't in the list, pick _Network Printer > Internet Printing Protocol (ipp)_ and enter its address — the printer's own display or its web page will tell you what that is, usually something like `192.168.1.50` with a queue of `ipp/print`. _Forward_ then offers a driver, where a modern printer works best on the driverless _IPP Everywhere_ profile and an older one wants the model's own driver.
+
+Right-click a printer and choose _Set as Default_ to pick which one your apps reach for first, and _Properties_ to set paper size, duplex and quality.
+
+Automatic discovery, where printers on the network appear without being added, is temporarily switched off while it's reworked, which is why the first step above is yours rather than automatic. Printing to a PDF file works without any printer at all.
 
 ### How do I change where screenshots or screenrecordings are saved?
 

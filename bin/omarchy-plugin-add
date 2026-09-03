@@ -93,6 +93,13 @@ if [[ -z $url ]]; then
   [[ -n $url ]] || fail "a git URL is required"
 fi
 
+# Refuse a URL that names a git option or a transport helper before cloning, so
+# an untrusted URL cannot run a command before the plugin is validated or
+# enabled. The check is shared with omarchy-theme-install and explains itself; a
+# missing checker leaves this non-zero, which refuses the URL rather than
+# cloning it.
+omarchy-git-url-check "$url" || exit 1
+
 if (( ! ASSUME_YES )); then
   cat >&2 <<WARN
 

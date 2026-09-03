@@ -80,6 +80,14 @@ set_scale() {
   local width="$(echo "$monitor_info" | jq -r '.width')"
   local height="$(echo "$monitor_info" | jq -r '.height')"
   local refresh_rate="$(echo "$monitor_info" | jq -r '.refreshRate')"
+
+  # active_monitor is written into the Lua string eval'd below, so only a plain
+  # connector name may pass; a hostile output name could execute otherwise.
+  if [[ ! $active_monitor =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "Refusing unsafe monitor name" >&2
+    exit 1
+  fi
+
   local new_scale="$(clean_scale "$requested_scale" "$width" "$height")"
   # GTK only honors integer GDK_SCALE values, so persist the nearest whole
   # factor even when the monitor scale itself is fractional.

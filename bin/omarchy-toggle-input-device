@@ -7,44 +7,70 @@
 KIND="${1:-}"
 ACTION="${2:-toggle}"
 
+usage() {
+  echo "Usage: omarchy-toggle-input-device <touchpad|touchscreen> [on|off|toggle]" >&2
+}
+
 case "$KIND" in
   touchpad) LABEL="Touchpad" ICON="touchpad" ;;
   touchscreen) LABEL="Touchscreen" ICON="touch" ;;
   *)
-    echo "Usage: omarchy-toggle-input-device <touchpad|touchscreen> [on|off|toggle]" >&2
+    usage
     exit 1
     ;;
 esac
 
-# Hyprland sources this directory on reload, so the disabled state survives restarts
-STATE_FILE="$HOME/.local/state/omarchy/toggles/hypr/$KIND-disabled.lua"
+# The persisted disable is the device name stored as plain data; on every
+# reload default/hypr/disabled-input-device.lua reads it back and disables the
+# device. Names come from USB descriptors and must not be interpolated into
+# shell or Lua. The path is hardcoded to ~/.local/state like the sibling
+# toggle tools, so it keeps working when XDG_STATE_HOME diverges.
+NAME_FILE="$HOME/.local/state/omarchy/toggles/hypr/$KIND-disabled-name"
 
 device="$("omarchy-hw-$KIND")"
 
-if [[ -z $device ]]; then
-  echo "No $KIND device found" >&2
-  exit 1
-fi
+require_device() {
+  if [[ -z $device ]]; then
+    echo "No $KIND device found" >&2
+    exit 1
+  fi
+
+  if [[ $device == *[[:cntrl:]]* ]]; then
+    echo "Invalid $KIND device name" >&2
+    exit 1
+  fi
+}
+
+apply_device() {
+  local enabled=$1
+  local quoted=${device//\\/\\\\}
+  quoted=${quoted//\"/\\\"}
+  hyprctl eval "hl.device({ name = \"$quoted\", enabled = $enabled })" >/dev/null
+}
 
 enable() {
-  hyprctl eval "hl.device({ name = \"$device\", enabled = true })" >/dev/null
-  rm -f "$STATE_FILE"
+  # Clear the persisted state before requiring a usable device, so a device
+  # that stops reporting a valid name can never wedge the disable in place.
+  rm -f "$NAME_FILE"
+  require_device
+  apply_device true
   omarchy-osd -i "$ICON" -m "$LABEL enabled"
 }
 
 disable() {
-  hyprctl eval "hl.device({ name = \"$device\", enabled = false })" >/dev/null
-  mkdir -p "$(dirname "$STATE_FILE")"
-  printf 'hl.device({ name = "%s", enabled = false })\n' "$device" >"$STATE_FILE"
+  require_device
+  apply_device false
+  mkdir -p "$(dirname "$NAME_FILE")"
+  printf '%s\n' "$device" >"$NAME_FILE"
   omarchy-osd -i "$ICON" -m "$LABEL disabled"
 }
 
 case "$ACTION" in
   on) enable ;;
   off) disable ;;
-  toggle) if [[ -f $STATE_FILE ]]; then enable; else disable; fi ;;
+  toggle) if [[ -f $NAME_FILE ]]; then enable; else disable; fi ;;
   *)
-    echo "Usage: omarchy-toggle-input-device <touchpad|touchscreen> [on|off|toggle]" >&2
+    usage
     exit 1
     ;;
 esac

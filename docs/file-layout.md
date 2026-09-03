@@ -198,11 +198,7 @@ Runs once per user. It does **not** copy `~/.config/**`, `~/.bashrc`,
 `flags.lua`, or the nautilus extensions — `/etc/skel` already seeded those.
 It only does the things `/etc/skel` can't:
 
-- Skill symlinks `~/.{agents,claude,codex,pi/agent}/skills/<name>` →
-  `$OMARCHY_PATH/default/agents/skills/<name>`, looping over every skill
-  directory there (currently `omarchy` and `diagnose-crash`) so new skills
-  need no edit. Symlinks (not copies) so `omarchy dev link` against a dev
-  checkout repoints them correctly.
+- Skill symlinks into `~/.agents/skills/<name>`, `~/.claude/skills/<name>`, `~/.codex/skills/<name>`, `~/.pi/agent/skills/<name>`, `~/.gemini/config/skills/<name>` (Antigravity), `~/.hermes/skills/<name>`, and each existing `~/.hermes/profiles/*/skills/<name>` → `$OMARCHY_PATH/default/agents/skills/<name>`, looping over every skill directory there (currently `omarchy` and `diagnose-crash`) so new skills need no edit. Symlinks (not copies) so `omarchy dev link` against a dev checkout repoints them correctly. Hermes profile dirs are only linked when they already exist — provision does not create Hermes profiles.
 - `xdg-user-dirs-update` (Templates/Public/Desktop folded back into `$HOME`)
   and `~/.config/gtk-3.0/bookmarks` (needs `$HOME` expansion).
 - Hyprland's package-owned default input reads `XKBLAYOUT` / `XKBVARIANT`

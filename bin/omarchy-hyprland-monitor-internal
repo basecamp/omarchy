@@ -28,6 +28,13 @@ off() {
     exit 1
   fi
 
+  # The name is written into generated Lua below, so only a plain connector
+  # name may pass; anything else could execute on the next reload.
+  if [[ ! $INTERNAL =~ ^[A-Za-z0-9._-]+$ ]]; then
+    omarchy-notification-send -g 󰍹 "Refusing unsafe monitor name"
+    exit 1
+  fi
+
   if ! omarchy-hyprland-monitor-external-active; then
     omarchy-notification-send -g 󰍹 "Can't disable the only active display"
     exit 1

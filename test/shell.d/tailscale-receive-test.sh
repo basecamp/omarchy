@@ -67,11 +67,12 @@ pass "taildrop receive announces other files with a glyph"
 
 # The shell keeps the click command with the toast, so receiving does not have
 # to sit blocked on an answer -- and the toast still opens the file after a shell
-# restart. Names with spaces have to arrive quoted for the shell to run them.
+# restart. The path rides as its own discrete --exec argument, so the shell runs
+# it as literal data with no quoting for a name with spaces to get wrong.
 grep -qF -- "--exec xdg-open $downloads/photo.png" <<<"$notifications" ||
   fail "taildrop receive attaches the open command to the notification" "$notifications"
-grep -qF -- "--exec xdg-open $(printf %q "$downloads/notes with space.pdf")" <<<"$notifications" ||
-  fail "taildrop receive quotes spaced names in the open command" "$notifications"
+grep -qF -- "--exec xdg-open $downloads/notes with space.pdf" <<<"$notifications" ||
+  fail "taildrop receive carries spaced names as a literal open argument" "$notifications"
 pass "taildrop receive lets a click open the received file"
 
 grep -q "unrelated.txt" <<<"$notifications" &&

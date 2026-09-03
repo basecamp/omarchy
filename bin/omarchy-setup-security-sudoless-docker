@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# omarchy:summary=Enable sudoless Docker by adding your user to the docker group (root-equivalent!)
+# omarchy:requires-sudo=true
+
+set -e
+
+# Ask about the configured groups, not this session's: once enabled it stays
+# enabled for the account even before the reboot that lets this session use it.
+if ! omarchy-sudo-docker --configured; then
+  echo "Sudoless Docker is already enabled: $USER is in the docker group."
+  echo "To disable it again, run: omarchy-remove-security-sudoless-docker"
+  exit 0
+fi
+
+echo ""
+echo "⚠️  WARNING: Enabling sudoless Docker adds you to the 'docker' group."
+echo ""
+echo "The Docker daemon runs as root, so membership in the docker group is"
+echo "equivalent to passwordless root. Any process running as your user could"
+echo "then run, for example:"
+echo ""
+echo "    docker run -v /:/host alpine   # full read/write of the host, as root"
+echo ""
+echo "and take over the machine with no password prompt. A single rogue script,"
+echo "dependency, or plugin running as you is enough. It is convenient for"
+echo "development, but it removes the protection Omarchy keeps by default, where"
+echo "Docker access goes through a polkit/sudo prompt."
+echo ""
+
+if gum confirm "Enable sudoless Docker? This gives anything running as you passwordless root."; then
+  sudo usermod -aG docker "$USER"
+  # A new docker group membership is only picked up by a fresh session, and in
+  # practice logging out or newgrp isn't enough — only a reboot reliably applies
+  # it. Record it so a later `omarchy update` still prompts
+  # (omarchy-update-restart reads this), then offer to do it now.
+  omarchy-state set reboot-required
+  echo ""
+  echo "Sudoless Docker ENABLED. It takes effect after a reboot."
+  echo "To disable it again: Setup > Security > Sudoless Docker."
+  echo ""
+  # The migration reuses this command during 'omarchy update' and defers the
+  # reboot to omarchy-update-restart, so it doesn't cut the update short.
+  if [[ -z ${OMARCHY_DEFER_REBOOT:-} ]] && gum confirm "Reboot now to apply?"; then
+    omarchy-system-reboot
+  fi
+else
+  echo "Aborted. No changes made. Docker access still goes through a prompt."
+fi

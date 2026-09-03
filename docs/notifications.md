@@ -63,24 +63,33 @@ Ephemeral ones (the freedesktop `transient` hint, or an `app_name` of
 ## The sender contract
 
 `bin/omarchy-notification-send` is the one way Omarchy code sends
-notifications — never raw `notify-send`. It translates its flags into
-notify-send arguments and passes any unrecognized options through:
+notifications — never raw `notify-send`. It calls
+`org.freedesktop.Notifications.Notify` directly over the session bus (via
+`busctl --user`), so each value is one typed D-Bus parameter and there is no
+argv layer that could reinterpret a relayed headline as an option or a hint. Its
+flags map onto that call:
 
 | Flag | Becomes | Meaning |
 |---|---|---|
-| `-g` / `--glyph` | `--hint=string:omarchy-glyph:` | Nerd Font glyph for the icon slot when no image icon resolves |
-| `--exec` | `--hint=string:omarchy-exec:` | shell command the card runs when clicked |
-| `--image` | `--hint=string:image-path:` | the standard freedesktop image hint |
-| `--app-name` | `-a` | defaults to `omarchy-action` |
-| `-u` / `--urgency` | `-u` | defaults to `low` |
+| `-g` / `--glyph` | hint `omarchy-glyph` | Nerd Font glyph for the icon slot when no image icon resolves |
+| `--exec <program> [args…]` | hint `omarchy-exec-argv` | the click command; consumes the rest of the line, so it comes last. Each word is a discrete argument the shell runs without re-parsing (see below) |
+| `--image` | hint `image-path` | the standard freedesktop image hint |
+| `-i` / `--icon` | `app_icon` | themed icon name for the toast |
+| `--app-name` | `app_name` | defaults to `omarchy-action` |
+| `-u` / `--urgency` | hint `urgency` (byte) | `low`/`normal`/`critical`; defaults to `low` |
+| `-t` / `--expire-time` | `expire_timeout` | milliseconds on screen; server default otherwise |
+
+Unknown flags are a hard error, not a silent pass-through: `--exec` is the only
+door to a click command, and there is no generic option pass-through to smuggle
+one through.
 
 The defaults are the point: an unadorned `omarchy-notification-send "Done"`
 is a low-urgency user-action toast that pops through DND and is treated as
 ephemeral noise when silenced.
 
-`--exec` is deliberately not a libnotify action. An action keeps the sender
-blocked waiting for `ActionInvoked`, and dies unanswered whenever the shell
-restarts underneath it — the installer toasts restart the shell as their
+The click command is deliberately not a libnotify action. An action keeps the
+sender blocked waiting for `ActionInvoked`, and dies unanswered whenever the
+shell restarts underneath it — the installer toasts restart the shell as their
 first act. Carrying the command as a hint means the shell executes the click
 itself (detached, so the command outlives the shell process) from the copy it
 keeps with the popup, which the persistence files preserve: a restored toast
@@ -89,6 +98,52 @@ immediately. For third-party clients the click falls back to the libnotify
 `default` action while the sender is alive, then to focusing the sender's
 window by class via `omarchy-hyprland-focus-app` — chat apps rarely register
 an action and just expect click-to-jump.
+
+### Click commands are argv, never shell strings
+
+`--exec` consumes the rest of the line as the click command:
+
+```bash
+omarchy-notification-send "Download complete" "$title" --exec mpv -- "$file"
+```
+
+The caller's shell has already split those words into discrete arguments, and a
+quoted argument (`"$file"`) stays one argument even with spaces. On the shell
+side they are run through `Util.execArgv`, which invokes `bash -lc 'exec "$@"'`
+with the arguments as **positional parameters** — never interpolated into the
+script text. bash expands `"$@"` without re-tokenizing or re-evaluating it, so a
+value carrying data an attacker controls — a downloaded video's title, a
+received filename, a crashed process's name — is only ever a single argument and
+can never be reparsed as a command. The login shell keeps the PATH and session
+environment that GUI click targets (the screenshot editor, mpv, xdg-open) expect.
+
+The critical rule: **the splitting must happen at the call site, not inside the
+tool.** Passing a single quoted string (`--exec "mpv $title"`) and letting the
+tool whitespace-split it would hand argument boundaries to whoever controls the
+string's content — a title with a space could inject an extra option or program.
+So `--exec` refuses a lone quoted-string argument and points at the unquoted
+form. There is no "take a command string and sanitize it" path; that is the
+escaping trap (string-concatenated SQL) the yt-dlp title RCE exploited.
+
+The shell fails closed on a malformed argv hint (it must be a JSON array of
+strings whose program is present and not a leading-dash option) rather than
+running anything it can't validate. A caller can still deliberately name a shell
+as the program (`--exec sh -c …`), but that runs code because the *developer*
+wrote it, not because attacker data became a command — a reviewable red flag
+(greppable as `--exec sh`/`--exec bash`), not an injection. Insulating against a
+native same-user process is out of scope: it already runs with your privileges
+and needs no notification to execute code. What is fully closed is untrusted
+*content* — web notifications can't set the exec hint at all, and any relayed
+title/filename is confined to inert argument data.
+
+The sender keeps that last part true structurally rather than leaving it to each
+caller. Because it calls `Notify` directly, the headline and description are
+typed string parameters — a relayed value like `--hint=…` or `-rf` is the
+summary or body, never an option or a hint, and there is no argv/option layer
+(no `notify-send`) left to reinterpret it. `--exec` is the only thing that can
+build the `omarchy-exec-argv` hint. (The leading `--` on the `busctl` call is a
+belt for `busctl`'s own getopt, which would otherwise read a dash-leading value
+as a `busctl` option; the summary/body themselves are never parsed as options.)
 
 ## Helper commands
 
@@ -114,7 +169,8 @@ Everything goes through the same sender contract, so the pieces are small:
   `battery-low` hook.
 - **Crash capture** — `omarchy-crash-watch` follows the systemd-coredump
   journal stream and announces each crashed program (deduped per minute) as a
-  critical toast whose `--exec` runs `omarchy-agent-crash`. It waits for the
+  critical toast whose click runs `omarchy-agent-crash` (via `--exec`, so a
+  hostile process name stays a discrete argument). It waits for the
   server first: a shell crash takes the notification server down with it, and
   that crash is the one most worth reporting.
 - **Pending migrations** — `omarchy-migrate-notify` (from its user service

@@ -5,88 +5,377 @@
 # omarchy:examples=omarchy plymouth set '#1d2021' '#ebdbb2' ~/.local/state/omarchy/current/theme/plymouth/logo.png
 # omarchy:requires-sudo=true
 
-# Configure the Plymouth boot theme with a custom background color, text color, and logo.
-# Stages the change in a temp dir, then commits the staged files to /usr/share and
-# rebuilds the initramfs. Also syncs the SDDM login screen (the post-logout
-# screen) with the same colors and logo so boot/login stay visually unified.
+set -euo pipefail
 
-if (( $# != 3 )); then
+# Build the authoritative theme in a root-owned directory, then publish each
+# fixed destination atomically. The caller opens the selected logo before sudo,
+# so the privileged process never resolves a user-controlled input path.
+
+usage() {
   echo "Usage: omarchy-plymouth-set <background-hex> <text-hex> <path-to-logo.png>" >&2
   exit 1
-fi
+}
 
-bg_hex="${1#\#}"
-text_hex="${2#\#}"
-logo_path="$3"
-
-if ! [[ $bg_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
-  echo "Invalid background color: $1 (expected #RRGGBB)" >&2
-  exit 1
-fi
-
-if ! [[ $text_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
-  echo "Invalid text color: $2 (expected #RRGGBB)" >&2
-  exit 1
-fi
-
-if [[ ! -f $logo_path ]]; then
-  echo "Logo file not found: $logo_path" >&2
-  exit 1
-fi
-
-# omarchy-plymouth-set-by-theme passes a theme's unlock.png straight from
-# ~/.config/omarchy/themes, where an installed theme can make it a symlink to
-# anything. The copies below land in world-readable /usr/share, so following one
-# would republish whatever it points at.
-if [[ -L $logo_path ]]; then
-  echo "Logo file is a symlink, which is not accepted: $logo_path" >&2
-  exit 1
-fi
-
-bg_r=$(awk -v n=$((16#${bg_hex:0:2})) 'BEGIN{printf "%.3f", n/255}')
-bg_g=$(awk -v n=$((16#${bg_hex:2:2})) 'BEGIN{printf "%.3f", n/255}')
-bg_b=$(awk -v n=$((16#${bg_hex:4:2})) 'BEGIN{printf "%.3f", n/255}')
-
-theme_dir="/usr/share/plymouth/themes/omarchy"
-staging_dir=$(mktemp -d)
-trap 'rm -rf "$staging_dir"' EXIT
-
-find "$OMARCHY_PATH/default/plymouth" -maxdepth 1 -type f -exec cp -t "$staging_dir/" {} +
-cp "$logo_path" "$staging_dir/logo.png"
-
-sed -i \
-  -e "s/^Window.SetBackgroundTopColor.*/Window.SetBackgroundTopColor($bg_r, $bg_g, $bg_b);/" \
-  -e "s/^Window.SetBackgroundBottomColor.*/Window.SetBackgroundBottomColor($bg_r, $bg_g, $bg_b);/" \
-  "$staging_dir/omarchy.script"
-
-for asset in bullet.png entry.png lock.png progress_bar.png; do
-  magick "$staging_dir/$asset" -channel RGB +level-colors "#$text_hex","#$text_hex" "$staging_dir/$asset"
-done
-
-sudo cp -a --no-preserve=mode,ownership "$staging_dir/." "$theme_dir/"
-sudo plymouth-set-default-theme omarchy
-
-if omarchy-cmd-present limine-mkinitcpio; then
-  sudo limine-mkinitcpio
+if (( $# == 3 )); then
+  mode=set
+elif (( $# == 1 )); then
+  case "$1" in
+  --refresh-default)
+    mode=refresh-plymouth
+    ;;
+  --refresh-sddm-default)
+    mode=refresh-sddm
+    ;;
+  *)
+    usage
+    ;;
+  esac
 else
-  sudo mkinitcpio -P
+  usage
 fi
 
-# Sync the SDDM login screen with the same colors and logo.
-sddm_dir="/usr/share/sddm/themes/omarchy"
-sddm_template="$OMARCHY_PATH/default/sddm/omarchy/Main.qml"
+if (( EUID == 0 )); then
+  echo "Error: run omarchy-plymouth-set as your user, not under sudo." >&2
+  exit 1
+fi
 
-sed \
-  -e "s/#1a1b26/#$bg_hex/g" \
-  -e "s/#ffffff/#$text_hex/g" \
-  "$sddm_template" | sudo tee "$sddm_dir/Main.qml" >/dev/null
+logo_fd=
+if [[ $mode != "set" ]]; then
+  bg_hex=
+  text_hex=
+else
+  bg_hex="${1#\#}"
+  text_hex="${2#\#}"
+  logo_path="$3"
 
-sudo cp "$staging_dir/logo.png" "$sddm_dir/logo.png"
-for asset in bullet.png entry.png lock.png; do
-  sudo cp "$staging_dir/$asset" "$sddm_dir/$asset"
-done
-for asset in entry lock; do
-  magick "$staging_dir/$asset.png" -channel RGB +level-colors "#f7768e","#f7768e" "$staging_dir/$asset-failed.png"
-  sudo cp "$staging_dir/$asset-failed.png" "$sddm_dir/$asset-failed.png"
-done
-sudo rm -f "$sddm_dir/logo.svg"
+  if ! [[ $bg_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
+    echo "Invalid background color: $1 (expected #RRGGBB)" >&2
+    exit 1
+  fi
+
+  if ! [[ $text_hex =~ ^[0-9a-fA-F]{6}$ ]]; then
+    echo "Invalid text color: $2 (expected #RRGGBB)" >&2
+    exit 1
+  fi
+
+  if [[ ! -f $logo_path ]]; then
+    echo "Logo file not found: $logo_path" >&2
+    exit 1
+  fi
+
+  if [[ -L $logo_path ]]; then
+    echo "Logo file is a symlink, which is not accepted: $logo_path" >&2
+    exit 1
+  fi
+
+  # Open the logo while still unprivileged. A replacement symlink to a root-only
+  # file therefore fails here instead of being followed after sudo starts.
+  if ! exec {logo_fd}<"$logo_path"; then
+    echo "Unable to open logo file as the current user: $logo_path" >&2
+    exit 1
+  fi
+  if [[ ! -f /proc/$$/fd/$logo_fd ]]; then
+    echo "Logo input is no longer a regular file: $logo_path" >&2
+    exit 1
+  fi
+fi
+
+run_root_transaction() {
+  sudo /bin/bash -c '
+    set -eEuo pipefail
+    PATH=/usr/bin:/bin
+    export PATH
+    umask 077
+
+    # Every check below is a bare assertion that aborts under set -e. Name the
+    # subject of each one so a refusal reaches the user instead of exiting mute.
+    failure_context="the privileged Plymouth transaction"
+    failure_reported=
+    report_failure() {
+      [[ -z $failure_reported ]] || return 0
+      failure_reported=1
+      printf "omarchy-plymouth-set: refusing to publish: %s failed validation\n" "$failure_context" >&2
+      if [[ -n ${failure_hint:-} ]]; then
+        printf "omarchy-plymouth-set: %s\n" "$failure_hint" >&2
+      fi
+    }
+    trap report_failure ERR
+
+    mode=$1
+    source_root=$2
+    bg_hex=$3
+    text_hex=$4
+    max_asset_size=$5
+
+    failure_context="the arguments of the privileged transaction"
+    [[ $mode == "set" || $mode == "refresh-plymouth" || $mode == "refresh-sddm" ]]
+    [[ $source_root == /* ]]
+    [[ $max_asset_size =~ ^[0-9]+$ ]]
+    (( max_asset_size > 0 ))
+
+    failure_context="the Omarchy source tree $source_root"
+    canonical_source_root=$(realpath -e -- "$source_root")
+    [[ $canonical_source_root == "$source_root" ]]
+
+    validate_trusted_directory() {
+      local directory=$1 canonical uid directory_mode
+
+      failure_context="directory $directory"
+      canonical=$(realpath -e -- "$directory")
+      [[ $canonical == "$directory" && -d $directory && ! -L $directory ]]
+
+      while :; do
+        failure_context="directory $directory (must be root-owned and not group- or world-writable)"
+        uid=$(stat -c %u -- "$directory")
+        directory_mode=$(stat -c %a -- "$directory")
+        (( uid == 0 ))
+        (( (8#$directory_mode & 0022) == 0 ))
+        [[ $directory == "/" ]] && break
+        directory=${directory%/*}
+        [[ -n $directory ]] || directory=/
+      done
+    }
+
+    validate_trusted_configuration_file() {
+      local configuration=$1 canonical uid configuration_mode size
+
+      failure_context="root configuration $configuration"
+      [[ -f $configuration && ! -L $configuration ]]
+      canonical=$(realpath -e -- "$configuration")
+      [[ $canonical == "$configuration" ]]
+      validate_trusted_directory "${configuration%/*}"
+      uid=$(stat -c %u -- "$configuration")
+      configuration_mode=$(stat -c %a -- "$configuration")
+      size=$(stat -c %s -- "$configuration")
+      (( uid == 0 ))
+      (( (8#$configuration_mode & 0022) == 0 ))
+      (( size > 0 && size <= 4096 ))
+    }
+
+    # A packaged tree must be root-owned. A development checkout is the one
+    # deliberate exception: omarchy dev link records its canonical path in a
+    # root-owned /etc/omarchy.conf. That is already an explicit decision to run
+    # privileged Omarchy commands from user-editable code in the checkout, so
+    # reading its packaged assets does not widen the development trust boundary.
+    development_source=false
+    source_root_uid=$(stat -c %u -- "$source_root")
+    if (( source_root_uid != 0 )); then
+      omarchy_conf=/etc/omarchy.conf
+      failure_context="$source_root is user-owned and $omarchy_conf must contain its trusted dev-link authorization; run omarchy dev link to authorize it"
+      failure_hint="$source_root is user-owned; run omarchy dev link to authorize this development checkout, or omarchy dev unlink to use the packaged tree"
+      validate_trusted_configuration_file "$omarchy_conf"
+
+      # validate_trusted_configuration_file walks /etc up to / and leaves its own
+      # subject behind in failure_context. Without restoring ours, a checkout
+      # that simply is not the authorized one refuses with "directory / must be
+      # root-owned and not group- or world-writable" -- naming a directory that
+      # passed, and sending the reader after a filesystem problem that is not
+      # there.
+      failure_context="the dev-link authorization in $omarchy_conf, which must name $source_root"
+
+      quoted_source_root=$source_root
+      quoted_source_root=${quoted_source_root//\\/\\\\}
+      quoted_source_root=${quoted_source_root//\"/\\\"}
+      quoted_source_root=${quoted_source_root//\$/\\\$}
+      quoted_source_root=${quoted_source_root//\`/\\\`}
+      expected_config_line="export OMARCHY_PATH=\"$quoted_source_root\""
+      mapfile -t omarchy_config_lines <"$omarchy_conf"
+      (( ${#omarchy_config_lines[@]} == 1 ))
+      [[ ${omarchy_config_lines[0]} == "$expected_config_line" ]]
+      development_source=true
+      failure_hint=
+    fi
+
+    if [[ $mode == "set" ]]; then
+      [[ $bg_hex =~ ^[0-9a-fA-F]{6}$ ]]
+      [[ $text_hex =~ ^[0-9a-fA-F]{6}$ ]]
+    fi
+
+    theme_dir=/usr/share/plymouth/themes/omarchy
+    sddm_dir=/usr/share/sddm/themes/omarchy
+    plymouth_theme_assets=(
+      bullet.png
+      entry.png
+      lock.png
+      logo.png
+      omarchy.plymouth
+      omarchy.script
+      preview-unlock.png
+      progress_bar.png
+      progress_box.png
+    )
+    plymouth_default_assets=("${plymouth_theme_assets[@]}" logos/oma.png)
+    sddm_theme_assets=(Main.qml bullet.png entry-failed.png entry.png lock-failed.png lock.png logo.png)
+    sddm_default_assets=("${sddm_theme_assets[@]}" metadata.desktop theme.conf)
+
+    plymouth_assets=()
+    sddm_assets=()
+    case "$mode" in
+    set)
+      plymouth_assets=("${plymouth_theme_assets[@]}")
+      sddm_assets=("${sddm_theme_assets[@]}")
+      ;;
+    refresh-plymouth)
+      plymouth_assets=("${plymouth_default_assets[@]}")
+      ;;
+    refresh-sddm)
+      sddm_assets=("${sddm_default_assets[@]}")
+      ;;
+    esac
+
+    validate_trusted_file() {
+      local source=$1 canonical uid file_mode size
+
+      failure_context="packaged source file $source"
+      [[ -f $source && ! -L $source ]]
+      canonical=$(realpath -e -- "$source")
+      [[ $canonical == "$source" ]]
+      file_mode=$(stat -c %a -- "$source")
+      size=$(stat -c %s -- "$source")
+      (( size > 0 && size <= max_asset_size ))
+
+      if ! $development_source; then
+        validate_trusted_directory "${source%/*}"
+        uid=$(stat -c %u -- "$source")
+        (( uid == 0 ))
+        (( (8#$file_mode & 0022) == 0 ))
+      fi
+    }
+
+    copy_trusted_file() {
+      local source=$1 destination=$2
+
+      validate_trusted_file "$source"
+      install -o 0 -g 0 -m 0600 -- "$source" "$destination"
+    }
+
+    staging_dir=$(mktemp -d /tmp/omarchy-plymouth.XXXXXXXX)
+    temporary=
+    cleanup() {
+      [[ -z $temporary ]] || rm -f -- "$temporary"
+      rm -rf -- "$staging_dir"
+    }
+    trap cleanup EXIT HUP INT TERM
+    chown 0:0 -- "$staging_dir"
+    chmod 0700 -- "$staging_dir"
+
+    plymouth_stage=$staging_dir/plymouth
+    sddm_stage=$staging_dir/sddm
+    mkdir -m 0700 -p -- "$plymouth_stage/logos" "$sddm_stage"
+
+    for asset in "${plymouth_assets[@]}"; do
+      copy_trusted_file "$source_root/default/plymouth/$asset" "$plymouth_stage/$asset"
+    done
+
+    if [[ $mode == "set" ]]; then
+      # stdin was opened by the unprivileged caller. Read no more than the
+      # documented limit into the root-owned stage before doing other work.
+      failure_context="the selected logo (expected 1 to $max_asset_size bytes)"
+      head -c "$((max_asset_size + 1))" >"$plymouth_stage/logo.png"
+      logo_size=$(stat -c %s -- "$plymouth_stage/logo.png")
+      (( logo_size > 0 && logo_size <= max_asset_size ))
+      chown 0:0 -- "$plymouth_stage/logo.png"
+      chmod 0600 -- "$plymouth_stage/logo.png"
+      cp --reflink=never -- "$plymouth_stage/logo.png" "$sddm_stage/logo.png"
+
+      bg_r=$(awk -v n=$((16#${bg_hex:0:2})) "BEGIN{printf \"%.3f\", n/255}")
+      bg_g=$(awk -v n=$((16#${bg_hex:2:2})) "BEGIN{printf \"%.3f\", n/255}")
+      bg_b=$(awk -v n=$((16#${bg_hex:4:2})) "BEGIN{printf \"%.3f\", n/255}")
+
+      sed -i \
+        -e "s/^Window.SetBackgroundTopColor.*/Window.SetBackgroundTopColor($bg_r, $bg_g, $bg_b);/" \
+        -e "s/^Window.SetBackgroundBottomColor.*/Window.SetBackgroundBottomColor($bg_r, $bg_g, $bg_b);/" \
+        "$plymouth_stage/omarchy.script"
+
+      for asset in bullet.png entry.png lock.png progress_bar.png; do
+        magick "$plymouth_stage/$asset" -channel RGB +level-colors "#$text_hex","#$text_hex" "$plymouth_stage/$asset"
+      done
+
+      copy_trusted_file "$source_root/default/sddm/omarchy/Main.qml" "$sddm_stage/Main.qml"
+      sed -i \
+        -e "s/#1a1b26/#__OMARCHY_SDDM_BG__/g" \
+        -e "s/#ffffff/#__OMARCHY_SDDM_TEXT__/g" \
+        -e "s/#__OMARCHY_SDDM_BG__/#$bg_hex/g" \
+        -e "s/#__OMARCHY_SDDM_TEXT__/#$text_hex/g" \
+        "$sddm_stage/Main.qml"
+
+      for asset in bullet.png entry.png lock.png; do
+        cp --reflink=never -- "$plymouth_stage/$asset" "$sddm_stage/$asset"
+      done
+      for asset in entry lock; do
+        magick "$plymouth_stage/$asset.png" -channel RGB +level-colors "#f7768e","#f7768e" "$sddm_stage/$asset-failed.png"
+      done
+      chown -R 0:0 -- "$staging_dir"
+      find "$staging_dir" -type f -exec chmod 0600 -- {} +
+    elif (( ${#sddm_assets[@]} )); then
+      for asset in "${sddm_assets[@]}"; do
+        copy_trusted_file "$source_root/default/sddm/omarchy/$asset" "$sddm_stage/$asset"
+      done
+    fi
+
+    if (( ${#plymouth_assets[@]} )); then
+      validate_trusted_directory "$theme_dir"
+      if [[ $mode == "refresh-plymouth" ]]; then
+        validate_trusted_directory "$theme_dir/logos"
+      fi
+    fi
+    if (( ${#sddm_assets[@]} )); then
+      validate_trusted_directory "$sddm_dir"
+    fi
+
+    publish_asset() {
+      local source=$1 destination=$2 parent filename source_size copied_size
+
+      failure_context="destination $destination"
+      [[ -f $source && ! -L $source ]]
+      (( $(stat -c %u -- "$source") == 0 ))
+      source_size=$(stat -c %s -- "$source")
+      (( source_size > 0 && source_size <= max_asset_size ))
+
+      [[ $destination == /* && $destination != */ && $destination != *"/../"* ]]
+      parent=${destination%/*}
+      filename=${destination##*/}
+      [[ -n $parent && -n $filename && $filename != "." && $filename != ".." ]]
+      validate_trusted_directory "$parent"
+
+      temporary=$(mktemp --tmpdir="$parent" ".$filename.omarchy-new.XXXXXXXX")
+      install -o 0 -g 0 -m 0644 -- "$source" "$temporary"
+      copied_size=$(stat -c %s -- "$temporary")
+      (( copied_size == source_size ))
+      cmp -s -- "$source" "$temporary"
+      sync -f -- "$temporary"
+      mv --no-copy -fT -- "$temporary" "$destination"
+      temporary=
+    }
+
+    if (( ${#plymouth_assets[@]} )); then
+      for asset in "${plymouth_assets[@]}"; do
+        publish_asset "$plymouth_stage/$asset" "$theme_dir/$asset"
+      done
+    fi
+
+    if (( ${#sddm_assets[@]} )); then
+      for asset in "${sddm_assets[@]}"; do
+        publish_asset "$sddm_stage/$asset" "$sddm_dir/$asset"
+      done
+      validate_trusted_directory "$sddm_dir"
+      rm -f -- "$sddm_dir/logo.svg"
+    fi
+  ' bash "$mode" "$OMARCHY_PATH" "$bg_hex" "$text_hex" "$((64 * 1024 * 1024))"
+}
+
+if [[ $mode == "set" ]]; then
+  run_root_transaction <&"$logo_fd"
+else
+  run_root_transaction </dev/null
+fi
+
+if [[ $mode != "refresh-sddm" ]]; then
+  sudo plymouth-set-default-theme omarchy
+
+  if omarchy-cmd-present limine-mkinitcpio; then
+    sudo limine-mkinitcpio
+  else
+    sudo mkinitcpio -P
+  fi
+fi

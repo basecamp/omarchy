@@ -1,1 +1,1 @@
-%wheel ALL=(root) NOPASSWD: /usr/bin/timedatectl set-timezone *
+%wheel ALL=(root) NOPASSWD: /usr/bin/timedatectl ^set-timezone [A-Za-z0-9_+][A-Za-z0-9_+.-]*(/[A-Za-z0-9_+][A-Za-z0-9_+.-]*)*$

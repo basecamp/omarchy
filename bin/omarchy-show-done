@@ -1,6 +1,18 @@
 #!/bin/bash
 
-# omarchy:summary=Display a "Done!" message with a spinner and wait for user to press any key.
+# omarchy:summary=Display a "Done!" message and wait for user to press any key.
 
-echo
-gum spin --spinner "globe" --title "Done! Press any key to close..." -- bash -c 'read -n 1 -s'
+# The device node is there whether or not a terminal is behind it, so opening
+# it is the only test that means anything.
+: 2>/dev/null <>/dev/tty || exit 0
+
+# gum 2.0 no longer lets a spun command read the terminal, so the wait has to
+# happen here. Its own query replies are still queued on the tty; drop those or
+# they answer the keypress for the user.
+while read -rsn 1 -t 0.1 _ </dev/tty; do :; done
+
+# Prompt on the terminal rather than stdout, or a caller that redirects us
+# leaves the user waiting on a prompt they were never shown.
+printf '\n\033[32m● \033[0mDone! Press any key to close...' >/dev/tty
+read -rsn 1 </dev/tty
+echo >/dev/tty

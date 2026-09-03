@@ -545,6 +545,7 @@ Item {
 
         Text {
           id: selectedLabel
+          textFormat: Text.PlainText
           visible: root.showLabels
           anchors.top: carousel.bottom
           anchors.topMargin: Style.space(16)
@@ -561,6 +562,7 @@ Item {
         }
 
         Text {
+          textFormat: Text.PlainText
           visible: root.filterable && root.filterText
           anchors.top: selectedLabel.bottom
           anchors.topMargin: Style.space(8)
