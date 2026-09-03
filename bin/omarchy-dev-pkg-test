@@ -256,5 +256,7 @@ for PKG in "${PKGS[@]}"; do
 done
 
 # Install the built package set in one transaction so its
-# provides/conflicts/dependencies resolve as they do from the repository.
-/usr/bin/sudo -N -- /usr/bin/pacman -U --noconfirm -- "${built_pkgs[@]}"
+# provides/conflicts/dependencies resolve as they do from the repository. A
+# local development build is the explicitly selected source of these files;
+# allow it to replace leftovers from pre-package Omarchy installations.
+/usr/bin/sudo -N -- /usr/bin/pacman -U --noconfirm --overwrite='*' -- "${built_pkgs[@]}"

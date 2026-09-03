@@ -12,7 +12,7 @@ if [[ ${OMARCHY_AUR_SUDO_SECURITY_NS:-0} != 1 ]]; then
   outer_uid=$(id -u)
   outer_gid=$(id -g)
   subuid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subuid)
-  subgid=$(awk -F: -v group="$(id -gn)" '$1 == group { print $2; exit }' /etc/subgid)
+  subgid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subgid)
   if [[ -z $subuid || -z $subgid ]]; then
     pass "no subordinate uid/gid range; skipping AUR/package sudo namespace proof"
     exit 0
@@ -98,6 +98,10 @@ int main(int argc, char **argv) {
     event("SUDO:no-new-privs-denied");
     return 1;
   }
+  if (argc == 2 && strcmp(argv[1], "-h") == 0) {
+    puts("usage: sudo [-ABbEHkNnPS] command");
+    return 0;
+  }
   if (argc == 2 && strcmp(argv[1], "-k") == 0) {
     event("SUDO:invalidate");
     if (unlink(required("TEST_SUDO_TOKEN")) && errno != ENOENT) return 125;
@@ -105,6 +109,10 @@ int main(int argc, char **argv) {
   }
   if (index < argc && strcmp(argv[index], "-N") == 0) { no_update = 1; index++; }
   if (index < argc && strcmp(argv[index], "-n") == 0) { noninteractive = 1; index++; }
+  if (index < argc && strcmp(argv[index], "-v") == 0) {
+    event(no_update ? "SUDO:validate-no-update" : "SUDO:validate-reusable");
+    return no_update ? 0 : 125;
+  }
   if (index < argc && strcmp(argv[index], "-V") == 0) {
     event("SUDO:check-no-update");
     return getenv("TEST_SUDO_NO_N") ? 2 : 0;
@@ -212,6 +220,10 @@ fi
 
 [[ ${TEST_YAY_FAIL_BEFORE_BUILD:-0} != 1 ]] || exit 73
 /usr/bin/setsid --fork "$HOME/attack" >/dev/null 2>&1
+if [[ " $* " != *' --pacman /usr/bin/pacman '* ]]; then
+  /usr/bin/sudo -N -- "$HOME/hostile-bin/pacman"
+  exit
+fi
 [[ " $* " == *' --makepkg /usr/bin/omarchy-makepkg-unprivileged '* ]] || exit 74
 [[ " $* " == *' --mflags=--nodeps '* ]] || exit 75
 # Model a PKGBUILD that directly restores normal PACMAN_AUTH and calls absolute
@@ -277,7 +289,11 @@ cat >"$stub_bin/omarchy-show-done" <<'STUB'
 #!/bin/bash
 printf 'DONE\n' >>"$TEST_EVENT_LOG"
 STUB
-chmod 0755 "$stub_bin"/{pacman,yay,fzf,makepkg,updatedb,omarchy-show-done}
+cat >"$stub_bin/omarchy-pkg-aur-accessible" <<'STUB'
+#!/bin/bash
+exit 0
+STUB
+chmod 0755 "$stub_bin"/{pacman,yay,fzf,makepkg,updatedb,omarchy-show-done,omarchy-pkg-aur-accessible}
 
 # Isolate /usr/bin so this test can install the newly added package-owned
 # launcher without creating anything on the host. Unvalidated utilities are
@@ -319,7 +335,7 @@ done
 "$host_bin/cp" -a "$stub_bin/sudo" /usr/bin/sudo
 "$host_bin/chown" 0:0 /usr/bin/sudo
 "$host_bin/chmod" 4755 /usr/bin/sudo
-for command in pacman yay makepkg fzf updatedb omarchy-show-done; do
+for command in pacman yay makepkg fzf updatedb omarchy-show-done omarchy-pkg-aur-accessible; do
   "$host_bin/cp" -a "$stub_bin/$command" "/usr/bin/$command"
   "$host_bin/chown" 0:0 "/usr/bin/$command"
   "$host_bin/chmod" 0755 "/usr/bin/$command"
@@ -349,11 +365,15 @@ cat >"$test_home/hostile-bin/sudo" <<'STUB'
 touch "$HOME/hostile-path-sudo-ran"
 exit 92
 STUB
+cat >"$test_home/hostile-bin/pacman" <<'STUB'
+#!/bin/bash
+touch "$HOME/hostile-pacman-ran"
+STUB
 chmod 0755 "$test_home/hostile-bin"/*
 chown -R 1000:1000 "$test_home/hostile-bin"
 chmod 0700 "$test_home/hostile-bin"
 cat >"$test_home/.config/yay/config.json" <<'JSON'
-{"sudobin":"/home/test/hostile-bin/sudo","sudoflags":"","sudoloop":true,"makepkgbin":"/home/test/hostile-bin/makepkg"}
+{"sudobin":"/home/test/hostile-bin/sudo","sudoflags":"","sudoloop":true,"pacmanbin":"/home/test/hostile-bin/pacman","makepkgbin":"/home/test/hostile-bin/makepkg"}
 JSON
 cat >"$test_home/.config/yay/init.lua" <<'LUA'
 -- A real yay init hook is user code. The fixture launches the polling child
@@ -441,6 +461,20 @@ assert_cold() {
   ! grep -q '^SUDO:publish-token$' "$event_log" || fail "$label published a reusable sudo timestamp"
 }
 
+set +e
+run_user /usr/bin/bash "$ROOT/default/omarchy/sudo-no-update/sudo" -p /usr/bin/true \
+  >"$test_tmp/unsafe-wrapper.out" 2>"$test_tmp/unsafe-wrapper.err"
+unsafe_wrapper_status=$?
+set -e
+(( unsafe_wrapper_status == 126 )) ||
+  fail "the privileged-Bash exception accepted an ordinary shell with a decoy -p argument"
+grep -Fq 'Refusing an unsafe Bash startup' "$test_tmp/unsafe-wrapper.err" ||
+  fail "the rejected sudo boundary did not explain its startup failure"
+run_user "$ROOT/default/omarchy/sudo-no-update/sudo" -v
+grep -Fxq 'SUDO:validate-no-update' "$event_log" ||
+  fail "the privileged sudo boundary did not preserve validation mode"
+pass "the privileged sudo boundary validates startup and preserves its supported option"
+
 # Generic AUR helper: a pre-existing global timestamp and hostile yay/PATH/
 # exported-function configuration are all cold before build code. The fixed
 # CLI still completes the legitimate root installation using no-update.
@@ -522,6 +556,19 @@ active_session=""
 [[ ! -e $token ]] || fail "generic AUR TERM left sudo live"
 [[ ! -e $protected_dir/generic-signal ]] || fail "generic AUR signal child reused root"
 pass "generic AUR signal cleanup invalidates the credential"
+
+# The updater has its own yay call and must pin the same package tools as the
+# generic helper. Without --pacman, the fixture models yay asking sudo to run
+# the command selected by the user's configuration.
+reset_case aur-update
+run_user env TEST_ATTACK_LABEL=aur-update TEST_PROTECTED_TARGET="$protected_dir/aur-update" \
+  "$ROOT/bin/omarchy-update-aur-pkgs"
+assert_cold aur-update
+grep -q 'YAY:.* <--pacman> </usr/bin/pacman>.* <--makepkg> </usr/bin/omarchy-makepkg-unprivileged>' "$event_log" ||
+  fail "AUR updater did not pin yay's privileged package tools"
+[[ ! -e $test_home/hostile-pacman-ran ]] ||
+  fail "AUR updater let user configuration select a root pacman command"
+pass "AUR updater pins privileged tools and isolates package builds"
 
 # Official picker: fzf starts the original polling exploit, then returns two
 # ordinary selections. Both installs happen in one fixed no-update transaction.
@@ -645,6 +692,8 @@ grep -q '^MAKEPKG:.* <--printsrcinfo>' "$event_log" ||
 grep -q '^MAKEPKG:.* <--nodeps>' "$event_log" ||
   fail "dev build did not enforce a dependency-free build phase"
 grep -q 'PACMAN:0:.* <-U>' "$event_log" || fail "dev build did not install the built package"
+grep -q 'PACMAN:0:.* <-U>.* <--overwrite=\*>' "$event_log" ||
+  fail "dev build did not preserve replacement of legacy conflicting files"
 grep -q 'PACMAN:0:.* <-S>.* <dev-dependency>' "$event_log" ||
   fail "dev build did not install validated dependencies as one no-update batch"
 grep -Fxq 'SUDO:no-new-privs-denied' "$event_log" ||
@@ -727,23 +776,3 @@ active_session=""
 [[ ! -e $token ]] || fail "OCaml removal TERM left sudo live"
 [[ ! -e $protected_dir/remove-ocaml-signal ]] || fail "OCaml signal child reused root"
 pass "OCaml removal failure and signal paths invalidate credentials"
-
-# OM-SEC-22 ends after every OCaml removal outcome has revoked authorization.
-# Other generic AUR callers are covered by their own finding-specific PRs.
-exit 0
-
-# Current generic callers with later privileged phases must retain a no-update
-# boundary. Migrations already run under their package-owned no-update wrapper.
-grep -qF 'browser_policy_sudo_args=(-N)' "$ROOT/bin/omarchy-install-browser" ||
-  fail "AUR browser policy setup can authenticate with reusable sudo"
-grep -qF 'enable_non_reusable_sudo' "$ROOT/bin/omarchy-migrate" ||
-  fail "AUR migration caller lost its no-update wrapper"
-! rg -q 'source[[:space:]]+omarchy-sudo-keepalive' "$ROOT/bin" ||
-  fail "a package picker still sources the reusable sudo keepalive"
-pass "generic AUR callers do not publish later reusable credentials"
-
-reset_case legacy-keepalive
-run_user env TEST_ATTACK_LABEL=legacy-keepalive TEST_PROTECTED_TARGET="$protected_dir/legacy-keepalive" \
-  bash "$ROOT/bin/omarchy-sudo-keepalive" >/dev/null 2>&1
-[[ ! -e $token ]] || fail "legacy keepalive command retained a reusable token"
-pass "legacy keepalive command is non-reusable"

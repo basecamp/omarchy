@@ -62,11 +62,15 @@ if /usr/bin/pacman -Qem >/dev/null; then
   if /usr/bin/omarchy-pkg-aur-accessible; then
     echo -e "\e[32m\nUpdate AUR packages\e[0m"
 
-    # A user's yay config can select another sudo command and enable a
-    # timestamp-refresh loop. Pin both settings on the command line. AUR build
-    # code may run before package authentication, so this boundary applies to
-    # standalone invocations as well as the top-level update.
-    /usr/bin/yay --sudo /usr/bin/sudo --sudoflags=-N --sudoloop=false \
+    # Command-line settings override hostile user configuration. Keep package
+    # resolution on fixed system tools and put every PKGBUILD under
+    # no_new_privs before yay authenticates its package transaction.
+    /usr/bin/yay \
+      --sudo /usr/bin/sudo --sudoflags=-N --sudoloop=false \
+      --pacman /usr/bin/pacman --makepkg /usr/bin/omarchy-makepkg-unprivileged \
+      --mflags=--nodeps \
+      --git /usr/bin/git --gpg /usr/bin/gpg \
+      --config /etc/pacman.conf --nomakepkgconf --noremovemake \
       -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs
     /usr/bin/sudo -k || exit 1
     trap - EXIT
