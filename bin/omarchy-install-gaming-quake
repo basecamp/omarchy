@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# omarchy:summary=Install Quake (vkQuake) with the Omarchy panel, then launch it.
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+echo "Installing Quake..."
+omarchy-pkg-add omarchy-quake
+rm -f "$HOME/.local/bin/quake-omarchy" "$HOME/.local/bin/omarchy-quake"
+
+plugin_src=/usr/share/omarchy-quake/plugin
+plugin_dest="$HOME/.config/omarchy/plugins/quake.omarchy"
+if [[ ! -d $plugin_src ]]; then
+  echo "omarchy-quake did not ship $plugin_src" >&2
+  exit 1
+fi
+
+mkdir -p "$plugin_dest"
+# Copy, do not symlink: omarchy-plugin-validate rejects any symlink in a plugin folder.
+find "$plugin_dest" -mindepth 1 -delete
+cp -f "$plugin_src/"* "$plugin_dest/"
+touch "$plugin_dest"/*.qml "$plugin_dest"/*.js "$plugin_dest"/manifest.json
+
+if command -v omarchy-plugin-validate >/dev/null; then
+  omarchy-plugin-validate "$plugin_dest"
+fi
+
+# The shell notices the new plugin dir via inotify and rescans asynchronously,
+# so an immediate enable can race it ("plugin is not known"). Rescan, then retry.
+omarchy-shell shell rescanPlugins >/dev/null 2>&1 || true
+enabled=0
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if omarchy-plugin-enable quake.omarchy >/dev/null 2>&1; then
+    enabled=1
+    break
+  fi
+  sleep 0.3
+done
+if (( ! enabled )); then
+  omarchy-plugin-enable quake.omarchy
+fi
+
+hypr_src=/usr/share/omarchy-quake/hypr/quake.lua
+hypr_dest="$HOME/.config/hypr/apps/quake-omarchy.lua"
+if [[ -f $hypr_src ]]; then
+  mkdir -p "$(dirname "$hypr_dest")"
+  install -m 0644 "$hypr_src" "$hypr_dest"
+fi
+HYPR_LUA=$HOME/.config/hypr/hyprland.lua
+if [[ -f $HYPR_LUA ]] && ! grep -q 'hypr.apps.quake-omarchy' "$HYPR_LUA"; then
+  cp "$HYPR_LUA" "$HYPR_LUA.bak.$(date +%s)"
+  python3 - "$HYPR_LUA" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+text = path.read_text()
+line = 'require("hypr.apps.quake-omarchy")\n'
+if "hypr.apps.quake-omarchy" in text:
+    raise SystemExit(0)
+for needle in ('require("hypr.apps.synchro")\n', 'require("hypr.autostart")\n'):
+    if needle in text:
+        path.write_text(text.replace(needle, needle + line, 1))
+        raise SystemExit(0)
+path.write_text(text + "\n" + line)
+PY
+fi
+
+if command -v omarchy >/dev/null; then
+  omarchy restart shell >/dev/null 2>&1 || true
+fi
+
+echo ""
+echo "Quake will start now. First launch downloads shareware (~18MB) if you do not already have PAKs."
+
+setsid uwsm-app -- gtk-launch org.omarchy.quake >/dev/null 2>&1 &
