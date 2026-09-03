@@ -55,7 +55,7 @@ pass "shipped config puts the agents widget in the bar"
 write_config "$without_widget"
 run_migration
 
-[[ $(ids right) == '["omarchy.tray","omarchy.agents","omarchy.bluetooth","omarchy.network","omarchy.audio","omarchy.monitor","omarchy.power"]' ]] ||
+[[ $(ids right) == '["omarchy.tray","omarchy.agents","omarchy.discovery","omarchy.bluetooth","omarchy.network","omarchy.audio","omarchy.monitor","omarchy.power"]' ]] ||
   fail "migration inserts the agents widget after the tray" "$(ids right)"
 pass "migration inserts the agents widget after the tray"
 

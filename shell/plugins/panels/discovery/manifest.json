@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.discovery",
+  "name": "Discovery",
+  "version": "0.3.0",
+  "author": "Tom Ballard",
+  "license": "MIT",
+  "description": "Discover apps, plugins, and themes, manage updates, and build for Omarchy.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Discovery",
+    "description": "Apps, plugins, themes, updates, and builds for Omarchy",
+    "category": "Development",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

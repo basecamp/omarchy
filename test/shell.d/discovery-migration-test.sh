@@ -36,7 +36,7 @@ cat >"$config" <<'JSON'
       "right": [
         { "id": "omarchy.agents" },
         { "id": "io.github.tcballard.plugin-workbench", "size": "wide" },
-        "omarchy.plugin-workbench",
+        "omarchy.discovery",
         { "id": "omarchy.audio" }
       ]
     }
@@ -51,21 +51,21 @@ JSON
 
 run_migration
 
-[[ $(jq -c '.bar.layout.right' "$config") == '[{"id":"omarchy.agents"},{"id":"omarchy.plugin-workbench","size":"wide"},{"id":"omarchy.audio"}]' ]] ||
-  fail "migration renames Workbench in place and removes duplicates" "$(cat "$config")"
-pass "migration renames Workbench in place and removes duplicates"
+[[ $(jq -c '.bar.layout.right' "$config") == '[{"id":"omarchy.agents"},{"id":"omarchy.discovery","size":"wide"},{"id":"omarchy.audio"}]' ]] ||
+  fail "migration renames the legacy Workbench in place and removes duplicates" "$(cat "$config")"
+pass "migration renames the legacy Workbench in place and removes duplicates"
 
 [[ $(jq -c '.plugins' "$config") == '[{"id":"org.example.other"}]' ]] ||
   fail "migration removes the superseded community activation" "$(cat "$config")"
 pass "migration removes the superseded community activation"
 
-[[ $(jq -c '.disabledPlugins' "$config") == '["omarchy.plugin-workbench","omarchy.weather"]' ]] ||
+[[ $(jq -c '.disabledPlugins' "$config") == '["omarchy.discovery","omarchy.weather"]' ]] ||
   fail "migration preserves the disabled state" "$(cat "$config")"
 pass "migration preserves the disabled state"
 
-[[ $(cat "$PACKAGE_ADDS") == 'omarchy-plugin-workbench' ]] ||
-  fail "migration installs the Workbench helper package" "$(cat "$PACKAGE_ADDS")"
-pass "migration installs the Workbench helper package"
+[[ $(cat "$PACKAGE_ADDS") == 'omarchy-discovery' ]] ||
+  fail "migration installs the Discovery helper package" "$(cat "$PACKAGE_ADDS")"
+pass "migration installs the Discovery helper package"
 
 before=$(sha256sum "$config")
 run_migration
@@ -86,9 +86,9 @@ cat >"$config" <<'JSON'
 JSON
 
 run_migration
-[[ $(jq -c '.bar.layout.right' "$config") == '[{"id":"omarchy.agents"},{"id":"omarchy.plugin-workbench"},{"id":"omarchy.audio"}]' ]] ||
-  fail "migration adds Workbench after agents" "$(cat "$config")"
-pass "migration adds Workbench after agents"
+[[ $(jq -c '.bar.layout.right' "$config") == '[{"id":"omarchy.agents"},{"id":"omarchy.discovery"},{"id":"omarchy.audio"}]' ]] ||
+  fail "migration adds Discovery after agents" "$(cat "$config")"
+pass "migration adds Discovery after agents"
 
 printf '{ not json' >"$config"
 run_migration

@@ -7,7 +7,7 @@ import qs.Ui
 
 Panel {
   id: root
-  moduleName: "omarchy.plugin-workbench"
+  moduleName: "omarchy.discovery"
   manageIpc: false
 
   property var anchorItem: null
@@ -19,7 +19,8 @@ Panel {
   property string installedQuery: ""
   property bool updatesChecked: false
   property bool portfolioLoaded: false
-  property string viewMode: "build"
+  property string viewMode: "discover"
+  property string discoveryFlavor: "all"
   property bool marketplaceLoaded: false
   property var marketplaceResults: []
   property int marketplaceMatched: 0
@@ -44,6 +45,7 @@ Panel {
   readonly property bool buildOpen: viewMode === "build"
   readonly property bool installedOpen: viewMode === "installed"
   readonly property bool marketplaceOpen: viewMode === "discover"
+  readonly property bool updatesOpen: viewMode === "updates"
   readonly property int availableUpdateCount: pluginUpdates.filter(function(plugin) { return plugin.updateable }).length
   readonly property var reviewUpdates: pluginUpdates.filter(function(plugin) { return plugin.state !== "up-to-date" })
   readonly property var installedRows: installedPlugins.map(function(plugin) {
@@ -65,7 +67,8 @@ Panel {
       || String(plugin.id || "").toLowerCase().indexOf(query) !== -1
       || String(plugin.management || "").toLowerCase().indexOf(query) !== -1
   })
-  readonly property bool busy: refreshProcess.running || portfolioProcess.running || actionProcess.running
+  readonly property bool busy: refreshProcess.running || portfolioProcess.running
+    || actionProcess.running || appInstallProcess.running
   readonly property color surfaceSubtle: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.055)
   readonly property color borderSubtle: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.16)
   readonly property color textMuted: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.58)
@@ -73,7 +76,7 @@ Panel {
 
   function open() {
     root.controller.show()
-    refresh()
+    refreshView()
   }
 
   function close() {
@@ -100,18 +103,20 @@ Panel {
 
   function refreshView() {
     if (root.buildOpen) refresh()
-    else if (root.installedOpen) refreshInstalled()
-    else refreshMarketplace()
+    else if (root.installedOpen) loadPortfolio()
+    else if (root.updatesOpen) checkUpdates()
+    else refreshDiscovery()
   }
 
   function setViewMode(mode) {
     if (root.busy || root.viewMode === mode) return
     root.viewMode = mode
     root.marketplaceConfirmation = ""
-    if (mode === "installed") refreshInstalled()
+    if (mode === "installed") loadPortfolio()
+    else if (mode === "updates") checkUpdates()
     else if (mode === "discover") {
       if (root.marketplaceLoaded) searchMarketplace()
-      else refreshMarketplace()
+      else refreshDiscovery()
     } else refresh()
   }
 
@@ -147,7 +152,7 @@ Panel {
         root.messageError = true
       }
     } catch (error) {
-      root.message = "Could not parse Workbench status: " + error
+      root.message = "Could not parse Build project status: " + error
       root.messageError = true
     }
   }
@@ -203,7 +208,8 @@ Panel {
 
   function activeFeed() {
     return root.marketplaceOpen ? marketplaceList
-      : root.installedOpen ? installedList : projectList
+      : root.installedOpen ? installedList
+      : root.updatesOpen ? updateList : projectList
   }
 
   function scrollFeed(amount) {
@@ -265,14 +271,14 @@ Panel {
     }).join("\n") + (commits.length > 5 ? "\n…" : "")
   }
 
-  function refreshMarketplace() {
+  function refreshDiscovery() {
     if (root.busy || !root.helperPath) return
     root.actionOutput = ""
     root.actionError = ""
-    root.message = "Refreshing the official marketplace catalogue…"
+    root.message = "Refreshing apps, plugins, and themes…"
     root.messageError = false
-    root.pendingAction = "marketplace-refresh"
-    actionProcess.command = [root.helperPath, "marketplace-refresh", "--json"]
+    root.pendingAction = "discovery-refresh"
+    actionProcess.command = [root.helperPath, "discovery-refresh", "--json"]
     actionProcess.running = true
   }
 
@@ -280,13 +286,14 @@ Panel {
     if (root.busy || !root.helperPath) return
     root.actionOutput = ""
     root.actionError = ""
-    root.message = "Searching the cached marketplace…"
+    root.message = "Searching Discovery…"
     root.messageError = false
-    root.pendingAction = "marketplace-search"
-    var command = [root.helperPath, "marketplace-search"]
+    root.pendingAction = "discovery-search"
+    var command = [root.helperPath, "discovery-search"]
     var query = String(marketplaceSearchInput.text || "").trim()
     if (query) command.push(query)
-    if (root.marketplaceBuiltInsOnly) command.push("--built-in")
+    command.push("--flavor")
+    command.push(root.discoveryFlavor)
     if (root.marketplaceVerifiedOnly) command.push("--verified")
     if (root.marketplaceInstallableOnly) command.push("--installable")
     if (root.marketplaceInstalledOnly) command.push("--installed")
@@ -305,15 +312,44 @@ Panel {
     root.messageError = false
     root.pendingAction = "marketplace-install"
     actionProcess.command = [root.helperPath, "marketplace-install", plugin.id,
-      "--repo", plugin.repo, "--revision", plugin.reviewedRevision,
+      "--repo", plugin.source, "--revision", plugin.reviewedRevision,
       "--enable", "--yes", "--json"]
     actionProcess.running = true
+  }
+
+  function selectFlavor(flavor) {
+    if (root.busy || root.discoveryFlavor === flavor) return
+    root.discoveryFlavor = flavor
+    root.marketplaceConfirmation = ""
+    root.searchMarketplace()
+  }
+
+  function installDiscoveryItem(item) {
+    if (item.flavor === "plugin") {
+      root.installMarketplace(item)
+    } else if (item.flavor === "app" && item.package) {
+      var packageName = String(item.package)
+      if (!/^[A-Za-z0-9@._+\-]+$/.test(packageName)) {
+        root.message = "Discovery rejected an invalid package name"
+        root.messageError = true
+        return
+      }
+      root.message = "Opening Omarchy’s package installer for " + item.name
+      appInstallProcess.command = ["omarchy-launch-floating-terminal-with-presentation",
+        "omarchy-pkg-add " + packageName]
+      appInstallProcess.running = true
+    } else if (item.flavor === "theme") {
+      root.pendingAction = "theme-apply"
+      root.message = "Applying " + item.name + "…"
+      actionProcess.command = [root.helperPath, "discovery-theme-apply", item.id, "--json"]
+      actionProcess.running = true
+    }
   }
 
   function updateMarketplace(plugin) {
     if (root.busy || !root.helperPath || !plugin.managed || !plugin.updateAvailable) return
     root.pendingAction = "marketplace-update"
-    root.message = "Applying reviewed marketplace update for " + plugin.name + "…"
+    root.message = "Applying reviewed plugin update for " + plugin.name + "…"
     root.messageError = false
     actionProcess.command = [root.helperPath, "marketplace-update", plugin.id,
       "--revision", plugin.reviewedRevision, "--yes", "--json"]
@@ -323,7 +359,7 @@ Panel {
   function updateManagedPlugin(plugin) {
     if (root.busy || !root.helperPath || !plugin.updateAvailable || !plugin.catalogueRevision) return
     root.pendingAction = "marketplace-update"
-    root.message = "Applying reviewed marketplace update for " + plugin.id + "…"
+    root.message = "Applying reviewed plugin update for " + plugin.id + "…"
     root.messageError = false
     actionProcess.command = [root.helperPath, "marketplace-update", plugin.id,
       "--revision", plugin.catalogueRevision, "--yes", "--json"]
@@ -351,23 +387,23 @@ Panel {
     var errorText = String(root.actionError || "").trim()
     var parsed = null
     try { parsed = JSON.parse(text || errorText || "{}") } catch (error) {}
-    if (root.pendingAction === "marketplace-refresh" && exitCode === 0 && parsed && parsed.ok) {
+    if (root.pendingAction === "discovery-refresh" && exitCode === 0 && parsed) {
       root.marketplaceLoaded = true
       root.marketplaceGeneratedAt = parsed.generatedAt || ""
-      root.message = parsed.message || "Marketplace catalogue refreshed"
-      root.messageError = false
+      root.message = parsed.message || "Discovery refreshed"
+      root.messageError = parsed.ok === false
       root.pendingAction = ""
       Qt.callLater(root.searchMarketplace)
       return
     }
-    if (root.pendingAction === "marketplace-search" && exitCode === 0 && parsed && Array.isArray(parsed.plugins)) {
+    if (root.pendingAction === "discovery-search" && exitCode === 0 && parsed && Array.isArray(parsed.items)) {
       root.marketplaceLoaded = true
-      root.marketplaceResults = parsed.plugins
+      root.marketplaceResults = parsed.items
       root.marketplaceMatched = Number(parsed.matched || 0)
       root.marketplaceTotal = Number(parsed.total || 0)
       root.marketplaceGeneratedAt = parsed.generatedAt || root.marketplaceGeneratedAt
-      root.message = root.marketplaceMatched + " marketplace result(s)"
-      root.messageError = false
+      root.message = root.marketplaceMatched + " Discovery result(s)"
+      root.messageError = parsed.ok === false
       root.pendingAction = ""
       return
     }
@@ -393,6 +429,7 @@ Panel {
       }
       if (root.pendingAction === "update") Qt.callLater(root.refreshInstalled)
       else if (root.pendingAction === "installed") Qt.callLater(root.refreshInstalled)
+      else if (root.pendingAction === "theme-apply") Qt.callLater(root.searchMarketplace)
       else if (root.pendingAction.indexOf("marketplace-") === 0) {
         if (root.marketplaceOpen) Qt.callLater(root.searchMarketplace)
         else Qt.callLater(root.refreshInstalled)
@@ -421,9 +458,20 @@ Panel {
     onExited: function(exitCode) {
       if (exitCode === 0) Qt.callLater(root.applyRefresh)
       else {
-        root.message = root.message || "Workbench helper could not load projects"
+        root.message = root.message || "Discovery could not load Build projects"
         root.messageError = true
       }
+    }
+  }
+
+  Process {
+    id: appInstallProcess
+    command: []
+    onExited: function(exitCode) {
+      root.messageError = exitCode !== 0
+      root.message = exitCode === 0
+        ? "Installer opened in a terminal"
+        : "Could not open the package installer"
     }
   }
 
@@ -484,11 +532,13 @@ Panel {
       onTabRequested: function(direction) { root.switchPanel(direction) }
       Keys.onPressed: function(event) {
         if (event.modifiers === Qt.ControlModifier && event.key === Qt.Key_1) {
-          root.setViewMode("build")
+          root.setViewMode("discover")
         } else if (event.modifiers === Qt.ControlModifier && event.key === Qt.Key_2) {
           root.setViewMode("installed")
         } else if (event.modifiers === Qt.ControlModifier && event.key === Qt.Key_3) {
-          root.setViewMode("discover")
+          root.setViewMode("updates")
+        } else if (event.modifiers === Qt.ControlModifier && event.key === Qt.Key_4) {
+          root.setViewMode("build")
         } else if (event.modifiers !== Qt.NoModifier) {
           return
         } else if (event.key === Qt.Key_Down || event.key === Qt.Key_J) {
@@ -527,18 +577,20 @@ Panel {
               spacing: Style.space(2)
 
               Text {
-                text: "OMARCHY PLUGINS"
+                text: "OMARCHY DISCOVERY"
                 color: root.barForeground
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.title
                 font.bold: true
               }
               Text {
-                text: root.buildOpen
-                  ? "Build and test personal plugins without leaving the shell"
+                text: root.marketplaceOpen
+                  ? root.marketplaceMatched + " apps, plugins, and themes ready to explore"
                   : root.installedOpen
-                    ? root.installedCount + " plugins discovered by Omarchy"
-                    : root.marketplaceMatched + " of " + root.marketplaceTotal + " official catalogue listings"
+                    ? root.installedCount + " installed plugins · apps remain package-managed"
+                    : root.updatesOpen
+                      ? root.availableUpdateCount + " plugin updates · apps update with Omarchy"
+                      : "Build and test personal plugins without leaving the shell"
                 color: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.62)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.caption
@@ -560,27 +612,34 @@ Panel {
             spacing: Style.space(6)
 
             ModeTab {
-              width: (lifecycleRail.width - Style.space(12)) / 3
-              title: "1  BUILD"
-              detail: root.projectCount + (root.projectCount === 1 ? " project" : " projects")
-              active: root.buildOpen
-              onTriggered: root.setViewMode("build")
+              width: (lifecycleRail.width - Style.space(18)) / 4
+              title: "1  DISCOVER"
+              detail: root.marketplaceLoaded
+                ? root.marketplaceTotal + " listings" : "All flavours"
+              active: root.marketplaceOpen
+              onTriggered: root.setViewMode("discover")
             }
             ModeTab {
-              width: (lifecycleRail.width - Style.space(12)) / 3
+              width: (lifecycleRail.width - Style.space(18)) / 4
               title: "2  INSTALLED"
-              detail: root.availableUpdateCount > 0
-                ? root.availableUpdateCount + " updates ready" : root.installedCount + " installed"
+              detail: root.installedCount + " plugins"
               active: root.installedOpen
               onTriggered: root.setViewMode("installed")
             }
             ModeTab {
-              width: (lifecycleRail.width - Style.space(12)) / 3
-              title: "3  DISCOVER"
-              detail: root.marketplaceLoaded
-                ? root.marketplaceTotal + " official listings" : "Official catalogue"
-              active: root.marketplaceOpen
-              onTriggered: root.setViewMode("discover")
+              width: (lifecycleRail.width - Style.space(18)) / 4
+              title: "3  UPDATES"
+              detail: root.availableUpdateCount > 0
+                ? root.availableUpdateCount + " ready" : "System + plugins"
+              active: root.updatesOpen
+              onTriggered: root.setViewMode("updates")
+            }
+            ModeTab {
+              width: (lifecycleRail.width - Style.space(18)) / 4
+              title: "4  BUILD"
+              detail: root.projectCount + (root.projectCount === 1 ? " project" : " projects")
+              active: root.buildOpen
+              onTriggered: root.setViewMode("build")
             }
           }
 
@@ -732,7 +791,7 @@ Panel {
                 id: marketplaceRefreshButton
                 label: "Refresh"
                 enabled: !root.busy
-                onTriggered: root.refreshMarketplace()
+                onTriggered: root.refreshDiscovery()
               }
             }
           }
@@ -740,9 +799,37 @@ Panel {
           Rectangle {
             visible: root.installedOpen
             width: parent.width
-            height: visible ? Style.space(76) : 0
-            color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.08)
-            border.color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.28)
+            height: visible ? Style.space(48) : 0
+            color: "transparent"
+            border.color: root.borderSubtle
+            border.width: 1
+            radius: Style.cornerRadius
+
+            Row {
+              anchors.fill: parent
+              anchors.margins: Style.space(8)
+              spacing: Style.space(8)
+              WorkbenchField {
+                id: installedSearchInput
+                width: parent.width - installedCheck.width - Style.space(8)
+                placeholder: "Search installed plugins or management source"
+                onTextChanged: root.installedQuery = text
+              }
+              WorkbenchButton {
+                id: installedCheck
+                label: "Refresh"
+                enabled: !root.busy
+                onTriggered: root.loadPortfolio()
+              }
+            }
+          }
+
+          Rectangle {
+            visible: root.updatesOpen
+            width: parent.width
+            height: visible ? Style.space(66) : 0
+            color: root.accentWash
+            border.color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.35)
             border.width: 1
             radius: Style.cornerRadius
 
@@ -750,81 +837,92 @@ Panel {
               anchors.fill: parent
               anchors.margins: Style.space(8)
               spacing: Style.space(6)
-
               Text {
-                text: root.availableUpdateCount > 0
-                  ? root.availableUpdateCount + " reviewed update(s) ready · updates are never unattended"
-                  : root.updatesChecked ? "Installed plugins are current" : "Review installed plugin state"
+                width: parent.width
+                text: "Apps and included themes update with Omarchy · plugin updates remain review-first"
                 color: root.barForeground
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.caption
                 font.bold: true
               }
-
               Row {
-                width: parent.width
-                spacing: Style.space(8)
-                WorkbenchField {
-                  id: installedSearchInput
-                  width: parent.width - installedUpdateAll.width - installedCheck.width - Style.space(16)
-                  placeholder: "Search installed plugins or management source"
-                  onTextChanged: root.installedQuery = text
-                }
+                spacing: Style.space(6)
                 WorkbenchButton {
-                  id: installedUpdateAll
                   visible: root.availableUpdateCount > 0
-                  label: "Update all"
+                  label: "Update all reviewed"
                   enabled: !root.busy
                   onTriggered: root.applyAllUpdates()
                 }
                 WorkbenchButton {
-                  id: installedCheck
-                  label: "Check"
+                  label: root.busy ? "Checking…" : "Check plugin updates"
                   enabled: !root.busy
-                  onTriggered: root.refreshInstalled()
+                  onTriggered: root.checkUpdates()
                 }
               }
             }
           }
 
-          Row {
+          Column {
             visible: root.marketplaceOpen
             height: visible ? implicitHeight : 0
-            spacing: Style.space(6)
-            WorkbenchButton {
-              label: root.marketplaceBuiltInsOnly ? "Built-ins ✓" : "Built-ins"
-              onTriggered: {
-                root.marketplaceBuiltInsOnly = !root.marketplaceBuiltInsOnly
-                root.searchMarketplace()
+            spacing: Style.space(5)
+            Row {
+              spacing: Style.space(6)
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "FLAVOR"
+                color: root.textMuted
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.caption
+                font.bold: true
+              }
+              WorkbenchButton {
+                label: root.discoveryFlavor === "all" ? "Featured ✓" : "Featured"
+                onTriggered: root.selectFlavor("all")
+              }
+              WorkbenchButton {
+                label: root.discoveryFlavor === "app" ? "Apps ✓" : "Apps"
+                onTriggered: root.selectFlavor("app")
+              }
+              WorkbenchButton {
+                label: root.discoveryFlavor === "plugin" ? "Plugins ✓" : "Plugins"
+                onTriggered: root.selectFlavor("plugin")
+              }
+              WorkbenchButton {
+                label: root.discoveryFlavor === "theme" ? "Themes ✓" : "Themes"
+                onTriggered: root.selectFlavor("theme")
               }
             }
-            WorkbenchButton {
-              label: root.marketplaceVerifiedOnly ? "Verified ✓" : "Verified"
-              onTriggered: {
-                root.marketplaceVerifiedOnly = !root.marketplaceVerifiedOnly
-                root.searchMarketplace()
+            Row {
+              spacing: Style.space(6)
+              WorkbenchButton {
+                label: root.marketplaceVerifiedOnly ? "Verified ✓" : "Verified"
+                onTriggered: {
+                  root.marketplaceVerifiedOnly = !root.marketplaceVerifiedOnly
+                  root.searchMarketplace()
+                }
               }
-            }
-            WorkbenchButton {
-              label: root.marketplaceInstallableOnly ? "Installable ✓" : "Installable"
-              onTriggered: {
-                root.marketplaceInstallableOnly = !root.marketplaceInstallableOnly
-                root.searchMarketplace()
+              WorkbenchButton {
+                label: root.marketplaceInstallableOnly ? "Installable ✓" : "Installable"
+                onTriggered: {
+                  root.marketplaceInstallableOnly = !root.marketplaceInstallableOnly
+                  root.searchMarketplace()
+                }
               }
-            }
-            WorkbenchButton {
-              label: root.marketplaceInstalledOnly ? "Installed ✓" : "Installed"
-              onTriggered: {
-                root.marketplaceInstalledOnly = !root.marketplaceInstalledOnly
-                root.searchMarketplace()
+              WorkbenchButton {
+                label: root.marketplaceInstalledOnly ? "Installed ✓" : "Installed"
+                onTriggered: {
+                  root.marketplaceInstalledOnly = !root.marketplaceInstalledOnly
+                  root.searchMarketplace()
+                }
               }
-            }
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.marketplaceGeneratedAt ? "Catalogue " + root.marketplaceGeneratedAt.slice(0, 10) : ""
-              color: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.48)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.caption
+              Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.marketplaceGeneratedAt ? "Updated " + root.marketplaceGeneratedAt.slice(0, 10) : ""
+                color: root.textMuted
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.caption
+              }
             }
           }
 
@@ -865,10 +963,10 @@ Panel {
               cacheBuffer: height
               model: root.marketplaceResults
 
-              delegate: MarketplaceCard {
+              delegate: DiscoveryCard {
                 required property var modelData
                 width: marketplaceList.width
-                plugin: modelData
+                item: modelData
               }
             }
 
@@ -879,7 +977,8 @@ Panel {
               anchors.right: parent.right
               anchors.top: parent.top
               anchors.topMargin: Style.space(40)
-              text: "No marketplace plugins match this search."
+              text: "No " + (root.discoveryFlavor === "all" ? "Discovery items" : root.discoveryFlavor + "s")
+                + " match this search."
               color: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.58)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.body
@@ -901,6 +1000,49 @@ Panel {
                 required property var modelData
                 width: installedList.width
                 row: modelData
+              }
+            }
+
+            ListView {
+              id: updateList
+              anchors.fill: parent
+              visible: root.updatesOpen
+              clip: true
+              spacing: Style.space(8)
+              boundsBehavior: Flickable.StopAtBounds
+              reuseItems: true
+              cacheBuffer: height
+              model: root.reviewUpdates
+
+              delegate: UpdateCard {
+                required property var modelData
+                width: updateList.width
+                update: modelData
+              }
+
+              footer: Column {
+                visible: root.updatesChecked && root.reviewUpdates.length === 0
+                width: updateList.width
+                topPadding: Style.space(48)
+                spacing: Style.space(8)
+                Text {
+                  width: parent.width
+                  text: "Everything reviewed here is current"
+                  color: root.barForeground
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.body
+                  font.bold: true
+                  horizontalAlignment: Text.AlignHCenter
+                }
+                Text {
+                  width: parent.width
+                  text: "Apps and included themes continue to update through the normal Omarchy system update."
+                  color: root.textMuted
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.body
+                  horizontalAlignment: Text.AlignHCenter
+                  wrapMode: Text.WordWrap
+                }
               }
             }
 
@@ -967,7 +1109,7 @@ Panel {
 
                 Text {
                   width: parent.width
-                  text: "Use New plugin above for a safe starter, or use Build Omarchy Plugins when you want an agent-guided custom build. Workbench never scans your home directory automatically."
+                  text: "Use New plugin above for a safe starter, or use Build Omarchy Plugins when you want an agent-guided custom build. Discovery Build never scans your home directory automatically."
                   color: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.58)
                   font.family: root.bar ? root.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.body
@@ -1157,7 +1299,7 @@ Panel {
     readonly property bool healthy: state === "up-to-date" || state === "current"
       || state === "enabled" || state === "disabled"
     readonly property string sourceLabel: plugin.management === "first-party" ? "OMARCHY"
-      : plugin.management === "marketplace" ? "MARKETPLACE MANAGED"
+      : plugin.management === "marketplace" ? "REVIEWED PLUGIN"
       : plugin.management === "live-link" ? "LIVE DEVELOPMENT LINK"
       : plugin.management === "git" ? "DIRECT GIT CHECKOUT"
       : "LOCAL PLUGIN"
@@ -1571,19 +1713,19 @@ Panel {
     }
   }
 
-  component MarketplaceCard: Rectangle {
-    id: marketplaceCard
-    required property var plugin
-    implicitHeight: marketplaceCardContent.implicitHeight + Style.space(18)
+  component DiscoveryCard: Rectangle {
+    id: discoveryCard
+    required property var item
+    implicitHeight: discoveryCardContent.implicitHeight + Style.space(18)
     color: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.055)
     radius: Style.cornerRadius
-    border.color: plugin.installed
+    border.color: item.installed
       ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.42)
       : Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.12)
     border.width: 1
 
     Column {
-      id: marketplaceCardContent
+      id: discoveryCardContent
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top
@@ -1598,7 +1740,7 @@ Panel {
           spacing: Style.space(2)
           Text {
             width: parent.width
-            text: marketplaceCard.plugin.name + "  ·  " + marketplaceCard.plugin.version
+            text: discoveryCard.item.name + "  ·  " + discoveryCard.item.version
             color: root.barForeground
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.body
@@ -1607,8 +1749,9 @@ Panel {
           }
           Text {
             width: parent.width
-            text: marketplaceCard.plugin.kind + "  ·  " + marketplaceCard.plugin.category
-              + "  ·  " + marketplaceCard.plugin.author
+            text: String(discoveryCard.item.flavor || "item").toUpperCase()
+              + "  ·  " + discoveryCard.item.category
+              + "  ·  " + discoveryCard.item.author
             color: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.58)
             font.family: root.bar ? root.bar.fontFamily : Style.font.family
             font.pixelSize: Style.font.caption
@@ -1619,37 +1762,41 @@ Panel {
           id: marketplaceActions
           spacing: Style.space(5)
           WorkbenchButton {
-            visible: marketplaceCard.plugin.installable
-            label: "Install & enable"
+            visible: discoveryCard.item.installable || discoveryCard.item.flavor === "theme"
+            label: discoveryCard.item.flavor === "theme"
+              ? (discoveryCard.item.status === "Current" ? "Current" : "Apply")
+              : discoveryCard.item.flavor === "plugin" ? "Install & enable" : "Install"
             enabled: !root.busy
-            onTriggered: root.installMarketplace(marketplaceCard.plugin)
+              && !(discoveryCard.item.flavor === "theme" && discoveryCard.item.status === "Current")
+            onTriggered: root.installDiscoveryItem(discoveryCard.item)
           }
           WorkbenchButton {
-            visible: marketplaceCard.plugin.managed && marketplaceCard.plugin.updateAvailable
+            visible: discoveryCard.item.flavor === "plugin"
+              && discoveryCard.item.managed && discoveryCard.item.updateAvailable
             label: "Update"
             enabled: !root.busy
-            onTriggered: root.updateMarketplace(marketplaceCard.plugin)
+            onTriggered: root.updateMarketplace(discoveryCard.item)
           }
           WorkbenchButton {
-            visible: marketplaceCard.plugin.managed
-            label: root.marketplaceConfirmation === "repair:" + marketplaceCard.plugin.id
+            visible: discoveryCard.item.flavor === "plugin" && discoveryCard.item.managed
+            label: root.marketplaceConfirmation === "repair:" + discoveryCard.item.id
               ? "Confirm repair" : "Repair"
             enabled: !root.busy
-            onTriggered: root.confirmedMarketplaceAction("repair", marketplaceCard.plugin)
+            onTriggered: root.confirmedMarketplaceAction("repair", discoveryCard.item)
           }
           WorkbenchButton {
-            visible: marketplaceCard.plugin.managed
-            label: root.marketplaceConfirmation === "uninstall:" + marketplaceCard.plugin.id
+            visible: discoveryCard.item.flavor === "plugin" && discoveryCard.item.managed
+            label: root.marketplaceConfirmation === "uninstall:" + discoveryCard.item.id
               ? "Confirm uninstall" : "Uninstall"
             enabled: !root.busy
-            onTriggered: root.confirmedMarketplaceAction("uninstall", marketplaceCard.plugin)
+            onTriggered: root.confirmedMarketplaceAction("uninstall", discoveryCard.item)
           }
         }
       }
 
       Text {
         width: parent.width
-        text: marketplaceCard.plugin.description
+        text: discoveryCard.item.description
         color: root.barForeground
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
         font.pixelSize: Style.font.caption
@@ -1660,8 +1807,8 @@ Panel {
 
       Text {
         width: parent.width
-        text: marketplaceCard.plugin.id
-          + (marketplaceCard.plugin.tags.length ? "  ·  " + marketplaceCard.plugin.tags.join(", ") : "")
+        text: discoveryCard.item.id
+          + (discoveryCard.item.tags.length ? "  ·  " + discoveryCard.item.tags.join(", ") : "")
         color: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.52)
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
         font.pixelSize: Style.font.caption
@@ -1670,16 +1817,17 @@ Panel {
 
       Text {
         width: parent.width
-        text: marketplaceCard.plugin.builtIn ? "BUILT IN"
-          : marketplaceCard.plugin.managed
-            ? "WORKBENCH MANAGED"
-              + (marketplaceCard.plugin.updateAvailable ? "  ·  UPDATE AVAILABLE" : "")
-          : marketplaceCard.plugin.installed ? "INSTALLED"
-          : String(marketplaceCard.plugin.verificationStatus || "unverified").toUpperCase()
-            + (marketplaceCard.plugin.reviewedRevision
-              ? "  ·  REVIEWED " + String(marketplaceCard.plugin.reviewedRevision).slice(0, 10)
+        text: discoveryCard.item.builtIn ? "BUILT IN"
+          : discoveryCard.item.managed
+            ? "OMARCHY MANAGED"
+              + (discoveryCard.item.updateAvailable ? "  ·  UPDATE AVAILABLE" : "")
+          : discoveryCard.item.installed ? "INSTALLED"
+          : discoveryCard.item.verified ? "VERIFIED"
+            + (discoveryCard.item.reviewedRevision
+              ? "  ·  REVIEWED " + String(discoveryCard.item.reviewedRevision).slice(0, 10)
               : "")
-        color: marketplaceCard.plugin.installed || marketplaceCard.plugin.verificationStatus === "verified"
+          : String(discoveryCard.item.status || "AVAILABLE").toUpperCase()
+        color: discoveryCard.item.installed || discoveryCard.item.verified
           ? Color.accent : Color.urgent
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
         font.pixelSize: Style.font.caption
@@ -1688,7 +1836,7 @@ Panel {
 
       Text {
         width: parent.width
-        text: marketplaceCard.plugin.repo
+        text: discoveryCard.item.source
         color: Qt.rgba(root.barForeground.r, root.barForeground.g, root.barForeground.b, 0.46)
         font.family: root.bar ? root.bar.fontFamily : Style.font.family
         font.pixelSize: Style.font.caption
