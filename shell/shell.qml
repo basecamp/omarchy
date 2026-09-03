@@ -777,7 +777,10 @@ ShellRoot {
       shell.pluginReloadPending = true
       return
     }
-    if (typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
+    // Qt.clearComponentCache has never been a QML API; the guard was always
+    // false. The engine's component/directory-resolve caches are not cleared
+    // on reload, so a plugin that adds new files while the shell is running
+    // may need a shell restart (#9772).
     shell.pluginRegistry.rescan()
   }
 
