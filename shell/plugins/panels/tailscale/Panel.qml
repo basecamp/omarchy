@@ -340,6 +340,8 @@ Panel {
   onOpenedChanged: if (opened) {
     cursorActive = false
     if (panelFlick) panelFlick.contentY = 0
+    // Any open, by hand or by loginCompleted, satisfies a pending reopen.
+    tailscale.requestReopenAfterLogin(false)
     tailscale.refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }

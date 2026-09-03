@@ -196,11 +196,13 @@ Item {
   function handleStateWatchData(data) {
     var text = String(data || "").trim()
     if (text === "") return
-    // A live stream means the daemon is reachable again.
-    _stateWatchBackoffMs = 2000
 
     try {
       var notification = JSON.parse(text)
+      // Only a real notification object means the daemon is reachable again.
+      // An error body on stdout, plain text or JSON, must not reset the backoff.
+      if (!notification || typeof notification !== "object" || Array.isArray(notification)) return
+      _stateWatchBackoffMs = 2000
       var browseUrl = String(notification.BrowseToURL || "")
       if (browseUrl !== "" && _loginInProgress && !_loginUrlOpened) openAuthUrl(browseUrl)
       stateWatchRefreshTimer.restart()
@@ -340,6 +342,7 @@ Item {
     // the optimistic off; only surface a message if the command fails.
     _desired = 0
     connectTimeoutTimer.stop()
+    requestReopenAfterLogin(false)
     runAction(["tailscale", "down"])
   }
 
@@ -537,6 +540,10 @@ Item {
       root._desired = -1
       root.actionStatus = "Tailscale is still starting"
       actionStatusTimer.restart()
+      // The last poll may predate the backend connecting, and the periodic
+      // refresh can be far off, so ask again rather than trust the cache. The
+      // debounce timer keeps retrying while a status query is still running.
+      stateWatchRefreshTimer.restart()
     }
   }
 
