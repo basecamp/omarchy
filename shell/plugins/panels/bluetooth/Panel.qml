@@ -7,6 +7,7 @@ import Quickshell.Services.Pipewire
 import qs.Ui
 import qs.Commons
 import "Model.js" as Model
+import "../../../Ui/Cursor.js" as Cursor
 
 Panel {
   id: root
@@ -85,8 +86,8 @@ Panel {
   //   "known"      — remembered devices; Enter connects.
   //   "discovered" — unremembered devices visible while scanning; Enter connects.
   // Visuals always come from CursorSurface (hasCursor / current),
-  // never from containsMouse. Mouse hover updates root cursor state too,
-  // guaranteeing one highlight on screen.
+  // never from containsMouse. Pointer enter claims the cursor; leave
+  // releases it, including keyboard selection.
   property string focusSection: "connected"
   property int selectedIndex: 0
   property bool actionFocused: false
@@ -718,7 +719,9 @@ Panel {
             foreground: root.bar.foreground
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            onHovered: function(on) { if (on) root.setHeaderCursor() }
+            onHovered: function(on) {
+              Cursor.applyHover(on, root.headerHasCursor, function() { root.setHeaderCursor() }, function() { root.cursorActive = false })
+            }
             onToggled: root.toggleBluetooth()
 
             PanelToolTip {
@@ -937,12 +940,17 @@ Panel {
       acceptedButtons: Qt.LeftButton | Qt.RightButton
       cursorShape: row.dev ? Qt.PointingHandCursor : Qt.ArrowCursor
 
-      onContainsMouseChanged: if (containsMouse) {
-        root.cursorActive = true
-        root.focusSection = row.sectionName
-        root.selectedIndex = row.rowIndex
-        root.actionFocused = false
-      }
+      onContainsMouseChanged: Cursor.applyHover(
+        containsMouse,
+        root.cursorActive && root.focusSection === row.sectionName && root.selectedIndex === row.rowIndex,
+        function() {
+          root.cursorActive = true
+          root.focusSection = row.sectionName
+          root.selectedIndex = row.rowIndex
+          root.actionFocused = false
+        },
+        function() { root.cursorActive = false }
+      )
 
       onClicked: function(mouse) {
         var dev = root.deviceFor(row)
@@ -1025,14 +1033,20 @@ Panel {
         fontFamily: root.bar.fontFamily
         hasCursor: row.rowSelected && root.actionFocused
         onHovered: function(isHovered) {
-          if (!isHovered) {
-            if (rowMouse.containsMouse) root.actionFocused = false
-            return
-          }
-          root.cursorActive = true
-          root.focusSection = row.sectionName
-          root.selectedIndex = row.rowIndex
-          root.actionFocused = true
+          Cursor.applyHover(
+            isHovered,
+            root.cursorActive && root.focusSection === row.sectionName && root.selectedIndex === row.rowIndex && root.actionFocused,
+            function() {
+              root.cursorActive = true
+              root.focusSection = row.sectionName
+              root.selectedIndex = row.rowIndex
+              root.actionFocused = true
+            },
+            function() {
+              root.actionFocused = false
+              if (!rowMouse.containsMouse) root.cursorActive = false
+            }
+          )
         }
         onClicked: {
           var dev = root.deviceFor(row)

@@ -5,6 +5,7 @@ import Quickshell.Services.UPower
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "../../../Ui/Cursor.js" as Cursor
 
 Panel {
   id: root
@@ -494,10 +495,15 @@ Panel {
                 hasCursor: root.cursorActive && root.profileIndex === index
                 onClicked: root.setProfile(modelData)
                 onHovered: function(h) {
-                  if (h) {
-                    root.cursorActive = true
-                    root.profileIndex = index
-                  }
+                  Cursor.applyHover(
+                    h,
+                    root.cursorActive && root.profileIndex === index,
+                    function() {
+                      root.cursorActive = true
+                      root.profileIndex = index
+                    },
+                    function() { root.cursorActive = false }
+                  )
                 }
               }
             }
