@@ -2,5 +2,19 @@
 
 # omarchy:summary=Print the detected Hyprland touchpad or trackpad device name
 
-device=$(hyprctl devices -j | jq -r '[.mice[] | .name | select(test("touchpad|trackpad"; "i"))] | first // empty')
-[[ -n $device ]] && echo "$device"
+# Prefer an explicit touchpad/trackpad name, then common controller/vendor
+# names that never include those words (synaptics-tm3096-006, elan-*, …).
+# Do not use .touch[] — that is the touchscreen/tablet path (#9805).
+device=$(hyprctl devices -j | jq -r '
+  def name: (.name // "");
+  def explicit: name | test("touchpad|trackpad"; "i");
+  def vendor: name | test(
+    "synaptics|elan|elantech|alps|focaltech|bcm5974|apple-internal-keyboard-trackpad|pixcir|goodix.*pad|dll[0-9a-f]+";
+    "i"
+  );
+  ([.mice[]? | select(explicit) | .name] + [.mice[]? | select(vendor and (explicit | not)) | .name])
+  | first // empty
+')
+if [[ -n $device ]]; then
+  echo "$device"
+fi
