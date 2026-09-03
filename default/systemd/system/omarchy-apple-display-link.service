@@ -3,6 +3,9 @@ Description=Pin the Apple Studio Display DisplayPort link to HBR3
 # Runs once at boot for a display already attached and again from udev on every
 # DRM hotplug. Does nothing when no Studio Display is connected.
 RequiresMountsFor=/sys/kernel/debug
+# udev fires several DRM change events within milliseconds when the display
+# comes back through Thunderbolt; the run that sees the connector is a late one.
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
