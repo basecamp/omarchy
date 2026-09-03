@@ -58,7 +58,11 @@ grep -q "whatsapp-slim" "$home/.config/google-chrome-flags.conf" &&
   fail "the WhatsApp launcher is removed"
 pass "removing WhatsApp removes the launcher and the slim extension flags"
 
-# Removing any other web app must not touch the flags.
+# Removing any other web app must not touch the flags. The entry has to be back
+# in the file first, or the assertion only re-reads the removal above.
+cat >"$home/.config/chromium-flags.conf" <<EOF
+--load-extension=$others,$slim
+EOF
 cat >"$home/.local/share/applications/Slack.desktop" <<EOF
 [Desktop Entry]
 Name=Slack
@@ -66,10 +70,45 @@ Exec=omarchy-launch-webapp https://slack.com/
 Icon=slack
 EOF
 remove Slack
-grep -q "whatsapp-slim" "$home/.config/chromium-flags.conf" &&
-  fail "removing another web app leaves the slim flags alone"
+grep -q -- "--load-extension=$others,$slim$" "$home/.config/chromium-flags.conf" ||
+  fail "removing another web app leaves the slim flags alone" \
+    "$(cat "$home/.config/chromium-flags.conf")"
 [[ ! -e $home/.local/share/applications/Slack.desktop ]] ||
   fail "the Slack launcher is removed"
 pass "removing another web app does not touch the WhatsApp extension flags"
+
+# The slim entry is last today only because its migration appended it, and the
+# next extension migration to reuse that append leaves it first in the list.
+cat >"$home/.local/share/applications/WhatsApp.desktop" <<EOF
+[Desktop Entry]
+Name=WhatsApp
+Exec=omarchy-launch-webapp https://web.whatsapp.com/
+Icon=whatsapp
+EOF
+cat >"$home/.config/brave-flags.conf" <<EOF
+--load-extension=$slim,$others
+EOF
+remove WhatsApp
+grep -q -- "--load-extension=$others$" "$home/.config/brave-flags.conf" ||
+  fail "the slim entry is stripped when it leads the list" \
+    "$(cat "$home/.config/brave-flags.conf")"
+pass "the slim entry is stripped from either end of the list"
+
+# An entry whose path merely starts with this one is a different extension, and
+# the match has to end at a boundary to leave it its name.
+cat >"$home/.local/share/applications/WhatsApp.desktop" <<EOF
+[Desktop Entry]
+Name=WhatsApp
+Exec=omarchy-launch-webapp https://web.whatsapp.com/
+Icon=whatsapp
+EOF
+cat >"$home/.config/brave-flags.conf" <<EOF
+--load-extension=$others,$slim-backup
+EOF
+remove WhatsApp
+grep -q -- "--load-extension=$others,$slim-backup$" "$home/.config/brave-flags.conf" ||
+  fail "an extension named after this one keeps its own name" \
+    "$(cat "$home/.config/brave-flags.conf")"
+pass "only the slim entry itself is stripped"
 
 pass "web app removal pairs the WhatsApp launcher with its slim extension"

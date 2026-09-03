@@ -67,14 +67,16 @@ if [[ $app_lc == "whatsapp" ]]; then
     flag_file="$HOME/.config/$conf-flags.conf"
     [[ -f $flag_file ]] || continue
     grep -q "extensions/whatsapp-slim" "$flag_file" || continue
-    # Reverse of the migration's append: collapse a sole
-    # "--load-extension=$EXT" line to an empty flag value (deleted next),
-    # strip a trailing ",$EXT" from a longer list, and drop any line that
-    # ended up with no extensions at all. The $ signs anchor the match; the
-    # path itself contains slashes, so no address may use / as delimiter.
+    # Reverse of the migration's append, one expression per position the entry
+    # can hold: sole, first, middle, last. Every one carries a boundary on both
+    # sides, so a sibling whose name merely starts with this path keeps its own
+    # name. A line left loading nothing then goes. The path contains slashes,
+    # so no address may use / as delimiter.
     sed -i --follow-symlinks \
       -e "s|^--load-extension=$whatsapp_slim_ext\$|--load-extension=|" \
-      -e "s|,$whatsapp_slim_ext||" \
+      -e "s|^--load-extension=$whatsapp_slim_ext,|--load-extension=|" \
+      -e "s|,$whatsapp_slim_ext,|,|" \
+      -e "s|,$whatsapp_slim_ext\$||" \
       -e '/^--load-extension=$/d' \
       "$flag_file"
   done
