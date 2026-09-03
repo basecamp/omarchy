@@ -1,13 +1,12 @@
 import QtQuick
-import Quickshell.Io 1.0 as QsIo
 
 QtObject {
   id: root
 
   property bool running: false
   property var command: []
-  property QsIo.StdioCollector stdout: null
-  property QsIo.StdioCollector stderr: null
+  property StdioCollector stdout: null
+  property StdioCollector stderr: null
   property var call: null
   property int serial: 0
   signal exited(int exitCode)

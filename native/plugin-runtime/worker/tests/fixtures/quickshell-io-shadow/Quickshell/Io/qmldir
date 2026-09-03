@@ -1,2 +1,0 @@
-module Quickshell.Io
-singleton FileViewError 1.0 FileViewError.qml

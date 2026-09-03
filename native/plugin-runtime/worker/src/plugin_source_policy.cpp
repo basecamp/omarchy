@@ -64,39 +64,6 @@ bool beneath(const std::filesystem::path &candidate,
          *relative.begin() != "..";
 }
 
-bool trusted_worker_compatibility_resource(std::string_view path) {
-  constexpr std::string_view core_prefix = "/qt/qml/Quickshell/";
-  constexpr std::array<std::string_view, 6> core_files{
-      "qmldir",        "LazyLoader.qml", "Scope.qml",
-      "ShellRoot.qml", "Singleton.qml",  "SystemClock.qml"};
-  if (path.starts_with(core_prefix)) {
-    const auto relative = path.substr(core_prefix.size());
-    if (relative.find('/') == std::string_view::npos &&
-        std::ranges::find(core_files, relative) != core_files.end())
-      return true;
-  }
-
-  constexpr std::string_view widgets_prefix = "/qt/qml/Quickshell/Widgets/";
-  constexpr std::array<std::string_view, 5> widgets_files{
-      "qmldir", "IconImage.qml", "WrapperItem.qml",
-      "WrapperMouseArea.qml", "WrapperRectangle.qml"};
-  if (path.starts_with(widgets_prefix)) {
-    const auto relative = path.substr(widgets_prefix.size());
-    return relative.find('/') == std::string_view::npos &&
-           std::ranges::find(widgets_files, relative) != widgets_files.end();
-  }
-
-  constexpr std::string_view io_prefix = "/qt/qml/Quickshell/Io/";
-  constexpr std::array<std::string_view, 4> io_files{
-      "qmldir", "FileView.qml", "FileViewError.qml", "StdioCollector.qml"};
-  if (path.starts_with(io_prefix)) {
-    const auto relative = path.substr(io_prefix.size());
-    return relative.find('/') == std::string_view::npos &&
-           std::ranges::find(io_files, relative) != io_files.end();
-  }
-  return false;
-}
-
 } // namespace
 
 PluginSourcePolicy::PluginSourcePolicy(std::filesystem::path source_root,
@@ -211,34 +178,6 @@ PluginSourcePolicy::preload_trusted_modules(QQmlEngine &engine) const {
   std::unique_ptr<QObject> presentation(presentation_probe.create());
   if (!presentation)
     return failure("trusted worker presentation probe could not instantiate");
-  QQmlComponent quickshell_io_probe(&engine);
-  quickshell_io_probe.setData(
-      QByteArrayLiteral("import QtQuick\n"
-                        "import Quickshell.Io 1.0\n"
-                        "Item { FileView { preload: false } StdioCollector {} }"),
-      QUrl(QStringLiteral("qrc:/qt/qml/Omarchy/QuickshellIoProbe.qml")));
-  if (!quickshell_io_probe.isReady())
-    return failure("trusted worker Quickshell.Io compatibility preload failed: " +
-                   quickshell_io_probe.errorString().left(1024).toStdString());
-  std::unique_ptr<QObject> quickshell_io(quickshell_io_probe.create());
-  if (!quickshell_io)
-    return failure(
-        "trusted worker Quickshell.Io compatibility probe could not instantiate");
-  QQmlComponent compatibility_probe(&engine);
-  compatibility_probe.setData(
-      QByteArrayLiteral("import QtQuick\n"
-                        "import Quickshell 1.0\n"
-                        "import Quickshell.Widgets 1.0\n"
-                        "Item { Scope {} SystemClock {} IconImage {} }"),
-      QUrl(QStringLiteral(
-          "qrc:/qt/qml/Omarchy/QuickshellCompatibilityProbe.qml")));
-  if (!compatibility_probe.isReady())
-    return failure("trusted worker Quickshell compatibility preload failed: " +
-                   compatibility_probe.errorString().left(1024).toStdString());
-  std::unique_ptr<QObject> compatibility(compatibility_probe.create());
-  if (!compatibility)
-    return failure(
-        "trusted worker Quickshell compatibility probe could not instantiate");
   return {};
 }
 
@@ -274,8 +213,6 @@ QUrl PluginSourcePolicy::intercept(const QUrl &url, DataType) {
     constexpr std::string_view presentation =
         "/qt/qml/Omarchy/PluginPresentation/";
     if (value.starts_with(presentation))
-      return url;
-    if (trusted_worker_compatibility_resource(value))
       return url;
     return denied_url();
   }

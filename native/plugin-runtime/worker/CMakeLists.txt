@@ -37,37 +37,11 @@ qt_add_resources(omarchy-plugin-worker-runtime plugin_presentation_qml
     ../presentation/qml/PackagedText.qml
     ../presentation/qml/PanelSlider.qml
     ../presentation/qml/PrivateStorage.qml
+    ../presentation/qml/StdioCollector.qml
     ../presentation/qml/Style.qml
     ../presentation/qml/TextField.qml
     ../presentation/qml/ToolTip.qml
     ../presentation/qml/WidgetButton.qml)
-qt_add_resources(omarchy-plugin-worker-runtime quickshell_io_compat_qml
-  PREFIX "/qt/qml/Quickshell/Io"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../quickshell-compat/io/qml"
-  FILES
-    ../quickshell-compat/io/qml/qmldir
-    ../quickshell-compat/io/qml/FileView.qml
-    ../quickshell-compat/io/qml/FileViewError.qml
-    ../quickshell-compat/io/qml/StdioCollector.qml)
-qt_add_resources(omarchy-plugin-worker-runtime quickshell_compatibility_core_qml
-  PREFIX "/qt/qml/Quickshell"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../compatibility/qml/Quickshell"
-  FILES
-    ../compatibility/qml/Quickshell/qmldir
-    ../compatibility/qml/Quickshell/LazyLoader.qml
-    ../compatibility/qml/Quickshell/Scope.qml
-    ../compatibility/qml/Quickshell/ShellRoot.qml
-    ../compatibility/qml/Quickshell/Singleton.qml
-    ../compatibility/qml/Quickshell/SystemClock.qml)
-qt_add_resources(omarchy-plugin-worker-runtime quickshell_compatibility_widgets_qml
-  PREFIX "/qt/qml/Quickshell/Widgets"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../compatibility/qml/Quickshell/Widgets"
-  FILES
-    ../compatibility/qml/Quickshell/Widgets/qmldir
-    ../compatibility/qml/Quickshell/Widgets/IconImage.qml
-    ../compatibility/qml/Quickshell/Widgets/WrapperItem.qml
-    ../compatibility/qml/Quickshell/Widgets/WrapperMouseArea.qml
-    ../compatibility/qml/Quickshell/Widgets/WrapperRectangle.qml)
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC
@@ -91,12 +65,8 @@ qt_add_qml_module(omarchy-plugin-qml-worker
   URI Omarchy.PluginWorker
   VERSION 1.0
   RESOURCE_PREFIX /qt/qml
-  NO_IMPORT_SCAN
   QML_FILES Runtime.qml
 )
-# Worker compatibility modules are exact manually embedded resources, not link
-# dependencies. Avoid scanning the host's authority-rich Quickshell metadata
-# and accidentally introducing a native plugin edge into the worker target.
 
 omarchy_plugin_target_defaults(omarchy-plugin-qml-worker)
 omarchy_plugin_worker_sanitize(omarchy-plugin-qml-worker)

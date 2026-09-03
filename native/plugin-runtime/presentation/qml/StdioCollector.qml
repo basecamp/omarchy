@@ -6,8 +6,6 @@ QtObject {
   property bool waitForEnd: false
   property int maximumBytes: 262144
   readonly property string text: collectedText
-  // Pure QML cannot expose QByteArray. Keeping data present preserves common
-  // truthiness/string use without introducing a native parser or byte source.
   readonly property var data: collectedText
   property string collectedText: ""
   signal streamFinished()

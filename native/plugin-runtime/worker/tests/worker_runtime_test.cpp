@@ -1423,30 +1423,6 @@ void hostile_loading() {
               !static_cast<bool>(host_shell.load_manifest_entry()),
           "trusted shell qs.Commons module crossed the worker boundary");
 
-  worker::WorkerRuntime quickshell_compat(fixture("quickshell-compat"),
-                                           exact_qml.root());
-  require(static_cast<bool>(quickshell_compat.prepare_trusted_qt_types()) &&
-              static_cast<bool>(quickshell_compat.load_manifest_entry()) &&
-              quickshell_compat.root_object_name() ==
-                  "quickshell-compat-loaded",
-          "worker-owned Quickshell compatibility modules did not load");
-
-  worker::WorkerRuntime shadowed_quickshell_compat(
-      fixture("quickshell-compat-shadow"), exact_qml.root());
-  require(static_cast<bool>(
-              shadowed_quickshell_compat.prepare_trusted_qt_types()) &&
-              static_cast<bool>(
-                  shadowed_quickshell_compat.load_manifest_entry()) &&
-              shadowed_quickshell_compat.root_object_name() ==
-                  "trusted-quickshell-compat",
-          "plugin-local module shadowed worker Quickshell compatibility");
-
-  worker::WorkerRuntime unsafe_quickshell(fixture("quickshell-unsafe"),
-                                           exact_qml.root());
-  require(static_cast<bool>(unsafe_quickshell.prepare_trusted_qt_types()) &&
-              !static_cast<bool>(unsafe_quickshell.load_manifest_entry()),
-          "native Quickshell window authority crossed the worker boundary");
-
   const auto native_surface_root =
       std::filesystem::temp_directory_path() /
       ("omarchy-worker-native-surface-" +
@@ -1458,8 +1434,18 @@ void hostile_loading() {
         std::ofstream(native_surface_root / "manifest.json")
             << R"({"schemaVersion":2,"id":")" << id
             << R"(","name":"Native surface fixture","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{"main":{"role":"panel"}},"permissions":{"required":[],"optional":[]}})";
-      };
+  };
   const auto windows_before = QGuiApplication::topLevelWindows().size();
+  write_native_surface_fixture(
+      "example.quickshell-window",
+      "import QtQuick\nimport Quickshell\nPanelWindow {}\n");
+  worker::WorkerRuntime quickshell_window(native_surface_root,
+                                           exact_qml.root());
+  require(static_cast<bool>(quickshell_window.prepare_trusted_qt_types()) &&
+              !static_cast<bool>(quickshell_window.load_manifest_entry()) &&
+              QGuiApplication::topLevelWindows().size() == windows_before,
+          "native Quickshell window authority crossed the worker boundary");
+
   write_native_surface_fixture(
       "example.quickshell-wayland",
       "import QtQuick\nimport Quickshell.Wayland\nItem {}\n");
@@ -1493,28 +1479,6 @@ void hostile_loading() {
               shadowed_presentation.root_object_name() ==
                   "trusted-presentation",
           "plugin-local module shadowed the worker presentation SDK");
-
-  worker::WorkerRuntime quickshell_io(fixture("quickshell-io"),
-                                      exact_qml.root());
-  require(static_cast<bool>(quickshell_io.prepare_trusted_qt_types()) &&
-              static_cast<bool>(quickshell_io.load_manifest_entry()) &&
-              quickshell_io.root_object_name() == "quickshell-io-loaded",
-          "worker-owned Quickshell.Io compatibility module did not load");
-
-  worker::WorkerRuntime shadowed_quickshell_io(fixture("quickshell-io-shadow"),
-                                               exact_qml.root());
-  require(static_cast<bool>(shadowed_quickshell_io.prepare_trusted_qt_types()) &&
-              static_cast<bool>(shadowed_quickshell_io.load_manifest_entry()) &&
-              shadowed_quickshell_io.root_object_name() ==
-                  "trusted-quickshell-io",
-          "plugin-local module shadowed worker Quickshell.Io compatibility");
-
-  worker::WorkerRuntime quickshell_io_process(fixture("quickshell-io-process"),
-                                              exact_qml.root());
-  require(static_cast<bool>(
-              quickshell_io_process.prepare_trusted_qt_types()) &&
-              !static_cast<bool>(quickshell_io_process.load_manifest_entry()),
-          "Quickshell.Io compatibility exposed ambient Process execution");
 
   worker::WorkerRuntime local_module(fixture("local-module"));
   require(static_cast<bool>(local_module.prepare_trusted_qt_types()) &&
@@ -1734,31 +1698,6 @@ void trusted_controls_load_after_steady_state() {
           "certified QtQuick.Controls did not load after steady-state seccomp");
 }
 
-void trusted_quickshell_io_loads_after_steady_state() {
-  ExactQmlTree qml_tree;
-  const pid_t child = fork();
-  require(child >= 0, "trusted Quickshell.Io seccomp test fork failed");
-  if (child == 0) {
-    worker::WorkerRuntime runtime(fixture("quickshell-io"), qml_tree.root());
-    const auto prepared = runtime.prepare_trusted_qt_types();
-    std::string error;
-    if (!prepared || !worker::install_steady_state_seccomp(error))
-      _exit(51);
-    const auto loaded = runtime.load_manifest_entry();
-    if (!loaded)
-      static_cast<void>(write(STDERR_FILENO, loaded.detail.data(),
-                              loaded.detail.size()));
-    _exit(loaded && runtime.loaded() &&
-                  runtime.root_object_name() == "quickshell-io-loaded"
-              ? 0
-              : 52);
-  }
-  int status = 0;
-  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
-              WEXITSTATUS(status) == 0,
-          "Quickshell.Io compatibility did not load after steady-state seccomp");
-}
-
 void dynamic_module_resolution_stays_certified() {
   const pid_t unrestricted = fork();
   require(unrestricted >= 0, "dynamic module positive-control fork failed");
@@ -1908,30 +1847,6 @@ void dynamic_certified_controls_succeeds() {
           "runtime-created certified QtQuick.Controls module failed");
 }
 
-void dynamic_quickshell_compatibility_succeeds() {
-  ExactQmlTree qml_tree;
-  const pid_t child = fork();
-  require(child >= 0,
-          "dynamic Quickshell compatibility seccomp test fork failed");
-  if (child == 0) {
-    worker::WorkerRuntime runtime(fixture("dynamic-quickshell-compat"),
-                                  qml_tree.root());
-    const auto prepared = runtime.prepare_trusted_qt_types();
-    std::string error;
-    if (!prepared || !worker::install_steady_state_seccomp(error))
-      _exit(51);
-    const auto loaded = runtime.load_manifest_entry();
-    _exit(loaded && runtime.root_object_name() ==
-                        "dynamic-quickshell-compat-loaded"
-              ? 0
-              : 52);
-  }
-  int status = 0;
-  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
-              WEXITSTATUS(status) == 0,
-          "runtime-created Quickshell compatibility module failed");
-}
-
 } // namespace
 
 int main(int argc, char **argv) {
@@ -1970,13 +1885,11 @@ int main(int argc, char **argv) {
     trusted_layouts_load_after_steady_state();
     trusted_effects_load_after_steady_state();
     trusted_controls_load_after_steady_state();
-    trusted_quickshell_io_loads_after_steady_state();
     dynamic_module_resolution_stays_certified();
     dynamic_certified_shapes_succeeds();
     dynamic_certified_layouts_succeeds();
     dynamic_certified_effects_succeeds();
     dynamic_certified_controls_succeeds();
-    dynamic_quickshell_compatibility_succeeds();
     std::cout << "plugin worker runtime: ok\n";
     return 0;
   } catch (const std::exception &error) {

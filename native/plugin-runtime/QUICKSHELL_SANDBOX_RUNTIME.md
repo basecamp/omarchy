@@ -119,6 +119,6 @@ Native Quickshell compatibility must not change these invariants:
 4. Implement a remote surface backend for genuine `PanelWindow` and `PopupWindow` objects.
 5. Bind that backend to the existing authenticated Omarchy frame, input, surface-intent, permission, and lifecycle protocols.
 6. Port representative plugins and measure how much source remains unchanged.
-7. Replace compatibility shims only after the genuine restricted type has equivalent tested behavior.
+7. Add standard-URI compatibility only after a genuine restricted type has equivalent tested behavior.
 
-The compatibility modules remain a practical bridge, but the remote-backend and provider architecture is the path to preserving native Quickshell development with changes concentrated at authority-bearing invocations.
+A worker-owned facade experiment was removed because it added substantial security and maintenance surface while reducing the representative Radio port by only three production lines. The remote-backend and provider architecture is the path to preserving native Quickshell development with changes concentrated at authority-bearing invocations; until then, the worker exposes only explicitly named Omarchy presentation helpers and certified Qt modules.

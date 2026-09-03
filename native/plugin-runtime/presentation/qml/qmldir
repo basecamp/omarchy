@@ -9,6 +9,7 @@ Button 1.0 Button.qml
 PackagedText 1.0 PackagedText.qml
 PanelSlider 1.0 PanelSlider.qml
 PrivateStorage 1.0 PrivateStorage.qml
+StdioCollector 1.0 StdioCollector.qml
 TextField 1.0 TextField.qml
 ToolTip 1.0 ToolTip.qml
 WidgetButton 1.0 WidgetButton.qml
