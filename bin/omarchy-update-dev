@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+# `sudo omarchy update` runs no shell that sources default/bash/env-bootstrap,
+# and sudo's env_reset has already dropped the session's copy.
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+
 [[ $OMARCHY_PATH != "/usr/share/omarchy" ]] || exit 0
 
 if ! git -C "$OMARCHY_PATH" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

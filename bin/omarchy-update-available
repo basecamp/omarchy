@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+# Reached from `sudo omarchy update` through omarchy-update-status, where sudo's
+# env_reset has already dropped the session's OMARCHY_PATH.
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+
 updates=()
 
 if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
