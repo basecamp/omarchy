@@ -12,7 +12,9 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
 - **Hero** — the mark, the tool, and the plan it runs on ("Max 20x", "Pro").
   Auth and endpoint problems replace the plan line and repeat in a card.
 - **Subscription switch** — one chip per enabled agent (`h`/`l` or click).
-  It appears only when more than one agent is enabled.
+  It appears only when more than one agent is enabled. With `layout` set to
+  `"Columns"` there is no switch: every subscription is laid out side by
+  side, one column each, which suits a wide screen and several accounts.
 - **Limits** — the percentage of each allowance used, a matching meter, and
   the time until the session or weekly window resets.
 - **Balance** — prepaid agents report a credit ledger instead of limits:
@@ -50,9 +52,16 @@ prints the record contract (see the `claude` and `codex` collectors in
 with an `assets/<id>-light.svg` twin if the mark needs a dark variant for
 light surfaces — and the bar glyph stands in when there is none.
 
+A collector signed in to more than one account nests the others under
+`accounts` in its record, one full record each, with ids under its own
+namespace (`claude-work`). The updater files each as its own `<id>.json`,
+drops a namespaced file the collector stops reporting, and the panel treats
+them as agents in their own right — `providers` enablement by id included.
+A namespaced record without a mark of its own borrows its collector's.
+
 | Collector | Limits | Local stats |
 |---|---|---|
-| `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
+| `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly), per account | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback; every `~/.claude-<name>` with a sign-in becomes its own tab |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
@@ -63,6 +72,16 @@ falls back to local stats only. A non-default Claude directory is honored via
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+### Several Claude accounts
+
+A second Claude account is a second config directory: sign in with
+`CLAUDE_CONFIG_DIR=~/.claude-work claude`, and every `~/.claude-<name>`
+directory holding a sign-in becomes its own tab, `Claude · <name>`, with its
+own limits, plan, and transcripts. Two directories signed in to the same
+account are shown once, and pi, omp, and opencode sessions count toward the
+default account only, since they keep no account of their own. Hide one
+with `providers`, by its record id: `"claude-work": { "enabled": false }`.
 
 ### Fireworks balance
 
@@ -94,9 +113,10 @@ only adds the meter and the spent-of-funded line under the real figure.
 
 ## Interactions
 
-- Bar icon: left = panel, right = launch agent, middle = next subscription.
-- Panel: `h`/`l` switch subscription, `j`/`k` scroll, `r` or Enter refresh,
-  Tab moves to the neighboring bar panel, Esc closes.
+- Bar icon: left = panel, right = launch agent, middle = next subscription
+  (Tabs layout).
+- Panel: `h`/`l` switch subscription (Tabs layout), `j`/`k` scroll, `r` or
+  Enter refresh, Tab moves to the neighboring bar panel, Esc closes.
 - IPC: `omarchy-shell omarchy.agents <open|close|toggle|refresh|next>`.
 
 ## Settings
@@ -108,6 +128,7 @@ top-level keys can be set with
 | Key | Default | What it does |
 |---|---|---|
 | `refreshIntervalSec` | `900` | How often the usage records regenerate |
+| `layout` | `"Tabs"` | `"Columns"` lays every subscription out side by side instead of behind a switch row |
 | `syncMode` | `"Off"` | `"On"` writes this machine's snapshot and merges the others |
 | `syncDir` | `""` | A folder synced by Syncthing, Dropbox, rsync, … |
 | `syncFileName` | `<hostname>.json` | This machine's snapshot file |
@@ -117,6 +138,7 @@ Numbers need `--json`, or they land in `shell.json` as strings:
 
 ```bash
 omarchy bar set omarchy.agents refreshIntervalSec 300 --json
+omarchy bar set omarchy.agents layout Columns
 omarchy bar set omarchy.agents syncDir '~/Sync/agent-usage'
 ```
 
