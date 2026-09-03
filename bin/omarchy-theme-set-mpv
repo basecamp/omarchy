@@ -67,11 +67,11 @@ fi
   printf 'osc=no\n'
   printf 'osd-bar=no\n'
   printf 'cursor-autohide=3500\n'
-  printf 'osd-color=#FF%s\n' "${foreground#\#}"
-  printf 'osd-back-color=#E6%s\n' "${background#\#}"
-  printf 'osd-outline-color=#FF%s\n' "${background#\#}"
-  printf 'osd-selected-color=#FF%s\n' "${accent#\#}"
-  printf 'osd-selected-outline-color=#FF%s\n' "${accent#\#}"
+  printf 'osd-color="#FF%s"\n' "${foreground#\#}"
+  printf 'osd-back-color="#E6%s"\n' "${background#\#}"
+  printf 'osd-outline-color="#FF%s"\n' "${background#\#}"
+  printf 'osd-selected-color="#FF%s"\n' "${accent#\#}"
+  printf 'osd-selected-outline-color="#FF%s"\n' "${accent#\#}"
   printf '# <<< omarchy-mpv-theme <<<\n'
 } >>"$tmp_config"
 mv "$tmp_config" "$MPV_CONFIG"
