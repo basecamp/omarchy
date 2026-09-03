@@ -13,3 +13,5 @@ The worker does not expose Quickshell, `Quickshell.Io`, `Quickshell.Hyprland`, `
 Plugin-local adapters should use product-specific names. For example, a Radio adapter translating legacy command arrays into `network.fetch` and `media.play-stream` calls is a `RadioProcess`, not a shared `Process`. A shared type belongs here only when its behavior is reusable and its authority is no greater than direct access to the existing worker API.
 
 Deferred compatibility work includes a declared sandbox-local helper runner, lifecycle convenience types, richer input helpers, theme projection from bounded host-owned state, and a reviewed classification of Quickshell modules. None of those should be emulated with access to the trusted host shell.
+
+Quickshell's native surface types are an intentional migration boundary rather than deferred presentation wrappers. See [QUICKSHELL_SURFACES.md](QUICKSHELL_SURFACES.md) for why `PanelWindow`, `PopupWindow`, `Region` window masks, and Wayland attached properties cannot honestly map to worker Items while the host retains native-window and compositor authority.

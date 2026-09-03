@@ -1436,6 +1436,38 @@ void hostile_loading() {
           "ambient Quickshell module crossed the worker boundary");
   std::filesystem::remove_all(quickshell_root);
 
+  const auto native_surface_root =
+      std::filesystem::temp_directory_path() /
+      ("omarchy-worker-native-surface-" +
+       std::to_string(static_cast<long long>(getpid())));
+  std::filesystem::create_directory(native_surface_root);
+  const auto write_native_surface_fixture =
+      [&](std::string_view id, std::string_view source) {
+        std::ofstream(native_surface_root / "Main.qml") << source;
+        std::ofstream(native_surface_root / "manifest.json")
+            << R"({"schemaVersion":2,"id":")" << id
+            << R"(","name":"Native surface fixture","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{"main":{"role":"panel"}},"permissions":{"required":[],"optional":[]}})";
+      };
+  const auto windows_before = QGuiApplication::topLevelWindows().size();
+  write_native_surface_fixture(
+      "example.quickshell-wayland",
+      "import QtQuick\nimport Quickshell.Wayland\nItem {}\n");
+  worker::WorkerRuntime wayland(native_surface_root, exact_qml.root());
+  require(static_cast<bool>(wayland.prepare_trusted_qt_types()) &&
+              !static_cast<bool>(wayland.load_manifest_entry()) &&
+              QGuiApplication::topLevelWindows().size() == windows_before,
+          "Quickshell.Wayland created or exposed a native surface");
+
+  write_native_surface_fixture(
+      "example.qt-window",
+      "import QtQuick\nimport QtQuick.Window\nItem { Window { visible: true } }\n");
+  worker::WorkerRuntime qt_window(native_surface_root, exact_qml.root());
+  require(static_cast<bool>(qt_window.prepare_trusted_qt_types()) &&
+              !static_cast<bool>(qt_window.load_manifest_entry()) &&
+              QGuiApplication::topLevelWindows().size() == windows_before,
+          "QtQuick.Window created or exposed a plugin-owned top level");
+  std::filesystem::remove_all(native_surface_root);
+
   worker::WorkerRuntime presentation(fixture("presentation"),
                                      exact_qml.root());
   require(static_cast<bool>(presentation.prepare_trusted_qt_types()) &&
