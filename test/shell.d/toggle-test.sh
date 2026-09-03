@@ -40,14 +40,29 @@ HOME="$test_home" omarchy-toggle example toggle
 [[ ! -f $flag ]] || fail "generic toggle flips enabled state off"
 pass "generic toggle flips enabled state off"
 
-HOME="$test_home" omarchy-toggle-bar on
-[[ -f $bar_flag ]] || fail "bar on enables bar-off toggle"
-pass "bar on enables bar-off toggle"
-
-HOME="$test_home" omarchy-toggle-bar on
-[[ -f $bar_flag ]] || fail "bar on is idempotent"
-pass "bar on is idempotent"
+# Presence of bar-off hides the bar. User-facing on/off must track visibility,
+# not the internal flag polarity (#9925).
+HOME="$test_home" omarchy-toggle-bar off
+[[ -f $bar_flag ]] || fail "bar off hides the bar by creating bar-off"
+pass "bar off hides the bar by creating bar-off"
 
 HOME="$test_home" omarchy-toggle-bar off
-[[ ! -f $bar_flag ]] || fail "bar off disables bar-off toggle"
-pass "bar off disables bar-off toggle"
+[[ -f $bar_flag ]] || fail "bar off is idempotent while the bar stays hidden"
+pass "bar off is idempotent while the bar stays hidden"
+
+HOME="$test_home" omarchy-toggle-bar on
+[[ ! -f $bar_flag ]] || fail "bar on shows the bar by clearing bar-off"
+pass "bar on shows the bar by clearing bar-off"
+
+HOME="$test_home" omarchy-toggle-bar on
+[[ ! -f $bar_flag ]] || fail "bar on is idempotent while the bar stays visible"
+pass "bar on is idempotent while the bar stays visible"
+
+# Plain toggle still flips visibility either way.
+HOME="$test_home" omarchy-toggle-bar
+[[ -f $bar_flag ]] || fail "bar toggle hides a visible bar"
+pass "bar toggle hides a visible bar"
+
+HOME="$test_home" omarchy-toggle-bar toggle
+[[ ! -f $bar_flag ]] || fail "bar toggle shows a hidden bar"
+pass "bar toggle shows a hidden bar"
