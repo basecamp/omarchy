@@ -24,6 +24,8 @@ run_logged "$OMARCHY_INSTALL/hardware/intel/fred.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/fix-wifi7-eht.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/sof-firmware.sh"
 
+run_logged "$OMARCHY_INSTALL/hardware/amd/rocm-smi.sh"
+
 # Rebuilds the boot image, so it has to follow the Panther Lake kernel swap
 # above rather than sit with the other Dell leaf at the top of this file.
 run_logged "$OMARCHY_INSTALL/hardware/dell-xps13-sidecar-amps.sh"

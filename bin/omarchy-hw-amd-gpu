@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether an AMD GPU is available.
+
+lsmod | grep -q amdgpu
