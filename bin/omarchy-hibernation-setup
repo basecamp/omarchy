@@ -30,8 +30,9 @@ MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 SWAP_FILE="/swap/swapfile"
 RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
 
-# Check if hibernation is already configured
-if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+# Check if hibernation is already configured (older setups wrote a bare
+# "HOOKS+=(resume)" drop-in; both formats count as configured)
+if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume" "$MKINITCPIO_CONF"; then
   # Fix empty resume_offset if btrfs map-swapfile failed during initial setup
   if [[ -f $RESUME_DROP_IN ]] && grep -q 'resume_offset="$' "$RESUME_DROP_IN" && [[ -f $SWAP_FILE ]]; then
     RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE" 2>/dev/null)
@@ -83,10 +84,36 @@ if ! swapon --show | grep -q "$SWAP_FILE"; then
   sudo swapon -p 0 "$SWAP_FILE"
 fi
 
-# Add resume hook to mkinitcpio
+# Add the resume hook to mkinitcpio, and keep native GPU drivers out of the
+# initramfs while hibernation is configured: a driver bound by the boot kernel
+# before the resume hook fires suspends and resets hardware the restored
+# kernel then cannot reclaim, which hangs or faults the restore (amdgpu CIK,
+# NVIDIA, nouveau). The resume decision cannot move earlier - the swapfile
+# sits inside LUKS - so the GPU driver moves later: Plymouth renders the LUKS
+# prompt on simpledrm, and the real root loads the driver after switch_root.
 sudo mkdir -p /etc/mkinitcpio.conf.d
 echo "Adding resume hook to $MKINITCPIO_CONF"
-echo "HOOKS+=(resume)" | sudo tee "$MKINITCPIO_CONF" >/dev/null
+sudo tee "$MKINITCPIO_CONF" >/dev/null <<'EOF'
+HOOKS+=(resume omarchy-defer-gpu)
+
+# Early KMS is incompatible with resume-from-hibernate: the kms hook puts the
+# native GPU driver in the initramfs, udev coldplug binds it before the resume
+# hook can run, and the restored kernel then has to reclaim hardware a second
+# driver instance suspended and reset. Strip kms while hibernation is
+# configured; Plymouth uses simpledrm for the LUKS prompt instead.
+_omarchy_hooks=()
+for _omarchy_hook in "${HOOKS[@]}"; do
+  [[ $_omarchy_hook == "kms" ]] || _omarchy_hooks+=("$_omarchy_hook")
+done
+HOOKS=("${_omarchy_hooks[@]}")
+unset _omarchy_hooks _omarchy_hook
+EOF
+
+# The omarchy-defer-gpu initcpio hook bakes an initramfs-only modprobe
+# blacklist into the image (never into host /etc/modprobe.d, which modconf
+# would copy in AND would affect the running system)
+sudo mkdir -p /etc/initcpio/install
+sudo cp -p "$OMARCHY_PATH/default/initcpio/install/omarchy-defer-gpu" /etc/initcpio/install/
 
 # Ensure keyboard backlight doesn't prevent sleep
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
@@ -100,7 +127,9 @@ if [[ ! -f $RESUME_DROP_IN ]]; then
   RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
   if [[ -n $RESUME_OFFSET ]]; then
     sudo mkdir -p /etc/limine-entry-tool.d
-    echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
+    # plymouth.use-simpledrm keeps the LUKS prompt on the EFI framebuffer so
+    # Plymouth never waits for a native GPU driver the initramfs no longer has
+    echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET plymouth.use-simpledrm\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
   else
     echo "Warning: Could not determine resume offset for $SWAP_FILE" >&2
   fi

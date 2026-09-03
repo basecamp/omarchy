@@ -1,0 +1,14 @@
+#!/bin/bash
+
+build() {
+  add_file /usr/share/omarchy/default/modprobe.d/omarchy-defer-gpu.conf /etc/modprobe.d/99-omarchy-defer-gpu.conf 644
+}
+
+help() {
+  cat <<HELPEOF
+Copies an initramfs-only modprobe blacklist that keeps native GPU drivers out
+of early boot while hibernation is configured, so the resume hook runs before
+any GPU driver touches the hardware. Installed to /etc/initcpio/install by
+omarchy-hibernation-setup and removed by omarchy-hibernation-remove.
+HELPEOF
+}
