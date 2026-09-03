@@ -5,6 +5,16 @@
 -- The down/up split works around Hyprland send_shortcut sometimes leaving
 -- synthetic key state stuck/repeating.
 -- https://github.com/hyprwm/Hyprland/discussions/14099
+--
+-- Letter keysyms in send_key_state are resolved against the active layout, so
+-- SUPER+C/V/X fail with "key not found" while a non-Latin layout is active.
+-- Use Hyprland's `code:` key identifiers with evdev scancodes so these
+-- shortcuts work regardless of the active keyboard layout.
+local KEY_X      = "code:53"   -- KEY_X      (linux/input-event-codes.h)
+local KEY_C      = "code:54"   -- KEY_C
+local KEY_V      = "code:55"   -- KEY_V
+local KEY_INSERT = "code:118"  -- KEY_INSERT
+
 local function send_shortcut_once(mods, key)
   return function()
     hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down" }))
@@ -42,7 +52,7 @@ local function universal_clipboard_shortcut(default_mods, default_key, terminal_
   end
 end
 
-o.bind("SUPER + C", "Universal copy", universal_clipboard_shortcut("CTRL", "C", "CTRL", "Insert"))
-o.bind("SUPER + V", "Universal paste", universal_clipboard_shortcut("CTRL", "V", "SHIFT", "Insert"))
-o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", "X"))
+o.bind("SUPER + C", "Universal copy", universal_clipboard_shortcut("CTRL", KEY_C, "CTRL", KEY_INSERT))
+o.bind("SUPER + V", "Universal paste", universal_clipboard_shortcut("CTRL", KEY_V, "SHIFT", KEY_INSERT))
+o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", KEY_X))
 o.bind("SUPER + CTRL + V", "Clipboard manager", "omarchy-shell shell toggle omarchy.clipboard")
