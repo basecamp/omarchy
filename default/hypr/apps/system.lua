@@ -31,11 +31,6 @@ o.window("dev.tensaku.Tensaku", { float = true })
 o.window("dev.tensaku.Tensaku", { center = true })
 o.window("omacalc", { float = true })
 
--- Fullscreen screensaver.
-o.window("org.omarchy.screensaver", { fullscreen = true })
-o.window("org.omarchy.screensaver", { float = true })
-o.window("org.omarchy.screensaver", { animation = "slide" })
-
 -- No transparency on media windows.
 o.window(
   "^(zoom|vlc|mpv|org.kde.kdenlive|com.obsproject.Studio|com.github.PintaProject.Pinta|imv|org.gnome.NautilusPreviewer)$",
