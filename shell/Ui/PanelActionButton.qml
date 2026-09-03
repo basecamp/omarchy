@@ -94,7 +94,7 @@ BorderSurface {
 
   PanelToolTip {
     visible: root.tooltipText !== "" && mouse.containsMouse
-    text: root.tooltipText
+    text: root.tooltipText !== "" ? I18n.tr(root.tooltipText) : ""
     fontFamily: root.fontFamily
   }
 }

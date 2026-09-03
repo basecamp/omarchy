@@ -129,7 +129,7 @@ BorderSurface {
 
   ToolTip {
     visible: root.tooltipText !== "" && mouseArea.containsMouse
-    text: root.tooltipText
+    text: root.tooltipText !== "" ? I18n.tr(root.tooltipText) : ""
     delay: 400
     padding: 0
     background: BorderSurface {
@@ -139,7 +139,7 @@ BorderSurface {
     }
     contentItem: Text {
       textFormat: Text.PlainText
-      text: root.tooltipText
+      text: root.tooltipText !== "" ? I18n.tr(root.tooltipText) : ""
       color: root.tooltipForeground
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
@@ -181,7 +181,7 @@ BorderSurface {
     Text {
       textFormat: Text.PlainText
       visible: root.text !== ""
-      text: root.text
+      text: root.text !== "" ? I18n.tr(root.text) : ""
       color: root.selected ? root._selectedColor : root.foreground
       font.family: root.fontFamily
       font.pixelSize: root.fontSize

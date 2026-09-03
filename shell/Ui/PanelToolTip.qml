@@ -37,7 +37,7 @@ ToolTip {
 
   contentItem: Text {
     textFormat: Text.PlainText
-    text: root.text
+    text: root.text !== "" ? I18n.tr(root.text) : ""
     color: root.panelForeground
     font.family: root.fontFamily
     font.pixelSize: root.fontSize
