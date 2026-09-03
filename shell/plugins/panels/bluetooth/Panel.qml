@@ -275,7 +275,11 @@ Panel {
 
   function connectDevice(device) {
     if (!device || device.connected) return
-    if (device.paired || device.bonded || device.trusted) runDeviceAction(device, "connect", "connecting")
+    // Trusted on its own does not make a device connectable. Trusted without a
+    // bond - a pair that failed after trusting, or a bond the peripheral has
+    // since dropped - is a device BlueZ already auto-connects and fails every
+    // few seconds; only a pair, with the pairing window open, gets it out.
+    if (device.paired || device.bonded) runDeviceAction(device, "connect", "connecting")
     else runDeviceAction(device, "pair", "connecting")
   }
 

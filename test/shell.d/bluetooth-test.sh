@@ -50,6 +50,14 @@ assert(/sibling\.owesDiscoveryStop = true/.test(stopTimer[0]), 'bluetooth moves 
 assert(/onDiscoveringChanged[\s\S]{0,120}owesDiscoveryStop = false/.test(panelSource), 'bluetooth settles the stop it owes once discovery is confirmed down')
 assert(/Component\.onDestruction: \{[\s\S]{0,400}owesDiscoveryStop = true[\s\S]{0,200}discovering = false/.test(panelSource), 'bluetooth passes the stop it owes to a sibling when an instance is destroyed')
 
+// A device trusted without a bond is stuck: BlueZ auto-connects it and the
+// pairing fails every few seconds, and a plain connect never opens the pairing
+// window that would let it bond. Only pair does, so trust alone must route there.
+const connectDevice = panelSource.match(/function connectDevice\(device\) \{[\s\S]*?\n  \}/)
+assert(connectDevice, 'bluetooth has connectDevice')
+assert(/if \(device\.paired \|\| device\.bonded\) runDeviceAction\(device, "connect"/.test(connectDevice[0]), 'bluetooth connects only a device with a pairing or a bond')
+assert(!/trusted/.test(connectDevice[0].replace(/\/\/.*/g, '')), 'bluetooth does not take trust alone as connectable')
+
 assert(bluetooth.isUuidLike('0000110b-0000-1000-8000-00805f9b34fb'), 'bluetooth detects UUID-like names')
 assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-like names')
 assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'bluetooth normalizes BlueZ and PipeWire address formats')
