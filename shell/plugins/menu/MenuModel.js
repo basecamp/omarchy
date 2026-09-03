@@ -296,12 +296,110 @@ function leafIdFor(id) {
   return parts.length > 0 ? parts[parts.length - 1] : id
 }
 
+function parseKeybindingRecords(raw) {
+  var lines = String(raw || "").split("\n")
+  var bindings = []
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim()
+    if (!line) continue
+    var parts = line.split("\t")
+    var left = parts[0] || ""
+    var dispatcher = parts[1] || ""
+    var arg = parts.slice(2).join("\t") || ""
+    var arrowIdx = left.indexOf("→")
+    if (arrowIdx < 0) continue
+    var combo = left.substring(0, arrowIdx).trim()
+    var desc = left.substring(arrowIdx + 1).trim()
+    bindings.push({
+      combo: combo,
+      desc: desc,
+      dispatcher: dispatcher,
+      arg: arg
+    })
+  }
+  return bindings
+}
+
+function findKeybinding(bindings, entry) {
+  if (!bindings || !Array.isArray(bindings) || bindings.length === 0 || !entry) return ""
+
+  var action = String(entry.action || "").trim()
+  var id = String(entry.id || "").trim()
+  var label = String(entry.label || "").trim().toLowerCase()
+  var aliases = Array.isArray(entry.aliases) ? entry.aliases : []
+  var kind = entry.kind || "menu"
+
+  // 1. Direct Action Match
+  if (action) {
+    for (var i = 0; i < bindings.length; i++) {
+      var bArg = String(bindings[i].arg || "").trim()
+      if (!bArg) continue
+      if (bArg === action) return bindings[i].combo
+    }
+  }
+
+  // 2. Menu Route / Alias / Toggle Match
+  var routeCandidates = [id].concat(aliases)
+  for (var j = 0; j < bindings.length; j++) {
+    var bArg2 = String(bindings[j].arg || "").trim()
+    if (!bArg2) continue
+    var prefixes = ["omarchy-menu toggle ", "omarchy-menu summon "]
+    for (var p = 0; p < prefixes.length; p++) {
+      var prefix = prefixes[p]
+      if (bArg2.indexOf(prefix) === 0) {
+        var route = bArg2.substring(prefix.length).trim()
+        if (route) {
+          for (var r = 0; r < routeCandidates.length; r++) {
+            if (routeCandidates[r] === route) return bindings[j].combo
+          }
+        }
+      }
+    }
+  }
+
+  // 3. App Match (for desktop apps / AppLibrary rows)
+  if (kind === "app") {
+    var appId = String(entry.appId || "").toLowerCase().replace(/\.desktop$/, "")
+    for (var k = 0; k < bindings.length; k++) {
+      var bDesc = String(bindings[k].desc || "").toLowerCase()
+      var bArgApp = String(bindings[k].arg || "").toLowerCase()
+      if (bDesc && bDesc === label) {
+        return bindings[k].combo
+      }
+      if (appId && (bArgApp === appId || bArgApp === "omarchy-launch-" + appId || bArgApp.indexOf("/" + appId) >= 0)) {
+        return bindings[k].combo
+      }
+    }
+  }
+
+  return ""
+}
+
+function applyKeybindings(items, itemOrder, bindings) {
+  var source = items || ({})
+  var order = Array.isArray(itemOrder) ? itemOrder : []
+  var list = Array.isArray(bindings) ? bindings : []
+  var nextItems = {}
+
+  for (var i = 0; i < order.length; i++) {
+    var id = order[i]
+    var existing = source[id]
+    if (!existing) continue
+    nextItems[id] = Object.assign({}, existing, {
+      keybinding: findKeybinding(list, existing)
+    })
+  }
+  return nextItems
+}
+
 function nameSearchText(entry) {
   if (!entry) return ""
   var aliases = []
   var values = Array.isArray(entry.aliases) ? entry.aliases : []
   for (var i = 0; i < values.length; i++) aliases.push(searchableToken(values[i]))
-  return [entry.label, searchableToken(leafIdFor(entry.id)), aliases.join(" ")].join(" ").toLowerCase()
+  var parts = [entry.label, searchableToken(leafIdFor(entry.id)), aliases.join(" ")]
+  if (entry.keybinding) parts.push(searchableToken(entry.keybinding))
+  return parts.join(" ").toLowerCase()
 }
 
 function termInSearchWords(term, text) {
@@ -329,8 +427,9 @@ function matchesQuery(entry, query, visible) {
   var terms = String(query || "").toLowerCase().trim().split(/\s+/)
 
   for (var i = 0; i < terms.length; i++) {
-    if (!terms[i]) continue
-    if (nameText.indexOf(terms[i]) >= 0) continue
+    var term = terms[i]
+    if (!term) continue
+    if (nameText.indexOf(term) >= 0) continue
     if (termInSearchWords(terms[i], descriptionText)) continue
     return false
   }
@@ -375,6 +474,7 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
     label: labelFor(entry, checkedResults, disabledResults),
     target: target,
     detail: detail || "",
+    keybinding: entry.keybinding || "",
     path: pathFor(items, entry.id),
     childCount: (entry.kind === "menu" || entry.kind === "link") ? childCount(items, itemOrder, target) : 0,
     action: entry.action || "",
@@ -519,6 +619,9 @@ if (typeof module !== "undefined") {
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
-    displayRow: displayRow
+    displayRow: displayRow,
+    parseKeybindingRecords: parseKeybindingRecords,
+    findKeybinding: findKeybinding,
+    applyKeybindings: applyKeybindings
   }
 }

@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Display Hyprland keybindings defined in your configuration using an interactive search menu.
+# omarchy:args=[--print|-p] [--records|-r]
 
 # Hyprland's Lua config provider currently reports Lua binds as dispatcher
 # __lua in `hyprctl binds`. Keep a lightweight source-derived cache so the
@@ -652,7 +653,9 @@ dispatch_binding() {
   esac
 }
 
-if [[ $1 == "--print" || $1 == "-p" ]]; then
+if [[ $1 == "--records" || $1 == "-r" ]]; then
+  output_binding_records
+elif [[ $1 == "--print" || $1 == "-p" ]]; then
   output_keybindings
 else
   records=$(output_binding_records)

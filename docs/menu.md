@@ -153,6 +153,19 @@ link is followed to its target. The default Hyprland bindings in
 `default/hypr/bindings/utilities.lua` all go through this surface
 (SUPER+SPACE toggles root, SUPER+ESCAPE the system menu, and so on).
 
+## Keybindings
+
+The menu resolves shortcuts from Hyprland's keybinding records asynchronously on demand. Pressing `?` while browsing or filtering toggles keybinding visibility on the right edge of each row. Default visibility can be enabled by setting `keybindings` under `menu` to `true` in `~/.config/omarchy/shell.json`:
+
+```json
+{
+  "menu": {
+    "keybindings": true
+  },
+  ...
+}
+```
+
 ## Select and input modes
 
 The same plugin doubles as the system's dmenu. `omarchy-menu-select` and
