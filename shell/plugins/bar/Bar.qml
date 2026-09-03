@@ -529,6 +529,14 @@ Item {
     return true
   }
 
+  function toggleBarWidget(pluginId) {
+    var item = findPanelWidget(pluginId)
+    if (!item) return false
+    if (item.opened === true) item.close()
+    else item.open()
+    return true
+  }
+
   function isBarWidgetOpen(pluginId) {
     var item = findPanelWidget(pluginId)
     return !!item && item.opened === true
