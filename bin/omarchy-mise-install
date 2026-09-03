@@ -19,21 +19,11 @@ mkdir -p "$HOME/.local/bin"
 # the install line alone, so resolving the version to execute agrees with the
 # one just installed.
 rm -f "$HOME/.local/bin/$command"
-if [[ $command == "afk" ]]; then
-  cat >"$HOME/.local/bin/$command" <<EOF
-#!/bin/bash
-export MISE_MINIMUM_RELEASE_AGE=0
-mise use -g --quiet "$package" || exit 1
-omarchy-afk-plugin-install || true
-exec mise x "$package" -- "$bin" "\$@"
-EOF
-else
-  cat >"$HOME/.local/bin/$command" <<EOF
+cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
 mise use -g --quiet "$package" || exit 1
 exec mise x "$package" -- "$bin" "\$@"
 EOF
-fi
 
 chmod +x "$HOME/.local/bin/$command"
