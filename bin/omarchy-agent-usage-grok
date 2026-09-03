@@ -1,0 +1,449 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Grok (xAI) usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect xAI/Grok usage into one display-ready JSON record for the
+omarchy.agents bar widget.
+
+Primary source: the Grok CLI's own local log, ~/.grok/logs/unified.jsonl.
+Every `grok` run logs a "billing: fetched credits config" line carrying the
+same numbers the CLI itself displays — the SuperGrok weekly allowance and
+prepaid balance. This is deliberately not sourced from xAI's Management
+API: that API only sees team pay-as-you-go billing, a different pool of
+money from a personal SuperGrok subscription, with no visibility into the
+weekly allowance at all. Reading the CLI's log needs no credentials and
+reflects reality as of the last `grok` invocation.
+
+Fallback source, only used when no matching log line exists yet (e.g.
+right after install, before ever running `grok`): xAI's Management API
+(https://management-api.x.ai). Getting a working key for this takes three
+non-obvious steps: the Grok CLI's own OAuth token is inference-scoped only
+and 403s here, so a separate management key from console.x.ai -> Settings
+-> Management Keys is required; that key is scoped to one team, which need
+not be the CLI's default team; and the key's ACL must explicitly include
+billing read access. Configure it via XAI_MANAGEMENT_KEY or
+~/.config/omarchy/agents/grok.json: {"managementKey": "...", "teamId": "..."}.
+
+This otherwise follows the same display-ready JSON contract as the other
+collectors in this directory: schemaVersion, id, name, updatedAt, ready,
+hasLocalStats, scope, hasPromptStats, tierLabel, usageStatusText,
+authHelpText, limits, plus the stats block (todayPrompts, todaySessions,
+todayTotalTokens, todayTokensByModel, recentDays, totalPrompts,
+totalSessions, activeDays, activeDates, modelUsage).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "grok"
+AGENT_NAME = "Grok"
+MANAGEMENT_BASE_URL = "https://management-api.x.ai"
+CONSOLE_HELP = "Create a management key at console.x.ai and set XAI_MANAGEMENT_KEY, or configure it in ~/.config/omarchy/agents/grok.json."
+GROK_AUTH_PATH = Path.home() / ".grok" / "auth.json"
+GROK_LOG_PATH = Path.home() / ".grok" / "logs" / "unified.jsonl"
+CREDITS_LOG_MSG = "billing: fetched credits config"
+
+
+class GrokError(Exception):
+  pass
+
+
+def number(value: Any) -> int:
+  try:
+    return max(0, round(float(value or 0)))
+  except (TypeError, ValueError):
+    return 0
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    # Billing-API numbers are account/team-global, not machine-local.
+    "scope": "account",
+    "hasPromptStats": False,
+    "tierLabel": "Prepaid",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+# --- Local CLI log (primary source) -------------------------------------
+
+def money_val(value: Any) -> float:
+  if isinstance(value, dict):
+    try:
+      return float(value.get("val") or 0)
+    except (TypeError, ValueError):
+      return 0.0
+  return 0.0
+
+
+def normalize_reset_at(value: Any) -> str:
+  raw = str(value or "").strip()
+  if not raw:
+    return ""
+  try:
+    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+  except ValueError:
+    return raw
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+  return parsed.isoformat()
+
+
+def period_label(period_type: str) -> str:
+  text = (period_type or "").lower()
+  if "month" in text:
+    return "Monthly"
+  if "week" in text:
+    return "Weekly"
+  if "day" in text:
+    return "Daily"
+  return "Plan"
+
+
+def latest_credits_config() -> tuple[str, dict[str, Any]] | None:
+  """Scan the Grok CLI's own log for its freshest billing snapshot.
+
+  Returns (timestamp, ctx) for the most recent "billing: fetched credits
+  config" line, or None if the log doesn't exist or has no such line yet
+  (e.g. `grok` has never been run). Typically well under 100KB, so a full
+  scan per refresh is cheap; no need to tail or index it.
+  """
+  try:
+    lines = GROK_LOG_PATH.read_text().splitlines()
+  except OSError:
+    return None
+  latest_ts = ""
+  latest_ctx: dict[str, Any] | None = None
+  for line in lines:
+    if CREDITS_LOG_MSG not in line:
+      continue
+    try:
+      obj = json.loads(line)
+    except json.JSONDecodeError:
+      continue
+    if obj.get("msg") != CREDITS_LOG_MSG:
+      continue
+    ts = str(obj.get("ts") or "")
+    ctx = obj.get("ctx")
+    if not isinstance(ctx, dict) or (latest_ts and ts <= latest_ts):
+      continue
+    latest_ts, latest_ctx = ts, ctx
+  if latest_ctx is None:
+    return None
+  return latest_ts, latest_ctx
+
+
+def record_from_local_billing(ts: str, ctx: dict[str, Any]) -> dict[str, Any]:
+  config = ctx.get("config") if isinstance(ctx.get("config"), dict) else {}
+  tier = str(ctx.get("subscriptionTier") or "").strip() or "Prepaid"
+
+  limits: list[dict[str, Any]] = []
+  period = config.get("currentPeriod") if isinstance(config.get("currentPeriod"), dict) else None
+  percent = config.get("creditUsagePercent")
+  if period is not None and isinstance(percent, (int, float)):
+    # percent is a 0.0-1.0 fraction in the display-ready record contract,
+    # not 0-100 — creditUsagePercent from the log is 0-100, so this divides.
+    limits.append({
+      "label": period_label(str(period.get("type") or "")),
+      "percent": max(0.0, min(1.0, float(percent) / 100.0)),
+      "resetsAt": normalize_reset_at(period.get("end")),
+    })
+
+  on_demand_cap = money_val(config.get("onDemandCap"))
+  on_demand_used = money_val(config.get("onDemandUsed"))
+  if on_demand_cap > 0:
+    limits.append({
+      "label": "On-demand",
+      "percent": max(0.0, min(1.0, on_demand_used / on_demand_cap)),
+      "resetsAt": normalize_reset_at(period.get("end")) if period is not None else "",
+    })
+
+  status = ""
+  if is_stale(ts):
+    status = "Showing the last synced reading — run `grok` to refresh."
+
+  record = base_record(ready=True, tierLabel=tier, limits=limits, usageStatusText=status)
+  # prepaidBalance.val is USD cents, not dollars (a live account showed 638
+  # against an actual $6.38 balance).
+  record["balance"] = {
+    "remaining": money_val(config.get("prepaidBalance")) / 100.0,
+    "funded": 0.0,
+    "spent": 0.0,
+    "currency": "USD",
+    "estimated": False,
+  }
+  return record
+
+
+def is_stale(ts: str, max_age_hours: int = 48) -> bool:
+  try:
+    parsed = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+  except ValueError:
+    return False
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+  return (datetime.now(timezone.utc) - parsed) > timedelta(hours=max_age_hours)
+
+
+# --- Auth (Management API fallback) --------------------------------------
+
+def cli_session() -> dict[str, Any] | None:
+  """Read the Grok CLI's own OAuth session, the same file `grok` uses."""
+  try:
+    parsed = json.loads(GROK_AUTH_PATH.read_text())
+  except (OSError, json.JSONDecodeError):
+    return None
+  if not isinstance(parsed, dict):
+    return None
+  for key, value in parsed.items():
+    if isinstance(value, dict) and key.startswith("https://auth.x.ai::"):
+      return value
+  return None
+
+
+def cli_session_expired(session: dict[str, Any]) -> bool:
+  raw = str(session.get("expires_at") or "")
+  if not raw:
+    return False
+  try:
+    expires_at = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+  except ValueError:
+    return False
+  if expires_at.tzinfo is None:
+    expires_at = expires_at.replace(tzinfo=timezone.utc)
+  return expires_at <= datetime.now(timezone.utc)
+
+
+def config_path() -> Path:
+  config_home = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+  return config_home / "omarchy" / "agents" / "grok.json"
+
+
+def read_config() -> dict[str, Any]:
+  try:
+    parsed = json.loads(config_path().read_text())
+    return parsed if isinstance(parsed, dict) else {}
+  except (OSError, json.JSONDecodeError):
+    return {}
+
+
+def credentials() -> tuple[str, str, bool]:
+  """Returns (bearer_token, team_id, from_cli_session).
+
+  A configured management key wins when present — the CLI's own OAuth token
+  403s against the Management API, so it is only ever a fallback. Either
+  source can supply team_id; the CLI session is a convenient default even
+  when the token itself comes from config, since the console management key
+  and the CLI session normally belong to the same team.
+  """
+  config = read_config()
+  session = cli_session()
+  session_team_id = str(session.get("team_id") or "").strip() if session else ""
+
+  configured_token = str(os.environ.get("XAI_MANAGEMENT_KEY", "")).strip() or str(config.get("managementKey") or "").strip()
+  if configured_token:
+    team_id = str(config.get("teamId") or "").strip() or session_team_id
+    return configured_token, team_id, False
+
+  if session and not cli_session_expired(session):
+    token = str(session.get("key") or "").strip()
+    if token and session_team_id:
+      return token, session_team_id, True
+
+  return "", str(config.get("teamId") or "").strip() or session_team_id, False
+
+
+# --- Management API -------------------------------------------------------
+
+class GrokClient:
+  def __init__(self, token: str):
+    self.token = token
+
+  def request(self, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+    url = MANAGEMENT_BASE_URL + path
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(
+      url,
+      data=data,
+      method="POST" if body is not None else "GET",
+      headers={
+        "Authorization": "Bearer " + self.token,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+      },
+    )
+    try:
+      with urllib.request.urlopen(request, timeout=15) as response:
+        decoded = json.load(response)
+        return decoded if isinstance(decoded, dict) else {}
+    except urllib.error.HTTPError as error:
+      if error.code == 401:
+        raise GrokError("xAI rejected the management token")
+      if error.code == 403:
+        raise GrokError("This key cannot read billing data for the team")
+      if error.code == 404:
+        raise GrokError("xAI team not found")
+      raise GrokError(f"xAI Management API returned HTTP {error.code}")
+    except urllib.error.URLError as error:
+      raise GrokError("Could not reach the xAI Management API") from error
+    except (json.JSONDecodeError, TimeoutError) as error:
+      raise GrokError("xAI returned an invalid billing response") from error
+
+  def prepaid_balance(self, team_id: str) -> dict[str, Any]:
+    return self.request(f"/v1/billing/teams/{team_id}/prepaid/balance")
+
+  def cost_usage(self, team_id: str, start: datetime, end: datetime) -> dict[str, Any]:
+    # The analytics query must be wrapped in analyticsRequest, timestamps
+    # are space-separated "YYYY-MM-DD HH:MM:SS" (an ISO8601 T/Z 400s),
+    # timeUnit takes the full TIME_UNIT_* enum name, and filters: [] is
+    # required even when empty. values[].name only accepts "usd"
+    # (AGGREGATION_SUM) grouped by "description" — every token/model field
+    # name tried (tokens, model, model_name, endpoint, api_key, …) was
+    # rejected, so this looks like a cost/line-item analytics endpoint with
+    # no per-model token breakdown available at all.
+    body = {
+      "analyticsRequest": {
+        "timeRange": {
+          "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
+          "endTime": end.strftime("%Y-%m-%d %H:%M:%S"),
+          "timezone": "Etc/GMT",
+        },
+        "timeUnit": "TIME_UNIT_DAY",
+        "values": [{"name": "usd", "aggregation": "AGGREGATION_SUM"}],
+        "groupBy": ["description"],
+        "filters": [],
+      }
+    }
+    return self.request(f"/v1/billing/teams/{team_id}/usage", body=body)
+
+
+def summarize_balance(payload: dict[str, Any]) -> dict[str, Any] | None:
+  total = payload.get("total") if isinstance(payload.get("total"), dict) else None
+  if total is None:
+    return None
+  # total.val is a plain decimal string (e.g. "0"), not a Fireworks-style
+  # {units, nanos} object.
+  remaining = number(total.get("val"))
+  return {
+    "remaining": float(remaining),
+    "funded": 0.0,
+    "spent": 0.0,
+    "currency": "USD",
+    "estimated": False,
+  }
+
+
+def total_spend_usd(payload: dict[str, Any]) -> float:
+  series = payload.get("timeSeries")
+  if not isinstance(series, list):
+    return 0.0
+  total = 0.0
+  for entry in series:
+    if not isinstance(entry, dict):
+      continue
+    points = entry.get("dataPoints")
+    if not isinstance(points, list):
+      continue
+    for point in points:
+      if not isinstance(point, dict):
+        continue
+      values = point.get("values")
+      if isinstance(values, list) and values:
+        try:
+          total += float(values[0])
+        except (TypeError, ValueError):
+          pass
+  return total
+
+
+def scan() -> dict[str, Any]:
+  local = latest_credits_config()
+  if local is not None:
+    return record_from_local_billing(*local)
+
+  # No local log yet (fresh install, never ran `grok`) — fall back to the
+  # Management API. This path shows team pay-as-you-go billing only; it
+  # cannot see a personal SuperGrok plan's weekly allowance at all.
+  token, team_id, from_cli = credentials()
+  if not token or not team_id:
+    return base_record(
+      usageStatusText="Grok unavailable",
+      authHelpText="Run `grok` once to sync local billing data, or configure the Management API fallback: " + CONSOLE_HELP,
+    )
+
+  client = GrokClient(token)
+  # hasLocalStats/hasPromptStats stay False: there is no confirmed way to
+  # get per-model token counts from the Management API (see cost_usage()
+  # above), so the panel's daily/model-breakdown tabs have nothing to draw.
+  record = base_record(ready=True)
+
+  try:
+    balance = summarize_balance(client.prepaid_balance(team_id))
+    if balance:
+      today = datetime.now(timezone.utc)
+      cost = client.cost_usage(team_id, today - timedelta(days=30), today)
+      balance["spent"] = total_spend_usd(cost)
+      record["balance"] = balance
+  except GrokError as error:
+    hint = "" if not from_cli else " (the CLI's session token may not be scoped for billing — try a console-issued management key instead)"
+    record["usageStatusText"] = "Balance unavailable"
+    record["authHelpText"] = str(error) + hint
+
+  return record
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Grok (xAI) usage record as JSON")
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.parse_args()
+
+  try:
+    record = scan()
+  except GrokError as error:
+    record = base_record(usageStatusText="Grok unavailable", authHelpText=str(error))
+  except Exception as error:
+    record = base_record(usageStatusText="Grok unavailable", authHelpText="Grok usage scan failed")
+    print(f"omarchy-agent-usage-grok: {type(error).__name__}", file=sys.stderr)
+
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
