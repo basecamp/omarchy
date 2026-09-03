@@ -26,11 +26,13 @@ omarchy-pkg-drop yt6801-dkms
 
 if lsmod | awk '$1 == "yt6801" { found = 1 } END { exit !found }'; then
   sudo modprobe -r yt6801
-
-  for device in "${yt6801_devices[@]}"; do
-    printf '%s\n' "$device" | sudo tee /sys/bus/pci/drivers_probe >/dev/null
-  done
 fi
+
+for device in "${yt6801_devices[@]}"; do
+  if ! lspci -Dks "$device" | grep -Eq 'Kernel driver in use: dwmac[-_]motorcomm'; then
+    printf '%s\n' "$device" | sudo tee /sys/bus/pci/drivers_probe >/dev/null
+  fi
+done
 
 for device in "${yt6801_devices[@]}"; do
   if ! lspci -Dks "$device" | grep -Eq 'Kernel driver in use: dwmac[-_]motorcomm'; then
