@@ -66,8 +66,8 @@ class ArticleMarkupParser(HTMLParser):
         self.skip_depth = 0
 
     def newline(self) -> None:
-        if self.parts and self.parts[-1] != "<br><br>":
-            self.parts.append("<br><br>")
+        if self.parts and self.parts[-1] != "<br>":
+            self.parts.append("<br>")
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         tag = tag.lower()
@@ -112,7 +112,7 @@ class ArticleMarkupParser(HTMLParser):
         while self.link_stack:
             if self.link_stack.pop():
                 self.parts.append("</a>")
-        return "".join(self.parts).strip().removeprefix("<br><br>").removesuffix("<br><br>")
+        return "".join(self.parts).strip().removeprefix("<br>").removesuffix("<br>")
 
 
 def article_text(value: str | None, limit: int = MAX_ARTICLE_CHARS) -> str:

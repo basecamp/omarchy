@@ -39,6 +39,8 @@ assert items[0]["author"] == "DHH"
 assert items[0]["summary"] == "One useful sentence."
 assert items[0]["content"] == "First paragraph with an inline link.\n\nSecond paragraph.\n\n• First point\n\n• Second point"
 assert '<a href="https://example.com">inline link</a>' in items[0]["contentHtml"]
+assert items[0]["contentHtml"].count("<br>") == 3
+assert "<br><br>" not in items[0]["contentHtml"]
 assert "<" not in items[0]["content"]
 assert "https://example.com" not in items[0]["content"]
 assert module.external_url("javascript:alert(1)") == ""
