@@ -21,6 +21,10 @@ require("hypr.input")
 require("hypr.bindings")
 require("hypr.looknfeel")
 require("hypr.autostart")
+-- Personal env overrides. After package defaults so user hl.env() wins. Optional
+-- so installs without ~/.config/hypr/envs.lua are unchanged (#9902).
+local require_optional = require("default.hypr.require_optional")
+require_optional.module("hypr.envs")
 
 -- Toggle config flags dynamically.
 require("default.hypr.toggles")
