@@ -78,6 +78,8 @@ grep -qF '"↑↓ SCROLL  ·  ← FEED"' "$ROOT/shell/plugins/panels/news/Panel.
   fail "news story pane explains article scrolling"
 grep -qF 'onLinkActivated: function(link) { Qt.openUrlExternally(link) }' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news story opens deliberately activated links"
+grep -qF 'tooltipText: "Close (Esc)"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news reader exposes its right-side window actions"
 
 grep -qF 'FEED_URL = "https://omarchy.org/news/rss.xml"' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "news fetcher pins the official RSS URL"

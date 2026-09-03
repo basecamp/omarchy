@@ -173,7 +173,6 @@ Item {
           spacing: Style.space(10)
 
           ColumnLayout {
-            Layout.fillWidth: true
             spacing: Style.space(2)
 
             Text {
@@ -194,6 +193,10 @@ Item {
               font.bold: true
               font.letterSpacing: 0.8
             }
+          }
+
+          Item {
+            Layout.fillWidth: true
           }
 
           PanelActionButton {
