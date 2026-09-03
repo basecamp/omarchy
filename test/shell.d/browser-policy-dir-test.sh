@@ -41,9 +41,11 @@ browser_policy_install_color "$write_dir" "#aabbcc" ||
   fail "theme colour writes into a writable policy directory"
 grep -F '"BrowserThemeColor": "#aabbcc"' "$write_dir/color.json" >/dev/null ||
   fail "theme colour writes BrowserThemeColor"
+grep -F '"BrowserColorScheme": "system"' "$write_dir/color.json" >/dev/null ||
+  fail "theme colour follows the system color scheme"
 mode=$(stat -c '%a' "$write_dir/color.json")
 [[ $mode == "644" ]] || fail "theme colour creates a root-mode policy file" "mode=$mode"
-pass "theme colour writes a 0644 color.json"
+pass "theme colour writes a 0644 color.json with the system color scheme"
 
 if (( EUID == 0 )); then
   pass "running as root; skipping the mktemp-failure check"
@@ -308,11 +310,18 @@ policy_files=(
   "$ROOT/install/config/browser-policy.sh"
   "$ROOT/install/helpers/browser-policy.sh"
   "$ROOT/migrations/1787515927.sh"
+  "$ROOT/migrations/1788441039.sh"
 )
 if grep -nE 'chmod a\+rwx\b|chmod a\+rw\b|chmod a\+w\b|chmod o\+w|chmod ugo\+w|chmod 2775\b|chmod 2777\b|chmod 0777\b|chmod 777\b|install -d -m 0?[27]?777|omarchy-browser-policy' "${policy_files[@]}" >/dev/null; then
   fail "browser policy setup is not world-writable and does not use omarchy-browser-policy"
 fi
 pass "browser policy setup is not world-writable"
+
+grep -F '"BrowserColorScheme": "device"' "$ROOT/migrations/1788441039.sh" >/dev/null ||
+  fail "the color-scheme migration detects the retired device value"
+grep -F 'omarchy-theme-set-browser || true' "$ROOT/migrations/1788441039.sh" >/dev/null ||
+  fail "the color-scheme migration refreshes existing browser policies"
+pass "a migration refreshes browser policies with the retired color-scheme value"
 
 mapfile -t migrations < <(rg -l 'Stop world-writable Chromium and Firefox policy directories' "$ROOT/migrations")
 (( ${#migrations[@]} == 1 )) || fail "exactly one migration locks existing policy directories" "${migrations[*]}"

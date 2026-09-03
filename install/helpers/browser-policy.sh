@@ -110,7 +110,7 @@ browser_policy_install_color() {
   [[ $hex =~ ^#[0-9a-f]{6}$ ]] || return 1
 
   tmp=$(mktemp) || return 1
-  printf '{"BrowserThemeColor": "%s", "BrowserColorScheme": "device"}\n' "$hex" >"$tmp"
+  printf '{"BrowserThemeColor": "%s", "BrowserColorScheme": "system"}\n' "$hex" >"$tmp"
 
   if [[ -L $dest || -d $dest ]]; then
     if ! rm -rf -- "$dest" 2>/dev/null; then
