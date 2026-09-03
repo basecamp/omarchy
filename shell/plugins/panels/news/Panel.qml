@@ -196,26 +196,6 @@ Item {
             }
           }
 
-          BorderSurface {
-            implicitWidth: modeText.implicitWidth + Style.space(20)
-            implicitHeight: modeText.implicitHeight + Style.space(10)
-            color: Style.selectedFillFor(root.foreground, root.accent)
-            borderSpec: Border.controlSpec("selected", root.foreground, root.accent)
-            radius: Style.cornerRadius
-
-            Text {
-              id: modeText
-              anchors.centerIn: parent
-              textFormat: Text.PlainText
-              text: root.focusArea === "article" ? "READING STORY · ↑↓ SCROLL" : "BROWSING FEED · ↑↓ SELECT"
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 0.6
-            }
-          }
-
           PanelActionButton {
             iconText: "󰑐"
             tooltipText: "Refresh news (R)"

@@ -62,10 +62,10 @@ grep -qF 'implicitWidth: 1040' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news reader uses a desktop-sized window"
 grep -qF 'omarchy-shell shell toggle omarchy.news' "$ROOT/shell/plugins/panels/news/BarWidget.qml" ||
   fail "news bar widget summons the desktop reader"
-grep -qF 'BROWSING FEED · ↑↓ SELECT' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
-  fail "news reader identifies feed-navigation mode"
-grep -qF 'READING STORY · ↑↓ SCROLL' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
-  fail "news reader identifies article-scrolling mode"
+grep -qF '"↑↓ SELECT  ·  → READ"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news feed pane explains headline navigation"
+grep -qF '"↑↓ SCROLL  ·  ← FEED"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news story pane explains article scrolling"
 
 grep -qF 'FEED_URL = "https://omarchy.org/news/rss.xml"' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "news fetcher pins the official RSS URL"
