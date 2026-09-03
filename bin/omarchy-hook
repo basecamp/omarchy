@@ -15,14 +15,27 @@ HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
 HOOK_DIR="$HOOK_PATH.d"
 shift
 
+# Executable hooks keep their shebang (python, etc.). Non-executable files stay
+# on bash so plain shell snippets without +x still work (#9845).
+run_hook() {
+  local hook=$1
+  shift
+
+  if [[ -x $hook ]]; then
+    "$hook" "$@" || echo "Hook failed: $hook"
+  else
+    bash "$hook" "$@" || echo "Hook failed: $hook"
+  fi
+}
+
 if [[ -f $HOOK_PATH ]]; then
-  bash "$HOOK_PATH" "$@" || echo "Hook failed: $HOOK_PATH"
+  run_hook "$HOOK_PATH" "$@"
 fi
 
 if [[ -d $HOOK_DIR ]]; then
   for hook in "$HOOK_DIR"/*; do
     [[ -f $hook ]] || continue
     [[ $hook == *.sample ]] && continue
-    bash "$hook" "$@" || echo "Hook failed: $hook"
+    run_hook "$hook" "$@"
   done
 fi
