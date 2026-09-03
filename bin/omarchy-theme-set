@@ -138,11 +138,15 @@ set_theme_background() {
 is_denied_installed_file() {
   local name="$1"
   local denied
+  # Match without regard to case: the loaders ask for the lowercase name, but a
+  # casefold or case-insensitive filesystem would answer a request for
+  # hyprland.lua with a staged hyprland.LUA.
+  local lower=${name,,}
 
-  [[ $name == *.lua ]] && return 0
+  [[ $lower == *.lua ]] && return 0
 
   for denied in "${INSTALLED_THEME_DENIED[@]}"; do
-    [[ $name == "$denied" ]] && return 0
+    [[ $lower == "${denied,,}" ]] && return 0
   done
 
   return 1
@@ -180,16 +184,27 @@ stage_installed_colors_from_alacritty() {
 stage_installed_dir() {
   local source="$1"
   local dest="$2"
-  local entry name
+  local prefix="${3:-}"
+  local entry name display
 
   mkdir -p "$dest"
 
   for entry in "$source"/*; do
     [[ -e $entry && ! -L $entry ]] || continue
     name=${entry##*/}
+    display="$prefix$name"
+
+    # The denylist is the whole guarantee, so it has to hold at every depth.
+    # Without this a theme ships sub/hyprland.lua and it stages verbatim: no
+    # shipped consumer reads code from a subdirectory today, but the promise
+    # this function exists to keep would already be broken.
+    if is_denied_installed_file "$name"; then
+      IGNORED_THEME_FILES+=("$display")
+      continue
+    fi
 
     if [[ -d $entry ]]; then
-      stage_installed_dir "$entry" "$dest/$name"
+      stage_installed_dir "$entry" "$dest/$name" "$display/"
     else
       cp "$entry" "$dest/$name"
     fi
@@ -204,7 +219,11 @@ stage_installed_dir() {
 theme_came_from_a_repo() {
   local source="$1"
 
-  [[ ! -L $source && -d $source/.git ]]
+  # Any .git entry, not just a directory. `git clone` writes a directory, but a
+  # linked worktree or a submodule writes a .git *file* holding "gitdir: ...".
+  # Testing for a directory alone makes that case fall through to the unfiltered
+  # branch below, so a stranger's theme would stage its Lua verbatim.
+  [[ ! -L $source && -e $source/.git ]]
 }
 
 stage_installed_theme() {
