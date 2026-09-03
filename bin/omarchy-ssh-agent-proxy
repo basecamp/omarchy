@@ -1,0 +1,74 @@
+#!/bin/bash
+
+# omarchy:summary=Relay an SSH agent connection to the newest forwarded agent, or a local one
+# omarchy:hidden=true
+
+# systemd starts this for every connection to $XDG_RUNTIME_DIR/omarchy-ssh-agent.sock
+# (omarchy-ssh-agent-proxy.socket, Accept=yes): stdin and stdout are the accepted
+# connection. A shell that never had an agent -- Herdr panes inherit the Herdr
+# server's environment, not the SSH session's -- points SSH_AUTH_SOCK at that
+# socket, and every request is relayed to the best agent at that moment instead
+# of the one that happened to exist when the shell started:
+#
+#   1. the newest agent sshd forwarded into ~/.ssh/agent/ that answers
+#   2. else the newest one that only timed out -- a forwarded 1Password waiting
+#      on its unlock prompt looks like that, and is still the right agent
+#   3. else an agent running on this machine (1Password, gnome-keyring, ssh-agent)
+
+set -uo pipefail
+
+forwarded_dir="$HOME/.ssh/agent"
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}"
+local_agents=(
+  "$HOME/.1password/agent.sock"
+  "$runtime_dir/gcr/ssh"
+  "$runtime_dir/ssh-agent.socket"
+)
+probe_timeout=3
+
+# 0 = answers, 1 = timed out, 2 = dead. ssh-add exits 1 both for "no
+# identities" and for a connection the far side dropped, so read the message
+# (OpenSSH does not localize it) rather than the exit code alone.
+probe() {
+  local output status
+
+  output=$(SSH_AUTH_SOCK="$1" timeout -k 1 "$probe_timeout" ssh-add -l 2>&1)
+  status=$?
+
+  case $status in
+    0) return 0 ;;
+    1) [[ $output == *"no identities"* ]] && return 0 || return 2 ;;
+    124 | 137) return 1 ;;
+    *) return 2 ;;
+  esac
+}
+
+# Newest first: the latest login is the one whose owner is sitting at a
+# keyboard right now.
+forwarded_agents() {
+  find "$forwarded_dir" -maxdepth 1 -type s -name 's.*' -printf '%T@ %p\n' 2>/dev/null |
+    sort -rn | cut -d' ' -f2-
+}
+
+target=""
+slow=""
+while IFS= read -r socket; do
+  [[ -S $socket ]] || continue
+  probe "$socket"
+  case $? in
+    0)
+      target=$socket
+      break
+      ;;
+    1) [[ -n $slow ]] || slow=$socket ;;
+  esac
+done < <(forwarded_agents; printf '%s\n' "${local_agents[@]}")
+
+[[ -n $target ]] || target=$slow
+
+if [[ -z $target ]]; then
+  echo "omarchy-ssh-agent-proxy: no SSH agent is reachable" >&2
+  exit 1
+fi
+
+exec socat STDIO "UNIX-CONNECT:$target"

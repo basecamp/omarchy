@@ -1,0 +1,20 @@
+[Unit]
+Description=SSH agent relay connection %i
+# An instance that found no agent exits 1; drop it instead of keeping it around as failed.
+CollectMode=inactive-or-failed
+
+[Service]
+ExecStart=/usr/bin/omarchy-ssh-agent-proxy
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+UnsetEnvironment=SSH_AUTH_SOCK SSH_TTY
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+TasksMax=16
+MemoryMax=64M

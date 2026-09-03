@@ -1,0 +1,12 @@
+[Unit]
+Description=Relay SSH agent requests to the newest forwarded agent, or a local one
+
+[Socket]
+ListenStream=%t/omarchy-ssh-agent.sock
+SocketMode=0600
+Accept=yes
+RemoveOnStop=yes
+MaxConnections=256
+
+[Install]
+WantedBy=sockets.target

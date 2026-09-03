@@ -32,3 +32,12 @@ case ":$PATH:" in
   *":$HOME/.local/bin:"*) ;;
   *) export PATH="$PATH:$HOME/.local/bin" ;;
 esac
+
+# Herdr panes inherit the Herdr server's environment, not the SSH session's, so
+# an agent forwarded over SSH never reaches them: git push and commit signing
+# fail in a pane while they work in a plain SSH shell. omarchy-ssh-agent-proxy
+# relays every request to the newest forwarded agent, or to a local one when
+# nothing is forwarded, so a shell without a live agent can use its socket.
+if [[ ! -S ${SSH_AUTH_SOCK:-} && -S ${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-ssh-agent.sock ]]; then
+  export SSH_AUTH_SOCK="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-ssh-agent.sock"
+fi

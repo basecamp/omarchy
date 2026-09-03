@@ -28,6 +28,8 @@ Omarchy calls it Activity, and you start it by hitting `Super + Ctrl + T`. It op
 
 You start it (or reattach to your existing session) with `Super + Ctrl + Return`. Omarchy ships a Herdr configuration that mirrors its Tmux config, so the prefix key is `Ctrl + Space` here too. You can browse all the keybindings with `Super + Ctrl + K`.
 
+Herdr keeps its panes alive between SSH sessions, which is also why an SSH agent forwarded into the machine doesn't reach them on its own: a pane inherits the Herdr server's environment, not your SSH session's. Omarchy bridges that with a small relay socket. Shells that have no live agent point `SSH_AUTH_SOCK` at it, and every request goes to the newest agent forwarded into the machine, or to an agent running locally (1Password, gnome-keyring, ssh-agent) when nothing is forwarded. So `git push` and commit signing behave the same in a Herdr pane, over `herdr --remote`, and at the keyboard. If you sign commits with 1Password's `op-ssh-sign`, note that it only honors `SSH_AUTH_SOCK` when `SSH_TTY` is set as well, so inside a pane it keeps asking the local 1Password app; `git config --global --unset gpg.ssh.program` makes Git sign through the agent instead.
+
 ## Fastfetch
 
 [Fastfetch](https://github.com/fastfetch-cli/fastfetch) shows system information, like kernel version, uptime, theme, CPU, memory, and more. It's a successor to the popular neofetch tool.
