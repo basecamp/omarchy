@@ -493,12 +493,10 @@ Panel {
                 active: root.activeProfile === modelData
                 hasCursor: root.cursorActive && root.profileIndex === index
                 onClicked: root.setProfile(modelData)
-                onHovered: function(h) {
-                  if (h) {
-                    root.cursorActive = true
-                    root.profileIndex = index
-                  }
-                }
+                // Pointer hover already paints via Button.containsMouse and
+                // clears on leave. Copying it into cursorActive made the
+                // highlight stick, because the overlay does not emit hover
+                // leave while the panel is still open.
               }
             }
           }

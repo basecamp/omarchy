@@ -48,4 +48,5 @@ assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon
 assert(/openPanelIndicatorWidth:.*showPercentage.*button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
 assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentage\(\) \}/.test(panelSource), 'power exposes togglePercentage over IPC')
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
+assert(!/onHovered:/.test(panelSource), 'power does not copy pointer hover into the keyboard cursor')
 JS
