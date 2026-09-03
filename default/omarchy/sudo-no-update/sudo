@@ -24,4 +24,19 @@ if ! require_privileged_bash_startup; then
   echo "Refusing an unsafe Bash startup for the sudo boundary." >&2
   exit 126
 fi
-exec /usr/bin/sudo -N -- "$@"
+
+# The update's sleep inhibitor validates interactively before launching its
+# privileged process. Preserve that one non-command operation, while keeping
+# every command argument behind `--` so caller data cannot become a sudo option.
+case "${1:-}" in
+  -v | --validate)
+    if (( $# != 1 )); then
+      echo "The sudo boundary accepts validation without additional options." >&2
+      exit 2
+    fi
+    exec /usr/bin/sudo -N "$1"
+    ;;
+  *)
+    exec /usr/bin/sudo -N -- "$@"
+    ;;
+esac

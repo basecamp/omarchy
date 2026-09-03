@@ -184,7 +184,15 @@ if ! OMARCHY_PATH=$(trusted_omarchy_source_root); then
   exit 1
 fi
 export OMARCHY_PATH
-user_path="${PATH:-/usr/bin:/bin}"
+
+# Preserve the caller's command path across both re-execs below. The logging
+# shell and update-lock shell otherwise inherit the already-sanitized PATH and
+# silently hide user-installed post-update hooks and mise.
+if [[ -z ${OMARCHY_UPDATE_USER_PATH+x} ]]; then
+  OMARCHY_UPDATE_USER_PATH="${PATH:-/usr/bin:/bin}"
+fi
+export OMARCHY_UPDATE_USER_PATH
+user_path="$OMARCHY_UPDATE_USER_PATH"
 PATH="$OMARCHY_PATH/bin:/usr/bin:/usr/sbin:/bin:/sbin"
 export PATH
 update_stay_awake_stopped=0
@@ -220,6 +228,7 @@ fi
 if ! omarchy-update-lock held; then
   exec omarchy-update-lock run "$0" "$@"
 fi
+unset OMARCHY_UPDATE_USER_PATH
 
 trap 'echo ""; echo -e "\033[0;31mSomething went wrong during the update!\n\nPlease review the output above carefully, correct the error, and retry the update.\n\nIf you need assistance, get help from the community at https://omarchy.org/discord\033[0m"' ERR
 trap cleanup_update EXIT

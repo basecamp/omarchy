@@ -8,7 +8,7 @@ if [[ -z ${OMARCHY_UPDATE_SEQUENCE_NS:-} ]]; then
   outer_uid=$(id -u)
   outer_gid=$(id -g)
   subuid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subuid)
-  subgid=$(awk -F: -v group="$(id -gn)" '$1 == group { print $2; exit }' /etc/subgid)
+  subgid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subgid)
   if [[ -z $subuid || -z $subgid ]]; then
     pass "no subordinate uid/gid range; skipping authorized update-sequence test"
     exit 0
@@ -26,6 +26,7 @@ elif [[ $OMARCHY_UPDATE_SEQUENCE_NS == setup ]]; then
   chmod 0755 "$namespace_tmp/default/omarchy/sudo-no-update/sudo"
   cat >"$namespace_tmp/fixed-sudo" <<'STUB'
 #!/bin/bash
+printf '%s\n' "$*" >>"$FIXED_SUDO_LOG"
 if [[ ${1:-} == "-h" ]]; then
   echo 'usage: sudo [-ABbEHkNnPS] command'
 fi
@@ -53,6 +54,8 @@ fi
 
 test_tmp="$OMARCHY_AUTHORIZED_TEST_ROOT"
 trap 'rm -rf "$test_tmp"/*' EXIT
+export FIXED_SUDO_LOG="$test_tmp/fixed-sudo.log"
+: >"$FIXED_SUDO_LOG"
 
 stub_bin="$test_tmp/bin"
 mkdir -p "$stub_bin"
@@ -83,10 +86,25 @@ for step in "${steps[@]}"; do
   cat >"$stub_bin/$step" <<'STUB'
 #!/bin/bash
 printf '%s unattended=%s\n' "${0##*/}" "${OMARCHY_UPDATE_UNATTENDED:-}" >>"$STEP_LOG"
+case "${0##*/}" in
+  omarchy-hook | omarchy-update-mise)
+    printf '%s path=%s\n' "${0##*/}" "$PATH" >>"$STEP_LOG"
+    ;;
+esac
 [[ ${FAILING_STEP:-} != "${0##*/}" ]] || exit 1
 STUB
   chmod +x "$stub_bin/$step"
 done
+
+# Keep the logging re-exec deterministic and inside the namespace. The real
+# script(1) preserves the environment while launching this command through a
+# shell; this stand-in exercises that boundary without touching the host log.
+cat >"$stub_bin/script" <<'STUB'
+#!/bin/bash
+[[ ${1:-} == "-qefc" && $# == 3 ]] || exit 2
+exec /usr/bin/bash -c "$2"
+STUB
+chmod 0755 "$stub_bin/script"
 
 # OMARCHY_UPDATE_LOGGED stands in for the script(1) wrapper the update re-execs
 # itself under; the stubbed lock reports itself already held.
@@ -100,7 +118,7 @@ run_update() {
 }
 
 steps_run() {
-  cut -d' ' -f1 "$test_tmp/steps"
+  awk '!/ path=/{ print $1 }' "$test_tmp/steps"
 }
 
 # Every step of a whole update, in order. $1 asks for the one a person confirms.
@@ -141,6 +159,37 @@ diff <(expected_steps confirmed) <(steps_run) >"$test_tmp/order" ||
 grep -q '^omarchy-update-system-pkgs unattended=$' "$test_tmp/steps" ||
   fail "an update a person confirmed is treated as unattended"
 pass "-y is what marks an update unattended, not the update itself"
+
+set +e
+/usr/bin/bash "$test_tmp/default/omarchy/sudo-no-update/sudo" -p /usr/bin/true \
+  >"$test_tmp/unsafe-wrapper.out" 2>"$test_tmp/unsafe-wrapper.err"
+unsafe_wrapper_status=$?
+set -e
+(( unsafe_wrapper_status == 126 )) ||
+  fail "the privileged-Bash exception accepted an ordinary shell with a decoy -p argument"
+grep -Fq 'Refusing an unsafe Bash startup' "$test_tmp/unsafe-wrapper.err" ||
+  fail "the rejected sudo boundary did not explain its startup failure"
+
+"$test_tmp/default/omarchy/sudo-no-update/sudo" -v
+grep -Fxq -- '-N -v' "$FIXED_SUDO_LOG" ||
+  fail "the no-update sudo boundary did not preserve validation mode"
+"$test_tmp/default/omarchy/sudo-no-update/sudo" -E /usr/bin/true
+grep -Fxq -- '-N -- -E /usr/bin/true' "$FIXED_SUDO_LOG" ||
+  fail "an unapproved option escaped the sudo command delimiter"
+pass "the privileged sudo boundary validates startup and preserves only its supported option"
+
+# Exercise the real script(1) re-exec instead of pre-setting its marker. Hooks
+# and mise must recover the original path, including user-installed commands.
+: >"$test_tmp/steps"
+original_path="$stub_bin:$test_tmp/user-bin:/usr/bin:/bin"
+STEP_LOG="$test_tmp/steps" FAILING_STEP="" PATH="$original_path" \
+  "$ROOT/bin/omarchy-update" -y >"$test_tmp/out" 2>"$test_tmp/err" ||
+  fail "an update through the logging re-exec reports a failure" "$(cat "$test_tmp/err")"
+for step in omarchy-hook omarchy-update-mise; do
+  grep -Fxq "$step path=$original_path" "$test_tmp/steps" ||
+    fail "$step did not recover the original user PATH after re-exec"
+done
+pass "logging and lock re-execs preserve the user PATH for hooks and mise"
 
 # Migrations ship with the packages the upgrade installs and are written against
 # them. Running them against what is still on disk is the failure this ordering
