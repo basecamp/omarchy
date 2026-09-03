@@ -14,9 +14,25 @@ function wifiIconFor(strength) {
   return icons[index]
 }
 
-function connectionIcon(kind, signalStrength) {
-  if (kind === "wifi") return wifiIconFor(signalStrength)
-  if (kind === "ethernet") return "󰈀"
+// A known plain-HTTP endpoint lets the network redirect the browser to its
+// login page. Never execute or automatically open an untrusted Location header.
+var captivePortalUrl = "http://ping.archlinux.org/nm-check.txt"
+
+function connectivityState(kind, connectivity, states, checksEnabled) {
+  if (kind === "disconnected") return "none"
+  // Ignore stale cached results when the operator has disabled probing.
+  if (!checksEnabled) return "unknown"
+  if (connectivity === states.Portal) return "portal"
+  if (connectivity === states.Limited) return "limited"
+  if (connectivity === states.Full) return "full"
+  if (connectivity === states.None) return "none"
+  return "unknown"
+}
+
+function connectionIcon(kind, signalStrength, connectivity) {
+  var restricted = connectivity === "portal" || connectivity === "limited"
+  if (kind === "wifi") return restricted ? "󰤩" : wifiIconFor(signalStrength)
+  if (kind === "ethernet") return restricted ? "󰈂" : "󰈀"
   return "󰤮"
 }
 
@@ -352,6 +368,8 @@ if (typeof module !== "undefined") {
     parseNetworkStatus: parseNetworkStatus,
     wifiIconFor: wifiIconFor,
     connectionIcon: connectionIcon,
+    connectivityState: connectivityState,
+    captivePortalUrl: captivePortalUrl,
     formatHeaderSpeed: formatHeaderSpeed,
     formatHeaderFreq: formatHeaderFreq,
     headerDetail: headerDetail,

@@ -86,6 +86,13 @@ codex)
   command=(codex --approve-for-me)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")
   ;;
+hermes)
+  if [[ -n ${prompt:-} ]]; then
+    command=(env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=$prompt")
+  else
+    command=(hermes --yolo)
+  fi
+  ;;
 omp)
   command=(omp --auto-approve)
   [[ -n ${prompt:-} ]] && command+=(-- "$prompt")

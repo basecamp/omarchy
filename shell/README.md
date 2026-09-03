@@ -86,8 +86,12 @@ Only one `bar` plugin is active at a time. Missing or invalid selections fall
 back to the built-in `omarchy.bar`, so users always have a safe path home.
 Panels, overlays, and menus are loaded when summoned. Plugins that need
 to outlive a single summon can set `keepLoaded: true` (e.g. the image
-picker keeps its overlay window mounted between summons). First-party
-services are loaded at startup.
+picker keeps its overlay window mounted between summons). The same flag
+keeps a service mounted across plugin hot-reload, so tearing down a
+changed bar widget cannot destroy `omarchy.lock` while Hyprland still
+holds the session lock. The kept instance is not replaced, so code
+changes to a `keepLoaded` service itself only take effect on a shell
+restart. First-party services are loaded at startup.
 
 The full schema lives in `services/PluginRegistry.qml`.
 
