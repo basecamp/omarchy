@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "license": "MIT",
-  "description": "Recent Omarchy and Omacom Foundation announcements from the official news feed.",
+  "description": "Read Omarchy announcements and optional curated publisher feeds without leaving the desktop.",
   "kinds": [
     "panel",
     "service",
@@ -19,13 +19,14 @@
   },
   "barWidget": {
     "displayName": "News",
-    "description": "Follow official Omarchy and Omacom Foundation announcements.",
+    "description": "Follow Omarchy announcements and optional curated publisher feeds.",
     "category": "Info",
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
       "refreshIntervalMin": 15,
-      "itemLimit": 10
+      "itemLimit": 10,
+      "publisherFeeds": "Omarchy only"
     },
     "schema": [
       {
@@ -45,6 +46,17 @@
         "max": 20,
         "step": 1,
         "defaultValue": 10
+      },
+      {
+        "key": "publisherFeeds",
+        "type": "enum",
+        "label": "News sources",
+        "options": [
+          "Omarchy only",
+          "Omarchy + BBC News"
+        ],
+        "defaultValue": "Omarchy only",
+        "description": "Add the curated BBC News RSS feed alongside official Omarchy announcements."
       }
     ]
   }

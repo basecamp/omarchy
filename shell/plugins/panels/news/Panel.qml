@@ -14,11 +14,15 @@ Item {
   property bool opened: false
   property bool closingFromHost: false
   property int selectedIndex: 0
+  property string selectedSourceId: "all"
   property string focusArea: "headlines"
   property var currentArticle: null
 
   readonly property var news: service
-  readonly property var articles: news ? news.visibleItems : []
+  readonly property var articles: news ? news.itemsForSource(selectedSourceId) : []
+  readonly property var sourceFilters: news && news.sources.length > 1
+    ? [{ "id": "all", "name": "All" }].concat(news.sources)
+    : (news ? news.sources : [])
   readonly property color foreground: Color.foreground
   readonly property color background: Color.background
   readonly property color accent: Color.accent
@@ -65,6 +69,25 @@ Item {
     selectArticle(selectedIndex + dy, false)
   }
 
+  function selectSource(sourceId) {
+    selectedSourceId = String(sourceId || "all")
+    selectedIndex = 0
+    currentArticle = articles.length > 0 ? articles[0] : null
+    headlineList.positionViewAtBeginning()
+    articleFlick.contentY = 0
+    focusArea = "headlines"
+  }
+
+  function cycleSource(direction) {
+    if (sourceFilters.length < 2) return
+    var current = 0
+    for (var i = 0; i < sourceFilters.length; i++) {
+      if (String(sourceFilters[i].id || "") === selectedSourceId) { current = i; break }
+    }
+    var next = (current + direction + sourceFilters.length) % sourceFilters.length
+    selectSource(sourceFilters[next].id)
+  }
+
   function scrollArticle(dy) {
     var step = Style.space(80)
     var maxY = Math.max(0, articleFlick.contentHeight - articleFlick.height)
@@ -80,8 +103,10 @@ Item {
   function statusLabel() {
     if (!news) return "LOADING NEWS SERVICE"
     if (news.refreshing && news.items.length === 0) return "CHECKING FOR ANNOUNCEMENTS"
+    if (news.partial) return "SOME SOURCES COULD NOT REFRESH"
     if (news.stale) return "OFFLINE · SHOWING LAST UPDATE"
     if (news.unreadCount > 0) return news.unreadCount + (news.unreadCount === 1 ? " UNREAD ANNOUNCEMENT" : " UNREAD ANNOUNCEMENTS")
+    if (news.sources.length > 1) return news.sources.length + " NEWS SOURCES"
     return "OFFICIAL OMARCHY NEWS"
   }
 
@@ -98,6 +123,14 @@ Item {
     }
     selectedIndex = nextIndex
     currentArticle = articles[nextIndex]
+  }
+
+  onSourceFiltersChanged: {
+    var found = selectedSourceId === "all"
+    for (var i = 0; i < sourceFilters.length; i++) {
+      if (String(sourceFilters[i].id || "") === selectedSourceId) { found = true; break }
+    }
+    if (!found) selectSource("all")
   }
 
   Timer {
@@ -131,6 +164,12 @@ Item {
           event.accepted = true
         } else if (event.key === Qt.Key_R) {
           if (root.news) root.news.refresh()
+          event.accepted = true
+        } else if (event.key === Qt.Key_BracketLeft) {
+          root.cycleSource(-1)
+          event.accepted = true
+        } else if (event.key === Qt.Key_BracketRight) {
+          root.cycleSource(1)
           event.accepted = true
         } else if (event.key === Qt.Key_Left || event.key === Qt.Key_H) {
           root.focusArea = "headlines"
@@ -187,7 +226,7 @@ Item {
             Text {
               textFormat: Text.PlainText
               text: root.statusLabel()
-              color: root.news && root.news.stale ? root.urgent : root.dim
+              color: root.news && (root.news.stale || root.news.partial) ? root.urgent : root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               font.bold: true
@@ -267,6 +306,47 @@ Item {
               }
 
               ListView {
+                id: sourceRail
+                visible: root.sourceFilters.length > 1
+                Layout.fillWidth: true
+                Layout.preferredHeight: visible ? Style.space(30) : 0
+                orientation: ListView.Horizontal
+                spacing: Style.space(5)
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                model: root.sourceFilters
+
+                delegate: CursorSurface {
+                  id: sourceChip
+                  required property var modelData
+                  width: sourceLabel.implicitWidth + Style.space(18)
+                  height: sourceRail.height
+                  current: String(modelData.id || "") === root.selectedSourceId
+                  hasCursor: current && root.focusArea === "headlines"
+                  foreground: root.foreground
+
+                  Text {
+                    id: sourceLabel
+                    anchors.centerIn: parent
+                    textFormat: Text.PlainText
+                    text: String(sourceChip.modelData.name || "Source").toUpperCase()
+                    color: sourceChip.current ? root.foreground : root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: sourceChip.current
+                    font.letterSpacing: 0.6
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.selectSource(sourceChip.modelData.id)
+                  }
+                }
+              }
+
+              ListView {
                 id: headlineList
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -320,7 +400,13 @@ Item {
                       id: headlineMeta
                       width: parent.width
                       textFormat: Text.PlainText
-                      text: root.publishedLabel(headline.modelData.published).toUpperCase()
+                      text: {
+                        var parts = []
+                        if (root.selectedSourceId === "all") parts.push(String(headline.modelData.sourceName || ""))
+                        var published = root.publishedLabel(headline.modelData.published)
+                        if (published !== "") parts.push(published)
+                        return parts.join(" · ").toUpperCase()
+                      }
                       color: root.dim
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
@@ -390,7 +476,7 @@ Item {
                   visible: !root.currentArticle
                   width: parent.width
                   textFormat: Text.PlainText
-                  text: root.news && root.news.refreshing ? "Fetching the latest Omarchy news…" : "No announcements available."
+                  text: root.news && root.news.refreshing ? "Fetching the latest news…" : "No announcements available for this source."
                   color: root.dim
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
@@ -416,6 +502,8 @@ Item {
                   text: {
                     if (!root.currentArticle) return ""
                     var parts = []
+                    var sourceName = String(root.currentArticle.sourceName || "")
+                    if (sourceName !== "") parts.push(sourceName)
                     var published = root.publishedLabel(root.currentArticle.published)
                     if (published !== "") parts.push(published)
                     var author = String(root.currentArticle.author || "")
@@ -459,7 +547,10 @@ Item {
                   Text {
                     visible: !!root.currentArticle
                     width: parent.width
-                    text: "R refresh  ·  Esc close"
+                    textFormat: Text.PlainText
+                    text: root.sourceFilters.length > 1
+                      ? "[ / ] switch source  ·  R refresh  ·  Esc close"
+                      : "R refresh  ·  Esc close"
                     color: root.dim
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption

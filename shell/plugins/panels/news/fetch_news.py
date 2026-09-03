@@ -1,8 +1,9 @@
 #!/usr/bin/python3
-"""Fetch and normalize the fixed official Omarchy RSS feed."""
+"""Fetch and normalize the fixed publisher feeds enabled for Omarchy News."""
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import ssl
@@ -22,6 +23,23 @@ MAX_ITEMS = 40
 USER_AGENT = "Omarchy-News-Panel/1.0"
 SYSTEM_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
 MAX_ARTICLE_CHARS = 12_000
+
+SOURCE_CATALOG = {
+    "omarchy": {
+        "id": "omarchy",
+        "name": "Omarchy",
+        "url": FEED_URL,
+        "article_hosts": ("omarchy.org",),
+        "article_path_prefix": "/news/",
+    },
+    "bbc-news": {
+        "id": "bbc-news",
+        "name": "BBC News",
+        "url": "https://feeds.bbci.co.uk/news/rss.xml",
+        "article_hosts": ("bbc.co.uk", "bbc.com"),
+        "article_path_prefix": "/",
+    },
+}
 
 
 class ArticleTextParser(HTMLParser):
@@ -148,8 +166,9 @@ def state_dir() -> Path:
     return Path.home() / ".local" / "state" / "omarchy" / "news"
 
 
-def cache_path() -> Path:
-    return state_dir() / "feed.json"
+def cache_path(source_id: str = "omarchy") -> Path:
+    suffix = "feed.json" if source_id == "omarchy" else f"feed-{source_id}.json"
+    return state_dir() / suffix
 
 
 def clean_text(value: str | None, limit: int) -> str:
@@ -157,17 +176,34 @@ def clean_text(value: str | None, limit: int) -> str:
     return text[:limit]
 
 
-def canonical_news_url(value: str | None) -> str:
+def host_matches(host: str, allowed_hosts: tuple[str, ...]) -> bool:
+    return any(host == allowed or host.endswith(f".{allowed}") for allowed in allowed_hosts)
+
+
+def source_article_url(value: str | None, source: dict[str, object]) -> str:
     url = clean_text(value, 2048)
     parsed = urlparse(url)
-    if parsed.scheme != "https" or parsed.netloc != "omarchy.org":
+    host = (parsed.hostname or "").lower()
+    allowed_hosts = tuple(str(host) for host in source["article_hosts"])
+    if parsed.scheme != "https" or not host_matches(host, allowed_hosts):
         return ""
-    if not parsed.path.startswith("/news/"):
+    try:
+        port = parsed.port
+    except ValueError:
         return ""
-    return parsed._replace(params="", query="", fragment="").geturl()
+    if parsed.username or parsed.password or port not in (None, 443):
+        return ""
+    if not parsed.path.startswith(str(source["article_path_prefix"])):
+        return ""
+    return parsed._replace(netloc=host, params="", query="", fragment="").geturl()
 
 
-def parse_feed(payload: bytes) -> list[dict[str, str]]:
+def canonical_news_url(value: str | None) -> str:
+    return source_article_url(value, SOURCE_CATALOG["omarchy"])
+
+
+def parse_feed(payload: bytes, source: dict[str, object] | None = None) -> list[dict[str, str]]:
+    source = source or SOURCE_CATALOG["omarchy"]
     root = ET.fromstring(payload)
     channel = root.find("channel")
     if channel is None:
@@ -177,18 +213,21 @@ def parse_feed(payload: bytes) -> list[dict[str, str]]:
     creator_tag = "{http://purl.org/dc/elements/1.1/}creator"
     content_tag = "{http://purl.org/rss/1.0/modules/content/}encoded"
     for node in channel.findall("item")[:MAX_ITEMS]:
-        link = canonical_news_url(node.findtext("link"))
+        link = source_article_url(node.findtext("link"), source)
         title = clean_text(node.findtext("title"), 240)
         if not link or not title:
             continue
-        guid = canonical_news_url(node.findtext("guid")) or link
+        guid = source_article_url(node.findtext("guid"), source) or link
         summary = article_text(element_text(node.find("description")), 500)
         raw_content = node.findtext(content_tag)
         content = article_text(raw_content) or summary
         content_html = article_markup(raw_content) if raw_content else ""
         items.append(
             {
-                "id": guid,
+                "id": f'{source["id"]}:{guid}',
+                "sourceId": str(source["id"]),
+                "sourceName": str(source["name"]),
+                "sourceUrl": str(source["url"]),
                 "title": title,
                 "url": link,
                 "summary": summary,
@@ -201,9 +240,11 @@ def parse_feed(payload: bytes) -> list[dict[str, str]]:
     return items
 
 
-def fetch() -> bytes:
+def fetch(source: dict[str, object] | None = None) -> bytes:
+    source = source or SOURCE_CATALOG["omarchy"]
+    feed_url = str(source["url"])
     request = urllib.request.Request(
-        FEED_URL,
+        feed_url,
         headers={"Accept": "application/rss+xml, application/xml", "User-Agent": USER_AGENT},
     )
     context = ssl.create_default_context(cafile=SYSTEM_CA_BUNDLE)
@@ -212,7 +253,7 @@ def fetch() -> bytes:
         urllib.request.HTTPSHandler(context=context),
     )
     with opener.open(request, timeout=8) as response:
-        if response.geturl() != FEED_URL:
+        if response.geturl() != feed_url:
             raise ValueError("feed redirected away from its canonical URL")
         payload = response.read(MAX_RESPONSE_BYTES + 1)
     if len(payload) > MAX_RESPONSE_BYTES:
@@ -237,34 +278,101 @@ def atomic_write(path: Path, data: dict[str, object]) -> None:
             pass
 
 
-def cached_result(error: str) -> dict[str, object] | None:
+def cached_result(source: dict[str, object], error: str) -> dict[str, object] | None:
     try:
-        cached = json.loads(cache_path().read_text(encoding="utf-8"))
+        cached = json.loads(cache_path(str(source["id"])).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     if not isinstance(cached, dict) or not isinstance(cached.get("items"), list):
         return None
-    cached["ok"] = True
     cached["stale"] = True
     cached["error"] = clean_text(error, 180)
+    for item in cached["items"]:
+        if not isinstance(item, dict):
+            continue
+        item["sourceId"] = str(source["id"])
+        item["sourceName"] = str(source["name"])
+        item["sourceUrl"] = str(source["url"])
+        item_id = str(item.get("id", ""))
+        if item_id and not item_id.startswith(f'{source["id"]}:'):
+            item["id"] = f'{source["id"]}:{item_id}'
     return cached
 
 
-def main() -> int:
+def selected_sources(value: str) -> list[dict[str, object]]:
+    requested = [part.strip() for part in value.split(",") if part.strip()]
+    ids = ["omarchy", *requested]
+    seen: set[str] = set()
+    sources: list[dict[str, object]] = []
+    for source_id in ids:
+        if source_id in seen or source_id not in SOURCE_CATALOG:
+            continue
+        seen.add(source_id)
+        sources.append(SOURCE_CATALOG[source_id])
+    return sources
+
+
+def published_key(item: dict[str, str]) -> float:
     try:
-        result: dict[str, object] = {
-            "ok": True,
-            "stale": False,
-            "error": "",
-            "fetchedAt": datetime.now(timezone.utc).isoformat(),
-            "items": parse_feed(fetch()),
-        }
-        atomic_write(cache_path(), result)
-    except (OSError, ValueError, ET.ParseError) as exc:
-        result = cached_result(str(exc))
-        if result is None:
-            print(clean_text(str(exc), 180), file=sys.stderr)
-            return 1
+        from email.utils import parsedate_to_datetime
+
+        return parsedate_to_datetime(item.get("published", "")).timestamp()
+    except (AttributeError, TypeError, ValueError, OverflowError):
+        return 0.0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sources", default="omarchy")
+    args = parser.parse_args(argv)
+
+    items: list[dict[str, str]] = []
+    source_states: list[dict[str, object]] = []
+    errors: list[str] = []
+    fetched_at = datetime.now(timezone.utc).isoformat()
+
+    for source in selected_sources(args.sources):
+        error = ""
+        stale = False
+        try:
+            source_items = parse_feed(fetch(source), source)
+            atomic_write(
+                cache_path(str(source["id"])),
+                {"fetchedAt": fetched_at, "items": source_items},
+            )
+        except (OSError, ValueError, ET.ParseError) as exc:
+            error = clean_text(str(exc), 180)
+            cached = cached_result(source, error)
+            source_items = [] if cached is None else list(cached["items"])
+            stale = cached is not None
+            errors.append(f'{source["name"]}: {error}')
+
+        items.extend(item for item in source_items if isinstance(item, dict))
+        source_states.append(
+            {
+                "id": source["id"],
+                "name": source["name"],
+                "url": source["url"],
+                "stale": stale,
+                "error": error,
+                "itemCount": len(source_items),
+            }
+        )
+
+    if not items and errors:
+        print(clean_text("; ".join(errors), 180), file=sys.stderr)
+        return 1
+
+    items.sort(key=published_key, reverse=True)
+    result: dict[str, object] = {
+        "ok": True,
+        "stale": any(bool(source["stale"]) for source in source_states),
+        "partial": bool(errors),
+        "error": clean_text("; ".join(errors), 180),
+        "fetchedAt": fetched_at,
+        "sources": source_states,
+        "items": items,
+    }
 
     json.dump(result, sys.stdout, ensure_ascii=False, separators=(",", ":"))
     sys.stdout.write("\n")

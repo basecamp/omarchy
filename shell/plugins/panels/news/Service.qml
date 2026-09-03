@@ -8,10 +8,12 @@ Item {
   property var settings: ({})
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var items: []
-  property string lastSeenId: ""
+  property var sources: []
+  property var lastSeenBySource: ({})
   property string fetchedAt: ""
   property string lastError: ""
   property bool stale: false
+  property bool partial: false
   property bool refreshing: false
   property bool stateLoaded: false
 
@@ -21,8 +23,14 @@ Item {
   readonly property string statePath: stateDir + "/read.json"
   readonly property int refreshIntervalMin: intSetting("refreshIntervalMin", 15, 5, 120)
   readonly property int itemLimit: intSetting("itemLimit", 10, 5, 20)
+  readonly property string publisherFeeds: String(setting("publisherFeeds", "Omarchy only"))
+  readonly property var enabledSourceIds: publisherFeeds === "Omarchy + BBC News"
+    ? ["omarchy", "bbc-news"]
+    : ["omarchy"]
   readonly property var visibleItems: items.slice(0, itemLimit)
   readonly property int unreadCount: countUnread()
+
+  onPublisherFeedsChanged: if (stateLoaded) refresh()
 
   property string _stdout: ""
   property string _stderr: ""
@@ -39,11 +47,33 @@ Item {
   }
 
   function countUnread() {
-    if (!stateLoaded || lastSeenId === "" || items.length === 0) return 0
-    for (var i = 0; i < items.length; i++) {
-      if (String(items[i].id || "") === lastSeenId) return i
+    if (!stateLoaded || items.length === 0) return 0
+    var total = 0
+    for (var sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
+      var sourceId = String(sources[sourceIndex].id || "")
+      var lastSeenId = String(lastSeenBySource[sourceId] || "")
+      if (lastSeenId === "") continue
+      var sourceItems = itemsForSource(sourceId)
+      var found = false
+      for (var i = 0; i < sourceItems.length; i++) {
+        if (String(sourceItems[i].id || "") === lastSeenId) {
+          total += i
+          found = true
+          break
+        }
+      }
+      if (!found) total += Math.min(sourceItems.length, itemLimit)
     }
-    return Math.min(items.length, itemLimit)
+    return total
+  }
+
+  function itemsForSource(sourceId) {
+    if (!sourceId || sourceId === "all") return items.slice(0, itemLimit)
+    var filtered = []
+    for (var i = 0; i < items.length && filtered.length < itemLimit; i++) {
+      if (String(items[i].sourceId || "") === sourceId) filtered.push(items[i])
+    }
+    return filtered
   }
 
   function refresh() {
@@ -59,8 +89,10 @@ Item {
       var parsed = JSON.parse(String(raw || ""))
       if (!parsed || parsed.ok !== true || !Array.isArray(parsed.items)) throw new Error("invalid result")
       items = parsed.items
+      sources = Array.isArray(parsed.sources) ? parsed.sources : []
       fetchedAt = String(parsed.fetchedAt || "")
       stale = parsed.stale === true
+      partial = parsed.partial === true
       lastError = String(parsed.error || "")
     } catch (error) {
       lastError = "Could not read the Omarchy news feed"
@@ -69,18 +101,33 @@ Item {
 
   function markAllSeen() {
     if (items.length === 0) return
-    lastSeenId = String(items[0].id || "")
-    if (lastSeenId !== "") {
-      readState.setText(JSON.stringify({ version: 1, lastSeenId: lastSeenId }, null, 2) + "\n")
+    var next = ({})
+    var marked = ({})
+    for (var key in lastSeenBySource) next[key] = lastSeenBySource[key]
+    for (var i = 0; i < items.length; i++) {
+      var sourceId = String(items[i].sourceId || "omarchy")
+      if (!marked[sourceId]) {
+        next[sourceId] = String(items[i].id || "")
+        marked[sourceId] = true
+      }
     }
+    lastSeenBySource = next
+    readState.setText(JSON.stringify({ version: 2, lastSeenBySource: next }, null, 2) + "\n")
   }
 
   function loadReadState(raw) {
     try {
       var parsed = JSON.parse(String(raw || ""))
-      lastSeenId = String(parsed.lastSeenId || "")
+      if (parsed.lastSeenBySource && typeof parsed.lastSeenBySource === "object") {
+        lastSeenBySource = parsed.lastSeenBySource
+      } else if (parsed.lastSeenId) {
+        var legacyId = String(parsed.lastSeenId)
+        lastSeenBySource = ({ "omarchy": legacyId.indexOf("omarchy:") === 0 ? legacyId : "omarchy:" + legacyId })
+      } else {
+        lastSeenBySource = ({})
+      }
     } catch (error) {
-      lastSeenId = ""
+      lastSeenBySource = ({})
     }
     stateLoaded = true
   }
@@ -113,7 +160,7 @@ Item {
 
   Process {
     id: fetchProcess
-    command: ["python3", root.helperPath]
+    command: ["python3", root.helperPath, "--sources", root.enabledSourceIds.join(",")]
     running: false
     stdout: StdioCollector {
       id: fetchStdout
