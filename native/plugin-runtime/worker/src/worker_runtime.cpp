@@ -88,6 +88,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
       return false;
   }
   std::size_t invoke = 0;
+  std::size_t execute = 0;
   std::size_t has_permission = 0;
   std::size_t permission_state = 0;
   std::size_t call_finished = 0;
@@ -111,6 +112,16 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
         method.parameterMetaType(1).id() == QMetaType::QString &&
         method.parameterMetaType(2).id() == QMetaType::QVariantMap) {
       ++invoke;
+    } else if (own_properties == 4 &&
+               method.methodSignature() == QByteArrayLiteral(
+                   "execute(QString,QString,QStringList)") &&
+               method.methodType() == QMetaMethod::Method &&
+               method.returnMetaType().id() == QMetaType::QVariant &&
+               method.parameterCount() == 3 &&
+               method.parameterMetaType(0).id() == QMetaType::QString &&
+               method.parameterMetaType(1).id() == QMetaType::QString &&
+               method.parameterMetaType(2).id() == QMetaType::QStringList) {
+      ++execute;
     } else if (own_properties == 4 &&
                method.methodSignature() ==
                    QByteArrayLiteral("requestSurfaceIntent(QString,QString)") &&
@@ -193,7 +204,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
   }
   return invoke == 1 &&
          (own_properties == 0 ||
-          (has_permission == 1 && permission_state == 1 &&
+          (execute == 1 && has_permission == 1 && permission_state == 1 &&
            read_packaged_text == 1 && call_finished == 1 &&
            request_surface_intent == 1 && request_surface_intent_data == 1 &&
            update_settings == 1 &&

@@ -35,7 +35,8 @@ set(catalog_definitions
   device.control
   remote-account.read
   remote-account.write
-  media.play-stream)
+  media.play-stream
+  bash.execute)
 set(catalog_files)
 foreach(definition IN LISTS catalog_definitions)
   list(APPEND catalog_files

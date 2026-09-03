@@ -50,6 +50,8 @@ constexpr std::array write_operations{
 constexpr std::array media_operations{
     OperationSpec{"play", "Play an approved source", true},
     OperationSpec{"control", "Control approved playback", true}};
+constexpr std::array execute_operations{
+    OperationSpec{"run", "Run an approved command", true}};
 
 constexpr std::array catalog{
     CatalogSpec{
@@ -147,6 +149,18 @@ constexpr std::array catalog{
         "response=playback-state;scope=activation-source-handles-controls;"
         "source=provider-bound;teardown=revocation",
         media_operations},
+    CatalogSpec{
+        "bash.execute", "bash.execute-v1", EnforcementFamily::cli_harness,
+        "local.automation", "Local automation", ScopeSchema::exact_cli_profile,
+        "Run selected command-line tools",
+        "Runs only commands and arguments accepted by an installed trusted profile",
+        RiskLevel::critical, RevocationPolicy::cancel_inflight,
+        "bounded-command-execute",
+        "bounded-command-execute-v1;request=command,arguments;"
+        "response=exit-code,stdout,stderr;scope=exact-cli-profile;"
+        "shell-parsing=forbidden;environment=provider-fixed;"
+        "executable=provider-pinned;limits=provider-profile",
+        execute_operations},
 };
 
 CapabilityDefinition make_definition(const CatalogSpec &spec) {

@@ -12,6 +12,8 @@
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QTimer>
 #include <QTemporaryDir>
 #include <sys/mman.h>
@@ -369,6 +371,97 @@ void dynamic_qml_to_adapter() {
               definitions::DynamicDispatchResult::dispatched &&
               calls == 1 && written == 1,
           "QML dynamic envelope did not pass broker authorization and adapter verification");
+}
+
+void structured_command_execution() {
+  Pair pair;
+  wire::SessionSequence worker_sequence;
+  wire::SessionSequence host_sequence;
+  worker::WorkerEndpoint endpoint(pair.descriptors[0],
+                                  wire::EndpointRole::broker,
+                                  broker::kBrokerRoleVersion, worker_sequence);
+  handshake(endpoint, pair.descriptors[1]);
+  const std::string digest(64, 'd');
+  const auto parsed = manifest::parse_manifest_v2(
+      "{\"schemaVersion\":2,\"id\":\"org.example.command\","
+      "\"name\":\"Command\",\"version\":\"1\",\"runtime\":{"
+      "\"apiVersion\":1,\"qml\":\"Main.qml\"},\"surfaces\":{},"
+      "\"permissions\":{\"required\":[{\"capability\":\"bash.execute\","
+      "\"definitionGeneration\":1,\"definitionDigest\":\"" + digest +
+      "\",\"operations\":[\"run\"],\"profile\":\"github-api-v1\","
+      "\"reason\":\"Read GitHub data\"}],\"optional\":[]}}");
+  worker::QmlBrokerApi api(
+      endpoint, std::make_unique<worker::ManifestInvokeEncoder>(parsed),
+      parsed, 77);
+  const auto snapshot = wire::permission_snapshot::encode({
+      .manifest_request_fingerprint =
+          manifest::requested_capability_fingerprint(parsed.requests),
+      .permissions = {
+          {wire::permission_snapshot::GrantState::granted, 0x0001}}});
+  require(api.applyPermissionSnapshot(77, snapshot) && api.markBrokerReady(),
+          "command fixture did not become broker-ready");
+
+  auto *generic = qobject_cast<worker::BrokerCall *>(
+      api.invoke(QStringLiteral("bash.execute"), QStringLiteral("run"),
+                 {{QStringLiteral("demandScope"),
+                   QStringLiteral("{\"profile\":\"github-api-v1\"}")},
+                  {QStringLiteral("payload"),
+                   QVariantMap{{QStringLiteral("command"),
+                                QStringLiteral("gh")}}}})
+          .value<QObject *>());
+  require(generic != nullptr && generic->finished() && !generic->ok() &&
+              generic->correlation() == 0,
+          "generic invoke bypassed the structured command API");
+
+  auto *call = qobject_cast<worker::BrokerCall *>(
+      api.execute(QStringLiteral("bash"), QStringLiteral("gh"),
+                  {QStringLiteral("api"), QStringLiteral("/notifications")})
+          .value<QObject *>());
+  require(call != nullptr && !call->finished() && call->correlation() != 0,
+          "structured command did not become an asynchronous broker call");
+  const auto packet_bytes = receive_packet(pair.descriptors[1]);
+  const auto packet =
+      wire::decode_packet(packet_bytes, wire::EndpointRole::broker);
+  definitions::DynamicInvocation invocation;
+  require(packet && packet.packet.header.message_type ==
+                        broker::kDynamicInvokeMessage &&
+              definitions::decode_dynamic_invocation(packet.packet.payload,
+                                                     invocation) &&
+              invocation.definition.canonical_name.view() == "bash.execute" &&
+              invocation.operation.view() == "run" &&
+              invocation.demand_scope.view() ==
+                  "{\"profile\":\"github-api-v1\"}",
+          "structured command lost its exact manifest profile");
+  const QByteArray payload(reinterpret_cast<const char *>(invocation.payload.data()),
+                           static_cast<qsizetype>(invocation.payload.size()));
+  const auto object = QJsonDocument::fromJson(payload).object();
+  require(object.value(QStringLiteral("command")).toString() ==
+                  QStringLiteral("gh") &&
+              object.value(QStringLiteral("arguments")).toArray().size() == 2 &&
+              object.value(QStringLiteral("arguments")).toArray().at(0).toString() ==
+                  QStringLiteral("api"),
+          "structured command did not preserve its argv vector");
+
+  const auto rejected = [&](const QString &runner, const QString &command,
+                            const QStringList &arguments) {
+    auto *candidate = qobject_cast<worker::BrokerCall *>(
+        api.execute(runner, command, arguments).value<QObject *>());
+    return candidate != nullptr && candidate->finished() && !candidate->ok() &&
+           candidate->correlation() == 0;
+  };
+  require(rejected(QStringLiteral("shell"), QStringLiteral("gh"), {}) &&
+              rejected(QStringLiteral("bash"), QStringLiteral("bash"),
+                       {QStringLiteral("-c"), QStringLiteral("gh api user")}) &&
+              rejected(QStringLiteral("bash"), QStringLiteral("../gh"), {}),
+          "structured command accepted a shell or path escape");
+
+  const std::string result =
+      R"({"exitCode":0,"stdout":"{}","stderr":""})";
+  finish(api, endpoint, pair.descriptors[1], host_sequence,
+         call->correlation(), broker::kBrokerResultMessage,
+         std::as_bytes(std::span(result)));
+  require(call->finished() && call->ok(),
+          "structured command result did not settle");
 }
 void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
                           wire::SessionSequence &host_sequence) {
@@ -942,6 +1035,7 @@ void neutral_surface_trusted_input() {
 
 void run() {
   neutral_surface_trusted_input();
+  structured_command_execution();
   worker::BrokerCall text_call(1);
   text_call.resolve(QByteArray("{\"station\":\"M\xC3\xBCnchen\"}"));
   require(text_call.utf8Text() == QString::fromUtf8("{\"station\":\"M\xC3\xBCnchen\"}"),

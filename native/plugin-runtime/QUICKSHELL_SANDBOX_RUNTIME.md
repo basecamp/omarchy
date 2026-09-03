@@ -12,16 +12,16 @@ The relevant upstream sources are:
 - <https://github.com/quickshell-mirror/quickshell/blob/master/src/CMakeLists.txt>
 - <https://github.com/quickshell-mirror/quickshell/blob/master/src/core/CMakeLists.txt>
 
-## Desired architecture
+## Product decision
 
-The long-term design should let plugin QML use genuine Quickshell types in a sandboxed worker while the trusted Omarchy Quickshell remains the only compositor-facing shell and owns every real native surface.
+The schema-v2 product runtime does not launch or embed a complete Quickshell instance per plugin. It keeps one trusted compositor-facing Quickshell and one deliberately small Qt/QML worker per active sandboxed plugin. Plugin-owned Qt Quick, JavaScript, assets and pure-QML modules remain ordinary presentation code. Calls that previously relied on ambient Quickshell authority migrate explicitly to the worker's `runtime` object.
 
 ```text
-plugin QML
+plugin Qt Quick/QML
     |
-    | genuine restricted Quickshell types
+    | explicit runtime authority calls
     v
-sandboxed Quickshell runtime
+sandboxed plugin worker
     |
     | authenticated frames, damage, input regions,
     | surface declarations, and broker requests
@@ -34,25 +34,27 @@ trusted Omarchy Quickshell
 compositor
 ```
 
-The sandboxed runtime renders plugin-owned scenes offscreen. The trusted host validates declared surface policy, displays authenticated frames in its own native surfaces, and routes bounded input back to the worker. The worker receives no Wayland, X11, session-bus, shell-IPC, or arbitrary host filesystem connection.
+The sandboxed worker renders plugin-owned scenes offscreen. The trusted host validates declared surface policy, displays authenticated frames in its own native surfaces, and routes bounded input back to the worker. The worker receives no Wayland, X11, session-bus, shell-IPC, or arbitrary host filesystem connection. This preserves the process-per-principal isolation boundary without paying for a complete Quickshell runtime in every plugin process.
 
-## Required Quickshell changes
+## Possible upstream convergence
+
+The current product does not require a Quickshell fork. A future upstream provider/interface design could allow genuine Quickshell APIs to delegate authority-bearing work to the same restricted runtime contracts. That would reduce plugin migration without changing the broker, grant, revocation, audit, surface-host or sandbox boundaries described here.
 
 ### Independently loadable modules
 
-Quickshell should build and install independently loadable, versioned QML libraries instead of making the executable the only container for native registrations and resources. At minimum, core presentation, widgets, window declarations, and I/O interfaces must be separable from Wayland, X11, compositor IPC, services, authentication, and capture facilities.
+For an embeddable upstream path, Quickshell would need independently loadable, versioned QML libraries instead of making the executable the only container for native registrations and resources. At minimum, core presentation, widgets, window declarations, and I/O interfaces would need to be separable from Wayland, X11, compositor IPC, services, authentication, and capture facilities.
 
 The normal Quickshell executable should consume these same libraries. The plugin worker should load only an exact reviewed module closure. Quickshell uses private Qt APIs, so these libraries and the worker package must remain pinned to and rebuilt for the matching Qt release.
 
 ### Embeddable engine
 
-Quickshell should expose an engine/runtime library rather than requiring its ordinary command-line process and global shell bootstrap. The embedding API must accept explicit module, surface, filesystem, process, socket, environment, screen, and service providers before any plugin QML is loaded.
+An embeddable upstream engine/runtime API would need to accept explicit module, surface, filesystem, process, socket, environment, screen, and service providers before any plugin QML is loaded rather than requiring the ordinary command-line process and global shell bootstrap.
 
 QML registrations are process-global in important places, so the restricted runtime remains a separate process. The trusted host must never load untrusted plugin QML into its own engine.
 
 ### Surface backend abstraction
 
-`PanelWindow`, `PopupWindow`, and related types should delegate to a surface backend instead of directly creating compositor-facing windows.
+For genuine source-compatible surface declarations, `PanelWindow`, `PopupWindow`, and related types would need to delegate to a surface backend instead of directly creating compositor-facing windows.
 
 The ordinary backend preserves current native behavior. A remote backend retains the genuine QML types and their property semantics but creates offscreen render scenes. It serializes requested anchors, dimensions, role, visibility, focus, mask, popup relationship, and layer policy through the authenticated worker protocol.
 
@@ -62,7 +64,7 @@ This backend is necessary to preserve source-compatible constructs such as `Pane
 
 ### Provider-based authority APIs
 
-Authority-bearing Quickshell types should delegate to injected providers rather than call operating-system facilities directly.
+Authority-bearing Quickshell types could delegate to injected providers rather than call operating-system facilities directly.
 
 | QML API | Ordinary provider | Restricted worker provider |
 | --- | --- | --- |
@@ -80,7 +82,7 @@ An unavailable provider causes type registration or the attempted operation to f
 
 ### Restricted module profile
 
-Quickshell should provide a runtime profile that registers only selected modules and providers. The restricted profile must not register native Wayland or X11 backends, raw compositor IPC, arbitrary process execution, ambient files, arbitrary sockets, PAM or Polkit agents, session-bus services, capture APIs, or global shortcuts without explicit broker authority.
+An upstream restricted runtime profile would need to register only selected modules and providers. It must not register native Wayland or X11 backends, raw compositor IPC, arbitrary process execution, ambient files, arbitrary sockets, PAM or Polkit agents, session-bus services, capture APIs, or global shortcuts without explicit broker authority.
 
 Compile-time feature flags remain useful for reducing the worker binary, but the security contract must also be explicit and testable at runtime. The worker package should carry a digest of its exact module and provider profile so activation and evidence can bind to it.
 
@@ -111,14 +113,12 @@ Native Quickshell compatibility must not change these invariants:
 - QML surface declarations cannot widen the signed manifest or host placement policy.
 - Unsupported Quickshell APIs fail explicitly instead of silently approximating privileged behavior.
 
-## Incremental path
+## Product path
 
-1. Continue certifying authority-free standard Qt modules and keep the worker-owned compatibility SDK small.
-2. Upstream or maintain a build option that emits independently loadable Quickshell core and widget modules.
-3. Split `Process`, `FileView`, environment, screens, sockets, and services behind injectable provider interfaces.
-4. Implement a remote surface backend for genuine `PanelWindow` and `PopupWindow` objects.
-5. Bind that backend to the existing authenticated Omarchy frame, input, surface-intent, permission, and lifecycle protocols.
-6. Port representative plugins and measure how much source remains unchanged.
-7. Add standard-URI compatibility only after a genuine restricted type has equivalent tested behavior.
+1. Continue certifying authority-free standard Qt modules and keep the worker-owned presentation SDK small.
+2. Require explicit `runtime` calls for command execution, private state, host observations, external opening, services and surface lifecycle.
+3. Port representative plugins and measure changes specifically at those authority boundaries.
+4. Keep standard `Quickshell` URIs absent unless a genuine restricted implementation later provides equivalent tested behavior.
+5. Offer the provider/interface split upstream as an independent compatibility improvement; do not make completion of the secure runtime depend on it.
 
 A worker-owned facade experiment was removed because it added substantial security and maintenance surface while reducing the representative Radio port by only three production lines. The remote-backend and provider architecture is the path to preserving native Quickshell development with changes concentrated at authority-bearing invocations; until then, the worker exposes only explicitly named Omarchy presentation helpers and certified Qt modules.

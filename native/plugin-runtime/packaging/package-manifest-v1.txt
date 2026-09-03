@@ -7,6 +7,7 @@
 644 capabilities.d/remote-account.read.capability
 644 capabilities.d/remote-account.write.capability
 644 capabilities.d/system.observe.capability
+644 capabilities.d/bash.execute.capability
 644 metadata/capability-catalog-v1.json
 644 metadata/runtime-dependencies-v1.txt
 644 metadata/runtime-paths-v1.txt

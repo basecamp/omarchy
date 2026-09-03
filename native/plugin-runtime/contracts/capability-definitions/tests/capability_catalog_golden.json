@@ -8,7 +8,8 @@
     {"capability":"device.control","definitionGeneration":1,"definitionDigest":"990225ca31aff46c416e9af314126de00258daba41a1e4f64661af081b5b2bf6","contractDigest":"08cb828f6083e31dd36ff9696752b22690008786fa62c95ebb20718cd022bf25"},
     {"capability":"remote-account.read","definitionGeneration":1,"definitionDigest":"280a961bc1c9f9f979f600d3b2847dbd85528d90be4fa76654c0eb54eaf4d776","contractDigest":"47252a552f4762c588c742f37fd36d5cdf3845feb5677eac02a4485360645fa0"},
     {"capability":"remote-account.write","definitionGeneration":1,"definitionDigest":"07cebee04e6b136160d0178bdaa8b4637a28a1606572b82134891ee3bf5e9f72","contractDigest":"5306872dd282beda0b626fd74919db73b772b0396b1ca29bdc0217da8c441429"},
-    {"capability":"media.play-stream","definitionGeneration":1,"definitionDigest":"40709dc8191bee3db0a20c0ab1f28ddd729175eecb4c333d09b45687ae47950b","contractDigest":"f060bfec526a4355bd3431d39310bf96e61907f26be0e0dea6e6e8c2d28a415c"}
+    {"capability":"media.play-stream","definitionGeneration":1,"definitionDigest":"40709dc8191bee3db0a20c0ab1f28ddd729175eecb4c333d09b45687ae47950b","contractDigest":"f060bfec526a4355bd3431d39310bf96e61907f26be0e0dea6e6e8c2d28a415c"},
+    {"capability":"bash.execute","definitionGeneration":1,"definitionDigest":"dabe8499d0a7576316abac765abfcdf03a0a6bb183833fa1b30ce1f420da2150","contractDigest":"7cfb8547d49ea0d43248227c049f19d9f711c7838452789c9ef2fdfe41e82142"}
   ],
   "manifestReferencesRequireExactPins": true
 }

@@ -220,7 +220,7 @@ if ! jq -e '
   [.definitions[].capability] == [
     "network.fetch", "external.open-uri.https", "system.observe",
     "device.observe", "device.control", "remote-account.read",
-    "remote-account.write", "media.play-stream"
+    "remote-account.write", "media.play-stream", "bash.execute"
   ] and
   all(.definitions[];
     .definitionGeneration == 1 and

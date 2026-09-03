@@ -121,6 +121,11 @@ public:
   Q_INVOKABLE QVariant invoke(const QString &capability,
                               const QString &operation,
                               const QVariantMap &arguments);
+  // Structured command execution. `runner` selects a manifest-bound
+  // capability namespace; it never names or invokes a host shell. Commands
+  // and arguments remain separate through the broker and trusted executor.
+  Q_INVOKABLE QVariant execute(const QString &runner, const QString &command,
+                               const QStringList &arguments);
   Q_INVOKABLE bool hasPermission(const QString &capability,
                                  const QString &operation) const;
   // Presentation only: "granted" means the operation is delegated for some
@@ -169,6 +174,8 @@ signals:
   void settingsChanged();
 
 private:
+  QVariant dispatchInvoke(const QString &capability, const QString &operation,
+                          const QVariantMap &arguments);
   static constexpr std::size_t kMaximumPending = 32;
   struct Pending {
     std::uint64_t correlation = 0;

@@ -719,6 +719,14 @@ void QmlBrokerApi::notifyFinished(BrokerCall *call) {
 QVariant QmlBrokerApi::invoke(const QString &capability,
                               const QString &operation,
                               const QVariantMap &arguments) {
+  if (capability == QStringLiteral("bash.execute"))
+    return rejected(QStringLiteral("Use runtime.execute for commands"));
+  return dispatchInvoke(capability, operation, arguments);
+}
+
+QVariant QmlBrokerApi::dispatchInvoke(const QString &capability,
+                                      const QString &operation,
+                                      const QVariantMap &arguments) {
   if (status_ != QStringLiteral("ready") || encoder_ == nullptr)
     return rejected(QStringLiteral("broker-unavailable"));
   if (!broker_ready_)
@@ -760,6 +768,61 @@ QVariant QmlBrokerApi::invoke(const QString &capability,
     disconnect(QStringLiteral("failed"));
   }
   return QVariant::fromValue(static_cast<QObject *>(call));
+}
+
+QVariant QmlBrokerApi::execute(const QString &runner, const QString &command,
+                               const QStringList &arguments) {
+  if (runner != QStringLiteral("bash") || command.isEmpty() ||
+      command.size() > 128 || command.contains(QChar::Null) ||
+      arguments.size() > 64)
+    return rejected(QStringLiteral("Invalid command request"));
+  const auto command_bytes = command.toUtf8();
+  if (!bounded_text(command_bytes, 128, false) ||
+      !std::ranges::all_of(command_bytes, [](char byte) {
+        const auto value = static_cast<unsigned char>(byte);
+        return (value >= 'a' && value <= 'z') ||
+               (value >= '0' && value <= '9') || value == '-' || value == '_';
+      }))
+    return rejected(QStringLiteral("Invalid command request"));
+  static const std::array forbidden_shells{
+      std::string_view("bash"), std::string_view("dash"),
+      std::string_view("fish"), std::string_view("sh"),
+      std::string_view("zsh")};
+  if (std::ranges::find(forbidden_shells, command_bytes.toStdString()) !=
+      forbidden_shells.end())
+    return rejected(QStringLiteral("Shell execution is not supported"));
+
+  qsizetype total_bytes = command_bytes.size();
+  QVariantList encoded_arguments;
+  encoded_arguments.reserve(arguments.size());
+  for (const auto &argument : arguments) {
+    const auto bytes = argument.toUtf8();
+    if (bytes.size() > 4096 || bytes.contains('\0') ||
+        total_bytes > 16384 - bytes.size())
+      return rejected(QStringLiteral("Invalid command request"));
+    total_bytes += bytes.size();
+    encoded_arguments.push_back(argument);
+  }
+
+  const auto request = std::ranges::find_if(
+      manifest_.requests, [](const auto &candidate) {
+        return candidate.capability == "bash.execute";
+      });
+  if (request == manifest_.requests.end() ||
+      request->definition_generation == 0 ||
+      std::ranges::find(request->operations, std::string("run")) ==
+          request->operations.end())
+    return rejected(QStringLiteral("Command execution was not declared"));
+
+  const QVariantMap payload{
+      {QStringLiteral("command"), command},
+      {QStringLiteral("arguments"), encoded_arguments}};
+  const QVariantMap invocation{
+      {QStringLiteral("demandScope"),
+       QString::fromStdString(request->canonical_scope)},
+      {QStringLiteral("payload"), payload}};
+  return dispatchInvoke(QStringLiteral("bash.execute"), QStringLiteral("run"),
+                        invocation);
 }
 
 bool QmlBrokerApi::beginTrustedGestureForInput(
