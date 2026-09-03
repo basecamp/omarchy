@@ -17,6 +17,10 @@ BorderSurface {
   property string summary: ""
   property string body: ""
   property string image: ""
+  // A local file explicitly offered by the sender for native drag-and-drop.
+  // Kept separate from `image`: notification images can be avatars, album art,
+  // or transient image:// resources that are not user-shareable files.
+  property string dragFile: ""
   // Nerd Font glyph rendered in the icon slot when no real icon is set.
   // Used by omarchy-notification-send so user-action toasts (`Silenced
   // notifications` etc.) show their bell/lock/etc. glyph without leaking
@@ -34,6 +38,7 @@ BorderSurface {
 
   signal closeRequested()
   signal cardClicked()
+  signal fileDragFinished()
   // Prefer per-notification media/avatar data, then fall back to the app icon.
   // The `check` flag avoids Qt's missing-texture placeholder for unknown names.
   readonly property string smallIconSource: image.length > 0 ? image : iconSource(appIcon)
@@ -45,6 +50,7 @@ BorderSurface {
   readonly property bool collapseRedundantIcon: singleLineToast && !hasGlyph && summaryStartsWithGlyph
   readonly property string sanitizedBody: sanitizeBody(body)
   readonly property string styledBody: NotificationLogic.styledBody(body, app, appIcon)
+  readonly property string dragFileUrl: Util.fileUrl(dragFile)
 
   readonly property color dimColor: Qt.darker(Color.notifications.text, 1.4)
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
@@ -72,11 +78,33 @@ BorderSurface {
   borderSpec: cardBorderSpec
   clip: true
 
+  Drag.active: fileDrag.active
+  Drag.dragType: Drag.Automatic
+  Drag.supportedActions: Qt.CopyAction | Qt.MoveAction
+  Drag.proposedAction: Qt.MoveAction
+  Drag.mimeData: ({
+    "text/uri-list": root.dragFileUrl + "\r\n",
+    "text/plain": root.dragFile
+  })
+  Drag.imageSource: root.image.length > 0 ? root.iconSource(root.image) : ""
+  Drag.imageSourceSize: Qt.size(Style.space(160), Style.space(90))
+  // Some Wayland targets consume the URI while reporting IgnoreAction back to
+  // Qt, so completion itself is the reliable signal that the user is done
+  // with this transient share affordance.
+  Drag.onDragFinished: root.fileDragFinished()
+
   HoverHandler { id: hoverTracker }
+
+  DragHandler {
+    id: fileDrag
+    enabled: root.dragFile.length > 0
+    target: null
+    acceptedButtons: Qt.LeftButton
+  }
 
   MouseArea {
     anchors.fill: parent
-    cursorShape: Qt.PointingHandCursor
+    cursorShape: fileDrag.active ? Qt.ClosedHandCursor : (root.dragFile.length > 0 ? Qt.OpenHandCursor : Qt.PointingHandCursor)
     acceptedButtons: Qt.LeftButton | Qt.RightButton
     onClicked: function(mouse) {
       if (mouse.button === Qt.RightButton) {

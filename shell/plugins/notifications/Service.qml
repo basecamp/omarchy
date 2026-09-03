@@ -667,6 +667,7 @@ Item {
         image: row.image,
         glyph: row.glyph || "",
         execArgv: row.execArgv || "",
+        dragFile: row.dragFile || "",
         urgency: row.urgency,
         timestamp: row.timestamp
       }, imagesDir).entry)
@@ -691,6 +692,7 @@ Item {
         image: "",
         glyph: "󰂚",
         execArgv: "",
+        dragFile: "",
         urgency: NotificationUrgency.Low,
         expireTimeout: 0,
         timestamp: Date.now()
@@ -1000,6 +1002,7 @@ Item {
             required property string body
             required property string image
             required property string glyph
+            required property string dragFile
             required property int urgency
             required property double expireTimeout
             required property double timestamp
@@ -1046,6 +1049,7 @@ Item {
               summary: cardSlot.summary
               body: cardSlot.body
               image: cardSlot.image
+              dragFile: cardSlot.dragFile
               urgency: cardSlot.urgency
               timestamp: cardSlot.timestamp
               cornerRadius: service.cornerRadius
@@ -1054,6 +1058,7 @@ Item {
 
               onCloseRequested: service.dismissPopup(cardSlot.index)
               onCardClicked: service.invokePopupDefault(cardSlot.index)
+              onFileDragFinished: service.dismissPopup(cardSlot.index)
             }
           }
         }
