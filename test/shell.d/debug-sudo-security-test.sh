@@ -12,7 +12,7 @@ if [[ ${OMARCHY_DEBUG_SUDO_SECURITY_NS:-0} != 1 ]]; then
   outer_uid=$(id -u)
   outer_gid=$(id -g)
   subuid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subuid)
-  subgid=$(awk -F: -v group="$(id -gn)" '$1 == group { print $2; exit }' /etc/subgid)
+  subgid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subgid)
   if [[ -z $subuid || -z $subgid ]]; then
     pass "no subordinate uid/gid range; skipping debug sudo proof"
     exit 0
