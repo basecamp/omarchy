@@ -43,7 +43,7 @@ SCRIPT
 }
 
 install_appimage() {
-  HOME="$home" PATH="$stubs:$PATH" "$ROOT/bin/omarchy-appimage-install" "$@"
+  HOME="$home" PATH="$stubs:$ROOT/bin:$PATH" "$ROOT/bin/omarchy-appimage-install" "$@"
 }
 
 desktop_value() {
@@ -173,7 +173,7 @@ pass "appimage reinstall repoints the launcher and deletes the superseded image"
 # Removal has to take all three: the launcher, the icon, and the image the
 # launcher names.
 remove_appimage() {
-  HOME="$home" PATH="$stubs:$PATH" OMARCHY_REMOVE_NOTIFY=false "$ROOT/bin/omarchy-appimage-remove" "$@"
+  HOME="$home" PATH="$stubs:$ROOT/bin:$PATH" OMARCHY_REMOVE_NOTIFY=false "$ROOT/bin/omarchy-appimage-remove" "$@"
 }
 
 remove_appimage "Photo Editor" >/dev/null 2>&1 || fail "appimage remove accepts a name"

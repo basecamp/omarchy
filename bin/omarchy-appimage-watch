@@ -1,0 +1,64 @@
+#!/bin/bash
+
+# omarchy:summary=Turn the daily AppImage release check on or off
+# omarchy:args=[enable|disable|toggle|status|run]
+
+set -euo pipefail
+
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+UNIT_SOURCE="$OMARCHY_PATH/default/systemd/user"
+SERVICE="omarchy-appimage-update.service"
+TIMER="omarchy-appimage-update.timer"
+
+ACTION="${1-status}"
+
+# Installed on every enable rather than once, so a machine that upgraded past a
+# change to the units picks it up the next time the check is switched on.
+install_units() {
+  install -Dm644 "$UNIT_SOURCE/$SERVICE" "$UNIT_DIR/$SERVICE"
+  install -Dm644 "$UNIT_SOURCE/$TIMER" "$UNIT_DIR/$TIMER"
+  systemctl --user daemon-reload
+}
+
+enable_watch() {
+  install_units
+  systemctl --user enable --now "$TIMER" >/dev/null
+  echo "Daily AppImage update check enabled."
+}
+
+disable_watch() {
+  systemctl --user disable --now "$TIMER" >/dev/null 2>&1 || true
+  echo "Daily AppImage update check disabled."
+}
+
+case $ACTION in
+enable)
+  enable_watch
+  ;;
+disable)
+  disable_watch
+  ;;
+toggle)
+  if systemctl --user is-enabled --quiet "$TIMER"; then
+    disable_watch
+  else
+    enable_watch
+  fi
+  ;;
+run)
+  systemctl --user start "$SERVICE"
+  echo "Update check started. Follow it with: journalctl --user -u $SERVICE -n 20"
+  ;;
+status)
+  if systemctl --user is-enabled --quiet "$TIMER"; then
+    systemctl --user list-timers "$TIMER" --no-pager
+  else
+    echo "The daily AppImage update check is disabled."
+    exit 1
+  fi
+  ;;
+*)
+  echo "Usage: omarchy-appimage-watch [enable|disable|toggle|status|run]" >&2
+  exit 2
+  ;;
+esac

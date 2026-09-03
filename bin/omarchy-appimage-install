@@ -1,9 +1,12 @@
 #!/bin/bash
 
 # omarchy:summary=Install an AppImage as a desktop app
-# omarchy:args=[path-to-appimage]
+# omarchy:args=[path-to-appimage] [--github [owner/repo]] [--asset <name-or-glob>] [--quiet]
+# omarchy:examples=omarchy appimage install ~/Downloads/Cursor-1.2.3-x86_64.AppImage | omarchy appimage install --github AppImage/appimagetool
 
 set -euo pipefail
+
+source omarchy-appimage-release
 
 APPS_DIR="$HOME/Applications"
 DESKTOP_DIR="$HOME/.local/share/applications"
@@ -57,9 +60,121 @@ largest_file() {
   find "$@" -printf '%s\t%p\n' 2>/dev/null | sort -rn | sed -n '1s/^[0-9]*\t//p'
 }
 
-SOURCE="${1-}"
+# --quiet is for omarchy-appimage-update, which prints its own line per app and
+# runs from a timer whose output lands in the journal.
+say() {
+  if [[ $QUIET == "false" ]]; then
+    echo -e "$@"
+  fi
+}
 
-if [[ -z $SOURCE ]]; then
+SOURCE=""
+REPO=""
+FROM_GITHUB=false
+WANTED_ASSET=""
+QUIET=false
+
+while (( $# > 0 )); do
+  case $1 in
+  --github)
+    FROM_GITHUB=true
+    # The repo is optional so the menu row can hand the prompt over.
+    if [[ -n ${2-} && ${2-} != -* ]]; then
+      REPO="$2"
+      shift
+    fi
+    ;;
+  --asset)
+    if [[ -z ${2-} ]]; then
+      echo "--asset requires an asset name or pattern." >&2
+      exit 1
+    fi
+    WANTED_ASSET="$2"
+    shift
+    ;;
+  --quiet) QUIET=true ;;
+  -*)
+    echo "Unknown option: $1" >&2
+    exit 1
+    ;;
+  *) SOURCE="$1" ;;
+  esac
+  shift
+done
+
+mkdir -p "$APPS_DIR" "$DESKTOP_DIR" "$ICON_DIR"
+
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+RELEASE_TAG=""
+RELEASE_PUBLISHED=""
+ASSET_NAME=""
+ASSET_GLOB=""
+
+if [[ $FROM_GITHUB == "true" ]]; then
+  if [[ -z $REPO ]]; then
+    echo -e "\e[32mLet's install an AppImage from a GitHub repository's releases.\n\e[0m"
+    REPO=$(gum input --prompt "Repo> " --placeholder "owner/repo or https://github.com/owner/repo")
+  fi
+
+  REPO=$(appimage_normalize_repo "$REPO")
+  if [[ $REPO != */* ]]; then
+    echo "Not a GitHub repository: ${REPO:-nothing}"
+    exit 1
+  fi
+
+  say "Looking up the latest release of $REPO..."
+  RELEASE=$(appimage_latest_release "$REPO" || true)
+
+  if [[ -z $RELEASE ]]; then
+    echo "No releases found for $REPO (or GitHub rate-limited the request)."
+    exit 1
+  fi
+
+  RELEASE_TAG=$(jq -r '.tag_name // empty' <<<"$RELEASE")
+  RELEASE_PUBLISHED=$(jq -r '.published_at // empty' <<<"$RELEASE")
+
+  mapfile -t ASSETS < <(appimage_release_assets <<<"$RELEASE")
+
+  if (( ${#ASSETS[@]} == 0 )); then
+    echo "Release $RELEASE_TAG of $REPO ships no .AppImage asset."
+    exit 1
+  fi
+
+  SELECTED=""
+  if [[ -n $WANTED_ASSET ]]; then
+    SELECTED=$(printf '%s\n' "${ASSETS[@]}" | appimage_match_asset "$WANTED_ASSET" || true)
+    if [[ -z $SELECTED ]]; then
+      echo "Release $RELEASE_TAG of $REPO has no asset matching $WANTED_ASSET."
+      exit 1
+    fi
+  elif (( ${#ASSETS[@]} == 1 )); then
+    SELECTED="${ASSETS[0]}"
+  else
+    CHOICE=$(printf '%s\n' "${ASSETS[@]}" | cut -f1 |
+      gum choose --header "Asset from $REPO $RELEASE_TAG" --height 12)
+    SELECTED=$(printf '%s\n' "${ASSETS[@]}" | appimage_match_asset "$CHOICE" || true)
+  fi
+
+  if [[ -z $SELECTED ]]; then
+    echo "You must select an asset to install."
+    exit 1
+  fi
+
+  ASSET_NAME="${SELECTED%%$'\t'*}"
+  ASSET_GLOB=$(appimage_asset_glob "$ASSET_NAME")
+
+  say "\nDownloading \e[32m$ASSET_NAME\e[0m ($REPO $RELEASE_TAG)..."
+  # Into the scratch directory first: a download interrupted halfway must not
+  # leave a truncated image sitting in ~/Applications looking installed.
+  if ! appimage_download "${SELECTED#*$'\t'}" "$WORK/$ASSET_NAME" "$QUIET"; then
+    echo "Could not download $ASSET_NAME."
+    exit 1
+  fi
+
+  SOURCE="$WORK/$ASSET_NAME"
+elif [[ -z $SOURCE ]]; then
   echo -e "\e[32mLet's install an AppImage you can start with the app launcher.\n\e[0m"
 
   mapfile -t FOUND < <(find "$HOME/Downloads" "$HOME/Desktop" "$HOME" -maxdepth 1 -iname '*.appimage' -type f 2>/dev/null | sort -u)
@@ -90,8 +205,6 @@ SOURCE=$(realpath "$SOURCE")
 # --appimage-extract-and-run, which is slow and breaks some apps.
 omarchy-pkg-add fuse2
 
-mkdir -p "$APPS_DIR" "$DESKTOP_DIR" "$ICON_DIR"
-
 BASENAME=$(basename "$SOURCE")
 TARGET="$APPS_DIR/$BASENAME"
 
@@ -100,10 +213,7 @@ if [[ $SOURCE != "$TARGET" ]]; then
 fi
 chmod +x "$TARGET"
 
-WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
-
-echo "Reading metadata out of $BASENAME..."
+say "Reading metadata out of $BASENAME..."
 
 # --appimage-extract unpacks the embedded squashfs directly, so it needs no FUSE
 # mount and works even on the run that just installed fuse2. An image with no
@@ -199,6 +309,19 @@ if [[ -n $APP_MIME ]]; then
   printf 'MimeType=%s\n' "$(desktop_string_escape "$APP_MIME")" >>"$DESKTOP_FILE"
 fi
 
+# Where the image came from, so omarchy-appimage-update can tell whether the
+# release moved. The tag alone is not enough: a project on a rolling tag such
+# as "continuous" publishes every build under the same one.
+if [[ $FROM_GITHUB == "true" ]]; then
+  {
+    printf 'X-AppImage-Repo=%s\n' "$(desktop_string_escape "$REPO")"
+    printf 'X-AppImage-Release=%s\n' "$(desktop_string_escape "$RELEASE_TAG")"
+    printf 'X-AppImage-Asset=%s\n' "$(desktop_string_escape "$ASSET_NAME")"
+    printf 'X-AppImage-Asset-Glob=%s\n' "$(desktop_string_escape "$ASSET_GLOB")"
+    printf 'X-AppImage-Published=%s\n' "$(desktop_string_escape "$RELEASE_PUBLISHED")"
+  } >>"$DESKTOP_FILE"
+fi
+
 chmod +x "$DESKTOP_FILE"
 
 if [[ -n $PREVIOUS_TARGET && $PREVIOUS_TARGET != "$TARGET" && -f $PREVIOUS_TARGET ]]; then
@@ -207,7 +330,12 @@ fi
 
 update-desktop-database "$DESKTOP_DIR" &>/dev/null || true
 
-echo -e "\n\e[32m$APP_NAME installed.\e[0m"
-echo "  AppImage: $TARGET"
-echo "  Launcher: $DESKTOP_FILE"
-echo -e "\nYou can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+if [[ $QUIET == "false" ]]; then
+  echo -e "\n\e[32m$APP_NAME installed.\e[0m"
+  echo "  AppImage: $TARGET"
+  echo "  Launcher: $DESKTOP_FILE"
+  if [[ $FROM_GITHUB == "true" ]]; then
+    echo "  Tracking: github.com/$REPO @ $RELEASE_TAG"
+  fi
+  echo -e "\nYou can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+fi

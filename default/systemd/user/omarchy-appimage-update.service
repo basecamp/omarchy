@@ -1,0 +1,8 @@
+[Unit]
+Description=Update AppImages installed from GitHub releases
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/omarchy-appimage-update --notify --quiet

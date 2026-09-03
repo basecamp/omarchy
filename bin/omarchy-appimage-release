@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# omarchy:summary=Shared GitHub release helpers for the AppImage commands (source this, don't run it).
+# omarchy:hidden=true
+
+# Sourced by omarchy-appimage-install and omarchy-appimage-update. Everything
+# here is about one question: which file is the current release of a repo, and
+# is it the one we already have?
+
+APPIMAGE_GH_AUTH=""
+
+# gh carries the user's token, which is 5000 requests an hour instead of the 60
+# an anonymous IP gets, and works on a private repo. It is not part of the
+# default package set, so an unauthenticated curl is the fallback -- enough for
+# a daily check of a handful of apps.
+appimage_gh_ready() {
+  if [[ -z $APPIMAGE_GH_AUTH ]]; then
+    if omarchy-cmd-present gh && gh auth status &>/dev/null; then
+      APPIMAGE_GH_AUTH=0
+    else
+      APPIMAGE_GH_AUTH=1
+    fi
+  fi
+
+  return "$APPIMAGE_GH_AUTH"
+}
+
+appimage_gh_api() {
+  local path="$1"
+
+  if appimage_gh_ready; then
+    gh api -H "Accept: application/vnd.github+json" "$path" 2>/dev/null
+  else
+    curl -fsSL --max-time 20 -H "Accept: application/vnd.github+json" \
+      "https://api.github.com/$path" 2>/dev/null
+  fi
+}
+
+# Accepts owner/repo, a github.com URL, or any deeper URL such as the releases
+# page someone copied the download link from.
+appimage_normalize_repo() {
+  local input="$1"
+
+  input=${input#https://}
+  input=${input#http://}
+  input=${input#github.com/}
+  input=${input%.git}
+
+  awk -F/ 'NF >= 2 { print $1 "/" $2 }' <<<"$input"
+}
+
+# The newest usable release: the published one when there is one, otherwise the
+# newest non-draft, which is how continuous and nightly AppImage projects ship
+# (every release is flagged a prerelease, so /releases/latest is empty).
+appimage_latest_release() {
+  local repo="$1" json
+
+  json=$(appimage_gh_api "repos/$repo/releases/latest")
+  if [[ -n $json ]] && jq -e '.tag_name' <<<"$json" &>/dev/null; then
+    printf '%s' "$json"
+    return 0
+  fi
+
+  json=$(appimage_gh_api "repos/$repo/releases?per_page=10")
+  jq -e '[.[] | select(.draft | not)] | first | select(. != null)' <<<"$json" 2>/dev/null
+}
+
+# The release's AppImage assets as "name<TAB>url" rows, x86_64 first. A project
+# that also ships arm64 and i686 lists them in whatever order it uploaded them.
+appimage_release_assets() {
+  jq -r '
+    [.assets[] | select(.name | test("\\.appimage$"; "i"))]
+    | sort_by((.name | test("(x86_64|amd64)"; "i")) | not)
+    | .[] | "\(.name)\t\(.browser_download_url)"
+  ' 2>/dev/null
+}
+
+# A version-agnostic pattern for an asset name, so next release's file is still
+# recognizable: Cursor-1.2.3-x86_64.AppImage -> Cursor-*-x86_64.AppImage. Only
+# dotted digit runs go, because that is what a version looks like and what an
+# architecture does not.
+appimage_asset_glob() {
+  sed -E 's/[0-9]+(\.[0-9]+)+/*/g; s/\*[-_.]?\*/*/g' <<<"$1"
+}
+
+# The asset a pattern names, falling back to the only AppImage in the release: a
+# project that renamed its file still gets updated, and there is no ambiguity
+# about which file was meant.
+appimage_match_asset() {
+  local pattern="$1" row candidate
+
+  local -a rows=()
+  mapfile -t rows
+
+  for row in ${rows[@]+"${rows[@]}"}; do
+    candidate=${row%%$'\t'*}
+    # shellcheck disable=SC2053 # matching the pattern is the point
+    if [[ -n $pattern && $candidate == $pattern ]]; then
+      printf '%s\n' "$row"
+      return 0
+    fi
+  done
+
+  if (( ${#rows[@]} == 1 )); then
+    printf '%s\n' "${rows[0]}"
+    return 0
+  fi
+
+  return 1
+}
+
+# Whether a release is newer than what a launcher records. The tag answers for
+# versioned releases; the publish time answers for a rolling tag such as
+# "continuous" or "nightly", where the tag never changes and comparing tags
+# alone would report every nightly build as up to date forever.
+appimage_release_moved() {
+  local have_tag="$1" have_published="$2" tag="$3" published="$4"
+
+  [[ $tag != "$have_tag" || $published != "$have_published" ]]
+}
+
+# The progress bar is worth a lot on a 300MB image and nothing at all in a
+# timer's journal, so the caller says which kind of run this is.
+appimage_download() {
+  local url="$1" dest="$2" quiet="${3-false}"
+
+  if [[ $quiet == "true" ]]; then
+    curl -fsSL --retry 2 -o "$dest" "$url"
+  else
+    curl -fL --retry 2 --progress-bar -o "$dest" "$url"
+  fi
+}
