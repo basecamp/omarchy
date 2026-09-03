@@ -78,6 +78,24 @@ Item {
   // Shared application engine (entries, hidden filters, icons, launch,
   // removal), owned by the shell and also used by the standalone launcher.
   readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
+
+  // Navigation keys. Arrows and Enter are the baseline; Ctrl+N/P and Ctrl+H/J/K/L
+  // are here so the menu reads the same way as a modal editor. Override any
+  // single action under "keys": { "menu": { ... } } in shell.json — actions left
+  // out keep these defaults. Escape is deliberately not here: it is checked
+  // ahead of every binding so no configuration can shadow the way out.
+  readonly property var defaultKeymap: ({
+    "up": ["Up", "Ctrl+P", "Ctrl+K"],
+    "down": ["Down", "Ctrl+N", "Ctrl+J"],
+    "pageUp": ["PageUp"],
+    "pageDown": ["PageDown"],
+    "back": ["Left", "Backspace", "Ctrl+H"],
+    "activate": ["Return", "Enter", "Right", "Ctrl+L"],
+    "remove": ["Delete"]
+  })
+  readonly property var shellKeymaps: root.shell && root.shell.shellConfig && root.shell.shellConfig.keys
+    ? root.shell.shellConfig.keys : null
+  readonly property var keymap: Keymap.resolve(root.shellKeymaps ? root.shellKeymaps.menu : null, root.defaultKeymap)
   property bool deleteConfirmOpen: false
   property var deleteTarget: null
   onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
@@ -1126,32 +1144,35 @@ Item {
             return
           }
 
-          if (event.key === Qt.Key_Delete) {
-            root.requestDeleteSelected()
-            event.accepted = true
-          } else if (event.key === Qt.Key_Escape) {
+          // Escape and editsFilter come before the keymap: Escape always gets
+          // out whatever the bindings say, and a non-empty filter always owns
+          // Backspace and Ctrl+U; "back" only claims Backspace once it's empty.
+          if (event.key === Qt.Key_Escape) {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
-          } else if ((event.key === Qt.Key_Backspace || event.key === Qt.Key_Left) && !root.filterText) {
+          } else if (Keymap.matches(event, root.keymap.remove)) {
+            root.requestDeleteSelected()
+            event.accepted = true
+          } else if (Keymap.matches(event, root.keymap.back) && !root.filterText) {
             root.goBack()
             event.accepted = true
-          } else if (event.key === Qt.Key_Up) {
+          } else if (Keymap.matches(event, root.keymap.up)) {
             root.select(-1)
             event.accepted = true
-          } else if (event.key === Qt.Key_Down) {
+          } else if (Keymap.matches(event, root.keymap.down)) {
             root.select(1)
             event.accepted = true
-          } else if (event.key === Qt.Key_PageUp) {
+          } else if (Keymap.matches(event, root.keymap.pageUp)) {
             root.select(-6)
             event.accepted = true
-          } else if (event.key === Qt.Key_PageDown) {
+          } else if (Keymap.matches(event, root.keymap.pageDown)) {
             root.select(6)
             event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
+          } else if (Keymap.matches(event, root.keymap.activate)) {
             if (root.dmenuActive) {
               if (root.mode === "input") root.applyDmenuSelection(root.filterText)
               else if (displayModel.count > 0) root.activateIndex(root.cursorActive ? root.selectedIndex : 0)

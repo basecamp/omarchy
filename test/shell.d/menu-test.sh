@@ -491,8 +491,28 @@ assert(
   'menu route changes only accept an initial pointer sample for mouse activation'
 )
 assert(
-  /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
-  'menu Left key follows empty-filter Backspace navigation'
+  /Keymap\.matches\(event, root\.keymap\.back\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
+  'menu back navigation is still gated on an empty filter'
+)
+assert(
+  /event\.key === Qt\.Key_Escape/.test(menuQml) && !/"close":/.test(menuQml) && !/keymap\.close/.test(menuQml),
+  'menu keeps Escape hardcoded so no binding can shadow the way out'
+)
+assert(
+  menuQml.indexOf('event.key === Qt.Key_Escape') < menuQml.indexOf('Keymap.matches(event, root.keymap.'),
+  'menu checks Escape before any rebindable action'
+)
+assert(
+  menuQml.indexOf('Util.editsFilter(event, root.filterText)') < menuQml.indexOf('Keymap.matches(event, root.keymap.'),
+  'menu lets a non-empty filter edit before any rebindable action can claim the key'
+)
+assert(
+  /"back":\s*\[[^\]]*"Left"[^\]]*"Backspace"/.test(menuQml),
+  'menu keeps Left and Backspace bound to back by default'
+)
+assert(
+  /"down":\s*\[[^\]]*"Down"/.test(menuQml) && /"up":\s*\[[^\]]*"Up"/.test(menuQml),
+  'menu keeps the arrow keys bound to list movement by default'
 )
 assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),

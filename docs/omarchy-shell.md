@@ -136,6 +136,12 @@ string on a miss.
     "screensaver": 150,
     "lock": 300
   },
+  "keys": {
+    "menu": {
+      "down": ["Down", "Ctrl+N", "Ctrl+J"],
+      "up": ["Up", "Ctrl+P", "Ctrl+K"]
+    }
+  },
   "bar": {
     "id": "omarchy.bar",
     "position": "top",
@@ -167,7 +173,8 @@ Rules:
    First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
 6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
-8. `version: 1` is required.
+8. `keys.menu.<action>` is a list of binding specs (`"Ctrl+N"`, `"Down"`). Actions are resolved against the menu's own defaults one action at a time, so naming one action does not unbind the rest. `[]` unbinds an action. Parsing lives in `shell/Commons/Keymap.js`; only the menu reads `keys` today, other panels may adopt the same layout later.
+9. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user

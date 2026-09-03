@@ -66,6 +66,43 @@ Finally, there's a special scratchpad workspace that drops down over whatever wo
 
 It works especially well for a terminal running an agent, or for controls you want to interact with quickly without leaving the current workspace. To move a window off the scratchpad, send it directly to another workspace with something like `Super + Shift + 1`.
 
+### Moving around the Omarchy menu
+
+The menu moves on the arrow keys, and on `Ctrl + N`/`Ctrl + P` and `Ctrl + J`/`Ctrl + K` too, so it reads the same way as Neovim or any readline prompt. `Ctrl + H` steps back a level like `Left`, and `Ctrl + L` opens the highlighted entry like `Return`. Every one of those is on by default — nothing to turn on.
+
+If you want different keys, each action takes a list of them under a `keys` block in `~/.config/omarchy/shell.json`, alongside whatever is already in there:
+
+```json
+{
+  "version": 1,
+  "keys": {
+    "menu": {
+      "down": ["Down", "Ctrl+N", "Ctrl+J"],
+      "up": ["Up", "Ctrl+P", "Ctrl+K"]
+    }
+  }
+}
+```
+
+That's a complete file if you don't have a `shell.json` yet. If you do — and you will the moment you've moved a bar widget — add just the `keys` block to it rather than pasting over the file. There's no deep merge, so a `shell.json` containing only the above would take your bar layout with it; see [the top bar](05-the-top-bar.md) for that rule in full.
+
+The actions are `up`, `down`, `pageUp`, `pageDown`, `back`, `activate`, and `remove`. Escape always closes the menu and can't be rebound, so a typo here never locks you in. Anything you leave out keeps its default, so a block naming only `down` changes just that. Write bindings as `Ctrl+N`, `Shift+Tab` or `Down` — `Ctrl`, `Shift`, `Alt` and `Super` are the modifiers. Setting an action to `[]` unbinds it.
+
+Paging is a good example of something you can add for yourself. Vim's half-page keys aren't bound by default, but nothing stops you:
+
+```json
+"keys": {
+  "menu": {
+    "pageDown": ["PageDown", "Ctrl+D"],
+    "pageUp": ["PageUp", "Ctrl+U"]
+  }
+}
+```
+
+Note that `PageDown` and `PageUp` are listed again alongside them. Naming an action replaces its whole list rather than adding to it, so leaving them out would unbind them.
+
+`Ctrl + U` is a partial case worth knowing about. While there's text in the search field it clears the field, the way it does at a shell prompt, so it only pages once the field is empty. `Ctrl + D` has no such conflict and pages either way.
+
 ### It takes some getting used to!
 
 It takes a little while to get used to navigating your desktop like this, but once you do, it'll be hard to go back to a traditional mouse-driven desktop experience!
