@@ -20,6 +20,7 @@ if [[ -n $BATTERY_LEVEL && $BATTERY_LEVEL =~ ^[0-9]+$ ]]; then
       touch $NOTIFICATION_FLAG
     fi
   else
+    omarchy-notification-dismiss "Time to recharge!"
     rm -f $NOTIFICATION_FLAG
   fi
 fi
