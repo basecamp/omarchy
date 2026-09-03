@@ -2,12 +2,12 @@
 
 # omarchy:summary=Install a supported development environment
 # omarchy:name=dev-env
-# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>
+# omarchy:args=<ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala|haskell>
 # omarchy:examples=omarchy install dev-env ruby | omarchy install dev-env node
 # omarchy:requires-sudo=true
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala|haskell>" >&2
   exit 1
 fi
 
@@ -48,6 +48,45 @@ install_php() {
 install_node() {
   echo -e "Installing Node.js...\n"
   mise use --global node
+}
+
+enable_lazyvim_haskell() {
+  local extra="lazyvim.plugins.extras.lang.haskell"
+  local json="$HOME/.config/nvim/lazyvim.json"
+  local plugin="$HOME/.config/nvim/lua/plugins/omarchy-haskell.lua"
+  local tmp
+
+  [[ -d $HOME/.config/nvim ]] || return 0
+
+  if [[ -f $json ]]; then
+    tmp=$(mktemp)
+    if jq --arg extra "$extra" 'if ((.extras // []) | index($extra)) then . else .extras = ((.extras // []) + [$extra]) end' "$json" >"$tmp"; then
+      mv "$tmp" "$json"
+    else
+      rm -f "$tmp"
+    fi
+  fi
+
+  mkdir -p "$HOME/.config/nvim/lua/plugins"
+  cat >"$plugin" <<'EOF'
+-- Pin HLS to GHCup; Mason's build targets a different GHC.
+vim.g.haskell_tools = {
+  hls = {
+    cmd = { vim.fn.expand("~/.ghcup/bin/haskell-language-server-wrapper"), "--lsp" },
+  },
+}
+
+return {
+  {
+    "mason-org/mason.nvim",
+    opts = function(_, opts)
+      opts.ensure_installed = vim.tbl_filter(function(tool)
+        return tool ~= "haskell-language-server"
+      end, opts.ensure_installed or {})
+    end,
+  },
+}
+EOF
 }
 
 case "$1" in
@@ -151,5 +190,11 @@ scala)
   mise use --global java@latest
   mise use --global scala@latest
   mise use --global scala-cli@latest
+  ;;
+haskell)
+  echo -e "Installing Haskell...\n"
+  curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | BOOTSTRAP_HASKELL_NONINTERACTIVE=1 BOOTSTRAP_HASKELL_INSTALL_HLS=1 BOOTSTRAP_HASKELL_ADJUST_BASHRC=1 sh
+  enable_lazyvim_haskell
+  echo -e "\nYou can now run: cabal init --interactive"
   ;;
 esac
