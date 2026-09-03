@@ -166,8 +166,10 @@ protected:
 
 void render_and_input() {
   worker::WorkerRuntime runtime(fixture("expressive"));
-  require(static_cast<bool>(runtime.prepare_trusted_qt_types()),
-          "trusted Qt type preparation failed");
+  const auto prepared = runtime.prepare_trusted_qt_types();
+  if (!prepared)
+    throw std::runtime_error("trusted Qt type preparation failed: " +
+                             prepared.detail);
   require(static_cast<bool>(runtime.load_manifest_entry()),
           "schema-v2 QML fixture did not load");
   require(runtime.loaded() && runtime.object_count() > 2,
@@ -1483,6 +1485,28 @@ void hostile_loading() {
                   "trusted-presentation",
           "plugin-local module shadowed the worker presentation SDK");
 
+  worker::WorkerRuntime quickshell_io(fixture("quickshell-io"),
+                                      exact_qml.root());
+  require(static_cast<bool>(quickshell_io.prepare_trusted_qt_types()) &&
+              static_cast<bool>(quickshell_io.load_manifest_entry()) &&
+              quickshell_io.root_object_name() == "quickshell-io-loaded",
+          "worker-owned Quickshell.Io compatibility module did not load");
+
+  worker::WorkerRuntime shadowed_quickshell_io(fixture("quickshell-io-shadow"),
+                                               exact_qml.root());
+  require(static_cast<bool>(shadowed_quickshell_io.prepare_trusted_qt_types()) &&
+              static_cast<bool>(shadowed_quickshell_io.load_manifest_entry()) &&
+              shadowed_quickshell_io.root_object_name() ==
+                  "trusted-quickshell-io",
+          "plugin-local module shadowed worker Quickshell.Io compatibility");
+
+  worker::WorkerRuntime quickshell_io_process(fixture("quickshell-io-process"),
+                                              exact_qml.root());
+  require(static_cast<bool>(
+              quickshell_io_process.prepare_trusted_qt_types()) &&
+              !static_cast<bool>(quickshell_io_process.load_manifest_entry()),
+          "Quickshell.Io compatibility exposed ambient Process execution");
+
   worker::WorkerRuntime local_module(fixture("local-module"));
   require(static_cast<bool>(local_module.prepare_trusted_qt_types()) &&
               static_cast<bool>(local_module.load_manifest_entry()),
@@ -1701,6 +1725,31 @@ void trusted_controls_load_after_steady_state() {
           "certified QtQuick.Controls did not load after steady-state seccomp");
 }
 
+void trusted_quickshell_io_loads_after_steady_state() {
+  ExactQmlTree qml_tree;
+  const pid_t child = fork();
+  require(child >= 0, "trusted Quickshell.Io seccomp test fork failed");
+  if (child == 0) {
+    worker::WorkerRuntime runtime(fixture("quickshell-io"), qml_tree.root());
+    const auto prepared = runtime.prepare_trusted_qt_types();
+    std::string error;
+    if (!prepared || !worker::install_steady_state_seccomp(error))
+      _exit(51);
+    const auto loaded = runtime.load_manifest_entry();
+    if (!loaded)
+      static_cast<void>(write(STDERR_FILENO, loaded.detail.data(),
+                              loaded.detail.size()));
+    _exit(loaded && runtime.loaded() &&
+                  runtime.root_object_name() == "quickshell-io-loaded"
+              ? 0
+              : 52);
+  }
+  int status = 0;
+  require(waitpid(child, &status, 0) == child && WIFEXITED(status) &&
+              WEXITSTATUS(status) == 0,
+          "Quickshell.Io compatibility did not load after steady-state seccomp");
+}
+
 void dynamic_module_resolution_stays_certified() {
   const pid_t unrestricted = fork();
   require(unrestricted >= 0, "dynamic module positive-control fork failed");
@@ -1888,6 +1937,7 @@ int main(int argc, char **argv) {
     trusted_layouts_load_after_steady_state();
     trusted_effects_load_after_steady_state();
     trusted_controls_load_after_steady_state();
+    trusted_quickshell_io_loads_after_steady_state();
     dynamic_module_resolution_stays_certified();
     dynamic_certified_shapes_succeeds();
     dynamic_certified_layouts_succeeds();

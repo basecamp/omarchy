@@ -1,0 +1,1 @@
+{"schemaVersion":2,"id":"example.quickshell-io-shadow","name":"Quickshell Io shadow fixture","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{"main":{"role":"panel"}},"permissions":{"required":[],"optional":[]}}

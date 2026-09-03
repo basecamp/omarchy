@@ -177,6 +177,19 @@ PluginSourcePolicy::preload_trusted_modules(QQmlEngine &engine) const {
   std::unique_ptr<QObject> presentation(presentation_probe.create());
   if (!presentation)
     return failure("trusted worker presentation probe could not instantiate");
+  QQmlComponent quickshell_io_probe(&engine);
+  quickshell_io_probe.setData(
+      QByteArrayLiteral("import QtQuick\n"
+                        "import Quickshell.Io 1.0\n"
+                        "Item { FileView { preload: false } StdioCollector {} }"),
+      QUrl(QStringLiteral("qrc:/qt/qml/Omarchy/QuickshellIoProbe.qml")));
+  if (!quickshell_io_probe.isReady())
+    return failure("trusted worker Quickshell.Io compatibility preload failed: " +
+                   quickshell_io_probe.errorString().left(1024).toStdString());
+  std::unique_ptr<QObject> quickshell_io(quickshell_io_probe.create());
+  if (!quickshell_io)
+    return failure(
+        "trusted worker Quickshell.Io compatibility probe could not instantiate");
   return {};
 }
 
@@ -212,6 +225,9 @@ QUrl PluginSourcePolicy::intercept(const QUrl &url, DataType) {
     constexpr std::string_view presentation =
         "/qt/qml/Omarchy/PluginPresentation/";
     if (value.starts_with(presentation))
+      return url;
+    constexpr std::string_view quickshell_io = "/qt/qml/Quickshell/Io/";
+    if (value.starts_with(quickshell_io))
       return url;
     return denied_url();
   }

@@ -42,6 +42,14 @@ qt_add_resources(omarchy-plugin-worker-runtime plugin_presentation_qml
     ../presentation/qml/TextField.qml
     ../presentation/qml/ToolTip.qml
     ../presentation/qml/WidgetButton.qml)
+qt_add_resources(omarchy-plugin-worker-runtime quickshell_io_compat_qml
+  PREFIX "/qt/qml/Quickshell/Io"
+  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../quickshell-compat/io/qml"
+  FILES
+    ../quickshell-compat/io/qml/qmldir
+    ../quickshell-compat/io/qml/FileView.qml
+    ../quickshell-compat/io/qml/FileViewError.qml
+    ../quickshell-compat/io/qml/StdioCollector.qml)
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC
