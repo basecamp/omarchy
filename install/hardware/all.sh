@@ -22,6 +22,7 @@ run_logged "$OMARCHY_INSTALL/hardware/intel/ptl-kernel.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/ipu7-camera.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/fred.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/fix-wifi7-eht.sh"
+run_logged "$OMARCHY_INSTALL/hardware/intel/fix-xps-wcl-display.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/sof-firmware.sh"
 
 # Rebuilds the boot image, so it has to follow the Panther Lake kernel swap
