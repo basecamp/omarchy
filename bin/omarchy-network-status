@@ -19,17 +19,46 @@ case "${1:-}" in
     ;;
 esac
 
+# Wifi or ethernet is a question only an interface with hardware behind it can
+# answer: a wireless directory or a device symlink in sysfs. A tunnel has
+# neither, so asking it returns ethernet for want of anywhere else to land,
+# which is how a VPN over wifi came to read as a wired connection.
+is_physical() {
+  [[ -d /sys/class/net/$1/wireless || -e /sys/class/net/$1/device ]]
+}
+
+# A VPN or overlay tunnel holds the internet route while the link carrying it
+# stays wifi or ethernet underneath, and policy routing leaves that link on the
+# main table's default. Take the first default there with hardware behind it,
+# and where the path is virtual the whole way down, an overlay in a container
+# among others, keep the device the route named rather than calling a working
+# connection disconnected.
+physical_device() {
+  local device=$1 candidate
+
+  [[ -z $device ]] && return
+  is_physical "$device" && { printf '%s' "$device"; return; }
+
+  while read -r candidate; do
+    is_physical "$candidate" && { printf '%s' "$candidate"; return; }
+  done < <(ip route show table main default 2>/dev/null |
+    awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") print $(i + 1) }')
+
+  printf '%s' "$device"
+}
+
 print_status() {
   local device nm state ssid signal freq
 
   device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+  device=$(physical_device "$device")
 
   if [[ -z $device ]]; then
     printf 'disconnected\t\t\t\n'
     return
   fi
 
-  if [[ ! -d /sys/class/net/$device/wireless ]]; then
+  if ! [[ -d /sys/class/net/$device/wireless ]]; then
     printf 'ethernet\t%s\t\t\n' "$device"
     return
   fi
@@ -83,12 +112,18 @@ print_ping_samples() {
 }
 
 print_verbose() {
-  local route_json iface gw src prefix link
+  local route_json iface gw src prefix link route_device
 
   route_json=$(ip -j route get "$internet_probe" 2>/dev/null)
   [[ -z $route_json ]] && return
 
-  iface=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
+  route_device=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
+  iface=$(physical_device "$route_device")
+
+  # The addressing and the gateway belong to the link too, so read them off the
+  # route it carries rather than the tunnel's own /32 and empty gateway.
+  [[ -n $iface && $iface != "$route_device" ]] && route_json=$(ip -j route show table main default 2>/dev/null)
+
   gw=$(jq -r '.[0].gateway // ""' <<<"$route_json" 2>/dev/null)
   src=$(jq -r '.[0].prefsrc // ""' <<<"$route_json" 2>/dev/null)
 
