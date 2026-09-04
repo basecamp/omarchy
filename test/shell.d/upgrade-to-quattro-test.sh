@@ -28,6 +28,13 @@ grep -F 'omarchy-update-mise' "$upgrade_to_quattro" >/dev/null
 grep -F 'run_final_system_package_upgrade' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade completes package update checks"
 
+core_packages_body=$(sed -n '/^[[:space:]]*local core_packages=(/,/^[[:space:]]*)$/p' "$upgrade_to_quattro")
+printf '%s\n' "$core_packages_body" | grep -Eq '^[[:space:]]*qt6-wayland$' ||
+  fail "Omarchy 4 upgrade installs qt6-wayland as an explicit core package"
+grep -F 'mark_packages_explicit "${core_packages[@]}"' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade marks core packages explicit"
+pass "Omarchy 4 upgrade protects qt6-wayland from orphan cleanup"
+
 grep -F 'run_post_upgrade_migrations' "$upgrade_to_quattro" >/dev/null
 grep -F 'omarchy-migrate' "$upgrade_to_quattro" >/dev/null
 grep -F 'dust' "$upgrade_to_quattro" >/dev/null

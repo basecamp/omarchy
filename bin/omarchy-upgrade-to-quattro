@@ -729,6 +729,7 @@ install_omarchy_quattro_packages() {
     "$omarchy_package"
     fakeroot
     pacman-contrib
+    qt6-wayland
   )
   local base_packages=()
 
