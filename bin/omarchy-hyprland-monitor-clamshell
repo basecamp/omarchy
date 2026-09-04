@@ -71,8 +71,13 @@ lua_scalar() {
 monitor_rules() {
   [[ -f $MONITOR_LUA ]] || return 0
 
-  sed -E -e 's/--\[\[[^]]*\]\]//g' -e 's/--.*$//' "$MONITOR_LUA"
+  # Strip comments, flatten multi-line table formats into a single string, 
+  # and isolate each rule onto its own line for the regex parser.
+  sed -E -e 's/--\[\[[^]]*\]\]//g' -e 's/--.*$//' "$MONITOR_LUA" | \
+    tr '\n' ' ' | \
+    sed 's/hl\.monitor/\n&/g'
 }
+
 
 monitor_rule_regex() {
   printf '^[[:space:]]*hl\\.monitor\\(\\{.*output[[:space:]]*=[[:space:]]*"%s"' "$1"
