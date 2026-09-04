@@ -19,6 +19,9 @@ Panel {
   readonly property var mprisPlayers: Mpris.players ? Mpris.players.values : []
   readonly property var mediaService: bar?.shell?.firstPartyServiceFor("omarchy.media")
   readonly property var activeMediaPlayer: mediaService ? mediaService.activePlayer : null
+  readonly property string stateHome: Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state"
+  readonly property string audioConfigPath: stateHome + "/omarchy/audio-max-volume"
+  property real maxVolume: 1
 
   readonly property var candidateSinks: {
     var list = []
@@ -425,7 +428,7 @@ Panel {
 
   function setOutputVolume(v) {
     if (!volumeSink || !volumeSink.audio) return outputVolume
-    var volume = Math.max(0, Math.min(1, v))
+    var volume = Math.max(0, Math.min(maxVolume, v))
     volumeSink.audio.volume = volume
     return volume
   }
@@ -434,7 +437,9 @@ Panel {
     if (!bar || !bar.shell) return
     bar.shell.summon("omarchy.osd", JSON.stringify({
       icon: outputIcon(volume),
-      value: Math.round(volume * 100)
+      value: Math.round(volume * 100),
+      max: Math.round(root.maxVolume * 100),
+      progressText: Math.round(volume * 100) + "%"
     }))
   }
 
@@ -590,6 +595,18 @@ Panel {
       waitForEnd: true
       onStreamFinished: root.updateSinkAvailability(text)
     }
+  }
+
+  FileView {
+    path: root.audioConfigPath
+    watchChanges: true
+    printErrors: false
+    onLoaded: {
+      var value = parseInt(String(text()).trim(), 10)
+      root.maxVolume = value > 0 ? value / 100 : 1
+    }
+    onLoadFailed: root.maxVolume = 1
+    onFileChanged: reload()
   }
 
   Process {
@@ -831,7 +848,8 @@ Panel {
                 anchors.leftMargin: Style.space(6)
                 anchors.rightMargin: Style.space(6)
                 minimum: 0
-                maximum: 1
+                maximum: root.maxVolume
+                threshold: root.maxVolume > 1 ? 1 : maximum
                 step: 0.05
                 value: root.outputVolume
                 opacity: root.outputMuted ? 0.5 : 1.0

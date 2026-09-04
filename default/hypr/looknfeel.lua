@@ -123,3 +123,7 @@ hl.config({
     hide_special_on_workspace_change = true,
   },
 })
+
+o.audio({
+  max_volume = 100
+})

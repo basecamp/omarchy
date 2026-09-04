@@ -11,6 +11,13 @@ if [[ -z $action ]]; then
   exit 1
 fi
 
+max_volume_file="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/audio-max-volume"
+max_volume=100
+if [[ -r $max_volume_file ]]; then
+  read -r configured_max_volume <"$max_volume_file" || true
+  [[ $configured_max_volume =~ ^[1-9][0-9]*$ ]] && max_volume="$configured_max_volume"
+fi
+
 # Resolve through any DSP sink to the physical one, so the keys always move real
 # loudness and the processing always sees full-scale input. Shared with the audio
 # panel and the output switcher.
@@ -63,7 +70,7 @@ elif [[ $action =~ ^([+-])([0-9]+)$ ]]; then
 
   if [[ $direction == "+" ]]; then
     next=$((current + step))
-    ((next <= 100)) || next=100
+    ((next <= max_volume)) || next=$max_volume
   else
     next=$((current - step))
     ((next >= 0)) || next=0
@@ -83,4 +90,4 @@ else
   icon="volume-high"
 fi
 
-omarchy-osd -i "$icon" -p "${percent:-0}"
+omarchy-osd -i "$icon" -p "${percent:-0}" --maximum "$max_volume"

@@ -19,7 +19,9 @@ Item {
   property int duration: 1200
 
   readonly property bool mediaOsd: iconKey.indexOf("media") === 0 || iconKey.indexOf("player") === 0
-
+  readonly property bool amplificationEnabled: maxValue > 100
+  readonly property bool amplified: amplificationEnabled && value > 100
+  readonly property real normalBoundary: amplificationEnabled ? 100 / maxValue : 1
   // The card is built out of measured columns instead of fixed widths, so it
   // keeps exactly `pad` between border and content on every side whatever
   // glyph or message it carries. Messages grow with their text up to
@@ -43,7 +45,7 @@ Item {
     ? Math.max(root.iconInkWidth, Math.ceil(widestIconMetrics.tightBoundingRect.width))
     : root.iconInkWidth
   // Same idea for the readout: it is as wide as the longest percentage so the
-  // digits don't jitter between 9% and 100%.
+  // digits don't jitter as the displayed value changes.
   readonly property int valueWidth: Math.ceil(Math.max(valueMetrics.advanceWidth, messageMetrics.advanceWidth))
   readonly property int messageWidth: Math.min(Math.ceil(messageMetrics.advanceWidth), root.maxMessageWidth)
   readonly property int contentWidth: root.hasProgress
@@ -96,7 +98,7 @@ Item {
   TextMetrics {
     id: valueMetrics
     font: messageMetrics.font
-    text: "100%"
+    text: Math.max(root.value, root.maxValue) + "%"
   }
 
   TextMetrics {
@@ -166,24 +168,65 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: root.icon
             font: iconMetrics.font
-            color: Color.popups.text
+            color: root.amplified ? Color.accent : Color.popups.text
           }
         }
         Rectangle {
+          id: progressTrack
           visible: root.hasProgress
           width: root.barWidth
           height: Math.max(Style.space(6), Style.spacing.sm)
           anchors.verticalCenter: parent.verticalCenter
           color: Util.alpha(Color.popups.text, 0.45)
+
           Rectangle {
+            id: thresholdTrack
+            visible: root.amplificationEnabled
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            x: parent.width * root.normalBoundary
+            width: parent.width * (1 - root.normalBoundary)
+            color: Util.alpha(Color.accent, Style.selectionFillAlpha)
+          }
+
+          Rectangle {
+            id: progressFill
             height: parent.height
-            width: parent.width * (root.hasProgress ? root.value / root.maxValue : 0)
+            width: parent.width * Math.min(
+              root.value / root.maxValue,
+              root.amplificationEnabled ? root.normalBoundary : 1
+            )
+            color: root.amplificationEnabled ? Color.popups.text : Color.accent
+
+            Behavior on width {
+              enabled: root.opened
+              NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            }
+          }
+
+          Rectangle {
+            id: thresholdFill
+            visible: root.amplified
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            x: parent.width * root.normalBoundary
+            width: parent.width * (root.value / root.maxValue - root.normalBoundary)
             color: Color.accent
 
             Behavior on width {
               enabled: root.opened
               NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
             }
+          }
+
+          Rectangle {
+            id: thresholdSeparator
+            visible: root.amplificationEnabled
+            width: Math.max(3, Style.spacing.hairline)
+            height: parent.height
+            anchors.verticalCenter: parent.verticalCenter
+            x: parent.width * root.normalBoundary - width / 2
+            color: card.color
           }
         }
         Text {
@@ -196,7 +239,7 @@ Item {
           anchors.verticalCenter: parent.verticalCenter
           text: root.message
           font: messageMetrics.font
-          color: Color.popups.text
+          color: root.amplified ? Color.accent : Color.popups.text
           elide: Text.ElideRight
           maximumLineCount: 1
         }
