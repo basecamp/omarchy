@@ -15,7 +15,7 @@ if (($# == 0)); then
   desktop_id=${desktop_id%%:*}
   case "$desktop_id" in
   Alacritty.desktop) echo "alacritty" ;;
-  foot.desktop) echo "foot" ;;
+  foot.desktop|footclient.desktop) echo "foot" ;;
   com.mitchellh.ghostty.desktop) echo "ghostty" ;;
   kitty.desktop) echo "kitty" ;;
   *) echo "$desktop_id" ;;
@@ -25,7 +25,7 @@ fi
 
 case "$1" in
 alacritty) terminal="alacritty"; desktop_id="Alacritty.desktop"; name="Alacritty"; glyph= ;;
-foot) terminal="foot"; desktop_id="foot.desktop"; name="Foot"; glyph= ;;
+foot) terminal="foot"; desktop_id="footclient.desktop"; name="Foot"; glyph= ;;
 ghostty) terminal="ghostty"; desktop_id="com.mitchellh.ghostty.desktop"; name="Ghostty"; glyph= ;;
 kitty) terminal="kitty"; desktop_id="kitty.desktop"; name="Kitty"; glyph= ;;
 *)
@@ -40,6 +40,13 @@ if omarchy-cmd-missing "$terminal"; then
   else
     omarchy-install-terminal "$terminal" || exit 1
   fi
+fi
+
+if [[ $terminal == "foot" ]]; then
+  mkdir -p ~/.local/share/applications
+  cp "$OMARCHY_PATH/applications/foot.desktop" ~/.local/share/applications/
+  cp "$OMARCHY_PATH/applications/footclient.desktop" ~/.local/share/applications/
+  systemctl --user enable --now foot-server.socket || true
 fi
 
 cat >~/.config/xdg-terminals.list <<EOF

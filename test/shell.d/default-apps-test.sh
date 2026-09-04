@@ -44,6 +44,11 @@ printf 'sudo:%s\n' "$*" >>"$OMARCHY_TEST_SETUP_LOG"
 [[ ${OMARCHY_TEST_SETUP_FAIL:-} != "sudo" ]]
 SH
 
+cat >"$mock_bin/systemctl" <<'SH'
+#!/bin/bash
+exit 0
+SH
+
 cat >"$mock_bin/xdg-settings" <<'SH'
 #!/bin/bash
 case $1 in
@@ -160,7 +165,7 @@ browser_cases=(
 
 terminal_cases=(
   'alacritty Alacritty.desktop'
-  'foot foot.desktop'
+  'foot footclient.desktop'
   'ghostty com.mitchellh.ghostty.desktop'
   'kitty kitty.desktop'
 )
