@@ -97,8 +97,8 @@ Item {
       fillMode: Image.PreserveAspectCrop
       asynchronous: true
       cache: false
-      sourceSize.width: width
-      sourceSize.height: height
+      sourceSize.width: Math.round(width * Screen.devicePixelRatio)
+      sourceSize.height: Math.round(height * Screen.devicePixelRatio)
     }
 
     MultiEffect {
