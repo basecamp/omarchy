@@ -6,6 +6,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 feeds_class='^org\.omarchy\.acceptance\.feeds$'
 agent_class='^org\.omarchy\.acceptance\.newsboat-agent$'
+browser_class='^org\.omarchy\.acceptance\.feeds-browser$'
 confirmation_namespace='omarchy-newsboat-confirmation'
 original_workspace=$(hyprctl -j activeworkspace | jq -r '.id')
 test_workspace=${OMARCHY_FEEDS_ACCEPTANCE_WORKSPACE:-9}
@@ -46,6 +47,7 @@ cleanup() {
   [[ -z $triage_pid ]] || kill "$triage_pid" >/dev/null 2>&1 || true
   close_windows "$agent_class"
   close_windows "$feeds_class"
+  close_windows "$browser_class"
   [[ -z $newsboat_pid ]] || kill "$newsboat_pid" >/dev/null 2>&1 || true
   [[ -z $unrelated_newsboat_pid ]] || kill "$unrelated_newsboat_pid" >/dev/null 2>&1 || true
   [[ -z $server_pid ]] || kill "$server_pid" >/dev/null 2>&1 || true
@@ -137,6 +139,7 @@ export PATH="$mock_bin:$ROOT/bin:$PATH"
 export NEWSBOAT_CACHE_FILE="$test_home/.local/share/newsboat/cache.db"
 export NEWSBOAT_URLS_FILE="$test_home/.config/newsboat/urls"
 export NEWSBOAT_BRIEF_STATE_DIR="$brief_dir"
+export NEWSBOAT_SCOUT_STATE_DIR="$test_root/scouts"
 export NEWSBOAT_CONFIRM_STATE_DIR="$test_root/confirmations"
 export NEWSBOAT_READER_STATE_DIR="$test_root/readers"
 export FEEDS_ACCEPTANCE_AGENT_LOG="$agent_log"
@@ -174,9 +177,30 @@ focus_feeds() {
     hyprctl dispatch focuswindow "address:$address" >/dev/null
 }
 
-# Add a feed while the reader is already open, then use its visible refresh
-# action. This covers the otherwise easy-to-miss reload-urls interaction.
-omarchy-newsboat-subscribe "http://127.0.0.1:$feed_port/beta.html" >/dev/null
+# Exercise Chromium's command, extension, native messaging host, and resolver
+# together. This isolated profile cannot change the user's browser settings.
+browser_profile="$test_root/chromium"
+mkdir -p "$browser_profile/NativeMessagingHosts"
+sed "s|__HOST_PATH__|$ROOT/bin/omarchy-chromium-copy-url-host|" \
+  "$ROOT/default/chromium/native-messaging-hosts/com.omarchy.copy_url.json" \
+  >"$browser_profile/NativeMessagingHosts/com.omarchy.copy_url.json"
+chromium --user-data-dir="$browser_profile" \
+  --ozone-platform=wayland \
+  --class=org.omarchy.acceptance.feeds-browser \
+  --no-first-run --no-default-browser-check --password-store=basic \
+  --disable-extensions-except="$ROOT/default/chromium/extensions/copy-url" \
+  --load-extension="$ROOT/default/chromium/extensions/copy-url" \
+  "http://127.0.0.1:$feed_port/beta.html" >"$test_root/chromium.log" 2>&1 &
+wait_until "Chromium opens the page for feed subscription" 30 window_present "$browser_class"
+wait_until "Chromium renders the local page" 30 screen_contains "Beta Systems"
+screenshot "success-feeds-01a-browser-page"
+# This is a browser-local shortcut, not a Hyprland global keybinding.
+wtype -M alt -M shift -k f -m shift -m alt
+wait_until "browser shortcut subscribes through native messaging" 30 \
+  grep -Fq "http://127.0.0.1:$feed_port/beta.xml" "$NEWSBOAT_URLS_FILE"
+screenshot "success-feeds-01b-browser-subscription"
+close_windows "$browser_class"
+wait_until "subscription browser closes" 15 window_absent "$browser_class"
 grep -Fq "http://127.0.0.1:$feed_port/beta.xml" "$NEWSBOAT_URLS_FILE" || \
   fail "browser subscription stores the resolved feed URL"
 omarchy-shell notifications dismissAll >/dev/null 2>&1 || true
@@ -409,5 +433,46 @@ wait_until "Feed Scout prompt contains selected-article context" 15 \
   grep -Fq "Find high-signal feeds related to the selected article" "$agent_log"
 wait_until "Feed Scout releases the Feeds tile" 15 window_absent "$feeds_class"
 screenshot "success-feeds-11-feed-scout-handoff"
+
+# Continue through Scout's real validation, native confirmation and atomic
+# publication. The deterministic agent only replaces the research decision.
+proposal_output=$(omarchy-newsboat-scout-propose "http://127.0.0.1:$feed_port/gamma.xml")
+proposal_file=$(find "$NEWSBOAT_SCOUT_STATE_DIR" -name 'scout.*' -type f | head -1)
+[[ -n $proposal_file ]] || fail "Feed Scout stores its validated proposal" "$proposal_output"
+proposal_id=${proposal_file##*/scout.}
+subscriptions_before=$(<"$NEWSBOAT_URLS_FILE")
+omarchy-newsboat-scout-apply "$proposal_id" 1 F001 >"$triage_output" 2>"$triage_error" &
+triage_pid=$!
+wait_until "Scout opens its native confirmation" 15 layer_on_screen "$confirmation_namespace"
+confirmation_owned=true
+wait_until "Scout confirmation names the exact feed count" 15 screen_contains "1 validated feed"
+screenshot "success-feeds-12-scout-default-cancel"
+wtype -k Return
+wait_until "Scout cancellation returns" 15 wait_for_process_exit "$triage_pid"
+wait "$triage_pid" || fail "Scout cancellation failed" "$(<"$triage_error")"
+triage_pid=""
+confirmation_owned=false
+[[ $(<"$NEWSBOAT_URLS_FILE") == "$subscriptions_before" && -f $proposal_file ]] || fail "Scout cancellation changes subscriptions or loses proposal"
+pass "Scout default Cancel preserves subscriptions and proposal"
+omarchy-newsboat-scout-apply "$proposal_id" 1 F001 >"$triage_output" 2>"$triage_error" &
+triage_pid=$!
+wait_until "Scout can confirm its retained proposal" 15 layer_on_screen "$confirmation_namespace"
+confirmation_owned=true
+wait_until "Scout approval prompt is rendered" 15 screen_contains "1 validated feed"
+wtype -k Right
+screenshot "success-feeds-13-scout-add-selected"
+wtype -k Return
+wait_until "approved Scout publication returns" 15 wait_for_process_exit "$triage_pid"
+wait "$triage_pid" || fail "approved Scout publication failed" "$(<"$triage_error")"
+triage_pid=""
+confirmation_owned=false
+[[ ! -e $proposal_file ]] || fail "Scout leaves a replayable proposal"
+grep -Fq '1 feed added to Newsboat.' "$triage_output" || fail "Scout reports the singular added feed"
+[[ $(grep -Fxc "http://127.0.0.1:$feed_port/gamma.xml" "$NEWSBOAT_URLS_FILE") == 1 ]] || fail "Scout did not add exactly its selected feed"
+close_windows "$agent_class"
+launch_app "foot --app-id=org.omarchy.acceptance.feeds -e omarchy-feeds"
+wait_until "Feeds displays the approved Scout subscription" 45 screen_contains "Gamma Dispatch"
+screenshot "success-feeds-14-scout-result"
+pass "Scout completes validation, cancellation, approval, and visible subscription publication"
 
 pass "Feeds completes its graphical subscribe, read, agent, resize, brief, triage, and scout journeys"

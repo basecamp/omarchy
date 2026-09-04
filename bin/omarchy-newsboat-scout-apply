@@ -106,9 +106,11 @@ if ! rm -f -- "$snapshot_file"; then
   exit 1
 fi
 
+feed_label=feeds
+(( count != 1 )) || feed_label=feed
 omarchy-notification-send -g  \
-  "$count new feeds added" \
+  "$count new $feed_label added" \
   "Feed Scout updated your finite inbox." \
   --exec omarchy-newsboat-read || true
 
-printf '%s feeds added to Newsboat.\n' "$count"
+printf '%s %s added to Newsboat.\n' "$count" "$feed_label"
