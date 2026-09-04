@@ -18,7 +18,7 @@ fi
 
 feed_url="$1"
 newsboat_urls="$HOME/.config/newsboat/urls"
-lock_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-newsboat-$UID-urls.lock"
+lock_file="/tmp/omarchy-newsboat-$UID-urls.lock"
 staged_urls=""
 removed=false
 

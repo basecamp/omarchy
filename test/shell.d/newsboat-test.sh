@@ -60,6 +60,16 @@ for argument in "$@"; do destination="$argument"; done
 [[ ${NEWSBOAT_TEST_MV_FAIL_TARGET:-} != "$destination" ]] || exit 44
 exec /bin/mv "$@"
 '
+write_mock cp '
+destination="${!#}"
+[[ ${NEWSBOAT_TEST_BACKUP_FAIL:-} != "${destination##*/}" ]] || exit 45
+exec /bin/cp "$@"
+'
+write_mock touch '
+destination="${!#}"
+[[ ${NEWSBOAT_TEST_MARKER_FAIL:-} != "${destination##*/}" ]] || exit 46
+exec /usr/bin/touch "$@"
+'
 
 : >"$NEWSBOAT_TEST_LOG"
 "$ROOT/bin/omarchy-install-newsboat" >/dev/null
@@ -186,6 +196,34 @@ fi
 pass "Newsboat installer restores replaced files after downstream failure"
 
 unset NEWSBOAT_TEST_INSTALL_FAIL_TARGET NEWSBOAT_TEST_LN_FAIL_TARGET NEWSBOAT_TEST_MV_FAIL_TARGET NEWSBOAT_TEST_TUI_FAIL
+
+# A failed backup (or its completion marker) happens before any mutation.
+# Every pre-existing file and symlink must survive, even those not backed up yet.
+for boundary in managed config urls launcher; do
+  for failure in copy marker; do
+    reset_empty_install_state
+    mkdir -p "$HOME/.local/share/applications"
+    /bin/ln -s /old/omarchy.conf "$HOME/.config/newsboat/omarchy.conf"
+    printf 'old config\n' >"$HOME/.config/newsboat/config"
+    printf 'https://old.example/feed\n' >"$HOME/.config/newsboat/urls"
+    printf 'old launcher\n' >"$HOME/.local/share/applications/Feeds.desktop"
+    if [[ $failure == "copy" ]]; then
+      export NEWSBOAT_TEST_BACKUP_FAIL=$boundary
+    else
+      export NEWSBOAT_TEST_MARKER_FAIL="$boundary.existed"
+    fi
+    if "$ROOT/bin/omarchy-install-newsboat" >/dev/null 2>&1; then
+      fail "installer accepts failed $boundary backup $failure"
+    fi
+    [[ $(readlink "$HOME/.config/newsboat/omarchy.conf") == /old/omarchy.conf ]] || fail "backup failure changes managed link"
+    [[ $(<"$HOME/.config/newsboat/config") == 'old config' ]] || fail "backup failure loses config"
+    [[ $(<"$HOME/.config/newsboat/urls") == 'https://old.example/feed' ]] || fail "backup failure loses subscriptions"
+    [[ $(<"$HOME/.local/share/applications/Feeds.desktop") == 'old launcher' ]] || fail "backup failure loses launcher"
+    ! grep -q '^tui-attempt:' "$NEWSBOAT_TEST_LOG" || fail "backup failure invokes downstream launcher"
+    unset NEWSBOAT_TEST_BACKUP_FAIL NEWSBOAT_TEST_MARKER_FAIL
+    pass "installer preserves all originals on $boundary backup $failure failure"
+  done
+done
 
 notification_log="$test_tmp/notification"
 agent_log="$test_tmp/agent"
@@ -394,23 +432,49 @@ if "$ROOT/bin/omarchy-newsboat-import" "$opml_file" >/dev/null 2>&1; then
   fail "Newsboat import reports a parser failure"
 fi
 [[ $(<"$HOME/.config/newsboat/urls") == 'https://existing.example/feed' ]] || fail "failed OPML import preserves subscriptions"
-[[ -z $(find "$HOME/.config/newsboat" -name 'urls.import.*' -print -quit) ]] || fail "failed OPML import removes its staged file"
+[[ -z $(find "$HOME/.config/newsboat" -name '.urls.import.*' -print -quit) ]] || fail "failed OPML import removes its staged file"
 pass "Newsboat import is atomic when Newsboat rejects the OPML"
 
 unset NEWSBOAT_TEST_NEWSBOAT_FAIL
-export NEWSBOAT_TEST_MV_FAIL_TARGET="$HOME/.config/newsboat/urls"
+export NEWSBOAT_TEST_MV_FAIL_TARGET="$(realpath -- "$HOME/.config/newsboat/urls")"
 if "$ROOT/bin/omarchy-newsboat-import" "$opml_file" >/dev/null 2>&1; then
   fail "Newsboat import reports success when subscription publication fails"
 fi
 unset NEWSBOAT_TEST_MV_FAIL_TARGET
 [[ $(<"$HOME/.config/newsboat/urls") == 'https://existing.example/feed' ]] || fail "failed OPML publication changes existing subscriptions"
-[[ -z $(find "$HOME/.config/newsboat" -name 'urls.import.*' -print -quit) ]] || fail "failed OPML publication leaves a staged file"
+[[ -z $(find "$HOME/.config/newsboat" -name '.urls.import.*' -print -quit) ]] || fail "failed OPML publication leaves a staged file"
 pass "Newsboat import is atomic when subscription publication fails"
 
 "$ROOT/bin/omarchy-newsboat-import" "$opml_file" >/dev/null
 grep -Fq 'https://existing.example/feed' "$HOME/.config/newsboat/urls" || fail "Newsboat import keeps existing subscriptions"
 grep -Fq 'https://imported.example/feed Imported' "$HOME/.config/newsboat/urls" || fail "Newsboat import publishes imported subscriptions"
 pass "Newsboat import merges OPML through a staged subscriptions file"
+
+linked_import_target="$test_tmp/linked-import-urls"
+rm -f "$HOME/.config/newsboat/urls"
+/bin/ln -s "$linked_import_target" "$HOME/.config/newsboat/urls"
+for failure in parser publication success; do
+  printf 'https://linked.example/feed\n' >"$linked_import_target"
+  if [[ $failure == "parser" ]]; then
+    export NEWSBOAT_TEST_NEWSBOAT_FAIL=1
+  elif [[ $failure == "publication" ]]; then
+    export NEWSBOAT_TEST_MV_FAIL_TARGET="$(realpath -- "$linked_import_target")"
+  fi
+  import_status=0
+  "$ROOT/bin/omarchy-newsboat-import" "$opml_file" >/dev/null 2>&1 || import_status=$?
+  [[ -L $HOME/.config/newsboat/urls ]] || fail "OPML import replaces the subscriptions symlink"
+  [[ $(readlink "$HOME/.config/newsboat/urls") == "$linked_import_target" ]] || fail "OPML import redirects the symlink"
+  if [[ $failure == "success" ]]; then
+    (( import_status == 0 )) || fail "linked OPML import fails"
+    grep -Fq 'https://imported.example/feed Imported' "$linked_import_target" || fail "OPML import misses linked target"
+  else
+    (( import_status != 0 )) || fail "linked OPML import ignores $failure failure"
+    [[ $(<"$linked_import_target") == 'https://linked.example/feed' ]] || fail "failed import changes linked target"
+  fi
+  [[ -z $(find "$test_tmp" -name '.urls.import.*' -print -quit) ]] || fail "linked import leaks staged file"
+  unset NEWSBOAT_TEST_NEWSBOAT_FAIL NEWSBOAT_TEST_MV_FAIL_TARGET
+  pass "OPML import preserves linked subscriptions on $failure"
+done
 
 export_target="$test_tmp/export.opml"
 export NEWSBOAT_TEST_NEWSBOAT_FAIL=1

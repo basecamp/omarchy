@@ -16,7 +16,9 @@ launcher="$launcher_dir/Feeds.desktop"
 transaction_dir=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/omarchy-newsboat-install.XXXXXX")
 config_dir_was_present=false
 launcher_dir_was_present=false
-transaction_active=true
+# Backups do not change user files. Rollback must not remove a target whose
+# backup has not been captured yet.
+transaction_active=false
 inbox_stage=""
 
 [[ -d $newsboat_config_dir ]] && config_dir_was_present=true
@@ -77,6 +79,8 @@ snapshot_target managed "$newsboat_managed_config"
 snapshot_target config "$newsboat_config"
 snapshot_target urls "$newsboat_urls"
 snapshot_target launcher "$launcher"
+
+transaction_active=true
 
 mkdir -p "$newsboat_config_dir"
 

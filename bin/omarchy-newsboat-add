@@ -19,7 +19,9 @@ fi
 feed_url="$1"
 newsboat_config_dir="$HOME/.config/newsboat"
 newsboat_urls="$newsboat_config_dir/urls"
-lock_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-newsboat-$UID-urls.lock"
+# Use the same lock as Feed Scout, including inside agent sandboxes where
+# XDG_RUNTIME_DIR may be absent or read-only.
+lock_file="/tmp/omarchy-newsboat-$UID-urls.lock"
 staged_urls=""
 
 cleanup() {
