@@ -12,7 +12,7 @@ The first-party plugins ship with Omarchy and live in `$OMARCHY_PATH/shell/plugi
 omarchy plugin list
 ```
 
-That prints every discovered plugin with its id, whether it's enabled, whether it's first-party or third-party, its kinds, and its display name. Add `--json` if you're feeding it to something else.
+That prints every discovered plugin with its id, whether it's enabled, whether it's first-party or third-party, its kinds, and its display name. Add `--json` if you're feeding it to something else. If the list is long, you can narrow it down — for example `omarchy plugin list --source=third-party --state=enabled` shows only the third-party plugins that are on.
 
 Plugin ids are namespaced. The built-ins all start with `omarchy.` — `omarchy.clock`, `omarchy.network`, `omarchy.notifications` — and that namespace is reserved, so a third-party plugin can never claim it.
 
