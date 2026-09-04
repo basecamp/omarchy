@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# omarchy:summary=Paste clipboard content into the active terminal
+# omarchy:hidden=true
+
+export LC_ALL=C
+
+mime_types=""
+mime_probe=""
+
+if mime_probe=$(
+  set -o pipefail
+  timeout --signal=TERM --kill-after=0.05s 0.20s wl-paste --list-types 2>/dev/null | head -c 16385
+  probe_status=$?
+  (( probe_status == 0 )) || exit "$probe_status"
+  printf x
+); then
+  # The suffix prevents command substitution from stripping trailing newlines,
+  # so the byte limit can reliably detect a truncated MIME list.
+  mime_types=${mime_probe%?}
+fi
+
+# A truncated list cannot prove that the clipboard has no text representation.
+(( ${#mime_types} < 16385 )) || mime_types=""
+
+has_image=0
+has_text=0
+
+while IFS= read -r mime_type; do
+  case "$mime_type" in
+    UTF8_STRING | STRING | TEXT | COMPOUND_TEXT)
+      has_text=1
+      ;;
+    *)
+      case "${mime_type,,}" in
+        image/*)
+          has_image=1
+          ;;
+        text/*)
+          has_text=1
+          ;;
+      esac
+      ;;
+  esac
+done <<<"$mime_types"
+
+mods="SHIFT"
+key="Insert"
+
+if (( has_image && !has_text )); then
+  mods="CTRL"
+  key="V"
+fi
+
+send_key_state() {
+  local state="$1"
+
+  hyprctl dispatch "hl.dsp.send_key_state({ mods = \"$mods\", key = \"$key\", state = \"$state\" })" >/dev/null 2>&1
+}
+
+key_is_down=false
+
+release_key() {
+  if [[ $key_is_down == "true" ]]; then
+    key_is_down=false
+    send_key_state "up" || true
+  fi
+}
+
+trap release_key EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+key_is_down=true
+if send_key_state "down"; then
+  sleep 0.05
+fi
+release_key
