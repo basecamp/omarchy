@@ -65,6 +65,46 @@ Item {
   property string _exitNodeError: ""
   property string _operatorOutput: ""
   property string _operatorError: ""
+  // Change signatures for the big arrays. A 4k-machine tailnet makes every
+  // status poll rebuild thousands of delegate rows if the arrays are
+  // reassigned unconditionally, so only publish an array whose content
+  // actually changed.
+  property string _peersSig: "[]"
+  property string _tailnetExitNodesSig: "[]"
+  property string _exitNodesSig: "[]"
+  property string _mullvadRegionsSig: "[]"
+
+  // The full status JSON is ~4.6MB on a 4k-machine tailnet, and the bar icon
+  // only needs Self/BackendState. Poll light (--peers=false) while the panel
+  // is closed; the panel binds peersWanted and forces a full fetch on open.
+  property bool peersWanted: false
+  property bool _statusFullPeers: false
+  property bool _pendingFullPeers: false
+  // False until a full peer fetch has answered, so the panel can tell
+  // "still loading" apart from "this tailnet has no machines".
+  property bool peersLoaded: false
+
+  function publishPeers(next) {
+    var sig = JSON.stringify(next)
+    if (sig === _peersSig) return
+    _peersSig = sig
+    peers = next
+  }
+
+  function publishTailnetExitNodes(next) {
+    var sig = JSON.stringify(next)
+    if (sig === _tailnetExitNodesSig) return
+    _tailnetExitNodesSig = sig
+    tailnetExitNodes = next
+  }
+
+  function syncExitNodes() {
+    var next = running ? tailnetExitNodes.concat(mullvadRegions) : []
+    var sig = JSON.stringify(next)
+    if (sig === _exitNodesSig) return
+    _exitNodesSig = sig
+    exitNodes = next
+  }
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -145,9 +185,9 @@ Item {
     Quickshell.execDetached(["omarchy-tailscale-send", target])
   }
 
-  function refresh(forceAccounts) {
+  function refresh(forceAccounts, fullPeers) {
     if (installed) {
-      refreshStatusAndAccounts(forceAccounts === true)
+      refreshStatusAndAccounts(forceAccounts === true, fullPeers === true)
       return
     }
     if (!whichProcess.running) {
@@ -157,16 +197,24 @@ Item {
     }
   }
 
-  function refreshStatusAndAccounts(forceAccounts) {
+  function refreshStatusAndAccounts(forceAccounts, fullPeers) {
     if (!installed) return
     var launched = false
     if (!statusProcess.running) {
       _statusOutput = ""
       _statusError = ""
       refreshing = true
-      statusProcess.command = ["tailscale", "status", "--json"]
+      _statusFullPeers = fullPeers === true || peersWanted || _pendingFullPeers
+      if (_statusFullPeers) _pendingFullPeers = false
+      statusProcess.command = _statusFullPeers
+        ? ["tailscale", "status", "--json"]
+        : ["tailscale", "status", "--json", "--peers=false"]
       statusProcess.running = true
       launched = true
+    } else if ((fullPeers === true || peersWanted) && !_statusFullPeers) {
+      // A full-peer request arrived while a light poll is in flight; remember
+      // it so the panel is not left stale until the next periodic refresh.
+      _pendingFullPeers = true
     }
     if (!mullvadExitNodesProcess.running) {
       _mullvadExitNodesOutput = ""
@@ -209,11 +257,13 @@ Item {
     selfUserId = ""
     fileSharing = false
     authUrl = ""
-    peers = []
-    exitNodes = []
-    tailnetExitNodes = []
+    publishPeers([])
+    publishTailnetExitNodes([])
+    peersLoaded = false
+    syncExitNodes()
     mullvadExitNodes = []
     mullvadRegions = []
+    _mullvadRegionsSig = "[]"
     accounts = []
     selectedAccountId = ""
     selectedAccountLabel = ""
@@ -247,9 +297,20 @@ Item {
     selfIp = parsed.selfIp
     selfUserId = parsed.selfUserId
     fileSharing = parsed.fileSharing
-    peers = parsed.running ? parsed.peers : []
-    tailnetExitNodes = parsed.running ? parsed.exitNodes : []
-    exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
+    // A light poll carries no peer data — keep the last full machine list
+    // while running, and only clear it when tailscale actually went down.
+    if (_statusFullPeers) {
+      publishPeers(parsed.running ? parsed.peers : [])
+      publishTailnetExitNodes(parsed.running ? parsed.exitNodes : [])
+      // A stopped tailnet publishes no peers, so a later light poll finding it
+      // running again must not read as "fetched, and this tailnet is empty".
+      peersLoaded = parsed.running
+    } else if (!parsed.running) {
+      publishPeers([])
+      publishTailnetExitNodes([])
+      peersLoaded = false
+    }
+    syncExitNodes()
 
     if (needsLogin) statusText = "Needs login"
     else if (running) {
@@ -275,9 +336,16 @@ Item {
   }
 
   function parseMullvadExitNodes(raw) {
+    // The raw node list is small and nothing hot binds to it, so publish it
+    // unconditionally; only the derived regions need the churn guard.
     mullvadExitNodes = Model.parseExitNodeList(raw)
-    mullvadRegions = Model.mullvadRegionOptions(mullvadExitNodes)
-    exitNodes = running ? tailnetExitNodes.concat(mullvadRegions) : []
+    var nextRegions = Model.mullvadRegionOptions(mullvadExitNodes)
+    var sig = JSON.stringify(nextRegions)
+    if (sig !== _mullvadRegionsSig) {
+      _mullvadRegionsSig = sig
+      mullvadRegions = nextRegions
+    }
+    syncExitNodes()
   }
 
   function toggleTailscale() {
@@ -482,6 +550,10 @@ Item {
       else {
         root.resetUnavailable("Disconnected")
         root.lastError = stderr.trim()
+      }
+      if (root._pendingFullPeers) {
+        root._pendingFullPeers = false
+        root.refreshStatusAndAccounts(false, true)
       }
     }
   }
