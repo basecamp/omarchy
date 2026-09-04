@@ -12,3 +12,12 @@ hl.layer_rule({ match = { namespace = "^(omarchy-menu|omarchy-image-selector|oma
 -- Dev gallery is the main shell workbench; open it maximized like
 -- SUPER+ALT+F so component previews have the whole workspace.
 o.window({ class = "^org.quickshell$", title = "^Omarchy shell – dev gallery$" }, { maximize = true })
+
+-- Task manager is a real toplevel so it can be dragged and stacked like any
+-- other window, but it is a tool you summon over your work rather than a pane
+-- you live in, so it floats centred instead of claiming a tile.
+o.window({ class = "^org.quickshell$", title = "^Task Manager$" }, {
+  float = true,
+  center = true,
+  size = { 1180, 820 },
+})

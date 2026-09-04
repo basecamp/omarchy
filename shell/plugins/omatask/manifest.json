@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.omatask",
+  "name": "Task Manager",
+  "version": "1.0.0",
+  "author": "Stephen Taylor",
+  "license": "MIT",
+  "description": "Live CPU, memory, GPU, network, disk, and process monitor as a bar widget, an under-bar panel, and a window.",
+  "kinds": [
+    "service",
+    "bar-widget",
+    "overlay"
+  ],
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml",
+    "overlay": "Overlay.qml"
+  },
+  "barWidget": {
+    "displayName": "Task Manager",
+    "description": "Live CPU, memory, GPU, network, disk, and process monitor as a bar widget, an under-bar panel, and a window.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "intervalSec": 2,
+      "historyPoints": 60,
+      "processLimit": 60,
+      "showPercent": true,
+      "barGraph": "sparkline",
+      "secondaryMetric": "none",
+      "alerts": false,
+      "groupApps": true,
+      "listMode": "processes",
+      "sortBy": "cpu",
+      "sortDescending": true
+    },
+    "schema": [
+      {
+        "key": "intervalSec",
+        "type": "integer",
+        "label": "Sample interval (seconds)",
+        "description": "How often /proc is sampled. Lower is more responsive and costs more CPU.",
+        "min": 1,
+        "max": 30,
+        "step": 1,
+        "defaultValue": 2
+      },
+      {
+        "key": "historyPoints",
+        "type": "integer",
+        "label": "History points",
+        "description": "How many samples the CPU and memory graphs keep. At the default interval, 60 points is two minutes.",
+        "min": 10,
+        "max": 300,
+        "step": 10,
+        "defaultValue": 60
+      },
+      {
+        "key": "processLimit",
+        "type": "integer",
+        "label": "Command lines resolved",
+        "description": "Every process is always reported; this is how many of them, busiest by CPU and by memory, get their full command line read from /proc. Reading command lines is the part that scales badly.",
+        "min": 10,
+        "max": 500,
+        "step": 10,
+        "defaultValue": 60
+      },
+      {
+        "key": "showPercent",
+        "type": "boolean",
+        "label": "Show percentages",
+        "description": "Print the percentage next to each bar graph.",
+        "defaultValue": true
+      },
+      {
+        "key": "barGraph",
+        "type": "enum",
+        "label": "Bar graph style",
+        "description": "How history is drawn in the bar itself.",
+        "options": [
+          "sparkline",
+          "bars",
+          "none"
+        ],
+        "defaultValue": "sparkline"
+      },
+      {
+        "key": "secondaryMetric",
+        "type": "enum",
+        "label": "Second bar metric",
+        "description": "Show a second reading beside CPU in the bar itself, so both are readable without opening the panel. Memory and swap come out of the sample already being taken. GPU is different \u2014 choosing it keeps the GPU polled for as long as the widget is on the bar. Swap and GPU hide themselves on a machine that has neither.",
+        "options": [
+          "none",
+          "mem",
+          "swap",
+          "gpu"
+        ],
+        "defaultValue": "none"
+      },
+      {
+        "key": "alerts",
+        "type": "boolean",
+        "label": "Desktop notifications",
+        "description": "Notify when a filesystem passes 95%, memory stalls, the CPU reaches its thermal limit, btrfs metadata fills or logs device errors, or a systemd unit fails. Off by default.",
+        "defaultValue": false
+      },
+      {
+        "key": "groupApps",
+        "type": "boolean",
+        "label": "Group applications",
+        "description": "In the Applications view, fold an app's several systemd scopes into one row \u2014 Chromium launched from the menu and Chromium activated through XDG read as one application. Off shows one row per scope.",
+        "defaultValue": true
+      },
+      {
+        "key": "listMode",
+        "type": "enum",
+        "label": "Default list",
+        "description": "Which list the overlay opens on. Changing it with Ctrl+A is remembered.",
+        "options": [
+          "processes",
+          "apps",
+          "tree"
+        ],
+        "defaultValue": "processes"
+      },
+      {
+        "key": "sortBy",
+        "type": "enum",
+        "label": "Sort column",
+        "description": "Remembered when you change it with Tab or by clicking a header.",
+        "options": [
+          "cpu",
+          "rss",
+          "mem",
+          "wait",
+          "ioStall",
+          "threads",
+          "pid",
+          "name"
+        ],
+        "defaultValue": "cpu"
+      },
+      {
+        "key": "sortDescending",
+        "type": "boolean",
+        "label": "Sort descending",
+        "description": "Largest first. Remembered when you flip it with Ctrl+R.",
+        "defaultValue": true
+      }
+    ]
+  }
+}
