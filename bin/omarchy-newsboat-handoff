@@ -21,8 +21,13 @@ case ${1:-} in
     action=(omarchy-newsboat-brief --from-newsboat)
     ;;
   scout)
-    (($# == 4)) || usage
-    action=(omarchy-newsboat-scout --from-newsboat "$2" "$3" "$4")
+    if (($# == 1)); then
+      action=(omarchy-newsboat-scout)
+    elif (($# == 4)); then
+      action=(omarchy-newsboat-scout --from-newsboat "$2" "$3" "$4")
+    else
+      usage
+    fi
     ;;
   *) usage ;;
 esac

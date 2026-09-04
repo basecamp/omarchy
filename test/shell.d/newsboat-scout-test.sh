@@ -326,3 +326,5 @@ grep -F 'macro d ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit; qui
 grep -Fq 'state_dir="${NEWSBOAT_SCOUT_STATE_DIR:-/tmp/omarchy-newsboat-$UID/scouts}"' "$ROOT/bin/omarchy-newsboat-scout-propose" || fail "Feed Scout keeps proposal state in the agent-writable private temp area"
 grep -Fq 'omarchy-newsboat-confirm" scout' "$ROOT/bin/omarchy-newsboat-scout-apply" || fail "Feed Scout trusts the agent prompt as its only mutation confirmation"
 pass "Newsboat exposes the agent-independent Feed Scout experience"
+grep -Fq 'bind ,d feedlist edit-urls "omarchy-newsboat-handoff scout"; quit' "$ROOT/default/newsboat/omarchy.conf" || fail "Feed Scout cannot start safely from the Inbox"
+pass "Feed Scout provides a query-safe feed-list binding"

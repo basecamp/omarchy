@@ -475,4 +475,15 @@ wait_until "Feeds displays the approved Scout subscription" 45 screen_contains "
 screenshot "success-feeds-14-scout-result"
 pass "Scout completes validation, cancellation, approval, and visible subscription publication"
 
+# The global shortcut must also work from the synthetic Inbox, with no article
+# URL available. Article-driven Scout above must retain its separate context.
+focus_feeds
+wtype -k comma
+wtype -k d
+wait_until "Feed-list Scout opens without a browser URL" 45 window_present "$agent_class"
+wait_until "Feed-list Scout closes its reader" 15 window_absent "$feeds_class"
+invocations=$(grep -c '^--- scout invocation ---$' "$agent_log")
+(( invocations == 2 )) || fail "Feed-list Scout does not reach the agent exactly once"
+screenshot "success-feeds-15-inbox-scout"
+
 pass "Feeds completes its graphical subscribe, read, agent, resize, brief, triage, and scout journeys"
