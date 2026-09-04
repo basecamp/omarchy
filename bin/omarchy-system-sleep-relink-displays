@@ -1,0 +1,160 @@
+#!/bin/bash
+
+# omarchy:summary=Re-detect external displays that no hotplug brought back after resume
+# omarchy:group=system
+# omarchy:args=pre|post
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+# An external panel behind a dock can come out of suspend with the kernel still
+# holding its pre-suspend "connected" state while the link underneath is down.
+# The GPU discards hotplug interrupts raised inside the resume window (amdgpu
+# logs "Skip DMUB HPD IRQ callback in suspend/resume"), and a dock whose tunnel
+# did not fully return -- "Data Link Layer Link Active not set", xHCI resuming
+# with -19 -- never re-asserts HPD afterwards. Nothing re-probes, so the
+# compositor keeps modesetting a monitor it believes is lit while the panel sits
+# in standby, and only a genuine hotplug (opening the lid, replugging the cable)
+# brings the picture back.
+#
+# A resume the dock handled well always shows a DRM hotplug uevent within
+# seconds, so that event is the signal to wait for. The watch starts before
+# suspend: one landing in the same instant the post hook runs would otherwise be
+# missed, and a missed event costs a needless blink. When none arrives, force
+# the connector off and back on. That is the one write that makes the kernel
+# re-detect and re-train the link -- writing "detect" alone leaves the cached
+# status unchanged, so no uevent follows and nothing re-modesets.
+
+set -u
+
+DRM_ROOT=${OMARCHY_DRM_ROOT:-/sys/class/drm}
+HOTPLUG_LOG=${OMARCHY_DRM_HOTPLUG_LOG:-/run/omarchy/drm-hotplug.log}
+WATCH_UNIT=${OMARCHY_DRM_HOTPLUG_UNIT:-omarchy-drm-hotplug-watch}
+# Every DRM event the watch records belongs to this sleep cycle: the log is
+# emptied as the machine goes down and nothing plugs a monitor in while it is
+# suspended.
+# Read instead of the kernel journal when set, so the HPD check is testable.
+HPD_LOG=${OMARCHY_DRM_HPD_LOG:-}
+# Long enough for the docks observed to re-assert HPD (~6s), short enough that a
+# screen that will not come back on its own is not left dark for long.
+GRACE=${OMARCHY_DRM_RELINK_GRACE:-8}
+SETTLE=${OMARCHY_DRM_RELINK_SETTLE:-1}
+
+# The watch is a root-only, systemd-side concern; the rest of the command works
+# against sysfs alone, which is what keeps it runnable in tests.
+privileged() {
+  (( EUID == 0 )) && omarchy-cmd-present systemd-run
+}
+
+arm_hotplug_watch() {
+  privileged || return 0
+
+  mkdir -p "$(dirname "$HOTPLUG_LOG")"
+  systemctl stop "$WATCH_UNIT" >/dev/null 2>&1
+  : >"$HOTPLUG_LOG"
+  # stdbuf keeps udevadm from block-buffering into the file, where an event
+  # would sit unseen for the whole grace period. Capped so a suspend that never
+  # resumes cannot leave a monitor running for the rest of the uptime.
+  systemd-run --quiet --collect --unit="$WATCH_UNIT" \
+    --property=StandardOutput="append:$HOTPLUG_LOG" \
+    --property=StandardError=null \
+    timeout 900 stdbuf -oL udevadm monitor --udev --subsystem-match=drm >/dev/null 2>&1
+}
+
+stop_hotplug_watch() {
+  privileged || return 0
+
+  systemctl stop "$WATCH_UNIT" >/dev/null 2>&1
+}
+
+hotplug_since_suspend() {
+  [[ -f $HOTPLUG_LOG ]] || return 1
+
+  grep -q "change" "$HOTPLUG_LOG"
+}
+
+# A sink that answers HPD is a sink whose link is alive: those interrupts are DP
+# link maintenance, and they arrive on resumes where the connector is never
+# re-probed at all. Treating a hotplug as the only proof of life re-detects a
+# working panel and blinks it for nothing, so this is the second opinion. The
+# resume that stranded the panel for real had neither.
+hpd_since_resume() {
+  local since="$1"
+
+  if [[ -n $HPD_LOG ]]; then
+    grep -qi "hpd" "$HPD_LOG"
+    return
+  fi
+
+  omarchy-cmd-present journalctl || return 1
+  journalctl -k --since "@$since" --no-pager 2>/dev/null | grep -qi "hpd"
+}
+
+# Panels wired to the board come back with the rest of the hardware; only the
+# ones reached over a cable can be left behind by a link that never re-trained.
+external_connectors() {
+  local connector name
+
+  for connector in "$DRM_ROOT"/*/*-*; do
+    [[ -f $connector/status && -f $connector/enabled ]] || continue
+
+    name=${connector##*/}
+    name=${name#*-}
+    case $name in
+      eDP-* | LVDS-* | DSI-* | Writeback-*) continue ;;
+    esac
+
+    [[ $(< "$connector/status") == "connected" ]] || continue
+    [[ $(< "$connector/enabled") == "enabled" ]] || continue
+
+    printf '%s\n' "$connector"
+  done
+}
+
+relink_connector() {
+  local connector="$1"
+
+  printf 'omarchy-system-sleep-relink-displays: no DRM hotplug after resume, re-detecting %s\n' \
+    "${connector##*/}"
+
+  echo off >"$connector/status"
+  sleep "$SETTLE"
+  echo on >"$connector/status"
+  sleep "$SETTLE"
+  echo detect >"$connector/status"
+}
+
+relink_displays() {
+  local connector resumed_at
+
+  # The post phase runs at resume, so this is where the window starts. A second
+  # of slack covers events logged while the hook itself was being dispatched.
+  resumed_at=$(( $(date +%s) - 1 ))
+  sleep "$GRACE"
+  stop_hotplug_watch
+
+  if hotplug_since_suspend; then
+    return 0
+  fi
+
+  if hpd_since_resume "$resumed_at"; then
+    printf 'omarchy-system-sleep-relink-displays: HPD without a hotplug, link is alive, leaving displays alone\n'
+    return 0
+  fi
+
+  while read -r connector; do
+    [[ -n $connector ]] && relink_connector "$connector"
+  done < <(external_connectors)
+}
+
+case ${1:-} in
+  pre)
+    arm_hotplug_watch
+    ;;
+  post)
+    relink_displays
+    ;;
+  *)
+    printf 'Usage: omarchy-system-sleep-relink-displays pre|post\n' >&2
+    exit 1
+    ;;
+esac

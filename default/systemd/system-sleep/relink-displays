@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Re-detect external displays that came back from suspend without a hotplug.
+# The work itself lives in omarchy-system-sleep-relink-displays; this hook only
+# decides when it runs.
+
+case "$1" in
+  pre)
+    omarchy-system-sleep-relink-displays pre
+    ;;
+  post)
+    # The check waits out a grace period before deciding, which cannot happen
+    # inline: user.slice is frozen until every hook returns. Backgrounding it
+    # with & would not survive either, because systemd-suspend.service takes its
+    # children down with it the moment the last hook exits (#5214). A transient
+    # unit outlives the transition and keeps its output in the journal.
+    systemd-run --quiet --collect --no-block --unit=omarchy-relink-displays \
+      omarchy-system-sleep-relink-displays post
+    ;;
+esac

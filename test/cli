@@ -807,3 +807,66 @@ assert_output_contains "a --help behind -- belongs to the command and still forw
 
 output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
 assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"
+
+# omarchy-system-sleep-relink-displays reaches only for the connectors a dead
+# link can strand, and only when no hotplug arrived with the resume.
+make_tmpdir RELINK_ROOT
+mkdir -p "$RELINK_ROOT/drm/card1/card1-eDP-1" "$RELINK_ROOT/drm/card1/card1-DP-5" "$RELINK_ROOT/drm/card1/card1-DP-6"
+
+reset_relink_fixture() {
+  printf 'connected\n' >"$RELINK_ROOT/drm/card1/card1-eDP-1/status"
+  printf 'enabled\n' >"$RELINK_ROOT/drm/card1/card1-eDP-1/enabled"
+  printf 'connected\n' >"$RELINK_ROOT/drm/card1/card1-DP-5/status"
+  printf 'enabled\n' >"$RELINK_ROOT/drm/card1/card1-DP-5/enabled"
+  printf 'disconnected\n' >"$RELINK_ROOT/drm/card1/card1-DP-6/status"
+  printf 'disabled\n' >"$RELINK_ROOT/drm/card1/card1-DP-6/enabled"
+}
+
+relink_after_resume() {
+  OMARCHY_DRM_ROOT="$RELINK_ROOT/drm" \
+    OMARCHY_DRM_HOTPLUG_LOG="$RELINK_ROOT/hotplug.log" \
+    OMARCHY_DRM_HPD_LOG="$RELINK_ROOT/hpd.log" \
+    OMARCHY_DRM_RELINK_GRACE=0 OMARCHY_DRM_RELINK_SETTLE=0 \
+    omarchy-system-sleep-relink-displays post
+}
+
+reset_relink_fixture
+: >"$RELINK_ROOT/hpd.log"
+printf 'UDEV  [123.456] change   /devices/pci0000:00/drm/card1 (drm)\n' >"$RELINK_ROOT/hotplug.log"
+relink_after_resume >/dev/null
+if [[ $(< "$RELINK_ROOT/drm/card1/card1-DP-5/status") != "connected" ]]; then
+  fail "a hotplug arriving with the resume leaves connectors alone"
+fi
+pass "a hotplug arriving with the resume leaves connectors alone"
+
+# A link that answers HPD is alive even when nothing re-probed the connector:
+# re-detecting it would blink a working panel for nothing.
+reset_relink_fixture
+printf 'monitor will print the received events for:\n' >"$RELINK_ROOT/hotplug.log"
+printf 'amdgpu 0000:c1:00.0: [drm] DMUB HPD RX IRQ callback: link_index=5\n' >"$RELINK_ROOT/hpd.log"
+output=$(relink_after_resume)
+assert_output_contains "HPD without a hotplug reports the link as alive" "$output" "leaving displays alone"
+if [[ $(< "$RELINK_ROOT/drm/card1/card1-DP-5/status") != "connected" ]]; then
+  fail "HPD without a hotplug leaves the connector alone"
+fi
+pass "HPD without a hotplug leaves the connector alone"
+
+reset_relink_fixture
+: >"$RELINK_ROOT/hpd.log"
+printf 'monitor will print the received events for:\n' >"$RELINK_ROOT/hotplug.log"
+output=$(relink_after_resume)
+assert_output_contains "a resume without a hotplug names the connector it re-detects" "$output" "DP-5"
+if [[ $(< "$RELINK_ROOT/drm/card1/card1-DP-5/status") != "detect" ]]; then
+  fail "a resume without a hotplug forces the external connector to re-detect"
+fi
+pass "a resume without a hotplug forces the external connector to re-detect"
+
+if [[ $(< "$RELINK_ROOT/drm/card1/card1-eDP-1/status") != "connected" ]]; then
+  fail "the internal panel is never cycled"
+fi
+pass "the internal panel is never cycled"
+
+if [[ $(< "$RELINK_ROOT/drm/card1/card1-DP-6/status") != "disconnected" ]]; then
+  fail "a connector the compositor is not driving is left alone"
+fi
+pass "a connector the compositor is not driving is left alone"
