@@ -37,6 +37,18 @@ printf '\t%s' "$@" >>"$TEST_LOG"
 printf '\n' >>"$TEST_LOG"
 SH
 
+cat >"$stub_bin/findmnt" <<'SH'
+#!/bin/bash
+
+printf '/dev/mapper/root[/@]\n'
+SH
+
+cat >"$stub_bin/lsblk" <<'SH'
+#!/bin/bash
+
+printf 'root crypt\nsda2 part\nsda disk\n'
+SH
+
 cat >"$stub_bin/install" <<'SH'
 #!/bin/bash
 
@@ -61,7 +73,7 @@ invoke_leaf() {
   PATH="$stub_bin:$PATH" TEST_LOG="$calls" \
     OMARCHY_INSTALL="$ROOT/install" \
     OMARCHY_MACBOOK_DMI_PRODUCT="$dmi_product" \
-    OMARCHY_MACBOOK_ROOT_DISK="${TEST_ROOT_DISK:-nvme0n1}" \
+    OMARCHY_MACBOOK_ROOT_DISK="${TEST_ROOT_DISK-nvme0n1}" \
     OMARCHY_MACBOOK_NVME_SYSFS="$nvme_sysfs" \
     OMARCHY_MACBOOK_NVME_HELPER="$installed_helper" \
     OMARCHY_MACBOOK_NVME_UNIT="$unit_file" \
@@ -97,7 +109,7 @@ cat >"$unit_file" <<'EOF'
 ExecStart=/bin/bash -c 'echo 0 > /sys/bus/pci/devices/0000\:01\:00.0/d3cold_allowed'
 EOF
 : >"$calls"
-TEST_ROOT_DISK=sda invoke_leaf
+TEST_ROOT_DISK="" invoke_leaf
 [[ ! -e $unit_file ]] || fail "external root removes the active NVMe unit"
 [[ -f $unit_file.disabled-non-nvme-root ]] ||
   fail "external root preserves the stale unit as a disabled backup"

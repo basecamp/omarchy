@@ -10,7 +10,7 @@ if [[ $product_name =~ ^MacBook(8,1|9,1|10,1)$|^MacBookPro1[34],[123]$ ]]; then
   if [[ -z $root_disk ]]; then
     root_source=$(findmnt -n -o SOURCE / 2>/dev/null || true)
     root_source=${root_source%%\[*}
-    root_disk=$(lsblk -sno NAME,TYPE "$root_source" 2>/dev/null |
+    root_disk=$(lsblk -rsno NAME,TYPE "$root_source" 2>/dev/null |
       awk '$2 == "disk" { print $1; exit }')
   fi
 
