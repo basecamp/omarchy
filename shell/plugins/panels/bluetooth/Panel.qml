@@ -29,10 +29,20 @@ Panel {
   // Discovering property also reflects sessions other clients hold, which are
   // never this panel's to stop.
   property bool owesDiscoveryStop: false
+  // Explicit, session-scoped override for protected audio. Stopping the
+  // override also suppresses the normal no-audio retry until this panel is
+  // closed, so a transient sink disappearance cannot immediately restart it.
+  property bool forcedDiscovery: false
+  property bool discoveryStoppedForSession: false
   readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
   readonly property var pipewireNodes: Pipewire.nodes ? Pipewire.nodes.values : []
+  readonly property var defaultAudioSink: Pipewire.defaultAudioSink
   property var pendingAudioOutputDevice: null
   property int pendingAudioOutputAttempts: 0
+
+  // PipeWire node metadata is lazy in Quickshell. Track the default sink so
+  // node.name and device.api are populated before deciding whether to scan.
+  PwObjectTracker { objects: root.defaultAudioSink ? [root.defaultAudioSink] : [] }
 
   function deviceLabel(device) {
     return Model.deviceLabel(device)
@@ -73,14 +83,20 @@ Panel {
     "Wrangling codecs",
     "Polishing packets"
   ]
+  readonly property bool scanActionVisible: adapter && adapter.enabled
+    && (connectedBluetoothAudio || forcedDiscovery || discoveryStoppedForSession)
   readonly property bool rotatingPhrases: adapter && adapter.enabled
+    && !connectedBluetoothAudio && !forcedDiscovery
   readonly property string heroStatusText: {
     if (!adapter) return "No adapter"
     if (!adapter.enabled) return "Turned Off"
+    if (forcedDiscovery) return "Scanning"
+    if (connectedBluetoothAudio) return "Audio protected"
     return activePhrases[phraseIndex % activePhrases.length]
   }
 
   // Single cursor model shared by keyboard and mouse. Sections:
+  //   "scan"       — one-shot discovery override while audio is protected.
   //   "connected"  — currently connected devices; Enter disconnects.
   //   "known"      — remembered devices; Enter connects.
   //   "discovered" — unremembered devices visible while scanning; Enter connects.
@@ -111,6 +127,7 @@ Panel {
     : "transparent"
 
   function sectionCount(section) {
+    if (section === "scan") return scanActionVisible ? 1 : 0
     if (section === "connected") return connectedDevices.length
     if (section === "known") return knownDevices.length
     if (section === "discovered") return discoveredDevices.length
@@ -118,6 +135,7 @@ Panel {
   }
 
   function sectionVisible(section) {
+    if (section === "scan") return scanActionVisible
     if (section === "connected") return connectedDevices.length > 0
     if (section === "known") return knownDevices.length > 0
     if (section === "discovered") return adapter && adapter.discovering && discoveredDevices.length > 0
@@ -125,7 +143,11 @@ Panel {
   }
 
   readonly property var visibleSections: {
-    return Model.visibleSections(deviceGroups, adapter && adapter.discovering)
+    var sections = []
+    if (scanActionVisible) sections.push("scan")
+    var deviceSections = Model.visibleSections(deviceGroups, adapter && adapter.discovering)
+    for (var i = 0; i < deviceSections.length; i++) sections.push(deviceSections[i])
+    return sections
   }
 
   function devicesForSection(section) {
@@ -201,6 +223,49 @@ Panel {
       if (Model.bluetoothSinkMatchesDevice(sinks[i], device)) return sinks[i]
     }
     return null
+  }
+
+  // Discovery shares the Bluetooth controller with A2DP. On controllers that
+  // cannot sustain both reliably, opening this panel must not start a scan
+  // while a connected Bluetooth audio sink exists.
+  readonly property bool connectedBluetoothAudio: {
+    var defaultSinkText = Model.nodeText(defaultAudioSink)
+    if (defaultSinkText.indexOf("bluez_output") >= 0 || defaultSinkText.indexOf("bluez5") >= 0)
+      return true
+
+    for (var i = 0; i < connectedDevices.length; i++) {
+      if (bluetoothAudioSink(connectedDevices[i])) return true
+    }
+    return false
+  }
+
+  function startForcedDiscovery() {
+    if (!opened || adapter === null || !adapter.enabled) return
+    discoveryStoppedForSession = false
+    forcedDiscovery = true
+    owesDiscoveryStop = true
+    adapter.discovering = true
+  }
+
+  function stopForcedDiscovery() {
+    if (!forcedDiscovery && !discoveryStoppedForSession) return
+    forcedDiscovery = false
+    discoveryStoppedForSession = true
+    if (owesDiscoveryStop && adapter !== null && adapter.discovering)
+      adapter.discovering = false
+  }
+
+  function toggleForcedDiscovery() {
+    if (forcedDiscovery) stopForcedDiscovery()
+    else startForcedDiscovery()
+  }
+
+  onConnectedBluetoothAudioChanged: {
+    // Also cover a headset connected from this panel while discovery is still
+    // running: settle the scan as soon as its PipeWire sink appears.
+    if (connectedBluetoothAudio && !forcedDiscovery && owesDiscoveryStop
+        && adapter !== null && adapter.discovering)
+      adapter.discovering = false
   }
 
   function setDefaultAudioSink(sink) {
@@ -377,6 +442,10 @@ Panel {
       toggleBluetooth()
       return
     }
+    if (focusSection === "scan") {
+      toggleForcedDiscovery()
+      return
+    }
     if (actionFocused) {
       deleteSelected()
       return
@@ -407,16 +476,24 @@ Panel {
 
   onOpenedChanged: {
     if (opened) {
+      forcedDiscovery = false
+      discoveryStoppedForSession = false
       // Adopt a discovery session that is already running — a popout handoff
       // from another monitor, or one leaked by an instance that could not
       // finish its own stop — so this close settles it either way.
       if (adapter !== null && adapter.discovering) owesDiscoveryStop = true
+      if (connectedBluetoothAudio && owesDiscoveryStop) adapter.discovering = false
       if (connectedDevices.length > 0) { focusSection = "connected"; selectedIndex = 0 }
       else if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else if (discoveredDevices.length > 0) { focusSection = "discovered"; selectedIndex = 0 }
       else { focusSection = "header" }
       actionFocused = false
       cursorActive = false
+    } else {
+      // A forced scan belongs only to this visible panel session. The
+      // discoveryStop timer owns both confirmed and late-confirming stops.
+      forcedDiscovery = false
+      discoveryStoppedForSession = false
     }
   }
 
@@ -503,13 +580,17 @@ Panel {
 
   // BlueZ rejects StartDiscovery while the adapter is still powering up, and
   // discovery can also time out on its own. While the panel is open, keep
-  // nudging it back on so an enabled adapter is always scanning.
+  // nudging it back on when no Bluetooth audio is active or the user has
+  // explicitly chosen the one-shot override.
   Timer {
     id: discoveryRetry
     interval: 1000
     repeat: true
     triggeredOnStart: true
-    running: root.opened && root.adapter !== null && root.adapter.enabled && !root.adapter.discovering
+    running: root.opened && root.adapter !== null && root.adapter.enabled
+      && !root.discoveryStoppedForSession
+      && (!root.connectedBluetoothAudio || root.forcedDiscovery)
+      && !root.adapter.discovering
     onTriggered: {
       root.owesDiscoveryStop = true
       root.adapter.discovering = true
@@ -560,7 +641,21 @@ Panel {
   Connections {
     target: root.adapter
     function onDiscoveringChanged() {
-      if (!root.adapter.discovering) root.owesDiscoveryStop = false
+      if (!root.adapter.discovering) {
+        root.owesDiscoveryStop = false
+      } else if (root.owesDiscoveryStop
+                 && (root.discoveryStoppedForSession
+                     || (root.connectedBluetoothAudio && !root.forcedDiscovery))) {
+        // Catch a StartDiscovery confirmation that arrives after protection
+        // or the explicit stop was requested.
+        root.adapter.discovering = false
+      }
+    }
+    function onEnabledChanged() {
+      if (!root.adapter.enabled) {
+        root.forcedDiscovery = false
+        root.discoveryStoppedForSession = false
+      }
     }
   }
 
@@ -766,6 +861,103 @@ Panel {
         // grow the popup past the screen.
         PanelSeparator {
           foreground: root.bar.foreground
+        }
+
+        // Explicit escape hatch for controllers that cannot scan and stream
+        // reliably at the same time. It is deliberately a panel-session
+        // action rather than a persistent preference.
+        CursorSurface {
+          id: scanAction
+          visible: root.scanActionVisible
+          width: parent.width
+          implicitHeight: scanActionContent.implicitHeight + Style.spacing.md * 2
+          hasCursor: root.cursorActive && root.focusSection === "scan"
+          current: root.forcedDiscovery
+          bordered: true
+          foreground: root.bar.foreground
+          fill: root.hoverFill
+          currentFill: root.selectedFill
+
+          MouseArea {
+            id: scanActionMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onContainsMouseChanged: if (containsMouse) {
+              root.cursorActive = true
+              root.focusSection = "scan"
+              root.selectedIndex = 0
+              root.actionFocused = false
+            }
+            onClicked: root.toggleForcedDiscovery()
+          }
+
+          PanelToolTip {
+            visible: scanActionMouse.containsMouse
+            text: root.forcedDiscovery ? "Stop Bluetooth discovery" : "Temporarily allow Bluetooth discovery"
+            fontFamily: root.bar.fontFamily
+          }
+
+          Item {
+            id: scanActionContent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.leftMargin: Style.space(10)
+            anchors.rightMargin: Style.space(10)
+            implicitHeight: Math.max(scanActionIcon.implicitHeight, scanActionLabels.implicitHeight, scanActionChevron.implicitHeight)
+
+            Text {
+              id: scanActionIcon
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: "󰑐"
+              color: root.bar.foreground
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.heading
+            }
+
+            Column {
+              id: scanActionLabels
+              anchors.left: scanActionIcon.right
+              anchors.leftMargin: Style.space(10)
+              anchors.right: scanActionChevron.left
+              anchors.rightMargin: Style.space(8)
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(1)
+
+              Text {
+                width: parent.width
+                text: root.forcedDiscovery ? "Stop scanning" : "Scan anyway"
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+                font.bold: true
+                elide: Text.ElideRight
+              }
+
+              Text {
+                width: parent.width
+                text: root.forcedDiscovery
+                  ? "Discovery is temporarily enabled"
+                  : "One-time scan · may interrupt audio"
+                color: Qt.darker(root.bar.foreground, 1.5)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+              }
+            }
+
+            Text {
+              id: scanActionChevron
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.forcedDiscovery ? "󰅖" : "󰅂"
+              color: Qt.darker(root.bar.foreground, 1.25)
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.heading
+            }
+          }
         }
 
         Column {

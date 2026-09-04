@@ -29,6 +29,17 @@ const retryTimer = panelSource.match(/id: discoveryRetry[\s\S]*?onTriggered: \{[
 assert(retryTimer, 'bluetooth has the discovery retry timer')
 assert(/owesDiscoveryStop = true/.test(retryTimer[0]), 'bluetooth takes on the stop it owes when it starts discovery')
 
+// Bluetooth inquiry can starve A2DP airtime on controllers that cannot scan
+// and stream reliably at the same time. A live PipeWire Bluetooth sink keeps
+// automatic discovery off, while an explicit panel-session override lets the
+// user pair another device when needed.
+assert(/PwObjectTracker \{ objects: root\.defaultAudioSink/.test(panelSource), 'bluetooth tracks default sink metadata before deciding whether to scan')
+assert(/readonly property bool connectedBluetoothAudio:[\s\S]*?bluez_output[\s\S]*?bluetoothAudioSink/.test(panelSource), 'bluetooth detects active Bluetooth audio sinks')
+assert(/!root\.connectedBluetoothAudio \|\| root\.forcedDiscovery/.test(retryTimer[0]), 'bluetooth protects active audio unless discovery is explicitly forced')
+assert(/id: scanAction[\s\S]*?"Scan anyway"[\s\S]*?"One-time scan · may interrupt audio"/.test(panelSource), 'bluetooth offers an explicit one-shot discovery action')
+assert(/function stopForcedDiscovery\(\)[\s\S]*?discoveryStoppedForSession = true[\s\S]*?discovering = false/.test(panelSource), 'bluetooth keeps a manually stopped scan down for the rest of the panel session')
+assert(/onOpenedChanged:[\s\S]*?else \{[\s\S]*?forcedDiscovery = false[\s\S]*?discoveryStoppedForSession = false/.test(panelSource), 'bluetooth clears the discovery override when the panel closes')
+
 // Quickshell only forwards a discovering write that differs from BlueZ's last
 // confirmed state, so a stop written in the same instant as an in-flight
 // StartDiscovery would be swallowed. Binding the stop timer to the confirmed
