@@ -175,7 +175,10 @@ target_home=$(getent passwd "$target_user" | cut -d: -f6)
 [[ -n $target_home && -d $target_home ]] || fail "Home directory for '$target_user' was not found."
 target_uid=$(id -u "$target_user")
 target_runtime_dir="/run/user/$target_uid"
-package_path="/usr/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin:$target_home/.local/bin"
+# User-local commands are needed only after dropping to the target user. Never
+# expose their search path to commands run through as_root.
+root_path=/usr/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin
+package_path="$root_path:$target_home/.local/bin"
 
 as_root() {
   if (( EUID == 0 )); then
@@ -661,7 +664,7 @@ configure_lock_authentication() {
   as_root env \
     OMARCHY_INSTALL_USER="$target_user" \
     OMARCHY_PATH=/usr/share/omarchy \
-    PATH="$package_path" \
+    PATH="$root_path" \
     "$apply_lock"
 }
 
@@ -1287,7 +1290,7 @@ apply_firewall_defaults() {
   fi
 
   log "Applying Omarchy firewall defaults"
-  as_root env OMARCHY_PATH=/usr/share/omarchy PATH="$package_path" \
+  as_root env OMARCHY_PATH=/usr/share/omarchy PATH="$root_path" \
     bash -euo pipefail "$firewall_script" ||
     warn "Could not apply firewall defaults; run 'sudo bash $firewall_script' after reboot."
 }
