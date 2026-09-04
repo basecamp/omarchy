@@ -143,6 +143,11 @@ Panel {
   readonly property string reportLocation:  configuredLocation || wttrLocation || (areaInfo && areaInfo.areaName && areaInfo.areaName[0] ? areaInfo.areaName[0].value : "")
   readonly property string reportTempNum:   current ? String(useImperial ? current.temp_F : current.temp_C) : ""
   readonly property string tempUnit:        "°" + (useImperial ? "F" : "C")
+  // Triple-digit (or negative) readings are 3+ chars and would push the hero
+  // cluster into the location/stats column on the right, which has a fixed
+  // width — step the hero icon and temperature down a size when wide.
+  // reportTempNum is always a rounded integer, so length is a stable proxy.
+  readonly property bool wideHeroTemp: reportTempNum.length > 2
   readonly property string reportFeels:     current ? formatTemp(useImperial ? current.FeelsLikeF : current.FeelsLikeC) : ""
   readonly property string reportWind:      current ? (useImperial ? (current.windspeedMiles + " mph") : (current.windspeedKmph + " km/h")) : ""
   readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
@@ -539,7 +544,7 @@ Panel {
             font.family: root.bar.fontFamily
             // Decorative condition emoji; intentionally larger than the
             // Style.font.* scale's displayLarge (28).
-            font.pixelSize: 64
+            font.pixelSize: root.wideHeroTemp ? 56 : 64
           }
 
           Row {
@@ -553,8 +558,9 @@ Panel {
               color: root.bar.foreground
               font.family: root.bar.fontFamily
               // Hero temperature read-out; deliberately oversized, outside
-              // the Style.font.* scale.
-              font.pixelSize: 56
+              // the Style.font.* scale. Steps down for wide readings so the
+              // left cluster never overlaps the location/stats column.
+              font.pixelSize: root.wideHeroTemp ? 44 : 56
               font.bold: true
             }
             Text {

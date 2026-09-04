@@ -137,6 +137,17 @@ assert(
   panelSource.includes('text: root.label || "—"'),
   'weather hero and bar use the same resolved icon'
 )
+// Triple-digit (or negative) readings widen the hero cluster past the fixed
+// panel width, overlapping the location/stats column (#6991).
+assert(
+  panelSource.includes('readonly property bool wideHeroTemp: reportTempNum.length > 2'),
+  'weather flags triple-digit (or negative) hero readings as wide'
+)
+assert(
+  panelSource.includes('font.pixelSize: root.wideHeroTemp ? 56 : 64') &&
+  panelSource.includes('font.pixelSize: root.wideHeroTemp ? 44 : 56'),
+  'weather steps the hero icon and temperature down a size for wide readings'
+)
 assert(
   panelSource.includes('onReturnRequested: root.startEditingLocation()'),
   'weather focuses city input when Return is pressed'
