@@ -62,7 +62,17 @@ Item {
     return true
   }
 
+  function lockInProgress() {
+    var lockService = root.shell ? root.shell.firstPartyServiceFor("omarchy.lock") : null
+    return IdleModel.lockInProgress(lockProcess.running, lockService && lockService.locked)
+  }
+
   function launchScreensaver() {
+    if (lockInProgress()) {
+      logEvent("screensaver-skip", "lock-in-progress")
+      return
+    }
+
     root.screensaverStartedThisCycle = true
     screensaverLaunchGraceTimer.restart()
     runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
@@ -82,6 +92,11 @@ Item {
   function startIdleCycle() {
     if (root.idledThisCycle) {
       logEvent("idle-cycle-already-running")
+      return
+    }
+
+    if (lockInProgress()) {
+      logEvent("idle-cycle-skip", "lock-in-progress")
       return
     }
 
