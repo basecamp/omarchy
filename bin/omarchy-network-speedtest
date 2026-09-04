@@ -28,13 +28,6 @@ format_mbps() {
   }'
 }
 
-iface=$(ip route get "$probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
-
-if [[ -z $iface || ! -r /sys/class/net/$iface/statistics/rx_bytes || ! -r /sys/class/net/$iface/statistics/tx_bytes ]]; then
-  echo "No active network interface" >&2
-  exit 1
-fi
-
 if ! omarchy-cmd-present curl; then
   echo "curl is required" >&2
   exit 1
@@ -47,6 +40,32 @@ fast_urls=$(curl -fsS "$fast_api_url" 2>/dev/null | jq -r '.targets[]?.url // em
 
 if [[ -z $fast_urls ]]; then
   echo "Failed to fetch speed test endpoints" >&2
+  exit 1
+fi
+
+# The fast.com targets are frequently IPv6-only. On a machine with more than one link up, the
+# IPv4 default route can point at a different interface than the one the transfer actually
+# uses, and we would then sample the byte counters of an idle NIC. Ask curl which local
+# address it ends up using for the target, and map that back to its interface.
+iface_for_address() {
+  ip -o addr show 2>/dev/null | awk -v addr="$1" '{ split($4, parts, "/"); if (parts[1] == addr) { print $2; exit } }'
+}
+
+first_url=${fast_urls%%$'\n'*}
+local_ip=$(curl -fsS -o /dev/null -r 0-0 --max-time 10 -w '%{local_ip}' "$first_url" 2>/dev/null || true)
+
+iface=""
+if [[ -n $local_ip ]]; then
+  iface=$(iface_for_address "$local_ip")
+fi
+
+# Fall back to the default route if the target could not be probed.
+if [[ -z $iface ]]; then
+  iface=$(ip route get "$probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+fi
+
+if [[ -z $iface || ! -r /sys/class/net/$iface/statistics/rx_bytes || ! -r /sys/class/net/$iface/statistics/tx_bytes ]]; then
+  echo "No active network interface" >&2
   exit 1
 fi
 
