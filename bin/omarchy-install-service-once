@@ -10,4 +10,4 @@ echo "Enabling ONCE background service..."
 sudo systemctl enable --now once-background.service
 
 echo -e "\nLaunching ONCE..."
-once
+sudo once

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# omarchy:summary=Match the Dell XPS 13 DX13260 that requires the sidecar amplifier workaround.
+
+product_sku="${OMARCHY_DMI_PRODUCT_SKU:-/sys/class/dmi/id/product_sku}"
+
+omarchy-hw-match "DX13260" &&
+  grep -qix "0E53" "$product_sku" 2>/dev/null

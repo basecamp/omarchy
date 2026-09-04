@@ -531,6 +531,7 @@ Panel {
 
             Text {
               id: heroIcon
+              textFormat: Text.PlainText
               text: root.displays.length > 1 ? "󰍺" : "󰍹"
               color: root.bar.foreground
               font.family: root.bar.fontFamily
@@ -559,6 +560,7 @@ Panel {
 
               Text {
                 id: heroLabel
+                textFormat: Text.PlainText
                 text: {
                   if (root.brightnessAvailable) {
                     return root.brightnessName(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent).toUpperCase()
@@ -602,6 +604,7 @@ Panel {
 
               Text {
                 id: brightnessPercent
+                textFormat: Text.PlainText
                 text: Math.round(brightnessSlider.dragging ? brightnessSlider.liveValue : root.brightnessPercent) + "%"
                 color: Qt.darker(root.bar.foreground, 1.4)
                 font.family: root.bar.fontFamily
@@ -674,6 +677,7 @@ Panel {
 
               Text {
                 id: textSizePx
+                textFormat: Text.PlainText
                 text: (textSizeSlider.dragging
                        ? root.textSizeStops[Math.round(textSizeSlider.liveValue)]
                        : root.displayedTextPx()) + "px"
@@ -747,6 +751,7 @@ Panel {
               // focused one.
               Text {
                 id: scaleMonitor
+                textFormat: Text.PlainText
                 text: root.focusedMonitor
                 // Only worth naming when more than one display is in play.
                 visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
@@ -887,6 +892,7 @@ Panel {
       }
 
       Text {
+        textFormat: Text.PlainText
         text: monitorRow.display.name + (monitorRow.display.focused ? " · focused" : "")
         color: root.bar.foreground
         font.family: root.bar.fontFamily
@@ -897,6 +903,7 @@ Panel {
       }
 
       Text {
+        textFormat: Text.PlainText
         text: monitorRow.display.enabled ? "󰄬" : ""
         color: root.bar.foreground
         font.family: root.bar.fontFamily

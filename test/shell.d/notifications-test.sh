@@ -18,6 +18,151 @@ assertEqual(
   'notifications strip inline image tags'
 )
 
+// The body renders as StyledText, which fetches <img src> over the network. The
+// invariant that matters is not a particular output string but that no tag Qt
+// would honour as an image survives, so assert that directly. Tags are bounded
+// the conservative way the stripper bounds them: a `<` opens a tag that runs to
+// the next `>`. Qt's own bound can be longer, since a `>` inside a quoted
+// attribute value does not close a tag there — which only ever splits one Qt
+// tag into several here, so a name this helper reads is a name Qt reads too.
+function survivingTagNames(text) {
+  const names = []
+  let i = 0
+  while (i < text.length) {
+    const open = text.indexOf('<', i)
+    if (open === -1) break
+    const close = text.indexOf('>', open)
+    const tag = close === -1 ? text.slice(open) : text.slice(open, close + 1)
+    // Read the name the way Qt does, skipping anything that is not part of it.
+    // Matching the separator with \s instead would give this helper the same
+    // blind spot as the code it is checking — Qt skips U+0085 and \s does not —
+    // and an assertion that shares the implementation's bug proves nothing.
+    const name = /^<[^A-Za-z0-9]*([A-Za-z0-9]+)/.exec(tag)
+    if (name) names.push(name[1].toLowerCase())
+    i = close === -1 ? text.length : close + 1
+  }
+  return names
+}
+
+// Assert on styledBody, not sanitizeBody: styledBody is the string the card
+// binds to the StyledText, so it is the only one Qt ever parses. Checking the
+// sanitizer's output instead would pass a body whose surviving tag the newline
+// rewrite later splits open.
+function assertNoImageSurvives(body, description) {
+  const out = notifications.styledBody(body, 'Slack', '')
+  const names = survivingTagNames(out)
+  assert(
+    !names.includes('img'),
+    description,
+    `input:  ${body}\noutput: ${out}\ntags:   ${JSON.stringify(names)}`
+  )
+}
+
+assertNoImageSurvives(
+  '<img src="http://host/plain.png">',
+  'notifications leave no image tag for a plain payload'
+)
+
+// A payload spliced inside the literal "<img" prefix. Qt reads ONE malformed
+// tag named `im` here and renders nothing; a stripper that deleted the inner
+// match would close the halves up into a live <img> the input never had.
+assertNoImageSurvives(
+  '<im<img src="http://host/decoy.png">g src="http://host/beacon.png">',
+  'notifications leave no image tag when a payload is spliced inside <img'
+)
+
+assertNoImageSurvives(
+  '<im<im<img src=a>g src=b>g src="http://host/deep.png">',
+  'notifications leave no image tag for a doubly nested payload'
+)
+
+assertNoImageSurvives(
+  '<img<img src="http://host/twin.png">',
+  'notifications leave no image tag when the outer tag is itself named img'
+)
+
+assertNoImageSurvives(
+  '< img src="http://host/spaced.png">',
+  'notifications leave no image tag when whitespace follows the angle bracket'
+)
+
+// Qt skips the separator between `<` and the tag name with QChar::isSpace(),
+// which counts U+0085 NEL. JavaScript's \s does not. Reading the name with \s
+// finds none here, keeps the tag, and Qt then reads `img` and fetches it —
+// measured against Qt 6.11.2, where this exact body makes a StyledText Text
+// issue an outbound GET. Asserted on the whole output rather than through
+// assertNoImageSurvives so it holds even if that helper is ever loosened.
+assertEqual(
+  notifications.sanitizeBody('<\u0085img src="http://host/nel.png">after', 'Slack', ''),
+  'after',
+  'notifications strip an image tag whose separator is U+0085, which Qt skips but \\s does not'
+)
+
+assertNoImageSurvives(
+  '<\u0085img src="http://host/nel2.png">',
+  'notifications leave no image tag when U+0085 follows the angle bracket'
+)
+
+// The card rewrites newlines to <br/> for the StyledText, which puts tag syntax
+// inside a tag the stripper kept: `<x`, newline, `<img …>` is one tag named `x`
+// to both the stripper and Qt, and the rewrite splits it into `<x<br/>` and a
+// live image tag. Measured against Qt 6.11.2 — the rewritten form issues the GET
+// and the original does not — so the strip has to run after the rewrite, which
+// is what styledBody() does.
+assertNoImageSurvives(
+  '<x\n<img src="http://host/split.png">',
+  'notifications leave no image tag when a newline rewrite splits a kept tag'
+)
+
+assertNoImageSurvives(
+  '<x\r\n<img src="http://host/split-crlf.png">',
+  'notifications leave no image tag when a CRLF rewrite splits a kept tag'
+)
+
+assertEqual(
+  notifications.styledBody('<x\n<img src="http://host/split.png">', 'Slack', ''),
+  '<x<br/>',
+  'notifications drop the image half of a tag the newline rewrite splits'
+)
+
+// The rewrite itself still happens, and body markup other than images survives it.
+assertEqual(
+  notifications.styledBody('<b>bold</b>\nsecond line', 'Slack', ''),
+  '<b>bold</b><br/>second line',
+  'notifications keep body markup and the line break the card renders'
+)
+
+// The order above is only worth anything if the card actually renders it, and no
+// JavaScript assertion can see a QML binding. Pin the binding itself: the rewrite
+// belongs in the logic module, where the strip runs after it.
+const cardQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/components/NotificationCard.qml'), 'utf8')
+assert(
+  /readonly property string styledBody: NotificationLogic\.styledBody\(body, app, appIcon\)/.test(cardQml),
+  'the notification card renders the body that was stripped after the newline rewrite'
+)
+assert(
+  !/<br\/>/.test(cardQml),
+  'the notification card does not rewrite newlines itself, which would leave tag syntax unchecked'
+)
+
+assertEqual(
+  notifications.sanitizeBody('trailing <img src="http://host/z.png"', 'Slack', ''),
+  'trailing ',
+  'notifications strip an unterminated image tag the renderer would close itself'
+)
+
+assertEqual(
+  notifications.sanitizeBody('<IMG SRC="http://host/u.png">shout', 'Slack', ''),
+  'shout',
+  'notifications strip image tags regardless of case'
+)
+
+assertEqual(
+  notifications.sanitizeBody('<b>bold</b> and <a href="http://host">link</a>', 'Slack', ''),
+  '<b>bold</b> and <a href="http://host">link</a>',
+  'notifications keep the body markup the body-markup capability advertises'
+)
+
 assertEqual(
   notifications.sanitizeBody('<a href="https://example.com">example.com</a> Message body', 'Chromium', ''),
   'Message body',

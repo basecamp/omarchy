@@ -325,6 +325,7 @@ Panel {
 
           Text {
             id: heroIcon
+            textFormat: Text.PlainText
             text: root.batteryIcon()
             color: root.bar.foreground
             font.family: root.bar.fontFamily
@@ -356,6 +357,7 @@ Panel {
 
             Text {
               id: heroStatus
+              textFormat: Text.PlainText
               text: root.heroStatusText.toUpperCase()
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
@@ -369,6 +371,7 @@ Panel {
 
           Text {
             id: heroPercent
+            textFormat: Text.PlainText
             text: root.batteryInfo.percentage || "—"
             color: root.bar.foreground
             font.family: root.bar.fontFamily
@@ -517,6 +520,7 @@ Panel {
   }
 
   component InfoLabel: Text {
+    textFormat: Text.PlainText
     color: root.bar.foreground
     opacity: 0.6
     font.family: root.bar.fontFamily
@@ -524,6 +528,7 @@ Panel {
   }
 
   component InfoValue: Text {
+    textFormat: Text.PlainText
     color: root.bar.foreground
     font.family: root.bar.fontFamily
     font.pixelSize: Style.font.bodySmall

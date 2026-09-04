@@ -48,6 +48,7 @@ Item {
       width: parent.width
 
       Text {
+        textFormat: Text.PlainText
         visible: root.title !== ""
         text: root.title
         width: Math.min(implicitWidth, Math.max(0, parent.width - (detailPill.visible ? detailPill.implicitWidth + Style.space(8) : 0)))
@@ -75,6 +76,7 @@ Item {
 
         Text {
           id: detailText
+          textFormat: Text.PlainText
           anchors.centerIn: parent
           text: root.detail
           color: root.dim
@@ -87,6 +89,7 @@ Item {
 
     Text {
       id: metaText
+      textFormat: Text.PlainText
       width: parent.width
       text: root.meta.toUpperCase()
       visible: text !== ""

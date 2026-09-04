@@ -698,6 +698,7 @@ Panel {
           // Status only — the switch owns toggling, mouse and keyboard alike.
           Text {
             id: heroIcon
+            textFormat: Text.PlainText
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
             text: root.icon
@@ -748,6 +749,7 @@ Panel {
 
             Text {
               id: heroStatus
+              textFormat: Text.PlainText
               text: root.heroStatusText.toUpperCase()
               color: Qt.darker(root.bar.foreground, 1.4)
               font.family: root.bar.fontFamily
@@ -863,6 +865,7 @@ Panel {
         }
 
         Text {
+          textFormat: Text.PlainText
           visible: root.connectedDevices.length === 0 && root.scrollRows.length === 0
           text: !root.adapter ? "No Bluetooth adapter"
               : !root.adapter.enabled ? "Turn Bluetooth on to scan"
@@ -971,6 +974,7 @@ Panel {
 
       Text {
         id: deviceIcon
+        textFormat: Text.PlainText
         text: row.isConnected ? "󰂱" : "󰂯"
         color: row.statusColor
         font.family: root.bar.fontFamily
@@ -989,6 +993,7 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
+          textFormat: Text.PlainText
           text: root.deviceLabel(row.dev) || "Device"
           color: root.bar.foreground
           font.family: root.bar.fontFamily
@@ -997,6 +1002,7 @@ Panel {
           width: parent.width
         }
         Text {
+          textFormat: Text.PlainText
           visible: row.statusText !== ""
           text: row.statusText
           color: row.statusColor

@@ -247,6 +247,7 @@ Item {
           color: "transparent"
 
           Text {
+            textFormat: Text.PlainText
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
@@ -284,6 +285,7 @@ Item {
               color: hasCursor ? root.selectedBackground : "transparent"
 
               Text {
+                textFormat: Text.PlainText
                 text: parent.emoji
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.display
@@ -326,6 +328,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               text: "No matches for “" + root.filterText + "”"
               color: root.foreground
               opacity: 0.7
