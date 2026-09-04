@@ -3,3 +3,4 @@ singleton Border 1.0 Border.qml
 singleton Color 1.0 Color.qml
 singleton Style 1.0 Style.qml
 singleton Util 1.0 Util.qml
+singleton Wallclock 1.0 Wallclock.qml
