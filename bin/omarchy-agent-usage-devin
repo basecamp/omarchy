@@ -1,0 +1,485 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Devin CLI usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Devin CLI usage into one display-ready JSON record.
+
+Token stats come from the Devin CLI session database at
+~/.local/share/devin/cli/sessions.db. Each assistant message carries
+metadata.metrics with input/output/cache token counts and the generation
+model, so the collector aggregates those by day and by model the same way
+the Claude and Codex collectors do.
+
+Rate limits (daily and weekly quota percentages with reset times) come from
+the user-status cache that the Devin TUI writes at
+~/.cache/devin/cli/user_status.*.bin on every startup. The TUI fetches
+these from the server via a gRPC call (GetUserStatus); the collector reads
+the cached result so it doesn't need to make its own network call.
+"""
+
+import argparse
+import base64
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "devin"
+AGENT_NAME = "Devin"
+
+# A scan this recent is only reused to dedup concurrent collector runs (the
+# update command backgrounds one per agent while the panel refreshes on its
+# own); every periodic widget refresh lands a real rescan, however low
+# refreshIntervalSec is set. --limits-only promises only fresh limits, so it
+# may reuse a scan for up to 15 minutes. Devin's limits come from the TUI's
+# user-status cache, not a live API call, so they are always read fresh.
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+
+def data_dir() -> Path:
+  return Path(os.environ.get("DEVIN_DATA_DIR") or (Path.home() / ".local" / "share" / "devin" / "cli"))
+
+
+def db_path() -> Path:
+  return data_dir() / "sessions.db"
+
+
+def cache_root() -> Path:
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def cache_paths() -> tuple[Path, Path]:
+  digest = hashlib.sha1(str(data_dir()).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"devin-scan-{digest}.json", root / f"devin-scan-{digest}.lock"
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def today_string() -> str:
+  return date_string(dt.datetime.now().date())
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_string() -> str:
+  return date_string(dt.datetime.now().date())
+
+
+def number(value: Any) -> int:
+  try:
+    return int(value or 0)
+  except (TypeError, ValueError):
+    return 0
+
+
+def model_name(raw: Any) -> str:
+  value = str(raw or "devin")
+  return value if value else "devin"
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+# ---------------------------------------------------------------- local scan
+
+
+def run_scan(conn: sqlite3.Connection) -> dict[str, Any]:
+  """Run the full SQLite scan and return the stats dict for caching."""
+  today = dt.datetime.now().date()
+  recent_dates = recent_date_strings()
+  recent: dict[str, int] = {day: 0 for day in recent_dates}
+  today_by_model: dict[str, int] = {}
+  model_usage: dict[str, dict[str, int]] = {}
+  active_dates: set[str] = set()
+
+  rows = conn.execute(
+    """
+    SELECT
+      date(mn.created_at, 'unixepoch', 'localtime') AS day,
+      json_extract(mn.chat_message, '$.metadata.metrics.input_tokens') AS input_tokens,
+      json_extract(mn.chat_message, '$.metadata.metrics.output_tokens') AS output_tokens,
+      json_extract(mn.chat_message, '$.metadata.metrics.cache_read_tokens') AS cache_read_tokens,
+      json_extract(mn.chat_message, '$.metadata.metrics.cache_creation_tokens') AS cache_creation_tokens,
+      json_extract(mn.chat_message, '$.metadata.generation_model') AS model
+    FROM message_nodes mn
+    WHERE json_extract(mn.chat_message, '$.metadata.metrics') IS NOT NULL
+    """
+  ).fetchall()
+
+  for row in rows:
+    inp = number(row["input_tokens"])
+    out = number(row["output_tokens"])
+    cache_read = number(row["cache_read_tokens"])
+    cache_write = number(row["cache_creation_tokens"])
+    total = inp + out + cache_read + cache_write
+    if total <= 0:
+      continue
+
+    model = model_name(row["model"])
+    day = row["day"] or local_date_string()
+
+    bucket = model_usage.setdefault(model, empty_bucket())
+    bucket["inputTokens"] += inp
+    bucket["outputTokens"] += out
+    bucket["cacheReadInputTokens"] += cache_read
+    bucket["cacheCreationInputTokens"] += cache_write
+
+    if day:
+      active_dates.add(day)
+    if day in recent:
+      recent[day] += total
+    if day == date_string(today):
+      today_by_model[model] = today_by_model.get(model, 0) + total
+
+  prompt_rows = conn.execute(
+    """
+    SELECT
+      date(timestamp, 'unixepoch', 'localtime') AS day,
+      COUNT(*) AS prompts,
+      COUNT(DISTINCT session_id) AS sessions
+    FROM prompt_history
+    GROUP BY day
+    """
+  ).fetchall()
+
+  today_prompts = 0
+  today_sessions = 0
+  total_prompts = 0
+  total_sessions = 0
+
+  for row in prompt_rows:
+    day = row["day"] or local_date_string()
+    prompts = number(row["prompts"])
+    sessions = number(row["sessions"])
+    total_prompts += prompts
+    total_sessions += sessions
+    if day == date_string(today):
+      today_prompts = prompts
+      today_sessions = sessions
+
+  return {
+    "todayPrompts": today_prompts,
+    "todaySessions": today_sessions,
+    "todayTotalTokens": sum(today_by_model.values()),
+    "todayTokensByModel": today_by_model,
+    "recentDays": [{"date": day, "messageCount": recent[day]} for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": total_sessions,
+    "activeDays": len(active_dates),
+    "activeDates": sorted(active_dates),
+    "modelUsage": model_usage,
+  }
+
+
+def read_fresh_json(path: Path, max_age_seconds: int) -> Any:
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path: Path, payload: Any) -> None:
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def read_cached_stats(cache_file: Path, max_age_seconds: int) -> dict[str, Any] | None:
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+    return None
+  # today* fields only mean "today" on the day they were scanned. A cache
+  # from another local date (midnight passed, or the clock moved) is a miss,
+  # not merely old, whatever its mtime says.
+  if cached.get("scanDate") != today_string():
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+    return None
+  return stats
+
+
+def write_cached_stats(cache_file: Path, stats: dict[str, Any]) -> None:
+  try:
+    write_json(cache_file, {"schemaVersion": 1, "scanDate": today_string(), "stats": stats})
+  except Exception as exc:
+    print(f"omarchy-agent-usage-devin: could not write usage cache ({exc})", file=sys.stderr)
+
+
+def cached_scan(conn: sqlite3.Connection, force: bool, limits_only: bool) -> dict[str, Any]:
+  """Local stats, with the cache as a pure optimization.
+
+  The cache must never take the collector down: any cache-layer failure
+  (unwritable cache root, lock errors, disk full) degrades to a direct scan
+  and a warning on stderr. The JSON record is the contract; the cache is not.
+  """
+  max_age = 0 if force else (LIMITS_ONLY_REUSE_SECONDS if limits_only else SCAN_REUSE_SECONDS)
+  try:
+    return _cached_scan(conn, max_age)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-devin: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    return run_scan(conn)
+
+
+def _cached_scan(conn: sqlite3.Connection, max_age: int) -> dict[str, Any]:
+  cache_file, lock_file = cache_paths()
+
+  cached = read_cached_stats(cache_file, max_age)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age)
+    if cached is not None:
+      return cached
+    stats = run_scan(conn)
+    write_cached_stats(cache_file, stats)
+    return stats
+
+
+# ------------------------------------------------------------------- limits
+#
+# Devin does not expose rate limits through a CLI command or REST API. The
+# TUI fetches GetUserStatus from the server on startup and caches the
+# protobuf response at ~/.cache/devin/cli/user_status.*.bin. The collector
+# reads that cache — the same data the /usage slash command renders — so it
+# doesn't need credentials or a network call of its own.
+
+
+def user_status_dir() -> Path:
+  return Path(os.environ.get("DEVIN_CACHE_DIR") or (Path.home() / ".cache" / "devin" / "cli"))
+
+
+def _decode_varint(data: bytes, pos: int) -> tuple[int, int]:
+  result = 0
+  shift = 0
+  while True:
+    byte = data[pos]
+    result |= (byte & 0x7F) << shift
+    pos += 1
+    if not (byte & 0x80):
+      break
+    shift += 7
+  return result, pos
+
+
+def _find_field(data: bytes, target_fn: int) -> bytes | int | None:
+  """Return the value of field `target_fn` in a protobuf message, or None."""
+  pos = 0
+  while pos < len(data):
+    try:
+      tag, pos = _decode_varint(data, pos)
+      fn = tag >> 3
+      wt = tag & 0x07
+      if wt == 0:  # varint
+        val, pos = _decode_varint(data, pos)
+        if fn == target_fn:
+          return val
+      elif wt == 1:  # 64-bit
+        pos += 8
+      elif wt == 2:  # length-delimited
+        length, pos = _decode_varint(data, pos)
+        val = data[pos:pos + length]
+        pos += length
+        if fn == target_fn:
+          return val
+      elif wt == 5:  # 32-bit
+        pos += 4
+      else:
+        break
+    except IndexError:
+      break
+  return None
+
+
+def _iso_from_unix(unix_ts: int | None) -> str:
+  if not unix_ts or unix_ts <= 0:
+    return ""
+  return dt.datetime.fromtimestamp(unix_ts, tz=dt.timezone.utc).isoformat()
+
+
+# A cached percentage outlives the TUI session that measured it, but only
+# until its window rolls over: once a window has reset, the figure describes
+# a period that is over, and a stale 69% would misreport a fresh allowance.
+# A window with no reset time, or one that won't parse, is kept — an
+# unreadable timestamp is no reason to throw away a real number.
+def _limit_window_open(entry: dict[str, Any], now: dt.datetime) -> bool:
+  raw = str(entry.get("resetsAt") or "")
+  if raw == "":
+    return True
+  try:
+    resets_at = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+  except Exception:
+    return True
+  if resets_at.tzinfo is None:
+    resets_at = resets_at.replace(tzinfo=dt.timezone.utc)
+  return resets_at > now
+
+
+def parse_quota() -> dict[str, Any]:
+  """Read the most recent user-status cache and return limits + tier label.
+
+  The PlanStatus nested message carries daily/weekly quota percentages and
+  reset timestamps. Multiple cache files may exist (one per identity); the
+  most recently fetched one wins.
+  """
+  best: dict[str, Any] = {}
+  best_age: float | None = None
+  for path in sorted(user_status_dir().glob("user_status.*.bin")):
+    try:
+      cache = json.loads(path.read_text(encoding="utf-8"))
+      fetched_at = cache.get("fetched_at_secs", 0)
+      age = time.time() - fetched_at if fetched_at else float("inf")
+      if best_age is not None and age >= best_age:
+        continue
+      payload_b64 = cache.get("payload")
+      if not payload_b64:
+        continue
+      payload = base64.b64decode(payload_b64)
+      plan_status = _find_field(payload, 13)
+      if not isinstance(plan_status, (bytes, bytearray)):
+        continue
+      plan_info = _find_field(plan_status, 1)
+      plan_name = None
+      if isinstance(plan_info, (bytes, bytearray)):
+        raw_name = _find_field(plan_info, 2)
+        if isinstance(raw_name, (bytes, bytearray)):
+          plan_name = raw_name.decode("utf-8", errors="replace")
+      daily_remaining_pct = _find_field(plan_status, 14)
+      weekly_remaining_pct = _find_field(plan_status, 15)
+      daily_reset = _find_field(plan_status, 17)
+      weekly_reset = _find_field(plan_status, 18)
+      limits: list[dict[str, Any]] = []
+      # Both fields are *remaining* percent from GetUserStatus; the panel
+      # expects *used*, so invert: 99% remaining -> 1% used.
+      if isinstance(daily_remaining_pct, int) and daily_remaining_pct >= 0:
+        limits.append({
+          "label": "Daily",
+          "percent": (100 - daily_remaining_pct) / 100.0,
+          "resetsAt": _iso_from_unix(daily_reset if isinstance(daily_reset, int) else None),
+        })
+      if isinstance(weekly_remaining_pct, int) and weekly_remaining_pct >= 0:
+        limits.append({
+          "label": "Weekly",
+          "percent": (100 - weekly_remaining_pct) / 100.0,
+          "resetsAt": _iso_from_unix(weekly_reset if isinstance(weekly_reset, int) else None),
+        })
+      now = dt.datetime.now(dt.timezone.utc)
+      limits = [e for e in limits if _limit_window_open(e, now)]
+      best = {
+        "tierLabel": plan_name or "",
+        "limits": limits,
+      }
+      best_age = age
+    except Exception:
+      continue
+  return best
+
+
+# -------------------------------------------------------------------- record
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update({
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [{"date": day, "messageCount": 0} for day in recent_date_strings()],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  })
+  record.update(overrides)
+  return record
+
+
+def scan(force: bool = False, limits_only: bool = False) -> dict[str, Any]:
+  quota = parse_quota()
+
+  path = db_path()
+  if not path.is_file():
+    return base_record(usageStatusText="Devin CLI not installed", authHelpText="Install it with: curl -fsSL https://cli.devin.ai/install.sh | bash", **quota)
+
+  conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+  conn.row_factory = sqlite3.Row
+  conn.execute("PRAGMA query_only = ON")
+  try:
+    stats = cached_scan(conn, force, limits_only)
+    ready = number(stats.get("totalPrompts")) > 0 or len(quota.get("limits", [])) > 0
+    return base_record(ready=ready, hasLocalStats=True, **stats, **quota)
+  finally:
+    conn.close()
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Devin CLI usage record as JSON")
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  try:
+    record = scan(force=args.force, limits_only=args.limits_only)
+  except sqlite3.Error as error:
+    record = base_record(usageStatusText="Devin usage unavailable", authHelpText=str(error))
+    print(f"omarchy-agent-usage-devin: {error}", file=sys.stderr)
+  except Exception as error:
+    record = base_record(usageStatusText="Devin usage unavailable", authHelpText=f"{type(error).__name__}: {error}")
+    print(f"omarchy-agent-usage-devin: {type(error).__name__}: {error}", file=sys.stderr)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

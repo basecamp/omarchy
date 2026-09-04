@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Install the Devin CLI via its own installer
+# omarchy:args=[--check|--now|--owns]
+# omarchy:examples=omarchy install devin cli | omarchy install devin cli --now
+
+# Devin ships its own installer (curl -fsSL https://cli.devin.ai/install.sh |
+# bash) and is not available through mise, so it gets its own installer script
+# following the same --check/--now interface as omarchy-install-hermes-cli.
+
+set -euo pipefail
+
+mode=${1:-}
+
+case "$mode" in
+  --check)
+    omarchy-cmd-present devin
+    ;;
+  --now)
+    if omarchy-cmd-present devin; then
+      exit 0
+    fi
+    bash -c 'set -o pipefail; curl -fsSL https://cli.devin.ai/install.sh | bash'
+    ;;
+  --owns)
+    # Devin's installer owns the binary; we don't manage a wrapper.
+    omarchy-cmd-present devin
+    ;;
+  "")
+    echo "Usage: omarchy-install-devin-cli <--check|--now|--owns>" >&2
+    exit 1
+    ;;
+  *)
+    echo "Unknown mode: $mode" >&2
+    exit 1
+    ;;
+esac

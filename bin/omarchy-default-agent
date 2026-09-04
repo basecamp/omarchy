@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set and launch the default coding agent
-# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush]
+# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush|devin]
 # omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
 
 installing=false
@@ -35,22 +35,23 @@ grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
 agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
 hermes) agent="hermes"; name="Hermes"; agent_installer="omarchy-install-hermes-cli" ;;
 copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
+devin) agent="devin"; name="Devin"; agent_installer="omarchy-install-devin-cli" ;;
 *)
-  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush>"
+  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush|devin>"
   exit 1
   ;;
 esac
 
 agent_package=${agent_package:-$agent}
 
-# Hermes reaches mise through its own installer rather than straight from
-# here: it needs its interpreter pinned, and a bare `mise use` has nowhere to
-# say so. See omarchy-install-hermes-cli.
+# Agents that ship their own installer (Hermes, Devin) reach it through
+# agent_installer rather than a bare mise use: they need setup mise can't
+# express. See omarchy-install-hermes-cli / omarchy-install-devin-cli.
 if [[ -n ${agent_installer:-} ]]; then
-  # Not omarchy-cmd-present: the stub is on PATH from first boot and says
-  # nothing about whether Hermes is installed behind it. Treating a cold stub
-  # as installed skips the floating terminal and runs the minute-long install
-  # inside the menu action instead.
+  # Not omarchy-cmd-present: a stub may be on PATH from first boot and says
+  # nothing about whether the agent is installed behind it. Treating a cold
+  # stub as installed skips the floating terminal and runs the install inside
+  # the menu action instead.
   agent_present() { "$agent_installer" --check; }
   agent_install() { "$agent_installer" --now; }
 else

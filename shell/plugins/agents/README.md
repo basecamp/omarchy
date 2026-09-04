@@ -55,6 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `devin` | Daily and weekly quota from the TUI's user-status cache (`~/.cache/devin/cli/user_status.*.bin`) | Devin CLI session database at `~/.local/share/devin/cli/sessions.db` |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -62,7 +63,13 @@ falls back to local stats only. A non-default Claude directory is honored via
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
-signed in there.
+signed in there. Devin reads token stats from the CLI's own SQLite database
+(`~/.local/share/devin/cli/sessions.db`), so no credentials are needed.
+Devin's rate limits come from the user-status cache the TUI writes on every
+startup — the same data the `/usage` slash command renders — so the collector
+reads that cache instead of making its own API call. The cache is refreshed
+whenever you start a Devin session; if it is missing or stale the panel
+shows token stats without limits.
 
 ### Fireworks balance
 

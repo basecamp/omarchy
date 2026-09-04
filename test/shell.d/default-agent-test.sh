@@ -19,6 +19,7 @@ mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
 terminal_log="$test_tmp/terminal"
 menu_log="$test_tmp/menu"
+curl_log="$test_tmp/curl"
 mkdir -p "$mock_bin" "$test_home"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
@@ -50,6 +51,32 @@ cat >"$mock_bin/omarchy-mise-install" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$OMARCHY_TEST_STUB_LOG"
 SH
+
+cat >"$mock_bin/curl" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >"$OMARCHY_TEST_CURL_LOG"
+[[ ${OMARCHY_TEST_CURL_FAIL:-false} != "true" ]]
+SH
+
+cat >"$mock_bin/devin" <<'SH'
+#!/bin/bash
+printf '%s\0' devin "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
+SH
+
+cat >"$mock_bin/omarchy-install-devin-cli" <<'SH'
+#!/bin/bash
+mode=${1:-}
+if [[ $mode == "--check" ]]; then
+  [[ ${OMARCHY_TEST_MISSING_COMMAND:-} != "devin" ]]
+  exit $?
+fi
+if [[ $mode == "--now" ]]; then
+  printf '%s\0' "-fsSL" "https://cli.devin.ai/install.sh" >"$OMARCHY_TEST_CURL_LOG"
+  [[ ${OMARCHY_TEST_CURL_FAIL:-false} != "true" ]]
+  exit $?
+fi
+SH
+chmod +x "$mock_bin/omarchy-install-devin-cli"
 
 cat >"$mock_bin/mise" <<'SH'
 #!/bin/bash
@@ -91,6 +118,7 @@ export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
+export OMARCHY_TEST_CURL_LOG="$curl_log"
 export OMARCHY_PATH="$ROOT"
 
 grok_package="npm:@xai-official/grok"
@@ -307,6 +335,7 @@ declare -A expected_agents=(
   [gemini-cli]="agy"
   [copilot]="copilot"
   [github-copilot]="copilot"
+  [devin]="devin"
 )
 
 declare -A expected_packages=(
@@ -322,15 +351,26 @@ declare -A expected_packages=(
   [copilot]="copilot"
 )
 
+# Devin and Hermes ship their own installers and are not available through
+# mise, so the default-agent script calls agent_installer instead of mise.
+declare -A agent_installer_agents=(
+  [devin]=1
+)
+
 for selection in "${!expected_agents[@]}"; do
   expected=${expected_agents[$selection]}
   : >"$agent_open_log"
+  : >"$mise_log"
   OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent "$selection"
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
-  mapfile -d '' -t mise_args <"$mise_log"
-  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
-    fail "default agent installs $selection globally through mise"
+  if [[ -z ${agent_installer_agents[$expected]:-} ]]; then
+    mapfile -d '' -t mise_args <"$mise_log"
+    [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+      fail "default agent installs $selection globally through mise"
+  else
+    [[ ! -s $mise_log ]] || fail "default agent skips mise for $selection"
+  fi
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
@@ -379,6 +419,60 @@ mapfile -d '' -t agent_open_args <"$agent_open_log"
 [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
   fail "installed agent opens in a new terminal after selection"
 pass "installed agents select and open without notifications"
+
+# Devin skips mise, so its install path runs curl-bash instead. The same
+# terminal-and-open flow applies, just with curl standing in for mise.
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent pi
+: >"$notification_history"
+: >"$agent_open_log"
+: >"$terminal_log"
+: >"$curl_log"
+OMARCHY_TEST_MISSING_COMMAND=devin omarchy-default-agent devin
+mapfile -d '' -t terminal_args <"$terminal_log"
+[[ ${terminal_args[0]} == "omarchy-default-agent" && ${terminal_args[1]} == "--install" && ${terminal_args[2]} == "devin" ]] ||
+  fail "missing devin installation opens in a terminal"
+[[ ! -s $notification_history ]] || fail "missing devin installation skips notifications"
+[[ ! -s $agent_open_log ]] || fail "missing devin installation waits to open the agent"
+[[ $(omarchy-default-agent) == "pi" ]] || fail "missing devin installation waits to change the selection"
+[[ ! -s $curl_log ]] || fail "missing devin installation waits to run curl"
+unset OMARCHY_TEST_MISSING_COMMAND
+
+: >"$notification_history"
+: >"$agent_open_log"
+: >"$terminal_log"
+: >"$curl_log"
+OMARCHY_TEST_MISSING_COMMAND=devin omarchy-default-agent --install devin >"$test_tmp/devin-install-output"
+mapfile -d '' -t curl_args <"$curl_log"
+[[ ${curl_args[0]} == "-fsSL" && ${curl_args[1]} == "https://cli.devin.ai/install.sh" ]] ||
+  fail "visible devin installation runs the curl-bash installer"
+[[ $(omarchy-default-agent) == "devin" ]] || fail "visible devin installation changes the selection after curl succeeds"
+[[ ! -s $notification_history ]] || fail "visible devin installation leaves progress to the terminal"
+[[ $(<"$test_tmp/devin-install-output") == $'\033[2J\033[3J\033[H' ]] ||
+  fail "visible devin installation clears its terminal before opening the agent"
+mapfile -d '' -t agent_open_args <"$agent_open_log"
+[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
+  fail "newly installed devin opens in the installation terminal"
+unset OMARCHY_TEST_MISSING_COMMAND
+pass "missing devin installs visibly via curl and opens in the same terminal"
+
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent pi >/dev/null
+: >"$notification_history"
+: >"$agent_open_log"
+: >"$terminal_log"
+: >"$curl_log"
+if OMARCHY_TEST_MISSING_COMMAND=devin OMARCHY_TEST_CURL_FAIL=true omarchy-default-agent --install devin >"$test_tmp/devin-fail-output" 2>&1; then
+  fail "default agent rejects a failed devin installation"
+fi
+[[ $(omarchy-default-agent) == "pi" ]] || fail "failed devin installation preserves the current default agent"
+grep -F "Could not install Devin" "$test_tmp/devin-fail-output" >/dev/null ||
+  fail "failed devin installation reports the error in the terminal"
+[[ ! -s $notification_history ]] || fail "failed devin installation skips notifications"
+[[ ! -s $agent_open_log ]] || fail "failed devin installation does not open an agent"
+unset OMARCHY_TEST_MISSING_COMMAND OMARCHY_TEST_CURL_FAIL
+pass "failed devin installation reports the error without opening an agent"
+
+# Restore copilot as the default for the remaining assertions that expect it.
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent github-copilot >/dev/null
 
 : >"$agent_open_log"
 if omarchy-default-agent unsupported >"$test_tmp/invalid-output" 2>&1; then
@@ -467,6 +561,7 @@ assert_launch grok grok --permission-mode bypassPermissions -- "Review this proj
 assert_launch hermes env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
+assert_launch devin devin --permission-mode dangerous --respect-workspace-trust false -- "Review this project"
 pass "agent launcher adapts initial prompts for every supported agent"
 
 literal_hermes_prompt=$' --help !Crash /quit {$(touch must-not-run)}\ntrailing\\ '
@@ -487,6 +582,7 @@ assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass hermes hermes --yolo
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
+assert_bypass devin devin --permission-mode dangerous --respect-workspace-trust false
 pass "agent launcher skips permission prompts for every supported agent"
 
 printf '%s\n' "opencode" >"$agent_file"
