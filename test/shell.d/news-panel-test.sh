@@ -220,6 +220,10 @@ grep -qF 'function inspectCustomFeed(url, name)' "$ROOT/shell/plugins/panels/new
   fail "custom feeds are verified before being saved"
 grep -qF 'Qt.Key_BracketLeft' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news source rail supports keyboard switching"
+grep -qF 'Keys.priority: Keys.BeforeItem' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news reader handles navigation before a hidden feed-manager child can consume it"
+grep -qF 'if (root.managingFeeds) {' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news reader leaves ordinary keys to visible feed-manager controls"
 grep -qF 'return Color.green' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news source rail maps feed categories onto theme colours"
 grep -qF 'property color green:' "$ROOT/shell/Commons/Color.qml" ||

@@ -204,12 +204,23 @@ Item {
       anchors.fill: parent
       focus: true
 
+      // Feed-manager controls can retain active focus after the manager is
+      // hidden. Handle reader navigation before those child controls so a
+      // stale ListView focus cannot swallow Up/Down. While the manager is
+      // visible, leave every key except Escape to its fields and controls.
+      Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) {
+        if (root.managingFeeds) {
+          if (event.key === Qt.Key_Escape) {
+            root.closeFeedManager()
+            event.accepted = true
+          }
+          return
+        }
         if (event.key === Qt.Key_Escape) {
-          if (root.managingFeeds) root.closeFeedManager()
-          else root.dismiss()
+          root.dismiss()
           event.accepted = true
-        } else if (event.key === Qt.Key_F && !root.managingFeeds) {
+        } else if (event.key === Qt.Key_F) {
           root.openFeedManager()
           event.accepted = true
         } else if (event.key === Qt.Key_R) {
