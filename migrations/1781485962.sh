@@ -93,6 +93,43 @@ if [[ -f $input_file ]] && input_is_stock_or_installer_synced "$input_file"; the
   replace_with_packaged_config input.lua
 fi
 
+# Ensure shift:both_capslock_cancel is in kb_options for users who customized
+# their keyboard options before Quattro. Without this, Caps Lock can get stuck
+# ON with no way to toggle it off. See #7255.
+ensure_capslock_cancel_option() {
+  local input_file="$1"
+  [[ -f $input_file ]] || return 0
+
+  local tmp_file
+  tmp_file=$(mktemp)
+
+  awk -v key="kb_options" -v option="shift:both_capslock_cancel" '
+    $0 ~ "^[[:space:]]*" key "[[:space:]]*=" && !updated {
+      # Work only on the quoted Lua string so comments or trailing commas stay intact.
+      quote_start = index($0, "\"")
+      if (quote_start) {
+        rest = substr($0, quote_start + 1)
+        quote_end = index(rest, "\"")
+        value = substr(rest, 1, quote_end - 1)
+
+        if (quote_end > 1 && index(value, option) == 0) {
+          # Rebuild the line with the new option before the closing quote.
+          print substr($0, 1, quote_start) value "," option substr(rest, quote_end)
+          updated = 1
+          next
+        }
+      }
+    }
+
+    { print }
+  ' "$input_file" > "$tmp_file"
+
+  cp "$tmp_file" "$input_file"
+  rm -f "$tmp_file"
+}
+
+ensure_capslock_cancel_option "$input_file"
+
 bindings_file="$HOME/.config/hypr/bindings.lua"
 if [[ -f $bindings_file ]]; then
   case "$(file_sha "$bindings_file")" in
