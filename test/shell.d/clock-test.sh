@@ -205,7 +205,17 @@ assert(/updateEntryInline/.test(panelSource), 'calendar panel persists the week 
 assert(/function moveMonth\(delta\)/.test(panelSource), 'calendar panel steps between months')
 assert(!/property bool onToday/.test(panelSource) && !/root\.onToday/.test(panelSource), 'calendar panel avoids the on-prefixed property name QML reads as a signal handler')
 assert(/readonly property bool viewingCurrentMonth:/.test(panelSource), 'calendar panel tracks whether the current month is on screen')
-assert(!/MouseArea/.test(panelSource.slice(panelSource.indexOf('model: modelData.days'), panelSource.indexOf('// Hairline'))), 'calendar day cells are not selectable')
+// Day cells took a MouseArea when onDayClick arrived, but they stay inert
+// without one: both enabled and hoverEnabled hang off daysClickable, so an
+// unconfigured grid still has nothing to click and nothing to light up.
+const dayCells = panelSource.slice(panelSource.indexOf('model: modelData.days'), panelSource.indexOf('// Hairline'))
+assert(/enabled: root\.daysClickable/.test(dayCells) && /hoverEnabled: root\.daysClickable/.test(dayCells), 'calendar day cells stay inert until onDayClick is set')
+assert(/onClicked: root\.openDay\(modelData\.key\)/.test(dayCells), 'calendar day cells hand the clicked day to openDay')
+assert(!/selected|currentIndex/.test(dayCells), 'calendar day cells still carry no selection state')
+assert(/readonly property string dayCommand: setting\("onDayClick", ""\)/.test(panelSource), 'calendar reads the day command from onDayClick')
+assert(/dayCommand !== "" && root\.bar !== null/.test(panelSource), 'calendar leaves days unclickable without a command or a bar')
+assert(/root\.bar\.shellQuote\(dayKey\)/.test(panelSource), 'calendar quotes the date before it reaches the shell')
+assert(/root\.openDay\(root\.todayKey\)/.test(panelSource), 'calendar opens today from the keyboard, so the command is not mouse-only')
 assert(/yearDone: Model\.yearProgress\(today\./.test(panelSource), 'calendar year bar stays pinned to today while months are stepped')
 assert(/Qt\.callLater\(function\(\) \{\s*\n\s*if \(root\.opened\) setCenterHoverRevealSuppressed\(true\)/.test(panelSource), 'calendar claims the shared hover-reveal flag after the popout handoff, so the panel taking over wins')
 assert(/function close\(\) \{\s*\n\s*setCenterHoverRevealSuppressed\(false\)/.test(panelSource), 'calendar always releases the shared hover-reveal flag on close')

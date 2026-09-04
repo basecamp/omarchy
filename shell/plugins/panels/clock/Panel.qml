@@ -59,6 +59,14 @@ Panel {
   readonly property int lifeDonePercent: Model.lifeProgressPercent(age, lifeExpectancy)
   property bool editingLife: false
 
+  // A day in the grid is a read-out with nowhere to go, which is the one
+  // thing a calendar popup can't answer: "and then what?". Given a command,
+  // clicking a day runs it and gets out of the way. Empty — the default —
+  // leaves the grid exactly as it has always been, so this costs nothing
+  // until someone asks for it.
+  readonly property string dayCommand: setting("onDayClick", "")
+  readonly property bool daysClickable: dayCommand !== "" && root.bar !== null
+
   // Unset falls through to the locale's own first day, so a fresh install
   // starts out matching the rest of the desktop rather than a hardcoded
   // convention. Clicking the grid's "W" heading writes the choice back to
@@ -131,6 +139,19 @@ Panel {
   function goToToday() {
     root.viewYear = today.getFullYear()
     root.viewMonth = today.getMonth()
+  }
+
+  // {date} is substituted with the day as yyyy-MM-dd, so a calendar that can
+  // open on a date gets one and everything else ignores it. It takes the key
+  // rather than the grid cell, because the keyboard can ask for a day the
+  // grid isn't currently drawing.
+  function openDay(dayKey) {
+    if (!root.daysClickable) return
+    var command = root.dayCommand.indexOf("{date}") >= 0
+      ? root.dayCommand.split("{date}").join(root.bar.shellQuote(dayKey))
+      : root.dayCommand
+    root.bar.run(command)
+    root.close()
   }
 
   function moveMonth(delta) {
@@ -262,6 +283,11 @@ Panel {
         else if (t === "}") root.moveYear(1)
         else if (t === "t" || t === "T") root.goToToday()
         else if (t === "w" || t === "W") root.toggleWeekStart()
+        // Arrows already belong to the month and the year, so the grid has no
+        // day cursor for a key to move. It opens today instead — the one day
+        // the calendar names without being asked, and the one you want on the
+        // way past.
+        else if (t === "o" || t === "O") root.openDay(root.todayKey)
       }
 
       Flickable {
@@ -662,8 +688,12 @@ Panel {
                       height: root.cellHeight
                       radius: Style.cornerRadius
                       // Today is outlined, not filled: a lit-up block shouts
-                      // over a grid this quiet.
-                      color: "transparent"
+                      // over a grid this quiet. Hover fills the same way
+                      // round — under the pointer only, so the grid at rest
+                      // still marks one day and one day only.
+                      color: dayHover.containsMouse
+                        ? Qt.rgba(root.contentForeground.r, root.contentForeground.g, root.contentForeground.b, 0.12)
+                        : "transparent"
                       border.width: modelData.today ? Style.spacing.hairline : 0
                       border.color: Style.normalBorderFor(root.contentForeground, Color.accent)
 
@@ -677,6 +707,15 @@ Panel {
                         font.family: root.contentFontFamily
                         font.pixelSize: Style.font.body
                         font.bold: modelData.today
+                      }
+
+                      MouseArea {
+                        id: dayHover
+                        anchors.fill: parent
+                        enabled: root.daysClickable
+                        hoverEnabled: root.daysClickable
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openDay(modelData.key)
                       }
                     }
                   }

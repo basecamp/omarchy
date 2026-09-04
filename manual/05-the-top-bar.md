@@ -127,6 +127,14 @@ All of it is stored in `~/.config/omarchy/shell.json`, under the `bar` key. Here
 
 Every widget is one entry in one of the three layout arrays, and its settings sit inline on that entry — there's no separate settings file and no `config` sub-object. The clock's `format`, `formatAlt` (what right-click cycles to), and `verticalFormat` all live right there on `{ "id": "omarchy.clock" }`.
 
+The clock takes one more: `onDayClick`, a command to run when you click a day in its calendar. Unset, the grid stays the read-out it has always been. Set it and the day you clicked goes somewhere:
+
+```json
+{ "id": "omarchy.clock", "onDayClick": "uwsm-app -- gnome-calendar" }
+```
+
+`{date}` anywhere in the command is replaced with the day you clicked as `2026-08-22`, so a calendar that can open on a date gets handed one. Pressing `o` with the calendar open does the same for today, so the command isn't mouse-only.
+
 `centerAnchor` names the one center widget that gets pinned to the exact center of the screen, with the others flanking it. That's how the clock stays dead center even as the weather and update badge come and go. Set it to an empty string and the center list is just centered as a group instead.
 
 One rule worth internalizing: **once you have your own `shell.json`, it's canonical**. Until you customize anything, the shell reads Omarchy's default file. The moment you drag a widget, run `omarchy bar`, or edit the file yourself, you own it — there's no deep merge, so new default widgets in future Omarchy releases won't appear on your bar automatically. `omarchy bar defaults` puts the shipped layout back whenever you want a clean slate.
