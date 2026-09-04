@@ -12,10 +12,12 @@ o.window({ tag = "pip" }, {
 })
 
 -- Google Meet PiP uses the meeting title instead of "Picture-in-Picture".
-o.window({ tag = "chromium-based-browser", title = "^Meet - .+" }, {
+-- Chromium titles the overlay with an en dash (U+2013); keep ASCII and em dash too.
+o.window({ tag = "chromium-based-browser", title = "^Meet (-|–|—) .+" }, {
   tag = "-default-opacity",
   float = true,
   pin = true,
+  group = "deny",
   size = { 600, 338 },
   keep_aspect_ratio = true,
   border_size = 0,
