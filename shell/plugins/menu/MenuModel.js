@@ -1,7 +1,36 @@
+// Strip // comments and trailing commas from a JSONC document. Comments are
+// recognized anywhere on a line, not just ones that occupy the whole line —
+// "value", // note   must work the same as a standalone comment line. The
+// scan tracks whether it is inside a JSON string (honoring \" escapes) so a
+// "//" that's part of a string value, e.g. a "https://..." action URL, is
+// never mistaken for a comment.
 function stripJsonc(raw) {
-  return String(raw || "")
-    .replace(/^\s*\/\/[^\n]*(\n|$)/gm, "")
-    .replace(/,(\s*[}\]])/g, "$1")
+  var text = String(raw || "")
+  var out = ""
+  var inString = false
+
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i]
+
+    if (inString) {
+      out += ch
+      if (ch === "\\" && i + 1 < text.length) { out += text[i + 1]; i += 1; continue }
+      if (ch === "\"") inString = false
+      continue
+    }
+
+    if (ch === "\"") { inString = true; out += ch; continue }
+
+    if (ch === "/" && text[i + 1] === "/") {
+      while (i < text.length && text[i] !== "\n") i += 1
+      i -= 1 // let the loop's i++ land back on the newline (or end of text)
+      continue
+    }
+
+    out += ch
+  }
+
+  return out.replace(/,(\s*[}\]])/g, "$1")
 }
 
 function normalizeAliases(value) {
@@ -47,6 +76,8 @@ function parseMenuJsonc(raw) {
   try {
     parsed = JSON.parse(stripped)
   } catch (e) {
+    if (typeof console !== "undefined" && console.warn)
+      console.warn("MenuModel: failed to parse menu JSONC: " + e)
     return []
   }
   if (typeof parsed !== "object" || parsed === null) return []
