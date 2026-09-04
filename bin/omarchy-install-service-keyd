@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# omarchy:summary=Install the keyd low-level key remapping daemon.
+# omarchy:requires-sudo=true
+
+set -e
+
+echo "Installing keyd..."
+omarchy-pkg-add keyd
+
+if [[ ! -f /etc/keyd/default.conf ]]; then
+  echo "Seeding a starter config at /etc/keyd/default.conf..."
+  sudo install -Dm644 "$OMARCHY_PATH/default/keyd/default.conf" /etc/keyd/default.conf
+else
+  echo "Existing /etc/keyd/default.conf found, leaving it as-is."
+fi
+
+quirks_file=/etc/libinput/local-overrides.quirks
+if grep -q "MatchName=keyd\*keyboard" "$quirks_file" 2>/dev/null; then
+  echo "Existing keyd libinput quirk found in $quirks_file, leaving it as-is."
+else
+  # keyd's virtual keyboard reads as external to libinput as soon as keyd
+  # starts, which can stop disable-while-typing from suppressing the
+  # touchpad. Mark it internal before starting the service.
+  echo "Marking keyd's virtual keyboard internal for libinput (touchpad disable-while-typing)..."
+  sudo mkdir -p "$(dirname "$quirks_file")"
+  if [[ -s $quirks_file ]]; then
+    { echo ""; cat "$OMARCHY_PATH/default/libinput/local-overrides.quirks"; } | sudo tee -a "$quirks_file" >/dev/null
+  else
+    sudo install -Dm644 "$OMARCHY_PATH/default/libinput/local-overrides.quirks" "$quirks_file"
+  fi
+  # libinput only reads quirks when a device is added, so already-running
+  # sessions won't see this until they restart.
+  omarchy-state set reboot-required
+  quirk_just_added=true
+fi
+
+echo "Starting keyd..."
+sudo systemctl enable --now keyd.service
+
+echo ""
+echo "keyd is installed and running. Edit /etc/keyd/default.conf, then run"
+echo "'sudo keyd reload' to apply changes."
+echo ""
+echo "keyd remaps physical keys before Hyprland ever sees them, so a remap"
+echo "on CapsLock takes priority over Omarchy's compose:caps input option."
+echo "See the Keyboard, Mouse, Trackpad manual page for details."
+
+if [[ -n ${quirk_just_added:-} && -z ${OMARCHY_DEFER_REBOOT:-} ]]; then
+  echo ""
+  gum confirm "A reboot is needed for the touchpad disable-while-typing fix to apply. Reboot now?" && omarchy-system-reboot
+fi

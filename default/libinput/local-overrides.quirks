@@ -1,0 +1,8 @@
+# keyd's virtual keyboard is otherwise indistinguishable from an external
+# one, so libinput won't pair it with the internal touchpad and
+# disable-while-typing (palm rejection) stops working. Mark it internal.
+# See https://github.com/rvaiya/keyd/issues/745.
+[Serial Keyboards]
+MatchUdevType=keyboard
+MatchName=keyd*keyboard
+AttrKeyboardIntegration=internal

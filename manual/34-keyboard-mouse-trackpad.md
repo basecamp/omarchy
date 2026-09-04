@@ -47,6 +47,30 @@ hl.config({
 })
 ```
 
+### Low-level key remapping with keyd
+
+`kb_options` and Hyprland's bindings cover window-manager shortcuts, but they can't do physical key remapping — swapping what a key sends before it reaches Hyprland at all, tap/hold behavior on a single key, or layers. For that, install [keyd](https://github.com/rvaiya/keyd) from _Install > Service > keyd_ in the Omarchy menu (`Super + Space`), or run `omarchy-install-service-keyd`.
+
+keyd ships with an inert starter config at `/etc/keyd/default.conf` — edit it as root, then `sudo keyd reload` to apply. A common example, tap CapsLock for Escape and hold it as a layer:
+
+```
+[ids]
+*
+
+[main]
+capslock = overload(capslock, esc)
+
+[capslock]
+h = left
+j = down
+k = up
+l = right
+```
+
+keyd intercepts keys below Hyprland and XKB, so remapping CapsLock here takes priority over the `compose:caps` option above — test that Compose still fires the way you expect before relying on both together, or move Compose to another key first. See `man keyd` for the full remapping, layer, and macro syntax.
+
+keyd's virtual keyboard is otherwise indistinguishable from an external one, which stops libinput's disable-while-typing from suppressing the touchpad while you type. The installer adds a libinput quirk marking it internal, at `/etc/libinput/local-overrides.quirks` — a reboot is needed for it to take effect.
+
 ### Trackpad gestures
 
 You can also turn on [touchpad gestures](https://wiki.hypr.land/Configuring/Advanced-and-Cool/Gestures/), like swiping with three fingers to change workspaces:
