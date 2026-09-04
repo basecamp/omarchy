@@ -50,8 +50,14 @@ QtObject {
     return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
   }
 
+  // A non-login shell: the session already carries the environment a login
+  // shell would build. uwsm exports it before omarchy-shell starts, so `-l`
+  // re-sources /etc/profile and the user's profile on every dispatch and
+  // arrives at the same PATH. That is 70ms or more per click, and unbounded:
+  // any package may drop a script into /etc/profile.d that the shell then
+  // pays for on every interaction.
   function execDetached(command) {
-    Quickshell.execDetached(["bash", "-lc", command])
+    Quickshell.execDetached(["bash", "-c", command])
   }
 
   // Run an argv vector without a shell interpreting it: the constant `exec "$@"`
