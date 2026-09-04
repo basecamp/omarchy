@@ -469,6 +469,37 @@ jq -e '.name == "omarchy-system" and .vars.panel == "#0f0f0f" and .vars.border =
 pass "pi theme template is generated from standard themed templates"
 cp "$NEXT_THEME/pi.json" "$CURRENT_THEME/pi.json"
 
+grep -qx 'bg = "#000000"' "$NEXT_THEME/cliamp.toml" || fail "cliamp theme uses generated background"
+grep -qx 'accent = "#336699"' "$NEXT_THEME/cliamp.toml" || fail "cliamp theme uses generated accent"
+grep -qx 'bright_fg = "#eeeeee"' "$NEXT_THEME/cliamp.toml" || fail "cliamp theme uses generated bright foreground"
+pass "cliamp theme template is generated from standard themed templates"
+cp "$NEXT_THEME/cliamp.toml" "$CURRENT_THEME/cliamp.toml"
+
+CLIAMP_TEST_CONFIG="$PI_TMPDIR/.config/cliamp"
+CLIAMP_LOG="$PI_TMPDIR/cliamp.log"
+mkdir -p "$CLIAMP_TEST_CONFIG"
+cat >"$CLIAMP_TEST_CONFIG/config.toml" <<'EOF'
+visualizer = "Bars"
+
+[audio]
+device = "keep-me"
+theme = "keep-this-too"
+EOF
+cat >"$PI_TMPDIR/cliamp" <<'EOF'
+#!/bin/bash
+echo "$*" >>"$CLIAMP_LOG"
+EOF
+chmod +x "$PI_TMPDIR/cliamp"
+CLIAMP_LOG="$CLIAMP_LOG" PATH="$PI_TMPDIR:$PATH" HOME="$PI_TMPDIR" XDG_CONFIG_HOME="$PI_TMPDIR/.config" "$ROOT/bin/omarchy-theme-set-cliamp"
+[[ -L $CLIAMP_TEST_CONFIG/themes/omarchy.toml ]] || fail "cliamp generated theme is linked"
+[[ $(readlink "$CLIAMP_TEST_CONFIG/themes/omarchy.toml") == "$CURRENT_THEME/cliamp.toml" ]] || fail "cliamp generated theme references current theme file"
+grep -q '^theme = "omarchy"$' "$CLIAMP_TEST_CONFIG/config.toml" || fail "cliamp generated theme is activated"
+grep -q '^visualizer = "Bars"$' "$CLIAMP_TEST_CONFIG/config.toml" || fail "cliamp theme activation preserves root settings"
+grep -q '^device = "keep-me"$' "$CLIAMP_TEST_CONFIG/config.toml" || fail "cliamp theme activation preserves table settings"
+grep -q '^theme = "keep-this-too"$' "$CLIAMP_TEST_CONFIG/config.toml" || fail "cliamp theme activation preserves nested theme settings"
+grep -qx 'theme omarchy' "$CLIAMP_LOG" || fail "cliamp running session is rethemed"
+pass "cliamp generated theme is synced and activated"
+
 echo '{"name":"omarchy-system","vars":{"custom":"yes"}}' >"$NEXT_THEME/pi.json"
 OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
 jq -e '.name == "omarchy-system" and .vars.custom == "yes"' "$NEXT_THEME/pi.json" >/dev/null
