@@ -255,12 +255,12 @@ Item {
 
   Process {
     id: fetchProcess
-    command: ["python3", root.helperPath, "--sources", root.enabledSourceIds.join(","), "--custom-feeds", root.customFeeds, "--max-cache-age", String(root.fetchMaxCacheAgeSec), "--item-limit", String(root.itemLimit)]
+    command: ["python3", root.helperPath, "--stream", "--sources", root.enabledSourceIds.join(","), "--custom-feeds", root.customFeeds, "--max-cache-age", String(root.fetchMaxCacheAgeSec), "--item-limit", String(root.itemLimit)]
     running: false
-    stdout: StdioCollector {
-      id: fetchStdout
-      waitForEnd: true
-      onStreamFinished: root._stdout = text
+    stdout: SplitParser {
+      onRead: function(data) {
+        if (String(data).trim() !== "") root.applyResult(data)
+      }
     }
     stderr: StdioCollector {
       id: fetchStderr
@@ -269,10 +269,8 @@ Item {
     }
     onExited: function(exitCode) {
       root.refreshing = false
-      var output = String(fetchStdout.text || root._stdout || "")
       var error = String(fetchStderr.text || root._stderr || "")
-      if (output.trim() !== "") root.applyResult(output)
-      else if (exitCode !== 0) root.lastError = root.shortError(error || "Could not fetch Omarchy news")
+      if (exitCode !== 0) root.lastError = root.shortError(error || "Could not fetch RSS feeds")
       if (root.refreshPending) {
         var preferCache = root.refreshPendingPreferCache
         root.refreshPending = false

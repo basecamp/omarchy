@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import ipaddress
 import json
@@ -720,6 +720,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--inspect-name", default="")
     parser.add_argument("--max-cache-age", type=int, default=0)
     parser.add_argument("--item-limit", type=int, default=DEFAULT_ITEM_LIMIT)
+    parser.add_argument("--stream", action="store_true")
     args = parser.parse_args(argv)
 
     if args.inspect_feed:
@@ -732,45 +733,63 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("\n")
         return 0
 
-    items: list[dict[str, str]] = []
-    source_states: list[dict[str, object]] = []
     _, configuration_errors = parse_custom_sources(args.custom_feeds)
-    errors: list[str] = list(configuration_errors)
     fetched_at = datetime.now(timezone.utc).isoformat()
 
     sources = selected_sources(args.sources, args.custom_feeds)
     item_limit = max(1, min(MAX_ITEMS, args.item_limit))
-    with ThreadPoolExecutor(max_workers=min(12, len(sources))) as executor:
-        loaded_sources = executor.map(
-            lambda source: load_source(
-                source, fetched_at, max(0, args.max_cache_age), item_limit
-            ),
-            sources,
-        )
-        for source, (source_items, state, error) in zip(sources, loaded_sources):
+    results = {}
+
+    def emit() -> None:
+        items = []
+        states = []
+        errors = list(configuration_errors)
+        for source in sources:
+            source_items, state, error = results[str(source["id"])]
             items.extend(source_items)
-            source_states.append(state)
+            states.append(state)
             if error:
                 errors.append(f'{source["name"]}: {error}')
+        items.sort(key=published_key, reverse=True)
+        json.dump({
+            "ok": True,
+            "stale": any(bool(state["stale"]) for state in states),
+            "partial": bool(errors),
+            "configurationError": clean_text("; ".join(configuration_errors), 180),
+            "error": clean_text("; ".join(errors), 180),
+            "fetchedAt": fetched_at,
+            "sources": states,
+            "items": items,
+        }, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
-    if not items and errors:
-        print(clean_text("; ".join(errors), 180), file=sys.stderr)
-        return 1
+    if args.stream:
+        for source in sources:
+            cached = cached_result(source, "")
+            cached_items = [] if cached is None else [
+                item for item in cached["items"] if isinstance(item, dict)
+            ][:item_limit]
+            results[str(source["id"])] = (cached_items, {
+                **{key: source[key] for key in ("id", "name", "category", "url")},
+                "stale": bool(cached_items), "cached": cached is not None,
+                "error": "", "itemCount": len(cached_items),
+            }, "")
+        emit()
 
-    items.sort(key=published_key, reverse=True)
-    result: dict[str, object] = {
-        "ok": True,
-        "stale": any(bool(source["stale"]) for source in source_states),
-        "partial": bool(errors),
-        "configurationError": clean_text("; ".join(configuration_errors), 180),
-        "error": clean_text("; ".join(errors), 180),
-        "fetchedAt": fetched_at,
-        "sources": source_states,
-        "items": items,
-    }
-
-    json.dump(result, sys.stdout, ensure_ascii=False, separators=(",", ":"))
-    sys.stdout.write("\n")
+    with ThreadPoolExecutor(max_workers=min(12, len(sources))) as executor:
+        pending = {
+            executor.submit(load_source,
+                source, fetched_at, max(0, args.max_cache_age), item_limit
+            ): source for source in sources
+        }
+        for future in as_completed(pending):
+            source = pending[future]
+            results[str(source["id"])] = future.result()
+            if args.stream:
+                emit()
+    if not args.stream:
+        emit()
     return 0
 
 
