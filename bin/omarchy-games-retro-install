@@ -19,7 +19,14 @@ if (( $# == 0 )); then
   core="${core##*(}"
   core="${core%)}"
 
-  game_path=$(omarchy-menu-file "Retro game" "$HOME/Games/roms" "7z bin ccd chd cue dmg elf fds gb gba gbc iso lha m3u md n64 nds nes pbp sfc smc swc zip z64") || exit 0
+  game_status=0
+  game_path=$(omarchy-menu-file "Retro game" "$HOME/Games/roms" "7z bin ccd chd cue dmg elf fds gb gba gbc iso lha m3u md n64 nds nes pbp sfc smc swc zip z64") || game_status=$?
+
+  if (( game_status == 2 )); then
+    omarchy-notification-send -g 󰯉 "No retro games found" "$HOME/Games/roms"
+    exit 1
+  fi
+
   [[ -n $game_path ]] || exit 0
 elif (( $# == 2 )); then
   core="$1"

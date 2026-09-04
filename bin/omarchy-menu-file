@@ -44,5 +44,11 @@ for format in "${formats[@]}"; do
 done
 find_args+=(")" -printf '%T@\t%p\n')
 
-find "${find_args[@]}" 2>/dev/null | sort -rn | cut -f2- |
-  omarchy-menu-select "$label" -- --width 800 --maxheight 500 "$@"
+files=$(find "${find_args[@]}" 2>/dev/null | sort -rn | cut -f2-)
+
+if [[ -z $files ]]; then
+  echo "No matching files under ${paths_arg//:/ }" >&2
+  exit 2
+fi
+
+omarchy-menu-select "$label" -- --width 800 --maxheight 500 "$@" <<<"$files"
