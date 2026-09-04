@@ -77,6 +77,60 @@ if [[ $exec_line =~ (^|[[:space:]])(\$TERMINAL|xdg-terminal-exec)[[:space:]].*-e
   exit 0
 fi
 
+# Shell plugins often install a .desktop under the user applications dir
+# (scheme handlers, MIME claims). Deleting only that file leaves the plugin
+# enabled and running — route those through plugin remove instead.
+plugin_owner_for_desktop() {
+  local plugins_dir candidate resolved exec_paths path plugin_id
+  plugins_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
+
+  [[ -d $plugins_dir ]] || return 1
+
+  # Desktop id matches an installed plugin directory name (omamail.desktop → omamail).
+  if [[ -e $plugins_dir/$desktop_name || -L $plugins_dir/$desktop_name ]]; then
+    printf '%s\n' "$desktop_name"
+    return 0
+  fi
+
+  # Exec/Icon paths that resolve inside a plugin tree.
+  exec_paths=$(sed -n 's/^\(Exec\|Icon\|TryExec\|Path\)=//p' "$desktop_file")
+  while IFS= read -r candidate; do
+    [[ -z $candidate ]] && continue
+    # Strip field codes and take first token for Exec=
+    candidate=${candidate%% \%*}
+    candidate=${candidate%%\$*}
+    candidate=$(awk '{print $1}' <<<"$candidate")
+    [[ -z $candidate || $candidate == /* ]] || continue
+    resolved=$(readlink -f "$candidate" 2>/dev/null || true)
+    [[ -n $resolved ]] || continue
+    case "$resolved" in
+    "$plugins_dir"/*)
+      path=${resolved#"$plugins_dir"/}
+      plugin_id=${path%%/*}
+      if [[ -n $plugin_id && ( -e $plugins_dir/$plugin_id || -L $plugins_dir/$plugin_id ) ]]; then
+        printf '%s\n' "$plugin_id"
+        return 0
+      fi
+      ;;
+    esac
+  done <<<"$exec_paths"
+
+  return 1
+}
+
+if plugin_id="$(plugin_owner_for_desktop)"; then
+  # Non-interactive: menu Remove already confirmed. --yes skips gum.
+  if command -v omarchy-plugin-remove >/dev/null 2>&1; then
+    exec omarchy-plugin-remove --yes "$plugin_id"
+  elif [[ -x ${OMARCHY_PATH:-}/bin/omarchy-plugin-remove ]]; then
+    exec "${OMARCHY_PATH}/bin/omarchy-plugin-remove" --yes "$plugin_id"
+  else
+    # Same directory as this script when invoked via absolute path from AppLibrary.
+    self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+    exec "$self_dir/omarchy-plugin-remove" --yes "$plugin_id"
+  fi
+fi
+
 if is_user_desktop_file; then
   display_name="${entry_name:-$desktop_name}"
   rm -f "$desktop_file"
