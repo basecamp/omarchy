@@ -63,9 +63,13 @@ move_tab_next = "alt+shift+right"
 # Sessions -> workspaces
 new_workspace = "prefix+shift+c"
 rename_workspace = "prefix+shift+r"
-close_workspace = "prefix+shift+k"
+# Not prefix+shift+k: that is herdr's swap_pane_up default and must stay free
+close_workspace = "prefix+shift+x"
 previous_workspace = ["prefix+shift+p", "alt+up"]
 next_workspace = ["prefix+shift+n", "alt+down"]
+
+# Keep explicit so a future herdr default change cannot reclaim this chord
+swap_pane_up = "prefix+shift+k"
 
 [ui]
 accent = "blue"
