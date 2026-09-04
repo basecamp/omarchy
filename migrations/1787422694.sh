@@ -1,69 +1,18 @@
-#!/bin/bash
+echo "Set the lazygit editor to match the Omarchy default editor"
 
-# omarchy:summary=Set the default editor used by omarchy-launch-editor
-# omarchy:args=[code|cursor|zed|sublime_text|helix|vim|emacs|nvim]
-# omarchy:examples=omarchy default editor | omarchy default editor code | omarchy default editor helix
-
-installing=false
-if [[ ${1:-} == "--install" ]]; then
-  installing=true
-  shift
+editor="nvim"
+if [[ -f "$HOME/.local/state/omarchy/defaults/editor" ]]; then
+  read -r editor <"$HOME/.local/state/omarchy/defaults/editor" || editor="nvim"
 fi
 
-editor_file="$HOME/.local/state/omarchy/defaults/editor"
-
-if (($# == 0)); then
-  if [[ -f $editor_file ]]; then
-    read -r editor <"$editor_file"
-  fi
-
-  [[ -n $editor ]] && echo "$editor" || echo "nvim"
-  exit 0
-fi
-
-case "$1" in
-code) selection="code"; editor="code"; name="VSCode"; glyph= ;;
-cursor) selection="cursor"; editor="cursor"; name="Cursor"; glyph= ;;
-zed | zeditor) selection="zed"; editor="zeditor"; name="Zed"; glyph= ;;
-sublime_text) selection="sublime_text"; editor="sublime_text"; name="Sublime Text"; glyph= ;;
-helix) selection="helix"; editor="helix"; name="Helix"; glyph= ;;
-vim) selection="vim"; editor="vim"; name="Vim"; glyph= ;;
-emacs) selection="emacs"; editor="emacs"; name="Emacs"; glyph= ;;
-nvim) selection="nvim"; editor="nvim"; name="Neovim"; glyph= ;;
-*)
-  echo "Usage: omarchy-default-editor <code|cursor|zed|sublime_text|helix|vim|emacs|nvim>"
-  exit 1
-  ;;
-esac
-
-if omarchy-cmd-missing "$editor"; then
-  if [[ $installing == "false" ]]; then
-    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-editor --install "$selection"
-  else
-    case "$selection" in
-    code) omarchy-install-editor-vscode ;;
-    cursor) omarchy-pkg-add cursor-bin ;;
-    zed) omarchy-install-editor-zed ;;
-    sublime_text) omarchy-pkg-add sublime-text-4 ;;
-    helix) omarchy-install-editor-helix ;;
-    vim) omarchy-pkg-add vim ;;
-    emacs) omarchy-install-editor-emacs ;;
-    nvim) omarchy-pkg-add neovim ;;
-    esac || exit 1
-  fi
-fi
-
-# Keep lazygit's editor preset in sync. lazygit only recognizes known editor
-# names from $EDITOR (first word), so Omarchy's omarchy-launch-editor wrapper
-# is invisible to it and it falls back to vim otherwise.
-lg_config="$HOME/.config/lazygit/config.yml"
+config="$HOME/.config/lazygit/config.yml"
 
 # Only keys directly inside the top-level os mapping may be touched; lazygit
 # configs nest same-named keys elsewhere (e.g. keybinding.universal.edit) and
 # whole-document matches would corrupt them. The os block's own indentation is
 # discovered from the document instead of assumed, so four-space configs stay
 # consistent.
-os_present=n
+os_present=0
 os_child="  " # indentation used by the os block's children
 preset_indent="" # set when the block already carries an editPreset child
 
@@ -84,33 +33,12 @@ scan_os_block() {
       if (preset == "" && indent == child && substr($0, RLENGTH + 1) ~ /^editPreset:/) preset = indent
     }
     END { print (os_seen ? "y" : "n") "|" child "|" preset }
-  ' "$lg_config")
+  ' "$config")
   os_present=${raw%%|*}
   raw=${raw#*|}
   os_child=${raw%%|*}
   preset_indent=${raw#*|}
   [[ -n $os_child ]] || os_child="  "
-}
-
-write_preset() {
-  local value="$1" lg_payload=""
-
-  # Only a bare block header (optionally commented) may take an appended
-  # child. Unnormalizable flow mappings, scalars, and sequences stay exactly
-  # as the user wrote them.
-  lg_payload=$(grep -m1 "^os:" "$lg_config" 2> /dev/null) || lg_payload=""
-  lg_payload=$(sed -n "s/^os:[[:space:]]*//p" <<<"$lg_payload")
-  case $lg_payload in
-  "" | "#"*) ;;
-  *) return 0 ;;
-  esac
-
-  mkdir -p "$(dirname "$lg_config")"
-  if [[ $os_present == "y" ]]; then
-    sed -i "/^os:/a\\${os_child}editPreset: $value" "$lg_config"
-  else
-    printf "\nos:\n%seditPreset: %s\n" "$os_child" "$value" >>"$lg_config"
-  fi
 }
 
 # Rewrite a one-line flow-style os mapping (os: {a: b, c: d}) into block style
@@ -124,20 +52,20 @@ replace_os_line() {
   if awk -v flow="$old" -v block="$new"$'\n' '
     $0 == flow { printf "%s", block; next }
     { print }
-  ' "$lg_config" >"$lg_config.tmp"; then
+  ' "$config" >"$config.tmp"; then
     # The redirect creates the temp file from the umask, so restoring the
     # original mode keeps e.g. a private 0600 config private after the swap.
-    chmod --reference="$lg_config" "$lg_config.tmp"
-    mv "$lg_config.tmp" "$lg_config"
+    chmod --reference="$config" "$config.tmp"
+    mv "$config.tmp" "$config"
   else
-    rm -f "$lg_config.tmp"
+    rm -f "$config.tmp"
   fi
 }
 
 normalize_os_mapping() {
   local line inner pair block="" comment="" parts
 
-  line=$(grep -m1 "^os:[[:space:]]*{" "$lg_config" 2> /dev/null) || return 0
+  line=$(grep -m1 "^os:[[:space:]]*{" "$config" 2> /dev/null) || return 0
   # Capture the members AND the trailing YAML comment separately: the comment
   # is user-authored content and must ride onto the rebuilt os: header. Each
   # segment is wrapped in brackets so a matched-but-empty piece differs from a
@@ -173,7 +101,7 @@ normalize_os_mapping() {
 normalize_null_os_mapping() {
   local line payload token comment=""
 
-  line=$(grep -m1 -E "^os:[[:space:]]*([nN][uU][lL][lL]|~)([[:space:]]+#.*)?$" "$lg_config") || return 0
+  line=$(grep -m1 -E "^os:[[:space:]]*([nN][uU][lL][lL]|~)([[:space:]]+#.*)?$" "$config") || return 0
   payload=$(sed -n "s/^os:[[:space:]]*//p" <<<"$line")
   token=${payload%%[[:space:]]*}
   case $token in
@@ -192,7 +120,28 @@ normalize_null_os_mapping() {
   replace_os_line "$line" "$os_header"
 }
 
-if [[ -f $lg_config ]] && grep -q "^os:" "$lg_config"; then
+write_preset() {
+  local value="$1" payload=""
+
+  # Only a bare block header (optionally commented) may take an appended
+  # child. Unnormalizable flow mappings, scalars, and sequences stay exactly
+  # as the user wrote them.
+  payload=$(grep -m1 "^os:" "$config" 2> /dev/null) || payload=""
+  payload=$(sed -n "s/^os:[[:space:]]*//p" <<<"$payload")
+  case $payload in
+  "" | "#"*) ;;
+  *) return 0 ;;
+  esac
+
+  mkdir -p "$(dirname "$config")"
+  if [[ $os_present == "y" ]]; then
+    sed -i "/^os:/a\\${os_child}editPreset: $value" "$config"
+  else
+    printf "\nos:\n%seditPreset: %s\n" "$os_child" "$value" >>"$config"
+  fi
+}
+
+if [[ -f $config ]] && grep -q "^os:" "$config"; then
   normalize_os_mapping
   normalize_null_os_mapping
   scan_os_block
@@ -234,13 +183,13 @@ swap_os_preset() {
       next
     }
     { print }
-  ' "$lg_config" >"$lg_config.tmp"; then
+  ' "$config" >"$config.tmp"; then
     # The redirect creates the temp file from the umask, so restoring the
     # original mode keeps e.g. a private 0600 config private after the swap.
-    chmod --reference="$lg_config" "$lg_config.tmp"
-    mv "$lg_config.tmp" "$lg_config"
+    chmod --reference="$config" "$config.tmp"
+    mv "$config.tmp" "$config"
   else
-    rm -f "$lg_config.tmp"
+    rm -f "$config.tmp"
   fi
 }
 
@@ -253,8 +202,3 @@ if [[ -n $preset ]]; then
 elif [[ -z $preset_indent ]]; then
   write_preset nvim
 fi
-
-mkdir -p "$(dirname "$editor_file")"
-printf '%s\n' "$editor" >"$editor_file"
-
-omarchy-notification-send -g $glyph "$name is now the default editor"

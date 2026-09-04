@@ -1,0 +1,6 @@
+# Default lazygit editor preset. Kept in sync with the Omarchy default editor
+# by omarchy-default-editor; see https://github.com/jesseduffield/lazygit —
+# lazygit cannot parse Omarchy's EDITOR wrapper, so an explicit preset is
+# required to avoid falling back to vim.
+os:
+  editPreset: nvim
