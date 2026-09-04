@@ -32,7 +32,7 @@ Item {
     var override = Quickshell.env("OMARCHY_CALENDAR_SOLVER")
     return override && String(override).trim() !== ""
       ? String(override)
-      : "/usr/bin/omarchy-calendar-solver"
+      : "omarchy-calendar-solver"
   }
   property string pendingSolveJson: ""
   property string solverStdoutText: ""
@@ -170,6 +170,22 @@ Item {
     root.persistState()
     root.scheduleSolve()
     return next
+  }
+
+  function tutorialDismissed(key) {
+    return State.tutorialDismissed(root.calendarState, key)
+  }
+
+  function dismissTutorial(key) {
+    try {
+      var next = State.dismissTutorial(root.calendarState, key)
+      root.calendarState = next
+      root.persistState()
+      return true
+    } catch (error) {
+      root.lastSolverError = error.message
+      return false
+    }
   }
 
   function addEvent(input) {

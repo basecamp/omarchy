@@ -269,6 +269,20 @@ function settingsReady(value) {
   return validateSettings(value, true)
 }
 
+function defaultUi() {
+  return { dismissedTutorials: {} }
+}
+
+function normalizeUi(value) {
+  var result = defaultUi()
+  if (!isObject(value) || !isObject(value.dismissedTutorials)) return result
+  for (var key in value.dismissedTutorials) {
+    if (key !== "" && value.dismissedTutorials[key] === true)
+      result.dismissedTutorials[key] = true
+  }
+  return result
+}
+
 function baseState() {
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -277,7 +291,8 @@ function baseState() {
     events: [],
     tasks: [],
     dependencies: [],
-    proposal: null
+    proposal: null,
+    ui: defaultUi()
   }
 }
 
@@ -416,7 +431,24 @@ function normalizeState(value) {
     }
   }
   state.proposal = normalizeProposal(value.proposal)
+  state.ui = normalizeUi(value.ui)
   return state
+}
+
+function tutorialDismissed(state, key) {
+  if (typeof key !== "string" || key === "") return false
+  var current = normalizeState(state)
+  return current.ui.dismissedTutorials[key] === true
+}
+
+function dismissTutorial(state, key) {
+  if (typeof key !== "string" || key.trim() === "")
+    fail("invalid_tutorial_key", "ui.dismissedTutorials", "tutorial key is required")
+  var current = normalizeState(state)
+  if (current.ui.dismissedTutorials[key] === true) return current
+  var next = clone(current)
+  next.ui.dismissedTutorials[key] = true
+  return next
 }
 
 function canonicalize(value) {
@@ -808,8 +840,12 @@ if (typeof module !== "undefined") {
     validTimezone: validTimezone,
     validateSettings: validateSettings,
     settingsReady: settingsReady,
+    defaultUi: defaultUi,
+    normalizeUi: normalizeUi,
     baseState: baseState,
     normalizeState: normalizeState,
+    tutorialDismissed: tutorialDismissed,
+    dismissTutorial: dismissTutorial,
     canonicalize: canonicalize,
     canonicalJson: canonicalJson,
     canonicalProblem: canonicalProblem,

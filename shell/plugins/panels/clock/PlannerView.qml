@@ -14,6 +14,9 @@ Item {
   property string editorMode: ""
   property var editorEvent: null
   property var editorTask: null
+  readonly property string planningTutorialKey: "planningFlow"
+  readonly property bool planningTutorialVisible: root.activeView === "plan"
+    && (!root.service || !root.service.tutorialDismissed(root.planningTutorialKey))
   readonly property real editorImplicitHeight: editorLoader.item && Number(editorLoader.item.implicitHeight) > 0
     ? Number(editorLoader.item.implicitHeight)
     : 0
@@ -176,7 +179,7 @@ Item {
       }
 
       Rectangle {
-        visible: root.activeView === "plan"
+        visible: root.planningTutorialVisible
         width: parent.width
         height: flowColumn.implicitHeight + Style.space(20)
         radius: Style.cornerRadius
@@ -191,13 +194,32 @@ Item {
           anchors.rightMargin: Style.space(12)
           spacing: Style.space(4)
 
-          Text {
-            textFormat: Text.PlainText
-            text: "How planning works"
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-            font.bold: true
+          Row {
+            id: flowHeading
+            width: parent.width
+            spacing: Style.space(4)
+
+            Text {
+              textFormat: Text.PlainText
+              text: "How planning works"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
+              width: flowHeading.width - dismissPlanningFlowButton.width - flowHeading.spacing
+              elide: Text.ElideRight
+            }
+
+            PanelActionButton {
+              id: dismissPlanningFlowButton
+              iconText: "×"
+              tooltipText: "Dismiss planning help"
+              foreground: root.foreground
+              hoverColor: root.foreground
+              fontFamily: root.fontFamily
+              focusable: true
+              onClicked: if (root.service) root.service.dismissTutorial(root.planningTutorialKey)
+            }
           }
           Text {
             textFormat: Text.PlainText
