@@ -30,6 +30,7 @@ evince
 exfatprogs
 expac
 eza
+espeak-ng
 fakeroot
 fastfetch
 fcitx5
@@ -115,6 +116,7 @@ tensaku
 sddm
 slurp
 socat
+speech-dispatcher
 starship
 sushi
 system-config-printer
