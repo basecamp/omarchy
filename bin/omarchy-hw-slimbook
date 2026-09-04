@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Detect Slimbook laptops by their DMI vendor.
+
+# The vendor alone, so setup can lay down rules for a driver Slimbook ships in
+# its own repository and that a fresh install does not have yet.
+grep -qi "slimbook" "${OMARCHY_DMI_SYS_VENDOR:-/sys/class/dmi/id/sys_vendor}" 2>/dev/null

@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Detect Slimbook laptops whose fan and TDP modes are driven by the qc71 platform driver.
+
+# Slimbook ships this driver as slimbook-qc71-dkms on the Executive and its
+# siblings, from its own repository rather than Omarchy's, so it is commonly
+# installed after Omarchy is. The attribute is the real signal: without the
+# driver bound there is nothing to drive.
+performance_mode="${OMARCHY_QC71_PERFORMANCE_MODE:-/sys/devices/platform/qc71_laptop/performance_mode}"
+
+omarchy-hw-slimbook && [[ -e $performance_mode ]]

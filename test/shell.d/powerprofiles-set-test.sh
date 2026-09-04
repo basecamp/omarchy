@@ -36,6 +36,12 @@ export PATH="$tmp_dir/bin:$ROOT/bin:$PATH"
 export POWERPROFILES_LOG="$tmp_dir/calls"
 export OMARCHY_POWERPROFILES_STATE_DIR="$tmp_dir/state"
 
+# Keep the hardware sync off the real embedded controller when this suite runs
+# on a Slimbook; omarchy-powerprofiles-sync-hardware has its own test file.
+export OMARCHY_DMI_SYS_VENDOR="$tmp_dir/sys_vendor"
+export OMARCHY_QC71_PERFORMANCE_MODE="$tmp_dir/performance_mode"
+printf 'NOT-A-SLIMBOOK\n' >"$tmp_dir/sys_vendor"
+
 "$ROOT/bin/omarchy-powerprofiles-set" ac balanced
 [[ $(<"$tmp_dir/state/ac") == "balanced" ]] || fail "power profile stores AC preference"
 [[ $(tail -n 1 "$tmp_dir/calls") == "balanced" ]] || fail "power profile applies selected AC preference"

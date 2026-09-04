@@ -61,3 +61,8 @@ if [[ -n $requested_profile ]]; then
   mkdir -p "$state_dir"
   printf '%s\n' "$requested_profile" >"$state_file"
 fi
+
+# Some laptops keep their fan and TDP modes outside anything
+# power-profiles-daemon can reach, and stay in the previous mode unless the
+# profile is handed to them directly.
+omarchy-powerprofiles-sync-hardware "$profile"

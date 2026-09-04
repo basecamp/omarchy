@@ -1,0 +1,5 @@
+# Let the desktop set the fan and TDP mode on Slimbook laptops driven by the
+# qc71 platform driver, so a power profile change can reach it without root.
+# Two bare RUN commands rather than one `sh -c`: udev splits RUN on whitespace
+# without honouring shell quoting, so a quoted script arrives as fragments.
+ACTION=="add|change|bind", SUBSYSTEM=="platform", KERNEL=="qc71_laptop", RUN+="/usr/bin/chgrp wheel %S%p/performance_mode", RUN+="/usr/bin/chmod g+w %S%p/performance_mode"
