@@ -37,10 +37,11 @@ result=$(jq -s '
     (.id | valid_id)
     and (.name | type == "string" and length > 0)
     and ((.aliases // []) | type == "array" and all(.[]; valid_id and (contains("..") | not)))
-    and (.install | type == "object" and (.command | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and ((.type == "mise" and (.package | type == "string" and length > 0)) or (.type == "installer" and (.installer | type == "string" and test("^omarchy-[A-Za-z0-9._-]+$")))))
+    and (.install | type == "object" and (.command | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and ((.type == "mise" and (.package | (type == "string" and length > 0 and (startswith("-") | not) and (contains("\n") | not) and (contains("\r") | not)))) or (.type == "installer" and (.installer | type == "string" and test("^omarchy-[A-Za-z0-9._-]+$")))))
     and (.launch | type == "object" and (.mode == "terminal" or .mode == "browser") and (.command | valid_command) and ((.promptCommand // .command) | valid_command));
   def valid_plugin:
-    .schemaVersion == 1
+    type == "object"
+    and .schemaVersion == 1
     and (.id | valid_id) and ((.id | startswith("omarchy.")) | not)
     and (.kinds | type == "array") and (.entryPoints | type == "object")
     and ((.kinds | length) > 0 or ((.agentHarness | type) == "object" and (.entryPoints | length) == 0));

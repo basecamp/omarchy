@@ -79,7 +79,7 @@ jq -e '
     and (.agentHarness.id | valid_id)
     and (.agentHarness.name | type == "string" and length > 0)
     and ((.agentHarness.aliases // []) | type == "array" and all(.[]; valid_id and (contains("..") | not)))
-    and (.agentHarness.install | type == "object" and .type == "mise" and (.package | type == "string" and length > 0) and (.command | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")))
+    and (.agentHarness.install | type == "object" and .type == "mise" and (.package | (type == "string" and length > 0 and (startswith("-") | not) and (contains("\n") | not) and (contains("\r") | not))) and (.command | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")))
     and (.agentHarness.launch | type == "object" and (.mode == "terminal" or .mode == "browser") and (.command | valid_command) and ((.promptCommand // .command) | valid_command))
   end
 ' "$MANIFEST" >/dev/null 2>&1 || fail "'agentHarness' must declare a safe mise-backed harness"

@@ -36,10 +36,10 @@ if [[ -n $installer ]]; then
   fi
   "$installer" --now || { echo "Could not set $name as the default coding agent" >&2; exit 1; }
 else
-  if [[ $installing == "false" ]] && ! mise where "$package" &>/dev/null; then
+  if [[ $installing == "false" ]] && ! mise where -- "$package" &>/dev/null; then
     exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$id"
   fi
-  mise use -g "$package" || {
+  mise use -g -- "$package" || {
     if [[ $installing == "true" ]]; then
       echo "Could not install $name with mise" >&2
     else

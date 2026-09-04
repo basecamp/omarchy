@@ -70,6 +70,7 @@ QtObject {
     }
     if (!Util.isPlainObject(harness.install) || harness.install.type !== "mise"
         || typeof harness.install.package !== "string" || !harness.install.package
+        || /^[\n\r-]/.test(harness.install.package)
         || typeof harness.install.command !== "string"
         || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(harness.install.command)) return false
     if (!Util.isPlainObject(harness.launch)
