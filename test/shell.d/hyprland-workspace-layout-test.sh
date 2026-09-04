@@ -106,3 +106,29 @@ assert(rules[1].workspace == "3")
 assert(rules[1].layout == "scrolling")
 LUA
 pass "saved workspace layouts load via toggles when XDG_STATE_HOME diverges from HOME"
+
+# The failure reported in #9664: a user hyprland.lua from before bootstrap
+# extraction set package.path to ~/.config and $OMARCHY_PATH only — no state
+# root. Prefixed require("omarchy.workspace-layouts.N") then failed every reload.
+# The first loader check above uses current bootstrap (state on path), so it
+# cannot catch that; this case must still apply the saved rule without it.
+HOME="$home_dir" XDG_STATE_HOME="" OMARCHY_PATH="$ROOT" lua - <<'LUA' || fail "saved workspace layouts load when package.path has no state root"
+local rules = {}
+
+hl = {
+  workspace_rule = function(rule)
+    table.insert(rules, rule)
+  end,
+}
+
+local home = assert(os.getenv("HOME"), "HOME")
+local omarchy = assert(os.getenv("OMARCHY_PATH"), "OMARCHY_PATH")
+package.path = home .. "/.config/?.lua;" .. omarchy .. "/?.lua"
+
+require("default.hypr.workspace-layouts")
+
+assert(#rules == 1, "expected 1 layout rule without state on package.path, got " .. #rules)
+assert(rules[1].workspace == "3")
+assert(rules[1].layout == "scrolling")
+LUA
+pass "saved workspace layouts load when package.path has no state root"
