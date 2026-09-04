@@ -136,3 +136,7 @@ only a live session can prove.
 - **Assert the invariant, not the snapshot.** Config tests pin the property a
   test is named for (this widget stays adjacent to that one) rather than whole
   structures, so unrelated churn does not fail them.
+
+## Background monitor tests
+
+Run `bash test/shell.d/background-monitors-test.sh` for wallpaper selection and transition state coverage. The same test runs real image-loading checks with Qt Quick Test when `qmltestrunner` is available. Set `QMLTESTRUNNER` to its executable path if it is outside `PATH`, for example `QMLTESTRUNNER=/usr/lib/qt6/bin/qmltestrunner bash test/shell.d/background-monitors-test.sh`. These image tests use Qt's offscreen platform and do not start another desktop shell.
