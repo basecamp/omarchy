@@ -85,6 +85,7 @@ omarchy-install-browser)
   edge) command=microsoft-edge-stable ;;
   firefox) command=firefox ;;
   zen) command=zen-browser ;;
+  helium) command=helium-browser ;;
   esac
   ;;
 omarchy-install-terminal)
@@ -156,6 +157,7 @@ browser_cases=(
   'edge microsoft-edge-stable browser:edge'
   'firefox firefox browser:firefox'
   'zen zen-browser browser:zen'
+  'helium helium-browser browser:helium'
 )
 
 terminal_cases=(
