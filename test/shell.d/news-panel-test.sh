@@ -336,8 +336,6 @@ grep -qF 'fetchMaxCacheAgeSec = preferCache === true ? refreshIntervalMin * 60 :
   fail "configuration refreshes reuse fresh source caches"
 grep -qF 'var canonicalUrl = canonicalCustomUrl(url)' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
   fail "custom feeds are saved locally without waiting on the network"
-grep -qF 'settingsPersistTimer.restart()' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
-  fail "rapid feed settings changes coalesce persistent configuration writes"
 grep -qF 'root.persistSettings({ "feedCollections": JSON.stringify(collections) })' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
   fail "feed manager persists user-curated collections"
 grep -qF 'function collectionsAfterSourceChange(oldUrl, newUrl)' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||

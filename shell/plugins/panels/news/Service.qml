@@ -59,9 +59,6 @@ Item {
   onCollectionsChanged: rebuildItemIndex()
   onItemLimitChanged: rebuildItemIndex()
 
-  property string _stdout: ""
-  property string _stderr: ""
-
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
     return value === undefined || value === null ? fallback : value
@@ -159,8 +156,6 @@ Item {
       return
     }
     if (helperPath === "/shell/plugins/panels/news/fetch_news.py") return
-    _stdout = ""
-    _stderr = ""
     fetchMaxCacheAgeSec = preferCache === true ? refreshIntervalMin * 60 : 0
     refreshing = true
     fetchProcess.running = true
@@ -247,11 +242,10 @@ Item {
     stderr: StdioCollector {
       id: fetchStderr
       waitForEnd: true
-      onStreamFinished: root._stderr = text
     }
     onExited: function(exitCode) {
       root.refreshing = false
-      var error = String(fetchStderr.text || root._stderr || "")
+      var error = String(fetchStderr.text || "")
       if (exitCode !== 0) root.lastError = root.shortError(error || "Could not fetch RSS feeds")
       if (root.refreshPending) {
         var preferCache = root.refreshPendingPreferCache

@@ -4,6 +4,18 @@ source "$(dirname "$0")/base-test.sh"
 
 run_node_test <<'JS'
 const read = require(path.join(root, 'shell/plugins/panels/news/ReadState.js'))
+const fs = require('fs')
+const manager = fs.readFileSync(path.join(root, 'shell/plugins/panels/news/FeedManager.qml'), 'utf8')
+const persistBody = manager.match(/function persistSettings\(values\) \{([\s\S]*?)\n  \}/)[1]
+const writes = []
+const news = {settings: {id:'omarchy.news', enabledFeeds:[], customFeeds:'existing'}}
+const shell = {updateEntryInline: (id, settings) => writes.push({id, settings})}
+const persist = new Function('news', 'shell', 'values', persistBody)
+persist(news, shell, {enabledFeeds:['wired']})
+persist(news, shell, {feedCollections:'[]'})
+assert(writes.length === 2, 'each accepted edit is submitted for persistence before returning')
+assert(writes[1].settings.enabledFeeds[0] === 'wired' && writes[1].settings.customFeeds === 'existing', 'successive edits preserve other settings')
+assert(writes[0].settings.feedCollections === undefined, 'later edits do not mutate earlier snapshots')
 const items = [{id:'a:3', sourceId:'a'}, {id:'b:1', sourceId:'b'}, {id:'a:2', sourceId:'a'}, {id:'a:1', sourceId:'a'}]
 const ids = read.mark([], 'a:3')
 assert(read.isRead(items[0], items, ids, {}), 'selected article is read')
