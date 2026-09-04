@@ -432,10 +432,13 @@ Panel {
 
   function showVolumeOsd(volume) {
     if (!bar || !bar.shell) return
-    bar.shell.summon("omarchy.osd", JSON.stringify({
-      icon: outputIcon(volume),
-      value: Math.round(volume * 100)
-    }))
+    // No icon lets the OSD pick its speaker glyph from the percentage, the
+    // same way the volume keys do. Headphones and mute stay explicit: the
+    // percentage can't express them (scrolling doesn't unmute).
+    var payload = { value: Math.round(volume * 100) }
+    if (sink && sink.audio && isHeadphones(sink)) payload.icon = "󰋋"
+    else if (outputMuted) payload.icon = "volume-muted"
+    bar.shell.summon("omarchy.osd", JSON.stringify(payload))
   }
 
   function setInputVolume(v) {
