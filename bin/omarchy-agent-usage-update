@@ -52,10 +52,18 @@ collect() {
 }
 
 pids=()
-for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-*; do
+# User-level collectors (e.g. ~/.local/bin/omarchy-agent-usage-hermes) join
+# the packaged set, so agents installed outside Omarchy packages show up in
+# the agents panel too. Packaged collectors win on name collision so a
+# stale user copy can never shadow an upstream-shipped one.
+user_bin="${XDG_BIN_HOME:-$HOME/.local/bin}"
+declare -A seen
+for collector in "$OMARCHY_PATH"/bin/omarchy-agent-usage-* "$user_bin"/omarchy-agent-usage-*; do
   [[ -x $collector ]] || continue
   agent="${collector##*/omarchy-agent-usage-}"
-  [[ $agent == "update" ]] && continue
+  [[ -n $agent && $agent != "update" ]] || continue
+  [[ -n ${seen[$agent]:-} ]] && continue
+  seen[$agent]=1
   wanted "$agent" || continue
   collect "$collector" "$agent" &
   pids+=($!)
