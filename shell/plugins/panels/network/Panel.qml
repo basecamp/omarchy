@@ -1971,6 +1971,7 @@ Panel {
             visible: root.hiddenFailed
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
+            textFormat: Text.PlainText
             text: root.failureReason || "Failed to connect"
             color: root.bar.urgent
             font.family: root.bar.fontFamily
