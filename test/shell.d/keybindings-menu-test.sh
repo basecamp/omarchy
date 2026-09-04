@@ -220,3 +220,31 @@ for action in "${expected_alternatives[@]}"; do
     fail "every action named as having an alternative is bound twice" "$action"
 done
 pass "every action named as having an alternative is bound twice"
+
+# The menu parses real user configs under a stubbed `hl`. A config that calls a
+# list accessor and walks the result (such as a border-fx style file doing
+# ipairs(hl.get_loaded_plugins())) must leave the scan, not hang on a noop
+# that answers a value for every numeric index.
+spin_home="$tmpdir/spin-home"
+mkdir -p "$spin_home/.config"
+cp -r "$ROOT/config/hypr" "$spin_home/.config/hypr"
+
+cat >"$spin_home/.config/hypr/spin.lua" <<'LUA'
+local function loaded()
+  for _, p in ipairs(hl.get_loaded_plugins()) do
+    if p.name == "hypr-shiny-border" then
+      return true
+    end
+  end
+  return false
+end
+loaded()
+LUA
+printf '\npcall(require, "hypr.spin")\n' >>"$spin_home/.config/hypr/hyprland.lua"
+
+spin_rendered=$(env -i PATH="$stub_bin:$ROOT/bin:$PATH" HOME="$spin_home" \
+  XDG_CACHE_HOME="$tmpdir/cache" OMARCHY_PATH="$ROOT" \
+  timeout 20 bash "$ROOT/bin/omarchy-menu-keybindings" --print)
+[[ $? == 0 ]] ||
+  fail "a config iterating a stubbed hl accessor completes the scan" "$spin_rendered"
+pass "a config iterating a stubbed hl accessor completes the scan"

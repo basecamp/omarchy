@@ -184,9 +184,17 @@ local function dsp_proxy(path)
   })
 end
 
+-- Unknown hl.* accessors fall back to a noop so simple config calls parse, but
+-- a noop must read as an empty sequence: the scan is reading real user configs
+-- (e.g. ones that call hl.get_loaded_plugins and iterate the result), and a
+-- metatable that yields a fresh value for every numeric index makes ipairs()
+-- and # spin forever. Return nil for numbers so such loops terminate.
 local noop
 noop = setmetatable({}, {
-  __index = function()
+  __index = function(_, key)
+    if type(key) == "number" then
+      return nil
+    end
     return noop
   end,
   __call = function()
