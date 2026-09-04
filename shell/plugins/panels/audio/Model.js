@@ -64,9 +64,18 @@ function nodeProps(node) {
 function nodeLabel(node) {
   if (!node) return "Unknown"
   var p = nodeProps(node)
-  var nickname = friendlyDeviceLabel(node.nickname || node.nick || p["node.nick"] || p["device.profile.description"] || "")
-  if (nickname) return nickname
-  return friendlyDeviceLabel(node.description || p["node.description"] || node.name || "Unknown")
+  var profile = friendlyDeviceLabel(p["device.profile.description"] || "")
+  var description = friendlyDeviceLabel(node.description || p["node.description"] || "")
+  if (description && profile && description.toLowerCase().indexOf(profile.toLowerCase()) === -1)
+    return description + " " + profile
+  if (description) return description
+
+  var device = friendlyDeviceLabel(p["device.description"] || "")
+  if (device && profile && device.toLowerCase().indexOf(profile.toLowerCase()) === -1)
+    return device + " " + profile
+  if (device || profile) return device || profile
+
+  return friendlyDeviceLabel(node.nickname || node.nick || p["node.nick"] || node.name || "Unknown")
 }
 
 function isHeadphones(node) {
