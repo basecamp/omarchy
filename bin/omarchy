@@ -698,6 +698,7 @@ show_commands_check() {
   local collision=""
   local key=""
   local error=""
+  local file=""
 
   for collision in "${ROUTE_COLLISIONS[@]}"; do
     echo "Route collision: $collision" >&2
@@ -722,6 +723,14 @@ show_commands_check() {
       echo "Missing binary: ${COMMAND_BINARY[$key]}" >&2
       failures=$((failures + 1))
     fi
+  done
+
+  # Non-executable files never register as commands, so the loop above cannot
+  # see them; sweep the directory itself to catch a lost executable bit.
+  for file in "$OMARCHY_BIN_DIR"/omarchy-*; do
+    [[ -f $file && ! -x $file ]] || continue
+    echo "Not executable: ${file##*/}" >&2
+    failures=$((failures + 1))
   done
 
   if (( failures > 0 )); then
