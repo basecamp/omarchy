@@ -5,7 +5,18 @@
 # omarchy:args=[--verbose]
 
 verbose=false
-internet_probe=1.1.1.1
+
+# Only used for `ip route get`, to find the interface carrying default traffic.
+# Reachability does not matter here: the lookup is answered from the local
+# routing table, so a blocked address still resolves the right route.
+route_probe=1.1.1.1
+
+# Reachability probes used when the system has no public resolver configured.
+# More than one, because any single address can be blocked on a given network.
+fallback_probes=(1.1.1.1 8.8.8.8 9.9.9.9)
+
+# Upper bound on addresses probed per sample, to keep a sample cheap.
+max_probes=3
 
 case "${1:-}" in
   "")
@@ -22,7 +33,7 @@ esac
 print_status() {
   local device nm state ssid signal freq
 
-  device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
+  device=$(ip route get "$route_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
 
   if [[ -z $device ]]; then
     printf 'disconnected\t\t\t\n'
@@ -48,10 +59,91 @@ print_status() {
   printf 'wifi\t%s\t%s\t%s\n' "${ssid:-$device}" "$signal" "$freq"
 }
 
+# A resolver inside the LAN says nothing about whether the internet is
+# reachable, and the systemd-resolved stub listens on loopback, so only public
+# unicast IPv4 addresses make usable reachability probes.
+is_public_ipv4() {
+  local ip=$1 a b c d
+
+  [[ $ip =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]] || return 1
+
+  a=$((10#${BASH_REMATCH[1]}))
+  b=$((10#${BASH_REMATCH[2]}))
+  c=$((10#${BASH_REMATCH[3]}))
+  d=$((10#${BASH_REMATCH[4]}))
+
+  if (( a > 255 || b > 255 || c > 255 || d > 255 )); then
+    return 1
+  fi
+
+  if (( a == 0 || a == 10 || a == 127 || a >= 224 )) ||
+    (( a == 169 && b == 254 )) ||
+    (( a == 172 && b >= 16 && b <= 31 )) ||
+    (( a == 192 && b == 168 )) ||
+    (( a == 100 && b >= 64 && b <= 127 )); then
+    return 1
+  fi
+
+  return 0
+}
+
+# Resolvers this system is configured to use. `resolvectl` reports the global
+# and per-link servers; /etc/resolv.conf covers hosts not running
+# systemd-resolved, where it lists real servers rather than the local stub.
+configured_dns_servers() {
+  resolvectl dns 2>/dev/null | sed 's/^[^:]*://'
+  awk '$1 == "nameserver" { print $2 }' /etc/resolv.conf 2>/dev/null
+}
+
+# Probe targets for the internet sample: configured public resolvers first,
+# since those are addresses this system already depends on reaching, then the
+# fallbacks. Deduplicated and capped.
+internet_probes() {
+  local ip seen="" probes=()
+
+  for ip in $(configured_dns_servers) "${fallback_probes[@]}"; do
+    is_public_ipv4 "$ip" || continue
+    [[ $seen == *" $ip "* ]] && continue
+
+    seen+=" $ip "
+    probes+=("$ip")
+
+    if (( ${#probes[@]} >= max_probes )); then
+      break
+    fi
+  done
+
+  if (( ${#probes[@]} > 0 )); then
+    printf '%s\n' "${probes[@]}"
+  fi
+}
+
 ping_latency_ms() {
   local host=$1
 
   LC_ALL=C ping -n -c 1 -W 1 "$host" 2>/dev/null | awk -F'time[=<]' '/time[=<]/ { split($2, parts, " "); print parts[1]; exit }'
+}
+
+# Probe the candidates together and keep the best answer, so one unreachable
+# address no longer reads as a total outage. Networks that blackhole a single
+# well-known resolver are common enough to plan for, and probing concurrently
+# keeps a sample within the same timeout as a single ping.
+ping_internet_ms() {
+  local tmpdir=$1
+  local host index=0 pids=()
+
+  for host in $(internet_probes); do
+    ping_latency_ms "$host" >"$tmpdir/internet.$index" &
+    pids+=($!)
+    index=$((index + 1))
+  done
+
+  if (( ${#pids[@]} > 0 )); then
+    wait "${pids[@]}" 2>/dev/null
+  fi
+
+  cat "$tmpdir"/internet.* 2>/dev/null |
+    awk 'NF { if (best == "" || $1 + 0 < best + 0) best = $1 } END { if (best != "") print best }'
 }
 
 print_ping_samples() {
@@ -69,7 +161,7 @@ print_ping_samples() {
     router_pid=$!
   fi
 
-  ping_latency_ms "$internet_probe" >"$internet_file" &
+  ping_internet_ms "$tmpdir" >"$internet_file" &
   internet_pid=$!
 
   if [[ -n $router_pid ]]; then
@@ -85,7 +177,7 @@ print_ping_samples() {
 print_verbose() {
   local route_json iface gw src prefix link
 
-  route_json=$(ip -j route get "$internet_probe" 2>/dev/null)
+  route_json=$(ip -j route get "$route_probe" 2>/dev/null)
   [[ -z $route_json ]] && return
 
   iface=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
