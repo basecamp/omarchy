@@ -74,6 +74,12 @@ if ! omarchy-hw-fingerprint; then
   exit 1
 fi
 
+# Some readers are known to enroll fine but never produce a working software
+# match under the generic driver (see omarchy-hw-fingerprint-generic-driver-risk).
+# Checked here — not blocked on — so normal setup still runs first; only used
+# below to give a more useful failure message than "try again".
+generic_matching_failure_device=$(omarchy-hw-fingerprint-generic-driver-risk || true)
+
 # Install required packages
 echo "Installing required packages..."
 
@@ -107,6 +113,9 @@ if sudo fprintd-enroll "$USER"; then
     echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
   else
     echo -e "\e[31m\nVerification failed. You may want to try enrolling again.\e[0m"
+    if [[ -n $generic_matching_failure_device ]]; then
+      echo -e "\e[33mNote: reader $generic_matching_failure_device is known to enroll but never verify under the generic driver — see https://github.com/jcperdomoybarra/thinkpad-elan-04f3-0c4b-fingerprint-fix for a workaround.\e[0m"
+    fi
   fi
 else
   echo -e "\e[31m\nEnrollment failed. Please try again.\e[0m"

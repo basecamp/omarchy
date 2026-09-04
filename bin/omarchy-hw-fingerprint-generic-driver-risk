@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Prints the connected reader's USB id and exits 0 if it is known to fail matching under the generic driver
+# omarchy:hidden=true
+
+# A handful of Elan match-on-chip-shaped readers enroll fine under the
+# generic libfprint elan.c driver but never produce a working software
+# match — fprintd-verify fails every time, with no indication that the
+# driver is the problem rather than technique. Confirmed on 04f3:0c4b
+# (ThinkPad E15 Gen3 AMD): consistently 0-score matches across 25+ verify
+# attempts under elan.c, resolved by switching to Lenovo's proprietary ELAN
+# MOH driver via libfprint-tod instead — see
+# https://github.com/jcperdomoybarra/thinkpad-elan-04f3-0c4b-fingerprint-fix
+known_generic_matching_failure_ids=" 04f3:0c4b "
+usb_devices_path="${OMARCHY_USB_DEVICES_PATH:-/sys/bus/usb/devices}"
+
+for dev in "$usb_devices_path"/*; do
+  [[ -r $dev/idVendor && -r $dev/idProduct ]] || continue
+  id="$(<"$dev/idVendor"):$(<"$dev/idProduct")"
+  if [[ $known_generic_matching_failure_ids == *" $id "* ]]; then
+    echo "$id"
+    exit 0
+  fi
+done
+
+exit 1
