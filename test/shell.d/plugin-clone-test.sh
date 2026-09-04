@@ -77,7 +77,8 @@ jq -e '
   .name == "My Clock" and
   .barWidget.displayName == "My Clock" and
   .omarchy.clonedFrom == "omarchy.clock" and
-  .kinds == ["bar-widget"] and
+  .kinds == ["service", "bar-widget"] and
+  .entryPoints.service == "Service.qml" and
   .entryPoints.barWidget == "BarWidget.qml"
 ' "$clock/manifest.json" >/dev/null || fail "clock clone manifest is incorrect"
 pass "clone updates identity without replacing the manifest"

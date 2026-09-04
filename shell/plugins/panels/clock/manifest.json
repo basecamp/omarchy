@@ -4,16 +4,18 @@
   "name": "Clock",
   "version": "1.0.0",
   "author": "Omarchy",
-  "description": "Date/time label with a calendar popup",
+  "description": "Date/time label with a local calendar and planner",
   "kinds": [
+    "service",
     "bar-widget"
   ],
   "entryPoints": {
+    "service": "Service.qml",
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Clock",
-    "description": "Date/time label with a calendar popup",
+    "description": "Date/time label with a local calendar and planner",
     "category": "Time",
     "allowMultiple": false
   }

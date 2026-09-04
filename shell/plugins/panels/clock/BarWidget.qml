@@ -15,6 +15,7 @@ BarWidget {
   moduleName: "omarchy.clock"
 
   property date displayDate: clock.date
+  property var calendarService: null
 
   readonly property string configuredFormat: vertical
     ? setting("verticalFormat", "HH\n—\nmm")
@@ -77,6 +78,12 @@ BarWidget {
     if (panelLoader.item) panelLoader.item.toggle()
   }
 
+  function openView(view) {
+    if (!panelLoader.item) return
+    panelLoader.item.selectView(String(view || "calendar"))
+    panelLoader.item.open()
+  }
+
   function toggleWeekStart() {
     if (panelLoader.item) panelLoader.item.toggleWeekStart()
   }
@@ -101,8 +108,11 @@ BarWidget {
   function injectPanel() {
     var target = panelLoader.item
     if (!target) return
+    if (root.bar && root.bar.shell && typeof root.bar.shell.serviceFor === "function")
+      root.calendarService = root.bar.shell.serviceFor("omarchy.clock")
     if ("bar" in target) target.bar = root.bar
     if ("settings" in target) target.settings = root.settings
+    if ("service" in target) target.service = root.calendarService
     if ("anchorItem" in target) target.anchorItem = button
     if ("hostWidget" in target) target.hostWidget = root
   }
@@ -141,6 +151,7 @@ BarWidget {
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.togglePanel() }
+    function openView(view: string): void { root.openView(view) }
   }
 
   WidgetButton {
