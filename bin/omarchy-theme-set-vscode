@@ -68,8 +68,17 @@ install_generated_extension() {
     ui_theme="vs-dark"
   fi
 
+  # VS Code caches loaded color themes in memory and only rebuilds a registry
+  # entry when the providing extension changes, so derive the version from the
+  # theme content: identical palettes keep the cache, new palettes invalidate it.
+  GENERATED_EXTENSION_VERSION="1.0.$(cksum "$GENERATED_THEME" | cut -d' ' -f1)"
+
   mkdir -p "$ext_dir/themes"
-  ln -sfn "$GENERATED_THEME" "$ext_dir/themes/omarchy-color-theme.json"
+  # A real file rather than a symlink into current/theme: the _watch watcher
+  # below needs a same-inode rewrite to fire, and a symlink would dangle while
+  # omarchy-theme-set swaps current/theme via rm + mv.
+  rm -f "$ext_dir/themes/omarchy-color-theme.json"
+  cat "$GENERATED_THEME" >"$ext_dir/themes/omarchy-color-theme.json"
 
   cat > "$ext_dir/package.json" <<EOF
 {
@@ -84,7 +93,8 @@ install_generated_extension() {
         "themes": [{
             "label": "Omarchy",
             "uiTheme": "$ui_theme",
-            "path": "./themes/omarchy-color-theme.json"
+            "path": "./themes/omarchy-color-theme.json",
+            "_watch": true
         }]
     }
 }
