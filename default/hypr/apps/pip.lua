@@ -11,8 +11,12 @@ o.window({ tag = "pip" }, {
   move = { "(monitor_w-window_w-40)", "(monitor_h*0.04)" },
 })
 
--- Google Meet PiP uses the meeting title instead of "Picture-in-Picture".
-o.window({ tag = "chromium-based-browser", title = "^Meet - .+" }, {
+-- Google Meet PiP titles omit the browser suffix used by regular Meet tabs.
+o.window({
+  tag = "chromium-based-browser",
+  title = "^Meet - .+",
+  initial_title = "negative:.* - .+ - (Chromium|Google Chrome|Brave|Microsoft Edge|Vivaldi|Helium)$",
+}, {
   tag = "-default-opacity",
   float = true,
   pin = true,
