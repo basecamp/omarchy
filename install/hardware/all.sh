@@ -41,6 +41,7 @@ run_logged "$OMARCHY_INSTALL/hardware/apple/fix-t2.sh"
 run_logged "$OMARCHY_INSTALL/hardware/apple/fix-brcmfmac-supplicant.sh"
 
 run_logged "$OMARCHY_INSTALL/hardware/lenovo/fix-yoga-pro7-bass-speakers.sh"
+run_logged "$OMARCHY_INSTALL/hardware/lenovo/fix-thinkbook-imh-hibernate.sh"
 
 run_logged "$OMARCHY_INSTALL/hardware/fix-bcm43xx.sh"
 run_logged "$OMARCHY_INSTALL/hardware/fix-surface-keyboard.sh"
