@@ -19,6 +19,141 @@ Panel {
   readonly property var mprisPlayers: Mpris.players ? Mpris.players.values : []
   readonly property var mediaService: bar?.shell?.firstPartyServiceFor("omarchy.media")
   readonly property var activeMediaPlayer: mediaService ? mediaService.activePlayer : null
+  readonly property string liveMediaTitle: activeMediaPlayer ? String(activeMediaPlayer.trackTitle || "") : ""
+  readonly property string liveMediaArtist: activeMediaPlayer ? String(activeMediaPlayer.trackArtist || "") : ""
+  property string mediaDisplayPlayerKey: ""
+  property string mediaDisplayTitle: ""
+  property string mediaDisplayArtist: ""
+  property bool mediaDisplayPlaying: false
+  property bool mediaDisplayCanGoPrevious: false
+  property bool mediaDisplayCanPlayPause: false
+  property bool mediaDisplayCanGoNext: false
+  readonly property bool hasCachedMediaMetadata: mediaDisplayTitle !== "" || mediaDisplayArtist !== ""
+  readonly property string effectiveMediaTitle: hasCachedMediaMetadata ? mediaDisplayTitle : liveMediaTitle
+  readonly property string effectiveMediaArtist: hasCachedMediaMetadata ? mediaDisplayArtist : liveMediaArtist
+  readonly property bool mediaVisible: Model.mediaVisible(
+    activeMediaPlayer,
+    mediaDisplayTitle,
+    mediaDisplayArtist,
+    hasCachedMediaMetadata
+  )
+  readonly property bool useLiveMediaPresentation: !!activeMediaPlayer
+    && Model.mediaMetadataPresent(liveMediaTitle, liveMediaArtist)
+  readonly property bool effectiveMediaPlaying: useLiveMediaPresentation
+    ? !!activeMediaPlayer.isPlaying : mediaDisplayPlaying
+  readonly property bool effectiveMediaCanGoPrevious: useLiveMediaPresentation
+    ? !!activeMediaPlayer.canGoPrevious : mediaDisplayCanGoPrevious
+  readonly property bool effectiveMediaCanPlayPause: useLiveMediaPresentation
+    ? !!(activeMediaPlayer.canTogglePlaying || activeMediaPlayer.canPlay || activeMediaPlayer.canPause)
+    : mediaDisplayCanPlayPause
+  readonly property bool effectiveMediaCanGoNext: useLiveMediaPresentation
+    ? !!activeMediaPlayer.canGoNext : mediaDisplayCanGoNext
+  readonly property var mediaControlState: mediaVisible ? ({
+    canGoPrevious: effectiveMediaCanGoPrevious,
+    canTogglePlaying: effectiveMediaCanPlayPause,
+    canGoNext: effectiveMediaCanGoNext
+  }) : null
+
+  function clearMediaMetadata() {
+    mediaMetadataCommitTimer.stop()
+    mediaMetadataClearTimer.stop()
+    mediaDisplayPlayerKey = ""
+    mediaDisplayTitle = ""
+    mediaDisplayArtist = ""
+    mediaDisplayPlaying = false
+    mediaDisplayCanGoPrevious = false
+    mediaDisplayCanPlayPause = false
+    mediaDisplayCanGoNext = false
+  }
+
+  function refreshMediaPresentationState() {
+    if (!activeMediaPlayer || !Model.mediaMetadataPresent(liveMediaTitle, liveMediaArtist)) {
+      // Retain the last complete presentation and action target during a
+      // transient MPRIS handoff instead of mixing the replacement player's state.
+      return
+    }
+    mediaDisplayPlayerKey = mediaService ? String(mediaService.playerKey(activeMediaPlayer) || "") : ""
+    mediaDisplayPlaying = !!activeMediaPlayer.isPlaying
+    mediaDisplayCanGoPrevious = !!activeMediaPlayer.canGoPrevious
+    mediaDisplayCanPlayPause = !!(activeMediaPlayer.canTogglePlaying || activeMediaPlayer.canPlay || activeMediaPlayer.canPause)
+    mediaDisplayCanGoNext = !!activeMediaPlayer.canGoNext
+  }
+
+  function commitMediaMetadata() {
+    if (!activeMediaPlayer || !Model.mediaMetadataPresent(liveMediaTitle, liveMediaArtist)) {
+      syncMediaMetadata()
+      return
+    }
+    mediaDisplayTitle = liveMediaTitle
+    mediaDisplayArtist = liveMediaArtist
+    refreshMediaPresentationState()
+  }
+
+  function syncMediaMetadata() {
+    if (!activeMediaPlayer) {
+      mediaMetadataCommitTimer.stop()
+      if (hasCachedMediaMetadata)
+        mediaMetadataClearTimer.restart()
+      else
+        clearMediaMetadata()
+      return
+    }
+    if (Model.mediaMetadataPresent(liveMediaTitle, liveMediaArtist)) {
+      mediaMetadataClearTimer.stop()
+      // MPRIS fields often arrive in separate signals. Commit them together
+      // after a short settling window so title and artist change as one unit.
+      mediaMetadataCommitTimer.restart()
+      return
+    }
+    mediaMetadataCommitTimer.stop()
+    if (hasCachedMediaMetadata) {
+      // Chromium may briefly unregister and replace its MPRIS player while
+      // skipping. Keep the last complete presentation unless the gap persists.
+      mediaMetadataClearTimer.restart()
+    } else {
+      clearMediaMetadata()
+    }
+  }
+
+  function normalizeMediaControl() {
+    if (!mediaVisible) {
+      if (focusSection === "media") { focusSection = "output"; selectedIndex = -1 }
+      return
+    }
+    if (focusSection === "media" && !Model.mediaActionEnabled(mediaControlState, mediaActions[mediaControlIndex]))
+      mediaControlIndex = Model.firstEnabledMediaControl(mediaControlState)
+  }
+
+  function mediaActionTargetKey() {
+    if (!mediaService) return ""
+    if (activeMediaPlayer && useLiveMediaPresentation)
+      return String(mediaService.playerKey(activeMediaPlayer) || "")
+    return mediaDisplayPlayerKey
+  }
+
+  onMediaVisibleChanged: normalizeMediaControl()
+  onLiveMediaTitleChanged: syncMediaMetadata()
+  onLiveMediaArtistChanged: syncMediaMetadata()
+  onActiveMediaPlayerChanged: {
+    syncMediaMetadata()
+    normalizeMediaControl()
+  }
+
+  Component.onCompleted: syncMediaMetadata()
+
+  Connections {
+    target: root.activeMediaPlayer
+    function refreshStateAndNormalize() {
+      root.refreshMediaPresentationState()
+      root.normalizeMediaControl()
+    }
+    function onIsPlayingChanged() { refreshStateAndNormalize() }
+    function onCanGoPreviousChanged() { refreshStateAndNormalize() }
+    function onCanGoNextChanged() { refreshStateAndNormalize() }
+    function onCanPlayChanged() { refreshStateAndNormalize() }
+    function onCanPauseChanged() { refreshStateAndNormalize() }
+    function onCanTogglePlayingChanged() { refreshStateAndNormalize() }
+  }
 
   readonly property var candidateSinks: {
     var list = []
@@ -164,6 +299,8 @@ Panel {
   property string focusSection: "output"
   property int selectedIndex: -1
   property bool cursorActive: false
+  property int mediaControlIndex: 1
+  readonly property var mediaActions: Model.mediaActionNames()
 
   // "header" is a virtual section for the hero output mute toggle; it sits
   // above the output section so the speaker can be muted from the keyboard.
@@ -184,6 +321,7 @@ Panel {
     : "transparent"
 
   function sectionCount(section) {
+    if (section === "media") return 1
     if (section === "output") return displayAudioSinks.length
     if (section === "input") return displayAudioSources.length
     if (section === "streams") return displayAudioStreams.length
@@ -191,6 +329,7 @@ Panel {
   }
 
   function sectionVisible(section) {
+    if (section === "media") return mediaVisible
     if (section === "output") return true
     if (section === "input") return displayAudioSources.length > 0 || !!source
     if (section === "streams") return displayAudioStreams.length > 0
@@ -198,6 +337,7 @@ Panel {
   }
 
   function sectionHasSlider(section) {
+    if (section === "media") return false
     if (section === "output") return true
     if (section === "input") return !!source
     return false  // stream rows carry their own sliders inline; not a section-level slider
@@ -207,6 +347,7 @@ Panel {
   // (e.g. no input devices) doesn't leave the cursor pointing at it.
   readonly property var visibleSections: {
     var list = []
+    if (sectionVisible("media")) list.push("media")
     if (sectionVisible("output")) list.push("output")
     if (sectionVisible("input")) list.push("input")
     if (sectionVisible("streams")) list.push("streams")
@@ -217,13 +358,32 @@ Panel {
     var sections = visibleSections
     if (sections.length === 0) return
     if (focusSection === "header") {
-      if (delta > 0) { focusSection = sections[0]; selectedIndex = sectionHasSlider(sections[0]) ? -1 : 0 }
+      if (delta > 0) {
+        focusSection = sections[0]
+        selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
+        if (focusSection === "media") mediaControlIndex = Model.firstEnabledMediaControl(mediaControlState)
+      }
       return
     }
     var sIdx = sections.indexOf(focusSection)
-    if (sIdx < 0) { focusSection = sections[0]; selectedIndex = sectionHasSlider(focusSection) ? -1 : 0; return }
+    if (sIdx < 0) {
+      focusSection = sections[0]
+      selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
+      if (focusSection === "media") mediaControlIndex = Model.firstEnabledMediaControl(mediaControlState)
+      return
+    }
 
     var idx = selectedIndex
+    if (focusSection === "media") {
+      var mediaIndex = sections.indexOf("media")
+      if (delta > 0 && mediaIndex < sections.length - 1) {
+        focusSection = sections[mediaIndex + 1]
+        selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
+      } else if (delta < 0) {
+        focusSection = "header"
+      }
+      return
+    }
     var max = sectionCount(focusSection) - 1  // last device index
     var hasSlider = sectionHasSlider(focusSection)
     var floor = hasSlider ? -1 : 0  // -1 = slider row
@@ -234,6 +394,7 @@ Panel {
       if (sIdx < sections.length - 1) {
         focusSection = sections[sIdx + 1]
         selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
+        if (focusSection === "media") mediaControlIndex = Model.firstEnabledMediaControl(mediaControlState)
       }
     } else {
       if (idx > floor) { selectedIndex = idx - 1; return }
@@ -242,6 +403,7 @@ Panel {
         focusSection = sections[sIdx - 1]
         var prevMax = sectionCount(focusSection) - 1
         selectedIndex = prevMax >= 0 ? prevMax : (sectionHasSlider(focusSection) ? -1 : 0)
+        if (focusSection === "media") mediaControlIndex = Model.firstEnabledMediaControl(mediaControlState)
       } else {
         focusSection = "header"
       }
@@ -262,6 +424,7 @@ Panel {
     var next = (current + delta + sections.length) % sections.length
     focusSection = sections[next]
     selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
+    if (focusSection === "media") mediaControlIndex = Model.firstEnabledMediaControl(mediaControlState)
     cursorActive = true
   }
 
@@ -272,6 +435,10 @@ Panel {
   // — the cursor is on a discrete row, not on the slider, and silently
   // moving the global slider would surprise the user.
   function adjustVolume(delta) {
+    if (focusSection === "media") {
+      mediaControlIndex = Model.nextEnabledMediaControl(mediaControlState, mediaControlIndex, delta > 0 ? 1 : -1)
+      return
+    }
     if (focusSection === "output" && selectedIndex === -1) {
       setOutputVolume(outputVolume + delta)
       return
@@ -289,6 +456,13 @@ Panel {
   // Enter/Space: activate whatever the cursor is on.
   function activateCursor() {
     if (focusSection === "header") { toggleAllMuted(); return }
+    if (focusSection === "media") {
+      if (!mediaVisible || !mediaService) return
+      var action = mediaActions[mediaControlIndex]
+      if (Model.mediaActionEnabled(mediaControlState, action))
+        mediaService.runAction(action, false, mediaActionTargetKey())
+      return
+    }
     if (focusSection === "output") {
       if (selectedIndex === -1) { toggleOutputMute(); return }
       var sink = displayAudioSinks[selectedIndex]
@@ -389,6 +563,12 @@ Panel {
     if (sections.indexOf(focusSection) < 0) {
       focusSection = visibleSections[0]
       selectedIndex = sectionHasSlider(focusSection) ? -1 : 0
+      if (focusSection === "media") mediaControlIndex = Model.firstEnabledMediaControl(mediaControlState)
+      return
+    }
+    if (focusSection === "media") {
+      if (!mediaVisible) { focusSection = "output"; selectedIndex = -1 }
+      mediaControlIndex = Math.max(0, Math.min(2, mediaControlIndex))
       return
     }
     var count = sectionCount(focusSection)
@@ -627,6 +807,25 @@ Panel {
     onTriggered: root.refreshDisplayAudioModels()
   }
 
+  Timer {
+    id: mediaMetadataCommitTimer
+    interval: 90
+    repeat: false
+    onTriggered: root.commitMediaMetadata()
+  }
+
+  Timer {
+    id: mediaMetadataClearTimer
+    interval: 2000
+    repeat: false
+    onTriggered: {
+      if (root.activeMediaPlayer && Model.mediaMetadataPresent(root.liveMediaTitle, root.liveMediaArtist))
+        root.commitMediaMetadata()
+      else
+        root.clearMediaMetadata()
+    }
+  }
+
   BarIconButton {
     id: button
     anchors.fill: parent
@@ -778,11 +977,41 @@ Panel {
             }
           }
 
-          // ---- Output devices ----
+          // ---- Media controls ----
           PanelSeparator {
             foreground: root.bar.foreground
           }
 
+          MediaSection {
+            id: mediaSection
+            visible: root.mediaVisible
+            bar: root.bar
+            actions: root.mediaActions
+            displayTitle: root.effectiveMediaTitle
+            displayArtist: root.effectiveMediaArtist
+            displayPlaying: root.effectiveMediaPlaying
+            displayCanGoPrevious: root.effectiveMediaCanGoPrevious
+            displayCanPlayPause: root.effectiveMediaCanPlayPause
+            displayCanGoNext: root.effectiveMediaCanGoNext
+            cursorActive: root.cursorActive && root.focusSection === "media"
+            cursorIndex: root.mediaControlIndex
+            onControlHovered: function(index) {
+              root.cursorActive = true
+              root.focusSection = "media"
+              root.mediaControlIndex = index
+            }
+            onActionRequested: function(action) {
+              if (root.mediaService)
+                root.mediaService.runAction(action, false, root.mediaActionTargetKey())
+            }
+          }
+
+          PanelSeparator {
+            visible: root.mediaVisible
+            foreground: root.bar.foreground
+          }
+
+          // ---- Output devices ----
           Column {
             width: parent.width
             spacing: Style.space(6)
