@@ -84,6 +84,9 @@ ShellRoot {
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("firstparty", "/first/hybrid", manifest("omarchy.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
+    var menuPanel = manifest("third.menu-panel", ["panel"], { panel: "Panel.qml" })
+    menuPanel.menuItem = { label: "Menu panel", icon: "P", description: "Open the panel" }
+    scan += block("thirdparty", "/third/menu-panel", menuPanel)
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
     scan += block("thirdparty", "/third/center-widget", manifest("third.center-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/right-widget", manifest("third.right-widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "right" }))
@@ -108,6 +111,12 @@ ShellRoot {
     scan += block("thirdparty", "/third/unsafe", manifest("third.unsafe", ["panel"], { panel: "../Panel.qml" }))
     scan += block("thirdparty", "/third/missing", { schemaVersion: 1, id: "third.missing", name: "missing", version: "1.0.0", kinds: ["panel"] })
     scan += block("thirdparty", "/third/bad-section", manifest("third.bad-section", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "bottom" }))
+    var badMenuItem = manifest("third.bad-menu-item", ["panel"], { panel: "Panel.qml" })
+    badMenuItem.menuItem = { icon: 42 }
+    scan += block("thirdparty", "/third/bad-menu-item", badMenuItem)
+    var serviceMenuItem = manifest("third.service-menu-item", ["service"], { service: "Service.qml" })
+    serviceMenuItem.menuItem = {}
+    scan += block("thirdparty", "/third/service-menu-item", serviceMenuItem)
     scan += block("thirdparty", "/third/schema", { schemaVersion: 2, id: "third.schema", name: "schema", version: "1.0.0", kinds: ["panel"], entryPoints: { panel: "Panel.qml" } })
     scan += block("thirdparty", "/third/bad-json", "{")
 
@@ -125,6 +134,7 @@ ShellRoot {
       "omarchy.hybrid",
       "third.bar",
       "third.center-widget",
+      "third.menu-panel",
       "third.panel",
       "third.right-widget",
       "third.widget"
@@ -135,11 +145,14 @@ ShellRoot {
     root.assertEqual(registry.installedPlugins["omarchy.grouped-panel"].__sourceDir, "/first/panels/grouped", "grouped plugin source paths are preserved")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.panel"], "panel"), "file:///third/panel/Panel.qml", "entryPointUrl resolves plugin-relative paths")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.widget"], "barWidget"), "file:///third/widget/Widget.qml", "entryPointUrl resolves bar widget paths")
+    root.assertEqual(registry.installedPlugins["third.menu-panel"].menuItem.label, "Menu panel", "registry preserves valid menu launcher metadata")
 
     root.assertTrue(!has("omarchy.reserved"), "third-party omarchy namespace ids are rejected")
     root.assertTrue(!has("third.unsafe"), "unsafe entry points are rejected")
     root.assertTrue(!has("third.missing"), "incomplete manifests are rejected")
     root.assertTrue(!has("third.bad-section"), "invalid default bar widget sections are rejected")
+    root.assertTrue(!has("third.bad-menu-item"), "invalid menu launcher presentation is rejected")
+    root.assertTrue(!has("third.service-menu-item"), "service-only menu launchers are rejected")
     root.assertTrue(!has("third.schema"), "unsupported schema versions are rejected")
 
     root.assertTrue(registry.isEnabled("omarchy.first-widget"), "first-party plugins are implicitly enabled")

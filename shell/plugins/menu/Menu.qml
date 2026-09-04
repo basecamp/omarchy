@@ -45,8 +45,8 @@ Item {
 
   property string fontFamily: Style.font.menuFamily
   // JSONC menu definitions. The shell parses both at startup and merges
-  // the user file on top of the defaults, so the keybind → IPC → visible
-  // path doesn't have to shell out to bash + jq on every open.
+  // enabled plugin contributions between the defaults and user file, so the
+  // keybind → IPC → visible path doesn't shell out on every open.
   property string defaultMenuPath: omarchyPath + "/default/omarchy/omarchy-menu.jsonc"
   property string userMenuPath: Quickshell.env("HOME") + "/.config/omarchy/extensions/omarchy-menu.jsonc"
   property var defaultMenuItems: []
@@ -240,11 +240,21 @@ Item {
     return MenuModel.parseMenuJsonc(raw)
   }
 
-  // Merge defaults + user extension. Later entries override earlier ones
-  // on a per-key basis (so the user can tweak label/icon/action without
-  // re-declaring the whole row).
+  function enabledPluginMenuItems() {
+    var registry = root.shell ? root.shell.pluginRegistry : null
+    if (!registry) return []
+    return MenuModel.pluginMenuItems(registry.installedPlugins, function(pluginId) {
+      return registry.isEnabled(pluginId)
+    })
+  }
+
+  // Merge defaults + enabled plugins + user extension. Later entries override
+  // earlier ones on a per-key basis, so user configuration stays authoritative.
   function rebuildItemsFromSources() {
-    var mergedMenu = MenuModel.mergeMenuSources(root.defaultMenuItems, root.userMenuItems)
+    var mergedMenu = MenuModel.mergeMenuSources(
+      root.defaultMenuItems,
+      root.enabledPluginMenuItems(),
+      root.userMenuItems)
     root.providerRevision += 1
     root.providersLoaded = ({})
     root.providerQueue = []
@@ -958,6 +968,13 @@ Item {
       if (root.providersLoaded["apps"]) root.mergeAppRows()
     }
   }
+
+  Connections {
+    target: root.shell ? root.shell.pluginRegistry : null
+    function onPluginsChanged() { root.rebuildItemsFromSources() }
+  }
+
+  onShellChanged: root.rebuildItemsFromSources()
 
   // The JSONC sources are watched so live edits to the default file (or the
   // user extension at ~/.config/omarchy/extensions/omarchy-menu.jsonc) take

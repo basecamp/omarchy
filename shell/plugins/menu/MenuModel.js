@@ -63,10 +63,64 @@ function parseMenuJsonc(raw) {
   return out
 }
 
-function mergeMenuSources(defaultItems, userItems) {
+function shellQuote(value) {
+  return "'" + String(value || "").replace(/'/g, "'\\''") + "'"
+}
+
+// A manifest menuItem is deliberately smaller than the user menu schema. It
+// launches the plugin through the shell's standard lifecycle instead of
+// accepting an arbitrary command from the manifest. The generated id is
+// namespaced away from shipped menu routes and pinned to root so dots in a
+// plugin id do not turn it into an accidental submenu path.
+function pluginMenuItems(plugins, isEnabled) {
+  var manifests = plugins || ({})
+  var ids = Object.keys(manifests).sort()
+  var out = []
+
+  for (var i = 0; i < ids.length; i++) {
+    var pluginId = ids[i]
+    var manifest = manifests[pluginId]
+    if (!manifest || !manifest.menuItem || typeof manifest.menuItem !== "object"
+        || Array.isArray(manifest.menuItem)) continue
+    if (typeof isEnabled === "function" && !isEnabled(pluginId)) continue
+
+    var menuItem = manifest.menuItem
+    out.push(normalizeItem("plugin." + pluginId, {
+      parent: "root",
+      icon: typeof menuItem.icon === "string" ? menuItem.icon : "",
+      iconFont: typeof menuItem.iconFont === "string" ? menuItem.iconFont : "",
+      label: typeof menuItem.label === "string" && menuItem.label
+        ? menuItem.label : String(manifest.name || pluginId),
+      description: typeof menuItem.description === "string"
+        ? menuItem.description : String(manifest.description || ""),
+      action: "omarchy-shell shell toggle " + shellQuote(pluginId)
+    }))
+  }
+
+  return out
+}
+
+function mergeMenuSources(defaultItems, pluginItems, userItems) {
   var nextItems = ({})
   var nextOrder = []
-  var sources = [defaultItems || [], userItems || []]
+  var sources
+  if (userItems === undefined) {
+    sources = [defaultItems || [], pluginItems || []]
+  } else {
+    var activePluginItems = ({})
+    var plugins = pluginItems || []
+    for (var p = 0; p < plugins.length; p++) {
+      if (plugins[p] && plugins[p].id) activePluginItems[plugins[p].id] = true
+    }
+
+    // Generated plugin ids are reserved for overrides. Do not let an override
+    // survive as a standalone launcher after its plugin has been disabled.
+    var users = (userItems || []).filter(function(entry) {
+      return !entry || !entry.id || entry.id.indexOf("plugin.") !== 0
+        || activePluginItems[entry.id]
+    })
+    sources = [defaultItems || [], plugins, users]
+  }
 
   for (var s = 0; s < sources.length; s++) {
     var src = sources[s]
@@ -498,6 +552,7 @@ if (typeof module !== "undefined") {
     normalizeAliases: normalizeAliases,
     normalizeItem: normalizeItem,
     parseMenuJsonc: parseMenuJsonc,
+    pluginMenuItems: pluginMenuItems,
     mergeMenuSources: mergeMenuSources,
     mergeAppRows: mergeAppRows,
     swapProviderRows: swapProviderRows,

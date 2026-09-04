@@ -69,6 +69,38 @@ QtObject {
       console.warn("PluginRegistry: entryPoints must be an object at " + sourcePath)
       return null
     }
+    if (manifest.menuItem !== undefined) {
+      if (!Util.isPlainObject(manifest.menuItem)) {
+        console.warn("PluginRegistry: menuItem must be an object at " + sourcePath)
+        return null
+      }
+      var menuItemFields = ["label", "icon", "iconFont", "description"]
+      for (var m = 0; m < menuItemFields.length; m++) {
+        var menuItemField = menuItemFields[m]
+        if (manifest.menuItem[menuItemField] !== undefined
+            && typeof manifest.menuItem[menuItemField] !== "string") {
+          console.warn("PluginRegistry: menuItem." + menuItemField
+            + " must be a string at " + sourcePath)
+          return null
+        }
+      }
+      if (manifest.menuItem.label !== undefined && !manifest.menuItem.label) {
+        console.warn("PluginRegistry: menuItem.label must not be empty at " + sourcePath)
+        return null
+      }
+      var summonableKinds = ["bar-widget", "menu", "overlay", "panel"]
+      var summonable = false
+      for (var s = 0; s < summonableKinds.length; s++) {
+        if (manifest.kinds.indexOf(summonableKinds[s]) !== -1) {
+          summonable = true
+          break
+        }
+      }
+      if (!summonable) {
+        console.warn("PluginRegistry: menuItem requires a summonable kind at " + sourcePath)
+        return null
+      }
+    }
     if (manifest.barWidget !== undefined && Util.isPlainObject(manifest.barWidget)
         && manifest.barWidget.defaultSection !== undefined) {
       var defaultSection = String(manifest.barWidget.defaultSection)

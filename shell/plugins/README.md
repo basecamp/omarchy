@@ -105,6 +105,7 @@ second Quickshell instance.
 The menu definition lives outside the shell host code:
 
 - defaults: `default/omarchy/omarchy-menu.jsonc`
+- plugin launchers: `menuItem` blocks from enabled plugin manifests
 - user extensions: `~/.config/omarchy/extensions/omarchy-menu.jsonc`
 
 The shell parses both JSONC files at startup (with `watchChanges: true`

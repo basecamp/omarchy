@@ -22,8 +22,8 @@ Usage: omarchy plugin validate <plugin-folder>
 
 Checks a plugin folder's manifest.json against the schema the shell enforces:
 schemaVersion, required fields, safe relative entry points that exist, an entry
-point for each kind that needs one, no symlinks, and an id that is not reserved.
-Exits 0 if valid — handy for plugin authors before publishing.
+point for each kind that needs one, menu launcher metadata, no symlinks, and an
+id that is not reserved. Exits 0 if valid — handy before publishing.
 USAGE
   exit 0
 fi
@@ -59,6 +59,28 @@ jq -e '(.kinds | type) == "array" and (.kinds | length) > 0' "$MANIFEST" >/dev/n
 # entryPoints must be an object and every value a safe relative path that exists.
 jq -e '(.entryPoints | type) == "object"' "$MANIFEST" >/dev/null 2>&1 \
   || fail "'entryPoints' must be an object"
+
+# A plugin can opt into one root-level Omarchy menu launcher. The menu builds
+# the action itself, so manifests only provide presentation metadata and only
+# plugin kinds the shell can summon may declare one.
+if jq -e 'has("menuItem")' "$MANIFEST" >/dev/null 2>&1; then
+  jq -e '(.menuItem | type) == "object"' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "'menuItem' must be an object"
+  jq -e '
+    . as $manifest
+    | all(["label", "icon", "iconFont", "description"][];
+        . as $field
+        | (($manifest.menuItem | has($field) | not)
+          or ($manifest.menuItem[$field] | type == "string")))
+  ' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "'menuItem' presentation fields must be strings"
+  jq -e '(.menuItem.label? // "fallback") != ""' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "'menuItem.label' must not be empty"
+  jq -e '
+    any(.kinds[]; . == "bar-widget" or . == "menu" or . == "overlay" or . == "panel")
+  ' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "'menuItem' requires a summonable kind: bar-widget, menu, overlay, or panel"
+fi
 
 # A bar widget may declare where it should land when enabled without an
 # explicit placement.

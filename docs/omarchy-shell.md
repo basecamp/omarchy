@@ -39,6 +39,20 @@ Only one full bar option is active at a time. The built-in `omarchy.bar` is
 used when `bar.id` is omitted or when a selected third-party bar cannot load.
 Panels, overlays, and menus are loaded when summoned. Plugins can set the top-level manifest key `keepLoaded: true` to survive between summons, and to keep a service mounted across plugin hot-reload (so `omarchy.lock` is not destroyed while Hyprland still holds the session lock). First-party services are loaded at startup.
 
+A plugin with a `bar-widget`, `menu`, `overlay`, or `panel` kind can add one root-level launcher to the built-in Omarchy menu by declaring a `menuItem` object. The object accepts optional string fields `label`, `icon`, `iconFont`, and `description`; label and description fall back to the manifest values. The launcher is present only while the plugin is enabled and always invokes the standard `toggle` lifecycle for that plugin — manifests cannot supply an arbitrary command through `menuItem`.
+
+```json
+{
+  "menuItem": {
+    "label": "Cool clock",
+    "icon": "󰥔",
+    "description": "Open the clock panel"
+  }
+}
+```
+
+This is separate from `kinds: ["menu"]`, which says that the plugin itself implements a summoned menu surface.
+
 Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
 `open(payloadJson)` and `close()` for summon/hide; on load the host injects
 `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /

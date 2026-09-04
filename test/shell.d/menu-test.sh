@@ -58,6 +58,86 @@ assertEqual(merged.items['style.theme'].label, 'Theme picker', 'menu user entrie
 assertEqual(merged.items['style.theme'].order, 2, 'menu preserves original order on override')
 assert(merged.items.root, 'menu injects root when merging sources')
 
+const pluginItems = menu.pluginMenuItems({
+  'acme.hidden': {
+    id: 'acme.hidden',
+    name: 'Hidden tool',
+    kinds: ['overlay'],
+    menuItem: { label: 'Hidden tool' }
+  },
+  'acme.plain': {
+    id: 'acme.plain',
+    name: 'Plain service',
+    kinds: ['service']
+  },
+  'acme.polish': {
+    id: 'acme.polish',
+    name: 'Polish',
+    description: 'Manifest description',
+    kinds: ['overlay'],
+    menuItem: { label: 'Text Polish', icon: 'P', iconFont: 'icons', description: 'Refine text' }
+  },
+  'acme.timer': {
+    id: 'acme.timer',
+    name: 'Timer',
+    description: 'Manifest fallback',
+    kinds: ['panel'],
+    menuItem: {}
+  }
+}, id => id !== 'acme.hidden')
+assertDeepEqual(
+  pluginItems.map(item => item.id),
+  ['plugin.acme.polish', 'plugin.acme.timer'],
+  'menu adds enabled manifest launchers in stable plugin-id order'
+)
+assertDeepEqual(
+  pluginItems[0],
+  {
+    id: 'plugin.acme.polish',
+    parent: 'root',
+    kind: 'action',
+    icon: 'P',
+    iconFont: 'icons',
+    label: 'Text Polish',
+    title: '',
+    target: '',
+    description: 'Refine text',
+    action: "omarchy-shell shell toggle 'acme.polish'",
+    provider: '',
+    aliases: [],
+    when: '',
+    checked: '',
+    disabled: ''
+  },
+  'menu turns presentation-only manifest metadata into a root plugin action'
+)
+assertEqual(pluginItems[1].label, 'Timer', 'menu launcher labels fall back to the manifest name')
+assertEqual(pluginItems[1].description, 'Manifest fallback', 'menu launcher descriptions fall back to the manifest description')
+
+const userPluginOverride = menu.normalizeItem('plugin.acme.polish', { parent: 'root', label: 'My Polish', action: 'custom-polish' })
+const mergedWithPlugins = menu.mergeMenuSources(parsed, pluginItems, [userPluginOverride])
+assertEqual(mergedWithPlugins.items['plugin.acme.polish'].label, 'My Polish', 'menu user entries override plugin launchers')
+assertEqual(mergedWithPlugins.items['plugin.acme.polish'].action, 'custom-polish', 'menu user actions override generated plugin actions')
+assertEqual(mergedWithPlugins.items['plugin.acme.polish'].parent, 'root', 'menu user overrides can keep dotted plugin ids on the root menu')
+assertEqual(mergedWithPlugins.items['plugin.acme.polish'].order, parsed.length, 'menu plugin launchers append after shipped entries')
+const mergedAfterPluginDisabled = menu.mergeMenuSources(parsed, [], [
+  userPluginOverride,
+  menu.normalizeItem('tools', { label: 'Tools' })
+])
+assert(
+  !mergedAfterPluginDisabled.items['plugin.acme.polish'],
+  'menu hides a plugin launcher override after its plugin is disabled'
+)
+assert(
+  mergedAfterPluginDisabled.items.tools,
+  'menu keeps ordinary user entries when plugin launcher overrides are hidden'
+)
+assert(
+  /function enabledPluginMenuItems\(\)[\s\S]*registry\.isEnabled\(pluginId\)/.test(menuQml)
+    && /function onPluginsChanged\(\) \{ root\.rebuildItemsFromSources\(\) \}/.test(menuQml),
+  'menu rebuilds enabled plugin launchers when registry state changes'
+)
+
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')
 assertEqual(menu.parentPathFor(merged.items, 'style.theme'), 'Style', 'menu builds parent paths')

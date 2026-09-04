@@ -1,16 +1,6 @@
 # The Omarchy menu
 
-The menu is the `omarchy.menu` plugin of the Quickshell desktop, with its
-content defined as data in `default/omarchy/omarchy-menu.jsonc` (read at
-runtime from `$OMARCHY_PATH`) and overlaid by the user's
-`~/.config/omarchy/extensions/omarchy-menu.jsonc`. The shell parses both files
-at startup and watches them for changes, so the keybind → IPC → visible path
-never shells out to parse anything, and edits to either file take effect
-without restarting the shell. Rendering and behavior live in
-`shell/plugins/menu/Menu.qml`; the pure logic lives in
-`shell/plugins/menu/MenuModel.js`, which is plain JavaScript that Node can
-also load — the shell tests in `test/shell.d/menu-test.sh` and
-`menu-guards-test.sh` exercise it directly.
+The menu is the `omarchy.menu` plugin of the Quickshell desktop, with its content defined as data in `default/omarchy/omarchy-menu.jsonc` (read at runtime from `$OMARCHY_PATH`), optional launchers declared by enabled plugin manifests, and the user's `~/.config/omarchy/extensions/omarchy-menu.jsonc`. The shell parses both files at startup and watches them for changes, so the keybind → IPC → visible path never shells out to parse anything, and edits to either file take effect without restarting the shell. Rendering and behavior live in `shell/plugins/menu/Menu.qml`; the pure logic lives in `shell/plugins/menu/MenuModel.js`, which is plain JavaScript that Node can also load — the shell tests in `test/shell.d/menu-test.sh` and `menu-guards-test.sh` exercise it directly.
 
 JSONC here means JSON plus comments and trailing commas, stripped by the
 parser rather than a real JSONC grammar: only whole-line `//` comments are
@@ -50,15 +40,29 @@ id segment, and descriptions are all searchable.
 
 ## Load and merge
 
-`mergeMenuSources` overlays user entries on the defaults per key: reusing a
-shipped id replaces only the fields you declare, so an extension can retitle
-or re-icon a row without re-declaring its action, and an overridden entry
-keeps its original position in the list. New ids append. A `root` entry is
-injected if neither file declares one.
+`mergeMenuSources` merges defaults → enabled plugin launchers → user entries per key. Reusing an existing id applies the later normalized entry while keeping the row's original position; new ids append. A `root` entry is injected if no source declares one.
 
-The sample extension at `config/omarchy/extensions/omarchy-menu.jsonc`
-(refreshed into `~/.config/`) documents the format in its header and ships
-only comments, so the default state adds nothing.
+The sample extension at `config/omarchy/extensions/omarchy-menu.jsonc` (refreshed into `~/.config/`) documents the format in its header and ships only comments, so the default state adds nothing.
+
+## Plugin launchers
+
+A plugin with a `bar-widget`, `menu`, `overlay`, or `panel` kind can opt into one root-level launcher by adding `menuItem` to its manifest:
+
+```json
+{
+  "menuItem": {
+    "label": "Text Polish",
+    "icon": "󰚩",
+    "description": "Correct and refine clipboard text"
+  }
+}
+```
+
+The block is presentation metadata, not a general menu entry. `label` falls back to the manifest name, `description` falls back to the manifest description, and `icon` plus `iconFont` are optional strings. The menu generates the action itself as `omarchy-shell shell toggle <plugin-id>`; manifests cannot inject a different shell command through this field.
+
+Launchers appear only while their plugin is enabled, update on plugin rescans and enable/disable changes, and disappear without mutating the user's extension file. Their generated id is `plugin.<plugin-id>`. A user extension can override that id because user entries merge last, but the override is ignored while the corresponding plugin launcher is absent. Since the generated id contains dots, an override that should remain at the top level must declare `"parent": "root"` explicitly.
+
+The manifest kind `menu` remains a different concept: it declares that the plugin's own entry point is a summoned menu surface. `menuItem` adds a launcher for a summonable plugin to the built-in Omarchy menu.
 
 ## Guards
 

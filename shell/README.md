@@ -93,6 +93,20 @@ holds the session lock. The kept instance is not replaced, so code
 changes to a `keepLoaded` service itself only take effect on a shell
 restart. First-party services are loaded at startup.
 
+A plugin with a `bar-widget`, `menu`, `overlay`, or `panel` kind can opt into one root-level launcher in the built-in Omarchy menu with a `menuItem` object:
+
+```json
+{
+  "menuItem": {
+    "label": "Cool clock",
+    "icon": "󰥔",
+    "description": "Open the clock panel"
+  }
+}
+```
+
+The optional string fields are `label`, `icon`, `iconFont`, and `description`; label and description fall back to the manifest values. The launcher exists only while the plugin is enabled and always runs the shell's standard `toggle` lifecycle for that plugin, so `menuItem` cannot inject an arbitrary command. This is separate from the `menu` kind, which declares that the plugin itself supplies a summoned menu surface.
+
 The full schema lives in `services/PluginRegistry.qml`.
 
 ## Installing a third-party plugin
