@@ -40,6 +40,39 @@ QtObject {
     return true
   }
 
+  function isValidHarnessCommand(command) {
+    if (!Array.isArray(command) || command.length === 0) return false
+    for (var i = 0; i < command.length; i++) {
+      var argument = command[i]
+      if (typeof argument !== "string" || argument.length === 0 || /[\n\r]/.test(argument)) return false
+      var placeholders = argument.match(/\{[^{}]+\}/g) || []
+      for (var p = 0; p < placeholders.length; p++) {
+        if (placeholders[p] !== "{project}" && placeholders[p] !== "{prompt}") return false
+      }
+    }
+    return true
+  }
+
+  function isValidAgentHarness(harness) {
+    if (!Util.isPlainObject(harness)) return false
+    var id = String(harness.id || "")
+    var name = String(harness.name || "")
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) || id.indexOf("..") !== -1 || !name) return false
+    var aliases = harness.aliases === undefined ? [] : harness.aliases
+    if (!Array.isArray(aliases)) return false
+    for (var i = 0; i < aliases.length; i++) {
+      if (typeof aliases[i] !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(aliases[i]) || aliases[i].indexOf("..") !== -1) return false
+    }
+    if (!Util.isPlainObject(harness.install) || harness.install.type !== "mise"
+        || typeof harness.install.package !== "string" || !harness.install.package
+        || typeof harness.install.command !== "string"
+        || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(harness.install.command)) return false
+    if (!Util.isPlainObject(harness.launch)
+        || ["terminal", "browser"].indexOf(harness.launch.mode) === -1
+        || !isValidHarnessCommand(harness.launch.command)) return false
+    return harness.launch.promptCommand === undefined || isValidHarnessCommand(harness.launch.promptCommand)
+  }
+
   function validateManifest(manifest, sourcePath) {
     if (!Util.isPlainObject(manifest)) {
       console.warn("PluginRegistry: manifest is not an object at " + sourcePath)
@@ -69,10 +102,15 @@ QtObject {
       console.warn("PluginRegistry: entryPoints must be an object at " + sourcePath)
       return null
     }
+    var validHarness = manifest.agentHarness === undefined || isValidAgentHarness(manifest.agentHarness)
+    if (!validHarness) {
+      console.warn("PluginRegistry: invalid agentHarness at " + sourcePath)
+      return null
+    }
     // A harness-only plugin contributes declarative agent metadata but no QML
     // component, so it has no kind or entry point for the shell to load.
-    if (manifest.kinds.length === 0 && !Util.isPlainObject(manifest.agentHarness)) {
-      console.warn("PluginRegistry: kinds must be non-empty unless agentHarness is declared at " + sourcePath)
+    if (manifest.kinds.length === 0 && (manifest.agentHarness === undefined || Object.keys(manifest.entryPoints).length !== 0)) {
+      console.warn("PluginRegistry: kinds must be non-empty unless a valid metadata-only agentHarness has empty entryPoints at " + sourcePath)
       return null
     }
     if (manifest.barWidget !== undefined && Util.isPlainObject(manifest.barWidget)
@@ -462,6 +500,10 @@ QtObject {
     var manifest = installedPlugins[key]
     if (value && !manifest) {
       console.warn("PluginRegistry.setEnabled: unknown plugin " + key)
+      return false
+    }
+    if (value && manifest && Array.isArray(manifest.kinds) && manifest.kinds.length === 0) {
+      lastEnableError = "plugin provides agent metadata only and has no shell component to enable"
       return false
     }
     var isBarOption = manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("bar") !== -1

@@ -21,9 +21,13 @@ id="${1:-}"
 [[ -n $id ]] || fail "plugin id is required"
 shift
 
-if (( $# > 0 )) && omarchy-plugin-catalog | jq -e --arg id "$id" '
-  any(.[]; .id == $id and (.kinds | index("bar")))
-' >/dev/null; then
+manifest=$(omarchy-plugin-catalog | jq -cer --arg id "$id" 'map(select(.id == $id))[0]') ||
+  fail "plugin '$id' is not known"
+if jq -e '(.kinds | length) == 0' <<<"$manifest" >/dev/null; then
+  fail "plugin '$id' provides agent metadata only and has no shell component to enable"
+fi
+
+if (( $# > 0 )) && jq -e '(.kinds | index("bar")) != null' <<<"$manifest" >/dev/null; then
   fail "'$id' is a bar; it replaces the bar in use rather than taking a place in one"
 fi
 
@@ -91,9 +95,7 @@ fi
 
 if [[ $placement != "{}" ]]; then
   echo "Enabled and moved $id"
-elif omarchy-plugin-catalog | jq -e --arg id "$id" '
-  any(.[]; .id == $id and (.kinds | index("bar")))
-' >/dev/null; then
+elif jq -e '(.kinds | index("bar")) != null' <<<"$manifest" >/dev/null; then
   echo "Now using $id as the bar"
 else
   echo "Enabled $id"

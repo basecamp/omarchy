@@ -33,3 +33,17 @@ pass "plugins cannot declare arbitrary harness installation hooks"
 jq -e '.[] | select(.id == "hermes" and .firstParty == true and .install.type == "installer")' <<<"$catalog" >/dev/null ||
   fail "agent catalog preserves trusted built-in installer exceptions"
 pass "agent catalog preserves trusted built-in installer exceptions"
+
+jq '.agentHarness.install.type = "mise" | .agentHarness.launch.command = ["acme-agent", "{unknown}"]' "$plugin/manifest.json" >"$plugin/invalid.json"
+mv "$plugin/invalid.json" "$plugin/manifest.json"
+if HOME="$home" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-plugin-validate" "$plugin" >/dev/null 2>&1; then
+  fail "plugin validation rejects unknown harness placeholders"
+fi
+pass "plugins may use only documented harness placeholders"
+
+jq '.agentHarness.launch.command = ["acme-agent", "{project}"] | .agentHarness.aliases = ["afk"]' "$plugin/manifest.json" >"$plugin/invalid.json"
+mv "$plugin/invalid.json" "$plugin/manifest.json"
+if HOME="$home" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-agent-catalog" "$plugin/manifest.json" >/dev/null 2>&1; then
+  fail "agent catalog accepts a harness alias that conflicts with a built-in id"
+fi
+pass "agent catalog rejects harness identity collisions"

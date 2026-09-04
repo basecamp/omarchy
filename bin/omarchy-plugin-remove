@@ -80,8 +80,10 @@ if [[ -n $shell_plugins ]]; then
 fi
 
 cloned_from=""
+harness_id=""
 if [[ -f $target/manifest.json ]]; then
   cloned_from=$(jq -r '.omarchy.clonedFrom // empty' "$target/manifest.json")
+  harness_id=$(jq -r '.agentHarness.id // empty' "$target/manifest.json")
 fi
 
 if [[ -L $target ]]; then
@@ -115,6 +117,12 @@ else
 fi
 
 omarchy-shell shell rescanPlugins >/dev/null
+
+agent_file="$HOME/.config/omarchy/defaults/agent"
+if [[ -n $harness_id && -f $agent_file && $(<"$agent_file") == "$harness_id" ]]; then
+  rm -f "$agent_file"
+  echo "Cleared default coding agent $harness_id because its integration was removed."
+fi
 
 if [[ -n $cloned_from && $was_enabled == "true" ]]; then
   echo "Restored $cloned_from."

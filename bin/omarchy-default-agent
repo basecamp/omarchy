@@ -22,7 +22,7 @@ selection=$1
 harness=$(omarchy-agent-catalog | jq -cer --arg selection "$selection" '.[] | select(.id == $selection or ((.aliases // []) | index($selection)))' | head -n1) || {
   echo "Usage: omarchy-default-agent <harness>" >&2
   echo "Unknown coding-agent harness: $selection" >&2
-  echo "Install one with: omarchy agent add <git-url>" >&2
+  echo "Install its integration with: omarchy plugin add <git-url>" >&2
   exit 1
 }
 id=$(jq -r '.id' <<<"$harness")

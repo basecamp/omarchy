@@ -218,8 +218,9 @@ assertEqual(
 const agentMenu = defaultById['setup.default.agent']
 assert(
   agentMenu && agentMenu.provider === 'agent-harnesses'
-    && !defaultItems.some(item => item.parent === 'setup.default.agent'),
-  'menu sources selectable coding agents from the harness registry'
+    && !defaultItems.some(item => item.parent === 'setup.default.agent')
+    && menuQml.includes('$OMARCHY_PATH/bin/omarchy-agent-list'),
+  'menu sources selectable coding agents from the built-in harness registry'
 )
 const expectedDefaults = {
   browser: ['Chromium', 'Chrome', 'Brave', 'Brave Origin', 'Edge', 'Firefox', 'Zen'],

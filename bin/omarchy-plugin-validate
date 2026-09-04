@@ -54,8 +54,8 @@ ID=$(jq -r '.id // ""' "$MANIFEST")
 
 # A normal shell plugin needs a kind to load. A harness-only plugin contributes
 # declarative metadata to the agent registry, so it may deliberately have none.
-jq -e '(.kinds | type) == "array" and ((.kinds | length) > 0 or (.agentHarness | type) == "object")' "$MANIFEST" >/dev/null 2>&1 \
-  || fail "'kinds' must be non-empty unless 'agentHarness' is declared"
+jq -e '(.kinds | type) == "array" and ((.kinds | length) > 0 or ((.agentHarness | type) == "object" and (.entryPoints | type) == "object" and (.entryPoints | length) == 0))' "$MANIFEST" >/dev/null 2>&1 \
+  || fail "'kinds' must be non-empty unless a metadata-only 'agentHarness' has empty 'entryPoints'"
 
 # entryPoints must be an object and every value a safe relative path that exists.
 jq -e '(.entryPoints | type) == "object"' "$MANIFEST" >/dev/null 2>&1 \
@@ -66,7 +66,13 @@ jq -e '(.entryPoints | type) == "object"' "$MANIFEST" >/dev/null 2>&1 \
 # may additionally use a trusted Omarchy installer for exceptional cases.
 jq -e '
   def valid_id: type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$") and (contains("..") | not);
-  def valid_command: type == "array" and length > 0 and all(.[]; type == "string" and length > 0 and (contains("\\n") | not) and (contains("\\r") | not));
+  def valid_command:
+    type == "array" and length > 0
+    and all(.[];
+      type == "string" and length > 0
+      and (contains("\n") | not) and (contains("\r") | not)
+      and ([scan("\\{[^{}]+\\}")] | all(. == "{project}" or . == "{prompt}"))
+    );
   if .agentHarness == null then true
   else
     (.agentHarness | type) == "object"

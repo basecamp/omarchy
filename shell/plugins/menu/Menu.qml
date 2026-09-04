@@ -279,7 +279,7 @@ Item {
       actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + Util.shellQuote(value) }
     },
     "agent-harnesses": {
-      script: "current=$(omarchy-default-agent 2>/dev/null); omarchy-agent-list --json 2>/dev/null | jq -r --arg current \"$current\" '.[] | [.name, .id, (if .id == $current then .id else \"\" end), (.icon // \"\"), (.iconFont // \"\")] | @tsv'",
+      script: "current=$(\"$OMARCHY_PATH/bin/omarchy-default-agent\" 2>/dev/null); \"$OMARCHY_PATH/bin/omarchy-agent-list\" --json 2>/dev/null | jq -r --arg current \"$current\" '.[] | [.name, .id, (if .id == $current then .id else \"\" end), (.icon // \"\"), (.iconFont // \"\")] | @tsv'",
       icon: "󰚩",
       actionFor: function(value) { return "omarchy-default-agent " + Util.shellQuote(value) }
     }

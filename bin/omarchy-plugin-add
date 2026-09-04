@@ -126,6 +126,14 @@ if ! omarchy-plugin-validate "$stage"; then
   rm -rf "$stage"
   fail "refusing to add: validation failed"
 fi
+if ! omarchy-agent-catalog "$stage/manifest.json" >/dev/null; then
+  rm -rf "$stage"
+  fail "refusing to add: agent harness id or alias conflicts with an installed harness"
+fi
+if [[ $enable_after == true ]] && jq -e '.kinds | length == 0' "$stage/manifest.json" >/dev/null 2>&1; then
+  rm -rf "$stage"
+  fail "this plugin provides agent metadata only and has no shell component to enable"
+fi
 
 id=$(jq -r '.id' "$stage/manifest.json")
 existing_manifest=$(plugin_id_manifest "$id") || {
@@ -149,7 +157,9 @@ echo "Added $id into $target"
 omarchy-shell shell rescanPlugins >/dev/null
 
 if [[ -z $enable_after ]]; then
-  if (( ASSUME_YES )) || ! interactive; then
+  if jq -e '.kinds | length == 0' "$PLUGINS_DIR/$id/manifest.json" >/dev/null 2>&1; then
+    enable_after=false
+  elif (( ASSUME_YES )) || ! interactive; then
     enable_after=false
   elif confirm "Enable '$id' now?"; then
     enable_after=true
@@ -159,6 +169,9 @@ if [[ -z $enable_after ]]; then
 fi
 
 if [[ $enable_after == true ]]; then
+  if jq -e '.kinds | length == 0' "$PLUGINS_DIR/$id/manifest.json" >/dev/null 2>&1; then
+    fail "plugin '$id' provides agent metadata only and has no shell component to enable"
+  fi
   select_bar_widget_placement "$id"
   discovered=0
   for (( attempt = 0; attempt < 40; attempt++ )); do

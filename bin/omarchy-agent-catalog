@@ -8,29 +8,78 @@ set -euo pipefail
 
 source_file="$OMARCHY_PATH/default/agents/harnesses.json"
 plugin_dir="$HOME/.config/omarchy/plugins"
-inputs=("$source_file")
-if [[ -d $plugin_dir ]]; then
-  while IFS= read -r file; do inputs+=("$file"); done < <(find -L "$plugin_dir" -mindepth 2 -maxdepth 2 -type f -name manifest.json | sort)
-fi
+candidate="${1:-}"
+[[ -z $candidate || -f $candidate ]] || { echo "omarchy-agent-catalog: manifest not found: $candidate" >&2; exit 1; }
+(( $# <= 1 )) || { echo "Usage: omarchy-agent-catalog [candidate-manifest]" >&2; exit 1; }
 
-jq -s '
+inputs=("$source_file")
+candidate_present=false
+if [[ -d $plugin_dir ]]; then
+  while IFS= read -r file; do
+    jq -e . "$file" >/dev/null 2>&1 || continue
+    inputs+=("$file")
+    [[ $file == "$candidate" ]] && candidate_present=true
+  done < <(find -L "$plugin_dir" -mindepth 2 -maxdepth 2 -type f -name manifest.json \
+    ! -path "$plugin_dir/.*/*" | sort)
+fi
+[[ -z $candidate || $candidate_present == "true" ]] || inputs+=("$candidate")
+
+result=$(jq -s '
   def valid_id: (type == "string") and test("^[A-Za-z0-9][A-Za-z0-9._-]*$") and (contains("..") | not);
-  def valid_command: (type == "array") and length > 0 and all(.[]; (type == "string") and length > 0 and (contains("\n") | not) and (contains("\r") | not));
-  def valid:
+  def valid_command:
+    (type == "array") and length > 0
+    and all(.[];
+      (type == "string") and length > 0
+      and (contains("\n") | not) and (contains("\r") | not)
+      and ([scan("\\{[^{}]+\\}")] | all(. == "{project}" or . == "{prompt}"))
+    );
+  def valid_harness:
     (.id | valid_id)
     and (.name | type == "string" and length > 0)
-    and ((.aliases // []) | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")))
+    and ((.aliases // []) | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$") and (contains("..") | not)))
     and (.install | type == "object" and (.command | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and ((.type == "mise" and (.package | type == "string" and length > 0)) or (.type == "installer" and (.installer | type == "string" and test("^omarchy-[A-Za-z0-9._-]+$")))))
     and (.launch | type == "object" and (.mode == "terminal" or .mode == "browser") and (.command | valid_command) and ((.promptCommand // .command) | valid_command));
+  def valid_plugin:
+    .schemaVersion == 1
+    and (.id | valid_id) and ((.id | startswith("omarchy.")) | not)
+    and (.kinds | type == "array") and (.entryPoints | type == "object")
+    and ((.kinds | length) > 0 or ((.agentHarness | type) == "object" and (.entryPoints | length) == 0));
   [range(0; length) as $source
    | .[$source]
    | if $source == 0 then
        select(.schemaVersion == 1 and (.harnesses | type == "array"))
-       | .harnesses[]? | select(valid) | . + {firstParty: true}
+       | .harnesses[]? | select(valid_harness) | . + {firstParty: true, pluginId: null, source: $source}
      else
-       select(.schemaVersion == 1 and (.agentHarness | type == "object"))
-       | .agentHarness | select(valid and .install.type == "mise") | . + {firstParty: false}
+       select(valid_plugin and (.agentHarness | type == "object"))
+       | . as $plugin
+       | .agentHarness | select(valid_harness and .install.type == "mise")
+       | . + {firstParty: false, pluginId: $plugin.id, source: $source}
      end]
-  | sort_by(.firstParty | not)
-  | reduce .[] as $h ([]; if any(.[]; .id == $h.id) then . else . + [$h] end)
-' "${inputs[@]}"
+  | . as $harnesses
+  | [range(0; $harnesses | length) as $left
+     | range($left + 1; $harnesses | length) as $right
+     | ($harnesses[$left]) as $a | ($harnesses[$right]) as $b
+     | select(any(([$a.id] + ($a.aliases // []))[]; . as $key | ([$b.id] + ($b.aliases // [])) | index($key)))
+     | {message: "\($a.id) conflicts with \($b.id)", left: $a.source, right: $b.source}] as $conflicts
+  | reduce $harnesses[] as $h ({catalog: [], keys: []};
+      . as $acc
+      | ([$h.id] + ($h.aliases // [])) as $keys
+      | if any($keys[]; . as $key | $acc.keys | index($key)) then $acc
+        else $acc | .catalog += [$h] | .keys += $keys end)
+    as $deduplicated
+  | {catalog: $deduplicated.catalog, conflicts: $conflicts}
+' "${inputs[@]}") || exit 1
+
+if [[ -n $candidate ]]; then
+  for candidate_index in "${!inputs[@]}"; do
+    [[ ${inputs[$candidate_index]} == "$candidate" ]] && break
+  done
+  conflicts=$(jq -r --argjson source "$candidate_index" '.conflicts[] | select(.left == $source or .right == $source) | .message' <<<"$result")
+else
+  conflicts=""
+fi
+if [[ -n $conflicts ]]; then
+  while IFS= read -r conflict; do echo "omarchy-agent-catalog: $conflict" >&2; done <<<"$conflicts"
+  exit 1
+fi
+jq '.catalog | map(del(.pluginId, .source))' <<<"$result"
