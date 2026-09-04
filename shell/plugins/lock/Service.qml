@@ -36,6 +36,8 @@ Item {
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
+  readonly property bool blankArmed: idleBlankTimer.running
+  readonly property alias activityMonitor: activityMonitor
 
   function realScreenCount() {
     var screens = Quickshell.screens || []
@@ -171,6 +173,19 @@ Item {
 
   function runBlank() {
     if (!blankProcess.running) blankProcess.running = true
+  }
+
+  // Input the lock surface never sees still lights the display: Hyprland wakes
+  // DPMS itself on a single pointer count or key press, and no `wakeRequested`
+  // follows, so the spent one-shot blank timer stays spent and the panel is
+  // left on until someone touches the machine. The idle protocol reports every
+  // input, so re-arm from it while locked.
+  function handleActivityResumed() {
+    if (!lockRequested || authenticatingPassword) return
+    // Input the lock surface saw has re-armed the timer already; only the
+    // input it never saw is worth a line in the journal.
+    if (!idleBlankTimer.running) logEvent("blank-rearmed: activity")
+    armBlankTimer()
   }
 
   function submitPassword(value) {
@@ -360,6 +375,20 @@ Item {
     onTriggered: root.startFingerprint()
   }
 
+  IdleMonitor {
+    id: activityMonitor
+    enabled: root.lockRequested
+    // Shorter than the blank countdown, so the monitor is already idle by the
+    // time the display goes dark and the next input is a transition it reports.
+    timeout: 1
+    // A monitor that respects inhibitors is paused while one is held, so it
+    // never reaches idle and never sees the next input as a transition -- and
+    // an inhibitor appearing counts as a resume in its own right. Only real
+    // input belongs here.
+    respectInhibitors: false
+    onIsIdleChanged: if (!isIdle) root.handleActivityResumed()
+  }
+
   Process {
     id: readlinkProc
     command: ["readlink", "-f", root.currentBackgroundLink]
@@ -409,6 +438,7 @@ Item {
   Process {
     id: blankProcess
     command: ["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
+    onStarted: root.logEvent("blank-started")
   }
 
   Timer {
@@ -531,6 +561,8 @@ Item {
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
         authenticating: root.authenticating,
+        blankArmed: root.blankArmed,
+        activityIdle: root.activityMonitor.isIdle,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt
       })
