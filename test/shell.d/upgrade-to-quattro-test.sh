@@ -222,6 +222,35 @@ grep -F 'rootflags=subvol=' "$upgrade_to_quattro" >/dev/null
 grep -F 'cryptdevice' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade preserves the kernel cmdline root parameters"
 
+# Quattro replaces the effective mkinitcpio hooks with the classic encrypt
+# hook, which reads cryptdevice= rather than systemd's rd.luks.name=. Exercise
+# the conversion directly so a pre-Quattro sd-encrypt cmdline remains bootable.
+hooks_conf="$ROOT/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
+grep -Eq '^HOOKS=\([^)]*(^|[[:space:]])udev([[:space:]]|\))' "$hooks_conf" ||
+  fail "Omarchy 4 initramfs uses the udev hook"
+grep -Eq '^HOOKS=\([^)]*(^|[[:space:]])encrypt([[:space:]]|\))' "$hooks_conf" ||
+  fail "Omarchy 4 initramfs uses the encrypt hook"
+if grep -Eq '^HOOKS=\([^)]*(^|[[:space:]])sd-encrypt([[:space:]]|\))' "$hooks_conf"; then
+  fail "Omarchy 4 initramfs does not use the sd-encrypt hook"
+fi
+
+normalize_logic=$(sed -n '/^normalize_encrypt_hook_param() {$/,/^}$/p' "$upgrade_to_quattro")
+grep -Fq 'normalize_encrypt_hook_param() {' <<<"$normalize_logic" ||
+  fail "the encrypted-root parameter conversion is testable"
+grep -Fq 'boot_params+=("$(normalize_encrypt_hook_param "$param")")' "$upgrade_to_quattro" ||
+  fail "the upgrade applies the encrypted-root parameter conversion"
+eval "$normalize_logic"
+
+luks_uuid=11111111-2222-3333-4444-555555555555
+normalized_param=$(normalize_encrypt_hook_param "rd.luks.name=$luks_uuid=root")
+[[ $normalized_param == "cryptdevice=UUID=$luks_uuid:root" ]] ||
+  fail "Omarchy 4 upgrade converts rd.luks.name for the encrypt hook" "$normalized_param"
+[[ $normalized_param != rd.luks.name=* ]] ||
+  fail "Omarchy 4 upgrade removes the incompatible rd.luks.name selector"
+[[ $(normalize_encrypt_hook_param 'cryptdevice=UUID=abc:root') == "cryptdevice=UUID=abc:root" ]] ||
+  fail "Omarchy 4 upgrade preserves an existing encrypt-hook selector"
+pass "Omarchy 4 upgrade writes encrypted-root parameters for its initramfs hooks"
+
 # The += drop-ins make limine-entry-tool ignore /etc/kernel/cmdline and
 # /proc/cmdline, so only the tool's own merge can say whether root= survives.
 # Queried for the default key, so a kernel-specific pin cannot cover for the

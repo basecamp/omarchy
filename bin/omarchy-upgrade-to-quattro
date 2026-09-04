@@ -517,6 +517,19 @@ normalize_limine_config() {
   fi
 }
 
+normalize_encrypt_hook_param() {
+  local param="$1"
+
+  # Omarchy's mkinitcpio drop-in selects the classic encrypt hook. Convert the
+  # equivalent sd-encrypt selector before carrying a pre-Quattro cmdline into
+  # the new UKIs, or the initramfs ignores it and never creates the mapper.
+  if [[ $param =~ ^rd\.luks\.name=([^=]+)=([^=]+)$ ]]; then
+    printf 'cryptdevice=UUID=%s:%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+  else
+    printf '%s\n' "$param"
+  fi
+}
+
 preserve_kernel_cmdline_root() {
   local default_conf=/etc/default/limine
   local cmdline param key root_source root_stack root_uuid subvol uki
@@ -553,7 +566,11 @@ preserve_kernel_cmdline_root() {
         have_mount_mode=1
         boot_params+=("$param")
         ;;
-      cryptdevice | cryptkey | rd.luks.name | rd.luks.uuid | rd.luks.options | rd.luks.key | rd.luks.crypttab | dm-mod.create)
+      rd.luks.name)
+        have_unlock=1
+        boot_params+=("$(normalize_encrypt_hook_param "$param")")
+        ;;
+      cryptdevice | cryptkey | rd.luks.uuid | rd.luks.options | rd.luks.key | rd.luks.crypttab | dm-mod.create)
         have_unlock=1
         boot_params+=("$param")
         ;;
