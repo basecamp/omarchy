@@ -63,6 +63,25 @@ function chargeThresholdActive(device, onBattery, states) {
   return Number(d.changeRate || 0) <= 0.2 || Number(d.timeToFull || 0) >= 8 * 60 * 60
 }
 
+function fullyCharged(device, onBattery, states) {
+  var d = device || {}
+  return !!(d.isPresent && d.state === (states || {}).FullyCharged && !chargeThresholdActive(d, onBattery, states))
+}
+
+// Full covers the window where the battery has reached 100% but the state has
+// not caught up yet, which some firmware still reports as charging.
+function batteryFull(device, onBattery, states) {
+  var d = device || {}
+  if (!d.isPresent) return false
+  return fullyCharged(d, onBattery, states) || (!onBattery && batteryFraction(d) >= 1)
+}
+
+// Nothing is flowing into the battery: either it is topped up, or a charge
+// threshold is holding it below full.
+function batteryFlowIdle(device, onBattery, states) {
+  return batteryFull(device, onBattery, states) || chargeThresholdActive(device, onBattery, states)
+}
+
 function batteryIcon(device, onBattery, states) {
   var d = device || {}
   if (!d.isPresent) return ""
@@ -70,9 +89,10 @@ function batteryIcon(device, onBattery, states) {
   var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
   var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
   var index = Math.max(0, Math.min(9, Math.floor(d.percentage * 10)))
-  var threshold = chargeThresholdActive(d, onBattery, states)
 
-  if (threshold) return defaultIcons[index]
+  // On external power with no current flowing, so a plug says more about the
+  // state than a charging icon that suggests the battery is still filling.
+  if (!onBattery && batteryFlowIdle(d, onBattery, states)) return "󰚥"
   if (d.state === states.FullyCharged) return "󰂅"
   if (!onBattery) return chargingIcons[index]
   return defaultIcons[index]
@@ -98,6 +118,9 @@ if (typeof module !== "undefined") {
     profileIcon: profileIcon,
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
+    fullyCharged: fullyCharged,
+    batteryFull: batteryFull,
+    batteryFlowIdle: batteryFlowIdle,
     batteryIcon: batteryIcon,
     modeLabel: modeLabel
   }

@@ -63,7 +63,7 @@ Panel {
 
   readonly property bool fullyCharged: {
     var device = UPower.displayDevice
-    return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged && !root.chargeThresholdActive
+    return Model.fullyCharged(device, root.discharging, upowerStates())
   }
   readonly property bool discharging: {
     var device = UPower.displayDevice
@@ -73,8 +73,14 @@ Panel {
     var device = UPower.displayDevice
     return Model.chargeThresholdActive(device, root.discharging, upowerStates())
   }
-  readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
-  readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
+  readonly property bool batteryFull: {
+    var device = UPower.displayDevice
+    return Model.batteryFull(device, root.discharging, upowerStates())
+  }
+  readonly property bool batteryFlowIdle: {
+    var device = UPower.displayDevice
+    return Model.batteryFlowIdle(device, root.discharging, upowerStates())
+  }
 
   // 0..1 charge level, used by the visual progress bar.
   readonly property real batteryFraction: {

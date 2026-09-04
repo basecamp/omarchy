@@ -41,6 +41,17 @@ assertEqual(
   power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Discharging }, true, states),
   'power shows battery icon when unplugged before battery state refreshes'
 )
+assertEqual(power.batteryIcon({ isPresent: true, percentage: 1, state: states.FullyCharged }, false, states), '󰚥', 'power shows a plug when fully charged on external power')
+assertEqual(power.batteryIcon({ isPresent: true, percentage: 1, state: states.Charging }, false, states), '󰚥', 'power shows a plug at full charge before the charged state refreshes')
+assertEqual(power.batteryIcon({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states), '󰚥', 'power shows a plug when a charge threshold holds the battery below full')
+assertEqual(power.batteryIcon({ isPresent: true, percentage: 1, state: states.FullyCharged }, true, states), '󰂅', 'power drops the plug at full charge once unplugged')
+
+assert(power.fullyCharged({ isPresent: true, percentage: 1, state: states.FullyCharged }, false, states), 'power reads a topped up battery as fully charged')
+assert(!power.fullyCharged({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states), 'power does not read a threshold hold as fully charged')
+assert(power.batteryFull({ isPresent: true, percentage: 1, state: states.Charging }, false, states), 'power reads 100% as full before the charged state refreshes')
+assert(!power.batteryFull({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states), 'power does not read a threshold hold as full')
+assert(power.batteryFlowIdle({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states), 'power reads a threshold hold as idle flow')
+assert(!power.batteryFlowIdle({ isPresent: true, percentage: 0.4, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states), 'power does not read active charging as idle flow')
 
 assert(/if \(b === Qt\.RightButton\) root\.togglePercentage\(\)/.test(panelSource), 'power right click toggles the bar percentage')
 assert(/Object\.assign\([^\n]+showPercentage: !root\.showPercentage[^\n]+\)[\s\S]*updateEntryInline/.test(panelSource), 'power persists the bar percentage setting')
