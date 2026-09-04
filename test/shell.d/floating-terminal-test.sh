@@ -21,3 +21,13 @@ export PATH="$tmp_dir:$ROOT/bin:$PATH"
 launch=$(<"$TEST_LOG")
 [[ $launch == *"xdg-terminal-exec --app-id=org.omarchy.terminal"* ]] || fail "floating terminal launches Omarchy terminal" "$launch"
 pass "floating terminal launches Omarchy terminal"
+
+# Ctrl-C is 130; every other non-zero used to be presented as success.
+[[ $launch == *'if (( status == 0 )); then omarchy-show-done;'* ]] ||
+  fail "presentation wrapper shows Done only after a successful command" "$launch"
+[[ $launch == *'elif (( status != 130 )); then'* ]] ||
+  fail "presentation wrapper waits on failure instead of closing immediately" "$launch"
+if [[ $launch == *'$? != 130'* ]]; then
+  fail "presentation wrapper does not treat a non-zero exit as success" "$launch"
+fi
+pass "presentation wrapper shows Done only after a successful command"
