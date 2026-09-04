@@ -10,15 +10,76 @@ if [[ -z $place ]]; then
 fi
 
 query=$(jq -rn --arg place "$place" '$place | @uri')
-weather=$(curl -fsS --max-time 4 "https://wttr.in/${query}?format=%t|%w" 2>/dev/null | tr -d '\n')
+report=$(curl -fsS --max-time 6 "https://wttr.in/${query}?format=j1" 2>/dev/null)
 
-if [[ -z $weather ]]; then
+if [[ -z $report ]]; then
   echo "Weather unavailable"
   exit 1
 fi
 
-IFS='|' read -r temperature wind <<< "$weather"
-place=${place^}
-temperature=${temperature#+}
+country=$(jq -r '.nearest_area[0].country[0].value // ""' <<<"$report")
+temperature_c=$(jq -r '.current_condition[0].temp_C // ""' <<<"$report")
+temperature_f=$(jq -r '.current_condition[0].temp_F // ""' <<<"$report")
+wind_kmh=$(jq -r '.current_condition[0].windspeedKmph // ""' <<<"$report")
+wind_mph=$(jq -r '.current_condition[0].windspeedMiles // ""' <<<"$report")
 
-echo "$place  ·  Temp $temperature  ·  Wind $wind"
+if [[ -z $temperature_c ]]; then
+  echo "Weather unavailable"
+  exit 1
+fi
+
+# Mirror the panel's unit decision (Model.js shouldUseImperial): an explicit
+# shell.json unit override wins, then wttr's reported country, then the
+# session locale — so this notification always agrees with what the widget's
+# popup shows.
+shell_config=$HOME/.config/omarchy/shell.json
+[[ -s $shell_config ]] || shell_config=$OMARCHY_PATH/config/omarchy/shell.json
+unit_override=$(jq -r '
+  [(.bar.layout.left // [])[], (.bar.layout.center // [])[], (.bar.layout.right // [])[]]
+  | map(select(type == "object" and .id == "omarchy.weather") | .unit // empty)
+  | first // ""
+' "$shell_config" 2>/dev/null || echo "")
+
+country=${country//./ }
+country=${country//-/ }
+country=${country//_/ }
+country=${country,,}
+
+use_imperial=
+case ${unit_override,,} in
+  imperial) use_imperial=true ;;
+  metric) use_imperial=false ;;
+esac
+
+if [[ -z $use_imperial ]]; then
+  case $country in
+    us | usa | "united states" | "united states of america" | liberia | myanmar | burma) use_imperial=true ;;
+    "") ;;
+    *) use_imperial=false ;;
+  esac
+fi
+
+if [[ -z $use_imperial ]]; then
+  locale=${LANG:-}
+  locale=${locale%%.*}
+  locale=${locale//-/_}
+  if [[ $locale =~ ^(en_US|en_LR|my)($|_) ]]; then
+    use_imperial=true
+  else
+    use_imperial=false
+  fi
+fi
+
+if [[ $use_imperial == true ]]; then
+  temperature=$temperature_f
+  unit=F
+  wind="$wind_mph mph"
+else
+  temperature=$temperature_c
+  unit=C
+  wind="$wind_kmh km/h"
+fi
+
+place=${place^}
+
+echo "$place  ·  Temp $temperature°$unit  ·  Wind $wind"

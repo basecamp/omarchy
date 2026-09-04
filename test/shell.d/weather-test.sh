@@ -182,3 +182,123 @@ pass "weather location rejects malformed coordinates"
 weather_location --clear
 [[ ! -e "$test_tmp/.local/state/omarchy/settings/weather.json" ]] || fail "weather location clear removes the state file"
 pass "weather location clear removes the state file"
+
+# ---- omarchy-weather-status: unit parity with the panel --------------------
+
+status_dir="$test_tmp/status"
+status_home="$status_dir/home"
+mkdir -p "$status_dir/bin" "$status_home/.config/omarchy"
+
+# Serves the canned j1 report and records the requested URL so tests can pin
+# both the query contract and the units the notification comes out with.
+cat >"$status_dir/bin/curl" <<EOF
+#!/bin/bash
+printf '%s\n' "\$*" > "$status_dir/last-url"
+if [[ -f $status_dir/report.json ]]; then
+  cat "$status_dir/report.json"
+fi
+EOF
+
+cat >"$status_dir/bin/omarchy-weather-location" <<'STUB'
+#!/bin/bash
+echo "malibu"
+STUB
+chmod +x "$status_dir/bin/curl" "$status_dir/bin/omarchy-weather-location"
+
+weather_status() {
+  HOME="$status_home" OMARCHY_PATH="$ROOT" PATH="$status_dir/bin:$PATH" LANG=${1:-} \
+    "$ROOT/bin/omarchy-weather-status"
+}
+
+serve_report() {
+  cat >"$status_dir/report.json"
+}
+
+set_weather_unit() {
+  jq --arg unit "$1" '.bar.layout.center |= map(if .id == "omarchy.weather" then . + {unit: $unit} else . end)' \
+    "$ROOT/config/omarchy/shell.json" >"$status_home/.config/omarchy/shell.json"
+}
+
+clear_weather_unit() {
+  rm -f "$status_home/.config/omarchy/shell.json"
+}
+
+serve_report <<'JSON'
+{
+  "current_condition": [
+    { "temp_C": "21", "temp_F": "70", "windspeedKmph": "14", "windspeedMiles": "9" }
+  ],
+  "nearest_area": [
+    { "country": [ { "value": "Denmark" } ] }
+  ]
+}
+JSON
+
+output=$(weather_status en_US.UTF-8) || fail "weather status succeeds for a metric country"
+[[ $output == "Malibu  ·  Temp 21°C  ·  Wind 14 km/h" ]] || fail "weather status prefers the reported metric country over a US locale" "$output"
+pass "weather status prefers the reported metric country over a US locale"
+
+[[ $(<"$status_dir/last-url") == *"https://wttr.in/malibu?format=j1"* ]] || fail "weather status fetches the wttr j1 report for the configured place" "$(<"$status_dir/last-url")"
+pass "weather status fetches the wttr j1 report for the configured place"
+
+serve_report <<'JSON'
+{
+  "current_condition": [
+    { "temp_C": "21", "temp_F": "70", "windspeedKmph": "14", "windspeedMiles": "9" }
+  ],
+  "nearest_area": [
+    { "country": [ { "value": "United States of America" } ] }
+  ]
+}
+JSON
+
+output=$(weather_status da_DK.UTF-8) || fail "weather status succeeds for an imperial country"
+[[ $output == "Malibu  ·  Temp 70°F  ·  Wind 9 mph" ]] || fail "weather status prefers the reported imperial country over a metric locale" "$output"
+pass "weather status prefers the reported imperial country over a metric locale"
+
+serve_report <<'JSON'
+{
+  "current_condition": [
+    { "temp_C": "21", "temp_F": "70", "windspeedKmph": "14", "windspeedMiles": "9" }
+  ]
+}
+JSON
+
+output=$(weather_status en_US.UTF-8) || fail "weather status succeeds without a reported country"
+[[ $output == "Malibu  ·  Temp 70°F  ·  Wind 9 mph" ]] || fail "weather status falls back to the session locale without a reported country" "$output"
+pass "weather status falls back to the session locale without a reported country"
+
+serve_report <<'JSON'
+{
+  "current_condition": [
+    { "temp_C": "21", "temp_F": "70", "windspeedKmph": "14", "windspeedMiles": "9" }
+  ],
+  "nearest_area": [
+    { "country": [ { "value": "Denmark" } ] }
+  ]
+}
+JSON
+
+set_weather_unit imperial
+output=$(weather_status da_DK.UTF-8) || fail "weather status succeeds with an imperial override"
+[[ $output == "Malibu  ·  Temp 70°F  ·  Wind 9 mph" ]] || fail "weather status honors an imperial unit override over country and locale" "$output"
+pass "weather status honors an imperial unit override over country and locale"
+
+set_weather_unit metric
+output=$(weather_status en_US.UTF-8) || fail "weather status succeeds with a metric override"
+[[ $output == "Malibu  ·  Temp 21°C  ·  Wind 14 km/h" ]] || fail "weather status honors a metric unit override over country and locale" "$output"
+pass "weather status honors a metric unit override over country and locale"
+clear_weather_unit
+
+rm -f "$status_dir/report.json"
+output=$(weather_status en_US.UTF-8) && fail "weather status fails when wttr answers nothing"
+[[ $output == "Weather unavailable" ]] || fail "weather status reports unavailability when wttr answers nothing" "$output"
+pass "weather status reports unavailability when wttr answers nothing"
+
+serve_report <<'JSON'
+{ "current_condition": [] }
+JSON
+
+output=$(weather_status en_US.UTF-8) && fail "weather status fails without current conditions"
+[[ $output == "Weather unavailable" ]] || fail "weather status reports unavailability without current conditions" "$output"
+pass "weather status reports unavailability without current conditions"
