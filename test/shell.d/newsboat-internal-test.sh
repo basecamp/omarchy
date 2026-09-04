@@ -122,6 +122,48 @@ if python3 "$helper" validate-feed \
 fi
 pass "Newsboat limits validated XML to RSS and Atom roots"
 
+python3 - "$helper" "$test_tmp" <<'PY'
+import json
+import pathlib
+import sqlite3
+import subprocess
+import sys
+
+helper, directory = sys.argv[1], pathlib.Path(sys.argv[2])
+cache, urls, snapshot = directory / 'cache.db', directory / 'brief-urls', directory / 'brief.json'
+urls.write_text('https://articles.example/feed\n')
+with sqlite3.connect(cache) as db:
+    db.execute('CREATE TABLE rss_item (id INTEGER PRIMARY KEY, guid TEXT, title TEXT, url TEXT, feedurl TEXT, pubDate INTEGER, content TEXT, unread INTEGER, deleted INTEGER)')
+    for index, body in enumerate([
+        '<p>A useful &amp; concrete finding.</p><script>do evil</script><style>hidden</style><p>Second paragraph.</p>',
+        '', '<script>only hidden text</script>',
+        *['<p>' + 'long article ' * 2000 + '</p>'] * 25,
+    ]):
+        db.execute('INSERT INTO rss_item VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)',
+                   (index, f'guid-{index}', 'A title', f'https://articles.example/{index}', 'https://articles.example/feed', 100-index, body))
+result = json.loads(subprocess.check_output([sys.executable, helper, 'brief-snapshot', str(cache), str(urls), str(snapshot)]))
+articles = result['articles']
+assert articles[0]['excerpt'] == 'A useful & concrete finding. Second paragraph.'
+assert articles[0]['content_status'] == 'cached excerpt'
+print('ok - Brief extracts cached visible text without script or style content')
+for article in articles[1:3]:
+    assert article['excerpt'] == '' and article['content_status'] == 'unavailable'
+    assert not article['markable']
+print('ok - Brief keeps articles without usable cached content unread')
+assert all(len(article['excerpt']) <= 1500 for article in articles)
+assert sum(len(article['excerpt']) for article in articles) <= 24000
+assert not articles[-1]['markable']
+print('ok - Brief bounds per-article and total excerpt size and retains omitted content')
+expected_read = sum(article['count'] for article in articles if article['markable'])
+assert result['baseline_leave'] == result['total'] - expected_read
+imports = directory / 'read-list'
+subprocess.check_call([sys.executable, helper, 'triage-prepare', str(snapshot), str(cache), str(urls), str(expected_read), str(result['baseline_leave']), '[]', str(imports)], stdout=subprocess.DEVNULL)
+written = imports.read_text().splitlines()
+assert 'guid-1' not in written and 'guid-2' not in written and articles[-1]['guid'] not in written
+assert len(written) == expected_read
+print('ok - Triage cannot mark unavailable or over-budget article content read')
+PY
+
 [[ ! -x $helper ]] || fail "the internal data helper is exposed as a user command"
 for wrapper in \
   omarchy-newsboat-resolve \

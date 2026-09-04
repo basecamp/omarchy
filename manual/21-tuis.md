@@ -64,7 +64,9 @@ Press `,d` on an interesting article to open Feed Scout, or choose _Trigger > Fe
 omarchy newsboat scout "independent Ruby writing"
 ```
 
-All agent actions use whichever Omarchy agent you chose; if no default is configured, Omarchy opens the agent picker instead.
+Brief uses bounded excerpts already cached in Newsboat and does not fetch article pages. Articles without usable cached text, and those outside the briefing's content budget, stay unread. The agent should explain uncertainty and leave anything it cannot confidently assess for you to read.
+
+All agent actions use whichever Omarchy agent you chose; if no default is configured, Omarchy shows a notification linking to the agent picker.
 
 Subscriptions can be managed from the terminal:
 

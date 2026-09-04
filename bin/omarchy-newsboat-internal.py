@@ -22,6 +22,43 @@ from urllib.parse import quote, urljoin, urlparse
 
 
 WEB_URL = re.compile(r"https?://\S+")
+EXCERPT_LIMIT = 1500
+EDITION_EXCERPT_LIMIT = 24000
+
+
+class ArticleTextParser(HTMLParser):
+    """Extract visible cached text without fetching or executing anything."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.hidden = []
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"script", "style", "noscript", "template"}:
+            self.hidden.append(tag)
+        elif tag in {"p", "br", "div", "li", "h1", "h2", "h3"}:
+            self.parts.append(" ")
+
+    def handle_endtag(self, tag):
+        if self.hidden and tag == self.hidden[-1]:
+            self.hidden.pop()
+        elif tag in {"p", "div", "li", "h1", "h2", "h3"}:
+            self.parts.append(" ")
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(data)
+
+
+def article_excerpt(content, limit):
+    if limit <= 0:
+        return ""
+    parser = ArticleTextParser()
+    parser.feed(content or "")
+    text = clean("".join(parser.parts))
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+    return text[:limit]
 
 
 class NewsboatError(Exception):
@@ -250,7 +287,7 @@ def create_brief_snapshot(args):
     rows = unread_rows(
         args.cache_file,
         args.urls_file,
-        "id, guid, title, url, feedurl, pubDate",
+        "id, guid, title, url, feedurl, pubDate, substr(content, 1, 12000) AS content",
         "pubDate DESC, id DESC",
     )
     if not rows:
@@ -268,14 +305,20 @@ def create_brief_snapshot(args):
                 "feedurl": row["feedurl"],
                 "published": row["pubDate"],
                 "count": 0,
+                "content": row["content"],
             }
         groups[guid]["count"] += 1
 
     articles = []
     markable_entries = 0
+    excerpt_budget = EDITION_EXCERPT_LIMIT
     for group in list(groups.values())[:200]:
         group["id"] = f'A{len(articles) + 1:03d}'
-        group["markable"] = bool(group["guid"]) and not any(character in group["guid"] for character in "\r\n")
+        group["title"] = (group["title"] or "Untitled")[:300]
+        group["excerpt"] = article_excerpt(group.pop("content"), min(EXCERPT_LIMIT, excerpt_budget))
+        excerpt_budget -= len(group["excerpt"])
+        group["content_status"] = "cached excerpt" if group["excerpt"] else "unavailable"
+        group["markable"] = bool(group["excerpt"]) and bool(group["guid"]) and not any(character in group["guid"] for character in "\r\n")
         if group["markable"]:
             markable_entries += group["count"]
         articles.append(group)

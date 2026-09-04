@@ -314,7 +314,7 @@ import sys
 
 with sqlite3.connect(sys.argv[1]) as database:
     database.execute(
-        "CREATE TABLE rss_item (id INTEGER PRIMARY KEY, guid TEXT, title TEXT, url TEXT, feedurl TEXT, pubDate INTEGER, unread INTEGER, deleted INTEGER)"
+        "CREATE TABLE rss_item (id INTEGER PRIMARY KEY, guid TEXT, title TEXT, url TEXT, feedurl TEXT, pubDate INTEGER, unread INTEGER, deleted INTEGER, content TEXT DEFAULT '<p>Cached article content for the briefing.</p>')"
     )
     database.executemany(
         "INSERT INTO rss_item (guid, title, url, feedurl, pubDate, unread, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
