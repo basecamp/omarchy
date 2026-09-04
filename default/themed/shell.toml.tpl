@@ -72,6 +72,9 @@ selection-fill-alpha = 0.35
 # of the scale. Uncomment any to tune a specific surface.
 scale = 1.0
 scale-with-font = true
+# Exact screen/bar-edge margin. Omit it to track half of Hyprland's
+# general:gaps_out; set it to the full value to align shell surfaces with windows.
+# screen-edge-margin        = 10
 # xxs                       = 2
 # xs                        = 3
 # sm                        = 4

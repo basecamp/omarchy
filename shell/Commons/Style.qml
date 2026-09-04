@@ -8,13 +8,14 @@ import Quickshell.Io
 // rounding, gap to screen edges, state affordances, spacing, typography
 // scale, and bar dimensions.
 //
-// `cornerRadius` mirrors Hyprland's `decoration:rounding`. `gapsOut` is
-// half of Hyprland's `general:gaps_out` — Hyprland's value works well as
-// a window-to-window gap but feels too cavernous when used as the
-// distance from a panel/notification to the screen edge, so the shell
-// halves it. Themes and user Hyprland config own those values; the
-// shell picks them up by re-running `hyprctl getoption` on startup and
-// after theme IPC applies a theme.
+// `cornerRadius` mirrors Hyprland's `decoration:rounding`. `gapsOut`
+// defaults to half of Hyprland's `general:gaps_out` — Hyprland's value
+// works well as a window-to-window gap but feels too cavernous when used
+// as the distance from a panel/notification to the screen edge. The
+// `[spacing] screen-edge-margin` shell token can override that derived
+// value. Themes and user Hyprland config own those values; the shell picks
+// them up by re-running `hyprctl getoption` on startup and after theme IPC
+// applies a theme.
 //
 // Typography, spacing, and bar size come from theme/shell.toml.
 // `[font] base-size` is the rem root; every `Style.font.<token>` derives
@@ -29,7 +30,14 @@ QtObject {
   id: root
 
   property int cornerRadius: 0
-  property int gapsOut: 5
+  property real hyprlandGapsOut: 10
+  property int gapsOut: effectiveGapsOut(hyprlandGapsOut, spacingOverrides)
+
+  function effectiveGapsOut(hyprlandValue, overrides) {
+    var fallback = Math.max(0, Math.round((Number(hyprlandValue) || 0) / 2))
+    var configured = Number((overrides || {})["screen-edge-margin"])
+    return isFinite(configured) && configured >= 0 ? Math.round(configured) : fallback
+  }
 
   // ---------------------------------------------------------- state tokens
   //
@@ -372,7 +380,7 @@ QtObject {
       var css = String(json.css || "")
       var parts = css.match(/-?\d+(?:\.\d+)?/g) || []
       var n = parts.length > 0 ? Number(parts[0]) : Number(json.int)
-      if (isFinite(n) && n >= 0) gapsOut = Math.max(0, Math.round(n / 2))
+      if (isFinite(n) && n >= 0) hyprlandGapsOut = n
     } catch (e) {
       // hyprctl missing / Hyprland not running — leave the previous value.
     }

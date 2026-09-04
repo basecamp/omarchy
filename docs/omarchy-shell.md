@@ -293,10 +293,14 @@ QML components should prefer semantic tokens where possible:
 | `Style.spacing.panelGap` / `panelPadding` | Panel section spacing and interior padding |
 | `Style.spacing.popupPadding` | Popout interior padding |
 
-Popout placement deliberately follows Hyprland's `general:gaps_out`
-(`Style.gapsOut`) so panels align with tiled windows. Use a theme's
-`hyprland.lua` to change that outer alignment; `[spacing]` controls the
-interior breathing room.
+`Style.gapsOut` controls the screen/bar-edge margin for popouts, notifications, and other shell surfaces. It defaults to half of Hyprland's `general:gaps_out`, keeping shell surfaces closer to the edge while still tracking changes to the window gap.
+
+Set `screen-edge-margin` to an exact pixel value when the shell margin should differ from that default. A machine-level override survives theme switches; setting it to the full Hyprland gap aligns shell surfaces with tiled windows:
+
+```toml
+[spacing]
+screen-edge-margin = 10
+```
 
 For one-off proportional constants, use `Style.space(px)` to preserve the
 old default at scale `1.0` and `base-size = 12` while still responding to
