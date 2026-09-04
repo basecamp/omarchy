@@ -14,6 +14,15 @@ spec.loader.exec_module(reader)
 source = reader.SOURCE_CATALOG["omarchy"]
 now = "2026-09-04T12:00:00+00:00"
 
+description = 'A long paragraph. ' * 60 + '<a href="https://example.com/article">Read more</a>'
+entry = '<item><title>Article</title><link>https://omarchy.org/news/one</link><description><![CDATA[' + description + ']]></description></item>'
+second = '<item><title>Second</title><link>https://omarchy.org/news/two</link></item>'
+feed = ('<rss><channel><item><title>Invalid</title></item>' + entry + entry + second + '</channel></rss>').encode()
+articles = reader.parse_feed(feed, source, 2)
+assert len(articles) == 2 and articles[1]["title"] == "Second"
+assert len(articles[0]["content"]) > 500
+assert '<a href="https://example.com/article">' in articles[0]["contentHtml"]
+
 for timestamp in ("2026-09-04T12:00:00", "broken", "2027-01-01T00:00:00+00:00"):
     with patch.object(reader, "cached_result", return_value={"fetchedAt": timestamp, "items": []}):
         assert reader.fresh_cached_items(source, now, 900, 10) is None

@@ -426,13 +426,14 @@ def parse_feed(
     limit = max(1, min(MAX_ITEMS, item_limit))
     is_atom = local_name(root.tag) == "feed"
     if is_atom:
-        nodes = children(root, "entry")[:limit]
+        nodes = children(root, "entry")
     else:
         channel = child(root, "channel")
         if channel is None:
             raise ValueError("RSS or Atom feed is missing its item container")
-        nodes = children(channel, "item")[:limit]
+        nodes = children(channel, "item")
 
+    seen = set()
     for node in nodes:
         if is_atom:
             atom_links = children(node, "link")
@@ -463,9 +464,13 @@ def parse_feed(
         if not link or not title:
             continue
         guid = source_article_url(raw_guid, source) or clean_text(raw_guid, 2048) or link
+        if guid in seen:
+            continue
+        seen.add(guid)
         summary = article_text(raw_summary, 500)
-        content = article_text(raw_content) or summary
-        content_html = article_markup(raw_content) if raw_content else ""
+        body = raw_content or raw_summary
+        content = article_text(body)
+        content_html = article_markup(body)
         items.append(
             {
                 "id": f'{source["id"]}:{guid}',
@@ -482,6 +487,8 @@ def parse_feed(
                 "published": clean_text(raw_published, 100),
             }
         )
+        if len(items) >= limit:
+            break
     return items
 
 
