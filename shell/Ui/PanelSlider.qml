@@ -18,6 +18,42 @@ Item {
   property real knobSize: Math.max(14, Math.round(Style.spacing.controlHeight * 0.38))
   property real liveValue: value
 
+  // Used for a "muted"/disabled look. The knob's *color* is dimmed (blended
+  // toward the panel background) rather than its opacity, and stays fully
+  // opaque -- an opacity fade would make the knob semi-transparent and stop
+  // it from fully covering the fill/track boundary beneath it, letting that
+  // seam show through the middle of the knob. Blending the solid color
+  // instead keeps the knob 100% opaque (no seam).
+  //
+  // The dimmed fill line itself isn't a flat color -- it's the track (drawn
+  // at 0.5 opacity over the background) with the fill drawn on top of that
+  // (also at 0.5 opacity). Both trackColor and fillColor can carry their own
+  // alpha (trackColor especially -- Style.selectedFillFor(...) is typically
+  // a translucent color), so the *effective* alpha at each step is the
+  // color's own alpha times the Rectangle's 0.5 opacity, not just 0.5. We
+  // replicate that two-step over-compositing here (background -> track ->
+  // fill) so the muted knob lands on exactly the same composited color as
+  // the muted line, instead of reading brighter than it.
+  property bool dimmed: false
+  readonly property color _dimBackdrop: bar ? bar.background : "#101315"
+
+  readonly property real _dimTrackAlpha: trackColor.a * 0.5
+  readonly property real _dimFillAlpha: fillColor.a * 0.5
+
+  readonly property color _dimTrackOverBackdrop: Qt.rgba(
+    _dimBackdrop.r * (1 - _dimTrackAlpha) + trackColor.r * _dimTrackAlpha,
+    _dimBackdrop.g * (1 - _dimTrackAlpha) + trackColor.g * _dimTrackAlpha,
+    _dimBackdrop.b * (1 - _dimTrackAlpha) + trackColor.b * _dimTrackAlpha,
+    1)
+
+  readonly property color _dimmedLineColor: Qt.rgba(
+    _dimTrackOverBackdrop.r * (1 - _dimFillAlpha) + fillColor.r * _dimFillAlpha,
+    _dimTrackOverBackdrop.g * (1 - _dimFillAlpha) + fillColor.g * _dimFillAlpha,
+    _dimTrackOverBackdrop.b * (1 - _dimFillAlpha) + fillColor.b * _dimFillAlpha,
+    1)
+
+  readonly property color effectiveKnobColor: dimmed ? _dimmedLineColor : knobColor
+
   // macOS-style notches. When > 1, that many evenly-spaced tick marks are cut
   // into the track (drawn in the panel background color, so only the part
   // crossing the track shows). Purely visual — snapping is the caller's job via
@@ -49,6 +85,7 @@ Item {
     height: root.trackHeight
     radius: height / 2
     color: root.trackColor
+    opacity: root.dimmed ? 0.5 : 1.0
   }
 
   Rectangle {
@@ -59,6 +96,7 @@ Item {
     radius: track.radius
     color: root.fillColor
     width: track.width * root.progress
+    opacity: root.dimmed ? 0.5 : 1.0
 
     Behavior on width {
       enabled: !root.dragging
@@ -74,6 +112,7 @@ Item {
       height: root.trackHeight + Style.space(4)
       radius: 1
       color: root.tickColor
+      opacity: root.dimmed ? 0.5 : 1.0
       anchors.verticalCenter: track.verticalCenter
       x: Math.max(0, Math.min(track.width - width,
                               track.width * (index / (root.tickCount - 1)) - width / 2))
@@ -85,7 +124,7 @@ Item {
     width: root.knobSize
     height: root.knobSize
     radius: root.knobSize / 2
-    color: root.knobColor
+    color: root.effectiveKnobColor
     borderSpec: Border.flat(root.bar ? root.bar.background : "#101315", Math.max(1, Style.space(2)))
     anchors.verticalCenter: track.verticalCenter
     x: Math.max(0, Math.min(track.width - width, track.width * root.progress - width / 2))
