@@ -32,6 +32,13 @@ case "$*" in
     fi
     printf '%s\n' "${GRAPHICAL_STATE:-inactive}"
     ;;
+  '--user show --property=LoadState --value omarchy-sleep-lock.service')
+    if [[ ${FAIL_SYSTEMCTL_ACTION:-} == "show-load-state" ]]; then
+      echo "load state lookup failed" >&2
+      exit 1
+    fi
+    printf '%s\n' "${SLEEP_LOCK_LOAD_STATE:-loaded}"
+    ;;
   '--user show --property=ActiveState --value omarchy-sleep-lock.service')
     printf '%s\n' "${SLEEP_LOCK_STATE:-inactive}"
     ;;
@@ -160,3 +167,25 @@ deferred_call_count=$(wc -l <"$deferred_calls")
 (( deferred_call_count == 1 )) ||
   fail "sleep lock migration tries to mutate a user manager that is not running"
 pass "sleep lock migration defers safely when no user manager is running"
+
+for graphical_state in active inactive; do
+  unknown_home="$test_tmp/unknown-$graphical_state-home"
+  unknown_calls="$test_tmp/unknown-$graphical_state-calls"
+
+  run_migration "$unknown_home" "$unknown_calls" \
+    env GRAPHICAL_STATE="$graphical_state" SLEEP_LOCK_LOAD_STATE=not-found >/dev/null ||
+    fail "sleep lock migration fails on a $graphical_state session that has no such unit"
+
+  grep -Ex -- '--user (stop|restart|reset-failed) omarchy-sleep-lock.service' "$unknown_calls" >/dev/null &&
+    fail "sleep lock migration acts on a unit the $graphical_state session's manager does not know"
+  pass "sleep lock migration no-ops on a $graphical_state session that has no such unit"
+done
+
+load_failed_calls="$test_tmp/load-failed-calls"
+if run_migration "$test_tmp/load-failed-home" "$load_failed_calls" \
+  env FAIL_SYSTEMCTL_ACTION=show-load-state >"$test_tmp/load-failed-output" 2>&1; then
+  fail "sleep lock migration ignores a failed unit-load inspection"
+fi
+grep -F 'Could not inspect omarchy-sleep-lock.service' "$test_tmp/load-failed-output" >/dev/null ||
+  fail "sleep lock migration does not report a failed unit-load inspection"
+pass "sleep lock migration keeps an indeterminate unit-load repair retryable"
