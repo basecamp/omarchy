@@ -108,7 +108,7 @@ Item {
   property int dividerHeight: Style.space(17)
   property bool searchDivider: false
   property int layoutSerial: 0
-  property int cardWidth: Math.min(root.dmenuActive ? Style.space(root.dmenuWidth) : ((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Style.space(300)), panel.width - Style.gapsOut * 2)
+  property int cardWidth: Math.min(root.dmenuActive ? Style.space(root.dmenuWidth) : ((root.activeMenu === "trigger.capture.screenrecord" || root.activeMenu === "style.font") ? Style.space(520) : Math.max(Style.space(300), rowListWidth(layoutSerial, displayModel.count, filterText))), panel.width - Style.gapsOut * 2)
   property int visibleRowsHeight: root.dmenuActive ? dmenuRowListHeight(layoutSerial, displayModel.count, filterText) : rowListHeight(layoutSerial, displayModel.count, filterText, searchDivider)
   property int cardHeight: root.dmenuActive
     ? Math.min(contentMargin * 2 + headerHeight + (mode === "input" ? 0 : contentSpacing + visibleRowsHeight), panel.height - Style.gapsOut * 2)
@@ -195,6 +195,36 @@ Item {
     }
 
     return foldedListHeight(totals, availableRowsHeight())
+  }
+
+  FontMetrics {
+    id: labelMetrics
+    font.family: root.fontFamily
+    font.pixelSize: Style.font.heading
+    font.weight: Font.Medium
+  }
+
+  // Card width that fits the widest visible row label without eliding.
+  // layoutSerial/count/filter arguments force re-evaluation on model
+  // changes — the same trick rowListHeight uses. Returns 0 when there is
+  // nothing to measure so callers can fall back to the default width.
+  function rowListWidth(_serial, _count, _filter) {
+    var maxLabel = 0
+    for (var i = 0; i < displayModel.count; i++) {
+      var w = labelMetrics.advanceWidth(displayModel.get(i).label)
+      if (w > maxLabel) maxLabel = w
+    }
+    if (maxLabel <= 0) return 0
+
+    // Horizontal chrome around the label: card padding and card borders
+    // (contentLeftInset/contentRightInset are subtracted from the list),
+    // icon gutter (reserved border + margin + 36px icon + column margin),
+    // right column margin, trail gutter (14px + reserved border + margin).
+    var chrome = root.contentMargin * 2
+      + Border.left(root.borderSpec) + Border.right(root.borderSpec)
+      + root.rowReservedBorderLeft + Style.space(8) + Style.space(36) + Style.space(6)
+      + Style.space(6) + Style.space(14) + root.rowReservedBorderRight + Style.space(8)
+    return Math.ceil(maxLabel) + chrome
   }
 
   function dmenuRowListHeight(_serial, _count, _filter) {
