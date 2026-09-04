@@ -40,6 +40,11 @@ Panel {
   readonly property var models: modelRows(provider)
   readonly property var headline: bindingWindow(provider)
   readonly property var balance: provider ? (provider.balance || null) : null
+  // Banked resets a provider grants for clearing a rate limit window early.
+  // -1 is a collector that never read them, held apart from a read that
+  // reports none -- though both stay off the panel, since a standing
+  // "0 resets banked" line is noise on an account that never has any.
+  readonly property int bankedResets: provider ? Number(provider.resetCreditsAvailable) : -1
   // A prepaid account runs low the way a subscription window fills up: the
   // last 10% of the funded credits lights the same alarm.
   readonly property bool balanceAlarming: !!balance && balance.funded > 0
@@ -608,6 +613,15 @@ Panel {
                 width: limitsSection.width
                 window: modelData
               }
+            }
+
+            Text {
+              visible: root.bankedResets > 0
+              width: parent.width
+              text: root.bankedResets === 1 ? "1 reset banked" : root.bankedResets + " resets banked"
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
             }
           }
 

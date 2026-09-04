@@ -22,6 +22,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -36,6 +38,12 @@ AUTH_HELP = "Run `codex login` to authenticate."
 # may reuse a scan for up to 15 minutes.
 SCAN_REUSE_SECONDS = 20
 LIMITS_ONLY_REUSE_SECONDS = 900
+
+# Banked rate limit resets ("reset credits") are granted per account and spend
+# down a rate limit window early. The app-server RPC does not report them, so
+# they come straight from the same backend the Codex CLI authenticates against.
+RESET_CREDITS_ENDPOINT = "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"
+RESET_CREDITS_TIMEOUT = 10
 
 
 def local_day(value):
@@ -571,6 +579,74 @@ def fetch_codex_rpc():
   return result
 
 
+def codex_credentials():
+  """The bearer token and account the Codex CLI stores after `codex login`."""
+  auth_path = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex")) / "auth.json"
+  with open(auth_path, "r", encoding="utf-8") as handle:
+    auth = json.load(handle)
+  tokens = auth.get("tokens") or {}
+  token = str(tokens.get("access_token") or auth.get("OPENAI_API_KEY") or "").strip()
+  return token, str(tokens.get("account_id") or "").strip()
+
+
+def available_reset_credits(payload):
+  """How many banked resets are still spendable.
+
+  The response carries its own tally; the credit list is only consulted when a
+  response omits it, and then a credit counts when it is available and has not
+  passed its expiry.
+  """
+  count = payload.get("availableCount", payload.get("available_count"))
+  if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+    return count
+
+  now = datetime.now(timezone.utc)
+  total = 0
+  for credit in payload.get("credits") or []:
+    if not isinstance(credit, dict) or credit.get("status") != "available":
+      continue
+    expires = str(credit.get("expires_at") or "")
+    if expires:
+      try:
+        if datetime.fromisoformat(expires.replace("Z", "+00:00")) <= now:
+          continue
+      except ValueError:
+        pass
+    total += 1
+  return total
+
+
+def fetch_reset_credits():
+  """Banked resets for the signed-in account, or None when unknown.
+
+  Advisory: every failure returns None so a record that is otherwise complete
+  still reaches the panel. None means "not read", which the panel shows as
+  nothing at all — distinct from a read that reports zero banked resets.
+  """
+  try:
+    token, account_id = codex_credentials()
+  except Exception:
+    return None
+  if not token:
+    return None
+
+  headers = {
+    "Authorization": f"Bearer {token}",
+    "Accept": "application/json",
+    "User-Agent": "omarchy-agent-usage-codex",
+  }
+  if account_id:
+    headers["ChatGPT-Account-Id"] = account_id
+
+  request = urllib.request.Request(RESET_CREDITS_ENDPOINT, headers=headers)
+  try:
+    with urllib.request.urlopen(request, timeout=RESET_CREDITS_TIMEOUT) as response:
+      payload = json.loads(response.read().decode("utf-8"))
+  except Exception:
+    return None
+  return available_reset_credits(payload) if isinstance(payload, dict) else None
+
+
 def main():
   parser = argparse.ArgumentParser()
   # --force rescans everything and rewrites the cache. --limits-only is kept
@@ -596,6 +672,11 @@ def main():
   }
   record.update(stats)
   record.update(rpc)
+
+  reset_credits = fetch_reset_credits()
+  if reset_credits is not None:
+    record["resetCreditsAvailable"] = reset_credits
+
   print(json.dumps(record, separators=(",", ":")))
 
 
