@@ -10,6 +10,11 @@ if omarchy-cmd-present alacritty; then
   cp "$OMARCHY_PATH/default/alacritty/Alacritty.desktop" ~/.local/share/applications/
 fi
 
+ghostty_desktop="com.mitchellh.ghostty.desktop"
+if omarchy-cmd-present ghostty && [[ ! -e ~/.local/share/applications/$ghostty_desktop && ! -L ~/.local/share/applications/$ghostty_desktop ]]; then
+  cp "$OMARCHY_PATH/default/ghostty/$ghostty_desktop" ~/.local/share/applications/
+fi
+
 if [[ -f "$OMARCHY_PATH/install/user/mise.sh" ]]; then
   bash "$OMARCHY_PATH/install/user/mise.sh"
 fi

@@ -42,10 +42,17 @@ if omarchy-cmd-missing "$terminal"; then
   fi
 fi
 
+if [[ $terminal == "ghostty" && ! -e ~/.local/share/applications/$desktop_id && ! -L ~/.local/share/applications/$desktop_id ]]; then
+  mkdir -p ~/.local/share/applications
+  cp "$OMARCHY_PATH/default/ghostty/$desktop_id" ~/.local/share/applications/
+fi
+
 cat >~/.config/xdg-terminals.list <<EOF
 # Terminal emulator preference order for xdg-terminal-exec
 # The first found and valid terminal will be used
 $desktop_id
 EOF
+
+rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/xdg-terminal-exec"
 
 omarchy-notification-send -g $glyph "$name is now the default terminal"
