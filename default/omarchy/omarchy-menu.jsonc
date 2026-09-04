@@ -190,6 +190,7 @@
   // Install
   "install.package": {"icon":"󰣇","label":"Package","action":"xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-install"},
   "install.aur": {"icon":"󰣇","label":"AUR","action":"xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-aur-install"},
+  "install.flatpak": {"icon":"","label":"Flatpak","action":"xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-flatpak-install"},
   "install.ai": {"icon":"󱚤","label":"AI"},
   "install.service": {"icon":"","label":"Service"},
   "install.development": {"icon":"󰵮","label":"Development"},
@@ -247,7 +248,7 @@
   "install.gaming.steam": {"icon":"","label":"Steam","disabled":"omarchy-pkg-present steam","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-steam"},
   "install.gaming.retroarch": {"icon":"󰯉","label":"RetroArch","disabled":"omarchy-pkg-present retroarch","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-retroarch"},
   "install.gaming.minecraft": {"icon":"󰍳","label":"Minecraft","disabled":"omarchy-pkg-present minecraft-launcher","action":"omarchy-install-and-launch Minecraft minecraft-launcher minecraft-launcher"},
-  "install.gaming.geforce-now": {"icon":"󰢹","label":"NVIDIA GeForce NOW","disabled":"flatpak info com.nvidia.geforcenow","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-geforce-now"},
+  "install.gaming.geforce-now": {"icon":"󰢹","label":"NVIDIA GeForce NOW","disabled":"omarchy-flatpak-present com.nvidia.geforcenow","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-geforce-now"},
   "install.gaming.xbox-cloud": {"icon":"","label":"Xbox Cloud Gaming","disabled":"[[ -f \"$HOME/.local/share/applications/Xbox Cloud Gaming.desktop\" ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-xbox-cloud"},
   "install.gaming.xbox-controllers": {"icon":"󰂯","label":"Xbox Controllers","disabled":"omarchy-pkg-present xpadneo-dkms","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-xbox-controllers"},
   "install.gaming.battlenet": {"icon":"","label":"Battle.net","disabled":"[[ -d $HOME/Games/battlenet ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-gaming-battlenet"},
@@ -279,6 +280,7 @@
 
   // Remove
   "remove.package": {"icon":"󰣇","label":"Package","action":"xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-pkg-remove"},
+  "remove.flatpak": {"icon":"","label":"Flatpak","when":"[[ -n $(flatpak list --app --columns=application) ]]","action":"xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-flatpak-remove"},
   "remove.ai": {"icon":"󱚤","label":"AI","title":"Remove"},
   "remove.service": {"icon":"","label":"Services","title":"Remove"},
   "remove.development": {"icon":"󰵮","label":"Development","title":"Remove"},
@@ -312,7 +314,7 @@
   "remove.gaming.steam": {"icon":"","label":"Steam","when":"omarchy-pkg-present steam","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-steam"},
   "remove.gaming.retroarch": {"icon":"","label":"RetroArch","when":"omarchy-pkg-present retroarch","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-retroarch"},
   "remove.gaming.minecraft": {"icon":"󰍳","label":"Minecraft","when":"omarchy-pkg-present minecraft-launcher","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-minecraft"},
-  "remove.gaming.geforce-now": {"icon":"󰢹","label":"NVIDIA GeForce NOW","when":"flatpak info com.nvidia.geforcenow","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-geforce-now"},
+  "remove.gaming.geforce-now": {"icon":"󰢹","label":"NVIDIA GeForce NOW","when":"omarchy-flatpak-present com.nvidia.geforcenow","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-geforce-now"},
   "remove.gaming.xbox-cloud": {"icon":"","label":"Xbox Cloud Gaming","when":"[[ -f \"$HOME/.local/share/applications/Xbox Cloud Gaming.desktop\" ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-xbox-cloud"},
   "remove.gaming.xbox-controllers": {"icon":"󰖺","label":"Xbox Controllers (󰂯)","when":"omarchy-pkg-present xpadneo-dkms","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-xbox-controllers"},
   "remove.gaming.battlenet": {"icon":"","label":"Battle.net","when":"[[ -d $HOME/Games/battlenet ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-gaming-battlenet"},

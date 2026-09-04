@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# omarchy:summary=Remove all the named Flatpak apps from the system if they're installed (otherwise ignore).
+# omarchy:args=<app-ids...>
+# omarchy:requires-sudo=true
+
+# Scope is not ours to assume. omarchy-flatpak-add installs system-wide, but an
+# app installed by its own vendor installer, or by hand, is usually in the
+# user installation — and uninstalling that one under sudo looks to flatpak
+# like an app that isn't installed at all. So ask which installation holds each
+# app and remove it from there.
+declare -A installation_of=()
+declare -A selected=()
+system=()
+user=()
+
+while IFS=$'\t' read -r app_id installation; do
+  # First installation listed for an app id wins, which is the one flatpak runs.
+  [[ -n ${installation_of[$app_id]:-} ]] || installation_of[$app_id]=$installation
+done < <(flatpak list --app --columns=application,installation)
+
+for app in "$@"; do
+  [[ -n ${installation_of[$app]:-} && -z ${selected[$app]:-} ]] || continue
+  selected[$app]=1
+
+  if [[ ${installation_of[$app]} == "system" ]]; then
+    system+=("$app")
+  else
+    user+=("$app")
+  fi
+done
+
+if (( ${#system[@]} > 0 )); then
+  sudo flatpak uninstall --system --noninteractive --delete-data "${system[@]}"
+fi
+
+if (( ${#user[@]} > 0 )); then
+  flatpak uninstall --user --noninteractive --delete-data "${user[@]}"
+fi
