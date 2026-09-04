@@ -4,7 +4,7 @@
 
 ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
 [[ $ACTIVE_WORKSPACE =~ ^-?[0-9]+$ ]] || exit 1
-CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
+read -r CURRENT_LAYOUT MONITOR < <(hyprctl activeworkspace -j | jq -r '[.tiledLayout,.monitor] | @tsv')
 LAYOUTS_DIR="$HOME/.local/state/omarchy/workspace-layouts"
 LAYOUT_FILE="$LAYOUTS_DIR/$ACTIVE_WORKSPACE.lua"
 
@@ -13,9 +13,23 @@ case "$CURRENT_LAYOUT" in
   *) NEW_LAYOUT=dwindle ;;
 esac
 
-mkdir -p "$LAYOUTS_DIR"
-printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ACTIVE_WORKSPACE" "$NEW_LAYOUT" >"$LAYOUT_FILE"
+# portrait panel: columns stack top to bottom instead of side by side
+TRANSFORM=$(hyprctl monitors -j | jq -r --arg m "$MONITOR" '.[] | select(.name==$m) | .transform')
+case "$TRANSFORM" in
+  1|3|5|7) DIRECTION=down ;;
+  *) DIRECTION=right ;;
+esac
 
-hyprctl eval "hl.workspace_rule({ workspace = \"$ACTIVE_WORKSPACE\", layout = \"$NEW_LAYOUT\" })" >/dev/null 2>&1 || \
+if [[ "$NEW_LAYOUT" == scrolling ]]; then
+  RULE_LUA="hl.workspace_rule({ workspace = \"$ACTIVE_WORKSPACE\", layout = \"$NEW_LAYOUT\", layout_opts = { direction = \"$DIRECTION\" } })"
+else
+  RULE_LUA="hl.workspace_rule({ workspace = \"$ACTIVE_WORKSPACE\", layout = \"$NEW_LAYOUT\" })"
+fi
+
+mkdir -p "$LAYOUTS_DIR"
+printf '%s\n' "$RULE_LUA" >"$LAYOUT_FILE"
+
+hyprctl eval "$RULE_LUA" >/dev/null 2>&1 || \
   hyprctl keyword workspace "$ACTIVE_WORKSPACE, layout:$NEW_LAYOUT"
-omarchy-notification-send -g 󱂬 "Workspace layout set to $NEW_LAYOUT"
+
+omarchy-notification-send -g 󱂬 "Workspace layout set to $NEW_LAYOUT$([[ $NEW_LAYOUT == scrolling ]] && echo " ($DIRECTION)")"
