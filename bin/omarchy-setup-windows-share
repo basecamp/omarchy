@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# omarchy:summary=Sign in to a Windows PC with a username and password
+# omarchy:args=[host]
+
+set -euo pipefail
+
+discover_hosts() {
+  timeout 8 gio list network:// 2>/dev/null | awk '!/^urn:uuid/ && NF { print $1 }' | sort -u
+}
+
+domain_for() {
+  local host=$1
+  local name
+
+  if [[ $host =~ ^[0-9.]+$ ]]; then
+    name=$(nmblookup -A "$host" 2>/dev/null | awk '/<00> -/ && !/<GROUP>/ { print $1; exit }')
+    if [[ -n $name ]]; then
+      printf '%s\n' "$name"
+      return
+    fi
+  fi
+
+  printf '%s\n' "$host"
+}
+
+pick_host() {
+  local host=${1:-${OMARCHY_SMB_HOST:-}}
+  local -a hosts=()
+
+  if [[ -n $host ]]; then
+    printf '%s\n' "$host"
+    return
+  fi
+
+  mapfile -t hosts < <(discover_hosts)
+
+  if ((${#hosts[@]} == 0)); then
+    gum input --placeholder "Windows PC name or IP"
+    return
+  fi
+
+  if ((${#hosts[@]} == 1)); then
+    printf '%s\n' "${hosts[0]}"
+    return
+  fi
+
+  printf '%s\n' "${hosts[@]}" | gum choose --header "Windows PC"
+}
+
+prompt_user() {
+  if [[ -n ${OMARCHY_SMB_USER:-} ]]; then
+    printf '%s\n' "$OMARCHY_SMB_USER"
+    return
+  fi
+
+  gum input --placeholder "Windows username"
+}
+
+prompt_password() {
+  if [[ -n ${OMARCHY_SMB_PASSWORD:-} ]]; then
+    printf '%s\n' "$OMARCHY_SMB_PASSWORD"
+    return
+  fi
+
+  gum input --password --placeholder "Password"
+}
+
+mount_share() {
+  local host=$1 user=$2 pass=$3 domain=$4 share=$5
+  local uri="smb://$host/"
+
+  if [[ -n $share ]]; then
+    uri="smb://$host/$share"
+  fi
+
+  printf '%s\n%s\n%s\n' "$user" "$domain" "$pass" |
+    timeout 20 gio mount "$uri"
+}
+
+host=$(pick_host "${1:-}")
+[[ -n $host ]] || exit 1
+
+user=$(prompt_user)
+pass=$(prompt_password)
+[[ -n $user && -n $pass ]] || exit 1
+
+domain=$(domain_for "$host")
+
+if ! smbclient -L "//$host" -U "$user%$pass" -W "$domain" >/dev/null 2>&1; then
+  omarchy-notification-send -u critical -g  "Could not sign in to $host" "Use a local admin username and password on that Windows PC."
+  exit 1
+fi
+
+if ! mount_share "$host" "$user" "$pass" "$domain" ""; then
+  omarchy-notification-send -u critical -g  "Signed in to $host" "Could not open the share list."
+  exit 1
+fi
+
+gio open "smb://$host/"
+omarchy-notification-send -g  "Connected to $host"

@@ -6,6 +6,9 @@ Files (Nautilus) is the graphical file manager. `Super + Shift + F` opens it, an
 
 Plug in a USB stick or an SD card and it's mounted automatically, so it just shows up in the sidebar. For anything more involved — formatting a drive, checking SMART health, creating partitions — launch _Disks_ from the app launcher (`Super + Space`).
 
+Windows PCs on the same network show up under Other Locations. The reliable way in is _Trigger > Windows PC_ (or search “Windows PC” in the menu): pick the computer, then the Windows username and password. That’s a local admin on that PC — not your Linux user. Admin shares like `C$` stay hidden in Files until you turn them on with `Ctrl + H`, or _Trigger > Toggle > Windows Admin Shares_.
+
+
 Double-clicking follows sensible defaults: images open in imv, video in mpv, PDFs in Document Viewer, and plain text in Neovim.
 
 ## Obsidian

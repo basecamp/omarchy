@@ -49,6 +49,7 @@ gum
 gvfs-mtp
 gvfs-nfs
 gvfs-smb
+gvfs-wsdd
 herdr
 hyprland
 hyprland-guiutils

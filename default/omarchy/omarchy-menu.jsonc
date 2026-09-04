@@ -68,6 +68,7 @@
   "trigger.capture.screenrecord.webcam": {"icon":"","label":"With desktop + microphone audio + webcam","when":"omarchy-hw-webcam","action":"omarchy-capture-screenrecording-with-webcam"},
   "trigger.transcode": {"icon":"󰧸","label":"Transcode","action":"omarchy-transcode"},
   "trigger.share": {"icon":"","label":"Share","aliases":["share"]},
+  "trigger.windows-pc": {"icon":"","label":"Windows PC","description":"Sign in to a Windows computer on the network","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-windows-share"},
   "trigger.toggle": {"icon":"󰔎","label":"Toggle","aliases":["toggle","toggles"]},
   "trigger.hardware": {"icon":"","label":"Hardware","aliases":["hardware","hw"]},
   "trigger.tests": {"icon":"󰓅","label":"Speed Test"},
@@ -97,6 +98,7 @@
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
   "trigger.toggle.window-gaps": {"icon":"","label":"Window Gaps","action":"omarchy-hyprland-window-gaps-toggle"},
   "trigger.toggle.one-window-ratio": {"icon":"","label":"1-Window Ratio","action":"omarchy-hyprland-window-single-square-aspect-toggle"},
+  "trigger.toggle.windows-admin-shares": {"icon":"","label":"Windows Admin Shares","description":"Show C$ and other hidden SMB admin shares in Files","checked":"gsettings get org.gnome.nautilus.preferences show-hidden-files | grep -qx true","action":"omarchy-toggle-windows-admin-shares"},
   "trigger.tests.network-speedtest": {"icon":"󰓅","label":"Network Speed Test","action":"omarchy-shell shell summon omarchy.speedtest"},
   "trigger.tests.disk-speedtest": {"icon":"󰋊","label":"Disk Speed Test","action":"omarchy-shell shell summon omarchy.disk-speedtest"},
 
