@@ -1,0 +1,15 @@
+[Unit]
+Description=Reload a wedged Wi-Fi radio
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionPathExists=/sys/class/ieee80211
+ConditionPathExists=/usr/bin/omarchy-wifi-recover
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-wifi-recover
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

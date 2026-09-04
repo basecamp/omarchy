@@ -1,0 +1,269 @@
+#!/bin/bash
+
+# omarchy:summary=Reload a wedged Wi-Fi radio without waiting for the user.
+# omarchy:hidden=true
+
+# NetworkManager can keep a wifi device "connected" after Intel/Realtek
+# firmware dies. The hardware menu now reloads the driver; this watcher
+# does that once the phy stays wedged, so a roam or radio toggle is not
+# enough to yank the module.
+
+set -uo pipefail
+
+PACKAGED_RESTART=/usr/bin/omarchy-restart-wifi
+PACKAGED_UNIT=${OMARCHY_WIFI_RECOVER_PACKAGED_UNIT:-/usr/lib/systemd/user/omarchy-wifi-recover.service}
+POLL_SECONDS=${OMARCHY_WIFI_RECOVER_POLL:-15}
+COOLDOWN_SECONDS=${OMARCHY_WIFI_RECOVER_COOLDOWN:-120}
+CONFIRM_POLLS=${OMARCHY_WIFI_RECOVER_CONFIRM:-2}
+MAX_POLLS=${OMARCHY_WIFI_RECOVER_MAX_POLLS:-0}
+ONCE=${OMARCHY_WIFI_RECOVER_ONCE:-0}
+NET_ROOT=${OMARCHY_WIFI_NET_ROOT:-/sys/class/net}
+NM_TIMEOUT=${OMARCHY_WIFI_RECOVER_NM_TIMEOUT:-10}
+IW_TIMEOUT=${OMARCHY_WIFI_RECOVER_IW_TIMEOUT:-5}
+RESTART_TIMEOUT=${OMARCHY_WIFI_RECOVER_RESTART_TIMEOUT:-60}
+MAX_RELOADS=${OMARCHY_WIFI_RECOVER_MAX_RELOADS:-3}
+
+# nf-md-wifi-sync, escaped so this file reads without a Nerd Font.
+readonly WIFI_GLYPH=$'\U000f16b5'
+
+last_reload=0
+wedge_streak=0
+grant_warned=0
+notified_this_wedge=0
+reloads_this_wedge=0
+gave_up_this_wedge=0
+polls=0
+
+# A staged ~/.config copy shadows /usr/lib forever. Drop it only when it is
+# still stock, so a user edit is left alone. Stock means either copy we could
+# have put there: matching only the packaged unit would strand every staged
+# copy the first time that unit is revised upstream, which is the shadow this
+# exists to prevent.
+unstage_if_packaged() {
+  local config="${XDG_CONFIG_HOME:-$HOME/.config}"
+  local staged="$config/systemd/user/omarchy-wifi-recover.service"
+  local wants="$config/systemd/user/graphical-session.target.wants/omarchy-wifi-recover.service"
+  local source="${OMARCHY_PATH:-/usr/share/omarchy}/default/systemd/user/omarchy-wifi-recover.service"
+
+  [[ -f $PACKAGED_UNIT && -f $staged ]] || return 0
+  cmp -s "$staged" "$PACKAGED_UNIT" || cmp -s "$staged" "$source" || return 0
+  rm -f "$staged"
+  if [[ -L $wants ]]; then
+    ln -sfn "$PACKAGED_UNIT" "$wants"
+  fi
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+}
+
+sudo_grants_passwordless() {
+  sudo -n -l -l "$PACKAGED_RESTART" 2>/dev/null | grep -q '!authenticate'
+}
+
+# 0 the radio is on, 1 it is off or NM cannot say, 2 nmcli never answered.
+# The three are not interchangeable: a probe that timed out is a fact about
+# NetworkManager, not evidence that the radio is enabled.
+radio_state() {
+  local out rc
+
+  out=$(LC_ALL=C timeout "$NM_TIMEOUT" nmcli radio wifi 2>/dev/null)
+  rc=$?
+  ((rc == 124)) && return 2
+  ((rc == 0)) || return 1
+  [[ $out == enabled ]]
+}
+
+# This device's own soft/hard block, read from its phy. `rfkill list wifi`
+# reports every radio at once, so one deliberately blocked dongle used to
+# suppress recovery for the wedged adapter beside it.
+rfkill_blocked() {
+  local state
+
+  for state in "$NET_ROOT/$1"/phy80211/rfkill*/soft "$NET_ROOT/$1"/phy80211/rfkill*/hard; do
+    [[ -r $state ]] || continue
+    [[ $(<"$state") == 0 ]] || return 0
+  done
+
+  return 1
+}
+
+# nl80211 interface type, empty when iw cannot say. An AP, an ad-hoc cell and
+# a mesh point are all "connected" to NetworkManager while `iw link` reports
+# no association, so the type is what separates them from a dead station.
+iface_type() {
+  LC_ALL=C timeout "$IW_TIMEOUT" iw dev "$1" info 2>/dev/null |
+    sed -n 's/^[[:space:]]*type \([a-zA-Z/]\{1,\}\)[[:space:]]*$/\1/p' | head -n1
+}
+
+# Whether the kernel still answers for this device at all. NetworkManager
+# reports `unavailable` both for a wedged phy and for a machine whose wifi
+# backend is misconfigured (#7323), where the driver is loaded and healthy
+# and reloading it fixes nothing. Only the kernel side tells them apart.
+kernel_responsive() {
+  [[ -d $NET_ROOT/$1 ]] || return 1
+  LC_ALL=C timeout "$IW_TIMEOUT" iw dev "$1" info >/dev/null 2>&1
+}
+
+has_wireless_iface() {
+  local iface
+
+  for iface in "$NET_ROOT"/*; do
+    if [[ -d $iface/wireless || -d $iface/phy80211 ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+kernel_link_up() {
+  # nl80211 dumps can block when the driver holds rtnl. timeout → no link.
+  LC_ALL=C timeout "$IW_TIMEOUT" iw dev "$1" link 2>/dev/null | grep -q '^Connected '
+}
+
+# Instantaneous: the radio is meant to be on, a phy is present, and some
+# wifi device is in a state only a dead phy explains. A roam or a radio-on
+# race can look like this for one poll, which is what CONFIRM_POLLS is for.
+looks_wedged() {
+  local dev state found=0 nm_out nm_rc
+
+  radio_state
+  case $? in
+    1) return 1 ;;    # radio off, or NM has no answer: not ours to fix.
+    2) return 0 ;;    # nmcli hung. The AX210 wedge hangs do-change-link.
+  esac
+
+  has_wireless_iface || return 1
+
+  nm_out=$(LC_ALL=C timeout "$NM_TIMEOUT" nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null)
+  nm_rc=$?
+  if ((nm_rc == 124)); then
+    return 0
+  fi
+  ((nm_rc == 0)) || return 1
+
+  while IFS=$'\t' read -r dev state; do
+    [[ -n $dev ]] || continue
+    found=1
+
+    # A radio the user blocked is a radio the user wants off.
+    rfkill_blocked "$dev" && continue
+
+    case $state in
+      connected*)
+        # Only an infrastructure station has an association to lose. An AP,
+        # a hotspot, an ad-hoc cell and a mesh point are all connected with
+        # no link, and unloading the driver under one drops every client on
+        # it. An unreadable type is not evidence either way, so it waits.
+        [[ $(iface_type "$dev") == "managed" ]] || continue
+        kernel_link_up "$dev" || return 0
+        ;;
+      unavailable)
+        kernel_responsive "$dev" || return 0
+        ;;
+    esac
+  done < <(awk -F: '$2 == "wifi" { print $1 "\t" $3 }' <<<"$nm_out")
+
+  # NM listed nothing, but the phy is still in sysfs: same class of wedge.
+  ((found == 0))
+}
+
+# Two consecutive polls (~30s) before we unload the driver. One miss is a
+# roam, a scan, or the user flipping the radio back on.
+wifi_wedged() {
+  if looks_wedged; then
+    wedge_streak=$((wedge_streak + 1))
+    ((wedge_streak >= CONFIRM_POLLS))
+    return
+  fi
+
+  wedge_streak=0
+  notified_this_wedge=0
+  reloads_this_wedge=0
+  gave_up_this_wedge=0
+  return 1
+}
+
+try_reload() {
+  local now=$EPOCHSECONDS
+
+  # A reload that did not bring the phy back will not start working on the
+  # twentieth attempt, and unloading a PCI driver every two minutes for the
+  # rest of the session is its own fault. Stop, and say so once -- a red
+  # light nobody is shown is worse than no light at all.
+  if ((MAX_RELOADS > 0 && reloads_this_wedge >= MAX_RELOADS)); then
+    if ((gave_up_this_wedge == 0)); then
+      gave_up_this_wedge=1
+      echo "omarchy-wifi-recover: gave up after $reloads_this_wedge reloads; the radio did not come back" >&2
+      omarchy-notification-send -u critical -g "$WIFI_GLYPH" "Wi-Fi did not come back" \
+        "The radio driver was reloaded $reloads_this_wedge times without recovering. Run: omarchy restart wifi" || true
+    fi
+    return 1
+  fi
+
+  if ((now - last_reload < COOLDOWN_SECONDS)); then
+    return 1
+  fi
+
+  if ! sudo_grants_passwordless; then
+    if ((grant_warned == 0)); then
+      echo "omarchy-wifi-recover: passwordless sudo is required for $PACKAGED_RESTART" >&2
+      grant_warned=1
+    fi
+    return 1
+  fi
+
+  # Cool down even on a failed reload so we do not hammer modprobe -r.
+  last_reload=$now
+  reloads_this_wedge=$((reloads_this_wedge + 1))
+
+  if ! timeout "$RESTART_TIMEOUT" sudo -n "$PACKAGED_RESTART"; then
+    echo "omarchy-wifi-recover: $PACKAGED_RESTART failed" >&2
+    return 1
+  fi
+
+  grant_warned=0
+
+  # Reload is not proof the phy came back. One toast per wedge episode.
+  if ((notified_this_wedge == 0)); then
+    omarchy-notification-send -g "$WIFI_GLYPH" "Wi-Fi radio reloaded" \
+      "The radio firmware wedged and the driver was reloaded." || true
+    notified_this_wedge=1
+  fi
+  return 0
+}
+
+if [[ ${1:-} == --check ]]; then
+  # Instantaneous: for debugging. The daemon still requires CONFIRM_POLLS.
+  if looks_wedged; then
+    echo wedged
+    exit 0
+  fi
+
+  echo ok
+  exit 1
+fi
+
+if ((ONCE)); then
+  if looks_wedged; then
+    try_reload
+  fi
+  exit 0
+fi
+
+unstage_if_packaged
+
+if ! [[ $POLL_SECONDS =~ ^[0-9]+$ ]]; then
+  POLL_SECONDS=15
+fi
+
+while true; do
+  if wifi_wedged; then
+    try_reload
+  fi
+
+  polls=$((polls + 1))
+  if ((MAX_POLLS > 0 && polls >= MAX_POLLS)); then
+    exit 0
+  fi
+
+  sleep "$POLL_SECONDS"
+done

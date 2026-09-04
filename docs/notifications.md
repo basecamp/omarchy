@@ -177,6 +177,9 @@ Everything goes through the same sender contract, so the pieces are small:
   after `graphical-session.target`) waits for the server, then sends a
   critical toast whose click opens a terminal running `omarchy-migrate`,
   falling back to printing in the terminal if the hand-off fails.
+- **Wi-Fi recover** — `omarchy-wifi-recover` sends one low-urgency toast per
+  wedge episode after it reloads the radio driver. The wording is "reloaded",
+  not "recovered": the reload is not proof the phy came back.
 
 ## Reminders
 

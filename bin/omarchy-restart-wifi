@@ -1,11 +1,92 @@
 #!/bin/bash
 
-# omarchy:summary=Unblock and restart the Wi-Fi service.
+# omarchy:summary=Unblock Wi-Fi and reload the radio driver.
+# omarchy:requires-sudo=true
 
-echo -e "Unblocking wifi...\n"
+# rfkill / nmcli radio on is enough when the interface is merely blocked.
+# Intel iwlwifi and Realtek rtw89 firmware can wedge the phy so hard that
+# userspace has nothing to talk to — in-driver reset times out, BAR reads
+# return 0xffffffff, and the existing radio toggle hangs. Reloading the
+# PCI driver is what actually brings the radio back. See #7003.
+
+# The tests point this at a fixture tree. Root never reads it: this command
+# carries a NOPASSWD grant, so the one path where the variable would matter
+# is the one path that must not take direction from the environment.
+if ((EUID == 0)); then
+  NET_ROOT=/sys/class/net
+else
+  NET_ROOT=${OMARCHY_WIFI_NET_ROOT:-/sys/class/net}
+fi
+
+# Two graphical sessions run two watchers, and both answer the same wedge.
+# Serialise here rather than in the watcher: this is the half that runs as
+# root, and it is the only half both sessions share.
+if ((EUID == 0)) && : >>/run/omarchy-restart-wifi.lock 2>/dev/null; then
+  exec 9>>/run/omarchy-restart-wifi.lock
+  flock -w "${OMARCHY_RESTART_WIFI_LOCK_WAIT:-90}" 9 || exit 1
+fi
+
+echo -e "Restarting wifi...\n"
 
 rfkill unblock wifi
-nmcli networking on
-nmcli radio wifi on
+
+seen=" "
+reload_failed=0
+for iface in "$NET_ROOT"/*; do
+  [[ -d $iface/wireless || -d $iface/phy80211 ]] || continue
+  [[ -L $iface/device/driver ]] || continue
+
+  driver=$(basename "$(readlink "$iface/device/driver")")
+  [[ -n $driver ]] || continue
+  [[ $seen == *" $driver "* ]] && continue
+  seen+="$driver "
+
+  unload=()
+  if [[ $driver == iwlwifi ]]; then
+    # iwlmld (BE200+), iwlmvm (AX210), iwldvm and iwlmei all hold iwlwifi.
+    for helper in iwlmld iwlmvm iwldvm iwlmei; do
+      if lsmod | grep -q "^${helper}[[:space:]]"; then
+        unload+=("$helper")
+      fi
+    done
+  fi
+  unload+=("$driver")
+
+  echo "Reloading ${unload[*]}..."
+  if ! sudo modprobe -r -- "${unload[@]}"; then
+    reload_failed=1
+    continue
+  fi
+  if ! sudo modprobe -- "$driver"; then
+    # A PCI device that has just been torn down needs a moment before it
+    # will take firmware again; an instant retry asks the same question.
+    sleep 1
+    if sudo modprobe -- "$driver"; then
+      : # retry recovered the radio
+    else
+      reload_failed=1
+      echo "omarchy-restart-wifi: $driver left unloaded; run: sudo modprobe $driver" >&2
+    fi
+  fi
+done
+
+# Whatever did reload still needs its radio back, so this runs even when a
+# sibling driver failed -- skipping it used to leave a working adapter dark
+# because an unrelated one was busy. The radio toggle hangs on a dead phy,
+# hence the bound.
+nm_failed=0
+if ! timeout "${OMARCHY_RESTART_WIFI_NM_TIMEOUT:-20}" nmcli networking on; then
+  nm_failed=1
+fi
+if ! timeout "${OMARCHY_RESTART_WIFI_NM_TIMEOUT:-20}" nmcli radio wifi on; then
+  nm_failed=1
+fi
 nmcli device wifi rescan 2>/dev/null || true
 rfkill list wifi
+
+# The watcher toasts on exit 0, so a run NetworkManager refused must not
+# report success: the radio is no more back than a failed modprobe leaves it.
+if ((reload_failed != 0 || nm_failed != 0)); then
+  exit 1
+fi
+exit 0
