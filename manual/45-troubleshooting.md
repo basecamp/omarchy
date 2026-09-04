@@ -47,3 +47,29 @@ In order for the rich approval prompt to appear, Settings > Advanced > Use Hardw
  ![troubleshooting-1password](images/troubleshooting-1password.webp)
 
 Or if you haven't launched 1Password since booting up, the prompt will not appear.
+
+### The live ISO shows the logo for a second, then reboots itself
+
+That's `nouveau` crashing. On machines with a discrete NVIDIA GPU, the live environment's open-source driver tries to take over modesetting, chokes, and the kernel panics before the installer ever gets a chance to show up.
+
+Add `nomodeset` to the kernel command line and it boots clean. The live ISO uses GRUB, not Limine — Limine only enters the picture once Omarchy is actually installed. At the GRUB menu, hit `e` on the Omarchy entry, find the `linux` line, add `nomodeset` to the end of it, then `Ctrl + X` to boot.
+
+No window to hit `e`? Some ISO builds boot instantly with no visible menu. Fine — pull the USB stick, mount its FAT32 partition on another machine, and edit `boot/grub/grub.cfg` by hand. Add `nomodeset` to the `linux` line for the Omarchy entry, save, put the stick back in.
+
+### It gets past the logo but hangs later, with `RTL_OCP_GPHY_COND` or a stuck "Wait Until Kernel Time Synchronized"
+
+That's the second crash hiding behind the first one. The default `r8169` driver doesn't get along with some Realtek chips. Add `modprobe.blacklist=r8169,r8168` right next to `nomodeset` on the same `linux` line. You'll lose networking for the rest of the install — doesn't matter, the installer doesn't need it.
+
+### The installed system does the same NVIDIA crash on its first boot, right after the disk password
+
+Whatever you typed onto the GRUB line only applied to that one live-ISO boot. Limine builds its own boot entry for the installed system from scratch, with none of it — so the exact same `nouveau` crash can show up again the very first time the machine tries to boot for real, loading bar stalling out right when you were expecting a desktop.
+
+Make it permanent: add `nomodeset` to `/etc/kernel/cmdline`, then run
+
+```
+sudo limine-mkinitcpio
+```
+
+to rebuild the boot entry with it baked in. (No shell yet? Boot the live ISO again with `nomodeset`, chroot into the installed system, and do it from there.)
+
+And don't keep blacklisting `r8169` forever — that's a workaround, not a fix. Install `r8168-dkms` from the AUR and the Realtek chip just works, no kernel parameters required.
