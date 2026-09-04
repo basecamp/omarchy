@@ -2,7 +2,7 @@
 
 # omarchy:summary=Check the update log for known failure conditions
 
-update_log="/tmp/omarchy-update.log"
+update_log="${OMARCHY_UPDATE_LOG:-/tmp/omarchy-update.log}"
 
 # Check for initramfs generation failure
 if grep -q "Updating linux initcpios" "$update_log"; then
@@ -11,3 +11,8 @@ if grep -q "Updating linux initcpios" "$update_log"; then
     echo
   fi
 fi
+
+# limine-mkinitcpio currently reports success to pacman even when an individual
+# UKI build fails. Check the deployed images themselves before the update can
+# offer a reboot, and make one repair attempt when the hook left one stale.
+omarchy-update-verify-boot
