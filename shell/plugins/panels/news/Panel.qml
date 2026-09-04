@@ -65,6 +65,7 @@ Item {
 
   function closeFeedManager() {
     managingFeeds = false
+    markReadTimer.restart()
     focusArea = "headlines"
     Qt.callLater(function() { focusScope.forceActiveFocus() })
   }
@@ -190,11 +191,17 @@ Item {
     if (!found) selectSource("all")
   }
 
+  readonly property string currentArticleId: currentArticle ? String(currentArticle.id || "") : ""
+  onCurrentArticleIdChanged: {
+    articleFlick.contentY = 0
+    markReadTimer.restart()
+  }
+
   Timer {
     id: markReadTimer
     interval: 1200
     repeat: false
-    onTriggered: if (root.opened && !root.managingFeeds && root.news) root.news.markAllSeen()
+    onTriggered: if (root.opened && !root.managingFeeds && root.news && focusScope.activeFocus) root.news.markArticleSeen(root.currentArticle)
   }
 
   FloatingWindow {
@@ -214,6 +221,10 @@ Item {
       id: focusScope
       anchors.fill: parent
       focus: true
+      onActiveFocusChanged: {
+        if (activeFocus) markReadTimer.restart()
+        else markReadTimer.stop()
+      }
 
       // Feed-manager controls can retain active focus after the manager is
       // hidden. Handle reader navigation before those child controls so a
@@ -228,7 +239,7 @@ Item {
           }
           return
         }
-        if (openOriginalButton.activeFocus
+        if ((openOriginalButton.activeFocus || manageButton.activeFocus || refreshButton.activeFocus || closeButton.activeFocus)
             && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)) return
         if (event.key === Qt.Key_Escape) {
           root.dismiss()
@@ -292,7 +303,7 @@ Item {
             spacing: Style.space(2)
 
             Text {
-              text: "OMARCHY NEWS"
+              text: "RSS READER"
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.iconLarge
@@ -316,6 +327,8 @@ Item {
           }
 
           PanelActionButton {
+            id: manageButton
+            focusable: true
             iconText: root.managingFeeds ? "󰅖" : "󰒓"
             tooltipText: root.managingFeeds ? "Return to Reader (Esc)" : "Manage feeds (F)"
             foreground: root.foreground
@@ -327,6 +340,8 @@ Item {
           }
 
           PanelActionButton {
+            id: refreshButton
+            focusable: true
             iconText: "󰑐"
             tooltipText: "Refresh news (R)"
             foreground: root.foreground
@@ -336,6 +351,8 @@ Item {
           }
 
           PanelActionButton {
+            id: closeButton
+            focusable: true
             iconText: "󰅖"
             tooltipText: "Close (Esc)"
             foreground: root.foreground

@@ -200,6 +200,7 @@ Item {
             required property int index
             width: collectionList.width
             height: Style.space(46)
+            activeFocusOnTab: true
             current: root.editingIndex === index
             hasCursor: activeFocus || collectionMouse.containsMouse
             foreground: root.accent

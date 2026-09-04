@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import ipaddress
@@ -172,8 +173,9 @@ class ArticleMarkupParser(HTMLParser):
     block_tags = {"article", "blockquote", "br", "div", "h1", "h2", "h3", "h4", "li", "p", "pre"}
     skipped_tags = {"script", "style"}
 
-    def __init__(self, limit: int) -> None:
+    def __init__(self, limit: int, base_url: str = "") -> None:
         super().__init__(convert_charrefs=True)
+        self.base_url = base_url
         self.limit = limit
         self.visible_chars = 0
         self.parts: list[str] = []
@@ -197,7 +199,7 @@ class ArticleMarkupParser(HTMLParser):
             self.parts.append("• ")
         if tag == "a":
             href = next((value for name, value in attrs if name.lower() == "href"), None)
-            safe_href = external_url(href)
+            safe_href = external_url(urljoin(self.base_url, href or "")) if href else ""
             self.link_stack.append(bool(safe_href))
             if safe_href:
                 self.parts.append(f'<a href="{escape(safe_href, quote=True)}">')
@@ -253,8 +255,8 @@ def external_url(value: str | None) -> str:
     return url
 
 
-def article_markup(value: str | None, limit: int = MAX_ARTICLE_CHARS) -> str:
-    parser = ArticleMarkupParser(limit)
+def article_markup(value: str | None, limit: int = MAX_ARTICLE_CHARS, base_url: str = "") -> str:
+    parser = ArticleMarkupParser(limit, base_url)
     parser.feed(value or "")
     parser.close()
     return parser.markup()
@@ -289,6 +291,32 @@ def element_markup(node: ET.Element | None) -> str:
     for nested in node:
         parts.append(ET.tostring(nested, encoding="unicode", method="html"))
     return "".join(parts)
+
+
+def atom_markup(node: ET.Element | None, base_url: str) -> tuple[str, str]:
+    if node is None:
+        return "", base_url
+    base_url = urljoin(base_url, node.get("{http://www.w3.org/XML/1998/namespace}base", ""))
+    kind = node.get("type", "text")
+    if kind in {"text", "text/plain"}:
+        return escape(element_text(node)), base_url
+    if kind in {"html", "text/html"}:
+        return node.text or "", base_url
+    if kind != "xhtml":
+        return "", base_url
+    node = copy.deepcopy(node)
+
+    def normalize(element: ET.Element, base: str) -> None:
+        base = urljoin(base, element.get("{http://www.w3.org/XML/1998/namespace}base", ""))
+        element.tag = local_name(element.tag)
+        if "href" in element.attrib:
+            element.set("href", urljoin(base, element.get("href", "")))
+        for nested in element:
+            normalize(nested, base)
+
+    for nested in node:
+        normalize(nested, base_url)
+    return element_markup(node), base_url
 
 
 def state_dir() -> Path:
@@ -435,19 +463,23 @@ def parse_feed(
 
     seen = set()
     for node in nodes:
+        body_base = str(source["url"])
         if is_atom:
+            xml_base = "{http://www.w3.org/XML/1998/namespace}base"
+            entry_base = urljoin(urljoin(str(source["url"]), root.get(xml_base, "")), node.get(xml_base, ""))
             atom_links = children(node, "link")
             author_node = child(node, "author")
             raw_link = next(
                 (
-                    candidate.get("href", "")
+                    urljoin(urljoin(entry_base, candidate.get(xml_base, "")), candidate.get("href", ""))
                     for candidate in atom_links
                     if candidate.get("rel", "alternate") in {"", "alternate"}
                 ),
                 "",
             )
-            raw_summary = element_markup(child(node, "summary"))
-            raw_content = element_markup(child(node, "content"))
+            raw_summary, summary_base = atom_markup(child(node, "summary"), entry_base)
+            raw_content, content_base = atom_markup(child(node, "content"), entry_base)
+            body_base = content_base if raw_content else summary_base
             raw_author = child_text(author_node, "name") if author_node is not None else ""
             raw_published = child_text(node, "published") or child_text(node, "updated")
             raw_guid = child_text(node, "id")
@@ -460,6 +492,8 @@ def parse_feed(
             raw_guid = child_text(node, "guid")
 
         link = source_article_url(raw_link, source)
+        if not is_atom:
+            body_base = link
         title = clean_text(child_text(node, "title"), 240)
         if not link or not title:
             continue
@@ -470,7 +504,7 @@ def parse_feed(
         summary = article_text(raw_summary, 500)
         body = raw_content or raw_summary
         content = article_text(body)
-        content_html = article_markup(body)
+        content_html = article_markup(body, base_url=body_base)
         items.append(
             {
                 "id": f'{source["id"]}:{guid}',

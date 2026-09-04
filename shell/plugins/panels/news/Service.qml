@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "Collections.js" as Collections
+import "ReadState.js" as ReadState
 
 Item {
   id: root
@@ -11,6 +12,7 @@ Item {
   property var items: []
   property var sources: []
   property var lastSeenBySource: ({})
+  property var readIds: []
   property string fetchedAt: ""
   property string lastError: ""
   property string configurationError: ""
@@ -136,21 +138,8 @@ Item {
   function countUnread() {
     if (!stateLoaded || items.length === 0) return 0
     var total = 0
-    for (var sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
-      var sourceId = String(sources[sourceIndex].id || "")
-      var lastSeenId = String(lastSeenBySource[sourceId] || "")
-      if (lastSeenId === "") continue
-      var sourceItems = itemsForSource(sourceId)
-      var found = false
-      for (var i = 0; i < sourceItems.length; i++) {
-        if (String(sourceItems[i].id || "") === lastSeenId) {
-          total += i
-          found = true
-          break
-        }
-      }
-      if (!found) total += Math.min(sourceItems.length, itemLimit)
-    }
+    for (var i = 0; i < items.length; i++)
+      if (!ReadState.isRead(items[i], items, readIds, lastSeenBySource)) total++
     return total
   }
 
@@ -194,25 +183,18 @@ Item {
     }
   }
 
-  function markAllSeen() {
-    if (items.length === 0) return
-    var next = ({})
-    var marked = ({})
-    for (var key in lastSeenBySource) next[key] = lastSeenBySource[key]
-    for (var i = 0; i < items.length; i++) {
-      var sourceId = String(items[i].sourceId || "omarchy")
-      if (!marked[sourceId]) {
-        next[sourceId] = String(items[i].id || "")
-        marked[sourceId] = true
-      }
-    }
-    lastSeenBySource = next
-    readState.setText(JSON.stringify({ version: 2, lastSeenBySource: next }, null, 2) + "\n")
+  function markArticleSeen(article) {
+    if (!stateLoaded || !article) return
+    var next = ReadState.mark(readIds, article.id)
+    if (next === readIds) return
+    readIds = next
+    readState.setText(JSON.stringify({ version: 3, readIds: next, lastSeenBySource: lastSeenBySource }, null, 2) + "\n")
   }
 
   function loadReadState(raw) {
     try {
       var parsed = JSON.parse(String(raw || ""))
+      readIds = Array.isArray(parsed.readIds) ? parsed.readIds.filter(function(id) { return typeof id === "string" }).slice(-4096) : []
       if (parsed.lastSeenBySource && typeof parsed.lastSeenBySource === "object") {
         lastSeenBySource = parsed.lastSeenBySource
       } else if (parsed.lastSeenId) {
