@@ -3,7 +3,8 @@ import Omarchy.PluginPresentation 1.0
 
 Item {
   objectName: String(Color.foreground) === "#123456"
-    && Style.bar.statusSlot === 23 ? "presentation-themed" : "presentation-loaded"
+    && Style.bar.statusSlot === 23 && Style.bar.position === "bottom"
+      ? "presentation-themed" : "presentation-loaded"
   width: 320
   height: 240
 

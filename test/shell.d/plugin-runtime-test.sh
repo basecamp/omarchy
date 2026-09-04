@@ -36,8 +36,12 @@ grep -F 'PanelWindow {' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null 
   fail "secure panels are not owned by the Quickshell layer host"
 [[ -f $runtime_root/shell/TrustedSurfaceInputMask.qml ]] ||
   fail "secure surfaces lack a reusable trusted input mask"
-grep -F 'mask: TrustedSurfaceInputMask {' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
-  fail "secure panels do not use the trusted compositor input mask"
+grep -F 'id: dismissArea' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panels lack trusted outside-click dismissal"
+grep -F 'onPressed: panelController.hide()' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panel dismissal is not owned by the trusted host"
+grep -F 'bar.requestPopout(window)' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panels do not participate in native bar popout coordination"
 grep -F 'mask: TrustedSurfaceInputMask {' "$runtime_root/shell/SecureOverlaySurface.qml" >/dev/null ||
   fail "secure overlays do not use the trusted compositor input mask"
 grep -F 'required property bool dynamicInputRegions' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
@@ -48,10 +52,12 @@ grep -F 'surface.inputRegions.length <= root.maximumRegionCount' "$runtime_root/
   fail "trusted input masks do not bound projected protocol regions"
 grep -F 'x: Math.floor((window.width - width) / 2)' "$runtime_root/shell/SecureOverlaySurface.qml" >/dev/null ||
   fail "secure overlay placement can silently round trusted region coordinates"
-grep -F 'implicitHeight: Math.min(maximumHeight, screen ? screen.height : maximumHeight)' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+grep -F 'height: Math.min(window.maximumHeight,' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
   fail "secure panel geometry can exceed its admitted height"
-grep -F 'anchors.fill: parent' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
-  fail "secure panel allocation does not exactly match its trusted window"
+grep -F 'width: Math.min(window.maximumWidth,' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panel geometry can exceed its admitted width"
+grep -F 'model: window.opened ? Quickshell.screens : []' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panel dismissal does not cover other outputs"
 grep -F 'window.barInset + window.panelGap' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
   fail "secure panels are not offset from the active shell bar"
 grep -F 'model: PluginManager.barSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
@@ -148,6 +154,8 @@ grep -F 'PluginManager.configurePresentationHost(root)' "$runtime_root/shell/Sec
   fail "secure workers do not receive the bounded host presentation snapshot"
 grep -F 'function readSecurePluginPresentation()' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "the shell lacks its authority-free presentation projection"
+grep -F 'barPosition: String(bar ? bar.position : "top")' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure workers do not receive authority-free bar-edge placement state"
 grep -F 'names.indexOf(requested) !== -1 ? requested' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "requested output placement is not restricted to the live host allowlist"
 grep -F 'surfaceScreenName(sourceSurface)' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||

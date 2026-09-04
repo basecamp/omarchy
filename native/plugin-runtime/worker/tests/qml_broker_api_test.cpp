@@ -516,7 +516,7 @@ void permission_awareness(worker::WorkerEndpoint &endpoint, int host,
               !api.applySettingsSnapshot(78, settings_bytes),
           "duplicate or wrong-generation settings snapshot was accepted");
   const std::string presentation_document =
-      R"({"accent":"#112233","background":"#010203","barBackground":"#040506","barForeground":"#f0f1f2","barSize":26,"fontFamily":"monospace","foreground":"#ffffff","iconSlot":27,"statusSlot":21,"urgent":"#ff0000"})";
+      R"({"accent":"#112233","background":"#010203","barBackground":"#040506","barForeground":"#f0f1f2","barPosition":"top","barSize":26,"fontFamily":"monospace","foreground":"#ffffff","iconSlot":27,"statusSlot":21,"urgent":"#ff0000"})";
   const auto presentation_bytes =
       std::as_bytes(std::span(presentation_document));
   require(api.applyPresentationSnapshot(77, presentation_bytes) &&

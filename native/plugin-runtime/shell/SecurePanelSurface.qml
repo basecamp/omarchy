@@ -25,12 +25,19 @@ PanelWindow {
     ? Math.max(0, Number(bar.barSize || 0)) : 0
   readonly property int panelGap: Style.space(8)
 
-  onOpenedChanged: console.info(
-    "omarchy-plugin-security stage=qml-panel-state decision="
+  onOpenedChanged: {
+    console.info("omarchy-plugin-security stage=qml-panel-state decision="
       + (opened ? "opened" : "closed")
       + " surface=" + surfaceKey
       + " generation=" + generation
       + " input-sequence=" + lastIntentSequence)
+    if (bar) {
+      if (opened) bar.requestPopout(window)
+      else bar.releasePopout(window)
+    }
+  }
+
+  function close() { panelController.hide() }
 
   function attachIfReady() {
     if (!remote.connected && remote.Window.window !== null && remote.width > 0 && remote.height > 0)
@@ -76,29 +83,29 @@ PanelWindow {
   // itself participates in window visibility and that creates a binding loop.
   visible: opened
   anchors {
-    top: window.barPosition !== "bottom"
-    bottom: window.barPosition === "bottom"
-    left: window.barPosition === "left"
-    right: window.barPosition !== "left"
+    top: true
+    bottom: true
+    left: true
+    right: true
   }
-  margins {
-    top: window.barPosition === "top" ? window.barInset + window.panelGap
-      : window.barPosition !== "bottom" ? window.panelGap : 0
-    bottom: window.barPosition === "bottom" ? window.barInset + window.panelGap : 0
-    left: window.barPosition === "left" ? window.barInset + window.panelGap : 0
-    right: window.barPosition === "right" ? window.barInset + window.panelGap
-      : window.barPosition !== "left" ? window.panelGap : 0
-  }
-  implicitWidth: Math.min(maximumWidth, screen ? screen.width : maximumWidth)
-  implicitHeight: Math.min(maximumHeight, screen ? screen.height : maximumHeight)
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "omarchy-plugin-v2-panel"
   WlrLayershell.layer: WlrLayer.Overlay
   WlrLayershell.keyboardFocus: opened ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
-  mask: TrustedSurfaceInputMask {
-    surface: remote
-    dynamicInputRegions: window.dynamicInputRegions
+  // The trusted host owns dismissal. Keep the bar strip click-through so the
+  // same icon can close the panel and another icon can replace it directly.
+  // Input admitted to the remote item remains constrained by that item's
+  // authenticated worker regions; the rest reaches dismissArea instead.
+  mask: Region {
+    x: window.barPosition === "left" ? window.barInset : 0
+    y: window.barPosition === "top" ? window.barInset : 0
+    width: Math.max(0, window.width
+      - ((window.barPosition === "left" || window.barPosition === "right")
+        ? window.barInset : 0))
+    height: Math.max(0, window.height
+      - ((window.barPosition === "top" || window.barPosition === "bottom")
+        ? window.barInset : 0))
   }
 
   PanelController { id: panelController }
@@ -116,12 +123,58 @@ PanelWindow {
     }
   }
 
+  MouseArea {
+    id: dismissArea
+    anchors.fill: parent
+    enabled: window.opened
+    acceptedButtons: Qt.AllButtons
+    onPressed: panelController.hide()
+  }
+
   RemotePluginSurface {
     id: remote
-    anchors.fill: parent
+    x: window.barPosition === "left"
+      ? window.barInset + window.panelGap
+      : window.width - width - (window.barPosition === "right"
+        ? window.barInset + window.panelGap : window.panelGap)
+    y: window.barPosition === "bottom"
+      ? window.height - window.barInset - window.panelGap - height
+      : (window.barPosition === "top" ? window.barInset : 0) + window.panelGap
+    width: Math.min(window.maximumWidth,
+      Math.max(0, window.width - window.barInset - window.panelGap))
+    height: Math.min(window.maximumHeight,
+      Math.max(0, window.height - window.barInset - window.panelGap))
     Window.onWindowChanged: window.attachIfReady()
     onWidthChanged: window.attachIfReady()
     onHeightChanged: window.attachIfReady()
+  }
+
+  // A click on another output is outside this panel too. These trusted,
+  // transparent surfaces never forward input to the plugin.
+  Variants {
+    model: window.opened ? Quickshell.screens : []
+
+    delegate: Component {
+      PanelWindow {
+        required property var modelData
+
+        screen: modelData
+        visible: window.opened && !!window.screen
+          && modelData.name !== window.screen.name
+        color: "transparent"
+        exclusionMode: ExclusionMode.Ignore
+        WlrLayershell.namespace: "omarchy-plugin-v2-panel-dismiss"
+        WlrLayershell.layer: WlrLayer.Overlay
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+        anchors { top: true; bottom: true; left: true; right: true }
+
+        MouseArea {
+          anchors.fill: parent
+          acceptedButtons: Qt.AllButtons
+          onPressed: panelController.hide()
+        }
+      }
+    }
   }
 
   Component.onCompleted: {

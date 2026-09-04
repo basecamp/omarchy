@@ -1482,6 +1482,7 @@ void hostile_loading() {
       {QStringLiteral("barForeground"), QStringLiteral("#123456")},
       {QStringLiteral("barBackground"), QStringLiteral("#654321")},
       {QStringLiteral("fontFamily"), QStringLiteral("monospace")},
+      {QStringLiteral("barPosition"), QStringLiteral("bottom")},
       {QStringLiteral("barSize"), 26},
       {QStringLiteral("iconSlot"), 27},
       {QStringLiteral("statusSlot"), 23}};

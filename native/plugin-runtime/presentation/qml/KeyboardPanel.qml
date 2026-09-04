@@ -13,7 +13,10 @@ Rectangle {
   visible: open
   width: contentWidth
   height: contentHeight
-  anchors.centerIn: parent
+  anchors.top: Style.bar.position !== "bottom"
+  anchors.bottom: Style.bar.position === "bottom"
+  anchors.left: Style.bar.position === "left"
+  anchors.right: Style.bar.position !== "left"
   color: Color.popups.background
 
   function fittedContentWidth(value) {

@@ -21,6 +21,7 @@ QtObject {
     caption: 12
   })
   readonly property var bar: ({
+    position: hostPresentation.barPosition || "top",
     size: hostPresentation.barSize || 26,
     iconSlot: hostPresentation.iconSlot || 27,
     statusSlot: hostPresentation.statusSlot || 21

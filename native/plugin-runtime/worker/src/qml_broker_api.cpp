@@ -68,6 +68,14 @@ parse_presentation_snapshot(std::span<const std::byte> payload) {
           entry->toString().toUtf8().size() > 128)
         return std::nullopt;
       result.insert(entry.key(), entry->toString());
+    } else if (entry.key() == QStringLiteral("barPosition")) {
+      if (!entry->isString() ||
+          (entry->toString() != QStringLiteral("top") &&
+           entry->toString() != QStringLiteral("bottom") &&
+           entry->toString() != QStringLiteral("left") &&
+           entry->toString() != QStringLiteral("right")))
+        return std::nullopt;
+      result.insert(entry.key(), entry->toString());
     } else {
       return std::nullopt;
     }

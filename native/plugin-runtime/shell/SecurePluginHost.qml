@@ -51,6 +51,7 @@ Item {
       barForeground: String(bar ? bar.barForeground : Color.bar.text),
       barBackground: String(bar ? bar.background : Color.bar.background),
       fontFamily: String(bar ? bar.fontFamily : Style.font.family),
+      barPosition: String(bar ? bar.position : "top"),
       barSize: Number(bar ? bar.barSize : Style.bar.sizeHorizontal),
       iconSlot: Number(Style.bar.iconSlot),
       statusSlot: Number(Style.bar.statusSlot)

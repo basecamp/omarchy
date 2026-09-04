@@ -372,6 +372,8 @@ struct WorkerRuntime::Impl {
                         QStringLiteral("#090a0c"));
     presentation.insert(QStringLiteral("fontFamily"),
                         QStringLiteral("sans-serif"));
+    presentation.insert(QStringLiteral("barPosition"),
+                        QStringLiteral("top"));
     presentation.insert(QStringLiteral("barSize"), 26);
     presentation.insert(QStringLiteral("iconSlot"), 27);
     presentation.insert(QStringLiteral("statusSlot"), 21);
@@ -562,11 +564,12 @@ RuntimeResult WorkerRuntime::bind_runtime_api(QObject &runtime_api) {
 }
 
 bool WorkerRuntime::apply_presentation(const QVariantMap &presentation) {
-  static const std::array<QString, 10> keys{
+  static const std::array<QString, 11> keys{
       QStringLiteral("foreground"),    QStringLiteral("background"),
       QStringLiteral("accent"),        QStringLiteral("urgent"),
       QStringLiteral("barForeground"), QStringLiteral("barBackground"),
-      QStringLiteral("fontFamily"),    QStringLiteral("barSize"),
+      QStringLiteral("fontFamily"),    QStringLiteral("barPosition"),
+      QStringLiteral("barSize"),
       QStringLiteral("iconSlot"),      QStringLiteral("statusSlot")};
   if (implementation_->presentation_applied ||
       presentation.size() != static_cast<qsizetype>(keys.size()))
