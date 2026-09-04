@@ -6,6 +6,7 @@ import QtQuick.Effects
 import QtQuick.Shapes
 import qs.Commons
 import qs.Ui
+import "BackgroundModel.js" as BackgroundModel
 
 Item {
   id: root
@@ -13,6 +14,7 @@ Item {
   readonly property string home: Quickshell.env("HOME")
   readonly property string stateHome: home + "/.local/state"
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
+  readonly property real lowMemoryLimitKiB: 4 * 1024 * 1024
 
   property string currentBackground: ""
   property string displayedBackground: ""
@@ -25,12 +27,30 @@ Item {
   property string pendingColorsRaw: ""
   property string pendingShellRaw: ""
   property real revealProgress: 1
+  property real availableMemoryKiB: -1
+  property bool memoryReady: false
+  property bool backgroundRefreshPending: false
+  readonly property bool lowMemory: memoryReady && BackgroundModel.isLowMemory(availableMemoryKiB, lowMemoryLimitKiB)
 
   function imageUrl(path) {
     return Util.fileUrl(path)
   }
 
+  function updateAvailableMemory(raw) {
+    if (memoryReady) return
+    availableMemoryKiB = BackgroundModel.parseAvailableMemoryKiB(raw)
+    memoryReady = true
+    if (backgroundRefreshPending) {
+      backgroundRefreshPending = false
+      refreshBackground()
+    }
+  }
+
   function refreshBackground() {
+    if (!memoryReady) {
+      backgroundRefreshPending = true
+      return
+    }
     if (!readlinkProc.running) readlinkProc.running = true
   }
 
@@ -118,6 +138,15 @@ Item {
     id: themeSwitchProc
     command: ["bash", "-c", "theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\" >/dev/null 2>&1 &"]
     onExited: root.refreshBackground()
+  }
+
+  FileView {
+    id: memoryFile
+    path: "/proc/meminfo"
+    watchChanges: false
+    printErrors: false
+    onLoaded: root.updateAvailableMemory(text())
+    onLoadFailed: root.updateAvailableMemory("")
   }
 
   Process {
@@ -222,6 +251,11 @@ Item {
         id: base
         anchors.fill: parent
         source: root.imageUrl(root.displayedBackground)
+        // With PreserveAspectCrop, Qt decodes the cover-sized image needed for
+        // this physical display while avoiding full-resolution storage.
+        sourceSize: root.lowMemory
+          ? Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
+          : undefined
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: true
@@ -238,6 +272,9 @@ Item {
         id: oldFrame
         anchors.fill: parent
         source: root.imageUrl(root.oldBackground)
+        sourceSize: root.lowMemory
+          ? Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
+          : undefined
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
         cache: false
@@ -264,6 +301,9 @@ Item {
           id: incomingFrame
           anchors.fill: parent
           source: root.imageUrl(root.incomingBackground)
+          sourceSize: root.lowMemory
+            ? Qt.size(Math.ceil(width * Screen.devicePixelRatio), Math.ceil(height * Screen.devicePixelRatio))
+            : undefined
           fillMode: Image.PreserveAspectCrop
           asynchronous: true
           cache: false
