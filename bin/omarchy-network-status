@@ -79,12 +79,20 @@ print_status() {
 
 ping_latency_ms() {
   local host=$1
+  local iface=${2:-}
+  local args=(-n -c 1 -W 1)
 
-  LC_ALL=C ping -n -c 1 -W 1 "$host" 2>/dev/null | awk -F'time[=<]' '/time[=<]/ { split($2, parts, " "); print parts[1]; exit }'
+  # A selected adapter may not own the default route. Bind the probe to that
+  # interface so the panel's latency/loss values describe the adapter it is
+  # showing rather than whichever connection wins route selection.
+  [[ -n $iface ]] && args+=( -I "$iface" )
+  LC_ALL=C ping "${args[@]}" "$host" 2>/dev/null |
+    awk -F'time[=<]' '/time[=<]/ { split($2, parts, " "); print parts[1]; exit }'
 }
 
 print_ping_samples() {
   local gateway=$1
+  local iface=$2
   local tmpdir router_file internet_file
   local router_pid="" internet_pid=""
 
@@ -94,11 +102,11 @@ print_ping_samples() {
   internet_file="$tmpdir/internet"
 
   if [[ -n $gateway ]]; then
-    ping_latency_ms "$gateway" >"$router_file" &
+    ping_latency_ms "$gateway" "$iface" >"$router_file" &
     router_pid=$!
   fi
 
-  ping_latency_ms "$internet_probe" >"$internet_file" &
+  ping_latency_ms "$internet_probe" "$iface" >"$internet_file" &
   internet_pid=$!
 
   if [[ -n $router_pid ]]; then
@@ -167,7 +175,7 @@ print_verbose() {
     [[ -r /sys/class/net/$iface/duplex ]] && printf 'duplex\t%s\n' "$(cat /sys/class/net/$iface/duplex)"
   fi
 
-  print_ping_samples "$gw"
+  print_ping_samples "$gw" "$iface"
 }
 
 if [[ $verbose == "true" ]]; then
