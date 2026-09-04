@@ -221,14 +221,14 @@ int main() {
 
   const std::array<std::string_view, 4> auth_arguments{
       "auth", "status", "--hostname", "github.com"};
-  const std::array<std::string_view, 6> notification_arguments{
-      "api", "--paginate", "--slurp", "-H",
+  const std::array<std::string_view, 4> notification_arguments{
+      "api", "-H",
       "Accept: application/vnd.github+json",
-      "/notifications?all=false&participating=false&per_page=100"};
-  const std::array<std::string_view, 6> search_arguments{
-      "api", "--paginate", "--slurp", "-H",
+      "/notifications?all=false&participating=false&per_page=10&page=1"};
+  const std::array<std::string_view, 4> search_arguments{
+      "api", "-H",
       "Accept: application/vnd.github+json",
-      "/search/issues?q=is%3Aopen+is%3Apr+review-requested%3A%40me+draft%3Afalse+archived%3Afalse&per_page=100"};
+      "/search/issues?q=is%3Aopen+is%3Apr+review-requested%3A%40me+draft%3Afalse+archived%3Afalse&per_page=10&page=37"};
   const std::array<std::string_view, 6> pull_arguments{
       "api", "graphql", "-f",
       "query=query($search:String!) { search(query:$search,type:ISSUE,first:50) { issueCount nodes { ... on PullRequest { number title url updatedAt isDraft repository { nameWithOwner } commits(last:1) { nodes { commit { statusCheckRollup { state } } } } } } } } }",
@@ -268,11 +268,19 @@ int main() {
       "last_read_at=@/etc/passwd"};
   const std::array<std::string_view, 4> alternate_host_arguments{
       "auth", "status", "--hostname", "attacker.example"};
+  const std::array<std::string_view, 4> unbounded_page_arguments{
+      "api", "-H", "Accept: application/vnd.github+json",
+      "/notifications?all=false&participating=false&per_page=100&page=1"};
+  const std::array<std::string_view, 4> zero_page_arguments{
+      "api", "-H", "Accept: application/vnd.github+json",
+      "/notifications?all=false&participating=false&per_page=10&page=0"};
   require(rejected(16, token_arguments) && rejected(17, input_arguments) &&
               rejected(18, content_arguments) &&
               rejected(19, file_field_arguments) &&
-              rejected(20, alternate_host_arguments),
-          "GitHub profile admitted a token, file, broad endpoint, or alternate host escape");
+              rejected(20, alternate_host_arguments) &&
+              rejected(21, unbounded_page_arguments) &&
+              rejected(22, zero_page_arguments),
+          "GitHub profile admitted a token, file, broad endpoint, alternate host, or unbounded page escape");
   require(finish(child) == 0, "GitHub policy validator did not exit cleanly");
   std::cout << "command executor tests passed\n";
 }
