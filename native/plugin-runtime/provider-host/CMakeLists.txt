@@ -23,6 +23,8 @@ target_link_libraries(omarchy-plugin-provider-host PUBLIC
 
 set(OMARCHY_COMMAND_CONTRACT_DIGEST
   "7cfb8547d49ea0d43248227c049f19d9f711c7838452789c9ef2fdfe41e82142")
+set(OMARCHY_DESKTOP_OPEN_CONTRACT_DIGEST
+  "d678287160034f2311446423b8c1d6847b80abc0ea62233036c578611387622c")
 configure_file(cmake/command_contract.hpp.in
   "${CMAKE_CURRENT_BINARY_DIR}/generated/command_contract.hpp" @ONLY)
 add_executable(omarchy-plugin-command-executor
@@ -36,11 +38,24 @@ target_link_libraries(omarchy-plugin-command-executor PRIVATE
   Qt6::Core)
 install(TARGETS omarchy-plugin-command-executor
   RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
+add_executable(omarchy-plugin-desktop-opener
+  src/desktop_open_provider.cpp)
+target_compile_features(omarchy-plugin-desktop-opener PRIVATE cxx_std_20)
+target_compile_options(omarchy-plugin-desktop-opener PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+target_compile_definitions(omarchy-plugin-desktop-opener PRIVATE
+  OMARCHY_DESKTOP_OPEN_CONTRACT_DIGEST="${OMARCHY_DESKTOP_OPEN_CONTRACT_DIGEST}")
+target_link_libraries(omarchy-plugin-desktop-opener PRIVATE Qt6::Core)
+install(TARGETS omarchy-plugin-desktop-opener
+  RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
 install(FILES commands/github-api-v1.policy
   DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/commands.d")
 configure_file(cmake/install_command_provider.cmake.in
   "${CMAKE_CURRENT_BINARY_DIR}/install_command_provider.cmake" @ONLY)
 install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/install_command_provider.cmake")
+configure_file(cmake/install_desktop_open_provider.cmake.in
+  "${CMAKE_CURRENT_BINARY_DIR}/install_desktop_open_provider.cmake" @ONLY)
+install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/install_desktop_open_provider.cmake")
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-command-executor-test-peer
@@ -73,6 +88,31 @@ if(BUILD_TESTING)
     COMMAND omarchy-plugin-command-executor-test)
   set_tests_properties(plugin-command-executor PROPERTIES
     TIMEOUT 10 LABELS "unit;security;providers;commands;adversarial")
+
+  add_executable(omarchy-plugin-desktop-opener-test-peer
+    src/desktop_open_provider.cpp)
+  target_compile_features(omarchy-plugin-desktop-opener-test-peer PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-desktop-opener-test-peer PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_definitions(omarchy-plugin-desktop-opener-test-peer PRIVATE
+    OMARCHY_DESKTOP_OPEN_CONTRACT_DIGEST="${OMARCHY_DESKTOP_OPEN_CONTRACT_DIGEST}"
+    OMARCHY_DESKTOP_OPEN_TESTING=1)
+  target_link_libraries(omarchy-plugin-desktop-opener-test-peer PRIVATE Qt6::Core)
+
+  add_executable(omarchy-plugin-desktop-opener-test
+    tests/desktop_open_provider_test.cpp)
+  target_compile_features(omarchy-plugin-desktop-opener-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-desktop-opener-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_definitions(omarchy-plugin-desktop-opener-test PRIVATE
+    DESKTOP_OPENER_PATH="$<TARGET_FILE:omarchy-plugin-desktop-opener-test-peer>"
+    DESKTOP_OPEN_CONTRACT_DIGEST="${OMARCHY_DESKTOP_OPEN_CONTRACT_DIGEST}")
+  target_link_libraries(omarchy-plugin-desktop-opener-test PRIVATE Qt6::Core)
+  add_dependencies(omarchy-plugin-desktop-opener-test
+    omarchy-plugin-desktop-opener-test-peer)
+  add_test(NAME plugin-desktop-opener COMMAND omarchy-plugin-desktop-opener-test)
+  set_tests_properties(plugin-desktop-opener PROPERTIES
+    TIMEOUT 5 LABELS "unit;security;providers;desktop;gesture;adversarial")
 
   add_executable(omarchy-plugin-provider-peer tests/provider_peer.cpp)
   target_compile_features(omarchy-plugin-provider-peer PRIVATE cxx_std_20)

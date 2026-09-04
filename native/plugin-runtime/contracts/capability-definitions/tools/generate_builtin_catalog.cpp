@@ -73,9 +73,9 @@ constexpr std::array catalog{
                 "Opens a user-visible HTTPS address after one fresh gesture",
                 RiskLevel::moderate, RevocationPolicy::deny_new,
                 "desktop-open-uri",
-                "desktop-open-uri-v1;request=opaque-resource-handle;"
+                "desktop-open-uri-v1;request=url,presentation;response=result;"
                 "scope=https-origins-gesture;gesture=fresh;scheme=https;"
-                "target=revalidated-by-provider",
+                "origin=revalidated-by-provider;launch=trusted-desktop",
                 open_operations},
     CatalogSpec{
         "system.observe", "system.observe-v1",

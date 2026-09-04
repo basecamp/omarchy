@@ -1,5 +1,6 @@
 755 bin/omarchy-plugin-qml-worker
 755 bin/omarchy-plugin-command-executor
+755 bin/omarchy-plugin-desktop-opener
 644 capabilities.d/device.control.capability
 644 capabilities.d/device.observe.capability
 644 capabilities.d/external.open-uri.https.capability
@@ -15,6 +16,7 @@
 644 metadata/runtime-paths-v1.txt
 644 policy/builtin-capabilities-v1.json
 644 providers.d/bash-execute.profile
+644 providers.d/external-open-uri-https.profile
 755 qml/Omarchy/PluginHost/libomarchy-plugin-host-bridge.so
 644 qml/Omarchy/PluginHost/omarchy-plugin-host-bridge.qmltypes
 644 qml/Omarchy/PluginHost/qmldir

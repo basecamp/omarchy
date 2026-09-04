@@ -1,0 +1,21 @@
+set(runtime_root "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@OMARCHY_PLUGIN_INSTALL_ROOT@")
+set(opener_path "${runtime_root}/bin/omarchy-plugin-desktop-opener")
+set(profile_root "${runtime_root}/providers.d")
+if(NOT EXISTS "${opener_path}")
+  message(FATAL_ERROR "desktop opener was not installed before its provider profile")
+endif()
+file(SHA256 "${opener_path}" opener_digest)
+file(MAKE_DIRECTORY "${profile_root}")
+file(CHMOD "${profile_root}"
+  PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+file(WRITE "${profile_root}/external-open-uri-https.profile"
+  "schema=1\n"
+  "adapter-class=desktop-open-uri\n"
+  "contract-digest=@OMARCHY_DESKTOP_OPEN_CONTRACT_DIGEST@\n"
+  "abi-version=1\n"
+  "group=desktop.open-uri\n"
+  "executable=/usr/@OMARCHY_PLUGIN_INSTALL_ROOT@/bin/omarchy-plugin-desktop-opener\n"
+  "executable-sha256=${opener_digest}\n"
+  "invocation-timeout-ms=5000\n")
+file(CHMOD "${profile_root}/external-open-uri-https.profile"
+  PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)

@@ -163,6 +163,11 @@ expect_failure "retargeted command executor" "command provider profile does not 
 
 reset_fixture
 root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+sed -i 's#^executable=/usr/lib/omarchy/plugin-security/.*/bin/omarchy-plugin-desktop-opener#executable=/usr/bin/xdg-open#' "$root/providers.d/external-open-uri-https.profile"
+expect_failure "retargeted desktop opener" "desktop-open provider profile does not pin the installed opener and capability contract" "$verifier" --staging "$scratch/root" "$version"
+
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
 sed -i 's#"executable": "/usr/bin/gh"#"executable": "/usr/bin/sh"#' "$root/commands.d/github-api-v1.policy"
 expect_failure "retargeted GitHub command" "GitHub command policy is invalid" "$verifier" --staging "$scratch/root" "$version"
 
