@@ -27,6 +27,7 @@ Item {
 
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
+  property bool monitorArmed: true
   property bool hasPendingStayAwakePersist: false
   property bool pendingStayAwakePersist: false
   property bool idledThisCycle: false
@@ -35,6 +36,22 @@ Item {
   property string lastEventAt: ""
   property var screensaverWindows: ({})
   property int screensaverWindowCount: 0
+
+  function handleIdleTimeoutsChanged() {
+    logEvent("idle-timeout-rearm", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds)
+    if (root.idledThisCycle) {
+      root.cancelIdleCycle("timeout-change")
+    }
+    if (root.idleEnabled) {
+      root.monitorArmed = false
+      Qt.callLater(function() {
+        root.monitorArmed = true
+      })
+    }
+  }
+
+  onScreensaverTimeoutSecondsChanged: root.handleIdleTimeoutsChanged()
+  onLockTimeoutSecondsChanged: root.handleIdleTimeoutsChanged()
 
   function secondsFromConfig(value, fallback) {
     return IdleModel.secondsFromConfig(value, fallback)
@@ -249,7 +266,7 @@ Item {
 
   IdleMonitor {
     id: idleMonitor
-    enabled: root.idleEnabled
+    enabled: root.idleEnabled && root.monitorArmed
     timeout: root.firstIdleTimeoutSeconds
     respectInhibitors: true
     onIsIdleChanged: root.handleIdleChanged()
