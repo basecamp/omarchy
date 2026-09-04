@@ -1,0 +1,4 @@
+#!/bin/bash
+# omarchy:summary=Collect OpenCode Go (subscription) usage
+# omarchy:hidden=true
+exec "$(dirname "$0")/opencode-usage-base.py" --route go "$@"
