@@ -10,4 +10,27 @@ google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) ;;
 *) browser="chromium.desktop" ;;
 esac
 
-exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${@:2}"
+# Super+Shift+X (and compose/post) call this script with only the URL.
+# Chromium --app skips chromium-flags.conf, so hybrid Intel+NVIDIA
+# machines with mixed monitor scales need these flags here: --app
+# otherwise inherits the eDP scale on HDMI, VA-API points at NVIDIA
+# while the GPU process renders on Intel, and dma-buf overlays play
+# audio with a black frame. Do not add force-device-scale-factor to
+# chromium-flags.conf — it blacks out tabbed Chromium.
+url=$1
+extra=()
+host=${url#*://}
+host=${host%%/*}
+host=${host%%:*}
+host=${host#www.}
+case $host in
+x.com | twitter.com | *.x.com | *.twitter.com)
+  extra=(
+    --force-device-scale-factor=1
+    --disable-accelerated-video-decode
+    --disable-gpu-memory-buffer-video-frames
+  )
+  ;;
+esac
+
+exec setsid uwsm-app -- $(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$browser 2>/dev/null | head -1) --app="$1" "${extra[@]}" "${@:2}"
