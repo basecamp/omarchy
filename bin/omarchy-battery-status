@@ -62,6 +62,18 @@ power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
   print rounded
 }')
 state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
+
+# UPower's state lags the kernel the same way its energy-rate does: a pack held
+# at a charge threshold keeps reporting pending-charge for tens of seconds after
+# it starts drawing again. Use sysfs when it is available.
+if [[ -r $battery_path/status ]]; then
+  case "$(<"$battery_path/status")" in
+    "Charging") state=charging ;;
+    "Discharging") state=discharging ;;
+    "Not charging") state=pending-charge ;;
+    "Full") state=fully-charged ;;
+  esac
+fi
 threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 
@@ -85,13 +97,16 @@ if awk -v rate="${power_rate_raw:-0}" 'BEGIN { exit !(rate <= 0.2) }'; then
   charge_idle=true
 fi
 
+# Holding means no power is moving, so an idle rate is a precondition for every
+# branch below: a stale state label must not report holding while the battery is
+# drawing watts.
 charge_holding=false
-if [[ $ac_online == "true" && -n $threshold_end ]]; then
+if [[ $ac_online == "true" && -n $threshold_end && $charge_idle == "true" ]]; then
   if [[ $state == "pending-charge" ]]; then
     charge_holding=true
   elif [[ $state == "fully-charged" ]] && (( percentage < 99 )); then
     charge_holding=true
-  elif [[ $state == "charging" && $charge_idle == "true" ]] && (( threshold_end < 99 && percentage >= threshold_end )); then
+  elif [[ $state == "charging" ]] && (( threshold_end < 99 && percentage >= threshold_end )); then
     charge_holding=true
   fi
 fi
