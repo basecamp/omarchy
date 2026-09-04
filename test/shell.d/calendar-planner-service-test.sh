@@ -32,12 +32,15 @@ result="$TMPDIR/result.json"
 log="$TMPDIR/quickshell.log"
 mkdir -p "$test_home" "$config_dir"
 cp "$SHELL_TEST_DIR/fixtures/calendar-planner-service/shell.qml" "$config_dir/shell.qml"
+cp "$SHELL_TEST_DIR/fixtures/calendar-planner-service/solver" "$config_dir/solver"
+chmod 755 "$config_dir/solver"
 ln -s "$ROOT/shell/Commons" "$config_dir/Commons"
 
 service_url="file://$ROOT/shell/plugins/panels/clock/Service.qml"
 OMARCHY_PATH="$ROOT" \
 OMARCHY_QML_TEST_RESULT="$result" \
 OMARCHY_QML_SERVICE_URL="$service_url" \
+OMARCHY_CALENDAR_SOLVER="$config_dir/solver" \
 HOME="$test_home" \
 XDG_CONFIG_HOME="$test_home/.config" \
 XDG_CACHE_HOME="$test_home/.cache" \

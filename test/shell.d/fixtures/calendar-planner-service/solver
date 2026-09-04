@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+request=$(head -n 1)
+request_id=$(jq -r '.requestId' <<<"$request")
+revision=$(jq -r '.baseInputRevision' <<<"$request")
+tasks=$(jq -c '.tasks' <<<"$request")
+
+jq -n \
+  --arg request_id "$request_id" \
+  --argjson revision "$revision" \
+  --argjson tasks "$tasks" '
+  def item($task; $offset): {
+    taskId: $task.id,
+    startAt: ("2026-09-04T" + (if $offset == 0 then "09:00:00+02:00" else "09:30:00+02:00" end)),
+    endAt: ("2026-09-04T" + (if $offset == 0 then "09:30:00+02:00" else "10:00:00+02:00" end)),
+    scheduled: true,
+    cognitivePenalty: 0,
+    fatiguePenalty: 0,
+    explanation: "Fits the configured availability without hard conflicts.",
+    diagnostics: {outcome: "scheduled"},
+    busyBlockers: [],
+    omittedBlockerCount: 0
+  };
+  {
+    protocolVersion: 1,
+    requestId: $request_id,
+    ok: true,
+    proposal: {
+      id: "fixture-proposal",
+      status: "ready",
+      baseInputRevision: $revision,
+      requestId: $request_id,
+      horizonStart: "2026-09-04T00:00:00+02:00",
+      horizonDays: 14,
+      timezone: "Europe/Rome",
+      score: {hard: 0, medium: 0, soft: 0},
+      createdAt: "2026-09-04T08:00:00+02:00",
+      items: [item($tasks[0]; 0), item($tasks[1]; 1)],
+      applicabilityReasons: []
+    },
+    error: null
+  }
+  '

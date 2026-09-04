@@ -93,9 +93,9 @@ ShellRoot {
       if (root.service.solveState !== "ready" || !proposal || Number(proposal.baseInputRevision) !== root.service.calendarState.inputRevision) return
       var firstItem = root.item(root.firstTaskId)
       var secondItem = root.item(root.secondTaskId)
-      if (!firstItem || !firstItem.scheduled) root.fail("in-process planner scheduled the prerequisite task")
-      if (!secondItem || !secondItem.scheduled) root.fail("in-process planner scheduled the dependent task")
-      if (firstItem && secondItem && Date.parse(firstItem.endAt) > Date.parse(secondItem.startAt)) root.fail("in-process planner respected dependency order")
+      if (!firstItem || !firstItem.scheduled) root.fail("solver scheduled the prerequisite task")
+      if (!secondItem || !secondItem.scheduled) root.fail("solver scheduled the dependent task")
+      if (firstItem && secondItem && Date.parse(firstItem.endAt) > Date.parse(secondItem.startAt)) root.fail("solver respected dependency order")
       if (root.service.calendarState.events.length !== 0) root.fail("proposal changed events before Apply")
       if (!root.service.updateTask(root.firstTaskId, { title: "Updated integration task" })) root.fail("service rejected an input update")
       if (!root.service.planNow()) root.fail("service rejected an explicit Plan tasks request")
