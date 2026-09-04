@@ -1,0 +1,18 @@
+#!/bin/bash
+
+set -euo pipefail
+
+nvme_sysfs="${OMARCHY_MACBOOK_NVME_SYSFS:-/sys/class/nvme}"
+found=0
+
+shopt -s nullglob
+for setting in "$nvme_sysfs"/nvme*/device/d3cold_allowed; do
+  [[ -f $setting ]] || continue
+  printf '0\n' >"$setting"
+  echo "Disabled D3cold for $(basename "$(dirname "$(dirname "$setting")")")"
+  found=1
+done
+
+if (( found == 0 )); then
+  echo "No NVMe controller exposes d3cold_allowed; nothing to change"
+fi
