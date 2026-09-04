@@ -97,6 +97,13 @@ QtObject {
     }
   }
 
+  // NumLock sets Qt.KeypadModifier on every keypad event, so an exact
+  // comparison against Qt.NoModifier (or any single modifier) silently drops
+  // numpad input. Mask it out before comparing.
+  function baseModifiers(event) {
+    return event.modifiers & ~Qt.KeypadModifier
+  }
+
   // Standard Qt text-editing keys shared by every searchable panel's filter:
   //   Backspace       delete previous character
   //   Ctrl+Backspace  delete previous word (Qt DeleteStartOfWord)
@@ -109,7 +116,7 @@ QtObject {
     // Alt/Meta-modified sequences belong to other shortcuts — never edit here.
     if (event.modifiers & (Qt.AltModifier | Qt.MetaModifier)) return false
     if (event.key === Qt.Key_U)                     // Ctrl+U only (not Ctrl+Shift+U → Unicode input)
-      return event.modifiers === Qt.ControlModifier
+      return baseModifiers(event) === Qt.ControlModifier
     return event.key === Qt.Key_Backspace           // plain, Shift, or Ctrl Backspace
   }
 

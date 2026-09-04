@@ -1158,7 +1158,7 @@ Item {
             } else if (root.cursorActive) root.activateIndex(root.selectedIndex)
             else root.settleCursor()
             event.accepted = true
-          } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
+          } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (Util.baseModifiers(event) === Qt.NoModifier || Util.baseModifiers(event) === Qt.ShiftModifier)) {
             root.setFilter(root.filterText + event.text)
             event.accepted = true
           }
