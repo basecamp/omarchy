@@ -1,14 +1,42 @@
 #!/bin/bash
 
 build() {
-  add_file /usr/share/omarchy/default/modprobe.d/omarchy-defer-gpu.conf /etc/modprobe.d/99-omarchy-defer-gpu.conf 644
+  local conf
+  conf=$(mktemp)
+  cat > "$conf" <<'EOF'
+# Initramfs-only: keep native GPU drivers out of early boot while hibernation
+# is configured. A driver bound by the boot kernel before the resume hook
+# fires suspends and resets hardware the restored kernel cannot reclaim,
+# which hangs or faults resume-from-hibernate (amdgpu CIK, NVIDIA, nouveau).
+# Deferral is deliberately uniform across vendors: driver-vs-driver hardware
+# reclaim is not vendor-specific and multi-GPU detection is fragile, so every
+# hibernation system trades early KMS for a simpledrm LUKS prompt.
+#
+# blacklist also covers the explicit MODULES=() load: mkinitcpio's init uses
+# modprobe -qab, and -b applies blacklists to explicit names too.
+# Keep the nvidia list in sync with install/hardware/nvidia.sh.
+blacklist amdgpu
+blacklist radeon
+blacklist nouveau
+blacklist nvidia
+blacklist nvidia_drm
+blacklist nvidia_modeset
+blacklist nvidia_uvm
+blacklist i915
+blacklist xe
+EOF
+  add_file "$conf" /etc/modprobe.d/99-omarchy-defer-gpu.conf 644
+  rm -f "$conf"
 }
 
 help() {
   cat <<HELPEOF
-Copies an initramfs-only modprobe blacklist that keeps native GPU drivers out
-of early boot while hibernation is configured, so the resume hook runs before
-any GPU driver touches the hardware. Installed to /etc/initcpio/install by
-omarchy-hibernation-setup and removed by omarchy-hibernation-remove.
+Bakes an initramfs-only modprobe blacklist into the image that keeps native
+GPU drivers out of early boot while hibernation is configured, so the resume
+hook runs before any GPU driver touches the hardware. Self-contained: the
+blacklist never exists on the host filesystem, where modconf would copy it in
+and where it would also affect the running system. Installed to
+/etc/initcpio/install by omarchy-hibernation-setup and removed by
+omarchy-hibernation-remove.
 HELPEOF
 }

@@ -30,22 +30,28 @@ MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 SWAP_FILE="/swap/swapfile"
 RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
 
-# Check if hibernation is already configured (older setups wrote a bare
-# "HOOKS+=(resume)" drop-in; both formats count as configured)
+# Check if hibernation is already configured. A drop-in without the
+# omarchy-defer-gpu hook is an older setup that still early-loads GPU drivers
+# in the initramfs (which hangs or faults resume on many GPUs); fall through
+# and upgrade it in place instead of exiting.
 if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume" "$MKINITCPIO_CONF"; then
-  # Fix empty resume_offset if btrfs map-swapfile failed during initial setup
-  if [[ -f $RESUME_DROP_IN ]] && grep -q 'resume_offset="$' "$RESUME_DROP_IN" && [[ -f $SWAP_FILE ]]; then
-    RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE" 2>/dev/null)
-    if [[ -n $RESUME_OFFSET ]]; then
-      echo "Fixing empty resume_offset ($RESUME_OFFSET)"
-      sudo sed -i "s/resume_offset=\"$/resume_offset=$RESUME_OFFSET\"/" "$RESUME_DROP_IN"
-      if ! $NO_REBUILD; then
-        sudo limine-mkinitcpio
+  if grep -q "omarchy-defer-gpu" "$MKINITCPIO_CONF"; then
+    # Fix empty resume_offset if btrfs map-swapfile failed during initial setup
+    if [[ -f $RESUME_DROP_IN ]] && grep -q 'resume_offset="$' "$RESUME_DROP_IN" && [[ -f $SWAP_FILE ]]; then
+      RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE" 2>/dev/null)
+      if [[ -n $RESUME_OFFSET ]]; then
+        echo "Fixing empty resume_offset ($RESUME_OFFSET)"
+        sudo sed -i "s/resume_offset=\"$/resume_offset=$RESUME_OFFSET\"/" "$RESUME_DROP_IN"
+        if ! $NO_REBUILD; then
+          sudo limine-mkinitcpio
+        fi
       fi
     fi
+    echo "Hibernation is already set up"
+    exit 0
   fi
-  echo "Hibernation is already set up"
-  exit 0
+  echo "Upgrading hibernation setup to defer GPU drivers in the initramfs"
+  FORCE=true # the swapfile already exists, so there is no disk-space question to ask
 fi
 
 if ! $FORCE; then
@@ -84,6 +90,29 @@ if ! swapon --show | grep -q "$SWAP_FILE"; then
   sudo swapon -p 0 "$SWAP_FILE"
 fi
 
+# Determine the resume device and offset up front: if this fails, abort
+# before touching the initramfs configuration, so a transient btrfs failure
+# leaves the previous state behind rather than a half-configured one.
+sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
+RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
+RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
+if [[ -z $RESUME_OFFSET ]]; then
+  echo "Error: could not determine resume offset for $SWAP_FILE; hibernation left unconfigured" >&2
+  exit 1
+fi
+
+# Install the omarchy-defer-gpu initcpio hook, which bakes an initramfs-only
+# modprobe blacklist into the image (never into host /etc/modprobe.d, which
+# modconf would copy in AND which would affect the running system). Installed
+# before the drop-in below names it, so a failed copy cannot leave mkinitcpio
+# referencing a missing hook.
+: "${OMARCHY_PATH:=/usr/share/omarchy}"
+sudo mkdir -p /etc/initcpio/install
+if ! sudo install -m 644 -o root -g root "$OMARCHY_PATH/default/initcpio/install/omarchy-defer-gpu" /etc/initcpio/install/omarchy-defer-gpu; then
+  echo "Error: could not install the omarchy-defer-gpu initcpio hook" >&2
+  exit 1
+fi
+
 # Add the resume hook to mkinitcpio, and keep native GPU drivers out of the
 # initramfs while hibernation is configured: a driver bound by the boot kernel
 # before the resume hook fires suspends and resets hardware the restored
@@ -107,33 +136,32 @@ for _omarchy_hook in "${HOOKS[@]}"; do
 done
 HOOKS=("${_omarchy_hooks[@]}")
 unset _omarchy_hooks _omarchy_hook
-EOF
 
-# The omarchy-defer-gpu initcpio hook bakes an initramfs-only modprobe
-# blacklist into the image (never into host /etc/modprobe.d, which modconf
-# would copy in AND would affect the running system)
-sudo mkdir -p /etc/initcpio/install
-sudo cp -p "$OMARCHY_PATH/default/initcpio/install/omarchy-defer-gpu" /etc/initcpio/install/
+# The nvidia early-KMS drop-in (written by install/hardware/nvidia.sh) adds
+# modules the baked-in blacklist guarantees never load; keep them out of the
+# image entirely rather than shipping dead weight on the ESP.
+_omarchy_modules=()
+for _omarchy_module in "${MODULES[@]}"; do
+  case $_omarchy_module in
+    nvidia | nvidia_modeset | nvidia_uvm | nvidia_drm) ;;
+    *) _omarchy_modules+=("$_omarchy_module") ;;
+  esac
+done
+MODULES=("${_omarchy_modules[@]}")
+unset _omarchy_modules _omarchy_module
+EOF
 
 # Ensure keyboard backlight doesn't prevent sleep
 sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/keyboard-backlight" /usr/lib/systemd/system-sleep/
 
-# Add resume= kernel parameters so the initramfs resume hook knows where to find the
-# hibernation image. Without these, resume happens late (after GPU drivers load) and fails.
-if [[ ! -f $RESUME_DROP_IN ]]; then
-  echo "Adding resume kernel parameters"
-  sudo swapon -p 0 "$SWAP_FILE" 2>/dev/null
-  RESUME_DEVICE=$(findmnt -no SOURCE -T "$SWAP_FILE" | sed 's/\[.*\]//')
-  RESUME_OFFSET=$(sudo btrfs inspect-internal map-swapfile -r "$SWAP_FILE")
-  if [[ -n $RESUME_OFFSET ]]; then
-    sudo mkdir -p /etc/limine-entry-tool.d
-    # plymouth.use-simpledrm keeps the LUKS prompt on the EFI framebuffer so
-    # Plymouth never waits for a native GPU driver the initramfs no longer has
-    echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET plymouth.use-simpledrm\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
-  else
-    echo "Warning: Could not determine resume offset for $SWAP_FILE" >&2
-  fi
-fi
+# Add resume= kernel parameters so the initramfs resume hook knows where to
+# find the hibernation image, and plymouth.use-simpledrm so Plymouth renders
+# the LUKS prompt on the EFI framebuffer instead of waiting for a native GPU
+# driver the initramfs no longer has. Rewritten on every setup run: a
+# pre-existing drop-in may carry a stale offset from an earlier swapfile.
+echo "Adding resume kernel parameters"
+sudo mkdir -p /etc/limine-entry-tool.d
+echo "KERNEL_CMDLINE[default]+=\" resume=$RESUME_DEVICE resume_offset=$RESUME_OFFSET plymouth.use-simpledrm\"" | sudo tee "$RESUME_DROP_IN" >/dev/null
 
 # Use ACPI alarm for RTC wakeup on s2idle systems (needed for suspend-then-hibernate)
 if grep -q "\[s2idle\]" /sys/power/mem_sleep 2>/dev/null; then
