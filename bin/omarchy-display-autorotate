@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# omarchy:summary=Follow the accelerometer and rotate the built-in display to match
+# omarchy:hidden=true
+
+# Started from Hyprland autostart on machines that have an accelerometer.
+# iio-sensor-proxy only samples the sensor while a client is listening, so this
+# holds `monitor-sensor` open for the session and translates what it reports
+# into Hyprland transforms. Rotate lock silences it without stopping it, so the
+# next unlock picks up the orientation the device is already in.
+
+set -uo pipefail
+
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-display-autorotate.lock"
+
+omarchy-hw-accelerometer || exit 0
+omarchy-cmd-present monitor-sensor || exit 0
+
+# One reader per session. A second copy would claim the sensor for nothing and
+# race this one to apply the same transform. The lock is held on this process
+# rather than a subshell, so nothing outlives a kill of the pid Hyprland started.
+exec 9>"$LOCK"
+flock -n 9 || exit 0
+
+sensor_pid=""
+sensor_fd=""
+
+stop_sensor() {
+  [[ -n $sensor_pid ]] || return 0
+
+  kill "$sensor_pid" 2>/dev/null
+  wait "$sensor_pid" 2>/dev/null
+  sensor_pid=""
+}
+
+# monitor-sensor keeps iio-sensor-proxy polling for as long as it stays
+# connected, and it is a separate process from this one. Ending the session
+# without taking it down leaves the sensor being read for nobody.
+stop() {
+  trap - EXIT
+  stop_sensor
+  exit 0
+}
+trap stop EXIT HUP INT TERM
+
+# iio-sensor-proxy names the edge that is pointing up; Hyprland numbers the
+# rotation applied to the output.
+transform_for() {
+  case "$1" in
+    normal) echo 0 ;;
+    left-up) echo 1 ;;
+    bottom-up) echo 2 ;;
+    right-up) echo 3 ;;
+    *) return 1 ;;
+  esac
+}
+
+internal_monitor() {
+  omarchy-hyprland-monitor-laptop
+}
+
+internal_enabled() {
+  local monitor="$1"
+
+  [[ -n $monitor ]] || return 1
+  hyprctl monitors -j | jq -e --arg monitor "$monitor" \
+    'any(.[]; .name == $monitor)' >/dev/null
+}
+
+apply_orientation() {
+  local orientation="$1" transform monitor
+
+  transform=$(transform_for "$orientation") || return 0
+
+  # Rotate lock is checked here rather than around the reader so the sensor keeps
+  # streaming: unlocking then applies the current orientation on the next event
+  # instead of waiting for the device to be moved again.
+  omarchy-toggle-enabled rotate-lock && return 0
+
+  monitor=$(internal_monitor)
+  internal_enabled "$monitor" || return 0
+
+  # Transient: the accelerometer is the source of truth for as long as it is
+  # unlocked, so it has no business rewriting what the display persists to.
+  omarchy-display-orientation "$transform" --monitor "$monitor" --transient >/dev/null || return 0
+}
+
+# monitor-sensor announces the orientation it starts with, then one line per
+# change. Leading whitespace and the `===`/`+++` prefixes vary by version, so
+# match on the phrase rather than the shape of the line.
+read_sensor() {
+  local line orientation
+
+  # Opened onto a descriptor rather than read from inline, so the reader's pid
+  # is knowable and the loop still runs in this shell.
+  exec {sensor_fd}< <(monitor-sensor --accel 2>/dev/null)
+  sensor_pid=$!
+
+  while read -r line <&"$sensor_fd"; do
+    case "$line" in
+      *"Accelerometer orientation changed: "*) orientation="${line##*: }" ;;
+      *"Has accelerometer (orientation: "*)
+        orientation="${line##*orientation: }"
+        orientation="${orientation%)}"
+        ;;
+      *) continue ;;
+    esac
+
+    apply_orientation "$orientation"
+  done
+
+  exec {sensor_fd}<&-
+  stop_sensor
+}
+
+# monitor-sensor exits when iio-sensor-proxy restarts or is not up yet at login.
+# Back off rather than spin, and keep the session's rotation working once the
+# daemon does appear.
+delay=1
+while true; do
+  read_sensor
+  sleep "$delay"
+  (( delay = delay * 2 > 30 ? 30 : delay * 2 ))
+done

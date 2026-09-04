@@ -20,4 +20,11 @@ printf '%s\n' "$focused_monitor"
 omarchy-hyprland-monitor-scaling 2>/dev/null || echo
 
 printf '%s\n' "$monitors_json" | jq -c \
-  '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true), width, height}]'
+  '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true), width, height, transform:(.transform // 0)}]'
+
+printf '%s\n' "$monitors_json" | jq -r --arg focused "$focused_monitor" \
+  '[.[] | select(.name == $focused)][0].transform // 0'
+
+# The panel only offers rotate lock where there is a sensor to lock out.
+if omarchy-hw-accelerometer; then echo 1; else echo; fi
+if omarchy-toggle-enabled rotate-lock; then echo 1; else echo; fi

@@ -58,6 +58,24 @@ assertEqual(monitor.brightnessName(96), 'Sun blast', 'monitor names very bright 
 assertEqual(monitor.brightnessName(12), 'Candlelit', 'monitor names dim displays')
 
 assertDeepEqual(
+  monitor.orientations().map(function(o) { return o.label }),
+  ['Normal', '90\u00b0', '180\u00b0', '270\u00b0'],
+  'monitor offers the four plain rotations'
+)
+assertDeepEqual(
+  monitor.orientations().map(function(o) { return o.value }),
+  ['normal', '90', '180', '270'],
+  'monitor passes CLI-shaped rotation values'
+)
+assertEqual(monitor.orientationIndex(0), 0, 'monitor selects the unrotated preset')
+assertEqual(monitor.orientationIndex(3), 3, 'monitor selects a rotated preset')
+assertEqual(monitor.orientationIndex(6), -1, 'monitor selects no preset for a flipped transform')
+assertEqual(monitor.orientationIndex('2'), 2, 'monitor selects a preset from a string transform')
+assertEqual(monitor.normalizeTransform('nope'), 0, 'monitor rejects an invalid transform')
+assertEqual(monitor.normalizeTransform(9), 0, 'monitor rejects an out-of-range transform')
+assertEqual(monitor.normalizeTransform(-1), 0, 'monitor rejects a negative transform')
+
+assertDeepEqual(
   monitor.parseDisplays(JSON.stringify([
     { name: 'eDP-1', enabled: true, focused: false, width: 1920, height: 1080 },
     { name: 'HDMI-A-1', enabled: false, focused: false, width: 0, height: 0 },

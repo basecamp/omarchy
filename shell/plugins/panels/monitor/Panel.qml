@@ -26,6 +26,9 @@ Panel {
   property string monitorScale: ""
   property var displays: []
   property int enabledDisplayCount: 0
+  property int monitorTransform: 0
+  property bool autoRotateAvailable: false
+  property bool rotateLocked: false
 
   // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
@@ -37,6 +40,10 @@ Panel {
   //   "scale"      - 6 Button scale presets; treated as a single
   //                  horizontal row from j/k's perspective. h/l moves
   //                  between presets, identical to bluetooth's header.
+  //   "orientation"- 4 Button rotation presets; a single horizontal row,
+  //                  same shape as "scale".
+  //   "rotatelock" - single toggle row, only present when the machine has an
+  //                  accelerometer for it to lock out.
   //   "monitors"   - vertical display row list for enabling/disabling displays;
   //                  j/k walks each row.
   // Mouse hover on a target updates root state via the components' `hovered`
@@ -50,6 +57,7 @@ Panel {
     }
     return scalePresets
   }
+  readonly property var orientationOptions: Model.orientations()
   property string focusSection: "scale"
   property int selectedIndex: 0
   property bool cursorActive: false
@@ -77,6 +85,8 @@ Panel {
     if (brightnessAvailable) list.push("brightness")
     list.push("textsize")
     list.push("scale")
+    list.push("orientation")
+    if (autoRotateAvailable) list.push("rotatelock")
     if (displays.length > 1) list.push("monitors")
     return list
   }
@@ -84,14 +94,18 @@ Panel {
   function sectionCount(section) {
     if (section === "brightness") return 0  // only the slider sentinel at -1
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
+    if (section === "orientation") return orientationOptions.length
+    if (section === "rotatelock") return 1
     if (section === "scale") return scaleValues.length
     if (section === "monitors") return displays.length
     return 0
   }
 
   function sectionIsSingleRow(section) {
-    // brightness and text size are lone sliders; scale presets sit horizontally.
-    return section === "brightness" || section === "textsize" || section === "scale"
+    // brightness and text size are lone sliders; scale and orientation presets
+    // sit horizontally. Rotate lock is a plain row, so j/k walks onto it.
+    return section === "brightness" || section === "textsize"
+        || section === "scale" || section === "orientation"
   }
 
   function sectionFirstIndex(section) {
@@ -129,14 +143,16 @@ Panel {
     }
   }
 
-  // h/l: in scale section, walks the preset row; everywhere else, no-op
+  // h/l: in the scale and orientation sections, walks the preset row;
+  // everywhere else, no-op
   // because adjustBrightness handles horizontal motion on the brightness
   // slider.
   function moveCursorH(delta) {
-    if (focusSection !== "scale") return
+    var count = sectionCount(focusSection)
+    if (focusSection !== "scale" && focusSection !== "orientation") return
     var next = selectedIndex + delta
     if (next < 0) next = 0
-    if (next > scaleValues.length - 1) next = scaleValues.length - 1
+    if (next > count - 1) next = count - 1
     selectedIndex = next
   }
 
@@ -147,6 +163,14 @@ Panel {
   }
 
   function activateCursor() {
+    if (focusSection === "orientation" && selectedIndex >= 0 && selectedIndex < orientationOptions.length) {
+      setOrientation(orientationOptions[selectedIndex].value)
+      return
+    }
+    if (focusSection === "rotatelock") {
+      toggleRotateLock()
+      return
+    }
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
       return
@@ -168,7 +192,8 @@ Panel {
     }
     var count = sectionCount(focusSection)
     if (sectionIsSingleRow(focusSection)) {
-      // brightness/text size use the -1 sentinel; scale clamps into the presets.
+      // brightness/text size use the -1 sentinel; scale and orientation clamp
+      // into their presets.
       if (focusSection === "brightness" || focusSection === "textsize") selectedIndex = -1
       else if (selectedIndex < 0 || selectedIndex >= count) selectedIndex = 0
       return
@@ -213,6 +238,9 @@ Panel {
       brightnessAvailable: root.brightnessAvailable,
       focusedMonitor: root.focusedMonitor,
       scale: root.monitorScale,
+      transform: root.monitorTransform,
+      autoRotateAvailable: root.autoRotateAvailable,
+      rotateLocked: root.rotateLocked,
       displays: root.displays
     })
   }
@@ -304,6 +332,29 @@ Panel {
     if (!actionProc.running) actionProc.running = true
   }
 
+  // ---- Orientation (display rotation + rotate lock) ----
+  function activeOrientationIndex() {
+    return Model.orientationIndex(root.monitorTransform)
+  }
+
+  function setOrientation(value) {
+    var command = ["omarchy-display-orientation", String(value)]
+    // Name the target explicitly: the panel holds keyboard focus while it is
+    // open, and the CLI's own default is whichever monitor Hyprland says is
+    // focused, which is the one SCALE targets too.
+    if (root.focusedMonitor !== "") command = command.concat(["--monitor", root.focusedMonitor])
+
+    actionProc.command = command
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  function toggleRotateLock() {
+    // Move the checkmark now; the state poll that follows the action confirms it.
+    root.rotateLocked = !root.rotateLocked
+    actionProc.command = ["omarchy-toggle-rotate-lock", root.rotateLocked ? "on" : "off"]
+    if (!actionProc.running) actionProc.running = true
+  }
+
   function setScale(scale) {
     actionProc.command = ["bash", "-c", "omarchy-hyprland-monitor-scaling " + scale]
     if (!actionProc.running) actionProc.running = true
@@ -369,6 +420,7 @@ Panel {
   }
 
   onBrightnessAvailableChanged: clampCursor()
+  onAutoRotateAvailableChanged: clampCursor()
   onDisplaysChanged: clampCursor()
   onScaleValuesChanged: clampCursor()
   onVisibleSectionsChanged: clampCursor()
@@ -400,6 +452,9 @@ Panel {
         root.focusedMonitor = String(lines[5] || "").trim()
         root.monitorScale = root.normalizeScale(String(lines[6] || "").trim())
         root.updateDisplays(String(lines[7] || "[]").trim())
+        root.monitorTransform = Model.normalizeTransform(String(lines[8] || "0").trim())
+        root.autoRotateAvailable = String(lines[9] || "").trim() === "1"
+        root.rotateLocked = String(lines[10] || "").trim() === "1"
       }
     }
   }
@@ -500,7 +555,7 @@ Panel {
         else if (dx !== 0) {
           if (root.focusSection === "brightness") root.adjustBrightness(dx * 5)
           else if (root.focusSection === "textsize") root.adjustTextSize(dx)
-          else if (root.focusSection === "scale") root.moveCursorH(dx)
+          else if (root.focusSection === "scale" || root.focusSection === "orientation") root.moveCursorH(dx)
         }
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
@@ -790,6 +845,74 @@ Panel {
             }
           }
 
+          // ---------- Orientation ----------
+          PanelSeparator {
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(orientationHeader.implicitHeight, orientationMonitor.implicitHeight)
+
+              PanelSectionHeader {
+                id: orientationHeader
+                text: "ORIENTATION"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              // Same rule as SCALE: rotation lands on the focused monitor, so
+              // only name it once there is more than one to confuse it with.
+              Text {
+                id: orientationMonitor
+                text: root.focusedMonitor
+                visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Grid {
+              id: orientationRow
+              width: parent.width
+              columns: root.orientationOptions.length
+              spacing: Style.spacing.xs
+
+              readonly property real cellWidth: root.orientationOptions.length > 0
+                ? (width - spacing * (columns - 1)) / columns
+                : 0
+
+              Repeater {
+                model: root.orientationOptions
+
+                OrientationPill {
+                  required property var modelData
+                  required property int index
+
+                  option: modelData
+                  optionIndex: index
+                  width: orientationRow.cellWidth
+                }
+              }
+            }
+
+            RotateLockRow {
+              width: parent.width
+              visible: root.autoRotateAvailable
+            }
+          }
+
           // ---------- Monitors ----------
           PanelSeparator {
             visible: root.displays.length > 1
@@ -827,6 +950,96 @@ Panel {
           }
         }
       }
+    }
+  }
+
+  component OrientationPill: Button {
+    id: orientationPill
+    required property var option
+    required property int optionIndex
+
+    text: orientationPill.option.label
+    fontSize: Style.font.caption
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: Style.spacing.sm
+    verticalPadding: Style.spacing.controlPaddingY
+    bordered: true
+
+    // A display parked on a flipped transform matches no pill, so none lights up.
+    active: root.activeOrientationIndex() === optionIndex
+    hasCursor: root.cursorActive && root.focusSection === "orientation" && root.selectedIndex === optionIndex
+
+    onClicked: root.setOrientation(orientationPill.option.value)
+    onHovered: function(isHovered) {
+      if (!isHovered || root.reflowingText) return
+      root.cursorActive = true
+      root.focusSection = "orientation"
+      root.selectedIndex = orientationPill.optionIndex
+    }
+  }
+
+  component RotateLockRow: CursorSurface {
+    id: rotateLockRow
+
+    hasCursor: root.cursorActive && root.focusSection === "rotatelock" && root.selectedIndex === 0
+    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(rotateLockRow)
+    current: root.rotateLocked
+    foreground: root.bar.foreground
+    fill: Style.hoverFillFor(root.bar.foreground, Color.accent)
+    currentFill: Style.selectedFillFor(root.bar.foreground, Color.accent)
+    implicitHeight: rotateLockInner.implicitHeight + Style.spacing.xl
+
+    Row {
+      id: rotateLockInner
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(6)
+      anchors.rightMargin: Style.space(6)
+      spacing: Style.space(8)
+
+      Text {
+        text: root.rotateLocked ? "󰌾" : "󰌿"
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.title
+        width: Style.space(22)
+        horizontalAlignment: Text.AlignHCenter
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        text: "Rotate lock"
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.body
+        elide: Text.ElideRight
+        width: parent.width - Style.space(22) - Style.space(14) - Style.space(16)
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      Text {
+        text: root.rotateLocked ? "󰄬" : ""
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.subtitle
+        width: Style.space(14)
+        horizontalAlignment: Text.AlignRight
+        anchors.verticalCenter: parent.verticalCenter
+      }
+    }
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onContainsMouseChanged: if (containsMouse && !root.reflowingText) {
+        root.cursorActive = true
+        root.focusSection = "rotatelock"
+        root.selectedIndex = 0
+      }
+      onClicked: root.toggleRotateLock()
     }
   }
 

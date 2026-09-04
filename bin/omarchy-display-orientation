@@ -1,0 +1,206 @@
+#!/bin/bash
+
+# omarchy:summary=Show or set the rotation of a display, and rotate its touchscreen to match
+# omarchy:args=[normal|90|180|270|flipped|flipped-90|flipped-180|flipped-270|next|previous] [--monitor NAME] [--transient]
+# omarchy:examples=omarchy display orientation | omarchy display orientation 90 | omarchy display orientation next --monitor DP-2
+
+set -euo pipefail
+
+# Hyprland's transform numbers, in the order `next` walks them. 0-3 are the
+# plain rotations; 4-7 mirror the output first and are only reachable by name.
+ROTATIONS=(0 1 2 3)
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/toggles/hypr"
+
+usage() {
+  echo "Usage: omarchy-display-orientation [ORIENTATION|next|previous] [--monitor NAME] [--transient]"
+  echo "  (no args)     print the current orientation of the target display"
+  echo "  ORIENTATION   normal, 90, 180, 270, or their flipped-* variants"
+  echo "  next/previous step through normal → 90 → 180 → 270"
+  echo "  --monitor     target a display by name instead of the focused one"
+  echo "  --transient   apply for this session only, without persisting"
+}
+
+transform_name() {
+  case "$1" in
+    0) echo "normal" ;;
+    1) echo "90" ;;
+    2) echo "180" ;;
+    3) echo "270" ;;
+    4) echo "flipped" ;;
+    5) echo "flipped-90" ;;
+    6) echo "flipped-180" ;;
+    7) echo "flipped-270" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Accepts the canonical names, the raw Hyprland numbers, and the left/right
+# vocabulary that wlr-randr and sway users already have in their fingers.
+transform_number() {
+  case "${1,,}" in
+    0 | normal | none | reset) echo 0 ;;
+    1 | 90 | left) echo 1 ;;
+    2 | 180 | inverted | upside-down) echo 2 ;;
+    3 | 270 | right) echo 3 ;;
+    4 | flipped) echo 4 ;;
+    5 | flipped-90 | flipped-left) echo 5 ;;
+    6 | flipped-180) echo 6 ;;
+    7 | flipped-270 | flipped-right) echo 7 ;;
+    *) return 1 ;;
+  esac
+}
+
+lua_quote() {
+  printf '%s' "${1//\"/\\\"}"
+}
+
+# Where the persisted override for one monitor lives. Hyprland sources this
+# directory last on every reload, so the rotation survives restarts and always
+# wins over the generic monitor rules in monitors.lua.
+state_file_for() {
+  printf '%s/monitor-%s-transform.lua' "$STATE_DIR" "${1//\//-}"
+}
+
+monitors_json() {
+  hyprctl monitors all -j
+}
+
+current_transform() {
+  local monitor="$1"
+
+  monitors_json | jq -r --arg monitor "$monitor" \
+    '[.[] | select(.name == $monitor)][0].transform // 0'
+}
+
+# Only the built-in panel gets its touch input rotated: an external monitor's
+# touchscreen is a different device on a different output, and guessing which
+# is which would rotate the wrong one.
+touch_devices_for() {
+  local monitor="$1" internal
+
+  internal=$(omarchy-hyprland-monitor-laptop)
+  [[ -n $internal && $monitor == "$internal" ]] || return 0
+
+  hyprctl devices -j | jq -r '[.touch[]?.name, .tablets[]?.name] | .[]'
+}
+
+apply() {
+  local monitor="$1" transform="$2" transient="$3" current="$4"
+  local state_file device
+
+  # Re-sending the transform a display already has still costs a modeset, so
+  # only touch the compositor when the rotation actually moves. Persistence and
+  # touch binding below still run, since either can be out of step on their own.
+  if [[ $transform != "$current" ]]; then
+    hyprctl eval "hl.monitor({ output = \"$(lua_quote "$monitor")\", transform = $transform })" >/dev/null
+  fi
+
+  state_file=$(state_file_for "$monitor")
+  if [[ $transient == "false" ]]; then
+    mkdir -p "$STATE_DIR"
+    if (( transform == 0 )); then
+      # Nothing to override any more; let monitors.lua speak for the display again.
+      rm -f "$state_file"
+    else
+      printf 'hl.monitor({ output = "%s", transform = %s })\n' "$(lua_quote "$monitor")" "$transform" >"$state_file"
+    fi
+  fi
+
+  while read -r device; do
+    [[ -n $device ]] || continue
+
+    hyprctl eval "hl.device({ name = \"$(lua_quote "$device")\", transform = $transform, output = \"$(lua_quote "$monitor")\" })" >/dev/null
+    if [[ $transient == "false" && -f $state_file ]]; then
+      printf 'hl.device({ name = "%s", transform = %s, output = "%s" })\n' \
+        "$(lua_quote "$device")" "$transform" "$(lua_quote "$monitor")" >>"$state_file"
+    fi
+  done < <(touch_devices_for "$monitor")
+}
+
+monitor=""
+transient="false"
+requested=""
+
+while (($#)); do
+  case "$1" in
+    --monitor)
+      monitor="${2:-}"
+      shift 2
+      ;;
+    --monitor=*)
+      monitor="${1#--monitor=}"
+      shift
+      ;;
+    --transient)
+      transient="true"
+      shift
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    -*)
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [[ -n $requested ]]; then
+        usage >&2
+        exit 1
+      fi
+      requested="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z $monitor ]]; then
+  monitor=$(omarchy-hyprland-monitor-focused)
+fi
+
+if [[ -z $monitor ]]; then
+  echo "No display to rotate" >&2
+  exit 1
+fi
+
+current=$(current_transform "$monitor")
+
+if [[ -z $requested ]]; then
+  transform_name "$current" || echo "$current"
+  exit 0
+fi
+
+case "${requested,,}" in
+  next | previous)
+    # Flipped transforms are not part of the cycle, so a display sitting on one
+    # steps back onto the plain rotations rather than being stuck.
+    index=0
+    for position in "${!ROTATIONS[@]}"; do
+      if [[ ${ROTATIONS[position]} == "$current" ]]; then
+        index="$position"
+        break
+      fi
+    done
+
+    # Assignment form, not (( ... )): wrapping back around to 0 makes an
+    # arithmetic command return 1, which under `set -e` ends the script.
+    if [[ ${requested,,} == "next" ]]; then
+      index=$(( (index + 1) % ${#ROTATIONS[@]} ))
+    else
+      index=$(( (index - 1 + ${#ROTATIONS[@]}) % ${#ROTATIONS[@]} ))
+    fi
+
+    target="${ROTATIONS[index]}"
+    ;;
+  *)
+    if ! target=$(transform_number "$requested"); then
+      echo "Unknown orientation: $requested" >&2
+      usage >&2
+      exit 1
+    fi
+    ;;
+esac
+
+apply "$monitor" "$target" "$transient" "$current"
+
+transform_name "$target"

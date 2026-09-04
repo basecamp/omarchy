@@ -42,6 +42,30 @@ Hyprland works great with multiple screens. Read more about how to lay them out 
 
 You can also checkout [Hyprmon](https://github.com/erans/hyprmon/), if you'd like a TUI to help you with the positioning of multiple screens.
 
+### Rotating a screen
+
+Displays can be rotated from the Display panel in the Omarchy bar, from _Trigger > Hardware > Rotate Display_ in the Omarchy menu, or from the command line:
+
+```
+omarchy display orientation 90
+```
+
+That takes `normal`, `90`, `180`, or `270` (and the `left`/`right` names that wlr-randr and sway use), plus `next` and `previous` to step around. Run it without an argument to see where the display currently is, and pass `--monitor DP-2` to rotate a screen other than the focused one — useful for a secondary monitor standing on its end.
+
+The rotation applies immediately and survives reboots. If the display is your laptop's built-in panel and it has a touchscreen, the touch input is rotated with it, so taps still land where you put them.
+
+### Automatic rotation
+
+On machines with an accelerometer — tablets, convertibles, and 2-in-1s — Omarchy follows the sensor and rotates the built-in display as you turn the device. This needs `iio-sensor-proxy`, which is installed automatically on hardware that has a sensor to read.
+
+To stop the screen from following the device, turn on rotate lock from the Display panel, from _Trigger > Toggle > Rotate Lock_ in the menu, or with:
+
+```
+omarchy toggle rotate-lock
+```
+
+Rotate lock only stops the accelerometer. You can still rotate the display by hand while it's on — and while it's off, the sensor will move the screen back the next time you turn the device.
+
 ### Controlling brightness
 
 Monitor brightness is controlled by the dedicated function keys for brightness up/down. If you hold down shift while pressing these, you'll go to maximum or minimum brightness. The keys control the display you're focused on, so external monitors that speak DDC/CI are adjusted the same way as the laptop screen.

@@ -91,6 +91,34 @@ function brightnessName(percent) {
   return "Night owl"
 }
 
+// Hyprland's four plain rotations, in the order the panel lays them out.
+// Transforms 4-7 flip the output first; they stay reachable from the CLI but
+// have no pill, so a display sitting on one simply highlights nothing.
+var ORIENTATIONS = [
+  { transform: 0, label: "Normal", value: "normal" },
+  { transform: 1, label: "90\u00b0", value: "90" },
+  { transform: 2, label: "180\u00b0", value: "180" },
+  { transform: 3, label: "270\u00b0", value: "270" }
+]
+
+function orientations() {
+  return ORIENTATIONS
+}
+
+function normalizeTransform(value) {
+  var n = parseInt(value, 10)
+  if (!isFinite(n) || n < 0 || n > 7) return 0
+  return n
+}
+
+function orientationIndex(transform) {
+  var normalized = normalizeTransform(transform)
+  for (var i = 0; i < ORIENTATIONS.length; i++) {
+    if (ORIENTATIONS[i].transform === normalized) return i
+  }
+  return -1
+}
+
 function parseDisplays(raw) {
   var displays = []
   try {
@@ -119,6 +147,9 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
+    orientations: orientations,
+    normalizeTransform: normalizeTransform,
+    orientationIndex: orientationIndex,
     parseDisplays: parseDisplays
   }
 }
