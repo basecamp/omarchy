@@ -23,6 +23,112 @@ Panel {
 
   readonly property var adapter: Bluetooth.defaultAdapter
 
+  // True when BlueZ exposes an adapter or rfkill indicates Bluetooth hardware is present on the system.
+  property bool hardwarePresent: false
+  property bool hardwarePresenceKnown: false
+  property bool probePending: false
+  property int probeGeneration: 0
+
+  onAdapterChanged: {
+    if (adapter) {
+      probeWatchdog.stop()
+      hardwareCheck.running = false
+      root.probePending = false
+      root.hardwarePresenceKnown = true
+      root.hardwarePresent = true
+      // The pending state is not cleared here: BlueZ exposes the adapter before
+      // AutoEnable powers it, so "Turning on…" has to outlive its arrival.
+      // onIsActuallyOnChanged clears it when the radio is really up.
+    } else {
+      root.hasPendingPowerState = false
+      root.pendingPowerState = false
+      powerTimer.stop()
+      // Do not clear hardwarePresent here -- keeping the previous state
+      // avoids icon and switch flicker during the probe when powering off.
+      root.startHardwareProbe()
+    }
+  }
+
+  function startHardwareProbe() {
+    if (probePending) return
+    probeGeneration++
+    probePending = true
+    probeWatchdog.restart()
+    hardwareCheck.running = true
+  }
+
+  function finishProbe(generation, exitCode, stdoutText) {
+    if (generation !== root.probeGeneration || !probePending) return
+    probeWatchdog.stop()
+    probePending = false
+    hardwareCheck.running = false
+
+    root.hardwarePresenceKnown = true
+    if (root.adapter) {
+      root.hardwarePresent = true
+    } else if (exitCode === 0) {
+      // util-linux rfkill exits 0 when it runs successfully.
+      // On machines without Bluetooth hardware, stdout is empty.
+      // On machines with Bluetooth hardware (even if soft-blocked), stdout lists devices.
+      root.hardwarePresent = String(stdoutText).trim().length > 0
+    } else {
+      // Inconclusive probe (watchdog timeout or abnormal process termination):
+      // On machines with no Bluetooth hardware, rfkill exits 0 with empty output.
+      // A non-zero exit or watchdog trigger is not evidence of hardware absence.
+      // Default to assuming hardware is present so controls are not permanently locked out.
+      root.hardwarePresent = true
+    }
+  }
+
+  // How long to wait for the hardware probe before timing out
+  readonly property int hardwareProbeTimeout: 2000
+
+  Timer {
+    id: probeWatchdog
+    interval: root.hardwareProbeTimeout
+    onTriggered: root.finishProbe(root.probeGeneration, -1, "")
+  }
+
+  // When BlueZ has no default adapter (e.g. rfkill soft-blocked), probe rfkill
+  // to detect if hardware is present so the panel can remain available to power it on.
+  Process {
+    id: hardwareCheck
+    command: ["rfkill", "-n", "-o", "DEVICE", "list", "bluetooth"]
+    running: false
+    stdout: StdioCollector {
+      id: hardwareCheckStdout
+      waitForEnd: true
+      onStreamFinished: {
+        // Output handled upon process exit / completion
+      }
+    }
+    onExited: function(exitCode) {
+      root.finishProbe(root.probeGeneration, exitCode, hardwareCheckStdout.text)
+    }
+    onRunningChanged: {
+      // Quickshell's Process does not emit exited when a binary fails to start (FailedToStart),
+      // only transitioning running back to false. Catch this immediately so probePending
+      // is not left stranded until the watchdog fires.
+      if (!running && root.probePending) {
+        var currentGen = root.probeGeneration
+        Qt.callLater(function() {
+          if (!hardwareCheck.running && root.probePending && root.probeGeneration === currentGen) {
+            root.finishProbe(currentGen, -1, "")
+          }
+        })
+      }
+    }
+  }
+
+  Component.onCompleted: {
+    if (root.adapter) {
+      root.hardwarePresenceKnown = true
+      root.hardwarePresent = true
+    } else {
+      root.startHardwareProbe()
+    }
+  }
+
   // True while this instance owes BlueZ a StopDiscovery: set when it starts
   // discovery (or opens onto a session already running) and cleared once
   // discovery is confirmed down after close. Ownership, not state — BlueZ's
@@ -56,7 +162,8 @@ Panel {
   readonly property var discoveredDevices: deviceGroups.discovered || []
 
   readonly property string icon: {
-    if (!adapter) return ""
+    if (!hardwarePresent) return ""
+    if (!adapter) return "󰂲"
     if (!adapter.enabled) return "󰂲"
     if (connectedDevices.length > 0) return "󰂱"
     return "󰂯"
@@ -75,7 +182,9 @@ Panel {
   ]
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
-    if (!adapter) return "No adapter"
+    if (!hardwarePresent) return "No Bluetooth adapter"
+    if (hasPendingPowerState) return pendingPowerState ? "Turning on…" : "Turning off…"
+    if (!adapter) return "Turned Off"
     if (!adapter.enabled) return "Turned Off"
     return activePhrases[phraseIndex % activePhrases.length]
   }
@@ -497,7 +606,7 @@ Panel {
     if (selectedIndex < 0) selectedIndex = 0
   }
 
-  visible: adapter !== null
+  visible: root.hardwarePresenceKnown ? root.hardwarePresent : (root.adapter !== null)
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -632,8 +741,41 @@ Panel {
   // Asking for a direction rather than a toggle: the helper runs detached and the
   // switch only moves once BlueZ catches up, so a second click inside that window
   // would re-read the old state and undo the first.
+  property bool pendingPowerState: false
+  property bool hasPendingPowerState: false
+  readonly property bool effectiveEnabled: hasPendingPowerState ? pendingPowerState : (!!adapter && adapter.enabled)
+  readonly property bool isActuallyOn: !!adapter && adapter.enabled
+  onIsActuallyOnChanged: {
+    hasPendingPowerState = false
+    powerTimer.stop()
+  }
+
+  // How long to wait for the UI to stay in a pending state before falling back
+  readonly property int pendingPowerStateTimeout: 6000
+
+  Timer {
+    id: powerTimer
+    interval: root.pendingPowerStateTimeout
+    onTriggered: {
+      root.hasPendingPowerState = false
+      root.pendingPowerState = false
+    }
+  }
+
   function toggleBluetooth() {
-    if (!adapter) return
+    if (!hardwarePresent || hasPendingPowerState) return
+
+    let isCurrentlyOn = !!adapter && adapter.enabled
+    let targetState = !isCurrentlyOn
+
+    root.pendingPowerState = targetState
+    root.hasPendingPowerState = true
+    powerTimer.restart()
+
+    if (!adapter) {
+      Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+      return
+    }
     Quickshell.execDetached(["omarchy-bluetooth-power", adapter.enabled ? "off" : "on"])
   }
 
@@ -705,15 +847,16 @@ Panel {
             color: root.bar.foreground
             font.family: root.bar.fontFamily
             font.pixelSize: Style.font.display
-            opacity: root.adapter && root.adapter.enabled ? 1.0 : 0.5
+            opacity: root.effectiveEnabled ? 1.0 : 0.5
           }
 
           // Compact on/off switch on the trailing edge of the hero, and the
           // header's only cursor target.
           ToggleSwitch {
             id: powerSwitch
-            visible: !!root.adapter
-            checked: !!root.adapter && root.adapter.enabled
+            visible: root.hardwarePresent
+            busy: root.hasPendingPowerState
+            checked: root.effectiveEnabled
             hasCursor: root.headerHasCursor
             foreground: root.bar.foreground
             anchors.right: parent.right
@@ -867,8 +1010,8 @@ Panel {
         Text {
           textFormat: Text.PlainText
           visible: root.connectedDevices.length === 0 && root.scrollRows.length === 0
-          text: !root.adapter ? "No Bluetooth adapter"
-              : !root.adapter.enabled ? "Turn Bluetooth on to scan"
+          text: !root.hardwarePresent ? "No Bluetooth adapter"
+              : (!root.adapter || !root.adapter.enabled) ? "Turn Bluetooth on to scan"
               : "Scanning for devices…"
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
