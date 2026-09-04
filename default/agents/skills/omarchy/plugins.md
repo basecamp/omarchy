@@ -45,6 +45,23 @@ Saving a file anywhere under `~/.config/omarchy/plugins/` reloads plugin code
 automatically. If a change somehow fails to apply, force a reload with
 `omarchy-shell shell rescanPlugins`.
 
+## Plugin Safety: Bound Every File Read
+
+`omarchy-shell` is a single long-running process. Never read a file into it
+without a size bound — an oversized or corrupted file (a plugin's state or
+config file grown by a bug, or written by another process) forces unbounded
+allocation in a process the user cannot afford to have balloon.
+
+- `FileView` (`Quickshell.Io`) reads the *entire* file before any code can
+  validate or reject it. Do not use it for user-writable files.
+- Read such files with a bounded `Process` instead: read at most one byte over
+  the hard cap (e.g. `timeout 5 head -c 65537 -- "$path"` for a 64 KiB cap)
+  and reject output over the cap. A preliminary `stat -c%s` can fast-reject an
+  oversized file, but cannot enforce the bound because the file may change.
+- Bound the in-memory model too. A file under the byte cap can still hold a
+  huge array — cap collection counts (dice lists, side lists, rows) to a sane
+  maximum while parsing.
+
 ## Idle and Lock
 
 Set `idle.screensaver` and `idle.lock` in `~/.config/omarchy/shell.json`,
