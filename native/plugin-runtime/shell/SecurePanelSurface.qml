@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Omarchy.PluginHost 1.0
+import qs.Commons
 import qs.Ui
 
 PanelWindow {

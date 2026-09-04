@@ -169,7 +169,8 @@ PluginSourcePolicy::preload_trusted_modules(QQmlEngine &engine) const {
   presentation_probe.setData(
       QByteArrayLiteral("import QtQuick\n"
                         "import Omarchy.PluginPresentation 1.0\n"
-                        "Item { width: Style.space(1) }"),
+                        "Item { property Component presentationType: "
+                        "Component { WidgetButton {} } }"),
       QUrl(QStringLiteral(
           "qrc:/qt/qml/Omarchy/PluginPresentationProbe.qml")));
   if (!presentation_probe.isReady())
