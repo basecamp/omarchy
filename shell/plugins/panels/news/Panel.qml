@@ -67,6 +67,13 @@ Item {
     Qt.callLater(function() { focusScope.forceActiveFocus() })
   }
 
+  function openCurrentArticle() {
+    if (!currentArticle) return
+    var url = String(currentArticle.url || "")
+    if (!/^https?:\/\//.test(url)) return
+    Qt.openUrlExternally(url)
+  }
+
   function selectArticle(index, readIt) {
     if (articles.length === 0) return
     selectedIndex = Math.max(0, Math.min(articles.length - 1, index))
@@ -217,6 +224,8 @@ Item {
           }
           return
         }
+        if (openOriginalButton.activeFocus
+            && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space)) return
         if (event.key === Qt.Key_Escape) {
           root.dismiss()
           event.accepted = true
@@ -225,6 +234,9 @@ Item {
           event.accepted = true
         } else if (event.key === Qt.Key_R) {
           if (root.news) root.news.refresh()
+          event.accepted = true
+        } else if (event.key === Qt.Key_O) {
+          root.openCurrentArticle()
           event.accepted = true
         } else if (event.key === Qt.Key_BracketLeft) {
           root.cycleSource(-1)
@@ -584,27 +596,50 @@ Item {
                   wrapMode: Text.WordWrap
                 }
 
-                Text {
+                RowLayout {
                   visible: !!root.currentArticle
                   width: parent.width
-                  textFormat: Text.PlainText
-                  text: {
-                    if (!root.currentArticle) return ""
-                    var parts = []
-                    var sourceName = String(root.currentArticle.sourceName || "")
-                    if (sourceName !== "") parts.push(sourceName)
-                    parts.push(root.categoryLabel(root.currentArticle.sourceCategory))
-                    var published = root.publishedLabel(root.currentArticle.published)
-                    if (published !== "") parts.push(published)
-                    var author = String(root.currentArticle.author || "")
-                    if (author !== "") parts.push(author)
-                    return parts.join(" · ").toUpperCase()
+                  spacing: Style.space(8)
+
+                  Text {
+                    Layout.fillWidth: true
+                    textFormat: Text.PlainText
+                    text: {
+                      if (!root.currentArticle) return ""
+                      var parts = []
+                      var sourceName = String(root.currentArticle.sourceName || "")
+                      if (sourceName !== "") parts.push(sourceName)
+                      parts.push(root.categoryLabel(root.currentArticle.sourceCategory))
+                      var published = root.publishedLabel(root.currentArticle.published)
+                      if (published !== "") parts.push(published)
+                      var author = String(root.currentArticle.author || "")
+                      if (author !== "") parts.push(author)
+                      return parts.join(" · ").toUpperCase()
+                    }
+                    color: root.categoryColor(root.currentArticle ? root.currentArticle.sourceCategory : "custom")
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                    font.letterSpacing: 0.8
+                    elide: Text.ElideRight
                   }
-                  color: root.categoryColor(root.currentArticle ? root.currentArticle.sourceCategory : "custom")
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  font.bold: true
-                  font.letterSpacing: 0.8
+
+                  Button {
+                    id: openOriginalButton
+                    text: "OPEN ORIGINAL"
+                    iconText: "󰏌"
+                    tooltipText: "Open the full article (O)"
+                    foreground: root.foreground
+                    accent: root.categoryColor(root.currentArticle ? root.currentArticle.sourceCategory : "custom")
+                    fontFamily: root.fontFamily
+                    fontSize: Style.font.caption
+                    iconSize: Style.font.bodySmall
+                    horizontalPadding: Style.space(7)
+                    verticalPadding: Style.space(3)
+                    bordered: true
+                    focusable: true
+                    onClicked: root.openCurrentArticle()
+                  }
                 }
 
                 PanelSeparator {
@@ -639,8 +674,8 @@ Item {
                     width: parent.width
                     textFormat: Text.PlainText
                     text: root.sourceFilters.length > 1
-                      ? "[ / ] switch source  ·  R refresh  ·  Esc close"
-                      : "R refresh  ·  Esc close"
+                      ? "[ / ] switch source  ·  O original  ·  R refresh  ·  Esc close"
+                      : "O original  ·  R refresh  ·  Esc close"
                     color: root.dim
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption

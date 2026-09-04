@@ -230,6 +230,12 @@ grep -qF 'property color green:' "$ROOT/shell/Commons/Color.qml" ||
   fail "shell colour service exposes the active theme category palette"
 grep -qF 'onLinkActivated: function(link) { Qt.openUrlExternally(link) }' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news story opens deliberately activated links"
+grep -qF 'text: "OPEN ORIGINAL"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news story exposes its primary publisher link"
+grep -qF 'event.key === Qt.Key_O' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news story opens its original article from the keyboard"
+grep -qF 'if (!/^https?:\/\//.test(url)) return' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news story refuses to open a non-web primary URL"
 grep -qF 'tooltipText: "Close (Esc)"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news reader exposes its right-side window actions"
 grep -qF 'o.bind("SUPER + ALT + N", "Omarchy News", "omarchy-shell shell toggle omarchy.news")' "$ROOT/default/hypr/bindings/utilities.lua" ||
