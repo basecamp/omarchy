@@ -498,6 +498,24 @@ Item {
     return MenuModel.descriptionTextMatches(query, text)
   }
 
+  // Options handed in by a caller keep the order they arrived in, so fuzzy
+  // matching only widens the filter here — it never reranks.
+  function dmenuMatches(query, label, detail) {
+    var haystack = String(label || "").toLowerCase()
+    var subtext = String(detail || "").toLowerCase()
+    var terms = String(query || "").trim().toLowerCase().split(/\s+/)
+
+    for (var i = 0; i < terms.length; i++) {
+      if (!terms[i]) continue
+      if (haystack.indexOf(terms[i]) >= 0 || subtext.indexOf(terms[i]) >= 0) continue
+      if (MenuModel.fuzzyPenalty(terms[i], haystack) >= 0) continue
+      if (MenuModel.fuzzyPenalty(terms[i], subtext) >= 0) continue
+      return false
+    }
+
+    return true
+  }
+
   // Rows whose `disabled:` evaluated truthy stay listed but dimmed, and the
   // cursor steps over them.
   function isDisabled(entry) {
@@ -569,8 +587,7 @@ Item {
       var icon = parts.length > 1 ? parts.shift() : ""
       var label = parts.shift() || ""
       var detail = parts.join("\t")
-      if (query && label.toLowerCase().indexOf(query) < 0
-          && detail.toLowerCase().indexOf(query) < 0) continue
+      if (query && !root.dmenuMatches(query, label, detail)) continue
       displayModel.append({
         itemId: "dmenu." + i,
         disabled: false,
