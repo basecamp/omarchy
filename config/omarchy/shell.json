@@ -35,6 +35,9 @@
         },
         {
           "id": "omarchy.system-update"
+        },
+        {
+          "id": "omarchy.mise-outdated"
         }
       ],
       "right": [
