@@ -9,6 +9,7 @@ import "OsdModel.js" as OsdModel
 Item {
   id: root
 
+  property var shell: null
   property bool opened: false
   property string icon: ""
   property string message: ""
@@ -17,6 +18,9 @@ Item {
   property int maxValue: 100
   property bool hasProgress: true
   property int duration: 1200
+
+  readonly property var dictation: shell ? shell.firstPartyServiceFor("omarchy.voxtype") : null
+  readonly property bool dictationOpened: dictation ? dictation.busy : false
 
   readonly property bool mediaOsd: iconKey.indexOf("media") === 0 || iconKey.indexOf("player") === 0
 
@@ -125,7 +129,7 @@ Item {
 
   PanelWindow {
     id: panel
-    visible: root.opened
+    visible: root.opened || root.dictationOpened
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     WlrLayershell.namespace: "omarchy-osd"
@@ -138,6 +142,7 @@ Item {
 
     BorderSurface {
       id: card
+      visible: root.opened
       width: card.borderLeft + root.pad + root.contentWidth + root.pad + card.borderRight
       height: card.borderTop + root.pad + Style.font.displayLarge + root.pad + card.borderBottom
       anchors.horizontalCenter: parent.horizontalCenter
@@ -201,6 +206,15 @@ Item {
           maximumLineCount: 1
         }
       }
+    }
+
+    DictationCard {
+      dictation: root.dictation
+      opened: root.dictationOpened && !root.opened
+      visible: opened
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.bottom: parent.bottom
+      anchors.bottomMargin: Style.space(67)
     }
   }
 }

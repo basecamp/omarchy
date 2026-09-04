@@ -90,6 +90,10 @@ on_recording_stop = false
 # Show notification with transcribed text after transcription completes
 on_transcription = false
 
+[osd]
+# Omarchy Shell provides a themed dictation OSD from the same state stream.
+enabled = false
+
 # [text]
 # Text processing options (word replacements, spoken punctuation)
 #

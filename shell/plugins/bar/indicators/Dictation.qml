@@ -1,35 +1,18 @@
 import QtQuick
-import Quickshell.Io
 import qs.Ui
 
 BarIndicator {
   id: root
 
-  property string state: "idle"
-  property string icon: ""
+  readonly property var dictationService: bar?.shell?.firstPartyServiceFor("omarchy.voxtype")
+  readonly property string state: dictationService ? dictationService.state : "idle"
+  readonly property string icon: state === "transcribing" ? "󰔟" : "󰍬"
 
-  active: state === "recording"
+  active: dictationService ? dictationService.busy : false
   activeText: icon
   inactiveText: "󰍬"
   activeTooltipText: state
   inactiveTooltipText: "Dictate"
-
-  function update(raw) {
-    var data = extractData(raw)
-
-    state = String(data.alt || data.class || "idle")
-    if (state === "recording") icon = "󰍬"
-    else if (state === "transcribing") icon = "󰔟"
-    else icon = ""
-  }
-
-  Process {
-    command: ["bash", "-c", "omarchy-voxtype-status"]
-    running: true
-    stdout: SplitParser {
-      onRead: function(data) { root.update(data) }
-    }
-  }
 
   onPressed: function() {
     if (!root.bar) return
