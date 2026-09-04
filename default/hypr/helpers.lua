@@ -71,7 +71,9 @@ local function command_from(value, description)
       return o.launch_webapp(value.webapp)
     end
   elseif value.tui then
-    if value.focus then
+    if value.focus == "current-workspace" then
+      return "omarchy-launch-or-focus-tui --current-workspace " .. shell_quote(value.tui)
+    elseif value.focus then
       return "omarchy-launch-or-focus-tui " .. shell_quote(value.tui)
     else
       return "omarchy-launch-tui " .. shell_quote(value.tui)

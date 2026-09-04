@@ -1,7 +1,13 @@
 #!/bin/bash
 
 # omarchy:summary=Launch a TUI or focus an existing terminal window for it
-# omarchy:args=[--app-id=<app-id>] <command> [args...]
+# omarchy:args=[--current-workspace] [--app-id=<app-id>] <command> [args...]
+
+FOCUS_SCOPE=()
+if [[ ${1:-} == "--current-workspace" ]]; then
+  FOCUS_SCOPE=(--current-workspace)
+  shift
+fi
 
 if [[ ${1:-} == --app-id=* ]]; then
   APP_ID="${1#--app-id=}"
@@ -11,4 +17,4 @@ fi
 
 LAUNCH_COMMAND="omarchy-launch-tui $@"
 
-exec omarchy-launch-or-focus "$APP_ID" "$LAUNCH_COMMAND"
+exec omarchy-launch-or-focus "${FOCUS_SCOPE[@]}" "$APP_ID" "$LAUNCH_COMMAND"

@@ -100,7 +100,7 @@ o.bind("SUPER + CTRL + D", "Display", "omarchy-shell shell toggle omarchy.monito
 o.bind("SUPER + CTRL + ALT + D", "Calendar", "omarchy-shell shell toggle omarchy.clock")
 o.bind("SUPER + CTRL + W", "Network", "omarchy-shell shell toggle omarchy.network")
 o.bind("SUPER + CTRL + P", "Power", "omarchy-shell shell toggle omarchy.power")
-o.bind("SUPER + CTRL + T", "Activity", { tui = "btop" })
+o.bind("SUPER + CTRL + T", "Activity", { tui = "btop", focus = "current-workspace" })
 
 -- The letters above name a panel; the numbers count them. 1 is the leftmost
 -- panel in the bar's right section, and a widget with no panel of its own (the
