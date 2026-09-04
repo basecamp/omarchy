@@ -11,6 +11,10 @@ if ! tmux list-sessions >/dev/null 2>&1; then
   exit 0
 fi
 
+# The theme has well over a hundred environment keys, and the session list is
+# the same for all of them, so read it once here rather than once per key.
+mapfile -t tmux_sessions < <(tmux list-sessions -F "#{session_id}" 2>/dev/null)
+
 set_tmux_environment() {
   local key="$1"
   local value="$2"
@@ -18,10 +22,10 @@ set_tmux_environment() {
 
   tmux set-environment -g "$key" "$value" 2>/dev/null || return 0
 
-  while IFS= read -r session; do
+  for session in "${tmux_sessions[@]}"; do
     [[ -n $session ]] || continue
     tmux set-environment -t "$session" "$key" "$value" 2>/dev/null || true
-  done < <(tmux list-sessions -F "#{session_id}" 2>/dev/null)
+  done
 }
 
 sync_theme_environment() {
