@@ -7,6 +7,18 @@ body:
       value: |
         Remember: Omarchy is an open source gift, not a product you bought from a vendor
 
+  - type: checkboxes
+    id: checked-existing
+    attributes:
+      label: Before filing
+      options:
+        - label: I searched [open and closed issues](https://github.com/basecamp/omarchy/issues?q=is%3Aissue) for this and found nothing matching
+          required: true
+        - label: I checked [pull requests](https://github.com/basecamp/omarchy/pulls?q=is%3Apr) for an existing fix, open or merged
+          required: true
+        - label: I confirmed this still happens on the latest Omarchy release, not just an older install
+          required: true
+
   - type: input
     id: system-details
     attributes:
