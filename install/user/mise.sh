@@ -1,4 +1,3 @@
-omarchy-mise-install atuin
 omarchy-mise-install codex
 omarchy-mise-install claude
 omarchy-mise-install crush

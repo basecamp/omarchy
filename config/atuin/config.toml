@@ -1,5 +1,3 @@
-db_path = "~/.atuin/.history.db"
-key_path = "~/.atuin/.key"
 session_path = "~/.atuin/.session"
 update_check = true
 sync_address = "https://api.atuin.sh"
