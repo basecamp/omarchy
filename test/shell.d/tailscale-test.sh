@@ -23,7 +23,8 @@ assertDeepEqual(
 )
 
 assertEqual(tailscale.cleanDnsName('work.tailnet.ts.net.'), 'work.tailnet.ts.net', 'tailscale strips trailing DNS dot')
-assertEqual(tailscale.displayHostName('localhost', 'work.tailnet.ts.net.'), 'work', 'tailscale falls back from localhost to short DNS name')
+assertEqual(tailscale.displayHostName('old-hostname', 'renamed-machine.tailnet.ts.net.'), 'renamed-machine', 'tailscale prefers renamed machine DNS name')
+assertEqual(tailscale.displayHostName('workstation', ''), 'workstation', 'tailscale falls back to OS hostname without a DNS name')
 
 const status = tailscale.parseStatus(JSON.stringify({
   BackendState: 'Running',
