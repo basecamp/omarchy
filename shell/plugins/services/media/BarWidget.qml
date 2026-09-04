@@ -38,6 +38,7 @@ BarWidget {
       color: activePlayer && activePlayer.isPlaying ? root.bar.barForeground : Qt.darker(root.bar.barForeground, 1.5)
       font.family: root.bar.fontFamily
       font.pixelSize: Style.font.body
+      renderType: Text.NativeRendering
       Behavior on color {
         enabled: !root.bar || root.bar.foregroundAnimationEnabled
         ColorAnimation { duration: 160 }
@@ -59,6 +60,7 @@ BarWidget {
         color: root.bar.barForeground
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
+        renderType: Text.NativeRendering
         anchors.verticalCenter: parent.verticalCenter
 
         property bool needsScroll: implicitWidth > scrollClip.width
