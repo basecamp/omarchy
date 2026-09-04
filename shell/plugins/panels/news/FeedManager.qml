@@ -15,6 +15,7 @@ Item {
   property color dim: Qt.darker(foreground, 1.55)
   property int editingIndex: -1
   property string formError: ""
+  property var pendingPersistSettings: null
 
   readonly property var catalog: news ? news.feedCatalog : []
   readonly property var enabledFeedIds: news ? news.enabledFeedIds : []
@@ -40,6 +41,14 @@ Item {
     for (var key in current) if (key !== "id") next[key] = current[key]
     for (var update in values) next[update] = values[update]
     news.settings = next
+    pendingPersistSettings = next
+    settingsPersistTimer.restart()
+  }
+
+  function flushSettings() {
+    if (!pendingPersistSettings) return
+    var next = pendingPersistSettings
+    pendingPersistSettings = null
     if (shell && typeof shell.updateEntryInline === "function")
       shell.updateEntryInline("omarchy.news", next)
   }
@@ -199,7 +208,20 @@ Item {
     })
   }
 
-  Keys.onEscapePressed: root.done()
+  onVisibleChanged: if (!visible) flushSettings()
+  Component.onDestruction: flushSettings()
+
+  Timer {
+    id: settingsPersistTimer
+    interval: 150
+    repeat: false
+    onTriggered: root.flushSettings()
+  }
+
+  Keys.onEscapePressed: {
+    flushSettings()
+    root.done()
+  }
 
   ColumnLayout {
     anchors.fill: parent

@@ -38,7 +38,7 @@ Item {
     focusArea = "headlines"
     selectedIndex = Math.max(0, Math.min(selectedIndex, articles.length - 1))
     if (!currentArticle && articles.length > 0) currentArticle = articles[selectedIndex]
-    if (news) news.refresh()
+    if (news && news.items.length === 0 && !news.refreshing) news.refresh(true)
     markReadTimer.restart()
     Qt.callLater(function() { focusScope.forceActiveFocus() })
   }

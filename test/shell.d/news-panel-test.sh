@@ -61,6 +61,12 @@ assert len(module.article_text("x" * (module.MAX_ARTICLE_CHARS + 1))) == module.
 assert module.canonical_news_url("http://omarchy.org/news/no") == ""
 assert module.canonical_news_url("https://omarchy.org/not-news/no") == ""
 
+many_xml = ("<rss version=\"2.0\"><channel>" + "".join(
+    f"<item><title>Story {index}</title><link>https://omarchy.org/news/2026/09/story-{index}</link></item>"
+    for index in range(25)
+) + "</channel></rss>").encode()
+assert len(module.parse_feed(many_xml, item_limit=5)) == 5
+
 ars_xml = b'''<?xml version="1.0"?><rss version="2.0"><channel><item>
   <title>Ars headline</title>
   <link>https://arstechnica.com/gadgets/2026/09/example/</link>
@@ -170,19 +176,25 @@ original_atomic_write = module.atomic_write
 original_cached_result = module.cached_result
 module.cached_result = lambda source, error: {
     "fetchedAt": "2026-09-04T06:00:00+00:00",
-    "items": [{"id": f'{source["id"]}:cached', "title": "Cached"}],
+    "items": [
+        {"id": f'{source["id"]}:cached-{index}', "title": f"Cached {index}"}
+        for index in range(25)
+    ],
 }
+fresh_items = module.fresh_cached_items(
+    module.SOURCE_CATALOG["omarchy"], "2026-09-04T06:14:59+00:00", 900, 10
+)
+assert len(fresh_items) == 10
+assert fresh_items[0]["title"] == "Cached 0"
 assert module.fresh_cached_items(
-    module.SOURCE_CATALOG["omarchy"], "2026-09-04T06:14:59+00:00", 900
-)[0]["title"] == "Cached"
-assert module.fresh_cached_items(
-    module.SOURCE_CATALOG["omarchy"], "2026-09-04T06:15:01+00:00", 900
+    module.SOURCE_CATALOG["omarchy"], "2026-09-04T06:15:01+00:00", 900, 10
 ) is None
 module.fetch = lambda source: (_ for _ in ()).throw(AssertionError("fresh cache hit the network"))
 cached_items, cached_state, cached_error = module.load_source(
     module.SOURCE_CATALOG["omarchy"], "2026-09-04T06:14:59+00:00", 900
 )
-assert cached_items[0]["title"] == "Cached"
+assert len(cached_items) == 25
+assert cached_items[0]["title"] == "Cached 0"
 assert cached_state["cached"] is True
 assert cached_error == ""
 module.fetch = lambda source: xml if source["id"] == "omarchy" else (_ for _ in ()).throw(OSError("offline"))
@@ -248,6 +260,12 @@ grep -qF 'fetchMaxCacheAgeSec = preferCache === true ? refreshIntervalMin * 60 :
   fail "configuration refreshes reuse fresh source caches"
 grep -qF 'var canonicalUrl = canonicalCustomUrl(url)' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
   fail "custom feeds are saved locally without waiting on the network"
+grep -qF 'settingsPersistTimer.restart()' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
+  fail "rapid feed settings changes coalesce persistent configuration writes"
+grep -qF 'property var itemIndex: ({})' "$ROOT/shell/plugins/panels/news/Service.qml" ||
+  fail "reader indexes bounded articles by source"
+grep -qF 'if (news && news.items.length === 0 && !news.refreshing) news.refresh(true)' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "opening a populated reader performs no helper or network work"
 grep -qF 'Qt.Key_BracketLeft' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news source rail supports keyboard switching"
 grep -qF 'Keys.priority: Keys.BeforeItem' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
@@ -289,6 +307,12 @@ grep -qF 'parser.add_argument("--inspect-feed", default="")' "$ROOT/shell/plugin
   fail "news fetcher exposes bounded feed inspection to the manager"
 grep -qF 'parser.add_argument("--max-cache-age", type=int, default=0)' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "news fetcher supports cache-aware configuration refreshes"
+grep -qF 'parser.add_argument("--item-limit", type=int, default=DEFAULT_ITEM_LIMIT)' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
+  fail "news fetcher bounds article payloads at the configured UI limit"
+grep -qF 'SSL_CONTEXT = ssl.create_default_context(cafile=SYSTEM_CA_BUNDLE)' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
+  fail "news fetcher reuses one TLS context across concurrent sources"
+! grep -qF 'os.fsync(handle.fileno())' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
+  fail "recoverable RSS caches avoid synchronous disk flushes"
 
 pass "news feed parser accepts canonical items from curated sources"
 pass "news plugin manifest pairs the bar widget with a multi-source desktop reader"

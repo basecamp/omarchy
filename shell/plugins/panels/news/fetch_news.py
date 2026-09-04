@@ -24,9 +24,11 @@ from urllib.parse import urlparse
 FEED_URL = "https://omarchy.org/news/rss.xml"
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_ITEMS = 40
+DEFAULT_ITEM_LIMIT = 10
 USER_AGENT = "Omarchy-RSS-Reader/1.0"
 SYSTEM_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
 MAX_ARTICLE_CHARS = 12_000
+SSL_CONTEXT = ssl.create_default_context(cafile=SYSTEM_CA_BUNDLE)
 
 SOURCE_CATALOG = {
     "omarchy": {
@@ -383,7 +385,11 @@ def canonical_news_url(value: str | None) -> str:
     return source_article_url(value, SOURCE_CATALOG["omarchy"])
 
 
-def parse_feed(payload: bytes, source: dict[str, object] | None = None) -> list[dict[str, str]]:
+def parse_feed(
+    payload: bytes,
+    source: dict[str, object] | None = None,
+    item_limit: int = MAX_ITEMS,
+) -> list[dict[str, str]]:
     source = source or SOURCE_CATALOG["omarchy"]
     root = ET.fromstring(payload)
     channel = root.find("channel")
@@ -393,7 +399,7 @@ def parse_feed(payload: bytes, source: dict[str, object] | None = None) -> list[
     items: list[dict[str, str]] = []
     creator_tag = "{http://purl.org/dc/elements/1.1/}creator"
     content_tag = "{http://purl.org/rss/1.0/modules/content/}encoded"
-    for node in channel.findall("item")[:MAX_ITEMS]:
+    for node in channel.findall("item")[: max(1, min(MAX_ITEMS, item_limit))]:
         link = source_article_url(node.findtext("link"), source)
         title = clean_text(node.findtext("title"), 240)
         if not link or not title:
@@ -458,10 +464,9 @@ def fetch(source: dict[str, object] | None = None) -> bytes:
         feed_url,
         headers={"Accept": "application/rss+xml, application/xml", "User-Agent": USER_AGENT},
     )
-    context = ssl.create_default_context(cafile=SYSTEM_CA_BUNDLE)
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
-        urllib.request.HTTPSHandler(context=context),
+        urllib.request.HTTPSHandler(context=SSL_CONTEXT),
     )
     with opener.open(request, timeout=8) as response:
         if response.geturl() != feed_url:
@@ -480,7 +485,6 @@ def atomic_write(path: Path, data: dict[str, object]) -> None:
             json.dump(data, handle, ensure_ascii=False, separators=(",", ":"))
             handle.write("\n")
             handle.flush()
-            os.fsync(handle.fileno())
         os.replace(temporary, path)
     finally:
         try:
@@ -513,7 +517,7 @@ def cached_result(source: dict[str, object], error: str) -> dict[str, object] | 
 
 
 def fresh_cached_items(
-    source: dict[str, object], fetched_at: str, max_cache_age: int
+    source: dict[str, object], fetched_at: str, max_cache_age: int, item_limit: int
 ) -> list[dict[str, str]] | None:
     if max_cache_age <= 0:
         return None
@@ -528,7 +532,7 @@ def fresh_cached_items(
     age = (now - cached_at).total_seconds()
     if age < 0 or age > max_cache_age:
         return None
-    return [item for item in cached["items"] if isinstance(item, dict)]
+    return [item for item in cached["items"] if isinstance(item, dict)][:item_limit]
 
 
 def selected_sources(value: str, custom_value: str = "") -> list[dict[str, object]]:
@@ -559,12 +563,16 @@ def published_key(item: dict[str, str]) -> float:
 
 
 def load_source(
-    source: dict[str, object], fetched_at: str, max_cache_age: int = 0
+    source: dict[str, object],
+    fetched_at: str,
+    max_cache_age: int = 0,
+    item_limit: int = MAX_ITEMS,
 ) -> tuple[list[dict[str, str]], dict[str, object], str]:
     error = ""
     stale = False
     resolved_source = source
-    source_items = fresh_cached_items(source, fetched_at, max_cache_age)
+    item_limit = max(1, min(MAX_ITEMS, item_limit))
+    source_items = fresh_cached_items(source, fetched_at, max_cache_age, item_limit)
     from_cache = source_items is not None
     if source_items is None:
         try:
@@ -573,7 +581,7 @@ def load_source(
                 discovered_name = feed_name(payload)
                 if discovered_name:
                     resolved_source = {**source, "name": discovered_name}
-            source_items = parse_feed(payload, resolved_source)
+            source_items = parse_feed(payload, resolved_source, item_limit)
             atomic_write(
                 cache_path(str(source["id"])),
                 {"fetchedAt": fetched_at, "items": source_items},
@@ -583,7 +591,7 @@ def load_source(
             cached = cached_result(source, error)
             source_items = [] if cached is None else [
                 item for item in cached["items"] if isinstance(item, dict)
-            ]
+            ][:item_limit]
             stale = cached is not None
 
     state: dict[str, object] = {
@@ -608,6 +616,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--inspect-feed", default="")
     parser.add_argument("--inspect-name", default="")
     parser.add_argument("--max-cache-age", type=int, default=0)
+    parser.add_argument("--item-limit", type=int, default=DEFAULT_ITEM_LIMIT)
     args = parser.parse_args(argv)
 
     if args.inspect_feed:
@@ -627,9 +636,12 @@ def main(argv: list[str] | None = None) -> int:
     fetched_at = datetime.now(timezone.utc).isoformat()
 
     sources = selected_sources(args.sources, args.custom_feeds)
-    with ThreadPoolExecutor(max_workers=min(8, len(sources))) as executor:
+    item_limit = max(1, min(MAX_ITEMS, args.item_limit))
+    with ThreadPoolExecutor(max_workers=min(12, len(sources))) as executor:
         loaded_sources = executor.map(
-            lambda source: load_source(source, fetched_at, max(0, args.max_cache_age)),
+            lambda source: load_source(
+                source, fetched_at, max(0, args.max_cache_age), item_limit
+            ),
             sources,
         )
         for source, (source_items, state, error) in zip(sources, loaded_sources):

@@ -20,6 +20,7 @@ Item {
   property bool refreshPendingPreferCache: true
   property int fetchMaxCacheAgeSec: 0
   property bool stateLoaded: false
+  property var itemIndex: ({})
 
   readonly property string helperPath: (omarchyPath || "") + "/shell/plugins/panels/news/fetch_news.py"
   readonly property string stateRoot: Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")
@@ -45,10 +46,10 @@ Item {
   readonly property string customFeeds: String(setting("customFeeds", "")).substring(0, 4096)
   readonly property var customFeedEntries: parseCustomFeedEntries(customFeeds)
   readonly property string sourceConfigSignature: enabledSourceIds.join(",") + "|" + customFeeds
-  readonly property var visibleItems: items.slice(0, itemLimit)
   readonly property int unreadCount: countUnread()
 
   onSourceConfigSignatureChanged: if (stateLoaded) configurationRefreshTimer.restart()
+  onItemLimitChanged: rebuildItemIndex()
 
   property string _stdout: ""
   property string _stderr: ""
@@ -113,13 +114,21 @@ Item {
     return total
   }
 
-  function itemsForSource(sourceId) {
-    if (!sourceId || sourceId === "all") return items.slice(0, itemLimit)
-    var filtered = []
-    for (var i = 0; i < items.length && filtered.length < itemLimit; i++) {
-      if (String(items[i].sourceId || "") === sourceId) filtered.push(items[i])
+  function rebuildItemIndex() {
+    var next = ({ "all": [] })
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i]
+      if (next["all"].length < itemLimit) next["all"].push(item)
+      var sourceId = String(item.sourceId || "omarchy")
+      if (!next[sourceId]) next[sourceId] = []
+      if (next[sourceId].length < itemLimit) next[sourceId].push(item)
     }
-    return filtered
+    itemIndex = next
+  }
+
+  function itemsForSource(sourceId) {
+    var key = String(sourceId || "all")
+    return itemIndex[key] || []
   }
 
   function refresh(preferCache) {
@@ -141,6 +150,7 @@ Item {
       var parsed = JSON.parse(String(raw || ""))
       if (!parsed || parsed.ok !== true || !Array.isArray(parsed.items)) throw new Error("invalid result")
       items = parsed.items
+      rebuildItemIndex()
       sources = Array.isArray(parsed.sources) ? parsed.sources : []
       fetchedAt = String(parsed.fetchedAt || "")
       stale = parsed.stale === true
@@ -213,7 +223,7 @@ Item {
 
   Process {
     id: fetchProcess
-    command: ["python3", root.helperPath, "--sources", root.enabledSourceIds.join(","), "--custom-feeds", root.customFeeds, "--max-cache-age", String(root.fetchMaxCacheAgeSec)]
+    command: ["python3", root.helperPath, "--sources", root.enabledSourceIds.join(","), "--custom-feeds", root.customFeeds, "--max-cache-age", String(root.fetchMaxCacheAgeSec), "--item-limit", String(root.itemLimit)]
     running: false
     stdout: StdioCollector {
       id: fetchStdout
