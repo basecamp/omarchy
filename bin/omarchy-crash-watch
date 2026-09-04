@@ -52,13 +52,15 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
     # IFS whitespace, so an empty field collapses into the next delimiter and
     # every field after it shifts along one. A process can set its own comm to
     # nothing, and that crash used to be read as somebody else's and dropped.
-    IFS=$'\t' read -r uid comm pid exe signal < <(
+    IFS=$'\t' read -r uid comm pid exe signal code rlimit < <(
       jq -r 'def field: if . == null or . == "" then "-" else . end;
              [(._UID | field),
               (.COREDUMP_COMM | field),
               (.COREDUMP_PID | field),
               (.COREDUMP_EXE | field),
-              (.COREDUMP_SIGNAL_NAME | field)] | @tsv' <<<"$entry" 2>/dev/null
+              (.COREDUMP_SIGNAL_NAME | field),
+              (.COREDUMP_CODE | field),
+              (.COREDUMP_RLIMIT | field)] | @tsv' <<<"$entry" 2>/dev/null
     )
 
     [[ $pid =~ ^[0-9]+$ ]] || continue
@@ -71,6 +73,27 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
     # Only this user's crashes; a daemon dumping core is a sysadmin's problem.
     [[ $uid =~ ^[0-9]+$ ]] || continue
     ((uid == UID)) || continue
+
+    # Skipped: a death whose si_code is SI_USER and whose recorded core soft
+    # limit is 0. SI_USER is the code kill(2) leaves, and the one a kernel
+    # path that names no cause leaves too, as SIGXFSZ does; a fault normally
+    # carries its cause (SEGV_MAPERR, SEGV_ACCERR) and abort() arrives as
+    # SI_TKILL. A limit of 0 means no core was kept: systemd-coredump journals
+    # the death and stores nothing. Together they are what a test suite's
+    # stub writes on purpose, `ulimit -c 0; kill -SEGV $$` to prove its
+    # supervisor copes, and there is no core for a diagnosis to read. Either
+    # alone still announces: a crash handler re-delivering a real SIGSEGV
+    # with kill(getpid()), a watchdog's SIGABRT or a kernel-sent SIGXFSZ with
+    # cores on all keep their toast, and so does a program that turned its
+    # core off and then faulted directly, since the fault keeps its code.
+    # What this does hide is any SI_USER death under a zero limit, whoever
+    # set it and however the signal came about: a kill -ABRT aimed at a hung
+    # ssh-agent or gpg-agent, which zero their own limit to keep keys out of
+    # a core; a watchdog abort of a service with LimitCORE=0; a fault handler
+    # re-delivering its signal under an inherited ulimit -c 0. The code needs
+    # systemd 261 on kernel 7.1; an older journal has no field, which reads
+    # as a dash here and announces the crash as before.
+    [[ $code == "0" && $rlimit == "0" ]] && continue
 
     # comm is truncated to 15 characters, so prefer the executable's basename.
     name=$comm
