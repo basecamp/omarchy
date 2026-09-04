@@ -1,6 +1,26 @@
+// BlueZ's Alias (device.name) is the user-facing name: what the user set if
+// they renamed the device, and a copy of the device-reported Name otherwise.
+// deviceName is Name itself — the fallback for a device that never reported
+// one, and for the window between clearing an alias and BlueZ echoing the
+// name back, where quickshell's optimistic write leaves the alias empty.
 function deviceLabel(device) {
   if (!device) return ""
-  return String(device.deviceName || device.name || "").trim()
+  return String((device.name || device.deviceName) || "").trim()
+}
+
+function deviceRealName(device) {
+  if (!device) return ""
+  return String(device.deviceName || "").trim()
+}
+
+// A device carries a user-set alias when BlueZ reports an Alias that is not
+// simply a copy of Name. Two cases read as "no alias" deliberately: an alias
+// typed to match the device name exactly, which is indistinguishable and whose
+// removal would change nothing on screen, and the empty alias quickshell holds
+// locally while a clear is still in flight.
+function hasAlias(device) {
+  var alias = device ? String(device.name || "").trim() : ""
+  return alias !== "" && alias !== deviceRealName(device)
 }
 
 function toArray(values) {
@@ -33,9 +53,16 @@ function normalizedAddress(value) {
   return String(value || "").trim().toLowerCase().replace(/[^0-9a-f]/g, "")
 }
 
-function hasHumanName(device) {
-  var label = deviceLabel(device)
+function isHumanName(label) {
   return label !== "" && !isUuidLike(label) && !isAddressLike(label)
+}
+
+// Either name qualifies a device for the lists. A device with a real name is
+// never hidden by a MAC-shaped alias — that would be unrecoverable from the
+// panel, which is the only place the alias can be changed back — and a device
+// whose reported name is junk becomes listable once it has one worth showing.
+function hasHumanName(device) {
+  return isHumanName(deviceLabel(device)) || isHumanName(deviceRealName(device))
 }
 
 function nodeProps(node) {
@@ -63,15 +90,41 @@ function nodeText(node) {
   ].join(" ").toLowerCase()
 }
 
-function bluetoothSinkMatchesDevice(node, device) {
-  if (!node || !node.isSink || node.isStream || !device) return false
+function isCandidateSink(node, device) {
+  return !!node && !!node.isSink && !node.isStream && !!device
+}
 
+// An exact identifier: the device's address, as PipeWire spells it into a
+// bluez_output node's name and properties.
+function bluetoothSinkMatchesAddress(node, device) {
+  if (!isCandidateSink(node, device)) return false
   var address = normalizedAddress(device.address)
-  var text = nodeText(node)
-  if (address !== "" && normalizedAddress(text).indexOf(address) !== -1) return true
+  if (address === "") return false
+  return normalizedAddress(nodeText(node)).indexOf(address) !== -1
+}
 
-  var label = deviceLabel(device).toLowerCase()
-  return label !== "" && text.indexOf(label) !== -1
+// A substring guess, for a sink that carries no address at all.
+function bluetoothSinkMatchesName(node, device) {
+  if (!isCandidateSink(node, device)) return false
+  var text = nodeText(node)
+
+  // Prefer the name the device reports. PipeWire fills a node's properties when
+  // the device connects and does not follow a later alias change, so that is
+  // what is actually in there — whereas an alias is a short label the user
+  // chose, and as an unconstrained substring it matches unrelated nodes ("Pro"
+  // is in pro-output-3, "Car" is in alsa_card). An alias is only consulted for
+  // a device that reports no name of its own, where it is the only string
+  // there is. Nothing else is lost: a node that could carry the alias is a
+  // bluez_output node, and those carry the address matched above.
+  var name = (deviceRealName(device) || deviceLabel(device)).toLowerCase()
+  return name !== "" && text.indexOf(name) !== -1
+}
+
+// Kept for callers that just want "does this sink belong to this device"; the
+// panel applies the two criteria in separate passes so an exact address match
+// is never beaten by a name guess on an earlier sink.
+function bluetoothSinkMatchesDevice(node, device) {
+  return bluetoothSinkMatchesAddress(node, device) || bluetoothSinkMatchesName(node, device)
 }
 
 function sortedByLabel(devices) {
@@ -107,7 +160,14 @@ function deviceLists(devices) {
 
   for (var i = 0; i < values.length; i++) {
     var d = values[i]
-    if (!d || !hasHumanName(d)) continue
+    if (!d) continue
+    // The name filter is here to keep junk out of a scan, not to police devices
+    // BlueZ has a stored record for: a remembered device stays listed whatever
+    // it ends up called, or naming one something address-shaped would hide the
+    // only row that could name it back. Connected-but-never-paired is still a
+    // scan result, so it stays filtered.
+    var remembered = d.paired || d.bonded || d.trusted
+    if (!remembered && !hasHumanName(d)) continue
     if (d.connected) connected.push(d)
     else if (d.paired || d.bonded || d.trusted) known.push(d)
     else discovered.push(d)
@@ -157,13 +217,18 @@ function sectionDevices(lists, section) {
 if (typeof module !== "undefined") {
   module.exports = {
     deviceLabel: deviceLabel,
+    deviceRealName: deviceRealName,
+    hasAlias: hasAlias,
     toArray: toArray,
     isUuidLike: isUuidLike,
     isAddressLike: isAddressLike,
     normalizedAddress: normalizedAddress,
+    isHumanName: isHumanName,
     hasHumanName: hasHumanName,
     nodeProps: nodeProps,
     nodeText: nodeText,
+    bluetoothSinkMatchesAddress: bluetoothSinkMatchesAddress,
+    bluetoothSinkMatchesName: bluetoothSinkMatchesName,
     bluetoothSinkMatchesDevice: bluetoothSinkMatchesDevice,
     sortedByLabel: sortedByLabel,
     deviceRow: deviceRow,

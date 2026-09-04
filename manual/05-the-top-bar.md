@@ -51,7 +51,7 @@ The panels aren't read-outs. They're where you actually do the thing:
 
 - **Audio** has a master volume slider, an output-device picker, and a per-app mixer, so you can turn down that one browser tab without touching everything else.
 - **Network** scans for Wi-Fi, shows signal strength, connects, and lets you pick a DNS provider.
-- **Bluetooth** lists your devices with connect/disconnect and battery levels.
+- **Bluetooth** lists your devices with connect/disconnect and battery levels, and lets you rename them: press `r` on a remembered device (or click the pencil) to give it a name you'll actually recognise, and submit an empty field to put the manufacturer's name back.
 - **Power** shows battery stats, switches power profiles (it remembers a separate choice for battery and AC), and prints some system info.
 - **Display** carries a brightness slider, text size, monitor scaling presets, and — when you have more than one screen — per-monitor controls. See [monitors](33-monitors.md) for the deeper story.
 - **Clock** opens a month grid with ISO week numbers and month stepping.

@@ -98,9 +98,64 @@ assertDeepEqual(
   'bluetooth projects device rows with primitives only'
 )
 assertEqual(
-  bluetooth.deviceLabel(bluetooth.deviceRow({ name: 'Generic', deviceName: 'MX Master 3S', address: '2', connected: true })),
+  bluetooth.deviceRow({ name: 'Generic', deviceName: 'MX Master 3S', address: '2', connected: true }).deviceName,
   'MX Master 3S',
-  'bluetooth keeps deviceName in row projections so labels survive QObject-free rows'
+  'bluetooth keeps deviceName in row projections so the reported name survives QObject-free rows'
+)
+
+// BlueZ reports Alias (device.name) as a copy of Name until a user sets one,
+// so the alias is the display name and deviceName is only the fallback.
+assertEqual(
+  bluetooth.deviceLabel(bluetooth.deviceRow({ name: 'Comfy Mouse', deviceName: 'MX Master 3S', address: '2', connected: true })),
+  'Comfy Mouse',
+  'bluetooth labels a device by its BlueZ alias so a renamed device shows the custom name'
+)
+
+// Writing an empty alias is how a custom name is dropped, and quickshell holds
+// that empty value locally until BlueZ echoes the device name back.
+assertEqual(
+  bluetooth.deviceLabel({ name: '', deviceName: 'MX Master 3S' }),
+  'MX Master 3S',
+  'bluetooth falls back to the reported name while a cleared alias is in flight'
+)
+assertEqual(bluetooth.deviceRealName({ name: 'Comfy Mouse', deviceName: 'MX Master 3S' }), 'MX Master 3S', 'bluetooth can still name the device behind an alias')
+
+assert(bluetooth.hasAlias({ name: 'Comfy Mouse', deviceName: 'MX Master 3S' }), 'bluetooth sees a user alias when it differs from the device name')
+// BlueZ answers a cleared alias with a copy of Name, so an alias equal to the
+// name is indistinguishable from none — and clearing it would be a no-op write
+// that BlueZ reports nothing back for.
+assert(!bluetooth.hasAlias({ name: 'MX Master 3S', deviceName: 'MX Master 3S' }), 'bluetooth reads BlueZ echoing Name back as Alias as no alias at all')
+assert(!bluetooth.hasAlias({ name: '', deviceName: 'MX Master 3S' }), 'bluetooth reads the empty alias of an in-flight reset as no alias')
+assert(bluetooth.hasAlias({ name: 'Tile Tracker', deviceName: '' }), 'bluetooth sees an alias on a device that reports no name of its own')
+assert(!bluetooth.hasAlias(null), 'bluetooth tolerates a missing device when checking for an alias')
+
+// hasHumanName gates every list, and after the alias takes precedence it gates
+// on a string the user picked. A MAC typed as a name must not drop the row out
+// of the panel that is the only place to change it back.
+assert(bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF', deviceName: 'MX Master 3S' }), 'bluetooth keeps listing a device whose alias looks like an address')
+assert(bluetooth.hasHumanName({ name: 'Tile Tracker', deviceName: '' }), 'bluetooth lists an aliased device that reports no name of its own')
+assert(!bluetooth.hasHumanName({ name: 'AA-BB-CC-DD-EE-FF', deviceName: '' }), "bluetooth still filters BlueZ's address-derived alias for a nameless device")
+
+// A device that reports no name of its own, renamed to something address-shaped,
+// would otherwise vanish from the only panel that could rename it back.
+assertEqual(
+  bluetooth.deviceLists([{ address: '1', name: 'AA:BB:CC:DD:EE:FF', deviceName: '', paired: true }]).known.length,
+  1,
+  'bluetooth keeps a remembered device listed whatever it ends up called'
+)
+assertEqual(
+  bluetooth.deviceLists([{ address: '1', name: 'AA:BB:CC:DD:EE:FF', deviceName: '' }]).discovered.length,
+  0,
+  'bluetooth still keeps address-named junk out of a scan'
+)
+
+assertDeepEqual(
+  bluetooth.deviceLists([
+    { name: 'Aardvark', deviceName: 'Zeta Speaker', paired: true, address: '1' },
+    { name: 'Zulu', deviceName: 'Alpha Buds', paired: true, address: '2' }
+  ]).known.map(bluetooth.deviceLabel),
+  ['Aardvark', 'Zulu'],
+  'bluetooth sorts remembered devices by the name the user sees'
 )
 
 assertDeepEqual(
@@ -140,6 +195,107 @@ assert(
   !bluetooth.bluetoothSinkMatchesDevice({ isSink: false, isStream: false, ready: true, name: 'bluez_output.AA_BB_CC_DD_EE_FF.1', properties: {} }, { address: 'AA:BB:CC:DD:EE:FF', name: 'JBL Go 3' }),
   'bluetooth ignores non-sink nodes when matching audio outputs'
 )
+
+// The panel walks every sink for an address before it guesses at names, so the
+// two criteria have to be separable. Testing each sink against both in turn
+// would let a name guess on an earlier node beat the addressed node below it.
+const addressedLast = [
+  { isSink: true, isStream: false, ready: true, name: 'alsa_output.hifi__speaker__sink', properties: {} },
+  { isSink: true, isStream: false, ready: true, name: 'bluez_output.AA_BB_CC_DD_EE_FF.1', properties: { 'api.bluez5.address': 'AA:BB:CC:DD:EE:FF' } }
+]
+// A device whose own reported name is a substring of an unrelated sink: plenty
+// of speakers report themselves as "Speaker".
+const speaker = { address: 'AA:BB:CC:DD:EE:FF', deviceName: 'Speaker' }
+assertEqual(
+  addressedLast.filter(function(n) { return bluetooth.bluetoothSinkMatchesAddress(n, speaker) }).length,
+  1,
+  'bluetooth matches exactly one sink on the device address'
+)
+assert(
+  bluetooth.bluetoothSinkMatchesName(addressedLast[0], speaker),
+  'bluetooth would match the earlier unrelated sink by name, which is why the address pass runs first'
+)
+assert(
+  bluetooth.bluetoothSinkMatchesAddress(addressedLast[1], speaker),
+  'bluetooth finds the addressed sink even though it sorts after the name match'
+)
+assert(
+  bluetooth.bluetoothSinkMatchesDevice(
+    {
+      isSink: true,
+      isStream: false,
+      ready: true,
+      name: 'alsa_output.usb-speaker',
+      properties: { 'device.product.name': 'JBL Go 3' }
+    },
+    { address: '11:22:33:44:55:66', name: 'Kitchen Speaker', deviceName: 'JBL Go 3' }
+  ),
+  'bluetooth still matches a renamed device to its sink by the name PipeWire knows it under'
+)
+// A short alias as an unconstrained substring matches unrelated nodes: "Pro" is
+// in pro-output-3, "Car" is in alsa_card. Matching only the reported name keeps
+// a renamed headset from stealing an HDMI or USB output.
+assert(
+  !bluetooth.bluetoothSinkMatchesDevice(
+    { isSink: true, isStream: false, ready: true, name: 'alsa_output.pci-0000_c1_00.1.pro-output-3', properties: {} },
+    { address: 'AA:BB:CC:DD:EE:FF', name: 'Pro', deviceName: 'AirPods Pro' }
+  ),
+  'bluetooth does not match an unrelated sink on a short user alias'
+)
+assert(
+  !bluetooth.bluetoothSinkMatchesDevice(
+    { isSink: true, isStream: false, ready: true, name: 'alsa_output.hifi__speaker__sink', properties: { 'device.name': 'alsa_card.pci-0000_c1_00.6' } },
+    { address: 'AA:BB:CC:DD:EE:FF', name: 'Car', deviceName: 'AirPods Pro' }
+  ),
+  'bluetooth does not match a sink because an alias is a substring of its card name'
+)
+
+// What follows pins the decisions whose violation is silent — a rename that
+// still looks right on screen. Anything that would visibly stop working on the
+// first keypress is left to the eye, not asserted against the source.
+//
+// Renaming is a plain write of BlueZ's Alias on the live device object. Unlike
+// pair/connect/forget there is nothing to sequence, so it must not grow a
+// helper in bin/ — the mirror of the adapter.enabled assertion above.
+assert(!/deviceCommand\("rename"|execDetached\(\[[^\]]*rename/.test(panelSource), 'bluetooth renames over D-Bus instead of shelling out')
+
+// BlueZ answers a write of "" with Alias = Name, which is not a change when
+// Alias already equals Name — nothing comes back, and quickshell's optimistic
+// local value would sit empty. So the clear only goes out when there is one.
+assert(/if \(Model\.hasAlias\(device\)\) device\.name = ""/.test(panelSource), 'bluetooth only clears an alias that exists')
+
+const nameField = panelSource.match(/id: nameField[\s\S]*?\n {6}\}/)
+assert(nameField && /text: row\.isRenameOpen \? root\.renameText : ""/.test(nameField[0]), 'bluetooth keeps the rename draft on the panel so a rebuilt delegate does not lose it')
+assert(nameField && /Component\.onCompleted: if \(visible\) Qt\.callLater\(forceActiveFocus\)/.test(nameField[0]), 'bluetooth takes focus back when discovery rebuilds the row mid-edit')
+
+// The row's click handler covers the whole row, editor included.
+assert(/id: rowMouse[\s\S]{0,400}enabled: !row\.isRenameOpen/.test(panelSource), 'bluetooth stops a row click from connecting the device being renamed')
+
+// BlueZ persists an alias only for a device it stores, and a renameAddress left
+// pointing at a vanished row would leave the catcher blocked and the panel deaf.
+assert(/renameAvailable: forgetAvailable/.test(panelSource), 'bluetooth offers renaming exactly where it offers forgetting')
+// Hung off deviceGroups rather than devices: the latter only re-evaluates when
+// the set of device objects changes, so an unpair that leaves the object in
+// place would strand renameAddress and block the key catcher for good.
+assert(/function cancelRenameIfGone\(\)/.test(panelSource) && /onDeviceGroupsChanged: cancelRenameIfGone\(\)/.test(panelSource), 'bluetooth closes the editor when the device it points at stops being remembered')
+assert(/function startRename\(device\)[\s\S]*?pendingAction\(device\.address\) === "forgetting"\) return/.test(panelSource), 'bluetooth refuses to open an editor on a device already being forgotten')
+assert(/onOpenedChanged: \{[\s\S]{0,200}?cancelRename\(\)/.test(panelSource), 'bluetooth drops an open rename editor when the panel closes')
+
+// Every action a row offers is reachable from the keyboard: h/l walk the row,
+// its pencil, and its forget button rather than toggling one action slot.
+assert(/order\[next\] === "rename" && !focusedRowCanRename/.test(panelSource), 'bluetooth steps the cursor over a pencil the row is not showing')
+
+// A panel opens with cursorActive false and selectedIndex 0, so an unguarded
+// 'r' opens an editor on a row the user never picked and cannot see picked.
+assert(/if \(t === "r" \|\| t === "R"\) \{ if \(root\.cursorActive\) root\.startRenameSelected\(\) \}/.test(panelSource), "bluetooth ignores 'r' until the cursor is on screen")
+
+// The separated criteria above only help if the panel walks the sinks twice:
+// one loop testing both would still let a name guess on an earlier node beat
+// the addressed node below it, and audio would simply come out of the wrong
+// speaker. The `} for (` between them is what pins the second pass.
+const audioSinkLookup = panelSource.match(/function bluetoothAudioSink\(device\)[\s\S]*?\n {2}\}/)
+assert(audioSinkLookup, 'bluetooth has the audio sink lookup')
+assert(/MatchesAddress[\s\S]*?\}\s*for \([\s\S]*?MatchesName/.test(audioSinkLookup[0]), 'bluetooth searches every sink for the address before it falls back to names')
 JS
 
 # Turning Bluetooth off is an rfkill soft block, not a bluetoothctl power off,

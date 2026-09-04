@@ -50,6 +50,10 @@ Panel {
     return Model.hasHumanName(device)
   }
 
+  function deviceRealName(device) {
+    return Model.deviceRealName(device)
+  }
+
   readonly property var deviceGroups: Model.deviceLists(devices)
   readonly property var connectedDevices: deviceGroups.connected || []
   readonly property var knownDevices: deviceGroups.known || []
@@ -89,13 +93,25 @@ Panel {
   // guaranteeing one highlight on screen.
   property string focusSection: "connected"
   property int selectedIndex: 0
-  property bool actionFocused: false
+  // Where the cursor sits inside the focused row. h/l walk these in order, so
+  // every action a row offers is reachable from the keyboard and not just the
+  // mouse.
+  property string rowFocus: "row"  // "row" | "rename" | "forget"
   property bool cursorActive: false
 
   // Stable identity for the focused device. Devices move between sections as
   // they connect, disconnect, pair, or get forgotten, so follow the BlueZ
   // address across section changes instead of preserving a stale row index.
   property string focusedDeviceAddress: ""
+
+  // The device whose name is being edited ("" when no editor is open), and the
+  // draft text. Both live here rather than in the delegate: scrollRows is
+  // rebuilt on every discovery report, and a device moves from "known" to
+  // "connected" the moment it connects, so the delegate holding the editor is
+  // destroyed and rebuilt under the user mid-edit. Keyed by address for the
+  // same reason focusedDeviceAddress is.
+  property string renameAddress: ""
+  property string renameText: ""
 
   // "header" is a virtual section for the hero Bluetooth on/off toggle; it
   // sits above the device sections so the adapter can be toggled by keyboard
@@ -155,18 +171,23 @@ Panel {
     return rows
   }
 
-  // Live BlueZ device behind a row. Rows carry primitives only, so actions
-  // resolve the backend object here rather than holding a wrapper that can
-  // dangle mid-incubation. `devices` is already the raw device array (see the
-  // property declaration), so it is iterated directly.
-  function deviceFor(row) {
-    if (!row || !row.dev) return null
-    var addr = row.dev.address || ""
+  // `devices` is already the raw device array (see the property declaration),
+  // so it is iterated directly. Shared by the row lookup below and by the
+  // rename actions, which hold an address rather than a row.
+  function deviceWithAddress(address) {
+    if (!address) return null
     var devs = devices || []
     for (var i = 0; i < devs.length; i++) {
-      if ((devs[i].address || "") === addr) return devs[i]
+      if ((devs[i].address || "") === address) return devs[i]
     }
     return null
+  }
+
+  // Live BlueZ device behind a row. Rows carry primitives only, so actions
+  // resolve the backend object here rather than holding a wrapper that can
+  // dangle mid-incubation.
+  function deviceFor(row) {
+    return row && row.dev ? deviceWithAddress(row.dev.address || "") : null
   }
 
   // Flat position of the keyboard cursor, or -1 while it sits on the hero or
@@ -195,10 +216,17 @@ Panel {
     return sinks
   }
 
+  // Address across every sink before falling back to names. Testing each sink
+  // against both criteria in turn would let a name guess on an earlier node
+  // win over the addressed node further down the list, and PipeWire's ordering
+  // is not ours to rely on.
   function bluetoothAudioSink(device) {
     var sinks = audioSinks()
     for (var i = 0; i < sinks.length; i++) {
-      if (Model.bluetoothSinkMatchesDevice(sinks[i], device)) return sinks[i]
+      if (Model.bluetoothSinkMatchesAddress(sinks[i], device)) return sinks[i]
+    }
+    for (var j = 0; j < sinks.length; j++) {
+      if (Model.bluetoothSinkMatchesName(sinks[j], device)) return sinks[j]
     }
     return null
   }
@@ -292,6 +320,64 @@ Panel {
     runDeviceAction(device, "forget", "forgetting")
   }
 
+  // Renaming writes BlueZ's Alias, which bluetoothd persists in
+  // /var/lib/bluetooth. Nothing needs sequencing the way pair/connect/forget
+  // do, so this stays on the live device object rather than going through
+  // bin/omarchy-bluetooth-device — the same call style as disconnectDevice().
+  function startRename(device) {
+    if (!device || !device.address) return
+    // Only remembered devices: BlueZ keeps an alias for a device it stores,
+    // and would drop one written to a scan-cache entry it later evicts.
+    if (!(device.connected || device.paired || device.bonded || device.trusted)) return
+    // Same rule the pencil's visibility and the cursor walk apply, enforced
+    // here so 'r' and Return cannot open an editor on a row already going away.
+    if (pendingAction(device.address) === "forgetting") return
+    rowFocus = "row"
+    // Left empty for a device with no alias, so the field shows its
+    // placeholder — the name BlueZ reports — and submitting empty is visibly
+    // a no-op rather than looking like it cleared something.
+    renameText = Model.hasAlias(device) ? String(device.name || "") : ""
+    renameAddress = device.address
+  }
+
+  // 'r' renames the selected remembered device, mirroring deleteSelected().
+  function startRenameSelected() {
+    if (focusSection !== "known" && focusSection !== "connected") return
+    startRename(deviceAt(focusSection, selectedIndex))
+  }
+
+  function cancelRename() {
+    renameAddress = ""
+    renameText = ""
+  }
+
+  function commitRename() {
+    var device = deviceWithAddress(renameAddress)
+    var next = String(renameText || "").trim()
+    cancelRename()
+    if (!device) return
+
+    if (next === "") {
+      // Empty means "drop the alias". Only worth writing when there is one:
+      // BlueZ answers a write of "" with Alias = Name, and where Alias already
+      // equals Name that is not a change, so nothing comes back and
+      // quickshell's optimistic local value would sit empty.
+      if (Model.hasAlias(device)) device.name = ""
+      return
+    }
+    device.name = next
+  }
+
+  // A device forgotten — or unpaired by another BlueZ client — while its editor
+  // is open would otherwise leave renameAddress pointing at a row no delegate
+  // renders, with the key catcher blocked and the panel deaf to every key.
+  function cancelRenameIfGone() {
+    if (renameAddress === "") return
+    var device = deviceWithAddress(renameAddress)
+    if (!device || !(device.connected || device.paired || device.bonded || device.trusted))
+      cancelRename()
+  }
+
   function syncPendingActions() {
     var next = cloneMap(pendingActions)
     var changed = false
@@ -327,32 +413,32 @@ Panel {
     var sections = visibleSections
     if (focusSection === "header") {
       if (delta > 0 && sections && sections.length > 0) {
-        focusSection = sections[0]; selectedIndex = 0; actionFocused = false
+        focusSection = sections[0]; selectedIndex = 0; rowFocus = "row"
       }
       return
     }
-    if (!sections || sections.length === 0) { focusSection = "header"; actionFocused = false; return }
+    if (!sections || sections.length === 0) { focusSection = "header"; rowFocus = "row"; return }
     var sIdx = sections.indexOf(focusSection)
-    if (sIdx < 0) { focusSection = sections[0]; selectedIndex = 0; actionFocused = false; return }
+    if (sIdx < 0) { focusSection = sections[0]; selectedIndex = 0; rowFocus = "row"; return }
 
     var idx = selectedIndex
     var max = sectionCount(focusSection) - 1
 
     if (delta > 0) {
-      if (idx < max) { selectedIndex = idx + 1; actionFocused = false; return }
+      if (idx < max) { selectedIndex = idx + 1; rowFocus = "row"; return }
       if (sIdx < sections.length - 1) {
         focusSection = sections[sIdx + 1]
         selectedIndex = 0
-        actionFocused = false
+        rowFocus = "row"
       }
     } else {
-      if (idx > 0) { selectedIndex = idx - 1; actionFocused = false; return }
+      if (idx > 0) { selectedIndex = idx - 1; rowFocus = "row"; return }
       if (sIdx > 0) {
         focusSection = sections[sIdx - 1]
         selectedIndex = sectionCount(focusSection) - 1
-        actionFocused = false
+        rowFocus = "row"
       } else {
-        focusSection = "header"; actionFocused = false
+        focusSection = "header"; rowFocus = "row"
       }
     }
   }
@@ -360,7 +446,15 @@ Panel {
   function setHeaderCursor() {
     cursorActive = true
     focusSection = "header"
-    actionFocused = false
+    rowFocus = "row"
+  }
+
+  // The pencil is hidden on a row already being forgotten, and the cursor has
+  // to step past it in that case. Mirrors DeviceRow.showRenameButton.
+  readonly property bool focusedRowCanRename: {
+    if (focusSection !== "known" && focusSection !== "connected") return false
+    var dev = deviceAt(focusSection, selectedIndex)
+    return !!dev && pendingAction(dev.address || "") !== "forgetting"
   }
 
   function moveCursorH(delta) {
@@ -368,8 +462,16 @@ Panel {
     if (focusSection !== "known" && focusSection !== "connected") return
     var dev = deviceAt(focusSection, selectedIndex)
     if (!dev || !dev.address) return
-    if (delta > 0) actionFocused = true
-    else if (delta < 0) actionFocused = false
+    // The editor owns the row while it is open; there is nothing to walk to.
+    if (renameAddress !== "") return
+
+    var order = ["row", "rename", "forget"]
+    var step = delta > 0 ? 1 : -1
+    var next = order.indexOf(rowFocus) + step
+    // Step over the pencil rather than park the cursor on a hidden button.
+    if (order[next] === "rename" && !focusedRowCanRename) next += step
+    if (next < 0 || next >= order.length) return
+    rowFocus = order[next]
   }
 
   function activateCursor() {
@@ -377,8 +479,12 @@ Panel {
       toggleBluetooth()
       return
     }
-    if (actionFocused) {
+    if (rowFocus === "forget") {
       deleteSelected()
+      return
+    }
+    if (rowFocus === "rename") {
+      startRenameSelected()
       return
     }
 
@@ -406,6 +512,9 @@ Panel {
   }
 
   onOpenedChanged: {
+    // Correct in both directions: a panel dismissed mid-edit must not reopen
+    // with the editor still up.
+    cancelRename()
     if (opened) {
       // Adopt a discovery session that is already running — a popout handoff
       // from another monitor, or one leaked by an instance that could not
@@ -415,7 +524,7 @@ Panel {
       else if (knownDevices.length > 0) { focusSection = "known"; selectedIndex = 0 }
       else if (discoveredDevices.length > 0) { focusSection = "discovered"; selectedIndex = 0 }
       else { focusSection = "header" }
-      actionFocused = false
+      rowFocus = "row"
       cursorActive = false
     }
   }
@@ -462,6 +571,17 @@ Panel {
     clampCursor()
   }
 
+  // The key catcher gives up focus to the editor, so it has to be handed back
+  // when the editor closes or the panel stops answering keys entirely.
+  onRenameAddressChanged: {
+    if (renameAddress === "" && opened)
+      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+  }
+  // deviceGroups, not devices: `devices` is Bluetooth.devices.values and only
+  // re-evaluates when the set of objects changes, so another BlueZ client
+  // clearing paired/bonded/trusted on a device that stays in the list would
+  // drop the row without ever running this.
+  onDeviceGroupsChanged: cancelRenameIfGone()
   onSelectedIndexChanged: updateFocusedAddress()
   onFocusSectionChanged: updateFocusedAddress()
   onConnectedDevicesChanged: { reselectFocusedDevice(); syncPendingActions() }
@@ -672,6 +792,10 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      // Freeze the cursor model while a rename editor is open; the TextField
+      // inside owns input until Esc or Enter. Keys.BeforeItem means this
+      // handler would otherwise eat the keystrokes before the field sees them.
+      blocked: root.renameAddress !== ""
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
         if (dy !== 0) root.moveCursor(dy)
@@ -683,6 +807,9 @@ Panel {
       onDeleteRequested: if (root.cursorActive) root.deleteSelected()
       onTextKey: function(t) {
         if (t === "b" || t === "B") root.toggleBluetooth()
+        // Guarded like 'x': both act on the selected row, and the selection is
+        // not on screen until the cursor is.
+        else if (t === "r" || t === "R") { if (root.cursorActive) root.startRenameSelected() }
       }
 
       Column {
@@ -901,9 +1028,14 @@ Panel {
 
     readonly property bool rowSelected: root.cursorActive && root.focusSection === sectionName && root.selectedIndex === rowIndex
     readonly property bool forgetAvailable: (sectionName === "known" || sectionName === "connected") && !isDiscovered
-    readonly property bool showForgetButton: forgetAvailable && (rowMouse.containsMouse || rowSelected)
+    readonly property bool renameAvailable: forgetAvailable
+    readonly property bool isRenameOpen: renameAvailable && root.renameAddress !== "" && root.renameAddress === (dev ? dev.address : "")
+    readonly property string realName: root.deviceRealName(dev)
+    readonly property bool showForgetButton: forgetAvailable && !isRenameOpen && (rowMouse.containsMouse || rowSelected)
+    // Not offered on a row already on its way out.
+    readonly property bool showRenameButton: renameAvailable && !isRenameOpen && action !== "forgetting" && (rowMouse.containsMouse || rowSelected)
 
-    hasCursor: rowSelected && !root.actionFocused
+    hasCursor: rowSelected && root.rowFocus === "row"
     current: isConnected
     foreground: root.bar.foreground
     fill: root.hoverFill
@@ -933,6 +1065,9 @@ Panel {
     MouseArea {
       id: rowMouse
       anchors.fill: parent
+      // Stands down while the editor owns the row: a click beside the field
+      // would otherwise connect or disconnect the device being renamed.
+      enabled: !row.isRenameOpen
       hoverEnabled: true
       acceptedButtons: Qt.LeftButton | Qt.RightButton
       cursorShape: row.dev ? Qt.PointingHandCursor : Qt.ArrowCursor
@@ -941,7 +1076,7 @@ Panel {
         root.cursorActive = true
         root.focusSection = row.sectionName
         root.selectedIndex = row.rowIndex
-        root.actionFocused = false
+        root.rowFocus = "row"
       }
 
       onClicked: function(mouse) {
@@ -958,7 +1093,7 @@ Panel {
     }
 
     PanelToolTip {
-      visible: row.actionTooltip !== "" && rowMouse.containsMouse && !root.actionFocused
+      visible: row.actionTooltip !== "" && rowMouse.containsMouse && root.rowFocus === "row" && !row.isRenameOpen
       text: row.actionTooltip
       fontFamily: root.bar.fontFamily
     }
@@ -970,7 +1105,8 @@ Panel {
       anchors.verticalCenter: parent.verticalCenter
       anchors.leftMargin: Style.space(10)
       anchors.rightMargin: Style.space(10)
-      implicitHeight: Math.max(deviceIcon.implicitHeight, info.implicitHeight, forgetBtn.implicitHeight)
+      implicitHeight: Math.max(deviceIcon.implicitHeight, info.implicitHeight, rowActions.implicitHeight,
+                               nameField.visible ? nameField.implicitHeight : 0)
 
       Text {
         id: deviceIcon
@@ -985,11 +1121,12 @@ Panel {
 
       Column {
         id: info
+        visible: !row.isRenameOpen
         spacing: Style.space(1)
         anchors.left: deviceIcon.right
         anchors.leftMargin: Style.space(10)
-        anchors.right: forgetBtn.visible ? forgetBtn.left : parent.right
-        anchors.rightMargin: forgetBtn.visible ? Style.space(8) : 0
+        anchors.right: rowActions.width > 0 ? rowActions.left : parent.right
+        anchors.rightMargin: rowActions.width > 0 ? Style.space(8) : 0
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
@@ -1013,31 +1150,104 @@ Panel {
         }
       }
 
-      PanelActionButton {
-        id: forgetBtn
+      // Editor for the device's name, in place of the label it replaces. The
+      // draft is read from and written back to the panel on every keystroke,
+      // because a discovery report rebuilds this delegate mid-edit.
+      TextField {
+        id: nameField
+        visible: row.isRenameOpen
+        anchors.left: deviceIcon.right
+        anchors.leftMargin: Style.space(10)
+        anchors.right: rowActions.left
+        anchors.rightMargin: Style.space(6)
+        anchors.verticalCenter: parent.verticalCenter
+        // The default 30px height suits dialog forms; a panel row is tighter.
+        horizontalPadding: Style.spacing.controlGap
+        verticalPadding: Style.spacing.controlPaddingY
+        foreground: root.bar.foreground
+        font.family: root.bar.fontFamily
+        // The name BlueZ reports, so submitting an empty field visibly puts
+        // this back rather than looking like it did nothing.
+        placeholderText: row.realName !== "" ? row.realName : "Device name"
+        text: row.isRenameOpen ? root.renameText : ""
+
+        onTextChanged: if (row.isRenameOpen && text !== root.renameText) root.renameText = text
+        onAccepted: root.commitRename()
+        // The key catcher is blocked while this is open, so it never sees
+        // Escape; without this the panel would close instead of the editor.
+        Keys.onEscapePressed: root.cancelRename()
+
+        onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
+        Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
+      }
+
+      Row {
+        id: rowActions
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        visible: row.showForgetButton
-        iconText: "󰅙"
-        tooltipText: "Forget"
-        foreground: root.bar.foreground
-        hoverColor: root.bar.foreground
-        fontFamily: root.bar.fontFamily
-        hasCursor: row.rowSelected && root.actionFocused
-        onHovered: function(isHovered) {
-          if (!isHovered) {
-            if (rowMouse.containsMouse) root.actionFocused = false
-            return
+        spacing: Style.space(4)
+
+        PanelActionButton {
+          id: renameBtn
+          visible: row.showRenameButton
+          iconText: "󰏫"
+          tooltipText: "Rename"
+          foreground: root.bar.foreground
+          hoverColor: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          hasCursor: row.rowSelected && root.rowFocus === "rename"
+          onHovered: function(isHovered) {
+            if (!isHovered) {
+              if (rowMouse.containsMouse) root.rowFocus = "row"
+              return
+            }
+            root.cursorActive = true
+            root.focusSection = row.sectionName
+            root.selectedIndex = row.rowIndex
+            root.rowFocus = "rename"
           }
-          root.cursorActive = true
-          root.focusSection = row.sectionName
-          root.selectedIndex = row.rowIndex
-          root.actionFocused = true
+          onClicked: root.startRename(root.deviceFor(row))
         }
-        onClicked: {
-          var dev = root.deviceFor(row)
-          if (!dev) return
-          root.forgetDevice(dev)
+
+        PanelActionButton {
+          id: forgetBtn
+          visible: row.showForgetButton
+          iconText: "󰅙"
+          tooltipText: "Forget"
+          foreground: root.bar.foreground
+          hoverColor: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          hasCursor: row.rowSelected && root.rowFocus === "forget"
+          onHovered: function(isHovered) {
+            if (!isHovered) {
+              if (rowMouse.containsMouse) root.rowFocus = "row"
+              return
+            }
+            root.cursorActive = true
+            root.focusSection = row.sectionName
+            root.selectedIndex = row.rowIndex
+            root.rowFocus = "forget"
+          }
+          onClicked: {
+            var dev = root.deviceFor(row)
+            if (!dev) return
+            root.forgetDevice(dev)
+          }
+        }
+
+        // Doubles as the reset: an empty field drops the alias, so the tooltip
+        // says which name that puts back.
+        PanelActionButton {
+          id: confirmBtn
+          visible: row.isRenameOpen
+          iconText: "󰄬"
+          tooltipText: nameField.text.trim() === "" && row.realName !== ""
+            ? "Reset to " + row.realName
+            : "Save name"
+          foreground: root.bar.foreground
+          hoverColor: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          onClicked: root.commitRename()
         }
       }
     }
