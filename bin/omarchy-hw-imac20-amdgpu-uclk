@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# omarchy:summary=Locate the affected iMac20,2 Radeon Pro 5700 XT GPU.
+# omarchy:hidden=true
+
+set -euo pipefail
+
+product_name_file="${OMARCHY_DMI_PRODUCT_NAME:-/sys/class/dmi/id/product_name}"
+pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
+
+[[ -r $product_name_file ]] || exit 1
+[[ $(<"$product_name_file") == "iMac20,2" ]] || exit 1
+
+shopt -s nullglob
+
+for device_path in "$pci_devices_path"/*; do
+  [[ -r $device_path/vendor ]] || continue
+  [[ -r $device_path/device ]] || continue
+  [[ -r $device_path/subsystem_vendor ]] || continue
+  [[ -r $device_path/subsystem_device ]] || continue
+
+  [[ $(<"$device_path/vendor") == "0x1002" ]] || continue
+  [[ $(<"$device_path/device") == "0x7319" ]] || continue
+  [[ $(<"$device_path/subsystem_vendor") == "0x106b" ]] || continue
+  [[ $(<"$device_path/subsystem_device") == "0x021b" ]] || continue
+
+  printf '%s\n' "$device_path"
+  exit 0
+done
+
+exit 1
