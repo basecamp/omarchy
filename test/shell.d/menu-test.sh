@@ -264,15 +264,17 @@ assert(
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
 assertDeepEqual(
   {
-    disabled: defaultById['install.ai.vibecad'].disabled,
-    action: defaultById['install.ai.vibecad'].action
+    disabled: defaultById['install.ai.vibecad-preview'].disabled,
+    action: defaultById['install.ai.vibecad-preview'].action
   },
   {
-    disabled: 'omarchy-pkg-present vibecad-bin',
-    action: 'omarchy-install-and-launch VibeCAD vibecad-bin vibecad'
+    disabled: 'omarchy-pkg-present vibecad-preview-bin',
+    action: "omarchy-install-and-launch 'VibeCAD Preview' vibecad-preview-bin vibecad"
   },
-  'menu installs and launches VibeCAD from the Omarchy package repository'
+  'menu installs and launches VibeCAD Preview from the Omarchy package repository'
 )
+assertEqual(defaultById['install.ai.vibecad-preview'].label, 'VibeCAD Preview', 'menu identifies the RC as Preview')
+assert(!defaultById['install.ai.vibecad'], 'menu does not offer a stable VibeCAD package before upstream publishes one')
 // Software you already have keeps its place in Install, dimmed rather than
 // dropped, so the list reads as a catalog of what Omarchy can install.
 // Chromium Account is the sole Install row with anything left to hide for, so
