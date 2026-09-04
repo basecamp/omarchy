@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# omarchy:summary=Unfold a counted crash notification back into one card per crash
+# omarchy:hidden=true
+# omarchy:args=<pid> <comm> <exe> <signal> [<pid> <comm> <exe> <signal>...]
+
+# Clicked from the "N more processes crashed" card omarchy-crash-watch raises
+# once a burst outgrows the screen. The crashes ride in as discrete argv words,
+# four to a crash and oldest first -- the same words the watcher would have put
+# on a card of its own had the storm been small enough to read.
+
+set -uo pipefail
+
+# nf-md-robot_dead, escaped so this file reads without a Nerd Font.
+readonly CRASH_GLYPH=$'\U000f16a1'
+
+# Read by omarchy-crash-watch at the next crash. Touched before anything is
+# posted: the cards this is about to put on screen under their own names must
+# not still be inside the count a later card offers to unfold.
+readonly EXPANDED_MARKER=${XDG_RUNTIME_DIR:-/tmp}/omarchy/crash-expanded
+
+usage() {
+  echo "Usage: omarchy crash expand <pid> <comm> <exe> <signal> [<pid> <comm> <exe> <signal>...]" >&2
+}
+
+if (($# == 0)); then
+  usage
+  exit 1
+fi
+
+# Four words to a crash, or the words after a missing one all shift along and
+# every card names somebody else's crash.
+if (($# % 4 != 0)); then
+  echo "Crashes come four words at a time: <pid> <comm> <exe> <signal>" >&2
+  usage
+  exit 1
+fi
+
+omarchy-notification-wait || exit 1
+
+mkdir -p "${EXPANDED_MARKER%/*}" && : >"$EXPANDED_MARKER"
+
+while (($# > 0)); do
+  pid=$1 comm=$2 exe=$3 signal=$4
+  shift 4
+
+  # Muting is what a diagnosis offers at the end, so a name can have been
+  # silenced since the burst folded it away. Honour that rather than putting it
+  # back on screen.
+  omarchy-toggle-enabled "crash-ignore/$comm" && continue
+
+  # Identical to the card the watcher raises for a crash of its own, down to the
+  # click: what was counted is worth exactly what it would have been worth had
+  # it arrived alone.
+  omarchy-notification-send \
+    --urgency critical \
+    --glyph "$CRASH_GLYPH" \
+    "Process crashed: $comm" \
+    "Click to diagnose with AI" \
+    --exec omarchy-agent-crash "$pid" "$comm" "$exe" "$signal"
+done

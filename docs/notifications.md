@@ -175,9 +175,16 @@ Everything goes through the same sender contract, so the pieces are small:
   that crash is the one most worth reporting. Critical toasts never expire, so
   a burst is capped: past the third card the remaining crashes land on one
   counting card ("5 more processes crashed") that replaces itself through
-  `--replace-id` and clicks through to the newest of them. Quiet ends the
-  burst. `OMARCHY_CRASH_STACK_AFTER` and `OMARCHY_CRASH_BURST_IDLE_SECONDS`
-  move those two thresholds.
+  `--replace-id`. Standing for one crash it clicks through to that crash;
+  standing for several it clicks through to `omarchy-crash-expand`, which puts
+  them back as a card each. They ride on the card as argv words rather than
+  through a file, newest `OMARCHY_CRASH_EXPAND_MAX` of them, so a card can only
+  ever unfold what it counted. The unfold touches
+  `$XDG_RUNTIME_DIR/omarchy/crash-expanded`, which the watcher reads at its next
+  crash: the count starts over so a later card cannot offer to unfold what is
+  already on screen, while the folding itself stays on. Quiet ends the burst.
+  `OMARCHY_CRASH_STACK_AFTER` and `OMARCHY_CRASH_BURST_IDLE_SECONDS` move the
+  other two thresholds.
 - **Pending migrations** — `omarchy-migrate-notify` (from its user service
   after `graphical-session.target`) waits for the server, then sends a
   critical toast whose click opens a terminal running `omarchy-migrate`,

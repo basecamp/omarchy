@@ -29,6 +29,16 @@ readonly stack_after=${OMARCHY_CRASH_STACK_AFTER:-3}
 # evidence the storm is over and the next crash has a clear screen to arrive on.
 readonly burst_idle_seconds=${OMARCHY_CRASH_BURST_IDLE_SECONDS:-300}
 
+# How many of the counted crashes the card carries, and so how many unfolding
+# puts back on screen. A storm past this is a machine on fire: the newest are
+# the ones whose core dumps are still around, and coredumpctl lists the rest.
+readonly expand_max=${OMARCHY_CRASH_EXPAND_MAX:-10}
+
+# Touched by omarchy-crash-expand when a card is unfolded. Read at the next
+# crash rather than watched: this loop is blocked reading the journal, and the
+# only moment the answer changes anything is when there is a crash to announce.
+readonly expanded_marker=${XDG_RUNTIME_DIR:-/tmp}/omarchy/crash-expanded
+
 # Extended regex of process names never worth announcing.
 readonly ignore_pattern=${OMARCHY_CRASH_IGNORE:-}
 
@@ -41,6 +51,14 @@ announced_count=0
 stacked_count=0
 stack_id=0
 burst_last=0
+
+# The counted crashes themselves, four words each and oldest first, as the card
+# carries them and as unfolding will replay them. `pending` is the next version
+# of that list, held apart so a send that fails leaves the card's argv and the
+# list agreeing about what the card actually says.
+declare -a stacked_crashes=()
+declare -a pending=()
+expanded_seen=0
 
 announce() {
   local comm=$1 pid=$2 exe=$3 signal=$4
@@ -69,14 +87,23 @@ announce() {
 # crash -- the one whose core dump is least likely to have rotated away, and in
 # a storm with a single cause as good an entry point as any of the others.
 announce_stacked() {
-  local count=$1 comm=$2 pid=$3 exe=$4 signal=$5 headline id
+  local count=$1 comm=$2 pid=$3 exe=$4 signal=$5 headline body id
+  local -a click
 
   omarchy-notification-wait || return 1
 
   if ((count == 1)); then
+    # A card standing for one crash is that crash. Unfolding would put back the
+    # very card being clicked, so it leads where a card of its own would have.
     headline="1 more process crashed"
+    body="Latest: $comm — click to diagnose with AI"
+    click=(omarchy-agent-crash "$pid" "$comm" "$exe" "$signal")
   else
+    # Past that the card cannot lead to one crash without picking for the user,
+    # so it leads back to all of them and lets them pick.
     headline="$count more processes crashed"
+    body="Latest: $comm — click to unfold them"
+    click=(omarchy-crash-expand "${pending[@]}")
   fi
 
   # A dismissed card leaves an id the shell no longer knows, and the spec has it
@@ -88,8 +115,8 @@ announce_stacked() {
     --replace-id "$stack_id" \
     --print-id \
     "$headline" \
-    "Latest: $comm — click to diagnose with AI" \
-    --exec omarchy-agent-crash "$pid" "$comm" "$exe" "$signal") || return 1
+    "$body" \
+    --exec "${click[@]}") || return 1
 
   [[ $id =~ ^[0-9]+$ ]] || return 1
 
@@ -153,12 +180,25 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
     now=$EPOCHSECONDS
     (((now - ${last_notified[$name]:-0}) < dedupe_seconds)) && continue
 
+    # An unfolded card put its crashes on screen under their own names, so the
+    # count starts over -- a later card must not offer to unfold what is already
+    # showing. Only the count: the screen is fuller for it, not emptier, so the
+    # crashes after it keep folding rather than going back to a card each.
+    expanded_at=$(stat -c %Y "$expanded_marker" 2>/dev/null) || expanded_at=0
+    if ((expanded_at > expanded_seen)); then
+      expanded_seen=$expanded_at
+      stacked_count=0
+      stacked_crashes=()
+      stack_id=0
+    fi
+
     # Measured from the last crash that reached the screen: a crash suppressed
     # by the dedupe or a mute is not something the user is looking at, so it
     # cannot be what keeps a burst alive.
     if ((now - burst_last >= burst_idle_seconds)); then
       announced_count=0
       stacked_count=0
+      stacked_crashes=()
       stack_id=0
     fi
 
@@ -172,10 +212,17 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
         announced_count=$((announced_count + 1))
       fi
     else
+      # Oldest first, so unfolding replays the storm in the order it happened.
+      pending=("${stacked_crashes[@]}" "$pid" "$name" "$exe" "$signal")
+      while ((${#pending[@]} > expand_max * 4)); do
+        pending=("${pending[@]:4}")
+      done
+
       if announce_stacked "$((stacked_count + 1))" "$name" "$pid" "$exe" "$signal"; then
         last_notified[$name]=$now
         burst_last=$now
         stacked_count=$((stacked_count + 1))
+        stacked_crashes=("${pending[@]}")
       fi
     fi
   done
