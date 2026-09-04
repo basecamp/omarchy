@@ -487,12 +487,26 @@ assert(
   'menu filter changes disarm pointer selection'
 )
 assert(
-  /function setActiveMenu\(id, pushHistory, fromPointer\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
+  /function setActiveMenu\(id, pushHistory, fromPointer, restoreIndex\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
   'menu route changes only accept an initial pointer sample for mouse activation'
 )
 assert(
   /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
   'menu Left key follows empty-filter Backspace navigation'
+)
+// Drilling into a submenu remembers the row you left behind, so goBack can
+// put the cursor back on it instead of resetting to the top of the list.
+assert(
+  /if \(pushHistory && id !== root\.activeMenu\)\s*\n\s*root\.navStack = root\.navStack\.concat\(\[\{ id: root\.activeMenu, index: root\.selectedIndex \}\]\)/.test(menuQml),
+  'menu history remembers the selected row of the menu being left'
+)
+assert(
+  /function goBack\(\)[\s\S]*?root\.setActiveMenu\(previous\.id, false, false, previous\.index\)/.test(menuQml),
+  'menu goBack restores the remembered row of the menu it returns to'
+)
+assert(
+  /if \(restoreIndex !== undefined && restoreIndex >= 0 && restoreIndex < displayModel\.count\)\s*\n\s*root\.selectedIndex = restoreIndex/.test(menuQml),
+  'menu only restores the remembered row when it still fits the rebuilt list'
 )
 assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),
