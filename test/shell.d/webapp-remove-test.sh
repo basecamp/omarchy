@@ -124,7 +124,9 @@ EOF
 cat >"$home/.config/chromium-flags.conf" <<EOF
 --load-extension=$others,$slim
 EOF
-HOME="$home" OMARCHY_PATH="$opath" OMARCHY_REMOVE_NOTIFY=false \
+# remove-all delegates by bare command name, so the checkout has to lead PATH
+# or the loop runs whatever omarchy-webapp-remove the machine has installed.
+HOME="$home" OMARCHY_PATH="$opath" OMARCHY_REMOVE_NOTIFY=false PATH="$ROOT/bin:$PATH" \
   "$ROOT/bin/omarchy-webapp-remove-all" "$home/.local/share/applications" >/dev/null
 grep -q "whatsapp-slim" "$home/.config/chromium-flags.conf" &&
   fail "remove-all strips the slim flags too" "$(cat "$home/.config/chromium-flags.conf")"
