@@ -18,6 +18,20 @@ o.window(
   { no_focus = true }
 )
 
+-- Java AWT tooltips/menus are real X11 windows that reuse the parent class
+-- and title themselves win0, win1, ... A class-only tile/maximize rule
+-- stretches them over the whole client. Float and keep them unfocused.
+o.window({
+  class = ".*",
+  title = "^win[0-9]+$",
+  xwayland = true,
+}, {
+  float = true,
+  no_initial_focus = true,
+  no_focus = true,
+  no_follow_mouse = true,
+})
+
 -- App-specific tweaks (may remove default-opacity tag).
 require("default.hypr.apps")
 
