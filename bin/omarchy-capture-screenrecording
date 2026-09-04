@@ -2,7 +2,7 @@
 
 # omarchy:summary=Start or stop screen recording
 # omarchy:group=capture
-# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--webcam-size=<small|medium|large>] [--resolution=<size>] [--stop-recording]
+# omarchy:args=[--fullscreen] [--with-desktop-audio] [--with-microphone-audio] [--with-webcam] [--webcam-device=<device>] [--webcam-size=<small|medium|large>] [--resolution=<size>] [--stop-recording] [--pause-recording] [--prompt]
 # omarchy:examples=omarchy screenrecord | omarchy capture screenrecording --with-desktop-audio
 # omarchy:aliases=omarchy screenrecord
 #
@@ -34,7 +34,10 @@ WEBCAM_SIZE="medium"
 RESOLUTION=""
 FULLSCREEN="false"
 STOP_RECORDING="false"
+PAUSE_RECORDING="false"
+PROMPT="false"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
+PAUSED_FILE="/tmp/omarchy-screenrecord-paused"
 REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
 
@@ -48,6 +51,8 @@ for arg in "$@"; do
   --resolution=*) RESOLUTION="${arg#*=}" ;;
   --fullscreen) FULLSCREEN="true" ;;
   --stop-recording) STOP_RECORDING="true" ;;
+  --pause-recording) PAUSE_RECORDING="true" ;;
+  --prompt) PROMPT="true" ;;
   esac
 done
 
@@ -147,6 +152,10 @@ start_screenrecording() {
   local capture_args=()
   local target
 
+  # A paused marker left by a recording that never reached stop (crash, logout)
+  # would invert the first pause toggle of this new session, so drop it.
+  rm -f "$PAUSED_FILE"
+
   # Opt-in path for HDR, external-GPU monitors, and window capture (all things
   # the portal backend supports and the kms backend doesn't). Default flow uses
   # slurp + the kms backend, which avoids the EGL DMA-BUF modifier import
@@ -239,7 +248,7 @@ stop_screenrecording() {
     ) &
   fi
 
-  rm -f "$RECORDING_FILE"
+  rm -f "$RECORDING_FILE" "$PAUSED_FILE"
 }
 
 toggle_screenrecording_indicator() {
@@ -248,6 +257,50 @@ toggle_screenrecording_indicator() {
 
 screenrecording_active() {
   pgrep -f "^gpu-screen-recorder" >/dev/null
+}
+
+screenrecording_paused() {
+  [[ -f $PAUSED_FILE ]]
+}
+
+# SIGUSR2 toggles capture pause in gpu-screen-recorder (SIGUSR1 saves a replay
+# instead). The process won't report its paused state back, so the marker file
+# is the source of truth — every pause/resume goes through here, which keeps it
+# in lockstep with the process.
+pause_screenrecording() {
+  pkill -SIGUSR2 -f "^gpu-screen-recorder"
+
+  if screenrecording_paused; then
+    rm -f "$PAUSED_FILE"
+    omarchy-notification-send -t 1500 "Recording resumed"
+  else
+    touch "$PAUSED_FILE"
+    omarchy-notification-send -t 1500 "Recording paused"
+  fi
+
+  toggle_screenrecording_indicator
+}
+
+# Present a focused stop/pause (or stop/resume) picker for an active capture.
+# Called by the bar indicator so a mid-recording click asks before destroying
+# the take, instead of stopping on the first click. omarchy-menu-select returns
+# the label without the glyph; cancel exits nonzero and nothing runs.
+prompt_screenrecording_action() {
+  local pause_label=$'\uf04c\tPause recording'
+  local resume_label=$'\uf04b\tResume recording'
+  local stop_label=$'\uf04d\tStop recording'
+  local choice
+
+  if screenrecording_paused; then
+    choice=$(omarchy-menu-select "Screen recording" "$resume_label" "$stop_label") || return 1
+  else
+    choice=$(omarchy-menu-select "Screen recording" "$pause_label" "$stop_label") || return 1
+  fi
+
+  case "$choice" in
+    "Pause recording" | "Resume recording") pause_screenrecording ;;
+    "Stop recording") stop_screenrecording ;;
+  esac
 }
 
 finalize_recording() {
@@ -279,7 +332,19 @@ finalize_recording() {
   fi
 }
 
-if screenrecording_active; then
+if [[ $PAUSE_RECORDING == "true" ]]; then
+  if screenrecording_active; then
+    pause_screenrecording
+  else
+    exit 1
+  fi
+elif [[ $PROMPT == "true" ]]; then
+  if screenrecording_active; then
+    prompt_screenrecording_action
+  else
+    omarchy-menu toggle trigger.capture.screenrecord
+  fi
+elif screenrecording_active; then
   stop_screenrecording
 elif [[ $STOP_RECORDING == "true" ]]; then
   exit 1
