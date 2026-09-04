@@ -116,7 +116,9 @@ hl.config({
 
   cursor = {
     hide_on_key_press = true,
-    warp_on_change_workspace = 1,
+    -- Keep the cursor where it is on workspace switches instead of warping
+    -- it to the last focused window.
+    warp_on_change_workspace = 0,
   },
 
   binds = {
