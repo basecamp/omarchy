@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
 
@@ -145,7 +146,7 @@ Item {
 
       Column {
       id: form
-        width: Math.max(bodyScroll.width, Style.space(390))
+        width: Math.max(viewport.width, Style.space(390))
         spacing: Style.space(9)
 
       Text {
@@ -215,21 +216,23 @@ Item {
         }
       }
 
-      Row {
+      RowLayout {
         width: parent.width
-        spacing: Style.space(8)
         Text {
+          id: availabilityLabel
           textFormat: Text.PlainText
-          width: parent.width - availabilityButton.width - Style.space(8)
+          Layout.fillWidth: true
+          Layout.alignment: Qt.AlignVCenter
           text: availabilityCount() + " weekly availability window" + (availabilityCount() === 1 ? "" : "s")
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body
-          anchors.verticalCenter: parent.verticalCenter
+          elide: Text.ElideRight
         }
         Button {
           focusable: true
           id: availabilityButton
+          Layout.alignment: Qt.AlignVCenter
           text: "Edit availability"
           foreground: root.foreground
           bordered: true

@@ -254,7 +254,7 @@ Item {
         values: root.dependencyIds
         options: root.dependencyOptions()
         foreground: root.foreground
-        onChanged: root.dependencyIds = values
+        onChanged: function(next) { root.dependencyIds = next }
       }
 
       Text {

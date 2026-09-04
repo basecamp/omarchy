@@ -289,7 +289,16 @@ Item {
       }
 
       Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+        // A popup can take a round trip through the window focus scope while
+        // it opens. If the trigger receives a printable key in that small
+        // handoff, keep the same searchable-input behavior instead of
+        // dropping the user's first characters.
+        if (popup.opened && event.text !== ""
+            && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
+          searchField.forceActiveFocus()
+          searchField.insert(searchField.cursorPosition, event.text)
+          event.accepted = true
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
             || event.key === Qt.Key_Space || event.key === Qt.Key_Down) {
           popup.opened ? popup.close() : popup.open()
           event.accepted = true
@@ -387,9 +396,15 @@ Item {
           searchField.text = ""
           root.refresh()
           root.recomputeFiltered()
-          Qt.callLater(function() { searchField.forceActiveFocus() })
+          searchField.forceActiveFocus()
+          Qt.callLater(function() {
+            if (popup.opened) searchField.forceActiveFocus()
+          })
         }
-        onClosed: searchField.text = ""
+        onClosed: {
+          searchField.text = ""
+          trigger.forceActiveFocus()
+        }
 
         contentItem: Column {
           spacing: 0
@@ -408,6 +423,9 @@ Item {
                 id: searchField
                 width: parent.width - refreshButton.width - parent.spacing
                 height: parent.height
+                focus: true
+                activeFocusOnTab: true
+                Keys.priority: Keys.BeforeItem
                 placeholderText: root.placeholderText
                 foreground: root.foreground
                 accent: root.accent

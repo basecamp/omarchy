@@ -44,7 +44,12 @@ Item {
 
   function rowCount(day) {
     var list = root.draft[day]
-    return Math.max(1, (Array.isArray(list) ? list.length : 0) + 1)
+    var count = Array.isArray(list) ? list.length : 0
+    if (count === 0) return 1
+    var last = list[count - 1] || {}
+    var complete = String(last.start || "").trim() !== ""
+      && String(last.end || "").trim() !== ""
+    return count + (complete ? 1 : 0)
   }
 
   function setWindow(day, slot, start, end) {
@@ -134,7 +139,7 @@ Item {
 
       Column {
       id: form
-        width: Math.max(bodyScroll.width, Style.space(390))
+        width: Math.max(viewport.width, Style.space(390))
         spacing: Style.space(8)
 
       Text {
@@ -175,7 +180,10 @@ Item {
           Repeater {
             model: root.rowCount(day)
             delegate: Row {
+              id: slotRow
               required property int index
+              readonly property string rowDay: day
+              readonly property var editor: root
               width: parent.width
               spacing: Style.space(6)
 
@@ -192,11 +200,25 @@ Item {
               TextField {
                 id: startField
                 width: Style.space(100)
+                activeFocusOnTab: true
+                KeyNavigation.tab: endField
+                Keys.priority: Keys.BeforeItem
                 foreground: root.foreground
                 font.family: root.fontFamily
                 placeholderText: "09:00"
                 text: root.windowValue(day, index).start
                 onEditingFinished: root.setWindow(day, index, text, endField.text)
+                Keys.onTabPressed: function(event) {
+                  if (event.modifiers & Qt.ShiftModifier) return
+                  event.accepted = true
+                  endField.forceActiveFocus()
+                }
+                Keys.onPressed: function(event) {
+                  if (event.key === Qt.Key_Tab && !(event.modifiers & Qt.ShiftModifier)) {
+                    event.accepted = true
+                    endField.forceActiveFocus()
+                  }
+                }
                 Keys.onEscapePressed: root.cancelled()
                 Component.onCompleted: if (day === "monday" && index === 0) forceActiveFocus()
               }
@@ -209,15 +231,26 @@ Item {
               TextField {
                 id: endField
                 width: Style.space(100)
+                activeFocusOnTab: true
+                KeyNavigation.backtab: startField
+                Keys.priority: Keys.BeforeItem
                 foreground: root.foreground
                 font.family: root.fontFamily
                 placeholderText: "17:00"
                 text: root.windowValue(day, index).end
-                onEditingFinished: root.setWindow(day, index, startField.text, text)
-                Keys.onReturnPressed: {
-                  if (day === "monday" && index === 0) {
-                    root.setWindow(day, index, startField.text, text)
-                    Qt.callLater(root.save)
+                onEditingFinished: {
+                  slotRow.editor.setWindow(slotRow.rowDay, slotRow.index, startField.text, text)
+                  if (slotRow.rowDay === "monday" && slotRow.index === 0 && startField.text !== "" && text !== "")
+                    slotRow.editor.save()
+                }
+                Keys.onBacktabPressed: function(event) {
+                  event.accepted = true
+                  startField.forceActiveFocus()
+                }
+                Keys.onPressed: function(event) {
+                  if (event.key === Qt.Key_Tab && event.modifiers & Qt.ShiftModifier) {
+                    event.accepted = true
+                    startField.forceActiveFocus()
                   }
                 }
                 Keys.onEscapePressed: root.cancelled()

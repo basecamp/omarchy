@@ -143,6 +143,8 @@ Item {
       TextField {
         id: titleField
         width: parent.width
+        activeFocusOnTab: true
+        KeyNavigation.tab: startAtField.dateFocusTarget
         enabled: root.manualEvent
         foreground: root.foreground
         font.family: root.fontFamily
@@ -163,6 +165,7 @@ Item {
             enabled: root.manualEvent
             label: "Starts"
             value: root.startAt
+            nextFocusTarget: endAtField.dateFocusTarget
             foreground: root.foreground
             fontFamily: root.fontFamily
             onChanged: function(next) { root.startAt = next }
@@ -179,6 +182,7 @@ Item {
             enabled: root.manualEvent
             label: "Ends"
             value: root.endAt
+            nextFocusTarget: timezoneField
             foreground: root.foreground
             fontFamily: root.fontFamily
             onChanged: function(next) { root.endAt = next }

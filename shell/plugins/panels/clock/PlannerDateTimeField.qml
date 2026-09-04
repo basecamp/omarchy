@@ -17,6 +17,10 @@ Item {
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
   property string errorText: ""
+  property Item nextFocusTarget: null
+
+  readonly property Item dateFocusTarget: dateButton
+  readonly property Item timeFocusTarget: timeField
 
   readonly property bool valid: root.allowEmpty && root.value === ""
     ? true
@@ -91,6 +95,7 @@ Item {
     root.errorText = ""
     root.changed(next)
     picker.close()
+    dateButton.forceActiveFocus()
   }
 
   function submit() {
@@ -120,13 +125,14 @@ Item {
     root.selectedDate = new Date(next.getFullYear(), next.getMonth(), next.getDate())
     root.viewYear = root.selectedDate.getFullYear()
     root.viewMonth = root.selectedDate.getMonth()
-    Qt.callLater(root.focusSelectedDay)
+    var field = root
+    Qt.callLater(function() { field.focusSelectedDay() })
   }
 
   function focusSelectedDay() {
     var wanted = ClockModel.keyForDate(root.selectedDate)
-    for (var rowIndex = 0; rowIndex < dateGrid.children.length; rowIndex++) {
-      var row = dateGrid.children[rowIndex]
+    for (var rowIndex = 0; rowIndex < weekRows.count; rowIndex++) {
+      var row = weekRows.itemAt(rowIndex)
       if (!row || !row.children) continue
       for (var dayIndex = 0; dayIndex < row.children.length; dayIndex++) {
         var day = row.children[dayIndex]
@@ -178,6 +184,7 @@ Item {
       Button {
         id: dateButton
         focusable: true
+        KeyNavigation.tab: timeField
         enabled: root.enabled
         width: parent.width - timeField.width - parent.spacing
         text: root.displayDate()
@@ -194,6 +201,9 @@ Item {
 
       TextField {
         id: timeField
+        activeFocusOnTab: true
+        KeyNavigation.tab: root.nextFocusTarget
+        KeyNavigation.backtab: dateButton
         width: Style.space(78)
         enabled: root.enabled
         foreground: root.foreground
@@ -205,6 +215,7 @@ Item {
             var next = root.selectedValue()
             if (next !== false) root.changed(next)
             root.errorText = ""
+            if (root.nextFocusTarget) root.nextFocusTarget.forceActiveFocus()
           } else {
             root.errorText = "Enter a time as HH:MM, for example 09:00."
           }
@@ -237,7 +248,11 @@ Item {
     focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-    onOpened: Qt.callLater(root.focusSelectedDay)
+    onOpened: {
+      pickerContent.forceActiveFocus()
+      var field = root
+      Qt.callLater(function() { field.focusSelectedDay() })
+    }
 
     background: BorderSurface {
       color: Color.popups.background
@@ -247,6 +262,17 @@ Item {
 
     contentItem: Column {
       id: pickerContent
+      focus: true
+      Keys.priority: Keys.BeforeItem
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Left) root.moveDay(-1)
+        else if (event.key === Qt.Key_Right) root.moveDay(1)
+        else if (event.key === Qt.Key_Up) root.moveDay(-7)
+        else if (event.key === Qt.Key_Down) root.moveDay(7)
+        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) root.commitSelection()
+        else return
+        event.accepted = true
+      }
       spacing: Style.space(7)
 
       Row {
@@ -314,6 +340,7 @@ Item {
         id: dateGrid
         spacing: Style.space(2)
         Repeater {
+          id: weekRows
           model: ClockModel.monthGrid(root.viewYear, root.viewMonth, 1, ClockModel.keyForDate(new Date()))
           Row {
             required property var modelData
