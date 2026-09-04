@@ -111,6 +111,46 @@ function parseDisplays(raw) {
   }
 }
 
+// An output's scale and position can only be read dependably while it is on,
+// and bringing one back with "auto" for both re-places the display and drops a
+// scaled one to 1. Carry the last values seen while an output was on, so
+// switching it back on restores the layout it had.
+function rememberLayouts(previous, displays) {
+  var layouts = {}
+  for (var name in previous) layouts[name] = previous[name]
+  if (!Array.isArray(displays)) return layouts
+
+  for (var i = 0; i < displays.length; i++) {
+    var display = displays[i]
+    if (!display || !display.name || !display.enabled) continue
+
+    var scale = Number(display.scale)
+    var x = Number(display.x)
+    var y = Number(display.y)
+    if (!isFinite(scale) || scale <= 0 || !isFinite(x) || !isFinite(y)) continue
+
+    layouts[display.name] = { scale: scale, position: x + "x" + y }
+  }
+
+  return layouts
+}
+
+// Omarchy configures Hyprland through the Lua parser, which rejects
+// `hyprctl keyword` outright ("keyword can't work with non-legacy parsers. Use
+// eval.") while still exiting 0 — so a keyword-based toggle fails silently.
+// `disabled = false` has to be spelled out as well: restating a mode alone
+// leaves an already-disabled output off.
+function monitorRule(name, disable, layout) {
+  if (disable) return 'hl.monitor({ output = "' + name + '", disabled = true })'
+
+  var position = layout && layout.position ? layout.position : "auto"
+  var scale = layout && layout.scale ? String(layout.scale) : '"auto"'
+
+  return 'hl.monitor({ output = "' + name + '", disabled = false, mode = "preferred"' +
+    ', position = "' + position + '"' +
+    ', scale = ' + scale + ' })'
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
@@ -119,6 +159,8 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    rememberLayouts: rememberLayouts,
+    monitorRule: monitorRule
   }
 }
