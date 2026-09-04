@@ -247,6 +247,62 @@ pass "safe dispatch works for font list"
 "$CLI" font current >/dev/null
 pass "safe dispatch works for font current"
 
+# omarchy-font-set must swap only the family and preserve the terminal font
+# size that omarchy display text size chose. Foot's :size was hardcoded back
+# to 9 on every family change while kitty/alacritty/ghostty kept theirs.
+make_tmpdir FONT_TMPDIR
+mkdir -p "$FONT_TMPDIR/.config/foot" "$FONT_TMPDIR/.config/kitty" \
+  "$FONT_TMPDIR/.config/alacritty" "$FONT_TMPDIR/.config/ghostty" \
+  "$FONT_TMPDIR/.config/fontconfig" "$FONT_TMPDIR/fake-bin"
+cat >"$FONT_TMPDIR/.config/foot/foot.ini" <<'EOF'
+font=JetBrainsMono Nerd Font:size=12
+EOF
+cat >"$FONT_TMPDIR/.config/kitty/kitty.conf" <<'EOF'
+font_family JetBrainsMono Nerd Font
+font_size 12.0
+EOF
+cat >"$FONT_TMPDIR/.config/alacritty/alacritty.toml" <<'EOF'
+size = 12
+EOF
+cat >"$FONT_TMPDIR/.config/ghostty/config" <<'EOF'
+font-size = 12
+EOF
+# Stub the heavy side effects so the test is hermetic: shell restart, hooks,
+# notifications, and signals to real terminal processes.
+for shim in omarchy-restart-shell omarchy-hook omarchy-notification-send pkill; do
+  cat >"$FONT_TMPDIR/fake-bin/$shim" <<'EOF'
+#!/bin/bash
+exit 0
+EOF
+  chmod +x "$FONT_TMPDIR/fake-bin/$shim"
+done
+
+# The family argument must exist in fontconfig. Resolve the monospace alias
+# deterministically with fc-match and fall back to enumerating fc-list; the
+# command's own validation requires a family that fontconfig knows about.
+if command -v fc-match >/dev/null 2>&1; then
+  FONT_FAMILY="$(fc-match -f '%{family[0]}\n' monospace | head -1)"
+else
+  FONT_FAMILY="$(fc-list :spacing=100 -f '%{family[0]}\n' | head -1)"
+fi
+if [[ -z $FONT_FAMILY ]]; then
+  fail "fontconfig has no resolvable monospace family for the font-set size test"
+fi
+PATH="$FONT_TMPDIR/fake-bin:$ROOT/bin:$PATH" HOME="$FONT_TMPDIR" \
+  "$ROOT/bin/omarchy-font-set" "$FONT_FAMILY" >/dev/null
+
+printf 'font=%s:size=12\n' "$FONT_FAMILY" >"$FONT_TMPDIR/expected-foot"
+if ! diff -q "$FONT_TMPDIR/expected-foot" "$FONT_TMPDIR/.config/foot/foot.ini" >/dev/null; then
+  fail "font set preserves the Foot size set by omarchy display text size"
+fi
+pass "font set preserves the Foot size set by omarchy display text size"
+grep -qx 'font_size 12.0' "$FONT_TMPDIR/.config/kitty/kitty.conf" || fail "font set preserves kitty size"
+pass "font set preserves kitty size"
+grep -qx 'size = 12' "$FONT_TMPDIR/.config/alacritty/alacritty.toml" || fail "font set preserves alacritty size"
+pass "font set preserves alacritty size"
+grep -qx 'font-size = 12' "$FONT_TMPDIR/.config/ghostty/config" || fail "font set preserves ghostty size"
+pass "font set preserves ghostty size"
+
 make_tmpdir PI_TMPDIR
 NEXT_THEME="$PI_TMPDIR/.local/state/omarchy/current/next-theme"
 CURRENT_THEME="$PI_TMPDIR/.local/state/omarchy/current/theme"
