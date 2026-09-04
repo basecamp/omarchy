@@ -53,6 +53,8 @@ The Apple T1 chip was introduced in late 2016 and used exclusively in the first-
 - Touch Bar is non-functional
 - Sound is not functioning
 
+On MacBookPro13,3 systems with the Radeon Pro 460, Omarchy pins only the VRAM clock to its highest performance level to avoid hard GPU lockups during memory-clock transitions. The GPU core and PCIe link can still scale down, but the fixed VRAM clock uses more power at idle than fully automatic power management.
+
 #### Devices with T2 Chip
 
 The Apple T2 Security Chip was introduced in 2017. The T2 chip was discontinued with the transition to Apple silicon (M-series chips) starting in 2020.
