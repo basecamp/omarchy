@@ -6,8 +6,10 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 leaf="$ROOT/install/hardware/apple/fix-brcmfmac-5ghz.sh"
 nvram="$ROOT/default/firmware/apple/brcmfmac43602-pcie.txt"
+nvram_mbp133="$ROOT/default/firmware/apple/brcmfmac43602-pcie-mbp133.txt"
 all="$ROOT/install/hardware/all.sh"
 migration="$ROOT/migrations/1787312531.sh"
+migration_mbp133="$ROOT/migrations/1788504361.sh"
 manual="$ROOT/manual/44-mac-support.md"
 
 grep -q 'apple/fix-brcmfmac-5ghz.sh' "$all" ||
@@ -28,7 +30,14 @@ grep -qF 'https://bugzilla.kernel.org/attachment.cgi?id=290569' "$nvram" ||
 ! grep -q '^aa5g=1$' "$nvram" || fail "NVRAM is not the placeholder board file"
 pass "the vendored NVRAM has full 5 GHz calibration and provenance"
 
-grep -Fq '5 GHz board calibration on 2017 Touch Bar MacBook Pros' "$manual" ||
+[[ -f $nvram_mbp133 ]] || fail "the MacBookPro13,3 calibration is in the tree"
+grep -qx 'aa5g=3' "$nvram_mbp133" || fail "MacBookPro13,3 NVRAM enables its 5 GHz antenna chain"
+grep -q '285753' "$nvram_mbp133" || fail "MacBookPro13,3 NVRAM documents its bugzilla attachment"
+grep -qF 'https://bugzilla.kernel.org/attachment.cgi?id=285753' "$nvram_mbp133" ||
+  fail "MacBookPro13,3 NVRAM names the exact attachment it was vendored from"
+pass "the MacBookPro13,3 NVRAM has separate calibration and provenance"
+
+grep -Fq '5 GHz board calibration on supported 2016–2017 Touch Bar MacBook Pros' "$manual" ||
   fail "Mac support chapter mentions 5 GHz calibration"
 pass "Mac support chapter mentions 5 GHz calibration"
 
@@ -41,6 +50,8 @@ fwdir="$test_tmp/firmware/updates/brcm"
 packaged="$test_tmp/firmware/brcm"
 pci_devices="$test_tmp/sys-pci"
 mkdir -p "$stub_bin" "$test_tmp/dmi"
+printf 'WIRELESS_REGDOM="US"\n' >"$test_tmp/wireless-regdom"
+printf '0123456789abcdef0123456789abcdef\n' >"$test_tmp/machine-id"
 
 cat >"$stub_bin/lspci" <<'SH'
 #!/bin/bash
@@ -124,6 +135,8 @@ invoke_leaf() {
     OMARCHY_BRCMFMAC_DMI_VENDOR="$test_tmp/dmi/sys_vendor" \
     OMARCHY_BRCMFMAC_DMI_PRODUCT="$test_tmp/dmi/product_name" \
     OMARCHY_BRCMFMAC_PCI_DEVICES="$pci_devices" \
+    OMARCHY_BRCMFMAC_REGDOM_FILE="$test_tmp/wireless-regdom" \
+    OMARCHY_BRCMFMAC_MACHINE_ID="$test_tmp/machine-id" \
     bash -eE -c 'source "$1"' bash "$leaf" </dev/null
 }
 
@@ -137,7 +150,7 @@ run_leaf() {
 }
 
 run_migration() {
-  local vendor=$1 product=$2 wifi_id="${3:-}"
+  local vendor=$1 product=$2 wifi_id="${3:-}" migration_path="${4:-$migration}"
   printf '%s' "$vendor" >"$test_tmp/dmi/sys_vendor"
   printf '%s' "$product" >"$test_tmp/dmi/product_name"
   : >"$calls"
@@ -147,11 +160,12 @@ run_migration() {
     OMARCHY_INSTALL="$ROOT/install" \
     OMARCHY_BRCMFMAC_FWDIR="$fwdir" \
     OMARCHY_BRCMFMAC_PACKAGED_FWDIR="$packaged" \
-    OMARCHY_BRCMFMAC43602_NVRAM="$nvram" \
     OMARCHY_BRCMFMAC_DMI_VENDOR="$test_tmp/dmi/sys_vendor" \
     OMARCHY_BRCMFMAC_DMI_PRODUCT="$test_tmp/dmi/product_name" \
     OMARCHY_BRCMFMAC_PCI_DEVICES="$pci_devices" \
-    bash -euo pipefail "$migration" >/dev/null
+    OMARCHY_BRCMFMAC_REGDOM_FILE="$test_tmp/wireless-regdom" \
+    OMARCHY_BRCMFMAC_MACHINE_ID="$test_tmp/machine-id" \
+    bash -euo pipefail "$migration_path" >/dev/null
 }
 
 rm -rf "$fwdir" "$packaged" "$pci_devices"
@@ -243,10 +257,25 @@ run_leaf "Apple Inc." "MacBookPro14,3" 43bb >/dev/null
 [[ ! -f "$(generic)" ]] || fail "the 2 GHz-only BCM43602 variant is left alone"
 pass "the 2 GHz-only BCM43602 variant is left alone"
 
-# Same PCI ID, different board; this dump has a report of unusable range there.
-run_leaf "Apple Inc." "MacBookPro13,3" 43ba >/dev/null
-[[ ! -f "$(generic)" ]] || fail "MacBookPro13,3 is outside the model gate"
-pass "MacBookPro13,3 is outside the model gate"
+# MacBookPro13,3 uses its own calibration, fills in the host country, and gets a
+# stable local address when the card reports Broadcom's placeholder.
+rm -rf "$fwdir" "$packaged" "$pci_devices"
+mkdir -p "$fwdir" "$packaged"
+provide_perm_mac 00:90:4c:0d:f4:3e
+printf '%s' "Apple Inc." >"$test_tmp/dmi/sys_vendor"
+printf '%s' "MacBookPro13,3" >"$test_tmp/dmi/product_name"
+invoke_leaf 43ba >/dev/null
+[[ -f "$(dmi_file "Apple Inc." "MacBookPro13,3")" ]] ||
+  fail "MacBookPro13,3 gets its DMI-specific NVRAM"
+grep -qx 'ccode=US' "$(generic)" || fail "MacBookPro13,3 NVRAM uses the host country"
+grep -qx 'regrev=0' "$(generic)" || fail "MacBookPro13,3 NVRAM uses the country revision"
+grep -Eq '^macaddr=02:([0-9a-f]{2}:){4}[0-9a-f]{2}$' "$(generic)" ||
+  fail "MacBookPro13,3 replaces the Broadcom placeholder with a stable local address"
+pass "MacBookPro13,3 gets its board calibration, host country, and stable local address"
+
+run_leaf "Apple Inc." "MacBookPro13,2" 43ba >/dev/null
+[[ ! -f "$(generic)" ]] || fail "an unvalidated BCM43602 board is outside the model gate"
+pass "unvalidated BCM43602 boards remain outside the model gate"
 
 run_leaf "Apple Inc." "MacBookPro11,4" 43ba >/dev/null
 [[ ! -f "$(generic)" ]] || fail "a 2015 BCM43602 Mac is outside the model gate"
@@ -377,11 +406,16 @@ grep -qx 'already-there' "$(generic)" ||
 [[ ! -s $calls ]] || fail "the migration escalates nothing when the file already exists" "$(cat "$calls")"
 pass "the migration never overwrites an existing NVRAM"
 
-rm -rf "$fwdir" "$packaged"
-run_migration "Apple Inc." "MacBookPro13,3" 43ba
-[[ ! -e "$(generic)" ]] || fail "the migration skips MacBookPro13,3"
-[[ ! -s $calls ]] || fail "the migration escalates nothing on excluded models" "$(cat "$calls")"
-pass "the migration skips MacBookPro13,3"
+rm -rf "$fwdir" "$packaged" "$pci_devices"
+mkdir -p "$fwdir" "$packaged"
+provide_perm_mac 00:90:4c:0d:f4:3e
+run_migration "Apple Inc." "MacBookPro13,3" 43ba "$migration_mbp133"
+grep -qx 'ccode=US' "$(generic)" || fail "migration gives MacBookPro13,3 the host country"
+grep -Eq '^macaddr=02:([0-9a-f]{2}:){4}[0-9a-f]{2}$' "$(generic)" ||
+  fail "migration replaces the placeholder MAC on MacBookPro13,3"
+grep -Fq $'omarchy-state\tset\treboot-required' "$calls" ||
+  fail "MacBookPro13,3 migration asks for a reboot" "$(cat "$calls")"
+pass "migration installs the separately calibrated MacBookPro13,3 NVRAM"
 
 rm -rf "$fwdir"
 run_migration "LENOVO" "ThinkPad" 43ba

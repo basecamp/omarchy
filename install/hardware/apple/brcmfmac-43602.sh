@@ -8,10 +8,9 @@
 # The NVRAM is a community dump (kernel.org bugzilla attachment 290569) with
 # ccode=00 / regrev=245, which defers channel legality to the host. Omarchy
 # already persists that from the timezone via set-wireless-regdom.sh. It is
-# calibration for one board, not every Apple BCM43602: this only runs on the
-# 2017 Touch Bar MacBook Pros (MacBookPro14,2 / 14,3) where the dump has been
-# seen to work. MacBookPro13,3 is the same PCI ID and is excluded — a report
-# of this dump on that model described unusable range.
+# calibration for one board, not every Apple BCM43602. MacBookPro14,2 / 14,3
+# use attachment 290569. MacBookPro13,3 uses the separately validated attachment
+# 285753, with its regulatory fields set from the host during installation.
 #
 # Destinations live under /usr/lib/firmware/updates so they override, and do
 # not collide with, linux-firmware-broadcom. A file already at either the
@@ -36,7 +35,14 @@ brcmfmac43602_packaged_fwdir() {
 }
 
 brcmfmac43602_nvram_src() {
-  printf '%s\n' "${OMARCHY_BRCMFMAC43602_NVRAM:-${OMARCHY_PATH:-/usr/share/omarchy}/default/firmware/apple/brcmfmac43602-pcie.txt}"
+  local product default_source
+  product=$(brcmfmac43602_dmi_product)
+  if [[ $product == "MacBookPro13,3" ]]; then
+    default_source="${OMARCHY_PATH:-/usr/share/omarchy}/default/firmware/apple/brcmfmac43602-pcie-mbp133.txt"
+  else
+    default_source="${OMARCHY_PATH:-/usr/share/omarchy}/default/firmware/apple/brcmfmac43602-pcie.txt"
+  fi
+  printf '%s\n' "${OMARCHY_BRCMFMAC43602_NVRAM:-$default_source}"
 }
 
 brcmfmac43602_dmi_vendor() {
@@ -51,6 +57,26 @@ brcmfmac43602_pci_devices() {
   printf '%s\n' "${OMARCHY_BRCMFMAC_PCI_DEVICES:-/sys/bus/pci/devices}"
 }
 
+brcmfmac43602_regdom() {
+  local regdom_file country
+  regdom_file="${OMARCHY_BRCMFMAC_REGDOM_FILE:-/etc/conf.d/wireless-regdom}"
+  country=$(sed -nE 's/^WIRELESS_REGDOM="?([A-Z]{2})"?$/\1/p' "$regdom_file" 2>/dev/null | head -n 1)
+  [[ $country =~ ^[A-Z]{2}$ ]] || return 1
+  printf '%s\n' "$country"
+}
+
+brcmfmac43602_machine_id() {
+  cat "${OMARCHY_BRCMFMAC_MACHINE_ID:-/etc/machine-id}" 2>/dev/null || true
+}
+
+brcmfmac43602_stable_mac() {
+  local seed
+  seed=$(printf '%s' "$(brcmfmac43602_machine_id):mbp133-wifi" | sha256sum | cut -c1-10)
+  [[ ${#seed} == 10 ]] || return 1
+  printf '02:%s:%s:%s:%s:%s\n' \
+    "${seed:0:2}" "${seed:2:2}" "${seed:4:2}" "${seed:6:2}" "${seed:8:2}"
+}
+
 # Dual-band BCM43602 (14e4:43ba) on the 2017 Touch Bar MacBook Pros. The 2 GHz
 # only (43bb) and 5 GHz-only (43bc) variants are left alone, as are T2-era
 # chips that already get board files from apple-bcm-firmware.
@@ -59,7 +85,7 @@ brcmfmac43602_needed() {
   sys_vendor=$(brcmfmac43602_dmi_vendor)
   product=$(brcmfmac43602_dmi_product)
   [[ $sys_vendor == Apple* ]] || return 1
-  [[ $product =~ ^MacBookPro14,[23]$ ]] || return 1
+  [[ $product =~ ^MacBookPro(13,3|14,[23])$ ]] || return 1
   lspci -nn | grep "14e4:43ba" >/dev/null
 }
 
@@ -118,8 +144,8 @@ brcmfmac43602_wifi_mac() {
 # a partial file under the name the driver loads, where brcmfmac43602_installed
 # would keep it forever and the migration would never ask for the reboot.
 brcmfmac43602_install() {
-  local src fwdir mac work name target
-  local -a targets
+  local src fwdir mac work name target product country
+  local -a targets sed_args
 
   src=$(brcmfmac43602_nvram_src)
   [[ -f $src ]] || return 1
@@ -132,18 +158,29 @@ brcmfmac43602_install() {
   fi
 
   work=$(mktemp) || return 1
+  product=$(brcmfmac43602_dmi_product)
   if mac=$(brcmfmac43602_wifi_mac); then
-    if ! sed "s/^macaddr=.*/macaddr=$mac/" "$src" >"$work"; then
-      rm -f "$work"
-      return 1
-    fi
+    sed_args=(-e "s/^macaddr=.*/macaddr=$mac/")
+  elif [[ $product == "MacBookPro13,3" ]] && mac=$(brcmfmac43602_stable_mac); then
+    sed_args=(-e "s/^macaddr=.*/macaddr=$mac/")
   else
     # No MAC discoverable: drop the line and let the firmware use the OTP
     # address, which is how these NICs already run with no NVRAM at all.
-    if ! sed '/^macaddr=/d' "$src" >"$work"; then
+    sed_args=(-e '/^macaddr=/d')
+  fi
+
+  if [[ $product == "MacBookPro13,3" ]]; then
+    country=$(brcmfmac43602_regdom) || {
+      echo "Cannot install MacBookPro13,3 BCM43602 NVRAM without a wireless regulatory country" >&2
       rm -f "$work"
       return 1
-    fi
+    }
+    sed_args+=(-e "s/^ccode=.*/ccode=$country/" -e 's/^regrev=.*/regrev=0/')
+  fi
+
+  if ! sed "${sed_args[@]}" "$src" >"$work"; then
+    rm -f "$work"
+    return 1
   fi
 
   if ! brcmfmac43602_as_root mkdir -p "$fwdir"; then
