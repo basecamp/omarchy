@@ -93,7 +93,8 @@ done
 # read takes every rule after it down with it, including the %wheel grant, and
 # the password prompt needed to undo that is on the other side of the breakage.
 staged_sudoers=$(mktemp)
-trap 'rm -f "$staged_sudoers"' EXIT
+staged_conf=$(mktemp)
+trap 'rm -f "$staged_sudoers" "$staged_conf"' EXIT
 
 {
   printf 'Defaults secure_path='
@@ -110,7 +111,17 @@ fi
   printf 'export OMARCHY_PATH='
   omarchy_conf_quote "$target"
   printf '\n'
-} | sudo tee /etc/omarchy.conf >/dev/null
+} >"$staged_conf"
+
+# Same stage-and-parse rule as the sudoers drop-in: every login shell sources
+# /etc/omarchy.conf, so a file bash cannot parse would break each login until
+# root fixes it by hand. Check it parses before it lands.
+if ! bash -n "$staged_conf"; then
+  echo "Error: refusing to install an unparsable /etc/omarchy.conf for $target" >&2
+  exit 1
+fi
+
+sudo tee /etc/omarchy.conf <"$staged_conf" >/dev/null
 
 sudo install -Dm440 -o root -g root "$staged_sudoers" "$sudoers_file"
 

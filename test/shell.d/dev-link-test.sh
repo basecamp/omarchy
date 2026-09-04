@@ -122,3 +122,36 @@ if grep -q 'sudo' "$log_file"; then
   fail "dev link touches nothing when the path does not exist" "$(cat "$log_file")"
 fi
 pass "dev link rejects a path that does not exist"
+
+# The conf is staged and checked with `bash -n` before sudo installs it. The
+# quoting keeps every real path parsable, so this stubs the checker to fail and
+# confirms a failed check leaves the system untouched: no sudo call, and the
+# conf that was already installed stays as it was.
+broken_bin="$test_tmp/broken-bin"
+mkdir -p "$broken_bin"
+cat >"$broken_bin/bash" <<'SH'
+#!/bin/bash
+
+if [[ $1 == "-n" ]]; then
+  exit 1
+fi
+exec /bin/bash "$@"
+SH
+chmod +x "$broken_bin/bash"
+
+: >"$log_file"
+: >"$sudoers_file"
+printf 'export OMARCHY_PATH="/usr/share/omarchy"\n' >"$conf_file"
+if PATH="$broken_bin:$PATH" run_link "$checkout" --no-reboot >/dev/null 2>"$test_tmp/syntax.err"; then
+  fail "dev link stops when the staged conf fails the syntax check"
+fi
+grep -F "Error: refusing to install an unparsable /etc/omarchy.conf for $checkout" "$test_tmp/syntax.err" >/dev/null ||
+  fail "dev link explains a staged conf that fails the syntax check" "$(cat "$test_tmp/syntax.err")"
+if grep -q 'sudo' "$log_file"; then
+  fail "dev link runs no privileged command when the staged conf fails the syntax check" "$(cat "$log_file")"
+fi
+[[ $(<"$conf_file") == 'export OMARCHY_PATH="/usr/share/omarchy"' ]] ||
+  fail "dev link keeps the installed conf when the staged conf fails the syntax check" "$(<"$conf_file")"
+[[ ! -s $sudoers_file ]] ||
+  fail "dev link installs no sudoers drop-in when the staged conf fails the syntax check" "$(<"$sudoers_file")"
+pass "dev link installs nothing when the staged conf fails the syntax check"
