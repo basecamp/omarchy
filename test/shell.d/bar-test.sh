@@ -291,8 +291,25 @@ assertEqual(bar.entryId({ id: 'omarchy.clock' }), 'omarchy.clock', 'bar extracts
 assertEqual(bar.entryId('omarchy.clock'), 'omarchy.clock', 'bar extracts string entry ids')
 
 const entries = [{ id: 'a' }, { id: 'omarchy.tray' }, { id: 'b' }]
-assertDeepEqual(bar.pinTrayToInner(entries, 'left').map(bar.entryId), ['a', 'b', 'omarchy.tray'], 'bar pins tray to left inner edge')
-assertDeepEqual(bar.pinTrayToInner(entries, 'right').map(bar.entryId), ['omarchy.tray', 'a', 'b'], 'bar pins tray to right inner edge')
+const leftSplit = bar.pinTrayToInner(entries, 'left')
+assertDeepEqual(leftSplit.map(bar.entryId), ['b', 'omarchy.tray'], 'bar pins tray to left inner edge')
+assertDeepEqual(leftSplit[1].widgets.map(bar.entryId), ['a'], 'bar nests entries listed before the tray into the left tray')
+const rightSplit = bar.pinTrayToInner(entries, 'right')
+assertDeepEqual(rightSplit.map(bar.entryId), ['omarchy.tray', 'b'], 'bar pins tray to right inner edge')
+assertDeepEqual(rightSplit[0].widgets.map(bar.entryId), ['a'], 'bar nests entries listed before the tray into the right tray')
+const manyInner = bar.pinTrayToInner([{ id: 'a' }, { id: 'c' }, { id: 'omarchy.tray' }, { id: 'b' }], 'right')
+assertDeepEqual(manyInner.map(bar.entryId), ['omarchy.tray', 'b'], 'bar collapses multiple pre-tray entries into the tray')
+assertDeepEqual(manyInner[0].widgets.map(bar.entryId), ['a', 'c'], 'bar preserves inner entry order')
+assertDeepEqual(bar.pinTrayToInner([{ id: 'omarchy.tray' }, { id: 'b' }], 'right')[0].widgets, [], 'bar keeps an empty widget list when the tray is first')
+assertDeepEqual(bar.pinTrayToInner([{ id: 'a' }, { id: 'b' }], 'right'), [{ id: 'a' }, { id: 'b' }], 'bar leaves a tray-less section untouched')
+assertDeepEqual(bar.pinTrayToInner([{ id: 'omarchy.tray', pinned: ['x'] }], 'right')[0].pinned, ['x'], 'bar preserves existing tray settings when nesting')
+assertDeepEqual(
+  bar.pinTrayToInner([{ id: 'a' }, { id: 'omarchy.tray' }, { id: 'omarchy.tray' }, { id: 'b' }], 'right').map(bar.entryId),
+  ['omarchy.tray', 'b'],
+  'bar drops duplicate tray entries instead of rendering them beside the tray'
+)
+const trayLess = [{ id: 'a' }, { id: 'b' }]
+assert(bar.pinTrayToInner(trayLess, 'right') !== trayLess, 'bar returns a fresh array for a tray-less section')
 
 // A settings-only shell.json write must patch the live bar, not rebuild it:
 // the module Repeaters recreate every widget when their array model changes.

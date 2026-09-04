@@ -20,6 +20,10 @@ BarWidget {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property var pinnedIds: settings.pinned instanceof Array ? settings.pinned : []
   readonly property var hiddenIds: settings.hidden instanceof Array ? settings.hidden : []
+  // Bar widgets listed before the tray in their section collapse into this
+  // tray: the bar's layout normalization attaches them as `settings.widgets`
+  // and removes them from the section, so the tray owns rendering them.
+  readonly property var widgetEntries: settings.widgets instanceof Array ? settings.widgets : []
   readonly property var pinnedItems: bucket("pinned")
   readonly property var drawerItems: bucket("drawer")
   readonly property var allItems: bucket("all")
@@ -27,11 +31,9 @@ BarWidget {
   readonly property int trayItemExtent: Style.bar.iconSlot
   readonly property int trayItemGap: 0
   readonly property int trayJoinGap: 0
-  readonly property int drawerExtent: drawerCount > 0 ? drawerCount * trayItemExtent + (drawerCount - 1) * trayItemGap : 0
   // Match Waybar's group/tray-expander drawer transition-duration.
   readonly property int animationDuration: 600
   property real revealProgress: expanded ? 1 : 0
-  readonly property real revealExtent: drawerExtent * revealProgress
 
   // Submenu drill-down state. QsMenuEntry.display() renders a *platform* menu,
   // which Quickshell refuses unless the shell root sets `//@ pragma
@@ -210,7 +212,7 @@ BarWidget {
     persistTrayState(p, h)
   }
 
-  visible: pinnedItems.length > 0 || drawerCount > 0
+  visible: pinnedItems.length > 0 || drawerCount > 0 || widgetEntries.length > 0
   clip: false
   implicitWidth: root.vertical ? root.barSize : trayContent.implicitWidth
   implicitHeight: root.vertical ? trayContent.implicitHeight : root.barSize
@@ -231,8 +233,11 @@ BarWidget {
     Item {
       id: horizontalTrayRoot
 
+      readonly property bool hasDrawerContent: root.allItems.length > 0 || root.widgetEntries.length > 0
+      readonly property int drawerExtent: drawerContent ? drawerContent.implicitWidth : 0
+      readonly property int revealExtent: drawerExtent * root.revealProgress
       readonly property int pinnedWidth: pinnedRow.implicitWidth
-      readonly property int drawerBlockWidth: root.allItems.length > 0 ? expandIcon.implicitWidth + root.drawerExtent : 0
+      readonly property int drawerBlockWidth: hasDrawerContent ? expandIcon.implicitWidth + drawerExtent : 0
 
       implicitWidth: pinnedWidth + drawerBlockWidth
       implicitHeight: root.barSize
@@ -244,7 +249,7 @@ BarWidget {
           if (point.y < 0 || point.y > horizontalTrayRoot.height) return false
           // Drawer reveals leftward; chevron sits at the right end when collapsed
           // and slides left as it opens. The visible region starts at the chevron.
-          var chevronX = root.drawerExtent - root.revealExtent
+          var chevronX = horizontalTrayRoot.drawerExtent - horizontalTrayRoot.revealExtent
           if (point.x >= chevronX && point.x <= horizontalTrayRoot.drawerBlockWidth) return true
           // Pinned items, placed to the right of the drawer block.
           var pinnedStart = horizontalTrayRoot.drawerBlockWidth
@@ -257,7 +262,7 @@ BarWidget {
         x: 0
         width: horizontalTrayRoot.drawerBlockWidth
         height: root.barSize
-        visible: root.allItems.length > 0
+        visible: horizontalTrayRoot.hasDrawerContent
 
         HoverHandler {
           onHoveredChanged: root.expanded = hovered
@@ -268,7 +273,7 @@ BarWidget {
           bar: root.bar
           width: implicitWidth
           height: implicitHeight
-          x: root.drawerExtent - root.revealExtent
+          x: horizontalTrayRoot.drawerExtent - horizontalTrayRoot.revealExtent
           text: "\uf053"
           onPressed: function(button) {
             if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
@@ -279,16 +284,21 @@ BarWidget {
           id: trayClip
           x: expandIcon.width
           anchors.verticalCenter: parent.verticalCenter
-          width: root.drawerExtent
+          width: horizontalTrayRoot.drawerExtent
           height: root.barSize
           clip: true
 
           Row {
-            id: trayIcons
-            x: root.drawerExtent - root.revealExtent
+            id: drawerContent
+            x: horizontalTrayRoot.drawerExtent - horizontalTrayRoot.revealExtent
             anchors.verticalCenter: parent.verticalCenter
             spacing: root.trayItemGap
             layer.enabled: true
+
+            Repeater {
+              model: root.widgetEntries
+              NestedBarWidget {}
+            }
 
             Repeater {
               model: root.drawerItems
@@ -318,8 +328,11 @@ BarWidget {
     Item {
       id: verticalTrayRoot
 
+      readonly property bool hasDrawerContent: root.allItems.length > 0 || root.widgetEntries.length > 0
+      readonly property int drawerExtent: drawerContent ? drawerContent.implicitHeight : 0
+      readonly property int revealExtent: drawerExtent * root.revealProgress
       readonly property int pinnedHeight: pinnedCol.implicitHeight
-      readonly property int drawerBlockHeight: root.allItems.length > 0 ? expandIcon.implicitHeight + root.drawerExtent : 0
+      readonly property int drawerBlockHeight: hasDrawerContent ? expandIcon.implicitHeight + drawerExtent : 0
 
       implicitWidth: root.barSize
       implicitHeight: pinnedHeight + drawerBlockHeight
@@ -327,7 +340,7 @@ BarWidget {
       containmentMask: QtObject {
         function contains(point: point): bool {
           if (point.x < 0 || point.x > verticalTrayRoot.width) return false
-          var chevronY = root.drawerExtent - root.revealExtent
+          var chevronY = verticalTrayRoot.drawerExtent - verticalTrayRoot.revealExtent
           if (point.y >= chevronY && point.y <= verticalTrayRoot.drawerBlockHeight) return true
           var pinnedStart = verticalTrayRoot.drawerBlockHeight
           return point.y >= pinnedStart && point.y <= verticalTrayRoot.implicitHeight
@@ -339,7 +352,7 @@ BarWidget {
         y: 0
         width: root.barSize
         height: verticalTrayRoot.drawerBlockHeight
-        visible: root.allItems.length > 0
+        visible: verticalTrayRoot.hasDrawerContent
 
         HoverHandler {
           onHoveredChanged: root.expanded = hovered
@@ -350,7 +363,7 @@ BarWidget {
           bar: root.bar
           width: implicitWidth
           height: implicitHeight
-          y: root.drawerExtent - root.revealExtent
+          y: verticalTrayRoot.drawerExtent - verticalTrayRoot.revealExtent
           text: "\uf053"
           textRotation: 90
           onPressed: function(button) {
@@ -363,15 +376,20 @@ BarWidget {
           y: expandIcon.height
           anchors.horizontalCenter: parent.horizontalCenter
           width: root.barSize
-          height: root.drawerExtent
+          height: verticalTrayRoot.drawerExtent
           clip: true
 
           Column {
-            id: trayIcons
-            y: root.drawerExtent - root.revealExtent
+            id: drawerContent
+            y: verticalTrayRoot.drawerExtent - verticalTrayRoot.revealExtent
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: root.trayItemGap
             layer.enabled: true
+
+            Repeater {
+              model: root.widgetEntries
+              NestedBarWidget {}
+            }
 
             Repeater {
               model: root.drawerItems
@@ -763,6 +781,50 @@ BarWidget {
       }
     }
   }
+
+  // Renders a bar widget that was collapsed into the tray. Mirrors the bar
+  // host's ModuleSlot contract: load the widget's registered component and
+  // inject bar/moduleName/settings so it behaves exactly as it would in a
+  // normal bar slot, just drawn inside the tray's reveal drawer. Loading is
+  // gated on `registryComponent`, which re-evaluates once the host injects
+  // `bar`, so widgets resolve even though the tray itself starts with a null
+  // `bar`.
+  component NestedBarWidget: Loader {
+    id: nested
+    required property var modelData
+
+    readonly property string moduleName: {
+      var e = modelData
+      if (typeof e === "string") return e
+      return e && e.id ? String(e.id) : ""
+    }
+    readonly property var moduleSettings: {
+      var e = modelData
+      var s = ({})
+      if (e && typeof e === "object") {
+        for (var k in e) if (k !== "id") s[k] = e[k]
+      }
+      return s
+    }
+    readonly property var registryComponent: {
+      var widgets = root.bar && root.bar.barWidgetRegistry ? root.bar.barWidgetRegistry.widgets : null
+      if (!widgets) return null
+      var name = root.bar.canonicalWidgetId ? root.bar.canonicalWidgetId(nested.moduleName) : nested.moduleName
+      return widgets[name] ? widgets[name].component : null
+    }
+
+    active: registryComponent !== null
+    sourceComponent: registryComponent
+    onLoaded: injectProps()
+
+    function injectProps() {
+      if (!item) return
+      if ("bar" in item) item.bar = root.bar
+      if ("moduleName" in item) item.moduleName = nested.moduleName
+      if ("settings" in item) item.settings = nested.moduleSettings
+    }
+  }
+
 
   // Renders a tray icon, recoloring symbolic icons to the bar foreground so
   // they stay visible on any theme (a raw symbolic icon keeps its baked-in

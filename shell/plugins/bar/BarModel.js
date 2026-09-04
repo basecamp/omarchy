@@ -27,16 +27,32 @@ function entryId(entry) {
 }
 
 function pinTrayToInner(entries, section) {
-  var trayEntry = null
-  var result = []
   var values = Array.isArray(entries) ? entries : []
+  var trayIndex = -1
   for (var i = 0; i < values.length; i++) {
-    if (entryId(values[i]) === "omarchy.tray") trayEntry = values[i]
-    else result.push(values[i])
+    if (entryId(values[i]) === "omarchy.tray") { trayIndex = i; break }
   }
-  if (trayEntry) {
-    if (section === "right") result.unshift(trayEntry)
-    else result.push(trayEntry)
+  if (trayIndex === -1) return values.slice()
+
+  // Entries listed before the tray collapse into it: they render inside the
+  // tray's reveal drawer instead of as their own bar slots. Entries after it
+  // stay visible beside the tray. Attach the collapsed entries to the tray
+  // entry so the tray widget can read them off its injected `settings.widgets`.
+  var inner = values.slice(0, trayIndex)
+  var outer = values.slice(trayIndex + 1).filter(function(e) { return entryId(e) !== "omarchy.tray" })
+
+  var source = isPlainObject(values[trayIndex]) ? values[trayIndex] : { id: "omarchy.tray" }
+  var trayCopy = {}
+  for (var k in source) trayCopy[k] = source[k]
+  trayCopy.widgets = inner.slice()
+
+  var result = []
+  if (section === "right") {
+    result.push(trayCopy)
+    for (var r = 0; r < outer.length; r++) result.push(outer[r])
+  } else {
+    for (var o = 0; o < outer.length; o++) result.push(outer[o])
+    result.push(trayCopy)
   }
   return result
 }
