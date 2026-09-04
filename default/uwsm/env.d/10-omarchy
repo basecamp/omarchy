@@ -15,5 +15,14 @@ fi
 # Optional user overrides kept for compatibility with older installs.
 [ -f "$HOME/.config/uwsm/default" ] && . "$HOME/.config/uwsm/default"
 
+# Flatpak exports its apps' desktop entries and icons under each installation's
+# exports/share, and puts them on XDG_DATA_DIRS from /etc/profile.d/flatpak.sh.
+# UWSM doesn't source /etc/profile.d, so in a session that file never runs and
+# every Flatpak app is invisible to the launcher with no icon to draw. Source
+# Flatpak's own script rather than restating the paths: it asks flatpak where
+# its installations are, so an extra installation defined in
+# /etc/flatpak/installations.d is covered too.
+[ -r /etc/profile.d/flatpak.sh ] && . /etc/profile.d/flatpak.sh
+
 # Activate mise if present on the system
 omarchy-cmd-present mise && eval "$(mise activate bash --shims)"
