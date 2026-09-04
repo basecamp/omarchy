@@ -645,15 +645,29 @@ TMUX_LOG="$PI_TMPDIR/tmux.log" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR
 grep -q 'set-environment -g COLORFGBG 0;15' "$PI_TMPDIR/tmux.log" || fail "tmux sync reads mode from colors.toml"
 pass "tmux sync reads mode from colors.toml"
 
+cat >"$FAKE_BIN/gdbus" <<'EOF'
+#!/bin/bash
+echo "gdbus $*" >>"${GNOME_SYNC_LOG:-/dev/null}"
+exit "${GDBUS_EXIT_CODE:-0}"
+EOF
+chmod +x "$FAKE_BIN/gdbus"
+
 cat >"$FAKE_BIN/gsettings" <<'EOF'
 #!/bin/bash
-echo "$*" >>"${GSETTINGS_LOG:-/dev/null}"
+echo "gsettings $*" >>"${GNOME_SYNC_LOG:-/dev/null}"
 EOF
 chmod +x "$FAKE_BIN/gsettings"
 
-GSETTINGS_LOG="$PI_TMPDIR/gsettings.log" DBUS_SESSION_BUS_ADDRESS="unix:path=$PI_TMPDIR/bus" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-gnome"
-grep -q 'org.gnome.desktop.interface color-scheme prefer-light' "$PI_TMPDIR/gsettings.log" || fail "gnome sync reads mode from colors.toml"
+GNOME_SYNC_LOG="$PI_TMPDIR/gnome-sync.log" DBUS_SESSION_BUS_ADDRESS="unix:path=$PI_TMPDIR/bus" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-gnome"
+[[ $(sed -n '1p' "$PI_TMPDIR/gnome-sync.log") == "gdbus call --session --timeout 2 --dest org.freedesktop.portal.Desktop --object-path /org/freedesktop/portal/desktop --method org.freedesktop.portal.Settings.ReadOne org.freedesktop.appearance color-scheme" ]] || fail "gnome sync primes the Settings portal before changing color scheme"
+pass "gnome sync primes the Settings portal before changing color scheme"
+grep -q 'gsettings set org.gnome.desktop.interface color-scheme prefer-light' "$PI_TMPDIR/gnome-sync.log" || fail "gnome sync reads mode from colors.toml"
 pass "gnome sync reads mode from colors.toml"
+
+: >"$PI_TMPDIR/gnome-sync.log"
+GNOME_SYNC_LOG="$PI_TMPDIR/gnome-sync.log" GDBUS_EXIT_CODE=1 DBUS_SESSION_BUS_ADDRESS="unix:path=$PI_TMPDIR/bus" PATH="$FAKE_BIN:$ROOT/bin:$PATH" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-gnome"
+grep -q 'gsettings set org.gnome.desktop.interface color-scheme prefer-light' "$PI_TMPDIR/gnome-sync.log" || fail "gnome sync continues when the Settings portal is unavailable"
+pass "gnome sync tolerates an unavailable Settings portal"
 
 cat >"$FAKE_BIN/omarchy-cmd-present" <<'EOF'
 #!/bin/bash
