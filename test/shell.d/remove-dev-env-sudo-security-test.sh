@@ -8,24 +8,27 @@ require_command gcc
 require_command setpriv
 require_command unshare
 
-if [[ ${OMARCHY_REMOVE_DEV_ENV_SECURITY_NS:-0} != 1 ]]; then
+if [[ ${OMARCHY_REMOVE_DEV_ENV_SECURITY_NS:-0} != "1" ]]; then
   outer_uid=$(id -u)
   outer_gid=$(id -g)
-  subuid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subuid)
-  subgid=$(awk -F: -v user="$(id -un)" '$1 == user { print $2; exit }' /etc/subgid)
+  outer_user=$(id -un)
+  subuid_entry=$(awk -F: -v user="$outer_user" -v uid="$outer_uid" '($1 == user || $1 == uid) && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $3 >= 1000 { print $2 ":" $3; exit }' /etc/subuid)
+  subgid_entry=$(awk -F: -v user="$outer_user" -v uid="$outer_uid" '($1 == user || $1 == uid) && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ && $3 >= 1000 { print $2 ":" $3; exit }' /etc/subgid)
 
-  if [[ -z $subuid || -z $subgid ]]; then
-    pass "no subordinate uid/gid range; skipping OCaml sudo namespace proof"
+  if [[ -z $subuid_entry || -z $subgid_entry ]]; then
+    pass "no subordinate uid/gid range covering test user 1000; skipping OCaml sudo namespace proof"
     exit 0
   fi
+  IFS=: read -r subuid subuid_count <<<"$subuid_entry"
+  IFS=: read -r subgid subgid_count <<<"$subgid_entry"
 
   exec unshare --user --mount \
-    --map-users "0:$outer_uid:1" --map-users "1:$subuid:65536" \
-    --map-groups "0:$outer_gid:1" --map-groups "1:$subgid:65536" \
+    --map-users "0:$outer_uid:1" --map-users "1:$subuid:$subuid_count" \
+    --map-groups "0:$outer_gid:1" --map-groups "1:$subgid:$subgid_count" \
     env OMARCHY_REMOVE_DEV_ENV_SECURITY_NS=1 bash "$0"
 fi
 
-[[ $(id -u) == 0 ]] || fail "OCaml sudo proof did not enter its root namespace"
+(( EUID == 0 )) || fail "OCaml sudo proof did not enter its root namespace"
 
 test_tmp=$(mktemp -d)
 test_home=$test_tmp/home
@@ -144,7 +147,7 @@ cat >"$stub_bin/opam" <<'STUB'
 printf 'opam-ran\n' >>"$TEST_EVENT_LOG"
 /usr/bin/setsid --fork "$HOME/bin/attack" >/dev/null 2>&1
 
-if [[ ${TEST_OPAM_BLOCK:-0} == 1 ]]; then
+if [[ ${TEST_OPAM_BLOCK:-0} == "1" ]]; then
   printf 'ready\n' >"$HOME/ready"
   trap 'exit 143' TERM
   while :; do /usr/bin/sleep 0.05; done
@@ -192,6 +195,12 @@ wait_for_attack() {
   return 1
 }
 
+assert_ocaml_invalidations() {
+  local context=$1 invalidations
+  invalidations=$(grep -Fxc 'invalidate' "$event_log" || true)
+  (( invalidations == 2 )) || fail "$context did not invalidate sudo credentials before and after OCaml removal (saw $invalidations invalidations)"
+}
+
 reset_case
 touch "$token"
 chown 0:0 "$token"
@@ -199,6 +208,7 @@ run_user bash "$ROOT/bin/omarchy-remove-dev-env" ocaml
 wait_for_attack || fail "hostile opam did not exercise the detached sudo poller"
 [[ ! -e $protected_target ]] || fail "hostile opam reused root authorization"
 [[ ! -e $token ]] || fail "OCaml removal left a reusable sudo credential"
+assert_ocaml_invalidations "successful OCaml removal"
 grep -Fxq 'remove-opam-no-update' "$event_log" || fail "OCaml removal did not use sudo --no-update"
 ! grep -Fxq 'attack-reused-root' "$event_log" || fail "OCaml removal published reusable authorization"
 pass "OCaml removal keeps user-controlled opam outside reusable sudo authorization"
@@ -208,6 +218,7 @@ if run_user env TEST_SUDO_NO_N=1 bash "$ROOT/bin/omarchy-remove-dev-env" ocaml; 
   fail "OCaml removal accepted sudo without --no-update support"
 fi
 ! grep -Fxq 'opam-ran' "$event_log" || fail "unsupported sudo reached user-controlled opam"
+assert_ocaml_invalidations "unsupported sudo exit"
 pass "OCaml removal validates --no-update support before running opam"
 
 reset_case
@@ -215,6 +226,7 @@ if run_user env TEST_RM_FAIL=1 bash "$ROOT/bin/omarchy-remove-dev-env" ocaml; th
   fail "OCaml removal ignored root cleanup failure"
 fi
 [[ ! -e $token ]] || fail "failed OCaml cleanup left a reusable sudo credential"
+assert_ocaml_invalidations "failed OCaml cleanup"
 pass "OCaml cleanup failures propagate and invalidate credentials"
 
 reset_case
@@ -240,6 +252,7 @@ active_session=""
 (( signal_status != 0 )) || fail "terminated OCaml removal unexpectedly succeeded"
 [[ ! -e $token ]] || fail "terminated OCaml removal left a reusable sudo credential"
 [[ ! -e $protected_target ]] || fail "detached opam child reused root after termination"
+assert_ocaml_invalidations "terminated OCaml removal"
 pass "OCaml removal invalidates credentials on signals"
 
 reset_case
