@@ -50,8 +50,10 @@ The Apple T1 chip was introduced in late 2016 and used exclusively in the first-
 
 #### Known Issues
 
-- Touch Bar is non-functional
-- Sound is not functioning
+- T1 Touch Bar support is currently automatic only on the hardware-validated MacBookPro13,3. Omarchy installs the `apple-ib-drv-dkms` driver with its ACPI power call disabled; forcing `skip_acpi_power=0` can hard-freeze these Macs.
+- Sound is not configured automatically.
+
+On MacBookPro13,3, the Touch Bar provides Esc, brightness, keyboard-backlight, media, and volume controls by default; holding Fn switches it to F1–F12. The same iBridge USB configuration keeps the FaceTime HD camera available. After a kernel update, verify `dkms status apple-ib-drv` lists the new kernel before relying on the Touch Bar.
 
 On MacBookPro13,3 systems with the Radeon Pro 460, Omarchy pins only the VRAM clock to its highest performance level to avoid hard GPU lockups during memory-clock transitions. The GPU core and PCIe link can still scale down, but the fixed VRAM clock uses more power at idle than fully automatic power management.
 
