@@ -5,6 +5,15 @@ source "$(dirname "$0")/base-test.sh"
 run_node_test <<'JS'
 const read = require(path.join(root, 'shell/plugins/panels/news/ReadState.js'))
 const fs = require('fs')
+const panel = fs.readFileSync(path.join(root, 'shell/plugins/panels/news/Panel.qml'), 'utf8')
+const articleChange = panel.match(/onArticlesChanged: \{([\s\S]*?)\n  \}/)[1]
+const updateArticles = new Function('articles', 'currentArticle', 'selectedIndex',
+  '(function() {' + articleChange + '})(); return {currentArticle, selectedIndex};')
+const snapshot = {id:'one', content:'Reading this'}
+const updated = updateArticles([{id:'new'}, {id:'one', content:'Publisher correction'}], snapshot, 0)
+assert(updated.currentArticle === snapshot && updated.selectedIndex === 1, 'refresh preserves the reading snapshot while tracking its new list position')
+assert(updateArticles([{id:'other'}], snapshot, 0).currentArticle.id === 'other', 'removed article falls back to an available entry')
+assert(updateArticles([], snapshot, 0).currentArticle === null, 'empty source clears the article')
 const manager = fs.readFileSync(path.join(root, 'shell/plugins/panels/news/FeedManager.qml'), 'utf8')
 const persistBody = manager.match(/function persistSettings\(values\) \{([\s\S]*?)\n  \}/)[1]
 const writes = []

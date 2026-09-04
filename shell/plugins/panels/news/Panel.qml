@@ -175,12 +175,15 @@ Item {
       return
     }
     var currentId = currentArticle ? String(currentArticle.id || "") : ""
-    var nextIndex = 0
     for (var i = 0; i < articles.length; i++) {
-      if (String(articles[i].id || "") === currentId) { nextIndex = i; break }
+      if (String(articles[i].id || "") === currentId) {
+        selectedIndex = i
+        // Keep the reading snapshot stable until the user selects again.
+        return
+      }
     }
-    selectedIndex = nextIndex
-    currentArticle = articles[nextIndex]
+    selectedIndex = 0
+    currentArticle = articles[0]
   }
 
   onSourceFiltersChanged: {
