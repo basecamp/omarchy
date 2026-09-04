@@ -347,9 +347,23 @@ QtObject {
     readonly property int statusSlot:     root.barToken("status-slot",     21)
   }
 
+  property bool pendingRefresh: false
+
   function refresh() {
+    if (hyprctlProc.running || gapsOutProc.running) {
+      root.pendingRefresh = true
+      return
+    }
+    root.pendingRefresh = false
     hyprctlProc.running = true
     gapsOutProc.running = true
+  }
+
+  function checkPendingRefresh() {
+    if (!hyprctlProc.running && !gapsOutProc.running && root.pendingRefresh) {
+      root.pendingRefresh = false
+      Qt.callLater(root.refresh)
+    }
   }
 
   function scheduleRefresh() {
@@ -446,6 +460,7 @@ QtObject {
       waitForEnd: true
       onStreamFinished: root.applyRoundingJson(text)
     }
+    onExited: root.checkPendingRefresh()
   }
 
   property Process gapsOutProc: Process {
@@ -455,12 +470,17 @@ QtObject {
       waitForEnd: true
       onStreamFinished: root.applyGapsOutJson(text)
     }
+    onExited: root.checkPendingRefresh()
   }
 
-  // Resolve the fontconfig alias to a concrete family name. `omarchy font
-  // set <name>` rewrites ~/.config/fontconfig/fonts.conf and restarts the
-  // shell, but rerun on file change anyway so manual edits propagate too.
+  property bool pendingFontFamilyResolution: false
+
   function resolveFontFamily() {
+    if (fcMatchProc.running) {
+      root.pendingFontFamilyResolution = true
+      return
+    }
+    root.pendingFontFamilyResolution = false
     fcMatchProc.running = true
   }
 
@@ -472,6 +492,12 @@ QtObject {
       onStreamFinished: {
         var name = String(text || "").trim()
         if (name.length > 0) root.resolvedFontFamily = name
+      }
+    }
+    onExited: {
+      if (root.pendingFontFamilyResolution) {
+        root.pendingFontFamilyResolution = false
+        Qt.callLater(root.resolveFontFamily)
       }
     }
   }
