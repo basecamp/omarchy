@@ -8,15 +8,30 @@ set -e
 # Install voxtype and configure it for use.
 
 if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
-  omarchy-pkg-add wtype voxtype-bin
+  voxtype_packages=(wtype voxtype-bin)
+  npu_available=0
+
+  if omarchy-hw-npu; then
+    voxtype_packages+=(openvino-genai openvino-intel-npu-plugin)
+    npu_available=1
+  fi
+
+  omarchy-pkg-add "${voxtype_packages[@]}"
 
   # Setup voxtype
   mkdir -p ~/.config/voxtype
   cp "$OMARCHY_PATH/default/voxtype/config.toml" ~/.config/voxtype/
 
-  voxtype setup --download --no-post-install
-  if omarchy-hw-vulkan; then
-    voxtype setup gpu --enable || true
+  if ((npu_available)); then
+    # OpenVINO is compiled into Voxtype's ONNX variants, not its default
+    # Whisper binary. Select one before enabling and precompiling the NPU model.
+    voxtype setup onnx --enable
+    voxtype setup npu --enable
+  else
+    voxtype setup --download --no-post-install
+    if omarchy-hw-vulkan; then
+      voxtype setup gpu --enable || true
+    fi
   fi
   voxtype setup systemd
 

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Detect an Intel neural processing unit
+
+accel_path="${OMARCHY_ACCEL_PATH:-/sys/class/accel}"
+
+for device in "$accel_path"/accel*; do
+  [[ -r $device/device/vendor ]] || continue
+  [[ $(<"$device/device/vendor") == "0x8086" ]] && exit 0
+done
+
+exit 1
