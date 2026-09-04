@@ -124,13 +124,6 @@ assert_not_contains() {
   pass "$description"
 }
 
-assert_file_absent() {
-  local file=$1 description=$2
-
-  [[ ! -e $file ]] || fail "$description" "expected '$file' to not exist"
-  pass "$description"
-}
-
 # Proves ordering, not just presence -- a dedupe delete that ran before
 # connection up would delete the old profile before the new one is proven.
 assert_order() {

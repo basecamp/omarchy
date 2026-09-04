@@ -371,7 +371,8 @@ assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*
 
 // IFS= on every field read: a bare `read` trims whitespace and would corrupt
 // a space-padded SSID before the "$1" compare. The batched query blank-lines
-// between profiles, so the uuid read skips blanks to keep 3-line groups aligned.
+// between profiles, so the uuid read skips blanks to keep each connection's
+// exactly fifteen-field group aligned.
 assert(/IFS= read -r ssid; IFS= read -r hidden;/.test(network.hiddenPskConnectScript), 'hidden PSK connect script parses ssid/hidden with IFS= read -r so a space-padded SSID is not trimmed')
 assert(/\[\[ -n \$c \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script skips the blank separator lines between batched profiles so field groups stay aligned')
 assert(network.hiddenPskConnectScript.includes('[[ $c != "$u" ]] || continue'), 'hidden PSK connect script dedupe skips the profile this attempt just created, so the late snapshot cannot delete it')
