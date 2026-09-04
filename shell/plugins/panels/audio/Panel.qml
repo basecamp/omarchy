@@ -282,7 +282,7 @@ Panel {
     }
     if (focusSection === "streams" && selectedIndex >= 0 && selectedIndex < displayAudioStreams.length) {
       var s = displayAudioStreams[selectedIndex]
-      if (s && s.audio) s.audio.volume = Math.max(0, Math.min(1.5, s.audio.volume + delta))
+      if (s && s.audio) setNodeVolume(s, s.audio.volume + delta)
     }
   }
 
@@ -303,7 +303,7 @@ Panel {
     }
     if (focusSection === "streams" && selectedIndex >= 0) {
       var st = displayAudioStreams[selectedIndex]
-      if (st && st.audio) st.audio.muted = !st.audio.muted
+      if (st) setNodeMute(st)
     }
   }
 
@@ -423,10 +423,34 @@ Panel {
     return Model.outputVolumeName(volume, muted)
   }
 
+  function setNodeVolume(node, v) {
+    var volume = Math.max(0, Math.min(1.5, v))
+    if (node && node.audio) node.audio.volume = volume
+    var target = (node && node.id !== undefined) ? String(node.id) : ""
+    if (target) {
+      Quickshell.execDetached(["wpctl", "set-volume", target, volume.toFixed(3)])
+    }
+    return volume
+  }
+
+  function setNodeMute(node, mute) {
+    if (node && node.audio) {
+      if (mute === undefined) node.audio.muted = !node.audio.muted
+      else node.audio.muted = mute
+    }
+    var target = (node && node.id !== undefined) ? String(node.id) : ""
+    if (target) {
+      var val = mute === undefined ? "toggle" : (mute ? "1" : "0")
+      Quickshell.execDetached(["wpctl", "set-mute", target, val])
+    }
+  }
+
   function setOutputVolume(v) {
-    if (!volumeSink || !volumeSink.audio) return outputVolume
+    var targetNode = volumeSink || sink
     var volume = Math.max(0, Math.min(1, v))
-    volumeSink.audio.volume = volume
+    if (targetNode && targetNode.audio) targetNode.audio.volume = volume
+    var target = (targetNode && targetNode.id !== undefined) ? String(targetNode.id) : (volumeSinkName || "@DEFAULT_AUDIO_SINK@")
+    Quickshell.execDetached(["wpctl", "set-volume", target, volume.toFixed(3)])
     return volume
   }
 
@@ -439,16 +463,25 @@ Panel {
   }
 
   function setInputVolume(v) {
-    if (!source || !source.audio) return
-    source.audio.volume = Math.max(0, Math.min(1, v))
+    var volume = Math.max(0, Math.min(1, v))
+    if (source && source.audio) source.audio.volume = volume
+    var target = (source && source.id !== undefined) ? String(source.id) : "@DEFAULT_AUDIO_SOURCE@"
+    Quickshell.execDetached(["wpctl", "set-volume", target, volume.toFixed(3)])
   }
 
   function toggleOutputMute() {
-    if (volumeSink && volumeSink.audio) volumeSink.audio.muted = !volumeSink.audio.muted
+    var targetNode = volumeSink || sink
+    var nextMute = !outputMuted
+    if (targetNode && targetNode.audio) targetNode.audio.muted = nextMute
+    var target = (targetNode && targetNode.id !== undefined) ? String(targetNode.id) : (volumeSinkName || "@DEFAULT_AUDIO_SINK@")
+    Quickshell.execDetached(["wpctl", "set-mute", target, nextMute ? "1" : "0"])
   }
 
   function toggleInputMute() {
-    if (source && source.audio) source.audio.muted = !source.audio.muted
+    var nextMute = !inputMuted
+    if (source && source.audio) source.audio.muted = nextMute
+    var target = (source && source.id !== undefined) ? String(source.id) : "@DEFAULT_AUDIO_SOURCE@"
+    Quickshell.execDetached(["wpctl", "set-mute", target, nextMute ? "1" : "0"])
   }
 
   // The hero switch is the whole panel's on/off, so it carries both channels
@@ -456,8 +489,17 @@ Panel {
   // muting a single channel from the row below flipping the master switch.
   function toggleAllMuted() {
     var mute = anyAudible
-    if (hasOutput) volumeSink.audio.muted = mute
-    if (hasInput) source.audio.muted = mute
+    if (hasOutput) {
+      var targetNode = volumeSink || sink
+      if (targetNode && targetNode.audio) targetNode.audio.muted = mute
+      var target = (targetNode && targetNode.id !== undefined) ? String(targetNode.id) : (volumeSinkName || "@DEFAULT_AUDIO_SINK@")
+      Quickshell.execDetached(["wpctl", "set-mute", target, mute ? "1" : "0"])
+    }
+    if (hasInput) {
+      if (source && source.audio) source.audio.muted = mute
+      var targetSrc = (source && source.id !== undefined) ? String(source.id) : "@DEFAULT_AUDIO_SOURCE@"
+      Quickshell.execDetached(["wpctl", "set-mute", targetSrc, mute ? "1" : "0"])
+    }
   }
 
   function setDefaultSink(node) {
@@ -676,7 +718,7 @@ Panel {
           if (root.focusSection === "streams" && root.selectedIndex >= 0
               && root.selectedIndex < root.displayAudioStreams.length) {
             var s = root.displayAudioStreams[root.selectedIndex]
-            if (s && s.audio) s.audio.muted = !s.audio.muted
+            if (s) root.setNodeMute(s)
           } else if (root.focusSection === "input") {
             root.toggleInputMute()
           } else {
@@ -1181,8 +1223,7 @@ Panel {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-              if (streamRow.node && streamRow.node.audio)
-                streamRow.node.audio.muted = !streamRow.node.audio.muted
+              root.setNodeMute(streamRow.node)
             }
           }
         }
@@ -1224,11 +1265,10 @@ Panel {
         opacity: streamRow.streamMuted ? 0.5 : 1.0
 
         onMoved: function(v) {
-          if (streamRow.node && streamRow.node.audio) streamRow.node.audio.volume = v
+          root.setNodeVolume(streamRow.node, v)
         }
         onRightClicked: {
-          if (streamRow.node && streamRow.node.audio)
-            streamRow.node.audio.muted = !streamRow.node.audio.muted
+          root.setNodeMute(streamRow.node)
         }
       }
     }
