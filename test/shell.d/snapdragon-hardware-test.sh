@@ -14,7 +14,13 @@ bash -n "$firmware_setup" "$dtb_setup" || fail "Snapdragon hardware scripts have
 (
   omarchy-hw-qualcomm-soc() { return 0; }
   omarchy-pkg-add() { :; }
-  qcom-firmware-extract() { :; }
+  qcom-firmware-extract() {
+    if [[ $1 == "--install" ]]; then
+      return 1
+    else
+      return 0
+    fi
+  }
   findmnt() {
     [[ $* == "-no SOURCE --nofsroot /" ]] || fail "Snapdragon firmware setup strips the Btrfs subvolume suffix"
     printf '/dev/mapper/root\n'
@@ -64,4 +70,4 @@ if grep -Fq 'x1e80100-test-el2.dtb' "$scratch/uki.conf"; then
   fail "Snapdragon DTB setup excludes EL2-only device trees"
 fi
 
-pass "Snapdragon setup preserves UKI settings and detects USB root disks"
+pass "Snapdragon setup tolerates missing firmware and preserves UKI settings"

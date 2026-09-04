@@ -4,7 +4,7 @@
 if omarchy-hw-qualcomm-soc; then
   omarchy-pkg-add linux-firmware-qcom qcom-firmware-extract
 
-  qcom-firmware-extract --install --no-rebuild
+  qcom-firmware-extract --install --no-rebuild || true
 
   modprobe_dir=${OMARCHY_QUALCOMM_MODPROBE_DIR:-/etc/modprobe.d}
   root_source=$(findmnt -no SOURCE --nofsroot / 2>/dev/null || true)
