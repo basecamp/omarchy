@@ -5,6 +5,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 import "MenuModel.js" as MenuModel
+import "../../services/MenuSearch.js" as MenuSearch
 
 Item {
   id: root
@@ -308,6 +309,7 @@ Item {
         icon: "",
         appIcon: String(entry.icon || ""),
         appId: appId,
+        acronym: root.appLibrary.entryAcronym(entry),
         label: root.appLibrary.entryName(entry),
         title: "",
         target: "",
@@ -478,26 +480,6 @@ Item {
     return MenuModel.labelFor(entry, root.checkedResults, root.disabledResults)
   }
 
-  function searchableToken(value) {
-    return MenuModel.searchableToken(value)
-  }
-
-  function leafIdFor(id) {
-    return MenuModel.leafIdFor(id)
-  }
-
-  function nameSearchText(entry) {
-    return MenuModel.nameSearchText(entry)
-  }
-
-  function termInSearchWords(term, text) {
-    return MenuModel.termInSearchWords(term, text)
-  }
-
-  function descriptionTextMatches(query, text) {
-    return MenuModel.descriptionTextMatches(query, text)
-  }
-
   // Rows whose `disabled:` evaluated truthy stay listed but dimmed, and the
   // cursor steps over them.
   function isDisabled(entry) {
@@ -508,11 +490,11 @@ Item {
   // list around it is the point. Search is a list of what you can do, so it
   // leaves them out.
   function matchesQuery(entry, query) {
-    return MenuModel.matchesQuery(entry, query, root.isVisible(entry) && !root.isDisabled(entry))
+    return MenuSearch.matchesQuery(entry, query, root.isVisible(entry) && !root.isDisabled(entry))
   }
 
-  function searchScore(entry, query) {
-    return MenuModel.searchScore(root.items, entry, query)
+  function searchRank(entry, query) {
+    return MenuSearch.rank(entry, query)
   }
 
   function displayRow(entry, detail, score, section) {
@@ -629,13 +611,20 @@ Item {
         if (!root.matchesQuery(entry, query)) continue
 
         var detail = root.parentPathFor(entry.id)
-        var row = root.displayRow(entry, detail, root.searchScore(entry, query))
+        var rank = root.searchRank(entry, query)
+        var row = root.displayRow(entry, detail, rank.tier)
+        row.searchRank = rank
         if (entry.parent === active) currentRows.push(row)
         else drilldownRows.push(row)
       }
 
       var searchSort = function(a, b) {
-        if (a.score !== b.score) return a.score - b.score
+        var rankOrder = MenuSearch.compareRanks(a.searchRank, b.searchRank)
+        if (rankOrder !== 0) return rankOrder
+        var depthOrder = root.depthFor(a.itemId) - root.depthFor(b.itemId)
+        if (depthOrder !== 0) return depthOrder
+        var itemOrder = root.item(a.itemId).order - root.item(b.itemId).order
+        if (itemOrder !== 0) return itemOrder
         return a.path.localeCompare(b.path)
       }
 

@@ -287,81 +287,6 @@ function labelFor(entry, checkedResults, disabledResults) {
   return marked ? entry.label + " ✓" : entry.label
 }
 
-function searchableToken(value) {
-  return String(value || "").replace(/[._-]+/g, " ")
-}
-
-function leafIdFor(id) {
-  var parts = String(id || "").split(".")
-  return parts.length > 0 ? parts[parts.length - 1] : id
-}
-
-function nameSearchText(entry) {
-  if (!entry) return ""
-  var aliases = []
-  var values = Array.isArray(entry.aliases) ? entry.aliases : []
-  for (var i = 0; i < values.length; i++) aliases.push(searchableToken(values[i]))
-  return [entry.label, searchableToken(leafIdFor(entry.id)), aliases.join(" ")].join(" ").toLowerCase()
-}
-
-function termInSearchWords(term, text) {
-  var words = String(text || "").toLowerCase().split(/\s+/)
-  for (var i = 0; i < words.length; i++) {
-    if (words[i] === term) return true
-  }
-  return false
-}
-
-function descriptionTextMatches(query, text) {
-  var terms = String(query || "").toLowerCase().trim().split(/\s+/)
-  for (var i = 0; i < terms.length; i++) {
-    if (terms[i] && !termInSearchWords(terms[i], text)) return false
-  }
-  return true
-}
-
-function matchesQuery(entry, query, visible) {
-  if (!entry || entry.id === "root") return false
-  if (!visible) return false
-
-  var nameText = nameSearchText(entry)
-  var descriptionText = String(entry.description || "").toLowerCase()
-  var terms = String(query || "").toLowerCase().trim().split(/\s+/)
-
-  for (var i = 0; i < terms.length; i++) {
-    if (!terms[i]) continue
-    if (nameText.indexOf(terms[i]) >= 0) continue
-    if (termInSearchWords(terms[i], descriptionText)) continue
-    return false
-  }
-
-  return true
-}
-
-function searchScore(items, entry, query) {
-  var needle = String(query || "").toLowerCase().trim()
-  var label = entry.label.toLowerCase()
-  var nameText = nameSearchText(entry)
-  var descriptionText = String(entry.description || "").toLowerCase()
-  var score = 80
-
-  if (label === needle) score = entry.parent === "root" ? 2 : 0
-  // An installed app whose name contains the query as a whole word ("zen"
-  // for Zen Browser) beats exact-labeled menu entries like Install > Zen.
-  else if (entry.kind === "app" && label.split(/\s+/).indexOf(needle) >= 0) score = 0
-  else if (label.indexOf(needle) === 0) score = 10
-  else if (label.indexOf(needle) >= 0) score = 30
-  else if (nameText.indexOf(needle) >= 0) score = 40
-  else if (descriptionTextMatches(needle, descriptionText)) score = 60
-
-  if (entry.kind === "menu" || entry.kind === "link") score -= 2
-  // App rows sort after all menu items, so they lose the tiebreak below to an
-  // equal match. Outrank those, but stay inside the tier so better ones win.
-  if (entry.kind === "app") score -= 5
-
-  return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
-}
-
 function displayRow(items, itemOrder, checkedResults, disabledResults, entry, detail, score, section) {
   var target = entry.kind === "link" ? entry.target : entry.id
   return {
@@ -512,13 +437,6 @@ if (typeof module !== "undefined") {
     isVisible: isVisible,
     isDisabled: isDisabled,
     labelFor: labelFor,
-    searchableToken: searchableToken,
-    leafIdFor: leafIdFor,
-    nameSearchText: nameSearchText,
-    termInSearchWords: termInSearchWords,
-    descriptionTextMatches: descriptionTextMatches,
-    matchesQuery: matchesQuery,
-    searchScore: searchScore,
     displayRow: displayRow
   }
 }
