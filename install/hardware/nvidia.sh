@@ -17,6 +17,17 @@ if lspci | grep -qi 'nvidia'; then
 
   omarchy-pkg-add "${PACKAGES[@]}"
 
+  # gpu-screen-recorder (base package set) ships a modprobe drop-in setting
+  # NVreg_PreserveVideoMemoryAllocations=1. The 580xx driver has no kernel
+  # suspend notifier support, so with that option it depends on these services
+  # to save and restore VRAM around sleep; without them resume returns to
+  # corrupted GPU state. The open modules need none of this: they handle it
+  # automatically via NVreg_UseKernelSuspendNotifiers=1 from nvidia-utils'
+  # own nvidia-sleep.conf.
+  if omarchy-hw-nvidia-without-gsp; then
+    systemctl enable nvidia-suspend.service nvidia-hibernate.service nvidia-resume.service
+  fi
+
   # Per-session Hyprland NVIDIA env vars are handled by default/hypr/nvidia.lua.
 
   # Configure modprobe for early KMS
