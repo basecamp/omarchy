@@ -23,4 +23,9 @@ Item {
   function toggle() {
     if (surfaceTarget !== "") runtime.requestSurfaceIntent(surfaceTarget, "toggle")
   }
+
+  function setting(name, fallback) {
+    var value = settings ? settings[name] : undefined
+    return value === undefined || value === null ? fallback : value
+  }
 }

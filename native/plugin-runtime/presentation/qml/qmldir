@@ -23,5 +23,6 @@ StdioCollector 1.0 StdioCollector.qml
 TextField 1.0 TextField.qml
 ToolTip 1.0 ToolTip.qml
 Toggle 1.0 Toggle.qml
+ToggleSwitch 1.0 ToggleSwitch.qml
 singleton Util 1.0 Util.qml
 WidgetButton 1.0 WidgetButton.qml

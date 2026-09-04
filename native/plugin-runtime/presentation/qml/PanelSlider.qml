@@ -13,14 +13,19 @@ Item {
   property color fillColor: Color.accent
   property color knobColor: Color.foreground
   property color tickColor: Color.background
-  readonly property bool dragging: pointer.pressed
-  readonly property real liveValue: pointer.pressed ? valueAt(pointer.mouseX) : value
+  property real knobSize: 12
+  property bool dragging: false
+  property real liveValue: value
   signal moved(real nextValue)
   signal released(real nextValue)
   signal rightClicked()
 
   implicitWidth: 120
   implicitHeight: 20
+  readonly property real range: Math.max(0.0001, maximum - minimum)
+  readonly property real progress: Math.max(0, Math.min(1, (liveValue - minimum) / range))
+
+  onValueChanged: if (!dragging) liveValue = value
 
   function valueAt(position) {
     var raw = minimum + position / Math.max(1, width) * (maximum - minimum)
@@ -38,8 +43,7 @@ Item {
   }
   Rectangle {
     anchors.verticalCenter: parent.verticalCenter
-    width: parent.width * Math.max(0, Math.min(1,
-      (root.liveValue - root.minimum) / Math.max(1, root.maximum - root.minimum)))
+    width: parent.width * root.progress
     height: 4
     radius: 2
     color: root.fillColor
@@ -60,9 +64,9 @@ Item {
       parent.width * (root.liveValue - root.minimum)
       / Math.max(1, root.maximum - root.minimum) - width / 2))
     anchors.verticalCenter: parent.verticalCenter
-    width: 12
-    height: 12
-    radius: 6
+    width: root.knobSize
+    height: root.knobSize
+    radius: root.knobSize / 2
     color: root.knobColor
   }
   MouseArea {
@@ -73,22 +77,30 @@ Item {
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onPressed: function(mouse) {
-      if (mouse.button === Qt.RightButton) {
-        root.rightClicked()
-        return
-      }
-      root.moved(root.valueAt(mouse.x))
+      if (mouse.button !== Qt.LeftButton) return
+      root.dragging = true
+      root.liveValue = root.valueAt(mouse.x)
+      root.moved(root.liveValue)
     }
     onPositionChanged: function(mouse) {
-      if (pressed && pressedButtons & Qt.LeftButton) root.moved(root.valueAt(mouse.x))
+      if (!root.dragging) return
+      root.liveValue = root.valueAt(mouse.x)
+      root.moved(root.liveValue)
     }
     onReleased: function(mouse) {
-      if (mouse.button === Qt.LeftButton) root.released(root.valueAt(mouse.x))
+      if (mouse.button !== Qt.LeftButton) return
+      root.dragging = false
+      root.released(root.liveValue)
+      root.liveValue = root.value
+    }
+    onClicked: function(mouse) {
+      if (mouse.button === Qt.RightButton) root.rightClicked()
     }
     onWheel: function(wheel) {
       var next = Math.max(root.minimum, Math.min(root.maximum,
-        root.value + (wheel.angleDelta.y > 0 ? root.step : -root.step)))
+        root.liveValue + (wheel.angleDelta.y > 0 ? root.step : -root.step)))
       if (root.integer) next = Math.round(next)
+      root.liveValue = next
       root.moved(next)
       root.released(next)
       wheel.accepted = true

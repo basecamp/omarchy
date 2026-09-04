@@ -22,7 +22,7 @@ if rg -n '\bruntime\.' "$root/Panel.qml" | rg -v 'runtime\.(settings|requestSurf
   exit 1
 fi
 
-expected='BarWidget Border BorderSurface BrokerProcess Button Color ConfirmDialog CursorSurface Dropdown KeyboardPanel PackagedText Panel PanelActionButton PanelHero PanelKeyCatcher PanelSectionHeader PanelSeparator PanelSlider PrivateStorage StdioCollector Style TextField Toggle ToolTip Util WidgetButton'
+expected='BarWidget Border BorderSurface BrokerProcess Button Color ConfirmDialog CursorSurface Dropdown KeyboardPanel PackagedText Panel PanelActionButton PanelHero PanelKeyCatcher PanelSectionHeader PanelSeparator PanelSlider PrivateStorage StdioCollector Style TextField Toggle ToggleSwitch ToolTip Util WidgetButton'
 actual=$(find "$root" -maxdepth 1 -name '*.qml' -printf '%f\n' | sed 's/\.qml$//' | sort | tr '\n' ' ' | sed 's/ $//')
 [[ $actual == "$expected" ]]
 
