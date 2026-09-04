@@ -80,18 +80,23 @@ Bar widgets may set `barWidget.defaultSection` to `left`, `center`, or `right`;
 widgets that omit it default to `center`.
 
 Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you
-before cloning, plugins land disabled so you can review the code before
-`omarchy plugin enable`, and updates show a diff before touching anything.
+before cloning, and shell plugins land disabled so you can review the code before
+`omarchy plugin enable`; metadata-only agent-harness integrations are the exception:
+they have no shell component, are immediately available to choose under _Setup ›
+Defaults › Agent_, and cannot be enabled. Updates show a diff before touching
+anything.
 Commands confirm in a terminal even when given arguments; without one they
 refuse rather than guess. Add `--yes` to skip every prompt (the path for
 scripts and agents).
 
-You can still install by hand: drop a plugin into
+You can still install by hand: drop a shell plugin into
 `~/.config/omarchy/plugins/<id>/`, run `omarchy-shell shell rescanPlugins`, then
-`omarchy plugin enable <id>`. A bar widget starts in its declared default
-section; enabling a full bar replaces the one in use. `omarchy bar` drives the
-bar from the CLI — `use | reset | defaults | position | transparent | put |
-move | set`, with placement flags such as `--section` and `--index`.
+`omarchy plugin enable <id>`. A metadata-only agent-harness integration needs
+only the rescan; select its harness with `omarchy default agent <id>` instead.
+A bar widget starts in its declared default section; enabling a full bar replaces
+the one in use. `omarchy bar` drives the bar from the CLI — `use | reset |
+defaults | position | transparent | put | move | set`, with placement flags such
+as `--section` and `--index`.
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 
 ## IPC
