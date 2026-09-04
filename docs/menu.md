@@ -104,10 +104,12 @@ JSONC. The names are defined by the shell, not the menu file — an extension
 can point a submenu at an existing provider but cannot declare a new one:
 
 - `apps` is QML-native: rows come from the shared AppLibrary (desktop
-  entries), carrying image icons, launch feedback, and uninstall support like
-  the launcher. App rows are searchable by their desktop Keywords but never
-  routable, so an installed app cannot capture a menu route (htop ships
-  `Keywords=system;...`, and SUPER+ESCAPE must still open the system menu).
+  entries), carrying image icons, launch feedback, and entry management.
+  With an app highlighted, `Ctrl+R` opens its rename dialog and
+  `Delete` opens its uninstall confirmation. App rows are searchable by their
+  desktop Keywords but never routable, so an installed app cannot capture a
+  menu route (htop ships `Keywords=system;...`, and SUPER+ESCAPE must still
+  open the system menu).
 - `fonts` and `power-profiles` are bash one-liners in the `providers` map in
   `Menu.qml`. The contract is one tab-delimited line per row:
   `label\tvalue\tcurrent`. The row whose value equals `current` gets the ✓
