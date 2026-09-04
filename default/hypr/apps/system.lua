@@ -15,7 +15,7 @@ o.window(
 -- whatever the app that asked for it titled it.
 o.window("xdg-desktop-portal-gtk", { tag = "+floating-window" })
 o.window({
-  class = "(sublime_text|DesktopEditors|org.gnome.Nautilus)",
+  class = "(sublime_text|DesktopEditors|org.gnome.Nautilus|soffice|soffice.bin|libreoffice.*)",
   title = "^(Open.*Files?|Open [F|f]older.*|Save.*Files?|Save.*As|Save|All Files|.*wants to [open|save].*|[C|c]hoose.*)",
 }, { tag = "+floating-window" })
 
