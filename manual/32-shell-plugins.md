@@ -66,7 +66,7 @@ omarchy plugin clone omarchy.clock
 
 That copies the whole plugin into `~/.config/omarchy/plugins/dhh.clock` (your username, not mine), renames it to "My Clock", enables it, and switches the shell over from the built-in to your copy — keeping an existing bar widget's position and settings. Add `--edit` to open the new directory in your `$EDITOR` right away, which is what the menu's _Setup > Plugins > Clone Plugin_ does for you.
 
-The username prefix keeps your clone's id yours, so sharing it doesn't collide with anyone else's. Calls made to the original built-in id get routed to your clone, so nothing that referred to `omarchy.clock` needs updating. And if you make a mess of it, `omarchy plugin remove dhh.clock` puts the built-in back.
+The username prefix keeps your clone's id yours, so sharing it doesn't collide with anyone else's. Calls made to the original built-in id get routed to your clone, so nothing that referred to `omarchy.clock` needs updating — including the bar's `centerAnchor` pin. And if you make a mess of it, `omarchy plugin remove dhh.clock` puts the built-in back.
 
 Saving a file anywhere under `~/.config/omarchy/plugins/` reloads the plugin code automatically, so you can leave the editor open and watch your changes land.
 

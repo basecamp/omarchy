@@ -41,6 +41,23 @@ Item {
   })
   property var layoutConfig: fallbackBarConfig.layout
   property string centerAnchor: ""
+  // Clone replaces the layout entry but leaves centerAnchor on the built-in
+  // id, the way findRelativeBarLocation already follows clones. Resolve here
+  // so the pin stays on the clock after `omarchy plugin clone omarchy.clock`.
+  readonly property var cloneSources: {
+    var map = ({})
+    if (!barWidgetRegistry) return map
+    var _rev = barWidgetRegistry.revision
+    var widgets = barWidgetRegistry.widgets
+    for (var id in widgets) {
+      var meta = widgets[id] && widgets[id].metadata
+      if (meta && meta.clonedFrom)
+        map[id] = Util.canonicalWidgetId(String(meta.clonedFrom))
+    }
+    return map
+  }
+  readonly property string resolvedCenterAnchor: BarModel.resolveCenterAnchor(
+    layoutEntries("center"), centerAnchor, cloneSources)
   property bool requestedTransparent: false
   property bool useTransparentForeground: false
   property bool transparent: false
@@ -1287,7 +1304,7 @@ Item {
 
   function findCenterAnchorEntry() {
     var entries = root.layoutEntries("center")
-    var idx = root.entryIndex(entries, root.centerAnchor)
+    var idx = root.entryIndex(entries, root.resolvedCenterAnchor)
     return idx === -1 ? null : entries[idx]
   }
 
@@ -1305,7 +1322,7 @@ Item {
     id: centerRoot
 
     property var entries: root.layoutEntries("center")
-    readonly property bool hasAnchor: root.entryIndex(entries, root.centerAnchor) !== -1
+    readonly property bool hasAnchor: root.entryIndex(entries, root.resolvedCenterAnchor) !== -1
     readonly property var anchorEntry: root.findCenterAnchorEntry()
 
     Loader {
@@ -1334,7 +1351,7 @@ Item {
 
         ModuleList {
           visible: centerRoot.hasAnchor
-          entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
+          entries: root.entriesBefore(centerRoot.entries, root.resolvedCenterAnchor)
           region: "center"
           anchors.right: centerAnchorModule.left
           anchors.verticalCenter: centerAnchorModule.verticalCenter
@@ -1350,7 +1367,7 @@ Item {
 
         ModuleList {
           visible: centerRoot.hasAnchor
-          entries: root.entriesAfter(centerRoot.entries, root.centerAnchor)
+          entries: root.entriesAfter(centerRoot.entries, root.resolvedCenterAnchor)
           region: "center"
           anchors.left: centerAnchorModule.right
           anchors.verticalCenter: centerAnchorModule.verticalCenter
@@ -1379,7 +1396,7 @@ Item {
 
         ModuleList {
           visible: centerRoot.hasAnchor
-          entries: root.entriesBefore(centerRoot.entries, root.centerAnchor)
+          entries: root.entriesBefore(centerRoot.entries, root.resolvedCenterAnchor)
           region: "center"
           anchors.bottom: centerAnchorModule.top
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
@@ -1395,7 +1412,7 @@ Item {
 
         ModuleList {
           visible: centerRoot.hasAnchor
-          entries: root.entriesAfter(centerRoot.entries, root.centerAnchor)
+          entries: root.entriesAfter(centerRoot.entries, root.resolvedCenterAnchor)
           region: "center"
           anchors.top: centerAnchorModule.bottom
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter

@@ -719,7 +719,10 @@ ShellRoot {
         schema: meta.schema || [],
         pluginId: manifest.id,
         sourceDir: manifest.__sourceDir || "",
-        source: "plugin"
+        source: "plugin",
+        clonedFrom: Util.canonicalWidgetId(String(
+          (Util.isPlainObject(manifest.omarchy) && manifest.omarchy.clonedFrom) || ""
+        ))
       }
 
       // A load already in flight for this URL registers itself when it

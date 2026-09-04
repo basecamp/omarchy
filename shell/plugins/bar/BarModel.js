@@ -65,6 +65,23 @@ function entriesAfter(entries, name) {
   return index === -1 ? [] : entries.slice(index + 1)
 }
 
+// Clone replaces the layout entry but leaves centerAnchor on the built-in
+// id. Exact match still wins, so a user who names the clone pins that;
+// otherwise the clone sitting in the source's place is the pin. Do not
+// rewrite shell.json — remove then puts the built-in id back and the pin
+// matches again.
+function resolveCenterAnchor(entries, name, clones) {
+  var anchor = String(name || "")
+  if (!anchor) return ""
+  if (entryIndex(entries, anchor) !== -1) return anchor
+  if (!Array.isArray(entries) || !isPlainObject(clones)) return anchor
+  for (var i = 0; i < entries.length; i++) {
+    var id = entryId(entries[i])
+    if (id && String(clones[id] || "") === anchor) return id
+  }
+  return anchor
+}
+
 // A shell.json write that only changes inline widget settings (the battery
 // percentage toggle, a clock format change) must not rebuild the bar.
 // Compare two normalized layouts: when the structure is unchanged — same
@@ -222,6 +239,7 @@ if (typeof module !== "undefined") {
     entryIndex: entryIndex,
     entriesBefore: entriesBefore,
     entriesAfter: entriesAfter,
+    resolveCenterAnchor: resolveCenterAnchor,
     inlineSettingsDelta: inlineSettingsDelta,
     expandPath: expandPath,
     customModuleSafeName: customModuleSafeName,
