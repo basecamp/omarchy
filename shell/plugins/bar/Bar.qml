@@ -542,6 +542,10 @@ Item {
     return BarModel.entryId(entry)
   }
 
+  function entryLocked(entry) {
+    return BarModel.entryLocked(entry)
+  }
+
   function moduleString(entry, key, fallback) {
     return BarModel.moduleString(entry, key, fallback)
   }
@@ -1566,6 +1570,7 @@ Item {
       return componentLoader.item
     }
     readonly property bool hovered: moduleHover.hovered
+    readonly property bool locked: root.entryLocked(entry)
     readonly property bool dragSource: root.barDragSource === slot
     readonly property bool panelOpen: root.activePopout === slot.activeItem
     // Modules bigger than the mark they want (a text label in a padded slot,
@@ -1673,7 +1678,7 @@ Item {
       property bool suppressClick: false
       property real pressedX: 0
       property real pressedY: 0
-      readonly property bool canReorder: root.shell && typeof root.shell.mutateShellConfig === "function"
+      readonly property bool canReorder: root.shell && typeof root.shell.mutateShellConfig === "function" && !slot.locked
       readonly property real dragThreshold: Style.space(4)
 
       anchors.fill: parent

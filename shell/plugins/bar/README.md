@@ -31,7 +31,7 @@ Example `shell.json` (bar subtree only shown):
       "left": [
         { "id": "omarchy.menu" },
         { "id": "omarchy.spacer", "size": 12 },
-        { "id": "omarchy.workspaces" }
+        { "id": "omarchy.workspaces", "locked": true }
       ],
       "center": [
         { "id": "omarchy.media" },
@@ -47,6 +47,8 @@ Example `shell.json` (bar subtree only shown):
 ```
 
 `centerAnchor` pins one center module to the exact horizontal/vertical center and flanks others around it. Set to an empty string to disable anchoring (the center list is centered as a group).
+
+`"locked": true` on a layout entry stops that widget being dragged. It still reorders through `omarchy bar move`, so the lock guards against a stray pointer rather than sealing the position against every route.
 
 ## Module catalogue
 

@@ -11,7 +11,7 @@ function entrySettings(entry) {
   if (!isPlainObject(entry)) return {}
   var copy = {}
   for (var key in entry) {
-    if (key === "id") continue
+    if (key === "id" || key === "locked") continue
     copy[key] = entry[key]
   }
   return copy
@@ -24,6 +24,10 @@ function entryId(entry) {
     if (id !== undefined && id !== null && String(id) !== "") return String(id)
   }
   return ""
+}
+
+function entryLocked(entry) {
+  return isPlainObject(entry) && entry["locked"] === true
 }
 
 function pinTrayToInner(entries, section) {
@@ -217,6 +221,7 @@ if (typeof module !== "undefined") {
     normalizePosition: normalizePosition,
     entrySettings: entrySettings,
     entryId: entryId,
+    entryLocked: entryLocked,
     pinTrayToInner: pinTrayToInner,
     moduleString: moduleString,
     entryIndex: entryIndex,
