@@ -97,19 +97,32 @@ set_scale() {
   hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
   audit_scale_change "$requested" "$active_monitor" "$current_scale" "$new_scale"
 
-  # Persist to monitors.lua if the user still has Omarchy's generic catch-all
-  # defaults, so the scale survives reboots.
-  if [[ -f $monitor_lua ]] && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
-    sed -i -E \
-      -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" \
-      -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${new_gdk_scale}|" \
-      "$monitor_lua"
-  elif [[ -f $monitor_lua ]] && grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$monitor_lua"; then
-    sed -i -E \
-      -e "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${new_scale}\\3|" \
-      -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$new_gdk_scale"'")|' \
-      "$monitor_lua"
+  # Persist the change for THIS monitor only, so it survives reboots without
+  # rescaling other monitors: update the monitor's own hl.monitor rule when the
+  # config has one, otherwise append one. Name-specific rules take precedence
+  # over the catch-all defaults regardless of their order in the file.
+  if [[ ! -f $monitor_lua ]]; then
+    return 0
   fi
+
+  local rule_pattern="^hl\.monitor\(\{ output = \"${active_monitor}\","
+  if grep -Eq "${rule_pattern}.* scale = [0-9.]+" "$monitor_lua"; then
+    sed -i -E "s|(${rule_pattern}.* scale = )[0-9.]+|\\1${new_scale}|" "$monitor_lua"
+  elif ! grep -Eq "$rule_pattern" "$monitor_lua"; then
+    printf 'hl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = %s })\n' \
+      "$active_monitor" "$new_scale" >>"$monitor_lua"
+  else
+    # The monitor has a rule but its scale is not a numeric literal, so the
+    # user is managing this file by hand. Leave the file alone: any write
+    # trips Hyprland's config auto-reload, which would revert the runtime
+    # change just applied above.
+    return 0
+  fi
+
+  sed -i -E \
+    -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${new_gdk_scale}|" \
+    -e 's|^hl\.env\("GDK_SCALE", "[0-9]+"\)|hl.env("GDK_SCALE", "'"$new_gdk_scale"'")|' \
+    "$monitor_lua"
 }
 
 scale_from_current() {
