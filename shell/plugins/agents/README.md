@@ -54,15 +54,57 @@ light surfaces — and the bar glyph stands in when there is none.
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
+| `grok` | The weekly credit allowance from grok's ACP billing method (or its log), when the reading includes a percentage | `~/.grok/sessions` transcripts |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
-`CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`. Fireworks reads
+`CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`, Grok via `GROK_HOME`. Fireworks reads
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+### Grok credits
+
+The plan and the weekly allowance come from grok's own ACP `_x.ai/billing`
+method, asked over `grok agent stdio`. Grok owns that call, so the collector
+never reads `auth.json` and never talks to an xAI endpoint itself — the same
+boundary the Codex collector keeps.
+
+`_x.ai/billing` is a vendor extension with no stability promise, and from
+here a method grok has renamed looks the same as a grok that is signed out.
+Grok also logs the config it fetched at startup, so the newest usable reading
+in `~/.grok/logs/unified.jsonl` stands in when the call says nothing. That
+fallback matches on a log message, which is the more brittle of the two —
+hence the fallback rather than the source. The plan and the meter are filled
+independently, so an answer that carries one but not the other keeps what it
+gave.
+
+A usable reading is a percentage that belongs to a period that is still open,
+and neither half is guaranteed. A reading from a closed week is the wrong
+week's number, and a window with no percentage in it is not a meter of zero —
+it is no meter. Either way the meter is omitted rather than guessed, and the
+tab shows tokens only.
+
+That omission is not hypothetical: grok 1.0.0 stopped reporting the
+percentage for every reading, where 0.2.118 had carried one in 100 of 102 on
+the same account. It came back in 1.0.5, and the meter lit up again on its
+own — which is the behaviour to expect the next time the field moves.
+
+The same reply carries `prepaidBalance`, `onDemandCap`, and `onDemandUsed`,
+each as a `{"val": N}` object. None of them feed the panel's balance ledger:
+they read `0` on every account this has been seen on, and nothing in the reply
+names a unit, so credits, dollars, and cents are indistinguishable at zero.
+Mapping them would mean guessing the scale of a number nobody has yet seen be
+non-zero, and the failure mode of guessing wrong is a confidently wrong
+balance rather than a missing one.
+
+Worth knowing when reading the panel: the meter and the token chart do not
+agree and cannot be made to. Grok's transcripts are overwhelmingly cache
+reads, and the allowance is billed per X identity rather than per machine, so
+usage from the web or another box lands in the meter with nothing local to
+explain it.
 
 ### Fireworks balance
 
@@ -128,6 +170,7 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
+  "grok": { "enabled": true },
   "fireworks": { "enabled": true }
 }' --json
 ```

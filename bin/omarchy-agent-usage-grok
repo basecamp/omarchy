@@ -1,0 +1,539 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Grok usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Grok CLI usage into one display-ready JSON record.
+
+Token stats come from the session transcripts under ~/.grok/sessions. The
+weekly credit allowance and the plan come from Grok's ACP `_x.ai/billing`
+method over `grok agent stdio`, falling back to the reading grok writes to
+its own log. The agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import select
+import shutil
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "grok"
+AGENT_NAME = "Grok"
+AUTH_HELP = "Run `grok` and sign in to record usage."
+
+# A bar refresh must not stall on Grok. The ACP round-trip is typically well
+# under a second; this bound is the ceiling, not the expected wait.
+ACP_TIMEOUT_SECONDS = 4
+
+# `_x.ai/billing` is a vendor extension, and from here a method grok has
+# renamed looks the same as a grok that is signed out. Grok also logs the
+# config it fetched at startup, so that log stands in when the call says
+# nothing. Matching on a log message is the more brittle of the two, which is
+# why it is the fallback rather than the source.
+CREDITS_MARKER = b'"billing: fetched credits config"'
+LOG_CHUNK_BYTES = 256 * 1024
+LOG_SCAN_LIMIT_BYTES = 8 * 1024 * 1024
+
+
+def number(value: Any) -> int:
+  try:
+    return int(value or 0)
+  except (TypeError, ValueError):
+    return 0
+
+
+def local_day(value: Any) -> str:
+  if value is None:
+    return datetime.now().strftime("%Y-%m-%d")
+  if isinstance(value, (int, float)):
+    # Grok stamps session updates in seconds; tolerate milliseconds.
+    if value > 10_000_000_000:
+      value = value / 1000
+    return datetime.fromtimestamp(value).strftime("%Y-%m-%d")
+  parsed = parse_iso(value)
+  if parsed is None:
+    return datetime.now().strftime("%Y-%m-%d")
+  return parsed.astimezone().strftime("%Y-%m-%d")
+
+
+def parse_iso(value: Any) -> datetime | None:
+  text = str(value or "").strip()
+  if text == "":
+    return None
+  try:
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+  except ValueError:
+    return None
+  return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
+def grok_home() -> Path:
+  home = os.environ.get("GROK_HOME")
+  return Path(home) if home else Path.home() / ".grok"
+
+
+def sessions_root() -> Path:
+  return grok_home() / "sessions"
+
+
+def log_path() -> Path:
+  configured = os.environ.get("GROK_LOG_FILE")
+  return Path(configured) if configured else grok_home() / "logs" / "unified.jsonl"
+
+
+def model_name(raw: Any) -> str:
+  return str(raw or "").strip() or "grok"
+
+
+# Grok folds its detail counters into the two totals: totalTokens ==
+# inputTokens + outputTokens on every record on disk, with the cache and
+# reasoning figures nested inside. Subtract the cache ones so nothing doubles.
+def split_tokens(stats: dict[str, Any]) -> tuple[int, int, int, int]:
+  cache_read = number(stats.get("cachedReadTokens"))
+  cache_creation = number(stats.get("cacheCreationTokens"))
+  input_tokens = max(0, number(stats.get("inputTokens")) - cache_read - cache_creation)
+  output_tokens = number(stats.get("outputTokens"))
+  return input_tokens, output_tokens, cache_read, cache_creation
+
+
+class SessionUsage:
+  """The running totals every completed turn on disk adds up to."""
+
+  def __init__(self, today: str | None = None):
+    self.today = today or datetime.now().strftime("%Y-%m-%d")
+    start = datetime.strptime(self.today, "%Y-%m-%d")
+    self.recent_dates = [(start - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+    self.recent = {day: 0 for day in self.recent_dates}
+    self.today_tokens_by_model: dict[str, int] = {}
+    self.model_usage: dict[str, dict[str, int]] = {}
+    self.today_sessions: set[str] = set()
+    self.today_prompts = 0
+    self.today_total_tokens = 0
+    self.total_prompts = 0
+    self.total_sessions: set[str] = set()
+    self.active_days: set[str] = set()
+    self.seen_turns: set[str] = set()
+
+  def add_turn(self, day: str, session_key: str, per_model: list[tuple[str, int, int, int, int]]) -> None:
+    # One completed turn is one prompt, however many models answered it.
+    # Counting per model would inflate the prompt and session totals on any
+    # turn that handed work to a secondary model.
+    self.total_prompts += 1
+    self.total_sessions.add(session_key)
+    self.active_days.add(day)
+
+    turn_total = 0
+    for model, input_tokens, output_tokens, cache_read, cache_creation in per_model:
+      bucket = self.model_usage.setdefault(model, {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+      })
+      bucket["inputTokens"] += input_tokens
+      bucket["outputTokens"] += output_tokens
+      bucket["cacheReadInputTokens"] += cache_read
+      bucket["cacheCreationInputTokens"] += cache_creation
+
+      model_total = input_tokens + output_tokens + cache_read + cache_creation
+      turn_total += model_total
+      if day == self.today:
+        self.today_tokens_by_model[model] = self.today_tokens_by_model.get(model, 0) + model_total
+
+    if day in self.recent:
+      self.recent[day] += turn_total
+
+    if day == self.today:
+      self.today_prompts += 1
+      self.today_sessions.add(session_key)
+      self.today_total_tokens += turn_total
+
+  def stats(self) -> dict[str, Any]:
+    return {
+      "todayPrompts": self.today_prompts,
+      "todaySessions": len(self.today_sessions),
+      "todayTotalTokens": self.today_total_tokens,
+      "todayTokensByModel": self.today_tokens_by_model,
+      "recentDays": [{"date": day, "messageCount": self.recent[day]} for day in self.recent_dates],
+      "totalPrompts": self.total_prompts,
+      "totalSessions": len(self.total_sessions),
+      # Days with any recorded usage, for the all-time "N days" summary. The
+      # dates travel too: merging snapshots from several machines needs their
+      # union, which a count alone cannot give.
+      "activeDays": len(self.active_days),
+      "activeDates": sorted(self.active_days),
+      "modelUsage": self.model_usage,
+    }
+
+
+def turn_models(update: dict[str, Any]) -> list[tuple[str, int, int, int, int]]:
+  usage = update.get("usage") or {}
+  if not isinstance(usage, dict) or not usage:
+    return []
+
+  models = usage.get("modelUsage")
+  per_model = []
+  if isinstance(models, dict) and models:
+    for model, stats in models.items():
+      if not isinstance(stats, dict):
+        continue
+      input_tokens, output_tokens, cache_read, cache_creation = split_tokens(stats)
+      if input_tokens or output_tokens or cache_read or cache_creation:
+        per_model.append((model_name(model), input_tokens, output_tokens, cache_read, cache_creation))
+  else:
+    input_tokens, output_tokens, cache_read, cache_creation = split_tokens(usage)
+    if input_tokens or output_tokens or cache_read or cache_creation:
+      per_model.append((model_name(update.get("model")), input_tokens, output_tokens, cache_read, cache_creation))
+  return per_model
+
+
+def scan_sessions(usage: SessionUsage) -> None:
+  root = sessions_root()
+  if not root.is_dir():
+    return
+
+  # sessions/<url-encoded project>/<session uuid>/updates.jsonl
+  for path in sorted(root.glob("*/*/updates.jsonl")):
+    session_key = path.parent.name
+    try:
+      with path.open(errors="replace") as handle:
+        for raw in handle:
+          # Turn records are a thin minority of a transcript that also carries
+          # every message and tool payload, so skip the rest before paying for
+          # a parse.
+          if '"usage"' not in raw:
+            continue
+          try:
+            entry = json.loads(raw)
+          except json.JSONDecodeError:
+            continue
+          update = (entry.get("params") or {}).get("update") or {}
+          # Only the end-of-turn record carries usage, and it reports that turn
+          # rather than a running total, so these sum rather than replace.
+          if update.get("sessionUpdate") != "turn_completed":
+            continue
+
+          prompt_id = str(update.get("prompt_id") or "")
+          turn_key = session_key + ":" + prompt_id if prompt_id else ""
+          if turn_key and turn_key in usage.seen_turns:
+            continue
+
+          # Claim the id once the turn is known to count. An interrupted turn
+          # is written with no usage key at all and never reaches this, so the
+          # order is semantics rather than a fix for a shape grok emits.
+          per_model = turn_models(update)
+          if not per_model:
+            continue
+          if turn_key:
+            usage.seen_turns.add(turn_key)
+
+          try:
+            fallback = path.stat().st_mtime
+          except OSError:
+            fallback = None
+          usage.add_turn(local_day(entry.get("timestamp") or fallback), session_key, per_model)
+    except OSError:
+      continue
+
+
+def period_label(raw: Any, start: datetime, end: datetime) -> str:
+  kind = str(raw or "").upper().replace("USAGE_PERIOD_TYPE_", "")
+  if kind == "WEEKLY":
+    return "Weekly (7-day)"
+  if kind == "MONTHLY":
+    return "Monthly"
+  if kind == "DAILY":
+    return "Daily"
+  days = max(1, round((end - start).total_seconds() / 86400))
+  if days == 7:
+    return "Weekly (7-day)"
+  if days in (30, 31):
+    return "Monthly"
+  return f"{days}-day window"
+
+
+def limit_from_config(config: Any) -> dict[str, Any] | None:
+  if not isinstance(config, dict):
+    return None
+
+  percent = config.get("creditUsagePercent")
+  period = config.get("currentPeriod") or {}
+  start = parse_iso(period.get("start") or config.get("billingPeriodStart"))
+  end = parse_iso(period.get("end") or config.get("billingPeriodEnd"))
+  # A window with no percentage is not a meter of 0 — it is no meter.
+  if percent is None or start is None or end is None:
+    return None
+
+  # A percentage belongs to the period it was measured in, so one from a period
+  # that has since rolled over is not merely stale, it is a different week's.
+  # Showing nothing beats showing last week's number against this week's reset.
+  now = datetime.now(timezone.utc)
+  if not (start <= now <= end):
+    return None
+
+  try:
+    fraction = float(percent) / 100.0
+  except (TypeError, ValueError):
+    return None
+
+  return {
+    "label": period_label(period.get("type"), start, end),
+    "percent": max(0.0, min(1.0, fraction)),
+    "resetsAt": end.isoformat(),
+  }
+
+
+def empty_credits() -> dict[str, Any]:
+  return {"tierLabel": "", "limits": []}
+
+
+def runtime_env() -> dict[str, str]:
+  # The bar may not inherit the login PATH that holds the grok wrapper
+  # Omarchy installs into ~/.local/bin (and mise shims).
+  home = str(Path.home())
+  path_parts = [
+    os.environ.get("PATH", ""),
+    f"{home}/.local/bin",
+    f"{home}/.local/share/mise/shims",
+  ]
+  env = os.environ.copy()
+  env["PATH"] = os.pathsep.join(part for part in path_parts if part)
+  return env
+
+
+def rpc_request(proc: subprocess.Popen[str], request_id: int, method: str, params: dict[str, Any] | None = None,
+                timeout: float = ACP_TIMEOUT_SECONDS) -> dict[str, Any]:
+  if proc.stdin is None or proc.stdout is None:
+    raise TimeoutError(method)
+  proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}}) + "\n")
+  proc.stdin.flush()
+  deadline = time.monotonic() + timeout
+  while time.monotonic() < deadline:
+    ready, _, _ = select.select([proc.stdout], [], [], 0.25)
+    if not ready:
+      continue
+    line = proc.stdout.readline()
+    if not line:
+      break
+    try:
+      message = json.loads(line)
+    except json.JSONDecodeError:
+      continue
+    if isinstance(message, dict) and message.get("id") == request_id:
+      return message
+  raise TimeoutError(method)
+
+
+def terminate(proc: subprocess.Popen[str]) -> None:
+  try:
+    proc.terminate()
+    proc.wait(timeout=1)
+  except Exception:
+    try:
+      proc.kill()
+      proc.wait(timeout=1)
+    except Exception:
+      pass
+
+
+def credits_from_billing(message: dict[str, Any]) -> dict[str, Any]:
+  if message.get("error"):
+    return empty_credits()
+  result = message.get("result")
+  if not isinstance(result, dict):
+    return empty_credits()
+  # Grok 1.0.5 returns subscription_tier; accept camelCase if a later build
+  # matches the rest of the ACP surface.
+  tier = str(result.get("subscription_tier") or result.get("subscriptionTier") or "").strip()
+  limit = limit_from_config(result.get("config"))
+  return {"tierLabel": tier, "limits": [limit] if limit else []}
+
+
+def fetch_acp_credits() -> dict[str, Any]:
+  env = runtime_env()
+  grok = shutil.which("grok", path=env.get("PATH"))
+  if not grok:
+    return empty_credits()
+
+  try:
+    proc = subprocess.Popen(
+      [grok, "agent", "stdio"],
+      stdin=subprocess.PIPE,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.DEVNULL,
+      text=True,
+      env=env,
+    )
+  except OSError:
+    return empty_credits()
+
+  try:
+    initialize = rpc_request(proc, 1, "initialize", {
+      "protocolVersion": 1,
+      "clientCapabilities": {"terminal": False},
+      "_meta": {
+        "clientType": "omarchy-agent-usage",
+        "clientVersion": "1",
+        "startupHints": {
+          "nonInteractive": True,
+          "skipGitStatus": True,
+          "skipProjectLayout": True,
+        },
+      },
+    })
+    if initialize.get("error"):
+      return empty_credits()
+    return credits_from_billing(rpc_request(proc, 2, "_x.ai/billing", {}))
+  except Exception:
+    return empty_credits()
+  finally:
+    terminate(proc)
+
+
+def credits_records() -> Iterator[dict[str, Any]]:
+  """Every logged credits reading, newest first."""
+  path = log_path()
+  try:
+    size = path.stat().st_size
+  except OSError:
+    return
+
+  # The log is append-only and the newest reading is the one that counts, so
+  # walk back from the end in chunks instead of parsing a log that grows without
+  # bound. The scan limit keeps a huge log from stalling a bar refresh.
+  position = size
+  scanned = 0
+  partial = b""
+  try:
+    with path.open("rb") as handle:
+      while position > 0 and scanned < LOG_SCAN_LIMIT_BYTES:
+        step = min(LOG_CHUNK_BYTES, position)
+        position -= step
+        scanned += step
+        handle.seek(position)
+        lines = (handle.read(step) + partial).split(b"\n")
+        # The first piece is only a whole line once the read reaches the start
+        # of the file; until then it is the tail of an earlier line.
+        partial = lines.pop(0) if position > 0 else b""
+        for raw in reversed(lines):
+          if CREDITS_MARKER not in raw:
+            continue
+          try:
+            record = json.loads(raw)
+          except json.JSONDecodeError:
+            continue
+          if isinstance(record, dict):
+            yield record
+  except OSError:
+    return
+
+
+def logged_credits() -> dict[str, Any]:
+  """The newest logged tier, and the newest usable limit behind it.
+
+  Grok logs a config on every startup, and some of them carry no usage
+  percentage at all — a period with a reading is not necessarily the one
+  logged last. An older reading is still this period's, since
+  limit_from_config drops anything whose period has closed, so the newest
+  usable one beats no meter at all.
+  """
+  tier = ""
+  limit = None
+  for record in credits_records():
+    context = record.get("ctx")
+    if not isinstance(context, dict):
+      continue
+    tier = tier or str(context.get("subscriptionTier") or "").strip()
+    limit = limit or limit_from_config(context.get("config"))
+    if tier and limit:
+      break
+  return {"tierLabel": tier, "limits": [limit] if limit else []}
+
+
+def read_credits() -> dict[str, Any]:
+  # Grok owns the billing call, so the plan and the meter come from the CLI
+  # rather than from its credentials and a private endpoint.
+  credits = fetch_acp_credits()
+  if credits["tierLabel"] and credits["limits"]:
+    return credits
+
+  # Either half can come back missing on its own — a signed-out CLI answers
+  # with neither, a renamed method with neither, and a window still waiting on
+  # its first reading with a plan and no meter — so fill them independently
+  # rather than dropping a good ACP tier to take the log's.
+  logged = logged_credits()
+  return {
+    "tierLabel": credits["tierLabel"] or logged["tierLabel"],
+    "limits": credits["limits"] or logged["limits"],
+  }
+
+
+def scan() -> dict[str, Any]:
+  usage = SessionUsage()
+  scan_sessions(usage)
+  stats = usage.stats()
+  credits = read_credits()
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": stats["totalPrompts"] > 0 or len(credits["limits"]) > 0,
+    "hasLocalStats": True,
+    "tierLabel": credits["tierLabel"],
+    # Grok bills one weekly credit allowance, with no session window beside it.
+    "limits": credits["limits"],
+    "usageStatusText": "",
+    "authHelpText": AUTH_HELP,
+  }
+  # A plan with no meter is normal — a fresh window has no reading to report
+  # yet. Knowing neither means both the ACP call and the log told us nothing at
+  # all, which is worth saying out loud beside the empty meter.
+  if not credits["tierLabel"] and not credits["limits"]:
+    record["usageStatusText"] = "Grok limits unavailable"
+  record.update(stats)
+  return record
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the Grok usage record as JSON")
+  # Local transcripts are cheap, ACP billing is a short stdio round-trip, and
+  # the log is only read when that says nothing. There is no cache to force
+  # past and no faster limits-only path. The flags exist so every collector
+  # accepts the same invocation.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.parse_args()
+
+  try:
+    record = scan()
+  except Exception as error:
+    record = {
+      "schemaVersion": 1,
+      "id": AGENT_ID,
+      "name": AGENT_NAME,
+      "updatedAt": datetime.now(timezone.utc).isoformat(),
+      "ready": False,
+      "hasLocalStats": False,
+      "tierLabel": "",
+      "limits": [],
+      "usageStatusText": "Grok unavailable",
+      "authHelpText": "Grok usage scan failed",
+    }
+    record.update(SessionUsage().stats())
+    print(f"omarchy-agent-usage-grok: {type(error).__name__}", file=sys.stderr)
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
