@@ -35,15 +35,16 @@ Clone it into the user plugin directory instead:
 
 ```bash
 omarchy plugin clone omarchy.workspaces
-# Edit ~/.config/omarchy/plugins/<username>.workspaces/; saved changes reload automatically.
+# Edit ~/.config/omarchy/plugins/<username>.workspaces/
 ```
 
 Cloning switches the bar to the cloned copy (e.g. `<username>.workspaces`),
 which is yours to edit and survives updates.
 
-Saving a file anywhere under `~/.config/omarchy/plugins/` reloads plugin code
-automatically. If a change somehow fails to apply, force a reload with
-`omarchy-shell shell rescanPlugins`.
+Saving a file under `~/.config/omarchy/plugins/` reloads plugin *definitions*.
+Panels and overlays instantiate from that definition the next time they open.
+A live bar-widget instance is not rebuilt on save, so new properties, processes, timers, or UI added to a bar-widget need `omarchy restart shell`.
+`omarchy-shell shell rescanPlugins` re-reads manifests; it does not replace a live bar-widget instance.
 
 ## Idle and Lock
 
