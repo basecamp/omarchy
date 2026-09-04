@@ -10,8 +10,10 @@ if [[ -z $1 ]]; then
 fi
 
 CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
+CURRENT_THEME_NAME_PATH="$HOME/.local/state/omarchy/current/theme.name"
 NEXT_THEME_PATH="$HOME/.local/state/omarchy/current/next-theme"
 CURRENT_BACKGROUND_LINK="$HOME/.local/state/omarchy/current/background"
+THEME_BACKGROUND_STATE_PATH="$HOME/.local/state/omarchy/theme-backgrounds"
 BACKGROUND_TRANSITION_CACHE="$HOME/.cache/omarchy/background-transitions"
 THEME_SET_LOCK="${XDG_RUNTIME_DIR:-/tmp}/omarchy-theme-set.lock"
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
@@ -69,9 +71,27 @@ snapshot_current_background() {
   snapshot_background_path "$current_background" "previous"
 }
 
+theme_background_state_file() {
+  local theme="$1"
+
+  [[ -n $theme && ${theme##*/} == $theme && $theme != "." && $theme != ".." ]] || return 1
+  printf '%s/%s\n' "$THEME_BACKGROUND_STATE_PATH" "$theme"
+}
+
+remember_current_theme_background() {
+  local current_background state_file
+
+  state_file=$(theme_background_state_file "$PREVIOUS_THEME_NAME") || return
+  current_background=$(readlink -f "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
+  [[ -f $current_background ]] || return
+
+  mkdir -p "$THEME_BACKGROUND_STATE_PATH"
+  printf '%s\n' "$current_background" >"$state_file"
+}
+
 choose_theme_background() {
   local backgrounds=()
-  local current_background index next_index i
+  local current_background remembered_background state_file index next_index i
 
   CHOSEN_THEME_BACKGROUND=""
   mapfile -d '' -t backgrounds < <(
@@ -82,21 +102,33 @@ choose_theme_background() {
 
   (( ${#backgrounds[@]} > 0 )) || return 1
 
-  current_background=$(readlink "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
-  index=-1
-  for i in "${!backgrounds[@]}"; do
-    if [[ ${backgrounds[$i]} == $current_background ]]; then
-      index=$i
-      break
-    fi
-  done
+  if [[ $PREVIOUS_THEME_NAME == "$THEME_NAME" ]]; then
+    current_background=$(readlink "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
+    index=-1
+    for i in "${!backgrounds[@]}"; do
+      if [[ ${backgrounds[$i]} == $current_background ]]; then
+        index=$i
+        break
+      fi
+    done
 
-  if (( index == -1 )); then
-    CHOSEN_THEME_BACKGROUND="${backgrounds[0]}"
-  else
-    next_index=$(((index + 1) % ${#backgrounds[@]}))
-    CHOSEN_THEME_BACKGROUND="${backgrounds[$next_index]}"
+    if (( index != -1 )); then
+      next_index=$(((index + 1) % ${#backgrounds[@]}))
+      CHOSEN_THEME_BACKGROUND="${backgrounds[$next_index]}"
+    else
+      CHOSEN_THEME_BACKGROUND="${backgrounds[0]}"
+    fi
+    return
   fi
+
+  state_file=$(theme_background_state_file "$THEME_NAME" 2>/dev/null || true)
+  remembered_background=$(cat "$state_file" 2>/dev/null || true)
+  if [[ -f $remembered_background ]]; then
+    CHOSEN_THEME_BACKGROUND="$remembered_background"
+    return
+  fi
+
+  CHOSEN_THEME_BACKGROUND="${backgrounds[0]}"
 }
 
 set_theme_background_link() {
@@ -261,6 +293,9 @@ fi
 exec 9>"$THEME_SET_LOCK"
 flock 9
 
+PREVIOUS_THEME_NAME=$(cat "$CURRENT_THEME_NAME_PATH" 2>/dev/null || true)
+remember_current_theme_background
+
 # Setup clean next theme directory (for atomic theme config swapping)
 rm -rf "$NEXT_THEME_PATH"
 mkdir -p "$NEXT_THEME_PATH"
@@ -293,7 +328,7 @@ rm -rf "$CURRENT_THEME_PATH"
 mv "$NEXT_THEME_PATH" "$CURRENT_THEME_PATH"
 
 # Store theme name for reference
-echo "$THEME_NAME" >"$HOME/.local/state/omarchy/current/theme.name"
+echo "$THEME_NAME" >"$CURRENT_THEME_NAME_PATH"
 
 # Make the running shell pick up the new palette immediately while the rest of
 # the theme hooks run.
