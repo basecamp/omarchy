@@ -215,38 +215,11 @@ assertEqual(
   'setup.reset',
   'menu lists Reset Computer last under Setup'
 )
-const expectedAgents = {
-  agy: { icon: '󰫢', label: 'Antigravity' },
-  pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
-  omp: { icon: '\ue903', iconFont: 'omarchy', label: 'omp' },
-  opencode: { icon: '\ue902', iconFont: 'omarchy', label: 'OpenCode' },
-  ori: { icon: '\ue909', iconFont: 'omarchy', label: 'Ori' },
-  claude: { icon: '󰛄', label: 'Claude' },
-  codex: { icon: '\ue905', iconFont: 'omarchy', label: 'Codex' },
-  grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
-  hermes: { icon: '\ue90a', iconFont: 'omarchy', label: 'Hermes' },
-  copilot: { icon: '', label: 'Copilot' },
-  crush: { icon: '󰋑', label: 'Crush' },
-}
+const agentMenu = defaultById['setup.default.agent']
 assert(
-  Object.entries(expectedAgents).every(([agent, expected]) => {
-    const entry = defaultById[`setup.default.agent.${agent}`]
-    return entry
-      && entry.icon === expected.icon
-      && entry.iconFont === (expected.iconFont || '')
-      && entry.label === expected.label
-      && entry.action === `omarchy-default-agent ${agent}`
-      && !entry.when
-      && entry.checked.includes(`== \"${agent}\"`)
-  }),
-  'menu exposes every mise-installable coding agent with its own glyph under Defaults > Agent'
-)
-assertDeepEqual(
-  defaultItems
-    .filter(item => item.parent === 'setup.default.agent')
-    .map(item => item.label),
-  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Ori', 'Pi'],
-  'menu sorts coding agents alphabetically'
+  agentMenu && agentMenu.provider === 'agent-harnesses'
+    && !defaultItems.some(item => item.parent === 'setup.default.agent'),
+  'menu sources selectable coding agents from the harness registry'
 )
 const expectedDefaults = {
   browser: ['Chromium', 'Chrome', 'Brave', 'Brave Origin', 'Edge', 'Firefox', 'Zen'],

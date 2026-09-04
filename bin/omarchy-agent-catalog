@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# omarchy:summary=List installed and built-in coding-agent harnesses
+# omarchy:group=agent
+# omarchy:hidden=true
+
+set -euo pipefail
+
+source_file="$OMARCHY_PATH/default/agents/harnesses.json"
+plugin_dir="$HOME/.config/omarchy/plugins"
+inputs=("$source_file")
+if [[ -d $plugin_dir ]]; then
+  while IFS= read -r file; do inputs+=("$file"); done < <(find -L "$plugin_dir" -mindepth 2 -maxdepth 2 -type f -name manifest.json | sort)
+fi
+
+jq -s '
+  def valid_id: (type == "string") and test("^[A-Za-z0-9][A-Za-z0-9._-]*$") and (contains("..") | not);
+  def valid_command: (type == "array") and length > 0 and all(.[]; (type == "string") and length > 0 and (contains("\n") | not) and (contains("\r") | not));
+  def valid:
+    (.id | valid_id)
+    and (.name | type == "string" and length > 0)
+    and ((.aliases // []) | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")))
+    and (.install | type == "object" and (.command | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and ((.type == "mise" and (.package | type == "string" and length > 0)) or (.type == "installer" and (.installer | type == "string" and test("^omarchy-[A-Za-z0-9._-]+$")))))
+    and (.launch | type == "object" and (.mode == "terminal" or .mode == "browser") and (.command | valid_command) and ((.promptCommand // .command) | valid_command));
+  [range(0; length) as $source
+   | .[$source]
+   | if $source == 0 then
+       select(.schemaVersion == 1 and (.harnesses | type == "array"))
+       | .harnesses[]? | select(valid) | . + {firstParty: true}
+     else
+       select(.schemaVersion == 1 and (.agentHarness | type == "object"))
+       | .agentHarness | select(valid and .install.type == "mise") | . + {firstParty: false}
+     end]
+  | sort_by(.firstParty | not)
+  | reduce .[] as $h ([]; if any(.[]; .id == $h.id) then . else . + [$h] end)
+' "${inputs[@]}"

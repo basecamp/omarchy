@@ -60,6 +60,23 @@ jq -e '(.kinds | type) == "array" and (.kinds | length) > 0' "$MANIFEST" >/dev/n
 jq -e '(.entryPoints | type) == "object"' "$MANIFEST" >/dev/null 2>&1 \
   || fail "'entryPoints' must be an object"
 
+# Agent harness metadata stays declarative: external plugins may name a mise
+# package and argv templates, never a shell install hook. First-party manifests
+# may additionally use a trusted Omarchy installer for exceptional cases.
+jq -e '
+  def valid_id: type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$") and (contains("..") | not);
+  def valid_command: type == "array" and length > 0 and all(.[]; type == "string" and length > 0 and (contains("\\n") | not) and (contains("\\r") | not));
+  if .agentHarness == null then true
+  else
+    (.agentHarness | type) == "object"
+    and (.agentHarness.id | valid_id)
+    and (.agentHarness.name | type == "string" and length > 0)
+    and ((.agentHarness.aliases // []) | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")))
+    and (.agentHarness.install | type == "object" and .type == "mise" and (.package | type == "string" and length > 0) and (.command | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")))
+    and (.agentHarness.launch | type == "object" and (.mode == "terminal" or .mode == "browser") and (.command | valid_command) and ((.promptCommand // .command) | valid_command))
+  end
+' "$MANIFEST" >/dev/null 2>&1 || fail "'agentHarness' must declare a safe mise-backed harness"
+
 # A bar widget may declare where it should land when enabled without an
 # explicit placement.
 jq -e '

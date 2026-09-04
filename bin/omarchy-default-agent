@@ -1,79 +1,56 @@
 #!/bin/bash
 
 # omarchy:summary=Set and launch the default coding agent
-# omarchy:args=[pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush]
-# omarchy:examples=omarchy default agent | omarchy default agent codex | omarchy default agent claude
+# omarchy:args=<harness>
+# omarchy:examples=omarchy default agent | omarchy default agent acme-agent
+
+set -euo pipefail
 
 installing=false
 if [[ ${1:-} == "--install" ]]; then
   installing=true
   shift
 fi
-
 agent_file="$HOME/.config/omarchy/defaults/agent"
 
 if (($# == 0)); then
-  if [[ -f $agent_file ]]; then
-    read -r agent <"$agent_file"
-  fi
-
-  # Silent when unset rather than defaulting: Omarchy picks no agent for you, so
-  # the menu leaves every entry unchecked until one is chosen.
-  [[ -n ${agent:-} ]] && echo "$agent"
+  [[ -f $agent_file ]] && cat "$agent_file"
   exit 0
 fi
 
-case "$1" in
-pi) agent="pi"; name="Pi" ;;
-omp | oh-my-pi) agent="omp"; name="Oh My Pi"; agent_package="github:can1357/oh-my-pi" ;;
-opencode | open-code) agent="opencode"; name="OpenCode" ;;
-ori | openrouter) agent="ori"; name="Ori"; agent_package="github:OpenRouterLabs/ori-releases" ;;
-claude | claude-code) agent="claude"; name="Claude Code" ;;
-codex) agent="codex"; name="Codex" ;;
-crush) agent="crush"; name="Crush" ;;
-grok) agent="grok"; name="Grok"; agent_package="npm:@xai-official/grok" ;;
-agy | antigravity | antigravity-cli | gemini | gemini-cli) agent="agy"; name="Antigravity"; agent_package="antigravity-cli" ;;
-hermes) agent="hermes"; name="Hermes"; agent_installer="omarchy-install-hermes-cli" ;;
-copilot | github-copilot) agent="copilot"; name="GitHub Copilot" ;;
-*)
-  echo "Usage: omarchy-default-agent <pi|omp|opencode|ori|claude|codex|grok|agy|hermes|copilot|crush>"
+selection=$1
+harness=$(omarchy-agent-catalog | jq -cer --arg selection "$selection" '.[] | select(.id == $selection or ((.aliases // []) | index($selection)))' | head -n1) || {
+  echo "Usage: omarchy-default-agent <harness>" >&2
+  echo "Unknown coding-agent harness: $selection" >&2
+  echo "Install one with: omarchy agent add <git-url>" >&2
   exit 1
-  ;;
-esac
+}
+id=$(jq -r '.id' <<<"$harness")
+name=$(jq -r '.name' <<<"$harness")
+package=$(jq -r '.install.package // empty' <<<"$harness")
+installer=$(jq -r '.install.installer // empty' <<<"$harness")
 
-agent_package=${agent_package:-$agent}
-
-# Hermes reaches mise through its own installer rather than straight from
-# here: it needs its interpreter pinned, and a bare `mise use` has nowhere to
-# say so. See omarchy-install-hermes-cli.
-if [[ -n ${agent_installer:-} ]]; then
-  # Not omarchy-cmd-present: the stub is on PATH from first boot and says
-  # nothing about whether Hermes is installed behind it. Treating a cold stub
-  # as installed skips the floating terminal and runs the minute-long install
-  # inside the menu action instead.
-  agent_present() { "$agent_installer" --check; }
-  agent_install() { "$agent_installer" --now; }
-else
-  agent_present() { mise where "$agent_package" &>/dev/null; }
-  agent_install() { mise use -g "$agent_package"; }
-fi
-
-if [[ $installing == "false" ]] && ! agent_present; then
-  exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$agent"
-fi
-
-if ! agent_install; then
-  if [[ $installing == "true" ]]; then
-    echo "Could not install $name with mise" >&2
-  else
-    echo "Could not set $name as the default coding agent" >&2
+if [[ -n $installer ]]; then
+  if [[ $installing == "false" ]] && ! "$installer" --check; then
+    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$id"
   fi
-  exit 1
+  "$installer" --now || { echo "Could not set $name as the default coding agent" >&2; exit 1; }
+else
+  if [[ $installing == "false" ]] && ! mise where "$package" &>/dev/null; then
+    exec omarchy-launch-floating-terminal-with-presentation omarchy-default-agent --install "$id"
+  fi
+  mise use -g "$package" || {
+    if [[ $installing == "true" ]]; then
+      echo "Could not install $name with mise" >&2
+    else
+      echo "Could not set $name as the default coding agent" >&2
+    fi
+    exit 1
+  }
 fi
 
 mkdir -p "$(dirname "$agent_file")"
-printf '%s\n' "$agent" >"$agent_file"
-
+printf '%s\n' "$id" >"$agent_file"
 if [[ $installing == "true" ]]; then
   printf '\033[2J\033[3J\033[H'
   exec omarchy-agent --inline
