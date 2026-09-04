@@ -57,7 +57,9 @@ BarWidget {
   }
 
   function formatted(date) {
-    return Qt.formatDateTime(date, activeFormat.replace(/ww/g, Model.isoWeekLiteral(date.getFullYear(), date.getMonth(), date.getDate())))
+    // Qt.formatDateTime() always names days/months in English regardless of
+    // the system locale; Qt.locale().toString() is the locale-aware one.
+    return Qt.locale().toString(date, activeFormat.replace(/ww/g, Model.isoWeekLiteral(date.getFullYear(), date.getMonth(), date.getDate())))
   }
 
   // ---- Calendar popup. Shape contract for shell.summon/hide/toggle
