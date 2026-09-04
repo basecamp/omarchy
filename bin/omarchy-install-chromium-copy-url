@@ -7,6 +7,7 @@ set -euo pipefail
 HOST_NAME="com.omarchy.copy_url"
 HOST_PATH="$OMARCHY_PATH/bin/omarchy-chromium-copy-url-host"
 TEMPLATE="$OMARCHY_PATH/default/chromium/native-messaging-hosts/$HOST_NAME.json"
+CHROME_ID="$HOME/.local/state/omarchy/chrome-extensions/copy-url.id"
 
 browser_dirs=(
   "$HOME/.config/chromium"
@@ -21,6 +22,13 @@ browser_dirs=(
 )
 
 manifest=$(sed "s|__HOST_PATH__|$HOST_PATH|g" "$TEMPLATE")
+
+# Chrome installs the extension from a locally signed CRX, so its id comes from
+# a key minted on this machine rather than the one pinned in the manifest.
+if [[ -f $CHROME_ID ]]; then
+  manifest=$(jq --arg origin "chrome-extension://$(<"$CHROME_ID")/" \
+    '.allowed_origins += [$origin]' <<<"$manifest")
+fi
 
 for dir in "${browser_dirs[@]}"; do
   mkdir -p "$dir/NativeMessagingHosts"

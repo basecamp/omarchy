@@ -18,6 +18,19 @@ set_fallback_default_browser() {
   fi
 }
 
+# The bundled extensions reach Chrome as locally signed CRXs registered in its
+# external extensions directory, keyed by ids minted on this machine.
+remove_chrome_extensions() {
+  local state_dir="$HOME/.local/state/omarchy/chrome-extensions" id_file
+
+  for id_file in "$state_dir"/*.id; do
+    [[ -f $id_file ]] || continue
+    sudo rm -f "/usr/share/google-chrome/extensions/$(<"$id_file").json"
+  done
+
+  rm -rf "$state_dir"
+}
+
 case $1 in
 chrome)
   echo "Removing Chrome..."
@@ -25,6 +38,7 @@ chrome)
   omarchy-pkg-drop google-chrome
   rm -f ~/.config/chrome-flags.conf
   sudo rm -f /etc/opt/chrome/policies/managed/color.json
+  remove_chrome_extensions
   ;;
 edge)
   echo "Removing Edge..."

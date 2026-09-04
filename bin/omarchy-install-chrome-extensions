@@ -1,0 +1,109 @@
+#!/bin/bash
+
+# omarchy:summary=Install Omarchy's bundled Chromium extensions into Google Chrome
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+# Google Chrome refuses the switch the flags file relies on ("--load-extension is
+# not allowed in Google Chrome, ignoring"), so the three extensions Chromium
+# loads unpacked never reach Chrome. Chrome does install a locally signed CRX
+# listed in its external extensions directory.
+#
+# Chrome's Safety Check lists all three afterwards as extensions it "can't verify
+# where they come from". That is what Chrome says about every extension outside
+# its Web Store: installing them through an enterprise policy instead, whether
+# normal_installed or force_installed, is flagged just the same and only costs
+# the user the Remove button. So take the route that leaves them removable.
+EXTENSIONS=(copy-url yt-dlp whatsapp-slim)
+STATE_DIR="$HOME/.local/state/omarchy/chrome-extensions"
+EXTERNAL_DIR="${OMARCHY_CHROME_EXTENSIONS_DIR:-/usr/share/google-chrome/extensions}"
+FLAGS_FILE="$HOME/.config/chrome-flags.conf"
+
+# Chrome takes an extension's id from the key that signed the CRX, ignoring the
+# manifest "key" field Chromium honours for unpacked loads. Keep the generated
+# key: a fresh one mints a fresh id, which Chrome installs alongside the old copy
+# rather than over it.
+signing_key() {
+  local key="$STATE_DIR/$1.pem"
+
+  if [[ ! -f $key ]]; then
+    openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$key" 2>/dev/null
+    chmod 600 "$key"
+  fi
+
+  printf '%s\n' "$key"
+}
+
+# The id is the first 16 bytes of the SHA-256 of the DER public key, hex-encoded
+# with 0-9a-f mapped onto a-p. Reads the DER key on stdin.
+extension_id() {
+  sha256sum | cut -c1-32 | tr '0-9a-f' 'a-p'
+}
+
+public_key_der() {
+  openssl rsa -in "$1" -pubout -outform DER 2>/dev/null
+}
+
+extension_version() {
+  jq -r '.version' "$OMARCHY_PATH/default/chromium/extensions/$1/manifest.json"
+}
+
+# Rewrite the manifest's pinned "key" to the signing key so the packed extension
+# reports the same id Chrome derives from the CRX signature.
+pack_extension() {
+  local name="$1" key="$2" source="$OMARCHY_PATH/default/chromium/extensions/$1" workdir
+
+  workdir=$(mktemp -d)
+
+  # The bundled icons are relative symlinks into the repo root, which dangle once
+  # the extension is copied out of it.
+  cp -rL "$source" "$workdir/$name"
+  jq --arg key "$(public_key_der "$key" | base64 -w0)" '.key = $key' \
+    "$source/manifest.json" >"$workdir/$name/manifest.json"
+
+  google-chrome-stable --pack-extension="$workdir/$name" --pack-extension-key="$key" >/dev/null
+  install -m 644 "$workdir/$name.crx" "$STATE_DIR/$name.crx"
+  rm -rf "$workdir"
+}
+
+# Chrome reinstalls a CRX only when external_version outruns what it already has,
+# so the version has to track the manifest the CRX was packed from.
+external_pref() {
+  printf '{\n  "external_crx": "%s",\n  "external_version": "%s"\n}\n' \
+    "$STATE_DIR/$1.crx" "$(extension_version "$1")"
+}
+
+# Leaving the switch in place advertises a mechanism Chrome rejects and warns
+# about on every launch.
+drop_dead_load_extension_switch() {
+  [[ -f $FLAGS_FILE ]] || return 0
+  sed -i '/^--load-extension=/d' "$FLAGS_FILE"
+}
+
+main() {
+  local name key id
+
+  mkdir -p "$STATE_DIR"
+  sudo mkdir -p "$EXTERNAL_DIR"
+
+  for name in "${EXTENSIONS[@]}"; do
+    key=$(signing_key "$name")
+    id=$(public_key_der "$key" | extension_id)
+
+    pack_extension "$name" "$key"
+    external_pref "$name" | sudo tee "$EXTERNAL_DIR/$id.json" >/dev/null
+    printf '%s\n' "$id" >"$STATE_DIR/$name.id"
+  done
+
+  drop_dead_load_extension_switch
+
+  # The native messaging hosts allow one origin per extension id, so they have to
+  # learn the ids minted above before Chrome's copies can reach them.
+  omarchy-install-chromium-copy-url
+  omarchy-install-chromium-ytdlp
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi
