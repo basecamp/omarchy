@@ -15,6 +15,14 @@ bool valid_action(surface::SurfaceIntentAction action) {
          action == surface::SurfaceIntentAction::dismiss;
 }
 
+bool valid_requested_output(std::string_view output) {
+  return output.size() <= 128 &&
+         std::ranges::all_of(output, [](const char value) {
+           const auto byte = static_cast<unsigned char>(value);
+           return byte >= 0x21 && byte <= 0x7e;
+         });
+}
+
 } // namespace
 
 bool GestureIntentLifetime::current(std::uint64_t epoch) const noexcept {
@@ -72,6 +80,10 @@ std::uint64_t SurfaceIntentPublication::input_sequence() const noexcept {
   return request_.input_sequence;
 }
 
+std::string_view SurfaceIntentPublication::requested_output() const noexcept {
+  return request_.requested_output;
+}
+
 AdmittedSurfaceIntent::AdmittedSurfaceIntent(
     permissions::ActivationBinding binding,
     const surface::SurfaceIntentRequest &request, std::string source_name,
@@ -123,6 +135,10 @@ surface::SurfaceIntentAction AdmittedSurfaceIntent::action() const noexcept {
 
 std::uint64_t AdmittedSurfaceIntent::input_sequence() const noexcept {
   return request_.input_sequence;
+}
+
+std::string_view AdmittedSurfaceIntent::requested_output() const noexcept {
+  return request_.requested_output;
 }
 
 std::uint64_t
@@ -237,12 +253,14 @@ GestureIntentAuthority::admit(const surface::SurfaceIntentRequest &request) {
             .failure = SurfaceIntentAdmissionFailure::revoked};
   if (request.source.id == 0 || request.source.generation == 0 ||
       request.target.id == 0 || request.target.generation == 0 ||
-      !valid_action(request.action))
+      !valid_action(request.action) ||
+      !valid_requested_output(request.requested_output))
     return {.intent = std::nullopt,
             .failure = SurfaceIntentAdmissionFailure::malformed};
 
   if (request.action == surface::SurfaceIntentAction::dismiss) {
-    if (request.input_sequence != 0 || request.source != request.target)
+    if (request.input_sequence != 0 || request.source != request.target ||
+        !request.requested_output.empty())
       return {.intent = std::nullopt,
               .failure = SurfaceIntentAdmissionFailure::malformed};
     if (request.target.generation != binding_.generation)

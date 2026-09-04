@@ -203,7 +203,7 @@ PluginRuntimeController::publicationDeclarations(
     declarations.push_back(
         {.surface_name = policy.surface_name,
          .role = *role,
-         .initially_visible = false,
+         .initially_visible = policy.initially_visible,
          .maximum_width = policy.maximum_width,
          .maximum_height = policy.maximum_height,
          .dynamic_input_regions = policy.dynamic_input_regions,

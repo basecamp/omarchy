@@ -54,12 +54,14 @@ int main() {
       .source = bar,
       .target = panel,
       .input_sequence = 11,
-      .action = surface::SurfaceIntentAction::toggle};
+      .action = surface::SurfaceIntentAction::toggle,
+      .requested_output = "DP-1"};
   auto admitted = authority.admit(request);
   require(admitted.intent && admitted.intent->available() &&
               admitted.intent->source_name() == "bar" &&
               admitted.intent->target_name() == "PanelWidget" &&
-              admitted.intent->action() == surface::SurfaceIntentAction::toggle,
+              admitted.intent->action() == surface::SurfaceIntentAction::toggle &&
+              admitted.intent->requested_output() == "DP-1",
           "exact intent was not admitted");
   auto moved = std::move(*admitted.intent);
   require(moved.available() && !admitted.intent->available(),
@@ -69,6 +71,12 @@ int main() {
           "intent replay was accepted");
 
   require(authority.arm(bar, 12), "probe gesture did not arm");
+  auto invalid_output = request;
+  invalid_output.input_sequence = 12;
+  invalid_output.requested_output = std::string(129, 'x');
+  require(authority.admit(invalid_output).failure ==
+              host::SurfaceIntentAdmissionFailure::malformed,
+          "oversized output placement hint was accepted");
   auto unknown = request;
   unknown.input_sequence = 12;
   unknown.target.id = 99;
@@ -126,7 +134,8 @@ int main() {
       {.source = panel,
        .target = panel,
        .input_sequence = 0,
-       .action = surface::SurfaceIntentAction::dismiss});
+       .action = surface::SurfaceIntentAction::dismiss,
+       .requested_output = {}});
   require(dismiss.intent && dismiss.intent->source_name() == "PanelWidget" &&
               dismiss.intent->target_name() == "PanelWidget" &&
               dismiss.intent->input_sequence() == 0 &&
@@ -136,14 +145,16 @@ int main() {
                   .admit({.source = bar,
                           .target = panel,
                           .input_sequence = 0,
-                          .action = surface::SurfaceIntentAction::dismiss})
+                          .action = surface::SurfaceIntentAction::dismiss,
+                          .requested_output = {}})
                   .failure == host::SurfaceIntentAdmissionFailure::malformed &&
               authority
                       .admit({.source = panel,
                               .target = panel,
                               .input_sequence = 18,
                               .action =
-                                  surface::SurfaceIntentAction::dismiss})
+                                  surface::SurfaceIntentAction::dismiss,
+                              .requested_output = {}})
                       .failure ==
                   host::SurfaceIntentAdmissionFailure::malformed,
           "self-dismiss accepted a forged source or gesture sequence");
@@ -169,7 +180,8 @@ int main() {
         {.source = bar,
          .target = panel,
          .input_sequence = 21,
-         .action = surface::SurfaceIntentAction::open});
+         .action = surface::SurfaceIntentAction::open,
+         .requested_output = {}});
     require(result.intent.has_value(),
             "authority destruction intent was not admitted");
     after_destruction = std::make_unique<host::AdmittedSurfaceIntent>(

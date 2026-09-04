@@ -130,11 +130,15 @@ grep -F 'SurfacePolicy.chooseOpenScreen(liveScreenNames(), focusedScreenName)' "
 for surface in SecurePanelSurface.qml SecureOverlaySurface.qml; do
   grep -F 'property var assignedScreen: null' "$runtime_root/shell/$surface" >/dev/null ||
     fail "$surface does not retain its shell-selected output while open"
-  grep -F 'assignedScreen = host.screenForOpen()' "$runtime_root/shell/$surface" >/dev/null ||
+  grep -F 'assignedScreen = host.screenForIntent(sourceSurface || "", requestedOutput || "")' "$runtime_root/shell/$surface" >/dev/null ||
     fail "$surface does not resolve its output at closed-to-open time"
   grep -F 'screen: assignedScreen' "$runtime_root/shell/$surface" >/dev/null ||
     fail "$surface bypasses its shell-owned output selection"
 done
+grep -F 'names.indexOf(requested) !== -1 ? requested' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "requested output placement is not restricted to the live host allowlist"
+grep -F 'surfaceScreenName(sourceSurface)' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "empty or stale output placement does not fall back to the authenticated source surface"
 pass "schema-v2 integrates through dormant shell-owned surfaces without v1 fallback"
 
 [[ ! -e $runtime_root/host ]] ||

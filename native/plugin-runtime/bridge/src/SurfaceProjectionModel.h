@@ -88,9 +88,11 @@ public:
 signals:
   void surfacesChanged();
   void openRequested(QString sourceSurface, QString targetSurface,
-                     QString generation, QString inputSequence);
+                     QString generation, QString inputSequence,
+                     QString requestedOutput);
   void toggleRequested(QString sourceSurface, QString targetSurface,
-                       QString generation, QString inputSequence);
+                       QString generation, QString inputSequence,
+                       QString requestedOutput);
   void dismissRequested(QString sourceSurface, QString targetSurface,
                         QString generation, QString inputSequence);
 

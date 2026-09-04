@@ -210,7 +210,8 @@ int main() {
       .source = allocation->surface,
       .target = {.id = 23, .generation = allocation->surface.generation},
       .input_sequence = 12,
-      .action = SurfaceIntentAction::toggle};
+      .action = SurfaceIntentAction::toggle,
+      .requested_output = "DP-1"};
   const auto intent_bytes = encode_surface_intent(intent);
   SurfaceIntentRequest decoded_intent{};
   require(decode_surface_intent(intent_bytes, decoded_intent) &&
@@ -224,11 +225,17 @@ int main() {
   bad_intent[43] = std::byte{9};
   require(!decode_surface_intent(bad_intent, decoded_intent),
           "unknown surface intent action accepted");
+  auto invalid_output_intent = intent;
+  invalid_output_intent.requested_output = std::string(129, 'x');
+  require(!decode_surface_intent(encode_surface_intent(invalid_output_intent),
+                                 decoded_intent),
+          "oversized surface output hint was serialized");
   const SurfaceIntentRequest dismiss_intent{
       .source = allocation->surface,
       .target = allocation->surface,
       .input_sequence = 0,
-      .action = SurfaceIntentAction::dismiss};
+      .action = SurfaceIntentAction::dismiss,
+      .requested_output = {}};
   const auto dismiss_bytes = encode_surface_intent(dismiss_intent);
   require(decode_surface_intent(dismiss_bytes, decoded_intent) &&
               decoded_intent == dismiss_intent,

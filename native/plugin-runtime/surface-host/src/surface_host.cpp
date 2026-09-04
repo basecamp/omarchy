@@ -152,6 +152,7 @@ NamedSurfacePolicy parse_named_surface_policy(
       QStringLiteral("maximumHeight"), QStringLiteral("maximumFramesPerSecond"),
       QStringLiteral("keyboardFocus"), QStringLiteral("lockScreenVisible"),
       QStringLiteral("inputRegions"),  QStringLiteral("defaultSection"),
+      QStringLiteral("initiallyVisible"),
   };
   for (auto iterator = object.begin(); iterator != object.end(); ++iterator) {
     require(std::ranges::find(known, iterator.key()) != known.end(),
@@ -192,6 +193,13 @@ NamedSurfacePolicy parse_named_surface_policy(
             "unsupported input-region policy");
     dynamic_input_regions = true;
   }
+  bool initially_visible = false;
+  const auto initial = object.value(QStringLiteral("initiallyVisible"));
+  if (!initial.isUndefined()) {
+    require(role == SurfaceRole::desktop_overlay && initial.isBool(),
+            "initiallyVisible is only valid for desktop overlays");
+    initially_visible = initial.toBool();
+  }
   BarSection default_bar_section = BarSection::unspecified;
   const auto section = object.value(QStringLiteral("defaultSection"));
   if (!section.isUndefined()) {
@@ -214,6 +222,7 @@ NamedSurfacePolicy parse_named_surface_policy(
           .maximum_frames_per_second = maximum_fps,
           .keyboard_focus = keyboard_focus,
           .dynamic_input_regions = dynamic_input_regions,
+          .initially_visible = initially_visible,
           .default_bar_section = default_bar_section};
 }
 

@@ -91,6 +91,7 @@ struct SurfaceIntentRequest {
   SurfaceKey target;
   std::uint64_t input_sequence = 0;
   SurfaceIntentAction action = SurfaceIntentAction::open;
+  std::string requested_output;
 
   constexpr bool operator==(const SurfaceIntentRequest &) const = default;
 };
@@ -137,7 +138,7 @@ encode_input_region_update(const InputRegionUpdate &payload);
 encode_input_event(const InputEvent &payload);
 [[nodiscard]] bool decode_input_event(std::span<const std::byte> bytes,
                                       InputEvent &output);
-[[nodiscard]] std::array<std::byte, 48>
+[[nodiscard]] std::array<std::byte, 176>
 encode_surface_intent(const SurfaceIntentRequest &payload);
 [[nodiscard]] bool decode_surface_intent(std::span<const std::byte> bytes,
                                          SurfaceIntentRequest &output);

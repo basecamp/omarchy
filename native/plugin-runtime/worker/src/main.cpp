@@ -162,11 +162,27 @@ private:
                                       .id = source->surface_id,
                                       .generation = source->surface_generation}
                                 : *target;
+    std::string requested_output;
+    const auto output = data.constFind(QStringLiteral("output"));
+    if (output != data.cend()) {
+      if (output->metaType().id() != QMetaType::QString)
+        return false;
+      const auto utf8 = output->toString().toUtf8();
+      if (utf8.size() > 128 ||
+          std::ranges::any_of(utf8, [](const char value) {
+            const auto byte = static_cast<unsigned char>(value);
+            return byte < 0x21 || byte > 0x7e;
+          }))
+        return false;
+      requested_output.assign(utf8.constData(),
+                              static_cast<std::size_t>(utf8.size()));
+    }
     const auto payload = surface::encode_surface_intent(
         {.source = source_key,
          .target = *target,
          .input_sequence = source ? source->input_sequence : 0,
-         .action = action});
+         .action = action,
+         .requested_output = std::move(requested_output)});
     if (!send_render(
         static_cast<std::uint16_t>(surface::RenderMessageType::surface_intent),
         payload, 0))

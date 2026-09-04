@@ -33,20 +33,20 @@ PanelWindow {
 
   onSurfaceKeyChanged: attachIfReady()
 
-  function showOnChosenScreen() {
-    assignedScreen = host.screenForOpen()
+  function showOnChosenScreen(sourceSurface, requestedOutput) {
+    assignedScreen = host.screenForIntent(sourceSurface || "", requestedOutput || "")
     if (assignedScreen !== null) panelController.show()
   }
 
-  function toggleOnChosenScreen() {
+  function toggleOnChosenScreen(sourceSurface, requestedOutput) {
     if (opened) {
       panelController.hide()
     } else {
-      showOnChosenScreen()
+      showOnChosenScreen(sourceSurface, requestedOutput)
     }
   }
 
-  function handleIntent(action, sourceSurface, targetSurface, intentGeneration, inputSequence) {
+  function handleIntent(action, sourceSurface, targetSurface, intentGeneration, inputSequence, requestedOutput) {
     if (targetSurface !== surfaceKey || intentGeneration !== generation) return
 
     lastIntentSequence = inputSequence
@@ -56,9 +56,9 @@ PanelWindow {
       + " input-sequence=" + inputSequence)
 
     if (action === "open") {
-      showOnChosenScreen()
+      showOnChosenScreen(sourceSurface, requestedOutput)
     } else if (action === "toggle") {
-      toggleOnChosenScreen()
+      toggleOnChosenScreen(sourceSurface, requestedOutput)
     } else if (action === "dismiss") {
       panelController.hide()
     }
@@ -82,11 +82,11 @@ PanelWindow {
 
   Connections {
     target: window.surfaceService
-    function onOpenRequested(sourceSurface, targetSurface, generation, inputSequence) {
-      window.handleIntent("open", sourceSurface, targetSurface, generation, inputSequence)
+    function onOpenRequested(sourceSurface, targetSurface, generation, inputSequence, requestedOutput) {
+      window.handleIntent("open", sourceSurface, targetSurface, generation, inputSequence, requestedOutput)
     }
-    function onToggleRequested(sourceSurface, targetSurface, generation, inputSequence) {
-      window.handleIntent("toggle", sourceSurface, targetSurface, generation, inputSequence)
+    function onToggleRequested(sourceSurface, targetSurface, generation, inputSequence, requestedOutput) {
+      window.handleIntent("toggle", sourceSurface, targetSurface, generation, inputSequence, requestedOutput)
     }
     function onDismissRequested(sourceSurface, targetSurface, generation, inputSequence) {
       window.handleIntent("dismiss", sourceSurface, targetSurface, generation, inputSequence)
@@ -105,7 +105,7 @@ PanelWindow {
   }
 
   Component.onCompleted: {
-    if (initiallyVisible) showOnChosenScreen()
+    if (initiallyVisible) showOnChosenScreen("", "")
     attachIfReady()
   }
 }

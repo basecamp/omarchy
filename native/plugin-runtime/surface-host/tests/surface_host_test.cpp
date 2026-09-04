@@ -92,7 +92,8 @@ struct Harness {
          .maximum_height = 32,
          .maximum_frames_per_second = 60,
          .keyboard_focus = keyboard_focus,
-        .dynamic_input_regions = dynamic},
+         .dynamic_input_regions = dynamic,
+         .initially_visible = false},
         binding, id, 64, 32, 1, 1, item, sender, sink,
         input_authority, clock);
     require(surface_host != nullptr, "host surface creation failed");
@@ -448,6 +449,57 @@ void policy_and_lifetime_are_fail_closed() {
           "host destruction retained a route or projected regions");
 }
 
+void initial_visibility_is_overlay_only_and_typed() {
+  omarchy::plugins::manifest::ManifestV2 manifest;
+  manifest.id = "org.example.visibility";
+  manifest.canonical_surfaces = R"JSON({
+    "pet": {
+      "role": "desktop-overlay",
+      "maximumWidth": 64,
+      "maximumHeight": 32,
+      "maximumFramesPerSecond": 30,
+      "initiallyVisible": true
+    }
+  })JSON";
+  const auto overlay = host::parse_named_surface_policy(manifest, "pet");
+  require(overlay.initially_visible,
+          "desktop overlay did not preserve bounded initial visibility");
+
+  manifest.canonical_surfaces = R"JSON({
+    "panel": {
+      "role": "panel",
+      "maximumWidth": 64,
+      "maximumHeight": 32,
+      "maximumFramesPerSecond": 30,
+      "initiallyVisible": true
+    }
+  })JSON";
+  bool rejected_panel = false;
+  try {
+    static_cast<void>(host::parse_named_surface_policy(manifest, "panel"));
+  } catch (const std::runtime_error &) {
+    rejected_panel = true;
+  }
+
+  manifest.canonical_surfaces = R"JSON({
+    "pet": {
+      "role": "desktop-overlay",
+      "maximumWidth": 64,
+      "maximumHeight": 32,
+      "maximumFramesPerSecond": 30,
+      "initiallyVisible": "yes"
+    }
+  })JSON";
+  bool rejected_untyped = false;
+  try {
+    static_cast<void>(host::parse_named_surface_policy(manifest, "pet"));
+  } catch (const std::runtime_error &) {
+    rejected_untyped = true;
+  }
+  require(rejected_panel && rejected_untyped,
+          "initial visibility escaped its overlay-only typed policy");
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -460,6 +512,7 @@ int main(int argc, char **argv) {
     close_sends_terminal_cancel_and_clears_authority();
     invalid_regions_preserve_last_accepted_state();
     policy_and_lifetime_are_fail_closed();
+    initial_visibility_is_overlay_only_and_typed();
     return EXIT_SUCCESS;
   } catch (const std::exception &failure) {
     std::fprintf(stderr, "surface host test failed: %s\n", failure.what());

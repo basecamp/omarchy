@@ -307,6 +307,8 @@ bool SurfaceProjectionModel::publishIntent(
   const auto &binding = publication->binding();
   const qulonglong generation = binding.generation;
   const auto input_sequence = QString::number(publication->input_sequence());
+  const auto requested_output =
+      QString::fromUtf8(publication->requested_output());
   if (generation == 0 || source_declaration == nullptr ||
       target_declaration == nullptr || source_declaration->binding != binding ||
       target_declaration->binding != binding)
@@ -314,11 +316,11 @@ bool SurfaceProjectionModel::publishIntent(
   switch (publication->action()) {
   case surface::SurfaceIntentAction::open:
     emit openRequested(source, target, QString::number(generation),
-                       input_sequence);
+                       input_sequence, requested_output);
     return true;
   case surface::SurfaceIntentAction::toggle:
     emit toggleRequested(source, target, QString::number(generation),
-                         input_sequence);
+                         input_sequence, requested_output);
     return true;
   case surface::SurfaceIntentAction::dismiss:
     emit dismissRequested(source, target, QString::number(generation),

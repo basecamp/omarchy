@@ -47,7 +47,7 @@ constexpr std::array<wire::MessageRule, 11> kWireRules{{
      wire::MessageSemantic::one_way, 32, 204},
     {static_cast<std::uint16_t>(RenderMessageType::surface_intent),
      wire::DirectionMask::worker_to_host, wire::CorrelationRule::zero,
-     wire::MessageSemantic::event, 48, 48},
+     wire::MessageSemantic::event, 176, 176},
 }};
 
 constexpr std::array<DescriptorRule, 11> kDescriptorRules{{
@@ -531,21 +531,42 @@ bool decode_input_event(std::span<const std::byte> bytes, InputEvent &output) {
   return true;
 }
 
-std::array<std::byte, 48>
+std::array<std::byte, 176>
 encode_surface_intent(const SurfaceIntentRequest &payload) {
-  std::array<std::byte, 48> output{};
+  std::array<std::byte, 176> output{};
+  if (payload.requested_output.size() > 128 ||
+      std::ranges::any_of(payload.requested_output, [](const char value) {
+        const auto byte = static_cast<unsigned char>(value);
+        return byte < 0x21 || byte > 0x7e;
+      }))
+    return output;
   put<std::uint64_t>(output, 0, payload.source.id);
   put<std::uint64_t>(output, 8, payload.source.generation);
   put<std::uint64_t>(output, 16, payload.target.id);
   put<std::uint64_t>(output, 24, payload.target.generation);
   put<std::uint64_t>(output, 32, payload.input_sequence);
   put<std::uint32_t>(output, 40, static_cast<std::uint32_t>(payload.action));
+  put<std::uint16_t>(output, 44,
+                     static_cast<std::uint16_t>(payload.requested_output.size()));
+  std::ranges::transform(payload.requested_output, output.begin() + 48,
+                         [](const char value) {
+                           return static_cast<std::byte>(value);
+                         });
   return output;
 }
 
 bool decode_surface_intent(std::span<const std::byte> bytes,
                            SurfaceIntentRequest &output) {
-  if (bytes.size() != 48 || get<std::uint32_t>(bytes, 44) != 0)
+  if (bytes.size() != 176 || get<std::uint16_t>(bytes, 46) != 0)
+    return false;
+  const auto output_size = get<std::uint16_t>(bytes, 44);
+  if (output_size > 128 ||
+      std::ranges::any_of(bytes.subspan(48, output_size), [](std::byte value) {
+        const auto byte = std::to_integer<unsigned char>(value);
+        return byte < 0x21 || byte > 0x7e;
+      }) ||
+      std::ranges::any_of(bytes.subspan(48 + output_size),
+                          [](std::byte value) { return value != std::byte{0}; }))
     return false;
   const auto action =
       static_cast<SurfaceIntentAction>(get<std::uint32_t>(bytes, 40));
@@ -559,12 +580,15 @@ bool decode_surface_intent(std::span<const std::byte> bytes,
       .target = {.id = get<std::uint64_t>(bytes, 16),
                  .generation = get<std::uint64_t>(bytes, 24)},
       .input_sequence = get<std::uint64_t>(bytes, 32),
-      .action = action};
+      .action = action,
+      .requested_output = std::string(
+          reinterpret_cast<const char *>(bytes.data() + 48), output_size)};
   if (output.source.id == 0 || output.source.generation == 0 ||
       output.target.id == 0 || output.target.generation == 0)
     return false;
   if (action == SurfaceIntentAction::dismiss)
-    return output.source == output.target && output.input_sequence == 0;
+    return output.source == output.target && output.input_sequence == 0 &&
+           output.requested_output.empty();
   return output.input_sequence != 0;
 }
 

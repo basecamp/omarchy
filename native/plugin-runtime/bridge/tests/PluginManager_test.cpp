@@ -1617,7 +1617,8 @@ host::AdmittedSurfaceIntent admittedIntent(
   auto admission = authority.admit({.source = key,
                                     .target = key,
                                     .input_sequence = sequence,
-                                    .action = action});
+                                    .action = action,
+                                    .requested_output = {}});
   require(admission.intent.has_value(),
           "surface intent fixture was not admitted");
   return std::move(*admission.intent);
@@ -1743,7 +1744,8 @@ void surface_intent_mailbox_delivers_fifo_for_running_published_slot() {
     auto admission = authority.admit({.source = key,
                                       .target = key,
                                       .input_sequence = sequence,
-                                      .action = action});
+                                      .action = action,
+                                      .requested_output = {}});
     require(admission.intent.has_value(),
             "positive surface intent fixture was not admitted");
     return std::move(*admission.intent);
@@ -1755,7 +1757,8 @@ void surface_intent_mailbox_delivers_fifo_for_running_published_slot() {
       {.source = key,
        .target = key,
        .input_sequence = 0,
-       .action = surface::SurfaceIntentAction::dismiss});
+       .action = surface::SurfaceIntentAction::dismiss,
+       .requested_output = {}});
   require(dismiss_admission.intent.has_value(),
           "gesture-free self-dismiss was not admitted");
   auto dismiss = std::move(*dismiss_admission.intent);
@@ -3659,7 +3662,8 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
     auto admission = intent_authority.admit({.source = source,
                                              .target = source,
                                              .input_sequence = sequence,
-                                             .action = action});
+                                             .action = action,
+                                             .requested_output = {}});
     require(admission.intent.has_value(),
             "running surface intent fixture was not admitted");
     return std::move(*admission.intent);
@@ -3671,7 +3675,8 @@ void real_root_publishes_attaches_and_tears_down_exactly() {
       {.source = source,
        .target = source,
        .input_sequence = 0,
-       .action = surface::SurfaceIntentAction::dismiss});
+       .action = surface::SurfaceIntentAction::dismiss,
+       .requested_output = {}});
   require(dismiss_admission.intent.has_value(),
           "running gesture-free self-dismiss was not admitted");
   auto dismiss = std::move(*dismiss_admission.intent);

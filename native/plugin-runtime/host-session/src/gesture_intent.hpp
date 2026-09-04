@@ -41,6 +41,7 @@ public:
   [[nodiscard]] std::string_view target_name() const noexcept;
   [[nodiscard]] surface::SurfaceIntentAction action() const noexcept;
   [[nodiscard]] std::uint64_t input_sequence() const noexcept;
+  [[nodiscard]] std::string_view requested_output() const noexcept;
 
 private:
   SurfaceIntentPublication(permissions::ActivationBinding binding,
@@ -70,6 +71,7 @@ public:
   [[nodiscard]] std::string_view target_name() const noexcept;
   [[nodiscard]] surface::SurfaceIntentAction action() const noexcept;
   [[nodiscard]] std::uint64_t input_sequence() const noexcept;
+  [[nodiscard]] std::string_view requested_output() const noexcept;
   [[nodiscard]] std::uint64_t expires_monotonic_ns() const noexcept;
   [[nodiscard]] std::optional<SurfaceIntentPublication> take_if_fresh();
   [[nodiscard]] bool available() const noexcept;

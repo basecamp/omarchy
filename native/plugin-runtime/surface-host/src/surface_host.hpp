@@ -39,6 +39,7 @@ struct NamedSurfacePolicy {
   std::uint32_t maximum_frames_per_second;
   KeyboardFocusPolicy keyboard_focus;
   bool dynamic_input_regions;
+  bool initially_visible;
   BarSection default_bar_section = BarSection::unspecified;
 
   bool operator==(const NamedSurfacePolicy &) const = default;

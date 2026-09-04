@@ -330,7 +330,8 @@ QtObject {
       {.source = cross_panel,
        .target = cross_panel,
        .input_sequence = 1,
-       .action = surface::SurfaceIntentAction::toggle});
+       .action = surface::SurfaceIntentAction::toggle,
+       .requested_output = {}});
   require(cross_intent.intent &&
               !bridge::PluginManagerTestAccess::publishIntent(
                   multi_manager, std::move(*cross_intent.intent)) &&
@@ -355,7 +356,8 @@ QtObject {
       {.source = stale_panel,
        .target = stale_panel,
        .input_sequence = 1,
-       .action = surface::SurfaceIntentAction::toggle});
+       .action = surface::SurfaceIntentAction::toggle,
+       .requested_output = {}});
   require(bridge::SurfaceProjectionModelTestAccess::publish(
               multi_manager, newer_a,
               {declaration("PanelA", Service::Role::Panel)}, 6) &&
@@ -415,7 +417,8 @@ QtObject {
       {.source = thread_panel,
        .target = thread_panel,
        .input_sequence = 1,
-       .action = surface::SurfaceIntentAction::toggle});
+       .action = surface::SurfaceIntentAction::toggle,
+       .requested_output = {}});
   require(thread_intent.intent.has_value(),
           "off-thread intent fixture was not admitted");
   std::thread off_thread_intent(
@@ -451,11 +454,14 @@ QtObject {
 
   int toggles = 0;
   QString last_target;
+  QString last_requested_output;
   QObject::connect(&service, &Service::toggleRequested,
-                   [&toggles, &last_target](const QString &, const QString &target,
-                                            const QString &, const QString &) {
+                   [&toggles, &last_target, &last_requested_output](
+                       const QString &, const QString &target, const QString &,
+                       const QString &, const QString &requested_output) {
                      ++toggles;
                      last_target = target;
+                     last_requested_output = requested_output;
                    });
   auto clock = std::make_shared<Clock>();
   runtime::GestureEligibilityLatch eligibility(clock);
@@ -478,11 +484,13 @@ QtObject {
       {.source = bar,
        .target = panel,
        .input_sequence = 11,
-       .action = surface::SurfaceIntentAction::toggle});
+       .action = surface::SurfaceIntentAction::toggle,
+       .requested_output = "DP-1"});
   require(admitted.intent &&
               bridge::PluginManagerTestAccess::publishIntent(
                   service_manager, std::move(*admitted.intent)) &&
               toggles == 1 &&
+              last_requested_output == QStringLiteral("DP-1") &&
               last_target ==
                   QStringLiteral("v2.19.org.omarchy.fixture.7.PanelWidget"),
           "admitted surface intent did not reach the shell adapter");
@@ -491,11 +499,13 @@ QtObject {
       {.source = bar,
        .target = maximum,
        .input_sequence = 15,
-       .action = surface::SurfaceIntentAction::toggle});
+       .action = surface::SurfaceIntentAction::toggle,
+       .requested_output = {}});
   require(maximum_name_intent.intent &&
               bridge::PluginManagerTestAccess::publishIntent(
                   service_manager, std::move(*maximum_name_intent.intent)) &&
               toggles == 2 &&
+              last_requested_output.isEmpty() &&
               last_target == QStringLiteral("v2.19.org.omarchy.fixture.7.") +
                                  maximum_name,
           "maximum raw manifest name was not preserved at publication");
@@ -504,7 +514,8 @@ QtObject {
       {.source = bar,
        .target = panel,
        .input_sequence = 12,
-       .action = surface::SurfaceIntentAction::toggle});
+       .action = surface::SurfaceIntentAction::toggle,
+       .requested_output = {}});
   require(delayed.intent && delayed.intent->available(),
           "admitted delayed intent fixture failed");
   clock->now += 5'000'000'000ULL;
@@ -517,7 +528,8 @@ QtObject {
       {.source = bar,
        .target = panel,
        .input_sequence = 13,
-       .action = surface::SurfaceIntentAction::toggle});
+       .action = surface::SurfaceIntentAction::toggle,
+       .requested_output = {}});
   require(detached_token.intent && authority.detach_surface(panel) &&
               !bridge::PluginManagerTestAccess::publishIntent(
                   service_manager, std::move(*detached_token.intent)) &&
@@ -530,7 +542,8 @@ QtObject {
       {.source = bar,
        .target = panel,
        .input_sequence = 14,
-       .action = surface::SurfaceIntentAction::toggle});
+       .action = surface::SurfaceIntentAction::toggle,
+       .requested_output = {}});
   require(revoked_token.intent.has_value(), "revoke intent was not admitted");
   authority.revoke();
   require(!bridge::PluginManagerTestAccess::publishIntent(

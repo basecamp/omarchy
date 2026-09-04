@@ -101,6 +101,39 @@ Item {
     return null
   }
 
+  function surfaceScreenName(surfaceKey) {
+    for (var index = 0; index < barEntryInstances.count; index++) {
+      var barEntry = barEntryInstances.objectAt(index)
+      if (barEntry && barEntry.surfaceKey === surfaceKey)
+        return barOwnerScreenName
+    }
+    for (var panelIndex = 0; panelIndex < panelSurfaceInstances.count; panelIndex++) {
+      var panelEntry = panelSurfaceInstances.objectAt(panelIndex)
+      if (panelEntry && panelEntry.surfaceKey === surfaceKey
+          && panelEntry.surface && panelEntry.surface.assignedScreen)
+        return String(panelEntry.surface.assignedScreen.name || "")
+    }
+    for (var overlayIndex = 0; overlayIndex < overlaySurfaceInstances.count; overlayIndex++) {
+      var overlayEntry = overlaySurfaceInstances.objectAt(overlayIndex)
+      if (overlayEntry && overlayEntry.surfaceKey === surfaceKey
+          && overlayEntry.surface && overlayEntry.surface.assignedScreen)
+        return String(overlayEntry.surface.assignedScreen.name || "")
+    }
+    return ""
+  }
+
+  function screenForIntent(sourceSurface, requestedOutput) {
+    var names = liveScreenNames()
+    var requested = String(requestedOutput || "")
+    var sourceName = surfaceScreenName(sourceSurface)
+    var chosen = names.indexOf(requested) !== -1 ? requested
+      : names.indexOf(sourceName) !== -1 ? sourceName
+      : SurfacePolicy.chooseOpenScreen(names, focusedScreenName)
+    for (var index = 0; index < Quickshell.screens.length; index++)
+      if (Quickshell.screens[index].name === chosen) return Quickshell.screens[index]
+    return null
+  }
+
   function refreshBarOwner() {
     barOwnerScreenName = SurfacePolicy.chooseOwner(
       liveScreenNames(), focusedScreenName, barOwnerScreenName, barEntries.length > 0)
@@ -186,6 +219,7 @@ Item {
   }
 
   Instantiator {
+    id: panelSurfaceInstances
     model: PluginManager.panelSurfaces
     delegate: QtObject {
       id: panelEntry
@@ -211,6 +245,7 @@ Item {
   }
 
   Instantiator {
+    id: overlaySurfaceInstances
     model: PluginManager.overlaySurfaces
     delegate: QtObject {
       id: overlayEntry

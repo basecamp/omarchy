@@ -1110,6 +1110,7 @@ void shared_gesture_authority_has_one_concurrent_winner() {
         .target = target,
         .input_sequence = iteration,
         .action = surface::SurfaceIntentAction::open,
+        .requested_output = {},
     };
     std::barrier start(3);
     bool broker_won = false;
@@ -1290,6 +1291,7 @@ void product_session_intercepts_gesture_intents_before_render_routing() {
       .target = panel_key,
       .input_sequence = 91,
       .action = surface::SurfaceIntentAction::toggle,
+      .requested_output = {},
   };
 
   auto cold_target = request;
