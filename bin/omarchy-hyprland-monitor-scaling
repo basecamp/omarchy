@@ -110,6 +110,8 @@ set_scale() {
       -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$new_gdk_scale"'")|' \
       "$monitor_lua"
   fi
+
+  omarchy-sddm-set-monitor-scale "$new_scale" || true
 }
 
 scale_from_current() {

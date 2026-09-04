@@ -130,6 +130,7 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ fonts/omarchy/omarchy.ttf                          /usr/share/fonts/omarchy/
   ├─ sddm/omarchy/                                      /usr/share/sddm/themes/omarchy/
   ├─ sddm/hyprland.lua                                  /usr/share/sddm/hyprland.lua
+  │                                                       (reads /etc/sddm/omarchy-monitor-scale)
   ├─ wayland-sessions/omarchy.desktop                   /usr/local/share/wayland-sessions/
   └─ plymouth/                                          /usr/share/plymouth/themes/omarchy/
 

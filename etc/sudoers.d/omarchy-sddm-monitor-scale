@@ -1,0 +1,2 @@
+%wheel ALL=(root) NOPASSWD: /usr/bin/mkdir -p /etc/sddm
+%wheel ALL=(root) NOPASSWD: /usr/bin/tee /etc/sddm/omarchy-monitor-scale

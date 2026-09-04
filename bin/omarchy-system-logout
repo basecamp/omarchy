@@ -4,6 +4,8 @@
 # omarchy:examples=omarchy logout | omarchy system logout
 # omarchy:aliases=omarchy logout
 
+omarchy-sddm-set-monitor-scale || true
+
 nohup bash -c "sleep 2 && uwsm stop" >/dev/null 2>&1 &
 
 omarchy-osd -i logout -m "Logging out" -d 5000
