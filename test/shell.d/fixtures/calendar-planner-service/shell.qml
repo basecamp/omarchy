@@ -98,6 +98,8 @@ ShellRoot {
       if (firstItem && secondItem && Date.parse(firstItem.endAt) > Date.parse(secondItem.startAt)) root.fail("in-process planner respected dependency order")
       if (root.service.calendarState.events.length !== 0) root.fail("proposal changed events before Apply")
       if (!root.service.updateTask(root.firstTaskId, { title: "Updated integration task" })) root.fail("service rejected an input update")
+      if (!root.service.planNow()) root.fail("service rejected an explicit Plan tasks request")
+      if (!root.service.forcePlanRequested) root.fail("explicit Plan tasks request did not force a fresh suggestion")
       root.phase = 2
       return
     }
@@ -105,6 +107,7 @@ ShellRoot {
     if (root.phase === 2) {
       var refreshed = root.service.calendarState.proposal
       if (root.service.solveState !== "ready" || !refreshed || Number(refreshed.baseInputRevision) !== root.service.calendarState.inputRevision) return
+      if (root.service.forcePlanRequested) root.fail("explicit Plan tasks request remained pending after planning")
       if (!root.service.applyProposal()) root.fail("service rejected a ready proposal")
       if (root.service.calendarState.events.length !== 2) root.fail("Apply created planner events")
       root.phase = 3

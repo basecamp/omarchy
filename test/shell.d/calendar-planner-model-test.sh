@@ -19,6 +19,7 @@ assertDeepEqual(
 )
 assertEqual(planner.formatDuration(90), '1h 30m', 'planner formats mixed-hour durations')
 assertEqual(planner.formatDuration(45), '45m', 'planner formats minute durations')
+assertEqual(planner.formatDayLabel('2026-09-04'), 'Friday, September 4, 2026', 'planner formats agenda day labels for people')
 assertEqual(planner.priorityLabel('high'), 'High', 'planner formats priority labels')
 assertEqual(planner.loadLabel('medium'), 'Medium', 'planner formats cognitive labels')
 

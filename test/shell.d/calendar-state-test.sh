@@ -48,6 +48,7 @@ assertDeepEqual(State.normalizeState({settings: {availability: {noday: [{start: 
 assertEqual(State.normalizeClock('9:05'), '09:05', 'clock values accept single-digit input for normalization')
 assertEqual(State.normalizeClock('09:60'), null, 'clock values reject minutes outside the day')
 assert(State.validTimezone('Europe/Rome'), 'IANA timezone names are accepted')
+assert(State.validTimezone('UTC'), 'UTC is accepted as a valid timezone')
 assert(!State.validTimezone('Not/A_Timezone'), 'invalid timezone names are rejected')
 
 const invalidReady = State.settingsReady({timezone: 'Europe/Rome', availability: {monday: [{start: '09:00', end: '17:00'}]}})

@@ -114,19 +114,19 @@ def human_status(value):
     proposal_status = proposal.get("status", "none")
     print(f"Calendar service: {'ready' if value.get('loaded') else 'loading'}")
     print(f"Planning configuration: {'ready' if value.get('configured') else 'needed'}")
-    print(f"Solver: {value.get('solveState', 'unknown')}")
+    print(f"Planning: {value.get('solveState', 'unknown')}")
     print(f"Events: {len(current.get('events', []))}")
     print(f"Tasks: {len(current.get('tasks', []))} ({sum(task.get('state') == 'inbox' for task in current.get('tasks', []))} in inbox)")
-    print(f"Proposal: {proposal_status}")
+    print(f"Suggested schedule: {proposal_status}")
     if value.get("error"):
         print(f"Error: {value['error']}", file=sys.stderr)
 
 
 def human_proposal(proposal):
     if not proposal:
-        print("No proposal is available.")
+        print("No suggested schedule is available.")
         return
-    print(f"Proposal {proposal.get('id', '')} ({proposal.get('status', 'unknown')})")
+    print(f"Suggested schedule ({proposal.get('status', 'unknown')})")
     print(f"Horizon: {proposal.get('horizonStart', '')} for {proposal.get('horizonDays', '')} days ({proposal.get('timezone', '')})")
     for item in proposal.get("items", []):
         outcome = item.get("diagnostics", {}).get("outcome", "unknown")
@@ -300,7 +300,7 @@ def wait_for_proposal(timeout_seconds):
     if not any(task.get("state") == "inbox" for task in first.get("state", {}).get("tasks", [])):
         return first.get("state", {}).get("proposal")
 
-    call_json("omarchy.calendar", "recompute")
+    call_json("omarchy.calendar", "plan")
     while time.monotonic() < deadline:
         current = status()
         current_state = current.get("state", {})
@@ -326,8 +326,8 @@ def build_parser():
     commands.add_parser("events", aliases=("event",), help="list calendar events")
     commands.add_parser("tasks", aliases=("task",), help="list planner tasks")
     commands.add_parser("proposal", help="show the latest schedule proposal")
-    commands.add_parser("plan", help="recompute and show the current schedule proposal")
-    commands.add_parser("apply", help="apply the current proposal to the calendar")
+    commands.add_parser("plan", help="generate and show a suggested schedule")
+    commands.add_parser("apply", help="apply the current suggested schedule to the calendar")
 
     add_event = commands.add_parser("add-event", help="add a manual busy event")
     add_common_event_arguments(add_event)

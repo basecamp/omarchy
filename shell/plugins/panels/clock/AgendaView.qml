@@ -12,7 +12,6 @@ Item {
   property var bar: null
   property color foreground: bar ? bar.foreground : Color.foreground
   property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  signal addEventRequested()
   signal editEventRequested(var event)
 
   implicitHeight: content.implicitHeight
@@ -38,28 +37,6 @@ Item {
     width: parent.width
     spacing: Style.space(6)
 
-    Row {
-      width: parent.width
-      Text {
-        textFormat: Text.PlainText
-        width: parent.width - addButton.width
-        text: "Agenda"
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.display
-        font.bold: true
-      }
-      Button {
-        focusable: true
-        id: addButton
-        text: "+ Event"
-        foreground: Color.background
-        background: Color.accent
-        fontFamily: root.fontFamily
-        onClicked: root.addEventRequested()
-      }
-    }
-
     Repeater {
       model: root.dayKeys()
       delegate: Column {
@@ -70,7 +47,7 @@ Item {
 
         Text {
           textFormat: Text.PlainText
-          text: dayKey
+          text: PlannerModel.formatDayLabel(dayKey)
           color: Qt.darker(root.foreground, 1.35)
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
@@ -131,7 +108,7 @@ Item {
               Text {
                 textFormat: Text.PlainText
                 visible: modelData.origin !== "manual"
-                text: "Planner event linked to task"
+                text: "Scheduled from a planning task — manage it in Plan"
                 color: Color.accent
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption

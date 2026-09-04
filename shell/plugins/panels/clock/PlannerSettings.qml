@@ -1,10 +1,11 @@
 import QtQuick
+import QtQuick.Controls
 import qs.Commons
 import qs.Ui
 
 // Planner settings are persisted through Service.qml. The advanced section is
 // intentionally collapsed so first-run setup only asks for timezone and
-// availability, while every solver setting remains reachable and editable.
+// availability, while every planning setting remains reachable and editable.
 Item {
   id: root
 
@@ -31,6 +32,12 @@ Item {
 
   signal saved()
   signal cancelled()
+
+  // The popup grows with the form when space allows. On shorter screens only
+  // the settings body scrolls; the action row stays pinned in view.
+  implicitHeight: root.availabilityOpen && availabilityLoader.item && availabilityLoader.item.implicitHeight > 0
+    ? availabilityLoader.item.implicitHeight
+    : form.implicitHeight + footer.implicitHeight + Style.space(44)
 
   function settings() {
     return root.service && root.service.calendarState
@@ -117,20 +124,29 @@ Item {
     radius: Style.cornerRadius
   }
 
-  Flickable {
-    id: scroll
+  Item {
+    id: viewport
     anchors.fill: parent
     anchors.margins: Style.space(18)
-    contentWidth: form.width
-    contentHeight: form.implicitHeight
     clip: true
-    boundsBehavior: Flickable.StopAtBounds
-    interactive: contentHeight > height
 
-    Column {
+    ScrollView {
+      id: bodyScroll
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: footer.top
+      anchors.bottomMargin: Style.space(10)
+      contentWidth: form.width
+      contentHeight: form.implicitHeight
+      clip: true
+      ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+      ScrollBar.vertical.policy: form.implicitHeight > height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+
+      Column {
       id: form
-      width: Math.max(scroll.width, Style.space(390))
-      spacing: Style.space(9)
+        width: Math.max(bodyScroll.width, Style.space(390))
+        spacing: Style.space(9)
 
       Text {
         textFormat: Text.PlainText
@@ -142,7 +158,7 @@ Item {
       }
       Text {
         textFormat: Text.PlainText
-        text: "Automatic proposals use only this local configuration."
+        text: "Omarchy uses this local configuration to suggest task times."
         color: Qt.darker(root.foreground, 1.45)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
@@ -190,7 +206,7 @@ Item {
         }
         NumberField {
           width: (parent.width - Style.space(16)) / 3
-          label: "Solve seconds"
+          label: "Planning time limit"
           value: root.solveSeconds
           from: 1
           to: 120
@@ -344,24 +360,30 @@ Item {
         width: parent.width
       }
 
-      Row {
-        spacing: Style.space(8)
-        Button {
-          focusable: true
-          text: "Save settings"
-          foreground: Color.background
-          background: Color.accent
-          fontFamily: root.fontFamily
-          onClicked: root.save()
-        }
-        Button {
-          focusable: true
-          text: "Cancel"
-          foreground: root.foreground
-          bordered: true
-          fontFamily: root.fontFamily
-          onClicked: root.cancelled()
-        }
+      }
+    }
+
+    Row {
+      id: footer
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
+      spacing: Style.space(8)
+      Button {
+        focusable: true
+        text: "Save settings"
+        foreground: activeFocus || hot ? Color.foreground : Color.background
+        background: Color.accent
+        fontFamily: root.fontFamily
+        onClicked: root.save()
+      }
+      Button {
+        focusable: true
+        text: "Cancel"
+        foreground: root.foreground
+        bordered: true
+        fontFamily: root.fontFamily
+        onClicked: root.cancelled()
       }
     }
   }

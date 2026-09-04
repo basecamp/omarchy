@@ -103,6 +103,7 @@ function normalizeClock(value) {
 
 function validTimezone(value) {
   if (typeof value !== "string" || value.trim() === "") return false
+  if (value === "UTC" || value === "Etc/UTC") return true
   try {
     // Intl is available in Node and current QML JavaScript engines. The
     // fallback keeps the model useful in minimal test harnesses.

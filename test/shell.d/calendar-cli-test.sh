@@ -20,6 +20,7 @@ target=${1:-}
 method=${2:-}
 
 state='{"schemaVersion":1,"inputRevision":4,"settings":{"timezone":"Europe/Rome","availability":{"monday":[{"start":"09:00","end":"17:00"}]},"horizonDays":14,"slotMinutes":15,"solveSeconds":5,"priorityLowWeight":1,"priorityNormalWeight":5,"priorityHighWeight":25,"cognitiveEnabled":false,"lowWindowStart":"00:00","lowWindowEnd":"00:00","lowOutsidePenalty":0,"mediumWindowStart":"00:00","mediumWindowEnd":"00:00","mediumOutsidePenalty":0,"highWindowStart":"00:00","highWindowEnd":"00:00","highOutsidePenalty":0,"highStreakLimit":1,"recoveryMinutes":30,"excessHighPenalty":60},"events":[{"id":"event-1","title":"Busy","description":"","startAt":"2026-09-07T10:00:00+02:00","endAt":"2026-09-07T11:00:00+02:00","timezone":"Europe/Rome","allDay":false,"rrule":null,"origin":"manual","taskId":null,"proposalId":null,"createdAt":"2026-09-04T08:00:00Z","updatedAt":"2026-09-04T08:00:00Z"}],"tasks":[],"dependencies":[],"proposal":null}'
+planning_state=$(jq -c '.tasks=[{id:"task-existing",title:"Existing task",state:"inbox"}] | .proposal={status:"ready",baseInputRevision:4,items:[]}' <<<"$state")
 
 if [[ $target == omarchy.clock && $method == openView ]]; then
   [[ ${3:-} == plan ]] || exit 1
@@ -29,7 +30,7 @@ fi
 
 case "$method" in
 status)
-  jq -cn --argjson state "$state" '{state:$state,loaded:true,configured:true,solveState:"idle",error:"",errorOutput:""}'
+  jq -cn --argjson state "$planning_state" '{state:$state,loaded:true,configured:true,solveState:"idle",error:"",errorOutput:""}'
   ;;
 state)
   jq -cn --argjson state "$state" '{ok:true,state:$state}'
@@ -41,6 +42,9 @@ addEvent)
 addTask)
   jq -e '.title == "Task" and .durationMinutes == 45 and .priority == "high" and .deadlineKind == "none"' <<<"${3:-}" >/dev/null
   jq -cn --argjson state "$state" --argjson input "${3:-}" '{ok:true,state:($state | .tasks += [($input + {id:"task-new"})])}'
+  ;;
+plan)
+  jq -cn --argjson state "$planning_state" '{state:$state,loaded:true,configured:true,solveState:"ready",error:"",errorOutput:""}'
   ;;
 setSettings)
   jq -e '.timezone == "Europe/Rome" and .availability.monday[0].start == "09:00"' <<<"${3:-}" >/dev/null
@@ -80,9 +84,14 @@ pass "CLI updates planner settings through the calendar service"
 OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-calendar" dependency add first second >/dev/null
 pass "CLI updates task dependencies through the calendar service"
 
+OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-calendar" plan >/dev/null
+pass "CLI explicitly asks Omarchy to plan tasks"
+
 OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-calendar" open plan >/dev/null
 pass "CLI opens the Plan view in the existing clock popup"
 
 grep -Fqx 'omarchy.calendar addEvent {"title":"New","startAt":"2026-09-08T10:00:00+02:00","endAt":"2026-09-08T11:00:00+02:00","allDay":false,"timezone":"Europe/Rome"}' "$log" || fail "CLI sends event JSON through IPC"
 grep -Fqx 'omarchy.calendar addTask {"title":"Task","durationMinutes":45,"priority":"high","cognitiveLoad":"medium","deadlineKind":"none","earliestAt":null,"deadlineAt":null}' "$log" || fail "CLI sends task JSON through IPC"
 pass "CLI sends native JSON requests through IPC"
+grep -Fqx 'omarchy.calendar plan' "$log" || fail "CLI sends explicit plan request through IPC"
+pass "CLI sends explicit plan requests through IPC"

@@ -250,7 +250,10 @@ Panel {
     contentHeight: panel.fittedContentHeight(tabs.implicitHeight + Style.space(14)
       + (root.activeTab === "calendar"
         ? calendarView.implicitHeight
-        : Math.max(calendarView.implicitHeight, Style.space(500))))
+        : plannerLoader.item && plannerLoader.item.editorMode !== ""
+          && plannerLoader.item.editorImplicitHeight > 0
+          ? plannerLoader.item.editorImplicitHeight
+          : Math.max(calendarView.implicitHeight, Style.space(500))))
 
     PanelKeyCatcher {
       id: keyCatcher

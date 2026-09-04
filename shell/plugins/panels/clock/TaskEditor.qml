@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "."
 
 // Small, keyboard-friendly editor for an inbox task. The editor deliberately
 // emits no state of its own: Service.qml remains the only owner and the
@@ -17,11 +18,17 @@ Item {
   property string priority: "normal"
   property string cognitiveLoad: "medium"
   property string deadlineKind: "none"
+  property string earliestAt: ""
+  property string deadlineAt: ""
   property var dependencyIds: []
   property int durationMinutes: 30
 
   signal saved()
   signal cancelled()
+
+  // The popup sizes itself from the form. The viewport is deliberately not a
+  // scrolling input surface: Save and Cancel stay visible as the form grows.
+  implicitHeight: form.implicitHeight + Style.space(36)
 
   function reset() {
     var value = root.task || {}
@@ -29,9 +36,9 @@ Item {
     durationMinutes = Number(value.durationMinutes || 30)
     priority = value.priority || "normal"
     cognitiveLoad = value.cognitiveLoad || "medium"
-    earliestField.text = value.earliestAt || ""
+    root.earliestAt = value.earliestAt || ""
     deadlineKind = value.deadlineKind || "none"
-    deadlineField.text = value.deadlineAt || ""
+    root.deadlineAt = value.deadlineAt || ""
     dependencyIds = predecessorsFor(value.id || "")
     errorText = ""
   }
@@ -56,13 +63,6 @@ Item {
     return result
   }
 
-  function optionalIso(text) {
-    var value = String(text || "").trim()
-    if (value === "") return null
-    var parsed = new Date(value)
-    return isNaN(parsed.getTime()) ? false : parsed.toISOString()
-  }
-
   function save() {
     var title = titleField.text.trim()
     if (title === "") {
@@ -71,15 +71,15 @@ Item {
       return
     }
 
-    var earliest = optionalIso(earliestField.text)
-    var deadline = deadlineKind === "none" ? null : optionalIso(deadlineField.text)
+    var earliest = earliestField.valid ? root.earliestAt || null : false
+    var deadline = deadlineKind === "none" ? null : (deadlineField.valid ? root.deadlineAt || null : false)
     if (earliest === false) {
-      errorText = "Earliest time must be an ISO date, for example 2026-09-04T09:00:00+02:00."
+      errorText = "Choose an earliest date and enter its time as HH:MM."
       earliestField.forceActiveFocus()
       return
     }
     if (deadline === false || (deadlineKind !== "none" && deadline === null)) {
-      errorText = "A hard or soft deadline needs a valid ISO date."
+      errorText = "Choose a deadline date and enter its time as HH:MM."
       deadlineField.forceActiveFocus()
       return
     }
@@ -122,24 +122,20 @@ Item {
     radius: Style.cornerRadius
   }
 
-  Flickable {
-    id: scroll
+  Item {
+    id: viewport
     anchors.fill: parent
     anchors.margins: Style.space(18)
-    contentWidth: form.width
-    contentHeight: form.implicitHeight
     clip: true
-    boundsBehavior: Flickable.StopAtBounds
-    interactive: contentHeight > height
 
     Column {
       id: form
-      width: Math.max(scroll.width, Style.space(390))
+      width: Math.max(viewport.width, Style.space(390))
       spacing: Style.space(10)
 
       Text {
         textFormat: Text.PlainText
-        text: root.task ? "Edit task" : "Add task"
+        text: root.task ? "Edit planning task" : "Add planning task"
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.display
@@ -148,7 +144,7 @@ Item {
 
       Text {
         textFormat: Text.PlainText
-        text: "Tasks stay in the inbox until a proposal is explicitly applied."
+        text: "A planning task is work Omarchy may schedule. Calendar events are fixed busy time. Tasks stay in the inbox until you apply a schedule."
         color: Qt.darker(root.foreground, 1.45)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
@@ -209,14 +205,17 @@ Item {
         }
       }
 
-      Text { textFormat: Text.PlainText; text: "Earliest start (optional)"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-      TextField {
+      PlannerDateTimeField {
         id: earliestField
         width: parent.width
+        label: "Earliest start (optional)"
+        value: root.earliestAt
+        allowEmpty: true
+        emptyLabel: "No earliest time"
         foreground: root.foreground
-            font.family: root.fontFamily
-            placeholderText: "2026-09-04T09:00:00+02:00"
-            Keys.onEscapePressed: root.cancelled()
+        fontFamily: root.fontFamily
+        onChanged: function(next) { root.earliestAt = next }
+        onCancelled: root.cancelled()
       }
 
       Row {
@@ -234,19 +233,18 @@ Item {
           foreground: root.foreground
           onChanged: root.deadlineKind = value
         }
-        Column {
-          width: parent.width - Style.space(160)
-          spacing: Style.spacing.labelGap
-          Text { textFormat: Text.PlainText; text: "Deadline time"; color: root.foreground; font.family: root.fontFamily; font.pixelSize: Style.font.caption }
-          TextField {
+          PlannerDateTimeField {
             id: deadlineField
-            width: parent.width
+            width: parent.width - Style.space(160)
+            label: "Deadline time"
+            value: root.deadlineAt
+            allowEmpty: true
+            emptyLabel: "No deadline"
             enabled: root.deadlineKind !== "none"
             foreground: root.foreground
-            font.family: root.fontFamily
-            placeholderText: "2026-09-04T17:00:00+02:00"
-            Keys.onEscapePressed: root.cancelled()
-          }
+            fontFamily: root.fontFamily
+            onChanged: function(next) { root.deadlineAt = next }
+            onCancelled: root.cancelled()
         }
       }
 
@@ -275,7 +273,7 @@ Item {
         Button {
           focusable: true
           text: "Save task"
-          foreground: Color.background
+          foreground: activeFocus || hot ? Color.foreground : Color.background
           background: Color.accent
           fontFamily: root.fontFamily
           onClicked: root.save()

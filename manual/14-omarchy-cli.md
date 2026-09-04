@@ -75,10 +75,7 @@ omarchy calendar apply
 omarchy calendar open agenda
 ```
 
-Use `events`, `tasks`, and `proposal` to inspect data, `edit-*` and
-`delete-*` to manage it, and `--json` for scripts. Planning is always a
-proposal until `apply` is run; `return-inbox <task-id>` reverses an applied
-planner task without changing unrelated manual events.
+Use `events`, `tasks`, and `proposal` to inspect data, `edit-*` and `delete-*` to manage it, and `--json` for scripts. `plan` explicitly generates a fresh suggested schedule; it never changes the calendar. Planning is always a suggested schedule until `apply` is run; `return-inbox <task-id>` reverses an applied planner task without changing unrelated manual events.
 
 ### Opening the menu from the terminal
 

@@ -25,6 +25,7 @@ Item {
   property string lastSolverError: ""
   property string activeRequestId: ""
   property int activeRequestRevision: -1
+  property bool forcePlanRequested: false
   property string pendingPersistJson: ""
   property string lastPlanningDay: ""
 
@@ -39,7 +40,7 @@ Item {
   readonly property bool hasInboxTasks: State.allTasksInInbox(calendarState)
   readonly property bool solving: debounceTimer.running
   readonly property string setupMessage: configured
-    ? "Add a task to generate a schedule proposal."
+    ? "Add a task to generate a suggested schedule."
     : "Choose a timezone and at least one availability window to enable planning."
 
   function parseState(raw) {
@@ -80,7 +81,31 @@ Item {
   function shouldSolve() {
     if (!root.stateLoaded || !root.configured || !root.hasInboxTasks) return false
     var proposal = root.calendarState.proposal
-    return !proposal || proposal.status !== "ready" || Number(proposal.baseInputRevision) !== root.calendarState.inputRevision
+    return root.forcePlanRequested
+      || !proposal
+      || proposal.status !== "ready"
+      || Number(proposal.baseInputRevision) !== root.calendarState.inputRevision
+  }
+
+  function planNow() {
+    if (!root.stateLoaded) {
+      root.lastSolverError = "The calendar service is still loading."
+      return false
+    }
+    if (!root.configured) {
+      root.lastSolverError = "Open Settings and choose a timezone and weekly availability before planning."
+      root.solveState = "configuration_needed"
+      return false
+    }
+    if (!root.hasInboxTasks) {
+      root.lastSolverError = "Add a planning task before choosing Plan tasks."
+      root.solveState = "idle"
+      return false
+    }
+    root.forcePlanRequested = true
+    root.lastSolverError = ""
+    root.scheduleSolve()
+    return true
   }
 
   function scheduleSolve() {
@@ -121,12 +146,14 @@ Item {
         debounceTimer.restart()
       } else {
         root.calendarState = State.writeProposal(root.calendarState, proposal)
+        root.forcePlanRequested = false
         root.solveState = "ready"
         root.persistState()
       }
     } catch (error) {
+      root.forcePlanRequested = false
       root.solveState = "error"
-      root.lastSolverError = "The planner could not generate a proposal."
+      root.lastSolverError = "Omarchy could not generate a suggested schedule."
       console.warn("calendar planner:", error)
     }
     root.activeRequestId = ""
@@ -281,8 +308,11 @@ Item {
     }
 
     function recompute(): string {
-      root.scheduleSolve()
-      return JSON.stringify(root.ipcState())
+      return root.planNow() ? JSON.stringify(root.ipcState()) : root.ipcResponse(null)
+    }
+
+    function plan(): string {
+      return root.planNow() ? JSON.stringify(root.ipcState()) : root.ipcResponse(null)
     }
 
     function apply(): string { return root.ipcResponse(root.applyProposal()) }

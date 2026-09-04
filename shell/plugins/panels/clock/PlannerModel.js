@@ -97,6 +97,19 @@ function formatDeadline(value, timezone) {
   try { return new Intl.DateTimeFormat("en", options).format(parsed) } catch (e) { return parsed.toLocaleString() }
 }
 
+function formatDayLabel(value) {
+  var match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return String(value || "")
+  var year = Number(match[1])
+  var month = Number(match[2]) - 1
+  var day = Number(match[3])
+  var date = new Date(year, month, day, 12)
+  if (isNaN(date.getTime())) return String(value || "")
+  var weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+  var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+  return weekdays[date.getDay()] + ", " + months[month] + " " + day + ", " + year
+}
+
 function priorityLabel(priority) {
   var value = String(priority || "normal")
   return value.charAt(0).toUpperCase() + value.slice(1)
@@ -212,6 +225,7 @@ if (typeof module !== "undefined") {
     eventMarkers: eventMarkers,
     formatDuration: formatDuration,
     formatDeadline: formatDeadline,
+    formatDayLabel: formatDayLabel,
     priorityLabel: priorityLabel,
     loadLabel: loadLabel,
     taskSummary: taskSummary,

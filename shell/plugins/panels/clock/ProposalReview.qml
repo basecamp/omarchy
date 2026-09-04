@@ -3,7 +3,7 @@ import qs.Commons
 import qs.Ui
 import "PlannerModel.js" as PlannerModel
 
-// Proposal review is the explicit commit boundary. It displays every solver
+// Schedule review is the explicit commit boundary. It displays every planning
 // item, including unscheduled explanations, and never changes the calendar
 // until Apply is pressed.
 Item {
@@ -15,6 +15,7 @@ Item {
   property string fontFamily: bar ? bar.fontFamily : Style.font.family
   property string message: ""
   signal cancelled()
+  signal saved()
 
   function state() {
     return root.service && root.service.calendarState
@@ -41,8 +42,11 @@ Item {
 
   function apply() {
     var result = root.service ? root.service.applyProposal() : null
-    if (result) root.message = "Applied. Planner events are now on the calendar."
-    else root.message = root.service ? root.service.lastSolverError : "The proposal could not be applied."
+    if (result) {
+      root.message = "Applied. Planner events are now on the calendar."
+      root.saved()
+    }
+    else root.message = root.service ? root.service.lastSolverError : "The suggested schedule could not be applied."
   }
 
   Component.onCompleted: Qt.callLater(function() { applyButton.forceActiveFocus() })
@@ -75,7 +79,7 @@ Item {
         Text {
           textFormat: Text.PlainText
           width: parent.width - closeButton.width
-          text: "Review proposal"
+          text: "Review suggested schedule"
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.display
@@ -97,8 +101,9 @@ Item {
         visible: root.proposal() !== null
         text: {
           var summary = PlannerModel.proposalSummary(root.proposal())
+          var proposalValue = root.proposal() || {}
           return summary.scheduled + " scheduled · " + summary.unscheduled + " still in the inbox"
-            + " · " + (root.proposal().timezone || "")
+            + " · " + (proposalValue.timezone || "")
         }
         color: root.foreground
         font.family: root.fontFamily
@@ -106,8 +111,18 @@ Item {
       }
       Text {
         textFormat: Text.PlainText
+        visible: root.proposal() !== null
+        text: "This is a preview from Omarchy. The calendar stays unchanged until you choose Apply schedule."
+        color: Qt.darker(root.foreground, 1.35)
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        wrapMode: Text.WordWrap
+        width: parent.width
+      }
+      Text {
+        textFormat: Text.PlainText
         visible: root.proposal() === null
-        text: "No proposal is available yet. Add an inbox task and configure planning settings."
+        text: "No suggested schedule is available yet. Add an inbox task and configure planning settings."
         color: Qt.darker(root.foreground, 1.45)
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
@@ -284,7 +299,7 @@ Item {
         id: applyButton
         text: "Apply schedule"
         enabled: root.currentReady()
-        foreground: Color.background
+        foreground: activeFocus || hot ? Color.foreground : Color.background
         background: Color.accent
         fontFamily: root.fontFamily
         onClicked: root.apply()
