@@ -626,7 +626,7 @@ Item {
             Item { Layout.fillWidth: true }
 
             Text {
-              text: "Esc returns to News"
+              text: "Esc returns to Reader"
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

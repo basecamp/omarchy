@@ -28,8 +28,8 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     tooltipText: root.unreadCount > 0
-      ? "Omarchy News · " + root.unreadCount + " unread"
-      : "Omarchy News"
+      ? "RSS Reader · " + root.unreadCount + " unread"
+      : "RSS Reader"
     iconComponent: Component {
       Item {
         Text {

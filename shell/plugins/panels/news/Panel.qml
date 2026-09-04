@@ -195,7 +195,7 @@ Item {
 
   FloatingWindow {
     id: window
-    title: "Omarchy News"
+    title: "RSS Reader"
     color: root.background
     implicitWidth: 1040
     implicitHeight: 720
@@ -313,7 +313,7 @@ Item {
 
           PanelActionButton {
             iconText: root.managingFeeds ? "󰅖" : "󰒓"
-            tooltipText: root.managingFeeds ? "Return to News (Esc)" : "Manage feeds (F)"
+            tooltipText: root.managingFeeds ? "Return to Reader (Esc)" : "Manage feeds (F)"
             foreground: root.foreground
             fontFamily: root.fontFamily
             onClicked: {

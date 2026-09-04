@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "omarchy.news",
-  "name": "Omarchy News",
+  "name": "Omarchy RSS Reader",
   "version": "1.0.0",
   "author": "Omarchy",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "News",
+    "displayName": "RSS Reader",
     "description": "Follow Omarchy announcements and the RSS sources you choose.",
     "category": "Info",
     "allowMultiple": false,

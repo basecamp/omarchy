@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Fetch and normalize the fixed publisher feeds enabled for Omarchy News."""
+"""Fetch and normalize publisher feeds enabled in Omarchy RSS Reader."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 FEED_URL = "https://omarchy.org/news/rss.xml"
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_ITEMS = 40
-USER_AGENT = "Omarchy-News-Panel/1.0"
+USER_AGENT = "Omarchy-RSS-Reader/1.0"
 SYSTEM_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
 MAX_ARTICLE_CHARS = 12_000
 

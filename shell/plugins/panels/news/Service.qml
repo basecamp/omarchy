@@ -148,7 +148,7 @@ Item {
       configurationError = String(parsed.configurationError || "")
       lastError = String(parsed.error || "")
     } catch (error) {
-      lastError = "Could not read the Omarchy news feed"
+      lastError = "Could not read the RSS feed"
     }
   }
 

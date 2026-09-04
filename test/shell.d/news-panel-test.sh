@@ -234,7 +234,7 @@ grep -qF 'id: sourceRail' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news reader exposes a compact source rail"
 grep -qF 'id: feedManager' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news reader exposes an in-panel feed manager"
-grep -qF 'tooltipText: root.managingFeeds ? "Return to News (Esc)" : "Manage feeds (F)"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+grep -qF 'tooltipText: root.managingFeeds ? "Return to Reader (Esc)" : "Manage feeds (F)"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news reader exposes feed management from its header"
 grep -qF 'shell.updateEntryInline("omarchy.news", next)' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
   fail "feed manager persists changes through the shell configuration API"
@@ -268,7 +268,7 @@ grep -qF 'if (!/^https?:\/\//.test(url)) return' "$ROOT/shell/plugins/panels/new
   fail "news story refuses to open a non-web primary URL"
 grep -qF 'tooltipText: "Close (Esc)"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news reader exposes its right-side window actions"
-grep -qF 'o.bind("SUPER + ALT + N", "Omarchy News", "omarchy-shell shell toggle omarchy.news")' "$ROOT/default/hypr/bindings/utilities.lua" ||
+grep -qF 'o.bind("SUPER + ALT + N", "RSS Reader", "omarchy-shell shell toggle omarchy.news")' "$ROOT/default/hypr/bindings/utilities.lua" ||
   fail "news reader has a default Hyprland shortcut"
 
 grep -qF 'FEED_URL = "https://omarchy.org/news/rss.xml"' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
