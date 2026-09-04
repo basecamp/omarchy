@@ -262,6 +262,17 @@ assert(
   'menu always exposes every supported browser, terminal, and editor under Defaults'
 )
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
+assertDeepEqual(
+  {
+    disabled: defaultById['install.ai.vibecad'].disabled,
+    action: defaultById['install.ai.vibecad'].action
+  },
+  {
+    disabled: 'omarchy-pkg-present vibecad-bin',
+    action: 'omarchy-install-and-launch VibeCAD vibecad-bin vibecad'
+  },
+  'menu installs and launches VibeCAD from the Omarchy package repository'
+)
 // Software you already have keeps its place in Install, dimmed rather than
 // dropped, so the list reads as a catalog of what Omarchy can install.
 // Chromium Account is the sole Install row with anything left to hide for, so
