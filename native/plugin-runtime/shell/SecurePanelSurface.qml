@@ -18,6 +18,11 @@ PanelWindow {
   readonly property bool opened: panelController.open
   property var assignedScreen: null
   property string lastIntentSequence: "0"
+  readonly property var bar: host && host.shell ? host.shell.bar : null
+  readonly property string barPosition: bar ? String(bar.position || "top") : "top"
+  readonly property int barInset: bar && !bar.barHidden
+    ? Math.max(0, Number(bar.barSize || 0)) : 0
+  readonly property int panelGap: Style.space(8)
 
   onOpenedChanged: console.info(
     "omarchy-plugin-security stage=qml-panel-state decision="
@@ -69,8 +74,22 @@ PanelWindow {
   // PanelWindow screen back through visible: Quickshell's screen selection
   // itself participates in window visibility and that creates a binding loop.
   visible: opened
-  anchors { top: true; right: true; bottom: true }
+  anchors {
+    top: window.barPosition !== "bottom"
+    bottom: window.barPosition === "bottom"
+    left: window.barPosition === "left"
+    right: window.barPosition !== "left"
+  }
+  margins {
+    top: window.barPosition === "top" ? window.barInset + window.panelGap
+      : window.barPosition !== "bottom" ? window.panelGap : 0
+    bottom: window.barPosition === "bottom" ? window.barInset + window.panelGap : 0
+    left: window.barPosition === "left" ? window.barInset + window.panelGap : 0
+    right: window.barPosition === "right" ? window.barInset + window.panelGap
+      : window.barPosition !== "left" ? window.panelGap : 0
+  }
   implicitWidth: Math.min(maximumWidth, screen ? screen.width : maximumWidth)
+  implicitHeight: Math.min(maximumHeight, screen ? screen.height : maximumHeight)
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "omarchy-plugin-v2-panel"
@@ -98,10 +117,7 @@ PanelWindow {
 
   RemotePluginSurface {
     id: remote
-    width: Math.min(window.maximumWidth, window.width)
-    height: Math.min(window.maximumHeight, window.height)
-    x: window.width - width
-    y: 0
+    anchors.fill: parent
     Window.onWindowChanged: window.attachIfReady()
     onWidthChanged: window.attachIfReady()
     onHeightChanged: window.attachIfReady()

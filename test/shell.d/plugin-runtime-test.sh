@@ -48,10 +48,12 @@ grep -F 'surface.inputRegions.length <= root.maximumRegionCount' "$runtime_root/
   fail "trusted input masks do not bound projected protocol regions"
 grep -F 'x: Math.floor((window.width - width) / 2)' "$runtime_root/shell/SecureOverlaySurface.qml" >/dev/null ||
   fail "secure overlay placement can silently round trusted region coordinates"
-grep -F 'height: Math.min(window.maximumHeight, window.height)' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+grep -F 'implicitHeight: Math.min(maximumHeight, screen ? screen.height : maximumHeight)' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
   fail "secure panel geometry can exceed its admitted height"
-grep -F 'x: window.width - width' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
-  fail "secure panel placement is not explicitly window-local"
+grep -F 'anchors.fill: parent' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panel allocation does not exactly match its trusted window"
+grep -F 'window.barInset + window.panelGap' "$runtime_root/shell/SecurePanelSurface.qml" >/dev/null ||
+  fail "secure panels are not offset from the active shell bar"
 grep -F 'model: PluginManager.barSurfaces' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "secure bar surfaces do not consume the typed role model"
 grep -F 'property var barEntries: []' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
