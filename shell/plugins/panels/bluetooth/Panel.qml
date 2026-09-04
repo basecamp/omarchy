@@ -146,6 +146,33 @@ Panel {
     return rows
   }
 
+  // Same rows as ListModel entries, kept in place instead of handed to the
+  // ListView as a fresh array: assigning a model is a reset, and scrollRows is
+  // rebuilt every time discovery turns up a device or drops a stale one, which
+  // dropped the viewport back to the top under a mid-list read. Syncing only
+  // the rows that moved keeps the delegates, and with them the scroll offset.
+  readonly property var scrollEntries: Model.scrollEntries(scrollRows)
+
+  ListModel { id: scrollModel }
+
+  function syncScrollModel() {
+    var current = []
+    for (var i = 0; i < scrollModel.count; i++)
+      current.push(Model.scrollEntrySnapshot(scrollModel.get(i)))
+
+    var ops = Model.scrollModelOps(current, scrollEntries)
+    for (var o = 0; o < ops.length; o++) {
+      var op = ops[o]
+      if (op.op === "insert") scrollModel.insert(op.index, op.entry)
+      else if (op.op === "move") scrollModel.move(op.from, op.to, 1)
+      else if (op.op === "set") scrollModel.set(op.index, op.entry)
+      else if (op.op === "remove") scrollModel.remove(op.index, op.count)
+    }
+  }
+
+  onScrollEntriesChanged: syncScrollModel()
+  Component.onCompleted: syncScrollModel()
+
   // Connected devices render above the scroll area; same primitives-only
   // projection so those delegates never hold Device QObject wrappers either.
   readonly property var connectedRows: {
@@ -176,14 +203,6 @@ Panel {
     for (var i = 0; i < scrollRows.length; i++)
       if (scrollRows[i].section === focusSection && scrollRows[i].indexInSection === selectedIndex) return i
     return -1
-  }
-
-  // A row opens a section when it is the first of its kind in the flat list.
-  function scrollSectionTitle(index) {
-    var rows = scrollRows
-    if (index < 0 || index >= rows.length) return ""
-    if (index > 0 && rows[index - 1].section === rows[index].section) return ""
-    return rows[index].section === "known" ? "PAIRED" : "AVAILABLE"
   }
 
   function audioSinks() {
@@ -814,22 +833,55 @@ Panel {
 
           ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-          model: root.scrollRows
-          currentIndex: root.scrollRowIndex
-          // Deferred by a turn. Called straight out of the signal the position
-          // does not take — verified with the cursor six rows down and
-          // contentY still 0 — because scrollRows is rebuilt every time
-          // discovery reports, and swapping the model resets the view out from
-          // under the call. Network's list is stable enough not to need this.
-          onCurrentIndexChanged: if (currentIndex >= 0) Qt.callLater(keepCurrentVisible)
+          model: scrollModel
+
+          // Follows the panel's cursor, never the view's currentIndex: a view
+          // bumps that itself for every row inserted at or before it, and the
+          // write does not re-run the binding that fed it — so an index taken
+          // off the view walks away from the cursor, a row per discovered
+          // device, and scrolls to a row nobody is on.
+          Connections {
+            target: root
+            // Deferred by a turn. Called straight out of the signal the
+            // position does not take — verified with the cursor six rows down
+            // and contentY still 0 — because the row a discovery report
+            // inserts is still being laid out when the cursor moves with it.
+            function onScrollRowIndexChanged() { Qt.callLater(deviceListView.keepCurrentVisible) }
+          }
+
           function keepCurrentVisible() {
-            if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+            if (root.scrollRowIndex >= 0)
+              positionViewAtIndex(root.scrollRowIndex, ListView.Contain)
           }
 
           delegate: Item {
-            required property var modelData
+            id: rowDelegate
             required property int index
-            readonly property string sectionTitle: root.scrollSectionTitle(index)
+            required property string section
+            required property string sectionTitle
+            required property int indexInSection
+            required property string address
+            required property string name
+            required property string deviceName
+            required property bool connected
+            required property int devState
+            required property bool batteryAvailable
+            required property real battery
+            required property bool pairing
+
+            // Rebuilt from roles rather than carried in the model: rows hold
+            // primitives only, so no delegate ever holds a Device wrapper that
+            // BlueZ can destroy mid-incubation.
+            readonly property var dev: ({
+              address: address,
+              name: name,
+              deviceName: deviceName,
+              connected: connected,
+              state: devState,
+              batteryAvailable: batteryAvailable,
+              battery: battery,
+              pairing: pairing
+            })
 
             width: ListView.view.width
             height: delegateColumn.implicitHeight
@@ -840,25 +892,25 @@ Panel {
               spacing: Style.space(10)
 
               PanelSeparator {
-                visible: index > 0 && sectionTitle !== ""
+                visible: rowDelegate.index > 0 && rowDelegate.sectionTitle !== ""
                 height: visible ? implicitHeight : 0
                 foreground: root.bar.foreground
               }
 
               PanelSectionHeader {
-                visible: sectionTitle !== ""
+                visible: rowDelegate.sectionTitle !== ""
                 height: visible ? implicitHeight : 0
-                text: sectionTitle
+                text: rowDelegate.sectionTitle
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily
               }
 
               DeviceRow {
                 width: parent.width
-                dev: modelData.dev
-                rowIndex: modelData.indexInSection
-                sectionName: modelData.section
-                isDiscovered: modelData.section === "discovered"
+                dev: rowDelegate.dev
+                rowIndex: rowDelegate.indexInSection
+                sectionName: rowDelegate.section
+                isDiscovered: rowDelegate.section === "discovered"
               }
             }
           }

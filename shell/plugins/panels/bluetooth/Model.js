@@ -99,6 +99,122 @@ function deviceRow(d) {
   }
 }
 
+// Roles of one row in the device list model, in one place: the projection
+// below writes them, the snapshot reads them back off the ListModel, and the
+// delegate declares them as required properties.
+var SCROLL_ROLES = [
+  "key", "section", "sectionTitle", "indexInSection",
+  "address", "name", "deviceName",
+  "connected", "devState", "batteryAvailable", "battery", "pairing"
+]
+
+// A role that is not a finite number is worse than a wrong one: NaN compares
+// unequal to itself, so a row carrying one would be rewritten on every rebuild
+// for as long as the panel lives, and nothing would say why.
+function finiteNumber(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback
+  var number = Number(value)
+  return isFinite(number) ? number : fallback
+}
+
+// Rows are identified by section and address, so the same device showing up
+// in a different section is a different row rather than an in-place edit.
+function scrollRowKey(row) {
+  if (!row) return ""
+  return (row.section || "") + "/" + (row.dev && row.dev.address ? row.dev.address : "")
+}
+
+// A row opens a section when it is the first of its kind in the flat list.
+function scrollSectionTitle(rows, index) {
+  if (!rows || index < 0 || index >= rows.length) return ""
+  if (index > 0 && rows[index - 1].section === rows[index].section) return ""
+  return rows[index].section === "known" ? "PAIRED" : "AVAILABLE"
+}
+
+// Flat, primitives-only projection of a row for the list model. ListModel
+// roles hold no nested objects, and `state` is already taken on the
+// delegate's Item, so the device's connection state travels as devState.
+function scrollEntry(rows, index) {
+  var row = rows[index] || {}
+  var device = row.dev || {}
+  return {
+    key: scrollRowKey(row),
+    section: row.section || "",
+    sectionTitle: scrollSectionTitle(rows, index),
+    indexInSection: row.indexInSection !== undefined ? row.indexInSection : 0,
+    address: device.address || "",
+    name: device.name || "",
+    deviceName: device.deviceName || "",
+    connected: !!device.connected,
+    devState: finiteNumber(device.state, -1),
+    batteryAvailable: !!device.batteryAvailable,
+    battery: finiteNumber(device.battery, 0),
+    pairing: !!device.pairing
+  }
+}
+
+function scrollEntries(rows) {
+  var entries = []
+  for (var i = 0; i < (rows || []).length; i++) entries.push(scrollEntry(rows, i))
+  return entries
+}
+
+// Plain-object copy of a row read back off the ListModel, so the diff compares
+// values rather than model handles and cannot be surprised by what a handle
+// tracks once the ops start landing.
+function scrollEntrySnapshot(item) {
+  var copy = ({})
+  for (var i = 0; i < SCROLL_ROLES.length; i++) copy[SCROLL_ROLES[i]] = item ? item[SCROLL_ROLES[i]] : undefined
+  return copy
+}
+
+function sameScrollEntry(a, b) {
+  if (!a || !b) return false
+  for (var i = 0; i < SCROLL_ROLES.length; i++)
+    if (a[SCROLL_ROLES[i]] !== b[SCROLL_ROLES[i]]) return false
+  return true
+}
+
+// Edit script turning the entries a ListModel already holds into the ones a
+// rebuild wants, applied in order. Handing a ListView a whole new model is a
+// reset that drops the viewport back to the top, and discovery rebuilds the
+// rows every time a device appears or times out; patching only what actually
+// moved keeps the delegates, and with them the scroll position.
+function scrollModelOps(current, entries) {
+  var rows = (current || []).slice()
+  var wanted = entries || []
+  var ops = []
+
+  for (var i = 0; i < wanted.length; i++) {
+    var entry = wanted[i]
+    var at = -1
+    for (var j = i; j < rows.length; j++) {
+      if (rows[j] && rows[j].key === entry.key) { at = j; break }
+    }
+
+    if (at === -1) {
+      ops.push({ op: "insert", index: i, entry: entry })
+      rows.splice(i, 0, entry)
+      continue
+    }
+
+    if (at !== i) {
+      ops.push({ op: "move", from: at, to: i })
+      rows.splice(i, 0, rows.splice(at, 1)[0])
+    }
+
+    if (!sameScrollEntry(rows[i], entry)) {
+      ops.push({ op: "set", index: i, entry: entry })
+      rows[i] = entry
+    }
+  }
+
+  if (rows.length > wanted.length)
+    ops.push({ op: "remove", index: wanted.length, count: rows.length - wanted.length })
+
+  return ops
+}
+
 function deviceLists(devices) {
   var values = toArray(devices)
   var connected = []
@@ -168,6 +284,13 @@ if (typeof module !== "undefined") {
     sortedByLabel: sortedByLabel,
     deviceRow: deviceRow,
     deviceLists: deviceLists,
+    finiteNumber: finiteNumber,
+    scrollRowKey: scrollRowKey,
+    scrollSectionTitle: scrollSectionTitle,
+    scrollEntries: scrollEntries,
+    scrollEntrySnapshot: scrollEntrySnapshot,
+    sameScrollEntry: sameScrollEntry,
+    scrollModelOps: scrollModelOps,
     cloneMap: cloneMap,
     pendingAction: pendingAction,
     withPendingAction: withPendingAction,
