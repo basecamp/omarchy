@@ -62,7 +62,8 @@ FILEPATH="$OUTPUT_DIR/$FILENAME"
 
 case "$PROCESSING" in
   slurp)
-    grim -g "$SELECTION" "$FILEPATH" || exit 1
+    # -l 0: fastest PNG zlib level for screenshot snappiness (#10049)
+    grim -l 0 -g "$SELECTION" "$FILEPATH" || exit 1
     echo "$FILEPATH"
     wl-copy --type image/png <"$FILEPATH"
 
@@ -73,10 +74,10 @@ case "$PROCESSING" in
       --exec "$SCREENSHOT_EDITOR" "$FILEPATH" || true
     ;;
   copy)
-    grim -g "$SELECTION" - | wl-copy --type image/png
+    grim -l 0 -g "$SELECTION" - | wl-copy --type image/png
     ;;
   save)
-    grim -g "$SELECTION" "$FILEPATH" || exit 1
+    grim -l 0 -g "$SELECTION" "$FILEPATH" || exit 1
     echo "$FILEPATH"
     ;;
 esac
