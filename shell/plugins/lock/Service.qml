@@ -37,6 +37,14 @@ Item {
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
 
+  // Whether this service owns the live session lock, for callers that must not
+  // destroy it. Deliberately narrower than `locked`: lockRequested is the
+  // shell's own state and sessionLock.locked is the instance-local
+  // SessionLockManager::mLock, so both are deterministic on a rebuilt service.
+  // sessionLock.secure is excluded because it resolves through the process-wide
+  // session-lock manager, which an earlier teardown can leave dangling.
+  readonly property bool sessionLockOwned: lockRequested || sessionLock.locked
+
   function realScreenCount() {
     var screens = Quickshell.screens || []
     var count = 0
