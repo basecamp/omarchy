@@ -94,3 +94,16 @@ if [[ -d $staging_dir ]]; then
   fail "the staging directory is cleaned up after the upload" "left behind: $staging_dir"
 fi
 pass "the staging directory is cleaned up after the upload"
+
+# A directory at the log path is the one shape `install` accepts without
+# producing the file, so the guard has to be the thing that catches it --
+# otherwise `--print` exits 0 having printed nothing, which is what a caller
+# reads as a successful empty diagnostic.
+blocked_runtime="$tmp_dir/blocked"
+mkdir -p "$blocked_runtime/omarchy-debug.log"
+blocked_out=$(XDG_RUNTIME_DIR="$blocked_runtime" "$ROOT/bin/omarchy-debug" --no-sudo --print 2>/dev/null) && blocked_status=0 || blocked_status=$?
+
+if (( blocked_status == 0 )) || [[ -n $blocked_out ]]; then
+  fail "omarchy-debug fails loudly when the log file cannot be created" "status: $blocked_status, bytes: ${#blocked_out}"
+fi
+pass "omarchy-debug fails loudly when the log file cannot be created"

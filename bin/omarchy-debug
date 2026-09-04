@@ -37,8 +37,10 @@ LOG_FILE="$log_dir/omarchy-debug.log"
 
 # Nothing here runs under `set -e`, so an unusable log_dir -- a stale
 # XDG_RUNTIME_DIR, a full tmpfs, a read-only home -- would leave `--print`
-# exiting 0 having printed nothing at all.
-if ! mkdir -p "$log_dir" || ! install -m 600 /dev/null "$LOG_FILE"; then
+# exiting 0 having printed nothing at all. -T is what makes a directory at
+# LOG_FILE an error; without it `install` treats one as a destination
+# directory, writes $LOG_FILE/null, and reports success.
+if ! mkdir -p "$log_dir" || ! install -T -m 600 /dev/null "$LOG_FILE"; then
   echo "Error: Failed to create $LOG_FILE" >&2
   exit 1
 fi
