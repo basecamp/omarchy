@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# The brcmfmac firmware in Apple's Broadcom BCM43602 Wi-Fi wedges on the first
+# resume from S3. Every suspend after that fails when brcmf_pcie_pm_enter_D3
+# returns -EIO, and systemd-logind keeps retrying: the machine wakes, its panel
+# lights up, and the cycle repeats until the lid is opened and the driver is
+# restarted.
+#
+# rmmod cannot pull the module out cleanly (its refcount never reaches zero),
+# so detach the PCI device from the driver before sleep and bind it again on
+# wake, which reloads the firmware. The driver check makes this a no-op on
+# machines whose Wi-Fi at this address is not brcmfmac, and the marker keeps
+# post a no-op unless pre actually unbound the device, so a Wi-Fi that was
+# switched off intentionally stays off.
+
+pci="/sys/bus/pci/devices/0000:03:00.0"
+driver="/sys/bus/pci/drivers/brcmfmac"
+marker="/run/omarchy-brcmfmac-suspend"
+
+bound() {
+  readlink "$pci/driver" 2>/dev/null | grep -q brcmfmac
+}
+
+if [[ -d $pci ]] && [[ $1 == "pre" ]] && bound; then
+  if echo "0000:03:00.0" > "$driver/unbind"; then
+    : > "$marker"
+  fi
+fi
+
+if [[ $1 == "post" ]] && [[ -f $marker ]]; then
+  # Bind again until the driver returns, or give up after 40 seconds. The
+  # kernel can re-enumerate the card itself through brcmfmac's rfkill, in
+  # which case the device races the loop back onto the bus and the retries
+  # all fail harmlessly.
+  for attempt in {1..20}; do
+    echo "0000:03:00.0" > "$driver/bind" 2>/dev/null
+    if bound; then
+      break
+    fi
+    (( attempt < 20 )) && sleep 2
+  done
+  rm -f "$marker"
+fi
