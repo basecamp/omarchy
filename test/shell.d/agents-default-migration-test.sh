@@ -7,6 +7,7 @@ source "$(dirname "$0")/base-test.sh"
 require_command jq
 
 migration="$ROOT/migrations/1785344985.sh"
+rename_migration="$ROOT/migrations/1786099804.sh"
 test_dir=$(mktemp -d)
 trap 'rm -rf "$test_dir"' EXIT
 
@@ -18,6 +19,10 @@ cat >"$test_dir/bin/omarchy-restart-shell" <<'STUB'
 echo restart >>"$SHELL_RESTARTS"
 STUB
 
+cat >"$test_dir/bin/omarchy-agent-usage-update" <<'STUB'
+#!/bin/bash
+STUB
+
 chmod +x "$test_dir/bin/"*
 
 export SHELL_RESTARTS="$test_dir/shell-restarts"
@@ -26,8 +31,10 @@ home="$test_dir/home"
 config="$home/.config/omarchy/shell.json"
 
 run_migration() {
+  local migration_path="${1:-$migration}"
+
   : >"$SHELL_RESTARTS"
-  HOME="$home" PATH="$test_dir/bin:$PATH" bash -euo pipefail "$migration" >/dev/null
+  HOME="$home" PATH="$test_dir/bin:$PATH" bash -euo pipefail "$migration_path" >/dev/null
 }
 
 # The shipped default minus the widget is what every machine installed before
@@ -77,6 +84,18 @@ run_migration
 [[ $(ids center) == *'"omarchy.agents"'* ]] || fail "migration leaves a user-placed widget alone" "$(ids center)"
 [[ $(ids right) != *'"omarchy.agents"'* ]] || fail "migration does not add a second copy" "$(ids right)"
 pass "migration respects a widget the user already placed"
+
+# A user who placed the widget under its former id before the rename migration
+# must not get a new agents entry that the later migration turns into a duplicate.
+write_config "$without_widget | .bar.layout.center += [{ id: \"omarchy.model-usage\" }]"
+run_migration
+
+[[ $(ids center) == *'"omarchy.model-usage"'* ]] || fail "migration leaves the former widget id alone" "$(ids center)"
+[[ $(ids right) != *'"omarchy.agents"'* ]] || fail "migration does not add an agents copy beside the former widget id" "$(ids right)"
+run_migration "$rename_migration"
+[[ $(jq '[.bar.layout[][]? | if type == "object" then .id else . end] | map(select(. == "omarchy.agents")) | length' "$config") == 1 ]] ||
+  fail "migration sequence leaves exactly one agents widget" "$(jq -c '.bar.layout' "$config")"
+pass "migration sequence recognizes and renames the former model usage widget once"
 
 # Layouts written before entries grew options are bare id strings.
 write_config "$without_widget | .bar.layout.right = [\"omarchy.tray\", \"omarchy.agents\", \"omarchy.power\"]"
