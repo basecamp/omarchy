@@ -8,7 +8,7 @@ BarIndicator {
   property string state: "idle"
   property string icon: ""
 
-  active: state === "recording"
+  active: state === "recording" || state === "transcribing"
   activeText: icon
   inactiveText: "󰍬"
   activeTooltipText: state
