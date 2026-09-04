@@ -27,6 +27,14 @@ if [[ -z $THEME_NAME || $THEME_NAME == .* || $THEME_NAME == */* ]]; then
   exit 1
 fi
 
+# Reject names that could escape THEMES_DIR (e.g. "../../.ssh") before we
+# ever build a path out of them, so a crafted name can't reach rm -rf outside
+# the themes directory.
+if [[ $THEME_NAME == */* || $THEME_NAME == *..* ]]; then
+  echo "Error: Invalid theme name '$THEME_NAME'." >&2
+  exit 1
+fi
+
 # Check if theme exists before attempting removal
 if [[ ! -d $THEME_PATH ]]; then
   echo "Error: Theme '$THEME_NAME' not found."
