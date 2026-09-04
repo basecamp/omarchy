@@ -381,6 +381,7 @@ Item {
       for (var s = 0; s < moduleSlots.length; s++) {
         var slot = moduleSlots[s]
         if (!slot || slot.region !== change.region || slot.moduleName !== entryId(change.entry)) continue
+        slot.settingsOverride = settings
         var item = slot.activeItem
         if (item && "settings" in item) item.settings = settings
       }
@@ -1546,7 +1547,15 @@ Item {
     required property var entry
     property string region: ""
     readonly property string moduleName: root.entryId(entry)
-    readonly property var moduleSettings: root.entrySettings(entry)
+    // Inline settings can be patched in without rebuilding the layout (see
+    // applySettingsDelta). The override carries that value, so a slot whose
+    // item is re-created later hands over the current settings rather than the
+    // ones captured when the layout was built. It is dropped whenever `entry`
+    // itself changes, so a real layout update always wins.
+    property var settingsOverride
+    readonly property var moduleSettings: settingsOverride !== undefined
+      ? settingsOverride : root.entrySettings(entry)
+    onEntryChanged: settingsOverride = undefined
     readonly property string customType: root.customModuleType(entry)
     // Re-evaluate when the registry mutates (Component reference changes,
     // plugin enabled/disabled, etc.). Reading the `widgets` property creates
