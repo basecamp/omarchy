@@ -5,6 +5,8 @@ source "$(dirname "$0")/base-test.sh"
 require_command jq
 require_command python3
 
+unset PI_CODING_AGENT_DIR XDG_CACHE_HOME
+
 TEST_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME"' EXIT
 
@@ -36,7 +38,7 @@ done
 EOF
 chmod +x "$TEST_HOME/bin/codex"
 
-timestamp="$(date +%Y-%m-%d)T12:00:00Z"
+timestamp="$(date -Iseconds)"
 session="$TEST_HOME/.codex/sessions/$(date +%Y/%m/%d)/rollout.jsonl"
 cat >"$session" <<EOF
 {"timestamp":"$timestamp","type":"turn_context","payload":{"model":"gpt-test"}}
@@ -69,10 +71,11 @@ pass "Codex collector does not double-count cache or reasoning tokens"
 pass "Codex collector identifies itself with an empty limits list"
 
 # Pi and omp can both spend a Codex subscription without creating native
-# Codex sessions. Their compatible JSONL transcripts must be included.
+# Codex sessions. Their compatible JSONL transcripts must be included,
+# including Pi's current default config directory.
 PI_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$PI_HOME"' EXIT
-mkdir -p "$PI_HOME/bin" "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project"
+mkdir -p "$PI_HOME/bin" "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project" "$PI_HOME/.config/pi/sessions/project"
 cp "$TEST_HOME/bin/codex" "$PI_HOME/bin/codex"
 cat >"$PI_HOME/.pi/agent/sessions/project/pi.jsonl" <<EOF
 {"type":"message","id":"pi-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
@@ -81,15 +84,144 @@ cat >"$PI_HOME/.omp/agent/sessions/project/omp.jsonl" <<EOF
 { "type": "message", "id": "omp-1", "timestamp": "$timestamp", "message": { "role": "assistant", "provider": "openai-codex", "model": "gpt-omp", "usage": { "input": 20, "output": 5, "cacheRead": 4, "cacheWrite": 1, "totalTokens": 30 } } }
 {"type":"message","id":"other-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"anthropic","model":"claude-test","usage":{"input":999,"output":999}}}
 EOF
+cat >"$PI_HOME/.config/pi/sessions/project/pi-config.jsonl" <<EOF
+{"type":"message","id":"pi-config-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi-config","usage":{"input":30,"output":6,"cacheRead":5,"cacheWrite":2,"totalTokens":43}}}
+EOF
 
-result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" XDG_DATA_HOME="$PI_HOME/.local/share" \
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR= XDG_DATA_HOME="$PI_HOME/.local/share" \
   PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
 
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "92" ]] ||
+  fail "Codex collector counts usage from all supported Pi session roots" "$result"
+[[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1},"gpt-pi-config":{"inputTokens":30,"outputTokens":6,"cacheReadInputTokens":5,"cacheCreationInputTokens":2}}' ]] ||
+  fail "Codex collector filters Pi sessions to Codex providers" "$result"
+pass "Codex collector counts subscription usage from all supported Pi session roots"
+
+ln -s "$PI_HOME/.pi/agent" "$PI_HOME/pi-alias"
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR="$PI_HOME/pi-alias" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --force)
+
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "49" ]] ||
-  fail "Codex collector counts usage from pi and omp sessions" "$result"
-[[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1}}' ]] ||
-  fail "Codex collector filters pi and omp sessions to Codex providers" "$result"
-pass "Codex collector counts pi and omp subscription usage"
+  fail "Codex collector counts aliased Pi session roots once" "$result"
+pass "Codex collector counts aliased Pi session roots once"
+
+mkdir -p "$PI_HOME/pi-tilde/sessions/project"
+cat >"$PI_HOME/pi-tilde/sessions/project/pi-tilde.jsonl" <<EOF
+{"type":"message","id":"pi-tilde-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi-tilde","usage":{"input":9,"output":2,"cacheRead":1,"cacheWrite":1,"totalTokens":13}}}
+EOF
+
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR="~/pi-tilde" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "62" ]] ||
+  fail "Codex collector expands PI_CODING_AGENT_DIR" "$result"
+pass "Codex collector expands PI_CODING_AGENT_DIR"
+
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR="~omarchy-codex-no-such-user-7194" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "49" ]] ||
+  fail "Codex collector skips an invalid PI_CODING_AGENT_DIR" "$result"
+pass "Codex collector skips an invalid PI_CODING_AGENT_DIR"
+
+mkdir -p "$PI_HOME/pi-custom/sessions/project"
+cat >"$PI_HOME/pi-custom/sessions/project/pi-custom.jsonl" <<EOF
+{"type":"message","id":"pi-custom-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi-custom","usage":{"input":7,"output":2,"cacheRead":1,"cacheWrite":1,"totalTokens":11}}}
+EOF
+
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR="$PI_HOME/pi-custom" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "60" ]] ||
+  fail "Codex collector honors PI_CODING_AGENT_DIR" "$result"
+[[ $(jq -c '.modelUsage["gpt-pi-custom"]' <<<"$result") == '{"inputTokens":7,"outputTokens":2,"cacheReadInputTokens":1,"cacheCreationInputTokens":1}' ]] ||
+  fail "Codex collector reads usage from PI_CODING_AGENT_DIR" "$result"
+pass "Codex collector honors PI_CODING_AGENT_DIR"
+cache_file_count_before=$(find "$PI_HOME/.cache/omarchy/agent-usage" -type f -name 'codex-scan-*.json' | wc -l)
+
+mkdir -p "$PI_HOME/pi-other/sessions/project"
+cat >"$PI_HOME/pi-other/sessions/project/pi-other.jsonl" <<EOF
+{"type":"message","id":"pi-other-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi-other","usage":{"input":12,"output":5,"cacheRead":4,"cacheWrite":2,"totalTokens":23}}}
+EOF
+
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR="$PI_HOME/pi-other" XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "72" ]] ||
+  fail "Codex collector isolates caches by PI_CODING_AGENT_DIR" "$result"
+[[ $(jq -c '.modelUsage["gpt-pi-other"]' <<<"$result") == '{"inputTokens":12,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":2}' ]] ||
+  fail "Codex collector refreshes usage after PI_CODING_AGENT_DIR changes" "$result"
+cache_file_count_after=$(find "$PI_HOME/.cache/omarchy/agent-usage" -type f -name 'codex-scan-*.json' | wc -l)
+(( cache_file_count_after == cache_file_count_before + 1 )) ||
+  fail "Codex collector creates a distinct cache for each PI_CODING_AGENT_DIR" "before: $cache_file_count_before, after: $cache_file_count_after"
+pass "Codex collector isolates caches by PI_CODING_AGENT_DIR"
+
+mkdir -p "$PI_HOME/cwd-a/pi-relative/sessions/project" "$PI_HOME/cwd-b/pi-relative/sessions/project"
+cat >"$PI_HOME/cwd-a/pi-relative/sessions/project/pi-relative.jsonl" <<EOF
+{"type":"message","id":"pi-relative-a","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi-relative-a","usage":{"input":13,"output":2,"cacheRead":1,"cacheWrite":1,"totalTokens":17}}}
+EOF
+cat >"$PI_HOME/cwd-b/pi-relative/sessions/project/pi-relative.jsonl" <<EOF
+{"type":"message","id":"pi-relative-b","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi-relative-b","usage":{"input":20,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":29}}}
+EOF
+
+result=$(cd "$PI_HOME/cwd-a" && HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR=pi-relative XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --force)
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "66" ]] ||
+  fail "Codex collector resolves a relative PI_CODING_AGENT_DIR" "$result"
+relative_cache_count_before=$(find "$PI_HOME/.cache/omarchy/agent-usage" -type f -name 'codex-scan-*.json' | wc -l)
+
+result=$(cd "$PI_HOME/cwd-b" && HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR=pi-relative XDG_DATA_HOME="$PI_HOME/.local/share" \
+  PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "78" ]] ||
+  fail "Codex collector isolates relative PI_CODING_AGENT_DIR caches by working directory" "$result"
+relative_cache_count_after=$(find "$PI_HOME/.cache/omarchy/agent-usage" -type f -name 'codex-scan-*.json' | wc -l)
+(( relative_cache_count_after == relative_cache_count_before + 1 )) ||
+  fail "Codex collector creates distinct caches for relative PI_CODING_AGENT_DIR roots" "before: $relative_cache_count_before, after: $relative_cache_count_after"
+pass "Codex collector isolates relative PI_CODING_AGENT_DIR caches by working directory"
+
+if ! python3 - "$ROOT/bin/omarchy-agent-usage-codex" <<'PY'
+import runpy
+import sys
+import tempfile
+from pathlib import Path
+
+collector = runpy.run_path(sys.argv[1])
+collector_globals = collector["_cached_local_stats"].__globals__
+root_values = iter([[Path("/profile-a/sessions")], [Path("/profile-b/sessions")]])
+seen = {}
+
+
+def fake_pi_session_roots():
+  return next(root_values)
+
+
+with tempfile.TemporaryDirectory() as temp_dir:
+  temp = Path(temp_dir)
+
+  def fake_scan_cache_paths(roots=None):
+    roots = roots if roots is not None else fake_pi_session_roots()
+    seen["cache"] = roots
+    return temp / "stats.json", temp / "stats.lock"
+
+  def fake_run_local_scans(roots=None):
+    roots = roots if roots is not None else fake_pi_session_roots()
+    seen["scan"] = roots
+    return {}, False
+
+  collector_globals["pi_session_roots"] = fake_pi_session_roots
+  collector_globals["scan_cache_paths"] = fake_scan_cache_paths
+  collector_globals["run_local_scans"] = fake_run_local_scans
+  collector_globals["read_cached_stats"] = lambda *_: None
+  collector["_cached_local_stats"](0)
+
+if seen["cache"] != seen["scan"]:
+  print(f"cache roots: {seen['cache']}; scan roots: {seen['scan']}", file=sys.stderr)
+  raise SystemExit(1)
+PY
+then
+  fail "Codex collector scans the same Pi roots used by its cache key"
+fi
+pass "Codex collector scans the same Pi roots used by its cache key"
 
 # A subscription burned entirely through opencode has no native session files;
 # usage must come from opencode's message database, filtered to OpenAI.
