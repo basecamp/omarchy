@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Detect a T2 Mac with BCM4377b Wi-Fi
+# omarchy:hidden=true
+
+# BCM4377b (14e4:4488) times out entering PCI D3 and aborts suspend.
+# BCM4364 (14e4:4464) is the opposite: brcmfmac must stay bound.
+# Drain lspci fully; grep -q would SIGPIPE and look like "no such hardware" (#6608).
+pci=$(lspci -nn 2>/dev/null || true)
+
+if [[ $pci != *106b:1801* && $pci != *106b:1802* ]]; then
+  exit 1
+fi
+
+if [[ $pci == *14e4:4464* ]]; then
+  exit 1
+fi
+
+[[ $pci == *14e4:4488* ]]

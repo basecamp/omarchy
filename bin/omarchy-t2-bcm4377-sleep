@@ -1,0 +1,158 @@
+#!/bin/bash
+
+# omarchy:summary=Unload BCM4377 Wi-Fi around sleep on T2 Macs
+# omarchy:args=pre|post
+# omarchy:group=hw
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+# brcmfmac times out entering PCI D3 (pci_pm_suspend returns -5 / EIO).
+# The kernel then aborts both deep (S3) and s2idle, systemd-suspend fails,
+# and logind retries about every 20 seconds with the lid closed.
+#
+# Invoked by omarchy-t2-bcm4377-sleep.service as: omarchy-t2-bcm4377-sleep pre|post
+# Do not use set -e: a failing nmcli on resume must not abort the rest of post.
+
+set -u
+
+export PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+
+STATE=/run/omarchy-t2-bcm4377-sleep.state
+TAG=omarchy-t2-bcm4377-sleep
+
+log() {
+  logger -t "$TAG" "$*" 2>/dev/null || true
+  printf '%s\n' "$*"
+}
+
+wifi_iface() {
+  local d driver
+  for d in /sys/class/net/*; do
+    [[ -e $d/device/driver ]] || continue
+    driver=$(basename "$(readlink -f "$d/device/driver")")
+    if [[ $driver == brcmfmac ]]; then
+      basename "$d"
+      return 0
+    fi
+  done
+  return 1
+}
+
+module_loaded() {
+  grep -q "^$1 " /proc/modules
+}
+
+release_fan() {
+  systemctl stop t2fanrd.service 2>/dev/null || true
+  local f
+  while IFS= read -r -d '' f; do
+    echo 0 >"$f" 2>/dev/null || true
+  done < <(find /sys/devices -name 'fan*_manual' -print0 2>/dev/null)
+}
+
+restore_fan() {
+  if systemctl list-unit-files t2fanrd.service >/dev/null 2>&1; then
+    systemctl restart t2fanrd.service 2>/dev/null ||
+      systemctl start t2fanrd.service 2>/dev/null || true
+  fi
+}
+
+unload_brcmfmac() {
+  local i
+  for ((i = 1; i <= 5; i++)); do
+    if ! module_loaded brcmfmac; then
+      log "brcmfmac already unloaded"
+      return 0
+    fi
+    # wcc is a plugin that holds brcmfmac; it is not present on every kernel.
+    if module_loaded brcmfmac_wcc; then
+      modprobe -r brcmfmac_wcc 2>/dev/null || true
+    fi
+    if modprobe -r brcmfmac 2>/dev/null; then
+      log "unloaded brcmfmac"
+      return 0
+    fi
+    log "unload attempt $i failed, retrying"
+    sleep 1
+  done
+  log "failed to unload brcmfmac"
+  return 1
+}
+
+unload() {
+  local iface="" conn=""
+  rm -f "$STATE"
+  release_fan
+
+  iface=$(wifi_iface || true)
+  if [[ -n ${iface:-} ]] && command -v nmcli >/dev/null 2>&1; then
+    conn=$(nmcli -t -f NAME,DEVICE connection show --active 2>/dev/null |
+      awk -F: -v i="$iface" '$2 == i { print $1; exit }')
+    {
+      printf 'iface=%q\n' "$iface"
+      printf 'conn=%q\n' "$conn"
+    } >"$STATE"
+    if [[ -n ${conn:-} ]]; then
+      nmcli device disconnect "$iface" >/dev/null 2>&1 || true
+      log "disconnected $iface (conn=$conn)"
+    else
+      log "wifi iface $iface has no active connection"
+    fi
+  fi
+
+  # Let firmware finish the disconnect before the driver is yanked.
+  sleep 1
+  unload_brcmfmac
+}
+
+reload() {
+  restore_fan
+
+  if ! modprobe brcmfmac; then
+    log "failed to load brcmfmac"
+    return 1
+  fi
+  modprobe brcmfmac_wcc 2>/dev/null || true
+  log "loaded brcmfmac"
+
+  local iface="" conn=""
+  if [[ -f $STATE ]]; then
+    # shellcheck disable=SC1090
+    source "$STATE"
+    rm -f "$STATE"
+  fi
+
+  local i
+  for ((i = 1; i <= 20; i++)); do
+    iface=${iface:-$(wifi_iface || true)}
+    [[ -n ${iface:-} ]] && break
+    sleep 0.5
+  done
+
+  if [[ -n ${iface:-} ]] && command -v nmcli >/dev/null 2>&1; then
+    if [[ -n ${conn:-} ]] && nmcli connection up "$conn" >/dev/null 2>&1; then
+      log "restored connection $conn"
+    elif nmcli device connect "$iface" >/dev/null 2>&1; then
+      log "connected $iface"
+    else
+      log "NetworkManager will autoconnect $iface"
+    fi
+  fi
+}
+
+case "${1:-}" in
+  pre | post) ;;
+  *)
+    echo "usage: $0 pre|post" >&2
+    exit 2
+    ;;
+esac
+
+if ! omarchy-hw-t2-bcm4377; then
+  exit 0
+fi
+
+case "$1" in
+  pre) unload ;;
+  post) reload ;;
+esac
