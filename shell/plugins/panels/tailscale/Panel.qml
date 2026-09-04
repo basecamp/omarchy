@@ -265,24 +265,34 @@ Panel {
     if (region) chooseExitNode(region)
   }
 
-  function scrollItemIntoView(item) {
-    if (!panelFlick || !item) return
+  // `flick` defaults to the whole-panel scroller. The machine list has its own
+  // Flickable, so rows in that section pass it explicitly — scrolling the outer
+  // one to reveal a peer would move the panel rather than the list, and the row
+  // would stay hidden inside a list that never scrolled.
+  function scrollItemIntoView(item, flick) {
+    var view = flick || panelFlick
+    if (!view || !item) return
     Qt.callLater(function() {
       if (!item) return
       var margin = Style.space(6)
-      var point = item.mapToItem(panelFlick.contentItem, 0, 0)
+      var point = item.mapToItem(view.contentItem, 0, 0)
       var top = point.y
       var bottom = top + item.height
-      var viewTop = panelFlick.contentY
-      var viewBottom = viewTop + panelFlick.height
-      var maxY = Math.max(0, panelFlick.contentHeight - panelFlick.height)
-      if (top < viewTop + margin) panelFlick.contentY = Math.max(0, top - margin)
-      else if (bottom > viewBottom - margin) panelFlick.contentY = Math.min(maxY, bottom + margin - panelFlick.height)
+      var viewTop = view.contentY
+      var viewBottom = viewTop + view.height
+      var maxY = Math.max(0, view.contentHeight - view.height)
+      if (top < viewTop + margin) view.contentY = Math.max(0, top - margin)
+      else if (bottom > viewBottom - margin) view.contentY = Math.min(maxY, bottom + margin - view.height)
     })
   }
 
   function scrollCursorIntoView() {
-    if (focusSection === "peers" && peerColumn && peerIndex >= 0 && peerIndex < peerColumn.children.length) scrollItemIntoView(peerColumn.children[peerIndex])
+    if (focusSection === "peers" && peerColumn && peerIndex >= 0 && peerIndex < peerColumn.children.length) {
+      // Bring the machine list itself into view first, then the row within it —
+      // otherwise the row scrolls inside a list that is still off-screen.
+      scrollItemIntoView(peerFlick)
+      scrollItemIntoView(peerColumn.children[peerIndex], peerFlick)
+    }
     else if (focusSection === "exitNodes" && exitNodeColumn && exitNodeIndex >= 0 && exitNodeIndex < exitNodeColumn.children.length) scrollItemIntoView(exitNodeColumn.children[exitNodeIndex])
   }
 
@@ -691,20 +701,42 @@ Panel {
               horizontalAlignment: Text.AlignHCenter
             }
 
-            Column {
-              id: peerColumn
+            // The machine list scrolls on its own rather than pushing the
+            // sections above it off the top of the panel. Its height is the
+            // content height until that passes maxPeerListHeight, after which
+            // it stops growing and scrolls internally — so a tailnet with three
+            // machines still renders as a short panel, and one with thirty
+            // keeps the header, CONNECTIONS and EXIT NODES in view while the
+            // machines move under them.
+            Flickable {
+              id: peerFlick
               visible: root.showPeers
               width: parent.width
-              spacing: Style.space(6)
+              readonly property real maxPeerListHeight: Style.space(260)
+              implicitHeight: Math.min(peerColumn.implicitHeight, maxPeerListHeight)
+              height: implicitHeight
+              contentWidth: width
+              contentHeight: peerColumn.implicitHeight
+              clip: true
+              boundsBehavior: Flickable.StopAtBounds
+              flickableDirection: Flickable.VerticalFlick
+              interactive: contentHeight > height
+              ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-              Repeater {
-                model: tailscale.peers
-                PeerRow {
-                  required property var modelData
-                  required property int index
-                  width: peerColumn.width
-                  peer: modelData
-                  rowIndex: index
+              Column {
+                id: peerColumn
+                width: peerFlick.width
+                spacing: Style.space(6)
+
+                Repeater {
+                  model: tailscale.peers
+                  PeerRow {
+                    required property var modelData
+                    required property int index
+                    width: peerColumn.width
+                    peer: modelData
+                    rowIndex: index
+                  }
                 }
               }
             }
