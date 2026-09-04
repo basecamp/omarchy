@@ -31,7 +31,7 @@ fi
 exit 0
 SH
 
-for command in omarchy-plugin-enable omarchy-notification-send fake-editor; do
+for command in omarchy-plugin-enable omarchy-notification-send fake-editor omarchy-restart-shell; do
   cat >"$TMPDIR/bin/$command" <<'SH'
 #!/bin/bash
 printf '%s %s\n' "${0##*/}" "$*" >>"$FAKE_CALLS"
