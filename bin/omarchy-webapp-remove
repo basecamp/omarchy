@@ -62,7 +62,11 @@ rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_N
 # every browser restart (issue #9856).
 app_lc=$(printf '%s' "$APP_NAME" | tr '[:upper:]' '[:lower:]')
 if [[ $app_lc == "whatsapp" ]]; then
-  whatsapp_slim_ext="$OMARCHY_PATH/default/chromium/extensions/whatsapp-slim"
+  # Matched by path suffix, not by the current $OMARCHY_PATH: the migration
+  # wrote whichever value was live when it ran, and `omarchy dev link` changes
+  # it. Only one Omarchy owns a flags file, so any entry ending in this path is
+  # the one the migration added.
+  whatsapp_slim_ext='[^,]*/default/chromium/extensions/whatsapp-slim'
   for conf in chromium chrome google-chrome brave brave-beta brave-nightly brave-origin microsoft-edge-stable; do
     flag_file="$HOME/.config/$conf-flags.conf"
     [[ -f $flag_file ]] || continue
