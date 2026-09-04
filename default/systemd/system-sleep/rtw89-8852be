@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# RTL8852BE (10ec:b852) comes back wedged from s2idle. rtw89 resume fails with
+# "failed to write DBI", "xtal si not ready", and "mac preinit fail, ret: -110";
+# userspace then cannot bring the iface UP. Cold-probe after resume instead.
+# Remove when the rtw89 resume path can reinit this chip.
+
+rtw89_8852be_present() {
+  local dev
+  for dev in /sys/bus/pci/devices/*; do
+    [[ -f $dev/vendor && -f $dev/device ]] || continue
+    if [[ $(<"$dev/vendor") == "0x10ec" && $(<"$dev/device") == "0xb852" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+if rtw89_8852be_present; then
+  case $1 in
+    pre)
+      logger "omarchy: unloading rtw89_8852be before $2"
+      modprobe -r rtw89_8852be rtw89_8852b rtw89_8852b_common rtw89_pci rtw89_core || true
+      ;;
+    post)
+      logger "omarchy: reloading rtw89_8852be after $2"
+      modprobe rtw89_8852be || true
+      ;;
+  esac
+fi
