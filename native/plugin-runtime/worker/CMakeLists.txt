@@ -33,6 +33,7 @@ qt_add_resources(omarchy-plugin-worker-runtime plugin_presentation_qml
     ../presentation/qml/BorderSurface.qml
     ../presentation/qml/BrokerProcess.qml
     ../presentation/qml/Button.qml
+    ../presentation/qml/ConfirmDialog.qml
     ../presentation/qml/Color.qml
     ../presentation/qml/CursorSurface.qml
     ../presentation/qml/Dropdown.qml

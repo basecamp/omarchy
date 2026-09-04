@@ -7,6 +7,7 @@ Item {
   property real maximum: 100
   property real step: 1
   property bool integer: false
+  property int tickCount: 0
   property real value: minimum
   property color trackColor: "#444"
   property color fillColor: Color.accent
@@ -43,6 +44,17 @@ Item {
     radius: 2
     color: root.fillColor
   }
+  Repeater {
+    model: root.tickCount > 1 ? root.tickCount : 0
+    Rectangle {
+      required property int index
+      x: parent.width * index / Math.max(1, root.tickCount - 1)
+      anchors.verticalCenter: parent.verticalCenter
+      width: 1
+      height: 8
+      color: root.tickColor
+    }
+  }
   Rectangle {
     x: Math.max(0, Math.min(parent.width - width,
       parent.width * (root.liveValue - root.minimum)
@@ -55,8 +67,11 @@ Item {
   }
   MouseArea {
     id: pointer
+    objectName: "mouseArea"
     anchors.fill: parent
     acceptedButtons: Qt.LeftButton | Qt.RightButton
+    hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
     onPressed: function(mouse) {
       if (mouse.button === Qt.RightButton) {
         root.rightClicked()
@@ -69,6 +84,14 @@ Item {
     }
     onReleased: function(mouse) {
       if (mouse.button === Qt.LeftButton) root.released(root.valueAt(mouse.x))
+    }
+    onWheel: function(wheel) {
+      var next = Math.max(root.minimum, Math.min(root.maximum,
+        root.value + (wheel.angleDelta.y > 0 ? root.step : -root.step)))
+      if (root.integer) next = Math.round(next)
+      root.moved(next)
+      root.released(next)
+      wheel.accepted = true
     }
   }
 }

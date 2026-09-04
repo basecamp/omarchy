@@ -1,6 +1,6 @@
 import QtQuick
 
-Item {
+Rectangle {
   property var anchorItem: null
   property var owner: null
   property var bar: null
@@ -8,18 +8,21 @@ Item {
   property var focusTarget: null
   property real contentWidth: 430
   property real contentHeight: 680
+  property real padding: 0
 
   visible: open
   width: contentWidth
   height: contentHeight
   anchors.centerIn: parent
+  color: Color.popups.background
 
   function fittedContentWidth(value) {
     return Math.min(parent ? parent.width : value, value)
   }
 
   function fittedContentHeight(value, maximum) {
-    return Math.min(parent ? parent.height : maximum, Math.min(value, maximum))
+    var limit = maximum === undefined ? value : maximum
+    return Math.min(parent ? parent.height : limit, Math.min(value, limit))
   }
 
   onVisibleChanged: {

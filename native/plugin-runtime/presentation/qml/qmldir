@@ -6,6 +6,7 @@ BarWidget 1.0 BarWidget.qml
 BorderSurface 1.0 BorderSurface.qml
 BrokerProcess 1.0 BrokerProcess.qml
 Button 1.0 Button.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
 CursorSurface 1.0 CursorSurface.qml
 Dropdown 1.0 Dropdown.qml
 KeyboardPanel 1.0 KeyboardPanel.qml

@@ -16,6 +16,7 @@ Rectangle {
   property string fontFamily: Style.font.menuFamily
   property int fontSize: 14
   property real verticalPadding: 0
+  readonly property bool pressed: pointer.pressed
   signal clicked()
 
   implicitWidth: Math.max(32, label.implicitWidth + 20)
@@ -42,6 +43,7 @@ Rectangle {
     id: pointer
     anchors.fill: parent
     hoverEnabled: true
+    cursorShape: Qt.PointingHandCursor
     enabled: root.enabled
     onClicked: {
       if (root.focusable) root.forceActiveFocus()
