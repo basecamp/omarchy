@@ -56,12 +56,14 @@ jobs:
       - name: Install test dependencies
         run: |
           pacman -S --noconfirm --needed \
+            desktop-file-utils \
             glib2 \
             imagemagick \
             jq \
             libxkbcommon \
             lua \
             nodejs \
+            openssh \
             python \
             ripgrep \
             sudo
