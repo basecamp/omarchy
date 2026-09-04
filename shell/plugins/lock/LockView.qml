@@ -16,6 +16,7 @@ Item {
   property bool loadBackground: true
   property string passwordText: ""
   property bool syncingPasswordText: false
+  property bool passwordRevealed: false
 
   readonly property string placeholderText: "Enter Password"
   readonly property int fieldWidth: 381
@@ -27,10 +28,16 @@ Item {
   // Space to keep clear on each side of the field for the fingerprint icon
   // (icon width plus a gap) so the centered dots never run under it.
   readonly property real fingerprintReserve: fingerprintConfigured ? Math.round(fingerprintIcon.implicitWidth + 12) : 0
+  // Same idea, for the always-on reveal toggle.
+  readonly property real eyeReserve: Math.round(eyeButton.width + 4)
   // Shrink the dots to fit once the password outgrows the field, so every
   // keystroke stays visible — otherwise long passwords clip with no feedback.
   readonly property real passwordDotScale: dotMetrics.advanceWidth > 0
     ? Math.min(1, (passwordInput.width - 4) / dotMetrics.advanceWidth)
+    : 1
+  // Same idea as passwordDotScale, but for the revealed plain-text password.
+  readonly property real revealedTextScale: revealedMetrics.advanceWidth > 0
+    ? Math.min(1, (passwordInput.width - 4) / revealedMetrics.advanceWidth)
     : 1
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
   readonly property bool errorState: failureMessage.length > 0
@@ -60,6 +67,14 @@ Item {
     passwordTextEdited("")
   }
 
+  // Shared by the mouse toggle and the Ctrl+Space shortcut. Guarded on
+  // non-empty input so neither path can arm a reveal that then applies to
+  // the next attempt's first keystrokes once the field re-fills.
+  function toggleReveal() {
+    if (passwordInput.text.length === 0) return
+    passwordRevealed = !passwordRevealed
+  }
+
   function syncPasswordText() {
     if (passwordInput.text === passwordText) return
     syncingPasswordText = true
@@ -84,6 +99,15 @@ Item {
     font.pixelSize: root.passwordDotFontSize
     font.letterSpacing: root.passwordDotLetterSpacing
     text: "●".repeat(passwordInput.text.length)
+  }
+
+  // Measures the revealed plain-text password; revealedTextScale compares
+  // this against the field width to decide how far it must shrink to fit.
+  TextMetrics {
+    id: revealedMetrics
+    font.family: Style.font.family
+    font.pixelSize: root.fieldFontSize
+    text: passwordInput.text
   }
 
   Rectangle {
@@ -133,26 +157,31 @@ Item {
         id: passwordInput
         anchors.fill: parent
         anchors.topMargin: inputField.borderTop
-        // Reserve the fingerprint icon's width on both sides so the centered
-        // dots stay symmetric and never slide under the icon as they grow.
-        anchors.rightMargin: inputField.borderRight + 18 + root.fingerprintReserve
+        // Reserve the icons' width on both sides so the centered dots stay
+        // symmetric and never slide under them as the password grows.
+        anchors.rightMargin: inputField.borderRight + 18 + root.fingerprintReserve + root.eyeReserve
         anchors.bottomMargin: inputField.borderBottom
-        anchors.leftMargin: inputField.borderLeft + 18 + root.fingerprintReserve
+        anchors.leftMargin: inputField.borderLeft + 18 + root.fingerprintReserve + root.eyeReserve
         verticalAlignment: TextInput.AlignVCenter
         horizontalAlignment: TextInput.AlignHCenter
         activeFocusOnPress: true
         clip: true
         enabled: root.inputEnabled && !root.authenticatingPassword
         readOnly: root.authenticatingPassword
-        echoMode: TextInput.Password
+        echoMode: root.passwordRevealed ? TextInput.Normal : TextInput.Password
         passwordCharacter: "\u25CF"
         passwordMaskDelay: 0
         color: Color.lock.text
         selectionColor: Color.lock.selection
         selectedTextColor: Color.lock.text
         font.family: Style.font.family
-        font.pixelSize: text.length > 0 ? Math.max(1, Math.floor(root.passwordDotFontSize * root.passwordDotScale)) : root.fieldFontSize
-        font.letterSpacing: text.length > 0 ? root.passwordDotLetterSpacing * root.passwordDotScale : 0
+        font.pixelSize: {
+          if (text.length === 0) return root.fieldFontSize
+          return root.passwordRevealed
+            ? Math.max(1, Math.floor(root.fieldFontSize * root.revealedTextScale))
+            : Math.max(1, Math.floor(root.passwordDotFontSize * root.passwordDotScale))
+        }
+        font.letterSpacing: text.length > 0 && !root.passwordRevealed ? root.passwordDotLetterSpacing * root.passwordDotScale : 0
         cursorVisible: activeFocus && root.showPasswordCursor && text.length > 0
         cursorDelegate: Rectangle {
           width: 2
@@ -164,6 +193,9 @@ Item {
           if (!root.syncingPasswordText) root.passwordTextEdited(text)
           if (text.length > 0) {
             root.wakeRequested()
+          } else {
+            // Don't leave the field armed to reveal next time someone starts typing.
+            root.passwordRevealed = false
           }
           if (text.length > 0 && root.failureMessage.length > 0) root.clearFailureRequested()
         }
@@ -178,6 +210,12 @@ Item {
           root.wakeRequested()
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")
+            event.accepted = true
+          } else if (event.modifiers === Qt.ControlModifier && event.key === Qt.Key_Space) {
+            // Ctrl+Space (not Alt-based, so it won't collide with AltGr
+            // composition on non-US keyboard layouts) reveals the password
+            // without touching the mouse.
+            root.toggleReveal()
             event.accepted = true
           }
         }
@@ -213,6 +251,57 @@ Item {
         font.pixelSize: Math.round(root.fieldFontSize * 1.1)
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
+      }
+
+      // Eye toggle: click-and-hold-free reveal of the password. Sits just
+      // inside the fingerprint icon (or in its spot, when no sensor is
+      // enrolled) and never steals focus from the text field. Always shown
+      // (dimmed while empty) so it's easy to spot before you start typing.
+      Rectangle {
+        id: eyeButton
+        objectName: "passwordRevealToggle"
+        width: eyeIcon.implicitWidth + 16
+        height: eyeIcon.implicitHeight + 12
+        radius: height / 2
+        anchors.right: root.fingerprintConfigured ? fingerprintIcon.left : parent.right
+        anchors.rightMargin: root.fingerprintConfigured ? 12 : inputField.borderRight + 12
+        anchors.verticalCenter: parent.verticalCenter
+        color: eyeArea.containsMouse ? Util.alpha(Color.lock.text, 0.12) : "transparent"
+
+        Accessible.role: Accessible.Button
+        Accessible.name: root.passwordRevealed ? "Hide password" : "Show password"
+        Accessible.description: "Toggle whether the typed password is shown in plain text"
+        Accessible.focusable: passwordInput.text.length > 0
+        Accessible.onPressAction: root.toggleReveal()
+
+        Text {
+          id: eyeIcon
+          anchors.centerIn: parent
+          text: root.passwordRevealed ? "󰈉" : "󰈈"
+          color: passwordInput.text.length > 0
+            ? (root.passwordRevealed ? Color.lock.text : Util.alpha(Color.lock.text, 0.8))
+            : Util.alpha(Color.lock.text, 0.35)
+          font.family: Style.font.family
+          font.pixelSize: Math.round(root.fieldFontSize * 1.1)
+        }
+
+        MouseArea {
+          id: eyeArea
+          objectName: "passwordRevealMouseArea"
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: passwordInput.text.length > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+          enabled: passwordInput.text.length > 0
+          onClicked: {
+            root.toggleReveal()
+            root.forcePasswordFocus()
+          }
+        }
+
+        PanelToolTip {
+          visible: eyeArea.containsMouse
+          text: (root.passwordRevealed ? "Hide password" : "Show password") + "  ·  Ctrl+Space"
+        }
       }
     }
   }
