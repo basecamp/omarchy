@@ -12,6 +12,15 @@ const panelSource = fs.readFileSync(root + '/shell/plugins/panels/network/Panel.
 assert(/IpcHandler[\s\S]*?function toggleNetwork\(\) \{ root\.toggleNetwork\(\) \}/.test(panelSource), 'network exposes the Wi-Fi radio toggle over IPC')
 assert(/manageIpc: false/.test(panelSource), 'network owns its IPC handler so it can extend the target methods')
 
+// The hidden-network form is appended at the bottom of the panel's content,
+// so on a short display it can fall outside the card's capped height with no
+// way to reach it. The main column must live inside a Flickable (not a bare
+// Column) so it has a scroll path -- a future edit flattening it back out
+// must fail here.
+const mainColumn = panelSource.match(/Flickable \{\s*id: panelFlick[\s\S]*?Column \{\s*id: column\b/)
+assert(mainColumn, 'network wraps its main column in a Flickable so overflow content stays reachable')
+assert(/interactive: contentHeight > height/.test(mainColumn[0]), 'network only lets the outer Flickable drag when its content overflows')
+
 // Opening from the bar must call open() and nothing else. open() runs
 // refresh(true), which defers the PHY scan; a second bare refresh() defaults
 // scanWifi to false, sets scannerEnabled synchronously, and stalls the open on

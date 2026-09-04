@@ -63,6 +63,39 @@ Panel {
     else hiddenSsidField.forceActiveFocus()
   }
 
+  // Scrolls panelFlick just enough to bring `item` into view, without
+  // otherwise disturbing the scroll position. Mirrors the scrollItemIntoView
+  // idiom in tailscale/dropbox's Panel.qml.
+  function scrollItemIntoView(item) {
+    if (!panelFlick || !item) return
+    Qt.callLater(function() {
+      if (!item) return
+      var margin = Style.space(6)
+      var point = item.mapToItem(panelFlick.contentItem, 0, 0)
+      var top = point.y
+      var bottom = top + item.height
+      var viewTop = panelFlick.contentY
+      var viewBottom = viewTop + panelFlick.height
+      var maxY = Math.max(0, panelFlick.contentHeight - panelFlick.height)
+      if (top < viewTop + margin) panelFlick.contentY = Math.max(0, top - margin)
+      else if (bottom > viewBottom - margin) panelFlick.contentY = Math.min(maxY, bottom + margin - panelFlick.height)
+    })
+  }
+
+  // One coarse target per focusSection: sections don't scroll internally
+  // (the wifi ListView positions its own selected row via
+  // positionViewAtIndex), so bringing the section's container into view
+  // once is enough.
+  function scrollFocusSectionIntoView() {
+    if (focusSection === "header") scrollItemIntoView(heroActions)
+    else if (focusSection === "portal") scrollItemIntoView(portalAction)
+    else if (focusSection === "band") scrollItemIntoView(bandSection)
+    else if (focusSection === "dns") scrollItemIntoView(dnsRow)
+    else if (focusSection === "wifi") scrollItemIntoView(networkList)
+    else if (focusSection === "hiddenToggle") scrollItemIntoView(hiddenToggleButton)
+    else if (focusSection === "hiddenSecurity") scrollItemIntoView(hiddenSecurityDropdown)
+  }
+
   // Live connection details from `ip` / /sys / iw.
   property var info: ({})  // { iface, type, ip, prefix, gateway, speed, duplex, ssid, signal, freq, bitrate, rx_bytes, tx_bytes, router_ping_ms, internet_ping_ms }
 
@@ -201,6 +234,11 @@ Panel {
   // while the form is open; it owns its own option navigation once opened).
   // h/l move within header actions, band pills, or DNS providers.
   property string focusSection: "dns"  // "header" | "portal" | "band" | "dns" | "wifi" | "hiddenToggle" | "hiddenSecurity"
+  // The outer Flickable owns scroll position, so a keyboard-focused section
+  // that moves off-screen has to be dragged back into the viewport itself --
+  // switching focusSection alone doesn't do that for free. Same idiom as
+  // tailscale/dropbox's scrollItemIntoView().
+  onFocusSectionChanged: scrollFocusSectionIntoView()
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
@@ -401,6 +439,7 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh(true)
+      if (panelFlick) panelFlick.contentY = 0
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       wifiActionFocused = false
       focusSection = hasCaptivePortal ? "portal" : (wifiNetworks.length > 0 ? "wifi" : "dns")
@@ -1364,12 +1403,20 @@ Panel {
         else if (t === "w" || t === "W") root.toggleNetwork()
       }
 
-    Column {
-      id: column
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.top: parent.top
-      spacing: Style.space(12)
+      Flickable {
+        id: panelFlick
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        interactive: contentHeight > height
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+        Column {
+          id: column
+          width: panelFlick.width
+          spacing: Style.space(12)
 
       // ---------- Hero: network icon · SSID + state · actions ----------
       Item {
@@ -1606,6 +1653,7 @@ Panel {
       }
 
       Column {
+        id: bandSection
         visible: root.canSelectBand
         width: parent.width
         spacing: Style.space(10)
@@ -1804,7 +1852,14 @@ Panel {
       // doesn't push the popup off-screen. ListView (vs Repeater+Column)
       // gives us positionViewAtIndex for free, which is what keeps the
       // keyboard-selected row scrolled into view as j/k walk past the
-      // visible window.
+      // visible window. It now nests inside panelFlick, but stays
+      // interactive: a drag over the list scrolls the list (Qt hands the
+      // gesture to the innermost Flickable under the cursor), and
+      // StopAtBounds means it won't chain into the outer scroller once it
+      // hits bottom -- mildly annoying, but nothing past the 240px cap
+      // becomes unreachable, since panelFlick is still draggable over every
+      // other section. Turning this off would leave overflow rows reachable
+      // only by keyboard.
       ListView {
         id: networkList
         visible: root.wifiStationAvailable
@@ -1910,6 +1965,10 @@ Panel {
 
             onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
             Component.onCompleted: if (visible) Qt.callLater(forceActiveFocus)
+            // Gaining focus here doesn't move focusSection, so it needs its
+            // own scroll-into-view -- otherwise a field that just appeared
+            // below the fold takes focus invisibly.
+            onActiveFocusChanged: if (activeFocus) root.scrollItemIntoView(hiddenSsidField)
           }
 
           // No enterprise option: with no beacon to verify and no CA/server
@@ -1950,6 +2009,7 @@ Panel {
             onAccepted: root.submitHiddenNetwork()
             onTextChanged: if (text !== root.hiddenPasswordText) root.hiddenPasswordText = text
             Keys.onEscapePressed: root.cancelHiddenForm()
+            onActiveFocusChanged: if (activeFocus) root.scrollItemIntoView(hiddenPasswordField)
           }
 
           Button {
@@ -1979,7 +2039,8 @@ Panel {
           }
         }
       }
-    }
+        }
+      }
     }
   }
 
