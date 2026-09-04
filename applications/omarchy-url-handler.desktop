@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Name=Omarchy URL Handler
+Comment=Handle omarchy:// links, such as installing a plugin from a web page
+Exec=omarchy-url-handler %u
+Terminal=false
+Type=Application
+NoDisplay=true
+MimeType=x-scheme-handler/omarchy;

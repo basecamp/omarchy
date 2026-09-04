@@ -13,6 +13,7 @@ application/pdf=org.gnome.Evince.desktop
 x-scheme-handler/http=chromium.desktop
 x-scheme-handler/https=chromium.desktop
 x-scheme-handler/mailto=HEY.desktop
+x-scheme-handler/omarchy=omarchy-url-handler.desktop
 
 video/mp4=mpv.desktop
 video/x-msvideo=mpv.desktop

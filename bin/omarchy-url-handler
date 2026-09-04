@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# omarchy:summary=Handle omarchy:// links, such as installing a plugin from a web page
+# omarchy:group=cmd
+# omarchy:name=url-handler
+# omarchy:args=<omarchy://plugin/add?url=<https-git-url>[&enable=1]>
+# omarchy:hidden=true
+
+# Registered as the x-scheme-handler for omarchy:// so a web page can offer an
+# "Install in Omarchy" link for a shell plugin:
+#
+#   omarchy://plugin/add?url=<https-git-url>[&enable=1]
+#
+# The link comes from an untrusted page, so this only ever turns it into an
+# interactive `omarchy plugin add` in a floating terminal: the user still sees
+# the plugin trust warning and confirms before anything is cloned. Only https://
+# repo URLs are accepted; other git transports (ssh, file, ext::, local paths,
+# `-`-prefixed strings) are rejected.
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-url-handler: $*" >&2
+  omarchy-notification-send -u critical "Omarchy link rejected" "$*" || true
+  exit 1
+}
+
+urldecode() {
+  local encoded="${1//+/ }"
+  printf '%b' "${encoded//%/\\x}"
+}
+
+truthy() {
+  case "${1,,}" in
+    1 | true | yes | on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" || -z ${1:-} ]]; then
+  echo "Usage: omarchy-url-handler <omarchy://plugin/add?url=<https-git-url>[&enable=1]>"
+  exit 0
+fi
+
+uri="$1"
+
+# omarchy://<path>?<query>, with or without the slashes after the scheme.
+[[ $uri =~ ^[Oo][Mm][Aa][Rr][Cc][Hh][Yy]:(//)?([^?#]*)(\?([^#]*))?(#.*)?$ ]] ||
+  fail "not an omarchy:// link: $uri"
+path="${BASH_REMATCH[2]}"
+query="${BASH_REMATCH[4]}"
+path="${path#/}"
+path="${path%/}"
+
+declare -A params=()
+IFS='&' read -ra pairs <<<"$query"
+for pair in "${pairs[@]}"; do
+  [[ -n $pair ]] || continue
+  key="${pair%%=*}"
+  value=""
+  [[ $pair == *=* ]] && value="${pair#*=}"
+  params["$(urldecode "$key")"]="$(urldecode "$value")"
+done
+
+case "$path" in
+  plugin/add | plugin/install)
+    repo="${params[url]:-}"
+    [[ -n $repo ]] || fail "missing url= parameter"
+    [[ $repo =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[^[:space:][:cntrl:]]*)?$ ]] ||
+      fail "only https:// git URLs are allowed: $repo"
+
+    cmd=(omarchy-plugin-add "$repo")
+    if truthy "${params[enable]:-}"; then
+      cmd+=(--enable)
+    fi
+    ;;
+  *)
+    fail "unsupported omarchy:// action: ${path:-(none)}"
+    ;;
+esac
+
+printf -v quoted '%q ' "${cmd[@]}"
+exec omarchy-launch-floating-terminal-with-presentation "${quoted% }"
