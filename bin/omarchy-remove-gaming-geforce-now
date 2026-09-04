@@ -10,5 +10,15 @@ if omarchy-cmd-present flatpak && flatpak info com.nvidia.geforcenow &>/dev/null
   flatpak uninstall -y --delete-data com.nvidia.geforcenow
 fi
 
+# The NVIDIA installer drops a launcher script, desktop entry, and icon outside
+# the Flatpak exports, so they survive the uninstall above.
+rm -f "$HOME/.local/share/applications/com.nvidia.geforcenow.desktop"
+rm -f "$HOME/.local/share/applications/NVIDIA GeForce NOW"
+rm -f "$HOME"/.local/share/icons/hicolor/*/apps/com.nvidia.geforcenow.png
+rm -rf "$HOME/.local/state/NVIDIA/GeForceNOW"
+rmdir --ignore-fail-on-non-empty "$HOME/.local/state/NVIDIA" 2>/dev/null || true
+
+update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+
 echo ""
 echo "GeForce NOW removed."
