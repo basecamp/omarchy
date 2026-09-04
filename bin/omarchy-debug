@@ -28,10 +28,19 @@ done
 
 LOG_FILE="/tmp/omarchy-debug.log"
 
+# Strip identifiers before this output is attached to a public issue: ufw's
+# packet log carries the addresses of every device on the reporter's network,
+# and the kernel's wifi association lines carry the access point BSSID, which is
+# geolocatable. ufw logs at kernel warning level, so both dmesg and the journal
+# carry them.
+scrub_network_identifiers() {
+  grep -v '\[UFW BLOCK\]' | sed -E 's/([0-9a-f]{2}:){5}[0-9a-f]{2}/<mac>/g'
+}
+
 if [[ $NO_SUDO = "true" ]]; then
   DMESG_OUTPUT="(skipped - --no-sudo flag used)"
 else
-  DMESG_OUTPUT="$(sudo dmesg)"
+  DMESG_OUTPUT="$(sudo dmesg | scrub_network_identifiers)"
 fi
 
 cat > "$LOG_FILE" <<EOF
@@ -52,7 +61,7 @@ $DMESG_OUTPUT
 =========================================
 JOURNALCTL (CURRENT BOOT, WARNINGS+ERRORS)
 =========================================
-$(journalctl -b -p 4..1)
+$(journalctl -b -p 4..1 | scrub_network_identifiers)
 
 =========================================
 INSTALLED PACKAGES
