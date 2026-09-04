@@ -4,7 +4,7 @@
 
 set -e
 
-WINDOW_ADDRESS=$(hyprctl clients -j | jq -r '.[]|select((.class|test("\\bsignal\\b";"i")) or (.title|test("\\bsignal\\b";"i")))|.address' | head -n1)
+WINDOW_ADDRESS=$(hyprctl clients -j | jq -r '.[]|select(.class|test("\\bsignal\\b";"i"))|.address' | head -n1)
 
 if [[ -n $WINDOW_ADDRESS ]]; then
   hyprctl dispatch "hl.dsp.focus({ window = \"address:$WINDOW_ADDRESS\" })" >/dev/null 2>&1 || hyprctl dispatch focuswindow "address:$WINDOW_ADDRESS"
