@@ -1,0 +1,2660 @@
+.TH OMARCHY 1 "24 August 2026" "4.0.0.alpha" "Omarchy Manual"
+.SH NAME
+omarchy \- Omarchy command center
+.SH SYNOPSIS
+.B omarchy
+.I command
+[args...]
+.br
+.B omarchy commands
+[\-\-all] [\-\-json] [\-\-check]
+.br
+.B omarchy
+.I group
+\-\-help
+.br
+.B omarchy
+.I group command
+\-\-help
+.SH DESCRIPTION
+.B omarchy
+is the command center for an Omarchy system: a single entry point
+routing to the group/command binaries that manage themes, hardware,
+Hyprland, packages, and general system state.
+.PP
+Commands are organized into groups. Run
+.B omarchy commands
+for a live list, or
+.BI "omarchy " group " \-\-help"
+for help on a specific group.
+.SH COMMON COMMANDS
+.TP
+.B omarchy update
+Update Omarchy and system packages.
+.TP
+.B omarchy theme list
+List available themes.
+.TP
+.BI "omarchy theme set " name
+Apply a theme.
+.TP
+.B omarchy font list
+List available fonts.
+.TP
+.B omarchy screenshot
+Take a screenshot.
+.TP
+.B omarchy debug
+Print debugging information.
+.SH COMMANDS
+.SS agent \- AI coding agent usage data
+.B omarchy agent
+.I [\-\-inline] [\-\-pick]
+.RS 4
+Launch the default coding agent in a terminal
+.br
+Example: omarchy agent
+.br
+Example: omarchy agent \-\-inline
+.RE
+.PP
+.B omarchy agent crash
+.I <pid> [comm] [exe] [signal]
+.RS 4
+Diagnose a crashed process with the default coding agent
+.br
+Example: omarchy agent crash 1516893
+.RE
+.PP
+.B omarchy agent prompt
+.I [\-\-inline] <prompt...>
+.RS 4
+Launch the default coding agent with a prompt
+.br
+Example: omarchy agent prompt "Review this project"
+.RE
+.PP
+.B omarchy agent usage update
+.I [\-\-force] [\-\-limits\-only] [\-\-except <agent>] [agent...]
+.RS 4
+Regenerate the AI agent usage data files
+.br
+Example: omarchy agent usage\-update
+.br
+Example: omarchy agent usage\-update claude
+.br
+Example: omarchy agent usage\-update \-\-except codex
+.RE
+.PP
+.SS audio \- Audio input and output controls
+.B omarchy audio input mute
+.RS 4
+Toggle microphone mute. Drives the hardware mic-mute LED on laptops that expose one.
+.RE
+.PP
+.B omarchy audio input set default
+.I <node\-id> <source\-name>
+.RS 4
+Set the default audio input and move active streams
+.br
+Example: omarchy audio input set default 43 alsa_input.pci\-0000_00_1f.3.analog\-stereo
+.RE
+.PP
+.B omarchy audio output set default
+.I <node\-id> <sink\-name>
+.RS 4
+Set the default audio output and move active streams
+.br
+Example: omarchy audio output set default 42 alsa_output.pci\-0000_00_1f.3.analog\-stereo
+.RE
+.PP
+.B omarchy audio output sink
+.I [sink\-name]
+.RS 4
+Print the sink whose volume and mute a given output really uses
+.br
+Example: omarchy audio output sink
+.br
+Example: omarchy audio output sink omarchy_speaker_tuning
+.RE
+.PP
+.B omarchy audio output switch
+.RS 4
+Switch between audio outputs while preserving the mute status
+.RE
+.PP
+.B omarchy audio output volume
+.I <raise|\:lower|\:mute\-toggle|\:+N|\:\-N>
+.RS 4
+Adjust output volume and show the Omarchy OSD
+.br
+Example: omarchy audio output volume raise
+.br
+Example: omarchy audio output volume lower
+.br
+Example: omarchy audio output volume mute\-toggle
+.br
+Example: omarchy audio output volume +1
+.RE
+.PP
+.B omarchy audio sink availability
+.RS 4
+Print PulseAudio sink availability for the shell
+.RE
+.PP
+.B omarchy audio source switch
+.I [next|\:previous]
+.RS 4
+Cycle to the next media source and transfer playback when the current source is playing
+.br
+Example: omarchy audio source switch
+.br
+Example: omarchy\-audio\-source\-switch previous
+.RE
+.PP
+.B omarchy audio tuning
+.I <on|\:off|\:status|\:match|\:fronted\-sink> [\-\-force]
+.RS 4
+Manage the speaker tuning for this laptop
+.br
+Example: omarchy audio tuning status
+.br
+Example: omarchy audio tuning on
+.br
+Example: omarchy audio tuning off
+.RE
+.PP
+.SS bar \- Omarchy shell bar layout and settings
+.B omarchy bar
+.I use <id> |\: reset |\: defaults |\: position <top|\:bottom|\:left|\:right> |\: transparent <true|\:false|\:toggle> |\: put <id> [placement] |\: move <id> [placement] |\: set <id> <key> <value> [\-\-json] [placement]
+.RS 4
+Configure the bar and its widget layout
+.br
+Example: omarchy bar use local.neon\-bar
+.br
+Example: omarchy bar put omarchy.keyboard\-layout \-\-after omarchy.clock
+.br
+Example: omarchy bar move omarchy.clock \-\-section center \-\-index 0
+.br
+Example: omarchy bar set omarchy.clock format HH:mm
+.RE
+.PP
+.SS battery \- Battery status helpers
+.B omarchy battery present
+.RS 4
+Returns true if a battery is present on the system.
+.RE
+.PP
+.B omarchy battery status
+.I [\-\-shell]
+.RS 4
+Returns a formatted battery status string with percentage and power draw/charge.
+.RE
+.PP
+.SS bluetooth \- Bluetooth device controls
+.B omarchy bluetooth device
+.I [pair|\:connect|\:disconnect|\:forget] <address>
+.RS 4
+Control a Bluetooth device
+.br
+Example: omarchy bluetooth device connect 00:11:22:33:44:55
+.RE
+.PP
+.B omarchy bluetooth power
+.I <on|\:off|\:toggle|\:is\-on>
+.RS 4
+Turn Bluetooth on or off, remembered across reboots
+.RE
+.PP
+.SS branding \- About and screensaver branding
+.B omarchy branding about
+.I <image|\:text|\:reset>
+.RS 4
+Edit, set, or reset About branding
+.br
+Example: omarchy branding about image
+.br
+Example: omarchy branding about text
+.br
+Example: omarchy branding about reset
+.RE
+.PP
+.B omarchy branding screensaver
+.I <image|\:text|\:reset>
+.RS 4
+Edit, set, or reset screensaver branding
+.br
+Example: omarchy branding screensaver image
+.br
+Example: omarchy branding screensaver text
+.br
+Example: omarchy branding screensaver reset
+.RE
+.PP
+.SS brightness \- Display and keyboard brightness
+.B omarchy brightness display
+.I [\-\-no\-osd] [\-\-monitor name] [+N%|\:N%\-|\:N%|\:off|\:on]
+.RS 4
+Show or adjust brightness on the focused display.
+.br
+Example: omarchy brightness display
+.br
+Example: omarchy brightness display +5%
+.br
+Example: omarchy brightness display \-\-monitor DP\-1 50%
+.br
+Example: omarchy brightness display off
+.br
+Example: omarchy brightness display on
+.RE
+.PP
+.B omarchy brightness display apple
+.I [\-\-no\-osd] [+N%|\:N%\-|\:N%]
+.RS 4
+Show or adjust Apple Studio Display and Apple XDR Display brightness using asdcontrol.
+.br
+Example: omarchy brightness display apple
+.br
+Example: omarchy brightness display apple +5%
+.br
+Example: omarchy brightness display apple \-\-no\-osd 50%
+.RE
+.PP
+.B omarchy brightness display ddc
+.I <monitor> [+N%|\:N%\-|\:N%]
+.RS 4
+Show or adjust DDC/CI display brightness for a Hyprland monitor.
+.br
+Example: omarchy\-brightness\-display\-ddc DP\-1
+.br
+Example: omarchy\-brightness\-display\-ddc DP\-1 50%
+.RE
+.PP
+.B omarchy brightness keyboard
+.I [\-\-no\-osd] <up|\:down|\:cycle|\:off|\:restore>
+.RS 4
+Adjust keyboard backlight brightness using available steps.
+.RE
+.PP
+.B omarchy brightness keyboard mute
+.I <on|\:off>
+.RS 4
+Set the mic-mute indicator LED on laptops that expose a platform::micmute LED node.
+.RE
+.PP
+.SS capture \- Screenshots and screen recording
+.B omarchy capture qr
+.RS 4
+Decode a QR code from a screenshot region
+.br
+Example: omarchy capture qr
+.RE
+.PP
+.B omarchy capture screenrecording
+.I [\-\-fullscreen] [\-\-with\-desktop\-audio] [\-\-with\-microphone\-audio] [\-\-with\-webcam] [\-\-webcam\-device=<device>] [\-\-webcam\-size=<small|\:medium|\:large>] [\-\-resolution=<size>] [\-\-stop\-recording]
+.RS 4
+Start or stop screen recording
+.br
+Alias: omarchy screenrecord
+.br
+Example: omarchy screenrecord
+.br
+Example: omarchy capture screenrecording \-\-with\-desktop\-audio
+.RE
+.PP
+.B omarchy capture screenrecording with webcam
+.RS 4
+Pick a webcam and start a screen recording with it
+.br
+Example: omarchy capture screenrecording\-with\-webcam
+.RE
+.PP
+.B omarchy capture screenshot
+.I [smart|\:region|\:windows|\:fullscreen] [slurp|\:copy|\:save] [\-\-editor=<name>]
+.RS 4
+Take a screenshot
+.br
+Alias: omarchy screenshot
+.br
+Example: omarchy screenshot
+.br
+Example: omarchy capture screenshot region
+.RE
+.PP
+.B omarchy capture text
+.RS 4
+Extract text from a screenshot region with OCR
+.br
+Example: omarchy capture text
+.RE
+.PP
+.B omarchy capture webcam resize
+.I <smaller|\:larger|\:reset|\:small|\:medium|\:large>
+.RS 4
+Resize the active webcam recording overlay
+.br
+Example: omarchy capture webcam resize smaller
+.br
+Example: omarchy\-capture\-webcam\-resize reset
+.RE
+.PP
+.SS channel \- Omarchy release channel management
+.B omarchy channel current
+.RS 4
+Print the active Omarchy package channel
+.RE
+.PP
+.B omarchy channel set
+.I <stable|\:rc|\:edge|\:dev>
+.RS 4
+Set the Omarchy package channel.
+.br
+Requires sudo.
+.RE
+.PP
+.SS cmd \- Command and shortcut helpers
+.B omarchy cmd missing
+.RS 4
+Check whether any required commands are missing
+.RE
+.PP
+.B omarchy cmd present
+.RS 4
+Check whether all required commands are available
+.RE
+.PP
+.SS debug \- Diagnostics and support logs
+.B omarchy debug
+.I [\-\-no\-sudo] [\-\-print]
+.RS 4
+Print debugging information
+.br
+Requires sudo.
+.br
+Example: omarchy debug \-\-print \-\-no\-sudo
+.RE
+.PP
+.B omarchy debug idle
+.I [log\-lines]
+.RS 4
+Show idle, screensaver, and lock diagnostics
+.br
+Example: omarchy debug idle
+.br
+Example: omarchy\-debug\-idle 400
+.RE
+.PP
+.SS default \- Default application selection
+.B omarchy default agent
+.I [pi|\:omp|\:opencode|\:ori|\:claude|\:codex|\:grok|\:agy|\:copilot|\:crush]
+.RS 4
+Set and launch the default coding agent
+.br
+Example: omarchy default agent
+.br
+Example: omarchy default agent codex
+.br
+Example: omarchy default agent claude
+.RE
+.PP
+.B omarchy default browser
+.I [chromium|\:chrome|\:brave|\:brave\-origin|\:edge|\:firefox|\:zen]
+.RS 4
+Set the default browser for Omarchy and XDG handlers
+.br
+Example: omarchy default browser firefox
+.br
+Example: omarchy default browser brave
+.RE
+.PP
+.B omarchy default editor
+.I [code|\:cursor|\:zed|\:sublime_text|\:helix|\:vim|\:emacs|\:nvim]
+.RS 4
+Set the default editor used by omarchy-launch-editor
+.br
+Example: omarchy default editor
+.br
+Example: omarchy default editor code
+.br
+Example: omarchy default editor helix
+.RE
+.PP
+.B omarchy default terminal
+.I [alacritty|\:foot|\:ghostty|\:kitty]
+.RS 4
+Set the default terminal used by xdg-terminal-exec
+.br
+Example: omarchy default terminal ghostty
+.br
+Example: omarchy default terminal kitty
+.RE
+.PP
+.SS dev \- Omarchy development tools
+.B omarchy dev add migration
+.I [\-\-no\-edit]
+.RS 4
+Create a new Omarchy migration in the current source tree.
+.RE
+.PP
+.B omarchy dev benchmark cli
+.I [\-\-repeat=<count>]
+.RS 4
+Measure Omarchy CLI response times
+.br
+Example: omarchy dev benchmark cli
+.br
+Example: omarchy dev benchmark cli \-\-repeat=10
+.RE
+.PP
+.B omarchy dev benchmark theme switcher
+.I [\-\-repeat=<count>] [\-\-keep\-cache]
+.RS 4
+Measure theme switcher cache and selector prep times
+.br
+Alias: omarchy dev benchmark theme\-switcher
+.br
+Example: omarchy dev benchmark theme switcher
+.br
+Example: omarchy dev benchmark theme\-switcher \-\-repeat=10
+.RE
+.PP
+.B omarchy dev font
+.I [list|\:add] <name> <svg\-file\-or\-url> [\-\-codepoint U+E9xx] [\-\-font PATH]
+.RS 4
+Add branded glyphs to the Omarchy icon font
+.br
+Example: omarchy dev font list
+.br
+Example: omarchy dev font add ollama https://simpleicons.org/icons/ollama.svg
+.RE
+.PP
+.B omarchy dev generate manpage
+.RS 4
+Regenerate man/man1/omarchy.1 from the live command list
+.RE
+.PP
+.B omarchy dev install ydoo
+.RS 4
+Install and enable ydotool mouse automation for Omarchy development
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy dev link
+.I <path\-to\-checkout> [\-\-no\-reboot]
+.RS 4
+Point Omarchy at a local checkout after reboot
+.br
+Example: omarchy dev link ~/omarchy
+.RE
+.PP
+.B omarchy dev pkg test
+.I [package\-name] [path\-to\-checkout]
+.RS 4
+Build and install an Omarchy package from a local checkout
+.br
+Example: omarchy dev pkg\-test
+.br
+Example: omarchy dev pkg\-test omarchy\-dev ~/Work/omarchy/omarchy\-installer
+.RE
+.PP
+.B omarchy dev status
+.RS 4
+Show the current Omarchy dev-link state
+.RE
+.PP
+.B omarchy dev theme preview
+.I [theme\-name|\:theme\-dir|\:colors.toml] [\-\-no\-color] [\-\-no\-osc|\:\-\-osc]
+.RS 4
+Preview an Omarchy theme palette in the terminal
+.br
+Example: omarchy dev theme\-preview
+.br
+Example: omarchy dev theme\-preview tokyo\-night
+.br
+Example: omarchy dev theme\-preview themes/gruvbox/colors.toml \-\-no\-color \-\-no\-osc
+.RE
+.PP
+.B omarchy dev ui preview
+.I [section]
+.RS 4
+Open the omarchy-shell dev gallery (qs.Ui kit preview)
+.br
+Example: omarchy dev ui\-preview
+.br
+Example: omarchy dev ui\-preview button
+.br
+Example: omarchy dev ui\-preview button\-group
+.br
+Example: omarchy dev ui\-preview slider
+.RE
+.PP
+.B omarchy dev unlink
+.I [\-\-no\-reboot]
+.RS 4
+Restore Omarchy to the package install after reboot
+.RE
+.PP
+.SS disk \- Disk performance helpers
+.B omarchy disk speedtest
+.I [target\-dir]
+.RS 4
+Measure live disk read and write speed
+.RE
+.PP
+.SS display \- Display and text scaling
+.B omarchy display text size
+.I [size|\:reset]
+.RS 4
+Scale text everywhere \(em omarchy shell, GTK apps, and terminals
+.br
+Example: omarchy display text size
+.br
+Example: omarchy display text size 16
+.br
+Example: omarchy display text size reset
+.RE
+.PP
+.SS dns \- DNS resolver configuration
+.B omarchy dns
+.I [Cloudflare|\:Google|\:DHCP|\:Custom]
+.RS 4
+Show or configure the system DNS provider
+.br
+Example: omarchy dns
+.br
+Example: omarchy dns Cloudflare
+.br
+Example: omarchy dns Custom
+.RE
+.PP
+.SS drive \- Drive selection and encryption
+.B omarchy drive info
+.I <drive>
+.RS 4
+Print drive information such as size, model, and mount details
+.RE
+.PP
+.B omarchy drive password
+.RS 4
+Set a new encryption password for a drive selected.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy drive select
+.RS 4
+Select a drive from a list with info that includes space and brand. Used by omarchy-drive-password.
+.RE
+.PP
+.SS file \- File selection helpers
+.B omarchy file select
+.I [\-\-title <title>] [\-\-multiple] [\-\-directory] [\-\-extensions "<ext ext...>"]
+.RS 4
+Pick files with the desktop file chooser
+.br
+Example: omarchy file select \-\-title "Send with Tailscale" \-\-multiple
+.br
+Example: omarchy file select \-\-title "Pick image" \-\-extensions "png svg"
+.br
+Example: omarchy file select \-\-title "Share folder" \-\-directory
+.RE
+.PP
+.SS font \- Font management
+.B omarchy font current
+.RS 4
+Show current monospace font
+.br
+Example: omarchy font current
+.RE
+.PP
+.B omarchy font list
+.RS 4
+List available monospace fonts
+.br
+Example: omarchy font list
+.br
+Example: omarchy font set "CaskaydiaMono Nerd Font"
+.RE
+.PP
+.B omarchy font set
+.I <font\-name>
+.RS 4
+Set the system monospace font
+.br
+Example: omarchy font list
+.br
+Example: omarchy font set "CaskaydiaMono Nerd Font"
+.RE
+.PP
+.SS games \- Game launchers and helpers
+.B omarchy games retro cores
+.RS 4
+List installed RetroArch core names
+.RE
+.PP
+.B omarchy games retro install
+.I [core path\-to\-game]
+.RS 4
+Create a desktop launcher for a RetroArch game
+.br
+Example: omarchy games retro install snes9x ~/Games/roms/snes/game.sfc
+.br
+Example: omarchy\-games\-retro\-install /usr/lib/libretro/mgba_libretro.so ~/Games/roms/gba/game.gba
+.RE
+.PP
+.SS hibernation \- Hibernation setup and removal
+.B omarchy hibernation available
+.RS 4
+Check if hibernation is supported
+.RE
+.PP
+.B omarchy hibernation remove
+.RS 4
+Remove hibernation setup including swap and boot resume settings
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy hibernation setup
+.I [\-\-force] [\-\-no\-rebuild]
+.RS 4
+Set up hibernation with swap and boot resume configuration
+.br
+Requires sudo.
+.RE
+.PP
+.SS hook \- User hook runner
+.B omarchy hook
+.I [name] [args...]
+.RS 4
+Run a named hook from ~/.config/omarchy/hooks/<name> and ~/.config/omarchy/hooks/<name>.d/.
+.RE
+.PP
+.B omarchy hook install
+.I <type> <file>
+.RS 4
+Install a hook into ~/.config/omarchy/hooks/<type>.d/
+.br
+Example: omarchy hook install post\-update ~/my\-hook
+.RE
+.PP
+.SS hw \- Hardware detection and controls
+.B omarchy hw asus expertbook b9406
+.RS 4
+Detect ASUS ExpertBook B9406 series laptops on Intel Panther Lake.
+.RE
+.PP
+.B omarchy hw asus rog
+.RS 4
+Detect whether the computer is an Asus ROG machine.
+.RE
+.PP
+.B omarchy hw asus zenbook ux5406aa
+.RS 4
+Detect ASUS Zenbook UX5406AA series laptops on Intel Panther Lake.
+.RE
+.PP
+.B omarchy hw dell xps haptic touchpad
+.RS 4
+Match Dell XPS systems with the Synaptics haptic touchpad.
+.RE
+.PP
+.B omarchy hw dell xps oled
+.RS 4
+Match Dell XPS systems with LG OLED panel on Intel Panther Lake (Xe3) GPU.
+.RE
+.PP
+.B omarchy hw display
+.RS 4
+Print the most likely display backlight device.
+.br
+Example: omarchy\-hw\-display
+.RE
+.PP
+.B omarchy hw external monitors
+.RS 4
+Returns true when an external monitor is physically connected.
+.RE
+.PP
+.B omarchy hw framework16
+.RS 4
+Detect whether the computer is a Framework Laptop 16.
+.RE
+.PP
+.B omarchy hw hybrid gpu
+.RS 4
+Detect whether the system has an active hybrid GPU configuration
+.RE
+.PP
+.B omarchy hw intel
+.RS 4
+Detect whether the computer has an Intel CPU.
+.RE
+.PP
+.B omarchy hw intel ptl
+.RS 4
+Detect whether the computer has an Intel Panther Lake GPU.
+.RE
+.PP
+.B omarchy hw intel sof
+.RS 4
+Detect an Intel SOF-capable audio DSP
+.RE
+.PP
+.B omarchy hw laptop
+.RS 4
+Returns true when running on a laptop (has a lid or laptop chassis).
+.RE
+.PP
+.B omarchy hw match
+.I <pattern>
+.RS 4
+Match against the computer's DMI product name or product family (case-insensitive).
+.RE
+.PP
+.B omarchy hw nvidia
+.RS 4
+Detect whether the computer has an NVIDIA GPU.
+.RE
+.PP
+.B omarchy hw nvidia gsp
+.RS 4
+Detect whether the computer has an NVIDIA GPU with GSP firmware (Turing or newer).
+.RE
+.PP
+.B omarchy hw nvidia without gsp
+.RS 4
+Detect whether the computer has an NVIDIA GPU without GSP firmware (Maxwell/Pascal/Volta).
+.RE
+.PP
+.B omarchy hw recover internal monitor
+.RS 4
+Clear the internal-monitor-disable toggle if no external display is connected.
+.RE
+.PP
+.B omarchy hw surface
+.RS 4
+Detect whether the computer is a Microsoft Surface device.
+.RE
+.PP
+.B omarchy hw touchpad
+.RS 4
+Print the detected Hyprland touchpad or trackpad device name
+.RE
+.PP
+.B omarchy hw touchscreen
+.RS 4
+Print the detected Hyprland touchscreen or tablet device name
+.RE
+.PP
+.B omarchy hw vulkan
+.RS 4
+Detect whether Vulkan is available.
+.RE
+.PP
+.B omarchy hw webcam
+.RS 4
+Check whether a webcam is available
+.RE
+.PP
+.SS hyprland \- Hyprland window, monitor, and toggle controls
+.B omarchy hyprland focus app
+.I <app\-name>
+.RS 4
+Focus a Hyprland window by application identity
+.br
+Example: omarchy hyprland focus app Slack
+.RE
+.PP
+.B omarchy hyprland monitor focused
+.RS 4
+Print the name of the currently focused Hyprland monitor.
+.RE
+.PP
+.B omarchy hyprland monitor focused apple
+.I [monitor]
+.RS 4
+Return success if the focused or named Hyprland monitor is an Apple display.
+.RE
+.PP
+.B omarchy hyprland monitor internal
+.I <on|\:off|\:toggle|\:recover>
+.RS 4
+Enable, disable, toggle, or recover the internal laptop display
+.RE
+.PP
+.B omarchy hyprland monitor internal mirror
+.I <on|\:off|\:toggle|\:recover>
+.RS 4
+Enable, disable, toggle, or recover mirroring the internal display to an external monitor
+.RE
+.PP
+.B omarchy hyprland monitor laptop
+.RS 4
+Print the name of the built-in laptop display, including disabled outputs.
+.RE
+.PP
+.B omarchy hyprland monitor scaling
+.I [up|\:down|\:SCALE]
+.RS 4
+Show, set, or adjust focused Hyprland monitor scaling
+.br
+Example: omarchy hyprland monitor scaling
+.br
+Example: omarchy hyprland monitor scaling 1.6
+.br
+Example: omarchy hyprland monitor scaling up
+.br
+Example: omarchy hyprland monitor scaling down
+.RE
+.PP
+.B omarchy hyprland monitor watch
+.RS 4
+Watch Hyprland monitor events and recover monitor toggles when a monitor is removed
+.RE
+.PP
+.B omarchy hyprland toggle
+.I <flag\-name> [on|\:off|\:toggle]
+.RS 4
+Toggle permanent Hyprland flags by copying them into a directory that's sourced entirely.
+.RE
+.PP
+.B omarchy hyprland toggle disabled
+.I <flag\-name>
+.RS 4
+Check if a Hyprland toggle is currently disabled (missing).
+.RE
+.PP
+.B omarchy hyprland toggle enabled
+.I <flag\-name>
+.RS 4
+Check if a Hyprland toggle is currently enabled.
+.RE
+.PP
+.B omarchy hyprland window close all
+.RS 4
+Close all open windows
+.RE
+.PP
+.B omarchy hyprland window gaps toggle
+.RS 4
+Toggles the window gaps globally between no gaps and the default.
+.RE
+.PP
+.B omarchy hyprland window pop
+.I [width height x y]
+.RS 4
+Toggle to pop-out a tile to stay fixed on a display basis.
+.RE
+.PP
+.B omarchy hyprland window single square aspect toggle
+.RS 4
+Toggle single-window square aspect ratio.
+.RE
+.PP
+.B omarchy hyprland window tiled fullscreen toggle
+.RS 4
+Toggle tiled fullscreen for the focused Hyprland window
+.RE
+.PP
+.B omarchy hyprland window transparency toggle
+.RS 4
+Toggles transparency for the currently focused window.
+.RE
+.PP
+.B omarchy hyprland window width
+.I <save|\:restore>
+.RS 4
+Save or restore the focused Hyprland window width
+.br
+Example: omarchy hyprland window width save
+.br
+Example: omarchy\-hyprland\-window\-width restore
+.RE
+.PP
+.B omarchy hyprland workspace layout toggle
+.RS 4
+Toggle the layout on the current active workspace between dwindle and scrolling
+.RE
+.PP
+.SS install \- Optional software installers
+.B omarchy install ai chatgpt
+.RS 4
+Install the ChatGPT desktop app
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install and launch
+.I <display\-name> <packages> <desktop\-id>
+.RS 4
+Install a packaged app and launch it once it finishes
+.br
+Example: omarchy install and launch Cursor cursor\-bin cursor
+.RE
+.PP
+.B omarchy install app
+.I <display\-name> <packages>
+.RS 4
+Install a packaged app, surfacing the install in a floating terminal
+.br
+Example: omarchy install app 'LM Studio' lmstudio\-bin
+.RE
+.PP
+.B omarchy install browser
+.I <chromium|\:chrome|\:brave|\:brave\-origin|\:edge|\:firefox|\:zen>
+.RS 4
+Install a supported browser
+.br
+Example: omarchy install browser chromium
+.br
+Example: omarchy install browser firefox
+.RE
+.PP
+.B omarchy install chromium copy url
+.RS 4
+Install the native messaging host for the Copy URL Chromium extension
+.RE
+.PP
+.B omarchy install chromium google account
+.RS 4
+Allow Chromium to sign in to Google accounts by adding the required OAuth credentials
+.RE
+.PP
+.B omarchy install chromium ytdlp
+.RS 4
+Install the native messaging host for the yt-dlp Chromium extension
+.RE
+.PP
+.B omarchy install dev\-env
+.I <ruby|\:node|\:bun|\:deno|\:go|\:laravel|\:symfony|\:php|\:python|\:elixir|\:phoenix|\:rust|\:java|\:zig|\:ocaml|\:dotnet|\:clojure|\:scala>
+.RS 4
+Install a supported development environment
+.br
+Requires sudo.
+.br
+Example: omarchy install dev\-env ruby
+.br
+Example: omarchy install dev\-env node
+.RE
+.PP
+.B omarchy install docker dbs
+.RS 4
+Install one of the supported databases in a Docker container with the suitable development options.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install editor emacs
+.RS 4
+Install Emacs with Omarchy theme and font integration via the omarchy-emacs AUR package
+.RE
+.PP
+.B omarchy install editor helix
+.RS 4
+Install Helix and configure it to use the current Omarchy theme
+.RE
+.PP
+.B omarchy install editor vscode
+.RS 4
+Install VS Code and configure Omarchy defaults for secrets, updates, and theme
+.RE
+.PP
+.B omarchy install editor zed
+.RS 4
+Install Zed Editor and configure it with the current Omarchy theme
+.RE
+.PP
+.B omarchy install font
+.I <display\-name> <package> <family>
+.RS 4
+Install a Nerd Font package and switch the system to it
+.br
+Example: omarchy install font 'Cascadia Mono' ttf\-cascadia\-mono\-nerd 'CaskaydiaMono Nerd Font'
+.RE
+.PP
+.B omarchy install gaming battlenet
+.RS 4
+Install Battle.net standalone via umu-launcher + GE-Proton (no Steam, no Lutris, no Heroic).
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install gaming geforce\-now
+.RS 4
+Install and launch Geforce Now.
+.RE
+.PP
+.B omarchy install gaming gpu\-lib32
+.RS 4
+Install lib32 graphics drivers (Vulkan + NVIDIA) for any detected GPUs.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install gaming heroic
+.RS 4
+Install Heroic Games Launcher (Epic, GOG, Amazon Prime Gaming) with graphics drivers.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install gaming lutris
+.RS 4
+Install Lutris with Wine + DXVK for running Windows games (Battle.net, EA, Ubisoft Connect, etc.)
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install gaming retroarch
+.RS 4
+Install RetroArch with the full libretro core set plus FBNeo and a ~/Games ROM directory.
+.RE
+.PP
+.B omarchy install gaming steam
+.RS 4
+Install Steam and graphics drivers selected for this system
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install gaming xbox\-cloud
+.RS 4
+Install Xbox Cloud Gaming as a web app and launch it.
+.RE
+.PP
+.B omarchy install gaming xbox\-controllers
+.RS 4
+Install support for using Xbox controllers with Steam/RetroArch/etc.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install preinstalls
+.RS 4
+Restore the preinstalled Omarchy applications (web apps, TUIs, and selected packages).
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install service 1password
+.RS 4
+Install 1Password and its Chromium extension.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install service dropbox
+.RS 4
+Install and start the Dropbox service. Must then be authenticated via the web.
+.RE
+.PP
+.B omarchy install service nordvpn
+.RS 4
+Install the NordVPN service with optional GUI.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install service once
+.RS 4
+Install the ONCE service, enable its background service, and launch the TUI.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install service signal
+.RS 4
+Install Signal and launch it.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install service spotify
+.RS 4
+Install Spotify.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install service sunshine
+.RS 4
+Install Sunshine and open Moonlight streaming ports for LAN and Tailscale.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install service tailscale
+.RS 4
+Install the Tailscale mesh VPN service and a web app for the Tailscale Admin Console.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy install terminal
+.I <alacritty|\:foot|\:ghostty|\:kitty>
+.RS 4
+Install one of the approved terminals and set it as the default for Omarchy (Super + Return etc).
+.br
+Requires sudo.
+.RE
+.PP
+.SS launch \- Application launchers
+.B omarchy launch 1password
+.RS 4
+Launch 1Password or start its installer when missing.
+.RE
+.PP
+.B omarchy launch about
+.RS 4
+Launch the fastfetch TUI that gives information about the current system.
+.RE
+.PP
+.B omarchy launch battlenet
+.I [\-\-with\-mangohud]
+.RS 4
+Launch the installed Battle.net client via umu-launcher + GE-Proton.
+.br
+Example: omarchy launch battlenet
+.br
+Example: omarchy launch battlenet \-\-with\-mangohud
+.RE
+.PP
+.B omarchy launch browser
+.I [url]
+.RS 4
+Launch the default browser as determined by xdg-settings.
+.RE
+.PP
+.B omarchy launch config editor
+.I <path>
+.RS 4
+Open a config file in the user's editor and surface a toast
+.br
+Example: omarchy launch config\-editor ~/.config/hypr/hyprland.lua
+.RE
+.PP
+.B omarchy launch discord community
+.RS 4
+Open the Omarchy Discord community in the Discord app or a browser.
+.RE
+.PP
+.B omarchy launch editor
+.I [\-\-inline] <path>
+.RS 4
+Launch the default editor selected via Omarchy defaults.
+.RE
+.PP
+.B omarchy launch floating terminal with presentation
+.I <command>
+.RS 4
+Launch a floating terminal with the Omarchy presentation wrapper
+.RE
+.PP
+.B omarchy launch nautilus
+.RS 4
+Launch Files
+.RE
+.PP
+.B omarchy launch nautilus cwd
+.RS 4
+Launch Files in the active terminal's current directory
+.RE
+.PP
+.B omarchy launch or focus
+.I <window\-pattern> <launch\-command>
+.RS 4
+Launch an app or focus an existing window matching a pattern
+.RE
+.PP
+.B omarchy launch or focus tui
+.I [\-\-app\-id=<app\-id>] <command> [args...]
+.RS 4
+Launch a TUI or focus an existing terminal window for it
+.RE
+.PP
+.B omarchy launch or focus webapp
+.I <window\-pattern> <url\-and\-flags...>
+.RS 4
+Launch or focus on a given web app identified by the window-pattern.
+.RE
+.PP
+.B omarchy launch screensaver
+.RS 4
+Launch the Omarchy screensaver in the default terminal on the system with the correct font configuration.
+.RE
+.PP
+.B omarchy launch signal
+.RS 4
+Launch Signal or start its installer when missing.
+.RE
+.PP
+.B omarchy launch spotify
+.RS 4
+Launch Spotify or start its installer when missing.
+.RE
+.PP
+.B omarchy launch terminal
+.I [command...]
+.RS 4
+Launch a terminal in the active terminal's current directory
+.RE
+.PP
+.B omarchy launch terminal herdr
+.RS 4
+Launch or attach to the persistent herdr session in a terminal
+.RE
+.PP
+.B omarchy launch terminal tmux
+.RS 4
+Launch or attach to the Work tmux session in a terminal
+.RE
+.PP
+.B omarchy launch tui
+.I [\-\-app\-id=<app\-id>] <command> [args...]
+.RS 4
+Launch a TUI command in the default terminal with Omarchy styling
+.RE
+.PP
+.B omarchy launch webapp
+.I <url>
+.RS 4
+Launch a URL as a web app in the default supported browser
+.RE
+.PP
+.SS menu \- Omarchy menu commands
+.B omarchy menu
+.I [toggle|\:summon|\:close|\:refresh|\:ping] [route]
+.RS 4
+Control the Omarchy menu (toggle / summon / close / refresh)
+.br
+Example: omarchy menu
+.br
+Example: omarchy menu toggle system
+.br
+Example: omarchy menu summon style.theme
+.br
+Example: omarchy menu refresh
+.RE
+.PP
+.B omarchy menu clipboard
+.RS 4
+Launch the clipboard manager
+.br
+Example: omarchy menu clipboard
+.RE
+.PP
+.B omarchy menu emoji
+.RS 4
+Launch emojis
+.br
+Example: omarchy menu emoji
+.RE
+.PP
+.B omarchy menu file
+.I label paths formats [menu args...]
+.RS 4
+Pick a file from a menu
+.br
+Example: omarchy menu file "Select image" "$HOME/Pictures" "jpg png webp"
+.br
+Example: omarchy\-menu\-file "Select media" "$HOME/Pictures:$HOME/Videos" "jpg png mp4 mov" \-\-width 800
+.RE
+.PP
+.B omarchy menu herdr keybindings
+.I [\-\-print|\:\-p] [\-\-config <path>]
+.RS 4
+Display annotated Herdr keybindings using an interactive search menu.
+.RE
+.PP
+.B omarchy menu images
+.I [\-\-selected <image>] [\-\-print\-name] [\-\-show\-labels] [\-\-filterable] [\-\-lazy\-thumbnails] [\-\-preload] [\-\-cache\-only] <image\-dir>...
+.RS 4
+Open a generic image selector menu
+.RE
+.PP
+.B omarchy menu input
+.I prompt [menu args...]
+.RS 4
+Prompt for text input from a menu
+.br
+Example: omarchy menu input Reminder
+.br
+Example: omarchy\-menu\-input "Reminder in minutes" \-\-width 400
+.RE
+.PP
+.B omarchy menu keybindings
+.RS 4
+Display Hyprland keybindings defined in your configuration using an interactive search menu.
+.RE
+.PP
+.B omarchy menu plugin
+.I <enable|\:disable|\:clone|\:remove>
+.RS 4
+Pick a shell plugin to enable, disable, clone, or remove
+.RE
+.PP
+.B omarchy menu select
+.I prompt [option...] [\-\- menu args...]
+.RS 4
+Pick one option from a menu
+.br
+Example: omarchy menu select Format jpg png
+.br
+Example: omarchy\-menu\-select Resolution 4k 1080p 720p \-\- \-\-width 400
+.RE
+.PP
+.B omarchy menu timezone
+.RS 4
+Select and set the system timezone
+.RE
+.PP
+.B omarchy menu tmux keybindings
+.I [\-\-print|\:\-p] [\-\-config <path>]
+.RS 4
+Display annotated Tmux keybindings using an interactive search menu.
+.RE
+.PP
+.SS migrate \- Migration runner
+.B omarchy migrate
+.I [\-\-pending]
+.RS 4
+Run pending Omarchy migrations.
+.RE
+.PP
+.B omarchy migrate notify
+.RS 4
+Notify the user when Omarchy has pending migrations
+.RE
+.PP
+.SS mise \- Mise tool wrappers
+.B omarchy mise install
+.I <package> [command\-name [bin\-name]]
+.RS 4
+Install a small mise-backed wrapper for a given tool.
+.RE
+.PP
+.SS monitor \- Monitor status helpers
+.B omarchy monitor state
+.RS 4
+Print monitor panel state for the shell
+.RE
+.PP
+.SS network \- Network status helpers
+.B omarchy network band
+.I [auto|\:2.4|\:5|\:6]
+.RS 4
+Show or pin the Wi-Fi band for the active connection
+.br
+Example: omarchy network band
+.br
+Example: omarchy network band 5
+.br
+Example: omarchy network band auto
+.RE
+.PP
+.B omarchy network password
+.I <interface>
+.RS 4
+Print the active Wi-Fi connection's password
+.RE
+.PP
+.B omarchy network qr
+.I [\-\-meta] [interface]
+.RS 4
+Generate a Wi-Fi QR matrix for the shell
+.RE
+.PP
+.B omarchy network speedtest
+.I [down|\:up]
+.RS 4
+Measure live internet speed for one direction
+.RE
+.PP
+.B omarchy network status
+.I [\-\-verbose]
+.RS 4
+Print active network status for the shell
+.RE
+.PP
+.SS notification \- Notification helpers
+.B omarchy notification battery
+.RS 4
+Show the current battery status notification
+.RE
+.PP
+.B omarchy notification dismiss
+.I <summary>
+.RS 4
+Dismiss a notification by summary substring. Used by the first-run notifications to dismiss them after clicking for action.
+.RE
+.PP
+.B omarchy notification send
+.I [\-\-app\-name <app\-name>] [\-g <glyph>] [\-u <low|\:normal|\:critical>] [\-i <icon>] [\-t <ms>] [\-r <id>] [\-p] [\-\-image <path\-or\-uri>] <headline> [description] [\-\-exec <program> [args...]]
+.RS 4
+Send an Omarchy desktop notification
+.br
+Example: omarchy notification send "Reminder" "5 minutes are up" \-g <icon>
+.RE
+.PP
+.B omarchy notification time
+.RS 4
+Show the current time and date notification
+.RE
+.PP
+.B omarchy notification weather
+.RS 4
+Toggle the current weather panel
+.RE
+.PP
+.SS osd \- On-screen display status helpers
+.B omarchy osd
+.I [\-i|\:\-\-icon <icon>] [\-m|\:\-\-message <text>] [\-p|\:\-\-progress <0\-100>] [\-d|\:\-\-duration <ms>]
+.RS 4
+Show the Omarchy Quickshell on-screen display
+.br
+Example: omarchy osd \-i brightness \-p 50
+.br
+Example: omarchy osd \-m "Hello"
+.RE
+.PP
+.SS pkg \- Package management helpers
+.B omarchy pkg add
+.I <packages...>
+.RS 4
+Install Arch packages if they are missing
+.br
+Requires sudo.
+.br
+Example: omarchy pkg add jq ripgrep
+.RE
+.PP
+.B omarchy pkg aur accessible
+.RS 4
+Returns true if the AUR is up and available.
+.RE
+.PP
+.B omarchy pkg aur add
+.I <packages...>
+.RS 4
+Add the named packages to the system from the AUR if they're missing. Returns false if it couldn't be done.
+.RE
+.PP
+.B omarchy pkg aur install
+.RS 4
+Show a fuzzy-finder TUI for picking new AUR packages to install.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy pkg drop
+.I <packages...>
+.RS 4
+Remove all the named packages from the system if they're installed (otherwise ignore).
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy pkg install
+.RS 4
+Show a fuzzy-finder TUI for picking new Arch and OPR packages to install.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy pkg missing
+.I <packages...>
+.RS 4
+Returns true if any of the named packages are missing from the system (or false if they're all there).
+.RE
+.PP
+.B omarchy pkg present
+.I <packages...>
+.RS 4
+Returns true if all of the named packages are installed on the system (or false if any of them are missing).
+.RE
+.PP
+.B omarchy pkg remove
+.RS 4
+Show a fuzzy-finder TUI for picking packages installed on the system to be removed.
+.br
+Requires sudo.
+.RE
+.PP
+.SS plugin \- Omarchy shell plugin and bar widget management
+.B omarchy plugin add
+.I [git\-url] [\-\-enable] [\-\-yes]
+.RS 4
+Add a shell plugin from git
+.br
+Alias: omarchy plugin install
+.br
+Example: omarchy plugin add https://github.com/acme/omarchy\-weather.git \-\-enable
+.RE
+.PP
+.B omarchy plugin clone
+.I <source\-id> [\-\-edit]
+.RS 4
+Clone a built-in Omarchy shell plugin into your own config
+.RE
+.PP
+.B omarchy plugin disable
+.I <id>
+.RS 4
+Disable a shell plugin
+.RE
+.PP
+.B omarchy plugin enable
+.I <id> [placement]
+.RS 4
+Enable a shell plugin
+.br
+Example: omarchy plugin enable acme.weather \-\-section right
+.RE
+.PP
+.B omarchy plugin list
+.I [\-\-json]
+.RS 4
+List discovered shell plugins
+.RE
+.PP
+.B omarchy plugin remove
+.I [id] [\-\-yes]
+.RS 4
+Remove an installed shell plugin
+.br
+Alias: omarchy plugin rm
+.RE
+.PP
+.B omarchy plugin update
+.I [id] [\-\-yes]
+.RS 4
+Update installed git-managed plugins
+.RE
+.PP
+.B omarchy plugin validate
+.I <plugin\-folder>
+.RS 4
+Validate a plugin folder against the Omarchy plugin manifest schema
+.br
+Example: omarchy plugin validate ./my\-plugin
+.RE
+.PP
+.SS plymouth \- Plymouth boot theme management
+.B omarchy plymouth current
+.RS 4
+Show which theme is styling the Plymouth boot screen
+.br
+Example: omarchy plymouth current
+.RE
+.PP
+.B omarchy plymouth list
+.RS 4
+List themes that can style the Plymouth boot screen
+.br
+Example: omarchy plymouth list
+.RE
+.PP
+.B omarchy plymouth preview
+.I <background\-hex> <text\-hex> <path\-to\-logo.png> <output\-path>
+.RS 4
+Preview a Plymouth boot screen with custom colors and logo
+.br
+Example: omarchy plymouth preview '#1d2021' '#ebdbb2' ~/.local/state/omarchy/current/theme/plymouth/logo.png /tmp/plymouth\-preview.png
+.RE
+.PP
+.B omarchy plymouth reset
+.RS 4
+Restore the default Omarchy Plymouth boot theme and SDDM login screen
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy plymouth set
+.I <background\-hex> <text\-hex> <path\-to\-logo.png>
+.RS 4
+Set the Plymouth boot theme colors and logo
+.br
+Requires sudo.
+.br
+Example: omarchy plymouth set '#1d2021' '#ebdbb2' ~/.local/state/omarchy/current/theme/plymouth/logo.png
+.RE
+.PP
+.B omarchy plymouth set by theme
+.I <theme\-name>
+.RS 4
+Set the Plymouth boot theme from an Omarchy theme
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy plymouth switcher
+.RS 4
+Open the Plymouth unlock screen switcher
+.RE
+.PP
+.SS power \- Power supply detection
+.B omarchy power present
+.RS 4
+Returns true if external power is connected.
+.RE
+.PP
+.SS powerprofiles \- Power profile management
+.B omarchy powerprofiles init
+.RS 4
+Set the correct power profile on boot based on current AC/battery state.
+.RE
+.PP
+.B omarchy powerprofiles list
+.I [\-\-active\-state]
+.RS 4
+Returns a list of all the available power profiles on the system.
+.RE
+.PP
+.B omarchy powerprofiles set
+.I [autodetect|\:ac|\:battery] [power\-saver|\:balanced|\:performance]
+.RS 4
+Set and remember the power profile for AC or battery use
+.RE
+.PP
+.SS refresh \- Reset config to defaults
+.B omarchy refresh applications
+.RS 4
+Ensure default application launchers and mise wrappers are installed.
+.RE
+.PP
+.B omarchy refresh chromium
+.RS 4
+Refresh the ~/.config/chromium-flags.conf file from the Omarchy defaults.
+.RE
+.PP
+.B omarchy refresh config
+.I <config\-path>
+.RS 4
+Copy a shipped user config from $OMARCHY_PATH/config into ~/.config (backs up your version).
+.RE
+.PP
+.B omarchy refresh herdr
+.RS 4
+Overwrite the user herdr config with the Omarchy default and reload herdr.
+.RE
+.PP
+.B omarchy refresh hyprland
+.RS 4
+Overwrite all the user Hyprland Lua configs in ~/.config/hypr with the Omarchy defaults.
+.RE
+.PP
+.B omarchy refresh hyprsunset
+.RS 4
+Overwrite the user config for hyprsunset with the Omarchy default and restart the service.
+.RE
+.PP
+.B omarchy refresh limine
+.RS 4
+Overwrite the user config for the Limine bootloader and rebuild it.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy refresh pacman
+.RS 4
+Overwrite the package configuration for /etc/pacman with the Omarchy default of using its dedicated mirrors and repositories, then update all packages.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy refresh plymouth
+.RS 4
+Overwrite the user config for the Plymouth drive decryption and boot sequence with the Omarchy default and rebuild it.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy refresh sddm
+.RS 4
+Refresh the SDDM theme from default
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy refresh shell
+.RS 4
+Reset shell.json to Omarchy defaults
+.br
+Example: omarchy refresh shell
+.RE
+.PP
+.B omarchy refresh tmux
+.RS 4
+Overwrite the user tmux config with the Omarchy default and reload tmux.
+.RE
+.PP
+.SS reinstall \- Reinstall and reset workflows
+.B omarchy reinstall
+.RS 4
+Reinstall Omarchy packages and reset default configs
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy reinstall configs
+.RS 4
+Reset Omarchy user configs and shipped defaults in $HOME (destructive)
+.RE
+.PP
+.B omarchy reinstall pkgs
+.RS 4
+Reinstall all default Omarchy packages from the stable channel
+.br
+Requires sudo.
+.RE
+.PP
+.SS reminder \- Desktop notification reminders
+.B omarchy reminder
+.I [\-i|\:\-\-interactive] |\: <minutes> [message] |\: show [\-j|\:\-\-json] |\: clear
+.RS 4
+Set and show lightweight desktop notification reminders
+.br
+Example: omarchy reminder \-i
+.br
+Example: omarchy reminder 5
+.br
+Example: omarchy reminder 30 "Check the oven"
+.br
+Example: omarchy reminder show
+.br
+Example: omarchy reminder show \-\-json
+.br
+Example: omarchy reminder clear
+.RE
+.PP
+.SS remove \- Removal workflows
+.B omarchy remove ai chatgpt
+.RS 4
+Remove the ChatGPT desktop app along with its configuration and caches.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove ai grok bot
+.RS 4
+Remove Grok Bot along with its settings and data.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove ai lm studio
+.RS 4
+Remove LM Studio along with its configuration and every model it downloaded.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove ai ollama
+.RS 4
+Remove Ollama along with every model it pulled.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove ai t3 code
+.RS 4
+Remove T3 Code along with its configuration and workspaces.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove browser
+.I <chrome|\:brave|\:brave\-origin|\:edge|\:firefox|\:zen>
+.RS 4
+Remove a supported browser and clean up Omarchy browser defaults
+.br
+Requires sudo.
+.br
+Example: omarchy remove browser firefox
+.br
+Example: omarchy remove browser brave
+.RE
+.PP
+.B omarchy remove dev env
+.I <ruby|\:node|\:bun|\:deno|\:go|\:php|\:laravel|\:symfony|\:python|\:elixir|\:phoenix|\:zig|\:rust|\:java|\:dotnet|\:ocaml|\:clojure|\:scala>
+.RS 4
+Remove a development environment that was previously installed via omarchy-install-dev-env.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove gaming battlenet
+.RS 4
+Remove Battle.net, its Proton prefix, installed games, and desktop entry.
+.RE
+.PP
+.B omarchy remove gaming geforce\-now
+.RS 4
+Remove the GeForce NOW Flatpak app and its data.
+.RE
+.PP
+.B omarchy remove gaming heroic
+.RS 4
+Remove Heroic Games Launcher and its game libraries, configs, and caches.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove gaming lutris
+.RS 4
+Remove Lutris, Wine, umu-launcher, and all their configs and caches.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove gaming minecraft
+.RS 4
+Remove the Minecraft launcher along with its worlds, mods, and caches.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove gaming retroarch
+.RS 4
+Remove RetroArch, all libretro cores, and its config/saves. Leaves ~/Games/roms and ~/Games/bios alone.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove gaming steam
+.RS 4
+Remove Steam and all of its game libraries, configs, and caches.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove gaming xbox cloud
+.RS 4
+Remove the Xbox Cloud Gaming web app.
+.RE
+.PP
+.B omarchy remove gaming xbox\-controllers
+.RS 4
+Remove the xpadneo Xbox controller driver and undo its module/blacklist config.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove preinstalls
+.RS 4
+Remove preinstalled Omarchy applications (web apps, TUIs, and selected packages).
+.RE
+.PP
+.B omarchy remove security fido2
+.RS 4
+Remove FIDO2 authentication from sudo and polkit
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove security fingerprint
+.RS 4
+Remove fingerprint authentication from sudo, polkit, and lock screen
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove security sshd
+.RS 4
+Disable the OpenSSH server, close the firewall port, and optionally remove authorized keys
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove service 1password
+.RS 4
+Remove 1Password and its Chromium extension.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy remove service sunshine
+.RS 4
+Remove Sunshine and close Omarchy-managed Moonlight streaming ports.
+.br
+Requires sudo.
+.RE
+.PP
+.SS restart \- Restart Omarchy components
+.B omarchy restart app
+.I <application\-name> [application\-args...]
+.RS 4
+Restart an application by killing it and relaunching via uwsm.
+.RE
+.PP
+.B omarchy restart audio
+.RS 4
+Restart audio services and recover stuck USB audio devices.
+.br
+Example: omarchy restart audio
+.br
+Example: omarchy\-restart\-audio
+.RE
+.PP
+.B omarchy restart bluetooth
+.RS 4
+Unblock and restart the bluetooth service.
+.RE
+.PP
+.B omarchy restart btop
+.RS 4
+Reload btop configuration (used by the Omarchy theme switching).
+.RE
+.PP
+.B omarchy restart helix
+.RS 4
+Reload Helix configuration
+.RE
+.PP
+.B omarchy restart herdr
+.RS 4
+Reload herdr if running with the latest configuration
+.RE
+.PP
+.B omarchy restart hyprctl
+.RS 4
+Reload hyprland configuration (used by the Omarchy theme switching).
+.RE
+.PP
+.B omarchy restart hyprsunset
+.RS 4
+Restart the hyprsunset service (used for blue light filtering/night light).
+.RE
+.PP
+.B omarchy restart opencode
+.RS 4
+Reload opencode configuration (used by the Omarchy theme switching).
+.RE
+.PP
+.B omarchy restart shell
+.RS 4
+Restart the Omarchy shell
+.br
+Example: omarchy restart shell
+.RE
+.PP
+.B omarchy restart terminal
+.RS 4
+Reload supported terminal emulators after config changes
+.RE
+.PP
+.B omarchy restart tmux
+.RS 4
+Restart tmux if running with the latest configuration
+.RE
+.PP
+.B omarchy restart trackpad
+.RS 4
+Reset the trackpad by unbinding and rebinding its driver.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy restart wifi
+.RS 4
+Unblock and restart the Wi-Fi service.
+.RE
+.PP
+.B omarchy restart xcompose
+.RS 4
+Restart the XCompose input method service (fcitx5) to apply new compose key settings.
+.RE
+.PP
+.SS screensaver \- Screensaver branding and animation
+.B omarchy screensaver
+.RS 4
+Run the Omarchy screensaver using random effects from TTE.
+.RE
+.PP
+.SS setup \- Interactive setup wizards
+.B omarchy setup direct boot
+.RS 4
+Add or remove an EFI boot entry for the Omarchy UKI, allowing the system to boot directly
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy setup factory reset
+.RS 4
+Factory-reset this machine back to its freshly-installed state
+.br
+Requires sudo.
+.br
+Example: sudo omarchy\-system\-factory\-reset
+.RE
+.PP
+.B omarchy setup security fido2
+.RS 4
+Set up FIDO2 authentication for sudo and polkit
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy setup security fingerprint
+.RS 4
+Set up fingerprint authentication for sudo, polkit, and lock screen
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy setup security sshd
+.I [\-\-key=<public\-key>] [\-\-gh\-keys <github\-username>]
+.RS 4
+Set up the OpenSSH server, open the firewall, and authorize an SSH key
+.br
+Requires sudo.
+.br
+Example: omarchy\-setup\-security\-sshd
+.br
+Example: omarchy\-setup\-security\-sshd \-\-gh\-keys dhh
+.br
+Example: omarchy\-setup\-security\-sshd \-\-key="ssh\-ed25519 AAAA... user@host"
+.RE
+.PP
+.SS share \- Share commands
+.B omarchy share
+.I <clipboard|\:file|\:folder> [path...]
+.RS 4
+Share clipboard, files, or folders with LocalSend
+.br
+Example: omarchy share clipboard
+.br
+Example: omarchy share file ~/Downloads/example.txt
+.RE
+.PP
+.SS shell \- Omarchy shell IPC helpers
+.B omarchy shell
+.I [\-q] <target> <method> [args...]
+.RS 4
+Send an IPC call to the running Omarchy shell
+.br
+Example: omarchy shell shell ping
+.br
+Example: omarchy\-shell shell toggle omarchy.menu '{"menu":"root"}'
+.RE
+.PP
+.SS show \- Show commands
+.B omarchy show done
+.RS 4
+Display a "Done!" message with a spinner and wait for user to press any key.
+.RE
+.PP
+.B omarchy show logo
+.RS 4
+Display the Omarchy logo in the terminal using green color.
+.RE
+.PP
+.SS snapshot \- System snapshots
+.B omarchy snapshot
+.I <create|\:restore>
+.RS 4
+Create or restore system snapshots with snapper
+.br
+Requires sudo.
+.RE
+.PP
+.SS sudo \- Sudo configuration helpers
+.B omarchy sudo keepalive
+.RS 4
+Prompt for sudo once and keep the credential alive in the background.
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy sudo passwordless
+.I [MINUTES]
+.RS 4
+Toggle passwordless sudo for the current user.
+.br
+Requires sudo.
+.RE
+.PP
+.SS system \- System status, reboot, shutdown, logout, and lock
+.B omarchy system lock
+.RS 4
+Lock the computer and turn off the display
+.br
+Example: omarchy system lock
+.RE
+.PP
+.B omarchy system logout
+.RS 4
+Log out after closing application windows
+.br
+Alias: omarchy logout
+.br
+Example: omarchy logout
+.br
+Example: omarchy system logout
+.RE
+.PP
+.B omarchy system reboot
+.RS 4
+Reboot after closing application windows
+.br
+Alias: omarchy reboot
+.br
+Example: omarchy reboot
+.br
+Example: omarchy system reboot
+.RE
+.PP
+.B omarchy system shutdown
+.RS 4
+Shut down after closing application windows
+.br
+Alias: omarchy shutdown
+.br
+Example: omarchy shutdown
+.br
+Example: omarchy system shutdown
+.RE
+.PP
+.B omarchy system stats
+.I [\-\-bar\-widget]
+.RS 4
+Print CPU and memory stats for the shell
+.RE
+.PP
+.B omarchy system wake
+.RS 4
+Wake displays and restore brightness after idle
+.br
+Example: omarchy system wake
+.RE
+.PP
+.SS tailscale \- Tailscale helpers
+.B omarchy tailscale receive
+.I [\-\-once] [directory]
+.RS 4
+Save incoming Taildrop files and announce them
+.br
+Example: omarchy tailscale receive
+.br
+Example: omarchy tailscale receive \-\-once ~/Desktop
+.RE
+.PP
+.B omarchy tailscale send
+.I <machine> [file...]
+.RS 4
+Send files to a machine on your tailnet with Taildrop
+.br
+Example: omarchy tailscale send dhh\-fd
+.br
+Example: omarchy tailscale send dhh\-fd ~/Downloads/notes.pdf
+.RE
+.PP
+.SS theme \- Theme management
+.B omarchy theme bg cache
+.RS 4
+Cache background switcher thumbnails for the current theme
+.RE
+.PP
+.B omarchy theme bg current
+.RS 4
+Show current background
+.br
+Example: omarchy theme bg current
+.RE
+.PP
+.B omarchy theme bg install
+.RS 4
+Open the current theme's user background folder
+.RE
+.PP
+.B omarchy theme bg next
+.RS 4
+Cycle to the next background for the current theme
+.br
+Example: omarchy theme bg next
+.RE
+.PP
+.B omarchy theme bg set
+.I <path\-to\-image>
+.RS 4
+Set the current background image
+.br
+Example: omarchy theme bg set ~/Pictures/background.png
+.RE
+.PP
+.B omarchy theme bg\-switcher
+.RS 4
+Open the Omarchy background switcher
+.br
+Alias: omarchy background
+.RE
+.PP
+.B omarchy theme current
+.RS 4
+Show current theme
+.br
+Example: omarchy theme current
+.RE
+.PP
+.B omarchy theme dir
+.I <theme\-name>
+.RS 4
+Print the directory holding a theme, preferring a user-installed copy
+.br
+Example: omarchy theme dir tokyo\-night
+.RE
+.PP
+.B omarchy theme extras
+.RS 4
+List the user-installed themes that came from a git clone
+.br
+Example: omarchy theme extras
+.RE
+.PP
+.B omarchy theme install
+.I [git\-repo\-url]
+.RS 4
+Install a theme from a git repository
+.br
+Example: omarchy theme install git@github.com:example/omarchy\-example\-theme.git
+.RE
+.PP
+.B omarchy theme list
+.RS 4
+List available themes
+.br
+Example: omarchy theme list
+.br
+Example: omarchy theme set "Tokyo Night"
+.RE
+.PP
+.B omarchy theme refresh
+.RS 4
+Refresh the current theme from its templates.
+.RE
+.PP
+.B omarchy theme remove
+.I [theme\-name]
+.RS 4
+Remove a user-installed theme
+.br
+Example: omarchy theme remove "Tokyo Night"
+.RE
+.PP
+.B omarchy theme set
+.I <theme\-name>
+.RS 4
+Apply an Omarchy theme
+.br
+Example: omarchy theme list
+.br
+Example: omarchy theme set "Tokyo Night"
+.RE
+.PP
+.B omarchy theme switcher
+.RS 4
+Open the Omarchy theme switcher
+.RE
+.PP
+.B omarchy theme update
+.RS 4
+Update user-installed git themes
+.RE
+.PP
+.SS toggle \- Toggle Omarchy features
+.B omarchy toggle
+.I <flag\-name> [toggle|\:on|\:off]
+.RS 4
+Toggle Omarchy features between enabled and disabled
+.RE
+.PP
+.B omarchy toggle bar
+.I [toggle|\:on|\:off]
+.RS 4
+Toggle bar visibility without killing the Omarchy shell
+.br
+Example: omarchy toggle bar
+.br
+Example: omarchy toggle bar off
+.br
+Example: omarchy toggle bar on
+.RE
+.PP
+.B omarchy toggle crash capture
+.RS 4
+Toggle crash capture notifications
+.RE
+.PP
+.B omarchy toggle enabled
+.I <flag\-name>
+.RS 4
+Check if a toggle is enabled (flag file exists)
+.RE
+.PP
+.B omarchy toggle hybrid gpu
+.RS 4
+Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy toggle idle
+.I [toggle|\:stay\-awake|\:allow\-idle|\:status]
+.RS 4
+Toggle idle behavior so the system either idles normally or stays awake
+.br
+Example: omarchy toggle idle
+.br
+Example: omarchy toggle idle stay\-awake
+.br
+Example: omarchy\-toggle\-idle \-\-status
+.RE
+.PP
+.B omarchy toggle nightlight
+.I [\-\-status]
+.RS 4
+Toggle nightlight screen temperature
+.br
+Example: omarchy toggle nightlight
+.RE
+.PP
+.B omarchy toggle notification silencing
+.RS 4
+Toggle notification do-not-disturb mode
+.RE
+.PP
+.B omarchy toggle screensaver
+.RS 4
+Toggle screensaver availability
+.RE
+.PP
+.B omarchy toggle suspend
+.RS 4
+Toggle suspend availability in the system menu
+.RE
+.PP
+.B omarchy toggle touchpad
+.I [on|\:off|\:toggle]
+.RS 4
+Enable, disable, or toggle the touchpad
+.RE
+.PP
+.B omarchy toggle touchscreen
+.I [on|\:off|\:toggle]
+.RS 4
+Enable, disable, or toggle the touch functionality of the screen
+.RE
+.PP
+.SS transcode \- Image and video transcoding
+.B omarchy transcode
+.I [\-\-path path] [input] [format] [resolution]
+.RS 4
+Transcode pictures and videos for sharing
+.br
+Example: omarchy transcode
+.br
+Example: omarchy transcode \-\-path ~/Downloads
+.br
+Example: omarchy transcode ~/Videos/demo.mov mp4 1080p
+.br
+Example: omarchy transcode ~/Pictures/background.heic jpg medium
+.RE
+.PP
+.B omarchy transcode ascii
+.I <input\-image.svg|\:png> <output\-path> [\-\-width <columns>] [\-\-height <rows>] [\-\-mode <braille|\:block>] [\-\-threshold <percent>] [\-\-invert]
+.RS 4
+Transcode an image into ASCII/Unicode art text
+.br
+Example: omarchy transcode ascii ~/logo.svg /tmp/logo.txt
+.br
+Example: omarchy transcode ascii ~/logo.png ~/.config/omarchy/branding/screensaver.txt \-\-width 80
+.RE
+.PP
+.SS tui \- Terminal UI launchers
+.B omarchy tui install
+.I [name command window\-style icon\-url\-or\-name]
+.RS 4
+Create a desktop launcher for a terminal UI app
+.RE
+.PP
+.B omarchy tui remove
+.I [name]
+.RS 4
+Remove a terminal UI desktop launcher
+.RE
+.PP
+.B omarchy tui remove all
+.RS 4
+Remove all TUIs installed via omarchy-tui-install.
+.RE
+.PP
+.SS update \- Omarchy and system updates
+.B omarchy update
+.I [\-y]
+.RS 4
+Update Omarchy and system packages
+.br
+Requires sudo.
+.br
+Example: omarchy update
+.br
+Example: omarchy update \-y
+.RE
+.PP
+.B omarchy update analyze logs
+.RS 4
+Check the update log for known failure conditions
+.RE
+.PP
+.B omarchy update aur pkgs
+.RS 4
+Update AUR packages if any are installed
+.RE
+.PP
+.B omarchy update available
+.RS 4
+Check whether Omarchy updates are available.
+.RE
+.PP
+.B omarchy update confirm
+.RS 4
+Prompt for confirmation before starting an update
+.RE
+.PP
+.B omarchy update dev
+.RS 4
+Update the active Omarchy dev checkout
+.RE
+.PP
+.B omarchy update firmware
+.RS 4
+Update system firmware using fwupd. Ensures the fwupd EFI binary is installed
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy update keyring
+.RS 4
+Ensure the Omarchy and Arch keyring packages are installed and populated
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy update mise
+.RS 4
+Update mise-managed tools
+.RE
+.PP
+.B omarchy update orphan pkgs
+.RS 4
+Review and optionally remove orphaned system packages after updates
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy update pkg prune
+.RS 4
+Prune superseded versions from the pacman package cache
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy update restart
+.RS 4
+Prompt for required reboot or service restarts after updates
+.RE
+.PP
+.B omarchy update system pkgs
+.RS 4
+Update system packages with pacman
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy update time
+.RS 4
+Restart system time synchronization
+.br
+Requires sudo.
+.RE
+.PP
+.SS upgrade \- Upgrade commands
+.B omarchy upgrade to quattro
+.I [\-\-yes] [\-\-reboot] [\-\-dev] [\-\-channel stable|\:rc|\:edge] [\-\-user USER]
+.RS 4
+Upgrade a legacy Omarchy install to the package-backed Omarchy quattro layout.
+.br
+Requires sudo.
+.br
+Example: omarchy upgrade to quattro
+.br
+Example: omarchy upgrade to quattro \-\-dev
+.RE
+.PP
+.SS version \- Version and channel information
+.B omarchy version
+.RS 4
+Print the installed Omarchy version
+.RE
+.PP
+.B omarchy version channel
+.RS 4
+Print the active Omarchy mirror and package channel
+.RE
+.PP
+.B omarchy version pkgs
+.RS 4
+Print when system packages were last upgraded
+.RE
+.PP
+.SS voxtype \- Voxtype dictation
+.B omarchy voxtype config
+.RS 4
+Open Voxtype configuration
+.RE
+.PP
+.B omarchy voxtype install
+.RS 4
+Install and configure Voxtype dictation
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy voxtype model
+.RS 4
+Open Voxtype AI model setup
+.RE
+.PP
+.B omarchy voxtype remove
+.RS 4
+Remove Voxtype dictation and its configuration
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy voxtype status
+.RS 4
+Stream voxtype --follow status as bar-friendly JSON
+.RE
+.PP
+.SS weather \- Weather status
+.B omarchy weather icon
+.RS 4
+Returns a weather condition icon, adjusted for live sunrise and sunset.
+.RE
+.PP
+.B omarchy weather location
+.RS 4
+Show or set the location used for weather reports
+.RE
+.PP
+.B omarchy weather status
+.RS 4
+Returns a formatted weather status string with temperature and wind speed.
+.RE
+.PP
+.SS webapp \- Web app launchers
+.B omarchy webapp handler hey
+.I [url]
+.RS 4
+Open HEY webmail and translate mailto links
+.RE
+.PP
+.B omarchy webapp handler zoom
+.I [url]
+.RS 4
+Open Zoom web meetings from browser protocol links
+.RE
+.PP
+.B omarchy webapp install
+.I [name url icon\-url\-or\-name [custom\-exec] [mime\-types]]
+.RS 4
+Create a desktop launcher for a web app
+.RE
+.PP
+.B omarchy webapp remove
+.I [name]
+.RS 4
+Remove a web app desktop launcher
+.RE
+.PP
+.B omarchy webapp remove all
+.RS 4
+Remove all web apps installed via omarchy-webapp-install.
+.RE
+.PP
+.SS windows \- Windows VM management
+.B omarchy windows key
+.RS 4
+Print the OEM Windows product key stored in firmware
+.br
+Requires sudo.
+.RE
+.PP
+.B omarchy windows vm
+.I <install|\:remove|\:launch|\:stop|\:status> [options]
+.RS 4
+Install, launch, stop, inspect, or remove the Windows VM
+.br
+Requires sudo.
+.RE
+.PP
+.SH DISCOVERY
+.TP
+.B omarchy commands
+List all commands.
+.TP
+.B omarchy commands \-\-all
+Include commands explicitly marked hidden.
+.TP
+.B omarchy commands \-\-json
+Machine\-readable command list.
+.TP
+.B omarchy commands \-\-check
+Validate command metadata and routes.
+.SH SEE ALSO
+.UR https://manual.omarchy.org
+Omarchy Manual
+.UE
