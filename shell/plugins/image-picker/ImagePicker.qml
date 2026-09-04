@@ -45,8 +45,22 @@ Item {
   property int sliceSpacing: -30
   property int skewOffset: 28
   property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : (filterable ? 60 : 30)
+  property real wheelAccumulator: 0
 
-  onOpenedChanged: if (!opened) layoutSettled = false
+  onOpenedChanged: {
+    wheelAccumulator = 0
+    if (!opened) layoutSettled = false
+  }
+
+  // One theme per wheel notch (~120 units); finer touchpad deltas accumulate
+  // until they cross the threshold. Down/right moves to the next theme,
+  // up/left to the previous one, matching the arrow keys.
+  function nudgeWheel(deltaX, deltaY) {
+    var forward = Math.abs(deltaX) > Math.abs(deltaY) ? deltaX : -deltaY
+    var wheel = Util.wheelSteps(root.wheelAccumulator, forward)
+    root.wheelAccumulator = wheel.remainder
+    if (wheel.steps !== 0) root.selectAdjacent(wheel.steps)
+  }
 
   function scriptPath(name) {
     return omarchyPath + "/shell/plugins/image-picker/" + name
@@ -380,6 +394,9 @@ Item {
       anchors.fill: parent
       enabled: root.opened && root.imagesLoaded
       onClicked: root.cancel()
+      onWheel: function(wheel) {
+        root.nudgeWheel(wheel.angleDelta.x, wheel.angleDelta.y)
+      }
     }
 
     Item {
@@ -389,7 +406,13 @@ Item {
       height: root.expandedHeight + Style.space(30) + root.bottomChromeHeight
       anchors.centerIn: parent
 
-        MouseArea { anchors.fill: parent; onClicked: {} }
+        MouseArea {
+          anchors.fill: parent
+          onClicked: {}
+          onWheel: function(wheel) {
+            root.nudgeWheel(wheel.angleDelta.x, wheel.angleDelta.y)
+          }
+        }
 
         Item {
           id: carousel
