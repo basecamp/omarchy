@@ -139,3 +139,39 @@ PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" VIPSTHUMBNAIL_CALLS_FILE="$t
 
 (( $(wc -l <"$tmp/calls") == 6 )) || fail "image menu releases thumbnail locks after generation"
 pass "image menu owns locks for exactly one generator lifetime"
+
+large_images="$tmp/large-images"
+mkdir -p "$large_images"
+large_cache_key=$(printf '%s' "$large_images" | md5sum | cut -d ' ' -f 1)
+large_rows=""
+for index in {1..1500}; do
+  row="$large_images/image-$index.png"$'\t'"$cache_dir/thumbnail-$index.jpg"
+  large_rows+="${large_rows:+$'\n'}$row"
+done
+printf '%s' "$large_rows" >"$cache_dir/$large_cache_key.rows"
+printf 'v2\n%s:%s\n' "$large_images" "$(stat -Lc '%Y' "$large_images")" >"$cache_dir/$large_cache_key.fast-signature"
+
+cat >"$stub_bin/omarchy-shell" <<'EOF'
+#!/bin/bash
+
+printf '%s\0' "$@" >"$OMARCHY_SHELL_ARGS_FILE"
+if [[ $1 == "image-selector" && $2 == "open" ]]; then
+  : >"$7"
+  printf 'ok\n'
+fi
+EOF
+chmod +x "$stub_bin/omarchy-shell"
+
+PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" OMARCHY_SHELL_ARGS_FILE="$tmp/ipc-args" \
+  "$ROOT/bin/omarchy-menu-images" "$large_images"
+
+mapfile -d '' -t ipc_args <"$tmp/ipc-args"
+[[ ${ipc_args[2]} == "$large_images" ]] || fail "large image menus pass directories to IPC"
+[[ -z ${ipc_args[3]} ]] || fail "large image menus keep row data out of IPC arguments"
+pass "image menu opens large collections without oversized arguments"
+
+rm "$tmp/ipc-args"
+PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" OMARCHY_SHELL_ARGS_FILE="$tmp/ipc-args" \
+  "$ROOT/bin/omarchy-menu-images" --preload "$large_images"
+[[ ! -e $tmp/ipc-args ]] || fail "large image menu preloads avoid oversized arguments"
+pass "image menu skips oversized preloads"

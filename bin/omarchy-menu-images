@@ -276,13 +276,27 @@ fi
 # Qt.atob()s on the other side.
 rows_b64=$(printf '%s' "$rows" | base64 -w 0)
 
+# Linux limits each process argument to roughly 128 KiB. Leave enough room
+# below that ceiling for the IPC wrapper, and let the picker scan the already
+# cached directories when the encoded rows would be too large.
+max_rows_argument_size=$((96 * 1024))
+image_dirs_arg=""
+if (( ${#rows_b64} > max_rows_argument_size )); then
+  if [[ $preload == true ]]; then
+    exit 0
+  fi
+
+  image_dirs_arg="$image_dirs_env"
+  rows_b64=""
+fi
+
 if [[ $preload == true ]]; then
   omarchy-shell image-selector preload "$rows_b64" "$selected_list_image" "$show_labels" "$filterable" >/dev/null || true
   exit 0
 fi
 
 if ! open_result=$(omarchy-shell image-selector open \
-     "" \
+     "$image_dirs_arg" \
      "$rows_b64" \
      "$selected_list_image" \
      "$selection_file" \
