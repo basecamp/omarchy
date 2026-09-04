@@ -5,9 +5,9 @@ import qs.Ui
 
 BarWidget {
   id: root
-  moduleName: "omarchy.discovery"
+  moduleName: "omarchy.plugin-workbench"
 
-  readonly property string helperPath: "/usr/bin/omarchy-discovery"
+  readonly property string helperPath: "/usr/bin/omarchy-plugin-workbench"
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   readonly property bool popoutSwitchClosing: panelLoader.item
     ? panelLoader.item.popoutSwitchClosing === true : false
@@ -56,9 +56,9 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: panelLoader.item && panelLoader.item.availableUpdateCount > 0
-      ? "D " + panelLoader.item.availableUpdateCount : "D"
-    tooltipText: "Discovery"
+    text: panelLoader.item && panelLoader.item.projectCount > 0
+      ? "WB " + panelLoader.item.projectCount : "WB"
+    tooltipText: "Plugin Workbench"
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.LeftButton) root.toggle()
     }

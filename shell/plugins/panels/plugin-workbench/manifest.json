@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "id": "omarchy.discovery",
-  "name": "Discovery",
+  "id": "omarchy.plugin-workbench",
+  "name": "Plugin Workbench",
   "version": "0.3.0",
   "author": "Tom Ballard",
   "license": "MIT",
-  "description": "Discover apps, plugins, and themes, manage updates, and build for Omarchy.",
+  "description": "Discover, install, build, validate, test, deploy, maintain, and update Omarchy plugins.",
   "kinds": [
     "bar-widget"
   ],
@@ -13,8 +13,8 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Discovery",
-    "description": "Apps, plugins, themes, updates, and builds for Omarchy",
+    "displayName": "Plugin Workbench",
+    "description": "Discover, install, maintain, and build Omarchy plugins",
     "category": "Development",
     "allowMultiple": false,
     "defaultSection": "right"

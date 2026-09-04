@@ -1,6 +1,6 @@
-echo "Install Discovery and add its first-party panel"
+echo "Install Plugin Workbench and add its first-party panel"
 
-omarchy-pkg-add omarchy-discovery
+omarchy-pkg-add omarchy-plugin-workbench
 
 config_file="$HOME/.config/omarchy/shell.json"
 
@@ -13,11 +13,11 @@ if [[ -s $config_file ]]; then
       else ""
       end;
 
-    def rename_discovery:
-      if . == "io.github.tcballard.plugin-workbench" or . == "io.github.tcballard.discovery" or . == "omarchy.plugin-workbench" then
-        "omarchy.discovery"
-      elif type == "object" and (.id == "io.github.tcballard.plugin-workbench" or .id == "io.github.tcballard.discovery" or .id == "omarchy.plugin-workbench") then
-        .id = "omarchy.discovery"
+    def rename_workbench:
+      if . == "io.github.tcballard.plugin-workbench" or . == "io.github.tcballard.discovery" or . == "omarchy.discovery" then
+        "omarchy.plugin-workbench"
+      elif type == "object" and (.id == "io.github.tcballard.plugin-workbench" or .id == "io.github.tcballard.discovery" or .id == "omarchy.discovery") then
+        .id = "omarchy.plugin-workbench"
       else
         .
       end;
@@ -45,15 +45,15 @@ if [[ -s $config_file ]]; then
       end;
 
     (if (.bar.layout? | type) == "object" then
-      .bar.layout |= map_values(if type == "array" then map(rename_discovery) | deduplicate_entries else . end)
+      .bar.layout |= map_values(if type == "array" then map(rename_workbench) | deduplicate_entries else . end)
     else . end)
-    | (if has_widget("omarchy.discovery") then
+    | (if has_widget("omarchy.plugin-workbench") then
         .
       else
-        .bar.layout.right |= insert_after("omarchy.agents"; { id: "omarchy.discovery" })
+        .bar.layout.right |= insert_after("omarchy.agents"; { id: "omarchy.plugin-workbench" })
       end)
     | (if (.disabledPlugins? | type) == "array" then
-        .disabledPlugins |= (map(rename_discovery) | unique)
+        .disabledPlugins |= (map(rename_workbench) | unique)
       else . end)
     | (if (.plugins? | type) == "array" then
         .plugins |= map(select((.id // "") != "io.github.tcballard.plugin-workbench" and (.id // "") != "io.github.tcballard.discovery"))
