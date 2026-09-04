@@ -29,7 +29,7 @@ from typing import Any
 
 AGENT_ID = "fireworks"
 AGENT_NAME = "Fireworks"
-AUTH_HELP = "Set FIREWORKS_API_KEY, run `firectl set-api-key`, or sign in to Fireworks in opencode."
+AUTH_HELP = "Set FIREWORKS_API_KEY, run `firectl set-api-key`, or sign in to Fireworks in pi or opencode."
 API_BASE_URL = "https://api.fireworks.ai"
 
 
@@ -196,9 +196,55 @@ def read_auth_file(path: Path) -> tuple[str, str]:
   return api_key, account_id
 
 
+def pi_auth_path() -> Path:
+  agent_dir = Path(os.environ.get("PI_CODING_AGENT_DIR") or (Path.home() / ".pi" / "agent"))
+  return agent_dir / "auth.json"
+
+
 def opencode_auth_path() -> Path:
   data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
   return data_home / "opencode" / "auth.json"
+
+
+PI_ENV_REFERENCE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
+
+
+def resolve_pi_key(raw: Any) -> str:
+  # pi credential keys are literals, $ENV_VAR/${ENV_VAR} references, or
+  # !command shell lookups. The collector resolves the first two; command
+  # lookups stay pi-only and are skipped rather than sent to the API verbatim.
+  key = str(raw or "").strip()
+  if not key or key.startswith("!"):
+    return ""
+  # Escapes survive interpolation as sentinels, then restore.
+  key = key.replace("$$", "\x00").replace("$!", "\x01")
+
+  unresolved = False
+
+  def substitute(match: re.Match[str]) -> str:
+    nonlocal unresolved
+    value = os.environ.get(match.group(1) or match.group(2), "")
+    if not value:
+      unresolved = True
+    return value
+
+  key = PI_ENV_REFERENCE.sub(substitute, key)
+  if unresolved:
+    return ""
+  return key.replace("\x00", "$").replace("\x01", "!")
+
+
+def read_pi_key(path: Path) -> str:
+  try:
+    parsed = json.loads(path.read_text())
+  except (OSError, json.JSONDecodeError):
+    return ""
+  entry = parsed.get("fireworks") if isinstance(parsed, dict) else None
+  if not isinstance(entry, dict):
+    return ""
+  if entry.get("type") not in (None, "api_key"):
+    return ""
+  return resolve_pi_key(entry.get("key"))
 
 
 def read_opencode_key(path: Path) -> str:
@@ -227,11 +273,12 @@ def read_config() -> dict[str, Any]:
 
 def credentials(auth_path: Path, config: dict[str, Any]) -> tuple[str, str]:
   file_key, file_account = read_auth_file(auth_path)
-  # opencode is the last resort: an explicit key or a firectl login should
-  # win over whatever another tool happens to be signed in with.
+  # Agent logins are the fallback ladder below an explicit key or a firectl
+  # login: pi first as Omarchy's default agent, opencode as the last resort.
   api_key = (
     str(os.environ.get("FIREWORKS_API_KEY", "")).strip()
     or file_key
+    or read_pi_key(pi_auth_path())
     or read_opencode_key(opencode_auth_path())
   )
   account_id = (

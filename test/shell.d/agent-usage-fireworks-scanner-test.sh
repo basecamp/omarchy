@@ -27,13 +27,13 @@ EOF
 # Without credentials the collector must still print a full, hidden-by-default
 # record: the update runner writes whatever valid JSON appears on stdout.
 no_key=$(HOME="$TEST_HOME" XDG_CONFIG_HOME="$TEST_HOME/.config" XDG_DATA_HOME="$TEST_HOME/.local/share" \
-  FIREWORKS_API_KEY="" FIREWORKS_AUTH_PATH="$TEST_HOME/missing.ini" "$ROOT/bin/omarchy-agent-usage-fireworks")
+  PI_CODING_AGENT_DIR="$TEST_HOME/.pi/agent" FIREWORKS_API_KEY="" FIREWORKS_AUTH_PATH="$TEST_HOME/missing.ini" "$ROOT/bin/omarchy-agent-usage-fireworks")
 
 [[ $(jq -r '.id + ":" + (.ready | tostring) + ":" + (.hasPromptStats | tostring)' <<<"$no_key") == "fireworks:false:false" ]] ||
   fail "Fireworks collector prints a valid record without credentials" "$no_key"
 pass "Fireworks collector prints a valid record without credentials"
 
-result=$(python3 - "$ROOT/bin/omarchy-agent-usage-fireworks" "$auth_file" "$TEST_HOME/.config" "$TEST_HOME/.local/share" <<'PY'
+result=$(python3 - "$ROOT/bin/omarchy-agent-usage-fireworks" "$auth_file" "$TEST_HOME/.config" "$TEST_HOME/.local/share" "$TEST_HOME/.pi/agent" <<'PY'
 import importlib.machinery
 import importlib.util
 import json
@@ -95,7 +95,11 @@ summary["apiKey"] = api_key
 summary["accountId"] = account_id
 summary["money"] = float(scanner.money_value({"units": "12", "nanos": 430000000}))
 
-# The opencode key only wins when no explicit key or firectl login exists.
+# The opencode key only wins when no explicit key, firectl login, or pi
+# login exists. Pin the pi dir first so a developer's real ~/.pi/agent
+# credentials cannot leak into the fixture run.
+pi_dir = Path(sys.argv[5])
+os.environ["PI_CODING_AGENT_DIR"] = str(pi_dir)
 data_home = Path(os.environ["XDG_DATA_HOME"])
 opencode_auth = data_home / "opencode" / "auth.json"
 opencode_auth.parent.mkdir(parents=True, exist_ok=True)
@@ -104,6 +108,22 @@ os.environ.pop("FIREWORKS_API_KEY", None)
 opencode_key, _ = scanner.credentials(Path("/nonexistent/auth.ini"), {})
 firectl_key, _ = scanner.credentials(auth_path, {})
 summary["opencodeFallback"] = opencode_key == "fw_opencode" and firectl_key == "fw_test"
+
+# A pi login is the next rung below firectl, above opencode.
+pi_dir.mkdir(parents=True, exist_ok=True)
+(pi_dir / "auth.json").write_text(json.dumps({"fireworks": {"type": "api_key", "key": "fw_pi"}}))
+pi_key, _ = scanner.credentials(Path("/nonexistent/auth.ini"), {})
+firectl_still_wins, _ = scanner.credentials(auth_path, {})
+summary["piFallback"] = pi_key == "fw_pi" and firectl_still_wins == "fw_test"
+
+# pi key syntax: $ENV references resolve, missing ones stay unresolved, and
+# !command lookups are skipped and fall through to opencode.
+os.environ["FW_TEST_ENV_KEY"] = "fw_from_env"
+summary["piEnvKey"] = scanner.resolve_pi_key("$FW_TEST_ENV_KEY") == "fw_from_env"
+summary["piMissingEnvKey"] = scanner.resolve_pi_key("$FW_DEFINITELY_MISSING") == ""
+(pi_dir / "auth.json").write_text(json.dumps({"fireworks": {"type": "api_key", "key": "!secret-tool lookup fw"}}))
+command_key, _ = scanner.credentials(Path("/nonexistent/auth.ini"), {})
+summary["piCommandKeySkipped"] = command_key == "fw_opencode"
 
 class WorkingClient:
   def __init__(self, api_key, base_url):
@@ -242,3 +262,19 @@ pass "Fireworks collector dates buckets by local day east of Greenwich"
 [[ $(jq -r '.opencodeFallback' <<<"$result") == "true" ]] ||
   fail "Fireworks collector falls back to the opencode key last" "$result"
 pass "Fireworks collector falls back to the opencode key last"
+
+[[ $(jq -r '.piFallback' <<<"$result") == "true" ]] ||
+  fail "Fireworks collector falls back to the pi login before opencode" "$result"
+pass "Fireworks collector falls back to the pi login before opencode"
+
+[[ $(jq -r '.piEnvKey' <<<"$result") == "true" ]] ||
+  fail "Fireworks collector resolves env-var pi keys" "$result"
+pass "Fireworks collector resolves env-var pi keys"
+
+[[ $(jq -r '.piMissingEnvKey' <<<"$result") == "true" ]] ||
+  fail "Fireworks collector treats missing env references as unresolved" "$result"
+pass "Fireworks collector treats missing env references as unresolved"
+
+[[ $(jq -r '.piCommandKeySkipped' <<<"$result") == "true" ]] ||
+  fail "Fireworks collector skips command-lookup pi keys and falls through" "$result"
+pass "Fireworks collector skips command-lookup pi keys and falls through"
