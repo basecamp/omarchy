@@ -310,6 +310,7 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refreshDisplayAudioModels()
+      routeTargetsProc.restart()
       focusSection = "output"
       selectedIndex = -1  // first keyboard cursor reveal starts on the output slider
       cursorActive = false
@@ -441,6 +442,35 @@ Panel {
   function setInputVolume(v) {
     if (!source || !source.audio) return
     source.audio.volume = Math.max(0, Math.min(1, v))
+  }
+
+  // Routing offers the same sinks the picker does. candidateSinks still holds
+  // outputs sinkAvailable() removes, including the physical sink hidden behind
+  // speaker tuning, and sending a stream there would bypass the tuning.
+  function cycleStreamRoute(node) {
+    if (!node) return
+    var options = Model.routeOptions(root.audioSinks)
+    var next = Model.nextRouteTarget(options, Model.routeTargetOf(node, root.routeTargets))
+    Quickshell.execDetached(Model.routeCommand(node.id, next))
+    routeTargetsProc.restart()
+  }
+
+  // The routing lives in the default metadata object, so it is read back from
+  // there rather than from the node properties.
+  property var routeTargets: ({})
+
+  Process {
+    id: routeTargetsProc
+    command: ["pw-metadata", "-n", "default"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.routeTargets = Model.parseRouteTargets(text)
+    }
+
+    function restart() {
+      if (running) return
+      running = true
+    }
   }
 
   function toggleOutputMute() {
@@ -655,7 +685,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
+    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(620))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -669,6 +699,15 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
+        // 'o' sends the focused stream to the next output device.
+        if (t === "o" || t === "O") {
+          if (!root.cursorActive) return
+          if (root.focusSection === "streams" && root.selectedIndex >= 0
+              && root.selectedIndex < root.displayAudioStreams.length) {
+            root.cycleStreamRoute(root.displayAudioStreams[root.selectedIndex])
+          }
+          return
+        }
         // 'm' mutes whatever the cursor is on: focused section's slider
         // for output/input, the focused stream for streams.
         if (t === "m" || t === "M") {
@@ -1143,6 +1182,10 @@ Panel {
     readonly property real streamVolume: node && node.audio ? node.audio.volume : 0
     readonly property bool streamMuted: node && node.audio ? node.audio.muted : false
     readonly property bool isActive: root.streamRepresentsPlayer(node, root.activeMediaPlayer)
+    readonly property var linkedSink: streamLinks.linkGroups.length > 0
+      ? streamLinks.linkGroups[0].target
+      : null
+    readonly property bool routePinned: Model.routeIsPinned(streamRow.node, root.routeTargets)
 
     hasCursor: root.cursorActive && root.focusSection === "streams" && root.selectedIndex === rowIndex
     onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(streamRow)
@@ -1151,6 +1194,11 @@ Panel {
     fill: root.hoverFill
     currentFill: root.selectedFill
     implicitHeight: streamColumn.implicitHeight + Style.spacing.xl
+
+    PwNodeLinkTracker {
+      id: streamLinks
+      node: streamRow.node
+    }
 
     Column {
       id: streamColumn
@@ -1229,6 +1277,49 @@ Panel {
         onRightClicked: {
           if (streamRow.node && streamRow.node.audio)
             streamRow.node.audio.muted = !streamRow.node.audio.muted
+        }
+      }
+
+      // Which output this application comes out of. Click to send it to the
+      // next device, and again to hand it back to the default. Hidden when
+      // there is only one output to choose from, counted after sinkAvailable()
+      // has removed the ones routing will not offer, so the row cannot appear
+      // with nothing to cycle to.
+      Item {
+        visible: root.audioSinks.length > 1
+        width: parent.width
+        implicitHeight: visible ? routeText.implicitHeight : 0
+        height: implicitHeight
+
+        Text {
+          id: routeIcon
+          textFormat: Text.PlainText
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          text: streamRow.routePinned ? "\udb81\udd31" : "\udb80\udc54"
+          color: Qt.darker(root.bar.foreground, streamRow.routePinned ? 1.2 : 1.6)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        Text {
+          id: routeText
+          textFormat: Text.PlainText
+          anchors.left: routeIcon.right
+          anchors.leftMargin: Style.space(6)
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          text: Model.routeLabel(streamRow.node, root.audioSinks, streamRow.linkedSink, root.routeTargets)
+          color: Qt.darker(root.bar.foreground, streamRow.routePinned ? 1.2 : 1.6)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.cycleStreamRoute(streamRow.node)
         }
       }
     }
