@@ -57,6 +57,29 @@ Capture commands — Screenshots and screen recording:
 
 Every command takes `--help` too, whether you ask a whole group (`omarchy capture --help`) or a single command (`omarchy capture screenshot --help`).
 
+### Calendar and planning
+
+The clock popup's local calendar and planner are also available through the
+`calendar` group. It talks to the running Omarchy shell, so the terminal and
+the popup always operate on the same versioned state:
+
+```bash
+omarchy calendar status
+omarchy calendar add-event --title "Dentist" \\
+  --start 2026-09-07T10:00:00+02:00 --end 2026-09-07T11:00:00+02:00 \\
+  --timezone Europe/Rome
+omarchy calendar add-task --title "Write proposal" --duration 90 --priority high
+omarchy calendar settings --timezone Europe/Rome --availability monday=09:00-17:00
+omarchy calendar plan
+omarchy calendar apply
+omarchy calendar open agenda
+```
+
+Use `events`, `tasks`, and `proposal` to inspect data, `edit-*` and
+`delete-*` to manage it, and `--json` for scripts. Planning is always a
+proposal until `apply` is run; `return-inbox <task-id>` reverses an applied
+planner task without changing unrelated manual events.
+
 ### Opening the menu from the terminal
 
 The Omarchy menu is scriptable as well, which is handy for your own keybindings. `omarchy menu` opens it at the root, and you can jump straight to any point in the tree by naming it: `omarchy menu summon style.theme` goes right to the theme picker, `omarchy menu toggle system` opens the system menu and closes it again if it's already up, and `omarchy menu close` puts it away.
