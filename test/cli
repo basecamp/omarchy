@@ -337,6 +337,35 @@ border = "#ffffff"
 EOF
 
 OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
+
+grep -Fq 'border_locked_active = active_border_color,' "$NEXT_THEME/hyprland.lua" ||
+  fail "theme templates apply the active border to locked groups"
+grep -Fq 'border_locked_inactive = inactive_border_color,' "$NEXT_THEME/hyprland.lua" ||
+  fail "theme templates apply the inactive border to locked groups"
+pass "theme templates style locked group borders"
+
+for theme_hyprland in "$ROOT"/themes/*/hyprland.lua; do
+  if grep -Fq 'border_active =' "$theme_hyprland"; then
+    grep -Fq 'border_locked_active = active_border_color,' "$theme_hyprland" ||
+      fail "$(basename "$(dirname "$theme_hyprland")") applies its active border to locked groups"
+  fi
+  if grep -Fq 'border_inactive =' "$theme_hyprland"; then
+    grep -Fq 'border_locked_inactive = inactive_border_color,' "$theme_hyprland" ||
+      fail "$(basename "$(dirname "$theme_hyprland")") applies its inactive border to locked groups"
+  fi
+done
+pass "handwritten Hyprland themes style locked group borders"
+
+grep -Fq 'border_locked_active = active_border_color,' "$ROOT/default/hypr/looknfeel.lua" ||
+  fail "default locked groups inherit the active border"
+grep -Fq 'text_color_locked_inactive = "rgba(ffffff90)",' "$ROOT/default/hypr/looknfeel.lua" ||
+  fail "default locked groupbar text matches the translucent inactive text"
+grep -Fq 'locked_active = "rgba(00000040)",' "$ROOT/default/hypr/looknfeel.lua" ||
+  fail "default locked active groupbars match unlocked groupbars"
+grep -Fq 'locked_inactive = "rgba(00000020)",' "$ROOT/default/hypr/looknfeel.lua" ||
+  fail "default locked inactive groupbars match unlocked groupbars"
+pass "default Hyprland styling covers locked groups generically"
+
 grep -qx 'mix=#808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix helper works"
 grep -qx 'strip=808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_strip helper works"
 grep -qx 'rgb=128,128,128' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_rgb helper works"

@@ -10,6 +10,7 @@ hl.config({
   group = {
     col = {
       border_active = active_border_color,
+      border_locked_active = active_border_color,
     },
   },
 })
