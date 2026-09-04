@@ -13,6 +13,14 @@ declare -A LUA_BIND_ARG_MAP
 # via the compiled keymap, with a small fallback for common keys so the menu
 # remains readable if xkbcli cannot resolve a symbol.
 parse_keycodes() {
+  local layout variant
+  local xkbcli_args=()
+
+  layout="$(hyprctl getoption -j input:kb_layout | jq -r '.str // empty')"
+  variant="$(hyprctl getoption -j input:kb_variant | jq -r '.str // empty')"
+  [[ -n $layout ]] && xkbcli_args+=(--layout "$layout")
+  [[ -n $variant ]] && xkbcli_args+=(--variant "$variant")
+
   awk '
     BEGIN {
       split("10=1 11=2 12=3 13=4 14=5 15=6 16=7 17=8 18=9 19=0 20=MINUS 21=EQUAL 59=COMMA 60=PERIOD 61=SLASH", fallbacks, " ")
@@ -21,16 +29,14 @@ parse_keycodes() {
         keycode_symbol[substr(fallbacks[i], 1, separator - 1)] = substr(fallbacks[i], separator + 1)
       }
 
-      # </dev/null keeps xkbcli from consuming the binding records on stdin
-      keymap_cmd = "xkbcli compile-keymap </dev/null"
       section = ""
-      while ((keymap_cmd | getline line) > 0) {
+      while ((getline line < "/dev/fd/3") > 0) {
         if (line ~ /xkb_keycodes/) { section = "codes"; continue }
         if (line ~ /xkb_symbols/)  { section = "syms";  continue }
         if (section == "codes" && match(line, /<([A-Za-z0-9_]+)>\s*=\s*([0-9]+)\s*;/, m)) code_by_name[m[1]] = m[2]
         if (section == "syms" && match(line, /key\s*<([A-Za-z0-9_]+)>\s*\{\s*\[\s*([^, \]]+)/, m)) sym_by_name[m[1]] = m[2]
       }
-      close(keymap_cmd)
+      close("/dev/fd/3")
 
       for (name in code_by_name) {
         code = code_by_name[name]
@@ -63,7 +69,7 @@ parse_keycodes() {
 
       print
     }
-  '
+  ' 3< <(xkbcli compile-keymap "${xkbcli_args[@]}" </dev/null)
 }
 
 # Supplement `hyprctl binds` for Lua-only binds that Hyprland currently
