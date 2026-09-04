@@ -385,10 +385,16 @@ var hiddenConnectDedupe =
 // A lone EXIT trap deletes the unproven profile on any failure or TERM/INT
 // kill, disarmed only after `connection up`. The profile is born
 // autoconnect-off so a leak can't retry; old duplicates go in one batched
-// delete, only once it is up and armed; `-w 25` bounds nmcli under the
-// panel's 30s kill.
+// delete, only once it is up and armed. `connection up` runs backgrounded so
+// the panel's 30s kill (Process.running = false -> SIGTERM) reaches it
+// directly: bash defers a trapped signal until a foreground child returns,
+// so a synchronous `nmcli -w 25 connection up` would leave the panel's
+// "Connecting..." state and disabled actions running well past the
+// advertised timeout while nmcli's own -w 25 has yet to elapse.
 var hiddenConnectActivate =
-  " && nmcli -w 25 connection up uuid \"$u\"" +
+  " && { nmcli -w 25 connection up uuid \"$u\" & up=$!;" +
+  "     trap 'kill -TERM $up 2>/dev/null; wait $up 2>/dev/null; exit 143' TERM INT;" +
+  "     wait $up; }" +
   " && { trap - EXIT;" +
   "     if nmcli connection modify uuid \"$u\" connection.autoconnect yes >/dev/null 2>&1; then" +
   "       [[ -n $old ]] && nmcli connection delete $old >/dev/null 2>&1;" +

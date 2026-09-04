@@ -37,7 +37,20 @@ case "$*" in
     exit 0
     ;;
   *"connection up"*)
-    [[ -n ${NM_UP_SLEEP:-} ]] && sleep "$NM_UP_SLEEP"
+    # Mirrors real nmcli's SIGTERM handling so termination coverage exercises
+    # the panel's kill actually reaching this process, not just the parent
+    # bash -c wrapper around it. The sleep itself is backgrounded (rather
+    # than run as a foreground child of this trap-bearing script) so this
+    # stub reacts to TERM immediately, the way a real, single-process nmcli
+    # would -- a foreground sleep here would reintroduce the exact
+    # defer-until-child-returns bug this stub exists to catch, just one
+    # process further down.
+    [[ -n ${NM_UP_PID_FILE:-} ]] && printf '%s\n' "$$" >"$NM_UP_PID_FILE"
+    if [[ -n ${NM_UP_SLEEP:-} ]]; then
+      sleep "$NM_UP_SLEEP" & sleep_pid=$!
+      trap 'kill -TERM $sleep_pid 2>/dev/null; exit 143' TERM
+      wait $sleep_pid
+    fi
     exit "${NM_UP_RC:-0}"
     ;;
   *"connection modify"*)
@@ -208,33 +221,52 @@ assert_not_contains "$log" "delete uuid old-hidden" "hidden PSK arm failure keep
 assert_not_contains "$log" "delete uuid new-uuid-0000" "hidden PSK arm failure keeps the newly-activated profile"
 
 # --- Scenario 4: PSK termination ------------------------------------------
+#
+# NM_UP_SLEEP is long (20s) and the assertions require the script to exit and
+# the stubbed nmcli child to die within a couple of seconds of SIGTERM -- if
+# the panel's kill only reached the parent `bash -c` (the pre-fix behavior),
+# this would block for the full sleep instead.
 
 log=$tmp/log_psk_term
 edit=$tmp/edit_psk_term
 input=$tmp/input_psk_term
+pidfile=$tmp/pid_psk_term
 : >"$log"
+rm -f "$pidfile"
 printf 'secret pass\n' >"$input"
 
 PATH="$tmp/bin:$PATH" \
   NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
   NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_PSK" \
-  NM_UP_SLEEP=3 \
+  NM_UP_SLEEP=20 NM_UP_PID_FILE="$pidfile" \
   bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk <"$input" &
 pid=$!
 
 waited=0
-while ! grep -qF "connection up" "$log" 2>/dev/null; do
+while [[ ! -s $pidfile ]]; do
   sleep 0.1
   waited=$((waited + 1))
-  (( waited < 50 )) || fail "hidden PSK termination test setup" "connection up never started within 5s"
+  (( waited < 50 )) || fail "hidden PSK termination test setup" "nmcli stub pid file never appeared within 5s"
 done
+nmcli_pid=$(<"$pidfile")
 
+start_ns=$(date +%s%N)
 kill -TERM "$pid"
 rc=0
 wait "$pid" || rc=$?
+elapsed_ms=$(( ($(date +%s%N) - start_ns) / 1000000 ))
+
+(( elapsed_ms < 2000 )) || fail "hidden PSK termination reaches the child nmcli process instead of waiting for it to exit on its own" "elapsed: ${elapsed_ms}ms"
+pass "hidden PSK termination reaches the child nmcli process instead of waiting for it to exit on its own"
 
 (( rc != 0 )) || fail "hidden PSK connect reports failure when killed mid-activation"
 pass "hidden PSK connect reports failure when killed mid-activation"
+
+sleep 0.3
+if kill -0 "$nmcli_pid" 2>/dev/null; then
+  fail "hidden PSK termination terminates the child nmcli process rather than orphaning it" "pid $nmcli_pid is still running"
+fi
+pass "hidden PSK termination terminates the child nmcli process rather than orphaning it"
 
 assert_contains "$log" "connection delete uuid new-uuid-0000" "hidden PSK termination lets the EXIT trap delete the unproven profile"
 assert_not_contains "$log" "delete uuid old-hidden" "hidden PSK termination leaves the old profile in place"
