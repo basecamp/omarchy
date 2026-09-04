@@ -28,6 +28,12 @@ const char *input_kind(const bridge::HostInputPayload &payload) noexcept {
   if (const auto *button = std::get_if<surface::PointerButton>(&payload))
     return button->state == surface::ButtonState::pressed ? "pointer-press"
                                                           : "pointer-release";
+  if (const auto *key = std::get_if<surface::Key>(&payload)) {
+    if (key->auto_repeat)
+      return "key-repeat";
+    return key->state == surface::ButtonState::pressed ? "key-press"
+                                                       : "key-release";
+  }
   const auto *touch = std::get_if<bridge::HostTouchFrame>(&payload);
   if (touch == nullptr || touch->phase == surface::TouchFramePhase::update)
     return nullptr;

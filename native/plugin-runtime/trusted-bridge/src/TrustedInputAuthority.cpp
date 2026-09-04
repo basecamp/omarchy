@@ -73,7 +73,11 @@ TrustedInputAuthority::admit(const surface::TrustedAllocation &allocation,
            surface::ButtonState::pressed) ||
       (std::holds_alternative<surface::TouchFrame>(event.payload) &&
        std::get<surface::TouchFrame>(event.payload).phase ==
-           surface::TouchFramePhase::begin);
+           surface::TouchFramePhase::begin) ||
+      (std::holds_alternative<surface::Key>(event.payload) &&
+       std::get<surface::Key>(event.payload).state ==
+           surface::ButtonState::pressed &&
+       !std::get<surface::Key>(event.payload).auto_repeat);
   if (activation && input.device == 0)
     return std::nullopt;
   if (mirror_.accept(event, allocation, active) !=

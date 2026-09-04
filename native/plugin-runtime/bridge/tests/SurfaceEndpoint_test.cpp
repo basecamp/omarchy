@@ -656,6 +656,47 @@ void gesture_arming_is_exact_and_send_failure_clears() {
   require(bridge::SurfaceEndpointTestAccess::cancel_input(*touch.endpoint, 8) &&
               touch.port.clear_calls == 1,
           "exact Cancel did not revoke the surface intent eligibility");
+
+  Harness keyboard;
+  keyboard.port.description.canonical_surfaces =
+      R"({"pet":{"keyboardFocus":"after-gesture","maximumFramesPerSecond":60,"maximumHeight":32,"maximumWidth":64,"role":"panel"}})";
+  keyboard.attach();
+  keyboard.negotiate();
+  const bridge::HostInputEvent focus_press{
+      .payload = surface::PointerButton{
+          .position = {1U << surface::kQ16FractionBits,
+                       1U << surface::kQ16FractionBits},
+          .button = static_cast<std::uint32_t>(Qt::LeftButton),
+          .state = surface::ButtonState::pressed,
+          .buttons = static_cast<std::uint32_t>(Qt::LeftButton)},
+      .device = 9,
+      .trusted_physical = true};
+  require(bridge::SurfaceEndpointTestAccess::route_input(
+              *keyboard.endpoint, focus_press),
+          "keyboard fixture did not receive physical activation");
+  require(bridge::SurfaceEndpointTestAccess::route_input(
+              *keyboard.endpoint,
+              {.payload = surface::FocusChanged{.focused = true}}),
+          "keyboard fixture did not acquire authenticated focus");
+  const bridge::HostInputEvent key_press{
+      .payload = surface::Key{
+          .key = static_cast<std::uint32_t>(Qt::Key_Return),
+          .native_scan_code = 28,
+          .state = surface::ButtonState::pressed,
+          .auto_repeat = false,
+          .text = "\r"},
+      .device = 9,
+      .trusted_physical = true};
+  require(bridge::SurfaceEndpointTestAccess::route_input(
+              *keyboard.endpoint, key_press) &&
+              keyboard.port.arm_calls == 2,
+          "focused physical key press did not arm exact intent eligibility");
+  auto repeated_key = key_press;
+  std::get<surface::Key>(repeated_key.payload).auto_repeat = true;
+  require(bridge::SurfaceEndpointTestAccess::route_input(
+              *keyboard.endpoint, repeated_key) &&
+              keyboard.port.arm_calls == 2,
+          "key repeat minted another intent eligibility claim");
 }
 
 void remote_destruction_closes_host_before_detach() {

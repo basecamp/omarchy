@@ -39,8 +39,9 @@ struct SurfaceEndpoint::Impl final {
     bool input = false;
   };
   struct PendingGesture final {
+    enum class Kind { pointer, touch, key };
     surface::SurfaceKey surface;
-    bool touch = false;
+    Kind kind = Kind::pointer;
   };
 
   class RenderSender final : public render_session::PacketSender {
@@ -230,12 +231,19 @@ bool SurfaceEndpoint::route(HostInputEvent event) {
   const bool touch = std::holds_alternative<HostTouchFrame>(event.payload) &&
                      std::get<HostTouchFrame>(event.payload).phase ==
                          surface::TouchFramePhase::begin;
-  const bool armed = event.trusted_physical && (pointer || touch);
+  const bool key = std::holds_alternative<surface::Key>(event.payload) &&
+                   std::get<surface::Key>(event.payload).state ==
+                       surface::ButtonState::pressed &&
+                   !std::get<surface::Key>(event.payload).auto_repeat;
+  const bool armed = event.trusted_physical && (pointer || touch || key);
   if (armed) {
     if (value.pending_gesture)
       return false;
     value.pending_gesture = Impl::PendingGesture{
-        .surface = value.description->key, .touch = touch};
+        .surface = value.description->key,
+        .kind = touch ? Impl::PendingGesture::Kind::touch
+                      : key ? Impl::PendingGesture::Kind::key
+                            : Impl::PendingGesture::Kind::pointer};
   }
   const bool routed = value.host->route_input(std::move(event));
   if (armed && value.pending_gesture) {
@@ -302,8 +310,18 @@ bool SurfaceEndpoint::forward_input(
   const bool touch = std::holds_alternative<surface::TouchFrame>(input.payload) &&
                      std::get<surface::TouchFrame>(input.payload).phase ==
                          surface::TouchFramePhase::begin;
-  if (input.surface != pending.surface || pointer == touch ||
-      touch != pending.touch) {
+  const bool key = std::holds_alternative<surface::Key>(input.payload) &&
+                   std::get<surface::Key>(input.payload).state ==
+                       surface::ButtonState::pressed &&
+                   !std::get<surface::Key>(input.payload).auto_repeat;
+  const auto kind = touch ? Impl::PendingGesture::Kind::touch
+                          : key ? Impl::PendingGesture::Kind::key
+                                : Impl::PendingGesture::Kind::pointer;
+  if (input.surface != pending.surface ||
+      static_cast<int>(pointer) + static_cast<int>(touch) +
+              static_cast<int>(key) !=
+          1 ||
+      kind != pending.kind) {
     log_intent_eligibility(*value.description, input.sequence, "rejected",
                            "input-mismatch");
     session_.clear_surface_intent_eligibility(*value.description);

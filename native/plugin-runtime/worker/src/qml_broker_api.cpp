@@ -885,6 +885,16 @@ bool QmlBrokerApi::beginTrustedGestureForInput(
             deferred_gesture_.reset();
           return false;
         }
+        if constexpr (std::is_same_v<Event, surface::Key>) {
+          if (payload.state == surface::ButtonState::pressed &&
+              !payload.auto_repeat) {
+            deferred_gesture_.reset();
+            beginTrustedGesture(event.surface.id, event.surface.generation,
+                                event.sequence);
+            return trusted_gesture_.has_value();
+          }
+          return false;
+        }
         if constexpr (std::is_same_v<Event, surface::Cancel>) {
           deferred_gesture_.reset();
         } else if constexpr (std::is_same_v<Event, surface::FocusChanged>) {

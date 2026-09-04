@@ -1047,6 +1047,34 @@ void test_input_authority_sequence_focus_capture_and_touch_identity() {
               authority.focused_surface() == second->surface,
           "focus switch was not ordered old-false before new-true");
 
+  const surface::Key key_press{.key = static_cast<std::uint32_t>(Qt::Key_Return),
+                               .native_scan_code = 28,
+                               .state = surface::ButtonState::pressed,
+                               .auto_repeat = false,
+                               .text = "\r"};
+  auto physical_key = authority.admit(
+      *second,
+      {.payload = key_press, .device = 43, .trusted_physical = true}, true);
+  auto repeated_key = key_press;
+  repeated_key.auto_repeat = true;
+  auto repeated = authority.admit(
+      *second,
+      {.payload = repeated_key, .device = 43, .trusted_physical = true}, true);
+  auto synthetic_key_event = key_press;
+  synthetic_key_event.key = static_cast<std::uint32_t>(Qt::Key_A);
+  synthetic_key_event.native_scan_code = 30;
+  synthetic_key_event.text = "a";
+  auto synthetic_key = authority.admit(
+      *second,
+      {.payload = synthetic_key_event,
+       .device = 43,
+       .trusted_physical = false},
+      true);
+  require(physical_key && physical_key->trusted_gesture && repeated &&
+              !repeated->trusted_gesture && synthetic_key &&
+              !synthetic_key->trusted_gesture,
+          "key gesture provenance was not limited to a physical non-repeat press");
+
   bridge::HostTouchFrame begin;
   begin.phase = surface::TouchFramePhase::begin;
   begin.count = 1;
@@ -1056,7 +1084,7 @@ void test_input_authority_sequence_focus_capture_and_touch_identity() {
   auto touch_begin = authority.admit(
       *first,
       {.payload = begin, .device = 51, .trusted_physical = true}, true);
-  require(touch_begin && touch_begin->event.sequence == 7 &&
+  require(touch_begin && touch_begin->event.sequence == 10 &&
               std::get<surface::TouchFrame>(touch_begin->event.payload)
                       .points[0]
                       .id == 0 &&
@@ -1097,7 +1125,7 @@ void test_input_authority_sequence_focus_capture_and_touch_identity() {
   auto added = authority.admit(
       *first,
       {.payload = add_contact, .device = 51, .trusted_physical = true}, true);
-  require(added && added->event.sequence == 8,
+  require(added && added->event.sequence == 11,
           "complete touch frame could not add a second contact");
 
   auto end = add_contact;
@@ -1110,15 +1138,15 @@ void test_input_authority_sequence_focus_capture_and_touch_identity() {
   auto reused = authority.admit(
       *first,
       {.payload = begin, .device = 51, .trusted_physical = true}, true);
-  require(touch_end && touch_end->event.sequence == 9 && reused &&
-              reused->event.sequence == 10 &&
+  require(touch_end && touch_end->event.sequence == 12 && reused &&
+              reused->event.sequence == 13 &&
               std::get<surface::TouchFrame>(reused->event.payload)
                       .points[0]
                       .id == 0,
           "released touch slots were not deterministically reusable");
   const auto cancelled = authority.cancel(*first);
   authority.release(second->surface);
-  require(cancelled && cancelled->sequence == 11 &&
+  require(cancelled && cancelled->sequence == 14 &&
               !authority.touch_captured(first->surface, 51) &&
               !authority.focused_surface(),
           "cancel/release did not clear authority state");
@@ -1126,7 +1154,7 @@ void test_input_authority_sequence_focus_capture_and_touch_identity() {
   auto after_cancel = authority.admit(
       *first,
       {.payload = begin, .device = 52, .trusted_physical = true}, true);
-  require(after_cancel && after_cancel->event.sequence == 12 &&
+  require(after_cancel && after_cancel->event.sequence == 15 &&
               std::get<surface::TouchFrame>(after_cancel->event.payload)
                       .points[0]
                       .id == 0 &&

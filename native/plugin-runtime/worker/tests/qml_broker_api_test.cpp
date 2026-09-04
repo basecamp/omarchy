@@ -1347,6 +1347,32 @@ void run() {
                        .phase = surface::TouchFramePhase::end}}),
           "touch cancel did not erase the deferred begin claim");
 
+  const auto key = [&](std::uint64_t sequence, surface::ButtonState state,
+                       bool repeat) {
+    return surface::InputEvent{
+        .surface = gesture_surface,
+        .sequence = sequence,
+        .payload = surface::Key{
+            .key = static_cast<std::uint32_t>(Qt::Key_Return),
+            .native_scan_code = 28,
+            .state = state,
+            .auto_repeat = repeat,
+            .text = "\r"}};
+  };
+  require(api.beginTrustedGestureForInput(
+              key(31, surface::ButtonState::pressed, false)) &&
+              api.requestSurfaceIntent(QStringLiteral("PanelWidget"),
+                                       QStringLiteral("toggle")) &&
+              intent_sink.last_source &&
+              intent_sink.last_source->input_sequence == 31,
+          "physical key press did not expose one exact gesture claim");
+  api.endTrustedGesture();
+  require(!api.beginTrustedGestureForInput(
+              key(32, surface::ButtonState::pressed, true)) &&
+              !api.beginTrustedGestureForInput(
+                  key(33, surface::ButtonState::released, false)),
+          "key repeat or release minted gesture authority");
+
   QVariantMap arguments{{QStringLiteral("key"), QStringLiteral("timer-state")},
                         {QStringLiteral("value"), QByteArray("saved")}};
   auto *allowed = qobject_cast<worker::BrokerCall *>(
