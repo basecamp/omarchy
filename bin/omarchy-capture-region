@@ -37,25 +37,33 @@ JQ_MONITOR_GEO='
     end;
 '
 
-active_workspace() {
-  hyprctl monitors -j | jq -r '.[] | select(.focused == true) | .activeWorkspace.id'
+# Workspace ids visible on any connected monitor, as a JSON array.
+active_workspaces() {
+  hyprctl monitors -j | jq -c 'map(.activeWorkspace.id)'
 }
 
 # Hidden group members and windows stacked at identical geometry collapse to
 # one rectangle: slurp cannot tell them apart, and duplicates would stall the
 # Tab cycle on the first copy.
 window_rects() {
-  hyprctl clients -j | jq -r --arg ws "$(active_workspace)" \
-    '[.[] | select(.workspace.id == ($ws | tonumber) and .hidden != true) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"] | unique[]'
+  local monitors_json clients_json
+  monitors_json=${1:-$(hyprctl monitors -j)}
+  clients_json=${2:-$(hyprctl clients -j)}
+
+  echo "$clients_json" | jq -r --argjson ws "$(echo "$monitors_json" | jq -c 'map(.activeWorkspace.id)')" \
+    '[.[] | select((.workspace.id as $id | $ws | index($id)) and .hidden != true) | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"] | unique[]'
 }
 
 monitor_rects() {
-  hyprctl monitors -j | jq -r --arg ws "$(active_workspace)" "${JQ_MONITOR_GEO} .[] | select(.activeWorkspace.id == (\$ws | tonumber)) | format_geo"
+  local monitors_json=${1:-$(hyprctl monitors -j)}
+  echo "$monitors_json" | jq -r "${JQ_MONITOR_GEO} .[] | format_geo"
 }
 
 get_rectangles() {
-  monitor_rects
-  window_rects
+  local monitors_json=$(hyprctl monitors -j)
+  local clients_json=$(hyprctl clients -j)
+  monitor_rects "$monitors_json"
+  window_rects "$monitors_json" "$clients_json"
 }
 
 focused_monitor_geo() {
