@@ -18,8 +18,46 @@ set_fallback_default_browser() {
   fi
 }
 
+# Is any running process executing a binary owned by this package? Matching on
+# package contents rather than process names keeps this correct for every
+# browser without hardcoding install paths, and avoids the Brave/Brave Origin
+# ambiguity (both run a process simply named "brave").
+package_is_running() {
+  local package=$1 exe
+  local -A owned_files=()
+
+  omarchy-pkg-present "$package" || return 1
+
+  while IFS= read -r file; do
+    owned_files[$file]=1
+  done < <(pacman -Qlq "$package" 2>/dev/null)
+
+  for exe_link in /proc/[0-9]*/exe; do
+    exe=$(readlink "$exe_link" 2>/dev/null) || continue
+    # A running process whose binary was already deleted reports "<path> (deleted)"
+    exe=${exe%" (deleted)"}
+    [[ -n ${owned_files[$exe]} ]] && return 0
+  done
+
+  return 1
+}
+
+# Removing the package out from under a running browser leaves it executing from
+# deleted inodes: the window stays up, but every child process it spawns from
+# then on dies on a fatal startup error. Refuse rather than let that happen.
+ensure_not_running() {
+  local name=$1 package=$2
+
+  if package_is_running "$package"; then
+    echo "$name is still running. Quit it first, then run this again." >&2
+    echo "Removing it now would leave the running instance crashing until it is closed." >&2
+    exit 1
+  fi
+}
+
 case $1 in
 chrome)
+  ensure_not_running Chrome google-chrome
   echo "Removing Chrome..."
   set_fallback_default_browser google-chrome.desktop
   omarchy-pkg-drop google-chrome
@@ -27,6 +65,7 @@ chrome)
   sudo rm -f /etc/opt/chrome/policies/managed/color.json
   ;;
 edge)
+  ensure_not_running Edge microsoft-edge-stable-bin
   echo "Removing Edge..."
   set_fallback_default_browser microsoft-edge.desktop
   omarchy-pkg-drop microsoft-edge-stable-bin
@@ -34,6 +73,7 @@ edge)
   sudo rm -f /etc/opt/edge/policies/managed/color.json
   ;;
 brave)
+  ensure_not_running Brave brave-bin
   echo "Removing Brave..."
   set_fallback_default_browser brave-browser.desktop
   omarchy-pkg-drop brave-bin
@@ -44,6 +84,7 @@ brave)
   fi
   ;;
 brave-origin)
+  ensure_not_running "Brave Origin" brave-origin-bin
   echo "Removing Brave Origin..."
   set_fallback_default_browser brave-origin.desktop
   omarchy-pkg-drop brave-origin-bin
@@ -54,11 +95,13 @@ brave-origin)
   fi
   ;;
 firefox)
+  ensure_not_running Firefox firefox
   echo "Removing Firefox..."
   set_fallback_default_browser firefox.desktop
   omarchy-pkg-drop firefox
   ;;
 zen)
+  ensure_not_running Zen zen-browser-bin
   echo "Removing Zen..."
   set_fallback_default_browser zen.desktop
   omarchy-pkg-drop zen-browser-bin
