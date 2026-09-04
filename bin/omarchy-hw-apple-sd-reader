@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Detect Intel Macs with the built-in Apple USB SD card reader (05ac:8406).
+
+product_name="${OMARCHY_DMI_PRODUCT_NAME:-/sys/class/dmi/id/product_name}"
+
+grep -qiE 'MacBookAir6,[12]|MacBookAir7,[12]|MacBookPro11,[1-5]|MacBookPro12,1' "$product_name" 2>/dev/null
