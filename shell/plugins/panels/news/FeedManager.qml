@@ -16,6 +16,7 @@ Item {
   property int editingIndex: -1
   property string formError: ""
   property var pendingPersistSettings: null
+  property bool showingCollections: false
 
   readonly property var catalog: news ? news.feedCatalog : []
   readonly property var enabledFeedIds: news ? news.enabledFeedIds : []
@@ -102,6 +103,28 @@ Item {
     persistSettings({ "customFeeds": serialiseEntries(entries) })
   }
 
+  function collectionsAfterSourceChange(oldUrl, newUrl) {
+    var groups = news ? news.collections : []
+    var result = []
+    for (var i = 0; i < groups.length; i++) {
+      var urls = []
+      var sourceUrls = groups[i].sourceUrls || []
+      for (var sourceIndex = 0; sourceIndex < sourceUrls.length; sourceIndex++) {
+        var url = String(sourceUrls[sourceIndex] || "")
+        if (url === oldUrl) url = newUrl
+        if (url !== "" && urls.indexOf(url) === -1) urls.push(url)
+      }
+      if (urls.length > 0) {
+        result.push({
+          "id": String(groups[i].id || ""),
+          "name": String(groups[i].name || ""),
+          "sourceUrls": urls
+        })
+      }
+    }
+    return result
+  }
+
   function editCustom(index) {
     if (index < 0 || index >= customEntries.length) return
     editingIndex = index
@@ -121,8 +144,12 @@ Item {
   function removeCustom(index) {
     var entries = copiedEntries()
     if (index < 0 || index >= entries.length) return
+    var removedUrl = String(entries[index].url || "")
     entries.splice(index, 1)
-    persistCustomEntries(entries)
+    persistSettings({
+      "customFeeds": serialiseEntries(entries),
+      "feedCollections": JSON.stringify(collectionsAfterSourceChange(removedUrl, ""))
+    })
     if (editingIndex === index) cancelEdit()
     else if (editingIndex > index) editingIndex--
   }
@@ -167,9 +194,17 @@ Item {
     }
     var safeName = name
     var entry = { "name": safeName, "url": canonicalUrl }
-    if (editingIndex >= 0 && editingIndex < entries.length) entries[editingIndex] = entry
-    else entries.push(entry)
-    persistCustomEntries(entries)
+    if (editingIndex >= 0 && editingIndex < entries.length) {
+      var previousUrl = String(entries[editingIndex].url || "")
+      entries[editingIndex] = entry
+      persistSettings({
+        "customFeeds": serialiseEntries(entries),
+        "feedCollections": JSON.stringify(collectionsAfterSourceChange(previousUrl, canonicalUrl))
+      })
+    } else {
+      entries.push(entry)
+      persistCustomEntries(entries)
+    }
     cancelEdit()
   }
 
@@ -203,9 +238,15 @@ Item {
 
   function activate() {
     Qt.callLater(function() {
-      if (catalogList.count > 0) catalogList.currentItem.forceActiveFocus()
+      if (root.showingCollections) collectionManager.activate()
+      else if (catalogList.count > 0) catalogList.currentItem.forceActiveFocus()
       else customUrl.forceActiveFocus()
     })
+  }
+
+  function toggleManagerPage() {
+    showingCollections = !showingCollections
+    activate()
   }
 
   onVisibleChanged: if (!visible) flushSettings()
@@ -241,7 +282,8 @@ Item {
         spacing: Style.space(10)
 
         Text {
-          text: "󰐃"
+          text: root.showingCollections ? "󰅩" : "󰐃"
+          textFormat: Text.PlainText
           color: root.accent
           font.family: root.fontFamily
           font.pixelSize: Style.font.iconLarge
@@ -252,7 +294,8 @@ Item {
           spacing: Style.space(1)
 
           Text {
-            text: "OMARCHY"
+            text: root.showingCollections ? "COLLECTIONS" : "OMARCHY"
+            textFormat: Text.PlainText
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
@@ -261,15 +304,30 @@ Item {
           }
 
           Text {
-            text: "Official announcements are always pinned to your feed."
+            text: root.showingCollections
+              ? "Combine sources into focused streams without another fetch."
+              : "Official announcements are always pinned to your feed."
+            textFormat: Text.PlainText
             color: root.dim
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
           }
         }
 
+        Button {
+          text: root.showingCollections ? "Sources" : "Collections"
+          iconText: root.showingCollections ? "󰒍" : "󰅩"
+          foreground: root.foreground
+          accent: root.accent
+          fontFamily: root.fontFamily
+          focusable: true
+          bordered: true
+          onClicked: root.toggleManagerPage()
+        }
+
         Text {
-          text: "PINNED"
+          text: root.showingCollections ? "8 MAX" : "PINNED"
+          textFormat: Text.PlainText
           color: root.accent
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
@@ -280,6 +338,7 @@ Item {
     }
 
     RowLayout {
+      visible: !root.showingCollections
       Layout.fillWidth: true
       Layout.fillHeight: true
       spacing: Style.space(14)
@@ -655,6 +714,22 @@ Item {
             }
           }
         }
+      }
+    }
+
+    CollectionManager {
+      id: collectionManager
+      visible: root.showingCollections
+      Layout.fillWidth: true
+      Layout.fillHeight: true
+      news: root.news
+      fontFamily: root.fontFamily
+      foreground: root.foreground
+      accent: root.accent
+      urgent: root.urgent
+      dim: root.dim
+      onPersistCollections: function(collections) {
+        root.persistSettings({ "feedCollections": JSON.stringify(collections) })
       }
     }
   }

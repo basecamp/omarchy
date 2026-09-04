@@ -120,3 +120,33 @@ PY
 
 pass "RSS Reader cold and warm paths stay within bounded performance budgets"
 pass "RSS Reader warm cache performs zero network fetches at the 21-source ceiling"
+
+node - "$ROOT/shell/plugins/panels/news/Collections.js" <<'JS'
+const collections = require(process.argv[2])
+
+const sourceUrls = Array.from({ length: 21 }, (_, index) => `https://feed-${index}.example/rss`)
+const groups = Array.from({ length: 8 }, (_, index) => ({
+  id: `group-${index}`,
+  name: `Group ${index}`,
+  sourceUrls: sourceUrls.filter((_, sourceIndex) => (sourceIndex + index) % 3 === 0)
+}))
+const items = sourceUrls.flatMap((sourceUrl, sourceIndex) =>
+  Array.from({ length: 10 }, (_, itemIndex) => ({
+    id: `${sourceIndex}:${itemIndex}`,
+    sourceId: `source-${sourceIndex}`,
+    sourceUrl
+  }))
+)
+
+const started = process.hrtime.bigint()
+let index
+for (let run = 0; run < 1000; run++) index = collections.buildItemIndex(items, groups, 10)
+const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6
+
+if (index.all.length !== 10) throw new Error(`unexpected aggregate size: ${index.all.length}`)
+if (index['collection:group-0'].length !== 10) throw new Error('collection index is incomplete')
+if (elapsedMs >= 5000) throw new Error(`collection indexing exceeded budget: ${elapsedMs.toFixed(1)}ms`)
+console.log(`rss-reader-collections sources=21 items=210 groups=8 rebuilds=1000 elapsed_ms=${elapsedMs.toFixed(1)}`)
+JS
+
+pass "RSS Reader collection indexing stays within its bounded performance budget"

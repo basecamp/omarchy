@@ -21,8 +21,8 @@ Item {
 
   readonly property var news: service
   readonly property var articles: news ? news.itemsForSource(selectedSourceId) : []
-  readonly property var sourceFilters: news && news.sources.length > 1
-    ? [{ "id": "all", "name": "All", "category": "all" }].concat(news.sources)
+  readonly property var sourceFilters: news && news.sources.length + news.collectionFilters.length > 1
+    ? [{ "id": "all", "name": "All", "category": "all" }].concat(news.collectionFilters).concat(news.sources)
     : (news ? news.sources : [])
   readonly property color foreground: Color.foreground
   readonly property color background: Color.background
@@ -134,6 +134,7 @@ Item {
     if (value === "technology") return Color.blue
     if (value === "linux") return Color.green
     if (value === "ai") return Color.magenta
+    if (value === "collection") return Color.accent
     if (value === "all") return root.foreground
     return Color.muted
   }
@@ -146,6 +147,7 @@ Item {
     if (value === "technology") return "Technology"
     if (value === "linux") return "Linux"
     if (value === "ai") return "AI"
+    if (value === "collection") return "Collection"
     return "Custom"
   }
 

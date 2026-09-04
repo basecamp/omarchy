@@ -264,6 +264,38 @@ module.cached_result = original_cached_result
 print(json.dumps(items[0], sort_keys=True))
 PY
 
+run_node_test <<'JS'
+const collections = requireFromRoot('shell/plugins/panels/news/Collections.js')
+
+const parsed = collections.parse(JSON.stringify([
+  { id: 'tech', name: '  Tech   News  ', sourceUrls: ['https://one.example/rss', 'https://two.example/atom', 'https://one.example/rss'] },
+  { id: 'tech', name: 'Duplicate', sourceUrls: ['https://three.example/rss'] },
+  { id: '../unsafe', name: 'Linux', sourceUrls: ['http://unsafe.example/rss', 'https://linux.example/rss'] },
+  { id: '', name: 'Missing ID', sourceUrls: ['https://missing.example/rss'] }
+]))
+assertDeepEqual(
+  parsed,
+  [
+    { id: 'tech', name: 'Tech News', sourceUrls: ['https://one.example/rss', 'https://two.example/atom'] },
+    { id: 'unsafe', name: 'Linux', sourceUrls: ['https://linux.example/rss'] }
+  ],
+  'RSS collections sanitize persisted groups and discard unsafe sources'
+)
+assertDeepEqual(collections.parse('{'), [], 'RSS collections recover from malformed settings')
+
+const items = [
+  { id: 'one-1', sourceId: 'one', sourceUrl: 'https://one.example/rss' },
+  { id: 'two-1', sourceId: 'two', sourceUrl: 'https://two.example/atom' },
+  { id: 'one-2', sourceId: 'one', sourceUrl: 'https://one.example/rss' },
+  { id: 'one-3', sourceId: 'one', sourceUrl: 'https://one.example/rss' }
+]
+const index = collections.buildItemIndex(items, parsed, 2)
+assertDeepEqual(index.all.map(item => item.id), ['one-1', 'two-1'], 'RSS aggregate keeps the configured article ceiling')
+assertDeepEqual(index.one.map(item => item.id), ['one-1', 'one-2'], 'RSS source lookup stays bounded and indexed')
+assertDeepEqual(index['collection:tech'].map(item => item.id), ['one-1', 'two-1'], 'RSS collections aggregate selected source URLs in feed order')
+assertDeepEqual(index['collection:unsafe'], [], 'RSS collections expose an empty indexed stream when no selected feed has items')
+JS
+
 [[ -f $ROOT/shell/plugins/panels/news/manifest.json ]] || fail "news panel manifest exists"
 jq -e '
   .schemaVersion == 1 and
@@ -306,6 +338,16 @@ grep -qF 'var canonicalUrl = canonicalCustomUrl(url)' "$ROOT/shell/plugins/panel
   fail "custom feeds are saved locally without waiting on the network"
 grep -qF 'settingsPersistTimer.restart()' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
   fail "rapid feed settings changes coalesce persistent configuration writes"
+grep -qF 'root.persistSettings({ "feedCollections": JSON.stringify(collections) })' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
+  fail "feed manager persists user-curated collections"
+grep -qF 'function collectionsAfterSourceChange(oldUrl, newUrl)' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
+  fail "custom feed edits keep collection membership consistent"
+grep -qF 'id: collectionManager' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
+  fail "feed manager exposes an in-panel collection editor"
+grep -qF 'Collections.buildItemIndex(items, collections, itemLimit)' "$ROOT/shell/plugins/panels/news/Service.qml" ||
+  fail "reader indexes collection streams without another fetch"
+grep -qF '.concat(news.collectionFilters).concat(news.sources)' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "reader source rail places collections beside individual feeds"
 grep -qF 'property var itemIndex: ({})' "$ROOT/shell/plugins/panels/news/Service.qml" ||
   fail "reader indexes bounded articles by source"
 grep -qF 'if (news && news.items.length === 0 && !news.refreshing) news.refresh(true)' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
@@ -355,6 +397,10 @@ grep -qF 'parser.add_argument("--item-limit", type=int, default=DEFAULT_ITEM_LIM
   fail "news fetcher bounds article payloads at the configured UI limit"
 grep -qF 'SSL_CONTEXT = ssl.create_default_context(cafile=SYSTEM_CA_BUNDLE)' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "news fetcher reuses one TLS context across concurrent sources"
+grep -qF 'MAX_REDIRECTS = 3' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
+  fail "news fetcher bounds RSS and Atom redirects"
+grep -qF 'application/atom+xml' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
+  fail "news fetcher advertises Atom support"
 ! grep -qF 'os.fsync(handle.fileno())' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "recoverable RSS caches avoid synchronous disk flushes"
 

@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "Collections.js" as Collections
 
 Item {
   id: root
@@ -30,25 +31,30 @@ Item {
   readonly property int itemLimit: intSetting("itemLimit", 10, 5, 20)
   readonly property var techFeedIds: ["hacker-news", "ars-technica", "techcrunch", "the-verge", "wired", "phoronix", "its-foss", "openai-news", "hugging-face", "mit-ai"]
   readonly property var feedCatalog: [
-    { "id": "hacker-news", "name": "Hacker News", "description": "Developer and startup news", "category": "developer" },
-    { "id": "ars-technica", "name": "Ars Technica", "description": "Deep technology, science and security", "category": "technology" },
-    { "id": "techcrunch", "name": "TechCrunch", "description": "Startups, business and AI", "category": "startup" },
-    { "id": "the-verge", "name": "The Verge", "description": "Mainstream technology and platforms", "category": "technology" },
-    { "id": "wired", "name": "WIRED", "description": "Technology, science, security and culture", "category": "technology" },
-    { "id": "phoronix", "name": "Phoronix", "description": "Linux kernel, hardware and performance", "category": "linux" },
-    { "id": "its-foss", "name": "It's FOSS", "description": "Accessible Linux and open-source coverage", "category": "linux" },
-    { "id": "openai-news", "name": "OpenAI News", "description": "Official OpenAI product and research news", "category": "ai" },
-    { "id": "hugging-face", "name": "Hugging Face", "description": "Open models, tooling and AI research", "category": "ai" },
-    { "id": "mit-ai", "name": "MIT News: AI", "description": "Academic AI research and developments", "category": "ai" }
+    { "id": "hacker-news", "name": "Hacker News", "description": "Developer and startup news", "category": "developer", "url": "https://news.ycombinator.com/rss" },
+    { "id": "ars-technica", "name": "Ars Technica", "description": "Deep technology, science and security", "category": "technology", "url": "https://feeds.arstechnica.com/arstechnica/index" },
+    { "id": "techcrunch", "name": "TechCrunch", "description": "Startups, business and AI", "category": "startup", "url": "https://techcrunch.com/feed/" },
+    { "id": "the-verge", "name": "The Verge", "description": "Mainstream technology and platforms", "category": "technology", "url": "https://www.theverge.com/rss/index.xml" },
+    { "id": "wired", "name": "WIRED", "description": "Technology, science, security and culture", "category": "technology", "url": "https://www.wired.com/feed/rss" },
+    { "id": "phoronix", "name": "Phoronix", "description": "Linux kernel, hardware and performance", "category": "linux", "url": "https://www.phoronix.com/rss.php" },
+    { "id": "its-foss", "name": "It's FOSS", "description": "Accessible Linux and open-source coverage", "category": "linux", "url": "https://itsfoss.com/rss/" },
+    { "id": "openai-news", "name": "OpenAI News", "description": "Official OpenAI product and research news", "category": "ai", "url": "https://openai.com/news/rss.xml" },
+    { "id": "hugging-face", "name": "Hugging Face", "description": "Open models, tooling and AI research", "category": "ai", "url": "https://huggingface.co/blog/feed.xml" },
+    { "id": "mit-ai", "name": "MIT News: AI", "description": "Academic AI research and developments", "category": "ai", "url": "https://news.mit.edu/rss/topic/artificial-intelligence2" }
   ]
   readonly property var enabledFeedIds: listSetting("enabledFeeds")
   readonly property var enabledSourceIds: ["omarchy"].concat(enabledFeedIds)
   readonly property string customFeeds: String(setting("customFeeds", "")).substring(0, 4096)
   readonly property var customFeedEntries: parseCustomFeedEntries(customFeeds)
+  readonly property string collectionsSetting: String(setting("feedCollections", "")).substring(0, 8192)
+  readonly property var collections: Collections.parse(collectionsSetting)
+  readonly property var selectableSources: buildSelectableSources()
+  readonly property var collectionFilters: buildCollectionFilters()
   readonly property string sourceConfigSignature: enabledSourceIds.join(",") + "|" + customFeeds
   readonly property int unreadCount: countUnread()
 
   onSourceConfigSignatureChanged: if (stateLoaded) configurationRefreshTimer.restart()
+  onCollectionsChanged: rebuildItemIndex()
   onItemLimitChanged: rebuildItemIndex()
 
   property string _stdout: ""
@@ -93,6 +99,40 @@ Item {
     return result
   }
 
+  function buildSelectableSources() {
+    var result = [{
+      "id": "omarchy",
+      "name": "Omarchy",
+      "category": "official",
+      "url": "https://omarchy.org/news/rss.xml"
+    }]
+    for (var i = 0; i < feedCatalog.length; i++) {
+      if (enabledFeedIds.indexOf(String(feedCatalog[i].id || "")) >= 0) result.push(feedCatalog[i])
+    }
+    for (var customIndex = 0; customIndex < customFeedEntries.length; customIndex++) {
+      var entry = customFeedEntries[customIndex]
+      var name = String(entry.name || "").trim()
+      var url = String(entry.url || "").trim()
+      if (name === "") name = url.replace(/^https:\/\//, "").split("/")[0]
+      result.push({ "id": "custom-url-" + customIndex, "name": name, "category": "custom", "url": url })
+    }
+    return result
+  }
+
+  function buildCollectionFilters() {
+    var result = []
+    for (var i = 0; i < collections.length; i++) {
+      var key = "collection:" + String(collections[i].id || "")
+      result.push({
+        "id": key,
+        "name": String(collections[i].name || "Collection"),
+        "category": "collection",
+        "itemCount": (itemIndex[key] || []).length
+      })
+    }
+    return result
+  }
+
   function countUnread() {
     if (!stateLoaded || items.length === 0) return 0
     var total = 0
@@ -115,15 +155,7 @@ Item {
   }
 
   function rebuildItemIndex() {
-    var next = ({ "all": [] })
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i]
-      if (next["all"].length < itemLimit) next["all"].push(item)
-      var sourceId = String(item.sourceId || "omarchy")
-      if (!next[sourceId]) next[sourceId] = []
-      if (next[sourceId].length < itemLimit) next[sourceId].push(item)
-    }
-    itemIndex = next
+    itemIndex = Collections.buildItemIndex(items, collections, itemLimit)
   }
 
   function itemsForSource(sourceId) {
