@@ -781,9 +781,16 @@ BarWidget {
       sourceSize.width: Math.round(Math.min(width, height) * Screen.devicePixelRatio)
       sourceSize.height: Math.round(Math.min(width, height) * Screen.devicePixelRatio)
       source: root.trayIconSource(trayIconRoot.icon)
-      // Kept as a hidden layer so the effect can sample it as a texture.
+      // Drawn directly for non-symbolic icons; hidden for symbolic ones, where
+      // the effect below samples the layer texture instead.
       visible: !trayIconRoot.symbolic
-      layer.enabled: trayIconRoot.symbolic
+      // Must stay constant: an item that flips visible and layer.enabled
+      // together, as it does when an icon changes between a symbolic and a
+      // non-symbolic name, ends up with a layer that never gets populated, so
+      // the effect samples an empty texture and the icon silently disappears
+      // until the next shell restart. fcitx5 hit this on every input method
+      // switch, alternating between fcitx_bamboo and input-keyboard-symbolic.
+      layer.enabled: true
     }
 
     MultiEffect {
