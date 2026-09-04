@@ -10,9 +10,9 @@ You can set the system-wide default editor under `Setup > Defaults > Editor`.
 
 ## Environment
 
-Omarchy supports setting up a whole host of development environments through the _Install > Development_ section of the Omarchy Menu (`Super + Space`). You'll of course find _Ruby on Rails_, but also all three major runtimes for JavaScript (Node.js, Bun, Deno), as well as popular PHP frameworks like Laravel and Symfony. Oh, and there's Go, Rust, Python, Java, Elixir (with Phoenix), .NET, OCaml, Zig, Clojure, and Scala too. It's a very broad selection!
+Omarchy supports setting up a whole host of development environments through the _Install > Development_ section of the Omarchy Menu (`Super + Space`). You'll of course find _Ruby on Rails_, but also all three major runtimes for JavaScript (Node.js, Bun, Deno), as well as popular PHP frameworks like Laravel and Symfony. Oh, and there's Go, Rust, Python, Java, Elixir (with Phoenix), .NET, OCaml, Zig, Clojure, Scala, and Firebase too. It's a very broad selection!
 
-The majority of these environments are managed by [Mise](https://mise.jdx.dev/). It's a tool that lets you install and run multiple versions of a programming language on the same machine. It's like rbenv or rvm for Ruby or virtualenv for Python, but it works for a bunch of different environments.
+The majority of these environments are managed by [Mise](https://mise.jdx.dev/). It's a tool that lets you install and run multiple versions of a programming language on the same machine. It's like rbenv or rvm for Ruby or virtualenv for Python, but it works for a bunch of different environments. Firebase is installed as the official standalone [Firebase CLI](https://firebase.google.com/docs/cli).
 
 To install, say, Ruby, you'd run `mise use -g ruby`, which will both install Ruby and set it as the global default. Or, if your project has a .ruby-version file, you can just run `mise i` in the root of that project.
 
@@ -25,6 +25,10 @@ By default your user is *not* in the `docker` group. That group is effectively p
 Remember to checkout the Lazydocker command to manage your containers in a cool TUI using `Super + Shift + D`; it asks for authorization the first time unless you have enabled sudoless Docker.
 
 You can setup the common databases for local development in Docker using _Install > Development > Docker DB_ in the Omarchy menu.
+
+## Firebase
+
+The [Firebase CLI](https://firebase.google.com/docs/cli) is available under _Install > Development > Firebase_. After installing, authenticate with `firebase login`. Then you can initialize a project with `firebase init`, run the emulators with `firebase emulators:start`, and deploy with `firebase deploy`.
 
 ## GitHub CLI
 

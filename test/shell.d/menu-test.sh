@@ -274,7 +274,7 @@ assertDeepEqual(
   'menu never hides an Install row because the software is already there'
 )
 assert(
-  ['install.browser.zen', 'install.editor.vscode', 'install.gaming.steam', 'install.development.rust', 'install.windows'].every(
+  ['install.browser.zen', 'install.editor.vscode', 'install.gaming.steam', 'install.development.rust', 'install.development.firebase', 'install.windows'].every(
     id => defaultById[id].disabled && !defaultById[id].when
   ),
   'menu dims the Install rows for software that is already installed'
