@@ -179,7 +179,7 @@ Item {
   }
 
   function rowListHeight(_serial, _count, _filter, _divider) {
-    if (displayModel.count === 0) return root.baseRowHeight
+    if (displayModel.count === 0) return root.mode === "input" ? root.baseRowHeight : emptyColumn.height
 
     var totals = []
     var total = 0
@@ -199,7 +199,7 @@ Item {
 
   function dmenuRowListHeight(_serial, _count, _filter) {
     if (root.mode === "input") return 0
-    if (displayModel.count === 0) return root.baseRowHeight
+    if (displayModel.count === 0) return emptyColumn.height
 
     var available = availableRowsHeight()
     if (root.dmenuMaxHeight > 0) available = Math.min(available, Style.space(root.dmenuMaxHeight))
@@ -1443,7 +1443,9 @@ Item {
           }
 
           Column {
+            id: emptyColumn
             anchors.centerIn: parent
+            width: parent.width
             spacing: Style.space(8)
             visible: displayModel.count === 0 && root.mode !== "input"
 
@@ -1454,7 +1456,7 @@ Item {
               font.family: root.fontFamily
               font.pixelSize: Style.font.displayLarge
               horizontalAlignment: Text.AlignHCenter
-              width: Style.space(320)
+              width: parent.width
             }
 
             Text {
@@ -1465,7 +1467,10 @@ Item {
               font.family: root.fontFamily
               font.pixelSize: Style.font.title
               horizontalAlignment: Text.AlignHCenter
-              width: Style.space(320)
+              width: parent.width
+              wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+              maximumLineCount: 5
+              elide: Text.ElideRight
             }
           }
         }
