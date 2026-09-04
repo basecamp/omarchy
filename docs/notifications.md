@@ -172,7 +172,12 @@ Everything goes through the same sender contract, so the pieces are small:
   critical toast whose click runs `omarchy-agent-crash` (via `--exec`, so a
   hostile process name stays a discrete argument). It waits for the
   server first: a shell crash takes the notification server down with it, and
-  that crash is the one most worth reporting.
+  that crash is the one most worth reporting. Critical toasts never expire, so
+  a burst is capped: past the third card the remaining crashes land on one
+  counting card ("5 more processes crashed") that replaces itself through
+  `--replace-id` and clicks through to the newest of them. Quiet ends the
+  burst. `OMARCHY_CRASH_STACK_AFTER` and `OMARCHY_CRASH_BURST_IDLE_SECONDS`
+  move those two thresholds.
 - **Pending migrations** — `omarchy-migrate-notify` (from its user service
   after `graphical-session.target`) waits for the server, then sends a
   critical toast whose click opens a terminal running `omarchy-migrate`,

@@ -62,6 +62,7 @@ require_command jq
 watch_bin="$TMPDIR/watch-bin"
 watch_home="$TMPDIR/watch-home"
 NOTIFY_LOG="$TMPDIR/notify-log"
+NOTIFY_ID_FILE="$TMPDIR/notify-id"
 JOURNAL_ENTRIES="$TMPDIR/journal-entries"
 
 mkdir -p "$watch_bin" "$watch_home"
@@ -81,9 +82,39 @@ cat >"$watch_bin/omarchy-notification-wait" <<'SH'
 exit 0
 SH
 
+# Stands in for the notification server, ids included: replaces_id 0 asks for a
+# new notification and is answered with a fresh id, any other id is echoed back.
+# A caller updating one card in place has to see that to keep updating the same
+# card rather than posting a new one per crash.
 cat >"$watch_bin/omarchy-notification-send" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$NOTIFY_LOG"
+
+replaces_id=0
+print_id=0
+
+while (($# > 0)); do
+  case $1 in
+  --replace-id)
+    replaces_id=$2
+    shift 2
+    ;;
+  --print-id)
+    print_id=1
+    shift
+    ;;
+  *) shift ;;
+  esac
+done
+
+((print_id)) || exit 0
+
+if ((replaces_id == 0)); then
+  replaces_id=$(($(cat "$NOTIFY_ID_FILE" 2>/dev/null || echo 0) + 1))
+  printf '%s\n' "$replaces_id" >"$NOTIFY_ID_FILE"
+fi
+
+printf '%s\n' "$replaces_id"
 SH
 
 chmod +x "$watch_bin/journalctl" "$watch_bin/omarchy-default-agent" \
@@ -112,9 +143,15 @@ run_watch() {
 
   : >"$NOTIFY_LOG"
 
+  # A run is one watcher process and so one burst; the ids it hands out start
+  # over with it, or a later run would be asserted against a counter the watcher
+  # under test never saw.
+  : >"$NOTIFY_ID_FILE"
+
   PATH="$watch_bin:$ROOT/bin:$PATH" \
   JOURNAL_ENTRIES="$JOURNAL_ENTRIES" \
   NOTIFY_LOG="$NOTIFY_LOG" \
+  NOTIFY_ID_FILE="$NOTIFY_ID_FILE" \
   HOME="$watch_home" \
     "$ROOT/bin/omarchy-crash-watch" || status=$?
 
@@ -251,6 +288,78 @@ run_watch
   fail "the fallback name cannot be muted, so the one crash most likely to repeat is the one that cannot be silenced"
 pass "the fallback name can be muted like any other"
 mute unknown off
+
+# Crash toasts are critical, so none of them expires on its own, and a storm
+# arrives faster than anyone dismisses it: a build leaving a dozen test binaries
+# dumping core covers the screen and keeps it covered. The dedupe cannot help --
+# those names all differ, which is exactly why the storm is a storm.
+individual_cards() {
+  grep -c "Process crashed: " "$NOTIFY_LOG" || true
+}
+
+storm() {
+  local count="$1" index
+
+  reset_entries
+  for ((index = 1; index <= count; index++)); do
+    crash_entry "crasher$index" "/usr/bin/crasher$index"
+  done
+}
+
+storm 3
+run_watch
+(( $(individual_cards) == 3 )) ||
+  fail "a storm small enough to read is folded away, so the crashes worth reading are the ones hidden"
+! grep -Fq "more process" "$NOTIFY_LOG" ||
+  fail "a storm that fits on the screen still opens a counting card, which then counts nothing"
+pass "crashes up to the threshold each get a card of their own"
+
+storm 4
+run_watch
+(( $(individual_cards) == 3 )) ||
+  fail "past the threshold the screen still fills a card at a time, which is what buries it"
+grep -Fq -- "--replace-id 0 --print-id 1 more process crashed" "$NOTIFY_LOG" ||
+  fail "the crash past the threshold is dropped, or counted plurally on a card that stands for one"
+pass "past the threshold a crash is counted rather than shown"
+
+storm 6
+run_watch
+(( $(individual_cards) == 3 )) ||
+  fail "a longer storm goes back to one card per crash"
+grep -Fq -- "--replace-id 0 --print-id 1 more process crashed" "$NOTIFY_LOG" ||
+  fail "the counting card opens against an id the server never issued"
+grep -Fq -- "--replace-id 1 --print-id 2 more processes crashed" "$NOTIFY_LOG" ||
+  fail "the count is posted as a second card instead of replacing the first, so a storm still stacks up"
+grep -Fq -- "--replace-id 1 --print-id 3 more processes crashed" "$NOTIFY_LOG" ||
+  fail "the card stops following the id the server handed back, so every further crash opens its own"
+pass "a storm of any length adds one counting card, replaced in place"
+
+# The count is only half of it: the card has to lead somewhere, and the newest
+# crash is the one whose core dump is least likely to have rotated away.
+grep -Fq -- "Latest: crasher6 — click to diagnose with AI --exec omarchy-agent-crash 4242 crasher6 /usr/bin/crasher6 SIGSEGV" "$NOTIFY_LOG" ||
+  fail "the counting card names a crash other than the newest, or offers no diagnosis to click through to"
+pass "the counting card diagnoses the newest crash"
+
+# Nothing reports a dismissal back to the watcher, so quiet is the only evidence
+# a storm is over. Without it the first crash of a calm week lands on a counting
+# card left over from the last one.
+storm 6
+export OMARCHY_CRASH_BURST_IDLE_SECONDS=0
+run_watch
+unset OMARCHY_CRASH_BURST_IDLE_SECONDS
+(( $(individual_cards) == 6 )) ||
+  fail "a burst never ends, so crashes arriving after the quiet are counted onto a stale card instead of announced"
+pass "quiet ends a burst, and the next crash gets a card of its own again"
+
+storm 2
+export OMARCHY_CRASH_STACK_AFTER=1
+run_watch
+unset OMARCHY_CRASH_STACK_AFTER
+(( $(individual_cards) == 1 )) ||
+  fail "the threshold is not honoured, so a machine that crashes often cannot be told to fold sooner"
+grep -Fq -- "1 more process crashed" "$NOTIFY_LOG" ||
+  fail "a lowered threshold shows the extra crash as its own card anyway"
+pass "the threshold is configurable"
 
 # What omarchy-crash-mute does on its own. That it agrees with the watcher is
 # already covered above, which drives it for every mute it makes.
