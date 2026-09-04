@@ -151,6 +151,37 @@ function monitorRule(name, disable, layout) {
     ', scale = ' + scale + ' })'
 }
 
+// The rates a display offers at the resolution it is running, highest first.
+// Hyprland lists modes as "2560x1440@240.00Hz", and a mode list can hold the
+// same rate twice at different timings.
+function availableRates(display) {
+  if (!display) return []
+
+  var prefix = display.width + "x" + display.height + "@"
+  var modes = display.availableModes || []
+  var rates = []
+
+  for (var i = 0; i < modes.length; i++) {
+    var mode = String(modes[i])
+    if (mode.indexOf(prefix) !== 0) continue
+
+    var rate = Math.round(parseFloat(mode.slice(prefix.length)))
+    if (!isFinite(rate) || rate <= 0) continue
+    if (rates.indexOf(rate) < 0) rates.push(rate)
+  }
+
+  rates.sort(function (a, b) { return b - a })
+  return rates
+}
+
+// Hyprland reports 143.979 where the mode string says 144.
+function activeRate(display) {
+  if (!display) return 0
+
+  var rate = Math.round(Number(display.refreshRate))
+  return isFinite(rate) && rate > 0 ? rate : 0
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
@@ -161,6 +192,8 @@ if (typeof module !== "undefined") {
     brightnessName: brightnessName,
     parseDisplays: parseDisplays,
     rememberLayouts: rememberLayouts,
-    monitorRule: monitorRule
+    monitorRule: monitorRule,
+    availableRates: availableRates,
+    activeRate: activeRate
   }
 }

@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# omarchy:summary=Show, list, or set the focused Hyprland monitor's refresh rate
+# omarchy:args=[--list|RATE]
+# omarchy:examples=omarchy hyprland monitor refresh | omarchy hyprland monitor refresh --list | omarchy hyprland monitor refresh 120
+
+# Companion to omarchy-hyprland-monitor-scaling, and shaped like it: apply with
+# `hyprctl eval`, then write the choice into monitors.lua. A rate set only at
+# runtime does not last, because the config is authoritative again from the next
+# reload and plugging a monitor in is enough to cause one.
+
+set -uo pipefail
+
+MONITOR_LUA="$HOME/.config/hypr/monitors.lua"
+
+usage() {
+  echo "Usage: omarchy-hyprland-monitor-refresh [--list|RATE]"
+}
+
+focused_monitor() {
+  hyprctl monitors -j | jq -e -c '.[] | select(.focused == true)'
+}
+
+# Hyprland reports rates as 143.979; whole numbers are what spec sheets, mode
+# strings and users say.
+round_rate() {
+  awk '{ printf "%d\n", $0 + 0.5 }'
+}
+
+# The rates this monitor offers at the resolution it is currently running,
+# highest first. Hyprland lists modes as "2560x1440@240.00Hz".
+available_rates() {
+  local monitor_info="$1"
+  local mode_prefix
+
+  mode_prefix=$(jq -r '"\(.width)x\(.height)@"' <<<"$monitor_info")
+
+  jq -r --arg prefix "$mode_prefix" '.availableModes[] | select(startswith($prefix))' <<<"$monitor_info" |
+    sed -E 's/.*@([0-9.]+)Hz$/\1/' |
+    round_rate |
+    sort -rnu
+}
+
+set_rate() {
+  local requested="$1"
+  local monitor_info name width height scale position
+
+  if ! monitor_info=$(focused_monitor); then
+    echo "No focused monitor" >&2
+    exit 1
+  fi
+
+  name=$(jq -r '.name' <<<"$monitor_info")
+  width=$(jq -r '.width' <<<"$monitor_info")
+  height=$(jq -r '.height' <<<"$monitor_info")
+  scale=$(jq -r '.scale' <<<"$monitor_info")
+  position=$(jq -r '"\(.x)x\(.y)"' <<<"$monitor_info")
+
+  # The name is written into the Lua string eval'd below and into the config,
+  # so only a plain connector name may pass; a hostile output name could
+  # execute otherwise.
+  if [[ ! $name =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "Refusing unsafe monitor name" >&2
+    exit 1
+  fi
+
+  if ! available_rates "$monitor_info" | grep -qx -- "$requested"; then
+    echo "$name has no ${requested}Hz mode at ${width}x${height}" >&2
+    echo "Available: $(available_rates "$monitor_info" | paste -sd' ')" >&2
+    exit 1
+  fi
+
+  # Keep the monitor where it is for this change. The resolution is not moving,
+  # so there is nothing for "auto" to re-derive and no reason to make the other
+  # displays jump.
+  local mode="${width}x${height}@${requested}"
+  hyprctl eval "hl.monitor({ output = \"$name\", mode = \"$mode\", position = \"$position\", scale = $scale })" >/dev/null
+
+  persist_rate "$name" "$mode" "$scale"
+}
+
+# An output that already has a rule of its own only gets its mode rewritten, so
+# a hand-written position or transform survives. Otherwise append a rule for it.
+# That rule inherits omarchy_monitor_scale where the file still defines it, so
+# `omarchy hyprland monitor scaling` keeps reaching this output afterwards.
+persist_rate() {
+  local name="$1" mode="$2" scale="$3"
+
+  [[ -f $MONITOR_LUA ]] || return 0
+
+  local rule='^([[:space:]]*hl\.monitor\(\{[^)]*output[[:space:]]*=[[:space:]]*"'"$name"'".*)mode[[:space:]]*=[[:space:]]*"[^"]*"(.*)$'
+  if grep -Eq "$rule" "$MONITOR_LUA"; then
+    sed -i -E "s|$rule|\1mode = \"$mode\"\2|" "$MONITOR_LUA"
+  else
+    local scale_field="$scale"
+    if grep -q '^local omarchy_monitor_scale = ' "$MONITOR_LUA"; then
+      scale_field="omarchy_monitor_scale"
+    fi
+
+    cat >>"$MONITOR_LUA" <<LUA
+
+-- Written by omarchy-hyprland-monitor-refresh
+hl.monitor({ output = "$name", mode = "$mode", position = "auto", scale = $scale_field })
+LUA
+  fi
+}
+
+case "${1:-}" in
+"")
+  focused_monitor | jq -r '.refreshRate' | round_rate
+  ;;
+-h | --help)
+  usage
+  ;;
+--list)
+  available_rates "$(focused_monitor)"
+  ;;
+*)
+  if [[ $1 =~ ^[0-9]+$ ]]; then
+    set_rate "$1"
+  else
+    usage >&2
+    exit 1
+  fi
+  ;;
+esac
