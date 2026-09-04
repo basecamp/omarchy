@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=Enable, disable, or toggle natural (inverse) touchpad scrolling
+# omarchy:args=[on|off|toggle]
+# omarchy:examples=omarchy toggle natural-scroll
+
+ACTION="${1:-toggle}"
+
+# Hyprland sources this directory on reload, so the setting survives restarts
+STATE_FILE="$HOME/.local/state/omarchy/toggles/hypr/natural-scroll.lua"
+
+current() {
+  hyprctl -j getoption input:touchpad:natural_scroll | jq -r '.bool'
+}
+
+apply() {
+  local value="$1"
+
+  hyprctl eval "hl.config({ input = { touchpad = { natural_scroll = $value } } })" >/dev/null 2>&1 ||
+    hyprctl keyword input:touchpad:natural_scroll "$value" >/dev/null
+
+  if [[ $value == true ]]; then
+    mkdir -p "$(dirname "$STATE_FILE")"
+    printf 'hl.config({ input = { touchpad = { natural_scroll = true } } })\n' >"$STATE_FILE"
+    omarchy-osd -i touchpad -m "Natural scroll enabled"
+  else
+    rm -f "$STATE_FILE"
+    omarchy-osd -i touchpad -m "Natural scroll disabled"
+  fi
+}
+
+case "$ACTION" in
+  on) apply true ;;
+  off) apply false ;;
+  toggle)
+    if [[ $(current) == "true" ]]; then
+      apply false
+    else
+      apply true
+    fi
+    ;;
+  *)
+    echo "Usage: omarchy-toggle-natural-scroll [on|off|toggle]" >&2
+    exit 1
+    ;;
+esac
