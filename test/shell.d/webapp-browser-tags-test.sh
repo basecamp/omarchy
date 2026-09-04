@@ -2,7 +2,8 @@
 
 # Chromium --app web apps must receive +chromium-based-browser under Hyprland's
 # RE2 FullMatch class matching. Bare browser ids alone never full-match the
-# <browser>-<host>__<path>-Default form from omarchy-launch-webapp.
+# product-prefixed <id>-<host>__<path>-Default form from omarchy-launch-webapp
+# (chrome-/brave-/msedge-/vivaldi-/opera-/helium-, not the bare window class).
 #
 # Regression guard for omacom/omarchy#9784. Uses Python re.fullmatch so the
 # test matches Hyprland semantics (bash [[ =~ ]] is unanchored and would hide
@@ -11,6 +12,8 @@
 set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
+
+require_command python3
 
 browser_lua="$ROOT/default/hypr/apps/browser.lua"
 
@@ -41,24 +44,26 @@ PY
 for appid in \
   chromium chrome Chrome google-chrome \
   brave-browser Brave-browser brave-origin \
-  microsoft-edge Microsoft-edge Vivaldi-stable helium; do
+  microsoft-edge Microsoft-edge Vivaldi-stable helium opera; do
   fullmatch "$appid" "$chromium_pattern" ||
     fail "chromium rule full-matches bare browser class $appid"
 done
 pass "chromium rule full-matches bare Chromium-family browser classes"
 
-# Web apps launched via --app= use <browser>-<host>__<path>-Default.
+# Web apps launched via --app= use a product id prefix + host/path + -Default,
+# not the browser's own window class (chromium -> chrome-, microsoft-edge ->
+# msedge-, Vivaldi-stable -> vivaldi-). Observed: chrome-example.test__-Default
+# (Chromium on the review worker), brave-outlook... from #9784.
 for appid in \
   "chrome-example.com__-Default" \
   "chrome-example.com__path-Default" \
-  "chromium-example.com__-Default" \
-  "google-chrome-example.com__-Default" \
+  "chrome-youtube.com__-Default" \
   "brave-outlook.office.com__mail_-Default" \
-  "brave-origin-example.com__-Default" \
-  "brave-browser-example.com__-Default" \
-  "microsoft-edge-example.com__-Default" \
-  "helium-example.com__-Default" \
-  "Vivaldi-stable-example.com__-Default"; do
+  "brave-example.com__-Default" \
+  "msedge-example.com__-Default" \
+  "vivaldi-example.com__-Default" \
+  "opera-example.com__-Default" \
+  "helium-example.com__-Default"; do
   fullmatch "$appid" "$chromium_pattern" ||
     fail "chromium rule full-matches webapp class $appid"
 done
@@ -75,9 +80,3 @@ for appid in \
     fail "chromium rule leaves non-matching class $appid untagged"
 done
 pass "chromium rule leaves non-Chromium and incomplete classes untagged"
-
-# The optional webapp suffix must be present so the YouTube/Zoom strip rules
-# (browser-agnostic ^.+-youtube.com__.*) can see the tag they remove.
-grep -Fq '(-.+-Default)?' "$browser_lua" ||
-  fail "chromium rule allows the Chromium --app -...-Default webapp suffix"
-pass "chromium rule includes the Chromium --app webapp class suffix"

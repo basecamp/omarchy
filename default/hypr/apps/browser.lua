@@ -1,8 +1,10 @@
 -- Browser tags and styling.
 -- Hyprland matches class with RE2 FullMatch, so bare browser ids alone miss
--- Chromium --app webapp classes of the form <browser>-<host>__<path>-Default.
+-- Chromium --app webapp classes. The --app class uses a product id prefix, not
+-- the browser window class: chrome- / brave- / msedge- / vivaldi- / opera- /
+-- helium-, then <host>__<path>-Default (see omarchy-launch-webapp).
 -- The optional (-.+-Default) suffix covers those without loosening bare ids.
-o.window("((google-)?[cC]hrom(e|ium)|[bB]rave(-browser|-origin)?|[mM]icrosoft-edge|Vivaldi-stable|helium)(-.+-Default)?", { tag = "+chromium-based-browser" })
+o.window("((google-)?[cC]hrom(e|ium)|[bB]rave(-browser|-origin)?|[mM]icrosoft-edge|msedge|[vV]ivaldi(-stable)?|[oO]pera|helium)(-.+-Default)?", { tag = "+chromium-based-browser" })
 o.window("([fF]irefox|zen|librewolf)", { tag = "+firefox-based-browser" })
 
 -- Video apps: remove the chromium browser tag so they don't get opacity applied.
