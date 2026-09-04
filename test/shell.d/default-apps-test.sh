@@ -136,6 +136,10 @@ export OMARCHY_TEST_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_NOTIFICATION_LOG="$notification_log"
 export OMARCHY_TEST_SETUP_LOG="$setup_log"
 export OMARCHY_TEST_BROWSER_FILE="$browser_file"
+# The editor XDG sync writes to the user applications directory. Pin it to the
+# test home so the assertion is deterministic regardless of the ambient
+# XDG_DATA_HOME.
+unset XDG_DATA_HOME
 
 assert_missing_opens_installer() {
   local type=$1
@@ -296,6 +300,38 @@ for entry in "${editor_cases[@]}"; do
   [[ $(omarchy-default-editor) == "$command" ]] || fail "$selection becomes the default editor after installation"
 done
 pass "editor defaults install every missing editor before selection"
+
+test_home_mimeapps="$test_home/.config/mimeapps.list"
+test_home_apps="$test_home/.local/share/applications"
+
+omarchy-default-editor code
+grep -Fxq "text/plain=code.desktop" "$test_home_mimeapps" ||
+  fail "code default maps text/plain to code.desktop in user mimeapps"
+grep -Fxq "text/x-c=code.desktop" "$test_home_mimeapps" ||
+  fail "code default maps text/x-c to code.desktop in user mimeapps"
+grep -Fxq "text/xml=code.desktop" "$test_home_mimeapps" ||
+  fail "code default maps text/xml to code.desktop in user mimeapps"
+[[ -f $test_home_apps/code.desktop ]] ||
+  fail "code default installs a user desktop override for code.desktop"
+grep -q "^MimeType=.*text/plain" "$test_home_apps/code.desktop" ||
+  fail "code user desktop override declares the text/plain MIME type"
+pass "editor default syncs XDG text handlers to the selected GUI editor"
+
+omarchy-default-editor nvim
+grep -Fxq "text/plain=nvim.desktop" "$test_home_mimeapps" ||
+  fail "switching to nvim maps text/plain to nvim.desktop in user mimeapps"
+grep -Fxq "text/x-c=nvim.desktop" "$test_home_mimeapps" ||
+  fail "switching to nvim maps text/x-c to nvim.desktop in user mimeapps"
+pass "switching editor default rewrites XDG text handlers"
+
+printf '[Default Applications]\ntext/plain=code.desktop\n\n[Added Associations]\ntext/plain=code.desktop;\n' > "$test_home_mimeapps"
+omarchy-default-editor nvim
+grep -Fq "[Added Associations]" "$test_home_mimeapps" ||
+  fail "switching editor preserves the Added Associations section"
+grep -Fq "text/plain=code.desktop;" "$test_home_mimeapps" ||
+  fail "switching editor keeps previous editor associations in Added Associations"
+pass "switching editor default preserves the Added Associations section"
+
 
 : >"$install_log"
 : >"$terminal_log"

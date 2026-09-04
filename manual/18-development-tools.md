@@ -7,6 +7,11 @@ Omarchy ships with [Neovim](https://neovim.io/) by default, but if you'd like so
 Theme matching is offered for `VSCode`, `Cursor`, `VSCodium`, and `Helix`.
 
 You can set the system-wide default editor under `Setup > Defaults > Editor`.
+The selection is applied everywhere: CLI tools honor it through `$EDITOR`, and
+text files opened from the file manager or launcher open in the chosen editor.
+For GUI choices such as VSCode, Cursor, Zed and Sublime Text, Omarchy also
+registers the editor as the XDG handler for text files so those open in the
+GUI app instead of a terminal editor.
 
 ## Environment
 
