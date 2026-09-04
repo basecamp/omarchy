@@ -581,8 +581,8 @@ grep -Fq '"query:Inbox:unread = \"yes\""' "$ROOT/default/newsboat/urls" || fail 
 grep -Fq 'auto-reload no' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds does not create a continuously replenishing stream"
 grep -Fq 'prepopulate-query-feeds yes' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds prepares the Inbox at startup"
 grep -Fq 'feedlist-title-format "  Feeds · finite edition"' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds names the finite reader experience"
-grep -Fq 'macro b edit-urls "omarchy-newsboat-handoff brief"' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds exposes a query-safe whole-edition agent briefing"
-if grep -F 'macro b ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit --'; then
+grep -Fq 'bind ,b everywhere edit-urls "omarchy-newsboat-handoff brief"' "$ROOT/default/newsboat/omarchy.conf" || fail "Feeds exposes a query-safe whole-edition agent briefing"
+if grep -F 'bind ,b ' "$ROOT/default/newsboat/omarchy.conf" | grep -Fq '; quit --'; then
   fail "Feeds closes before the person can review the briefing beside it"
 fi
 grep -Fq 'omarchy-newsboat-close' "$ROOT/bin/omarchy-newsboat-triage" || fail "confirmed triage does not close Feeds before import"
