@@ -249,7 +249,7 @@ assertDeepEqual(
   'menu sorts coding agents alphabetically'
 )
 const expectedDefaults = {
-  browser: ['Chromium', 'Chrome', 'Brave', 'Brave Origin', 'Edge', 'Firefox', 'Zen'],
+  browser: ['Chromium', 'Chrome', 'Brave', 'Brave Origin', 'Edge', 'Firefox', 'Zen', 'Helium'],
   terminal: ['Alacritty', 'Foot', 'Ghostty', 'Kitty'],
   editor: ['Neovim', 'VSCode', 'Cursor', 'Zed', 'Sublime Text', 'Helix', 'Vim', 'Emacs']
 }
