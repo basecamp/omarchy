@@ -341,6 +341,7 @@ def custom_source(raw_url: str, name: str = "") -> dict[str, object]:
         "allow_external_articles": True,
         "article_path_prefix": "/",
         "custom": True,
+        "user_named": bool(clean_text(name, 48)),
     }
 
 
@@ -421,15 +422,18 @@ def parse_feed(payload: bytes, source: dict[str, object] | None = None) -> list[
     return items
 
 
-def inspect_custom_feed(raw_url: str, requested_name: str = "") -> dict[str, str]:
-    source = custom_source(raw_url, requested_name)
-    payload = fetch(source)
+def feed_name(payload: bytes) -> str:
     root = ET.fromstring(payload)
     channel = root.find("channel")
     if channel is None:
         raise ValueError("RSS channel is missing")
+    return clean_text(channel.findtext("title"), 48)
 
-    discovered_name = clean_text(channel.findtext("title"), 48)
+
+def inspect_custom_feed(raw_url: str, requested_name: str = "") -> dict[str, str]:
+    source = custom_source(raw_url, requested_name)
+    payload = fetch(source)
+    discovered_name = feed_name(payload)
     return {
         "name": clean_text(requested_name, 48)
         or discovered_name
@@ -498,13 +502,33 @@ def cached_result(source: dict[str, object], error: str) -> dict[str, object] | 
         if not isinstance(item, dict):
             continue
         item["sourceId"] = str(source["id"])
-        item["sourceName"] = str(source["name"])
+        if source.get("user_named") is True or not item.get("sourceName"):
+            item["sourceName"] = str(source["name"])
         item["sourceCategory"] = str(source["category"])
         item["sourceUrl"] = str(source["url"])
         item_id = str(item.get("id", ""))
         if item_id and not item_id.startswith(f'{source["id"]}:'):
             item["id"] = f'{source["id"]}:{item_id}'
     return cached
+
+
+def fresh_cached_items(
+    source: dict[str, object], fetched_at: str, max_cache_age: int
+) -> list[dict[str, str]] | None:
+    if max_cache_age <= 0:
+        return None
+    cached = cached_result(source, "")
+    if cached is None:
+        return None
+    try:
+        cached_at = datetime.fromisoformat(str(cached.get("fetchedAt", "")))
+        now = datetime.fromisoformat(fetched_at)
+    except (TypeError, ValueError):
+        return None
+    age = (now - cached_at).total_seconds()
+    if age < 0 or age > max_cache_age:
+        return None
+    return [item for item in cached["items"] if isinstance(item, dict)]
 
 
 def selected_sources(value: str, custom_value: str = "") -> list[dict[str, object]]:
@@ -535,30 +559,42 @@ def published_key(item: dict[str, str]) -> float:
 
 
 def load_source(
-    source: dict[str, object], fetched_at: str
+    source: dict[str, object], fetched_at: str, max_cache_age: int = 0
 ) -> tuple[list[dict[str, str]], dict[str, object], str]:
     error = ""
     stale = False
-    try:
-        source_items = parse_feed(fetch(source), source)
-        atomic_write(
-            cache_path(str(source["id"])),
-            {"fetchedAt": fetched_at, "items": source_items},
-        )
-    except (OSError, ValueError, ET.ParseError) as exc:
-        error = clean_text(str(exc), 180)
-        cached = cached_result(source, error)
-        source_items = [] if cached is None else [
-            item for item in cached["items"] if isinstance(item, dict)
-        ]
-        stale = cached is not None
+    resolved_source = source
+    source_items = fresh_cached_items(source, fetched_at, max_cache_age)
+    from_cache = source_items is not None
+    if source_items is None:
+        try:
+            payload = fetch(source)
+            if source.get("custom") is True and source.get("user_named") is not True:
+                discovered_name = feed_name(payload)
+                if discovered_name:
+                    resolved_source = {**source, "name": discovered_name}
+            source_items = parse_feed(payload, resolved_source)
+            atomic_write(
+                cache_path(str(source["id"])),
+                {"fetchedAt": fetched_at, "items": source_items},
+            )
+        except (OSError, ValueError, ET.ParseError) as exc:
+            error = clean_text(str(exc), 180)
+            cached = cached_result(source, error)
+            source_items = [] if cached is None else [
+                item for item in cached["items"] if isinstance(item, dict)
+            ]
+            stale = cached is not None
 
     state: dict[str, object] = {
         "id": source["id"],
-        "name": source["name"],
+        "name": source_items[0].get("sourceName", resolved_source["name"])
+        if source_items
+        else resolved_source["name"],
         "category": source["category"],
         "url": source["url"],
         "stale": stale,
+        "cached": from_cache,
         "error": error,
         "itemCount": len(source_items),
     }
@@ -571,6 +607,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--custom-feeds", default="")
     parser.add_argument("--inspect-feed", default="")
     parser.add_argument("--inspect-name", default="")
+    parser.add_argument("--max-cache-age", type=int, default=0)
     args = parser.parse_args(argv)
 
     if args.inspect_feed:
@@ -590,8 +627,11 @@ def main(argv: list[str] | None = None) -> int:
     fetched_at = datetime.now(timezone.utc).isoformat()
 
     sources = selected_sources(args.sources, args.custom_feeds)
-    with ThreadPoolExecutor(max_workers=min(4, len(sources))) as executor:
-        loaded_sources = executor.map(lambda source: load_source(source, fetched_at), sources)
+    with ThreadPoolExecutor(max_workers=min(8, len(sources))) as executor:
+        loaded_sources = executor.map(
+            lambda source: load_source(source, fetched_at, max(0, args.max_cache_age)),
+            sources,
+        )
         for source, (source_items, state, error) in zip(sources, loaded_sources):
             items.extend(source_items)
             source_states.append(state)

@@ -104,6 +104,7 @@ custom_items = module.parse_feed(
 assert len(custom_items) == 1
 assert custom_items[0]["url"] == "http://elsewhere.example/story?id=4"
 original_fetch_for_inspection = module.fetch
+original_atomic_write_for_inspection = module.atomic_write
 module.fetch = lambda source: b'''<rss version="2.0"><channel><title>Discovered Feed</title></channel></rss>'''
 assert module.inspect_custom_feed("https://example.com/rss") == {
     "name": "Discovered Feed",
@@ -113,6 +114,13 @@ assert module.inspect_custom_feed("https://example.com/rss", "My Feed") == {
     "name": "My Feed",
     "url": "https://example.com/rss",
 }
+module.atomic_write = lambda path, data: None
+unnamed_items, unnamed_state, unnamed_error = module.load_source(
+    module.custom_source("https://example.com/rss"),
+    "2026-09-04T06:00:00+00:00",
+)
+assert unnamed_state["name"] == "Discovered Feed"
+assert unnamed_error == ""
 inspection_output = io.StringIO()
 with redirect_stdout(inspection_output):
     assert module.main(["--inspect-feed", "https://example.com/rss"]) == 0
@@ -122,6 +130,7 @@ assert json.loads(inspection_output.getvalue()) == {
     "url": "https://example.com/rss",
 }
 module.fetch = original_fetch_for_inspection
+module.atomic_write = original_atomic_write_for_inspection
 try:
     module.inspect_custom_feed("http://localhost/rss")
     raise AssertionError("unsafe feed inspection URL was accepted")
@@ -159,6 +168,23 @@ assert module.published_key({"published": "not a date"}) == 0.0
 original_fetch = module.fetch
 original_atomic_write = module.atomic_write
 original_cached_result = module.cached_result
+module.cached_result = lambda source, error: {
+    "fetchedAt": "2026-09-04T06:00:00+00:00",
+    "items": [{"id": f'{source["id"]}:cached', "title": "Cached"}],
+}
+assert module.fresh_cached_items(
+    module.SOURCE_CATALOG["omarchy"], "2026-09-04T06:14:59+00:00", 900
+)[0]["title"] == "Cached"
+assert module.fresh_cached_items(
+    module.SOURCE_CATALOG["omarchy"], "2026-09-04T06:15:01+00:00", 900
+) is None
+module.fetch = lambda source: (_ for _ in ()).throw(AssertionError("fresh cache hit the network"))
+cached_items, cached_state, cached_error = module.load_source(
+    module.SOURCE_CATALOG["omarchy"], "2026-09-04T06:14:59+00:00", 900
+)
+assert cached_items[0]["title"] == "Cached"
+assert cached_state["cached"] is True
+assert cached_error == ""
 module.fetch = lambda source: xml if source["id"] == "omarchy" else (_ for _ in ()).throw(OSError("offline"))
 module.atomic_write = lambda path, data: None
 module.cached_result = lambda source, error: None
@@ -216,8 +242,12 @@ grep -qF 'Accessible.role: Accessible.CheckBox' "$ROOT/shell/plugins/panels/news
   fail "curated feed toggles expose checkbox semantics"
 grep -qF 'function moveCustom(index, direction)' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
   fail "custom feeds can be reordered in-panel"
-grep -qF 'function inspectCustomFeed(url, name)' "$ROOT/shell/plugins/panels/news/Service.qml" ||
-  fail "custom feeds are verified before being saved"
+grep -qF 'onSourceConfigSignatureChanged: if (stateLoaded) configurationRefreshTimer.restart()' "$ROOT/shell/plugins/panels/news/Service.qml" ||
+  fail "feed configuration changes are debounced"
+grep -qF 'fetchMaxCacheAgeSec = preferCache === true ? refreshIntervalMin * 60 : 0' "$ROOT/shell/plugins/panels/news/Service.qml" ||
+  fail "configuration refreshes reuse fresh source caches"
+grep -qF 'var canonicalUrl = canonicalCustomUrl(url)' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
+  fail "custom feeds are saved locally without waiting on the network"
 grep -qF 'Qt.Key_BracketLeft' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news source rail supports keyboard switching"
 grep -qF 'Keys.priority: Keys.BeforeItem' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
@@ -257,6 +287,8 @@ grep -qF 'custom feed host does not resolve to a public address' "$ROOT/shell/pl
   fail "custom feeds cannot resolve to private network addresses"
 grep -qF 'parser.add_argument("--inspect-feed", default="")' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "news fetcher exposes bounded feed inspection to the manager"
+grep -qF 'parser.add_argument("--max-cache-age", type=int, default=0)' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
+  fail "news fetcher supports cache-aware configuration refreshes"
 
 pass "news feed parser accepts canonical items from curated sources"
 pass "news plugin manifest pairs the bar widget with a multi-source desktop reader"

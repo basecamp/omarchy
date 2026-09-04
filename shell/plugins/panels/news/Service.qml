@@ -17,9 +17,9 @@ Item {
   property bool partial: false
   property bool refreshing: false
   property bool refreshPending: false
+  property bool refreshPendingPreferCache: true
+  property int fetchMaxCacheAgeSec: 0
   property bool stateLoaded: false
-  property bool inspectingFeed: false
-  property string inspectError: ""
 
   readonly property string helperPath: (omarchyPath || "") + "/shell/plugins/panels/news/fetch_news.py"
   readonly property string stateRoot: Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")
@@ -48,12 +48,10 @@ Item {
   readonly property var visibleItems: items.slice(0, itemLimit)
   readonly property int unreadCount: countUnread()
 
-  onSourceConfigSignatureChanged: if (stateLoaded) refresh()
+  onSourceConfigSignatureChanged: if (stateLoaded) configurationRefreshTimer.restart()
 
   property string _stdout: ""
   property string _stderr: ""
-
-  signal feedInspected(var result)
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -94,15 +92,6 @@ Item {
     return result
   }
 
-  function inspectCustomFeed(url, name) {
-    if (inspectingFeed) return false
-    inspectError = ""
-    inspectingFeed = true
-    inspectProcess.command = ["python3", helperPath, "--inspect-feed", String(url || ""), "--inspect-name", String(name || "")]
-    inspectProcess.running = true
-    return true
-  }
-
   function countUnread() {
     if (!stateLoaded || items.length === 0) return 0
     var total = 0
@@ -133,14 +122,16 @@ Item {
     return filtered
   }
 
-  function refresh() {
+  function refresh(preferCache) {
     if (fetchProcess.running) {
       refreshPending = true
+      refreshPendingPreferCache = refreshPendingPreferCache && preferCache === true
       return
     }
     if (helperPath === "/shell/plugins/panels/news/fetch_news.py") return
     _stdout = ""
     _stderr = ""
+    fetchMaxCacheAgeSec = preferCache === true ? refreshIntervalMin * 60 : 0
     refreshing = true
     fetchProcess.running = true
   }
@@ -221,37 +212,8 @@ Item {
   }
 
   Process {
-    id: inspectProcess
-    running: false
-    stdout: StdioCollector {
-      id: inspectStdout
-      waitForEnd: true
-    }
-    stderr: StdioCollector {
-      id: inspectStderr
-      waitForEnd: true
-    }
-    onExited: function(exitCode) {
-      root.inspectingFeed = false
-      if (exitCode !== 0) {
-        root.inspectError = root.shortError(inspectStderr.text || "Could not verify this RSS feed")
-        root.feedInspected({ "ok": false, "error": root.inspectError })
-        return
-      }
-      try {
-        var parsed = JSON.parse(String(inspectStdout.text || ""))
-        if (!parsed || parsed.ok !== true || !parsed.url) throw new Error("invalid result")
-        root.feedInspected(parsed)
-      } catch (error) {
-        root.inspectError = "Could not verify this RSS feed"
-        root.feedInspected({ "ok": false, "error": root.inspectError })
-      }
-    }
-  }
-
-  Process {
     id: fetchProcess
-    command: ["python3", root.helperPath, "--sources", root.enabledSourceIds.join(","), "--custom-feeds", root.customFeeds]
+    command: ["python3", root.helperPath, "--sources", root.enabledSourceIds.join(","), "--custom-feeds", root.customFeeds, "--max-cache-age", String(root.fetchMaxCacheAgeSec)]
     running: false
     stdout: StdioCollector {
       id: fetchStdout
@@ -270,10 +232,19 @@ Item {
       if (output.trim() !== "") root.applyResult(output)
       else if (exitCode !== 0) root.lastError = root.shortError(error || "Could not fetch Omarchy news")
       if (root.refreshPending) {
+        var preferCache = root.refreshPendingPreferCache
         root.refreshPending = false
-        Qt.callLater(function() { root.refresh() })
+        root.refreshPendingPreferCache = true
+        Qt.callLater(function() { root.refresh(preferCache) })
       }
     }
+  }
+
+  Timer {
+    id: configurationRefreshTimer
+    interval: 250
+    repeat: false
+    onTriggered: root.refresh(true)
   }
 
   Timer {

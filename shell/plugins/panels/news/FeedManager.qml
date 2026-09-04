@@ -15,7 +15,6 @@ Item {
   property color dim: Qt.darker(foreground, 1.55)
   property int editingIndex: -1
   property string formError: ""
-  property bool pendingSave: false
 
   readonly property var catalog: news ? news.feedCatalog : []
   readonly property var enabledFeedIds: news ? news.enabledFeedIds : []
@@ -81,6 +80,15 @@ Item {
     return result.join("; ")
   }
 
+  function canonicalCustomUrl(value) {
+    var match = String(value || "").trim().match(/^https:\/\/([^\s/@:]+)(?::443)?((?:[/?#][^\s]*)?)$/i)
+    if (!match) return ""
+    var host = String(match[1] || "").toLowerCase()
+    if (host === "localhost" || /(?:^|\.)localhost$/.test(host) || /\.local$/.test(host)) return ""
+    if (/^\d+(?:\.\d+){3}$/.test(host)) return ""
+    return "https://" + host + String(match[2] || "").replace(/#.*$/, "")
+  }
+
   function persistCustomEntries(entries) {
     persistSettings({ "customFeeds": serialiseEntries(entries) })
   }
@@ -123,7 +131,7 @@ Item {
   }
 
   function saveCustom() {
-    if (!news || pendingSave || customLimitReached) return
+    if (!news || customLimitReached) return
     var name = customName.text.trim()
     var url = customUrl.text.trim()
     formError = ""
@@ -136,25 +144,19 @@ Item {
       formError = "Names and URLs cannot contain | or ; characters."
       return
     }
-    pendingSave = news.inspectCustomFeed(url, name)
-    if (!pendingSave) formError = "Another feed is still being checked."
-  }
-
-  function applyInspectedFeed(result) {
-    pendingSave = false
-    if (!result || result.ok !== true) {
-      formError = String(result && result.error ? result.error : "Could not verify this RSS feed.")
+    var canonicalUrl = canonicalCustomUrl(url)
+    if (canonicalUrl === "") {
+      formError = "Feed must be a public HTTPS URL."
       return
     }
     var entries = copiedEntries()
-    var canonicalUrl = String(result.url || "")
     for (var i = 0; i < entries.length; i++) {
       if (i !== editingIndex && entries[i].url === canonicalUrl) {
         formError = "That feed is already on your shelf."
         return
       }
     }
-    var safeName = String(result.name || "").replace(/[|;]/g, " ").trim()
+    var safeName = name
     var entry = { "name": safeName, "url": canonicalUrl }
     if (editingIndex >= 0 && editingIndex < entries.length) entries[editingIndex] = entry
     else entries.push(entry)
@@ -184,16 +186,17 @@ Item {
     return dim
   }
 
+  function sourceName(entry) {
+    var state = sourceState(entry ? entry.url : "")
+    if (state && state.name) return String(state.name)
+    return String((entry && (entry.name || entry.url)) || "Custom feed")
+  }
+
   function activate() {
     Qt.callLater(function() {
       if (catalogList.count > 0) catalogList.currentItem.forceActiveFocus()
       else customUrl.forceActiveFocus()
     })
-  }
-
-  Connections {
-    target: root.news
-    function onFeedInspected(result) { root.applyInspectedFeed(result) }
   }
 
   Keys.onEscapePressed: root.done()
@@ -481,7 +484,7 @@ Item {
                     Layout.fillWidth: true
                     Text {
                       Layout.fillWidth: true
-                      text: String(customRow.modelData.name || customRow.modelData.url || "Custom feed")
+                      text: root.sourceName(customRow.modelData)
                       textFormat: Text.PlainText
                       color: root.foreground
                       font.family: root.fontFamily
@@ -568,8 +571,7 @@ Item {
             Layout.fillWidth: true
             foreground: root.foreground
             accent: root.accent
-            placeholderText: "Name (optional — we’ll discover it)"
-            enabled: !root.pendingSave
+            placeholderText: "Name (optional)"
             maximumLength: 48
             onAccepted: customUrl.forceActiveFocus()
           }
@@ -580,7 +582,6 @@ Item {
             foreground: root.foreground
             accent: root.accent
             placeholderText: "https://example.com/feed.xml"
-            enabled: !root.pendingSave
             maximumLength: 2048
             onAccepted: root.saveCustom()
           }
@@ -601,17 +602,14 @@ Item {
             spacing: Style.space(6)
 
             Button {
-              text: root.pendingSave
-                ? "Checking feed…"
-                : (root.editingIndex >= 0 ? "Save feed" : "Add feed")
-              iconText: root.pendingSave ? "󰑐" : "󰐕"
-              iconSpinning: root.pendingSave
+              text: root.editingIndex >= 0 ? "Save feed" : "Add feed"
+              iconText: "󰐕"
               foreground: root.foreground
               accent: root.accent
               fontFamily: root.fontFamily
               focusable: true
               bordered: true
-              enabled: !root.pendingSave && !root.customLimitReached
+              enabled: !root.customLimitReached
               onClicked: root.saveCustom()
             }
 
