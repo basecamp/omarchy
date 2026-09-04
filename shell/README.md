@@ -238,6 +238,10 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
     "screensaver": 150,
     "lock": 300
   },
+  "notifications": {
+    "position": "top-right",
+    "agentIcons": true
+  },
   "bar": {
     "id": "omarchy.bar",
     "position": "top",
@@ -254,6 +258,8 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
   "plugins": []
 }
 ```
+
+`notifications.position` names the corner the toast stack grows from as `<top|middle|bottom>-<left|center|right>` and defaults to `top-right`. `notifications.agentIcons` (default `true`) badges plain `notify-send` toasts whose summary starts with `claude`, `codex`, or `agy` with that agent's mark from the enabled agents plugin. Both are optional and apply as soon as the file is saved.
 
 ### Storage rules
 

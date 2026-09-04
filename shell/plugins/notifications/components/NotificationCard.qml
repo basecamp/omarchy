@@ -22,6 +22,10 @@ BorderSurface {
   // notifications` etc.) show their bell/lock/etc. glyph without leaking
   // into the summary text.
   property string glyph: ""
+  // Agent marks are drawn at full brand brightness; shrunk and faded they
+  // read as a badge instead of competing with the text.
+  property real iconScale: 1.0
+  property real iconOpacity: 1.0
   // NotificationUrgency: Low=0, Normal=1, Critical=2 (upstream).
   property int urgency: 1
   property double timestamp: 0
@@ -120,7 +124,10 @@ BorderSurface {
 
         Image {
           id: smallIconImage
-          anchors.fill: parent
+          anchors.centerIn: parent
+          width: parent.width * root.iconScale
+          height: parent.height * root.iconScale
+          opacity: root.iconOpacity
           source: root.smallIconSource
           sourceSize.width: smallIconSlot.width * Screen.devicePixelRatio
           sourceSize.height: smallIconSlot.height * Screen.devicePixelRatio

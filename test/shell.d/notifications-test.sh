@@ -259,6 +259,69 @@ assertDeepEqual(
   'notifications ignore a left bar for popup placement'
 )
 
+assertDeepEqual(
+  notifications.parsePopupPosition('bottom-left'),
+  { vertical: 'bottom', horizontal: 'left' },
+  'notifications read a configured toast corner'
+)
+assertDeepEqual(
+  notifications.parsePopupPosition('middle-center'),
+  { vertical: 'middle', horizontal: 'center' },
+  'notifications accept a screen-centred toast position'
+)
+assertDeepEqual(
+  notifications.parsePopupPosition('bottom-middle'),
+  { vertical: 'bottom', horizontal: 'center' },
+  'notifications accept middle as the horizontal centre'
+)
+assertDeepEqual(
+  notifications.parsePopupPosition('sideways'),
+  { vertical: 'top', horizontal: 'right' },
+  'notifications fall back to top-right for an unknown position'
+)
+for (const invalid of ['bottom-sideways', 'left', 'center-bottom']) {
+  assertDeepEqual(
+    notifications.parsePopupPosition(invalid),
+    { vertical: 'top', horizontal: 'right' },
+    'notifications reject malformed toast position ' + invalid
+  )
+}
+assertDeepEqual(
+  notifications.popupPlacement('bottom', 32, 6, 'bottom-left'),
+  {
+    anchors: { top: false, bottom: true, left: true, right: false },
+    margins: { top: 6, bottom: 32, left: 6, right: 6 }
+  },
+  'notifications clear a bottom bar when the stack sits on the bottom edge'
+)
+assertDeepEqual(
+  notifications.popupPlacement('top', 32, 6, 'bottom-left'),
+  {
+    anchors: { top: false, bottom: true, left: true, right: false },
+    margins: { top: 6, bottom: 6, left: 6, right: 6 }
+  },
+  'notifications ignore a top bar when the stack sits on the bottom edge'
+)
+assertDeepEqual(
+  notifications.popupPlacement('top', 32, 6, 'middle-center'),
+  {
+    anchors: { top: false, bottom: false, left: false, right: false },
+    margins: { top: 6, bottom: 6, left: 6, right: 6 }
+  },
+  'notifications anchor nothing for a centred stack'
+)
+
+assertEqual(notifications.agentMarkFor('notify-send', '', 'claude finished', false), 'claude', 'notifications recognise a Claude toast by its summary')
+assertEqual(notifications.agentMarkFor('notify-send', '', 'Codex needs input', false), 'codex', 'notifications recognise a Codex toast regardless of case')
+assertEqual(notifications.agentMarkFor('notify-send', '', 'agy finished', false), 'antigravity', 'notifications map the agy summary to the Antigravity mark')
+assertEqual(notifications.agentMarkFor('notify-send', '', 'codex finished', true), 'codex-light', 'notifications take the light twin of a white mark on a light surface')
+assertEqual(notifications.agentMarkFor('notify-send', '', 'claude finished', true), 'claude', 'notifications keep a mark without a light twin on a light surface')
+assertEqual(notifications.agentMarkFor('notify-send', 'mail', 'claude finished', false), '', 'notifications keep an icon the sender chose')
+assertEqual(notifications.agentMarkFor('Slack', '', 'claude finished', false), '', 'notifications only badge plain notify-send toasts')
+assertEqual(notifications.agentMarkFor('notify-send', '', 'Build finished', false), '', 'notifications leave other notify-send toasts unbadged')
+assert(fs.existsSync(path.join(root, 'shell/plugins/agents/assets/antigravity.svg')), 'notifications ship the Antigravity mark they resolve')
+assert(fs.existsSync(path.join(root, 'shell/plugins/agents/assets/antigravity-light.svg')), 'notifications ship the Antigravity light mark they resolve')
+
 const notification = {
   id: 12,
   appName: 'Mail',
@@ -660,7 +723,7 @@ assert(
   'notifications service leaves the row and its file alone when a refresh finds nothing changed'
 )
 assert(
-  /popupModel\.insert\(0, snapshot\)[\s\S]{0,300}?service\.refreshPopup\(notification, snapshot\.originalId, snapshot\.timestamp\)/.test(serviceQml),
+  /insertToast\(snapshot\)[\s\S]{0,300}?service\.refreshPopup\(notification, snapshot\.originalId, snapshot\.timestamp\)/.test(serviceQml),
   'notifications service catches up on an update that beat the deferred row insert'
 )
 assert(
@@ -700,7 +763,7 @@ assert(
   'notifications service never resolves a restored popup to a live server object'
 )
 assert(
-  /service\.restoredPopups\[NotificationLogic\.popupFileName\(rows\[i\]\)\] = true/.test(serviceQml),
+  /service\.restoredPopups\[NotificationLogic\.popupFileName\(row\)\] = true/.test(serviceQml),
   'notifications service treats replayed history rows as restored, never as live notifications'
 )
 assert(
@@ -722,5 +785,39 @@ assert(
 assert(
   !/pendingModel|pastModel/.test(serviceQml),
   'notifications service keeps no in-memory history models'
+)
+assert(
+  /readonly property string popupPosition: String\(notificationsConfig\.position \|\| "top-right"\)/.test(serviceQml),
+  'notifications service reads the toast corner from shell.json with a top-right default'
+)
+assert(
+  /readonly property bool agentIconsEnabled: notificationsConfig\.agentIcons !== false/.test(serviceQml),
+  'notifications service keeps agent marks on unless shell.json turns them off'
+)
+assert(
+  /function insertToast\(entry\) \{\s*if \(stackNewestLast\) popupModel\.append\(entry\)\s*else popupModel\.insert\(0, entry\)/.test(serviceQml),
+  'notifications service stacks the newest toast nearest a bottom edge'
+)
+assert(
+  /function insertRestoredToast\(entry\) \{\s*if \(stackNewestLast\) popupModel\.insert\(0, entry\)\s*else popupModel\.append\(entry\)/.test(serviceQml)
+    && (serviceQml.match(/insertRestoredToast\((?:row|restored)\)/g) || []).length === 2,
+  'notifications service restores and replays newest nearest the configured edge'
+)
+assert(
+  /onStackNewestLastChanged: reversePopups\(\)/.test(serviceQml)
+    && /function reversePopups\(\) \{\s*for \([^)]+\) popupModel\.move\(popupModel\.count - 1, i, 1\)/.test(serviceQml),
+  'notifications service reorders visible toasts when their edge changes'
+)
+assert(
+  !/popupModel\.insert\(0, (snapshot|\{)/.test(serviceQml),
+  'notifications service routes every new toast through insertToast'
+)
+assert(
+  /appIcon: cardSlot\.appIcon \|\| agentIcon/.test(serviceQml),
+  'notifications service badges agent toasts without overriding a sender icon'
+)
+assert(
+  /clonedFrom !== "omarchy\.agents" \|\| !pluginRegistry\.isEnabled\(id\)\) continue[\s\S]{0,120}?dir = String\(manifest\.__sourceDir\) \+ "\/assets\/"/.test(serviceQml),
+  'notifications service takes agent marks from the enabled agents plugin, clone included'
 )
 JS
