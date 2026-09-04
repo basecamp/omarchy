@@ -495,6 +495,10 @@ assert(
   'menu Left key follows empty-filter Backspace navigation'
 )
 assert(
+  /!\(event\.modifiers & \(Qt\.ControlModifier \| Qt\.AltModifier \| Qt\.MetaModifier\)\)/.test(menuQml),
+  'menu accepts printable text carrying Shift plus keypad or layout modifiers'
+)
+assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),
   'menu uses shared pointer movement gate in card coordinates'
 )
