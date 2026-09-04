@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Uninstall Doom Emacs and clean configuration
+
+set -euo pipefail
+
+EMACS_DIR="$HOME/.config/emacs"
+DOOM_DIR="$HOME/.config/doom"
+
+echo "Uninstalling Doom Emacs..."
+
+if [[ -d $EMACS_DIR ]]; then
+  rm -rf "$EMACS_DIR"
+  echo "Removed $EMACS_DIR"
+fi
+
+if [[ -d $DOOM_DIR ]]; then
+  read -p "Do you want to remove your user config in $DOOM_DIR? [y/N] " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    rm -rf "$DOOM_DIR"
+    echo "Removed $DOOM_DIR"
+  fi
+fi
+
+omarchy-notification-send -g 󰗡 "Doom Emacs uninstalled"

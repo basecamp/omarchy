@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# omarchy:summary=Install Doom Emacs with Native Wayland (PGTK), NativeComp, and Omarchy theming
+
+set -euo pipefail
+
+EMACS_DIR="$HOME/.config/emacs"
+DOOM_BIN="$EMACS_DIR/bin/doom"
+
+echo "Step 1: Installing omarchy-emacs and required dependencies..."
+omarchy-pkg-aur-add omarchy-emacs
+omarchy-pkg-add git ripgrep fd findutils
+
+echo "Step 2: Cloning Doom Emacs core repository..."
+if [[ ! -d $EMACS_DIR ]]; then
+  git clone --depth 1 https://github.com/doomemacs/core "$EMACS_DIR"
+else
+  echo "Emacs directory already exists at $EMACS_DIR"
+fi
+
+echo "Step 3: Running Doom installer..."
+if [[ -x $DOOM_BIN ]]; then
+  "$DOOM_BIN" install
+else
+  echo "Error: $DOOM_BIN not found after cloning!" >&2
+  exit 1
+fi
+
+echo "Step 4: Setting up PATH & 'ec' alias..."
+if ! grep -q 'emacs/bin' "$HOME/.bashrc" 2>/dev/null; then
+  echo 'export PATH="$HOME/.config/emacs/bin:$PATH"' >> "$HOME/.bashrc"
+fi
+if ! grep -q 'alias ec=' "$HOME/.bashrc" 2>/dev/null; then
+  echo "alias ec=\"emacsclient -c -a ''\"" >> "$HOME/.bashrc"
+fi
+
+echo "Step 5: Setting Doom Emacs as default editor (EDITOR & VISUAL)..."
+omarchy-default-editor doom
+
+# Ensure initial theme template is rendered
+omarchy-theme-refresh
+
+echo "Doom Emacs installation complete!"
+omarchy-notification-send -g 󰗡 "Doom Emacs installed & set as default editor!"

@@ -251,7 +251,7 @@ assertDeepEqual(
 const expectedDefaults = {
   browser: ['Chromium', 'Chrome', 'Brave', 'Brave Origin', 'Edge', 'Firefox', 'Zen'],
   terminal: ['Alacritty', 'Foot', 'Ghostty', 'Kitty'],
-  editor: ['Neovim', 'VSCode', 'Cursor', 'Zed', 'Sublime Text', 'Helix', 'Vim', 'Emacs']
+  editor: ['Neovim', 'VSCode', 'Cursor', 'Zed', 'Sublime Text', 'Helix', 'Vim', 'Emacs', 'Doom Emacs']
 }
 assert(
   Object.entries(expectedDefaults).every(([type, labels]) => {
@@ -305,6 +305,7 @@ assertDeepEqual(
     'remove.ai',
     'remove.service',
     'remove.development',
+    'remove.editor',
     'remove.theme',
     'remove.gaming',
     'remove.browser',

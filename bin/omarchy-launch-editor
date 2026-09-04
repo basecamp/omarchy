@@ -18,7 +18,16 @@ else
   editor="nvim"
 fi
 
-omarchy-cmd-present "$editor" || editor="nvim"
+if [[ $editor == "doom" ]]; then
+  if ! omarchy-cmd-present doom && [[ -x $HOME/.config/emacs/bin/doom ]]; then
+    export PATH="$HOME/.config/emacs/bin:$PATH"
+  fi
+  if ! omarchy-cmd-present emacs && ! omarchy-cmd-present doom; then
+    editor="nvim"
+  fi
+else
+  omarchy-cmd-present "$editor" || editor="nvim"
+fi
 
 case "${editor##*/}" in
 nvim | vim | nano | micro | hx | helix | fresh)
@@ -26,6 +35,13 @@ nvim | vim | nano | micro | hx | helix | fresh)
     exec "$editor" "$@"
   else
     exec omarchy-launch-tui "$editor" "$@"
+  fi
+  ;;
+doom | emacs)
+  if [[ $inline == "true" ]]; then
+    exec emacs -nw "$@"
+  else
+    exec setsid uwsm-app -- emacsclient -c -a '' "$@"
   fi
   ;;
 *)

@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Hot-reload active theme in running Emacs / Doom Emacs instance
+
+CURRENT_COLORS="$HOME/.local/state/omarchy/current/theme/omarchy-colors.el"
+
+# The theme engine renders the canonical colors for the active theme into the
+# state dir on every change. Copy them into every Emacs/Doom config so the
+# running editor re-themes with the current palette rather than a stale one.
+if [[ -f $CURRENT_COLORS ]]; then
+  for dir in "$HOME/.config/doom" "$HOME/.config/doom/themes" "$HOME/.config/emacs" "$HOME/.config/emacs/themes"; do
+    if [[ -d $dir ]]; then
+      cp "$CURRENT_COLORS" "$dir/omarchy-colors.el" 2>/dev/null || true
+    fi
+  done
+fi
+
+# Reload generated theme files and apply the active theme to running frames.
+if pgrep -x emacs >/dev/null || pgrep -f emacsclient >/dev/null; then
+  emacsclient --eval "(progn
+    (if (file-exists-p \"$HOME/.local/state/omarchy/current/theme/doom-theme.el\")
+        (load \"$HOME/.local/state/omarchy/current/theme/doom-theme.el\" nil t)
+      (when (file-exists-p \"$HOME/.local/state/omarchy/current/theme/emacs-theme.el\")
+        (load \"$HOME/.local/state/omarchy/current/theme/emacs-theme.el\" nil t)))
+    (if (fboundp 'omarchy-apply-theme)
+        (omarchy-apply-theme)
+      (when (fboundp 'omarchy/apply-theme-to-frame)
+        (mapc #'omarchy/apply-theme-to-frame (frame-list)))))" >/dev/null 2>&1 || true
+fi

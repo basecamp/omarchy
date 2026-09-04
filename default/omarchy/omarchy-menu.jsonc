@@ -168,6 +168,7 @@
   "setup.default.editor.helix": {"icon":"","label":"Helix","checked":"[[ \"$(omarchy-default-editor)\" == \"helix\" ]]","action":"omarchy-default-editor helix"},
   "setup.default.editor.vim": {"icon":"","label":"Vim","checked":"[[ \"$(omarchy-default-editor)\" == \"vim\" ]]","action":"omarchy-default-editor vim"},
   "setup.default.editor.emacs": {"icon":"","label":"Emacs","checked":"[[ \"$(omarchy-default-editor)\" == \"emacs\" ]]","action":"omarchy-default-editor emacs"},
+  "setup.default.editor.doom": {"icon":"󰗡","label":"Doom Emacs","checked":"[[ \"$(omarchy-default-editor)\" == \"doom\" ]]","action":"omarchy-default-editor doom"},
   "setup.plugin": {"icon":"󰐱","label":"Plugins","aliases":["plugin","plugins"]},
   "setup.plugin.enable": {"icon":"󰄬","label":"Enable Plugin","action":"omarchy-menu-plugin enable"},
   "setup.plugin.disable": {"icon":"󰅖","label":"Disable Plugin","action":"omarchy-menu-plugin disable"},
@@ -233,6 +234,7 @@
   "install.editor.helix": {"icon":"","label":"Helix","disabled":"omarchy-pkg-present helix","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-editor-helix"},
   "install.editor.vim": {"icon":"","label":"Vim","disabled":"omarchy-pkg-present vim","action":"omarchy-install-app Vim vim"},
   "install.editor.emacs": {"icon":"","label":"Emacs","disabled":"omarchy-pkg-present omarchy-emacs","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-editor-emacs"},
+  "install.editor.doom-emacs": {"icon":"󰗡","label":"Doom Emacs","disabled":"[[ -d ~/.config/emacs/bin ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-install-editor-doom-emacs"},
   "install.terminal.alacritty": {"icon":"","label":"Alacritty","disabled":"omarchy-pkg-present alacritty","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal alacritty'"},
   "install.terminal.foot": {"icon":"","label":"Foot","disabled":"omarchy-pkg-present foot","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal foot'"},
   "install.terminal.ghostty": {"icon":"","label":"Ghostty","disabled":"omarchy-pkg-present ghostty","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-terminal ghostty'"},
@@ -282,6 +284,7 @@
   "remove.ai": {"icon":"󱚤","label":"AI","title":"Remove"},
   "remove.service": {"icon":"","label":"Services","title":"Remove"},
   "remove.development": {"icon":"󰵮","label":"Development","title":"Remove"},
+  "remove.editor": {"icon":"","label":"Editor","title":"Remove"},
   "remove.theme": {"icon":"󰸌","label":"Theme","action":"omarchy-theme-remove"},
   "remove.gaming": {"icon":"","label":"Gaming","title":"Remove"},
   "remove.browser": {"icon":"","label":"Browser","title":"Remove"},
@@ -339,6 +342,7 @@
   "remove.development.php.symfony": {"icon":"","label":"Symfony","when":"omarchy-pkg-present symfony-cli","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-remove-dev-env symfony'"},
   "remove.development.elixir.elixir": {"icon":"","label":"Elixir","when":"[[ -d $HOME/.local/share/mise/installs/elixir ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-remove-dev-env elixir'"},
   "remove.development.elixir.phoenix": {"icon":"","label":"Phoenix","when":"[[ -d $HOME/.local/share/mise/installs/elixir ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-remove-dev-env phoenix'"},
+  "remove.editor.doom-emacs": {"icon":"󰗡","label":"Doom Emacs","when":"[[ -d ~/.config/emacs/bin ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-editor-doom-emacs"},
 
   // Update
   "update.omarchy": {"icon":"","iconFont":"omarchy","label":"Omarchy","action":"omarchy-launch-floating-terminal-with-presentation omarchy-update"},

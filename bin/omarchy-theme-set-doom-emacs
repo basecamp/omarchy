@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Hot-reload active theme in running Emacs instance
+
+if pgrep -x emacs >/dev/null || pgrep -f emacsclient >/dev/null; then
+  "$OMARCHY_PATH/bin/omarchy-theme-set-emacs" "$@"
+fi
