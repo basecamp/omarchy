@@ -252,12 +252,13 @@ Item {
     root.itemOrder = mergedMenu.itemOrder
     root.rowsLoaded = true
     root.evaluateGuards()
-    if (root.opened) {
+    // Dmenu rows come solely from dmenuOptions, so item changes never redraw
+    // an open dmenu: clearing the model would reset its scroll under the
+    // reader for rows that cannot have changed.
+    if (root.opened && !root.dmenuActive) {
       root.rebuildDisplay()
-      if (!root.dmenuActive) {
-        if (root.filterText.trim()) root.loadProvidersForSearch()
-        else root.loadProviderForMenu(root.activeMenu)
-      }
+      if (root.filterText.trim()) root.loadProvidersForSearch()
+      else root.loadProviderForMenu(root.activeMenu)
     }
   }
 
@@ -325,7 +326,7 @@ Item {
     var merged = MenuModel.mergeAppRows(root.items, root.itemOrder, appRows)
     root.items = merged.items
     root.itemOrder = merged.itemOrder
-    if (root.opened) root.rebuildDisplay()
+    if (root.opened && !root.dmenuActive) root.rebuildDisplay()
   }
 
   function startProviderForMenu(id) {
@@ -390,7 +391,7 @@ Item {
     var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, menuId, providerRows)
     root.items = merged.items
     root.itemOrder = merged.itemOrder
-    if (root.opened) root.rebuildDisplay()
+    if (root.opened && !root.dmenuActive) root.rebuildDisplay()
   }
 
   function startNextProvider() {
@@ -1056,7 +1057,7 @@ Item {
       root.whenResults = nextWhen
       root.checkedResults = nextChecked
       root.disabledResults = nextDisabled
-      if (root.opened) root.rebuildDisplay()
+      if (root.opened && !root.dmenuActive) root.rebuildDisplay()
       // Run the evaluation that had to stand aside. Deferred by a turn so the
       // process is settled before its command is set again.
       if (root.guardsPending) Qt.callLater(function() { root.evaluateGuards() })
