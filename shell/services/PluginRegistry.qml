@@ -633,8 +633,14 @@ QtObject {
     }
   }
 
+  // The pdeathsig makes the kernel kill the watcher whenever the shell exits,
+  // however it exits. Qt leaves through _exit() when the Wayland connection
+  // drops, so nothing in QML gets to stop the watcher on the path that matters.
   property Process localPluginWatcher: Process {
     command: [
+      "setpriv",
+      "--pdeathsig",
+      "TERM",
       "inotifywait",
       "-m",
       "-r",
