@@ -99,9 +99,13 @@ if [[ $step =~ ^([0-9]+)%-$ ]]; then
   step="-${BASH_REMATCH[1]}%"
 fi
 
-if ! sudo asdcontrol "$device" -- "$step" >/dev/null; then
+# asdcontrol exits 0 against a hiddev node that is no longer the display
+# (interfaces renumber when the display replugs), so a brightness read is the
+# only reliable check that the cached device still works.
+if ! sudo asdcontrol "$device" -- "$step" >/dev/null || ! brightness="$(current_brightness "$device")"; then
   retry_with_fresh_device
   sudo asdcontrol "$device" -- "$step" >/dev/null
+  brightness="$(current_brightness "$device")"
 fi
 
-(( no_osd )) || omarchy-osd -i brightness -p "$(current_brightness "$device")"
+(( no_osd )) || omarchy-osd -i brightness -p "$brightness"
