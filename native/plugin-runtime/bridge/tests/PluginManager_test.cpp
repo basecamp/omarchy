@@ -114,6 +114,38 @@ void host_owned_settings_are_read_and_replaced_atomically() {
           "manager did not atomically replace host-owned settings");
 }
 
+void qml_hosts_return_startup_snapshots_as_maps() {
+  QQmlEngine engine;
+  QQmlComponent component(&engine);
+  component.setData(R"QML(
+import QtQuick
+QtObject {
+  function readSecurePluginSettings(pluginId) {
+    return pluginId === "org.example.widget" ? { enabled: true } : undefined
+  }
+  function readSecurePluginPresentation() {
+    return { foreground: "#123456", statusSlot: 23 }
+  }
+}
+)QML",
+                    QUrl());
+  require(component.isReady(), "QML snapshot host fixture did not load");
+  std::unique_ptr<QObject> host(component.create());
+  require(host != nullptr, "QML snapshot host fixture did not instantiate");
+  auto manager = bridge::PluginManagerTestAccess::create();
+  require(manager->configureSettingsHost(host.get()) &&
+              manager->configurePresentationHost(host.get()),
+          "QML snapshot hosts were not configured");
+  const auto settings = bridge::PluginManagerTestAccess::currentSettings(
+      *manager, "org.example.widget");
+  const auto presentation =
+      bridge::PluginManagerTestAccess::currentPresentation(*manager);
+  require(settings && *settings == R"({"enabled":true})" && presentation &&
+              *presentation ==
+                  R"({"foreground":"#123456","statusSlot":23})",
+          "QML JavaScript objects were not converted to startup maps");
+}
+
 std::size_t openDescriptorCount() {
   return static_cast<std::size_t>(
       std::distance(std::filesystem::directory_iterator("/proc/self/fd"),
@@ -4279,6 +4311,7 @@ void run_plugin_manager_tests() {
   secure_bar_retries_only_on_readiness_events();
   secure_bar_cannot_expand_the_host_bar();
   host_owned_settings_are_read_and_replaced_atomically();
+  qml_hosts_return_startup_snapshots_as_maps();
   process_singleton_factory_is_exact_and_recoverable();
   concurrent_engines_have_one_process_winner();
   singleton_boundary_is_inert_and_not_configurable();

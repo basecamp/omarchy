@@ -287,6 +287,10 @@ public:
   currentSettings(const PluginManager &manager, std::string_view plugin) {
     return manager.currentSettings(plugin);
   }
+  [[nodiscard]] static std::optional<std::string>
+  currentPresentation(const PluginManager &manager) {
+    return manager.currentPresentation();
+  }
   [[nodiscard]] static bool persistSettings(PluginManager &manager,
                                             std::string_view plugin,
                                             std::string_view settings) {

@@ -10,6 +10,7 @@
 #include <QQmlEngine>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJSValue>
 #include <QThread>
 #include <QThreadPool>
 #include <QTimer>
@@ -38,6 +39,17 @@ namespace omarchy::plugin_runtime::bridge {
 namespace {
 
 std::atomic<QQmlEngine *> claimed_engine = nullptr;
+
+std::optional<QVariantMap> returnedMap(QVariant value) {
+  if (value.metaType() == QMetaType::fromType<QJSValue>()) {
+    const auto converted = value.value<QJSValue>().toVariant();
+    if (converted.canConvert<QVariantMap>())
+      return converted.toMap();
+  }
+  if (value.canConvert<QVariantMap>())
+    return value.toMap();
+  return std::nullopt;
+}
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
 std::atomic_bool fail_next_manager_construction = false;
@@ -252,9 +264,11 @@ PluginManager::currentSettings(std::string_view plugin) const noexcept {
       Q_RETURN_ARG(QVariant, returned),
       Q_ARG(QVariant, QString::fromUtf8(plugin.data(),
                                         static_cast<qsizetype>(plugin.size()))));
-  if (!invoked || !returned.canConvert<QVariantMap>())
+  const auto settings = invoked ? returnedMap(std::move(returned))
+                                : std::nullopt;
+  if (!settings)
     return std::nullopt;
-  const auto document = QJsonDocument::fromVariant(returned);
+  const auto document = QJsonDocument::fromVariant(*settings);
   if (!document.isObject())
     return std::nullopt;
   const auto bytes = document.toJson(QJsonDocument::Compact);
@@ -269,9 +283,11 @@ PluginManager::currentPresentation() const noexcept {
   const bool invoked = QMetaObject::invokeMethod(
       presentation_host_, "readSecurePluginPresentation", Qt::DirectConnection,
       Q_RETURN_ARG(QVariant, returned));
-  if (!invoked || !returned.canConvert<QVariantMap>())
+  const auto presentation = invoked ? returnedMap(std::move(returned))
+                                    : std::nullopt;
+  if (!presentation)
     return std::nullopt;
-  const auto document = QJsonDocument::fromVariant(returned);
+  const auto document = QJsonDocument::fromVariant(*presentation);
   if (!document.isObject())
     return std::nullopt;
   const auto bytes = document.toJson(QJsonDocument::Compact);
