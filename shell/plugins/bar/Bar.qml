@@ -1766,9 +1766,11 @@ Item {
     function injectProps() {
       var target = activeItem
       if (!target) return
-      if ("bar" in target) target.bar = root
-      if ("moduleName" in target) target.moduleName = moduleName
-      if ("settings" in target) target.settings = moduleSettings
+      BarModel.applyInjectableProps(target, {
+        bar: root,
+        moduleName: moduleName,
+        settings: moduleSettings
+      })
     }
 
     Component {

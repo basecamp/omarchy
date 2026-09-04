@@ -2,6 +2,24 @@ function isPlainObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value)
 }
 
+// ModuleSlot.injectProps() in Bar.qml: assigns shell-provided properties onto a
+// custom widget's root object. A widget may declare some of those names as
+// readonly (for example a `readonly property var settings`); `in` still reports
+// the key, so an unguarded assignment throws a TypeError that aborts the whole
+// slot. Each assignment is guarded so a non-writable property is skipped
+// without blocking the writable ones that follow it.
+function applyInjectableProps(target, props) {
+  if (!target || !props) return
+  for (var key in props) {
+    if (!(key in target)) continue
+    try {
+      target[key] = props[key]
+    } catch (error) {
+      console.warn("module slot inject: skipping non-writable property " + String(key))
+    }
+  }
+}
+
 function normalizePosition(value) {
   var next = String(value || "").trim()
   return /^(top|bottom|left|right)$/.test(next) ? next : "top"
@@ -226,6 +244,7 @@ if (typeof module !== "undefined") {
     expandPath: expandPath,
     customModuleSafeName: customModuleSafeName,
     customModuleType: customModuleType,
-    customModulePath: customModulePath
+    customModulePath: customModulePath,
+    applyInjectableProps: applyInjectableProps
   }
 }

@@ -354,6 +354,31 @@ assertEqual(
   '/home/dhh/.config/omarchy/bar/modules/local.weather.qml',
   'bar builds default custom module paths'
 )
+
+// The module slot injects shell-provided properties onto a custom widget's
+// root. The widget can declare any of those names readonly (CustomCommandModule
+// declares `readonly property var settings`), and `in` still reports the key,
+// so injection has to survive a non-writable assignment while still landing
+// every writable property beside it.
+const injectTarget = { writable: 'before' }
+let injectTouched = false
+Object.defineProperty(injectTarget, 'readonly', {
+  writable: false,
+  configurable: false,
+  value: 'keep'
+})
+bar.applyInjectableProps(injectTarget, {
+  writable: 'injected',
+  readonly: 'nope',
+  missing: 'ignored'
+})
+assert(injectTarget.writable === 'injected', 'bar injects a writable slot property')
+assert(injectTarget.readonly === 'keep', 'bar skips a read-only slot property instead of throwing')
+assert(injectTarget.missing === undefined, 'bar ignores properties the widget does not declare')
+assert(
+  /BarModel\.applyInjectableProps\(target, \{[\s\S]*?moduleName[\s\S]*?settings[\s\S]*?\}\)/.test(barSource),
+  'bar module slot delegates property injection to the shared injectable-props helper'
+)
 JS
 
 put_tmp=$(mktemp -d)
