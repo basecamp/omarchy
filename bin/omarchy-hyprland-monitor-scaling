@@ -97,9 +97,19 @@ set_scale() {
   hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
   audit_scale_change "$requested" "$active_monitor" "$current_scale" "$new_scale"
 
-  # Persist to monitors.lua if the user still has Omarchy's generic catch-all
-  # defaults, so the scale survives reboots.
-  if [[ -f $monitor_lua ]] && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
+  # Persist to monitors.lua so the scale survives reboots. An explicit
+  # hl.monitor entry for the active monitor (the per-monitor form this file's
+  # own comments suggest) overrides the catch-all, so it must be updated in
+  # place — editing only the catch-all would leave the entry stale, and the
+  # config reload this write triggers would revert the scale that was just
+  # applied. Without an explicit numeric entry, fall back to Omarchy's
+  # generic catch-all defaults.
+  if [[ -f $monitor_lua ]] && update_explicit_monitor_scale "$active_monitor" "$new_scale" "$monitor_lua"; then
+    sed -i -E \
+      -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${new_gdk_scale}|" \
+      -e 's|^hl\.env\("GDK_SCALE", "[0-9]+"\)|hl.env("GDK_SCALE", "'"$new_gdk_scale"'")|' \
+      "$monitor_lua"
+  elif [[ -f $monitor_lua ]] && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
     sed -i -E \
       -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" \
       -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${new_gdk_scale}|" \
@@ -109,6 +119,44 @@ set_scale() {
       -e "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${new_scale}\\3|" \
       -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$new_gdk_scale"'")|' \
       "$monitor_lua"
+  fi
+}
+
+# Rewrite `scale = <number>` inside the hl.monitor entry naming this output,
+# whether the entry is single-line or spread over multiple lines. Succeeds only
+# when an entry with an explicit numeric scale was found and updated; entries
+# that reference a variable (e.g. `scale = omarchy_monitor_scale`) are left
+# alone so the catch-all fallback keeps owning them.
+update_explicit_monitor_scale() {
+  local monitor="$1"
+  local scale="$2"
+  local file="$3"
+  local tmp
+
+  tmp=$(mktemp) || return 1
+
+  if awk -v monitor="$monitor" -v scale="$scale" '
+    {
+      buffer = buffer $0 "\n"
+      depth += gsub(/\{/, "{")
+      depth -= gsub(/\}/, "}")
+      if (depth > 0) next
+      if (buffer !~ /^[[:space:]]*--/ && buffer ~ /hl\.monitor\(/ && index(buffer, "output = \"" monitor "\"")) {
+        if (sub(/scale = [0-9][0-9.]*/, "scale = " scale, buffer)) changed = 1
+      }
+      printf "%s", buffer
+      buffer = ""
+    }
+    END {
+      printf "%s", buffer
+      exit changed ? 0 : 1
+    }
+  ' "$file" >"$tmp"; then
+    mv "$tmp" "$file"
+    return 0
+  else
+    rm -f "$tmp"
+    return 1
   fi
 }
 

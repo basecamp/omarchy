@@ -129,3 +129,78 @@ grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips d
 grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling down persists 2x after skipping duplicate approximation"
 pass "monitor scaling down skips duplicate approximation"
+
+# An explicit hl.monitor entry for the active monitor overrides the catch-all,
+# so the entry itself must be updated — otherwise the config reload triggered
+# by the write reverts the scale that was just applied.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+hl.monitor({
+  output = "eDP-1",
+  mode = "2880x1800@120.00",
+  position = "0x0",
+  scale = 2
+})
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling up
+grep -F '  scale = 3' "$monitor_lua" >/dev/null || fail "monitor scaling up updates explicit multi-line entry"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves the catch-all alone when an explicit entry is updated"
+grep -Fx 'local omarchy_gdk_scale = 3' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists GDK scale alongside an explicit entry"
+pass "monitor scaling up updates explicit multi-line entry"
+
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+
+hl.monitor({ output = "eDP-1", mode = "2880x1800@120", position = "0x0", scale = 2 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -F 'position = "0x0", scale = 1.6 })' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling updates explicit single-line entry"
+grep -Fx 'local omarchy_gdk_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists integer GDK scale alongside a single-line entry"
+pass "monitor scaling updates explicit single-line entry"
+
+# An entry that references the catch-all variable is not an explicit scale;
+# the variable keeps owning it.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+
+hl.monitor({
+  output = "eDP-1",
+  mode = "2880x1800@120.00",
+  position = "0x0",
+  scale = omarchy_monitor_scale
+})
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling up
+grep -F 'scale = omarchy_monitor_scale' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves variable-referencing entries alone"
+grep -Fx 'local omarchy_monitor_scale = 3' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists to the catch-all for variable-referencing entries"
+pass "monitor scaling leaves variable-referencing entries to the catch-all"
+
+# Entries for other monitors are not the active monitor's; fall back to the
+# catch-all and leave them untouched.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+
+hl.monitor({
+  output = "DP-9",
+  mode = "2560x1440@144.00",
+  position = "2880x0",
+  scale = 1
+})
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling up
+grep -F '  scale = 1' "$monitor_lua" >/dev/null || fail "monitor scaling leaves other monitors' entries alone"
+grep -Fx 'local omarchy_monitor_scale = 3' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists to the catch-all when only other monitors are pinned"
+pass "monitor scaling leaves other monitors' entries alone"
