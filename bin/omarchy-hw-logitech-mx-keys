@@ -1,30 +1,43 @@
 #!/usr/bin/python3
 
-# omarchy:summary=Detect a Logitech MX Keys S keyboard (Bluetooth or Logi Bolt receiver).
+# omarchy:summary=Detect a Logitech MX Keys or MX Keys S keyboard (Bluetooth, Unifying or Logi Bolt receiver).
 # omarchy:args=[--keyd-ids]
 
-# Exit 0 if an MX Keys S is present. The MX Keys S connects only over Bluetooth
-# or a Logi Bolt receiver. A Bluetooth connection carries the model name in
-# sysfs; behind the Bolt receiver the name is hidden, so each paired slot is
-# asked its name over HID++ 2.0 (feature 0x0005). The receiver only accepts
-# long (0x11) reports and answers asynchronously, so requests are long and
-# replies are correlated by device index, feature and software id.
+# Exit 0 if an MX Keys or MX Keys S is present. Both connect only over Bluetooth
+# or a Logitech wireless receiver. A Bluetooth link, and a Unifying receiver's
+# per-device hidraw child, carry the model name in sysfs. Behind the Bolt
+# receiver the name is hidden, so each paired slot is asked its name over
+# HID++ 2.0 (feature 0x0005): the receiver only accepts long (0x11) reports and
+# answers asynchronously, so requests are long and replies are correlated by
+# device index, feature and software id. The non-S MX Keys is Unifying-only, so
+# the Bolt probe never has to recognise it.
 #
 # With --keyd-ids, also print the keyd [ids] entry for each way the keyboard is
-# connected (one per line): "k:046d:c548" for the Bolt receiver, "k:046d:<pid>"
-# for a Bluetooth link.
+# connected (one per line): "k:046d:c548" for the Bolt receiver, otherwise
+# "k:046d:<pid>" -- the device's own product id on Bluetooth or behind Unifying.
 #
-# Needs read/write on /dev/hidraw* -- run as root. Any error, or a keyboard
-# asleep at probe time, yields exit 1.
+# The Bolt probe opens /dev/hidraw* read/write and needs root; an error there,
+# or an MX Keys S asleep at probe time, yields exit 1. The sysfs scan that
+# covers Bluetooth and Unifying needs no privileges.
 
 import errno
 import glob
 import os
+import re
 import select
 import sys
 import time
 
-TARGET = "mx keys s"
+# The full-size "MX Keys" and "MX Keys S" only -- not "MX Keys Mini", "MX
+# Mechanical", or the "... for Mac" editions.
+NAME_RE = re.compile(r"\bmx keys(?: s)?\b", re.IGNORECASE)
+NAME_EXCLUDE = ("mini", "mechanical", "mac")
+
+# "MX Keys" (non-S) pairs only over Bluetooth or a Unifying receiver. Behind
+# Unifying the logitech-hidpp driver still exports this wireless PID even when
+# the keyboard was asleep at probe time and its name did not resolve.
+MX_KEYS_UNIFYING_ID = "k:046d:408a"
+
 BOLT_RECEIVER = 0xC548  # the only receiver the MX Keys S pairs with
 BOLT_ID = "k:046d:%04x" % BOLT_RECEIVER
 SW_ID = 0x0A
@@ -32,7 +45,11 @@ NAME_FEATURE = 0x0005
 
 
 def name_matches(text):
-    return TARGET in (text or "").lower()
+    text = text or ""
+    if not NAME_RE.search(text):
+        return False
+    lowered = text.lower()
+    return not any(word in lowered for word in NAME_EXCLUDE)
 
 
 def drain(fd):
@@ -122,27 +139,39 @@ def bolt_receiver_has_mx_keys_s():
     return False
 
 
-def bluetooth_ids():
+def _keyd_id(hid_id):
+    parts = hid_id.split(":")
+    if len(parts) != 3:
+        return None
+    try:
+        return "k:%04x:%04x" % (int(parts[1], 16), int(parts[2], 16))
+    except ValueError:
+        return None
+
+
+def sysfs_named_ids():
+    """keyd [ids] for every MX Keys the kernel already names in sysfs -- a
+    Bluetooth link, or a Unifying receiver's per-device hidraw child. Behind the
+    Bolt receiver the name is hidden; bolt_receiver_has_mx_keys_s covers that."""
     ids = []
     for uevent in sorted(glob.glob("/sys/class/hidraw/*/device/uevent")):
         try:
             info = open(uevent).read()
         except OSError:
             continue
-        if not name_matches(info):
+        entries = [_keyd_id(line[len("HID_ID="):])
+                   for line in info.splitlines() if line.startswith("HID_ID=")]
+        entries = [entry for entry in entries if entry]
+        if not name_matches(info) and MX_KEYS_UNIFYING_ID not in entries:
             continue
-        for line in info.splitlines():
-            if line.startswith("HID_ID="):
-                parts = line[len("HID_ID="):].split(":")
-                if len(parts) == 3:
-                    entry = "k:%04x:%04x" % (int(parts[1], 16), int(parts[2], 16))
-                    if entry not in ids:
-                        ids.append(entry)
+        for entry in entries:
+            if entry not in ids:
+                ids.append(entry)
     return ids
 
 
 def keyd_ids():
-    ids = list(bluetooth_ids())
+    ids = list(sysfs_named_ids())
     if bolt_receiver_has_mx_keys_s() and BOLT_ID not in ids:
         ids.append(BOLT_ID)
     return ids

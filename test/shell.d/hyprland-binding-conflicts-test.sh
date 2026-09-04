@@ -189,20 +189,20 @@ grep -Fqx "ALT+SHIFT+SUPER+RIGHT" <<<"$probe" ||
   fail "the conflict check ignores modifier order"
 pass "the conflict check catches collisions across keycodes and modifier order"
 
-# The Logitech MX Keys S action-key binds are gated on the installed keyd
-# config. With the gate opened they must all register on their own keycodes
-# and none may collide with a default.
+# The Logitech MX Keys / MX Keys S action-key binds are gated on the installed
+# keyd config. With the gate opened they must all register on their own
+# keycodes and none may collide with a default.
 mx_gate="$tmpdir/mx-keys-keyd.conf"
 touch "$mx_gate"
 mx_bindings=$(OMARCHY_MX_KEYS_KEYD_CONF="$mx_gate" PATH="$stub_bin:$PATH" list_bindings "$home")
-for keycode in code:191 code:192 code:193 code:194 code:195; do
+for keycode in code:191 code:192 code:193 code:194 code:195 code:196 code:197; do
   grep -Fq $'\t'"$keycode"$'\t' <<<"$mx_bindings" ||
-    fail "the MX Keys S bind on $keycode registers when the keyd config is present"
+    fail "the MX Keys bind on $keycode registers when the keyd config is present"
 done
 while read -r signature; do
   [[ -n $signature ]] || continue
   is_allowed_duplicate "$signature" && continue
-  fail "MX Keys S binds do not collide with a default binding" \
+  fail "MX Keys binds do not collide with a default binding" \
     "$(awk -F'\t' -v s="$signature" '$1 == s { print $2 " -> " $3 }' <<<"$mx_bindings")"
 done < <(duplicate_signatures <<<"$mx_bindings")
-pass "MX Keys S action-key binds register without collisions when enabled"
+pass "MX Keys action-key binds register without collisions when enabled"
