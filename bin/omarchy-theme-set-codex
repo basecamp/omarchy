@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# omarchy:summary=Configure Codex to use terminal palette colors
+# omarchy:args=[--activate]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+CODEX_CONFIG_DIR="${CODEX_HOME:-$HOME/.codex}"
+CODEX_CONFIG_PATH="${CODEX_CONFIG_PATH:-$CODEX_CONFIG_DIR/config.toml}"
+CODEX_ACTIVATE=0
+
+usage() {
+  echo "Usage: omarchy-theme-set-codex [--activate]"
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --activate)
+      CODEX_ACTIVATE=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+# Activation is deliberately separate from normal theme switches. Once Codex
+# uses its built-in ANSI theme, the terminal palette follows Omarchy without
+# repeatedly overwriting a later theme selected with Codex's /theme command.
+(( CODEX_ACTIVATE == 1 )) || exit 0
+
+mkdir -p "$(dirname "$CODEX_CONFIG_PATH")"
+
+if [[ ! -f $CODEX_CONFIG_PATH ]]; then
+  printf '[tui]\ntheme = "ansi"\n' >"$CODEX_CONFIG_PATH"
+  exit 0
+fi
+
+tmp=$(mktemp)
+awk '
+  function section(line) {
+    return line ~ /^[[:space:]]*\[[^][]+\][[:space:]]*(#.*)?$/
+  }
+
+  function tui_section(line) {
+    return line ~ /^[[:space:]]*\[tui\][[:space:]]*(#.*)?$/
+  }
+
+  function add_theme_if_missing() {
+    if (in_tui && !wrote_theme) {
+      print "theme = \"ansi\""
+      wrote_theme = 1
+    }
+  }
+
+  BEGIN { at_root = 1 }
+
+  at_root && /^[[:space:]]*tui\.theme[[:space:]]*=/ {
+    print "tui.theme = \"ansi\""
+    saw_tui = 1
+    wrote_theme = 1
+    next
+  }
+
+  section($0) {
+    add_theme_if_missing()
+    at_root = 0
+    in_tui = tui_section($0)
+    if (in_tui) {
+      saw_tui = 1
+      wrote_theme = 0
+    }
+    print
+    next
+  }
+
+  in_tui && /^[[:space:]]*theme[[:space:]]*=/ {
+    if (!wrote_theme) {
+      print "theme = \"ansi\""
+      wrote_theme = 1
+    }
+    next
+  }
+
+  { print }
+
+  END {
+    add_theme_if_missing()
+    if (!saw_tui) {
+      if (NR) print ""
+      print "[tui]"
+      print "theme = \"ansi\""
+    }
+  }
+' "$CODEX_CONFIG_PATH" >"$tmp"
+
+if ! cmp -s "$tmp" "$CODEX_CONFIG_PATH"; then
+  # Write through the path so dotfile symlinks remain intact.
+  cat "$tmp" >"$CODEX_CONFIG_PATH"
+fi
+rm -f "$tmp"
