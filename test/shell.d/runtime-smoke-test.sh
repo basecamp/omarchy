@@ -434,3 +434,24 @@ jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.keyboard-layout")' \
   <<<"$(shell_ipc shell listShellConfig)" >/dev/null ||
   fail_with_log "bar put added a second copy of a widget already on the bar"
 pass "bar put leaves a widget already on the bar alone"
+
+watcher_pid=""
+for _ in {1..80}; do
+  watcher_pid=$(pgrep -o -P "$QS_PID" -x inotifywait || true)
+  [[ -n $watcher_pid ]] && break
+  sleep 0.1
+done
+[[ -n $watcher_pid ]] || fail_with_log "plugin watcher did not start under the shell"
+
+kill "$QS_PID" 2>/dev/null || fail_with_log "test shell exited before watcher teardown"
+wait "$QS_PID" 2>/dev/null || true
+QS_PID=""
+
+for _ in {1..80}; do
+  kill -0 "$watcher_pid" 2>/dev/null || break
+  sleep 0.1
+done
+if kill -0 "$watcher_pid" 2>/dev/null; then
+  fail_with_log "plugin watcher did not exit with the shell"
+fi
+pass "plugin watcher exits with the shell"
