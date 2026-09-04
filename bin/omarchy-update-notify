@@ -1,0 +1,77 @@
+#!/bin/bash
+
+# omarchy:summary=Notify when updates are available for installed apps and tools
+# omarchy:hidden=true
+
+set -euo pipefail
+
+declare -a lines=()
+
+# System packages (pacman)
+if omarchy-cmd-present checkupdates; then
+  n=$(timeout 60 checkupdates 2>/dev/null | wc -l || true)
+  if (( n > 0 )); then
+    lines+=("$n system package(s)")
+  fi
+fi
+
+# AUR packages
+if omarchy-cmd-present yay; then
+  n=$(timeout 60 yay -Qua 2>/dev/null | wc -l || true)
+  if (( n > 0 )); then
+    lines+=("$n AUR package(s)")
+  fi
+fi
+
+# mise-managed tools (AI + dev tools)
+if omarchy-cmd-present mise; then
+  out=$(timeout 60 mise outdated 2>/dev/null || true)
+  if [[ -n $out && $out != *"up to date"* ]]; then
+    n=$(printf '%s\n' "$out" | grep -v '^[[:space:]]*$' | wc -l || true)
+    if (( n > 0 )); then
+      lines+=("$n mise tool(s)")
+    fi
+  fi
+fi
+
+# Hermes agent (git-installed)
+if [[ -d $HOME/.hermes/hermes-agent/.git ]]; then
+  if GIT_TERMINAL_PROMPT=0 timeout 20 git -C "$HOME/.hermes/hermes-agent" fetch --quiet origin 2>/dev/null; then
+    behind=$(git -C "$HOME/.hermes/hermes-agent" rev-list --count "HEAD..origin/main" 2>/dev/null || echo 0)
+    if (( behind > 0 )); then
+      lines+=("hermes agent ($behind commit(s) behind)")
+    fi
+  fi
+fi
+
+# npm global packages
+if omarchy-cmd-present npm; then
+  n=$(timeout 60 npm outdated -g 2>/dev/null | tail -n +2 | grep -c . || true)
+  if (( n > 0 )); then
+    lines+=("$n npm global package(s)")
+  fi
+fi
+
+# uv tools (Python CLI tools)
+if omarchy-cmd-present uv; then
+  n=$(timeout 60 uv tool list --outdated 2>/dev/null | grep -c . || true)
+  if (( n > 0 )); then
+    lines+=("$n uv tool(s)")
+  fi
+fi
+
+# Nothing to update -> stay quiet.
+if (( ${#lines[@]} == 0 )); then
+  exit 0
+fi
+
+summary="Updates available"
+body=$(printf '%s\n' "${lines[@]}")
+
+# Clicking the toast opens the interactive update menu (per-app or update all).
+omarchy-notification-send \
+  -u normal \
+  -g $'\uf021' \
+  "$summary" \
+  "$body" \
+  --exec omarchy-launch-floating-terminal-with-presentation omarchy-update-menu

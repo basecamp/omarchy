@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for available updates and notify
+# Needs the session bus to notify, and uwsm-app to open the update menu
+# terminal. Both are up only after graphical-session.target.
+After=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/omarchy-update-notify

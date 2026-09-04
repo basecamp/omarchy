@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# omarchy:summary=Show an interactive menu of available updates
+# omarchy:hidden=true
+
+set -euo pipefail
+
+# Each entry: NAME | DETAIL | COMMAND
+declare -a ENTRIES=()
+
+# System packages (pacman) — grouped, since updating one package alone can
+# break dependencies. The detail lists the package names.
+sys_names=()
+while IFS= read -r line; do
+  [[ -z $line ]] && continue
+  sys_names+=("$(printf '%s' "$line" | awk '{print $1}')")
+done < <(timeout 60 checkupdates 2>/dev/null || true)
+if (( ${#sys_names[@]} > 0 )); then
+  ENTRIES+=("System packages (${#sys_names[@]})|${sys_names[*]}|omarchy-update")
+fi
+
+# AUR packages (yay)
+aur_names=()
+while IFS= read -r line; do
+  [[ -z $line ]] && continue
+  aur_names+=("$(printf '%s' "$line" | awk '{print $1}')")
+done < <(timeout 60 yay -Qua 2>/dev/null || true)
+if (( ${#aur_names[@]} > 0 )); then
+  ENTRIES+=("AUR packages (${#aur_names[@]})|${aur_names[*]}|yay -Sua --noconfirm")
+fi
+
+# mise tools (AI + dev tools)
+mise_out=$(timeout 60 mise outdated 2>/dev/null || true)
+if [[ -n $mise_out && $mise_out != *"up to date"* ]]; then
+  while IFS= read -r line; do
+    [[ -z $line ]] && continue
+    tool=$(printf '%s' "$line" | awk '{print $1}')
+    [[ -z $tool ]] && continue
+    ENTRIES+=("mise: $tool|$line|mise up $tool")
+  done <<< "$mise_out"
+fi
+
+# Hermes agent (git repo)
+if [[ -d $HOME/.hermes/hermes-agent/.git ]]; then
+  if GIT_TERMINAL_PROMPT=0 timeout 20 git -C "$HOME/.hermes/hermes-agent" fetch --quiet origin 2>/dev/null; then
+    behind=$(git -C "$HOME/.hermes/hermes-agent" rev-list --count "HEAD..origin/main" 2>/dev/null || echo 0)
+    if (( behind > 0 )); then
+      ENTRIES+=("hermes agent|$behind commit(s) behind|hermes update")
+    fi
+  fi
+fi
+
+# npm global packages
+npm_out=$(timeout 60 npm outdated -g 2>/dev/null || true)
+if [[ -n $npm_out ]]; then
+  while IFS= read -r line; do
+    [[ $line == Package* ]] && continue
+    [[ -z $line ]] && continue
+    pkg=$(printf '%s' "$line" | awk '{print $1}')
+    cur=$(printf '%s' "$line" | awk '{print $2}')
+    latest=$(printf '%s' "$line" | awk '{print $4}')
+    [[ -z $pkg ]] && continue
+    ENTRIES+=("npm: $pkg|$cur -> $latest|npm install -g $pkg@latest")
+  done <<< "$npm_out"
+fi
+
+# uv tools (Python CLI tools)
+uv_out=$(timeout 60 uv tool list --outdated 2>/dev/null || true)
+if [[ -n $uv_out ]]; then
+  while IFS= read -r line; do
+    [[ -z $line ]] && continue
+    tool=$(printf '%s' "$line" | awk '{print $1}')
+    [[ -z $tool ]] && continue
+    ENTRIES+=("uv: $tool|$line|uv tool upgrade $tool")
+  done <<< "$uv_out"
+fi
+
+if (( ${#ENTRIES[@]} == 0 )); then
+  echo "Everything is up to date."
+  read -rp "Press Enter to close..."
+  exit 0
+fi
+
+# --- Render menu -----------------------------------------------------------
+clear
+echo -e "\e[1m=== Available Updates ===\e[0m"
+echo ""
+for i in "${!ENTRIES[@]}"; do
+  IFS='|' read -r name detail cmd <<< "${ENTRIES[$i]}"
+  printf '  \e[1;36m%2d)\e[0m \e[1m%-28s\e[0m %s\n' "$((i+1))" "$name" "$detail"
+done
+echo ""
+echo -e "  \e[1;32m a)\e[0m \e[1mUpdate ALL\e[0m"
+echo -e "  \e[1;31m q)\e[0m Quit"
+echo ""
+read -rp "Select: " choice
+
+case "$choice" in
+  q|Q) exit 0 ;;
+  a|A)
+    echo ""
+    echo -e "\e[1m=== Updating everything ===\e[0m"
+    omarchy-update-all
+    ;;
+  *)
+    if [[ $choice =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#ENTRIES[@]} )); then
+      IFS='|' read -r name detail cmd <<< "${ENTRIES[$((choice-1))]}"
+      echo ""
+      echo -e "\e[1m=== Updating: $name ===\e[0m"
+      echo -e "\e[2m$cmd\e[0m"
+      echo ""
+      eval "$cmd"
+    else
+      echo "Invalid selection."
+    fi
+    ;;
+esac
+
+echo ""
+read -rp "Press Enter to close..."

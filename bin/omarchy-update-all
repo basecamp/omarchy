@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# omarchy:summary=Update everything: Omarchy, system, AUR, mise, Hermes, npm, and uv tools
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+# 1. Omarchy / system / AUR / mise tools
+omarchy-update
+
+# 2. Hermes agent (git-installed)
+if omarchy-cmd-present hermes; then
+  echo -e "\e[32m\nUpdate Hermes agent\e[0m"
+  hermes update
+fi
+
+# 3. npm global packages
+if omarchy-cmd-present npm; then
+  echo -e "\e[32m\nUpdate npm global packages\e[0m"
+  npm update -g
+fi
+
+# 4. uv tools (Python CLI tools)
+if omarchy-cmd-present uv; then
+  echo -e "\e[32m\nUpdate uv tools\e[0m"
+  uv tool upgrade --all
+fi
