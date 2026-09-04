@@ -129,3 +129,88 @@ grep -F 'scale = 2' "$eval_out" >/dev/null || fail "monitor scaling down skips d
 grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
   fail "monitor scaling down persists 2x after skipping duplicate approximation"
 pass "monitor scaling down skips duplicate approximation"
+
+# ---- Persisting must not undo the scale it just set ----
+#
+# Hyprland reloads monitors.lua when it changes, and the reload re-applies
+# whichever rule governs the monitor. A per-output rule overrides the shared
+# locals, so writing the locals for a monitor that has its own rule reverts the
+# scale a moment after it moved: the flicker-and-snap-back this guards against.
+
+write_own_rule_config() {
+  cat >"$monitor_lua" <<LUA
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+
+hl.env("GDK_SCALE", tostring(omarchy_gdk_scale))
+hl.monitor({ output = "", mode = "preferred", position = "auto", scale = omarchy_monitor_scale })
+
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = $1, transform = 3 })
+LUA
+}
+
+write_own_rule_config '"auto"'
+before=$(cat "$monitor_lua")
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6 2>/dev/null
+grep -F 'scale = 1.6' "$eval_out" >/dev/null ||
+  fail "monitor scaling still applies when it cannot persist"
+[[ $(cat "$monitor_lua") == "$before" ]] ||
+  fail "monitor scaling leaves monitors.lua alone when its write would be overridden" \
+    "$(diff <(printf '%s\n' "$before") "$monitor_lua" || true)"
+pass "monitor scaling leaves monitors.lua alone when its write would be overridden"
+
+# The same rule shape, but deferring to the local by name: writing the local is
+# what the rule reads back, so persisting reaches the monitor and is safe.
+write_own_rule_config 'omarchy_monitor_scale'
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -F 'scale = 1.6' "$eval_out" >/dev/null || fail "monitor scaling applies through a deferring rule"
+grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists through a rule that defers to the local"
+pass "monitor scaling persists through a rule that defers to the local"
+
+# A literal scale on the monitor's own rule overrides the local just as "auto"
+# does, so it is equally unsafe to write.
+write_own_rule_config '1'
+before=$(cat "$monitor_lua")
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6 2>/dev/null
+[[ $(cat "$monitor_lua") == "$before" ]] ||
+  fail "monitor scaling leaves a literal per-output scale alone"
+pass "monitor scaling leaves a literal per-output scale alone"
+
+# A rule for some other output does not govern this monitor, so the catch-all
+# still does and persisting is safe.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+
+hl.monitor({ output = "DP-2", mode = "preferred", position = "auto", scale = 1 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists when only another output has a rule"
+pass "monitor scaling persists when only another output has a rule"
+
+# The file ships with commented-out example rules, including one for a rotated
+# monitor. A comment is not a rule and must not block persisting.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+
+-- hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 1, transform = 1 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling ignores a commented-out rule"
+pass "monitor scaling ignores a commented-out rule"
+
+# A rule naming no scale at all leaves the catch-all governing the scale.
+cat >"$monitor_lua" <<'LUA'
+local omarchy_gdk_scale = 2
+local omarchy_monitor_scale = 2
+
+hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", transform = 3 })
+LUA
+OMARCHY_TEST_MONITOR_SCALE=2 run_scaling 1.6
+grep -Fx 'local omarchy_monitor_scale = 1.6' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling persists when the monitor's rule names no scale"
+pass "monitor scaling persists when the monitor's rule names no scale"
