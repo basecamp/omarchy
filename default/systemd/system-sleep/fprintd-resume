@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# A fingerprint verify still open when the machine suspends leaves fprintd
+# unable to hand the reader back: the verify dies with "Cannot run while
+# suspended" and the follow-up ReleaseDevice fails on the still-busy device.
+# The wedged claim then rejects every lock-screen attempt after resume until
+# fprintd exits on its own 30-second idle timer, and each attempt re-arms that
+# timer — so without this hook the reader only recovers once the lock screen's
+# backoff leaves fprintd alone for long enough, about a minute at best.
+#
+# This is a workaround for an upstream fprintd defect, tracked at
+# https://gitlab.freedesktop.org/libfprint/fprintd/-/issues/173 (same shape in
+# fprintd#216): the daemon's own suspend handling kills the verify but the
+# release then fails, wedging the claim. Once fixed there, this hook and the
+# stop-timeout drop-in beside it can be removed.
+#
+# Restarting fprintd on resume drops the claim so the reader answers on the
+# first touch instead. Omarchy locks before every suspend and the lock screen
+# opens a verify at once, so fprintd is running and claimed at nearly every
+# resume: the restart is real, not a no-op. A claim-wedged fprintd is idle and
+# exits on SIGTERM in milliseconds; one wedged on a stale device handle does
+# not, and rides out the stop timeout the sibling drop-in bounds.
+#
+# Installed next to /etc/pam.d/omarchy-lock-fingerprint by omarchy-apply-lock
+# and omarchy-setup-security-fingerprint, so its presence already means a
+# fingerprint reader is configured.
+
+if [[ $1 == "post" ]]; then
+  # User sessions stay frozen until this hook returns, so do not wait for the
+  # restart: enqueue the job and let systemd run it as the desktop thaws. A
+  # wedged fprintd can ignore SIGTERM, and a synchronous restart would hold
+  # the thaw for its whole stop timeout precisely in the case the hook exists
+  # for. The lock screen tolerates the restart landing under its first attempt:
+  # that attempt fails and the next, a second later, claims the fresh daemon.
+  systemctl --no-block try-restart fprintd.service 2>/dev/null || true
+fi

@@ -34,15 +34,36 @@ auth       required                    pam_faillock.so authsucc
 account    include                     system-local-login
 EOF
 
-if omarchy-cmd-present fprintd-list && fprintd-list "$target_user" 2>/dev/null | grep -qi finger; then
+# The resume hook restarts fprintd after suspend so a verify wedged by the
+# sleep cannot leave the reader dead on the lock screen. It belongs exactly
+# where the fingerprint PAM file does, so install and remove them together
+# here rather than leaving the pair to drift apart between setups and updates.
+resume_hook_src="$OMARCHY_PATH/default/systemd/system-sleep/fprintd-resume"
+resume_hook_dst=/usr/lib/systemd/system-sleep/fprintd-resume
+stop_timeout_src="$OMARCHY_PATH/default/systemd/system/fprintd.service.d/10-stop-timeout.conf"
+stop_timeout_dst=/etc/systemd/system/fprintd.service.d/10-stop-timeout.conf
+
+# One " - #N: finger" line per enrolled print; a user without any gets "has no
+# fingers enrolled" instead, which must not count.
+if omarchy-cmd-present fprintd-list && fprintd-list "$target_user" 2>/dev/null | grep -q ' - #'; then
   echo "Configuring lock screen fingerprint authentication..."
   as_root tee /etc/pam.d/omarchy-lock-fingerprint >/dev/null <<'EOF'
 #%PAM-1.0
 auth       required                    pam_fprintd.so
 account    include                     system-local-login
 EOF
+  as_root install -Dm755 -o root -g root "$resume_hook_src" "$resume_hook_dst"
+  as_root install -Dm644 -o root -g root "$stop_timeout_src" "$stop_timeout_dst"
+  as_root systemctl daemon-reload
 else
-  as_root rm -f /etc/pam.d/omarchy-lock-fingerprint
+  as_root rm -f /etc/pam.d/omarchy-lock-fingerprint "$resume_hook_dst"
+  # Only reload when something was there: this branch also runs in the
+  # install chroot, where there is no systemd to reload.
+  if [[ -e $stop_timeout_dst ]]; then
+    as_root rm -f "$stop_timeout_dst"
+    as_root rmdir --ignore-fail-on-non-empty "$(dirname "$stop_timeout_dst")"
+    as_root systemctl daemon-reload
+  fi
 fi
 
 # omarchy-shell can't reach a running shell during chroot install. The echo

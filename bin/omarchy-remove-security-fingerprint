@@ -27,11 +27,25 @@ remove_lock_fingerprint_pam() {
   fi
 }
 
+remove_resume_hook() {
+  if [[ -f /usr/lib/systemd/system-sleep/fprintd-resume ]]; then
+    echo "Removing fingerprint resume hook..."
+    sudo rm -f /usr/lib/systemd/system-sleep/fprintd-resume
+  fi
+  if [[ -f /etc/systemd/system/fprintd.service.d/10-stop-timeout.conf ]]; then
+    echo "Removing fprintd stop timeout bound..."
+    sudo rm -f /etc/systemd/system/fprintd.service.d/10-stop-timeout.conf
+    sudo rmdir --ignore-fail-on-non-empty /etc/systemd/system/fprintd.service.d
+    sudo systemctl daemon-reload
+  fi
+}
+
 
 echo -e "\e[32mRemoving fingerprint scanner from authentication.\n\e[0m"
 
 remove_pam_config
 remove_lock_fingerprint_pam
+remove_resume_hook
 
 echo "Removing fingerprint packages..."
 omarchy-pkg-drop fprintd libfprint libfprint-git

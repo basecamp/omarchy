@@ -65,6 +65,23 @@ account    include                     system-local-login
 EOF
 }
 
+install_resume_hook() {
+  # A verify interrupted by suspend can wedge fprintd's device claim, leaving
+  # the reader dead on the lock screen after resume until fprintd idle-exits.
+  # The hook restarts fprintd on resume to clear it; see the hook for details.
+  # install sets owner and mode explicitly: systemd-sleep execs the hook, so
+  # it must be executable, and a `cp -p` would carry over the checkout's user
+  # ownership and whatever mode the tree happens to have.
+  echo "Installing fingerprint resume hook..."
+  sudo install -Dm755 -o root -g root "$OMARCHY_PATH/default/systemd/system-sleep/fprintd-resume" /usr/lib/systemd/system-sleep/fprintd-resume
+
+  # A wedged fprintd can ignore SIGTERM, so the restart would otherwise wait
+  # out the full stop timeout before SIGKILL; bound it so the reader is back
+  # within seconds of resume.
+  sudo install -Dm644 -o root -g root "$OMARCHY_PATH/default/systemd/system/fprintd.service.d/10-stop-timeout.conf" /etc/systemd/system/fprintd.service.d/10-stop-timeout.conf
+  sudo systemctl daemon-reload
+}
+
 
 echo -e "\e[32mSetting up fingerprint scanner for authentication.\n\e[0m"
 
@@ -103,6 +120,7 @@ if sudo fprintd-enroll "$USER"; then
     # pam_fprintd with nothing to match.
     setup_pam_config
     setup_lock_fingerprint_pam
+    install_resume_hook
     echo -e "\e[32m\nPerfect! Fingerprint authentication is now configured.\e[0m"
     echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
   else
