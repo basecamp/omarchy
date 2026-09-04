@@ -109,6 +109,31 @@ custom_items = module.parse_feed(
 )
 assert len(custom_items) == 1
 assert custom_items[0]["url"] == "http://elsewhere.example/story?id=4"
+atom = b'''<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>NVIDIA Developer Blog</title>
+  <entry>
+    <title>Fast open models</title>
+    <id>tag:developer.nvidia.com,2026:fast-models</id>
+    <link rel="alternate" href="https://developer.nvidia.com/blog/fast-models/" />
+    <updated>2026-09-04T07:30:00Z</updated>
+    <author><name>NVIDIA Engineering</name></author>
+    <summary type="html">A useful &lt;strong&gt;summary&lt;/strong&gt;.</summary>
+    <content type="html">&lt;p&gt;First Atom paragraph.&lt;/p&gt;&lt;p&gt;Second Atom paragraph.&lt;/p&gt;</content>
+  </entry>
+</feed>'''
+atom_source = module.custom_source("https://developer.nvidia.com/blog/feed/", "NVIDIA Developer")
+atom_items = module.parse_feed(atom, atom_source)
+assert len(atom_items) == 1, atom_items
+assert atom_items[0]["id"] == "custom-" + atom_source["id"].removeprefix("custom-") + ":tag:developer.nvidia.com,2026:fast-models"
+assert atom_items[0]["title"] == "Fast open models"
+assert atom_items[0]["author"] == "NVIDIA Engineering"
+assert atom_items[0]["published"] == "2026-09-04T07:30:00Z"
+assert atom_items[0]["summary"] == "A useful summary."
+assert atom_items[0]["content"] == "First Atom paragraph.\n\nSecond Atom paragraph."
+assert atom_items[0]["contentHtml"] == "First Atom paragraph.<br>Second Atom paragraph."
+assert module.feed_name(atom) == "NVIDIA Developer Blog"
+assert module.published_key(atom_items[0]) > 0
 original_fetch_for_inspection = module.fetch
 original_atomic_write_for_inspection = module.atomic_write
 module.fetch = lambda source: b'''<rss version="2.0"><channel><title>Discovered Feed</title></channel></rss>'''
@@ -152,6 +177,25 @@ except ValueError as error:
     assert "public address" in str(error)
 finally:
     module.socket.getaddrinfo = original_getaddrinfo
+assert module.safe_redirect_url(
+    module.SOURCE_CATALOG["the-verge"],
+    "https://www.theverge.com/rss/index.xml",
+    "https://theverge.com/rss/index.xml",
+) == "https://theverge.com/rss/index.xml"
+try:
+    module.safe_redirect_url(
+        module.SOURCE_CATALOG["the-verge"],
+        "https://www.theverge.com/rss/index.xml",
+        "https://example.com/feed.xml",
+    )
+    raise AssertionError("curated feed escaped its publisher during redirect")
+except ValueError as error:
+    assert "publisher" in str(error)
+module.socket.getaddrinfo = lambda *args, **kwargs: [(module.socket.AF_INET, module.socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))]
+assert module.safe_redirect_url(
+    custom[0], "https://lwn.net/headlines/rss", "https://feeds.example.com/lwn.xml"
+) == "https://feeds.example.com/lwn.xml"
+module.socket.getaddrinfo = original_getaddrinfo
 assert [source["id"] for source in module.selected_sources("ars-technica,unknown,ars-technica")] == ["omarchy", "ars-technica"]
 assert tuple(source_id for source_id in module.TECH_FEED_IDS) == (
     "hacker-news", "ars-technica", "techcrunch", "the-verge", "wired",

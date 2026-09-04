@@ -19,10 +19,11 @@ from datetime import datetime, timezone
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 FEED_URL = "https://omarchy.org/news/rss.xml"
 MAX_RESPONSE_BYTES = 1024 * 1024
+MAX_REDIRECTS = 3
 MAX_ITEMS = 40
 DEFAULT_ITEM_LIMIT = 10
 USER_AGENT = "Omarchy-RSS-Reader/1.0"
@@ -263,6 +264,33 @@ def element_text(node: ET.Element | None) -> str:
     return "" if node is None else "".join(node.itertext())
 
 
+def local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def child(node: ET.Element, name: str) -> ET.Element | None:
+    return next((candidate for candidate in node if local_name(candidate.tag) == name), None)
+
+
+def children(node: ET.Element, name: str) -> list[ET.Element]:
+    return [candidate for candidate in node if local_name(candidate.tag) == name]
+
+
+def child_text(node: ET.Element, name: str) -> str:
+    return element_text(child(node, name))
+
+
+def element_markup(node: ET.Element | None) -> str:
+    if node is None:
+        return ""
+    if len(node) == 0:
+        return node.text or ""
+    parts = [node.text or ""]
+    for nested in node:
+        parts.append(ET.tostring(nested, encoding="unicode", method="html"))
+    return "".join(parts)
+
+
 def state_dir() -> Path:
     root = os.environ.get("XDG_STATE_HOME")
     if root:
@@ -392,21 +420,50 @@ def parse_feed(
 ) -> list[dict[str, str]]:
     source = source or SOURCE_CATALOG["omarchy"]
     root = ET.fromstring(payload)
-    channel = root.find("channel")
-    if channel is None:
-        raise ValueError("RSS channel is missing")
-
     items: list[dict[str, str]] = []
     creator_tag = "{http://purl.org/dc/elements/1.1/}creator"
     content_tag = "{http://purl.org/rss/1.0/modules/content/}encoded"
-    for node in channel.findall("item")[: max(1, min(MAX_ITEMS, item_limit))]:
-        link = source_article_url(node.findtext("link"), source)
-        title = clean_text(node.findtext("title"), 240)
+    limit = max(1, min(MAX_ITEMS, item_limit))
+    is_atom = local_name(root.tag) == "feed"
+    if is_atom:
+        nodes = children(root, "entry")[:limit]
+    else:
+        channel = child(root, "channel")
+        if channel is None:
+            raise ValueError("RSS or Atom feed is missing its item container")
+        nodes = children(channel, "item")[:limit]
+
+    for node in nodes:
+        if is_atom:
+            atom_links = children(node, "link")
+            author_node = child(node, "author")
+            raw_link = next(
+                (
+                    candidate.get("href", "")
+                    for candidate in atom_links
+                    if candidate.get("rel", "alternate") in {"", "alternate"}
+                ),
+                "",
+            )
+            raw_summary = element_markup(child(node, "summary"))
+            raw_content = element_markup(child(node, "content"))
+            raw_author = child_text(author_node, "name") if author_node is not None else ""
+            raw_published = child_text(node, "published") or child_text(node, "updated")
+            raw_guid = child_text(node, "id")
+        else:
+            raw_link = child_text(node, "link")
+            raw_summary = element_markup(child(node, "description"))
+            raw_content = node.findtext(content_tag) or ""
+            raw_author = node.findtext(creator_tag) or child_text(node, "author")
+            raw_published = child_text(node, "pubDate")
+            raw_guid = child_text(node, "guid")
+
+        link = source_article_url(raw_link, source)
+        title = clean_text(child_text(node, "title"), 240)
         if not link or not title:
             continue
-        guid = source_article_url(node.findtext("guid"), source) or link
-        summary = article_text(element_text(node.find("description")), 500)
-        raw_content = node.findtext(content_tag)
+        guid = source_article_url(raw_guid, source) or clean_text(raw_guid, 2048) or link
+        summary = article_text(raw_summary, 500)
         content = article_text(raw_content) or summary
         content_html = article_markup(raw_content) if raw_content else ""
         items.append(
@@ -421,8 +478,8 @@ def parse_feed(
                 "summary": summary,
                 "content": content,
                 "contentHtml": content_html,
-                "author": clean_text(node.findtext(creator_tag), 80),
-                "published": clean_text(node.findtext("pubDate"), 100),
+                "author": clean_text(raw_author, 80),
+                "published": clean_text(raw_published, 100),
             }
         )
     return items
@@ -430,10 +487,10 @@ def parse_feed(
 
 def feed_name(payload: bytes) -> str:
     root = ET.fromstring(payload)
-    channel = root.find("channel")
-    if channel is None:
-        raise ValueError("RSS channel is missing")
-    return clean_text(channel.findtext("title"), 48)
+    container = root if local_name(root.tag) == "feed" else child(root, "channel")
+    if container is None:
+        raise ValueError("RSS or Atom feed is missing its item container")
+    return clean_text(child_text(container, "title"), 48)
 
 
 def inspect_custom_feed(raw_url: str, requested_name: str = "") -> dict[str, str]:
@@ -448,29 +505,66 @@ def inspect_custom_feed(raw_url: str, requested_name: str = "") -> dict[str, str
     }
 
 
+def require_public_feed_url(value: str) -> str:
+    url = canonical_feed_url(value)
+    if not url:
+        raise ValueError("feed redirect must use a public HTTPS URL")
+    host = urlparse(url).hostname or ""
+    addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+    if not addresses:
+        raise ValueError("custom feed host could not be resolved")
+    for address in addresses:
+        ip = ipaddress.ip_address(address[4][0])
+        if not ip.is_global:
+            raise ValueError("custom feed host does not resolve to a public address")
+    return url
+
+
+def safe_redirect_url(source: dict[str, object], current_url: str, target: str) -> str:
+    redirected = canonical_feed_url(urljoin(current_url, target))
+    if not redirected:
+        raise ValueError("feed redirect must use a public HTTPS URL")
+    if source.get("custom") is True:
+        return require_public_feed_url(redirected)
+    original_host = (urlparse(str(source["url"])).hostname or "").removeprefix("www.")
+    redirected_host = (urlparse(redirected).hostname or "").removeprefix("www.")
+    if redirected_host != original_host:
+        raise ValueError("feed redirected away from its publisher")
+    return redirected
+
+
+class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def __init__(self, source: dict[str, object]) -> None:
+        super().__init__()
+        self.source = source
+        self.redirects = 0
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        self.redirects += 1
+        if self.redirects > MAX_REDIRECTS:
+            raise ValueError(f"feed exceeded {MAX_REDIRECTS} redirects")
+        redirected = safe_redirect_url(self.source, req.full_url, newurl)
+        return super().redirect_request(req, fp, code, msg, headers, redirected)
+
+
 def fetch(source: dict[str, object] | None = None) -> bytes:
     source = source or SOURCE_CATALOG["omarchy"]
     feed_url = str(source["url"])
     if source.get("custom") is True:
-        host = urlparse(feed_url).hostname or ""
-        addresses = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
-        if not addresses:
-            raise ValueError("custom feed host could not be resolved")
-        for address in addresses:
-            ip = ipaddress.ip_address(address[4][0])
-            if not ip.is_global:
-                raise ValueError("custom feed host does not resolve to a public address")
+        require_public_feed_url(feed_url)
     request = urllib.request.Request(
         feed_url,
-        headers={"Accept": "application/rss+xml, application/xml", "User-Agent": USER_AGENT},
+        headers={
+            "Accept": "application/rss+xml, application/atom+xml, application/xml",
+            "User-Agent": USER_AGENT,
+        },
     )
     opener = urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
+        SafeRedirectHandler(source),
         urllib.request.HTTPSHandler(context=SSL_CONTEXT),
     )
     with opener.open(request, timeout=8) as response:
-        if response.geturl() != feed_url:
-            raise ValueError("feed redirected away from its canonical URL")
         payload = response.read(MAX_RESPONSE_BYTES + 1)
     if len(payload) > MAX_RESPONSE_BYTES:
         raise ValueError("feed exceeds the 1 MiB limit")
@@ -559,7 +653,10 @@ def published_key(item: dict[str, str]) -> float:
 
         return parsedate_to_datetime(item.get("published", "")).timestamp()
     except (AttributeError, TypeError, ValueError, OverflowError):
-        return 0.0
+        try:
+            return datetime.fromisoformat(item.get("published", "").replace("Z", "+00:00")).timestamp()
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            return 0.0
 
 
 def load_source(
