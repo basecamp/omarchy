@@ -46,6 +46,9 @@ Item {
   // Falls back to the bar's default size (26 horizontal / 28 vertical) when
   // shell.bar isn't reachable so the popup never lands on top of the bar.
   readonly property string barPosition: shell && shell.barConfig ? String(shell.barConfig.position || "top") : "top"
+  // Where toasts line up horizontally: "right" (the default) or "center".
+  readonly property string popupAlignment: shell && shell.notificationsConfig
+    ? String(shell.notificationsConfig.position || "right") : "right"
   readonly property bool barVertical: barPosition === "left" || barPosition === "right"
   readonly property int defaultBarSize: barVertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
   readonly property int liveBarSize: shell && shell.bar && !shell.bar.barHidden ? Math.max(0, shell.bar.barSize) : defaultBarSize
@@ -965,7 +968,7 @@ Item {
       color: "transparent"
 
       readonly property var popupPlacement: NotificationLogic.popupPlacement(
-        service.barPosition, service.barClearance, Style.gapsOut)
+        service.barPosition, service.barClearance, Style.gapsOut, service.popupAlignment)
 
       // Full-screen, fixed-size surface (like the OSD overlay). Adding or
       // removing a toast changes only the content inside; the Wayland surface
@@ -979,10 +982,14 @@ Item {
 
       ColumnLayout {
         id: popupColumn
-        anchors.right: parent.right
         anchors.top: parent.top
         anchors.topMargin: popupWindow.popupPlacement.margins.top
+        // Only one of these two is ever set; the other resolves to undefined,
+        // which leaves that edge unanchored.
+        anchors.right: popupWindow.popupPlacement.anchors.right ? parent.right : undefined
         anchors.rightMargin: popupWindow.popupPlacement.margins.right
+        anchors.horizontalCenter: popupWindow.popupPlacement.anchors.horizontalCenter
+          ? parent.horizontalCenter : undefined
         spacing: Style.space(8)
 
         Repeater {

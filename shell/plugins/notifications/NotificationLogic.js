@@ -395,20 +395,30 @@ function popupExpired(entry, duration, now) {
   return (Number(now) - Number((entry || {}).timestamp || 0)) >= lifetime
 }
 
-function popupPlacement(barPosition, barClearance, gapsOut) {
+function popupPlacement(barPosition, barClearance, gapsOut, alignment) {
   var position = String(barPosition || "top")
   var clearance = Number(barClearance)
   var gap = Number(gapsOut)
   if (!isFinite(clearance)) clearance = 0
   if (!isFinite(gap)) gap = 0
 
+  var centered = String(alignment || "right") === "center"
+
   return {
-    anchors: { top: true, bottom: false, left: false, right: true },
+    anchors: {
+      top: true,
+      bottom: false,
+      left: false,
+      right: !centered,
+      horizontalCenter: centered
+    },
     margins: {
       top: position === "top" ? clearance : gap,
       bottom: gap,
       left: gap,
-      right: position === "right" ? clearance : gap
+      // A centered column is not held off any side edge, so a right bar has
+      // nothing to clear.
+      right: position === "right" && !centered ? clearance : gap
     }
   }
 }
