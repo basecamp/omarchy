@@ -3,15 +3,20 @@
 # omarchy:summary=Overwrite the package configuration for /etc/pacman with the Omarchy default of using its dedicated mirrors and repositories, then update all packages.
 # omarchy:requires-sudo=true
 
-sudo cp -f /etc/pacman.conf /etc/pacman.conf.bak
-sudo cp -f /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
-
 channel="${1:-stable}"
 
 if [[ $channel != "stable" && $channel != "rc" && $channel != "edge" ]]; then
   echo "Error: Invalid channel '$channel'. Must be one of: stable, rc, edge"
   exit 1
 fi
+
+# Taken after the channel is checked, so a typo no longer spends the backups on
+# its way to exiting. Timestamped, the way omarchy-refresh-config names its
+# backups, so a second run does not overwrite the first run's copy and leave
+# the pre-refresh configuration unrecoverable.
+stamp=$(date +%s)
+sudo cp -f /etc/pacman.conf "/etc/pacman.conf.bak.$stamp"
+sudo cp -f /etc/pacman.d/mirrorlist "/etc/pacman.d/mirrorlist.bak.$stamp"
 
 echo "Setting channel to $channel"
 echo
