@@ -122,6 +122,14 @@ default_resolution() {
   fi
 }
 
+screenrecording_needs_cpu_encoder() {
+  # Radeon Pro 450/455/460 cards can hang their VCE 3.x encode ring and lose
+  # compositor VRAM when the ensuing GPU reset fails (#9555). The recorder's
+  # fallback cannot recover from a GPU that has already hung, so avoid starting
+  # hardware encoding on Baffin altogether.
+  LC_ALL=C lspci -Dn | grep -qE '[[:space:]]1002:67ef([[:space:]]|$)'
+}
+
 # Echoes "monitor:NAME" when the selection matches an entire monitor (prefer
 # -w <monitor> over a region capture — same kms backend, but no scaling math
 # and full native res), otherwise "region:WxH+X+Y". Returns non-zero if the
@@ -176,6 +184,11 @@ start_screenrecording() {
   local filename="$OUTPUT_DIR/screenrecording-$(date +'%Y-%m-%d_%H-%M-%S').mp4"
   local audio_devices=""
   local audio_args=()
+  local encoder_args=()
+
+  if screenrecording_needs_cpu_encoder; then
+    encoder_args=(-encoder cpu)
+  fi
 
   [[ $DESKTOP_AUDIO == "true" ]] && audio_devices+="default_output"
 
@@ -188,7 +201,7 @@ start_screenrecording() {
   [[ -n $audio_devices ]] && audio_args+=(-a "$audio_devices" -ac aac)
 
   echo "===== $(date '+%F %T') args: $* target: $target =====" >>"$LOG_FILE"
-  gpu-screen-recorder "${capture_args[@]}" -k auto -f 60 -fm cfr -fallback-cpu-encoding yes -o "$filename" "${audio_args[@]}" 2>>"$LOG_FILE" &
+  gpu-screen-recorder "${capture_args[@]}" "${encoder_args[@]}" -k auto -f 60 -fm cfr -fallback-cpu-encoding yes -o "$filename" "${audio_args[@]}" 2>>"$LOG_FILE" &
   local pid=$!
 
   while kill -0 $pid 2>/dev/null && [[ ! -f $filename ]]; do
