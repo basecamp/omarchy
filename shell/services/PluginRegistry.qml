@@ -53,15 +53,20 @@ QtObject {
     return true
   }
 
+  function isValidHarnessIdentity(value) {
+    return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)
+      && !/[\n\r]/.test(value) && value.indexOf("..") === -1
+  }
+
   function isValidAgentHarness(harness) {
     if (!Util.isPlainObject(harness)) return false
     var id = String(harness.id || "")
     var name = String(harness.name || "")
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id) || id.indexOf("..") !== -1 || !name) return false
+    if (!isValidHarnessIdentity(id) || !name) return false
     var aliases = harness.aliases === undefined ? [] : harness.aliases
     if (!Array.isArray(aliases)) return false
     for (var i = 0; i < aliases.length; i++) {
-      if (typeof aliases[i] !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(aliases[i]) || aliases[i].indexOf("..") !== -1) return false
+      if (!isValidHarnessIdentity(aliases[i])) return false
     }
     if (!Util.isPlainObject(harness.install) || harness.install.type !== "mise"
         || typeof harness.install.package !== "string" || !harness.install.package

@@ -48,6 +48,19 @@ if HOME="$home" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-agent-catalog" "$plugin/
 fi
 pass "agent catalog rejects harness identity collisions"
 
+for alias in 'bad..alias' $'bad\nalias'; do
+  jq --arg alias "$alias" '.agentHarness.aliases = [$alias]' "$plugin/manifest.json" >"$plugin/invalid.json"
+  mv "$plugin/invalid.json" "$plugin/manifest.json"
+  if HOME="$home" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-plugin-validate" "$plugin" >/dev/null 2>&1; then
+    fail "plugin validation accepts an invalid harness alias" "$alias"
+  fi
+  catalog=$(HOME="$home" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-agent-catalog")
+  if jq -e '.[] | select(.id == "acme-agent")' <<<"$catalog" >/dev/null; then
+    fail "agent catalog accepts an invalid harness alias" "$alias"
+  fi
+done
+pass "harness aliases use the same identity rules as ids"
+
 jq '.agentHarness.aliases = ["acme"]' "$plugin/manifest.json" >"$plugin/valid.json"
 mv "$plugin/valid.json" "$plugin/manifest.json"
 second_plugin="$home/.config/omarchy/plugins/example.integration"

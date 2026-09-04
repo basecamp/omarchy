@@ -25,7 +25,7 @@ fi
 [[ -z $candidate || $candidate_present == "true" ]] || inputs+=("$candidate")
 
 result=$(jq -s '
-  def valid_id: (type == "string") and test("^[A-Za-z0-9][A-Za-z0-9._-]*$") and (contains("..") | not);
+  def valid_id: (type == "string") and test("^[A-Za-z0-9][A-Za-z0-9._-]*\\z") and (contains("..") | not);
   def valid_command:
     (type == "array") and length > 0
     and all(.[];
@@ -36,7 +36,7 @@ result=$(jq -s '
   def valid_harness:
     (.id | valid_id)
     and (.name | type == "string" and length > 0)
-    and ((.aliases // []) | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$") and (contains("..") | not)))
+    and ((.aliases // []) | type == "array" and all(.[]; valid_id and (contains("..") | not)))
     and (.install | type == "object" and (.command | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and ((.type == "mise" and (.package | type == "string" and length > 0)) or (.type == "installer" and (.installer | type == "string" and test("^omarchy-[A-Za-z0-9._-]+$")))))
     and (.launch | type == "object" and (.mode == "terminal" or .mode == "browser") and (.command | valid_command) and ((.promptCommand // .command) | valid_command));
   def valid_plugin:

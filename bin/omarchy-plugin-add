@@ -136,6 +136,11 @@ if [[ $enable_after == true ]] && jq -e '.kinds | length == 0' "$stage/manifest.
 fi
 
 id=$(jq -r '.id' "$stage/manifest.json")
+harness_id=$(jq -r '.agentHarness.id // empty' "$stage/manifest.json")
+metadata_only=false
+if jq -e '.kinds | length == 0' "$stage/manifest.json" >/dev/null 2>&1; then
+  metadata_only=true
+fi
 existing_manifest=$(plugin_id_manifest "$id") || {
   rm -rf "$stage"
   fail "could not inspect installed plugin ids"
@@ -157,7 +162,7 @@ echo "Added $id into $target"
 omarchy-shell shell rescanPlugins >/dev/null
 
 if [[ -z $enable_after ]]; then
-  if jq -e '.kinds | length == 0' "$PLUGINS_DIR/$id/manifest.json" >/dev/null 2>&1; then
+  if [[ $metadata_only == true ]]; then
     enable_after=false
   elif (( ASSUME_YES )) || ! interactive; then
     enable_after=false
@@ -169,7 +174,7 @@ if [[ -z $enable_after ]]; then
 fi
 
 if [[ $enable_after == true ]]; then
-  if jq -e '.kinds | length == 0' "$PLUGINS_DIR/$id/manifest.json" >/dev/null 2>&1; then
+  if [[ $metadata_only == true ]]; then
     fail "plugin '$id' provides agent metadata only and has no shell component to enable"
   fi
   select_bar_widget_placement "$id"
@@ -184,5 +189,9 @@ if [[ $enable_after == true ]]; then
   (( discovered )) || fail "plugin '$id' is not known"
   omarchy-plugin-enable "$id" "${ENABLE_PLACEMENT[@]}"
 else
-  echo "Enable it later with: omarchy plugin enable $id"
+  if [[ $metadata_only == true ]]; then
+    echo "Select it with: omarchy default agent $harness_id"
+  else
+    echo "Enable it later with: omarchy plugin enable $id"
+  fi
 fi
