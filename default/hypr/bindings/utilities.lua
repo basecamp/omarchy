@@ -38,6 +38,8 @@ o.bind("PRINT", "Screenshot", "omarchy-capture-screenshot")
 o.bind("ALT + PRINT", "Screenrecording", "omarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord")
 o.bind("SUPER + ALT + code:34", "Make webcam overlay smaller", "omarchy-capture-webcam-resize smaller")
 o.bind("SUPER + ALT + code:35", "Make webcam overlay larger", "omarchy-capture-webcam-resize larger")
+o.bind("SUPER + ALT + P", "Pause screen recording", "omarchy-capture-screenrecording --pause-recording")
+o.bind("SUPER + ALT + R", "Resume screen recording", "omarchy-capture-screenrecording --resume-recording")
 o.bind("SUPER + PRINT", "Color picker", "pkill hyprpicker || hyprpicker -a")
 o.bind("SUPER + CTRL + PRINT", "Extract text (OCR) from screenshot", "omarchy-capture-text")
 
