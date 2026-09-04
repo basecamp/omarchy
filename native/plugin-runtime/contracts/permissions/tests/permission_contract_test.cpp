@@ -1,4 +1,5 @@
 #include "permission_contract.hpp"
+#include "manifest_contract.hpp"
 
 #include <functional>
 #include <iostream>
@@ -207,6 +208,21 @@ void canonical_scope_restore_contract() {
                                                'x'));
       },
       "oversized canonical scope restored");
+}
+
+void manifest_token_scope_contract() {
+  const auto manifest = omarchy::plugins::manifest::parse_manifest_v2(
+      R"({"schemaVersion":2,"id":"org.example.soundboard","name":"Soundboard","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{},"permissions":{"required":[],"optional":[{"capability":"audio.play-cue","reason":"Play declared UI sounds","cues":["cue01","cue02","cue03","cue04","cue05","cue06","cue07","cue08","cue09","cue10","cue11","cue12","cue13","cue14","cue15","cue16","cue17"]}]}})");
+  const auto requests = requests_from_manifest(manifest);
+  require(requests.size() == 1,
+          "seventeen-token manifest did not produce one permission request");
+  const auto *scope = std::get_if<TokenScope>(&requests[0].scope);
+  require(scope != nullptr && scope->tokens.size() == 17,
+          "seventeen-token manifest exceeded the bounded permission contract");
+  const auto encoded = canonical_scope(requests[0].scope);
+  require(scope_from_canonical(requests[0].capability, encoded) ==
+              requests[0].scope,
+          "seventeen-token permission scope did not round trip");
 }
 
 GrantSet baseline_grants() {
@@ -655,6 +671,7 @@ int main(int argc, char **argv) {
     registry_and_scope_contract();
     fingerprint_and_decision_contract();
     canonical_scope_restore_contract();
+    manifest_token_scope_contract();
     delta_contract();
     authority_and_handle_contract();
     audit_contract();

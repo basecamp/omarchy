@@ -142,7 +142,11 @@ struct QuotaScope {
 };
 
 struct TokenScope {
-  FixedSet<ScopeToken, 16> tokens;
+  // Token scopes remain explicitly bounded, but presentation plugins commonly
+  // expose more than sixteen named notification categories or audio cues. The
+  // durable codec carries an unsigned-byte count, so 64 leaves ample protocol
+  // headroom while keeping parsing, comparison, and broker checks bounded.
+  FixedSet<ScopeToken, 64> tokens;
   bool operator==(const TokenScope &) const = default;
 };
 
