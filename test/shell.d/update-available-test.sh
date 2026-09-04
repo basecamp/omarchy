@@ -9,7 +9,7 @@ trap 'rm -rf "$test_tmp"' EXIT
 
 stub_bin="$test_tmp/bin"
 git_log="$test_tmp/git.log"
-mkdir -p "$stub_bin"
+mkdir -p "$stub_bin" "$test_tmp/checkout"
 
 cat >"$stub_bin/checkupdates" <<'SH'
 #!/bin/bash
@@ -90,6 +90,16 @@ esac
 SH
 chmod +x "$stub_bin/git"
 
+cat >"$stub_bin/readlink" <<'SH'
+#!/bin/bash
+if [[ -n ${TEST_RESOLVED_OMARCHY_PATH:-} ]]; then
+  echo "$TEST_RESOLVED_OMARCHY_PATH"
+else
+  command -p readlink "$@"
+fi
+SH
+chmod +x "$stub_bin/readlink"
+
 run_checker() {
   OMARCHY_PATH="${TEST_OMARCHY_PATH:-/usr/share/omarchy}" \
     TEST_GIT_LOG="$git_log" \
@@ -147,6 +157,17 @@ fi
 grep -q '^omarchy-dev ' "$stdout" || fail "update checker prints omarchy-dev when both packages are installed"
 ! grep -q '^omarchy ' "$stdout" || fail "update checker ignores omarchy when omarchy-dev is installed"
 pass "update checker prefers omarchy-dev over omarchy"
+
+: >"$git_log"
+if TEST_OMARCHY_PATH="$test_tmp/legacy-omarchy-link" TEST_RESOLVED_OMARCHY_PATH=/usr/share/omarchy \
+  capture_checker "$stdout" "$stderr" TEST_CHECKUPDATES=updates TEST_INSTALLED_PACKAGE=omarchy; then
+  status=0
+else
+  status=$?
+fi
+[[ $status -eq 0 ]] || fail "update checker handles the legacy Omarchy path symlink"
+[[ ! -s $git_log ]] || fail "update checker does not inspect the legacy Omarchy path symlink as git" "$(cat "$git_log")"
+pass "update checker recognizes the legacy Omarchy path symlink"
 
 if capture_checker "$stdout" "$stderr" TEST_CHECKUPDATES=updates TEST_INSTALLED_PACKAGE=none; then
   status=0

@@ -5,8 +5,12 @@
 set -euo pipefail
 
 updates=()
+resolved_omarchy_path=${OMARCHY_PATH%/}
+if [[ $resolved_omarchy_path != "/usr/share/omarchy" ]]; then
+  resolved_omarchy_path=$(readlink -f "$resolved_omarchy_path" 2>/dev/null || printf '%s\n' "$resolved_omarchy_path")
+fi
 
-if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then
+if [[ $resolved_omarchy_path != "/usr/share/omarchy" ]]; then
   upstream=$(git -C "$OMARCHY_PATH" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)
   if [[ -n $upstream ]]; then
     GIT_TERMINAL_PROMPT=0 timeout 10 git -C "$OMARCHY_PATH" fetch --quiet 2>/dev/null || true

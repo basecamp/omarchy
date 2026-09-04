@@ -46,6 +46,16 @@ esac
 SH
 chmod +x "$stub_bin/git"
 
+cat >"$stub_bin/readlink" <<'SH'
+#!/bin/bash
+if [[ -n ${TEST_RESOLVED_OMARCHY_PATH:-} ]]; then
+  echo "$TEST_RESOLVED_OMARCHY_PATH"
+else
+  command -p readlink "$@"
+fi
+SH
+chmod +x "$stub_bin/readlink"
+
 run_dev_update() {
   OMARCHY_PATH="$1" \
     TEST_GIT_LOG="$git_log" \
@@ -57,6 +67,11 @@ run_dev_update() {
 run_dev_update /usr/share/omarchy
 [[ ! -s $git_log ]] || fail "package-backed updates do not invoke git" "$(cat "$git_log")"
 pass "package-backed updates skip the dev checkout step"
+
+: >"$git_log"
+TEST_RESOLVED_OMARCHY_PATH=/usr/share/omarchy run_dev_update "$test_tmp/legacy-omarchy-link"
+[[ ! -s $git_log ]] || fail "resolved package-backed updates do not invoke git" "$(cat "$git_log")"
+pass "package-backed updates recognize the legacy Omarchy path symlink"
 
 : >"$git_log"
 run_dev_update "$checkout"
