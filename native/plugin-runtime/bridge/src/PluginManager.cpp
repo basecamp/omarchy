@@ -107,12 +107,6 @@ PluginManager::PluginManager(QObject *parent, ProcessClaim claim)
           &PluginManager::toggleRequested);
   connect(&surfaces_, &SurfaceProjectionModel::dismissRequested, this,
           &PluginManager::dismissRequested);
-#ifndef OMARCHY_PLUGIN_MANAGER_TESTING
-  // Explicit v2 shell activation provisions fixed empty roots before the first
-  // catalog scan or install. Trust roots and definitions are then immutable for
-  // this singleton lifetime.
-  runtime_ = detail::PluginRuntimeController::open(*this);
-#endif
 }
 
 PluginManager::~PluginManager() = default;
@@ -224,6 +218,7 @@ bool PluginManager::configureSettingsHost(QObject *host) noexcept {
       settings_host_)
     return false;
   settings_host_ = host;
+  openRuntimeIfConfigured();
   return true;
 }
 
@@ -232,7 +227,19 @@ bool PluginManager::configurePresentationHost(QObject *host) noexcept {
       QThread::currentThread() != thread() || presentation_host_)
     return false;
   presentation_host_ = host;
+  openRuntimeIfConfigured();
   return true;
+}
+
+void PluginManager::openRuntimeIfConfigured() noexcept {
+#ifndef OMARCHY_PLUGIN_MANAGER_TESTING
+  if (!runtime_ && settings_host_ && presentation_host_) {
+    // Explicit v2 shell activation provisions fixed empty roots before the
+    // first catalog scan or install. Both authority-free startup snapshots
+    // must be available before that scan can launch any worker.
+    runtime_ = detail::PluginRuntimeController::open(*this);
+  }
+#endif
 }
 
 std::optional<std::string>

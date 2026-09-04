@@ -111,6 +111,7 @@ private:
   };
 
   PluginManager(QObject *parent, ProcessClaim claim);
+  void openRuntimeIfConfigured() noexcept;
   [[nodiscard]] bool publishIntent(host_session::AdmittedSurfaceIntent intent);
   [[nodiscard]] std::optional<std::string>
   currentSettings(std::string_view plugin) const noexcept;
