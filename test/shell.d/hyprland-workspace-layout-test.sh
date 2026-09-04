@@ -50,7 +50,7 @@ fi
   fail "workspace layout toggle does not persist a rule without a workspace id"
 pass "workspace layout toggle ignores broken hyprctl output"
 
-HOME="$home_dir" OMARCHY_PATH="$ROOT" lua <<'LUA'
+HOME="$home_dir" OMARCHY_PATH="$ROOT" lua - <<'LUA' || fail "saved workspace layouts load into Hyprland configuration"
 local rules = {}
 
 hl = {
