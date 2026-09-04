@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Apply the current Omarchy theme to running OpenCode TUIs
+# omarchy:hidden=true
+
+COLORS_TOML="$HOME/.local/state/omarchy/current/theme/colors.toml"
+
+[[ -f $COLORS_TOML ]] || exit 0
+
+theme_osc=$(omarchy-theme-osc "$COLORS_TOML")
+[[ -n $theme_osc ]] || exit 0
+
+declare -A seen_ttys
+for pid in $(pgrep -x opencode 2>/dev/null || true); do
+  tty=$(readlink "/proc/$pid/fd/1" 2>/dev/null)
+  [[ $tty == /dev/pts/* ]] || continue
+  [[ ${seen_ttys[$tty]:-} ]] && continue
+  seen_ttys[$tty]=1
+
+  printf '%b\033[?996n' "$theme_osc" 2>/dev/null >"$tty" || true
+done

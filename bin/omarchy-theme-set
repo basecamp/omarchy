@@ -319,10 +319,10 @@ post_theme_commands=(
   omarchy-restart-terminal
   omarchy-restart-hyprctl
   omarchy-restart-btop
-  omarchy-restart-opencode
   omarchy-restart-helix
   omarchy-theme-set-foot
   omarchy-theme-set-tmux
+  omarchy-theme-set-opencode
   omarchy-theme-set-gnome
   omarchy-theme-set-pi
   omarchy-theme-set-claude
