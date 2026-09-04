@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle the focused column between full width and the configured width
+
+set -euo pipefail
+
+TAG="full-width"
+
+active=$(hyprctl activewindow -j)
+workspace=$(jq -r '.workspace.id // empty' <<<"$active")
+floating=$(jq -r '.floating // false' <<<"$active")
+fullscreen=$(jq -r '.fullscreen // 0' <<<"$active")
+layout=$(hyprctl workspaces -j | jq -r --argjson id "${workspace:-0}" '.[] | select(.id == $id) | .tiledLayout // empty')
+
+if [[ $layout != "scrolling" || $floating != "false" ]] || (( fullscreen != 0 )); then
+  # Other layouts, floating windows and already-fullscreen windows keep maximizing.
+  hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "maximized" })' >/dev/null
+else
+  # The toggle state is a tag on the window rather than a measurement of its
+  # width. Gaps and borders leave a normal column and a full column within a
+  # couple of percent of each other once column_width approaches 1.0, so no
+  # width threshold separates the two states. Rule-assigned tags carry a
+  # trailing "*"; dynamic ones do not.
+  if jq -e --arg tag "$TAG" '.tags | map(rtrimstr("*")) | index($tag)' <<<"$active" >/dev/null; then
+    width=$(hyprctl getoption scrolling:column_width -j | jq -er '.float')
+    mark="-$TAG"
+  else
+    width=1.0
+    mark="+$TAG"
+  fi
+
+  hyprctl dispatch "hl.dsp.layout(\"colresize $width\")" >/dev/null
+  hyprctl dispatch "hl.dsp.window.tag({ tag = \"$mark\" })" >/dev/null
+fi
