@@ -1,0 +1,16 @@
+#!/bin/bash
+
+build() {
+  add_binary /usr/bin/cryptsetup /usr/lib/omarchy/cryptsetup
+  add_file /usr/lib/initcpio/omarchy-duress-wrapper /usr/bin/cryptsetup 755
+  add_runscript
+}
+
+help() {
+  cat <<HELPEOF
+Wraps cryptsetup so a LUKS duress passphrase enrolled by
+omarchy-setup-security-duress can start an unattended factory reset.
+Must be listed immediately after the encrypt hook so this install
+overwrites the cryptsetup binary the encrypt hook already added.
+HELPEOF
+}

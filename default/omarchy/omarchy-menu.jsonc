@@ -180,6 +180,7 @@
   "setup.security.fido2": {"icon":"","label":"Fido2","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fido2"},
   "setup.security.sshd": {"icon":"󰣀","label":"SSHD","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-sshd"},
   "setup.security.passwordless-sudo": {"icon":"󰟵","label":"Passwordless Sudo","action":"omarchy-launch-floating-terminal-with-presentation omarchy-sudo-passwordless"},
+  "setup.security.duress": {"icon":"󰗹","label":"Duress Password","when":"[[ -n $(blkid -t TYPE=crypto_LUKS -o device 2>/dev/null) ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-duress"},
   "setup.security.sudoless-docker": {"icon":"󰡨","label":"Sudoless Docker","when":"omarchy-sudo-docker --configured","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-sudoless-docker"},
   "setup.config.hyprland": {"icon":"","label":"Hyprland","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/hyprland.lua\""},
   "setup.config.hyprsunset": {"icon":"","label":"Hyprsunset","action":"omarchy-launch-config-editor ~/.config/hypr/hyprsunset.conf && omarchy-restart-hyprsunset"},
@@ -368,4 +369,5 @@
   "update.hardware.trackpad": {"icon":"󰟸","label":"Trackpad","action":"omarchy-launch-floating-terminal-with-presentation omarchy-restart-trackpad"},
   "update.password.drive": {"icon":"","label":"Drive Encryption","action":"omarchy-launch-floating-terminal-with-presentation omarchy-drive-password"},
   "update.password.user": {"icon":"","label":"User","action":"omarchy-launch-floating-terminal-with-presentation passwd"},
+  "update.password.duress": {"icon":"󰗹","label":"Duress","when":"[[ -f /etc/mkinitcpio.conf.d/zz-omarchy-duress.conf ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-setup-security-duress --change'"},
 }

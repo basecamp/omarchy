@@ -1,0 +1,150 @@
+#!/usr/bin/ash
+
+# Replaces cryptsetup in the initramfs so a duress LUKS passphrase can be
+# detected after a successful open. Non-open commands and keyfile unlocks
+# pass through unchanged. Ash, not bash: this runs before the real root.
+
+REAL="${OMARCHY_CRYPTSETUP:-/usr/lib/omarchy/cryptsetup}"
+RUN_DIR="${OMARCHY_DURESS_RUN_DIR:-/run}"
+
+is_open=0
+is_test=0
+keyfile=""
+device=""
+skip=0
+skip_keyfile=0
+
+for arg in "$@"; do
+  if [ "$skip" -eq 1 ]; then
+    skip=0
+    if [ "$skip_keyfile" -eq 1 ]; then
+      keyfile=$arg
+      skip_keyfile=0
+    fi
+    continue
+  fi
+
+  case $arg in
+    open)
+      is_open=1
+      ;;
+    --test-passphrase)
+      is_test=1
+      ;;
+    --key-file=*)
+      keyfile=${arg#--key-file=}
+      ;;
+    --key-file | -d)
+      skip=1
+      skip_keyfile=1
+      ;;
+    --type | --sector-size | --header | --key-slot | --keyfile-size | --keyfile-offset | --timeout | --tries | --key-size | --cipher | --hash | --offset | --skip | --size | --uuid | --label | --subsystem | --pbkdf | --iter-time)
+      skip=1
+      ;;
+    --*)
+      ;;
+    -*)
+      ;;
+    *)
+      if [ "$is_open" -eq 1 ] && [ -z "$device" ]; then
+        device=$arg
+      fi
+      ;;
+  esac
+done
+
+if [ "$is_open" -eq 0 ] || [ "$is_test" -eq 1 ] || [ "$keyfile" != "-" ]; then
+  exec "$REAL" "$@"
+fi
+
+password=$(cat && printf x)
+password=${password%x}
+
+# Generic luks2 tokens mark the duress slot without a custom type string in
+# the LUKS header. omarchy-duress is the pre-generic enrollment leftover.
+is_duress_token() {
+  case $1 in
+    *'"type":"omarchy-duress"'*) return 0 ;;
+    *'"type":"luks2"'*) return 0 ;;
+  esac
+  return 1
+}
+
+token_slot() {
+  printf '%s' "$1" | sed -n 's/.*"keyslots":\["\([0-9][0-9]*\)"\].*/\1/p'
+}
+
+find_duress_slot() {
+  local id json compact slot
+
+  id=0
+  while [ "$id" -lt 32 ]; do
+    json=$("$REAL" token export --token-id "$id" "$1" 2>/dev/null) || {
+      id=$((id + 1))
+      continue
+    }
+    compact=$(printf '%s' "$json" | sed ':a;N;$!ba;s/[[:space:]]//g')
+    if is_duress_token "$compact"; then
+      slot=$(token_slot "$compact")
+      if [ -n "$slot" ]; then
+        if printf '%s' "$password" | "$REAL" open --test-passphrase --key-slot "$slot" --key-file=- "$1" >/dev/null 2>&1; then
+          printf '%s' "$slot"
+          return 0
+        fi
+      fi
+    fi
+    id=$((id + 1))
+  done
+  return 1
+}
+
+luks_keyslots() {
+  "$REAL" luksDump "$1" 2>/dev/null | sed -n 's/^[[:space:]]*\([0-9][0-9]*\):[[:space:]]*luks2.*/\1/p'
+}
+
+remove_duress_tokens() {
+  local id json compact slot
+  id=0
+  while [ "$id" -lt 32 ]; do
+    json=$("$REAL" token export --token-id "$id" "$1" 2>/dev/null) || {
+      id=$((id + 1))
+      continue
+    }
+    compact=$(printf '%s' "$json" | sed ':a;N;$!ba;s/[[:space:]]//g')
+    case $compact in
+      *'"type":"omarchy-duress"'*)
+        "$REAL" token remove --token-id "$id" "$1" >/dev/null 2>&1 || true
+        ;;
+      *'"type":"luks2"'*)
+        slot=$(token_slot "$compact")
+        if [ -z "$2" ] || [ "$slot" = "$2" ]; then
+          "$REAL" token remove --token-id "$id" "$1" >/dev/null 2>&1 || true
+        fi
+        ;;
+    esac
+    id=$((id + 1))
+  done
+}
+
+printf '%s' "$password" | "$REAL" "$@"
+status=$?
+[ "$status" -eq 0 ] || exit "$status"
+
+[ -n "$device" ] || exit 0
+
+slot=$(find_duress_slot "$device") || exit 0
+
+mkdir -p "$RUN_DIR"
+umask 077
+printf '%s' "$password" >"$RUN_DIR/omarchy-duress-key" || exit 0
+chmod 600 "$RUN_DIR/omarchy-duress-key"
+: >"$RUN_DIR/omarchy-duress"
+
+for other in $(luks_keyslots "$device"); do
+  [ "$other" = "$slot" ] && continue
+  printf '%s' "$password" | "$REAL" -q luksKillSlot --key-file=- "$device" "$other" >/dev/null 2>&1 || true
+done
+remove_duress_tokens "$device" "$slot"
+
+password=
+exit 0

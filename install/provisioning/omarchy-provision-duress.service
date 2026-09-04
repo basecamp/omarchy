@@ -1,0 +1,22 @@
+# Silent post-wipe account setup after a duress factory reset. No tty, no
+# Plymouth quit — the splash stays up until SDDM autologs in. Armed by
+# duress-owner, which omarchy-system-factory-reset copies onto the factory
+# clone only on the unattended path.
+
+[Unit]
+Description=Omarchy duress post-wipe owner setup
+ConditionPathExists=/var/lib/omarchy/provisioning/pending
+ConditionPathExists=/var/lib/omarchy/provisioning/duress-owner
+ConditionPathExists=!/var/lib/omarchy/provisioning/wipe-pending
+After=systemd-user-sessions.service omarchy-system-factory-reset-finish.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/omarchy-provision-owner --silent
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

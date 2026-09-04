@@ -12,11 +12,25 @@ Omarchy takes security extremely seriously. This is meant to be an operating sys
 
 You have two passwords on an encrypted install: the one that unlocks the drive at boot, and the one you log in and `sudo` with. Both can be changed under _Update > Password_ in the Omarchy menu — _Drive Encryption_ for the first, _User_ for the second. Changing the drive password asks for the current one first, so have it handy.
 
+If you have set a [duress password](#duress-password), it shows up as a third row there.
+
 ## Passing on a machine you've already used
 
 If you're handing your machine over to someone else, you don't have to reinstall it. Run _Setup > Reset Computer_ in the Omarchy menu, type `reset` to confirm, and reboot. That wipes every user account and everything in `/home`, throws away all the packages and system changes you made since installation, and clears the machine's identity — network connections, host keys, and all. What comes back up is the setup wizard from the first boot, ready for its new owner to enter their own name, password, and encryption password.
 
 It works by restoring the baseline snapshot the installer takes, so it's only available on machines installed from the Omarchy ISO. And on a drive without encryption, a reset is deletion rather than a secure erase, so if the data was sensitive, do a fresh install instead.
+
+## Duress password
+
+On an encrypted machine installed from the Omarchy ISO — so it has a factory snapshot — _Setup > Security > Duress Password_ adds a second disk-unlock password. At the Plymouth prompt it looks like any other successful unlock. The machine then restores the factory snapshot, creates a blank desktop account, and logs into it. You never type `reset` or the real password.
+
+That account's login and disk password _are_ the duress password, so the same phrase keeps working after reboot. The wiped system has no duress password of its own. During setup you can pick the post-wipe username, hostname, keyboard, and timezone, or keep the defaults (`omarchy` / UTC / US). The first-run Learn Keybindings toast is skipped; the Update System prompt still appears if the machine is online.
+
+It is only the disk-unlock password, not the lock screen. After you first set it, reboot once so the boot files pick up the hook. Change it later under _Update > Password > Duress_ — that takes effect immediately, with no reboot.
+
+Type it by accident and the wipe is real.
+
+This is not a hidden operating system. Until duress is used, a second LUKS keyslot is visible in the disk header without a password. Using it removes the real password slot and the extra token, so the header looks like a normal one-password disk. The duress passphrase is not stored on the machine — only the post-wipe account name and locale are. The wipe still changes passphrases, not the volume key: a lab that unlocks the wiped machine can try to recover leftover data from free space. If you need that gone, reinstall from the ISO.
 
 ## Passwordless sudo
 
