@@ -1,0 +1,1187 @@
+#!/bin/bash
+
+# omarchy:summary=Install, launch, stop, reset, or remove the Omarchy lab VM
+# omarchy:args=<install|remove|launch|stop|status|reset|ssh|push|session|screenshot|send-key|ip> [options]
+# omarchy:examples=omarchy lab vm install | omarchy lab vm reset | omarchy lab vm push ~/Work/omarchy
+# omarchy:requires-sudo=true
+
+# Disposable Omarchy on KVM for patches and PoCs. The host session stays on
+# the package; the guest is where `omarchy dev link` and reproducers run.
+# Disks and the ISO live in /var/lib/libvirt/images so qemu:///system never
+# needs a search ACL on $HOME.
+
+set -euo pipefail
+
+CONNECT=${OMARCHY_LAB_CONNECT:-qemu:///system}
+NAME=${OMARCHY_LAB_NAME:-omarchy-lab}
+IMAGES=${OMARCHY_LAB_IMAGES:-/var/lib/libvirt/images}
+BASE_VOL=${OMARCHY_LAB_BASE_VOL:-omarchy-lab.base.qcow2}
+OVERLAY_VOL=${OMARCHY_LAB_OVERLAY_VOL:-omarchy-lab.qcow2}
+CIDATA_VOL=${OMARCHY_LAB_CIDATA_VOL:-omarchy-lab.cidata.iso}
+GUEST_USER_DEFAULT=lab
+PASSWORD_DEFAULT=lab
+DISK_DEFAULT=80G
+RAM_DEFAULT=16G
+CORES_DEFAULT=8
+ISO_FALLBACK_VERSION=4.0.2
+OVMF_CODE=/usr/share/edk2/x64/OVMF_CODE.4m.fd
+OVMF_VARS=/usr/share/edk2/x64/OVMF_VARS.4m.fd
+LIBVIRT_NET=192.168.122.1
+DESKTOP_FILE="${HOME}/.local/share/applications/lab-vm.desktop"
+STATE_DIR="${HOME}/.config/omarchy/lab-vm"
+CONFIG_FILE="$STATE_DIR/config"
+VIEWER_UNIT=app-omarchy-lab-viewer.service
+KEY="${HOME}/.ssh/omarchy-lab"
+KNOWN_HOSTS="${HOME}/.ssh/omarchy-lab.known_hosts"
+SCREEN_DIR="${HOME}/.local/state/omarchy/lab-vm/screens"
+SSH_MARK_BEGIN="# BEGIN OMARCHY-LAB-VM"
+SSH_MARK_END="# END OMARCHY-LAB-VM"
+USERNAME_PATTERN='^[a-z_][a-z0-9_-]*$'
+HOSTNAME_PATTERN='^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$'
+
+HYPERVISOR_PACKAGES=(
+  qemu-full
+  libvirt
+  virt-install
+  virt-manager
+  virt-viewer
+  dnsmasq
+  edk2-ovmf
+  cdrtools
+  swtpm
+)
+
+session_env='
+  export XDG_RUNTIME_DIR=/run/user/$(id -u)
+  export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+  export HYPRLAND_INSTANCE_SIGNATURE=$(ls -t $XDG_RUNTIME_DIR/hypr 2>/dev/null | head -1)
+  export WAYLAND_DISPLAY=$(find $XDG_RUNTIME_DIR -maxdepth 1 -name "wayland-*" ! -name "*.lock" -printf "%f\n" 2>/dev/null | head -1)
+  [ -f /etc/omarchy.conf ] && . /etc/omarchy.conf
+  export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+  export PATH="$OMARCHY_PATH/bin:$PATH"
+'
+
+is_tty() { [[ -t 0 && -t 1 ]]; }
+
+valid_ram() { [[ $1 =~ ^[0-9]{1,3}G$ ]]; }
+valid_cores() { [[ $1 =~ ^[0-9]{1,2}$ ]] && ((10#$1 >= 1)); }
+valid_disk() { [[ $1 =~ ^[0-9]{2,4}G$ ]] && ((10#${1%G} >= 32)); }
+valid_username() { [[ $1 =~ $USERNAME_PATTERN ]]; }
+valid_hostname() { [[ $1 =~ $HOSTNAME_PATTERN ]]; }
+
+disk_bytes_from_spec() {
+  local spec=$1 n
+  [[ $spec =~ ^[0-9]+G$ ]] || return 1
+  n=${spec%G}
+  printf '%s\n' $((10#$n * 1024 * 1024 * 1024))
+}
+
+# Partition sizes the ISO configurator writes for a full-disk layout.
+disk_layout() {
+  local disk_bytes=$1
+  local mib=$((1024 * 1024))
+  local gib=$((mib * 1024))
+  local disk_size_in_mib=$((disk_bytes / mib * mib))
+  local gpt_backup_reserve=$mib
+  local boot_partition_start=$mib
+  local boot_partition_size=$((2 * gib))
+  local main_partition_start=$((boot_partition_size + boot_partition_start))
+  local main_partition_size=$((disk_size_in_mib - main_partition_start - gpt_backup_reserve))
+  ((main_partition_size > 0)) || return 1
+  printf '%s %s %s %s\n' "$boot_partition_start" "$boot_partition_size" "$main_partition_start" "$main_partition_size"
+}
+
+ufw_rule_specs() {
+  local wan=$1
+  printf '%s\n' \
+    "allow in on virbr0 proto udp to any port 67 comment 'libvirt dhcp'" \
+    "allow in on virbr0 to ${LIBVIRT_NET} port 53 proto udp comment 'libvirt dns'" \
+    "allow in on virbr0 to ${LIBVIRT_NET} port 53 proto tcp comment 'libvirt dns'" \
+    "route allow in on virbr0 out on ${wan} comment 'libvirt nat'"
+}
+
+default_wan() {
+  ip -o route show default 2>/dev/null | awk '{print $5; exit}'
+}
+
+guest_user() {
+  local user=$GUEST_USER_DEFAULT
+  if [[ -f $CONFIG_FILE ]]; then
+    user=$(sed -n 's/^GUEST_USER=//p' "$CONFIG_FILE" | head -1)
+  fi
+  [[ -n $user ]] || user=$GUEST_USER_DEFAULT
+  printf '%s\n' "$user"
+}
+
+write_state() {
+  local user=$1 disk=${2:-}
+  mkdir -p "$STATE_DIR"
+  {
+    printf 'GUEST_USER=%s\n' "$user"
+    if [[ -n $disk ]]; then
+      printf 'DISK=%s\n' "$disk"
+    fi
+  } >"$CONFIG_FILE"
+}
+
+run_virsh() {
+  if virsh --connect "$CONNECT" uri >/dev/null 2>&1; then
+    virsh --connect "$CONNECT" "$@"
+  else
+    sudo virsh --connect "$CONNECT" "$@"
+  fi
+}
+
+virt_install_bin() {
+  printf '%s\n' /usr/bin/python3 /usr/bin/virt-install
+}
+
+# virt-install is a Python script with #!/usr/bin/env python3. Mise/pyenv
+# Pythons on PATH do not ship gi, so call the system interpreter explicitly.
+run_virt_install() {
+  local err
+  err=$(mktemp)
+  if sudo /usr/bin/python3 /usr/bin/virt-install "$@" >/dev/null 2>"$err"; then
+    rm -f "$err"
+    return 0
+  fi
+  cat "$err" >&2
+  rm -f "$err"
+  return 1
+}
+
+have_domain() {
+  run_virsh list --all --name 2>/dev/null | grep -qx "$NAME"
+}
+
+domain_running() {
+  run_virsh list --state-running --name 2>/dev/null | grep -qx "$NAME"
+}
+
+guest_ip() {
+  run_virsh domifaddr "$NAME" --source lease 2>/dev/null |
+    awk '/ipv4/ { split($4, a, "/"); print a[1]; exit }'
+}
+
+ssh_opts() {
+  # Live ISO and the installed system share a DHCP IP but not a host key.
+  # Never persist those keys during install, and never print the MITM banner.
+  printf '%s\n' \
+    -i "$KEY" \
+    -o IdentitiesOnly=yes \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o GlobalKnownHostsFile=/dev/null \
+    -o UpdateHostKeys=no \
+    -o LogLevel=QUIET \
+    -o BatchMode=yes \
+    -o ConnectTimeout=5
+}
+
+lab_ssh() {
+  local ip user
+  ip=$(guest_ip)
+  [[ -n $ip ]] || return 1
+  user=$(guest_user)
+  ssh $(ssh_opts) "${user}@${ip}" "$@"
+}
+
+lab_ssh_quiet() {
+  lab_ssh "$@" >/dev/null 2>&1
+}
+
+wait_ssh() {
+  local n=0
+  until lab_ssh_quiet true; do
+    if ! domain_running; then
+      echo "Guest is off; starting $NAME..."
+      run_virsh start "$NAME" >/dev/null 2>&1 || true
+    fi
+    ((n++ < 900)) || {
+      echo "SSH did not come up" >&2
+      return 1
+    }
+    sleep 2
+    if ((n % 15 == 0)); then
+      echo "Still waiting for SSH in the guest..."
+    fi
+  done
+}
+
+wait_off() {
+  local n=0
+  until ! domain_running; do
+    ((n++ < 60)) || return 0
+    sleep 1
+  done
+}
+
+wait_hypr() {
+  local n=0
+  until lab_ssh_quiet 'ls /run/user/$(id -u)/hypr 2>/dev/null | grep -q .'; do
+    ((n++ < 60)) || {
+      echo "Hyprland did not start (autologin?)" >&2
+      return 1
+    }
+    sleep 2
+  done
+}
+
+find_pool() {
+  local p path
+  while read -r p; do
+    [[ -n $p ]] || continue
+    path=$(run_virsh pool-dumpxml "$p" 2>/dev/null | sed -n 's|.*<path>\(.*\)</path>.*|\1|p' | head -1)
+    if [[ $path == "$IMAGES" ]]; then
+      printf '%s\n' "$p"
+      return 0
+    fi
+  done < <(run_virsh pool-list --all --name)
+  return 1
+}
+
+ensure_pool() {
+  local pool
+  if pool=$(find_pool); then
+    printf '%s\n' "$pool"
+    return 0
+  fi
+  sudo mkdir -p "$IMAGES"
+  run_virsh pool-define-as images dir --target "$IMAGES"
+  run_virsh pool-build images >/dev/null || true
+  run_virsh pool-start images >/dev/null || true
+  run_virsh pool-autostart images >/dev/null || true
+  printf 'images\n'
+}
+
+latest_iso_version() {
+  local tag
+  tag=$(curl -fsSL --max-time 15 https://api.github.com/repos/omacom/omarchy/releases/latest 2>/dev/null |
+    jq -r '.tag_name // empty') || tag=""
+  tag=${tag#v}
+  if [[ $tag =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+    printf '%s\n' "$tag"
+    return 0
+  fi
+  printf '%s\n' "$ISO_FALLBACK_VERSION"
+}
+
+iso_url() {
+  local version=$1
+  printf 'https://iso.omarchy.org/omarchy-%s.iso\n' "$version"
+}
+
+write_cidata_files() {
+  local dest=$1 username=$2 password_hash=$3 hostname=$4 timezone=$5 keyboard=$6 disk_bytes=$7 authorized_keys=$8
+  local boot_start boot_size main_start main_size sudoers_cmd autologin_cmd strip_resume_cmd
+  local device=/dev/vda
+
+  read -r boot_start boot_size main_start main_size <<<"$(disk_layout "$disk_bytes")"
+  sudoers_cmd="echo ${username} ALL=(ALL) NOPASSWD: ALL > /etc/sudoers.d/${username} && chmod 440 /etc/sudoers.d/${username}"
+  autologin_cmd="printf '[Autologin]\\nUser=${username}\\nSession=omarchy.desktop\\n' > /etc/sddm.conf.d/autologin.conf"
+  # Unencrypted /dev/vda2 plus the encrypt+resume initramfs hooks makes first
+  # boot try to unlock a LUKS mapping that does not exist, then reboot.
+  strip_resume_cmd="rm -f /etc/mkinitcpio.conf.d/omarchy_resume.conf /etc/limine-entry-tool.d/resume.conf; command -v limine-mkinitcpio >/dev/null && limine-mkinitcpio || true"
+
+  mkdir -p "$dest"
+
+  jq -n \
+    --arg username "$username" \
+    --arg hostname "$hostname" \
+    --arg timezone "$timezone" \
+    --arg keyboard "$keyboard" \
+    --arg device "$device" \
+    --arg sudoers "$sudoers_cmd" \
+    --arg autologin "$autologin_cmd" \
+    --arg strip_resume "$strip_resume_cmd" \
+    --arg mirror1 'https://mirror.omarchy.org/$repo/os/$arch' \
+    --arg mirror2 'https://mirror.rackspace.com/archlinux/$repo/os/$arch' \
+    --arg mirror3 'https://geo.mirror.pkgbuild.com/$repo/os/$arch' \
+    --argjson boot_start "$boot_start" \
+    --argjson boot_size "$boot_size" \
+    --argjson main_start "$main_start" \
+    --argjson main_size "$main_size" \
+    '{
+      "app_config": null,
+      "archinstall-language": "English",
+      "auth_config": {},
+      "audio_config": { "audio": "pipewire" },
+      "bootloader_config": { "bootloader": "Limine", "uki": false, "removable": false },
+      "custom_commands": [$sudoers, $autologin, $strip_resume],
+      "omarchy_install": {
+        "mode": "full_disk",
+        "defer_provisioning": false,
+        "target_mount": "/mnt",
+        "boot": {
+          "esp_mount": "/boot",
+          "esp_path": "/EFI/limine",
+          "efi_binary": "limine_x64.efi",
+          "enable_fallback": true
+        },
+        "storage": { "kernel": "linux" }
+      },
+      "disk_config": {
+        "config_type": "default_layout",
+        "device_modifications": [
+          {
+            "device": $device,
+            "partitions": [
+              {
+                "btrfs": [],
+                "dev_path": null,
+                "flags": ["boot", "esp"],
+                "fs_type": "fat32",
+                "mount_options": [],
+                "mountpoint": "/boot",
+                "obj_id": "ea21d3f2-82bb-49cc-ab5d-6f81ae94e18d",
+                "size": {
+                  "sector_size": { "unit": "B", "value": 512 },
+                  "unit": "B",
+                  "value": $boot_size
+                },
+                "start": {
+                  "sector_size": { "unit": "B", "value": 512 },
+                  "unit": "B",
+                  "value": $boot_start
+                },
+                "status": "create",
+                "type": "primary"
+              },
+              {
+                "btrfs": [
+                  { "mountpoint": "/", "name": "@" },
+                  { "mountpoint": "/home", "name": "@home" },
+                  { "mountpoint": "/var/log", "name": "@log" },
+                  { "mountpoint": "/var/cache/pacman/pkg", "name": "@pkg" }
+                ],
+                "dev_path": null,
+                "flags": [],
+                "fs_type": "btrfs",
+                "mount_options": ["compress=zstd"],
+                "mountpoint": null,
+                "obj_id": "8c2c2b92-1070-455d-b76a-56263bab24aa",
+                "size": {
+                  "sector_size": { "unit": "B", "value": 512 },
+                  "unit": "B",
+                  "value": $main_size
+                },
+                "start": {
+                  "sector_size": { "unit": "B", "value": 512 },
+                  "unit": "B",
+                  "value": $main_start
+                },
+                "status": "create",
+                "type": "primary"
+              }
+            ],
+            "wipe": true
+          }
+        ]
+      },
+      "hostname": $hostname,
+      "kernels": ["linux"],
+      "network_config": { "type": "iso" },
+      "ntp": true,
+      "parallel_downloads": 8,
+      "script": null,
+      "services": [],
+      "swap": true,
+      "timezone": $timezone,
+      "locale_config": {
+        "kb_layout": $keyboard,
+        "sys_enc": "UTF-8",
+        "sys_lang": "en_US.UTF-8"
+      },
+      "mirror_config": {
+        "custom_repositories": [],
+        "custom_servers": [
+          {"url": $mirror1},
+          {"url": $mirror2},
+          {"url": $mirror3}
+        ],
+        "mirror_regions": {},
+        "optional_repositories": []
+      },
+      "packages": [
+        "base-devel",
+        "git",
+        "omarchy-keyring",
+        "omarchy-settings",
+        "omarchy"
+      ],
+      "profile_config": {
+        "gfx_driver": null,
+        "greeter": null,
+        "profile": {}
+      },
+      "version": "3.0.9"
+    }' >"$dest/user_configuration.json"
+
+  jq -n \
+    --arg hash "$password_hash" \
+    --arg username "$username" \
+    '{
+      root_enc_password: $hash,
+      users: [
+        {
+          enc_password: $hash,
+          groups: [],
+          sudo: true,
+          username: $username
+        }
+      ]
+    }' >"$dest/user_credentials.json"
+
+  printf 'false\n' >"$dest/user_encrypt_installation.txt"
+  : >"$dest/user_full_name.txt"
+  : >"$dest/user_email_address.txt"
+  printf '%s\n' "$authorized_keys" >"$dest/authorized_keys"
+}
+
+build_cidata_iso() {
+  local src=$1 dest=$2
+  genisoimage -quiet -output "$dest" -volid cidata -joliet -rock "$src"
+}
+
+virt_install_args() {
+  local memory_mib=$1 vcpus=$2 iso=$3 disk=$4 cidata=$5
+  printf '%s\0' \
+    --connect "$CONNECT" \
+    --name "$NAME" \
+    --memory "$memory_mib" \
+    --vcpus "$vcpus" \
+    --cpu host-passthrough \
+    --machine q35 \
+    --os-variant archlinux \
+    --boot "loader=${OVMF_CODE},loader.readonly=yes,loader.type=pflash,nvram.template=${OVMF_VARS}" \
+    --tpm backend.type=emulator,backend.version=2.0,model=tpm-crb \
+    --disk "path=${disk},format=qcow2,bus=virtio,cache=writeback,discard=unmap" \
+    --disk "path=${cidata},device=cdrom,readonly=yes" \
+    --cdrom "$iso" \
+    --network network=default,model=virtio \
+    --graphics spice \
+    --video virtio \
+    --channel spicevmc \
+    --input tablet,bus=usb \
+    --noautoconsole
+}
+
+ssh_config_block() {
+  local user=$1
+  cat <<EOF
+$SSH_MARK_BEGIN
+Host omarchy-lab
+  User ${user}
+  IdentityFile ~/.ssh/omarchy-lab
+  IdentitiesOnly yes
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  GlobalKnownHostsFile /dev/null
+  LogLevel QUIET
+  ProxyCommand /bin/bash -c 'exec nc -w 5 "\$(omarchy-lab-vm ip)" %p'
+$SSH_MARK_END
+EOF
+}
+
+write_desktop() {
+  mkdir -p "$(dirname "$DESKTOP_FILE")"
+  cat >"$DESKTOP_FILE" <<'EOF'
+[Desktop Entry]
+Name=Omarchy Lab
+Comment=Disposable Omarchy KVM for development and PoCs
+Exec=uwsm app -- omarchy-lab-vm launch
+Icon=omarchy
+Terminal=false
+Type=Application
+Categories=System;Virtualization;Development;
+EOF
+  update-desktop-database "$(dirname "$DESKTOP_FILE")" 2>/dev/null || true
+}
+
+remove_omarchy_lab_ssh_stanzas() {
+  local file=${HOME}/.ssh/config tmp
+  [[ -f $file ]] || return 0
+  tmp=$(mktemp)
+  awk '
+    BEGIN { skip=0 }
+    $0 == "# BEGIN OMARCHY-LAB-VM" { skip=1; next }
+    $0 == "# END OMARCHY-LAB-VM" { skip=0; next }
+    $1 == "Host" {
+      skip=0
+      for (i = 2; i <= NF; i++) if ($i == "omarchy-lab") skip=1
+      if (skip) next
+    }
+    skip { next }
+    { print }
+  ' "$file" >"$tmp"
+  mv "$tmp" "$file"
+}
+
+write_ssh_config() {
+  local user=$1 file=${HOME}/.ssh/config
+  mkdir -p "$HOME/.ssh"
+  chmod 700 "$HOME/.ssh"
+  [[ -f $file ]] || : >"$file"
+  remove_omarchy_lab_ssh_stanzas
+  printf '\n%s\n' "$(ssh_config_block "$user")" >>"$file"
+  chmod 600 "$file"
+}
+
+remove_ssh_config() {
+  remove_omarchy_lab_ssh_stanzas
+}
+
+remove_ssh_artifacts() {
+  remove_ssh_config
+  rm -f "$KEY" "$KEY.pub" "$KNOWN_HOSTS"
+  rm -f "$HOME/.ssh/cm-lab@"* 2>/dev/null || true
+}
+
+ensure_ssh_key() {
+  if [[ ! -f $KEY ]]; then
+    ssh-keygen -q -t ed25519 -f "$KEY" -N "" -C omarchy-lab
+  fi
+  chmod 600 "$KEY"
+  [[ -f $KEY.pub ]]
+}
+
+ensure_libvirt_conf() {
+  local conf=${HOME}/.config/libvirt/libvirt.conf
+  mkdir -p "$(dirname "$conf")"
+  if [[ -f $conf ]] && grep -q '^uri_default' "$conf"; then
+    return 0
+  fi
+  printf 'uri_default = "qemu:///system"\n' >>"$conf"
+}
+
+ensure_ufw() {
+  local wan
+  wan=$(default_wan)
+  [[ -n $wan ]] || {
+    echo "No default route; cannot install libvirt NAT forwarding." >&2
+    return 1
+  }
+
+  # DHCP discover is broadcast to 255.255.255.255:67, not 192.168.122.1.
+  if ! sudo ufw status | grep -q "libvirt dhcp"; then
+    sudo ufw allow in on virbr0 proto udp to any port 67 comment 'libvirt dhcp'
+  fi
+  if ! sudo ufw status | grep -q "libvirt dns"; then
+    sudo ufw allow in on virbr0 to "$LIBVIRT_NET" port 53 proto udp comment 'libvirt dns'
+    sudo ufw allow in on virbr0 to "$LIBVIRT_NET" port 53 proto tcp comment 'libvirt dns'
+  fi
+  if ! sudo ufw status | grep -q "libvirt nat"; then
+    sudo ufw route allow in on virbr0 out on "$wan" comment 'libvirt nat'
+  fi
+}
+
+ensure_hypervisor() {
+  if [[ ! -e /dev/kvm ]]; then
+    gum style --border normal --padding "1 2" --margin "1" \
+      "KVM virtualization is not available." \
+      "" \
+      "Enable virtualization in firmware, then:" \
+      "  sudo modprobe kvm-amd   # AMD" \
+      "  sudo modprobe kvm-intel # Intel"
+    return 1
+  fi
+
+  omarchy-pkg-add "${HYPERVISOR_PACKAGES[@]}"
+  source omarchy-sudo-keepalive
+  sudo usermod -aG libvirt,kvm "$USER"
+  sudo systemctl enable --now libvirtd.service
+  ensure_libvirt_conf
+  ensure_ufw
+  run_virsh net-start default >/dev/null 2>&1 || true
+  run_virsh net-autostart default >/dev/null 2>&1 || true
+  # Reinstall NAT masquerade after the firewall rules land.
+  run_virsh net-destroy default >/dev/null 2>&1 || true
+  run_virsh net-start default >/dev/null
+  run_virsh net-autostart default >/dev/null
+}
+
+ensure_iso() {
+  local version url sha_url iso_name iso_path tmp dir
+  version=${OMARCHY_LAB_ISO_VERSION:-$(latest_iso_version)}
+  iso_name="omarchy-${version}.iso"
+  iso_path="${IMAGES}/${iso_name}"
+  url=$(iso_url "$version")
+  sha_url="${url}.sha256"
+
+  dir=$(mktemp -d)
+  curl -fsSL -o "$dir/$iso_name.sha256" "$sha_url"
+  if [[ -f $iso_path ]]; then
+    if (cd "$IMAGES" && sha256sum -c "$dir/$iso_name.sha256" >/dev/null 2>&1); then
+      rm -rf "$dir"
+      echo "Reusing $iso_path" >&2
+      printf '%s\n' "$iso_path"
+      return 0
+    fi
+    echo "Existing ISO failed its checksum; re-downloading." >&2
+  fi
+
+  echo "Downloading $url ..." >&2
+  curl -fL --progress-bar -o "$dir/$iso_name" "$url"
+  (
+    cd "$dir"
+    sha256sum -c "$iso_name.sha256" >&2
+  )
+  sudo install -D -m 644 -o libvirt-qemu -g libvirt-qemu "$dir/$iso_name" "$iso_path"
+  rm -rf "$dir"
+  printf '%s\n' "$iso_path"
+}
+
+install_cidata() {
+  local username=$1 password=$2 hostname=$3 timezone=$4 keyboard=$5 disk_spec=$6
+  local disk_bytes hash pubkey tmp iso_out
+  disk_bytes=$(disk_bytes_from_spec "$disk_spec")
+  hash=$(printf '%s' "$password" | openssl passwd -6 -stdin)
+  pubkey=$(<"$KEY.pub")
+  tmp=$(mktemp -d)
+  write_cidata_files "$tmp" "$username" "$hash" "$hostname" "$timezone" "$keyboard" "$disk_bytes" "$pubkey"
+  iso_out=$(mktemp --suffix=.iso)
+  build_cidata_iso "$tmp" "$iso_out"
+  sudo install -D -m 644 -o libvirt-qemu -g libvirt-qemu "$iso_out" "$IMAGES/$CIDATA_VOL"
+  rm -rf "$tmp" "$iso_out"
+}
+
+configure_guest() {
+  local username=$1 password=$2 timezone=$3
+  local sudoers
+
+  sudoers="${username} ALL=(ALL) NOPASSWD: ALL"
+  if ! lab_ssh_quiet "sudo -n true"; then
+    printf '%s\n%s\n' "$password" "$sudoers" | lab_ssh "sudo -S -p '' tee /etc/sudoers.d/${username} >/dev/null" >/dev/null 2>&1
+    printf '%s\n' "$password" | lab_ssh "sudo -S -p '' chmod 440 /etc/sudoers.d/${username}" >/dev/null 2>&1
+  fi
+
+  lab_ssh_quiet "printf '[Autologin]\nUser=${username}\nSession=omarchy.desktop\n' | sudo tee /etc/sddm.conf.d/autologin.conf >/dev/null"
+  lab_ssh_quiet "sudo timedatectl set-timezone ${timezone}" || true
+  lab_ssh_quiet "sudo ufw allow from ${LIBVIRT_NET} to any port 22 proto tcp comment omarchy-lab >/dev/null" || true
+  # Drop hibernation resume so the overlay boot does not hit the encrypt hook
+  # on unencrypted /dev/vda2 ("crypto= parameter was not specified"). The
+  # Omarchy ISO always writes these drop-ins; cidata custom_commands do not
+  # run. Rebuild the UKI on disk — freeze_gold is the next boot, so do not
+  # reboot here.
+  lab_ssh_quiet "sudo rm -f /etc/mkinitcpio.conf.d/omarchy_resume.conf /etc/limine-entry-tool.d/resume.conf" || true
+  lab_ssh_quiet "sudo limine-mkinitcpio"
+}
+
+stop_guest() {
+  if lab_ssh_quiet "sudo systemctl poweroff"; then
+    wait_off
+    return 0
+  fi
+  if domain_running; then
+    run_virsh destroy "$NAME" >/dev/null 2>&1 || true
+    wait_off
+  fi
+}
+
+freeze_gold() {
+  local pool=$1 disk_spec=$2
+  stop_guest
+  run_virsh change-media "$NAME" --eject --path "$IMAGES/$CIDATA_VOL" --config >/dev/null 2>&1 || true
+  run_virsh vol-delete --pool "$pool" "$OVERLAY_VOL" >/dev/null 2>&1 || true
+  run_virsh vol-create-as "$pool" "$OVERLAY_VOL" "$disk_spec" --format qcow2 \
+    --backing-vol "$BASE_VOL" --backing-vol-format qcow2 >/dev/null
+  sudo chown libvirt-qemu:libvirt-qemu "$IMAGES/$OVERLAY_VOL"
+  sudo /usr/bin/python3 /usr/bin/virt-xml "$NAME" --connect "$CONNECT" --edit target=vda --disk "path=$IMAGES/$OVERLAY_VOL" >/dev/null
+  sudo chmod a-w "$IMAGES/$BASE_VOL" 2>/dev/null || true
+}
+
+prompt_or_default() {
+  local ram cores disk username password hostname timezone keyboard
+  local total_ram_gb total_cores ram_options disk_options size status
+
+  total_ram_gb=$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo)
+  total_cores=$(nproc)
+  timezone=$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
+  keyboard=${OMARCHY_LAB_KEYBOARD:-us}
+  hostname=${OMARCHY_LAB_HOSTNAME:-omarchy-lab}
+
+  if is_tty && ((INSTALL_YES == 0)); then
+    ram_options=""
+    for size in 4 8 16 32 64; do
+      if ((size <= total_ram_gb)); then
+        ram_options+="${size}G"$'\n'
+      fi
+    done
+    ram=$(printf '%s' "$ram_options" | gum choose --selected="$RAM_DEFAULT" --header="RAM for the lab VM?") && status=0 || status=$?
+    if ((status != 0)) || [[ -z $ram ]]; then
+      echo "Installation cancelled"
+      return 1
+    fi
+
+    cores=$(gum input --placeholder="CPU cores (1-$total_cores)" --value="$CORES_DEFAULT" --header="CPU cores for the lab VM?" --char-limit=2) && status=0 || status=$?
+    if ((status != 0)) || [[ -z $cores ]]; then
+      echo "Installation cancelled"
+      return 1
+    fi
+
+    disk_options=""
+    for size in 40 80 120 160; do
+      disk_options+="${size}G"$'\n'
+    done
+    disk=$(printf '%s' "$disk_options" | gum choose --selected="$DISK_DEFAULT" --header="Disk size for the lab VM? (gold + overlay, sparse)") && status=0 || status=$?
+    if ((status != 0)) || [[ -z $disk ]]; then
+      echo "Installation cancelled"
+      return 1
+    fi
+
+    username=$(gum input --placeholder="Username (Enter for lab)" --header="Guest username:") && status=0 || status=$?
+    ((status == 0)) || {
+      echo "Installation cancelled"
+      return 1
+    }
+    [[ -n $username ]] || username=$GUEST_USER_DEFAULT
+
+    password=$(gum input --placeholder="Password (Enter for lab)" --password --header="Guest password:") && status=0 || status=$?
+    ((status == 0)) || {
+      echo "Installation cancelled"
+      return 1
+    }
+    [[ -n $password ]] || password=$PASSWORD_DEFAULT
+  else
+    ram=${OMARCHY_LAB_RAM:-$RAM_DEFAULT}
+    cores=${OMARCHY_LAB_CORES:-$CORES_DEFAULT}
+    disk=${OMARCHY_LAB_DISK:-$DISK_DEFAULT}
+    username=${OMARCHY_LAB_USER:-$GUEST_USER_DEFAULT}
+    password=${OMARCHY_LAB_PASSWORD:-$PASSWORD_DEFAULT}
+  fi
+
+  if ! valid_ram "$ram" || ((10#${ram%G} > total_ram_gb)); then
+    ram=$RAM_DEFAULT
+  fi
+  if ! valid_cores "$cores" || ((10#$cores > total_cores)); then
+    cores=$CORES_DEFAULT
+  fi
+  if ! valid_disk "$disk"; then
+    disk=$DISK_DEFAULT
+  fi
+  if ! valid_username "$username"; then
+    echo "Invalid username: $username" >&2
+    return 1
+  fi
+  if ! valid_hostname "$hostname"; then
+    echo "Invalid hostname: $hostname" >&2
+    return 1
+  fi
+
+  INSTALL_RAM=$ram
+  INSTALL_CORES=$cores
+  INSTALL_DISK=$disk
+  INSTALL_USER=$username
+  INSTALL_PASSWORD=$password
+  INSTALL_HOSTNAME=$hostname
+  INSTALL_TIMEZONE=$timezone
+  INSTALL_KEYBOARD=$keyboard
+}
+
+check_space() {
+  local disk_gb=$1 available required
+  available=$(df -P -- "$IMAGES" 2>/dev/null | awk 'NR==2 {print int($4/1024/1024)}')
+  [[ -n $available ]] || available=$(df -P / | awk 'NR==2 {print int($4/1024/1024)}')
+  required=$((disk_gb + 8))
+  if ((available < required)); then
+    echo "Not enough disk space under $IMAGES (${available}G available, ${required}G needed)." >&2
+    return 1
+  fi
+}
+
+install_lab() {
+  local pool iso memory_mib
+  local -a vi_args
+  INSTALL_YES=0
+  if [[ ${1:-} == "--yes" ]]; then
+    INSTALL_YES=1
+  fi
+
+  trap "echo; echo 'Installation cancelled'" INT
+
+  if [[ -f $DESKTOP_FILE ]] && have_domain; then
+    echo "Omarchy Lab is already installed. Remove it first: omarchy lab vm remove"
+    return 1
+  fi
+
+  prompt_or_default || return 1
+  check_space "${INSTALL_DISK%G}" || return 1
+  close_viewers
+
+  gum style --border normal --padding "1 2" --margin "1" --align left --bold \
+    "Omarchy Lab" \
+    "" \
+    "RAM:      $INSTALL_RAM" \
+    "CPU:      $INSTALL_CORES cores" \
+    "Disk:     $INSTALL_DISK (sparse gold + overlay)" \
+    "User:     $INSTALL_USER" \
+    "Hostname: $INSTALL_HOSTNAME" \
+    "" \
+    "Unencrypted, autologin, SSH key, passwordless sudo." \
+    "The gold image is frozen after first boot."
+  echo
+  if ((INSTALL_YES == 0)) && is_tty; then
+    if ! gum confirm "Install the lab VM with this configuration?"; then
+      echo "Installation cancelled"
+      return 1
+    fi
+  fi
+
+  ensure_hypervisor
+  pool=$(ensure_pool)
+  pool=${pool##*$'\n'}
+  ensure_ssh_key
+  iso=$(ensure_iso)
+  iso=${iso##*$'\n'}
+  if [[ $iso != /* || ! -f $iso ]]; then
+    echo "Could not find the Omarchy ISO at: $iso" >&2
+    return 1
+  fi
+  run_virsh pool-refresh "$pool" >/dev/null
+
+  if have_domain; then
+    echo "Domain $NAME already exists." >&2
+    return 1
+  fi
+
+  install_cidata "$INSTALL_USER" "$INSTALL_PASSWORD" "$INSTALL_HOSTNAME" \
+    "$INSTALL_TIMEZONE" "$INSTALL_KEYBOARD" "$INSTALL_DISK"
+
+  run_virsh vol-delete --pool "$pool" "$BASE_VOL" >/dev/null 2>&1 || true
+  run_virsh vol-create-as "$pool" "$BASE_VOL" "$INSTALL_DISK" --format qcow2 >/dev/null
+  sudo chown libvirt-qemu:libvirt-qemu "$IMAGES/$BASE_VOL"
+
+  memory_mib=$((10#${INSTALL_RAM%G} * 1024))
+  echo "Creating $NAME..."
+  vi_args=()
+  while IFS= read -r -d '' arg; do
+    vi_args+=("$arg")
+  done < <(virt_install_args "$memory_mib" "$INSTALL_CORES" "$iso" "$IMAGES/$BASE_VOL" "$IMAGES/$CIDATA_VOL")
+  run_virt_install "${vi_args[@]}"
+
+  close_viewers
+  ensure_viewer
+
+  echo "Waiting for the unattended install to finish (often 5–15 minutes)."
+  echo "virt-viewer can watch the console; SSH comes up after the guest reboots into the installed system."
+  write_state "$INSTALL_USER" "$INSTALL_DISK"
+  rm -f "$KNOWN_HOSTS"
+  wait_ssh
+  configure_guest "$INSTALL_USER" "$INSTALL_PASSWORD" "$INSTALL_TIMEZONE"
+  freeze_gold "$pool" "$INSTALL_DISK"
+  write_desktop
+  write_ssh_config "$INSTALL_USER"
+  write_state "$INSTALL_USER" "$INSTALL_DISK"
+
+  run_virsh start "$NAME" >/dev/null
+  ensure_viewer
+  wait_ssh
+  wait_hypr || true
+
+  echo
+  echo "Omarchy Lab is ready at $(guest_ip)."
+  echo "Launch it from the app launcher, or:"
+  echo "  omarchy lab vm ssh"
+  echo "  omarchy lab vm push ~/Work/omarchy"
+  echo "  omarchy lab vm reset"
+  trap - INT
+}
+
+remove_lab() {
+  local pool yes=0
+  if [[ ${1:-} == "--yes" || ${OMARCHY_LAB_FORCE:-0} == 1 ]]; then
+    yes=1
+  fi
+  if ((yes == 0)); then
+    if is_tty; then
+      if ! gum confirm --default=false "Remove the Omarchy Lab VM and delete its disks?"; then
+        echo "Removal cancelled"
+        return 1
+      fi
+    else
+      echo "Refusing non-interactive remove without --yes" >&2
+      return 1
+    fi
+  fi
+
+  close_viewers
+  if domain_running; then
+    stop_guest
+  fi
+  if have_domain; then
+    run_virsh undefine "$NAME" --nvram --tpm >/dev/null 2>&1 ||
+      run_virsh undefine "$NAME" --nvram >/dev/null 2>&1 ||
+      run_virsh undefine "$NAME" >/dev/null 2>&1 || true
+  fi
+  if pool=$(find_pool); then
+    run_virsh vol-delete --pool "$pool" "$OVERLAY_VOL" >/dev/null 2>&1 || true
+    sudo chmod u+w "$IMAGES/$BASE_VOL" 2>/dev/null || true
+    run_virsh vol-delete --pool "$pool" "$BASE_VOL" >/dev/null 2>&1 || true
+    run_virsh vol-delete --pool "$pool" "$CIDATA_VOL" >/dev/null 2>&1 || true
+  fi
+  rm -f "$DESKTOP_FILE"
+  rm -rf "$STATE_DIR"
+  remove_ssh_artifacts
+  update-desktop-database "$(dirname "$DESKTOP_FILE")" 2>/dev/null || true
+  echo "Omarchy Lab removed."
+}
+
+viewer_cmd() {
+  if virsh --connect "$CONNECT" uri >/dev/null 2>&1; then
+    virt-viewer --connect "$CONNECT" --attach --reconnect "$NAME"
+  else
+    echo "This session does not have the libvirt group yet; using it for virt-viewer."
+    echo "Log out and back in so the group applies everywhere."
+    sg libvirt -c "virt-viewer --connect $(printf '%q' "$CONNECT") --attach --reconnect $(printf '%q' "$NAME")"
+  fi
+}
+
+viewer_running() {
+  systemctl --user is-active --quiet "$VIEWER_UNIT" 2>/dev/null
+}
+
+close_viewers() {
+  systemctl --user stop "$VIEWER_UNIT" 2>/dev/null || true
+  systemctl --user reset-failed "$VIEWER_UNIT" 2>/dev/null || true
+  if command -v hyprctl >/dev/null && [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    hyprctl clients -j 2>/dev/null |
+      jq -r --arg n "$NAME" '.[] | select(.class == "virt-viewer" and (.title | contains($n))) | .pid' |
+      while read -r pid; do
+        [[ $pid =~ ^[0-9]+$ ]] && kill "$pid" 2>/dev/null || true
+      done
+  fi
+}
+
+ensure_viewer() {
+  [[ -n ${WAYLAND_DISPLAY:-}${DISPLAY:-} ]] || return 0
+  viewer_running && return 0
+  systemctl --user reset-failed "$VIEWER_UNIT" 2>/dev/null || true
+  # Transient user service, not a job of the installer bash. Closing the
+  # floating "Done" window SIGHUPs that process group; this unit is outside
+  # it. Do not wrap uwsm-app here: it hands off and exits, so systemd-run
+  # would collect the unit and the next ensure_viewer would open another
+  # viewer.
+  if systemd-run --user --quiet --collect --unit="$VIEWER_UNIT" \
+    --working-directory="$HOME" \
+    --property=StandardOutput=null \
+    --property=StandardError=null \
+    -- virt-viewer --connect "$CONNECT" --attach --reconnect "$NAME"; then
+    return 0
+  fi
+  setsid --fork virt-viewer --connect "$CONNECT" --attach --reconnect "$NAME" \
+    </dev/null >/dev/null 2>&1 || true
+}
+
+attach_viewer() {
+  viewer_cmd
+}
+
+launch_lab() {
+  if ! have_domain; then
+    echo "Omarchy Lab is not installed. Run: omarchy lab vm install" >&2
+    return 1
+  fi
+  if ! domain_running; then
+    run_virsh start "$NAME"
+  fi
+  attach_viewer
+}
+
+stop_lab() {
+  if ! have_domain; then
+    echo "Omarchy Lab is not installed." >&2
+    return 1
+  fi
+  stop_guest
+  echo "Omarchy Lab stopped."
+}
+
+status_lab() {
+  local ip state
+  if ! have_domain; then
+    echo "Omarchy Lab is not installed."
+    echo "To set up: omarchy lab vm install"
+    return 1
+  fi
+  if domain_running; then
+    state=running
+    ip=$(guest_ip)
+  else
+    state=stopped
+    ip=""
+  fi
+  gum style --border normal --padding "1 2" --margin "1" --align left \
+    "Omarchy Lab: $state" \
+    "" \
+    "Domain:  $NAME" \
+    "IP:      ${ip:-n/a}" \
+    "Gold:    $IMAGES/$BASE_VOL" \
+    "Overlay: $IMAGES/$OVERLAY_VOL" \
+    "" \
+    "omarchy lab vm launch" \
+    "omarchy lab vm ssh" \
+    "omarchy lab vm reset"
+}
+
+reset_lab() {
+  local pool
+  if ! have_domain; then
+    echo "Omarchy Lab is not installed." >&2
+    return 1
+  fi
+  pool=$(find_pool) || {
+    echo "No libvirt pool for $IMAGES" >&2
+    return 1
+  }
+  if domain_running; then
+    run_virsh destroy "$NAME" 2>/dev/null || true
+    wait_off
+  fi
+  run_virsh vol-delete --pool "$pool" "$OVERLAY_VOL"
+  local size=$DISK_DEFAULT
+  if [[ -f $CONFIG_FILE ]]; then
+    size=$(sed -n 's/^DISK=//p' "$CONFIG_FILE" | head -1)
+  fi
+  [[ -n $size ]] || size=$DISK_DEFAULT
+  run_virsh vol-create-as "$pool" "$OVERLAY_VOL" "$size" --format qcow2 \
+    --backing-vol "$BASE_VOL" --backing-vol-format qcow2 >/dev/null
+  sudo chown libvirt-qemu:libvirt-qemu "$IMAGES/$OVERLAY_VOL"
+  rm -f "$KNOWN_HOSTS"
+  run_virsh start "$NAME"
+  wait_ssh
+  wait_hypr || true
+  echo "reset $(guest_ip)"
+}
+
+ssh_lab() {
+  wait_ssh
+  lab_ssh "$@"
+}
+
+session_lab() {
+  wait_ssh
+  wait_hypr
+  lab_ssh "bash -lc $(printf '%q' "$session_env $*" )"
+}
+
+push_lab() {
+  local src=${1:-} dst ip user
+  [[ -n $src ]] || {
+    echo "usage: omarchy lab vm push SRC [DST]" >&2
+    return 1
+  }
+  wait_ssh
+  ip=$(guest_ip)
+  user=$(guest_user)
+  dst=${2:-/home/${user}/omarchy}
+  src=${src%/}/
+  rsync -az --delete --exclude .git \
+    -e "ssh -i ${KEY} -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no -o LogLevel=QUIET -o BatchMode=yes" \
+    "$src" \
+    "${user}@${ip}:${dst}/"
+}
+
+screenshot_lab() {
+  local ppm png
+  mkdir -p "$SCREEN_DIR"
+  ppm="${SCREEN_DIR}/$(date +%Y%m%d-%H%M%S).ppm"
+  run_virsh screenshot "$NAME" "$ppm"
+  if command -v magick >/dev/null; then
+    png="${ppm%.ppm}.png"
+    magick "$ppm" "$png"
+    rm -f "$ppm"
+    printf '%s\n' "$png"
+  else
+    printf '%s\n' "$ppm"
+  fi
+}
+
+send_key_lab() {
+  run_virsh send-key "$NAME" "$@"
+}
+
+ip_lab() {
+  local ip
+  ip=$(guest_ip)
+  [[ -n $ip ]] || return 1
+  printf '%s\n' "$ip"
+}
+
+show_usage() {
+  cat <<'EOF'
+usage: omarchy lab vm <command>
+
+  install         create the gold image, overlay, SSH, and launcher
+  remove [--yes]  delete the VM and its disks
+  launch          start the VM and attach virt-viewer
+  stop            shut the guest down
+  status          print running state and lease
+  reset           throw away the overlay and boot a fresh gold clone
+  ip              print the NAT lease
+  ssh [cmd]       SSH as the lab user
+  session cmd     SSH with the Hyprland session environment
+  push SRC [DST]  rsync a host checkout into the guest (default dest: ~/omarchy)
+  screenshot      capture the virtio display
+  send-key ...    virsh send-key (e.g. KEY_LEFTMETA KEY_ENTER)
+
+The guest is unencrypted, autologins, and has passwordless sudo so an agent
+on the host can reboot and recover it. Reset restores gold. The host desktop
+stays on the packaged Omarchy; use omarchy dev link inside the guest.
+EOF
+}
+
+main() {
+  local cmd=${1:-help}
+  shift || true
+
+  case "$cmd" in
+  install)
+    install_lab "$@"
+    ;;
+  remove)
+    remove_lab "$@"
+    ;;
+  launch | start | viewer)
+    launch_lab
+    ;;
+  stop)
+    stop_lab
+    ;;
+  status)
+    status_lab
+    ;;
+  reset)
+    reset_lab
+    ;;
+  ssh)
+    ssh_lab "$@"
+    ;;
+  session)
+    session_lab "$@"
+    ;;
+  push)
+    push_lab "$@"
+    ;;
+  screenshot)
+    screenshot_lab
+    ;;
+  send-key)
+    send_key_lab "$@"
+    ;;
+  ip)
+    ip_lab
+    ;;
+  help | --help | -h)
+    show_usage
+    ;;
+  *)
+    echo "Unknown command: $cmd" >&2
+    show_usage >&2
+    return 1
+    ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]:-} == "$0" ]]; then
+  main "$@"
+fi

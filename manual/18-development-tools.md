@@ -26,6 +26,10 @@ Remember to checkout the Lazydocker command to manage your containers in a cool 
 
 You can setup the common databases for local development in Docker using _Install > Development > Docker DB_ in the Omarchy menu.
 
+## Lab VM
+
+A second, disposable Omarchy as a KVM guest lives under _Install > Lab_. Use it for `omarchy dev link`, security PoCs, and anything else you would rather not run against the desktop you are sitting in. See [Lab VM](52-lab-vm.md).
+
 ## GitHub CLI
 
 [The GitHub CLI](https://cli.github.com/) let's you authenticate with your GitHub account and clone private repositories using it. It's wired up as one of the lazy-loading mise stubs, so the first time you run `gh`, it installs itself. To authenticate, run `gh auth login`. Then you can checkout private repositories using `gh repo clone org/repo`.
