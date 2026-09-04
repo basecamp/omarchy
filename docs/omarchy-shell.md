@@ -168,6 +168,10 @@ Rules:
 6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
 8. `version: 1` is required.
+9. `omarchy.weather` and `omarchy.clock` accept an optional `centerOnBar`
+   boolean. It defaults to `true`: the popup stays centered on screen
+   instead of following its bar icon. Set it to `false` to anchor the
+   popup under the bar icon:
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user
