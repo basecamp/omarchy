@@ -162,9 +162,14 @@ Item {
     liveRefs[snapshot.originalId] = notification
     // Guard the delete: a newer notification may have reused this originalId
     // (freedesktop replaces_id) and taken over the map slot.
-    notification.closed.connect(function() {
+    // The liveRefs entry goes first: closePopupOnRequest() runs removePopup(),
+    // which would otherwise find this very object and call dismiss() on a
+    // notification the server has already closed.
+    notification.closed.connect(function(reason) {
       if (service.liveRefs[snapshot.originalId] === notification)
         delete service.liveRefs[snapshot.originalId]
+      if (reason === NotificationCloseReason.CloseRequested)
+        service.closePopupOnRequest(snapshot)
     })
 
     // DND bypass rules: chat apps abuse urgency=critical to force
@@ -307,6 +312,29 @@ Item {
       if (isRestoredRow(row)) continue
       if (NotificationLogic.popupFileName(row) !== keepFileName) deletePopupFileFor(row)
       popupModel.remove(i)
+    }
+  }
+
+  // A sender closing its own notification through the spec's
+  // CloseNotification method means it wants the toast gone — "forcefully
+  // closed and removed from the user's view". Progress-style senders (a
+  // dictation chrono, a volume OSD, a long copy) depend on it: they post a
+  // long-lived notification, update it, and close it when the operation ends.
+  // Without this the toast sits there until its own timeout, which for a
+  // deliberately persistent one (expire_timeout 0) means forever.
+  //
+  // Only CloseRequested belongs here. Expired and Dismissed are this shell's
+  // own paths — they arrive from inside removePopup() and would re-enter it.
+  //
+  // The timestamp is what tells this popup apart from a restored row carrying
+  // the same id from a previous server generation (see isRestoredRow).
+  function closePopupOnRequest(snapshot) {
+    for (var i = 0; i < popupModel.count; i++) {
+      var row = popupModel.get(i)
+      if (!row || row.originalId !== snapshot.originalId) continue
+      if (row.timestamp !== snapshot.timestamp) continue
+      removePopup(i, "close")
+      return
     }
   }
 
