@@ -60,7 +60,7 @@ Item {
       fetchedAt = String(parsed.fetchedAt || "")
       partial = parsed.partial === true
       stale = parsed.stale === true
-      errorKind = ""
+      errorKind = String(parsed.errorKind || "")
       lastError = String(parsed.error || "")
     } catch (error) {
       errorKind = "parse"

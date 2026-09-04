@@ -332,6 +332,7 @@ def fetch_dashboard(runner: Runner = run_command) -> dict[str, Any]:
         pull_requests.append(item)
 
     partial = bool(graph_errors)
+    error_kind = "graphql" if graph_errors else ""
     error = clipped((graph_errors[0] or {}).get("message"), 180) if graph_errors else ""
     try:
         notifications_raw = runner(["gh", "api", "notifications?all=false&participating=false&per_page=30"])
@@ -339,6 +340,7 @@ def fetch_dashboard(runner: Runner = run_command) -> dict[str, Any]:
     except GhError as notification_error:
         notifications = []
         partial = True
+        error_kind = notification_error.kind
         error = clean_error(str(notification_error))
 
     return {
@@ -347,6 +349,7 @@ def fetch_dashboard(runner: Runner = run_command) -> dict[str, Any]:
         "fetchedAt": datetime.now(timezone.utc).isoformat(),
         "partial": partial,
         "stale": False,
+        "errorKind": error_kind,
         "error": error,
         "notifications": notifications,
         "issues": issues[:ITEM_LIMIT],

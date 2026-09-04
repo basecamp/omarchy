@@ -164,6 +164,7 @@ def partial_runner(command):
 partial = module.fetch_dashboard(partial_runner)
 assert partial["ok"] is True
 assert partial["partial"] is True
+assert partial["errorKind"] == "permission"
 assert partial["notifications"] == []
 assert partial["issues"], "a notification permission failure must preserve other data"
 
@@ -213,6 +214,8 @@ grep -qF 'readonly property bool compactMode: window.width < 980' "$ROOT/shell/p
   fail "GitHub preserves its navigation and list on compact windows"
 grep -qF '"GH_PROMPT_DISABLED": "1"' "$ROOT/shell/plugins/panels/github/github_client.py" ||
   fail "GitHub helper never opens an authentication prompt behind the panel"
+grep -qF 'gh auth refresh -h github.com -s notifications' "$ROOT/shell/plugins/panels/github/Panel.qml" ||
+  fail "GitHub explains how to recover a missing notifications scope"
 grep -qF 'MAX_OUTPUT_BYTES = 4 * 1024 * 1024' "$ROOT/shell/plugins/panels/github/github_client.py" ||
   fail "GitHub helper bounds command output"
 grep -qF 'o.bind("SUPER + ALT + I", "GitHub", "omarchy-shell shell toggle omarchy.github")' "$ROOT/default/hypr/bindings/utilities.lua" ||

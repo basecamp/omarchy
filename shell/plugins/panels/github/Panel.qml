@@ -174,7 +174,7 @@ Item {
     if (github && github.refreshing) return "Fresh activity will appear here as it arrives."
     if (github && github.errorKind === "missing-gh") return "Install GitHub CLI, then refresh this panel."
     if (github && github.errorKind === "auth") return "Run gh auth login in a terminal, then press R."
-    if (github && github.errorKind === "permission") return "Refresh your gh read scopes, then press R."
+    if (github && github.errorKind === "permission") return "Run gh auth refresh -h github.com -s notifications, then press R."
     if (sectionIndex === 3) return "Discussions are collected from your most recently active repositories."
     if (sectionIndex === 4) return "The latest default-branch rollup appears for each active repository."
     return "There is no matching work in this view."
