@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - quattro
+  push:
+    branches:
+      - quattro
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: ${{ matrix.suite }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: archlinux:base-devel
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - cli
+          - shell
+    steps:
+      - name: Check out Omarchy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: omarchy
+          persist-credentials: false
+
+      - name: Check out package definitions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: omacom/omarchy-pkgs
+          path: omarchy-pkgs
+          persist-credentials: false
+
+      - name: Check out ISO tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: omacom/omarchy-iso
+          path: omarchy-iso
+          persist-credentials: false
+
+      - name: Install test dependencies
+        run: |
+          pacman -Syu --noconfirm --needed \
+            git \
+            glib2 \
+            imagemagick \
+            jq \
+            libxkbcommon \
+            lua \
+            nodejs \
+            python \
+            ripgrep \
+            sudo
+
+      - name: Configure unprivileged test user
+        run: |
+          useradd --create-home --shell /bin/bash ci
+          printf 'ci ALL=(ALL:ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/ci
+          chmod 0440 /etc/sudoers.d/ci
+          chown -R ci:ci "$GITHUB_WORKSPACE"
+
+      - name: Report tested revisions
+        run: |
+          sudo --user=ci -- git -C "$GITHUB_WORKSPACE/omarchy" rev-parse HEAD
+          sudo --user=ci -- git -C "$GITHUB_WORKSPACE/omarchy-pkgs" rev-parse HEAD
+          sudo --user=ci -- git -C "$GITHUB_WORKSPACE/omarchy-iso" rev-parse HEAD
+
+      - name: Run ${{ matrix.suite }} tests
+        working-directory: omarchy
+        run: |
+          sudo --user=ci -- env \
+            HOME="/home/ci" \
+            LANG="C.UTF-8" \
+            LC_ALL="C.UTF-8" \
+            OMARCHY_PATH="$GITHUB_WORKSPACE/omarchy" \
+            OMARCHY_PKGS_PATH="$GITHUB_WORKSPACE/omarchy-pkgs" \
+            OMARCHY_ISO_PATH="$GITHUB_WORKSPACE/omarchy-iso" \
+            PATH="$GITHUB_WORKSPACE/omarchy/bin:$PATH" \
+            TERM="xterm-256color" \
+            "./test/${{ matrix.suite }}"
