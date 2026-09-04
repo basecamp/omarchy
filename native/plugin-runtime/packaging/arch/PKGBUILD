@@ -35,5 +35,8 @@ build() {
 }
 
 package() {
-  DESTDIR="$pkgdir" cmake --install build
+  # Provider profiles pin the exact installed executables. Strip during the
+  # CMake install so its later profile-install scripts hash the final bytes;
+  # makepkg's normal tidy pass can then only repeat the idempotent strip.
+  DESTDIR="$pkgdir" cmake --install build --strip
 }
