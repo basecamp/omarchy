@@ -349,9 +349,17 @@ var enterpriseConnectScript =
 // Dedupe is by UUID, not con-name (not unique -- a name match could delete an
 // unrelated profile), in two fixed nmcli calls, never one per connection:
 // list UUID/TYPE, then one batched -g over the wifi UUIDs (--escape no so a
-// ":"/"\\" SSID compares raw). It must stay wifi-only on exactly three fields
-// -- -g prints one line per field (blank when unset) plus a blank line
-// between connections, so a missing field would slip the group alignment.
+// ":"/"\\" SSID compares raw). A saved profile is only replaceable if it is
+// indistinguishable from the one about to be created: same SSID, hidden,
+// key-mgmt (comparing against "${2-}" covers both the PSK script's "$2" and
+// the open script's unset $2, since an open profile also reports empty
+// key-mgmt), no BSSID/MAC/interface pin, and ipv4/ipv6 left at the defaults
+// our own `connection add` leaves behind -- method "auto" on both stacks, no
+// manual addresses/dns/routes, confirmed by creating a throwaway profile with
+// this script's exact `connection add` invocation and reading it back. It
+// must stay wifi-only on exactly fifteen fields -- -g prints one line per
+// field (blank when unset) plus a blank line between connections, so a
+// missing or extra field would slip the group alignment.
 var hiddenConnectDedupe =
   " trap 'nmcli connection delete uuid \"$u\" >/dev/null 2>&1' EXIT; trap 'exit 143' TERM INT;" +
   " old=\"\"; wifi=\"\";" +
@@ -359,11 +367,19 @@ var hiddenConnectDedupe =
   " if [[ -n $wifi ]]; then" +
   "   while IFS= read -r c; do" +
   "     [[ -n $c ]] || continue;" +
-  "     IFS= read -r ssid; IFS= read -r hidden;" +
+  "     IFS= read -r ssid; IFS= read -r hidden; IFS= read -r keymgmt;" +
+  "     IFS= read -r bssid; IFS= read -r mac; IFS= read -r iface;" +
+  "     IFS= read -r ip4m; IFS= read -r ip6m;" +
+  "     IFS= read -r ip4addr; IFS= read -r ip4dns; IFS= read -r ip4routes;" +
+  "     IFS= read -r ip6addr; IFS= read -r ip6dns; IFS= read -r ip6routes;" +
   "     [[ $ssid == \"$1\" ]] || continue;" +
   "     [[ $hidden == \"yes\" ]] || continue;" +
+  "     [[ $keymgmt == \"${2-}\" ]] || continue;" +
+  "     [[ -z $bssid && -z $mac && -z $iface ]] || continue;" +
+  "     [[ $ip4m == \"auto\" && $ip6m == \"auto\" ]] || continue;" +
+  "     [[ -z $ip4addr && -z $ip4dns && -z $ip4routes && -z $ip6addr && -z $ip6dns && -z $ip6routes ]] || continue;" +
   "     old=\"$old uuid $c\";" +
-  "   done <<< \"$(LC_ALL=C nmcli --escape no -g connection.uuid,802-11-wireless.ssid,802-11-wireless.hidden connection show $wifi 2>/dev/null)\";" +
+  "   done <<< \"$(LC_ALL=C nmcli --escape no -g connection.uuid,802-11-wireless.ssid,802-11-wireless.hidden,802-11-wireless-security.key-mgmt,802-11-wireless.bssid,802-11-wireless.mac-address,connection.interface-name,ipv4.method,ipv6.method,ipv4.addresses,ipv4.dns,ipv4.routes,ipv6.addresses,ipv6.dns,ipv6.routes connection show $wifi 2>/dev/null)\";" +
   " fi;"
 
 // A lone EXIT trap deletes the unproven profile on any failure or TERM/INT

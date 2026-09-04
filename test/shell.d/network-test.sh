@@ -328,7 +328,7 @@ assert(!/connection delete id "\$1"/.test(network.hiddenPskConnectScript), 'hidd
 assert(!network.hiddenPskConnectScript.includes('connection delete id '), 'hidden PSK connect script never deletes any existing profile by name (id), regardless of the argument')
 assert(/nmcli -t -f UUID,TYPE connection show/.test(network.hiddenPskConnectScript), 'hidden PSK connect script lists all connections (UUID + type) in a single nmcli call')
 assert(!/for c in \$\(nmcli/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never runs nmcli once per connection (N+1)')
-assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wireless\.hidden connection show \$wifi/.test(network.hiddenPskConnectScript), 'hidden PSK connect script fetches ssid/hidden for all wifi profiles in one batched, unescaped query so a colon/backslash SSID still compares equal to the raw $1')
+assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wireless\.hidden,802-11-wireless-security\.key-mgmt,802-11-wireless\.bssid,802-11-wireless\.mac-address,connection\.interface-name,ipv4\.method,ipv6\.method,ipv4\.addresses,ipv4\.dns,ipv4\.routes,ipv6\.addresses,ipv6\.dns,ipv6\.routes connection show \$wifi/.test(network.hiddenPskConnectScript), 'hidden PSK connect script fetches ssid/hidden/identity/IP-customization fields for all wifi profiles in one batched, unescaped query so a colon/backslash SSID still compares equal to the raw $1')
 assert(/\[\[ \$t == "802-11-wireless" \]\] && wifi=/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers 802-11-wireless connections for cleanup')
 assert(/\[\[ \$ssid == "\$1" \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script matches prior profiles by this SSID, not by name')
 assert(/\[\[ \$hidden == "yes" \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers hidden profiles for cleanup, never a broadcast network of the same SSID')
@@ -398,5 +398,5 @@ assert(
 )
 assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*nmcli connection delete \$old/.test(network.hiddenOpenConnectScript), 'hidden open connect script deletes old profiles only if the autoconnect arm succeeded')
 
-assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wireless\.hidden connection show \$wifi/.test(network.hiddenOpenConnectScript), 'hidden open connect script shares the same batched dedupe query as the PSK script, so it dedupes prior hidden profiles too')
+assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wireless\.hidden,802-11-wireless-security\.key-mgmt,802-11-wireless\.bssid,802-11-wireless\.mac-address,connection\.interface-name,ipv4\.method,ipv6\.method,ipv4\.addresses,ipv4\.dns,ipv4\.routes,ipv6\.addresses,ipv6\.dns,ipv6\.routes connection show \$wifi/.test(network.hiddenOpenConnectScript), 'hidden open connect script shares the same batched dedupe query as the PSK script, so it dedupes prior hidden profiles too')
 JS

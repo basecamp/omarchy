@@ -59,13 +59,33 @@ esac
 EOF
 chmod +x "$tmp/bin/nmcli"
 
+# Builds one dedupe record: 15 `nmcli -g` fields in the exact order the
+# dedupe reads them, plus the blank line separating it from the next record.
+# Keeping this as a function (rather than inline heredocs per scenario) is
+# what makes it tractable to add a distinctly-customized record per test
+# without each one silently drifting out of field-count alignment.
+wifi_record() {
+  local uuid=$1 ssid=$2 hidden=$3 keymgmt=$4 bssid=$5 mac=$6 iface=$7
+  local ip4m=$8 ip6m=$9 ip4addr=${10} ip4dns=${11} ip4routes=${12}
+  local ip6addr=${13} ip6dns=${14} ip6routes=${15}
+  printf '%s\n' "$uuid" "$ssid" "$hidden" "$keymgmt" "$bssid" "$mac" "$iface" \
+    "$ip4m" "$ip6m" "$ip4addr" "$ip4dns" "$ip4routes" "$ip6addr" "$ip6dns" "$ip6routes" ""
+}
+
 # Three saved connections: a prior hidden profile for the SSID under test (the
 # one dedupe should remove), a broadcast profile with the same SSID (dedupe
 # must leave it alone -- it is not hidden), and an unrelated ethernet profile
 # (dedupe must not even consider non-wifi types). The SSID carries a space to
 # prove the scripts stay space-safe end to end.
 NM_CONNECTIONS=$'old-hidden:802-11-wireless\nbroadcast:802-11-wireless\neth:802-3-ethernet\n'
-NM_WIFI_FIELDS=$'old-hidden\nmy ssid\nyes\n\nbroadcast\nmy ssid\nno\n\n'
+NM_WIFI_FIELDS_PSK=$(
+  wifi_record old-hidden "my ssid" yes wpa-psk "" "" "" auto auto "" "" "" "" "" ""
+  wifi_record broadcast "my ssid" no "" "" "" "" auto auto "" "" "" "" "" ""
+)
+NM_WIFI_FIELDS_OPEN=$(
+  wifi_record old-hidden "my ssid" yes "" "" "" "" auto auto "" "" "" "" "" ""
+  wifi_record broadcast "my ssid" no "" "" "" "" auto auto "" "" "" "" "" ""
+)
 
 assert_contains() {
   local file=$1 needle=$2 description=$3
@@ -113,7 +133,7 @@ edit=$tmp/edit_psk_success
 rc=0
 printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
   NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
-  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_PSK" \
   bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
 (( rc == 0 )) || fail "hidden PSK connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
 pass "hidden PSK connect succeeds when activation and autoconnect arm both succeed"
@@ -135,8 +155,8 @@ assert_contains "$edit" "set wifi-sec.psk secret pass" "hidden PSK success sets 
 assert_not_contains "$log" "secret pass" "hidden PSK success never puts the passphrase in nmcli argv"
 
 delete_line=$(grep -m1 -F "connection delete" "$log")
-[[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden PSK success deletes the prior hidden profile for this ssid" "$delete_line"
-pass "hidden PSK success deletes the prior hidden profile for this ssid"
+[[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden PSK success deletes an uncustomized prior hidden profile for this ssid" "$delete_line"
+pass "hidden PSK success deletes an uncustomized prior hidden profile for this ssid"
 [[ $delete_line != *"broadcast"* ]] || fail "hidden PSK success never deletes a same-ssid broadcast profile" "$delete_line"
 pass "hidden PSK success never deletes a same-ssid broadcast profile"
 [[ $delete_line != *"eth"* ]] || fail "hidden PSK success never deletes an unrelated ethernet profile" "$delete_line"
@@ -156,7 +176,7 @@ edit=$tmp/edit_psk_up_fail
 rc=0
 printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
   NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
-  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_PSK" \
   NM_UP_RC=1 \
   bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
 (( rc != 0 )) || fail "hidden PSK connect fails when activation fails"
@@ -175,7 +195,7 @@ edit=$tmp/edit_psk_modify_fail
 rc=0
 printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
   NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
-  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_PSK" \
   NM_MODIFY_RC=1 \
   bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
 # Success is pinned to activation, not to the autoconnect arm -- the
@@ -197,7 +217,7 @@ printf 'secret pass\n' >"$input"
 
 PATH="$tmp/bin:$PATH" \
   NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
-  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_PSK" \
   NM_UP_SLEEP=3 \
   bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk <"$input" &
 pid=$!
@@ -219,7 +239,70 @@ pass "hidden PSK connect reports failure when killed mid-activation"
 assert_contains "$log" "connection delete uuid new-uuid-0000" "hidden PSK termination lets the EXIT trap delete the unproven profile"
 assert_not_contains "$log" "delete uuid old-hidden" "hidden PSK termination leaves the old profile in place"
 
-# --- Scenario 5: Open network success -------------------------------------
+# --- Scenario 5: dedupe preserves customized same-SSID hidden profiles ----
+#
+# Each of these profiles matches on SSID/hidden/key-mgmt alone -- the same
+# fields the pre-fix dedupe checked -- but differs on one customization the
+# fixed dedupe must also check. old-hidden is included alongside them purely
+# as the still-must-be-deleted control from scenario 1/3.
+
+log=$tmp/log_psk_customized
+edit=$tmp/edit_psk_customized
+: >"$log"
+
+NM_CONNECTIONS_CUSTOM=$'old-hidden:802-11-wireless\ncustom-ip4method:802-11-wireless\ncustom-ip4dns:802-11-wireless\ncustom-iface:802-11-wireless\neth:802-3-ethernet\n'
+NM_WIFI_FIELDS_CUSTOM=$(
+  wifi_record old-hidden "my ssid" yes wpa-psk "" "" "" auto auto "" "" "" "" "" ""
+  wifi_record custom-ip4method "my ssid" yes wpa-psk "" "" "" manual auto "" "" "" "" "" ""
+  wifi_record custom-ip4dns "my ssid" yes wpa-psk "" "" "" auto auto "" "8.8.8.8" "" "" "" ""
+  wifi_record custom-iface "my ssid" yes wpa-psk "" "" wlan0 auto auto "" "" "" "" "" ""
+)
+
+rc=0
+printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
+  NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
+  NM_CONNECTIONS="$NM_CONNECTIONS_CUSTOM" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_CUSTOM" \
+  bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
+(( rc == 0 )) || fail "hidden PSK connect succeeds alongside customized same-ssid profiles" "exit code: $rc"
+pass "hidden PSK connect succeeds alongside customized same-ssid profiles"
+
+delete_line=$(grep -m1 -F "connection delete" "$log")
+[[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden PSK dedupe still deletes the uncustomized duplicate" "$delete_line"
+pass "hidden PSK dedupe still deletes the uncustomized duplicate"
+[[ $delete_line != *"custom-ip4method"* ]] || fail "hidden PSK dedupe spares a same-ssid profile with a manual ipv4.method" "$delete_line"
+pass "hidden PSK dedupe spares a same-ssid profile with a manual ipv4.method"
+[[ $delete_line != *"custom-ip4dns"* ]] || fail "hidden PSK dedupe spares a same-ssid profile with a custom ipv4.dns" "$delete_line"
+pass "hidden PSK dedupe spares a same-ssid profile with a custom ipv4.dns"
+[[ $delete_line != *"custom-iface"* ]] || fail "hidden PSK dedupe spares a same-ssid profile bound to an interface" "$delete_line"
+pass "hidden PSK dedupe spares a same-ssid profile bound to an interface"
+
+# --- Scenario 6: dedupe preserves a same-SSID profile with different key-mgmt
+
+log=$tmp/log_psk_keymgmt
+edit=$tmp/edit_psk_keymgmt
+: >"$log"
+
+NM_CONNECTIONS_KEYMGMT=$'old-hidden:802-11-wireless\ncustom-keymgmt:802-11-wireless\neth:802-3-ethernet\n'
+NM_WIFI_FIELDS_KEYMGMT=$(
+  wifi_record old-hidden "my ssid" yes wpa-psk "" "" "" auto auto "" "" "" "" "" ""
+  wifi_record custom-keymgmt "my ssid" yes sae "" "" "" auto auto "" "" "" "" "" ""
+)
+
+rc=0
+printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
+  NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
+  NM_CONNECTIONS="$NM_CONNECTIONS_KEYMGMT" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_KEYMGMT" \
+  bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk || rc=$?
+(( rc == 0 )) || fail "hidden PSK connect succeeds alongside a same-ssid sae profile" "exit code: $rc"
+pass "hidden PSK connect succeeds alongside a same-ssid sae profile"
+
+delete_line=$(grep -m1 -F "connection delete" "$log")
+[[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden PSK dedupe still deletes the same-key-mgmt duplicate" "$delete_line"
+pass "hidden PSK dedupe still deletes the same-key-mgmt duplicate"
+[[ $delete_line != *"custom-keymgmt"* ]] || fail "hidden PSK dedupe spares a same-ssid profile using a different key-mgmt (sae vs wpa-psk)" "$delete_line"
+pass "hidden PSK dedupe spares a same-ssid profile using a different key-mgmt (sae vs wpa-psk)"
+
+# --- Scenario 7: Open network success -------------------------------------
 
 log=$tmp/log_open_success
 : >"$log"
@@ -227,7 +310,7 @@ log=$tmp/log_open_success
 rc=0
 printf '\n' | PATH="$tmp/bin:$PATH" \
   NM_CALL_LOG="$log" NM_EDIT_INPUT="$tmp/edit_open_success" \
-  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_OPEN" \
   bash -c "$open_script" nmcli-hidden-open "my ssid" || rc=$?
 (( rc == 0 )) || fail "hidden open connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
 pass "hidden open connect succeeds when activation and autoconnect arm both succeed"
@@ -252,7 +335,7 @@ pass "hidden open success never deletes an unrelated ethernet profile"
 assert_order "$log" "connection up" "connection modify" "hidden open success brings the profile up before arming autoconnect"
 assert_order "$log" "connection modify" "connection delete" "hidden open success arms autoconnect before deleting the old profile"
 
-# --- Scenario 6: Open network activation failure --------------------------
+# --- Scenario 8: Open network activation failure --------------------------
 
 log=$tmp/log_open_up_fail
 : >"$log"
@@ -260,7 +343,7 @@ log=$tmp/log_open_up_fail
 rc=0
 printf '\n' | PATH="$tmp/bin:$PATH" \
   NM_CALL_LOG="$log" NM_EDIT_INPUT="$tmp/edit_open_up_fail" \
-  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_OPEN" \
   NM_UP_RC=1 \
   bash -c "$open_script" nmcli-hidden-open "my ssid" || rc=$?
 (( rc != 0 )) || fail "hidden open connect fails when activation fails"
