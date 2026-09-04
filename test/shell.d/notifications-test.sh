@@ -144,6 +144,14 @@ assert(
   !/<br\/>/.test(cardQml),
   'the notification card does not rewrite newlines itself, which would leave tag syntax unchecked'
 )
+assert(
+  /readonly property real countdownReservedHeight: showCountdown \? Style\.space\(12\) : 0/.test(cardQml),
+  'timed notification cards reserve room for a countdown without padding persistent cards'
+)
+assert(
+  /id: countdownTrack[\s\S]{0,700}?visible: root\.showCountdown[\s\S]{0,700}?width: parent\.width \* root\.remainingLifetime/.test(cardQml),
+  'notification cards show a countdown whose fill tracks the remaining lifetime'
+)
 
 assertEqual(
   notifications.sanitizeBody('trailing <img src="http://host/z.png"', 'Slack', ''),
@@ -682,6 +690,10 @@ assert(
 assert(
   /onSummaryChanged: cardSlot\.remainingLifetime = 1\.0/.test(serviceQml),
   'notifications service restarts the countdown when a toast is updated under it'
+)
+assert(
+  /remainingLifetime: cardSlot\.remainingLifetime\s*\n\s*showCountdown: cardSlot\.lifetime > 0/.test(serviceQml),
+  'notifications service exposes timed popup progress to the notification card'
 )
 assert(
   /awk 1 \\"\$1\\"\/\*\.json 2>\/dev\/null \|\| true", "--", historyDir/.test(serviceQml),

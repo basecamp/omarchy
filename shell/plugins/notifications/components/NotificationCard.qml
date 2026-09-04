@@ -26,6 +26,8 @@ BorderSurface {
   property int urgency: 1
   property double timestamp: 0
   property int cornerRadius: 0
+  property real remainingLifetime: 1.0
+  property bool showCountdown: false
 
   // System monospace font injected by the container.
   property string fontFamily: ""
@@ -50,6 +52,7 @@ BorderSurface {
   readonly property color bodyColor: Qt.darker(Color.notifications.text, 1.15)
   readonly property color accentColor: urgency === 2 ? Color.urgent : (urgency === 0 ? dimColor : Color.notifications.countdown)
   readonly property var cardBorderSpec: Border.surfaceSpec("notifications", "border", Color.notifications.border, Math.max(1, Style.space(2)))
+  readonly property real countdownReservedHeight: showCountdown ? Style.space(12) : 0
 
   function sanitizeBody(s) {
     return NotificationLogic.sanitizeBody(s, app, appIcon)
@@ -66,7 +69,7 @@ BorderSurface {
   implicitWidth: Style.space(380)
   // Add vertical border insets so mainColumn (inset by border on top/left/right)
   // doesn't push content under the bottom edge.
-  implicitHeight: mainColumn.implicitHeight + borderTop + borderBottom
+  implicitHeight: mainColumn.implicitHeight + borderTop + borderBottom + countdownReservedHeight
   radius: cornerRadius
   color: Color.notifications.background
   borderSpec: cardBorderSpec
@@ -192,6 +195,29 @@ BorderSurface {
           maximumLineCount: 3
         }
       }
+    }
+  }
+
+  Rectangle {
+    id: countdownTrack
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    anchors.leftMargin: root.borderLeft + Style.space(8)
+    anchors.rightMargin: root.borderRight + Style.space(8)
+    anchors.bottomMargin: root.borderBottom + Style.space(4)
+    height: Style.space(4)
+    visible: root.showCountdown
+    radius: height / 2
+    color: Util.alpha(Color.notifications.countdown, 0.25)
+
+    Rectangle {
+      anchors.left: parent.left
+      anchors.top: parent.top
+      anchors.bottom: parent.bottom
+      width: parent.width * root.remainingLifetime
+      radius: height / 2
+      color: Color.notifications.countdown
     }
   }
 
