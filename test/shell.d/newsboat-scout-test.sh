@@ -144,6 +144,7 @@ grep -Fq 'omarchy-newsboat-scout-propose URL' "$agent_log" || fail "Feed Scout r
 grep -Fq 'Do not run omarchy-newsboat-add' "$agent_log" || fail "Feed Scout forbids direct subscription mutations"
 grep -Fq 'Add <COUNT> feeds? (yes/no)' "$agent_log" || fail "Feed Scout requires an exact confirmation"
 [[ $(grep -c '^https://' "$urls_file") == 1 ]] || fail "Feed Scout changes subscriptions before confirmation"
+grep -Fq 'normal per-command permission approval' "$agent_log" || fail "Feed Scout omits the desktop permission boundary"
 pass "Feed Scout gives the configured agent a bounded network-research task with confirmation-only writes"
 
 rm -f "$agent_log"

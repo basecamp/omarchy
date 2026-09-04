@@ -370,6 +370,7 @@ grep -Fq 'Mark <READ> articles as read and leave <LEAVE> unread? (yes/no)' "$age
 [[ ! -e $import_log ]] || fail "the initial briefing changes read state before confirmation"
 brief_id=$(sed -n 's/.*omarchy-newsboat-triage \([A-Za-z0-9_-]*\) READ LEAVE.*/\1/p' "$agent_log")
 [[ -n $brief_id && -f $NEWSBOAT_BRIEF_STATE_DIR/brief.$brief_id ]] || fail "the briefing creates a protected confirmation snapshot"
+grep -Fq 'normal per-command permission approval' "$agent_log" || fail "Brief omits the desktop permission boundary"
 pass "Feeds gives the selected Omarchy agent a focused, confirmation-only briefing"
 
 real_brief_state="$test_tmp/brief-state-real"

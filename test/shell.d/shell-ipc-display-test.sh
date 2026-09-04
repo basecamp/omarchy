@@ -12,6 +12,10 @@ touch "$test_dir/run/wayland-1" "$test_dir/run/wayland-1.lock"
 
 cat >"$test_dir/bin/qs" <<'STUB'
 #!/bin/bash
+if [[ ${QS_TEST_DENIED:-0} == 1 ]]; then
+  echo 'ERROR quickshell.ipc: Socket Error QLocalSocket::SocketAccessError' >&2
+  exit 255
+fi
 printf 'display=[%s] args=[%s]\n' "$WAYLAND_DISPLAY" "$*"
 STUB
 chmod +x "$test_dir/bin/qs"
@@ -32,3 +36,11 @@ pass "shell ipc keeps an existing display"
 
 grep -Fq 'qs ipc -n --any-display' "$ROOT/bin/omarchy-shell" || fail "shell IPC remains tied to a caller sandbox's display"
 pass "shell ipc reaches the configured Shell across display namespaces"
+
+export QS_TEST_DENIED=1
+if output=$(WAYLAND_DISPLAY=wayland-1 "$ROOT/bin/omarchy-shell" shell ping 2>&1); then
+  fail "shell ipc reports sandbox socket denial as success"
+fi
+[[ $output == "omarchy-shell access denied by sandbox or permissions" ]] || fail "shell ipc misdiagnoses denied access as a stopped desktop" "$output"
+WAYLAND_DISPLAY=wayland-1 "$ROOT/bin/omarchy-shell" -q shell ping || fail "quiet shell ipc does not contain denied access"
+pass "shell ipc distinguishes denied socket access from a stopped desktop"

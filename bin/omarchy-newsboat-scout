@@ -83,6 +83,7 @@ prompt=$(printf '%s\n' \
   "$discovery_flow" \
   "" \
   "Use only the validated candidates in that output. Give the complete recommendation, list the exact feed names and URLs, and finish with: Add <COUNT> feeds? (yes/no) — substituting the count. Do not add anything in this first response." \
+  "After my confirmation, the apply helper needs access to subscriptions and desktop IPC outside the coding workspace. Use your agent's normal per-command permission approval for only that exact helper when required. A sandbox access denial does not mean Omarchy Shell is stopped. Never use sudo, disable sandboxing, change permissions, or approve the Omarchy window yourself." \
   "" \
   "Only after I explicitly confirm, run the exact omarchy-newsboat-scout-apply command returned by the validator. If I request a subset, ask a new exact confirmation naming that subset before running the helper with only its IDs. If I decline or answer ambiguously, change nothing. The helper opens a separate Omarchy confirmation window that I must approve myself; do not claim anything changed unless the helper reports success. Report its result after it finishes.")
 
