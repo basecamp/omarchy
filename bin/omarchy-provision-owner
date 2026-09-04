@@ -610,12 +610,10 @@ confirm_reboot() {
 }
 
 # Load the layout on the live VT and persist it for the installed system.
-# systemd-firstboot writes both the console KEYMAP and the XKB layout Hyprland
-# reads, matching what the ISO's configure_keyboard does at install time. A
-# keymap localectl doesn't know keeps the default rather than failing (defensive;
-# the picker no longer offers any such layout).
+# Colemak and Dvorak are console keymaps but XKB variants of the us layout, so
+# persist their XKB coordinates explicitly for Hyprland.
 apply_keyboard() {
-  local keymap="$1"
+  local keymap="$1" layout="" variant=""
   [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$keymap" 2>/dev/null || true
 
   if localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$keymap"; then
@@ -624,6 +622,27 @@ apply_keyboard() {
       log_step "could not persist keymap $keymap"
   else
     log_step "keymap $keymap unknown to localectl; keeping the default"
+  fi
+
+  case "$keymap" in
+    colemak|dvorak)
+      layout=us
+      variant="$keymap"
+      ;;
+  esac
+
+  if [[ -n $layout ]]; then
+    if grep -q '^XKBLAYOUT=' /etc/vconsole.conf 2>/dev/null; then
+      sed -i "s/^XKBLAYOUT=.*/XKBLAYOUT=$layout/" /etc/vconsole.conf
+    else
+      printf 'XKBLAYOUT=%s\n' "$layout" >>/etc/vconsole.conf
+    fi
+
+    if grep -q '^XKBVARIANT=' /etc/vconsole.conf 2>/dev/null; then
+      sed -i "s/^XKBVARIANT=.*/XKBVARIANT=$variant/" /etc/vconsole.conf
+    else
+      printf 'XKBVARIANT=%s\n' "$variant" >>/etc/vconsole.conf
+    fi
   fi
 }
 
