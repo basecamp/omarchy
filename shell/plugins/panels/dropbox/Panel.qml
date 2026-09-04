@@ -16,8 +16,25 @@ Panel {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property string focusSection: "login"
   property int fileIndex: 0
+  property int folderIndex: 0
   property bool cursorActive: false
   property int phraseIndex: 0
+
+  readonly property bool showFolders: settings && settings.showSyncedFolders !== undefined
+    ? settings.showSyncedFolders !== false
+    : true
+  // The ".." row is a cursor stop too, so folder navigation indexes over
+  // [up?, ...folders]. `folderRowCount` is that combined length.
+  readonly property bool hasUpRow: !dropbox.folderAtRoot && dropbox.folderParentPath !== ""
+  readonly property int folderRowCount: (hasUpRow ? 1 : 0) + dropbox.folders.length
+  readonly property bool foldersVisible: showFolders && dropbox.authenticated
+  readonly property string browseCrumb: {
+    var root_ = String(dropbox.accountPath || "")
+    var here = String(dropbox.browsePath || "")
+    if (root_ === "" || here === "" || here === root_) return "Dropbox"
+    if (here.indexOf(root_ + "/") !== 0) return here
+    return "Dropbox/" + here.substring(root_.length + 1)
+  }
 
   readonly property var activePhrases: [
     "Filing files",
@@ -47,33 +64,97 @@ Panel {
     if (!dropbox.authenticated) {
       focusSection = "login"
       fileIndex = 0
+      folderIndex = 0
       return
     }
-    if (dropbox.files.length === 0) {
-      focusSection = "header"
-      fileIndex = 0
-      return
+    if (folderRowCount === 0 && focusSection === "folders") focusSection = "header"
+    if (dropbox.files.length === 0 && focusSection === "files") focusSection = "header"
+    if (focusSection !== "files" && focusSection !== "folders" && focusSection !== "header") {
+      focusSection = folderRowCount > 0 && foldersVisible ? "folders" : "header"
     }
-    if (focusSection !== "files" && focusSection !== "header") focusSection = "files"
-    if (fileIndex >= dropbox.files.length) fileIndex = Math.max(0, dropbox.files.length - 1)
-    if (fileIndex < 0) fileIndex = 0
+    folderIndex = Math.max(0, Math.min(folderIndex, Math.max(0, folderRowCount - 1)))
+    fileIndex = Math.max(0, Math.min(fileIndex, Math.max(0, dropbox.files.length - 1)))
+  }
+
+  // Vertical order through the panel: header -> folders -> files. Each helper
+  // returns "" when its section has nothing to land on, so an empty section is
+  // skipped rather than trapping the cursor.
+  function sectionBelow(name) {
+    if (name === "header") {
+      if (foldersVisible && folderRowCount > 0) return "folders"
+      if (dropbox.files.length > 0) return "files"
+      return ""
+    }
+    if (name === "folders" && dropbox.files.length > 0) return "files"
+    return ""
+  }
+
+  function sectionAbove(name) {
+    if (name === "files") {
+      if (foldersVisible && folderRowCount > 0) return "folders"
+      return "header"
+    }
+    if (name === "folders") return "header"
+    return ""
   }
 
   function moveCursor(dx, dy) {
     cursorActive = true
     ensureCursor()
-    if (dy === 0) return
+    if (dy === 0) {
+      // Left/right (and h/l) browse the folder tree, the way a file manager
+      // does. PanelKeyCatcher swallows h/l as movement, so this is the only
+      // place folder navigation can hang off those keys.
+      if (dx !== 0 && focusSection === "folders") {
+        if (dx < 0) goUpFolder()
+        else if (!onUpRow()) {
+          var folder = selectedFolder()
+          if (folder && folder.browsable === true) {
+            dropbox.enterFolder(folder)
+            folderIndex = 0
+          }
+        }
+      }
+      return
+    }
     if (focusSection === "header") {
-      if (dy > 0 && dropbox.files.length > 0) {
-        focusSection = "files"
+      var below = sectionBelow("header")
+      if (dy > 0 && below !== "") {
+        focusSection = below
+        folderIndex = 0
         fileIndex = 0
         scrollCursorIntoView()
       }
       return
     }
+    if (focusSection === "folders") {
+      if (dy < 0 && folderIndex === 0) {
+        setHeaderCursor()
+        return
+      }
+      if (dy > 0 && folderIndex === folderRowCount - 1) {
+        var next = sectionBelow("folders")
+        if (next !== "") {
+          focusSection = next
+          fileIndex = 0
+          scrollCursorIntoView()
+          return
+        }
+      }
+      folderIndex = Math.max(0, Math.min(folderRowCount - 1, folderIndex + dy))
+      scrollCursorIntoView()
+      return
+    }
     if (focusSection === "files") {
       if (dy < 0 && fileIndex === 0) {
-        setHeaderCursor()
+        var previous = sectionAbove("files")
+        if (previous === "folders") {
+          focusSection = "folders"
+          folderIndex = Math.max(0, folderRowCount - 1)
+          scrollCursorIntoView()
+        } else {
+          setHeaderCursor()
+        }
         return
       }
       fileIndex = Math.max(0, Math.min(dropbox.files.length - 1, fileIndex + dy))
@@ -87,6 +168,36 @@ Panel {
     if (panelFlick) panelFlick.contentY = 0
   }
 
+  function setFolderCursor(index) {
+    cursorActive = true
+    focusSection = "folders"
+    folderIndex = index
+    scrollCursorIntoView()
+  }
+
+  // Row 0 is the ".." row when it is present, so folder N sits at N + 1.
+  function selectedFolder() {
+    var index = hasUpRow ? folderIndex - 1 : folderIndex
+    if (index < 0 || index >= dropbox.folders.length) return null
+    return dropbox.folders[index]
+  }
+
+  function onUpRow() {
+    return hasUpRow && folderIndex === 0
+  }
+
+  function toggleSelectedFolder() {
+    if (focusSection !== "folders") return
+    var folder = selectedFolder()
+    if (folder && !dropbox.syncBusy) dropbox.toggleFolderSynced(folder)
+  }
+
+  function goUpFolder() {
+    if (!hasUpRow) return
+    dropbox.goUpFolder()
+    folderIndex = 0
+  }
+
   function toggleRunning() {
     if (dropbox.installed && !dropbox.busy) dropbox.toggleRunning()
   }
@@ -96,6 +207,21 @@ Panel {
     if (focusSection === "login") dropbox.login()
     else if (focusSection === "header") toggleRunning()
     else if (focusSection === "files") dropbox.openFile(selectedFile())
+    else if (focusSection === "folders") {
+      if (onUpRow()) goUpFolder()
+      else {
+        var folder = selectedFolder()
+        // Enter only ever navigates. A folder with no subfolders is not
+        // browsable, and rows give no hint of that, so falling back to a
+        // toggle here would silently unsync — and delete the local copy of —
+        // whatever the cursor happened to be on. `s` and the switch own
+        // toggling.
+        if (folder && folder.browsable === true) {
+          dropbox.enterFolder(folder)
+          folderIndex = 0
+        }
+      }
+    }
   }
 
   function selectedFile() {
@@ -129,6 +255,8 @@ Panel {
   function scrollCursorIntoView() {
     if (focusSection === "files" && fileColumn && fileIndex >= 0 && fileIndex < fileColumn.children.length) {
       scrollItemIntoView(fileColumn.children[fileIndex])
+    } else if (focusSection === "folders" && folderColumn && folderIndex >= 0 && folderIndex < folderColumn.children.length) {
+      scrollItemIntoView(folderColumn.children[folderIndex])
     }
   }
 
@@ -137,11 +265,21 @@ Panel {
 
   onOpenedChanged: if (opened) {
     cursorActive = false
+    // The panel item outlives a close, so the cursor has to be sent back to the
+    // top explicitly. Without this it resumes wherever it was last left, which
+    // silently skips whichever sections sit above that point.
+    focusSection = dropbox.authenticated ? "header" : "login"
+    folderIndex = 0
+    fileIndex = 0
     if (panelFlick) panelFlick.contentY = 0
     dropbox.refresh()
+    // Reopen at the Dropbox root rather than wherever the last visit left off,
+    // so the view always matches the cursor being reset to the top.
+    if (showFolders) dropbox.resetBrowse()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
   onFileIndexChanged: scrollCursorIntoView()
+  onFolderIndexChanged: scrollCursorIntoView()
 
   Service {
     id: dropbox
@@ -153,6 +291,7 @@ Panel {
     target: dropbox
     function onAuthenticatedChanged() { root.ensureCursor() }
     function onFilesChanged() { root.ensureCursor() }
+    function onFoldersChanged() { root.ensureCursor() }
   }
 
   IpcHandler {
@@ -209,9 +348,10 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
-        if (t === "r" || t === "R") dropbox.refresh()
+        if (t === "r" || t === "R") { dropbox.refresh(); if (root.showFolders) dropbox.loadFolders() }
         else if (t === "l" || t === "L") dropbox.login()
         else if (t === "p" || t === "P") root.toggleRunning()
+        else if (t === "s" || t === "S") root.toggleSelectedFolder()
       }
 
       Flickable {
@@ -305,6 +445,100 @@ Panel {
               width: parent.width
               spacing: Style.spacing.labelGap
               InfoPair { label: "Stored"; value: Model.usageText(dropbox.usedBytes, dropbox.quotaBytes, dropbox.quotaKnown) }
+            }
+          }
+
+          PanelSeparator {
+            visible: root.foldersVisible
+            foreground: root.foreground
+          }
+
+          Column {
+            id: folderSection
+            visible: root.foldersVisible
+            width: parent.width
+            spacing: Style.space(10)
+
+            Item {
+              width: parent.width
+              implicitHeight: foldersHeader.implicitHeight
+
+              PanelSectionHeader {
+                id: foldersHeader
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: "SYNCED FOLDERS"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              PanelActionButton {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                iconText: "󰑐"
+                tooltipText: "Refresh folders"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: !dropbox.foldersBusy
+                onClicked: dropbox.loadFolders()
+              }
+            }
+
+            // Where we are in the tree, shown only once you have drilled in.
+            Text {
+              visible: root.hasUpRow
+              width: parent.width
+              text: root.browseCrumb
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              elide: Text.ElideLeft
+            }
+
+            Text {
+              visible: dropbox.foldersError !== ""
+              width: parent.width
+              text: dropbox.foldersError
+              color: root.urgent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              visible: dropbox.foldersError === "" && dropbox.foldersLoaded && root.folderRowCount === 0
+              width: parent.width
+              text: "No folders here."
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              horizontalAlignment: Text.AlignHCenter
+            }
+
+            Column {
+              id: folderColumn
+              visible: root.folderRowCount > 0
+              width: parent.width
+              spacing: Style.space(6)
+
+              // A Repeater rather than a `visible` binding so the row is truly
+              // absent when at the root — `scrollCursorIntoView` indexes into
+              // `folderColumn.children`, which must line up with `folderIndex`.
+              Repeater {
+                model: root.hasUpRow ? 1 : 0
+                UpRow { width: folderColumn.width }
+              }
+
+              Repeater {
+                model: dropbox.folders
+                FolderRow {
+                  required property var modelData
+                  required property int index
+                  width: folderColumn.width
+                  folder: modelData
+                  rowIndex: root.hasUpRow ? index + 1 : index
+                }
+              }
             }
           }
 
@@ -449,6 +683,162 @@ Panel {
         enabled: dropbox.installed && !dropbox.busy
         Layout.alignment: Qt.AlignVCenter
         onClicked: dropbox.login()
+      }
+    }
+  }
+
+  // Always cursor row 0 when present. Clicking anywhere walks one level up.
+  component UpRow: CursorSurface {
+    id: upRow
+
+    hasCursor: root.cursorActive && root.focusSection === "folders" && root.folderIndex === 0
+    foreground: root.foreground
+
+    implicitHeight: upContent.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: root.setFolderCursor(0)
+      onClicked: root.goUpFolder()
+    }
+
+    RowLayout {
+      id: upContent
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      spacing: Style.space(8)
+
+      Text {
+        text: "󰁍"
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.icon
+        Layout.alignment: Qt.AlignVCenter
+      }
+
+      Text {
+        Layout.fillWidth: true
+        text: "Back"
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        elide: Text.ElideRight
+      }
+    }
+  }
+
+  // One folder in the current directory: name, sync state, and a switch that
+  // drives `dropbox-cli exclude add/remove`. The row body drills in when the
+  // folder is browsable; the switch always owns toggling, mouse and keyboard
+  // alike, exactly as the hero's power switch does.
+  component FolderRow: CursorSurface {
+    id: folderRow
+    property var folder: null
+    property int rowIndex: 0
+
+    readonly property string folderName: folder ? String(folder.name || "Untitled") : "Untitled"
+    readonly property bool synced: dropbox.folderSynced(folder)
+    readonly property bool pending: dropbox.folderPending(folder)
+    readonly property bool browsable: folder ? folder.browsable === true : false
+    readonly property bool rowSelected: root.cursorActive && root.focusSection === "folders" && root.folderIndex === rowIndex
+
+    hasCursor: rowSelected
+    foreground: root.foreground
+
+    implicitHeight: folderContent.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      id: folderMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: folderRow.browsable ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onEntered: root.setFolderCursor(folderRow.rowIndex)
+      onClicked: if (folderRow.browsable) {
+        dropbox.enterFolder(folderRow.folder)
+        root.folderIndex = 0
+      }
+    }
+
+    PanelToolTip {
+      visible: folderMouse.containsMouse && folderRow.browsable
+      text: "Open folder"
+      fontFamily: root.fontFamily
+    }
+
+    RowLayout {
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      spacing: Style.space(8)
+
+      Text {
+        text: folderRow.synced ? "󰉋" : "󰉖"
+        color: folderRow.synced ? root.foreground : root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.icon
+        Layout.alignment: Qt.AlignVCenter
+      }
+
+      ColumnLayout {
+        id: folderContent
+        Layout.fillWidth: true
+        spacing: Style.space(1)
+
+        Text {
+          Layout.fillWidth: true
+          text: folderRow.folderName
+          color: folderRow.synced ? root.foreground : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          elide: Text.ElideRight
+        }
+
+        Text {
+          Layout.fillWidth: true
+          text: folderRow.pending
+            ? (folderRow.synced ? "Syncing…" : "Removing…")
+            : Model.folderMeta(folderRow.folder)
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+        }
+      }
+
+      Text {
+        visible: folderRow.browsable
+        text: "󰅂"
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        Layout.alignment: Qt.AlignVCenter
+      }
+
+      ToggleSwitch {
+        id: folderSwitch
+        Layout.alignment: Qt.AlignVCenter
+        checked: folderRow.synced
+        busy: dropbox.syncBusy
+        // The surrounding row owns drill-in, so the switch keeps its own
+        // cursor ring rather than borrowing the row's highlight.
+        hasCursor: false
+        foreground: root.foreground
+        trackHeight: Math.max(18, Math.round(Style.spacing.controlHeight * 0.42))
+        onHovered: function(on) { if (on) root.setFolderCursor(folderRow.rowIndex) }
+        onToggled: dropbox.setFolderSynced(folderRow.folder, !folderRow.synced)
+
+        PanelToolTip {
+          visible: folderSwitch.containsMouse
+          text: folderRow.synced ? "Stop syncing this folder" : "Sync this folder"
+          fontFamily: root.fontFamily
+        }
       }
     }
   }

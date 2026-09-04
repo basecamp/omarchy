@@ -31,9 +31,136 @@ Item {
   property string actionStatus: ""
   property string lastError: ""
 
+  // --- Selective sync ---------------------------------------------------
+  // `browsePath` is the folder currently on screen; "" means "follow the
+  // account root", which is what we want before the first status lands.
+  property string browsePath: ""
+  property string folderParentPath: ""
+  property bool folderAtRoot: true
+  property var folders: []
+  property string foldersError: ""
+  property bool foldersLoaded: false
+
+  // Optimistic desired state per folder, abs-path -> synced bool, in the same
+  // spirit as `_desired` above: the switch throws the instant you click while
+  // dropboxd spends its own sweet time resyncing. Entries are dropped once the
+  // helper reports reality has caught up. QML does not signal on in-place
+  // mutation, so every write reassigns the whole object.
+  property var pendingFolders: ({})
+
+  readonly property string effectiveBrowsePath: browsePath !== "" ? browsePath : accountPath
+
+  function folderSynced(folder) {
+    if (!folder) return false
+    var pending = pendingFolders[String(folder.path || "")]
+    if (pending !== undefined) return pending === true
+    return folder.excluded !== true
+  }
+
+  function folderPending(folder) {
+    if (!folder) return false
+    return pendingFolders[String(folder.path || "")] !== undefined
+  }
+
+  function setPending(path, value) {
+    var next = {}
+    for (var key in pendingFolders) next[key] = pendingFolders[key]
+    if (value === undefined) delete next[path]
+    else next[path] = value
+    pendingFolders = next
+  }
+
+  function loadFolders(path) {
+    if (omarchyPath === "" || !authenticated) return
+    var target = String(path || effectiveBrowsePath || accountPath || "")
+    if (target === "") return
+    // Only one listing runs at a time, but a request that arrives mid-flight
+    // must not be dropped: the in-flight result would then apply its own (now
+    // stale) path over the one just asked for. Remember it and run it on exit.
+    if (foldersProcess.running) {
+      _queuedFolderPath = target
+      return
+    }
+    _queuedFolderPath = ""
+    _foldersOutput = ""
+    _foldersError = ""
+    foldersProcess.command = ["python3", foldersHelperPath, "list", target]
+    foldersProcess.running = true
+  }
+
+  function applyFolders(raw) {
+    var parsed = Model.parseFolders(raw)
+    if (parsed.ok !== true) {
+      foldersError = elideStatus(parsed.error || "Could not read Dropbox folders")
+      folders = []
+      foldersLoaded = true
+      return
+    }
+    foldersError = ""
+    browsePath = String(parsed.path || "")
+    folderParentPath = String(parsed.parentPath || "")
+    folderAtRoot = parsed.atRoot === true
+    var rows = parsed.folders || []
+    folders = rows.length > maxFolderRows ? rows.slice(0, maxFolderRows) : rows
+
+    // Reality caught up for any folder whose real state now matches what was
+    // asked for — stop overriding it.
+    var next = {}
+    var settled = {}
+    for (var i = 0; i < folders.length; i++) settled[folders[i].path] = folders[i].excluded !== true
+    for (var key in pendingFolders) {
+      if (settled[key] === undefined || settled[key] !== pendingFolders[key]) next[key] = pendingFolders[key]
+    }
+    pendingFolders = next
+    foldersLoaded = true
+  }
+
+  function resetBrowse() {
+    browsePath = ""
+    loadFolders(accountPath)
+  }
+
+  function enterFolder(folder) {
+    if (!folder || folder.browsable !== true) return
+    loadFolders(String(folder.path || ""))
+  }
+
+  function goUpFolder() {
+    if (folderAtRoot || folderParentPath === "") return
+    loadFolders(folderParentPath)
+  }
+
+  function setFolderSynced(folder, on) {
+    if (!folder || !installed || excludeProcess.running) return
+    var path = String(folder.path || "")
+    if (path === "") return
+    setPending(path, on === true)
+    _excludePath = path
+    _excludeOutput = ""
+    _excludeError = ""
+    excludeProcess.command = ["dropbox-cli", "exclude", on ? "remove" : "add", path]
+    excludeProcess.running = true
+  }
+
+  function toggleFolderSynced(folder) {
+    if (!folder) return
+    setFolderSynced(folder, !folderSynced(folder))
+  }
+
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 60, 10, 3600)
+  readonly property int maxFolderRows: intSetting("maxFolderRows", 50, 10, 500)
   readonly property bool busy: statusProcess.running || loginProcess.running || controlProcess.running
-  readonly property string helperPath: (omarchyPath || "") + "/shell/plugins/panels/dropbox/status.py"
+  // Two different kinds of busy. `foldersBusy` covers the read-only listing and
+  // only gates the refresh button. `syncBusy` is an actual exclude add/remove in
+  // flight — the one thing that genuinely cannot overlap. Gating toggles on the
+  // listing instead would silently swallow clicks for the ~10s the settle timer
+  // spends re-polling, which is exactly when someone wants to undo.
+  readonly property bool foldersBusy: foldersProcess.running || excludeProcess.running
+  readonly property bool syncBusy: excludeProcess.running
+
+  readonly property string pluginPath: (omarchyPath || "") + "/shell/plugins/panels/dropbox"
+  readonly property string helperPath: pluginPath + "/status.py"
+  readonly property string foldersHelperPath: pluginPath + "/folders.py"
 
   property string _statusOutput: ""
   property string _statusError: ""
@@ -42,6 +169,25 @@ Item {
   property bool _loginUrlOpened: false
   property string _controlOutput: ""
   property string _controlError: ""
+  property string _foldersOutput: ""
+  property string _foldersError: ""
+  property string _excludeOutput: ""
+  property string _excludeError: ""
+  property string _excludePath: ""
+  property string _queuedFolderPath: ""
+
+  onAuthenticatedChanged: {
+    if (authenticated) {
+      loadFolders()
+    } else {
+      browsePath = ""
+      folders = []
+      foldersError = ""
+      foldersLoaded = false
+      pendingFolders = ({})
+      _queuedFolderPath = ""
+    }
+  }
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -57,7 +203,7 @@ Item {
   }
 
   function refresh() {
-    if (statusProcess.running || helperPath === "/shell/plugins/panels/dropbox/status.py") return
+    if (statusProcess.running || omarchyPath === "") return
     _statusOutput = ""
     _statusError = ""
     refreshing = true
@@ -73,11 +219,14 @@ Item {
     }
     installed = parsed.installed === true
     running = parsed.running === true
+    // Before `authenticated`, whose change handler loads the folder list and
+    // needs somewhere to load it from. Assigning it after left that first load
+    // with an empty account path, so it silently did nothing.
+    accountPath = String(parsed.accountPath || "")
     authenticated = parsed.authenticated === true
     // Reality caught up to the pending pause/resume — stop overriding.
     if (_desired !== -1 && running === (_desired === 1)) _desired = -1
     statusText = String(parsed.statusText || (installed ? "Stopped" : "Not installed"))
-    accountPath = String(parsed.accountPath || "")
     plan = String(parsed.plan || "")
     usedBytes = Number(parsed.usedBytes || 0)
     quotaBytes = Number(parsed.quotaBytes || 0)
@@ -248,6 +397,83 @@ Item {
         root.actionStatus = ""
         root.lastError = ""
       }
+      delayedRefresh.restart()
+    }
+  }
+
+  Timer {
+    // An exclude add/remove returns as soon as the daemon accepts it, but the
+    // folder does not appear or vanish on disk until the resync lands. Re-poll
+    // a handful of times so the row settles without waiting on the periodic
+    // refresh; anything still pending after that keeps its optimistic value
+    // until the next successful load.
+    id: folderSettleTimer
+    property int ticks: 0
+    interval: 2000
+    repeat: true
+    running: false
+    onTriggered: {
+      folderSettleTimer.ticks += 1
+      root.loadFolders()
+      if (folderSettleTimer.ticks >= 5) {
+        folderSettleTimer.ticks = 0
+        folderSettleTimer.running = false
+      }
+    }
+  }
+
+  Process {
+    id: foldersProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: foldersStdout; waitForEnd: true; onStreamFinished: root._foldersOutput = text }
+    stderr: StdioCollector { id: foldersStderr; waitForEnd: true; onStreamFinished: root._foldersError = text }
+    onExited: function(exitCode) {
+      var stdout = String(foldersStdout.text || root._foldersOutput || "")
+      var stderr = String(foldersStderr.text || root._foldersError || "")
+      // A newer request came in while this one was running, so this result is
+      // already stale — drop it rather than let it apply its path, and serve
+      // the request that superseded it.
+      if (root._queuedFolderPath !== "") {
+        var queued = root._queuedFolderPath
+        root._queuedFolderPath = ""
+        root.loadFolders(queued)
+        return
+      }
+      if (exitCode === 0 && stdout !== "") root.applyFolders(stdout)
+      else {
+        root.foldersError = root.elideStatus(stderr || stdout || "Could not read Dropbox folders")
+        root.foldersLoaded = true
+      }
+    }
+  }
+
+  Process {
+    id: excludeProcess
+    running: false
+    command: []
+    stdout: StdioCollector { id: excludeStdout; waitForEnd: true; onStreamFinished: root._excludeOutput = text }
+    stderr: StdioCollector { id: excludeStderr; waitForEnd: true; onStreamFinished: root._excludeError = text }
+    onExited: function(exitCode) {
+      var stdout = String(excludeStdout.text || root._excludeOutput || "")
+      var stderr = String(excludeStderr.text || root._excludeError || "")
+      // The CLI reports "Dropbox isn't running!" on stdout with exit 0, so the
+      // exit code alone is not enough to call this a success.
+      var combined = stdout + " " + stderr
+      var failed = exitCode !== 0 || /isn't running|isn't responding|Couldn't |daemon stopped/i.test(combined)
+      if (failed) {
+        // Drop only this folder's optimistic value; other folders may still
+        // have legitimate pending state from earlier toggles.
+        root.setPending(root._excludePath, undefined)
+        root.lastError = root.elideStatus(stderr || stdout || "Could not change folder syncing")
+        root.actionStatus = root.lastError
+        actionStatusTimer.restart()
+      } else {
+        root.lastError = ""
+      }
+      folderSettleTimer.ticks = 0
+      folderSettleTimer.restart()
+      root.loadFolders()
       delayedRefresh.restart()
     }
   }
