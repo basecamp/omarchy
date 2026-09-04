@@ -1955,11 +1955,15 @@ Panel {
       implicitHeight: (idField.visible ? idField.implicitHeight + Style.space(4) : 0) + pwField.implicitHeight + Style.spacing.rowGap
       height: implicitHeight
 
+      // The eye toggle unmasks pwField by flipping its `password`; every
+      // close path lands here, so a reopened prompt always starts masked.
+      onVisibleChanged: if (!visible) pwField.password = true
+
       TextField {
         id: idField
         visible: row.isEnterprise && !row.isBusy && !row.isFailed
         anchors.left: parent.left
-        anchors.right: connectPwBtn.left
+        anchors.right: revealPwBtn.left
         anchors.top: parent.top
         anchors.rightMargin: Style.space(6)
         placeholderText: "Identity (user@domain)"
@@ -1983,7 +1987,7 @@ Panel {
         id: pwField
         visible: !row.isBusy && !row.isFailed
         anchors.left: parent.left
-        anchors.right: connectPwBtn.left
+        anchors.right: revealPwBtn.left
         anchors.bottom: parent.bottom
         anchors.bottomMargin: Style.spacing.rowGap / 2
         anchors.rightMargin: Style.space(6)
@@ -2026,6 +2030,19 @@ Panel {
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
         }
+      }
+
+      PanelActionButton {
+        id: revealPwBtn
+        visible: !row.isBusy && !row.isFailed
+        anchors.right: connectPwBtn.left
+        anchors.rightMargin: Style.space(4)
+        anchors.verticalCenter: parent.verticalCenter
+        iconText: pwField.password ? "\uf06e" : "\uf070"
+        tooltipText: pwField.password ? "Show password" : "Hide password"
+        foreground: root.bar.foreground
+        fontFamily: root.bar.fontFamily
+        onClicked: pwField.password = !pwField.password
       }
 
       // 22×22 right-anchored to line up with lockIndicator above. Esc closes
