@@ -18,8 +18,11 @@ Run `omarchy-restart-shell` after making changes to QML files.
 - Every plugin manifest declares `schemaVersion`, `id`, `name`, `version`,
   `kinds`, and `entryPoints`. Ordinary plugins must declare at least one
   supported kind and matching entry point; a harness-only plugin declaring
-  `agentHarness` may use empty `kinds` and `entryPoints`. See
-  [`docs/omarchy-shell.md`](../../docs/omarchy-shell.md) and
+  `agentHarness` may use empty `kinds` and `entryPoints`, is available on
+  installation, and cannot be enabled. Third-party harnesses are mise-backed
+  argv declarations with only `{project}` and `{prompt}` substitutions. See
+  [`docs/agent-harnesses.md`](../../docs/agent-harnesses.md),
+  [`docs/omarchy-shell.md`](../../docs/omarchy-shell.md), and
   `shell/services/PluginRegistry.qml` for the current contract; fields such as
   `activation` are optional.
 - Entry-point QML files are `Item`s (not `ShellRoot`), and accept the
