@@ -123,6 +123,7 @@ tesseract-data-eng
 tldr
 tree-sitter-cli
 tmux
+tmux-resurrect
 tobi-try
 ttf-ia-writer
 ttf-jetbrains-mono-nerd-basic

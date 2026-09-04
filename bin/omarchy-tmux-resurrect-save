@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# omarchy:summary=Save the current Tmux workspace through tmux-resurrect
+# omarchy:hidden=true
+
+set -euo pipefail
+
+plugin_dir="${TMUX_RESURRECT_PATH:-/usr/share/tmux-resurrect}"
+save_script="$plugin_dir/scripts/save.sh"
+lock_dir="${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy}/omarchy-tmux"
+
+tmux has-session 2>/dev/null || exit 0
+[[ $(tmux show-options -gqv @omarchy-resurrect-restoring) != "1" ]] || exit 0
+
+if [[ ! -x $save_script ]]; then
+  echo "Tmux resurrection support is not installed." >&2
+  exit 1
+fi
+
+mkdir -p "$lock_dir"
+exec 9>"$lock_dir/resurrect-save.lock"
+flock -n 9 || exit 0
+
+"$save_script" quiet
