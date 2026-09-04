@@ -35,3 +35,9 @@ It gets a panel in the bar, a web app for the admin console, and Taildrop for se
 ## NordVPN
 
 [NordVPN](https://nordvpn.com/) is a standard VPN service that lets you exit your traffic from most regions around the world. To set it up, select _Install > Service > NordVPN_ from the Omarchy menu. After the reboot it asks for, run `nordvpn login` to authenticate.
+
+## DaVinci Resolve
+
+[DaVinci Resolve](https://www.blackmagicdesign.com/products/davinciresolve) is Blackmagic Design's video editing, color grading, and audio post-production suite. The free version covers most editing work, and the paid Studio version adds hardware-accelerated codecs, more effects, and support for multiple GPUs. Select _Install > Media > DaVinci Resolve_ or _Install > Media > DaVinci Resolve Studio_ from the Omarchy menu.
+
+Blackmagic Design only hands out the installer through a registration form on its website, so the installer can't download it for you. It tells you the exact version to fetch (the AUR package is pinned to it), opens the download page, and waits for the zip to land in your Downloads folder before building the package. Set aside some time and around 40 GB of free disk space for the build. Studio asks for your license key or activation dongle the first time it opens.

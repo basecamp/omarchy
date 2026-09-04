@@ -1,0 +1,153 @@
+#!/bin/bash
+
+# omarchy:summary=Install DaVinci Resolve or DaVinci Resolve Studio from the installer zip you download from Blackmagic Design
+# omarchy:name=davinci-resolve
+# omarchy:args=[free|studio]
+# omarchy:examples=omarchy install davinci-resolve | omarchy install davinci-resolve studio
+# omarchy:requires-sudo=true
+
+set -e
+
+DOWNLOAD_URL="https://www.blackmagicdesign.com/support/family/davinci-resolve-and-fusion"
+
+# Unpacking the installer, staging the package, and archiving it each need a
+# copy of the ~10 GB payload alongside the zip, so the build needs this much room.
+REQUIRED_GB=40
+
+case ${1:-free} in
+free)
+  name="DaVinci Resolve"
+  package="davinci-resolve"
+  zip_prefix="DaVinci_Resolve"
+  ;;
+studio)
+  name="DaVinci Resolve Studio"
+  package="davinci-resolve-studio"
+  zip_prefix="DaVinci_Resolve_Studio"
+  ;;
+*)
+  echo "Usage: omarchy-install-davinci-resolve [free|studio]" >&2
+  exit 1
+  ;;
+esac
+
+build_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/$package"
+downloads_dir=$(xdg-user-dir DOWNLOAD)
+
+fetch_pkgbuild() {
+  rm -rf "$build_dir"
+  mkdir -p "$build_dir"
+  git clone --quiet --depth 1 "https://aur.archlinux.org/$package.git" "$build_dir"
+}
+
+check_disk_space() {
+  local available_gb
+  available_gb=$(df --output=avail -BG "$build_dir" | tail -1 | tr -dc '0-9')
+
+  if (( available_gb < REQUIRED_GB )); then
+    echo "Building $name needs about ${REQUIRED_GB} GB free under $build_dir, but only ${available_gb} GB is available." >&2
+    exit 1
+  fi
+}
+
+wait_for_installer_zip() {
+  if [[ -f $zip_path ]]; then
+    return
+  fi
+
+  local other_zips=("$downloads_dir/${zip_prefix}"_*_Linux.zip)
+
+  echo
+  echo "Blackmagic Design only hands out $name through a registration form, so the installer can't be fetched for you."
+  echo "The AUR package is pinned to version $pkgver, so download exactly that Linux version and save it as:"
+  echo
+  echo "  $zip_path"
+  echo
+
+  if [[ -f ${other_zips[0]} ]]; then
+    echo "Note: ${other_zips[0]##*/} is already in $downloads_dir, but only version $pkgver will pass the package's checksum."
+    echo
+  fi
+
+  if gum confirm "Open the Blackmagic Design download page now?"; then
+    omarchy-launch-browser "$DOWNLOAD_URL"
+  fi
+
+  until [[ -f $zip_path ]]; do
+    if ! gum confirm "Has $zip_name finished downloading to $downloads_dir?"; then
+      echo "Run this installer again once the download has finished."
+      exit 1
+    fi
+  done
+}
+
+install_gpu_compute_driver() {
+  # The package depends on the virtual opencl-driver, and a --noconfirm build
+  # would satisfy it with whichever provider pacman lists first rather than the
+  # one for the GPU in this machine. Resolve won't start without a working one.
+  local packages=()
+
+  if omarchy-hw-nvidia-gsp; then
+    packages+=(opencl-nvidia)
+  elif omarchy-hw-nvidia-without-gsp; then
+    packages+=(opencl-nvidia-580xx)
+  fi
+
+  if lspci | grep -iqE "(VGA|Display).*AMD"; then
+    packages+=(rocm-opencl-runtime)
+  fi
+
+  if lspci | grep -iqE "(VGA|Display).*Intel"; then
+    packages+=(intel-compute-runtime)
+  fi
+
+  if (( ${#packages[@]} > 0 )); then
+    omarchy-pkg-add "${packages[@]}"
+  fi
+}
+
+build_and_install() {
+  # makepkg looks for file:// sources next to the PKGBUILD, so link the zip in
+  # rather than copying 10 GB. Leaving the package uncompressed saves the long
+  # zstd pass over a payload that is already mostly compressed.
+  ln -sf "$zip_path" "$build_dir/$zip_name"
+  (cd "$build_dir" && PKGEXT='.pkg.tar' makepkg --syncdeps --install --noconfirm)
+  rm -rf "$build_dir"
+}
+
+if omarchy-pkg-present "$package"; then
+  echo "$name is already installed."
+  exit 0
+fi
+
+echo "Installing $name..."
+
+fetch_pkgbuild
+check_disk_space
+
+pkgver=$(sed -n 's/^pkgver=//p' "$build_dir/PKGBUILD")
+zip_name="${zip_prefix}_${pkgver}_Linux.zip"
+zip_path="$downloads_dir/$zip_name"
+
+wait_for_installer_zip
+
+source omarchy-sudo-keepalive
+
+install_gpu_compute_driver
+build_and_install
+
+if [[ $package == "davinci-resolve-studio" ]]; then
+  # Studio stores its activation in /opt/resolve/.license, which the package
+  # installs owned by root, so the license key can't be saved until it is yours.
+  sudo chown -R "$USER" /opt/resolve/.license
+fi
+
+echo "Opening $name..."
+setsid uwsm-app -- gtk-launch DaVinciResolve >/dev/null 2>&1 &
+
+echo ""
+echo "$name has been installed."
+
+if [[ $package == "davinci-resolve-studio" ]]; then
+  echo "Enter your license key or connect your activation dongle when it asks."
+fi
