@@ -19,10 +19,31 @@ case "${1:-}" in
     ;;
 esac
 
+# Prefer an active physical NetworkManager device (Wi-Fi or Ethernet). A
+# full-tunnel VPN or Tailscale exit node can own the default route, but the
+# panel should still describe the LAN connection the user actually joined.
+# If NetworkManager reports no active physical device, fall back to the main
+# routing table's lowest-metric default route.
+physical_device() {
+  local dev
+
+  dev=$(nmcli -t -f DEVICE,TYPE,STATE dev status 2>/dev/null | awk -F: '
+    $2 == "wifi" && $3 ~ /^connected/ { print $1; exit }
+    $2 == "ethernet" && $3 ~ /^connected/ { print $1; exit }
+  ')
+
+  if [[ -n $dev ]]; then
+    echo "$dev"
+    return
+  fi
+
+  ip -j route show table main default 2>/dev/null | jq -r 'sort_by(.metric // 0) | .[0].dev // ""'
+}
+
 print_status() {
   local device nm state ssid signal freq
 
-  device=$(ip -j route show table main default 2>/dev/null | jq -r 'sort_by(.metric // 0) | .[0].dev // ""')
+  device=$(physical_device)
 
   if [[ -z $device ]]; then
     printf 'disconnected\t\t\t\n'
@@ -83,18 +104,18 @@ print_ping_samples() {
 }
 
 print_verbose() {
-  local route_json iface gw src prefix link
+  local iface gw src prefix link
 
-  route_json=$(ip -j route show table main default 2>/dev/null | jq -c 'sort_by(.metric // 0)')
-  [[ -z $route_json ]] && return
-
-  iface=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
-  gw=$(jq -r '.[0].gateway // ""' <<<"$route_json" 2>/dev/null)
-  src=$(jq -r '.[0].prefsrc // ""' <<<"$route_json" 2>/dev/null)
-
+  iface=$(physical_device)
   [[ -z $iface ]] && return
 
-  prefix=$(ip -j addr show "$iface" 2>/dev/null | jq -r '.[0].addr_info[]? | select(.family == "inet") | .prefixlen // ""' 2>/dev/null | head -n 1)
+  src=$(ip -j -4 addr show "$iface" 2>/dev/null | jq -r '.[0].addr_info[]? | select(.family == "inet" and .scope == "global") | .local // ""' 2>/dev/null | head -n 1)
+  prefix=$(ip -j -4 addr show "$iface" 2>/dev/null | jq -r '.[0].addr_info[]? | select(.family == "inet" and .scope == "global") | .prefixlen // ""' 2>/dev/null | head -n 1)
+
+  gw=$(ip -j route show dev "$iface" default 2>/dev/null | jq -r 'sort_by(.metric // 0) | .[0].gateway // ""' 2>/dev/null)
+  if [[ -z $gw ]]; then
+    gw=$(ip -j route show table main default 2>/dev/null | jq -r 'sort_by(.metric // 0) | .[0].gateway // ""' 2>/dev/null)
+  fi
 
   printf 'iface\t%s\n' "$iface"
   printf 'ip\t%s\n' "$src"
