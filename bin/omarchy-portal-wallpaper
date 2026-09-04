@@ -1,0 +1,126 @@
+#!/usr/bin/python3
+# omarchy:summary=xdg-desktop-portal wallpaper backend for Omarchy
+# omarchy:hidden=true
+"""D-Bus backend for org.freedesktop.impl.portal.Wallpaper.
+
+Lets portal-aware apps (Nautilus "Set as Background", browsers, GNOME apps)
+set the Omarchy desktop background. Requests are forwarded to
+omarchy-theme-bg-set, which adopts the image into the current theme's user
+background collection and updates the live shell background.
+
+Activated on demand by D-Bus via /usr/share/dbus-1/services/.
+"""
+
+import subprocess
+from urllib.parse import unquote, urlparse
+
+from gi.repository import Gio, GLib
+
+BUS_NAME = "org.freedesktop.impl.portal.desktop.omarchy"
+OBJECT_PATH = "/org/freedesktop/portal/desktop"
+
+RESPONSE_SUCCESS = 0
+RESPONSE_ERROR = 2
+
+WALLPAPER_XML = """
+<node>
+  <interface name="org.freedesktop.impl.portal.Wallpaper">
+    <method name="SetWallpaperURI">
+      <arg type="o" name="handle" direction="in"/>
+      <arg type="s" name="app_id" direction="in"/>
+      <arg type="s" name="parent_window" direction="in"/>
+      <arg type="s" name="uri" direction="in"/>
+      <arg type="a{sv}" name="options" direction="in"/>
+      <arg type="u" name="response" direction="out"/>
+    </method>
+  </interface>
+</node>
+"""
+
+REQUEST_XML = """
+<node>
+  <interface name="org.freedesktop.impl.portal.Request">
+    <method name="Close"/>
+    <signal name="Response">
+      <arg type="u" name="response"/>
+      <arg type="a{sv}" name="results"/>
+    </signal>
+  </interface>
+</node>
+"""
+
+request_node = Gio.DBusNodeInfo.new_for_xml(REQUEST_XML)
+request_registrations = {}
+
+
+def uri_to_path(uri):
+    parsed = urlparse(uri or "")
+    if parsed.scheme != "file":
+        return None
+    return unquote(parsed.path)
+
+
+def apply_wallpaper(uri, options):
+    set_on = options.get("set-on", "background")
+    if set_on not in ("background", "both"):
+        # The Omarchy lock screen takes its background from the theme.
+        # Accept the request so apps don't treat it as an error.
+        return RESPONSE_SUCCESS
+
+    path = uri_to_path(uri)
+    if not path:
+        return RESPONSE_ERROR
+
+    result = subprocess.run(
+        ["omarchy-theme-bg-set", path],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return RESPONSE_SUCCESS if result.returncode == 0 else RESPONSE_ERROR
+
+
+def on_request_close(connection, sender, path, interface, method, parameters, invocation):
+    registration = request_registrations.pop(path, None)
+    if registration is not None:
+        connection.unregister_object(registration)
+    invocation.return_value(None)
+
+
+def on_set_wallpaper_uri(connection, sender, path, interface, method, parameters, invocation):
+    handle, _app_id, _parent_window, uri, options = parameters.unpack()
+    response = apply_wallpaper(uri, options)
+
+    # The frontend reads the result from this method's return value, but the
+    # request object must exist so it can forward a client Close call.
+    registration = connection.register_object(
+        handle, request_node.interfaces[0], on_request_close, None, None
+    )
+    request_registrations[handle] = registration
+
+    invocation.return_value(GLib.Variant("(u)", (response,)))
+
+
+def on_bus_acquired(connection, name):
+    # Register before the name is visible on the bus, so calls queued behind
+    # D-Bus activation never race the object registration.
+    node = Gio.DBusNodeInfo.new_for_xml(WALLPAPER_XML)
+    connection.register_object(
+        OBJECT_PATH, node.interfaces[0], on_set_wallpaper_uri, None, None
+    )
+
+
+def on_name_lost(connection, name):
+    loop.quit()
+
+
+loop = GLib.MainLoop()
+Gio.bus_own_name(
+    Gio.BusType.SESSION,
+    BUS_NAME,
+    Gio.BusNameOwnerFlags.NONE,
+    on_bus_acquired,
+    None,
+    on_name_lost,
+)
+loop.run()

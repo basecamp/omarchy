@@ -115,6 +115,8 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ hypr/toggles/*.lua (flags,
   │    single-window-aspect-ratio, window-no-gaps)      /etc/skel/.local/state/omarchy/toggles/hypr/
   ├─ nautilus-python/extensions/*.py                    /etc/skel/.local/share/nautilus-python/extensions/
+  ├─ xdg-desktop-portal/portals/omarchy.portal           /usr/share/xdg-desktop-portal/portals/
+  ├─ dbus-1/services/*.service                          /usr/share/dbus-1/services/
   ├─ tensaku/state.toml                                 /etc/skel/.local/state/tensaku/state.toml
   ├─ uwsm/env.d/10-omarchy                              /usr/share/uwsm/env.d/
   ├─ environment.d/*.conf                               /usr/lib/environment.d/
