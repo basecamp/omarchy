@@ -16,14 +16,29 @@ Panel {
   property var batteryInfo: ({})
   property var systemInfo: ({})
   property var profiles: []
-  property string activeProfile: ""
+  readonly property string activeProfile: {
+    if (PowerProfiles.profile === PowerProfile.PowerSaver) return "power-saver"
+    if (PowerProfiles.profile === PowerProfile.Performance) return "performance"
+    return "balanced"
+  }
   property int profileIndex: 0
+  property int gpuModeIndex: 0
+  property bool gpuModeFocused: false
   property bool cursorActive: false
+  property string activeGpuMode: ""
+  readonly property bool hybridGpuAvailable: activeGpuMode !== ""
   readonly property bool showPercentage: setting("showPercentage", false) === true
-  // With the percentage shown the button paints a text block wider than an
-  // icon, so the open-panel mark takes the painted width instead of the
-  // icon-sized fraction of the slot the fallback assumes.
-  readonly property real openPanelIndicatorWidth: showPercentage && !button.vertical ? button.glyphPaintedWidth : 0
+  readonly property bool showProfile: setting("showProfile", false) === true
+  readonly property string barPercentageText: showPercentage && !button.vertical ? "\u2009" + Math.round(batteryFraction * 100) + "%\u2009\u2009\u2009" : ""
+  readonly property string barProfileText: showProfile && !button.vertical ? profileIcon(activeProfile) + " " : ""
+  readonly property string barBatteryText: batteryIcon()
+  readonly property string barText: barPercentageText + barProfileText + barBatteryText
+  readonly property real openPanelIndicatorWidth: {
+    if (button.vertical) return 0
+    if (showPercentage) return barTextMetrics.tightBoundingRect.width
+    if (showProfile) return barTextMetrics.tightBoundingRect.width + Style.space(5)
+    return 0
+  }
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
@@ -59,6 +74,19 @@ Panel {
 
   function profileIcon(name) {
     return Model.profileIcon(name)
+  }
+
+  function updateGpuMode(raw) {
+    var mode = String(raw || "").trim()
+    activeGpuMode = mode === "Integrated" || mode === "Hybrid" ? mode : ""
+    if (!cursorActive || !gpuModeFocused) gpuModeIndex = activeGpuMode === "Hybrid" ? 1 : 0
+  }
+
+  function selectGpuMode(mode) {
+    if (activeGpuMode === mode) return
+
+    close()
+    Quickshell.execDetached(["omarchy-launch-floating-terminal-with-presentation", "omarchy-toggle-hybrid-gpu"])
   }
 
   readonly property bool fullyCharged: {
@@ -155,7 +183,6 @@ Panel {
     // transient empty payloads so the buttons don't blink out.
     if (parsed.profiles.length === 0) return
     profiles = parsed.profiles
-    activeProfile = parsed.activeProfile
     profileIndex = parsed.profileIndex
     if (opened && !cursorActive) {
       var idx = profiles.indexOf(activeProfile)
@@ -193,8 +220,10 @@ Panel {
       }
 
       refresh()
+      if (!gpuModeProc.running) gpuModeProc.running = true
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
+      gpuModeFocused = false
       cursorActive = false
     }
   }
@@ -221,6 +250,15 @@ Panel {
     id: systemProc
     command: ["omarchy-system-stats"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateKeyValue(text, "system") }
+  }
+
+  Process {
+    id: gpuModeProc
+    command: ["timeout", "--kill-after=1s", "3s", "supergfxctl", "-g"]
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateGpuMode(text) }
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.activeGpuMode = ""
+    }
   }
 
   Process {
@@ -277,10 +315,23 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.showPercentage && !vertical
-      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
-      : root.batteryIcon()
-    slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
+    text: root.barText
+    iconComponent: Component {
+      Item {
+        Row {
+          anchors.centerIn: parent
+          height: Style.bar.iconCanvas
+
+          BarTextSegment {
+            text: root.barPercentageText
+            verticalOffset: Style.space(2)
+          }
+          BarTextSegment { text: root.barProfileText }
+          BarTextSegment { text: root.barBatteryText }
+        }
+      }
+    }
+    slotSize: Style.bar.iconSlot * (1 + (root.showPercentage && !vertical ? 1 : 0) + (root.showProfile && !vertical ? 0.5 : 0))
     tooltipText: ""
     onPressed: function(b) {
       if (!root.batteryPresent) return
@@ -303,11 +354,22 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
-        if (!root.cursorActive) { root.cursorActive = true; return }
-        if (dx !== 0) root.selectProfileByDelta(dx)
-        else if (dy !== 0) root.selectProfileByDelta(dy)
+        if (!root.cursorActive) {
+          root.cursorActive = true
+        } else if (dy !== 0) {
+          if (root.hybridGpuAvailable) root.gpuModeFocused = dy > 0
+          else root.selectProfileByDelta(dy)
+        } else if (dx !== 0 && root.gpuModeFocused) {
+          root.gpuModeIndex = Math.max(0, Math.min(1, root.gpuModeIndex + dx))
+        } else if (dx !== 0) {
+          root.selectProfileByDelta(dx)
+        }
       }
-      onActivateRequested: if (root.cursorActive) root.activateSelectedProfile()
+      onActivateRequested: {
+        if (!root.cursorActive) return
+        if (root.gpuModeFocused) root.selectGpuMode(root.gpuModeIndex === 0 ? "Integrated" : "Hybrid")
+        else root.activateSelectedProfile()
+      }
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -491,12 +553,68 @@ Panel {
                 verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
                 bordered: true
                 active: root.activeProfile === modelData
-                hasCursor: root.cursorActive && root.profileIndex === index
+                hasCursor: root.cursorActive && !root.gpuModeFocused && root.profileIndex === index
                 onClicked: root.setProfile(modelData)
                 onHovered: function(h) {
                   if (h) {
                     root.cursorActive = true
+                    root.gpuModeFocused = false
                     root.profileIndex = index
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // ---------- Hybrid graphics mode ----------
+        PanelSeparator {
+          visible: root.hybridGpuAvailable
+          foreground: root.bar.foreground
+        }
+
+        Column {
+          visible: root.hybridGpuAvailable
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSectionHeader {
+            text: "GRAPHICS MODE"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Row {
+            id: gpuModeRow
+            width: parent.width
+            spacing: Style.space(6)
+            readonly property var modes: [
+              { mode: "Integrated", label: "iGPU" },
+              { mode: "Hybrid", label: "Hybrid (iGPU + dGPU)" }
+            ]
+            readonly property real cellWidth: (width - spacing) / modes.length
+
+            Repeater {
+              model: gpuModeRow.modes
+              Button {
+                required property var modelData
+                required property int index
+                width: gpuModeRow.cellWidth
+                text: modelData.label
+                fontSize: Style.font.bodySmall
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                horizontalPadding: Style.spacing.controlPaddingX
+                verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+                bordered: true
+                selected: root.activeGpuMode === modelData.mode
+                hasCursor: root.cursorActive && root.gpuModeFocused && root.gpuModeIndex === index
+                onClicked: root.selectGpuMode(modelData.mode)
+                onHovered: function(h) {
+                  if (h) {
+                    root.cursorActive = true
+                    root.gpuModeFocused = true
+                    root.gpuModeIndex = index
                   }
                 }
               }
@@ -519,6 +637,24 @@ Panel {
     InfoValue { text: value }
   }
 
+  component BarTextSegment: Item {
+    property alias text: label.text
+    property real verticalOffset: 0
+
+    width: label.implicitWidth
+    height: parent.height
+
+    Text {
+      id: label
+      anchors.centerIn: parent
+      anchors.verticalCenterOffset: verticalOffset
+      color: button.active && button.useActiveColor ? button.activeColor : button.foreground
+      font.family: button.fontFamily
+      font.pixelSize: button.fontSize
+      renderType: Text.NativeRendering
+    }
+  }
+
   component InfoLabel: Text {
     textFormat: Text.PlainText
     color: root.bar.foreground
@@ -532,5 +668,12 @@ Panel {
     color: root.bar.foreground
     font.family: root.bar.fontFamily
     font.pixelSize: Style.font.bodySmall
+  }
+
+  TextMetrics {
+    id: barTextMetrics
+    font.family: button.fontFamily
+    font.pixelSize: Math.max(1, Math.round(button.fontSize))
+    text: root.barText
   }
 }
