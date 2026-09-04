@@ -143,6 +143,19 @@ chown root:root "$USERS_DIR"
 mounts_ready || fail "restored production boundaries were rejected"
 pass "root rejects wrong-owned and group-writable production mount boundaries without mutation"
 
+# dockur sets an empty /shared bind to 2777 for Samba guest access on every
+# start; btrfs keeps the setgid bit even after an octal chmod. The final guard
+# must tolerate the tolerant owner-rwx shared mode instead of failing the VM.
+# Reinstating exact 0700 must likewise stay accepted, proving the check was
+# loosened only wide enough to cover the container-applied mode.
+chmod 2777 /home/shared-target
+mounts_ready || fail "final guard rejected a dockur-style 2777 shared source"
+restored_mode=$(command stat -Lc '%a' /home/shared-target)
+[[ $restored_mode == 2777 ]] || fail "shared source unexpectedly changed while testing 2777 tolerance"
+chmod 0700 /home/shared-target
+mounts_ready || fail "final guard rejected a hardened 0700 shared source"
+pass "dockur 2777 shared mode is tolerated while exact 0700 stays accepted"
+
 expected_space=$(command df -P -- /home/storage-target | awk 'NR==2 {print int($4/1024/1024)}')
 actual_space=$(available_storage_gb)
 [[ $actual_space == "$expected_space" ]] || fail "disk-space helper did not measure the storage target filesystem"
