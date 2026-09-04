@@ -726,16 +726,43 @@ Item {
     root.rebuildDisplay()
   }
 
-  function setActiveMenu(id, pushHistory, fromPointer) {
+  // Index of the row currently showing `itemId`, or -1 if it isn't in the
+  // current (possibly filtered) displayModel at all.
+  function indexOfItemId(itemId) {
+    if (!itemId) return -1
+    for (var i = 0; i < displayModel.count; i++) {
+      if (displayModel.get(i).itemId === itemId) return i
+    }
+    return -1
+  }
+
+  function setActiveMenu(id, pushHistory, fromPointer, restoreFilterText) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
-    if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
+    // Remember which row was selected -- and what search filter was active,
+    // if any -- in the menu being left, so goBack() can restore the exact
+    // view instead of always landing on the first row of the unfiltered
+    // menu. The row is keyed by itemId rather than index: the parent may
+    // have been filtered when this row was activated (search results), and
+    // a raw index would land on whatever unrelated row now occupies that
+    // position once the filter is restored (or cleared).
+    if (pushHistory && id !== root.activeMenu) {
+      var currentRow = (root.cursorActive && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count)
+        ? displayModel.get(root.selectedIndex)
+        : null
+      root.navStack = root.navStack.concat([{
+        id: root.activeMenu,
+        filterText: root.filterText,
+        selectedItemId: currentRow ? currentRow.itemId : ""
+      }])
+    }
     root.activeMenu = id
-    root.filterText = ""
+    root.filterText = restoreFilterText || ""
     root.selectedIndex = 0
     root.cursorActive = true
     if (fromPointer) pointerGate.allowInitialSample()
     else root.disarmPointer()
+    if (!root.dmenuActive && root.filterText.trim()) root.loadProvidersForSearch()
     root.rebuildDisplay()
     root.invalidateVolatileProvider(id)
     root.loadProviderForMenu(id)
@@ -747,12 +774,27 @@ Item {
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
       root.navStack = root.navStack.slice(0, root.navStack.length - 1)
-      root.setActiveMenu(previous, false)
+      root.setActiveMenu(previous.id, false, false, previous.filterText)
+      var restored = root.indexOfItemId(previous.selectedItemId)
+      if (restored >= 0) {
+        // Re-settle rather than force the cursor onto `restored`: if that row
+        // went disabled while its submenu was open, settleCursor() walks
+        // forward to the nearest selectable row instead of parking the
+        // cursor somewhere Enter won't run.
+        root.selectedIndex = restored
+        root.settleCursor()
+      }
       return true
     }
 
-    var active = root.item(root.activeMenu)
+    var childId = root.activeMenu
+    var active = root.item(childId)
     root.setActiveMenu((active && active.parent) ? active.parent : "root", false)
+    var parentRow = root.indexOfItemId(childId)
+    if (parentRow >= 0) {
+      root.selectedIndex = parentRow
+      root.settleCursor()
+    }
     return true
   }
 

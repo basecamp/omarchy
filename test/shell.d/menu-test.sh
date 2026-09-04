@@ -487,8 +487,43 @@ assert(
   'menu filter changes disarm pointer selection'
 )
 assert(
-  /function setActiveMenu\(id, pushHistory, fromPointer\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
+  /function setActiveMenu\(id, pushHistory, fromPointer, restoreFilterText\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
   'menu route changes only accept an initial pointer sample for mouse activation'
+)
+// Going back should return the cursor to the row that was highlighted before
+// descending, not reset it to the top of the parent menu -- and if that row
+// was reached through a search, the search itself should come back too. The
+// row is looked up by itemId rather than reused as a raw index, since a raw
+// index would point at an unrelated row once the filter is restored (or
+// cleared, if there wasn't one).
+assert(
+  /root\.navStack = root\.navStack\.concat\(\[\{\s*id: root\.activeMenu,\s*filterText: root\.filterText,\s*selectedItemId: currentRow \? currentRow\.itemId : ""\s*\}\]\)/.test(menuQml),
+  'menu remembers the selected row\'s id and the active search filter when descending'
+)
+assert(
+  /function goBack\(\)[\s\S]*?root\.setActiveMenu\(previous\.id, false, false, previous\.filterText\)\s*\n\s*var restored = root\.indexOfItemId\(previous\.selectedItemId\)/.test(menuQml),
+  'menu restores the remembered search filter, then looks up the remembered row by id'
+)
+// The lookup by itself proves nothing if its result is never applied --
+// assert the found index actually drives the cursor, and that it goes
+// through settleCursor() rather than a bare cursorActive flip, so a row that
+// went disabled while its submenu was open still resolves to the nearest
+// selectable one instead of parking the cursor where Enter won't run.
+assert(
+  /if \(restored >= 0\) \{[\s\S]*?root\.selectedIndex = restored\s*\n\s*root\.settleCursor\(\)\s*\n\s*\}/.test(menuQml),
+  'menu applies the restored row index and re-settles the cursor onto it'
+)
+assert(
+  /function indexOfItemId\(itemId\)[\s\S]*?displayModel\.get\(i\)\.itemId === itemId\) return i/.test(menuQml),
+  'menu can find a row by id in the current, possibly filtered, display model'
+)
+assert(
+  /function setActiveMenu\([\s\S]*?root\.filterText = restoreFilterText \|\| ""[\s\S]*?if \(!root\.dmenuActive && root\.filterText\.trim\(\)\) root\.loadProvidersForSearch\(\)/.test(menuQml),
+  'menu reloads volatile search providers when a remembered filter is restored'
+)
+assert(
+  /var childId = root\.activeMenu[\s\S]*?root\.setActiveMenu\(\(active && active\.parent\) \? active\.parent : "root", false\)[\s\S]*?var parentRow = root\.indexOfItemId\(childId\)\s*\n\s*if \(parentRow >= 0\) \{\s*\n\s*root\.selectedIndex = parentRow\s*\n\s*root\.settleCursor\(\)\s*\n\s*\}/.test(menuQml),
+  'menu restores the child row when backing out of a directly opened route'
 )
 assert(
   /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
