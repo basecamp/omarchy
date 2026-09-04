@@ -789,14 +789,29 @@ Panel {
 
             Item {
               width: parent.width
-              implicitHeight: Math.max(outputHeader.implicitHeight, outputPercent.implicitHeight)
+              implicitHeight: Math.max(outputHeader.implicitHeight, outputPercent.implicitHeight, outputMuteSwitch.implicitHeight)
+
+              Text {
+                id: outputMuteGlyph
+                text: root.hasOutput && !root.outputMuted ? "󰓃" : ""
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.title
+                // Reserve the same glyph overshoot the section headers do
+                // (PanelSectionHeader), so this glyph's painted outline lines
+                // up with the header text beside it.
+                topPadding: Math.ceil(Style.font.title * 0.15)
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
 
               PanelSectionHeader {
                 id: outputHeader
                 text: "OUTPUT"
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily
-                anchors.left: parent.left
+                anchors.left: outputMuteGlyph.right
+                anchors.leftMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
               }
 
@@ -808,10 +823,29 @@ Panel {
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
                 font.bold: true
+                anchors.right: root.hasOutput ? outputMuteSwitch.left : parent.right
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                opacity: root.outputMuted ? 0.5 : 1.0
+              }
+
+              // Visible output mute toggle — scoped to the output channel only,
+              // unlike the hero switch which mutes both channels at once.
+              ToggleSwitch {
+                id: outputMuteSwitch
+                checked: root.hasOutput && !root.outputMuted
+                visible: root.hasOutput
+                foreground: root.bar.foreground
                 anchors.right: parent.right
                 anchors.rightMargin: Style.space(6)
                 anchors.verticalCenter: parent.verticalCenter
-                opacity: root.outputMuted ? 0.5 : 1.0
+                onToggled: root.toggleOutputMute()
+
+                PanelToolTip {
+                  visible: outputMuteSwitch.containsMouse
+                  text: root.outputMuted ? "Unmute output" : "Mute output"
+                  fontFamily: root.bar.fontFamily
+                }
               }
             }
 
@@ -876,14 +910,29 @@ Panel {
 
             Item {
               width: parent.width
-              implicitHeight: Math.max(microphoneHeader.implicitHeight, microphonePercent.implicitHeight)
+              implicitHeight: Math.max(microphoneHeader.implicitHeight, microphonePercent.implicitHeight, inputMuteSwitch.implicitHeight)
+
+              Text {
+                id: inputMuteGlyph
+                text: root.hasInput && !root.inputMuted ? "󰍬" : "󰍭"
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.title
+                // Reserve the same glyph overshoot the section headers do
+                // (PanelSectionHeader), so this glyph's painted outline lines
+                // up with the header text beside it.
+                topPadding: Math.ceil(Style.font.title * 0.15)
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
 
               PanelSectionHeader {
                 id: microphoneHeader
                 text: "INPUT"
                 foreground: root.bar.foreground
                 fontFamily: root.bar.fontFamily
-                anchors.left: parent.left
+                anchors.left: inputMuteGlyph.right
+                anchors.leftMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
               }
 
@@ -895,10 +944,30 @@ Panel {
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
                 font.bold: true
+                anchors.right: root.hasInput ? inputMuteSwitch.left : parent.right
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                opacity: root.inputMuted ? 0.5 : 1.0
+              }
+
+              // Visible input mute toggle — the microphone previously had no
+              // on-screen mute control (only right-click on the slider and the
+              // 'm' key). Mirrors the hero output switch: checked = audible.
+              ToggleSwitch {
+                id: inputMuteSwitch
+                checked: root.hasInput && !root.inputMuted
+                visible: root.hasInput
+                foreground: root.bar.foreground
                 anchors.right: parent.right
                 anchors.rightMargin: Style.space(6)
                 anchors.verticalCenter: parent.verticalCenter
-                opacity: root.inputMuted ? 0.5 : 1.0
+                onToggled: root.toggleInputMute()
+
+                PanelToolTip {
+                  visible: inputMuteSwitch.containsMouse
+                  text: root.inputMuted ? "Unmute microphone" : "Mute microphone"
+                  fontFamily: root.bar.fontFamily
+                }
               }
             }
 
