@@ -573,31 +573,39 @@ restore_shared_privacy() {
   chmod_private_dir "$EXPECTED_SHARED" || true
 }
 
-# `dc up -d` returns when the container is started, not when samba.sh has
-# chmodded /shared. Wait until that has happened (or a short timeout) so the
-# restore lands after 2777 rather than before it. Used by `up` (install) which
-# cannot wait for the full guest-ready line.
-wait_then_restore_shared_privacy() {
-  local i mode started_at
-  [[ -n $EXPECTED_SHARED ]] || return 0
-  started_at=$(docker inspect --format='{{.State.StartedAt}}' "$CONTAINER" 2>/dev/null) || started_at=""
-  if [[ -z $started_at ]]; then
-    restore_shared_privacy
-    return 0
-  fi
-  for i in {1..60}; do
-    mode=$(stat -Lc '%a' "$EXPECTED_SHARED" 2>/dev/null) || mode=""
-    if [[ $mode == 2777 || $mode == 777 ]]; then
-      restore_shared_privacy
-      return 0
-    fi
-    if docker logs --since "$started_at" "$CONTAINER" 2>&1 | grep -qiE 'shared folder|samba'; then
-      restore_shared_privacy
-      return 0
-    fi
-    sleep 0.25
+# After `dc down` there is no PKEXEC_UID on a direct `sudo ... stop`, and a
+# second user on the box would resolve a different per-uid anchor. Walk the
+# root-owned mounts tree instead of calling resolve_caller.
+restore_all_shared_privacy() {
+  local dir canonical prefix
+  prefix=$(realpath -e -- "$RUNTIME_DIR/mounts/users" 2>/dev/null) || return 0
+  for dir in "$prefix"/*/shared; do
+    [[ -d $dir && ! -L $dir ]] || continue
+    canonical=$(realpath -e -- "$dir" 2>/dev/null) || continue
+    [[ $canonical == "$dir" ]] || continue
+    [[ $canonical == "$prefix/"*"/shared" ]] || continue
+    chmod_private_dir "$canonical" || true
   done
-  restore_shared_privacy
+}
+
+# Unprivileged: samba.sh runs only after dockur's ISO download (10-15 minutes
+# on a fresh install). Do not hold a polkit session open for that. Watch the
+# caller's own share and chmod it as the owner once it becomes 2777.
+schedule_share_privacy_restore() {
+  local dir="$HOME/Windows"
+  [[ -e $dir ]] || return 0
+  (
+    local i mode
+    for i in {1..1800}; do
+      mode=$(stat -Lc '%a' "$dir" 2>/dev/null) || mode=""
+      if [[ $mode == 2777 || $mode == 777 ]]; then
+        chmod_private_dir "$dir" || true
+        exit 0
+      fi
+      sleep 1
+    done
+  ) >/dev/null 2>&1 &
+  disown || true
 }
 
 prepare_caller_mounts() {
@@ -940,17 +948,12 @@ assert_mounts_safe() {
   }
 }
 
-__priv_up() {
-  assert_mounts_safe || return 1
-  dc up -d || return 1
-  wait_then_restore_shared_privacy
-  return 0
-}
+__priv_up() { assert_mounts_safe && dc up -d; }
 
 __priv_down() {
   local rc=0
   dc down || rc=$?
-  resolve_caller && restore_shared_privacy
+  restore_all_shared_privacy
   return "$rc"
 }
 
@@ -1395,6 +1398,7 @@ EOF
     echo "   - Port already in use: check if another VM is running"
     exit 1
   fi
+  schedule_share_privacy_restore
 
   echo ""
   echo "Windows VM is starting up!"
