@@ -64,6 +64,11 @@ verify_services() {
   done
   pass "critical system services are running"
 
+  systemctl is-active --quiet dev-zram0.swap || fail "zram swap is active" "dev-zram0.swap is not active"
+  swapon --show=NAME --noheadings --raw | grep -Fx '/dev/zram0' >/dev/null ||
+    fail "zram swap is active" "/dev/zram0 is not listed as active swap"
+  pass "zram swap is active"
+
   systemctl --user is-active --quiet pipewire.service pipewire-pulse.service wireplumber.service ||
     fail "user audio services are running"
   pass "user audio services are running"
