@@ -62,9 +62,11 @@ constexpr std::array catalog{
         "Sends bounded requests only to the selected origins and methods",
         RiskLevel::high, RevocationPolicy::cancel_inflight,
         "bounded-network-fetch",
-        "bounded-network-fetch-v1;request=method,path,headers,body;"
-        "response=status,headers,body;scope=https-origins-methods;"
-        "redirects=revalidate;limits=provider-profile",
+        "bounded-network-fetch-v1;request=method,origin,path,headers,body,"
+        "response-type,media-json-pointers;response=status,content-type,"
+        "body-or-json,source-handles;"
+        "scope=https-origins-methods;redirects=reject;"
+        "resolved-addresses=public-only;limits=provider-fixed",
         network_operations},
     CatalogSpec{"external.open-uri.https", "external.open-uri.https-v1",
                 EnforcementFamily::external_open_uri, "desktop.actions",

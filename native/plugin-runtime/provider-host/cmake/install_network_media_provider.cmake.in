@@ -1,0 +1,27 @@
+set(runtime_root "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@OMARCHY_PLUGIN_INSTALL_ROOT@")
+set(provider "${runtime_root}/bin/omarchy-plugin-network-media-provider")
+file(SHA256 "${provider}" provider_sha256)
+set(profile_root "${runtime_root}/providers.d")
+file(MAKE_DIRECTORY "${profile_root}")
+
+foreach(name IN ITEMS network-fetch media-stream)
+  if(name STREQUAL "network-fetch")
+    set(adapter "bounded-network-fetch")
+    set(contract "@OMARCHY_NETWORK_FETCH_CONTRACT_DIGEST@")
+  else()
+    set(adapter "activation-media-stream")
+    set(contract "@OMARCHY_MEDIA_STREAM_CONTRACT_DIGEST@")
+  endif()
+  file(WRITE "${profile_root}/${name}.profile"
+"schema=1
+adapter-class=${adapter}
+contract-digest=${contract}
+abi-version=1
+group=network.media
+executable=/usr/@OMARCHY_PLUGIN_INSTALL_ROOT@/bin/omarchy-plugin-network-media-provider
+executable-sha256=${provider_sha256}
+invocation-timeout-ms=25000
+")
+  file(CHMOD "${profile_root}/${name}.profile"
+       PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)
+endforeach()

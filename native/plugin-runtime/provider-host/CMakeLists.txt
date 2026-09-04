@@ -4,6 +4,9 @@ project(omarchy_plugin_provider_host LANGUAGES CXX)
 
 include(CTest)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(CURL REQUIRED IMPORTED_TARGET libcurl)
+
 if(NOT TARGET omarchy-plugin-capability-definitions)
   add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/capability-definitions"
                    "${CMAKE_CURRENT_BINARY_DIR}/capability-definitions")
@@ -27,6 +30,10 @@ set(OMARCHY_DESKTOP_OPEN_CONTRACT_DIGEST
   "d678287160034f2311446423b8c1d6847b80abc0ea62233036c578611387622c")
 set(OMARCHY_SYSTEM_OBSERVE_CONTRACT_DIGEST
   "e32bc94a49b0e2170465f7e7c7d671a6a4a7d1d857cee4b4111b81dd3088c977")
+set(OMARCHY_NETWORK_FETCH_CONTRACT_DIGEST
+  "24d172b971ac832c86d4e28c224bfd7e912aa1ea3de4517aa09af2c02d362a20")
+set(OMARCHY_MEDIA_STREAM_CONTRACT_DIGEST
+  "f060bfec526a4355bd3431d39310bf96e61907f26be0e0dea6e6e8c2d28a415c")
 configure_file(cmake/command_contract.hpp.in
   "${CMAKE_CURRENT_BINARY_DIR}/generated/command_contract.hpp" @ONLY)
 add_executable(omarchy-plugin-command-executor
@@ -60,6 +67,18 @@ target_compile_definitions(omarchy-plugin-system-observer PRIVATE
 target_link_libraries(omarchy-plugin-system-observer PRIVATE Qt6::Core)
 install(TARGETS omarchy-plugin-system-observer
   RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
+add_executable(omarchy-plugin-network-media-provider
+  src/network_media_provider.cpp)
+target_compile_features(omarchy-plugin-network-media-provider PRIVATE cxx_std_20)
+target_compile_options(omarchy-plugin-network-media-provider PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+target_compile_definitions(omarchy-plugin-network-media-provider PRIVATE
+  OMARCHY_NETWORK_FETCH_CONTRACT_DIGEST="${OMARCHY_NETWORK_FETCH_CONTRACT_DIGEST}"
+  OMARCHY_MEDIA_STREAM_CONTRACT_DIGEST="${OMARCHY_MEDIA_STREAM_CONTRACT_DIGEST}")
+target_link_libraries(omarchy-plugin-network-media-provider PRIVATE
+  PkgConfig::CURL Qt6::Core)
+install(TARGETS omarchy-plugin-network-media-provider
+  RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
 install(FILES commands/github-api-v1.policy
   DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/commands.d")
 configure_file(cmake/install_command_provider.cmake.in
@@ -71,8 +90,31 @@ install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/install_desktop_open_provider.cmake"
 configure_file(cmake/install_system_observe_provider.cmake.in
   "${CMAKE_CURRENT_BINARY_DIR}/install_system_observe_provider.cmake" @ONLY)
 install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/install_system_observe_provider.cmake")
+configure_file(cmake/install_network_media_provider.cmake.in
+  "${CMAKE_CURRENT_BINARY_DIR}/install_network_media_provider.cmake" @ONLY)
+install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/install_network_media_provider.cmake")
 
 if(BUILD_TESTING)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  add_executable(omarchy-plugin-network-media-provider-test-peer
+    src/network_media_provider.cpp)
+  target_compile_features(omarchy-plugin-network-media-provider-test-peer PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-network-media-provider-test-peer PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_definitions(omarchy-plugin-network-media-provider-test-peer PRIVATE
+    OMARCHY_NETWORK_MEDIA_TESTING=1
+    OMARCHY_PROVIDER_CHANNEL_FD=0
+    OMARCHY_NETWORK_FETCH_CONTRACT_DIGEST="${OMARCHY_NETWORK_FETCH_CONTRACT_DIGEST}"
+    OMARCHY_MEDIA_STREAM_CONTRACT_DIGEST="${OMARCHY_MEDIA_STREAM_CONTRACT_DIGEST}")
+  target_link_libraries(omarchy-plugin-network-media-provider-test-peer PRIVATE
+    PkgConfig::CURL Qt6::Core)
+  add_test(NAME plugin-network-media-provider
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/network_media_provider_test.py
+      $<TARGET_FILE:omarchy-plugin-network-media-provider-test-peer>)
+  set_tests_properties(plugin-network-media-provider PROPERTIES
+    TIMEOUT 10 LABELS "unit;security;providers;network;media;adversarial")
+
   add_executable(omarchy-plugin-command-executor-test-peer
     src/command_executor.cpp)
   target_compile_features(omarchy-plugin-command-executor-test-peer PRIVATE cxx_std_20)

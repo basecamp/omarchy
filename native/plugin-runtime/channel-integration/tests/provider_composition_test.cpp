@@ -634,6 +634,15 @@ void activation_and_admission_binding() {
 
 int main() {
   try {
+    if (::getenv("OMARCHY_TEST_FAKE_OWNERSHIP") != nullptr) {
+      // fakeroot deliberately reports uid 0, so the production resource-scope
+      // controller would probe /run/user/0 instead of the caller's real user
+      // bus. This pass exists only for the ownership mutations below; the
+      // ordinary test already covers composition and provider lifecycles.
+      bootstrap_rejects_provider_tamper();
+      std::cout << "provider composition ownership tests passed\n";
+      return 0;
+    }
     exact_identity_and_pinned_dispatch();
     unavailable_and_denied_never_launch();
     bootstrap_rejects_provider_tamper();

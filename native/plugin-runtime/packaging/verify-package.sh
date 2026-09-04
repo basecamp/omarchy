@@ -144,10 +144,13 @@ worker=$root/bin/omarchy-plugin-qml-worker
 command_executor=$root/bin/omarchy-plugin-command-executor
 desktop_opener=$root/bin/omarchy-plugin-desktop-opener
 system_observer=$root/bin/omarchy-plugin-system-observer
+network_media_provider=$root/bin/omarchy-plugin-network-media-provider
 command_policy=$root/commands.d/github-api-v1.policy
 command_provider=$root/providers.d/bash-execute.profile
 desktop_open_provider=$root/providers.d/external-open-uri-https.profile
 system_observe_provider=$root/providers.d/system-observe.profile
+network_fetch_provider=$root/providers.d/network-fetch.profile
+media_stream_provider=$root/providers.d/media-stream.profile
 bridge=$root/qml/Omarchy/PluginHost/libomarchy-plugin-host-bridge.so
 runtime_dependencies=$root/metadata/runtime-dependencies-v1.txt
 runtime_paths=$root/metadata/runtime-paths-v1.txt
@@ -158,10 +161,12 @@ canonical_worker=/usr/lib/omarchy/plugin-security/$version/bin/omarchy-plugin-qm
 
 expected_dependencies=$(cat <<EOF
 bubblewrap
+curl
 glibc
 libgcc
 libseccomp
 libstdc++
+mpv
 omarchy
 qt6-base
 qt6-declarative
@@ -228,6 +233,31 @@ EOF
 )
 [[ $(<"$system_observe_provider") == "$expected_system_observe_provider" ]] ||
   fail "system-observe provider profile does not pin the installed observer and capability contract"
+network_fetch_contract=$(jq -er '.definitions[] | select(.capability == "network.fetch") | .contractDigest' "$root/metadata/capability-catalog-v1.json") ||
+  fail "network-fetch capability contract is unavailable"
+media_stream_contract=$(jq -er '.definitions[] | select(.capability == "media.play-stream") | .contractDigest' "$root/metadata/capability-catalog-v1.json") ||
+  fail "media-stream capability contract is unavailable"
+network_media_digest=$(sha256sum "$network_media_provider")
+network_media_digest=${network_media_digest%% *}
+for binding in \
+  "network-fetch|bounded-network-fetch|$network_fetch_contract" \
+  "media-stream|activation-media-stream|$media_stream_contract"; do
+  IFS='|' read -r name adapter contract <<<"$binding"
+  expected_profile=$(cat <<EOF
+schema=1
+adapter-class=$adapter
+contract-digest=$contract
+abi-version=1
+group=network.media
+executable=/usr/lib/omarchy/plugin-security/$version/bin/omarchy-plugin-network-media-provider
+executable-sha256=$network_media_digest
+invocation-timeout-ms=25000
+EOF
+)
+  profile=$root/providers.d/$name.profile
+  [[ $(<"$profile") == "$expected_profile" ]] ||
+    fail "$name provider profile does not pin the installed provider and capability contract"
+done
 if ! jq -e '
   .schemaVersion == 1 and
   .profile == "github-api-v1" and
@@ -245,6 +275,8 @@ verify_elf "$worker" pie "$qt_allowed" libseccomp.so.2
 verify_elf "$command_executor" pie "$qt_allowed" libQt6Core.so.6
 verify_elf "$desktop_opener" pie "$qt_allowed" libQt6Core.so.6
 verify_elf "$system_observer" pie "$qt_allowed" libQt6Core.so.6
+network_media_allowed='^(lib(Qt6Core|curl)\.so\.[0-9]+|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6)$'
+verify_elf "$network_media_provider" pie "$network_media_allowed" libcurl.so.4
 verify_elf "$bridge" shared "$bridge_allowed" libQt6Qml.so.6
 needed_libraries "$bridge" | grep -Fx libseccomp.so.2 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libseccomp.so.2"
 needed_libraries "$bridge" | grep -Fx libsystemd.so.0 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libsystemd.so.0"

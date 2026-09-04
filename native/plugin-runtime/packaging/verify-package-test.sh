@@ -168,6 +168,16 @@ expect_failure "retargeted desktop opener" "desktop-open provider profile does n
 
 reset_fixture
 root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+sed -i 's/^group=network\.media$/group=network.fetch/' "$root/providers.d/network-fetch.profile"
+expect_failure "split network/media provider group" "network-fetch provider profile does not pin the installed provider and capability contract" "$verifier" --staging "$scratch/root" "$version"
+
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+sed -i 's/^adapter-class=activation-media-stream$/adapter-class=unbounded-media-stream/' "$root/providers.d/media-stream.profile"
+expect_failure "retargeted media adapter" "media-stream provider profile does not pin the installed provider and capability contract" "$verifier" --staging "$scratch/root" "$version"
+
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
 sed -i 's#"executable": "/usr/bin/gh"#"executable": "/usr/bin/sh"#' "$root/commands.d/github-api-v1.policy"
 expect_failure "retargeted GitHub command" "GitHub command policy is invalid" "$verifier" --staging "$scratch/root" "$version"
 

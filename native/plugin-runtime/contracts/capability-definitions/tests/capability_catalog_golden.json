@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "definitions": [
-    {"capability":"network.fetch","definitionGeneration":1,"definitionDigest":"6ab72b29cb9a561eab8e85b5582a637d5e9f7c4ff74f65002e9465ba2dc5b6a9","contractDigest":"e69b4b46fd9ee0e01c8d470e4b6af7f47494b652f6160b756222a8f8eae3124c"},
+    {"capability":"network.fetch","definitionGeneration":1,"definitionDigest":"fd879fab2d17f35dcb56b0d3426ffc436a5c46d9dd717e6ca0a03ee0accaf62b","contractDigest":"24d172b971ac832c86d4e28c224bfd7e912aa1ea3de4517aa09af2c02d362a20"},
     {"capability":"external.open-uri.https","definitionGeneration":1,"definitionDigest":"fcbb289bdcaf8223f3c122f6d2e4a6fc7f0fd1ce0ae7cbc57e5459b852c58844","contractDigest":"d678287160034f2311446423b8c1d6847b80abc0ea62233036c578611387622c"},
     {"capability":"system.observe","definitionGeneration":1,"definitionDigest":"59af09ff1dd91191a3dcfb7917fd6bebc7aaac91a892c69cbd329bd45e4df520","contractDigest":"e32bc94a49b0e2170465f7e7c7d671a6a4a7d1d857cee4b4111b81dd3088c977"},
     {"capability":"device.observe","definitionGeneration":1,"definitionDigest":"4eb1c5db51d9106086607fa841556d1d6813816d414208385accb57841e81f94","contractDigest":"8b6571dc76a636d63699e8fb119f7c727b9c03c01d3384b44b46c07769deedff"},
