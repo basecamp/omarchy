@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# omarchy:summary=Apply the current theme color to Framework Desktop ARGB fans
+# omarchy:hidden=true
+
+# Apply theme accent color to Framework Desktop ARGB fan via framework_tool.
+#
+# Color selection priority:
+# 1. User override: ~/.config/omarchy/fan-colors/<theme-name>.txt (8 hex colors, one per line)
+# 2. Theme accent color from ~/.local/state/omarchy/current/theme/framework-desktop-fan.rgb
+#
+# Template-generated colors pass through calibration
+# (~/.config/omarchy/fan-colors/calibration.conf). Override files are user-tuned
+# for the hardware and are applied directly without calibration.
+
+if ! omarchy-hw-framework-desktop; then
+  exit 0
+fi
+
+if ! omarchy-cmd-present framework_tool; then
+  exit 0
+fi
+
+# --- Calibration ---
+CALIBRATION_FILE="$HOME/.config/omarchy/fan-colors/calibration.conf"
+RED_PERCENT=100
+GREEN_PERCENT=100
+BLUE_PERCENT=100
+
+if [[ -f "$CALIBRATION_FILE" ]]; then
+  # shellcheck source=/dev/null
+  source "$CALIBRATION_FILE"
+fi
+
+# Apply per-channel percentage to a hex color (#RRGGBB -> #RRGGBB)
+calibrate_color() {
+  local hex="${1#\#}"
+  local r g b
+
+  r=$(( 0x${hex:0:2} * RED_PERCENT / 100 ))
+  g=$(( 0x${hex:2:2} * GREEN_PERCENT / 100 ))
+  b=$(( 0x${hex:4:2} * BLUE_PERCENT / 100 ))
+
+  # Clamp to 0-255
+  (( r > 255 )) && r=255
+  (( g > 255 )) && g=255
+  (( b > 255 )) && b=255
+
+  printf "#%02x%02x%02x" "$r" "$g" "$b"
+}
+
+# --- Main ---
+THEME_NAME=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
+OVERRIDE_FILE="$HOME/.config/omarchy/fan-colors/${THEME_NAME}.txt"
+THEME_FILE="$HOME/.local/state/omarchy/current/theme/framework-desktop-fan.rgb"
+
+# Check for user override first
+if [[ -f "$OVERRIDE_FILE" ]]; then
+  mapfile -t colors < "$OVERRIDE_FILE"
+
+  # Empty override file: fall through to the theme color below
+  if (( ${#colors[@]} < 1 )); then
+    colors=()
+  else
+    # Pad with first color if fewer than 8 provided
+    while (( ${#colors[@]} < 8 )); do
+      colors+=("${colors[0]}")
+    done
+  fi
+fi
+
+# Apply the override if it produced any colors
+if (( ${#colors[@]} >= 1 )); then
+  # Convert to 0x prefix (no calibration — override files are hardware-tuned)
+  for i in {0..7}; do
+    colors[$i]=${colors[$i]//#/0x}
+  done
+
+  sudo omarchy-framework-tool-rgb --rgbkbd 0 \
+    "${colors[0]}" "${colors[1]}" "${colors[2]}" "${colors[3]}" \
+    "${colors[4]}" "${colors[5]}" "${colors[6]}" "${colors[7]}" \
+    2>/dev/null || true
+  exit 0
+fi
+
+# Use theme accent color directly (with calibration)
+if [[ -f "$THEME_FILE" ]]; then
+  color=$(cat "$THEME_FILE")
+  color=$(calibrate_color "$color")
+  color=${color//#/0x}
+  sudo omarchy-framework-tool-rgb --rgbkbd 0 "$color" "$color" "$color" "$color" "$color" "$color" "$color" "$color" 2>/dev/null || true
+fi

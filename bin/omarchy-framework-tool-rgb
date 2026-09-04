@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# omarchy:summary=Forward only RGB arguments to framework_tool
+# omarchy:hidden=true
+
+# Root-owned wrapper around /usr/bin/framework_tool that whitelists exactly
+# the RGB operation used for Framework Desktop ARGB fan control:
+#
+#   omarchy-framework-tool-rgb --rgbkbd 0 <8 hex colors>
+#
+# Anything else is rejected so passwordless sudo on this wrapper cannot be
+# used to reach framework_tool's other privileged operations (SMBIOS dump,
+# BIOS update, fan/thermal control, etc.).
+
+if (( $# != 10 )) || [[ $1 != "--rgbkbd" ]] || [[ $2 != "0" ]]; then
+  echo "usage: omarchy-framework-tool-rgb --rgbkbd 0 <8 hex colors>" >&2
+  exit 1
+fi
+
+for color in "${@:3}"; do
+  [[ $color =~ ^0x[0-9a-fA-F]{6}$ ]] || {
+    echo "invalid color: $color (expected 0xRRGGBB)" >&2
+    exit 1
+  }
+done
+
+exec /usr/bin/framework_tool --rgbkbd 0 "${@:3}"
