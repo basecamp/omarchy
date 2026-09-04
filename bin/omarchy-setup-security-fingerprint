@@ -65,6 +65,45 @@ account    include                     system-local-login
 EOF
 }
 
+setup_goodix_tod_driver() {
+  # Goodix 53xc readers (Dell machines) have no open libfprint driver, so
+  # nothing claims the sensor and fprintd reports no devices. Dell ships a
+  # proprietary Linux one, repackaged in the AUR: the closed binary
+  # libfprint-goodix-53xc from Dell's Ubuntu archive, loaded through
+  # libfprint-tod — an open libfprint fork with a vendor-plugin interface.
+  # Closed source installs on a yes, not silently.
+  echo -e "\e[33m\nYour Goodix fingerprint reader has no open-source driver.\e[0m"
+  echo "Dell ships a proprietary one for Linux, packaged in the AUR as"
+  echo "libfprint-goodix-53xc (a closed binary from Dell's Ubuntu archive),"
+  echo "loaded on top of libfprint-tod (an open libfprint fork)."
+
+  if ! gum confirm --default=false "Install the proprietary Dell driver?"; then
+    echo -e "\e[31m\nFingerprint setup cannot continue without it. Aborting.\e[0m"
+    exit 1
+  fi
+
+  # libfprint-tod provides+conflicts libfprint — the same dance as
+  # libfprint-git above, making room in the other direction. Deps-only keeps
+  # an installed fprintd in place.
+  if pacman -Q libfprint &>/dev/null; then
+    sudo pacman -Rdd --noconfirm libfprint
+  fi
+  omarchy-pkg-aur-add libfprint-tod libfprint-goodix-53xc || exit 1
+
+  # fprintd loads TOD plugins when libfprint initializes, and the driver
+  # installs a udev rule for the reader. Reload the rules and stop the daemon
+  # (it dbus-activates fresh on the next call) so the new driver is claimed.
+  sudo udevadm control --reload-rules
+  sudo udevadm trigger
+  sudo systemctl stop fprintd 2>/dev/null || true
+
+  if ! fprintd-list "$USER" &>/dev/null; then
+    echo -e "\e[31m\nThe driver is installed, but fprintd still sees no devices.\e[0m"
+    echo "The reader sometimes needs a reboot before it answers a new driver."
+    exit 1
+  fi
+}
+
 
 echo -e "\e[32mSetting up fingerprint scanner for authentication.\n\e[0m"
 
@@ -84,11 +123,42 @@ if pacman -Q libfprint-git &>/dev/null; then
   sudo pacman -Rdd --noconfirm libfprint-git
 fi
 
-omarchy-pkg-add libfprint fprintd usbutils
+# libfprint-tod provides it too, so a re-run after the Goodix setup below
+# must not try to pull stock libfprint back in. fprintd and usbutils are
+# ensured either way — the fork provides libfprint, not them.
+if ! pacman -Q libfprint-tod &>/dev/null; then
+  omarchy-pkg-add libfprint fprintd usbutils
+else
+  omarchy-pkg-add fprintd usbutils
+fi
+
+# Hardware detection proves a reader exists, not that libfprint can drive
+# it — a reader no open driver claims never reaches fprintd, and enrollment
+# dies instantly on "No devices available" with nothing pointing at the
+# real problem. Ask fprintd before putting a finger on glass, and route
+# Goodix 53xc readers to Dell's proprietary driver.
+if ! fprintd-list "$USER" &>/dev/null; then
+  if omarchy-hw-fingerprint-tod; then
+    setup_goodix_tod_driver
+  else
+    echo -e "\e[31m\nNo installed driver supports your fingerprint reader.\e[0m"
+    echo "The sensor is connected, but fprintd reports no devices, so open"
+    echo "libfprint has no driver for it. Check whether your reader's USB id"
+    echo "is listed at https://fprint.freedesktop.org/supported-devices.html"
+    exit 1
+  fi
+fi
 
 # Enroll first fingerprint
 echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\e[0m"
-echo -e "Keep moving the finger around on sensor until the process completes.\n"
+# The 53xc on Dell's driver is a press sensor, not a swipe sensor — the hint
+# has to match or users scrub a finger it wants held still. Derived from the
+# installed package, not this run's path, so it holds on every re-run too.
+if pacman -Q libfprint-goodix-53xc &>/dev/null; then
+  echo -e "This is a press sensor: lay your finger flat and hold it until each stage completes.\n"
+else
+  echo -e "Keep moving the finger around on sensor until the process completes.\n"
+fi
 
 if sudo fprintd-enroll "$USER"; then
   echo -e "\e[32m\nFingerprint enrolled successfully!\e[0m"

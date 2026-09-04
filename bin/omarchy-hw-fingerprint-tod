@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when the fingerprint reader present is a Goodix 53xc, which open libfprint cannot drive
+# omarchy:hidden=true
+
+# Goodix 27c6:530c / 533c / 538c readers (Dell machines) have no open-source
+# driver — stock libfprint's goodixmoc table starts at 5840. Dell publishes a
+# proprietary TOD plugin for Linux, packaged in the AUR as
+# libfprint-goodix-53xc, whose compiled id table is exactly these three (the
+# udev rule in that package also lists 5840, but the open driver covers it).
+# Matching is by exact vid:pid, not vendor: nothing else from this vendor
+# should be steered toward a closed blob when the open driver works.
+tod_products=" 530c 533c 538c "
+usb_devices_path="${OMARCHY_USB_DEVICES_PATH:-/sys/bus/usb/devices}"
+
+for dev in "$usb_devices_path"/*; do
+  [[ -r $dev/idVendor && -r $dev/idProduct ]] || continue
+  [[ $(<"$dev/idVendor") == "27c6" ]] || continue
+  [[ $tod_products == *" $(<"$dev/idProduct") "* ]] && exit 0
+done
+
+exit 1
