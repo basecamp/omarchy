@@ -3,12 +3,17 @@
 if lspci -nn | grep "106b:180[12]" >/dev/null; then
   echo "Detected MacBook with T2 chip. Installing support items..."
 
+  # apple-t2-audio-config only tunes cards. WirePlumber still needs PipeWire's
+  # ALSA SPA plugin or there is no speaker sink (#7347).
   omarchy-pkg-add \
     linux-t2 \
     linux-t2-headers \
     apple-t2-audio-config \
     apple-bcm-firmware \
-    t2fanrd
+    t2fanrd \
+    pipewire-audio \
+    pipewire-alsa \
+    pipewire-pulse
 
   # Enable T2 fan control
   systemctl enable t2fanrd.service

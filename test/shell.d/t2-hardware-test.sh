@@ -22,6 +22,23 @@ grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sl
   fail "the ISO no longer caches tiny-dfr"
 pass "fresh T2 setup uses t2bce-compatible suspend, fan, and Touch Bar defaults"
 
+# Overlay installs can run this leaf without omarchy-other.packages, so T2
+# audio support has to install the full PipeWire audio stack here (#7347).
+pkg_add_block=$(awk '
+  $0 ~ /omarchy-pkg-add/ { grab=1 }
+  grab {
+    print
+    line = $0
+    sub(/[[:space:]]+$/, "", line)
+    if (line !~ /\\$/) exit
+  }
+' "$fix_t2")
+for pkg in pipewire-audio pipewire-alsa pipewire-pulse; do
+  grep -Fq "$pkg" <<<"$pkg_add_block" ||
+    fail "T2 setup omarchy-pkg-adds $pkg as part of the PipeWire audio stack"
+done
+pass "T2 setup installs the full PipeWire audio stack"
+
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
@@ -212,3 +229,83 @@ grep -Fxq 'limine-mkinitcpio' "$calls" ||
   fail "T2 rerun migration rebuilds the boot image"
 [[ -f $repair_marker ]] || fail "T2 rerun migration records the machine-wide repair"
 pass "T2 rerun migration repairs installs the broken hardware check skipped"
+
+pipewire_migration="$ROOT/migrations/1787023543.sh"
+
+grep -Fq 'lspci -nn | grep "106b:180[12]"' "$pipewire_migration" ||
+  fail "T2 PipeWire migration uses the same PCI check as fix-t2.sh"
+! grep -q 'pacman' "$pipewire_migration" ||
+  fail "T2 PipeWire migration installs with omarchy-pkg-add, not pacman"
+for pkg in pipewire-audio pipewire-alsa pipewire-pulse; do
+  grep -Fq "$pkg" "$pipewire_migration" ||
+    fail "T2 PipeWire migration installs $pkg"
+done
+pass "T2 PipeWire migration matches the leaf's package set"
+
+cat >"$stub_bin/omarchy-pkg-add" <<'SH'
+#!/bin/bash
+
+printf 'omarchy-pkg-add' >>"$TEST_LOG"
+printf '\t%s' "$@" >>"$TEST_LOG"
+printf '\n' >>"$TEST_LOG"
+SH
+chmod +x "$stub_bin/omarchy-pkg-add"
+
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  bash -euo pipefail "$pipewire_migration" >/dev/null
+
+pkg_add_call=$(awk '/^omarchy-pkg-add(\t| |$)/ { print; exit }' "$calls")
+[[ -n $pkg_add_call ]] ||
+  fail "T2 PipeWire migration calls omarchy-pkg-add" "$(cat "$calls")"
+for pkg in pipewire-audio pipewire-alsa pipewire-pulse; do
+  awk -F '[\t ]+' -v pkg="$pkg" '{
+    for (i = 1; i <= NF; i++) if ($i == pkg) found = 1
+  }
+  END { exit !found }' <<<"$pkg_add_call" ||
+    fail "T2 PipeWire migration omarchy-pkg-adds $pkg as part of the PipeWire audio stack" "$(cat "$calls")"
+done
+pass "T2 PipeWire migration installs the full PipeWire audio stack on T2 hardware"
+
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=0 \
+  bash -euo pipefail "$pipewire_migration" >/dev/null
+
+[[ ! -s $calls ]] || fail "non-T2 systems skip the PipeWire migration" "$(cat "$calls")"
+pass "T2 PipeWire migration skips unrelated hardware"
+
+# Already-present packages are omarchy-pkg-add's no-op: missing-check fails,
+# so pacman never gets -S, and the post-check's pacman -Q is allowed.
+cat >"$stub_bin/omarchy-pkg-missing" <<'SH'
+#!/bin/bash
+
+exit 1
+SH
+cat >"$stub_bin/pacman" <<'SH'
+#!/bin/bash
+
+printf 'pacman' >>"$TEST_LOG"
+printf '\t%s' "$@" >>"$TEST_LOG"
+printf '\n' >>"$TEST_LOG"
+[[ $1 == -Q ]] && exit 0
+exit 1
+SH
+ln -sfn "$ROOT/bin/omarchy-pkg-add" "$stub_bin/omarchy-pkg-add"
+chmod +x "$stub_bin/omarchy-pkg-missing" "$stub_bin/pacman"
+
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  bash -euo pipefail "$pipewire_migration" >/dev/null
+
+! grep -E $'^pacman\t-S' "$calls" ||
+  fail "already-present PipeWire packages are a no-op" "$(cat "$calls")"
+pass "already-present PipeWire packages are a no-op"
