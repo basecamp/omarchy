@@ -47,7 +47,7 @@ automatically. If a change somehow fails to apply, force a reload with
 
 ## Agent Harness Integrations
 
-A plugin may include declarative `agentHarness` metadata so its coding agent appears under _Setup > Defaults > Agent_. Install it through the normal plugin flow with `omarchy plugin add <git-url>`; do not create a separate agent installer. The manifest must still declare at least one supported shell `kind` and matching QML `entryPoint`. For an integration with no visible UI, use a minimal `service` entry point. Third-party harnesses are limited to a `mise` package and argv launch templates; never add arbitrary shell install hooks.
+A plugin may include declarative `agentHarness` metadata so its coding agent appears under _Setup > Defaults > Agent_. Install it through the normal plugin flow with `omarchy plugin add <git-url>`; do not create a separate agent installer. A harness-only integration may declare empty `kinds` and `entryPoints`; the registry treats it as installed metadata and never loads QML. Ordinary plugins still need a supported shell `kind` and matching QML `entryPoint`. Third-party harnesses are limited to a `mise` package and argv launch templates; never add arbitrary shell install hooks.
 
 ## Idle and Lock
 

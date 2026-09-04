@@ -2,9 +2,9 @@
 
 Omarchy treats a coding agent as declarative metadata that describes how to install and launch it with an optional project and prompt. Third-party harnesses are delivered through the existing plugin system: install the integration with `omarchy plugin add`, update it with `omarchy plugin update`, and remove it with `omarchy plugin remove`.
 
-A harness is not a new plugin kind. It is optional `agentHarness` metadata on a normal plugin manifest. The plugin must still declare at least one supported `kind` and matching `entryPoint`; a harness-only integration can use a minimal `service` entry point when it has no desktop UI. The harness is available whenever the plugin is installed; enabling controls its Quickshell entry point separately.
+A harness is not a new plugin kind. It is optional `agentHarness` metadata on a normal plugin manifest. A plugin that declares `agentHarness` may use `"kinds": []` and `"entryPoints": {}` when it has no Quickshell UI; the registry treats it as installed metadata and never tries to load it. Ordinary plugins still need at least one supported `kind` and matching `entryPoint`. The harness is available whenever its plugin is installed; enabling applies only to any Quickshell entry points the plugin also declares.
 
-Built-in harnesses live in `default/agents/harnesses.json`. A third-party plugin can expose one from its root `manifest.json`:
+Built-in harnesses live in `default/agents/harnesses.json`. A third-party plugin can expose one from its root `manifest.json`; this example is a harness-only plugin, so it deliberately has no QML entry point:
 
 ```json
 {
@@ -13,8 +13,8 @@ Built-in harnesses live in `default/agents/harnesses.json`. A third-party plugin
   "name": "Acme agent integration",
   "version": "1.0.0",
   "description": "Adds the Acme coding-agent harness",
-  "kinds": ["service"],
-  "entryPoints": { "service": "Service.qml" },
+  "kinds": [],
+  "entryPoints": {},
   "agentHarness": {
     "id": "acme-agent",
     "name": "Acme Agent",

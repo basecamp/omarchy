@@ -16,11 +16,12 @@ Run `omarchy-restart-shell` after making changes to QML files.
   widgets may use adjacent `*.manifest.json` files. Third-party plugins live
   at `~/.config/omarchy/plugins/<id>/` with a `manifest.json` at the root.
 - Every plugin manifest declares `schemaVersion`, `id`, `name`, `version`,
-  `kinds`, and `entryPoints`; it must declare at least one supported kind and
-  matching entry point. Harness metadata is optional and does not replace the
-  plugin entry-point contract. See [`docs/omarchy-shell.md`](../../docs/omarchy-shell.md)
-  and `shell/services/PluginRegistry.qml` for the current contract; fields such
-  as `activation` are optional.
+  `kinds`, and `entryPoints`. Ordinary plugins must declare at least one
+  supported kind and matching entry point; a harness-only plugin declaring
+  `agentHarness` may use empty `kinds` and `entryPoints`. See
+  [`docs/omarchy-shell.md`](../../docs/omarchy-shell.md) and
+  `shell/services/PluginRegistry.qml` for the current contract; fields such as
+  `activation` are optional.
 - Entry-point QML files are `Item`s (not `ShellRoot`), and accept the
   shell-injected properties `omarchyPath`, `shell`, `manifest`, and
   `pluginRegistry` / `barWidgetRegistry` as appropriate.

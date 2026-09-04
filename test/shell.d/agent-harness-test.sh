@@ -9,12 +9,12 @@ trap 'rm -rf "$test_tmp"' EXIT
 home="$test_tmp/home"
 plugin="$home/.config/omarchy/plugins/acme.integration"
 mkdir -p "$plugin"
-printf 'import QtQuick\nItem {}\n' >"$plugin/Service.qml"
 cat >"$plugin/manifest.json" <<'JSON'
-{"schemaVersion":1,"id":"acme.integration","name":"Acme integration","version":"1.0.0","description":"Acme agent integration","kinds":["service"],"entryPoints":{"service":"Service.qml"},"agentHarness":{"id":"acme-agent","name":"Acme Agent","aliases":["acme"],"install":{"type":"mise","package":"npm:@acme/agent","command":"acme-agent"},"launch":{"mode":"browser","command":["acme-agent","open","--project","{project}"],"promptCommand":["acme-agent","open","--project","{project}","{prompt}"]}}}
+{"schemaVersion":1,"id":"acme.integration","name":"Acme integration","version":"1.0.0","description":"Acme agent integration","kinds":[],"entryPoints":{},"agentHarness":{"id":"acme-agent","name":"Acme Agent","aliases":["acme"],"install":{"type":"mise","package":"npm:@acme/agent","command":"acme-agent"},"launch":{"mode":"browser","command":["acme-agent","open","--project","{project}"],"promptCommand":["acme-agent","open","--project","{project}","{prompt}"]}}}
 JSON
 
 HOME="$home" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-plugin-validate" "$plugin"
+pass "plugin validation accepts a harness-only manifest"
 catalog=$(HOME="$home" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-agent-catalog")
 jq -e '.[] | select(.id == "acme-agent" and .firstParty == false and .aliases == ["acme"])' <<<"$catalog" >/dev/null ||
   fail "agent catalog discovers harness metadata from an installed plugin"

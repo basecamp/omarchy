@@ -61,12 +61,18 @@ QtObject {
       console.warn("PluginRegistry: invalid plugin id '" + id + "' at " + sourcePath)
       return null
     }
-    if (!Array.isArray(manifest.kinds) || manifest.kinds.length === 0) {
-      console.warn("PluginRegistry: kinds must be a non-empty array at " + sourcePath)
+    if (!Array.isArray(manifest.kinds)) {
+      console.warn("PluginRegistry: kinds must be an array at " + sourcePath)
       return null
     }
     if (!Util.isPlainObject(manifest.entryPoints)) {
       console.warn("PluginRegistry: entryPoints must be an object at " + sourcePath)
+      return null
+    }
+    // A harness-only plugin contributes declarative agent metadata but no QML
+    // component, so it has no kind or entry point for the shell to load.
+    if (manifest.kinds.length === 0 && !Util.isPlainObject(manifest.agentHarness)) {
+      console.warn("PluginRegistry: kinds must be non-empty unless agentHarness is declared at " + sourcePath)
       return null
     }
     if (manifest.barWidget !== undefined && Util.isPlainObject(manifest.barWidget)
