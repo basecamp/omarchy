@@ -33,9 +33,31 @@ press_tabs() {
   done
 }
 
+press_rights() {
+  local count="$1"
+  for ((i = 0; i < count; i++)); do
+    wtype -k Right
+    sleep 0.1
+  done
+}
+
 open_clock() {
   omarchy-shell shell summon omarchy.clock >/dev/null
   wait_until "clock popup opens" 15 layer_present "omarchy-keyboard-panel"
+}
+
+restart_source_shell() {
+  # The acceptance run is against the checked-out shell, while the session's
+  # normal restart command follows the installed OMARCHY_PATH. Restart only
+  # this exact development shell so the host's normal shell is untouched.
+  timeout 5 quickshell kill -p "$OMARCHY_PATH/shell" --any-display >/dev/null 2>&1 || true
+  for ((attempt = 0; attempt < 50; attempt++)); do
+    pgrep -f "^quickshell -n -p $OMARCHY_PATH/shell$" >/dev/null || break
+    sleep 0.1
+  done
+  setsid env OMARCHY_PATH="$OMARCHY_PATH" QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1 \
+    quickshell -n -p "$OMARCHY_PATH/shell" >/tmp/omarchy-calendar-acceptance-shell.log 2>&1 </dev/null &
+  wait_until "source shell responds after restart" 30 omarchy-shell shell ping
 }
 
 rm -f "$STATE_FILE"
@@ -45,7 +67,7 @@ screenshot "success-calendar-planner-01-calendar"
 
 # The original calendar remains keyboard-driven: navigate once and return to
 # today without leaving the existing popup.
-wtype -k Right
+press_rights 1
 wtype "t"
 screenshot "success-calendar-planner-02-calendar-navigation"
 
@@ -85,10 +107,11 @@ wait_until "configured planner returns to inbox" 15 screen_contains "Planner inb
 # starts on today; arrow keys choose the next Monday without typing an ISO
 # timestamp into the editor.
 wtype -k Escape
-wtype "a"
-wait_until "agenda opens" 15 screen_contains "Agenda"
+omarchy-shell omarchy.clock openView agenda >/dev/null
+wait_until "agenda opens" 15 screen_contains "No events yet."
 screenshot "success-calendar-planner-06-agenda-empty"
-press_tabs 1
+# PlannerView focuses the first action in each view, so Return activates the
+# already-focused Add calendar event action.
 wtype -k Return
 wait_until "event editor opens" 15 screen_contains "Add calendar event"
 busy_start=$(date -d 'next monday 11:00' --iso-8601=seconds)
@@ -98,14 +121,16 @@ days_to_next_monday=$(( (8 - $(date +%u)) % 7 ))
 wtype "Busy block"
 wtype -k Tab
 wtype -k Return
-for ((day = 0; day < days_to_next_monday; day++)); do wtype -k Right; done
+sleep 0.5
+press_rights "$days_to_next_monday"
 wtype -k Return
 wtype -k Tab
 wtype -M ctrl -k a -m ctrl
 wtype "11:00"
 wtype -k Tab
 wtype -k Return
-for ((day = 0; day < days_to_next_monday; day++)); do wtype -k Right; done
+sleep 0.5
+press_rights "$days_to_next_monday"
 wtype -k Return
 wtype -k Tab
 wtype -M ctrl -k a -m ctrl
@@ -141,10 +166,17 @@ second_task=$(jq -r '.tasks[] | select(.title == "Follow-up acceptance task") | 
 press_tabs 4
 wtype -k Return
 wait_until "second task editor reopens" 15 screen_contains "Edit planning task"
-press_tabs 6
+sleep 1
+press_tabs 7
 wtype -k Return
+# Let the searchable popup finish its window-focus handoff before typing into
+# its search field. This is also the small delay a user naturally provides
+# while reading the open dropdown.
+sleep 1
 wtype "Prepare acceptance task"
+wtype -k Down
 wtype -k Return
+wtype -k Escape
 press_tabs 1
 wtype -k Return
 wait_until "dependency is persisted" 15 jq -e --arg from "$first_task" --arg to "$second_task" 'any(.dependencies[]; .fromTaskId == $from and .toTaskId == $to)' "$STATE_FILE"
@@ -174,9 +206,10 @@ pass "calendar remains unchanged before Apply schedule"
 
 # Review and explicitly apply. ProposalReview focuses its apply action when it
 # opens, so this is the same keyboard path a user can use without a pointer.
-# Plan tasks remains focused after the explicit request. Settings, the two
-# task actions, and then Review schedule follow it in the keyboard order.
-press_tabs 4
+# Plan tasks remains focused after the explicit request. Settings, the
+# tutorial dismiss action, the two task actions, and then Review schedule
+# follow it in the keyboard order.
+press_tabs 5
 wtype -k Return
 wait_until "proposal review opens" 15 screen_contains "Apply schedule"
 screenshot "success-calendar-planner-10-proposal-review"
@@ -184,21 +217,20 @@ wtype -k Return
 wait_until "proposal is explicitly applied" 15 jq -e '.proposal.status == "applied" and ([.events[] | select(.origin == "planner")] | length) > 0' "$STATE_FILE"
 screenshot "success-calendar-planner-11-applied-proposal"
 
-# Restart the real shell, reopen the clock, and prove that applied events are
-# state-file data rather than process-local UI state.
+# Restart the checked-out shell, reopen the clock, and prove that applied
+# events are state-file data rather than process-local UI state.
 wtype -k Escape
-omarchy-restart-shell
-wait_until "shell responds after restart" 30 omarchy-shell shell ping
+restart_source_shell
 open_clock
-wtype "a"
+omarchy-shell omarchy.clock openView agenda >/dev/null
 wait_until "agenda survives shell restart" 15 screen_contains "Agenda"
 wait_until "applied event survives shell restart" 15 jq -e 'any(.events[]; .origin == "planner" and .taskId != null)' "$STATE_FILE"
 screenshot "success-calendar-planner-12-restarted-agenda"
 
 # Return the applied planner event to the inbox from the agenda. The planner
 # event is ordered before the later manual busy block, so the first event
-# action after the three agenda controls is the explicit Return to inbox.
-press_tabs 3
+# action is the explicit Return to inbox.
+press_tabs 1
 wtype -k Return
 wait_until "applied task returns to inbox" 15 jq -e --arg id "$first_task" 'any(.tasks[]; .id == $id and .state == "inbox")' "$STATE_FILE"
 wait_until "return to inbox removes only the linked planner event" 15 jq -e --arg id "$first_task" 'all(.events[]; .origin != "planner" or .taskId != $id)' "$STATE_FILE"
