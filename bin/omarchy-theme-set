@@ -319,7 +319,10 @@ post_theme_commands=(
   omarchy-restart-terminal
   omarchy-restart-hyprctl
   omarchy-restart-btop
-  omarchy-restart-opencode
+  # omarchy-restart-opencode is deliberately not called. It broadcasts SIGUSR2
+  # to every opencode process, which kills headless runs outright and aborts
+  # active TUI generation, while delivering nothing: Omarchy generates no
+  # opencode theme data for it to pick up (#8002).
   omarchy-restart-helix
   omarchy-theme-set-foot
   omarchy-theme-set-tmux
