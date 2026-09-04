@@ -30,6 +30,9 @@ jobs:
           - cli
           - shell
     steps:
+      - name: Install Git before checkout
+        run: pacman -Syu --noconfirm --needed git
+
       - name: Check out Omarchy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -52,8 +55,7 @@ jobs:
 
       - name: Install test dependencies
         run: |
-          pacman -Syu --noconfirm --needed \
-            git \
+          pacman -S --noconfirm --needed \
             glib2 \
             imagemagick \
             jq \
