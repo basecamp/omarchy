@@ -33,10 +33,12 @@ contract_path=usr/lib/omarchy/plugin-security/$version/metadata/runtime-dependen
 contract=$(bsdtar -xOf "$archive" "$contract_path")
 expected_contract=$(cat <<'EOF'
 bubblewrap
+curl
 glibc
 libgcc
 libseccomp
 libstdc++
+mpv
 omarchy
 qt6-base
 qt6-declarative
