@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# omarchy:summary=Get the active screensaver
+# omarchy:hidden=true
+
+SCREENSAVER_FILE="$HOME/.local/state/omarchy/current/screensaver.name"
+cat "$SCREENSAVER_FILE" 2>/dev/null || echo "default"

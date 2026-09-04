@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Set the active screensaver
+# omarchy:args=<default|neo-matrix|cbonsai|pipes|lavat>
+# omarchy:examples=omarchy screensaver set neo-matrix
+
+SCREENSAVER_DIR="$HOME/.local/state/omarchy/current"
+SCREENSAVER_FILE="$SCREENSAVER_DIR/screensaver.name"
+VALID=("default" "neo-matrix" "cbonsai" "pipes" "lavat")
+
+if [[ -z ${1:-} ]]; then
+  echo "Usage: omarchy screensaver set <default|neo-matrix|cbonsai|pipes|lavat>" >&2
+  exit 1
+fi
+
+selected="$1"
+valid=false
+for v in "${VALID[@]}"; do
+  [[ $v == $selected ]] && valid=true && break
+done
+
+if [[ $valid != "true" ]]; then
+  echo "Unknown screensaver: $selected" >&2
+  echo "Valid options: ${VALID[*]}" >&2
+  exit 1
+fi
+
+mkdir -p "$SCREENSAVER_DIR"
+echo "$selected" > "$SCREENSAVER_FILE"

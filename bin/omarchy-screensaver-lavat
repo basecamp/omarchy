@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Run the Lavat screensaver with theme colors
+# omarchy:hidden=true
+
+exec lavat -c "$1" -G -s 5

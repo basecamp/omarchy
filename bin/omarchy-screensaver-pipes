@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Run the Pipes.sh screensaver with theme colors
+# omarchy:hidden=true
+
+exec pipes.sh -p 3 -t 0 -c "$1" -R
