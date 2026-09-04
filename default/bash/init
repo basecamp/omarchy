@@ -27,4 +27,9 @@ if command -v fzf &> /dev/null; then
   fi
 fi
 
+# Must load after fzf's key-bindings.bash so Atuin's Ctrl-R binding wins.
+if command -v atuin &> /dev/null; then
+  eval "$(atuin init bash)"
+fi
+
 source "$OMARCHY_PATH/default/bash/completions"

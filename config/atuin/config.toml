@@ -1,0 +1,18 @@
+session_path = "~/.atuin/.session"
+update_check = true
+sync_address = "https://api.atuin.sh"
+sync_frequency = "1h"
+search_mode = "daemon-fuzzy"
+filter_mode = "host"
+enter_accept = true
+keymap_mode = "vim-normal"
+keymap_cursor = { vim_insert = "blink-bar", vim_normal = "steady-block" }
+
+[tmux]
+enabled = true
+width = "80%"
+height = "60%"
+
+[daemon]
+enabled = true
+autostart = true
