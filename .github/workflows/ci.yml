@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 20
     container:
       image: archlinux:base-devel
+      options: --init
     strategy:
       fail-fast: false
       matrix:
