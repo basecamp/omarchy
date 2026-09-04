@@ -129,9 +129,39 @@ term_pt_for() {
     'BEGIN { printf "%d", int(s * p / b + 0.5) }'
 }
 
+# Foot has no config-reload signal, but it binds Control+equal / Control+minus
+# to 0.5pt font steps. Step every running foot window by the size delta via
+# Hyprland's send_shortcut, which delivers the keypress without focusing it.
+resize_foot_windows() {
+  local old_pt="$1" new_pt="$2"
+  local steps key
+  steps="$(awk -v from="$old_pt" -v to="$new_pt" 'BEGIN { printf "%d", (to - from) * 2 }')"
+  ((steps != 0)) || return 0
+  key="equal"
+  if ((steps < 0)); then
+    key="minus"
+    steps=$((-steps))
+  fi
+
+  # No addresses means there is no compositor to ask (or no foot windows to
+  # step); report failure so the caller can fall back to the notification.
+  local addresses
+  addresses="$(hyprctl clients -j 2>/dev/null | jq -r '.[] | select(.class == "foot" or .class == "footclient") | .address')"
+  [[ -n $addresses ]] || return 1
+
+  local address press
+  for address in $addresses; do
+    for ((press = 0; press < steps; press++)); do
+      hyprctl dispatch "hl.dsp.send_shortcut({ window = \"address:$address\", mods = \"CTRL\", key = \"$key\" })" >/dev/null 2>&1 ||
+        hyprctl dispatch sendshortcut "CTRL, $key, address:$address" >/dev/null 2>&1 ||
+        return 1
+    done
+  done
+}
+
 # Set the font point size in every terminal config that exists. Family is left
 # untouched — that is omarchy-font-set's job. Live-reload signals mirror
-# omarchy-font-set; foot has no reload signal, so running instances are nudged.
+# omarchy-font-set; foot's running windows are stepped to the new size instead.
 set_terminal_size() {
   local pt="$1"
 
@@ -150,12 +180,13 @@ set_terminal_size() {
   fi
 
   if [[ -f ~/.config/foot/foot.ini ]]; then
+    local old_pt
+    old_pt="$(grep -oP ':size=\K[0-9.]+' ~/.config/foot/foot.ini | head -1)"
     sed -i -E "s/(:size=)[0-9.]+/\1$pt/" ~/.config/foot/foot.ini
-    # Foot has no config-reload signal, so a running instance keeps its startup
-    # size until relaunched (new windows pick up the change). Nudge the user —
-    # but reuse the same notification id (freedesktop replaces_id) so dragging
-    # through several sizes refreshes one toast instead of stacking a pile.
-    if pgrep -x foot >/dev/null 2>&1; then
+    if ! resize_foot_windows "${old_pt:-$pt}" "$pt" && pgrep -x foot >/dev/null 2>&1; then
+      # Stepping the running windows failed (no Hyprland?), so nudge the user —
+      # reusing the same notification id (freedesktop replaces_id) so dragging
+      # through several sizes refreshes one toast instead of stacking a pile.
       local id_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-display-text-size.foot-notif-id"
       local prev_id=""
       [[ -f $id_file ]] && read -r prev_id <"$id_file" 2>/dev/null
