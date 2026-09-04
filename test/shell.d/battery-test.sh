@@ -28,4 +28,22 @@ assertDeepEqual(
   { level: 40, notify: false, notifiedLowBattery: false },
   'battery clears notified state after recovery'
 )
+
+assertDeepEqual(
+  battery.observePowerSource(false, true, false),
+  { recordPluggedAt: false, powerSourceInitialized: true, wasOnBattery: false },
+  'battery initializes power-source state without recording'
+)
+assertDeepEqual(
+  battery.observePowerSource(true, true, false),
+  { recordPluggedAt: true, powerSourceInitialized: true, wasOnBattery: false },
+  'battery records battery-to-AC transition'
+)
+assertDeepEqual(
+  battery.observePowerSource(true, false, true),
+  { recordPluggedAt: false, powerSourceInitialized: true, wasOnBattery: true },
+  'battery does not record AC-to-battery transition'
+)
+assert(!battery.observePowerSource(true, true, true).recordPluggedAt, 'battery ignores unchanged battery state')
+assert(!battery.observePowerSource(true, false, false).recordPluggedAt, 'battery ignores unchanged AC state')
 JS

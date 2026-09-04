@@ -14,6 +14,11 @@ assertEqual(power.selectProfileIndex(0, 1, ['balanced', 'performance']), 1, 'pow
 assertEqual(power.selectProfileIndex(1, 1, ['balanced', 'performance']), 1, 'power clamps profile selection')
 
 assertDeepEqual(power.parseKeyValue('time\t2:00\nenergy\t42\n'), { time: '2:00', energy: '42' }, 'power parses key-value output')
+assertEqual(power.hoursSincePluggedAt('', 1700000000000), '—', 'power formats missing last plugged time')
+assertEqual(power.hoursSincePluggedAt('1699991900', 1700000000000), '2h 15m', 'power formats elapsed plugged time')
+assertEqual(power.hoursSincePluggedAt('1699996400', 1700000000000), '1h 0m', 'power formats a whole elapsed hour')
+assertEqual(power.hoursSincePluggedAt('1699999940', 1700000000000), '0h 1m', 'power formats elapsed minutes')
+assertEqual(power.hoursSincePluggedAt('1699999999', 1700000000000), 'less than 1 minute', 'power formats very recent plugged time')
 assertDeepEqual(
   power.parseProfiles('power-saver\t0\nbalanced\t1\nperformance\t0\n', 5),
   { profiles: ['power-saver', 'balanced', 'performance'], activeProfile: 'balanced', profileIndex: 2 },

@@ -36,13 +36,19 @@ exit 1
 STUB
 chmod +x "$tmp_dir/bin/upower"
 
-shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+state_file="$tmp_dir/battery-plugged-at"
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" OMARCHY_BATTERY_PLUGGED_STATE="$state_file" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
 
 grep -Fx $'percentage\t51%' <<<"$shell_output" >/dev/null || fail "battery status reports percentage"
 grep -Fx $'state\tdischarging' <<<"$shell_output" >/dev/null || fail "battery status reports state"
 grep -Fx $'rate\t10.8W' <<<"$shell_output" >/dev/null || fail "battery status reports live sysfs power rate"
 grep -Fx $'size\t56Wh' <<<"$shell_output" >/dev/null || fail "battery status reports full capacity"
 grep -Fx $'time\t2h 30m' <<<"$shell_output" >/dev/null || fail "battery status reports remaining time"
+grep -Fx $'plugged-at\t' <<<"$shell_output" >/dev/null || fail "battery status reports empty last plugged time"
+
+OMARCHY_BATTERY_PLUGGED_STATE="$state_file" "$ROOT/bin/omarchy-battery-status" --record-plugged-at 1 1700000000
+recorded_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" OMARCHY_BATTERY_PLUGGED_STATE="$state_file" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+grep -Fx $'plugged-at\t1700000000' <<<"$recorded_output" >/dev/null || fail "battery status reports persisted last plugged time"
 
 if matches=$(rg -n 'omarchy-battery-(capacity|remaining|remaining-time)' "$ROOT/bin" "$ROOT/test" "$ROOT/shell" "$ROOT/docs"); then
   fail "battery status owns capacity and remaining calculations" "$matches"

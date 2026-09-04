@@ -17,6 +17,8 @@ Item {
     id: persisted
     reloadableId: "omarchy-battery"
     property bool notifiedLowBattery: false
+    property bool powerSourceInitialized: false
+    property bool wasOnBattery: true
   }
 
   function batteryPercentage() {
@@ -47,6 +49,18 @@ Item {
     if (!powerProfileProcess.running) runPendingPowerProfile()
   }
 
+  function observePowerSource() {
+    var onBattery = UPower.onBattery
+    var state = BatteryModel.observePowerSource(persisted.powerSourceInitialized, persisted.wasOnBattery, onBattery)
+    persisted.powerSourceInitialized = state.powerSourceInitialized
+    persisted.wasOnBattery = state.wasOnBattery
+
+    if (state.recordPluggedAt) {
+      pluggedAtProcess.command = ["omarchy-battery-status", "--record-plugged-at", "1", String(Math.floor(Date.now() / 1000))]
+      pluggedAtProcess.running = true
+    }
+  }
+
   function runPendingPowerProfile() {
     powerProfileProcess.command = ["omarchy-powerprofiles-set", pendingPowerSource]
     pendingPowerSource = ""
@@ -54,6 +68,7 @@ Item {
   }
 
   Process { id: warningProcess }
+  Process { id: pluggedAtProcess }
 
   Process {
     id: powerProfileProcess
@@ -73,6 +88,9 @@ Item {
     function onOnBatteryChanged() {
       root.checkBattery()
       root.applyPowerProfile()
+      root.observePowerSource()
     }
   }
+
+  Component.onCompleted: root.observePowerSource()
 }

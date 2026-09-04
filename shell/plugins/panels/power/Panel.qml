@@ -435,6 +435,7 @@ Panel {
             spacing: Style.spacing.labelGap
             InfoPair { label: "Battery size"; value: root.batteryInfo.size || "" }
             InfoPair { label: "Charge cycles"; value: root.batteryInfo.cycles || "—" }
+            InfoPair { label: "Since last plugged"; value: Model.hoursSincePluggedAt(root.batteryInfo["plugged-at"]) }
           }
 
           Column {
