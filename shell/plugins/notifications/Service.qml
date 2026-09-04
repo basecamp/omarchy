@@ -1011,8 +1011,17 @@ Item {
             implicitHeight: card.implicitHeight
 
             readonly property real lifetime: service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)
-            property real remainingLifetime: 1.0
-            readonly property bool ticking: cardSlot.lifetime > 0 && !card.hovered
+            readonly property real slideDistance: Style.space(48)
+
+            // One-shot expiry deadline instead of a 20 Hz countdown timer. The
+            // single-shot timer below only wakes the engine when a toast's
+            // lifetime actually ends; the rest of the toast's life it sits idle.
+            // `card.opacity` is intentionally left unbound so the entry/exit
+            // animations below own it imperatively.
+            property real _remainingMs: 0
+            property double _deadlineAt: 0
+            property bool _closing: false
+            property string _reason: "expire"
 
             // A client updating this notification in place rewrites the row
             // under the card (see refreshPopup). New text deserves a full look,
@@ -1025,17 +1034,66 @@ Item {
             onImageChanged: cardSlot.remainingLifetime = 1.0
 
             Timer {
-              interval: 50
-              repeat: true
-              running: cardSlot.ticking
+              id: expireTimer
+              interval: 1
+              repeat: false
               onTriggered: {
-                if (cardSlot.lifetime <= 0) return
-                cardSlot.remainingLifetime -= 50.0 / cardSlot.lifetime
-                if (cardSlot.remainingLifetime <= 0) {
-                  cardSlot.remainingLifetime = 0
-                  service.expirePopup(cardSlot.index)
-                }
+                if (cardSlot.lifetime <= 0 || cardSlot._closing) return
+                cardSlot.beginClose("expire")
               }
+            }
+
+            // Hover pauses the countdown by exactly the time spent hovering;
+            // un-hovering re-arms from the untouched remainder.
+            function armDeadline() {
+              if (cardSlot.lifetime <= 0) return
+              cardSlot._remainingMs = cardSlot.lifetime
+              cardSlot.fireDeadline()
+            }
+
+            function fireDeadline() {
+              cardSlot._deadlineAt = Date.now() + cardSlot._remainingMs
+              expireTimer.interval = Math.max(1, Math.round(cardSlot._remainingMs))
+              if (!cardSlot._closing) expireTimer.start()
+            }
+
+            function pauseDeadline() {
+              if (!expireTimer.running || cardSlot._closing) return
+              expireTimer.stop()
+              cardSlot._remainingMs = Math.max(0, cardSlot._deadlineAt - Date.now())
+            }
+
+            function resumeDeadline() {
+              if (cardSlot._remainingMs <= 0 || cardSlot._closing) return
+              cardSlot.fireDeadline()
+            }
+
+            // Slide the card out (guarded so a toast never exits twice), then
+            // remove it. The live `cardSlot.index` stays correct even when a
+            // new toast slides in above during the exit.
+            function beginClose(reason) {
+              if (cardSlot._closing) return
+              cardSlot._closing = true
+              cardSlot._reason = reason
+              expireTimer.stop()
+              closeAnim.start()
+            }
+
+            ParallelAnimation {
+              id: closeAnim
+              NumberAnimation { target: card; property: "opacity"; to: 0; duration: 160; easing.type: Easing.OutCubic }
+              NumberAnimation { target: slideT; property: "x"; to: cardSlot.slideDistance; duration: 160; easing.type: Easing.OutCubic }
+              onFinished: {
+                if (cardSlot._reason === "expire") service.expirePopup(cardSlot.index)
+                else service.dismissPopup(cardSlot.index)
+              }
+            }
+
+            // Slide the card in from the right edge on first paint.
+            ParallelAnimation {
+              id: entryAnim
+              NumberAnimation { target: card; property: "opacity"; to: 1; duration: 180; easing.type: Easing.OutCubic }
+              NumberAnimation { target: slideT; property: "x"; to: 0; duration: 200; easing.type: Easing.OutCubic }
             }
 
             NotificationCard {
@@ -1051,9 +1109,21 @@ Item {
               cornerRadius: service.cornerRadius
               fontFamily: service.shell && service.shell.bar ? service.shell.bar.fontFamily : ""
               glyph: cardSlot.glyph
+              transform: Translate { id: slideT }
 
-              onCloseRequested: service.dismissPopup(cardSlot.index)
+              onHoveredChanged: {
+                if (card.hovered) cardSlot.pauseDeadline()
+                else cardSlot.resumeDeadline()
+              }
+              onCloseRequested: cardSlot.beginClose("dismiss")
               onCardClicked: service.invokePopupDefault(cardSlot.index)
+            }
+
+            Component.onCompleted: {
+              slideT.x = cardSlot.slideDistance
+              card.opacity = 0
+              entryAnim.start()
+              cardSlot.armDeadline()
             }
           }
         }
