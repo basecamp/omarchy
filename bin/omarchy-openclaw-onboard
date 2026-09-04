@@ -1,0 +1,130 @@
+#!/bin/bash
+
+# omarchy:summary=Run OpenClaw's setup wizard the way Omarchy needs it: in the terminal, installing the gateway as a user service, and returning when it is done.
+
+# Not bare `openclaw onboard`: as of 2026.9.1 that is the guided flow, which
+# ends by running a foreground gateway and handing off to a browser tab, and
+# never returns. --install-daemon keeps it to the classic wizard (minimal
+# prompts with --flow quickstart) that installs the gateway service, and
+# --skip-ui drops its closing Control UI/TUI prompt since whoever called this
+# opens one next.
+#
+# That classic wizard has one wrinkle: with --skip-ui it prints "Onboarding
+# complete" and then never exits. Upstream only calls exit(0) when it launched
+# the TUI, and the model sign-in leaves an open socket that keeps the process
+# alive otherwise. So this script watches for the gateway to answer and then
+# stops the wizard. That is safe because every prompt in the quickstart flow
+# runs before the gateway service is installed and reachable: by the time the
+# dashboard answers, only the closing notes are left.
+
+set -uo pipefail
+
+wizard=(openclaw onboard --flow quickstart --install-daemon --skip-ui)
+config=$HOME/.openclaw/openclaw.json
+settle_seconds=${OMARCHY_OPENCLAW_ONBOARD_SETTLE_SECONDS:-3}
+# Counted from the moment the config exists, i.e. once the wizard has applied
+# setup; the prompts before that take as long as the user takes.
+gateway_timeout=${OMARCHY_OPENCLAW_ONBOARD_GATEWAY_TIMEOUT:-180}
+
+gateway_answers() {
+  timeout 10 openclaw dashboard --json 2>/dev/null | jq -e '.ok == true' >/dev/null 2>&1
+}
+
+# A gateway already answering means OpenClaw is set up, and this run must not
+# read its own success off state that predates it: the wizard's repair pass
+# would be stopped mid-prompt the moment the watcher looked. Nothing to do.
+if [[ -f $config ]] && gateway_answers; then
+  echo "OpenClaw is already set up and its gateway is running." >&2
+  echo "To change providers or settings, run: openclaw onboard --classic" >&2
+  exit 0
+fi
+
+# Marks when this run began, so a config left behind by an earlier, incomplete
+# setup is not mistaken for this run having applied its own: the gateway
+# deadline below must not start ticking while the user is still at prompts.
+started=$(mktemp)
+trap 'rm -f "$started"' EXIT
+
+# Backgrounded so this script can watch it, but with the terminal kept as its
+# stdin (bash would otherwise hand a background job /dev/null). Job control is
+# off in a script, so it stays in the terminal's foreground process group and
+# reads from it freely. Ctrl-C does not reach it directly, though: bash starts
+# async children with SIGINT ignored when job control is off, so the INT trap
+# below is what turns Ctrl-C into the wizard's exit.
+"${wizard[@]}" <&0 &
+wizard_pid=$!
+
+stop_wizard() {
+  kill -TERM "$wizard_pid" 2>/dev/null || true
+}
+# Any signal at this script, whether Ctrl-C from the terminal or a kill aimed
+# at its pid alone, takes the wizard down with it rather than leaving it
+# running unwatched.
+trap 'stop_wizard' INT TERM HUP
+
+# Whether this run has applied setup: the config exists and is not older than
+# the run itself.
+config_applied() {
+  [[ -f $config && ! $started -nt $config ]]
+}
+
+# Whether this run's gateway is up: setup applied, and the process answering
+# on the gateway's port is the main process of the service the wizard
+# installs. Not the dashboard alone: with no config on disk `openclaw
+# dashboard --json` still probes the default loopback port, so a gateway left
+# behind by something else (an earlier guided onboarding's foreground
+# gateway, say) would read as this run's success while the user is still at
+# the first prompt. And not the unit being active either: its Type=simple
+# counts it active from the fork, before it has found the port taken by such
+# an orphan, and the app would then open on the orphan rather than the
+# service this run installed.
+gateway_ready() {
+  config_applied || return 1
+  local json port listener main_pid
+  json=$(timeout 10 openclaw dashboard --json 2>/dev/null) || return 1
+  jq -e '.ok == true' <<<"$json" >/dev/null 2>&1 || return 1
+  port=$(jq -r '.port // empty' <<<"$json" 2>/dev/null)
+  [[ -n $port ]] || return 1
+  listener=$(ss -ltnpH "sport = :$port" 2>/dev/null | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)
+  main_pid=$(systemctl --user show -p MainPID --value openclaw-gateway.service 2>/dev/null)
+  [[ -n $listener && -n $main_pid && $main_pid != 0 && $listener == "$main_pid" ]]
+}
+
+stopped=false
+timed_out=false
+config_seen_at=
+while kill -0 "$wizard_pid" 2>/dev/null; do
+  sleep 2
+  if gateway_ready; then
+    # Let the outro finish printing, then end the process the wizard leaves
+    # running.
+    sleep "$settle_seconds"
+    stop_wizard
+    stopped=true
+    break
+  fi
+  config_applied || continue
+  : "${config_seen_at:=$SECONDS}"
+  if (( SECONDS - config_seen_at >= gateway_timeout )); then
+    # Setup was applied but the service never came up (port taken, unit
+    # failing, ...): the wizard would sit in its never-exiting state forever,
+    # and so would whoever is waiting on this script.
+    stop_wizard
+    timed_out=true
+    break
+  fi
+done
+
+wait "$wizard_pid"
+rc=$?
+
+if [[ $timed_out == true ]]; then
+  echo "OpenClaw's gateway did not come up within ${gateway_timeout}s of setup finishing." >&2
+  echo "Check it with: openclaw gateway status" >&2
+  exit 1
+fi
+# A wizard stopped here after the gateway came up did its job. One that
+# exited on its own, including a user who chose "Skip for now" (no config,
+# non-zero), keeps its own exit code.
+[[ $stopped == true ]] && rc=0
+exit "$rc"

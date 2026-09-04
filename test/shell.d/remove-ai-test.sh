@@ -93,3 +93,161 @@ ollama_row=$(grep '^  "remove.ai.ollama":' "$ROOT/default/omarchy/omarchy-menu.j
 [[ $ollama_row == *'"when":"omarchy-pkg-present ollama"'* ]] ||
   fail "Ollama removal is offered only where the package is installed" "$ollama_row"
 pass "Ollama removal is offered only where the package is installed"
+
+# OpenClaw's gateway unit and web app launcher are the app's own; the agent
+# state in ~/.openclaw is the user's. systemctl and openclaw are stubbed so the
+# sandbox never reaches the real user manager or a real gateway.
+cat >"$tmp_dir/bin/systemctl" <<'SCRIPT'
+#!/bin/bash
+printf 'systemctl:%s\n' "$*" >>"$TEST_LOG"
+SCRIPT
+chmod +x "$tmp_dir/bin/systemctl"
+
+# Default openclaw stub: the packaged CLI predates `gateway uninstall`, so the
+# remover has to fall back to its manual systemd path.
+cat >"$tmp_dir/bin/openclaw" <<'SCRIPT'
+#!/bin/bash
+printf 'openclaw:%s\n' "$*" >>"$TEST_LOG"
+exit 1
+SCRIPT
+chmod +x "$tmp_dir/bin/openclaw"
+
+fresh_openclaw_home() {
+  fresh_home
+  mkdir -p "$HOME/.config/systemd/user/default.target.wants" "$HOME/.openclaw" \
+    "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/256x256/apps"
+  touch "$HOME/.config/systemd/user/openclaw-gateway.service" \
+    "$HOME/.config/systemd/user/openclaw-gateway.service.bak" \
+    "$HOME/.config/systemd/user/openclaw-node.service" \
+    "$HOME/.openclaw/openclaw.json" \
+    "$HOME/.local/share/applications/OpenClaw.desktop" \
+    "$HOME/.local/share/icons/hicolor/256x256/apps/openclaw.png"
+  ln -s ../openclaw-gateway.service \
+    "$HOME/.config/systemd/user/default.target.wants/openclaw-gateway.service"
+  ln -s ../openclaw-node.service \
+    "$HOME/.config/systemd/user/default.target.wants/openclaw-node.service"
+}
+
+# gum would ask about ~/.openclaw; the tests never run on a terminal, so it
+# must not even be reached. Logging it proves that.
+cat >"$tmp_dir/bin/gum" <<'SCRIPT'
+#!/bin/bash
+printf 'gum:%s\n' "$*" >>"$TEST_LOG"
+exit 0
+SCRIPT
+chmod +x "$tmp_dir/bin/gum"
+
+fresh_openclaw_home
+"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null
+
+for gone in .config/systemd/user/openclaw-gateway.service \
+  .config/systemd/user/openclaw-gateway.service.bak \
+  .config/systemd/user/default.target.wants/openclaw-gateway.service \
+  .config/systemd/user/openclaw-node.service \
+  .config/systemd/user/default.target.wants/openclaw-node.service \
+  .local/share/applications/OpenClaw.desktop \
+  .local/share/icons/hicolor/256x256/apps/openclaw.png; do
+  [[ ! -e $HOME/$gone && ! -L $HOME/$gone ]] || fail "OpenClaw removal deletes the service and launcher it installed" "$gone"
+done
+pass "OpenClaw removal deletes the service and launcher it installed"
+
+grep -q '^systemctl:--user disable --now openclaw-gateway.service$' "$TEST_LOG" ||
+  fail "OpenClaw removal stops the gateway service"
+grep -q '^systemctl:--user disable --now openclaw-node.service$' "$TEST_LOG" ||
+  fail "OpenClaw removal stops the gateway service" "node host service left running"
+for unit in openclaw-gateway.service openclaw-node.service; do
+  grep -q "^systemctl:--user reset-failed $unit\$" "$TEST_LOG" ||
+    fail "OpenClaw removal stops the gateway service" "$unit left in systemd's failed list"
+done
+pass "OpenClaw removal stops the gateway service"
+
+# Without a terminal there is nobody to ask, so the state stays and gum is
+# never invoked (a gum that answered "yes" on its own would be a data loss).
+[[ -f $HOME/.openclaw/openclaw.json ]] || fail "OpenClaw removal keeps the user's agent state"
+! grep -q '^gum:' "$TEST_LOG" ||
+  fail "OpenClaw removal keeps the user's agent state" "asked about ~/.openclaw without a terminal"
+pass "OpenClaw removal keeps the user's agent state"
+
+# A CLI that knows `gateway uninstall` owns the teardown; the manual systemd
+# fallback must not run.
+cat >"$tmp_dir/bin/openclaw" <<'SCRIPT'
+#!/bin/bash
+printf 'openclaw:%s\n' "$*" >>"$TEST_LOG"
+rm -f "$HOME/.config/systemd/user/openclaw-$1.service" \
+  "$HOME/.config/systemd/user/default.target.wants/openclaw-$1.service"
+SCRIPT
+chmod +x "$tmp_dir/bin/openclaw"
+
+: >"$TEST_LOG"
+fresh_openclaw_home
+"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null
+
+grep -q '^openclaw:gateway uninstall$' "$TEST_LOG" ||
+  fail "OpenClaw removal prefers upstream's own gateway teardown"
+grep -q '^openclaw:node uninstall$' "$TEST_LOG" ||
+  fail "OpenClaw removal prefers upstream's own gateway teardown" "node host not handed to upstream"
+! grep -q '^systemctl:--user disable' "$TEST_LOG" ||
+  fail "OpenClaw removal prefers upstream's own gateway teardown" "manual disable ran too"
+pass "OpenClaw removal prefers upstream's own gateway teardown"
+
+# Without the unit file there is nothing of ours registered, so systemd stays untouched.
+systemctl_calls_before=$(grep -c '^systemctl:' "$TEST_LOG" || true)
+fresh_home
+"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null
+systemctl_calls_after=$(grep -c '^systemctl:' "$TEST_LOG" || true)
+
+[[ $systemctl_calls_before == "$systemctl_calls_after" ]] ||
+  fail "OpenClaw removal leaves systemd alone when onboarding never ran"
+pass "OpenClaw removal leaves systemd alone when onboarding never ran"
+
+# A gateway that will not stop aborts the removal before the package drop:
+# pacman would otherwise strand the live process on deleted code.
+cat >"$tmp_dir/bin/openclaw" <<'SCRIPT'
+#!/bin/bash
+printf 'openclaw:%s\n' "$*" >>"$TEST_LOG"
+exit 1
+SCRIPT
+chmod +x "$tmp_dir/bin/openclaw"
+cat >"$tmp_dir/bin/systemctl" <<'SCRIPT'
+#!/bin/bash
+printf 'systemctl:%s\n' "$*" >>"$TEST_LOG"
+[[ $2 == disable ]] && exit 1
+[[ $2 == is-active ]] && exit 0
+exit 0
+SCRIPT
+chmod +x "$tmp_dir/bin/systemctl"
+
+drop_calls_before=$(grep -c '^drop:openclaw$' "$TEST_LOG" || true)
+fresh_openclaw_home
+rc=0
+"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null 2>&1 || rc=$?
+drop_calls_after=$(grep -c '^drop:openclaw$' "$TEST_LOG" || true)
+
+[[ $rc != 0 ]] || fail "OpenClaw removal aborts when the gateway cannot be stopped"
+[[ -f $HOME/.config/systemd/user/openclaw-gateway.service ]] ||
+  fail "OpenClaw removal aborts when the gateway cannot be stopped" "unit file deleted"
+[[ $drop_calls_before == "$drop_calls_after" ]] ||
+  fail "OpenClaw removal aborts when the gateway cannot be stopped" "package dropped anyway"
+pass "OpenClaw removal aborts when the gateway cannot be stopped"
+
+# An unreachable user manager is not a stopped gateway: every probe failing
+# with no answer must still abort, not read as "confirmed inactive".
+cat >"$tmp_dir/bin/systemctl" <<'SCRIPT'
+#!/bin/bash
+printf 'systemctl:%s\n' "$*" >>"$TEST_LOG"
+echo "Failed to connect to user scope bus" >&2
+exit 1
+SCRIPT
+chmod +x "$tmp_dir/bin/systemctl"
+
+: >"$TEST_LOG"
+fresh_openclaw_home
+rc=0
+"$ROOT/bin/omarchy-remove-ai-openclaw" >/dev/null 2>&1 || rc=$?
+
+[[ $rc != 0 ]] || fail "OpenClaw removal aborts when systemd cannot be reached"
+[[ -f $HOME/.config/systemd/user/openclaw-gateway.service ]] ||
+  fail "OpenClaw removal aborts when systemd cannot be reached" "unit file deleted"
+! grep -q '^drop:openclaw$' "$TEST_LOG" ||
+  fail "OpenClaw removal aborts when systemd cannot be reached" "package dropped anyway"
+pass "OpenClaw removal aborts when systemd cannot be reached"
