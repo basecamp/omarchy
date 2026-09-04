@@ -64,9 +64,19 @@ function nodeProps(node) {
 function nodeLabel(node) {
   if (!node) return "Unknown"
   var p = nodeProps(node)
-  var nickname = friendlyDeviceLabel(node.nickname || node.nick || p["node.nick"] || p["device.profile.description"] || "")
-  if (nickname) return nickname
-  return friendlyDeviceLabel(node.description || p["node.description"] || node.name || "Unknown")
+  var nick = String(node.nickname || node.nick || p["node.nick"] || "").trim()
+  var profile = String(p["device.profile.description"] || "").trim()
+  var desc = String(node.description || p["node.description"] || "").trim()
+
+  // Multi-jack cards (Focusrite, onboard USB audio) share one node.nick
+  // and put the port in node.description / device.profile.description.
+  // Prefer that longer description when it is just nick + port.
+  if (desc && nick && desc.length > nick.length && desc.toLowerCase().indexOf(nick.toLowerCase()) === 0)
+    return friendlyDeviceLabel(desc)
+
+  if (nick) return friendlyDeviceLabel(nick)
+  if (profile) return friendlyDeviceLabel(profile)
+  return friendlyDeviceLabel(desc || node.name || "Unknown")
 }
 
 function isHeadphones(node) {
