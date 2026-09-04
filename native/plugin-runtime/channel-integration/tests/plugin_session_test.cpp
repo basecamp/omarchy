@@ -522,7 +522,7 @@ private:
 
 class InvalidQmlWorkerFixture final {
 public:
-  InvalidQmlWorkerFixture() {
+  explicit InvalidQmlWorkerFixture(bool valid_qml = false) {
     std::string pattern = "/tmp/omarchy-invalid-qml-worker-XXXXXX";
     const char *created = ::mkdtemp(pattern.data());
     require(created != nullptr, "cannot create invalid-QML fixture");
@@ -544,7 +544,8 @@ public:
   "permissions": {"required": [], "optional": []}
 })";
     std::ofstream(revision_ / "Broken.qml")
-        << "import QtQuick\nItem { this is not valid QML }\n";
+        << (valid_qml ? "import QtQuick\nItem {}\n"
+                      : "import QtQuick\nItem { this is not valid QML }\n");
     for (const auto &entry :
          std::filesystem::directory_iterator(revision_))
       require(::chmod(entry.path().c_str(), 0444) == 0,
@@ -566,6 +567,8 @@ public:
     verified_manifest.runtime.api_version = 1;
     verified_manifest.runtime.qml = "Broken.qml";
     verified_manifest.surface_names = {"bar"};
+    verified_manifest.canonical_surfaces =
+        R"({"bar":{"defaultSection":"right","role":"bar-embedded"}})";
     const int record =
         ::open((revision_ / "manifest.json").c_str(), O_RDONLY | O_CLOEXEC);
     const int revision =
@@ -1839,6 +1842,57 @@ bool invalid_qml_worker_never_acknowledges_or_publishes() {
   return true;
 }
 
+bool valid_qml_worker_completes_ordered_startup_snapshots() {
+  if (!std::filesystem::exists("/usr/bin/bwrap"))
+    return false;
+  InvalidQmlWorkerFixture fixture(true);
+  RuntimeFactory runtime_factory;
+  auto scope = std::make_shared<Scope>();
+  channel::PluginSessionCreateError create_error{};
+  host::SessionLimits limits;
+  limits.startup_timeout = std::chrono::seconds(3);
+  auto prepared = channel::PluginSessionTestAccess::prepare_from_activation(
+      launcher::test_support::make_supervisor("/usr/bin/bwrap",
+                                              QML_WORKER_PATH, scope),
+      fixture.snapshot(), runtime_factory, create_error, limits);
+  require(prepared &&
+              create_error == channel::PluginSessionCreateError::none,
+          "valid-QML worker fixture did not prepare");
+  Events events;
+  auto product = channel::PluginSessionTestAccess::commit(
+      std::move(prepared), create_error, &events);
+  require(product &&
+              create_error == channel::PluginSessionCreateError::none,
+          "valid-QML worker fixture did not commit");
+  product->start();
+  await(
+      [&] {
+        return (product->state() == host::SessionState::running &&
+                events.saw_running) ||
+               product->state() == host::SessionState::failed;
+      },
+      "valid-QML worker startup did not settle");
+  if (scope->attachments == 0)
+    return false;
+  require(product->state() == host::SessionState::running &&
+              product->error() == host::SessionError::none &&
+              events.saw_running && scope->attachments == 1,
+          "ordered startup snapshots did not reach a running worker: state=" +
+              std::to_string(static_cast<unsigned>(product->state())) +
+              " error=" +
+              std::to_string(static_cast<unsigned>(product->error())) +
+              " saw-running=" + std::to_string(events.saw_running) +
+              " attachments=" + std::to_string(scope->attachments.load()));
+  product->stop();
+  await([&] { return product->state() == host::SessionState::stopped; },
+        "valid-QML worker did not stop");
+  product.reset();
+  await([&] {
+    return *runtime_factory.destructions == 1 && scope->terminations == 1;
+  }, "valid-QML worker did not clean up exactly once");
+  return true;
+}
+
 void prepared_session_is_thread_agnostic_before_commit() {
   ActivationFixture fixture;
   RuntimeFactory runtime_factory;
@@ -2320,6 +2374,13 @@ int main(int argc, char **argv) {
       if (!invalid_qml_worker_never_acknowledges_or_publishes())
         return 77;
       std::cout << "real worker invalid-QML startup test passed\n";
+      return 0;
+    }
+    if (argc == 2 &&
+        std::string_view(argv[1]) == "--real-worker-valid-qml-only") {
+      if (!valid_qml_worker_completes_ordered_startup_snapshots())
+        return 77;
+      std::cout << "real worker ordered-startup test passed\n";
       return 0;
     }
     if (argc == 2 &&

@@ -250,26 +250,30 @@ private:
       return;
     }
     if (endpoint.role() == wire::EndpointRole::control && !broker_api_) {
-      if (pending_permission_snapshot_ ||
-          packet.header.message_type != wire::kPermissionSnapshotMessage ||
-          packet.header.correlation_id != 0 || !packet.descriptors.empty()) {
+      // The host may finish writing all three WELCOME packets before this
+      // event loop has consumed them. Buffer only the two exact one-shot
+      // startup authorities while aggregate endpoint readiness catches up.
+      if (packet.header.correlation_id != 0 || !packet.descriptors.empty()) {
         fatal("unexpected pre-readiness control traffic");
         return;
       }
-      pending_permission_snapshot_ = std::move(packet);
+      if (packet.header.message_type == wire::kSettingsSnapshotMessage &&
+          !pending_settings_snapshot_) {
+        pending_settings_snapshot_ = std::move(packet);
+      } else if (packet.header.message_type ==
+                     wire::kPermissionSnapshotMessage &&
+                 !pending_permission_snapshot_) {
+        pending_permission_snapshot_ = std::move(packet);
+      } else {
+        fatal("unexpected pre-readiness control traffic");
+      }
       return;
     }
     if (endpoint.role() == wire::EndpointRole::control && broker_api_) {
       if (packet.header.message_type == wire::kSettingsSnapshotMessage) {
-        if (settings_snapshot_received_ || packet.header.correlation_id != 0 ||
-            !packet.descriptors.empty() ||
-            !broker_api_->applySettingsSnapshot(
-                packet.header.launch_generation, packet.payload) ||
-            !control_.send(wire::kSettingsSnapshotAcceptedMessage, {}, 0)) {
-          fatal("settings snapshot failed runtime validation");
+        if (!apply_settings_snapshot(std::move(packet)))
           return;
-        }
-        settings_snapshot_received_ = true;
+        apply_pending_permission_snapshot();
       } else if (packet.header.message_type ==
                  wire::kSettingsUpdateResultMessage) {
         if (!broker_api_->receiveSettingsResult(std::move(packet)))
@@ -367,6 +371,28 @@ private:
     });
   }
 
+  bool apply_settings_snapshot(worker::ReceivedPacket packet) {
+    if (!broker_api_ || settings_snapshot_received_ ||
+        packet.header.message_type != wire::kSettingsSnapshotMessage ||
+        packet.header.correlation_id != 0 || !packet.descriptors.empty() ||
+        !broker_api_->applySettingsSnapshot(packet.header.launch_generation,
+                                            packet.payload) ||
+        !control_.send(wire::kSettingsSnapshotAcceptedMessage, {}, 0)) {
+      fatal("settings snapshot failed runtime validation");
+      return false;
+    }
+    settings_snapshot_received_ = true;
+    return true;
+  }
+
+  void apply_pending_permission_snapshot() {
+    if (!settings_snapshot_received_ || !pending_permission_snapshot_)
+      return;
+    auto pending = std::move(*pending_permission_snapshot_);
+    pending_permission_snapshot_.reset();
+    apply_permission_snapshot(std::move(pending));
+  }
+
   void ready_runtime() {
     if (startup_.terminal())
       return;
@@ -416,11 +442,13 @@ private:
     broker_notifier_.setEnabled(true);
     render_notifier_.setEnabled(true);
     broker_poll_timer_.start();
-    if (pending_permission_snapshot_) {
-      auto pending = std::move(*pending_permission_snapshot_);
-      pending_permission_snapshot_.reset();
-      apply_permission_snapshot(std::move(pending));
+    if (pending_settings_snapshot_) {
+      auto pending = std::move(*pending_settings_snapshot_);
+      pending_settings_snapshot_.reset();
+      if (!apply_settings_snapshot(std::move(pending)))
+        return;
     }
+    apply_pending_permission_snapshot();
     // QML is loaded only after the authenticated host supplies the initial
     // permission snapshot, so feature decisions never observe guessed grants.
   }
@@ -597,6 +625,7 @@ private:
   std::unique_ptr<worker::QmlBrokerApi> broker_api_;
   bool settings_snapshot_received_ = false;
   worker::StartupState startup_;
+  std::optional<worker::ReceivedPacket> pending_settings_snapshot_;
   std::optional<worker::ReceivedPacket> pending_permission_snapshot_;
   QSocketNotifier control_notifier_;
   QSocketNotifier broker_notifier_;

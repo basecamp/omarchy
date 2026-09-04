@@ -309,6 +309,15 @@ if(BUILD_TESTING)
         SKIP_RETURN_CODE 77
         LABELS "integration;security;session;qml;sandbox"
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    add_test(NAME plugin-product-session-real-worker-ordered-startup
+      COMMAND omarchy-plugin-product-session-test
+              --real-worker-valid-qml-only)
+    set_tests_properties(plugin-product-session-real-worker-ordered-startup
+      PROPERTIES
+        TIMEOUT 15
+        SKIP_RETURN_CODE 77
+        LABELS "integration;security;session;qml;sandbox;startup"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     add_test(NAME plugin-consent-only-classification
       COMMAND omarchy-plugin-product-session-test
               --consent-only-classification-only)
