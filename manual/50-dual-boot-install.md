@@ -26,6 +26,8 @@ When you're finished, you should see something like this where the 50GB section 
 
 The install process for Omarchy is effectively the same as normal. After you select your disk, you'll be given the option of **Free space install**. Select that option to prevent wiping the full disk.
 
+> **Warning:** Only use **Free space install** when the disk already contains unallocated space. If the installer offers to shrink an existing partition, do not continue unless you have a verified backup and have first resized the filesystem using a tool that supports that filesystem. Shrinking the partition alone can corrupt the existing filesystem and cause data loss.
+
  ![dual-boot-5](images/dual-boot-5.webp)
 
 Confirm that everything looks good and wait for the install to finish like normal. This is also where you could elect to install unencrypted (not recommended) just like on a full-drive install.
