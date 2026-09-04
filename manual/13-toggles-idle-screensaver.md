@@ -52,7 +52,7 @@ profile {
 }
 ```
 
-Then start hyprsunset at login by adding `o.launch_on_start("hyprsunset")` to `~/.config/hypr/autostart.lua`. The 4000K/6500K pair used by the toggle is fixed, so the config file is where you go if you want a different temperature.
+Then start hyprsunset at login with `systemctl --user enable --now hyprsunset.service`. Running it as a user service rather than a plain autostart line means a hyprsunset that dies gets restarted — a monitor hotplug can disconnect every Wayland client at once, and an unsupervised one would take your whole schedule down with it until the next login. The 4000K/6500K pair used by the toggle is fixed, so the config file is where you go if you want a different temperature.
 
 ### Do not disturb
 

@@ -2,4 +2,7 @@
 
 # omarchy:summary=Restart the hyprsunset service (used for blue light filtering/night light).
 
-omarchy-restart-app hyprsunset
+# hyprsunset runs as a systemd user service, so restart it there rather than
+# through omarchy-restart-app: pkill would race the unit's own Restart=, and
+# uwsm-app would leave a second, unsupervised copy alongside the unit's.
+systemctl --user restart hyprsunset.service
