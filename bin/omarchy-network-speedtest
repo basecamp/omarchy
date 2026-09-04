@@ -10,6 +10,7 @@ direction="${1:-}"
 probe=1.1.1.1
 parallel=8
 url_count=3
+max_seconds=15
 
 case "$direction" in
   down | up)
@@ -105,8 +106,15 @@ any_alive() {
   return 1
 }
 
-while any_alive; do
+# The traffic workers loop until they're killed, so never depend on the caller
+# to stop them. A summoner that dies without signalling us would otherwise
+# leave the workers saturating the link -- and burning metered data -- for as
+# long as the machine stays online. The UI stops us well before this ceiling.
+elapsed=0
+
+while any_alive && (( elapsed < max_seconds )); do
   sleep 1
+  elapsed=$((elapsed + 1))
   rx_after=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
   tx_after=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
 
@@ -127,4 +135,6 @@ while any_alive; do
   tx_before=$tx_after
 done
 
-wait 2>/dev/null || true
+# Reaching the ceiling leaves the workers running, so let the EXIT trap stop
+# and reap them. Waiting on them here would block until they finished, which
+# is exactly what the ceiling exists to prevent.
