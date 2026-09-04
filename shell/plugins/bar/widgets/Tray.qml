@@ -292,7 +292,7 @@ BarWidget {
 
             Repeater {
               model: root.drawerItems
-              TrayItem {}
+              TrayItem { inDrawer: true }
             }
           }
         }
@@ -375,7 +375,7 @@ BarWidget {
 
             Repeater {
               model: root.drawerItems
-              TrayItem {}
+              TrayItem { inDrawer: true }
             }
           }
         }
@@ -799,6 +799,13 @@ BarWidget {
     id: trayItemRoot
 
     required property var modelData
+    // Drawer icons live in a clipped strip that is parked outside its own clip
+    // rectangle while collapsed. They still occupy geometry there, so they stay
+    // out of the click registry until the drawer is actually revealed.
+    property bool inDrawer: false
+    property var registeredBar: null
+
+    readonly property bool interactive: !inDrawer || root.revealProgress > 0
 
     visible: modelData.status !== Status.Passive
     implicitWidth: visible ? root.trayItemExtent : 0
@@ -806,6 +813,39 @@ BarWidget {
 
     function displayMenu(mouse) {
       root.openTrayMenu(trayItemRoot.modelData, trayItemRoot, mouse)
+    }
+
+    // The bar routes clicks through its own registry rather than leaving them to
+    // each widget's MouseArea: a slot-wide area takes the press so a drag can
+    // reorder the bar, then hands the click to whichever registered target sits
+    // under the cursor. A tray icon that registers nothing is never a target, so
+    // the click is refused and falls through to the bar's gesture area, where a
+    // double click toggles the bar's transparency instead of activating the
+    // icon. Registering is what every other widget inherits from WidgetButton.
+    function triggerPress(button) {
+      if (root.bar) root.bar.hideTooltip(trayItemRoot)
+
+      // The slot hands over a button but no position, so anchor menus to the
+      // icon itself rather than to wherever the pointer happened to land.
+      var center = { x: trayItemRoot.width / 2, y: trayItemRoot.height / 2 }
+
+      if (button === Qt.RightButton || trayItemRoot.modelData.onlyMenu) trayItemRoot.displayMenu(center)
+      else if (button === Qt.MiddleButton) trayItemRoot.modelData.secondaryActivate()
+      else trayItemRoot.modelData.activate()
+    }
+
+    function syncClickRegistration() {
+      if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(trayItemRoot)
+      registeredBar = root.bar
+      if (registeredBar && registeredBar.registerClickTarget) registeredBar.registerClickTarget(trayItemRoot)
+    }
+
+    Component.onCompleted: syncClickRegistration()
+    Component.onDestruction: if (registeredBar && registeredBar.unregisterClickTarget) registeredBar.unregisterClickTarget(trayItemRoot)
+
+    Connections {
+      target: root
+      function onBarChanged() { trayItemRoot.syncClickRegistration() }
     }
 
     TrayIcon {
