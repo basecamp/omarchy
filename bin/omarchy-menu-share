@@ -15,11 +15,10 @@ MODE="$1"
 shift
 
 if [[ $MODE == "clipboard" ]]; then
-  TEMP_FILE=$(mktemp --suffix=.txt)
-  wl-paste >"$TEMP_FILE"
-  FILE_ARRAY=("$TEMP_FILE")
+  # LocalSend 1.18+ opens the GUI with text passed directly, no temp file needed
+  LAUNCH=(localsend --text "$(wl-paste)")
 elif (($# > 0)); then
-  FILE_ARRAY=("$@")
+  LAUNCH=(localsend --headless send "$@")
 else
   if [[ $MODE == "folder" ]]; then
     select_args=(--title "Share folder" --directory)
@@ -39,12 +38,13 @@ else
 
   [[ -n $picked ]] || exit 0
   readarray -t FILE_ARRAY <<<"$picked"
+  LAUNCH=(localsend --headless send "${FILE_ARRAY[@]}")
 fi
 
 # Run LocalSend in its own systemd service (detached from terminal)
-systemd-run --user --quiet --collect localsend --headless send "${FILE_ARRAY[@]}"
-
-# Note: Temporary file will remain until system cleanup for clipboard mode
-# This ensures the file content is available for the LocalSend GUI
+if ! systemd-run --user --quiet --collect "${LAUNCH[@]}"; then
+  omarchy-notification-send -g "" -u critical "Could not share" "LocalSend failed to start"
+  exit 1
+fi
 
 exit 0
