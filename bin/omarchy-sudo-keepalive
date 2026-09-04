@@ -3,7 +3,13 @@
 # omarchy:summary=Prompt for sudo once and keep the credential alive in the background.
 # omarchy:requires-sudo=true
 
-sudo -v
+# The initial validation is the prompt the user sees, so an interrupt or a
+# declined password must stop the caller instead of falling through into the
+# privileged work that follows.
+if ! sudo -v; then
+  echo -e "\033[31mError: sudo authentication was aborted or failed\033[0m" >&2
+  exit 1
+fi
 while true; do sudo -n true; sleep 60; done 2>/dev/null &
 SUDO_KEEPALIVE_PID=$!
 trap "kill $SUDO_KEEPALIVE_PID 2>/dev/null" EXIT

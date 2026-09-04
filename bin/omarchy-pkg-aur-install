@@ -23,7 +23,10 @@ if [[ -n $pkg_names ]]; then
   # Add aur/ prefix to each package name and convert to space-separated for yay
   source omarchy-sudo-keepalive
 
-  echo "$pkg_names" | sed 's/^/aur\//' | tr '\n' ' ' | xargs yay -S --noconfirm
+  if ! echo "$pkg_names" | sed 's/^/aur\//' | tr '\n' ' ' | xargs yay -S --noconfirm; then
+    omarchy-show-error "Package installation was aborted or failed"
+    exit 1
+  fi
   sudo updatedb
   omarchy-show-done
 fi
