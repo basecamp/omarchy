@@ -1,0 +1,90 @@
+#!/bin/bash
+
+# omarchy:hidden=true
+# omarchy:summary=Unbind affected Broadcom Wi-Fi around system sleep
+# omarchy:args=<pre|post>
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+# Apple BCM4350 (43a3) and BCM43602 (43ba/43bb/43bc) firmware often stops
+# answering after S3. NetworkManager still shows the radio as on, but scans
+# fail and the supplicant times out until the device is rebound. Do not add
+# T2-era parts: BCM4364 (4464) must stay bound for PCI PM, and
+# BCM4377/4378/4387 have their own T2 recovery path.
+affected_ids="${OMARCHY_BRCMFMAC_SUSPEND_IDS:-0x43a3 0x43ba 0x43bb 0x43bc}"
+driver_path="${OMARCHY_BRCMFMAC_DRIVER_PATH:-/sys/bus/pci/drivers/brcmfmac}"
+device_root="${OMARCHY_BRCMFMAC_DEVICE_ROOT:-/sys/bus/pci/devices}"
+state_file="${OMARCHY_BRCMFMAC_SUSPEND_STATE:-/run/omarchy-brcmfmac-suspend.devices}"
+
+is_affected_id() {
+  local device_id="$1" candidate
+  for candidate in $affected_ids; do
+    [[ $device_id == "$candidate" ]] && return 0
+  done
+  return 1
+}
+
+driver_name() {
+  local pci_address="$1"
+  local link="$device_root/$pci_address/driver"
+
+  [[ -L $link ]] || return 0
+  basename "$(readlink -f "$link")"
+}
+
+case "${1:-}" in
+  pre)
+    install -d -m755 "$(dirname "$state_file")"
+    : >"$state_file"
+
+    for device in "$device_root"/????:??:??.?; do
+      [[ -e $device/vendor && -e $device/device ]] || continue
+      [[ $(<"$device/vendor") == "0x14e4" ]] || continue
+      is_affected_id "$(<"$device/device")" || continue
+
+      pci_address="${device##*/}"
+      if [[ $(driver_name "$pci_address") == "brcmfmac" ]]; then
+        if ! printf '%s' "$pci_address" >"$driver_path/unbind"; then
+          rm -f "$state_file"
+          exit 1
+        fi
+      fi
+      printf '%s\n' "$pci_address" >>"$state_file"
+    done
+
+    if [[ ! -s $state_file ]]; then
+      rm -f "$state_file"
+      echo "No Apple BCM4350/BCM43602 Wi-Fi device found" >&2
+      exit 1
+    fi
+    ;;
+  post)
+    [[ -f $state_file ]] || exit 0
+    bind_failed=false
+
+    while IFS= read -r pci_address; do
+      [[ -n $pci_address ]] || continue
+      if [[ ! -e $device_root/$pci_address ]]; then
+        echo "Broadcom Wi-Fi device $pci_address disappeared" >&2
+        bind_failed=true
+        continue
+      fi
+      if [[ $(driver_name "$pci_address") != "brcmfmac" ]] &&
+        ! printf '%s' "$pci_address" >"$driver_path/bind"; then
+        echo "Failed to rebind Broadcom Wi-Fi device $pci_address" >&2
+        bind_failed=true
+      fi
+    done <"$state_file"
+
+    if [[ $bind_failed == true ]]; then
+      exit 1
+    fi
+
+    rm -f "$state_file"
+    ;;
+  *)
+    echo "Usage: omarchy-hw-brcmfmac-suspend <pre|post>" >&2
+    exit 2
+    ;;
+esac
