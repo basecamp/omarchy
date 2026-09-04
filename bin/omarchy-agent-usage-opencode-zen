@@ -1,0 +1,508 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the OpenCode Zen usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect local OpenCode Zen usage into one display-ready JSON record.
+
+OpenCode records assistant-message token usage in its local SQLite database.
+Zen messages use the exact provider id ``opencode``; OpenCode Go uses
+``opencode-go``. No supported API-key-authenticated Zen balance endpoint is
+known, so this collector deliberately reports local token statistics only.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "opencode-zen"
+AGENT_NAME = "OpenCode"
+PROVIDER_ID = "opencode"
+CACHE_SCHEMA_VERSION = 2
+
+
+def data_home() -> Path:
+  return Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+
+
+def cache_root() -> Path:
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_string() -> str:
+  return date_string(dt.datetime.now().date())
+
+
+def number(value: Any) -> int:
+  try:
+    parsed = float(value or 0)
+    return max(0, round(parsed)) if parsed == parsed else 0
+  except Exception:
+    return 0
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_stats() -> dict[str, Any]:
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [{"date": day, "messageCount": 0} for day in recent_date_strings()],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+  }
+
+
+def opencode_db_path() -> Path:
+  return data_home() / "opencode" / "opencode.db"
+
+
+def scan_opencode_db(db: Path) -> tuple[dict[str, Any], bool]:
+  """Return local Zen stats and whether the database scan completed."""
+  today = local_date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  sessions: set[str] = set()
+  active_days: set[str] = set()
+  today_sessions: set[str] = set()
+  today_tokens: dict[str, int] = {}
+  usage_by_model: dict[str, dict[str, int]] = {}
+  prompts = 0
+  today_prompt_count = 0
+  today_token_total = 0
+  seen_messages: set[str] = set()
+
+  try:
+    conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return empty_stats(), False
+
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    tables = {
+      row[0]
+      for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('message', 'session_message')"
+      )
+    }
+    if not tables:
+      return empty_stats(), False
+
+    queries = []
+    if "message" in tables:
+      queries.append(
+        "SELECT id, session_id, data FROM message"
+        " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+        " AND data LIKE '%\"providerID\"%:%\"opencode\"%'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'opencode'"
+      )
+    if "session_message" in tables:
+      queries.append(
+        "SELECT id, session_id, data FROM session_message"
+        " WHERE type = 'assistant'"
+        " AND data LIKE '%\"providerID\"%:%\"opencode\"%'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.model.providerID') END = 'opencode'"
+      )
+
+    for query in queries:
+      for message_id, session_id, raw in conn.execute(query):
+        message_key = str(message_id)
+        if message_key in seen_messages:
+          continue
+        seen_messages.add(message_key)
+        try:
+          entry = json.loads(raw)
+          if not isinstance(entry, dict):
+            continue
+          if entry.get("role") is not None and entry.get("role") != "assistant":
+            continue
+          model_info = entry.get("model") or {}
+          provider = str(entry.get("providerID") or model_info.get("providerID") or "")
+          if provider != PROVIDER_ID:
+            continue
+          tokens = entry.get("tokens") or {}
+          cache = tokens.get("cache") or {}
+          input_tokens = number(tokens.get("input"))
+          # OpenCode stores generated reasoning separately from generated output.
+          output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
+          cache_read = number(cache.get("read"))
+          cache_write = number(cache.get("write"))
+          total = input_tokens + output_tokens + cache_read + cache_write
+          if total <= 0:
+            continue
+
+          created = number((entry.get("time") or {}).get("created"))
+          day = dt.datetime.fromtimestamp(created / 1000).strftime("%Y-%m-%d") if created > 0 else today
+          model = str(entry.get("modelID") or model_info.get("id") or "opencode").rstrip("/").split("/")[-1]
+        except Exception:
+          continue
+
+        session_key = AGENT_ID + ":" + str(session_id)
+        sessions.add(session_key)
+        active_days.add(day)
+        prompts += 1
+
+        bucket = usage_by_model.setdefault(model, empty_bucket())
+        bucket["inputTokens"] += input_tokens
+        bucket["outputTokens"] += output_tokens
+        bucket["cacheReadInputTokens"] += cache_read
+        bucket["cacheCreationInputTokens"] += cache_write
+
+        if day in recent:
+          recent[day]["messageCount"] += total
+        if day == today:
+          today_prompt_count += 1
+          today_sessions.add(session_key)
+          today_token_total += total
+          today_tokens[model] = today_tokens.get(model, 0) + total
+  except sqlite3.Error:
+    return empty_stats(), False
+  finally:
+    conn.close()
+
+  return {
+    "todayPrompts": today_prompt_count,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_token_total,
+    "todayTokensByModel": today_tokens,
+    "recentDays": [recent[day] for day in recent_dates],
+    "totalPrompts": prompts,
+    "totalSessions": len(sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+    "modelUsage": usage_by_model,
+  }, True
+
+
+# --------------------------------------------------------------- pi and omp
+#
+# Pi and OMP can consume a Zen subscription. Their compatible JSONL session
+# formats carry the provider, model, and token usage on every assistant
+# message.
+
+
+def scan_pi_zen_sessions() -> dict[str, Any] | None:
+  roots = [
+    Path.home() / ".pi" / "agent" / "sessions",
+    Path.home() / ".omp" / "agent" / "sessions",
+  ]
+  rg = shutil.which("rg") or "rg"
+  today = local_date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  sessions: set[str] = set()
+  active_days: set[str] = set()
+  today_sessions: set[str] = set()
+  today_tokens: dict[str, int] = {}
+  usage_by_model: dict[str, dict[str, int]] = {}
+  seen: set[str] = set()
+  prompts = 0
+  today_prompt_count = 0
+  today_token_total = 0
+
+  for root in roots:
+    if not root.exists():
+      continue
+    harness = "Pi" if "/.pi/" in str(root) else "Omp" if "/.omp/" in str(root) else ""
+    try:
+      proc = subprocess.Popen(
+        [rg, "--json", "-e", r'"provider"\s*:\s*"opencode"', "-e", r'"api"\s*:\s*"opencode"', str(root)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        errors="replace",
+      )
+    except FileNotFoundError:
+      continue
+
+    assert proc.stdout is not None
+    for raw in proc.stdout:
+      try:
+        event = json.loads(raw)
+        if event.get("type") != "match":
+          continue
+        line = event.get("data", {}).get("lines", {}).get("text", "")
+        path = event.get("data", {}).get("path", {}).get("text", "pi-session")
+        entry = json.loads(line)
+      except Exception:
+        continue
+
+      if entry.get("type") != "message":
+        continue
+      message_key = path + ":" + str(entry.get("id") or "")
+      if message_key in seen:
+        continue
+      seen.add(message_key)
+      message = entry.get("message") or {}
+      if message.get("role") != "assistant":
+        continue
+      provider = str(message.get("provider") or "")
+      api = str(message.get("api") or "")
+      if provider:
+        if provider != PROVIDER_ID:
+          continue
+      elif api != PROVIDER_ID:
+        continue
+
+      usage = message.get("usage") or {}
+      if not usage:
+        continue
+      total = number(usage.get("totalTokens"))
+      input_tokens = number(usage.get("input"))
+      output_tokens = number(usage.get("output"))
+      cache_read = number(usage.get("cacheRead"))
+      cache_write = number(usage.get("cacheWrite"))
+      if total and not (input_tokens or output_tokens or cache_read or cache_write):
+        input_tokens = total
+      if not (input_tokens or output_tokens or cache_read or cache_write):
+        continue
+
+      day = local_date_from_timestamp(entry.get("timestamp") or message.get("timestamp"))
+      session_key = path
+      model = model_name(str(message.get("model")))
+      if harness:
+        model = f"{harness}-{model}"
+      sessions.add(session_key)
+      active_days.add(day)
+      prompts += 1
+
+      bucket = usage_by_model.setdefault(model, empty_bucket())
+      bucket["inputTokens"] += input_tokens
+      bucket["outputTokens"] += output_tokens
+      bucket["cacheReadInputTokens"] += cache_read
+      bucket["cacheCreationInputTokens"] += cache_write
+
+      if day in recent:
+        recent[day]["messageCount"] += total
+      if day == today:
+        today_prompt_count += 1
+        today_sessions.add(session_key)
+        today_token_total += total
+        today_tokens[model] = today_tokens.get(model, 0) + total
+
+    try:
+      proc.wait(timeout=1)
+    except Exception:
+      proc.kill()
+
+  if prompts == 0:
+    return None
+  return {
+    "todayPrompts": today_prompt_count,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_token_total,
+    "todayTokensByModel": today_tokens,
+    "recentDays": [recent[day] for day in recent_dates],
+    "modelUsage": usage_by_model,
+    "totalPrompts": prompts,
+    "totalSessions": len(sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+  }
+
+
+def merge_stats(base: dict[str, Any], extra: dict[str, Any] | None) -> dict[str, Any]:
+  if extra is None:
+    return base
+  merged = dict(base)
+  for key in ("todayPrompts", "todaySessions", "todayTotalTokens", "totalPrompts", "totalSessions"):
+    merged[key] = number(base.get(key)) + number(extra.get(key))
+
+  combined = dict(base.get("todayTokensByModel") or {})
+  for model, count in (extra.get("todayTokensByModel") or {}).items():
+    combined[model] = number(combined.get(model)) + number(count)
+  merged["todayTokensByModel"] = combined
+
+  usage = {model: dict(bucket) for model, bucket in (base.get("modelUsage") or {}).items()}
+  for model, bucket in (extra.get("modelUsage") or {}).items():
+    target = usage.setdefault(model, empty_bucket())
+    for field, count in (bucket or {}).items():
+      target[field] = number(target.get(field)) + number(count)
+  merged["modelUsage"] = usage
+
+  by_date: dict[str, int] = {}
+  for source in (base.get("recentDays") or [], extra.get("recentDays") or []):
+    for day in source:
+      date = str((day or {}).get("date") or "")
+      if date:
+        by_date[date] = by_date.get(date, 0) + number((day or {}).get("messageCount"))
+  merged["recentDays"] = [{"date": date, "messageCount": by_date[date]} for date in sorted(by_date)]
+
+  dates = set(base.get("activeDates") or []) | set(extra.get("activeDates") or [])
+  merged["activeDates"] = sorted(dates)
+  merged["activeDays"] = max(len(dates), number(base.get("activeDays")), number(extra.get("activeDays")))
+  return merged
+
+
+def model_name(raw: Any) -> str:
+  value = str(raw or "opencode")
+  return value if value else "opencode"
+
+
+def local_date_from_timestamp(value: Any) -> str:
+  if value is None:
+    return local_date_string()
+  if isinstance(value, (int, float)):
+    try:
+      seconds = float(value) / 1000.0 if float(value) > 10_000_000_000 else float(value)
+      return date_string(dt.datetime.fromtimestamp(seconds).date())
+    except Exception:
+      return local_date_string()
+  raw = str(value).strip()
+  if not raw:
+    return local_date_string()
+  try:
+    parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+      parsed = parsed.astimezone()
+    return date_string(parsed.date())
+  except Exception:
+    return local_date_string()
+
+
+def scan_cache_paths(db: Path) -> tuple[Path, Path]:
+  digest = hashlib.sha1(str(db).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"opencode-zen-scan-{digest}.json", root / f"opencode-zen-scan-{digest}.lock"
+
+
+def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None:
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      value = json.loads(path.read_text(encoding="utf-8"))
+      return value if isinstance(value, dict) else None
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def read_cached_stats(cache_file: Path, max_age_seconds: float) -> dict[str, Any] | None:
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not cached or cached.get("schemaVersion") != CACHE_SCHEMA_VERSION or cached.get("scanDate") != local_date_string():
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  required = ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")
+  return stats if all(key in stats for key in required) else None
+
+
+def write_cached_stats(cache_file: Path, stats: dict[str, Any]) -> None:
+  write_json(cache_file, {"schemaVersion": CACHE_SCHEMA_VERSION, "scanDate": local_date_string(), "stats": stats})
+
+
+def cached_scan(db: Path, max_age_seconds: float) -> dict[str, Any]:
+  try:
+    return _cached_scan(db, max_age_seconds)
+  except Exception as error:
+    print(f"omarchy-agent-usage-opencode-zen: cache unavailable ({error}); scanning directly", file=sys.stderr)
+    stats, _ = scan_opencode_db(db)
+    return stats
+
+
+def _cached_scan(db: Path, max_age_seconds: float) -> dict[str, Any]:
+  cache_file, lock_file = scan_cache_paths(db)
+  cached = read_cached_stats(cache_file, max_age_seconds)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age_seconds)
+    if cached is not None:
+      return cached
+    stats, complete = scan_opencode_db(db)
+    if complete:
+      write_cached_stats(cache_file, stats)
+    return stats
+
+
+def scan(db: Path, force: bool = False, limits_only: bool = False, cache_seconds: float = 20) -> dict[str, Any]:
+  scan_age = 0 if force else (900 if limits_only else cache_seconds)
+  db_stats = cached_scan(db, scan_age) if db.is_file() else empty_stats()
+  pi_stats = scan_pi_zen_sessions()
+  stats = merge_stats(db_stats, pi_stats)
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": number(stats.get("totalPrompts")) > 0,
+    "hasLocalStats": True,
+    "scope": "device",
+    "hasPromptStats": True,
+    "tierLabel": "Zen · Pay as you go",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(stats)
+  return record
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the OpenCode Zen usage record as JSON")
+  parser.add_argument("--force", action="store_true", help="rescan the database, ignoring cached local stats")
+  parser.add_argument("--limits-only", action="store_true", help="reuse any recent local database scan")
+  parser.add_argument("--cache-seconds", type=float, default=20)
+  args = parser.parse_args()
+
+  record = scan(opencode_db_path(), force=args.force, limits_only=args.limits_only, cache_seconds=args.cache_seconds)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
