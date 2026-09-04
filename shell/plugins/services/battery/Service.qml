@@ -12,6 +12,7 @@ Item {
 
   readonly property int batteryThreshold: 10
   property string pendingPowerSource: ""
+  property string pendingPowerSourceHook: ""
 
   PersistentProperties {
     id: persisted
@@ -53,11 +54,27 @@ Item {
     powerProfileProcess.running = true
   }
 
+  function dispatchPowerSourceHook() {
+    pendingPowerSourceHook = UPower.onBattery ? "battery" : "ac"
+    if (!powerSourceHookProcess.running) runPendingPowerSourceHook()
+  }
+
+  function runPendingPowerSourceHook() {
+    powerSourceHookProcess.command = ["omarchy-hook", "power-source-change", pendingPowerSourceHook]
+    pendingPowerSourceHook = ""
+    powerSourceHookProcess.running = true
+  }
+
   Process { id: warningProcess }
 
   Process {
     id: powerProfileProcess
     onExited: if (root.pendingPowerSource !== "") root.runPendingPowerProfile()
+  }
+
+  Process {
+    id: powerSourceHookProcess
+    onExited: if (root.pendingPowerSourceHook !== "") root.runPendingPowerSourceHook()
   }
 
   Timer {
@@ -73,6 +90,7 @@ Item {
     function onOnBatteryChanged() {
       root.checkBattery()
       root.applyPowerProfile()
+      root.dispatchPowerSourceHook()
     }
   }
 }
