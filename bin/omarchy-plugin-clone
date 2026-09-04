@@ -39,7 +39,7 @@ copy_plugin() {
     if [[ $source != "$target" ]]; then
       source_pattern=${source//./\\.}
       while IFS= read -r -d '' file; do
-        sed -i "s|$source_pattern|$target|g" "$file"
+        sed -i --follow-symlinks "s|$source_pattern|$target|g" "$file"
       done < <(rg --files-with-matches --null --fixed-strings "$source" "$target_dir")
     fi
   done < <(jq -r '

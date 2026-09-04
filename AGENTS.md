@@ -89,6 +89,14 @@ Commands installed by Omarchy's default package set are runtime invariants. Invo
 
 Exceptions are allowed for migration and package-helper scripts where the helper may not be available yet, where the helper itself is being implemented, or where direct package-manager behavior is required.
 
+# Symlink-safe file editing
+
+User config files under the home directory may be symlinks managed by dotfile tools (GNU Stow, chezmoi, yadm, bare git repos). Any in-place edit must preserve the symlink rather than replacing it with a regular file.
+
+- **`sed -i`**: always use `sed -i --follow-symlinks`. Without it, GNU sed writes a temporary file and renames it over the target, replacing a symlink with a regular file. This is critical for user files and harmless everywhere else — there is no reason to omit it.
+- Alternatives like `awk '...' file > tmp && mv tmp file` have the same problem — they replace the symlink. Prefer `sed -i --follow-symlinks` or write through the symlink explicitly with `cat > "$file"` patterns that follow symlinks.
+- The architectural test `test/shell.d/sed-follow-symlinks-test.sh` enforces this rule in CI for `bin/` and `migrations/`. If you must use bare `sed -i` on a non-user path (staging dir, build dir), add the file to the test's allowlist with a comment.
+
 # Menu
 
 - The menu definition lives in `default/omarchy/omarchy-menu.jsonc`;

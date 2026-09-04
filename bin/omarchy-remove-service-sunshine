@@ -55,7 +55,7 @@ close_ufw_ports() {
 
 disable_hyprland_autostart() {
   if [[ -f $HYPR_AUTOSTART_FILE ]]; then
-    sed -i "\|^$HYPR_AUTOSTART_ENTRY$|d" "$HYPR_AUTOSTART_FILE"
+    sed -i --follow-symlinks "\|^$HYPR_AUTOSTART_ENTRY$|d" "$HYPR_AUTOSTART_FILE"
   fi
 }
 

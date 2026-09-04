@@ -10,13 +10,13 @@ remove_pam_config() {
   # Remove from sudo
   if grep -q pam_u2f.so /etc/pam.d/sudo; then
     echo "Removing FIDO2 authentication from sudo..."
-    sudo sed -i '/pam_u2f\.so/d' /etc/pam.d/sudo
+    sudo sed -i --follow-symlinks '/pam_u2f\.so/d' /etc/pam.d/sudo
   fi
 
   # Remove from polkit
   if [[ -f /etc/pam.d/polkit-1 ]] && grep -Fq 'pam_u2f.so' /etc/pam.d/polkit-1; then
     echo "Removing FIDO2 authentication from polkit..."
-    sudo sed -i '/pam_u2f\.so/d' /etc/pam.d/polkit-1
+    sudo sed -i --follow-symlinks '/pam_u2f\.so/d' /etc/pam.d/polkit-1
   fi
 }
 

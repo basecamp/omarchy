@@ -98,7 +98,7 @@ clear_usb_audio_defaults() {
 
   if [[ -f $state_dir/default-nodes ]]; then
     cp "$state_dir/default-nodes" "$state_dir/default-nodes.bak.$(date +%s)" 2>/dev/null || true
-    sed -i \
+    sed -i --follow-symlinks \
       -e '/^default\.configured\.audio\.sink=alsa_output\.usb-/d' \
       -e '/^default\.configured\.audio\.sink\.[0-9]\+=alsa_output\.usb-/d' \
       "$state_dir/default-nodes" 2>/dev/null || true
@@ -106,7 +106,7 @@ clear_usb_audio_defaults() {
 
   if [[ -f $state_dir/default-routes ]]; then
     cp "$state_dir/default-routes" "$state_dir/default-routes.bak.$(date +%s)" 2>/dev/null || true
-    sed -i '/^alsa_card\.usb-/d' "$state_dir/default-routes" 2>/dev/null || true
+    sed -i --follow-symlinks '/^alsa_card\.usb-/d' "$state_dir/default-routes" 2>/dev/null || true
   fi
 }
 

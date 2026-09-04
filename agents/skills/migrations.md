@@ -135,6 +135,9 @@ New migration format:
   hot-reloads `shell.json` edits.
 - Raw `pacman`, `command -v`, and direct config edits are acceptable when
   needed for one-off repair work.
+- Always use `sed -i --follow-symlinks` when editing user config files.
+  Bare `sed -i` replaces symlinks with regular files, breaking dotfile
+  setups. The test `test/shell.d/sed-follow-symlinks-test.sh` enforces this.
 
 Example:
 
