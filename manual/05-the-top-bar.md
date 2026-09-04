@@ -60,15 +60,17 @@ Every panel takes the keyboard as well as the mouse: arrows move, Return activat
 
 `Super + Ctrl + 1-9` counts panels left to right in the right section, skipping the tray since it has no panel of its own. So the number matches the icon you'd point at.
 
-### Tailscale and Dropbox
+### Tailscale, Syncthing, and Dropbox
 
-Two more widgets appear on the bar only once you install the matching service from **Install → Service**, and both are worth knowing about because they do more than report status.
+Three more widgets appear on the bar only once you install the matching service from **Install → Service**, and all are worth knowing about because they do more than report status.
 
 The **Tailscale** panel connects and disconnects the tailnet, switches between accounts, and picks an exit node (your own machines and Mullvad regions both show up in that list). It also browses your machines — and with one selected, `s` sends files to it over Taildrop, which is the fastest way to move a file to your phone or another laptop. `c` copies the machine's IP, `n` its name, and `d` its full DNS name. There's a send button on each machine row too, if you'd rather click. The same thing from the terminal is `omarchy tailscale send <machine> [file...]`.
 
+The **Syncthing** panel shows overall sync health, folder progress and errors, connected devices, and incoming sharing requests. Open a folder from its row, rescan or pause it from the inline controls, and use the header switch to stop or start the user service. `r` rescans the selected folder (or all folders outside the folder list), `p` pauses or resumes the selected folder, `t` toggles the service, and `o` opens Syncthing's Web UI. Notifications are limited to things that call for action, such as a new error, an incoming share, a failed service, or a device that stays disconnected beyond the configured grace period; clicking one opens the panel.
+
 The **Dropbox** panel handles login, shows how much storage you've used, and lists recently synced files.
 
-Removing either service takes its widget back off the bar.
+Removing any of these services takes its widget back off the bar. Removing Syncthing preserves its configuration and synced folders.
 
 ## Indicators
 

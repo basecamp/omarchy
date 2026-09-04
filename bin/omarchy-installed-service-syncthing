@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# omarchy:summary=Check whether Syncthing is installed as a user service
+# omarchy:hidden=true
+
+set -euo pipefail
+
+shell_config="$HOME/.config/omarchy/shell.json"
+if [[ -f $shell_config ]] && jq -e '
+  [
+    .bar.layout.left[]?,
+    .bar.layout.center[]?,
+    .bar.layout.right[]?,
+    .plugins[]?
+  ]
+  | map(if type == "object" then (.id // "") else tostring end)
+  | any(IN(
+      "io.github.ilyazar.syncthing",
+      "explify.syncthing",
+      "hrdk.syncthing"
+    ))
+' "$shell_config" >/dev/null 2>&1; then
+  # `omarchy bar defaults` uses this probe to restore optional service
+  # widgets. Treat an active community widget as ownership so upgrades do not
+  # place a duplicate first-party Syncthing panel beside it.
+  exit 1
+fi
+
+omarchy-cmd-present syncthing || exit 1
+
+if systemctl --user is-enabled --quiet syncthing.service >/dev/null 2>&1; then
+  exit 0
+fi
+
+[[ -f ${XDG_STATE_HOME:-$HOME/.local/state}/syncthing/config.xml \
+  || -f ${XDG_CONFIG_HOME:-$HOME/.config}/syncthing/config.xml ]]

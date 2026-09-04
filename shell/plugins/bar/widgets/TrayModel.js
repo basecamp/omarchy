@@ -36,6 +36,7 @@ function layoutHasWidget(layout, id) {
 function ownedByOmarchy(item, layout) {
   return itemNamed(item, "localsend")
     || (layoutHasWidget(layout, "omarchy.dropbox") && itemNamed(item, "dropbox"))
+    || (layoutHasWidget(layout, "omarchy.syncthing") && itemNamed(item, "syncthing"))
 }
 
 if (typeof module !== "undefined") {

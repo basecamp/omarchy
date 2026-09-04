@@ -284,6 +284,13 @@ assertEqual(
   'omarchy-pkg-present zen-browser-bin',
   'menu asks the same presence question it used to hide the row with'
 )
+assert(
+  defaultById['install.service.syncthing'].disabled === 'omarchy-pkg-present syncthing'
+    && defaultById['install.service.syncthing'].action.includes('omarchy-install-service-syncthing')
+    && defaultById['remove.service.syncthing'].when === 'omarchy-pkg-present syncthing'
+    && defaultById['remove.service.syncthing'].action.includes('omarchy-remove-service-syncthing'),
+  'menu installs and removes Syncthing through its native lifecycle commands'
+)
 // A guard can still be about something other than having the software: no
 // Chromium at all means no account to wire up, and that row stays hidden.
 assert(

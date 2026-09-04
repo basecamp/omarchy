@@ -359,56 +359,67 @@ set -euo pipefail
 [[ ${OMARCHY_TEST_TAILSCALE:-0} == "1" ]]
 SH
 
+cat >"$mock_bin/omarchy-installed-service-syncthing" <<'SH'
+#!/bin/bash
+set -euo pipefail
+
+[[ ${OMARCHY_TEST_SYNCTHING:-0} == "1" ]]
+SH
+
 chmod +x "$mock_bin"/*
 mock_path="$mock_bin:$ROOT/bin:$PATH"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=0 OMARCHY_TEST_TAILSCALE=0 omarchy-bar defaults
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=0 OMARCHY_TEST_SYNCTHING=0 OMARCHY_TEST_TAILSCALE=0 omarchy-bar defaults
 jq -e --slurpfile defaults "$ROOT/config/omarchy/shell.json" '
   .bar == $defaults[0].bar and
   .plugins == []
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "bar defaults restores the stock bar"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_TAILSCALE=1 omarchy-bar defaults
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_SYNCTHING=1 OMARCHY_TEST_TAILSCALE=1 omarchy-bar defaults
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.right | ids) as $right |
   ($right | index("omarchy.tray")) as $tray |
   ($right | index("omarchy.tailscale") == $tray + 1) and
-  ($right | index("omarchy.dropbox") == $tray + 2) and
+  ($right | index("omarchy.syncthing") == $tray + 2) and
+  ($right | index("omarchy.dropbox") == $tray + 3) and
   (.bar.layout.center | ids | index("omarchy.tailscale") == null)
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "bar defaults places plugins for running optional services"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" \
-  OMARCHY_TEST_SHELL_DOWN=1 OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_TAILSCALE=1 \
+  OMARCHY_TEST_SHELL_DOWN=1 OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_SYNCTHING=1 OMARCHY_TEST_TAILSCALE=1 \
   omarchy-bar defaults
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.right | ids) as $right |
   ($right | index("omarchy.tray")) as $tray |
   ($right | index("omarchy.tailscale") == $tray + 1) and
-  ($right | index("omarchy.dropbox") == $tray + 2) and
+  ($right | index("omarchy.syncthing") == $tray + 2) and
+  ($right | index("omarchy.dropbox") == $tray + 3) and
   (.bar.layout.center | ids | index("omarchy.tailscale") == null)
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "bar defaults places service widgets without a running shell"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=0 OMARCHY_TEST_TAILSCALE=0 omarchy-refresh-shell
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=0 OMARCHY_TEST_SYNCTHING=0 OMARCHY_TEST_TAILSCALE=0 omarchy-refresh-shell
 jq -e '
   def ids: map(.id // .);
   ([.bar.layout.left, .bar.layout.center, .bar.layout.right] | map(ids) | add) as $all |
   ($all | index("omarchy.dropbox") == null) and
+  ($all | index("omarchy.syncthing") == null) and
   ($all | index("omarchy.tailscale") == null)
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell refresh keeps optional service widgets absent when services are unavailable"
 
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_TAILSCALE=1 omarchy-refresh-shell
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" PATH="$mock_path" OMARCHY_TEST_DROPBOX=1 OMARCHY_TEST_SYNCTHING=1 OMARCHY_TEST_TAILSCALE=1 omarchy-refresh-shell
 jq -e '
   def ids: map(.id // .);
   (.bar.layout.right | ids) as $right |
   ($right | index("omarchy.tray")) as $tray |
   ($right | index("omarchy.tailscale") == $tray + 1) and
-  ($right | index("omarchy.dropbox") == $tray + 2) and
+  ($right | index("omarchy.syncthing") == $tray + 2) and
+  ($right | index("omarchy.dropbox") == $tray + 3) and
   (.bar.layout.center | ids | index("omarchy.tailscale") == null)
 ' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 [[ -f $TMPDIR/home/.local/state/omarchy/restart-shell-called ]] || fail "shell refresh restarts shell"

@@ -161,7 +161,10 @@ cmd_defaults() {
 
   local optional_widgets="[]"
   local service widget
-  for service in dropbox tailscale; do
+  # Each widget is inserted immediately after the tray, so this source order
+  # renders as Tailscale, Syncthing, Dropbox while preserving the established
+  # Tailscale/Dropbox ordering.
+  for service in dropbox syncthing tailscale; do
     if "omarchy-installed-service-$service"; then
       widget=$(jq -cn \
         --arg id "omarchy.$service" \

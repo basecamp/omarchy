@@ -23,6 +23,9 @@ case "${1:-}" in
   tailscale)
     [[ ${OMARCHY_TEST_TAILSCALE_CLI:-0} == "1" ]]
     ;;
+  syncthing)
+    [[ ${OMARCHY_TEST_SYNCTHING_CLI:-0} == "1" ]]
+    ;;
   *)
     command -v "${1:-}" >/dev/null 2>&1
     ;;
@@ -47,7 +50,14 @@ cat >"$mock_bin/systemctl" <<'SH'
 #!/bin/bash
 set -euo pipefail
 
-[[ ${OMARCHY_TEST_TAILSCALE_SYSTEMD:-0} == "1" ]]
+case "$*" in
+  "--user is-enabled --quiet syncthing.service")
+    [[ ${OMARCHY_TEST_SYNCTHING_SYSTEMD:-0} == "1" ]]
+    ;;
+  *)
+    [[ ${OMARCHY_TEST_TAILSCALE_SYSTEMD:-0} == "1" ]]
+    ;;
+esac
 SH
 
 cat >"$mock_bin/pgrep" <<'SH'
@@ -99,3 +109,26 @@ if PATH="$mock_path" omarchy-installed-service-tailscale; then
   fail "installed Tailscale service check rejects unavailable service"
 fi
 pass "installed Tailscale service check rejects unavailable service"
+
+PATH="$mock_path" OMARCHY_TEST_SYNCTHING_CLI=1 OMARCHY_TEST_SYNCTHING_SYSTEMD=1 omarchy-installed-service-syncthing
+pass "installed Syncthing service check accepts an enabled user service"
+
+syncthing_home="$TMPDIR/syncthing-home"
+mkdir -p "$syncthing_home/.local/state/syncthing"
+touch "$syncthing_home/.local/state/syncthing/config.xml"
+HOME="$syncthing_home" PATH="$mock_path" OMARCHY_TEST_SYNCTHING_CLI=1 omarchy-installed-service-syncthing
+pass "installed Syncthing service check accepts an existing configuration while stopped"
+
+community_home="$TMPDIR/community-home"
+mkdir -p "$community_home/.config/omarchy"
+printf '%s\n' '{"bar":{"layout":{"left":[],"center":[],"right":[{"id":"io.github.ilyazar.syncthing"}]}},"plugins":[]}' \
+  >"$community_home/.config/omarchy/shell.json"
+if HOME="$community_home" PATH="$mock_path" OMARCHY_TEST_SYNCTHING_CLI=1 OMARCHY_TEST_SYNCTHING_SYSTEMD=1 omarchy-installed-service-syncthing; then
+  fail "installed Syncthing service check defers to a community widget"
+fi
+pass "installed Syncthing service check defers to a community widget"
+
+if PATH="$mock_path" omarchy-installed-service-syncthing; then
+  fail "installed Syncthing service check rejects an unavailable service"
+fi
+pass "installed Syncthing service check rejects an unavailable service"
