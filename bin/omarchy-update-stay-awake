@@ -101,14 +101,14 @@ start() {
 
     if [[ -n ${OMARCHY_UPDATE_LOCK_FD:-} ]]; then
       "${inhibit_runner[@]}" systemd-inhibit \
-        --what=sleep:idle \
+        --what=sleep:idle:handle-lid-switch \
         --who=omarchy-update \
         --why="Omarchy update in progress" \
         --mode=block \
         sleep infinity >/dev/null 2>&1 {OMARCHY_UPDATE_LOCK_FD}>&- &
     else
       "${inhibit_runner[@]}" systemd-inhibit \
-        --what=sleep:idle \
+        --what=sleep:idle:handle-lid-switch \
         --who=omarchy-update \
         --why="Omarchy update in progress" \
         --mode=block \
