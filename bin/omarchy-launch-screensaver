@@ -21,6 +21,83 @@ case $terminal in
   ;;
 esac
 
+DEFAULT_FONT_SIZE=18
+
+# ttfx does not scale its input art -- it draws it into whatever canvas the
+# terminal provides. The branded art has a fixed row count, so a higher monitor
+# scale silently crops it: fewer rows fit in the window, and the top and bottom
+# of the logo fall off the screen. Measure the art and pick a font size that
+# keeps it whole.
+#
+# A user-provided art file takes precedence over the stock one.
+screensaver_art() {
+  local candidate
+  for candidate in "$HOME/.config/omarchy/branding/screensaver.txt" \
+    "$OMARCHY_PATH/branding/screensaver.txt" \
+    "$OMARCHY_PATH/default/branding/screensaver.txt"; do
+    [[ -r $candidate ]] && {
+      printf '%s' "$candidate"
+      return 0
+    }
+  done
+  return 1
+}
+
+ART=$(screensaver_art) || ART=""
+ART_ROWS=0
+ART_COLS=0
+if [[ -n $ART ]]; then
+  ART_ROWS=$(wc -l <"$ART")
+  ART_COLS=$(awk '{ n = length($0); if (n > m) m = n } END { print m + 0 }' "$ART")
+fi
+
+# Largest font size that still fits the whole art on this monitor.
+# A JetBrains Mono Nerd Font cell is about 0.8x the font size wide and 1.76x
+# tall (18 pt measures 14.4x31.68 px). One spare row and column keep the art
+# off the very edge.
+screensaver_font_size() {
+  local monitor=$1 geometry
+
+  ((ART_ROWS > 0 && ART_COLS > 0)) || {
+    printf '%s' "$DEFAULT_FONT_SIZE"
+    return
+  }
+
+  geometry=$(hyprctl monitors -j |
+    jq -r --arg m "$monitor" '.[] | select(.name == $m) | "\(.width) \(.height) \(.scale) \(.transform)"' 2>/dev/null)
+  [[ -n $geometry ]] || {
+    printf '%s' "$DEFAULT_FONT_SIZE"
+    return
+  }
+
+  awk -v geom="$geometry" -v rows="$ART_ROWS" -v cols="$ART_COLS" -v fallback="$DEFAULT_FONT_SIZE" 'BEGIN {
+    split(geom, g, " ")
+    width = g[1]; height = g[2]; scale = g[3]; transform = g[4]
+
+    # A rotated monitor swaps its logical sides.
+    if (transform == 1 || transform == 3 || transform == 5 || transform == 7) {
+      swap = width; width = height; height = swap
+    }
+
+    if (scale <= 0 || width <= 0 || height <= 0) { print fallback; exit }
+
+    logical_width = width / scale
+    logical_height = height / scale
+
+    by_height = logical_height / ((rows + 1) * 1.76)
+    by_width  = logical_width  / ((cols + 1) * 0.8)
+
+    size = (by_height < by_width) ? by_height : by_width
+    size = int(size)
+
+    # Never exceed the stock size, never go below something readable.
+    if (size > fallback) size = fallback
+    if (size < 6) size = 6
+
+    print size
+  }'
+}
+
 hypr_focus_monitor() {
   hyprctl dispatch "hl.dsp.focus({ monitor = \"$1\" })" >/dev/null 2>&1 || hyprctl dispatch focusmonitor "$1" >/dev/null
 }
@@ -52,18 +129,20 @@ wait_for_screensaver_window() {
 for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
   hypr_focus_monitor "$m"
 
+  font_size=$(screensaver_font_size "$m")
+
   case $terminal in
   *Alacritty*)
-    hypr_exec alacritty --class=org.omarchy.screensaver --config-file "$OMARCHY_PATH/default/alacritty/screensaver.toml" -e omarchy-screensaver
+    hypr_exec alacritty --class=org.omarchy.screensaver --config-file "$OMARCHY_PATH/default/alacritty/screensaver.toml" -o "font.size=$font_size" -e omarchy-screensaver
     ;;
   *ghostty*)
-    hypr_exec ghostty --class=org.omarchy.screensaver --config-file="$OMARCHY_PATH/default/ghostty/screensaver" --font-size=18 -e omarchy-screensaver
+    hypr_exec ghostty --class=org.omarchy.screensaver --config-file="$OMARCHY_PATH/default/ghostty/screensaver" --font-size="$font_size" -e omarchy-screensaver
     ;;
   *foot*)
-    hypr_exec foot --app-id=org.omarchy.screensaver --config="$OMARCHY_PATH/default/foot/screensaver.ini" -e omarchy-screensaver
+    hypr_exec foot --app-id=org.omarchy.screensaver --config="$OMARCHY_PATH/default/foot/screensaver.ini" -o "main.font=JetBrainsMono Nerd Font:size=$font_size" -e omarchy-screensaver
     ;;
   *kitty*)
-    hypr_exec kitty --class=org.omarchy.screensaver --override font_size=18 --override window_padding_width=0 -e omarchy-screensaver
+    hypr_exec kitty --class=org.omarchy.screensaver --override font_size="$font_size" --override window_padding_width=0 -e omarchy-screensaver
     ;;
   esac
 
