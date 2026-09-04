@@ -1,0 +1,38 @@
+#!/usr/bin/ash
+
+run_hook() {
+  local devices_path="${OMARCHY_THUNDERBOLT_DEVICES_PATH:-/sys/bus/thunderbolt/devices}"
+  local device authorized pending=0
+
+  [ -d "$devices_path" ] || return 0
+
+  for device in "$devices_path"/*; do
+    [ -d "$device" ] || continue
+    case "${device##*/}" in
+      domain* | *-0) continue ;;
+    esac
+    [ "$(cat "$device/authorized" 2>/dev/null)" = "0" ] || continue
+    pending=1
+    break
+  done
+
+  [ "$pending" = "1" ] || return 0
+
+  # Let KMS and the Thunderbolt topology settle before authorizing endpoints.
+  sleep 2
+
+  for device in "$devices_path"/*; do
+    [ -d "$device" ] || continue
+
+    # Skip domains and host routers; only attached devices need authorization.
+    case "${device##*/}" in
+      domain* | *-0) continue ;;
+    esac
+
+    authorized="$device/authorized"
+    [ -w "$authorized" ] || continue
+    [ "$(cat "$authorized" 2>/dev/null)" = "0" ] || continue
+
+    echo 1 > "$authorized" 2>/dev/null
+  done
+}

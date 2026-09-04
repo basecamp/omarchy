@@ -1,0 +1,15 @@
+#!/bin/bash
+
+build() {
+  add_runscript
+}
+
+help() {
+  cat <<'EOF'
+Authorize Thunderbolt devices already connected at boot so their USB devices
+are available before the encrypted root password prompt.
+
+Security: every Thunderbolt endpoint connected during early boot is trusted.
+Devices connected after this hook runs are not authorized by it.
+EOF
+}
