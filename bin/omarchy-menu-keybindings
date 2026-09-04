@@ -368,7 +368,9 @@ BEGIN {
 }
 {
     # Combine the modifier and key (first two fields)
-    key_combo = $1 " + " $2;
+    modifiers = $1;
+    gsub(/[ \t]+/, " + ", modifiers);
+    key_combo = modifiers " + " $2;
 
     # Clean up: strip leading "+" if present, trim spaces
     gsub(/^[ \t]*\+?[ \t]*/, "", key_combo);
