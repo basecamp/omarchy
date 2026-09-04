@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# omarchy:summary=Sync current Omarchy theme into the Midnight Commander skin
+# omarchy:hidden=true
+
+MC_SKIN_SOURCE="$HOME/.local/state/omarchy/current/theme/mc.ini"
+MC_SKIN_LINK="$HOME/.local/share/mc/skins/omarchy.ini"
+MC_INI="$HOME/.config/mc/ini"
+
+omarchy-cmd-present mc || exit 0
+[[ -f $MC_SKIN_SOURCE ]] || exit 0
+
+mkdir -p "$(dirname "$MC_SKIN_LINK")"
+ln -snf "$MC_SKIN_SOURCE" "$MC_SKIN_LINK"
+
+# Point mc at the generated skin without touching any other user setting.
+if [[ -f $MC_INI ]]; then
+  if grep -q '^skin=' "$MC_INI"; then
+    sed -i 's/^skin=.*/skin=omarchy/' "$MC_INI"
+  else
+    printf 'skin=omarchy\n' >>"$MC_INI"
+  fi
+else
+  mkdir -p "$(dirname "$MC_INI")"
+  printf '[Midnight-Commander]\nskin=omarchy\n' >"$MC_INI"
+fi
