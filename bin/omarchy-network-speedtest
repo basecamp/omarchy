@@ -72,16 +72,20 @@ traffic_worker() {
   local urls=("$@")
   local url_count=${#urls[@]}
   local idx=$RANDOM
+  # Bound each worker on its own clock. Losing the parent to a SIGKILL leaves
+  # these subshells reparented to init with no one left to signal them, so a
+  # ceiling that only lives in the sampling loop would never reach them.
+  local deadline=$((SECONDS + max_seconds))
   if [[ $direction == "down" ]]; then
-    while true; do
+    while (( SECONDS < deadline )); do
       url=${urls[$((idx % url_count))]}
-      curl -fsS -o /dev/null "$url" 2>/dev/null || return
+      curl -fsS -o /dev/null --max-time "$max_seconds" "$url" 2>/dev/null || return
       idx=$((idx + 1))
     done
   else
-    while true; do
+    while (( SECONDS < deadline )); do
       url=${urls[$((idx % url_count))]}
-      dd if=/dev/zero bs=1M count=64 2>/dev/null | curl -fsS -o /dev/null -X POST --data-binary @- "$url" 2>/dev/null || return
+      dd if=/dev/zero bs=1M count=64 2>/dev/null | curl -fsS -o /dev/null --max-time "$max_seconds" -X POST --data-binary @- "$url" 2>/dev/null || return
       idx=$((idx + 1))
     done
   fi
