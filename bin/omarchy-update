@@ -48,6 +48,7 @@ if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
   omarchy-migrate
   omarchy-hook post-update
   omarchy-update-aur-pkgs
+  omarchy-update-flatpaks
   omarchy-update-mise
   omarchy-update-orphan-pkgs
 

@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Update installed Flatpak apps if any are installed
+
+# Nothing installed means nothing to say. A machine that never installed a
+# Flatpak app should not see a heading for it on every update.
+if [[ -z $(flatpak list --app --columns=application) ]]; then
+  exit 0
+fi
+
+echo -e "\e[32m\nUpdate Flatpak apps\e[0m"
+
+# Both installations, because the two helpers write to system and an app's own
+# installer usually writes to user; updating one scope silently leaves the
+# other behind. Sudo is already warm from the package update that ran first.
+failed=0
+sudo flatpak update --system --noninteractive || failed=1
+flatpak update --user --noninteractive || failed=1
+
+# Flathub being unreachable, or one app failing to build its update, is not a
+# reason to abort an Omarchy update that has already replaced the system
+# packages. Say what happened and let the rest of the update finish; the next
+# run picks the apps up.
+if (( failed )); then
+  echo -e "\e[31mSome Flatpak apps could not be updated (so skipping)\e[0m"
+fi
+
+echo
+exit 0
