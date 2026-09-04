@@ -360,6 +360,15 @@ var enterpriseConnectScript =
 // must stay wifi-only on exactly fifteen fields -- -g prints one line per
 // field (blank when unset) plus a blank line between connections, so a
 // missing or extra field would slip the group alignment.
+//
+// The "auto" literal assumes NetworkManager's stock per-connection default;
+// a site that overrides ipv4.method/ipv6.method in NetworkManager.conf's
+// [connection] section gives both the new profile and prior hidden profiles
+// that other value, so this comparison never matches and dedupe silently
+// stops -- every join then leaves another same-named profile behind instead
+// of deleting one. That is the intended failure direction: this dedupe
+// exists because the old code deleted too much, so failing toward "leave
+// profiles alone" beats failing toward "delete a customized one."
 var hiddenConnectDedupe =
   " trap 'nmcli connection delete uuid \"$u\" >/dev/null 2>&1' EXIT; trap 'exit 143' TERM INT;" +
   " old=\"\"; wifi=\"\";" +
