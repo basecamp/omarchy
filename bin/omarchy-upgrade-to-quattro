@@ -1213,7 +1213,6 @@ run_final_system_package_upgrade() {
     --overwrite '/etc/gnupg/dirmngr.conf' \
     --overwrite '/etc/mkinitcpio.conf.d/omarchy_hooks.conf' \
     --overwrite '/etc/mkinitcpio.conf.d/thunderbolt_module.conf' \
-    --overwrite '/etc/modprobe.d/omarchy-usb-autosuspend.conf' \
     --overwrite '/etc/sddm.conf.d/10-theme.conf' \
     --overwrite '/etc/sddm.conf.d/10-wayland.conf' \
     --overwrite '/etc/sudoers.d/omarchy-asdcontrol' \
