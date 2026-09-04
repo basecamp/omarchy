@@ -384,6 +384,29 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
   }
 }
 
+// Where a row lives in the current list, found by its id. `rows` is the live
+// display list -- the QML ListModel at runtime, anything with `count` and
+// `get(i)` in tests.
+//
+// Going back to a parent menu clears its filter and rebuilds it from scratch,
+// so a row's position on the way in says nothing about its position on the way
+// out: filtering the root to "Style" puts that row at index 0, which is where
+// "Apps" sits once the filter is gone. The id is the row's identity; the index
+// is only ever true of one build of the list.
+//
+// A disabled row reports -1 like a missing one. The cursor never parks
+// somewhere Enter would do nothing.
+function rowIndexOfItem(rows, itemId) {
+  if (!itemId) return -1
+
+  for (var i = 0; i < rows.count; i++) {
+    var row = rows.get(i)
+    if (row.itemId === itemId) return row.disabled ? -1 : i
+  }
+
+  return -1
+}
+
 // Commands a `checked:` expression reads a value out of. Every sibling row
 // asks the same one -- Defaults > Browser has seven rows all comparing
 // against `omarchy-default-browser` -- so the batch runs it once and the rows
@@ -519,6 +542,7 @@ if (typeof module !== "undefined") {
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
-    displayRow: displayRow
+    displayRow: displayRow,
+    rowIndexOfItem: rowIndexOfItem
   }
 }

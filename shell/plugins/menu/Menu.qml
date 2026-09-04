@@ -729,7 +729,12 @@ Item {
   function setActiveMenu(id, pushHistory, fromPointer) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
-    if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
+    if (pushHistory && id !== root.activeMenu) {
+      var leaving = root.cursorActive && root.rowSelectable(root.selectedIndex)
+        ? displayModel.get(root.selectedIndex).itemId
+        : ""
+      root.navStack = root.navStack.concat([{ menu: root.activeMenu, itemId: leaving }])
+    }
     root.activeMenu = id
     root.filterText = ""
     root.selectedIndex = 0
@@ -747,7 +752,14 @@ Item {
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
       root.navStack = root.navStack.slice(0, root.navStack.length - 1)
-      root.setActiveMenu(previous, false)
+      root.setActiveMenu(previous.menu, false)
+      // setActiveMenu parks the cursor on the first row, which is what going
+      // into a menu wants and what coming back out of one does not: the row
+      // that opened this submenu is where the cursor was left. It has just
+      // been rebuilt unfiltered, so look the row up by id rather than trusting
+      // where it sat on the way in. Nothing found leaves settleCursor's pick.
+      var restored = MenuModel.rowIndexOfItem(displayModel, previous.itemId)
+      if (restored >= 0) root.selectedIndex = restored
       return true
     }
 

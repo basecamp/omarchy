@@ -494,6 +494,61 @@ assert(
   /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
   'menu Left key follows empty-filter Backspace navigation'
 )
+// Entering a submenu records which row was under the cursor, so leaving it
+// again lands on that row instead of the top of the list. The row is
+// remembered by id: going back clears the filter and rebuilds the parent from
+// scratch, so where the row sat on the way in says nothing about where it sits
+// on the way out.
+const navMerged = menu.mergeMenuSources([
+  menu.normalizeItem('root', { label: 'Go' }),
+  menu.normalizeItem('apps', { label: 'Apps' }),
+  menu.normalizeItem('style', { label: 'Style' }),
+  menu.normalizeItem('style.theme', { label: 'Themes', action: 'omarchy-theme-set' }),
+  menu.normalizeItem('install', { label: 'Install', disabled: 'already-have-it' })
+], [])
+// Stands in for the QML ListModel the rows live in at runtime.
+const navModel = rows => ({ count: rows.length, get: index => rows[index] })
+const navRow = (id, disabledResults) => menu.displayRow(
+  navMerged.items, navMerged.itemOrder, {}, disabledResults || {}, navMerged.items[id], '', 0
+)
+const navRootRows = disabledResults => ['apps', 'style', 'install'].map(id => navRow(id, disabledResults))
+
+// Filtering the root to "style" leaves the Style row alone at index 0 -- the
+// same slot Apps occupies once the filter is gone, since navRootRows builds
+// ['apps', 'style', 'install'] in that order.
+const navFiltered = navRootRows().filter(row => menu.matchesQuery(navMerged.items[row.itemId], 'style', true))
+assertEqual(navFiltered.length, 1, 'menu filtered root fixture matches Style alone')
+assertEqual(navFiltered[0].itemId, 'style', 'menu filtered root puts Style at index 0')
+
+assertEqual(
+  menu.rowIndexOfItem(navModel(navRootRows()), navFiltered[0].itemId),
+  1,
+  'menu finds the remembered row by id after the parent is rebuilt unfiltered'
+)
+assertEqual(
+  menu.rowIndexOfItem(navModel(navRootRows()), 'style.theme'),
+  -1,
+  'menu reports no row when the remembered id is not in the rebuilt parent'
+)
+assertEqual(
+  menu.rowIndexOfItem(navModel(navRootRows()), ''),
+  -1,
+  'menu reports no row when there was no cursor to remember'
+)
+assertEqual(
+  menu.rowIndexOfItem(navModel(navRootRows({ install: true })), 'install'),
+  -1,
+  'menu refuses to restore the cursor onto a row that has since been disabled'
+)
+
+assert(
+  /root\.navStack = root\.navStack\.concat\(\[\{ menu: root\.activeMenu, itemId: leaving \}\]\)/.test(menuQml),
+  'menu remembers the id of the row it is leaving behind, not its position'
+)
+assert(
+  /function goBack\(\)[\s\S]*?root\.setActiveMenu\(previous\.menu, false\)[\s\S]*?var restored = MenuModel\.rowIndexOfItem\(displayModel, previous\.itemId\)\s*\n\s*if \(restored >= 0\) root\.selectedIndex = restored/.test(menuQml),
+  'menu going back resolves the remembered row id against the rebuilt list'
+)
 assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),
   'menu uses shared pointer movement gate in card coordinates'
