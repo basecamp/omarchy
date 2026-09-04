@@ -84,5 +84,5 @@ pass "emoji insert helper copies emoji transiently"
 [[ $(<"$TMPDIR/emoji.args") == "--type text/plain --sensitive --foreground" ]] || fail "emoji insert helper serves sensitive transient clipboard in foreground"
 pass "emoji insert helper serves transient clipboard in foreground"
 
-[[ $(<"$TMPDIR/wtype") == "-M shift -k Insert -m shift" ]] || fail "emoji insert helper pastes with shift insert"
-pass "emoji insert helper pastes with shift insert"
+[[ $(<"$TMPDIR/wtype") == "-M ctrl -M shift -k v -m shift -m ctrl" ]] || fail "emoji insert helper pastes as plain text"
+pass "emoji insert helper pastes as plain text"
