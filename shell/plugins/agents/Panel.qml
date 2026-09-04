@@ -1,5 +1,7 @@
 import QtQuick
-import QtQuick.Controls
+// Namespaced so Ui.Button below keeps winning the `Button` name for tooling
+// as it already does at runtime; only this panel's ScrollBar needs Controls.
+import QtQuick.Controls as Controls
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -238,10 +240,19 @@ Panel {
   // A record that carries `usageByHour` — sparse all-time tokens bucketed
   // into local-time weekday-hour cells — also renders a 7×24 activity
   // punchcard under TOKENS BY DAY. Providers whose collector never writes
-  // the field simply never see the section: a null window hides it.
+  // the field simply never see the section: a null window hides it. The
+  // data stays all-time; only the reading order follows the clock.
 
   readonly property var usagePunchcard: Punchcard.punchcardWindow(
     root.provider ? root.provider.usageByHour : null)
+
+  // Rows render in wrap order around the viewer's weekday, today last, so
+  // the grid reads as a run-up to right now instead of a week that already
+  // ran ahead. Recomputed from nowMs so a panel open across midnight
+  // re-rails itself, the same way the Today row moves.
+  readonly property int punchToday: new Date(root.nowMs).getDay()
+  readonly property var punchOrder: Punchcard.orderRowsForToday(
+    root.usagePunchcard ? root.usagePunchcard.rows : [], root.punchToday)
 
   // The weekday gutter is sized to its labels; the 24 hour columns share
   // whatever width is left, so the grid fits the panel at any spacing
@@ -423,7 +434,7 @@ Panel {
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
         interactive: contentHeight > height
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AsNeeded }
 
         Column {
           id: column
@@ -700,7 +711,7 @@ Panel {
 
             PanelSectionHeader {
               width: parent.width
-              text: "ACTIVITY"
+              text: "ACTIVITY (ALL-TIME)"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -740,14 +751,15 @@ Panel {
                 anchors.topMargin: Style.space(4)
 
                 Repeater {
-                  model: root.usagePunchcard ? root.usagePunchcard.rows : []
+                  model: root.punchOrder.rows
 
                   PunchcardRow {
                     required property var modelData
                     required property int index
 
-                    cells: modelData
-                    weekday: index
+                    cells: modelData.cells
+                    weekday: modelData.weekday
+                    today: index === root.punchOrder.todayIndex
                   }
                 }
               }
@@ -1044,21 +1056,25 @@ Panel {
     }
   }
 
-  // One weekday of the punchcard: its label, then 24 hour cells, Sunday
-  // first — the record's own weekday numbering.
+  // One weekday of the punchcard: its gutter label, then 24 hour cells.
+  // Rows arrive ordered around the viewer's weekday — today renders last —
+  // and each carries its own weekday so the label still speaks the truth.
+  // Today is picked out in full ink, the way the day rows are.
   component PunchcardRow: Row {
     id: punchcardRow
     property var cells: []
     property int weekday: 0
+    property bool today: false
 
     Text {
       width: root.punchGutter
       height: root.punchPitch
       text: root.weekdayNames[punchcardRow.weekday]
       textFormat: Text.PlainText
-      color: root.dim
+      color: punchcardRow.today ? root.foreground : root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.caption
+      font.bold: punchcardRow.today
       rightPadding: Style.space(6)
       horizontalAlignment: Text.AlignRight
       verticalAlignment: Text.AlignVCenter
@@ -1071,6 +1087,7 @@ Panel {
         required property var modelData
 
         cell: modelData
+        today: punchcardRow.today
       }
     }
   }
@@ -1078,10 +1095,13 @@ Panel {
   // One weekday-hour cell. A lit cell is a foreground dot whose diameter
   // and alpha carry its share of the busiest cell; an empty one keeps the
   // faint track dot. Only lit cells answer the hover — an hour the record
-  // has never touched has nothing to say.
+  // has never touched has nothing to say. Today's row keeps its full
+  // legend ink; the other six ride at the 0.55 the day rows' meters dim
+  // to — same foreground ink, no second color.
   component PunchcardCell: Item {
     id: punchcardCell
     property var cell: null
+    property bool today: false
 
     width: root.punchPitch
     height: root.punchPitch
@@ -1094,7 +1114,8 @@ Panel {
       height: width
       radius: width / 2
       color: punchcardCell.cell
-        ? root.alpha(root.foreground, punchcardCell.cell.alpha)
+        ? root.alpha(root.foreground, punchcardCell.cell.alpha
+            * (punchcardCell.today ? 1 : 0.55))
         : root.track
     }
 

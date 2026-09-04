@@ -122,6 +122,36 @@ function punchcardWindow(raw) {
   return { rows: rows, maxTokens: maxTokens }
 }
 
+// ---- reading order -----------------------------------------------------------
+//
+// The grid is all-time, so a weekday row reads the same wherever today
+// falls — what confuses is meeting Saturday's tokens while today is
+// Friday, as if the week ran ahead of now. Reordered so today renders
+// last, with the six days before it in natural wrap order, the grid
+// becomes a run-up to right now, the same run the day rows make. Pure
+// presentation: rows are reordered, never mutated, and every row keeps
+// its own weekday so labels and tooltips still speak the truth. An
+// out-of-range todayWeekday keeps the Sun-first order and claims no row
+// as today.
+function orderRowsForToday(rows, todayWeekday) {
+  var grid = Array.isArray(rows) ? rows : []
+  var today = Number(todayWeekday)
+  if (!isFinite(today) || Math.floor(today) !== today || today < 0 || today >= WEEKDAY_COUNT) {
+    var plain = []
+    for (var fallback = 0; fallback < WEEKDAY_COUNT; fallback++)
+      plain.push({ weekday: fallback, cells: grid[fallback] || [] })
+    return { rows: plain, todayIndex: -1 }
+  }
+
+  // Tomorrow leads: today=Friday(5) renders Sat(6) first, Friday last.
+  var ordered = []
+  for (var step = 1; step <= WEEKDAY_COUNT; step++) {
+    var weekday = (today + step) % WEEKDAY_COUNT
+    ordered.push({ weekday: weekday, cells: grid[weekday] || [] })
+  }
+  return { rows: ordered, todayIndex: WEEKDAY_COUNT - 1 }
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     PITCH_REFERENCE: PITCH_REFERENCE,
@@ -132,6 +162,7 @@ if (typeof module !== "undefined") {
     MAX_ALPHA: MAX_ALPHA,
     parseUsageByHour: parseUsageByHour,
     dotMetrics: dotMetrics,
-    punchcardWindow: punchcardWindow
+    punchcardWindow: punchcardWindow,
+    orderRowsForToday: orderRowsForToday
   }
 }
