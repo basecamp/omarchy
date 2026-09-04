@@ -46,7 +46,7 @@ Item {
   readonly property var enabledSourceIds: ["omarchy"].concat(enabledFeedIds)
   readonly property string customFeeds: String(setting("customFeeds", "")).substring(0, 4096)
   readonly property var customFeedEntries: parseCustomFeedEntries(customFeeds)
-  readonly property string collectionsSetting: String(setting("feedCollections", "")).substring(0, 8192)
+  readonly property string collectionsSetting: String(setting("feedCollections", ""))
   readonly property var collections: Collections.parse(collectionsSetting)
   readonly property var selectableSources: buildSelectableSources()
   readonly property var collectionFilters: buildCollectionFilters()

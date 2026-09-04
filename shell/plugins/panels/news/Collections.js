@@ -1,14 +1,18 @@
 function parse(value) {
   var parsed
+  var raw = String(value || "[]")
+  // Allow eight groups of 21 maximum-length URLs, including JSON escaping.
+  // Never truncate serialized JSON: that invalidates every saved collection.
+  if (raw.length > 3 * 1024 * 1024) return []
   try {
-    parsed = JSON.parse(String(value || "[]"))
+    parsed = JSON.parse(raw)
   } catch (error) {
     return []
   }
   if (!Array.isArray(parsed)) return []
 
   var result = []
-  var seen = {}
+  var seen = Object.create(null)
   for (var i = 0; i < parsed.length && result.length < 8; i++) {
     var candidate = parsed[i]
     if (!candidate || typeof candidate !== "object") continue
@@ -20,17 +24,29 @@ function parse(value) {
       var url = String(candidate.sourceUrls[sourceIndex] || "").trim().substring(0, 2048)
       if (/^https:\/\//.test(url) && urls.indexOf(url) === -1) urls.push(url)
     }
-    if (urls.length === 0) continue
     seen[id] = true
     result.push({ id: id, name: name, sourceUrls: urls })
   }
   return result
 }
 
+function replaceSource(groups, oldUrl, newUrl) {
+  return (groups || []).map(function(group) {
+    var urls = []
+    ;(group.sourceUrls || []).forEach(function(original) {
+      var url = original === oldUrl ? newUrl : original
+      if (url && urls.indexOf(url) === -1) urls.push(url)
+    })
+    // Removing a subscription must not delete the user's named collection.
+    return { id: group.id, name: group.name, sourceUrls: urls }
+  })
+}
+
 function buildItemIndex(items, collections, itemLimit) {
   var limit = Math.max(1, Number(itemLimit) || 1)
-  var next = { all: [] }
-  var collectionsByUrl = {}
+  var next = Object.create(null)
+  next.all = []
+  var collectionsByUrl = Object.create(null)
   var groups = collections || []
   for (var collectionIndex = 0; collectionIndex < groups.length; collectionIndex++) {
     var collectionKey = "collection:" + String(groups[collectionIndex].id || "")
@@ -62,6 +78,7 @@ function buildItemIndex(items, collections, itemLimit) {
 if (typeof module !== "undefined") {
   module.exports = {
     parse: parse,
+    replaceSource: replaceSource,
     buildItemIndex: buildItemIndex
   }
 }

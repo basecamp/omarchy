@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import qs.Commons
 import qs.Ui
+import "Collections.js" as Collections
 
 Item {
   id: root
@@ -104,25 +105,7 @@ Item {
   }
 
   function collectionsAfterSourceChange(oldUrl, newUrl) {
-    var groups = news ? news.collections : []
-    var result = []
-    for (var i = 0; i < groups.length; i++) {
-      var urls = []
-      var sourceUrls = groups[i].sourceUrls || []
-      for (var sourceIndex = 0; sourceIndex < sourceUrls.length; sourceIndex++) {
-        var url = String(sourceUrls[sourceIndex] || "")
-        if (url === oldUrl) url = newUrl
-        if (url !== "" && urls.indexOf(url) === -1) urls.push(url)
-      }
-      if (urls.length > 0) {
-        result.push({
-          "id": String(groups[i].id || ""),
-          "name": String(groups[i].name || ""),
-          "sourceUrls": urls
-        })
-      }
-    }
-    return result
+    return Collections.replaceSource(news ? news.collections : [], oldUrl, newUrl)
   }
 
   function editCustom(index) {
