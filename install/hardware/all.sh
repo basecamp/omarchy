@@ -35,6 +35,8 @@ run_logged "$OMARCHY_INSTALL/hardware/asus/fix-z13-touchpad.sh"
 
 run_logged "$OMARCHY_INSTALL/hardware/framework/qmk-hid.sh"
 
+run_logged "$OMARCHY_INSTALL/hardware/apple/install-macbookpro13-1-audio.sh"
+run_logged "$OMARCHY_INSTALL/hardware/apple/install-macbookpro13-1-camera.sh"
 run_logged "$OMARCHY_INSTALL/hardware/apple/fix-spi-keyboard.sh"
 run_logged "$OMARCHY_INSTALL/hardware/apple/fix-suspend-nvme.sh"
 run_logged "$OMARCHY_INSTALL/hardware/apple/fix-t2.sh"

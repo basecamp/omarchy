@@ -66,6 +66,11 @@ dell-xps13-sidecar-amps
 # Speaker tunings (LV2 limiter every tuning ends in)
 lsp-plugins-lv2
 
+# MacBookPro13,1 compatibility
+facetimehd-dkms
+facetimehd-firmware
+snd-hda-macbookpro-dkms
+
 # T2 MacBook support packages
 apple-bcm-firmware
 apple-t2-audio-config

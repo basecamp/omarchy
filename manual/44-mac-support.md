@@ -37,15 +37,20 @@ It is necessary to disable Apple's Secure Boot in order to boot the bootable USB
 
 The installer detects Mac hardware and applies the needed fixes automatically: Broadcom Wi-Fi drivers and firmware, the SPI keyboard driver on the MacBook models that need it, and an NVMe suspend fix for those same models.
 
+#### MacBookPro13,1
+
+Omarchy supports the exact DMI model `MacBookPro13,1` (the 13-inch 2016 MacBook Pro with two Thunderbolt 3 ports, model A1708) on the stock Omarchy kernel. Fresh installations and hardware replay automatically install the Cirrus audio driver and FaceTime HD camera driver and firmware. The keyboard uses the kernel's in-tree `applespi` driver, and Omarchy's existing NVMe power workaround remains enabled.
+
+After a normal boot, the built-in speakers, headphones, microphone, camera, and keyboard backlight are supported. Deep suspend and hibernation are not supported because audio and camera do not always recover after wake and may remain unavailable until reboot. Use a normal shutdown instead. For technical background, see the upstream [deep-suspend audio proposal](https://github.com/davidjo/snd_hda_macbookpro/pull/198) and [jack-detection issue](https://github.com/davidjo/snd_hda_macbookpro/issues/199).
+
 ### Known Limitations
 
 Members of the community are constantly working on solutions to these challenges so if these are problematic for you, join #omarchy-on-other in our [Discord](https://discord.gg/tXFUdasqhY) and see if there's any up-to-date methods for resolving these.
 
 #### Devices with T1 Chip
 
-The Apple T1 chip was introduced in late 2016 and used exclusively in the first-generation MacBook Pro models with Touch Bar.
-- MacBook Pro 13-inch (2016, two Thunderbolt 3 ports) – Model: A1706
-- MacBook Pro 13-inch (2016, four Thunderbolt 3 ports) – Model: A1708
+The Apple T1 chip was introduced in late 2016 and used in the first-generation MacBook Pro models with Touch Bar. The supported `MacBookPro13,1`/A1708 does not have a T1 chip.
+- MacBook Pro 13-inch (2016, four Thunderbolt 3 ports) – Model: A1706
 - MacBook Pro 15-inch (2016) – Model: A1707
 
 #### Known Issues
