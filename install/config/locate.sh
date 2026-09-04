@@ -1,8 +1,34 @@
-UPDATEDB_CONF_PATH="${OMARCHY_UPDATEDB_CONF_PATH:-/etc/updatedb.conf}"
+UPDATEDB_CONF_PATH=/etc/updatedb.conf
 
 echo "Configuring locate to skip Btrfs snapshots and index Btrfs subvolumes"
 
 [[ -f $UPDATEDB_CONF_PATH ]] || exit 0
+
+# Config values can contain sed syntax, so pass the replacement to a fixed awk
+# program strictly as data and publish it only after the rewrite succeeds.
+rewrite_updatedb_prunepaths() (
+  local replacement=$1
+  local rewritten_conf
+
+  rewritten_conf=$(mktemp -- "${UPDATEDB_CONF_PATH}.tmp.XXXXXX") || return 1
+  trap 'rm -f -- "$rewritten_conf"' EXIT
+
+  if ! UPDATEDB_PRUNEPATHS="$replacement" awk '
+    BEGIN { replacement = ENVIRON["UPDATEDB_PRUNEPATHS"] }
+    /^[[:space:]]*PRUNEPATHS[[:space:]]*=/ {
+      printf "PRUNEPATHS = \"%s\"\n", replacement
+      next
+    }
+    { print }
+  ' "$UPDATEDB_CONF_PATH" >"$rewritten_conf"; then
+    return 1
+  fi
+
+  cp --attributes-only --preserve=all -- "$UPDATEDB_CONF_PATH" "$rewritten_conf" || return 1
+  touch -m -- "$rewritten_conf" || return 1
+  mv -fT -- "$rewritten_conf" "$UPDATEDB_CONF_PATH" || return 1
+  trap - EXIT
+)
 
 # updatedb refuses to run at all on a config that defines a variable twice, so
 # every setting here is rewritten where it already stands and only appended
@@ -25,7 +51,7 @@ if grep -qE '^[[:space:]]*PRUNEPATHS[[:space:]]*=' "$UPDATEDB_CONF_PATH"; then
   pruned=$(sed -nE 's|^[[:space:]]*PRUNEPATHS[[:space:]]*=[[:space:]]*"([^"]*)".*|\1|p' "$UPDATEDB_CONF_PATH" | tail -n 1)
 
   if [[ " $pruned " != *" /.snapshots "* ]]; then
-    sed -i -E "s|^[[:space:]]*PRUNEPATHS[[:space:]]*=.*|PRUNEPATHS = \"/.snapshots${pruned:+ $pruned}\"|" "$UPDATEDB_CONF_PATH"
+    rewrite_updatedb_prunepaths "/.snapshots${pruned:+ $pruned}"
   fi
 else
   printf '%s\n' 'PRUNEPATHS = "/.snapshots"' >>"$UPDATEDB_CONF_PATH"
