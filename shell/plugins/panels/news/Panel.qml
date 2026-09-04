@@ -44,6 +44,7 @@ Item {
   }
 
   function close() {
+    markReadTimer.stop()
     closingFromHost = true
     opened = false
     window.visible = false
@@ -56,6 +57,7 @@ Item {
   }
 
   function openFeedManager() {
+    markReadTimer.stop()
     managingFeeds = true
     focusArea = "manager"
     feedManager.activate()
@@ -192,7 +194,7 @@ Item {
     id: markReadTimer
     interval: 1200
     repeat: false
-    onTriggered: if (root.news) root.news.markAllSeen()
+    onTriggered: if (root.opened && !root.managingFeeds && root.news) root.news.markAllSeen()
   }
 
   FloatingWindow {

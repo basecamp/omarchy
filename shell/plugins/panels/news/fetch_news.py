@@ -590,7 +590,7 @@ def atomic_write(path: Path, data: dict[str, object]) -> None:
 def cached_result(source: dict[str, object], error: str) -> dict[str, object] | None:
     try:
         cached = json.loads(cache_path(str(source["id"])).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     if not isinstance(cached, dict) or not isinstance(cached.get("items"), list):
         return None
@@ -621,9 +621,11 @@ def fresh_cached_items(
     try:
         cached_at = datetime.fromisoformat(str(cached.get("fetchedAt", "")))
         now = datetime.fromisoformat(fetched_at)
+        if cached_at.tzinfo is None or now.tzinfo is None:
+            return None
+        age = (now - cached_at).total_seconds()
     except (TypeError, ValueError):
         return None
-    age = (now - cached_at).total_seconds()
     if age < 0 or age > max_cache_age:
         return None
     return [item for item in cached["items"] if isinstance(item, dict)][:item_limit]
@@ -679,10 +681,14 @@ def load_source(
                 if discovered_name:
                     resolved_source = {**source, "name": discovered_name}
             source_items = parse_feed(payload, resolved_source, item_limit)
-            atomic_write(
-                cache_path(str(source["id"])),
-                {"fetchedAt": fetched_at, "items": source_items},
-            )
+            try:
+                atomic_write(
+                    cache_path(str(source["id"])),
+                    {"fetchedAt": fetched_at, "items": source_items},
+                )
+            except OSError as exc:
+                # Cache persistence is optional; never discard a successful fetch.
+                error = clean_text(f"Could not save feed cache: {exc}", 180)
         except (OSError, ValueError, ET.ParseError) as exc:
             error = clean_text(str(exc), 180)
             cached = cached_result(source, error)
