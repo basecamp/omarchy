@@ -4,7 +4,7 @@
   "name": "Idle",
   "version": "1.0.0",
   "author": "Omarchy",
-  "description": "Quickshell-based idle detection for screensaver, lock, and display wake.",
+  "description": "Quickshell-based idle detection for screensaver, lock, optional independent display blanking, and wake.",
   "kinds": [
     "service"
   ],

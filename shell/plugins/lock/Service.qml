@@ -408,7 +408,7 @@ Item {
 
   Process {
     id: blankProcess
-    command: ["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
+    command: ["bash", "-c", "omarchy-system-blank"]
   }
 
   Timer {

@@ -19,9 +19,12 @@ Item {
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
   readonly property int screensaverTimeoutSeconds: secondsFromConfig(idleConfig.screensaver, defaultScreensaverSeconds)
   readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
-  readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
+  readonly property bool blankConfigured: IdleModel.blankEnabled(idleConfig.blank)
+  readonly property int blankTimeoutSeconds: secondsFromConfig(idleConfig.blank, 0)
+  readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds, blankConfigured ? blankTimeoutSeconds : Number.MAX_SAFE_INTEGER)
   readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
+  readonly property int blankDelaySeconds: blankConfigured ? Math.max(0, blankTimeoutSeconds - firstIdleTimeoutSeconds) : 0
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
@@ -68,10 +71,15 @@ Item {
     runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
   }
 
+  function blankDisplay() {
+    runProcess(blankProcess, "blank", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-system-blank")
+  }
+
   function lockSystem(reason) {
     logEvent("lock-system", reason || "requested")
     screensaverTimer.stop()
     lockTimer.stop()
+    blankTimer.stop()
     screensaverLaunchGraceTimer.stop()
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
@@ -85,7 +93,7 @@ Item {
       return
     }
 
-    logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds)
+    logEvent("idle-cycle-start", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds + (root.blankConfigured ? " blank=" + root.blankTimeoutSeconds : ""))
     root.idledThisCycle = true
     root.screensaverStartedThisCycle = false
     resetScreensaverWindows()
@@ -95,12 +103,23 @@ Item {
 
     if (root.lockDelaySeconds === 0) lockSystem("lock-timeout-immediate")
     else lockTimer.restart()
+
+    // Independent blanking only ever fires strictly before the lock deadline.
+    // At or after that point, lock/Service.qml's own post-lock timer owns
+    // blanking -- comparing absolute deadlines (rather than whichever delay
+    // happens to be 0) keeps that true even when blank and lock coincide
+    // exactly while screensaver is the earlier deadline.
+    if (root.blankConfigured && root.blankTimeoutSeconds < root.lockTimeoutSeconds) {
+      if (root.blankDelaySeconds === 0) blankDisplay()
+      else blankTimer.restart()
+    }
   }
 
   function cancelIdleCycle(reason) {
     logEvent("idle-cycle-cancel", reason || "requested")
     screensaverTimer.stop()
     lockTimer.stop()
+    blankTimer.stop()
     screensaverLaunchGraceTimer.stop()
 
     if (root.idledThisCycle) runProcess(wakeProcess, "wake", "omarchy-system-wake")
@@ -188,17 +207,21 @@ Item {
       screensaverStarted: root.screensaverStartedThisCycle,
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,
+      blank: root.blankConfigured ? root.blankTimeoutSeconds : null,
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
+      blankDelay: root.blankConfigured ? root.blankDelaySeconds : null,
       screensaverWindows: root.screensaverWindowCount,
       timers: {
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
+        blank: blankTimer.running,
         screensaverLaunchGrace: screensaverLaunchGraceTimer.running
       },
       processes: {
         screensaver: screensaverProcess.running,
         lock: lockProcess.running,
+        blank: blankProcess.running,
         wake: wakeProcess.running
       },
       lastEvent: root.lastEvent,
@@ -270,6 +293,17 @@ Item {
   }
 
   Timer {
+    id: blankTimer
+    interval: root.blankDelaySeconds * 1000
+    repeat: false
+    // shell.json reloads live: if idle.blank is removed while this timer is
+    // running, the interval binding above can drop to 0 and fire almost
+    // immediately. Recheck blankConfigured so a just-removed setting can't
+    // still blank the display.
+    onTriggered: if (root.idleEnabled && root.idledThisCycle && root.blankConfigured) root.blankDisplay()
+  }
+
+  Timer {
     id: screensaverLaunchGraceTimer
     interval: 3000
     repeat: false
@@ -292,6 +326,10 @@ Item {
   Process {
     id: lockProcess
     onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "lock exitCode=" + exitCode + " status=" + exitStatus) }
+  }
+  Process {
+    id: blankProcess
+    onExited: function(exitCode, exitStatus) { root.logEvent("process-exit", "blank exitCode=" + exitCode + " status=" + exitStatus) }
   }
   Process {
     id: wakeProcess
