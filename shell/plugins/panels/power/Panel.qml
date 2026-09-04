@@ -29,6 +29,20 @@ Panel {
     return !!(device && device.isPresent)
   }
 
+  // Three escalating thresholds while discharging: batteryWarning (yellow)
+  // mirrors the omarchy-battery-low notification threshold in
+  // shell/plugins/services/battery/Service.qml, batteryDanger (red) is the
+  // final stretch, and batteryCritical adds a blink once shutdown is close.
+  // Each is a superset of the next (danger implies warning, critical implies
+  // both), so the color/blink wiring below only needs to pick the reddest
+  // active tier.
+  readonly property int batteryWarningThreshold: 10
+  readonly property int batteryDangerThreshold: 5
+  readonly property int batteryCriticalThreshold: 2
+  readonly property bool batteryWarning: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, root.batteryWarningThreshold)
+  readonly property bool batteryDanger: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, root.batteryDangerThreshold)
+  readonly property bool batteryCritical: Model.isBatteryLow(UPower.displayDevice, UPower.onBattery, root.batteryCriticalThreshold)
+
   function upowerStates() {
     return {
       Charging: UPowerDeviceState.Charging,
@@ -281,6 +295,9 @@ Panel {
       ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
       : root.batteryIcon()
     slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
+    active: root.batteryWarning
+    activeColor: root.batteryDanger ? (root.bar ? root.bar.urgent : Color.urgent) : (root.bar ? root.bar.warning : Color.warning)
+    blinking: root.batteryCritical
     tooltipText: ""
     onPressed: function(b) {
       if (!root.batteryPresent) return

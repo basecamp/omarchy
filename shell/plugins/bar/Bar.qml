@@ -70,10 +70,12 @@ Item {
   property bool foregroundAnimationEnabled: true
   property color background: Color.bar.background
   property color urgent: Color.bar.active
+  property color warning: Color.bar.warning
 
   Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on warning { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   property var tooltipTarget: null
   property var pendingTooltipTarget: null
   property string tooltipText: ""

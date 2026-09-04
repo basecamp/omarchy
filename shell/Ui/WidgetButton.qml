@@ -11,6 +11,7 @@ Item {
   property color foreground: bar ? bar.barForeground : Color.foreground
   property color activeColor: bar ? bar.urgent : Color.urgent
   property bool active: false
+  property bool blinking: false
   property real horizontalMargin: 8.5
   property real verticalPadding: 6
   property real fixedWidth: -1
@@ -72,13 +73,32 @@ Item {
     NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
   }
 
+  // Text.NativeRendering (below and in BarIconButton's glyph) does not
+  // composite with an animated ancestor opacity, so the pulse instead fades
+  // the drawn color's alpha directly. blinkedColor() is exposed so
+  // BarIconButton can apply the same pulse to its icon glyph, which sets its
+  // own color and bypasses this Text.
+  property real blinkOpacity: 1.0
+
+  function blinkedColor(baseColor) {
+    return root.blinking ? Util.alpha(baseColor, baseColor.a * root.blinkOpacity) : baseColor
+  }
+
+  SequentialAnimation on blinkOpacity {
+    running: root.blinking
+    loops: Animation.Infinite
+    alwaysRunToEnd: true
+    NumberAnimation { from: 1.0; to: 0.25; duration: 500; easing.type: Easing.InOutSine }
+    NumberAnimation { from: 0.25; to: 1.0; duration: 500; easing.type: Easing.InOutSine }
+  }
+
   Text {
     id: label
     textFormat: Text.PlainText
     visible: root.labelVisible
     anchors.centerIn: parent
     text: root.text
-    color: root.active && root.useActiveColor ? root.activeColor : root.foreground
+    color: root.blinkedColor(root.active && root.useActiveColor ? root.activeColor : root.foreground)
     font.family: root.fontFamily
     font.pixelSize: root.fontSize
     renderType: Text.NativeRendering
@@ -86,8 +106,11 @@ Item {
     horizontalAlignment: Text.AlignHCenter
     verticalAlignment: Text.AlignVCenter
 
+    // Disabled while blinking: the pulse re-evaluates color every animation
+    // frame, and this Behavior would retrigger on each one, damping the
+    // sine pulse into a muddy fade instead of following it cleanly.
     Behavior on color {
-      enabled: !root.bar || root.bar.foregroundAnimationEnabled
+      enabled: !root.blinking && (!root.bar || root.bar.foregroundAnimationEnabled)
       ColorAnimation { duration: 160 }
     }
   }

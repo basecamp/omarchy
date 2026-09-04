@@ -13,5 +13,8 @@ fi
 
 level=$1
 
+# The title is matched by shell/plugins/services/battery/Service.qml to
+# dismiss this toast on plug-in — keep the two in sync (test/shell.d/battery-test.sh
+# asserts they match).
 omarchy-notification-send -g 󱐋 -u critical "Time to recharge!" "Battery is down to ${level}%" -i battery-caution -t 30000
 omarchy-hook battery-low "$level"
