@@ -178,6 +178,12 @@ ShellRoot {
     return shell.barOptionAvailable(shell.selectedBarId)
   }
   readonly property string activeBarId: selectedBarId !== failedBarId && selectedBarAvailable ? selectedBarId : defaultBarId
+  // configureBar() assigns manifest imperatively at load, which replaces the
+  // binding the bar was created with -- and a manifest can be re-read (a plugin
+  // rescan) without its entry-point url changing, so nothing would reload the
+  // bar or refresh the value. Push it the same way barConfig is pushed above.
+  onActiveBarManifestChanged: if (bar && "manifest" in bar) bar.manifest = shell.activeBarManifest
+
   readonly property var activeBarManifest: {
     var revision = shell.pluginRegistry.registryRevision
     return shell.barManifestFor(shell.activeBarId)
@@ -246,17 +252,70 @@ ShellRoot {
   Loader {
     id: pluginBarLoader
 
+    // A bar entry point declares the host-injected properties as required, and
+    // QML refuses to instantiate a component whose required properties are
+    // unset. Binding `source` therefore failed before onLoaded could run, and
+    // configureBar()'s `if (!target) return` made the injection a no-op -- so no
+    // bar plugin could ever load. setSource supplies them at creation instead.
+    //
+    // Plain values, not Qt.binding: onLoaded hands the item straight to
+    // configureBar(), which reassigns all of them from the live shell properties,
+    // and onBarConfigChanged keeps barConfig current from then on. A binding here
+    // would be replaced moments after it was made.
+    function loadPluginBar() {
+      // `active` already covers activeBarSourceUrl !== "", but a signal handler can
+      // run before that binding is re-evaluated: on the change that empties the
+      // url, onActiveBarSourceUrlChanged fires while `active` is still true, and
+      // setSource("") with a property map is a needless load error. Reading the url
+      // once and checking it here keeps this correct whichever order they arrive in.
+      var url = shell.activeBarSourceUrl
+
+      if (!active || url === "") {
+        setSource("")
+        return
+      }
+
+      setSource(url, {
+        omarchyPath: shell.omarchyPath,
+        barWidgetRegistry: shell.barWidgetRegistry,
+        barConfig: shell.barConfig,
+        shell: shell,
+        manifest: shell.activeBarManifest
+      })
+    }
+
     active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
-    source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
     asynchronous: true
     onLoaded: shell.configureBar(item, shell.activeBarManifest)
-    onActiveChanged: if (!active) shell.bar = null
+
+    // The load is driven by signals now that `source` is not bound, so a loader
+    // built with `active` already true would never get its initial setSource.
+    // That does not happen today -- the bar config arrives after construction, so
+    // `active` starts false and onActiveChanged does it -- but nothing enforces
+    // that ordering, and the failure mode is a session with no bar.
+    Component.onCompleted: loadPluginBar()
+
+    onActiveChanged: {
+      if (!active) shell.bar = null
+      loadPluginBar()
+    }
     onStatusChanged: {
       if (status === Loader.Error) {
-        var detail = errorString && errorString() ? errorString() : ""
-        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId + ":", detail)
+        // Loader exposes no errorString; the engine has already logged the
+        // component's own QML errors by the time this runs. Reaching for one
+        // threw a ReferenceError here, which aborted the handler before the
+        // fallback below and left the session with no bar and no explanation.
+        console.warn("bar option " + shell.activeBarId + " (" + shell.activeBarSourceUrl + ") failed to load, falling back to " + shell.defaultBarId)
         shell.failedBarId = shell.activeBarId
       }
+    }
+
+    // Switching straight from one bar plugin to another keeps `active` true, so
+    // the url change has to drive the reload by itself.
+    Connections {
+      target: shell
+
+      function onActiveBarSourceUrlChanged() { pluginBarLoader.loadPluginBar() }
     }
   }
 
