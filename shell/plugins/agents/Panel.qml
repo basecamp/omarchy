@@ -17,15 +17,23 @@ Panel {
   readonly property color surface: Color.popups.background
   readonly property color track: Style.selectedFillFor(foreground, Color.accent)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  readonly property string home: Quickshell.env("HOME") || ""
+  readonly property string defaultAgentPath: home + "/.config/omarchy/defaults/agent"
 
   readonly property var providers: usage.enabledProviders
   // The selection follows the provider, not the slot it happens to sit in: a
   // provider whose first scan lands while the panel is open would otherwise
-  // shift the list underneath you and swap out what you were reading.
+  // shift the list underneath you and swap out what you were reading. Until
+  // you choose a provider in the panel, follow Omarchy's configured default.
   property string selectedProviderId: ""
+  property string defaultAgentId: ""
   readonly property int providerIndex: {
     for (var i = 0; i < providers.length; i++)
       if (providers[i].providerId === selectedProviderId) return i
+
+    for (var j = 0; j < providers.length; j++)
+      if (providers[j].providerId === defaultAgentId) return j
+
     return 0
   }
   readonly property var provider: providers.length > 0 ? providers[providerIndex] : null
@@ -62,6 +70,15 @@ Panel {
   function launchAgent() {
     if (root.bar) root.bar.run("omarchy-agent --pick")
     root.close()
+  }
+
+  FileView {
+    path: root.defaultAgentPath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.defaultAgentId = String(text() || "").trim()
+    onLoadFailed: root.defaultAgentId = ""
   }
 
   // ---------------------------------------------------------------- limits
