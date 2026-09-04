@@ -75,4 +75,48 @@ assertDeepEqual(
 )
 
 assertDeepEqual(monitor.parseDisplays('{'), { displays: [], enabledDisplayCount: 0 }, 'monitor handles invalid display JSON')
+
+assertDeepEqual(
+  monitor.parseTextSizeStatus('text size: 12 px\ngtk text-scaling-factor: 1.25\nterminal font: 10.5 pt\n'),
+  { gtkPx: 15, termPt: 10.5 },
+  'monitor converts gtk factor to px and passes terminal points through'
+)
+assertDeepEqual(
+  monitor.parseTextSizeStatus('text size: 12 px\ngtk text-scaling-factor: 1\nterminal font: 11.0 pt\n'),
+  { gtkPx: 12, termPt: 11 },
+  'monitor reads a kitty-style decimal terminal point size'
+)
+assertDeepEqual(
+  monitor.parseTextSizeStatus('text size: 12 px\ngtk text-scaling-factor: 1\nterminal font: n/a pt\n'),
+  { gtkPx: 12, termPt: 0 },
+  'monitor reports an undescribed terminal font as unavailable'
+)
+assertDeepEqual(
+  monitor.parseTextSizeStatus('text size: 12 px\ngtk text-scaling-factor: 1\nterminal font: 10..5 pt\n'),
+  { gtkPx: 12, termPt: 0 },
+  'monitor reports a malformed terminal point size as unavailable'
+)
+assertDeepEqual(
+  monitor.parseTextSizeStatus(''),
+  { gtkPx: 0, termPt: 0 },
+  'monitor reports empty text size status as unavailable'
+)
+assertDeepEqual(
+  monitor.parseTextSizeStatus('command not found'),
+  { gtkPx: 0, termPt: 0 },
+  'monitor reports malformed text size status as unavailable'
+)
+
+assertEqual(monitor.ptToPx(7), 9, 'monitor rounds 7pt down to 9px')
+assertEqual(monitor.ptToPx(8), 11, 'monitor rounds 8pt up to 11px')
+assertEqual(monitor.ptToPx(9), 12, 'monitor maps the 9pt terminal default onto the 12px anchor')
+assertEqual(monitor.ptToPx(11), 15, 'monitor rounds 11pt up to 15px')
+assertEqual(monitor.ptToPx(12), 16, 'monitor maps 12pt to 16px')
+assertEqual(monitor.ptToPx(14), 19, 'monitor rounds 14pt up to 19px')
+assertEqual(monitor.ptToPx(15), 20, 'monitor maps the largest terminal point stop to 20px')
+assertEqual(monitor.pxToPt(10), 8, 'monitor rounds 10px up to 8pt')
+assertEqual(monitor.pxToPt(14), 11, 'monitor rounds the 14px half-point boundary up to 11pt')
+for (let pt = 7; pt <= 15; pt++) {
+  assertEqual(monitor.pxToPt(monitor.ptToPx(pt)), pt, `terminal pt ${pt} round-trips through px`)
+}
 JS

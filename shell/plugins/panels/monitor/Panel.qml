@@ -62,6 +62,29 @@ Panel {
   // no pending change; follow Style.font.baseSize.
   property int textSizePreviewIndex: -1
 
+  // Terminal row notches: every whole point whose px image passes the CLI's
+  // valid_size range (9–20px) — ptToPx(6) is 8px and ptToPx(16) is 21px, both
+  // rejected, and textScaleProc never checks the exit code, so an out-of-range
+  // write would be a silent no-op behind a stale optimistic row. pt→px→pt is
+  // the identity on 7–15, which is what lets writeTextSize's optimistic
+  // pxToPt(px) echo the chosen pt back instead of storing it directly.
+  readonly property var termSizeStops: [7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+  // Per-surface rows behind the disclosure, keyed by row index. The CLI
+  // reports GTK as a scale factor, shown in px against its 12px reference;
+  // terminals keep their native points. 0 = not read yet, so the row shows
+  // "—" with the placeholder notch. (Named textScopeSpecs because an
+  // unqualified `textScopes` inside the scope rows resolves to the gutter
+  // Item id below, not a root property.)
+  readonly property var textScopeSpecs: [
+    { key: "shell", stops: textSizeStops, unit: "px", placeholder: 12 },
+    { key: "gtk", stops: textSizeStops, unit: "px", placeholder: 12 },
+    { key: "terminals", stops: termSizeStops, unit: "pt", placeholder: 9 }
+  ]
+  property bool textSizeExpanded: false
+  property real gtkPx: 0
+  property real termPt: 0
+
   // A text-size change reflows the whole panel (both font and spacing scale),
   // which slides rows under a stationary pointer and fires synthetic hover.
   // While true, hover is not allowed to hijack the keyboard focus section —
@@ -83,15 +106,20 @@ Panel {
 
   function sectionCount(section) {
     if (section === "brightness") return 0  // only the slider sentinel at -1
-    if (section === "textsize") return 0    // slider sentinel at -1, like brightness
+    // Collapsed: just the slider sentinel at -1, like brightness. Expanded: the
+    // three scope rows at 0..2, with the unified slider still at -1.
+    if (section === "textsize") return textSizeExpanded ? textScopeSpecs.length : 0
     if (section === "scale") return scaleValues.length
     if (section === "monitors") return displays.length
     return 0
   }
 
   function sectionIsSingleRow(section) {
-    // brightness and text size are lone sliders; scale presets sit horizontally.
-    return section === "brightness" || section === "textsize" || section === "scale"
+    // brightness and collapsed text size are lone sliders; scale presets sit
+    // horizontally. Expanded text size becomes a vertical row list.
+    return section === "brightness"
+      || (section === "textsize" && !textSizeExpanded)
+      || section === "scale"
   }
 
   function sectionFirstIndex(section) {
@@ -118,7 +146,9 @@ Panel {
         selectedIndex = sectionFirstIndex(focusSection)
       }
     } else {
-      if (!inSingleRow && selectedIndex > 0) { selectedIndex = selectedIndex - 1; return }
+      // Boundary is the section's first index, not 0 — expanded text size keeps
+      // its unified slider at the -1 sentinel above the scope rows.
+      if (!inSingleRow && selectedIndex > sectionFirstIndex(focusSection)) { selectedIndex = selectedIndex - 1; return }
       if (sIdx > 0) {
         var prev = sections[sIdx - 1]
         focusSection = prev
@@ -147,6 +177,12 @@ Panel {
   }
 
   function activateCursor() {
+    // Enter on the text-size header row opens/closes the scope rows. On a scope
+    // row it does nothing, like Enter on the brightness slider.
+    if (focusSection === "textsize") {
+      if (selectedIndex === -1) textSizeExpanded = !textSizeExpanded
+      return
+    }
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
       return
@@ -167,6 +203,12 @@ Panel {
       return
     }
     var count = sectionCount(focusSection)
+    // Expanded text size keeps -1 (the unified slider) as a valid position
+    // alongside its scope rows.
+    if (focusSection === "textsize" && textSizeExpanded) {
+      selectedIndex = Math.max(-1, Math.min(count - 1, selectedIndex))
+      return
+    }
     if (sectionIsSingleRow(focusSection)) {
       // brightness/text size use the -1 sentinel; scale clamps into the presets.
       if (focusSection === "brightness" || focusSection === "textsize") selectedIndex = -1
@@ -309,15 +351,19 @@ Panel {
     if (!actionProc.running) actionProc.running = true
   }
 
-  // ---- Text size (shell base font + GTK text-scaling, via one CLI) ----
-  function nearestTextStop(px) {
+  // ---- Text size (shell base font, GTK text-scaling, terminal points — one CLI) ----
+  function nearestStop(stops, value) {
     var best = 0
     var bestDist = 1e9
-    for (var i = 0; i < textSizeStops.length; i++) {
-      var d = Math.abs(textSizeStops[i] - px)
+    for (var i = 0; i < stops.length; i++) {
+      var d = Math.abs(stops[i] - value)
       if (d < bestDist) { bestDist = d; best = i }
     }
     return best
+  }
+
+  function nearestTextStop(px) {
+    return nearestStop(textSizeStops, px)
   }
 
   // Effective stop index: the pending choice while a change is in flight,
@@ -332,9 +378,83 @@ Panel {
     return textSizePreviewIndex >= 0 ? textSizeStops[textSizePreviewIndex] : Style.font.baseSize
   }
 
+  // Writes queued while the CLI is still applying an earlier one, keyed by
+  // scope so adjusting a second scope never drops the first. Latest value per
+  // scope wins; flushed in order from textScaleProc.onRunningChanged.
+  property var pendingTextWrites: ({})
+
+  // scope "" writes every surface at once (the unified slider); otherwise it is
+  // a textScopeSpecs key and becomes the matching CLI flag. px is always the
+  // CLI's unit; the terminal row's optimistic pt mirrors the CLI's own px→pt
+  // conversion. The row is updated from what we asked for rather than read
+  // back — if the write fails, the next status read corrects it.
+  function writeTextSize(scope, px) {
+    if (textScaleProc.running) {
+      // A unified write supersedes any per-scope writes queued before it.
+      if (scope === "") root.pendingTextWrites = ({})
+      root.pendingTextWrites[scope] = px
+    } else {
+      startTextWrite(scope, px)
+    }
+
+    if (scope === "" || scope === "gtk") root.gtkPx = px
+    if (scope === "" || scope === "terminals") root.termPt = Model.pxToPt(px)
+    if (scope === "" || scope === "shell") {
+      markReflowing()
+      root.textSizePreviewIndex = nearestTextStop(px)
+    }
+  }
+
+  function startTextWrite(scope, px) {
+    var command = ["omarchy-display-text-size"]
+    if (scope !== "") command.push("--" + scope)
+    command.push(String(px))
+    textScaleProc.command = command
+    textScaleProc.running = true
+  }
+
   function setTextSize(px) {
-    textScaleProc.command = ["omarchy-display-text-size", String(px)]
-    if (!textScaleProc.running) textScaleProc.running = true
+    writeTextSize("", px)
+  }
+
+  // Value a scope row currently sits on, in the row's own unit (px, or pt for
+  // terminals). Shell follows Style's live base size, so it needs no read; the
+  // other two come from the status read.
+  function textScopeValue(rowIndex) {
+    if (rowIndex === 0) return displayedTextPx()
+    if (rowIndex === 1) return root.gtkPx
+    return root.termPt
+  }
+
+  // Single conversion site for row writes: takes a stop in the row's unit and
+  // hands writeTextSize the px the CLI accepts. `unit` doubles as the
+  // conversion selector, so a future pt row on a different anchor needs its
+  // own discriminator.
+  function writeTextScope(rowIndex, stopValue) {
+    var spec = textScopeSpecs[rowIndex]
+    writeTextSize(spec.key, spec.unit === "pt" ? Model.ptToPx(stopValue) : stopValue)
+  }
+
+  function adjustTextScope(rowIndex, deltaSteps) {
+    var value = textScopeValue(rowIndex)
+    // Nothing read yet: the knob is a placeholder, so there is no stop to step
+    // from. Dragging still works — that picks a stop outright.
+    if (!value) return
+    var stops = textScopeSpecs[rowIndex].stops
+    var idx = nearestStop(stops, value) + deltaSteps
+    if (idx < 0) idx = 0
+    if (idx > stops.length - 1) idx = stops.length - 1
+    writeTextScope(rowIndex, stops[idx])
+  }
+
+  function readTextScopes() {
+    if (!textStatusProc.running) textStatusProc.running = true
+  }
+
+  function updateTextScopes(raw) {
+    var parsed = Model.parseTextSizeStatus(raw)
+    root.gtkPx = parsed.gtkPx
+    root.termPt = parsed.termPt
   }
 
   function adjustTextSize(deltaSteps) {
@@ -354,8 +474,15 @@ Panel {
   // KeyboardPanel primes focus at open-time, so SUPER-bound IPC summons land
   // with j/k ready to navigate. Keep a default landing point, but don't paint
   // the cursor until hover or the first navigation key.
+  onTextSizeExpandedChanged: {
+    markReflowing()
+    if (textSizeExpanded) readTextScopes()
+    clampCursor()
+  }
+
   onOpenedChanged: {
     if (opened) {
+      textSizeExpanded = false
       refresh()
       if (brightnessAvailable) {
         focusSection = "brightness"
@@ -380,7 +507,12 @@ Panel {
     interval: 5000
     running: root.opened
     repeat: true
-    onTriggered: root.refresh()
+    onTriggered: {
+      root.refresh()
+      // Picks up GTK or terminal font changes made outside the panel, and lets
+      // a failed write correct itself while the section stays open.
+      if (root.textSizeExpanded) root.readTextScopes()
+    }
   }
 
   Process {
@@ -441,6 +573,27 @@ Panel {
   Process {
     id: textScaleProc
     stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: {
+      if (running) return
+      var scopes = Object.keys(root.pendingTextWrites)
+      if (scopes.length === 0) return
+      var scope = scopes[0]
+      var px = root.pendingTextWrites[scope]
+      delete root.pendingTextWrites[scope]
+      root.startTextWrite(scope, px)
+    }
+  }
+
+  // Reads the GTK factor and terminal point size for the scope rows. Wrapped in
+  // timeout so a wedged gsettings can't leave this process running and block
+  // every later read through the guard in readTextScopes().
+  Process {
+    id: textStatusProc
+    command: ["timeout", "-k", "1", "3", "omarchy-display-text-size"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateTextScopes(text)
+    }
   }
 
   // Clears the hover-suppression flag once the reflow triggered by a text-size
@@ -499,7 +652,10 @@ Panel {
         if (dy !== 0) root.moveCursor(dy)
         else if (dx !== 0) {
           if (root.focusSection === "brightness") root.adjustBrightness(dx * 5)
-          else if (root.focusSection === "textsize") root.adjustTextSize(dx)
+          else if (root.focusSection === "textsize") {
+            if (root.selectedIndex === -1) root.adjustTextSize(dx)
+            else root.adjustTextScope(root.selectedIndex, dx)
+          }
           else if (root.focusSection === "scale") root.moveCursorH(dx)
         }
       }
@@ -685,9 +841,50 @@ Panel {
                 font.family: root.bar.fontFamily
                 font.pixelSize: Style.font.caption
                 font.bold: true
-                anchors.right: parent.right
-                anchors.rightMargin: Style.space(6)
+                anchors.right: textSizeChevron.left
+                anchors.rightMargin: Style.space(4)
                 anchors.verticalCenter: parent.verticalCenter
+              }
+
+              // Bordered box so the section reads as openable before anyone
+              // hovers it; the chevron swings down when it opens.
+              BorderSurface {
+                id: textSizeChevron
+                width: Math.max(Style.space(18), chevronGlyph.implicitWidth + Style.space(6))
+                height: Math.max(Style.space(18), chevronGlyph.implicitHeight + Style.space(2))
+                radius: Style.cornerRadius
+                color: "transparent"
+                borderSpec: Border.controlSpec("normal", root.bar.foreground, Color.accent)
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(2)
+                anchors.verticalCenter: parent.verticalCenter
+
+                Text {
+                  id: chevronGlyph
+                  text: "󰅀"
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.body
+                  anchors.centerIn: parent
+                  rotation: root.textSizeExpanded ? 0 : -90
+
+                  Behavior on rotation {
+                    NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+                  }
+                }
+              }
+
+              // The whole header toggles, and selects the row so h/l keeps
+              // driving text size rather than wherever the cursor was.
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  root.cursorActive = true
+                  root.focusSection = "textsize"
+                  root.selectedIndex = -1
+                  root.textSizeExpanded = !root.textSizeExpanded
+                }
               }
             }
 
@@ -721,6 +918,38 @@ Panel {
                   root.focusSection = "textsize"
                   root.selectedIndex = -1
                 }
+              }
+            }
+
+            // Indented behind a hairline gutter so the rows read as children of
+            // TEXT SIZE.
+            Item {
+              id: textScopes
+              readonly property int gutter: Style.space(5)
+              readonly property int indent: Style.space(10)
+
+              visible: root.textSizeExpanded
+              width: parent.width
+              height: textScopeColumn.height
+
+              Rectangle {
+                x: textScopes.gutter
+                width: Style.spacing.hairline
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                color: Util.alpha(root.bar.foreground, 0.18)
+              }
+
+              Column {
+                id: textScopeColumn
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: textScopes.indent
+                spacing: Style.space(6)
+
+                TextScopeRow { width: parent.width; label: "Shell"; rowIndex: 0 }
+                TextScopeRow { width: parent.width; label: "GTK apps"; rowIndex: 1 }
+                TextScopeRow { width: parent.width; label: "Terminals"; rowIndex: 2 }
               }
             }
           }
@@ -825,6 +1054,91 @@ Panel {
             width: parent.width
             height: Style.space(4)
           }
+        }
+      }
+    }
+  }
+
+  component TextScopeRow: Column {
+    id: scopeRow
+    required property string label
+    required property int rowIndex
+
+    readonly property var spec: root.textScopeSpecs[rowIndex]
+    readonly property real value: root.textScopeValue(rowIndex)
+
+    spacing: Style.space(4)
+
+    Item {
+      width: parent.width
+      implicitHeight: Math.max(scopeLabel.implicitHeight, scopeValue.implicitHeight)
+
+      Text {
+        id: scopeLabel
+        text: scopeRow.label
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+        anchors.left: parent.left
+        anchors.leftMargin: Style.space(6)
+        anchors.right: scopeValue.left
+        anchors.rightMargin: Style.space(8)
+        anchors.verticalCenter: parent.verticalCenter
+        elide: Text.ElideRight
+      }
+
+      Text {
+        id: scopeValue
+        // GTK's factor quantizes to whole points, so its px reads back
+        // fractional; the terminals row reads back whatever the config holds,
+        // which may be off-ladder. Allow one decimal on either.
+        text: scopeSlider.dragging
+              ? scopeRow.spec.stops[Math.round(scopeSlider.liveValue)] + scopeRow.spec.unit
+              : (scopeRow.value ? Math.round(scopeRow.value * 10) / 10 + scopeRow.spec.unit : "—")
+        color: Qt.darker(root.bar.foreground, 1.4)
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+        anchors.right: parent.right
+        anchors.rightMargin: textSizeChevron.width + Style.space(4)
+        anchors.verticalCenter: parent.verticalCenter
+      }
+    }
+
+    CursorSurface {
+      width: parent.width
+      height: scopeSlider.implicitHeight + Style.spacing.controlGap
+      hasCursor: root.cursorActive && root.focusSection === "textsize"
+                 && root.selectedIndex === scopeRow.rowIndex
+      onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(scopeRow)
+      foreground: root.bar.foreground
+      outline: true
+
+      PanelSlider {
+        id: scopeSlider
+        bar: root.bar
+        anchors.fill: parent
+        anchors.leftMargin: Style.space(6)
+        anchors.rightMargin: Style.space(6)
+        minimum: 0
+        maximum: scopeRow.spec.stops.length - 1
+        step: 1
+        integer: true
+        tickCount: scopeRow.spec.stops.length
+        // Unread rows park on the row's default notch (12px / 9pt) as a
+        // placeholder; the label says "—".
+        value: root.nearestStop(scopeRow.spec.stops, scopeRow.value || scopeRow.spec.placeholder)
+        onReleased: function(v) {
+          root.writeTextScope(scopeRow.rowIndex, scopeRow.spec.stops[Math.round(v)])
+        }
+      }
+
+      HoverHandler {
+        onHoveredChanged: if (hovered && !root.reflowingText) {
+          root.cursorActive = true
+          root.focusSection = "textsize"
+          root.selectedIndex = scopeRow.rowIndex
         }
       }
     }
