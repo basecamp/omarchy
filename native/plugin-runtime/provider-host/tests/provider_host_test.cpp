@@ -472,6 +472,46 @@ void failure_modes() {
   require(invoke(route, activation(10), output) &&
               output == "/usr/bin|/nonexistent",
           "provider did not receive fixed sanitized environment");
+  require(runtime->cancel(), "sanitized-environment provider did not stop");
+
+  Fixture inherited_environment;
+  inherited_environment.profile("env", "test.adapter", digest('a'),
+                                "env.group", "inherited-environment");
+  {
+    std::ofstream profile(inherited_environment.profile_path("env"),
+                          std::ios::app);
+    profile << "inherit-environment=HYPRLAND_INSTANCE_SIGNATURE\n"
+            << "inherit-environment=XDG_RUNTIME_DIR\n";
+  }
+  require(::setenv("HYPRLAND_INSTANCE_SIGNATURE", "test-instance", 1) == 0 &&
+              ::setenv("XDG_RUNTIME_DIR", "/run/user/1000", 1) == 0,
+          "inherited-environment fixture setup failed");
+  error = {};
+  catalog = load(inherited_environment, error);
+  require(catalog != nullptr, "allowlisted environment profile was rejected");
+  runtime = host::ProviderActivation::create(
+      catalog, activation(11), recording_scope());
+  route = runtime->route(binding("test.adapter"));
+  output.clear();
+  require(invoke(route, activation(11), output) &&
+              output == "test-instance|/run/user/1000",
+          "provider did not receive only its declared allowlisted environment");
+  require(runtime->cancel(), "inherited-environment provider did not stop");
+  ::unsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+  ::unsetenv("XDG_RUNTIME_DIR");
+
+  Fixture rejected_environment;
+  rejected_environment.profile("env", "test.adapter", digest('a'),
+                               "env.group", "environment");
+  {
+    std::ofstream profile(rejected_environment.profile_path("env"),
+                          std::ios::app);
+    profile << "inherit-environment=HOME\n";
+  }
+  error = {};
+  require(!load(rejected_environment, error) &&
+              error == host::CatalogError::profile_rejected,
+          "provider profile inherited an unapproved environment variable");
 }
 
 void aggregate_invocation_deadline_bounds_cancel_wait() {

@@ -206,10 +206,18 @@ bool start(Process &process, const ProviderCatalog::Profile &profile,
     return false;
   Descriptor barrier_read(barrier_descriptors[0]);
   Descriptor barrier_write(barrier_descriptors[1]);
-  std::array<char *, 5> environment{
-      const_cast<char *>("PATH=/usr/bin"), const_cast<char *>("LANG=C"),
-      const_cast<char *>("LC_ALL=C"), const_cast<char *>("HOME=/nonexistent"),
-      nullptr};
+  std::vector<std::string> environment_storage{
+      "PATH=/usr/bin", "LANG=C", "LC_ALL=C", "HOME=/nonexistent"};
+  for (const auto &name : profile.inherited_environment) {
+    const auto *value = ::getenv(name.c_str());
+    if (value != nullptr && std::char_traits<char>::length(value) <= 4096)
+      environment_storage.push_back(name + "=" + value);
+  }
+  std::vector<char *> environment;
+  environment.reserve(environment_storage.size() + 1);
+  for (auto &value : environment_storage)
+    environment.push_back(value.data());
+  environment.push_back(nullptr);
   const pid_t pid = ::fork();
   if (pid < 0)
     return false;

@@ -24,6 +24,7 @@ constexpr std::size_t kMaximumProfileBytes = 16 * 1024;
 constexpr std::size_t kMaximumExecutableBytes = 128 * 1024 * 1024;
 constexpr std::size_t kMaximumArguments = 16;
 constexpr std::size_t kMaximumArgumentBytes = 512;
+constexpr std::size_t kMaximumInheritedEnvironment = 4;
 constexpr std::size_t kMaximumProfiles = 128;
 
 bool secure_directory(const struct stat &metadata,
@@ -183,7 +184,8 @@ bool same_process(const ProviderCatalog::Profile &left,
                   const ProviderCatalog::Profile &right) {
   return left.executable_path == right.executable_path &&
          left.executable_digest == right.executable_digest &&
-         left.arguments == right.arguments;
+         left.arguments == right.arguments &&
+         left.inherited_environment == right.inherited_environment;
 }
 
 std::optional<std::optional<std::chrono::milliseconds>>
@@ -243,11 +245,32 @@ load_profile(int root_fd, std::string_view name, int filesystem_root_fd,
     if (key != "schema" && key != "adapter-class" &&
         key != "contract-digest" && key != "abi-version" && key != "group" &&
         key != "executable" && key != "executable-sha256" && key != "arg" &&
-        key != "invocation-timeout-ms") {
+        key != "inherit-environment" && key != "invocation-timeout-ms") {
       error = CatalogError::profile_rejected;
       return std::nullopt;
     }
-    if (key != "arg" && values.size() != 1) {
+    if (key != "arg" && key != "inherit-environment" && values.size() != 1) {
+      error = CatalogError::profile_rejected;
+      return std::nullopt;
+    }
+  }
+  std::vector<std::string> inherited_environment;
+  if (const auto found = fields.find("inherit-environment");
+      found != fields.end()) {
+    static constexpr std::array<std::string_view, 2> allowed{
+        "HYPRLAND_INSTANCE_SIGNATURE", "XDG_RUNTIME_DIR"};
+    if (found->second.empty() ||
+        found->second.size() > kMaximumInheritedEnvironment ||
+        std::ranges::any_of(found->second, [&](const auto &name) {
+          return std::ranges::find(allowed, name) == allowed.end();
+        })) {
+      error = CatalogError::profile_rejected;
+      return std::nullopt;
+    }
+    inherited_environment = found->second;
+    std::ranges::sort(inherited_environment);
+    if (std::ranges::adjacent_find(inherited_environment) !=
+        inherited_environment.end()) {
       error = CatalogError::profile_rejected;
       return std::nullopt;
     }
@@ -283,6 +306,7 @@ load_profile(int root_fd, std::string_view name, int filesystem_root_fd,
         .executable_path = std::move(executable_path),
         .executable_digest = definitions::Digest(executable_digest),
         .arguments = std::move(arguments),
+        .inherited_environment = std::move(inherited_environment),
         .invocation_timeout = *invocation_timeout,
         .executable = std::move(executable)};
   } catch (...) {

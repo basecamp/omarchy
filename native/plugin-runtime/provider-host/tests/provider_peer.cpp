@@ -105,6 +105,13 @@ int main(int argc, char **argv) {
     else if (mode == "environment")
       payload = std::string(::getenv("PATH") ? ::getenv("PATH") : "") + "|" +
                 (::getenv("HOME") ? ::getenv("HOME") : "");
+    else if (mode == "inherited-environment")
+      payload =
+          std::string(::getenv("HYPRLAND_INSTANCE_SIGNATURE")
+                          ? ::getenv("HYPRLAND_INSTANCE_SIGNATURE")
+                          : "") +
+          "|" +
+          (::getenv("XDG_RUNTIME_DIR") ? ::getenv("XDG_RUNTIME_DIR") : "");
     else if (mode == "isolation" && argc == 3)
       payload = isolated_descriptor_table(std::atoi(argv[2])) ? "isolated"
                                                               : "leaked";

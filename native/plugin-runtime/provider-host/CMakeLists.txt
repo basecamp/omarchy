@@ -25,6 +25,8 @@ set(OMARCHY_COMMAND_CONTRACT_DIGEST
   "7cfb8547d49ea0d43248227c049f19d9f711c7838452789c9ef2fdfe41e82142")
 set(OMARCHY_DESKTOP_OPEN_CONTRACT_DIGEST
   "d678287160034f2311446423b8c1d6847b80abc0ea62233036c578611387622c")
+set(OMARCHY_SYSTEM_OBSERVE_CONTRACT_DIGEST
+  "e32bc94a49b0e2170465f7e7c7d671a6a4a7d1d857cee4b4111b81dd3088c977")
 configure_file(cmake/command_contract.hpp.in
   "${CMAKE_CURRENT_BINARY_DIR}/generated/command_contract.hpp" @ONLY)
 add_executable(omarchy-plugin-command-executor
@@ -48,6 +50,16 @@ target_compile_definitions(omarchy-plugin-desktop-opener PRIVATE
 target_link_libraries(omarchy-plugin-desktop-opener PRIVATE Qt6::Core)
 install(TARGETS omarchy-plugin-desktop-opener
   RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
+add_executable(omarchy-plugin-system-observer
+  src/system_observe_provider.cpp)
+target_compile_features(omarchy-plugin-system-observer PRIVATE cxx_std_20)
+target_compile_options(omarchy-plugin-system-observer PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+target_compile_definitions(omarchy-plugin-system-observer PRIVATE
+  OMARCHY_SYSTEM_OBSERVE_CONTRACT_DIGEST="${OMARCHY_SYSTEM_OBSERVE_CONTRACT_DIGEST}")
+target_link_libraries(omarchy-plugin-system-observer PRIVATE Qt6::Core)
+install(TARGETS omarchy-plugin-system-observer
+  RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
 install(FILES commands/github-api-v1.policy
   DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/commands.d")
 configure_file(cmake/install_command_provider.cmake.in
@@ -56,6 +68,9 @@ install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/install_command_provider.cmake")
 configure_file(cmake/install_desktop_open_provider.cmake.in
   "${CMAKE_CURRENT_BINARY_DIR}/install_desktop_open_provider.cmake" @ONLY)
 install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/install_desktop_open_provider.cmake")
+configure_file(cmake/install_system_observe_provider.cmake.in
+  "${CMAKE_CURRENT_BINARY_DIR}/install_system_observe_provider.cmake" @ONLY)
+install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/install_system_observe_provider.cmake")
 
 if(BUILD_TESTING)
   add_executable(omarchy-plugin-command-executor-test-peer
@@ -113,6 +128,40 @@ if(BUILD_TESTING)
   add_test(NAME plugin-desktop-opener COMMAND omarchy-plugin-desktop-opener-test)
   set_tests_properties(plugin-desktop-opener PROPERTIES
     TIMEOUT 5 LABELS "unit;security;providers;desktop;gesture;adversarial")
+
+  add_executable(omarchy-plugin-package-probe-test-peer
+    tests/package_probe_peer.cpp)
+  target_compile_features(omarchy-plugin-package-probe-test-peer PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-package-probe-test-peer PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  add_executable(omarchy-plugin-system-observer-test-peer
+    src/system_observe_provider.cpp)
+  target_compile_features(omarchy-plugin-system-observer-test-peer PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-system-observer-test-peer PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_definitions(omarchy-plugin-system-observer-test-peer PRIVATE
+    OMARCHY_SYSTEM_OBSERVE_CONTRACT_DIGEST="${OMARCHY_SYSTEM_OBSERVE_CONTRACT_DIGEST}"
+    OMARCHY_SYSTEM_OBSERVE_CHECKUPDATES="$<TARGET_FILE:omarchy-plugin-package-probe-test-peer>"
+    OMARCHY_SYSTEM_OBSERVE_PACMAN="$<TARGET_FILE:omarchy-plugin-package-probe-test-peer>"
+    OMARCHY_SYSTEM_OBSERVE_HYPRCTL="$<TARGET_FILE:omarchy-plugin-package-probe-test-peer>"
+    OMARCHY_SYSTEM_OBSERVE_TESTING=1)
+  target_link_libraries(omarchy-plugin-system-observer-test-peer PRIVATE Qt6::Core)
+  add_dependencies(omarchy-plugin-system-observer-test-peer
+    omarchy-plugin-package-probe-test-peer)
+  add_executable(omarchy-plugin-system-observer-test
+    tests/system_observe_provider_test.cpp)
+  target_compile_features(omarchy-plugin-system-observer-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-system-observer-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_definitions(omarchy-plugin-system-observer-test PRIVATE
+    SYSTEM_OBSERVER_PATH="$<TARGET_FILE:omarchy-plugin-system-observer-test-peer>"
+    SYSTEM_OBSERVE_CONTRACT_DIGEST="${OMARCHY_SYSTEM_OBSERVE_CONTRACT_DIGEST}")
+  target_link_libraries(omarchy-plugin-system-observer-test PRIVATE Qt6::Core)
+  add_dependencies(omarchy-plugin-system-observer-test
+    omarchy-plugin-system-observer-test-peer)
+  add_test(NAME plugin-system-observer COMMAND omarchy-plugin-system-observer-test)
+  set_tests_properties(plugin-system-observer PROPERTIES
+    TIMEOUT 5 LABELS "unit;security;providers;system;privacy;adversarial")
 
   add_executable(omarchy-plugin-provider-peer tests/provider_peer.cpp)
   target_compile_features(omarchy-plugin-provider-peer PRIVATE cxx_std_20)

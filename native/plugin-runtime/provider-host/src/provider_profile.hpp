@@ -52,6 +52,7 @@ struct ProviderCatalog::Profile final {
   std::string executable_path;
   definitions::Digest executable_digest;
   std::vector<std::string> arguments;
+  std::vector<std::string> inherited_environment;
   std::optional<std::chrono::milliseconds> invocation_timeout;
   detail::Descriptor executable;
 };

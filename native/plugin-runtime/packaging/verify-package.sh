@@ -143,9 +143,11 @@ done
 worker=$root/bin/omarchy-plugin-qml-worker
 command_executor=$root/bin/omarchy-plugin-command-executor
 desktop_opener=$root/bin/omarchy-plugin-desktop-opener
+system_observer=$root/bin/omarchy-plugin-system-observer
 command_policy=$root/commands.d/github-api-v1.policy
 command_provider=$root/providers.d/bash-execute.profile
 desktop_open_provider=$root/providers.d/external-open-uri-https.profile
+system_observe_provider=$root/providers.d/system-observe.profile
 bridge=$root/qml/Omarchy/PluginHost/libomarchy-plugin-host-bridge.so
 runtime_dependencies=$root/metadata/runtime-dependencies-v1.txt
 runtime_paths=$root/metadata/runtime-paths-v1.txt
@@ -207,6 +209,25 @@ EOF
 )
 [[ $(<"$desktop_open_provider") == "$expected_desktop_open_provider" ]] ||
   fail "desktop-open provider profile does not pin the installed opener and capability contract"
+system_observe_contract=$(jq -er '.definitions[] | select(.capability == "system.observe") | .contractDigest' "$root/metadata/capability-catalog-v1.json") ||
+  fail "system-observe capability contract is unavailable"
+system_observer_digest=$(sha256sum "$system_observer")
+system_observer_digest=${system_observer_digest%% *}
+expected_system_observe_provider=$(cat <<EOF
+schema=1
+adapter-class=sanitized-system-observe
+contract-digest=$system_observe_contract
+abi-version=1
+group=system.observe
+executable=/usr/lib/omarchy/plugin-security/$version/bin/omarchy-plugin-system-observer
+executable-sha256=$system_observer_digest
+inherit-environment=HYPRLAND_INSTANCE_SIGNATURE
+inherit-environment=XDG_RUNTIME_DIR
+invocation-timeout-ms=30000
+EOF
+)
+[[ $(<"$system_observe_provider") == "$expected_system_observe_provider" ]] ||
+  fail "system-observe provider profile does not pin the installed observer and capability contract"
 if ! jq -e '
   .schemaVersion == 1 and
   .profile == "github-api-v1" and
@@ -223,6 +244,7 @@ bridge_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|DBus|Core)\.so\.6|lib(GLX|
 verify_elf "$worker" pie "$qt_allowed" libseccomp.so.2
 verify_elf "$command_executor" pie "$qt_allowed" libQt6Core.so.6
 verify_elf "$desktop_opener" pie "$qt_allowed" libQt6Core.so.6
+verify_elf "$system_observer" pie "$qt_allowed" libQt6Core.so.6
 verify_elf "$bridge" shared "$bridge_allowed" libQt6Qml.so.6
 needed_libraries "$bridge" | grep -Fx libseccomp.so.2 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libseccomp.so.2"
 needed_libraries "$bridge" | grep -Fx libsystemd.so.0 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libsystemd.so.0"
