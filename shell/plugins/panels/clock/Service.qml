@@ -2,11 +2,11 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "State.js" as State
-import "PlannerSolver.js" as PlannerSolver
 
 // The calendar service is the only owner of planner state. Panels call the
-// immutable State.js reducers through this object. Planning is pure and local;
-// it never starts a daemon, reads the state file, or accesses the network.
+// immutable State.js reducers through this object. Planning is local and
+// one-shot; this service sends a bounded JSON request to the packaged solver
+// and never starts a daemon or accesses the network.
 Item {
   id: root
 
@@ -28,6 +28,17 @@ Item {
   property bool forcePlanRequested: false
   property string pendingPersistJson: ""
   property string lastPlanningDay: ""
+  readonly property string solverPath: {
+    var override = Quickshell.env("OMARCHY_CALENDAR_SOLVER")
+    return override && String(override).trim() !== ""
+      ? String(override)
+      : "/usr/bin/omarchy-calendar-solver"
+  }
+  property string pendingSolveJson: ""
+  property string solverStdoutText: ""
+  property string solverStderrText: ""
+  property bool solveAgain: false
+  property bool expectedSolverStop: false
 
   readonly property string stateHome: {
     var configured = Quickshell.env("XDG_STATE_HOME")
@@ -38,7 +49,7 @@ Item {
   readonly property string statePath: stateHome + "/omarchy/calendar.json"
   readonly property bool configured: State.settingsReady(calendarState.settings).ok
   readonly property bool hasInboxTasks: State.allTasksInInbox(calendarState)
-  readonly property bool solving: debounceTimer.running
+  readonly property bool solving: debounceTimer.running || solverProcess.running
   readonly property string setupMessage: configured
     ? "Add a task to generate a suggested schedule."
     : "Choose a timezone and at least one availability window to enable planning."
@@ -120,6 +131,12 @@ Item {
   }
 
   function startSolve() {
+    if (solverProcess.running) {
+      root.solveAgain = true
+      root.expectedSolverStop = true
+      solverProcess.running = false
+      return
+    }
     if (!root.shouldSolve()) {
       root.solveState = root.configured ? "idle" : "configuration_needed"
       return
@@ -139,24 +156,12 @@ Item {
     }
     root.lastSolverError = ""
     root.solveState = "solving"
-    try {
-      var proposal = PlannerSolver.solve(request)
-      if (root.activeRequestRevision !== root.calendarState.inputRevision) {
-        root.solveState = "queued"
-        debounceTimer.restart()
-      } else {
-        root.calendarState = State.writeProposal(root.calendarState, proposal)
-        root.forcePlanRequested = false
-        root.solveState = "ready"
-        root.persistState()
-      }
-    } catch (error) {
-      root.forcePlanRequested = false
-      root.solveState = "error"
-      root.lastSolverError = "Omarchy could not generate a suggested schedule."
-      console.warn("calendar planner:", error)
-    }
-    root.activeRequestId = ""
+    root.pendingSolveJson = JSON.stringify(request)
+    root.solverStdoutText = ""
+    root.solverStderrText = ""
+    root.expectedSolverStop = false
+    solverProcess.command = [root.solverPath]
+    solverProcess.running = true
   }
 
   function commit(next) {
@@ -362,6 +367,93 @@ Item {
     interval: 250
     repeat: false
     onTriggered: root.startSolve()
+  }
+
+  Process {
+    id: solverProcess
+    stdinEnabled: true
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (!root.expectedSolverStop) root.solverStdoutText = String(text || "")
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (!root.expectedSolverStop) root.solverStderrText = String(text || "")
+    }
+
+    onStarted: write(root.pendingSolveJson + "\n")
+
+    onExited: function(exitCode) {
+      var superseded = root.expectedSolverStop
+      if (root.solveAgain) {
+        root.solveAgain = false
+        root.solveState = "queued"
+        // Keep expectedSolverStop set until the replacement starts. Buffered
+        // output from the canceled process must not become the new result.
+        Qt.callLater(root.startSolve)
+        return
+      }
+
+      if (superseded) return
+
+      var requestId = root.activeRequestId
+      var requestRevision = root.activeRequestRevision
+      var stderr = String(root.solverStderrText || "").trim()
+      if (stderr !== "") console.warn("calendar planner solver:", stderr)
+
+      if (exitCode !== 0) {
+        root.forcePlanRequested = false
+        root.activeRequestId = ""
+        root.solveState = "error"
+        root.lastSolverError = "Omarchy could not generate a suggested schedule."
+        return
+      }
+
+      var response
+      try {
+        response = JSON.parse(String(root.solverStdoutText || "").trim())
+      } catch (error) {
+        root.forcePlanRequested = false
+        root.activeRequestId = ""
+        root.solveState = "error"
+        root.lastSolverError = "Omarchy could not read the planner result."
+        console.warn("calendar planner: invalid solver response")
+        return
+      }
+
+      if (!response || response.requestId !== requestId) {
+        root.solveState = "queued"
+        root.scheduleSolve()
+        return
+      }
+      if (requestRevision !== root.calendarState.inputRevision) {
+        root.solveState = "queued"
+        root.scheduleSolve()
+        return
+      }
+      if (!response.ok || !response.proposal) {
+        root.forcePlanRequested = false
+        root.activeRequestId = ""
+        root.solveState = "error"
+        root.lastSolverError = "Omarchy could not generate a suggested schedule."
+        return
+      }
+
+      try {
+        root.calendarState = State.writeProposal(root.calendarState, response.proposal)
+        root.forcePlanRequested = false
+        root.activeRequestId = ""
+        root.solveState = "ready"
+        root.persistState()
+      } catch (error) {
+        root.forcePlanRequested = false
+        root.activeRequestId = ""
+        root.solveState = "error"
+        root.lastSolverError = "Omarchy could not save the planner result."
+        console.warn("calendar planner:", error)
+      }
+    }
   }
 
   SystemClock {
