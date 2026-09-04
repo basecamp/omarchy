@@ -88,10 +88,12 @@ grep -F 'requestedScreen !== secureOwner' "$ROOT/shell/plugins/bar/Bar.qml" >/de
   fail "secure bar entries can instantiate on a non-owner screen"
 grep -F 'secureEntry.section === region' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
   fail "secure bar entries bypass their declared section"
-grep -F 'Math.min(maximumHeight, bar.barSize)' "$runtime_root/shell/SecureBarSurface.qml" >/dev/null ||
+grep -F 'Math.min(maximumHeight, bar.vertical ? bar.statusSlot : bar.barSize)' "$runtime_root/shell/SecureBarSurface.qml" >/dev/null ||
   fail "horizontal secure bar surfaces can expand the host bar thickness"
-grep -F 'Math.min(maximumWidth, bar.barSize)' "$runtime_root/shell/SecureBarSurface.qml" >/dev/null ||
+grep -F 'Math.min(maximumWidth, bar.vertical ? bar.barSize : bar.statusSlot)' "$runtime_root/shell/SecureBarSurface.qml" >/dev/null ||
   fail "vertical secure bar surfaces can expand the host bar thickness"
+grep -F 'readonly property int statusSlot: Style.bar.statusSlot' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
+  fail "the native status slot is not available to secure bar projection"
 grep -F 'readonly property bool routesOwnPointerInput: true' "$runtime_root/shell/SecureBarSurface.qml" >/dev/null ||
   fail "secure bar surface does not declare native pointer routing ownership"
 grep -F 'activeItem.routesOwnPointerInput === true' "$ROOT/shell/plugins/bar/Bar.qml" >/dev/null ||
@@ -134,7 +136,16 @@ for surface in SecurePanelSurface.qml SecureOverlaySurface.qml; do
     fail "$surface does not resolve its output at closed-to-open time"
   grep -F 'screen: assignedScreen' "$runtime_root/shell/$surface" >/dev/null ||
     fail "$surface bypasses its shell-owned output selection"
+  grep -F 'visible: opened' "$runtime_root/shell/$surface" >/dev/null ||
+    fail "$surface visibility is not driven by its finite controller state"
+  if grep -F 'visible: screen !== null && opened' "$runtime_root/shell/$surface" >/dev/null; then
+    fail "$surface retains the PanelWindow screen/visibility binding loop"
+  fi
 done
+grep -F 'PluginManager.configurePresentationHost(root)' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "secure workers do not receive the bounded host presentation snapshot"
+grep -F 'function readSecurePluginPresentation()' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
+  fail "the shell lacks its authority-free presentation projection"
 grep -F 'names.indexOf(requested) !== -1 ? requested' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||
   fail "requested output placement is not restricted to the live host allowlist"
 grep -F 'surfaceScreenName(sourceSurface)' "$runtime_root/shell/SecurePluginHost.qml" >/dev/null ||

@@ -15,6 +15,8 @@ inline constexpr std::uint16_t kSettingsSnapshotMessage = 0x0102;
 inline constexpr std::uint16_t kSettingsSnapshotAcceptedMessage = 0x0103;
 inline constexpr std::uint16_t kSettingsUpdateMessage = 0x0104;
 inline constexpr std::uint16_t kSettingsUpdateResultMessage = 0x0105;
+inline constexpr std::uint16_t kPresentationSnapshotMessage = 0x0106;
+inline constexpr std::uint16_t kPresentationSnapshotAcceptedMessage = 0x0107;
 
 struct SurfaceBinding {
   std::uint64_t id = 0;

@@ -65,7 +65,10 @@ PanelWindow {
   }
 
   screen: assignedScreen
-  visible: screen !== null && opened
+  // showOnChosenScreen() assigns the target before opening. Do not read the
+  // PanelWindow screen back through visible: Quickshell's screen selection
+  // itself participates in window visibility and that creates a binding loop.
+  visible: opened
   anchors { top: true; right: true; bottom: true }
   implicitWidth: Math.min(maximumWidth, screen ? screen.width : maximumWidth)
   color: "transparent"

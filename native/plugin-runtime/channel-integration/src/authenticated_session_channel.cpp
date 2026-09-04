@@ -335,9 +335,11 @@ struct AuthenticatedSessionChannel::Impl final {
   };
 
   Impl(std::unique_ptr<AuthenticatedSessionBackend> value,
-       std::vector<std::byte> permission, std::vector<std::byte> settings)
+       std::vector<std::byte> permission, std::vector<std::byte> settings,
+       std::vector<std::byte> presentation)
       : backend(std::move(value)), permission_snapshot(std::move(permission)),
-        settings_snapshot(std::move(settings)) {}
+        settings_snapshot(std::move(settings)),
+        presentation_snapshot(std::move(presentation)) {}
 
   ~Impl() { terminate(std::chrono::steady_clock::now()); }
 
@@ -361,6 +363,7 @@ struct AuthenticatedSessionChannel::Impl final {
     pending.reset();
     permission_snapshot.clear();
     settings_snapshot.clear();
+    presentation_snapshot.clear();
     if (backend)
       backend->terminate(deadline);
     token.reset();
@@ -378,6 +381,7 @@ struct AuthenticatedSessionChannel::Impl final {
   std::unique_ptr<AuthenticatedSessionBackend> backend;
   std::vector<std::byte> permission_snapshot;
   std::vector<std::byte> settings_snapshot;
+  std::vector<std::byte> presentation_snapshot;
   std::optional<session::SessionToken> token;
   std::optional<Pending> pending;
   std::optional<launcher::Deadline> startup_deadline;
@@ -400,11 +404,13 @@ AuthenticatedSessionChannel::AuthenticatedSessionChannel(
     std::shared_ptr<runtime::GestureEligibilityLatch> gesture_eligibility) {
   auto permission_snapshot = std::move(launch.permission_snapshot);
   auto settings_snapshot = std::move(launch.settings_snapshot);
+  auto presentation_snapshot = std::move(launch.presentation_snapshot);
   implementation_ = std::make_unique<Impl>(
       std::make_unique<LauncherSessionBackend>(
           std::move(supervisor), std::move(launch), std::move(authority),
           std::move(runtime), std::move(gesture_eligibility)),
-      std::move(permission_snapshot), std::move(settings_snapshot));
+      std::move(permission_snapshot), std::move(settings_snapshot),
+      std::move(presentation_snapshot));
 }
 
 #ifdef OMARCHY_AUTHENTICATED_SESSION_CHANNEL_TESTING
@@ -413,6 +419,9 @@ AuthenticatedSessionChannel::AuthenticatedSessionChannel(
     std::vector<std::byte> permission_snapshot)
     : implementation_(std::make_unique<Impl>(std::move(backend),
                                              std::move(permission_snapshot),
+                                             std::vector<std::byte>{
+                                                 std::byte{0x7b},
+                                                 std::byte{0x7d}},
                                              std::vector<std::byte>{
                                                  std::byte{0x7b},
                                                  std::byte{0x7d}})) {}
@@ -426,7 +435,12 @@ AuthenticatedSessionChannel::launch(const session::SessionToken &token,
   auto &value = *implementation_;
   if (!value.backend || value.launched || value.terminal ||
       value.permission_snapshot.empty() || value.settings_snapshot.empty() ||
+      value.presentation_snapshot.empty() ||
       value.permission_snapshot.size() >
+          wire::payload_cap(wire::EndpointRole::control) ||
+      value.settings_snapshot.size() >
+          wire::payload_cap(wire::EndpointRole::control) ||
+      value.presentation_snapshot.size() >
           wire::payload_cap(wire::EndpointRole::control) ||
       token.plugin_id.empty() || token.revision_sha256.empty() ||
       token.generation == 0 || token.session_nonce == 0 ||
@@ -467,6 +481,10 @@ AuthenticatedSessionChannel::handshake(TimePoint deadline) {
           wire::kSettingsSnapshotAcceptedMessage, value.settings_snapshot,
           deadline) ||
       !establish_startup_snapshot(
+          *value.backend, wire::kPresentationSnapshotMessage,
+          wire::kPresentationSnapshotAcceptedMessage,
+          value.presentation_snapshot, deadline) ||
+      !establish_startup_snapshot(
           *value.backend, wire::kPermissionSnapshotMessage,
           wire::kPermissionSnapshotAcceptedMessage,
           value.permission_snapshot, deadline)) {
@@ -475,6 +493,7 @@ AuthenticatedSessionChannel::handshake(TimePoint deadline) {
   }
   value.permission_snapshot.clear();
   value.settings_snapshot.clear();
+  value.presentation_snapshot.clear();
   value.ready = true;
   return session::ChannelError::none;
 }
@@ -493,7 +512,8 @@ AuthenticatedSessionChannel::send(const session::OwnedMessage &message,
         message.lane == session::ChannelLane::broker ||
         (message.lane == session::ChannelLane::control &&
          (message.message_type == wire::kPermissionSnapshotMessage ||
-          message.message_type == wire::kSettingsSnapshotMessage)) ||
+          message.message_type == wire::kSettingsSnapshotMessage ||
+          message.message_type == wire::kPresentationSnapshotMessage)) ||
         message.message_type == 0 || message.sequence == 0 ||
         message.descriptors.size() > launcher::kMaximumTransportDescriptors ||
         message.payload.size() > wire::payload_cap(wire_role(message.lane)) ||

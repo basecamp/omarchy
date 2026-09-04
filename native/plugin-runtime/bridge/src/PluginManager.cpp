@@ -227,6 +227,14 @@ bool PluginManager::configureSettingsHost(QObject *host) noexcept {
   return true;
 }
 
+bool PluginManager::configurePresentationHost(QObject *host) noexcept {
+  if (!host || host->thread() != thread() ||
+      QThread::currentThread() != thread() || presentation_host_)
+    return false;
+  presentation_host_ = host;
+  return true;
+}
+
 std::optional<std::string>
 PluginManager::currentSettings(std::string_view plugin) const noexcept {
   if (!settings_host_ || QThread::currentThread() != thread())
@@ -237,6 +245,23 @@ PluginManager::currentSettings(std::string_view plugin) const noexcept {
       Q_RETURN_ARG(QVariant, returned),
       Q_ARG(QVariant, QString::fromUtf8(plugin.data(),
                                         static_cast<qsizetype>(plugin.size()))));
+  if (!invoked || !returned.canConvert<QVariantMap>())
+    return std::nullopt;
+  const auto document = QJsonDocument::fromVariant(returned);
+  if (!document.isObject())
+    return std::nullopt;
+  const auto bytes = document.toJson(QJsonDocument::Compact);
+  return std::string(bytes.constData(), static_cast<std::size_t>(bytes.size()));
+}
+
+std::optional<std::string>
+PluginManager::currentPresentation() const noexcept {
+  if (!presentation_host_ || QThread::currentThread() != thread())
+    return std::nullopt;
+  QVariant returned;
+  const bool invoked = QMetaObject::invokeMethod(
+      presentation_host_, "readSecurePluginPresentation", Qt::DirectConnection,
+      Q_RETURN_ARG(QVariant, returned));
   if (!invoked || !returned.canConvert<QVariantMap>())
     return std::nullopt;
   const auto document = QJsonDocument::fromVariant(returned);

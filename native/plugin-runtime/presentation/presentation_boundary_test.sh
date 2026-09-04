@@ -11,8 +11,15 @@ fi
 
 for file in "$root"/*.qml; do
   name=${file##*/}
-  if [[ $name != "BrokerProcess.qml" && $name != "PrivateStorage.qml" && $name != "PackagedText.qml" && $name != "Panel.qml" ]] && rg -n '\bruntime\b|\binvoke\b|readPackagedText' "$file"; then
+  if [[ $name != "BrokerProcess.qml" && $name != "PrivateStorage.qml" && $name != "PackagedText.qml" && $name != "Panel.qml" && $name != "Color.qml" && $name != "Style.qml" ]] && rg -n '\bruntime\b|\binvoke\b|readPackagedText' "$file"; then
     echo "presentation primitive reaches the broker outside an SDK adapter: $name" >&2
+    exit 1
+  fi
+done
+
+for file in Color.qml Style.qml; do
+  if rg -n '\bruntime\.' "$root/$file" | rg -v 'runtime\.presentation'; then
+    echo "$file reaches authority beyond the bounded presentation snapshot" >&2
     exit 1
   fi
 done

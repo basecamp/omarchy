@@ -73,6 +73,7 @@ private:
   struct Configuration final {
     std::shared_ptr<PluginPermissionAuthority> permissions;
     std::optional<std::string> settings;
+    std::optional<std::string> presentation;
     Limits runtime_limits;
     session::SessionLimits session_limits;
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING

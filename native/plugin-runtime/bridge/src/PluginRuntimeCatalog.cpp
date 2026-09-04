@@ -156,6 +156,7 @@ void PluginRuntimeController::requestPreparations() noexcept {
       result->epoch = found->epoch;
       result->permissions = found->permissions;
       result->settings = manager_.currentSettings(found->plugin);
+      result->presentation = manager_.currentPresentation();
       const auto bootstrap = bootstrap_;
       const auto gate = gate_;
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
@@ -179,8 +180,8 @@ void PluginRuntimeController::requestPreparations() noexcept {
             result->permissions =
                 bootstrap->open_permissions(result->plugin, plugin);
           if (result->permissions) {
-            auto preparation = bootstrap->prepare_runtime(result->permissions,
-                                                          result->settings);
+            auto preparation = bootstrap->prepare_runtime(
+                result->permissions, result->settings, result->presentation);
             result->prepared = std::move(preparation.runtime);
             result->permission_disabled = preparation.permission_disabled;
           }

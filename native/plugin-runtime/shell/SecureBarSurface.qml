@@ -21,12 +21,15 @@ Item {
     && typeof bar.barSize === "number"
     && isFinite(bar.barSize)
     && bar.barSize > 0
+    && typeof bar.statusSlot === "number"
+    && isFinite(bar.statusSlot)
+    && bar.statusSlot > 0
 
-  // The manifest bounds the plugin's canvas; the shell still owns the bar's
-  // thickness. Preserve the declared extent along the bar while preventing a
-  // tall or wide plugin from resizing the host row or column around it.
-  implicitWidth: !barReady ? 0 : bar.vertical ? Math.min(maximumWidth, bar.barSize) : maximumWidth
-  implicitHeight: !barReady ? 0 : !bar.vertical ? Math.min(maximumHeight, bar.barSize) : maximumHeight
+  // The manifest is an upper bound, not a request for a wide custom slot.
+  // Match ordinary status icons along the bar and retain shell-owned thickness
+  // across it, so secure plugins participate in the native bar layout.
+  implicitWidth: !barReady ? 0 : Math.min(maximumWidth, bar.vertical ? bar.barSize : bar.statusSlot)
+  implicitHeight: !barReady ? 0 : Math.min(maximumHeight, bar.vertical ? bar.statusSlot : bar.barSize)
 
   function attachIfReady() {
     if (remote.connected) {

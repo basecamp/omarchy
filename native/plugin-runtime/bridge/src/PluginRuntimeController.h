@@ -111,6 +111,7 @@ private:
     std::uint64_t epoch = 0;
     std::shared_ptr<channel::PluginPermissionAuthority> permissions;
     std::optional<std::string> settings;
+    std::optional<std::string> presentation;
     std::unique_ptr<channel::PreparedPluginRuntime> prepared;
     bool permission_disabled = false;
   };

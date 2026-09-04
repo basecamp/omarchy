@@ -141,7 +141,8 @@ private:
   prepare(launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
           AuthenticatedSessionRuntimeFactory &runtime_factory,
           PluginSessionCreateError &error, session::SessionLimits limits,
-          std::optional<std::string> settings = std::nullopt);
+          std::optional<std::string> settings = std::nullopt,
+          std::optional<std::string> presentation = std::nullopt);
   [[nodiscard]] static std::unique_ptr<PluginSession>
   commit(std::unique_ptr<PreparedPluginSession> prepared,
          PluginSessionCreateError &error, PluginSessionEvents *events,

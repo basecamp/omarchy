@@ -187,7 +187,8 @@ std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
     launcher::Supervisor supervisor, session::ActivationSnapshot snapshot,
     AuthenticatedSessionRuntimeFactory &runtime_factory,
     PluginSessionCreateError &error, session::SessionLimits limits,
-    std::optional<std::string> settings) {
+    std::optional<std::string> settings,
+    std::optional<std::string> presentation) {
   error = PluginSessionCreateError::invalid_activation;
   try {
     if (!valid_snapshot(snapshot))
@@ -222,6 +223,12 @@ std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
     const auto settings_bytes = std::as_bytes(std::span(canonical_settings));
     std::vector<std::byte> settings_snapshot(settings_bytes.begin(),
                                              settings_bytes.end());
+    const std::string presentation_document =
+        presentation.value_or("{}");
+    const auto presentation_bytes =
+        std::as_bytes(std::span(presentation_document));
+    std::vector<std::byte> presentation_snapshot(presentation_bytes.begin(),
+                                                 presentation_bytes.end());
     auto gesture_clock = std::make_shared<SteadyGestureClock>();
     auto gesture_eligibility =
         std::make_shared<runtime::GestureEligibilityLatch>(gesture_clock);
@@ -249,6 +256,7 @@ std::unique_ptr<PreparedPluginSession> PluginSession::prepare(
             session::OwnedFd(snapshot.state_directory.release()),
         .permission_snapshot = std::move(permission_snapshot),
         .settings_snapshot = std::move(settings_snapshot),
+        .presentation_snapshot = std::move(presentation_snapshot),
     };
     auto channel = std::make_unique<AuthenticatedSessionChannel>(
         std::move(supervisor), std::move(launch), std::move(authority),

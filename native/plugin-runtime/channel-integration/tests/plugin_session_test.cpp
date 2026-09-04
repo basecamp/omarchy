@@ -1577,8 +1577,13 @@ void prepared_commit_retains_activation_and_reuses_one_launch() {
           "product session did not retain its activation authority");
 
   product->start();
-  await([&] { return product->state() == host::SessionState::running; },
-        "public product session did not reach running");
+  await([&] {
+    return product->state() == host::SessionState::running ||
+           product->state() == host::SessionState::failed;
+  }, "public product session did not settle startup");
+  require(product->state() == host::SessionState::running,
+          "public product session failed startup with error " +
+              std::to_string(static_cast<unsigned>(product->error())));
   Endpoint bar;
   Endpoint panel;
   Endpoint overlay;

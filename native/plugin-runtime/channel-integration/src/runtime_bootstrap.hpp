@@ -46,7 +46,8 @@ private:
   [[nodiscard]] PluginRuntimePreparationResult
   prepare_runtime(
       const std::shared_ptr<PluginPermissionAuthority> &permissions,
-      std::optional<std::string> settings = std::nullopt) const
+      std::optional<std::string> settings = std::nullopt,
+      std::optional<std::string> presentation = std::nullopt) const
       noexcept;
   [[nodiscard]] std::shared_ptr<PluginPermissionAuthority>
   open_permissions(std::string_view record_name,
@@ -120,9 +121,11 @@ public:
   [[nodiscard]] static PluginRuntimePreparationResult
   prepare_runtime(const RuntimeBootstrap &bootstrap,
                   const std::shared_ptr<PluginPermissionAuthority> &permissions,
-                  std::optional<std::string> settings = std::nullopt)
+                  std::optional<std::string> settings = std::nullopt,
+                  std::optional<std::string> presentation = std::nullopt)
       noexcept {
-    return bootstrap.prepare_runtime(permissions, std::move(settings));
+    return bootstrap.prepare_runtime(permissions, std::move(settings),
+                                     std::move(presentation));
   }
   [[nodiscard]] static std::optional<
       plugin::wire::permission_snapshot::PermissionSnapshot>

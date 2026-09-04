@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Omarchy.PluginHost 1.0
+import qs.Commons
 import "SecureSurfacePolicy.js" as SurfacePolicy
 
 Item {
@@ -26,10 +27,34 @@ Item {
   visible: false
 
   Component.onCompleted: {
-    if (root.shell) PluginManager.configureSettingsHost(root.shell)
+    if (root.shell) {
+      PluginManager.configureSettingsHost(root.shell)
+      PluginManager.configurePresentationHost(root)
+    }
   }
   onShellChanged: {
-    if (root.shell) PluginManager.configureSettingsHost(root.shell)
+    if (root.shell) {
+      PluginManager.configureSettingsHost(root.shell)
+      PluginManager.configurePresentationHost(root)
+    }
+  }
+
+  // This is deliberately a small value snapshot. Workers receive no shell
+  // singleton, QObject, filesystem path, or callable host capability.
+  function readSecurePluginPresentation() {
+    var bar = root.shell ? root.shell.bar : null
+    return {
+      foreground: String(Color.foreground),
+      background: String(Color.background),
+      accent: String(Color.accent),
+      urgent: String(Color.urgent),
+      barForeground: String(bar ? bar.barForeground : Color.bar.text),
+      barBackground: String(bar ? bar.background : Color.bar.background),
+      fontFamily: String(bar ? bar.fontFamily : Style.font.family),
+      barSize: Number(bar ? bar.barSize : Style.bar.sizeHorizontal),
+      iconSlot: Number(Style.bar.iconSlot),
+      statusSlot: Number(Style.bar.statusSlot)
+    }
   }
 
   // Same-UID session IPC is trusted host control and is intentionally outside

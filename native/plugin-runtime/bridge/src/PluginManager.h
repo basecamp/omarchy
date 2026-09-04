@@ -77,6 +77,7 @@ public:
   Q_INVOKABLE bool attach(const QString &surface_key,
                           QObject *surface) noexcept;
   Q_INVOKABLE bool configureSettingsHost(QObject *host) noexcept;
+  Q_INVOKABLE bool configurePresentationHost(QObject *host) noexcept;
 
 signals:
   void availableChanged();
@@ -113,6 +114,8 @@ private:
   [[nodiscard]] bool publishIntent(host_session::AdmittedSurfaceIntent intent);
   [[nodiscard]] std::optional<std::string>
   currentSettings(std::string_view plugin) const noexcept;
+  [[nodiscard]] std::optional<std::string>
+  currentPresentation() const noexcept;
   [[nodiscard]] bool persistSettings(std::string_view plugin,
                                      std::string_view canonical_entry) noexcept;
   [[nodiscard]] bool beginPermissionRead(std::uint64_t serial,
@@ -159,6 +162,7 @@ private:
   std::unique_ptr<detail::PluginRuntimeController> runtime_;
   bool available_ = false;
   QPointer<QObject> settings_host_;
+  QPointer<QObject> presentation_host_;
 
 #ifdef OMARCHY_PLUGIN_MANAGER_TESTING
   friend class PluginManagerTestAccess;

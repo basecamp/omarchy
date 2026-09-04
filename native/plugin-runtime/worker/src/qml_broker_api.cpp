@@ -5,8 +5,10 @@
 #include "omarchy/plugin/wire/control.hpp"
 
 #include <QByteArray>
+#include <QColor>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QStringDecoder>
 
 #include <algorithm>
@@ -25,6 +27,53 @@ namespace snapshot_wire = wire::permission_snapshot;
 constexpr qsizetype kMaximumSurfaceIntentDataBytes = 4096;
 constexpr qsizetype kMaximumSurfaceIntentDataItems = 32;
 constexpr int kMaximumSurfaceIntentDataDepth = 4;
+constexpr qsizetype kMaximumPresentationBytes = 4096;
+
+std::optional<QVariantMap>
+parse_presentation_snapshot(std::span<const std::byte> payload) {
+  if (payload.empty() || payload.size() > kMaximumPresentationBytes)
+    return std::nullopt;
+  QJsonParseError error{};
+  const auto document = QJsonDocument::fromJson(
+      QByteArray(reinterpret_cast<const char *>(payload.data()),
+                 static_cast<qsizetype>(payload.size())),
+      &error);
+  if (error.error != QJsonParseError::NoError || !document.isObject())
+    return std::nullopt;
+  const auto object = document.object();
+  static const QSet<QString> color_keys{
+      QStringLiteral("foreground"), QStringLiteral("background"),
+      QStringLiteral("accent"), QStringLiteral("urgent"),
+      QStringLiteral("barForeground"), QStringLiteral("barBackground")};
+  static const QSet<QString> size_keys{
+      QStringLiteral("barSize"), QStringLiteral("iconSlot"),
+      QStringLiteral("statusSlot")};
+  QVariantMap result;
+  for (auto entry = object.begin(); entry != object.end(); ++entry) {
+    if (color_keys.contains(entry.key())) {
+      if (!entry->isString() || entry->toString().size() > 16 ||
+          !QColor::isValidColorName(entry->toString()))
+        return std::nullopt;
+      result.insert(entry.key(), entry->toString());
+    } else if (size_keys.contains(entry.key())) {
+      if (!entry->isDouble())
+        return std::nullopt;
+      const auto value = entry->toDouble();
+      if (!std::isfinite(value) || std::floor(value) != value || value < 1 ||
+          value > 256)
+        return std::nullopt;
+      result.insert(entry.key(), static_cast<int>(value));
+    } else if (entry.key() == QStringLiteral("fontFamily")) {
+      if (!entry->isString() || entry->toString().isEmpty() ||
+          entry->toString().toUtf8().size() > 128)
+        return std::nullopt;
+      result.insert(entry.key(), entry->toString());
+    } else {
+      return std::nullopt;
+    }
+  }
+  return result;
+}
 
 bool valid_surface_intent_value(const QVariant &value, int depth) {
   if (depth > kMaximumSurfaceIntentDataDepth)
@@ -602,6 +651,8 @@ QVariantMap QmlBrokerApi::permissions() const {
 
 QVariantMap QmlBrokerApi::settings() const { return settings_; }
 
+QVariantMap QmlBrokerApi::presentation() const { return presentation_; }
+
 bool QmlBrokerApi::applySettingsSnapshot(
     std::uint64_t envelope_generation, std::span<const std::byte> payload) {
   if (envelope_generation != activation_generation_ || !settings_.isEmpty())
@@ -613,6 +664,18 @@ bool QmlBrokerApi::applySettingsSnapshot(
   if (!parsed)
     return false;
   settings_ = to_variant_settings(*parsed, manifest_.id);
+  return true;
+}
+
+bool QmlBrokerApi::applyPresentationSnapshot(
+    std::uint64_t envelope_generation, std::span<const std::byte> payload) {
+  if (envelope_generation != activation_generation_ ||
+      !presentation_.isEmpty())
+    return false;
+  const auto parsed = parse_presentation_snapshot(payload);
+  if (!parsed)
+    return false;
+  presentation_ = *parsed;
   return true;
 }
 

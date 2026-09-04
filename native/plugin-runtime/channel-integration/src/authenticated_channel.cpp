@@ -128,14 +128,17 @@ bool valid_typed_packet(const wire::PacketView &packet,
       if ((packet.header.message_type ==
                wire::kPermissionSnapshotAcceptedMessage ||
            packet.header.message_type ==
-               wire::kSettingsSnapshotAcceptedMessage) &&
+               wire::kSettingsSnapshotAcceptedMessage ||
+           packet.header.message_type ==
+               wire::kPresentationSnapshotAcceptedMessage) &&
           packet.header.correlation_id == 0)
         return packet.payload.empty();
       return packet.header.message_type == wire::kSettingsUpdateMessage &&
              packet.header.correlation_id != 0 && !packet.payload.empty();
     }
     if ((packet.header.message_type == wire::kPermissionSnapshotMessage ||
-         packet.header.message_type == wire::kSettingsSnapshotMessage) &&
+         packet.header.message_type == wire::kSettingsSnapshotMessage ||
+         packet.header.message_type == wire::kPresentationSnapshotMessage) &&
         packet.header.correlation_id == 0)
       return !packet.payload.empty();
     return packet.header.message_type == wire::kSettingsUpdateResultMessage &&

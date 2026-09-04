@@ -333,6 +333,41 @@ bool accept_startup_settings(std::uint64_t generation,
   return true;
 }
 
+bool accept_startup_presentation(std::uint64_t generation,
+                                 wire::SessionSequence &sequence) {
+  const auto bytes = receive_bytes(
+      3, wire::kHeaderSize + wire::payload_cap(wire::EndpointRole::control));
+  const auto decoded = wire::decode_packet(bytes, wire::EndpointRole::control);
+  if (!decoded ||
+      sequence.accept_inbound(wire::EndpointRole::control,
+                              decoded.packet.header.lane_sequence) !=
+          wire::FatalReason::none ||
+      decoded.packet.header.message_type !=
+          wire::kPresentationSnapshotMessage ||
+      decoded.packet.header.role_protocol_version !=
+          version(wire::EndpointRole::control) ||
+      decoded.packet.header.launch_generation != generation ||
+      decoded.packet.header.correlation_id != 0 ||
+      decoded.packet.payload.empty())
+    fail();
+
+  const auto outbound = sequence.take_outbound(wire::EndpointRole::control);
+  if (!outbound)
+    fail();
+  send_bytes(3, packet({.envelope_version = wire::kEnvelopeVersion,
+                        .header_size = wire::kHeaderSize,
+                        .endpoint_role = wire::EndpointRole::control,
+                        .message_type =
+                            wire::kPresentationSnapshotAcceptedMessage,
+                        .role_protocol_version =
+                            version(wire::EndpointRole::control),
+                        .launch_generation = generation,
+                        .correlation_id = 0,
+                        .lane_sequence = outbound.value},
+                       {}));
+  return true;
+}
+
 bool accept_startup_permissions(std::uint64_t generation,
                                 std::string_view current,
                                 wire::SessionSequence &sequence) {
@@ -701,6 +736,7 @@ int main() {
   }
   if (current.starts_with("session-")) {
     if (!accept_startup_settings(control_generation, sequence) ||
+        !accept_startup_presentation(control_generation, sequence) ||
         !accept_startup_permissions(control_generation, current, sequence))
       return 0;
   }

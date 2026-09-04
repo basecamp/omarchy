@@ -271,7 +271,8 @@ RuntimeBootstrap::open_permissions(
 PluginRuntimePreparationResult
 RuntimeBootstrap::prepare_runtime(
     const std::shared_ptr<PluginPermissionAuthority> &permissions,
-    std::optional<std::string> settings) const
+    std::optional<std::string> settings,
+    std::optional<std::string> presentation) const
     noexcept {
   try {
     if (!permissions || permissions->definitions_ != definitions_ ||
@@ -280,6 +281,7 @@ RuntimeBootstrap::prepare_runtime(
     return PluginRuntimeRoot::prepare({
         .permissions = permissions,
         .settings = std::move(settings),
+        .presentation = std::move(presentation),
         .runtime_limits = runtime_limits_,
         .session_limits = session_limits_,
 #ifdef OMARCHY_PLUGIN_SESSION_TESTING

@@ -77,6 +77,10 @@ Item {
   property bool foregroundAnimationEnabled: true
   property color background: Color.bar.background
   property color urgent: Color.bar.active
+  // Authority-free scalar sizing projected into sandboxed plugin workers.
+  // Secure surfaces never receive this trusted Bar object itself.
+  readonly property int iconSlot: Style.bar.iconSlot
+  readonly property int statusSlot: Style.bar.statusSlot
 
   Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }

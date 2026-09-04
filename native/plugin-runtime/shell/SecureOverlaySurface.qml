@@ -65,7 +65,9 @@ PanelWindow {
   }
 
   screen: assignedScreen
-  visible: screen !== null && opened
+  // The target screen is assigned before the controller opens the surface.
+  // Reading screen here forms a cycle with PanelWindow's visibility handling.
+  visible: opened
   anchors { top: true; right: true; bottom: true; left: true }
   color: "transparent"
   exclusionMode: ExclusionMode.Ignore

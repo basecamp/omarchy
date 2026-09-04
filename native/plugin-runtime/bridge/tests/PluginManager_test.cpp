@@ -1160,25 +1160,27 @@ Item {
           "uninjected secure surface displaced the horizontal host bar");
 
   const QVariantMap horizontal_bar{{QStringLiteral("vertical"), false},
-                                   {QStringLiteral("barSize"), 26}};
+                                   {QStringLiteral("barSize"), 26},
+                                   {QStringLiteral("statusSlot"), 21}};
   secure_item->setProperty("bar", horizontal_bar);
   QCoreApplication::processEvents();
 
-  require(secure_item->implicitWidth() == 64 &&
+  require(secure_item->implicitWidth() == 21 &&
               secure_item->implicitHeight() == 26 &&
               row->implicitHeight() == 26 && row->y() == 0 &&
               ordinary_row->y() == 0,
-          "64px secure surface expanded or displaced the 26px host bar");
+          "secure surface did not use the native horizontal status slot");
 
   const QVariantMap vertical_bar{{QStringLiteral("vertical"), true},
-                                 {QStringLiteral("barSize"), 32}};
+                                 {QStringLiteral("barSize"), 32},
+                                 {QStringLiteral("statusSlot"), 21}};
   secure_item->setParentItem(column);
   secure_item->setProperty("bar", vertical_bar);
   QCoreApplication::processEvents();
   require(secure_item->implicitWidth() == 32 &&
-              secure_item->implicitHeight() == 64 &&
+              secure_item->implicitHeight() == 21 &&
               column->implicitWidth() == 32 && ordinary_column->x() == 0,
-          "vertical secure bar expanded or displaced its host column");
+          "secure surface did not use the native vertical status slot");
 }
 
 void singleton_boundary_is_inert_and_not_configurable() {

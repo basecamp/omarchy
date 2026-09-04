@@ -59,13 +59,15 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
     return false;
   const int inherited_properties = QObject::staticMetaObject.propertyCount();
   const int own_properties = meta->propertyCount() - inherited_properties;
-  if (own_properties != 0 && own_properties != 4)
+  if (own_properties != 0 && own_properties != 5)
     return false;
-  if (own_properties == 4) {
+  if (own_properties == 5) {
     const QMetaProperty permissions = meta->property(inherited_properties);
     const QMetaProperty settings = meta->property(inherited_properties + 1);
-    const QMetaProperty generation = meta->property(inherited_properties + 2);
-    const QMetaProperty ready = meta->property(inherited_properties + 3);
+    const QMetaProperty presentation =
+        meta->property(inherited_properties + 2);
+    const QMetaProperty generation = meta->property(inherited_properties + 3);
+    const QMetaProperty ready = meta->property(inherited_properties + 4);
     if (permissions.name() != QByteArrayLiteral("permissions") ||
         permissions.metaType().id() != QMetaType::QVariantMap ||
         !permissions.isReadable() || permissions.isWritable() ||
@@ -76,6 +78,10 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
         settings.isConstant() || !settings.hasNotifySignal() ||
         settings.notifySignal().methodSignature() !=
             QByteArrayLiteral("settingsChanged()") ||
+        presentation.name() != QByteArrayLiteral("presentation") ||
+        presentation.metaType().id() != QMetaType::QVariantMap ||
+        !presentation.isReadable() || presentation.isWritable() ||
+        !presentation.isConstant() || presentation.hasNotifySignal() ||
         generation.name() != QByteArrayLiteral("permissionGeneration") ||
         generation.metaType().id() != QMetaType::ULongLong ||
         !generation.isReadable() || generation.isWritable() ||
@@ -112,7 +118,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
         method.parameterMetaType(1).id() == QMetaType::QString &&
         method.parameterMetaType(2).id() == QMetaType::QVariantMap) {
       ++invoke;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() == QByteArrayLiteral(
                    "execute(QString,QString,QStringList)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -122,7 +128,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(1).id() == QMetaType::QString &&
                method.parameterMetaType(2).id() == QMetaType::QStringList) {
       ++execute;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() ==
                    QByteArrayLiteral("requestSurfaceIntent(QString,QString)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -131,7 +137,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::QString) {
       ++request_surface_intent;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() == QByteArrayLiteral(
                    "requestSurfaceIntent(QString,QString,QVariantMap)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -141,7 +147,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(1).id() == QMetaType::QString &&
                method.parameterMetaType(2).id() == QMetaType::QVariantMap) {
       ++request_surface_intent_data;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() ==
                    QByteArrayLiteral("readPackagedText(QString,int)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -150,7 +156,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::Int) {
       ++read_packaged_text;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() ==
                    QByteArrayLiteral("callFinished(QObject*)") &&
                method.methodType() == QMetaMethod::Signal &&
@@ -158,7 +164,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterCount() == 1 &&
                method.parameterMetaType(0).id() == QMetaType::QObjectStar) {
       ++call_finished;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() ==
                    QByteArrayLiteral("hasPermission(QString,QString)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -167,7 +173,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::QString) {
       ++has_permission;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() ==
                    QByteArrayLiteral("permissionState(QString,QString)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -176,7 +182,7 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterMetaType(0).id() == QMetaType::QString &&
                method.parameterMetaType(1).id() == QMetaType::QString) {
       ++permission_state;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() ==
                    QByteArrayLiteral("updateSettings(QVariantMap)") &&
                method.methodType() == QMetaMethod::Method &&
@@ -184,14 +190,14 @@ bool valid_runtime_api_surface(QObject &runtime_api) {
                method.parameterCount() == 1 &&
                method.parameterMetaType(0).id() == QMetaType::QVariantMap) {
       ++update_settings;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() ==
                    QByteArrayLiteral("brokerReadyChanged()") &&
                method.methodType() == QMetaMethod::Signal &&
                method.returnMetaType().id() == QMetaType::Void &&
                method.parameterCount() == 0) {
       ++broker_ready_changed;
-    } else if (own_properties == 4 &&
+    } else if (own_properties == 5 &&
                method.methodSignature() ==
                    QByteArrayLiteral("settingsChanged()") &&
                method.methodType() == QMetaMethod::Signal &&

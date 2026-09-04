@@ -109,6 +109,7 @@ class QmlBrokerApi final : public QObject {
   Q_OBJECT
   Q_PROPERTY(QVariantMap permissions READ permissions CONSTANT)
   Q_PROPERTY(QVariantMap settings READ settings NOTIFY settingsChanged)
+  Q_PROPERTY(QVariantMap presentation READ presentation CONSTANT)
   Q_PROPERTY(qulonglong permissionGeneration READ permissionGeneration CONSTANT)
   Q_PROPERTY(bool brokerReady READ brokerReady NOTIFY brokerReadyChanged)
 
@@ -145,6 +146,7 @@ public:
   [[nodiscard]] bool bindSurfaceIntentSink(SurfaceIntentSink &sink);
   [[nodiscard]] QVariantMap permissions() const;
   [[nodiscard]] QVariantMap settings() const;
+  [[nodiscard]] QVariantMap presentation() const;
   [[nodiscard]] qulonglong permissionGeneration() const;
   [[nodiscard]] bool brokerReady() const;
   // The worker calls this only after its permission-snapshot ACK has been
@@ -157,6 +159,8 @@ public:
       std::uint64_t envelope_generation, std::span<const std::byte> payload);
   [[nodiscard]] bool receive(ReceivedPacket packet);
   [[nodiscard]] bool applySettingsSnapshot(
+      std::uint64_t envelope_generation, std::span<const std::byte> payload);
+  [[nodiscard]] bool applyPresentationSnapshot(
       std::uint64_t envelope_generation, std::span<const std::byte> payload);
   [[nodiscard]] bool receiveSettingsResult(ReceivedPacket packet);
   [[nodiscard]] QString status() const;
@@ -214,6 +218,7 @@ private:
   std::uint64_t activation_generation_ = 0;
   omarchy::plugins::manifest::ManifestV2 manifest_;
   QVariantMap settings_;
+  QVariantMap presentation_;
   QVariantMap pending_settings_;
   std::uint64_t settings_correlation_ = 0;
   std::uint64_t next_settings_correlation_ = 1;

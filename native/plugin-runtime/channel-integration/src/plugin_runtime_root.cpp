@@ -211,7 +211,8 @@ PluginRuntimePreparationResult PluginRuntimeRoot::prepare(
     PluginSessionCreateError create_error = PluginSessionCreateError::none;
     auto session = PluginSession::prepare(
         root->supervisor(), std::move(snapshot), root->runtime_factory_,
-        create_error, root->session_limits_, std::move(configuration.settings));
+        create_error, root->session_limits_, std::move(configuration.settings),
+        std::move(configuration.presentation));
     if (!session)
       return {};
     auto prepared =
@@ -355,6 +356,7 @@ PluginRuntimeRootTestAccess::prepare_from_parts(
           std::move(authority_root), std::move(plugin), trusted_uid,
           std::move(definitions), std::move(services), activation_record),
       .settings = std::nullopt,
+      .presentation = std::nullopt,
       .runtime_limits = runtime_limits,
       .session_limits = session_limits,
       .test_supervisor_factory = std::move(supervisor_factory),
