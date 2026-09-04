@@ -1,0 +1,150 @@
+#!/bin/bash
+
+# omarchy:summary=Apply the current theme to Calibre
+# omarchy:hidden=true
+
+# Sync the active Omarchy theme to Calibre's custom palette system.
+#
+# colors.toml is resolved through omarchy-theme-color so every semantic key,
+# ANSI alias (color1..color15), and the light/dark mode resolve identically
+# to every other theme consumer. Calibre's Qt palette needs fifteen roles;
+# the roles with no direct colors.toml mapping are derived with blend().
+#
+# Calibre only reads its palette at startup, and its shutdown handler saves
+# gprefs from memory back to disk. So applying a theme requires killing a
+# running Calibre before writing, then relaunching it. To avoid bouncing
+# Calibre when nothing changed (e.g. re-selecting the current theme), the
+# resolved palette is compared against the stored one first; if identical
+# the script exits without touching Calibre.
+
+omarchy-cmd-present calibre || exit 0
+
+THEME_DIR="$HOME/.local/state/omarchy/current/theme"
+COLORS_FILE="$THEME_DIR/colors.toml"
+
+[[ -f $COLORS_FILE ]] || exit 0
+
+color() {
+  omarchy-theme-color --file "$COLORS_FILE" "$1" "${2:-}" 2>/dev/null
+}
+
+bg=$(color background)
+fg=$(color foreground)
+accent=$(color accent)
+sel_bg=$(color selection_background selection)
+sel_fg=$(color selection_foreground foreground)
+bright_text=$(color color1 red)
+link_visited=$(color color5 magenta)
+palette_type=$(color mode)
+
+# Blend a hex color toward black or white by a percentage (0-100)
+blend() {
+  local hex="${1#\#}"
+  local factor="$2"
+  local target="$3"
+  local r=$((16#${hex:0:2}))
+  local g=$((16#${hex:2:2}))
+  local b=$((16#${hex:4:2}))
+
+  if [[ $target == "black" ]]; then
+    r=$((r * (100 - factor) / 100))
+    g=$((g * (100 - factor) / 100))
+    b=$((b * (100 - factor) / 100))
+  else
+    r=$((r + (255 - r) * factor / 100))
+    g=$((g + (255 - g) * factor / 100))
+    b=$((b + (255 - b) * factor / 100))
+  fi
+
+  printf '#%02x%02x%02x' "$r" "$g" "$b"
+}
+
+# Derive shades for palette roles with no direct colors.toml mapping
+if [[ $palette_type == "light" ]]; then
+  alt_base=$(blend "$bg" 5 black)
+  placeholder=$(blend "$fg" 40 white)
+else
+  alt_base=$(blend "$bg" 15 white)
+  placeholder=$(blend "$fg" 40 black)
+fi
+
+# The palette dict, built once and reused by both the change check and the write.
+PALETTE_PY="
+palette = {
+    'Window': '$bg',
+    'WindowText': '$fg',
+    'Base': '$bg',
+    'Text': '$fg',
+    'Button': '$bg',
+    'ButtonText': '$fg',
+    'BrightText': '$bright_text',
+    'Highlight': '$sel_bg',
+    'HighlightedText': '$sel_fg',
+    'Link': '$accent',
+    'LinkVisited': '$link_visited',
+    'AlternateBase': '$alt_base',
+    'ToolTipBase': '$alt_base',
+    'ToolTipText': '$fg',
+    'PlaceholderText': '$placeholder',
+}
+"
+
+# Skip kill/write/restart entirely when the stored palette already matches.
+if [[ $(calibre-debug -c "
+from calibre.gui2 import gprefs
+
+$PALETTE_PY
+
+current = gprefs.get('${palette_type}_palettes', {}).get('Omarchy')
+if (current == palette
+        and gprefs.get('${palette_type}_palette_name') == 'Omarchy'
+        and gprefs.get('color_palette') == '${palette_type}'):
+    print('UNCHANGED')
+else:
+    print('CHANGED')
+" 2>/dev/null) == "UNCHANGED" ]]; then
+  exit 0
+fi
+
+# Kill Calibre BEFORE writing so its shutdown doesn't overwrite our changes
+calibre_was_running=false
+calibre_workspace=""
+if pgrep -x calibre >/dev/null 2>&1; then
+  calibre_was_running=true
+  calibre_workspace=$(hyprctl clients -j 2>/dev/null | python3 -c "
+import json, sys
+for c in json.load(sys.stdin):
+    if c.get('class') == 'calibre-gui':
+        print(c['workspace']['id'])
+        break
+" 2>/dev/null)
+  pkill -x calibre 2>/dev/null
+  while pgrep -x calibre >/dev/null 2>&1; do sleep 0.2; done
+fi
+
+# Write palette into Calibre's gprefs via calibre-debug
+calibre-debug -c "
+from calibre.gui2 import gprefs
+
+$PALETTE_PY
+
+palettes = gprefs['${palette_type}_palettes']
+palettes['Omarchy'] = palette
+gprefs['${palette_type}_palettes'] = palettes
+gprefs['${palette_type}_palette_name'] = 'Omarchy'
+gprefs['color_palette'] = '${palette_type}'
+" 2>/dev/null
+
+# Relaunch Calibre on its original workspace if it was running
+if $calibre_was_running; then
+  if [[ -n $calibre_workspace ]]; then
+    hyprctl keyword windowrule "match:class calibre-gui, workspace $calibre_workspace silent" >/dev/null 2>&1
+  fi
+
+  setsid uwsm-app -- calibre --detach >/dev/null 2>&1 &
+
+  # Clean up the temporary window rule after Calibre has opened
+  if [[ -n $calibre_workspace ]]; then
+    (sleep 10 && hyprctl keyword windowrule "match:class calibre-gui, workspace unset" >/dev/null 2>&1) &
+  fi
+fi
