@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# omarchy:summary=Pick a screen region over frozen screen content
-# omarchy:args=[region|windows|smart|fullscreen] [--keep-freeze] [--match-monitor] | --take-fullscreen | --take-window | --select-window <next|prev|left|right|up|down>
+# omarchy:summary=Pick a screen region
+# omarchy:args=[region|windows|smart|fullscreen] [--keep-freeze] [--no-freeze] [--match-monitor] | --take-fullscreen | --take-window | --select-window <next|prev|left|right|up|down>
 # omarchy:hidden=true
 
 # Prints the picked geometry in slurp's "X,Y WxH" format, or exits 1 when the
@@ -17,6 +17,8 @@
 #   --keep-freeze   leave the hyprpicker screen freeze running and print its
 #                   PID as the first output line (empty when no freeze was
 #                   started); the caller owns killing it
+#   --no-freeze     select live screen content without starting hyprpicker;
+#                   also available globally with OMARCHY_CAPTURE_FREEZE=false
 #   --match-monitor print "monitor:NAME" instead when the picked geometry
 #                   exactly matches a monitor
 
@@ -274,10 +276,16 @@ fi
 MODE=smart
 KEEP_FREEZE=false
 MATCH_MONITOR=false
+USE_FREEZE=true
+
+case ${OMARCHY_CAPTURE_FREEZE:-true} in
+0 | false | no | off) USE_FREEZE=false ;;
+esac
 
 for arg in "$@"; do
   case $arg in
   --keep-freeze) KEEP_FREEZE=true ;;
+  --no-freeze) USE_FREEZE=false ;;
   --match-monitor) MATCH_MONITOR=true ;;
   *) MODE=$arg ;;
   esac
@@ -304,6 +312,7 @@ pick() {
 
 FREEZE_PID=""
 freeze_screen() {
+  [[ $USE_FREEZE == true ]] || return
   hyprpicker -r -z >/dev/null 2>&1 &
   FREEZE_PID=$!
   sleep .1
