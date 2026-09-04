@@ -2180,6 +2180,27 @@ for desktop in \
   rm -f "$HOME/.local/share/applications/$desktop"
 done
 
+# Packaged launchers first, so stock Icon= paths are rewritten to theme names
+# before the matching PNGs move. A leftover custom launcher that still names
+# one of those files keeps its icon in place.
+if [[ -d $root/applications ]]; then
+  find "$root/applications" -maxdepth 1 -type f -name '*.desktop' -exec cp -f {} "$HOME/.local/share/applications/" \;
+fi
+if command -v alacritty >/dev/null 2>&1 &&
+  [[ -f $root/default/alacritty/Alacritty.desktop && ! -f $HOME/.local/share/applications/Alacritty.desktop ]]; then
+  cp "$root/default/alacritty/Alacritty.desktop" "$HOME/.local/share/applications/"
+fi
+
+legacy_desktop_names_icon() {
+  local icon_path="$1"
+  local desktop
+  for desktop in "$HOME/.local/share/applications/"*.desktop; do
+    [[ -f $desktop ]] || continue
+    grep -qxF "Icon=$icon_path" "$desktop" && return 0
+  done
+  return 1
+}
+
 legacy_icons_dir="$HOME/.local/share/applications/icons"
 legacy_icons_backup="$HOME/.local/share/applications/icons.omarchy-upgrade-to-quattro.$BACKUP_SUFFIX.bak"
 if [[ -d $legacy_icons_dir ]]; then
@@ -2205,19 +2226,12 @@ if [[ -d $legacy_icons_dir ]]; then
     X.png \
     YouTube.png \
     Zoom.png; do
-    if [[ -e $legacy_icons_dir/$icon ]]; then
+    if [[ -e $legacy_icons_dir/$icon ]] && ! legacy_desktop_names_icon "$legacy_icons_dir/$icon"; then
       mv -f "$legacy_icons_dir/$icon" "$legacy_icons_backup/"
     fi
   done
   rmdir "$legacy_icons_dir" 2>/dev/null || true
   rmdir "$legacy_icons_backup" 2>/dev/null || true
-fi
-
-if [[ -d $root/applications ]]; then
-  find "$root/applications" -maxdepth 1 -type f -name '*.desktop' -exec cp -f {} "$HOME/.local/share/applications/" \;
-fi
-if [[ -f $root/default/alacritty/Alacritty.desktop && ! -f $HOME/.local/share/applications/Alacritty.desktop ]]; then
-  cp "$root/default/alacritty/Alacritty.desktop" "$HOME/.local/share/applications/"
 fi
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true

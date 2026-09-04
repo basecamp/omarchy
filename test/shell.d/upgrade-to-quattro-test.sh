@@ -206,6 +206,25 @@ pass "Omarchy 4 upgrade backfills hardware support from the legacy release"
 grep -F 'omarchy-refresh-applications' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade refreshes application launchers"
 
+# Stock launchers must land (and rewrite Icon= to theme names) before the
+# matching PNGs move, so a leftover custom launcher that still names one of
+# those files keeps a working icon instead of a dangling path.
+packaged_apps_line=$(grep -n -F 'find "$root/applications"' "$upgrade_to_quattro" | head -1 | cut -d: -f1)
+icon_move_line=$(grep -n -F 'if [[ -e $legacy_icons_dir/$icon ]] && ! legacy_desktop_names_icon' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $packaged_apps_line && -n $icon_move_line ]] ||
+  fail "upgrade copies packaged launchers before moving leftover icons"
+(( packaged_apps_line < icon_move_line )) ||
+  fail "upgrade copies packaged launchers before moving leftover icons"
+# The copy must sit inside the command -v guard, not merely near a matching line.
+alacritty_block=$(awk '
+  /if command -v alacritty/ { inside = 1 }
+  inside { print }
+  inside && /^[[:space:]]*fi$/ { exit }
+' "$upgrade_to_quattro")
+grep -F 'cp "$root/default/alacritty/Alacritty.desktop"' <<<"$alacritty_block" >/dev/null ||
+  fail "upgrade copies Alacritty.desktop only when alacritty is installed"
+pass "Omarchy 4 upgrade keeps referenced launcher icons and skips a ghost Alacritty"
+
 grep -F '/etc/systemd/system.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 grep -F '/etc/systemd/user.conf.d/99-omarchy-nofile.conf' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade removes stale nofile drop-ins"
