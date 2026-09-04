@@ -1139,10 +1139,12 @@ Item {
           } else if ((event.key === Qt.Key_Backspace || event.key === Qt.Key_Left) && !root.filterText) {
             root.goBack()
             event.accepted = true
-          } else if (event.key === Qt.Key_Up) {
+          } else if (event.key === Qt.Key_Up ||
+                     (event.key === Qt.Key_P && (event.modifiers & Qt.ControlModifier))) {
             root.select(-1)
             event.accepted = true
-          } else if (event.key === Qt.Key_Down) {
+          } else if (event.key === Qt.Key_Down ||
+                     (event.key === Qt.Key_N && (event.modifiers & Qt.ControlModifier))) {
             root.select(1)
             event.accepted = true
           } else if (event.key === Qt.Key_PageUp) {

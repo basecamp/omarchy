@@ -448,6 +448,11 @@ assert(
   /function select\(delta\)[\s\S]*root\.disarmPointer\(\)[\s\S]*selectedIndex =/.test(menuQml),
   'menu keyboard navigation disarms pointer selection'
 )
+assert(
+  /event\.key === Qt\.Key_Up \|\|\s*\(event\.key === Qt\.Key_P && \(event\.modifiers & Qt\.ControlModifier\)\)/.test(menuQml)
+    && /event\.key === Qt\.Key_Down \|\|\s*\(event\.key === Qt\.Key_N && \(event\.modifiers & Qt\.ControlModifier\)\)/.test(menuQml),
+  'menu supports Ctrl+P and Ctrl+N as keyboard navigation aliases'
+)
 // A dimmed row is not a target: the cursor steps over it, the pointer refuses
 // to land on it, and neither Enter nor a click can reach it.
 assert(
