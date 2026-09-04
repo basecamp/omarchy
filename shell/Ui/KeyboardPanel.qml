@@ -47,6 +47,19 @@ PanelWindow {
   property var borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
   property bool centerOnBar: false
   property bool open: false
+  // Whether a click outside the card dismisses the panel. An owner that keeps
+  // the panel up regardless — a pinned dashboard, say — sets this false, and
+  // the surface then stops claiming input it has no intention of acting on:
+  // the mask narrows to the card, the dismissal MouseArea goes idle, and the
+  // per-output twins below are never created.
+  //
+  // Overriding `close()` on the owner is not enough on its own. The click is
+  // still delivered here and swallowed, so the window behind the panel cannot
+  // be clicked, and — because the compositor is never asked to move focus to a
+  // toplevel that was never clicked — cannot be typed into either. That reads
+  // as the panel holding the keyboard hostage when in fact it is holding the
+  // pointer.
+  property bool dismissable: true
   property int gap: Style.gapsOut  // distance between bar edge and panel
   property bool popoutSwitching: false
   property bool popoutSwitchClosing: false
@@ -113,17 +126,25 @@ PanelWindow {
     right: true
   }
 
-  // Clickable region is the whole screen. Clicks in the bar strip are
-  // forwarded to registered bar buttons so switching between panel icons
+  // Clickable region is the whole screen while the panel is dismissable, so
+  // there is somewhere for an outside click to land. Clicks in the bar strip
+  // are forwarded to registered bar buttons so switching between panel icons
   // works in one click even when the overlay surface is above the bar.
+  //
+  // A non-dismissable panel narrows the region to the card instead. It has no
+  // outside click to catch, the bar is no longer covered so it needs no
+  // forwarding, and the rest of the screen goes back to belonging to whatever
+  // is underneath it.
   readonly property real _barStripSize: {
     if (!bar) return 0
     var actual = (root.barPos === "top" || root.barPos === "bottom") ? root.barH : root.barW
     return Math.max(bar.barSize, actual) + root.gap
   }
   mask: Region {
-    width: root.screenW
-    height: root.screenH
+    x: root.dismissable ? 0 : root.cardOrigin.x
+    y: root.dismissable ? 0 : root.cardOrigin.y
+    width: root.dismissable ? root.screenW : root.contentWidth
+    height: root.dismissable ? root.screenH : root.contentHeight
   }
 
   // Track every layout change between the bar's contentItem and the
@@ -280,7 +301,7 @@ PanelWindow {
   MouseArea {
     id: dismissArea
     anchors.fill: parent
-    enabled: root.open
+    enabled: root.open && root.dismissable
     acceptedButtons: Qt.AllButtons
     hoverEnabled: true
     property bool hoveringBar: false
@@ -336,12 +357,15 @@ PanelWindow {
   // hit-tests pointer input per output, so `dismissArea` above can never see
   // a click on another monitor. Give every other output a transparent twin
   // whose only job is to catch that click. They exist only while the panel is
-  // logically open (not during the fade-out, matching `dismissArea.enabled`).
+  // logically open and dismissable (not during the fade-out, matching
+  // `dismissArea.enabled`) — a panel that will not dismiss must not blanket
+  // other outputs with a surface whose only job is to dismiss it, or windows
+  // there cannot be clicked for as long as it is up.
   //
   // Keyboard focus is None: these must catch the pointer without taking focus
   // from the panel when the cursor merely crosses onto their output.
   Variants {
-    model: root.open ? Quickshell.screens : []
+    model: root.open && root.dismissable ? Quickshell.screens : []
 
     delegate: Component {
       PanelWindow {
