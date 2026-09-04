@@ -40,6 +40,15 @@ EOF
   chmod +x "$test_bin/$cmd"
 done
 
+# The drop of the conflicting prebuilt binary is the one stub a case needs to
+# fail, so it answers an environment variable the way the AUR probe does.
+cat >"$test_bin/omarchy-pkg-drop" <<'EOF'
+#!/bin/bash
+echo "omarchy-pkg-drop:$*" >>"$TEST_LOG"
+exit "${PKG_DROP_EXIT:-0}"
+EOF
+chmod +x "$test_bin/omarchy-pkg-drop"
+
 cat >"$test_bin/hyprctl" <<'EOF'
 #!/bin/bash
 exit 0
@@ -97,7 +106,7 @@ run_install() {
   printf '%s\n' $answers >"$confirm_queue"
   HOME="$test_home" OMARCHY_PATH="$test_omarchy_path" PATH="$test_bin:$ROOT/bin:$PATH" \
     TEST_LOG="$log_file" CONFIRM_QUEUE="$confirm_queue" AUR_ACCESSIBLE="${2:-0}" \
-    TEST_UNAME_M="${3:-x86_64}" \
+    TEST_UNAME_M="${3:-x86_64}" PKG_DROP_EXIT="${4:-0}" \
     bash "$ROOT/bin/omarchy-voxtype-install"
   install_status=$?
   return $install_status
@@ -151,6 +160,13 @@ run_install "yes yes" 1
 assert_status 1 "an unreachable AUR fails the install"
 grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "an unreachable AUR does not attempt the source install"
 grep -q '^omarchy-pkg-add:' "$log_file" && fail "an unreachable AUR leaves no packages behind"
+
+# If the conflicting prebuilt binary cannot be dropped, the build's output could
+# not be installed over it, so the build is not started at all.
+write_hw_x86_64_v3 1
+run_install "yes yes" 0 x86_64 1
+assert_status 1 "a prebuilt binary that cannot be dropped fails the install"
+grep -q '^omarchy-pkg-aur-add:' "$log_file" && fail "a prebuilt binary that cannot be dropped does not start the source build"
 
 # On a non-x86_64 machine nothing is missing and the source build is native, so
 # neither message may leak into the other architecture's branch.

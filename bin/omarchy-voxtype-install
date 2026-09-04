@@ -40,7 +40,12 @@ if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
     # voxtype-bin conflicts with voxtype, and pacman answers no to the conflict
     # prompt under --noconfirm, so a machine still carrying the prebuilt binary
     # would build for 20 minutes and then fail to install what it built.
-    omarchy-pkg-drop voxtype-bin
+    if ! omarchy-pkg-drop voxtype-bin; then
+      gum style --foreground 1 \
+        "Couldn't remove the prebuilt Voxtype binary, and the source build can't install over it, so nothing was built. Dictation is unchanged."
+      exit 1
+    fi
+
     if ! omarchy-pkg-aur-add aur/voxtype; then
       gum style --foreground 1 \
         "Building Voxtype from source failed, so dictation isn't installed. Any prebuilt binary that was here has been removed, since it couldn't run on this CPU either. Re-run Install > Dictation to try again."
