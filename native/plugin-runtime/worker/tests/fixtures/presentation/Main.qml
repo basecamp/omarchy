@@ -26,5 +26,6 @@ Item {
   TextField {}
   ToolTip {}
   Toggle {}
+  ToggleSwitch {}
   WidgetButton {}
 }

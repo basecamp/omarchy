@@ -52,6 +52,7 @@ qt_add_resources(omarchy-plugin-worker-runtime plugin_presentation_qml
     ../presentation/qml/TextField.qml
     ../presentation/qml/ToolTip.qml
     ../presentation/qml/Toggle.qml
+    ../presentation/qml/ToggleSwitch.qml
     ../presentation/qml/Util.qml
     ../presentation/qml/WidgetButton.qml)
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
