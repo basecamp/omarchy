@@ -180,44 +180,11 @@ install_provisioning_units() {
     "$next/etc/systemd/system/sysinit.target.wants/omarchy-system-factory-reset-finish.service"
 }
 
-# Start the ESP's limine.conf over from the shipped template and drop the
-# previous Omarchy identity's state. limine-entry-tool keys OS entries by
-# machine-id, so after a reset gives the machine a fresh identity, the
-# previous system's entry (with the now-stale UKI hash) would survive, sort
-# first, and make Limine refuse the rebuilt UKI with a hash-mismatch warning.
-# Only machine-ids the old limine.conf referenced are removed — a shared ESP
-# may hold other installations' machine-id directories.
-reset_limine_config() {
-  local root="$1" esp="$2" template found=""
-
-  local old_ids=""
-  if [[ -f $root$esp/limine.conf ]]; then
-    old_ids=$(grep -o 'machine-id=[0-9a-f]\{32\}' "$root$esp/limine.conf" | cut -d= -f2 | sort -u)
-  fi
-
-  for template in "$root/usr/share/omarchy/install/assets/limine/limine.conf" \
-                  "$root/usr/share/omarchy/default/limine/limine.conf"; do
-    if [[ -f $template ]]; then
-      cp "$template" "$root$esp/limine.conf"
-      found=1
-      break
-    fi
-  done
-  [[ -n $found ]] || fail "no limine.conf template in $root/usr/share/omarchy"
-
-  local machine_id old_id
-  machine_id=$(cat "$root/etc/machine-id" 2>/dev/null || true)
-  for old_id in $old_ids; do
-    [[ $old_id == "$machine_id" ]] && continue
-    rm -rf "${root:?}$esp/$old_id"
-  done
-}
-
 # Every UKI entry in limine.conf carries a #blake2b hash of the file it
 # points at; a mismatch makes Limine stop at a scary warning. Never hand over
 # a staged reset in that state.
 verify_limine_hashes() {
-  local root="$1" esp="$2" line path hash file
+  local root="$1" esp="$2" machine_id="$3" line path hash file
   while IFS= read -r line; do
     path=${line#*boot():}
     path=${path%%#*}
@@ -226,7 +193,15 @@ verify_limine_hashes() {
     [[ -f $file ]] || fail "limine.conf points at missing $path"
     [[ $(b2sum "$file" | cut -d' ' -f1) == "$hash" ]] ||
       fail "limine.conf hash for $path does not match the rebuilt file"
-  done < <(grep -o 'boot():/EFI/Linux/[^#]*#[0-9a-f]*' "$root$esp/limine.conf")
+  done < <(
+    awk -v marker="machine-id=$machine_id" '
+      /^[[:space:]]*\/[^/]/ { owned = 0 }
+      index($0, marker) { owned = 1; next }
+      owned && match($0, /boot\(\):\/EFI\/Linux\/[^#]*#[0-9a-f]*/) {
+        print substr($0, RSTART, RLENGTH)
+      }
+    ' "$root$esp/limine.conf"
+  )
 }
 
 # Rebuild the UKI from inside the next root so the deployed kernel/initramfs
@@ -282,14 +257,24 @@ rebuild_next_boot() {
       fail "hibernation setup did not recreate $next/swap/swapfile (see $LOG_FILE)"
   fi
 
-  reset_limine_config "$next" "$esp_mount"
+  local previous_machine_id=""
+  previous_machine_id=$(cat "$next$PROVISIONING_DIR/previous-machine-id" 2>/dev/null || true)
+  if [[ -n $previous_machine_id ]]; then
+    chroot "$next" /usr/bin/omarchy-limine-remove-machine-entry "$previous_machine_id"
+  fi
 
   log "Rebuilding boot files from the factory system (this can take a minute)"
   if ! chroot "$next" /usr/bin/limine-update >>"$LOG_FILE" 2>&1; then
     fail "limine-update failed in the factory root (see $LOG_FILE)"
   fi
 
-  verify_limine_hashes "$next" "$esp_mount"
+  local machine_id
+  machine_id=$(cat "$next/etc/machine-id")
+  if ! chroot "$next" /usr/bin/omarchy-limine-default-machine-entry "$machine_id" >>"$LOG_FILE" 2>&1; then
+    fail "could not make the rebuilt Omarchy entry the default (see $LOG_FILE)"
+  fi
+
+  verify_limine_hashes "$next" "$esp_mount" "$machine_id"
 
   for dir in run dev sys proc; do
     umount -R "$next/$dir" 2>/dev/null || true
@@ -320,7 +305,10 @@ sanitize_factory_baseline() {
 }
 
 stage_full_reset() {
-  local top="$TOP_MNT" next="$TOP_MNT/$NEXT_NAME"
+  local top="$TOP_MNT" next="$TOP_MNT/$NEXT_NAME" previous_machine_id
+
+  previous_machine_id=$(cat /etc/machine-id 2>/dev/null || true)
+  [[ $previous_machine_id =~ ^[0-9a-f]{32}$ ]] || fail "could not determine the current machine ID"
 
   log "Cloning the factory snapshot"
   [[ -d $next ]] && btrfs subvolume delete --recursive "$next" >/dev/null
@@ -329,6 +317,9 @@ stage_full_reset() {
   local unit_src="$next/usr/share/omarchy/install/provisioning"
   [[ -f $unit_src/omarchy-provision-owner.service && -x $next/usr/bin/omarchy-provision-owner ]] ||
     fail "the factory snapshot predates provisioning support; cannot reset from it"
+  [[ -x $next/usr/bin/omarchy-limine-remove-machine-entry &&
+    -x $next/usr/bin/omarchy-limine-default-machine-entry ]] ||
+    fail "the factory snapshot predates shared-ESP-safe reset support; reinstall from a current ISO"
 
   log "Scrubbing machine identity from the factory system"
   systemd-id128 new >"$next/etc/machine-id"
@@ -364,6 +355,7 @@ stage_full_reset() {
   fi
 
   install -d -m 755 "$next$PROVISIONING_DIR"
+  printf '%s\n' "$previous_machine_id" >"$next$PROVISIONING_DIR/previous-machine-id"
   touch "$next$PROVISIONING_DIR/pending" "$next$PROVISIONING_DIR/wipe-pending"
 
   install_provisioning_units "$next" "$unit_src"

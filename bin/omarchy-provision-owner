@@ -887,7 +887,7 @@ rekey_luks() {
   rm -f /etc/omarchy/provisioning.key \
     /etc/limine-entry-tool.d/99-omarchy-provisioning-unlock.conf \
     /etc/mkinitcpio.conf.d/99-omarchy-provisioning-key.conf
-  reset_limine_config
+  remove_previous_limine_entry
   if ! limine-update >>"$LOG_FILE" 2>&1; then
     log_step "limine-update failed during re-key; restoring auto-unlock for retry"
     install -Dm600 "$PROVISIONING_DIR/luks-key" /etc/omarchy/provisioning.key
@@ -926,11 +926,6 @@ rekey_luks() {
   shred -u "$PROVISIONING_DIR/luks-key" 2>/dev/null || rm -f "$PROVISIONING_DIR/luks-key"
 }
 
-# Start the ESP's limine.conf over from the shipped template and drop foreign
-# machine-id state before rebuilding. limine-entry-tool keys OS entries by
-# machine-id: after a factory reset gave this machine a fresh identity, the
-# previous system's entry would survive the rebuild with a stale UKI hash,
-# sort first, and make Limine stop at a hash-mismatch warning.
 esp_path() {
   local esp=""
   if [[ -f /etc/default/limine ]]; then
@@ -943,54 +938,33 @@ esp_path() {
 # keys its limine.conf entries by machine-id — entries from the previous
 # identity would linger and go hash-stale on the first UKI rebuild.
 limine_entries_stale() {
-  local esp machine_id
+  local esp machine_id previous_machine_id=""
   esp=$(esp_path)
   machine_id=$(cat /etc/machine-id 2>/dev/null || true)
   [[ -f $esp/limine.conf && -n $machine_id ]] || return 1
-  # Stale if any foreign machine-id entry lingers, OR if this machine has no
-  # entry at all (e.g. a failed earlier rebuild left the entry-less template).
-  grep -o 'machine-id=[0-9a-f]*' "$esp/limine.conf" 2>/dev/null |
-    grep -qv "machine-id=$machine_id" && return 0
-  ! grep -q "machine-id=$machine_id" "$esp/limine.conf"
-}
 
-reset_limine_config() {
-  local esp template found="" machine_id old_id old_ids=""
-  esp=$(esp_path)
-
-  # Only remove machine-ids the old (Omarchy-managed) limine.conf referenced;
-  # a shared ESP may hold other installations' machine-id directories.
-  if [[ -f $esp/limine.conf ]]; then
-    # `|| true`: an entry-less limine.conf (left by a failed earlier rebuild)
-    # has no machine-id lines, so grep exits 1 and pipefail would abort the
-    # assignment under `set -e` — turning a recoverable retry into a dead loop.
-    old_ids=$(grep -o 'machine-id=[0-9a-f]\{32\}' "$esp/limine.conf" | cut -d= -f2 | sort -u || true)
-  fi
-
-  for template in "$OMARCHY_PATH/install/assets/limine/limine.conf" \
-                  "$OMARCHY_PATH/default/limine/limine.conf"; do
-    if [[ -f $template ]]; then
-      cp "$template" "$esp/limine.conf"
-      found=1
-      break
-    fi
-  done
-  if [[ -z $found ]]; then
-    log_step "no limine.conf template found; keeping the existing config"
+  previous_machine_id=$(cat "$PROVISIONING_DIR/previous-machine-id" 2>/dev/null || true)
+  if [[ -n $previous_machine_id ]] && grep -Fq "machine-id=$previous_machine_id" "$esp/limine.conf"; then
     return 0
   fi
 
-  machine_id=$(cat /etc/machine-id 2>/dev/null || true)
-  for old_id in $old_ids; do
-    [[ $old_id == "$machine_id" ]] && continue
-    rm -rf "${esp:?}/$old_id"
-  done
+  # Other machine IDs can belong to another OS installation on the shared ESP.
+  # Only a missing entry for this installation is stale.
+  ! grep -q "machine-id=$machine_id" "$esp/limine.conf"
+}
+
+remove_previous_limine_entry() {
+  local previous_machine_id=""
+  previous_machine_id=$(cat "$PROVISIONING_DIR/previous-machine-id" 2>/dev/null || true)
+  [[ -n $previous_machine_id ]] || return 0
+  omarchy-limine-remove-machine-entry "$previous_machine_id"
 }
 
 cleanup_oem_state() {
   # Keep groups + packages: omarchy-system-factory-reset stages the bundled Node
   # tarball from these live copies when the factory snapshot predates it.
-  rm -f "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/authorized_keys" "$PROVISIONING_DIR/setup-user"
+  rm -f "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/authorized_keys" \
+    "$PROVISIONING_DIR/setup-user" "$PROVISIONING_DIR/previous-machine-id"
 
   rm -f /etc/systemd/system/multi-user.target.wants/omarchy-provision-owner.service
   systemctl daemon-reload 2>/dev/null || true
@@ -1030,7 +1004,7 @@ run_provisioning() {
   if limine_entries_stale; then
     log_step "refreshing boot entries for the new machine identity"
     echo boot >"$STATE_FILE"
-    reset_limine_config
+    remove_previous_limine_entry
     limine-update
   fi
 
