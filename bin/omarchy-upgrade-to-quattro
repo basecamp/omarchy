@@ -853,10 +853,18 @@ remove_retired_default_packages() {
     zoom
   )
 
+  # Voxtype's Omarchy-shipped default config enables pause_media, which shells
+  # out to playerctl. Removing playerctl out from under an installed Voxtype
+  # breaks media pause/resume during dictation, so keep it when Voxtype is present.
+  if package_installed_exact voxtype-bin; then
+    retired_packages=("${retired_packages[@]/playerctl}")
+  fi
+
   log "Removing packages retired from the Omarchy quattro default install"
   local pkg
   local installed_retired=()
   for pkg in "${retired_packages[@]}"; do
+    [[ -z $pkg ]] && continue
     if package_installed_exact "$pkg"; then
       installed_retired+=("$pkg")
     fi
@@ -880,9 +888,11 @@ remove_retired_default_packages() {
   local group group_pkg required_by_line
   local group_packages=()
   local installed_group=()
+  local waybar_group="waybar playerctl"
+  package_installed_exact voxtype-bin && waybar_group="waybar"
   local fallback_groups=(
     "omarchy-walker walker elephant-all elephant elephant-bluetooth elephant-calc elephant-clipboard elephant-desktopapplications elephant-files elephant-menus elephant-providerlist elephant-runner elephant-symbols elephant-todo elephant-unicode elephant-websearch"
-    "waybar playerctl"
+    "$waybar_group"
     "impala iwd"
     "blueberry bluetui"
     "wiremix pavucontrol"

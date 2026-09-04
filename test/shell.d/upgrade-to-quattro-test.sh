@@ -248,3 +248,15 @@ reboot_line=$(grep -n 'Rebooting because --reboot was passed' "$upgrade_to_quatt
 [[ -n $unsafe_line && -n $reboot_line ]] || fail "reboot gate and reboot branch exist"
 (( unsafe_line < reboot_line )) || fail "an unverified kernel cmdline blocks the reboot"
 pass "Omarchy 4 upgrade verifies the UKIs and refuses to reboot unverified"
+
+# The default Voxtype config enables pause_media, which shells out to
+# playerctl, so retiring playerctl out from under an installed Voxtype would
+# silently break media pause/resume during dictation.
+remove_retired_body=$(function_body remove_retired_default_packages)
+grep -F 'package_installed_exact voxtype-bin' <<<"$remove_retired_body" >/dev/null ||
+  fail "Omarchy 4 upgrade keeps playerctl installed when Voxtype is present"
+grep -F 'retired_packages=("${retired_packages[@]/playerctl}")' <<<"$remove_retired_body" >/dev/null ||
+  fail "Omarchy 4 upgrade drops playerctl from the retired-package list for Voxtype users"
+grep -F 'waybar_group="waybar"' <<<"$remove_retired_body" >/dev/null ||
+  fail "Omarchy 4 upgrade also spares playerctl from the waybar fallback removal group"
+pass "Omarchy 4 upgrade retains playerctl for installed Voxtype users"
