@@ -20,11 +20,14 @@ Panel {
   property int profileIndex: 0
   property bool cursorActive: false
   readonly property bool showPercentage: setting("showPercentage", false) === true
+  readonly property var powerDevices: UPower.devices ? UPower.devices.values : []
+  readonly property var livePacks: Model.liveLaptopDevices(powerDevices, opened ? batteryInfo : null)
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
   // icon-sized fraction of the slot the fallback assumes.
   readonly property real openPanelIndicatorWidth: showPercentage && !button.vertical ? button.glyphPaintedWidth : 0
   readonly property bool batteryPresent: {
+    if (root.livePacks.length > 0) return true
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
   }
@@ -47,14 +50,16 @@ Panel {
     setProfile(profiles[profileIndex])
   }
 
+  function viewDevice() {
+    return Model.viewDevice(root.powerDevices, { isPresent: false }, upowerStates(), root.opened ? root.batteryInfo : null)
+  }
+
   function batteryIcon() {
-    var device = UPower.displayDevice
-    return Model.batteryIcon(device, root.discharging, upowerStates())
+    return Model.batteryIcon(viewDevice(), root.discharging, upowerStates(), root.chargeThresholdActive)
   }
 
   function modeLabel() {
-    var device = UPower.displayDevice
-    return Model.modeLabel(device, root.discharging, upowerStates())
+    return Model.modeLabel(viewDevice(), root.discharging, upowerStates(), root.chargeThresholdActive)
   }
 
   function profileIcon(name) {
@@ -62,29 +67,29 @@ Panel {
   }
 
   readonly property bool fullyCharged: {
-    var device = UPower.displayDevice
+    var device = viewDevice()
     return device && device.isPresent && device.state === UPowerDeviceState.FullyCharged && !root.chargeThresholdActive
   }
   readonly property bool discharging: {
-    var device = UPower.displayDevice
-    return !!(device && device.isPresent && UPower.onBattery)
+    return !!(root.batteryPresent && UPower.onBattery)
   }
   readonly property bool chargeThresholdActive: {
-    var device = UPower.displayDevice
-    return Model.chargeThresholdActive(device, root.discharging, upowerStates())
+    return Model.chargeThresholdActiveForPacks(root.powerDevices, root.discharging, upowerStates(), root.opened ? root.batteryInfo : null)
   }
   readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
 
-  // 0..1 charge level, used by the visual progress bar.
+  // Live watt-hours only. DisplayDevice still counts a dead pack's energy-full.
   readonly property real batteryFraction: {
-    var d = UPower.displayDevice
-    return Model.batteryFraction(d)
+    var fromStatus = root.opened ? Model.combinedFractionFromStatus(root.batteryInfo) : -1
+    if (fromStatus >= 0) return fromStatus
+    var combined = Model.combinedEnergyFraction(root.powerDevices, root.opened ? root.batteryInfo : null)
+    if (combined >= 0) return combined
+    return 0
   }
 
   readonly property bool charging: {
-    var d = UPower.displayDevice
-    return d && d.isPresent && !UPower.onBattery && !root.batteryFlowIdle
+    return root.batteryPresent && !UPower.onBattery && !root.batteryFlowIdle
   }
 
   readonly property color batteryFillColor: {
