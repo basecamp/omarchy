@@ -68,6 +68,41 @@ pass "Codex collector does not double-count cache or reasoning tokens"
   fail "Codex collector identifies itself with an empty limits list" "$result"
 pass "Codex collector identifies itself with an empty limits list"
 
+mv "$TEST_HOME/bin/codex" "$TEST_HOME/bin/codex-working"
+cat >"$TEST_HOME/bin/codex" <<'EOF'
+#!/bin/bash
+
+exec 1>&-
+sleep 2
+EOF
+chmod +x "$TEST_HOME/bin/codex"
+
+failed_rpc=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" PATH="$TEST_HOME/bin:$PATH" \
+  "$ROOT/bin/omarchy-agent-usage-codex" --limits-only)
+
+[[ $(jq -r '.authHelpText' <<<"$failed_rpc") == "Codex app-server exited before initialize" ]] ||
+  fail "Codex collector identifies an app server that exits during startup" "$failed_rpc"
+pass "Codex collector identifies an app server that exits during startup"
+
+cat >"$TEST_HOME/bin/codex" <<'EOF'
+#!/bin/bash
+
+read -r request
+exec 0<&-
+jq -cn --argjson id "$(jq -r '.id' <<<"$request")" '{id: $id, result: {}}'
+sleep 2
+EOF
+chmod +x "$TEST_HOME/bin/codex"
+
+failed_rpc=$(HOME="$TEST_HOME" CODEX_HOME="$TEST_HOME/.codex" XDG_DATA_HOME="$TEST_HOME/.local/share" PATH="$TEST_HOME/bin:$PATH" \
+  "$ROOT/bin/omarchy-agent-usage-codex" --limits-only)
+
+[[ $(jq -r '.authHelpText' <<<"$failed_rpc") == "Codex app-server exited before initialized" ]] ||
+  fail "Codex collector translates failure to send the initialized notification" "$failed_rpc"
+pass "Codex collector translates failure to send the initialized notification"
+
+mv "$TEST_HOME/bin/codex-working" "$TEST_HOME/bin/codex"
+
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.
 PI_HOME=$(mktemp -d)
