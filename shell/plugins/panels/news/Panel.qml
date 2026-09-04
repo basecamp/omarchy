@@ -17,6 +17,7 @@ Item {
   property string selectedSourceId: "all"
   property string focusArea: "headlines"
   property var currentArticle: null
+  property bool managingFeeds: false
 
   readonly property var news: service
   readonly property var articles: news ? news.itemsForSource(selectedSourceId) : []
@@ -52,6 +53,18 @@ Item {
   function dismiss() {
     if (shell && typeof shell.hide === "function") shell.hide("omarchy.news")
     else close()
+  }
+
+  function openFeedManager() {
+    managingFeeds = true
+    focusArea = "manager"
+    feedManager.activate()
+  }
+
+  function closeFeedManager() {
+    managingFeeds = false
+    focusArea = "headlines"
+    Qt.callLater(function() { focusScope.forceActiveFocus() })
   }
 
   function selectArticle(index, readIt) {
@@ -193,7 +206,11 @@ Item {
 
       Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape) {
-          root.dismiss()
+          if (root.managingFeeds) root.closeFeedManager()
+          else root.dismiss()
+          event.accepted = true
+        } else if (event.key === Qt.Key_F && !root.managingFeeds) {
+          root.openFeedManager()
           event.accepted = true
         } else if (event.key === Qt.Key_R) {
           if (root.news) root.news.refresh()
@@ -258,7 +275,7 @@ Item {
 
             Text {
               textFormat: Text.PlainText
-              text: root.statusLabel()
+              text: root.managingFeeds ? "CHOOSE WHAT BELONGS IN YOUR FEED" : root.statusLabel()
               color: root.news && (root.news.stale || root.news.partial) ? root.urgent : root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -269,6 +286,17 @@ Item {
 
           Item {
             Layout.fillWidth: true
+          }
+
+          PanelActionButton {
+            iconText: root.managingFeeds ? "󰅖" : "󰒓"
+            tooltipText: root.managingFeeds ? "Return to News (Esc)" : "Manage feeds (F)"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            onClicked: {
+              if (root.managingFeeds) root.closeFeedManager()
+              else root.openFeedManager()
+            }
           }
 
           PanelActionButton {
@@ -294,7 +322,22 @@ Item {
           foreground: root.foreground
         }
 
+        FeedManager {
+          id: feedManager
+          visible: root.managingFeeds
+          Layout.fillWidth: true
+          Layout.fillHeight: true
+          news: root.news
+          shell: root.shell
+          fontFamily: root.fontFamily
+          foreground: root.foreground
+          accent: root.accent
+          urgent: root.urgent
+          onDone: root.closeFeedManager()
+        }
+
         RowLayout {
+          visible: !root.managingFeeds
           Layout.fillWidth: true
           Layout.fillHeight: true
           spacing: Style.space(16)

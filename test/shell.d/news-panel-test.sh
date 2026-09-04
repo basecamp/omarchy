@@ -103,6 +103,30 @@ custom_items = module.parse_feed(
 )
 assert len(custom_items) == 1
 assert custom_items[0]["url"] == "http://elsewhere.example/story?id=4"
+original_fetch_for_inspection = module.fetch
+module.fetch = lambda source: b'''<rss version="2.0"><channel><title>Discovered Feed</title></channel></rss>'''
+assert module.inspect_custom_feed("https://example.com/rss") == {
+    "name": "Discovered Feed",
+    "url": "https://example.com/rss",
+}
+assert module.inspect_custom_feed("https://example.com/rss", "My Feed") == {
+    "name": "My Feed",
+    "url": "https://example.com/rss",
+}
+inspection_output = io.StringIO()
+with redirect_stdout(inspection_output):
+    assert module.main(["--inspect-feed", "https://example.com/rss"]) == 0
+assert json.loads(inspection_output.getvalue()) == {
+    "ok": True,
+    "name": "Discovered Feed",
+    "url": "https://example.com/rss",
+}
+module.fetch = original_fetch_for_inspection
+try:
+    module.inspect_custom_feed("http://localhost/rss")
+    raise AssertionError("unsafe feed inspection URL was accepted")
+except ValueError as error:
+    assert "public HTTPS URL" in str(error)
 assert [source["name"] for source in module.selected_sources("ars-technica", "LWN|https://lwn.net/headlines/rss")] == ["Omarchy", "Ars Technica", "LWN"]
 original_getaddrinfo = module.socket.getaddrinfo
 module.socket.getaddrinfo = lambda *args, **kwargs: [(module.socket.AF_INET, module.socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
@@ -182,6 +206,18 @@ grep -qF '"↑↓ SCROLL  ·  ← FEED"' "$ROOT/shell/plugins/panels/news/Panel.
   fail "news story pane explains article scrolling"
 grep -qF 'id: sourceRail' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news reader exposes a compact source rail"
+grep -qF 'id: feedManager' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news reader exposes an in-panel feed manager"
+grep -qF 'tooltipText: root.managingFeeds ? "Return to News (Esc)" : "Manage feeds (F)"' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+  fail "news reader exposes feed management from its header"
+grep -qF 'shell.updateEntryInline("omarchy.news", next)' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
+  fail "feed manager persists changes through the shell configuration API"
+grep -qF 'Accessible.role: Accessible.CheckBox' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
+  fail "curated feed toggles expose checkbox semantics"
+grep -qF 'function moveCustom(index, direction)' "$ROOT/shell/plugins/panels/news/FeedManager.qml" ||
+  fail "custom feeds can be reordered in-panel"
+grep -qF 'function inspectCustomFeed(url, name)' "$ROOT/shell/plugins/panels/news/Service.qml" ||
+  fail "custom feeds are verified before being saved"
 grep -qF 'Qt.Key_BracketLeft' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "news source rail supports keyboard switching"
 grep -qF 'return Color.green' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
@@ -209,7 +245,10 @@ grep -qF '"https://news.ycombinator.com/rss"' "$ROOT/shell/plugins/panels/news/f
   fail "news fetcher does not promote BBC into the initial tech feed pack"
 grep -qF 'custom feed host does not resolve to a public address' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
   fail "custom feeds cannot resolve to private network addresses"
+grep -qF 'parser.add_argument("--inspect-feed", default="")' "$ROOT/shell/plugins/panels/news/fetch_news.py" ||
+  fail "news fetcher exposes bounded feed inspection to the manager"
 
 pass "news feed parser accepts canonical items from curated sources"
 pass "news plugin manifest pairs the bar widget with a multi-source desktop reader"
+pass "news reader manages curated and custom feeds inside the panel"
 pass "news fetcher pins and bounds curated feeds and ignores environment redirection"

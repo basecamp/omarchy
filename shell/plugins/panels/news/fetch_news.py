@@ -327,6 +327,23 @@ def canonical_feed_url(value: str | None) -> str:
     return parsed._replace(netloc=host, params="", fragment="").geturl()
 
 
+def custom_source(raw_url: str, name: str = "") -> dict[str, object]:
+    url = canonical_feed_url(raw_url)
+    if not url:
+        raise ValueError("Feed must be a public HTTPS URL")
+    host = (urlparse(url).hostname or "").lower()
+    return {
+        "id": "custom-" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:12],
+        "name": clean_text(name, 48) or host,
+        "category": "custom",
+        "url": url,
+        "article_hosts": (),
+        "allow_external_articles": True,
+        "article_path_prefix": "/",
+        "custom": True,
+    }
+
+
 def parse_custom_sources(value: str) -> tuple[list[dict[str, object]], list[str]]:
     entries = value[:MAX_CUSTOM_FEEDS_SETTING_CHARS].replace("\n", ";").split(";")
     sources: list[dict[str, object]] = []
@@ -340,27 +357,16 @@ def parse_custom_sources(value: str) -> tuple[list[dict[str, object]], list[str]
         if not separator:
             raw_url = name
             name = ""
-        url = canonical_feed_url(raw_url)
-        if not url:
+        try:
+            source = custom_source(raw_url, name)
+        except ValueError:
             errors.append(f"Custom feed {index + 1} must be a public HTTPS URL")
             continue
+        url = str(source["url"])
         if url in seen:
             continue
         seen.add(url)
-        host = (urlparse(url).hostname or "").lower()
-        source_id = "custom-" + hashlib.sha256(url.encode("utf-8")).hexdigest()[:12]
-        sources.append(
-            {
-                "id": source_id,
-                "name": clean_text(name, 48) or host,
-                "category": "custom",
-                "url": url,
-                "article_hosts": (),
-                "allow_external_articles": True,
-                "article_path_prefix": "/",
-                "custom": True,
-            }
-        )
+        sources.append(source)
         if len(sources) >= MAX_CUSTOM_FEEDS:
             if any(remaining.strip() for remaining in entries[index + 1 :]):
                 errors.append(f"Custom feeds are limited to {MAX_CUSTOM_FEEDS}")
@@ -413,6 +419,23 @@ def parse_feed(payload: bytes, source: dict[str, object] | None = None) -> list[
             }
         )
     return items
+
+
+def inspect_custom_feed(raw_url: str, requested_name: str = "") -> dict[str, str]:
+    source = custom_source(raw_url, requested_name)
+    payload = fetch(source)
+    root = ET.fromstring(payload)
+    channel = root.find("channel")
+    if channel is None:
+        raise ValueError("RSS channel is missing")
+
+    discovered_name = clean_text(channel.findtext("title"), 48)
+    return {
+        "name": clean_text(requested_name, 48)
+        or discovered_name
+        or str(source["name"]),
+        "url": str(source["url"]),
+    }
 
 
 def fetch(source: dict[str, object] | None = None) -> bytes:
@@ -546,7 +569,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sources", default="omarchy")
     parser.add_argument("--custom-feeds", default="")
+    parser.add_argument("--inspect-feed", default="")
+    parser.add_argument("--inspect-name", default="")
     args = parser.parse_args(argv)
+
+    if args.inspect_feed:
+        try:
+            inspected = inspect_custom_feed(args.inspect_feed, args.inspect_name)
+        except (OSError, ValueError, ET.ParseError) as exc:
+            print(clean_text(str(exc), 180), file=sys.stderr)
+            return 1
+        json.dump({"ok": True, **inspected}, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+        sys.stdout.write("\n")
+        return 0
 
     items: list[dict[str, str]] = []
     source_states: list[dict[str, object]] = []

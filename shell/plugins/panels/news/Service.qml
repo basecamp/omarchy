@@ -18,6 +18,8 @@ Item {
   property bool refreshing: false
   property bool refreshPending: false
   property bool stateLoaded: false
+  property bool inspectingFeed: false
+  property string inspectError: ""
 
   readonly property string helperPath: (omarchyPath || "") + "/shell/plugins/panels/news/fetch_news.py"
   readonly property string stateRoot: Quickshell.env("XDG_STATE_HOME") || (Quickshell.env("HOME") + "/.local/state")
@@ -26,9 +28,22 @@ Item {
   readonly property int refreshIntervalMin: intSetting("refreshIntervalMin", 15, 5, 120)
   readonly property int itemLimit: intSetting("itemLimit", 10, 5, 20)
   readonly property var techFeedIds: ["hacker-news", "ars-technica", "techcrunch", "the-verge", "wired", "phoronix", "its-foss", "openai-news", "hugging-face", "mit-ai"]
+  readonly property var feedCatalog: [
+    { "id": "hacker-news", "name": "Hacker News", "description": "Developer and startup news", "category": "developer" },
+    { "id": "ars-technica", "name": "Ars Technica", "description": "Deep technology, science and security", "category": "technology" },
+    { "id": "techcrunch", "name": "TechCrunch", "description": "Startups, business and AI", "category": "startup" },
+    { "id": "the-verge", "name": "The Verge", "description": "Mainstream technology and platforms", "category": "technology" },
+    { "id": "wired", "name": "WIRED", "description": "Technology, science, security and culture", "category": "technology" },
+    { "id": "phoronix", "name": "Phoronix", "description": "Linux kernel, hardware and performance", "category": "linux" },
+    { "id": "its-foss", "name": "It's FOSS", "description": "Accessible Linux and open-source coverage", "category": "linux" },
+    { "id": "openai-news", "name": "OpenAI News", "description": "Official OpenAI product and research news", "category": "ai" },
+    { "id": "hugging-face", "name": "Hugging Face", "description": "Open models, tooling and AI research", "category": "ai" },
+    { "id": "mit-ai", "name": "MIT News: AI", "description": "Academic AI research and developments", "category": "ai" }
+  ]
   readonly property var enabledFeedIds: listSetting("enabledFeeds")
   readonly property var enabledSourceIds: ["omarchy"].concat(enabledFeedIds)
   readonly property string customFeeds: String(setting("customFeeds", "")).substring(0, 4096)
+  readonly property var customFeedEntries: parseCustomFeedEntries(customFeeds)
   readonly property string sourceConfigSignature: enabledSourceIds.join(",") + "|" + customFeeds
   readonly property var visibleItems: items.slice(0, itemLimit)
   readonly property int unreadCount: countUnread()
@@ -37,6 +52,8 @@ Item {
 
   property string _stdout: ""
   property string _stderr: ""
+
+  signal feedInspected(var result)
 
   function setting(name, fallback) {
     var value = settings ? settings[name] : undefined
@@ -61,6 +78,29 @@ Item {
       if (techFeedIds.indexOf(sourceId) !== -1 && result.indexOf(sourceId) === -1) result.push(sourceId)
     }
     return result
+  }
+
+  function parseCustomFeedEntries(value) {
+    var result = []
+    var parts = String(value || "").replace(/\n/g, ";").split(";")
+    for (var i = 0; i < parts.length; i++) {
+      var raw = String(parts[i] || "").trim()
+      if (raw === "") continue
+      var separator = raw.indexOf("|")
+      var name = separator >= 0 ? raw.substring(0, separator).trim() : ""
+      var url = separator >= 0 ? raw.substring(separator + 1).trim() : raw
+      result.push({ "name": name, "url": url })
+    }
+    return result
+  }
+
+  function inspectCustomFeed(url, name) {
+    if (inspectingFeed) return false
+    inspectError = ""
+    inspectingFeed = true
+    inspectProcess.command = ["python3", helperPath, "--inspect-feed", String(url || ""), "--inspect-name", String(name || "")]
+    inspectProcess.running = true
+    return true
   }
 
   function countUnread() {
@@ -177,6 +217,35 @@ Item {
     onExited: function() {
       readState.reload()
       root.refresh()
+    }
+  }
+
+  Process {
+    id: inspectProcess
+    running: false
+    stdout: StdioCollector {
+      id: inspectStdout
+      waitForEnd: true
+    }
+    stderr: StdioCollector {
+      id: inspectStderr
+      waitForEnd: true
+    }
+    onExited: function(exitCode) {
+      root.inspectingFeed = false
+      if (exitCode !== 0) {
+        root.inspectError = root.shortError(inspectStderr.text || "Could not verify this RSS feed")
+        root.feedInspected({ "ok": false, "error": root.inspectError })
+        return
+      }
+      try {
+        var parsed = JSON.parse(String(inspectStdout.text || ""))
+        if (!parsed || parsed.ok !== true || !parsed.url) throw new Error("invalid result")
+        root.feedInspected(parsed)
+      } catch (error) {
+        root.inspectError = "Could not verify this RSS feed"
+        root.feedInspected({ "ok": false, "error": root.inspectError })
+      }
     }
   }
 
