@@ -29,7 +29,10 @@ fail() {
 }
 
 screenshot() {
-  timeout 10 grim "$ARTIFACTS/$1.png" 2>/dev/null || true
+  if ! timeout 10 grim "$ARTIFACTS/$1.png" 2>/dev/null; then
+    printf 'could not capture screenshot %s.png\n' "$1" >&2
+    return 1
+  fi
 }
 
 screen_contains() {
@@ -40,6 +43,7 @@ screen_contains() {
   # native resolution (the weather panel's detail labels, for one).
   if ! timeout 10 grim -s 2 "$snapshot" 2>/dev/null; then
     rm -f "$snapshot"
+    echo "screen_contains: grim failed to capture" >&2
     return 1
   fi
   tesseract "$snapshot" stdout --psm 11 2>/dev/null | grep -Fi -- "$text" >/dev/null

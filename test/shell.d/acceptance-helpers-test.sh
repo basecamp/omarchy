@@ -51,3 +51,20 @@ assert_layer_on_screen "visible-negative-offset" "visible layer is found on a ne
 assert_layer_off_screen "parked-negative-offset" "left-parked layer stays off a negatively offset monitor"
 assert_layer_on_screen "visible-rotated" "visible layer uses the transformed monitor height"
 assert_layer_off_screen "parked-rotated" "parked layer uses the transformed monitor width"
+
+grim_fail=$(mktemp -d)
+trap 'rm -rf "$test_tmp" "$grim_fail"' EXIT
+printf '%s\n' '#!/bin/bash' 'exit 1' >"$grim_fail/grim"
+chmod +x "$grim_fail/grim"
+
+screenshot_out=$(PATH="$grim_fail:$PATH" screenshot "probe" 2>&1) &&
+  fail "screenshot reports success when grim fails" "$screenshot_out"
+grep -q 'could not capture' <<<"$screenshot_out" ||
+  fail "screenshot swallows a grim failure" "$screenshot_out"
+pass "screenshot reports when grim cannot capture"
+
+contains_out=$(PATH="$grim_fail:$PATH" screen_contains "Hello" 2>&1) &&
+  fail "screen_contains reports the text missing when grim fails" "$contains_out"
+grep -q 'grim failed' <<<"$contains_out" ||
+  fail "screen_contains does not name a capture failure" "$contains_out"
+pass "screen_contains names a grim failure instead of missing text"
