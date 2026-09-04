@@ -10,6 +10,7 @@ y=${4:-}
 
 active=$(hyprctl activewindow -j)
 pinned=$(echo "$active" | jq ".pinned")
+floating=$(echo "$active" | jq ".floating")
 addr=$(echo "$active" | jq -r ".address")
 window="address:$addr"
 
@@ -25,7 +26,13 @@ if [[ $pinned == "true" ]]; then
   hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
   hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
 elif [[ -n $addr ]]; then
-  hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+  # An already-floating window must keep its state: toggling would tile it,
+  # and the absolute resize below would then rewrite the dwindle split ratio
+  # instead of sizing a floating window. Skip the toggle so the rest of the
+  # pop presentation lands on a floating window either way.
+  if [[ $floating != "true" ]]; then
+    hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+  fi
   hypr_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
 
   if [[ -n $x && -n $y ]]; then
