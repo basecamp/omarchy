@@ -22,7 +22,9 @@ rm -f "$HOME/.local/bin/$command"
 cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
-mise use -g --quiet "$package" || exit 1
+mise use -g --quiet "$package"
+__rc=\$?
+[[ \$__rc -ge 128 ]] && exit \$__rc
 exec mise x "$package" -- "$bin" "\$@"
 EOF
 
