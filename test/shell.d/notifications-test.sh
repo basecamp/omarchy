@@ -360,6 +360,65 @@ assert(
   'notifications ignore identity fields when deciding whether a refresh has work'
 )
 
+// Omarchy 3.8's mako configuration grouped visible notifications by the exact
+// app-name, summary and body tuple. Keep that behavior when different D-Bus ids
+// carry the same visible notification (Electron renderers can each emit one).
+const groupedPopups = [
+  { originalId: 21, app: 'ChatGPT', summary: 'Task finished', body: 'The answer is ready', urgency: 1 },
+  { originalId: 22, app: 'ChatGPT', summary: 'Task finished', body: 'The answer is ready', urgency: 2 },
+  { originalId: 23, app: 'ChatGPT', summary: 'Task finished', body: 'A different answer is ready', urgency: 1 },
+  { originalId: 24, app: 'Mail', summary: 'Task finished', body: 'The answer is ready', urgency: 1 }
+]
+assertDeepEqual(
+  notifications.popupGroup(groupedPopups, 0),
+  { count: 2, leader: true },
+  'notifications make the newest exact content match the visible group leader'
+)
+assertDeepEqual(
+  notifications.popupGroup(groupedPopups, 1),
+  { count: 2, leader: false },
+  'notifications hide older members of an exact content group'
+)
+assertDeepEqual(
+  notifications.popupGroup({ count: groupedPopups.length, get: index => groupedPopups[index] }, 0),
+  { count: 2, leader: true },
+  'notifications group rows read through the QML ListModel contract'
+)
+assertDeepEqual(
+  notifications.popupGroup(groupedPopups.slice(1), 0),
+  { count: 1, leader: true },
+  'notifications promote the next member when the group leader leaves'
+)
+assertDeepEqual(
+  notifications.popupGroup(groupedPopups, 99),
+  { count: 0, leader: false },
+  'notifications treat a missing row as no group'
+)
+assertDeepEqual(
+  notifications.popupGroup(groupedPopups, 2),
+  { count: 1, leader: true },
+  'notifications do not group a different body'
+)
+assertDeepEqual(
+  notifications.popupGroup(groupedPopups, 3),
+  { count: 1, leader: true },
+  'notifications do not group a different app'
+)
+
+const groupingServiceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
+assert(
+  /readonly property var group: NotificationLogic\.popupGroup\(popupModel, cardSlot\.index\)/.test(groupingServiceQml),
+  'the popup delegate derives its visible group from the complete live model'
+)
+assert(
+  /visible: cardSlot\.group\.leader/.test(groupingServiceQml),
+  'only the newest member of an exact notification group is visible'
+)
+assert(
+  /cardSlot\.group\.count > 1[\s\S]*cardSlot\.group\.count/.test(groupingServiceQml),
+  'a grouped notification shows how many exact copies were received'
+)
+
 const settings = notifications.parseSettings(JSON.stringify({ version: 3, dnd: true }))
 assertEqual(settings.dnd, true, 'notifications parse the persisted DND state')
 assertEqual(settings.legacy, false, 'notifications do not flag a current settings file as legacy')

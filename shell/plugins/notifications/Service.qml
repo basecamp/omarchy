@@ -1004,6 +1004,13 @@ Item {
             required property double expireTimeout
             required property double timestamp
 
+            // Omarchy's former mako daemon grouped exact app-name + summary +
+            // body matches. Keep every notification alive in the model, but
+            // draw only the newest member and expose the group size in its
+            // summary, matching mako's default grouped format.
+            readonly property var group: NotificationLogic.popupGroup(popupModel, cardSlot.index)
+            visible: cardSlot.group.leader
+
             // Each card sizes itself based on mode (text vs media); the slot
             // tracks the card so the column auto-fits to whichever is widest.
             Layout.preferredWidth: card.implicitWidth
@@ -1043,7 +1050,9 @@ Item {
               anchors.right: parent.right
               app: cardSlot.app
               appIcon: cardSlot.appIcon
-              summary: cardSlot.summary
+              summary: cardSlot.group.count > 1
+                ? "(" + cardSlot.group.count + ") " + cardSlot.summary
+                : cardSlot.summary
               body: cardSlot.body
               image: cardSlot.image
               urgency: cardSlot.urgency
