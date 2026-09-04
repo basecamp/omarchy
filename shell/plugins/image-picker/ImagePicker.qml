@@ -22,6 +22,7 @@ Item {
   property bool imagesLoaded: false
   property bool opened: false
   property bool showLabels: false
+  property bool sentenceLabels: false
   property bool filterable: false
   property bool layoutSettled: false
   property bool requestActive: false
@@ -79,11 +80,15 @@ Item {
     return ImagePickerModel.labelForPath(path)
   }
 
+  function captionForPath(path) {
+    return ImagePickerModel.captionForPath(path)
+  }
+
   function currentLabel() {
     var path = currentPath()
     if (!path) return filterText ? "No matches" : ""
 
-    return labelForPath(path)
+    return sentenceLabels ? captionForPath(path) : labelForPath(path)
   }
 
   function itemMatches(index) {
@@ -219,7 +224,8 @@ Item {
     selectionFile = nextSelectionFile
     doneFile = nextDoneFile
     requestActive = !!doneFile
-    showLabels = nextShowLabels === true || nextShowLabels === "true"
+    showLabels = nextShowLabels === true || nextShowLabels === "true" || nextShowLabels === "sentence"
+    sentenceLabels = nextShowLabels === "sentence"
     filterable = nextFilterable === true || nextFilterable === "true"
     filterText = ""
     layoutSettled = false
@@ -314,8 +320,8 @@ Item {
     var sel = String(args.selectedImage || selectedImage)
     var selFile = String(args.selectionFile || "")
     var doneF = String(args.doneFile || "")
-    var labels = args.showLabels === true || args.showLabels === "true"
-    var filter = args.filterable === true || args.filterable === "true"
+    var labels = args.showLabels
+    var filter = args.filterable
     openSelector(dirs, rows, sel, selFile, doneF, labels, filter)
   }
 
@@ -333,7 +339,8 @@ Item {
     requestSerial += 1
     imageRows = nextImageRows
     selectedImage = nextSelectedImage
-    showLabels = nextShowLabels === true || nextShowLabels === "true"
+    showLabels = nextShowLabels === true || nextShowLabels === "true" || nextShowLabels === "sentence"
+    sentenceLabels = nextShowLabels === "sentence"
     filterable = nextFilterable === true || nextFilterable === "true"
     filterText = ""
     layoutSettled = false

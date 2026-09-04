@@ -6,6 +6,10 @@ function labelForPath(path) {
   return nameForPath(path).replace(/[-_]+/g, " ").replace(/\b\w/g, function(match) { return match.toUpperCase() })
 }
 
+function captionForPath(path) {
+  return nameForPath(path).replace(/[-_]+/g, " ").replace(/^./, function(match) { return match.toUpperCase() })
+}
+
 function loadRows(rows) {
   var images = []
   var seen = {}
@@ -86,6 +90,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     nameForPath: nameForPath,
     labelForPath: labelForPath,
+    captionForPath: captionForPath,
     loadRows: loadRows,
     itemMatches: itemMatches,
     firstMatchingIndex: firstMatchingIndex,

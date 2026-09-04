@@ -9,7 +9,9 @@ const fs = require('fs')
 const picker = requireFromRoot('shell/plugins/image-picker/ImagePickerModel.js')
 
 assertEqual(picker.nameForPath('/themes/nord-river.png'), 'nord-river', 'image picker strips directory and extension')
-assertEqual(picker.labelForPath('/themes/nord_river.png'), 'Nord River', 'image picker builds display labels')
+assertEqual(picker.labelForPath('/themes/nord_river.png'), 'Nord River', 'image picker builds title-case display labels')
+assertEqual(picker.captionForPath('/themes/nord_river.png'), 'Nord river', 'image picker captions replace separators and capitalize the first word')
+assertEqual(picker.captionForPath('/themes/soft_BLUE-sky.jpeg'), 'Soft BLUE sky', 'image picker captions preserve filename casing after the first character')
 
 const rows = [
   '/themes/a/nord-river.png\t/cache/nord-river.jpg',
@@ -31,7 +33,7 @@ assertDeepEqual(
   'image picker parses rows and dedupes by file name'
 )
 
-assert(picker.itemMatches(images, 0, 'river'), 'image picker matches file names')
+assert(picker.itemMatches(images, 0, 'RIVER'), 'image picker substring filter matches mid-name text case-insensitively')
 assert(picker.itemMatches(images, 1, 'Gruvbox Dark'), 'image picker matches labels case-insensitively')
 assert(!picker.itemMatches(images, 2, 'river'), 'image picker rejects non-matching filters')
 assertEqual(picker.firstMatchingIndex(images, 'plain'), 2, 'image picker finds first matching index')
@@ -42,7 +44,21 @@ assertEqual(picker.filteredPosition(images, 2, 'dark'), 1, 'image picker compute
 assertEqual(picker.selectedFilteredPosition(images, 2, 'dark'), 0, 'image picker selected filtered position falls back when selected is hidden')
 assertEqual(picker.nextSelectedIndexForFilter(images, 0, 'dark'), 1, 'image picker moves selection to first match when filter hides current item')
 
+const backgroundSwitcher = fs.readFileSync(path.join(root, 'bin/omarchy-theme-bg-switcher'), 'utf8')
+assert(
+  /omarchy-menu-images\s+\\\n\s+--sentence-labels\s+\\/.test(backgroundSwitcher),
+  'background switcher shows filename captions'
+)
+assert(
+  /--filterable\s+\\/.test(backgroundSwitcher),
+  'background switcher filters filename substrings'
+)
+
 const imagePickerQml = fs.readFileSync(path.join(root, 'shell/plugins/image-picker/ImagePicker.qml'), 'utf8')
+assert(
+  /event\.key === Qt\.Key_Escape[\s\S]*if \(root\.filterText\)[\s\S]*root\.updateFilter\(""\)/.test(imagePickerQml),
+  'image picker clears an active filter on Escape'
+)
 assert(
   /function preloadRows[\s\S]*if \(opened \|\| requestActive\) return/.test(imagePickerQml),
   'image picker ignores cache preloads while a request is visible'
