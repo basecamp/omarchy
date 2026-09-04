@@ -41,6 +41,10 @@ REAL_PYTHON=$(PATH="$stub_bin:$PATH" command -p -v python3)
 export REAL_PYTHON
 rm -f "$stub_bin/python3"
 
+# Use this script's process ID as the "browser test process" to check if the "test browser ID" is alive or not
+# via the profile_open() function in the migration (1786643346)
+export TEST_PID=$$
+
 run_migration() {
   HOME="$home" PATH="$stub_bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>&1
 }
@@ -50,7 +54,7 @@ run_migration() {
 # not the mere presence of a browser process — is what the migration waits on.
 open_browser() {
   mkdir -p "$profile_root"
-  ln -sfn "test-host-1234" "$profile_root/SingletonLock"
+  ln -sfn "test-host-$TEST_PID" "$profile_root/SingletonLock"
 }
 close_browser() {
   rm -f "$profile_root/SingletonLock"
@@ -90,7 +94,7 @@ pass "migration keeps the browser prompt visible"
 # prompt, which the still-declining gum stub would otherwise fail.
 close_browser
 mkdir -p "$home/.config/google-chrome"
-ln -sfn "test-host-1234" "$home/.config/google-chrome/SingletonLock"
+ln -sfn "test-host-$TEST_PID" "$home/.config/google-chrome/SingletonLock"
 write_stale_preferences
 run_migration || fail "migration repairs while a different profile root is open"
 jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
@@ -177,7 +181,7 @@ cat >"$stub_bin/python3" <<'STUB'
 # the check calls report a surviving ghost through their exit status.
 "${REAL_PYTHON}" "$@"
 status=$?
-[[ ${5:-} == "repair" ]] && ln -sfn "test-host-1234" "$HOME/.config/chromium/SingletonLock"
+[[ ${5:-} == "repair" ]] && ln -sfn "test-host-$TEST_PID" "$HOME/.config/chromium/SingletonLock"
 exit $status
 STUB
 chmod +x "$stub_bin/python3"

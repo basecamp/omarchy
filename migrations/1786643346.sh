@@ -127,9 +127,25 @@ unverified_repairs_exist() {
 # Whether a profile is open is mechanical: a running Chromium-family browser
 # holds a SingletonLock (and socket) inside its user-data-dir.
 profile_open() {
-  # -L catches a SingletonLock left as a dangling symlink; -e covers a plain
-  # file, and -S the socket — any of them means a browser is attached.
-  [[ -L $1/SingletonLock || -e $1/SingletonLock || -S $1/SingletonSocket ]]
+  local lock="$1/SingletonLock"
+
+  # If there is no lock or socket, the profile is definitely closed
+  [[ -L $lock || -e $lock || -S $1/SingletonSocket ]] || return 1
+
+  # If it is a symlink, verify the process is actually running
+  if [[ -L $lock ]]; then
+    local target
+    target=$(readlink "$lock")
+    local pid="${target##*-}"
+
+    # If the PID is a number but the process isn't running, it's a ghost lock
+    # kill -0 simply checks if the process is running or not
+    if [[ "$pid" =~ ^[0-9]+$ ]] && ! kill -0 "$pid" 2>/dev/null; then
+      return 1
+    fi
+  fi
+
+  return 0
 }
 
 # Gate on a pending — or to-be-verified — profile actually being open, not on
