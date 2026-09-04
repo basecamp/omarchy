@@ -8,6 +8,16 @@ BarWidget {
   id: root
   moduleName: "omarchy.workspaces"
 
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      // Quickshell 0.3.1 updates a moved workspace's monitor but leaves each
+      // monitor's activeWorkspace stale. focusedWorkspace is derived from it,
+      // so refresh the monitor model after Hyprland completes the move.
+      if (event.name === "moveworkspacev2") Hyprland.refreshMonitors()
+    }
+  }
+
   function workspaceById(id) {
     var values = Hyprland.workspaces.values
     for (var i = 0; i < values.length; i++) {
