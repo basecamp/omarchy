@@ -34,6 +34,14 @@ write_usb_devices() {
   done
 }
 
+write_interface_name() {
+  local dev="$1" number="$2" name="$3"
+  local intf="$tmp_dir/devices/$dev/$dev:$number"
+
+  mkdir -p "$intf"
+  printf '%s\n' "$name" >"$intf/interface"
+}
+
 hw_fingerprint() {
   OMARCHY_USB_DEVICES_PATH="$tmp_dir/devices" "$ROOT/bin/omarchy-hw-fingerprint"
 }
@@ -70,6 +78,15 @@ assert_rejects "an FPC token mid-string is not detected"
 
 write_usb_devices '1234:5678:Goodix Fingerprint USB Device'
 assert_detects "a reader is detected by an existing product-name match"
+
+write_usb_devices '0a5c:5865:58200'
+write_interface_name '1-0' '1.0' 'Broadcom ControlVault 3+ SmartCard'
+write_interface_name '1-0' '1.1' 'Broadcom ControlVault 3+ w/FingerPrint'
+assert_detects "a reader named only by one composite USB interface is detected"
+
+write_usb_devices '0a5c:5865:58200'
+write_interface_name '1-0' '1.0' 'Broadcom ControlVault 3+ SmartCard'
+assert_rejects "a generic USB interface is not detected"
 
 write_usb_devices '27c6:1234'
 assert_detects "a reader is detected by an existing vendor match"
