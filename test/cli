@@ -51,6 +51,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
+command -v rg >/dev/null || fail "required command is available: rg"
+
 output=$("$CLI" --help)
 assert_output_contains "main help renders" "$output" "Omarchy command center"
 assert_output_contains "main help includes hardware group" "$output" "hw"

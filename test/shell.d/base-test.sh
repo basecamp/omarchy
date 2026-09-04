@@ -29,6 +29,10 @@ require_command() {
   command -v "$command" >/dev/null || fail "required command is available: $command"
 }
 
+# Negative `rg` guards treat a missing binary as "no match" and print ok.
+# Fail the file instead. Ripgrep is part of Omarchy's default package set.
+require_command rg
+
 # WAYLAND_DISPLAY proves the variable was inherited, not that the compositor
 # answers. Sandboxes pass the environment through while blocking
 # $XDG_RUNTIME_DIR, so Quickshell clears a bare variable check and then aborts
