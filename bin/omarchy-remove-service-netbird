@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Remove NetBird and its bar plugin.
+# omarchy:requires-sudo=true
+
+netbird down 2>/dev/null || true
+sudo systemctl disable --now netbird.service 2>/dev/null || true
+omarchy-plugin-disable omarchy.netbird
+omarchy-webapp-remove "NetBird" 2>/dev/null || true
+omarchy-pkg-drop netbird
+
+echo ""
+echo "NetBird has been removed."
