@@ -6,7 +6,7 @@
 
 # One knob for apparent text size across the desktop. It drives three settings
 # in lockstep, all anchored to the shell default of 12px:
-#   • the omarchy shell's font base-size (~/.config/omarchy/shell.toml [font])
+#   • the omarchy shell's font base-size ($XDG_CONFIG_HOME/omarchy/shell.toml [font])
 #   • GNOME/GTK's text-scaling-factor    (12px -> 1.0, quantized so the GTK
 #     interface font lands on a whole point size, so 16 -> 15pt/11pt = 1.3636)
 #   • the terminal font point size       (12px -> 9pt, so terminal_pt = px * 9/12)
@@ -23,7 +23,8 @@ GKEY_NAME="text-scaling-factor"
 TERM_DEFAULT_PT=9
 SHELL_DEFAULT_PX=12
 
-shell_config="$HOME/.config/omarchy/shell.toml"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+shell_config="$config_home/omarchy/shell.toml"
 
 usage() {
   echo "Usage: omarchy-display-text-size [size|reset]"
@@ -135,22 +136,22 @@ term_pt_for() {
 set_terminal_size() {
   local pt="$1"
 
-  if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
-    sed -i -E "s/^size[[:space:]]*=.*/size = $pt/" ~/.config/alacritty/alacritty.toml
+  if [[ -f $config_home/alacritty/alacritty.toml ]]; then
+    sed -i -E "s/^size[[:space:]]*=.*/size = $pt/" "$config_home/alacritty/alacritty.toml"
   fi
 
-  if [[ -f ~/.config/kitty/kitty.conf ]]; then
-    sed -i -E "s/^font_size[[:space:]]+.*/font_size $pt.0/" ~/.config/kitty/kitty.conf
+  if [[ -f $config_home/kitty/kitty.conf ]]; then
+    sed -i -E "s/^font_size[[:space:]]+.*/font_size $pt.0/" "$config_home/kitty/kitty.conf"
     pkill -USR1 kitty 2>/dev/null || true
   fi
 
-  if [[ -f ~/.config/ghostty/config ]]; then
-    sed -i -E "s/^font-size = .*/font-size = $pt/" ~/.config/ghostty/config
+  if [[ -f $config_home/ghostty/config ]]; then
+    sed -i -E "s/^font-size = .*/font-size = $pt/" "$config_home/ghostty/config"
     pkill -SIGUSR2 ghostty 2>/dev/null || true
   fi
 
-  if [[ -f ~/.config/foot/foot.ini ]]; then
-    sed -i -E "s/(:size=)[0-9.]+/\1$pt/" ~/.config/foot/foot.ini
+  if [[ -f $config_home/foot/foot.ini ]]; then
+    sed -i -E "s/(:size=)[0-9.]+/\1$pt/" "$config_home/foot/foot.ini"
     # Foot has no config-reload signal, so a running instance keeps its startup
     # size until relaunched (new windows pick up the change). Nudge the user —
     # but reuse the same notification id (freedesktop replaces_id) so dragging
@@ -172,14 +173,14 @@ set_terminal_size() {
 
 # Report the current terminal point size from whichever config we find first.
 term_current_pt() {
-  if [[ -f ~/.config/ghostty/config ]]; then
-    grep -oP '^font-size = \K[0-9.]+' ~/.config/ghostty/config | head -1
-  elif [[ -f ~/.config/alacritty/alacritty.toml ]]; then
-    grep -oP '^size[[:space:]]*=[[:space:]]*\K[0-9.]+' ~/.config/alacritty/alacritty.toml | head -1
-  elif [[ -f ~/.config/kitty/kitty.conf ]]; then
-    grep -oP '^font_size[[:space:]]+\K[0-9.]+' ~/.config/kitty/kitty.conf | head -1
-  elif [[ -f ~/.config/foot/foot.ini ]]; then
-    grep -oP ':size=\K[0-9.]+' ~/.config/foot/foot.ini | head -1
+  if [[ -f $config_home/ghostty/config ]]; then
+    grep -oP '^font-size = \K[0-9.]+' "$config_home/ghostty/config" | head -1
+  elif [[ -f $config_home/alacritty/alacritty.toml ]]; then
+    grep -oP '^size[[:space:]]*=[[:space:]]*\K[0-9.]+' "$config_home/alacritty/alacritty.toml" | head -1
+  elif [[ -f $config_home/kitty/kitty.conf ]]; then
+    grep -oP '^font_size[[:space:]]+\K[0-9.]+' "$config_home/kitty/kitty.conf" | head -1
+  elif [[ -f $config_home/foot/foot.ini ]]; then
+    grep -oP ':size=\K[0-9.]+' "$config_home/foot/foot.ini" | head -1
   fi
 }
 

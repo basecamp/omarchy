@@ -9,6 +9,7 @@ usage() {
 }
 
 font_name="${1:-}"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 case "$font_name" in
   -h|--help)
@@ -26,29 +27,35 @@ if ! fc-list | grep -Fqi -- "$font_name"; then
   exit 1
 fi
 
-if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
-  sed -i "s/family = \".*\"/family = \"$font_name\"/g" ~/.config/alacritty/alacritty.toml
+# Font names are inserted into both sed replacements and XML text. Escape the
+# replacement metacharacters before editing terminal configs, and XML entities
+# before writing fontconfig, so a valid font name cannot corrupt either file.
+sed_font_name="$(printf '%s' "$font_name" | sed 's/[\\&|]/\\&/g')"
+xml_font_name="$(printf '%s' "$font_name" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')"
+
+if [[ -f $config_home/alacritty/alacritty.toml ]]; then
+  sed -i "s|family = \".*\"|family = \"$sed_font_name\"|g" "$config_home/alacritty/alacritty.toml"
 fi
 
-if [[ -f ~/.config/kitty/kitty.conf ]]; then
-  sed -i "s/^font_family .*/font_family $font_name/g" ~/.config/kitty/kitty.conf
+if [[ -f $config_home/kitty/kitty.conf ]]; then
+  sed -i "s|^font_family .*|font_family $sed_font_name|g" "$config_home/kitty/kitty.conf"
   pkill -USR1 kitty
 fi
 
-if [[ -f ~/.config/ghostty/config ]]; then
-  sed -i "s/font-family = \".*\"/font-family = \"$font_name\"/g" ~/.config/ghostty/config
+if [[ -f $config_home/ghostty/config ]]; then
+  sed -i "s|font-family = \".*\"|font-family = \"$sed_font_name\"|g" "$config_home/ghostty/config"
   pkill -SIGUSR2 ghostty
 fi
 
-if [[ -f ~/.config/foot/foot.ini ]]; then
-  sed -i "s/^font=.*/font=$font_name:size=9/g" ~/.config/foot/foot.ini
+if [[ -f $config_home/foot/foot.ini ]]; then
+  sed -i "s|^font=.*|font=$sed_font_name:size=9|g" "$config_home/foot/foot.ini"
 fi
 
 # fontconfig is the canonical source of truth — the omarchy shell, Qt apps,
 # and anything resolving "monospace" all read from here. This file is loaded
 # after the package-owned default, and prepend_first puts the chosen family at
 # the head of the list so it wins over the family that default prefers.
-fontconfig_file="$HOME/.config/fontconfig/fonts.conf"
+fontconfig_file="$config_home/fontconfig/fonts.conf"
 mkdir -p "$(dirname "$fontconfig_file")"
 cat >"$fontconfig_file" <<XML
 <?xml version="1.0"?>
@@ -59,7 +66,7 @@ cat >"$fontconfig_file" <<XML
       <string>monospace</string>
     </test>
     <edit name="family" mode="prepend_first" binding="strong">
-      <string>$font_name</string>
+      <string>$xml_font_name</string>
     </edit>
   </match>
 </fontconfig>
