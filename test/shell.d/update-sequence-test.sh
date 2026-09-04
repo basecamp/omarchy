@@ -25,6 +25,7 @@ steps=(
   omarchy-migrate
   omarchy-hook
   omarchy-update-aur-pkgs
+  omarchy-plugin-update
   omarchy-update-mise
   omarchy-update-orphan-pkgs
   omarchy-update-analyze-logs
@@ -35,6 +36,9 @@ steps=(
 for step in "${steps[@]}"; do
   cat >"$stub_bin/$step" <<'STUB'
 #!/bin/bash
+if [[ ${0##*/} == omarchy-plugin-update ]]; then
+  printf '%s\n' "${1:-}" >"$PLUGIN_UPDATE_ARG_LOG"
+fi
 printf '%s unattended=%s\n' "${0##*/}" "${OMARCHY_UPDATE_UNATTENDED:-}" >>"$STEP_LOG"
 [[ ${FAILING_STEP:-} != "${0##*/}" ]] || exit 1
 STUB
@@ -46,8 +50,10 @@ done
 run_update() {
   : >"$test_tmp/steps"
   STEP_LOG="$test_tmp/steps" \
+    PLUGIN_UPDATE_ARG_LOG="$test_tmp/plugin-update-arg" \
     FAILING_STEP="${FAILING_STEP:-}" \
     OMARCHY_UPDATE_LOGGED=1 \
+    HOME="$test_tmp/home" \
     PATH="$stub_bin:$PATH" \
     bash "$ROOT/bin/omarchy-update" "$@" >"$test_tmp/out" 2>"$test_tmp/err"
 }
@@ -72,6 +78,7 @@ expected_steps() {
     omarchy-migrate \
     omarchy-hook \
     omarchy-update-aur-pkgs \
+    omarchy-plugin-update \
     omarchy-update-mise \
     omarchy-update-orphan-pkgs \
     omarchy-update-analyze-logs \
@@ -80,6 +87,8 @@ expected_steps() {
     omarchy-update-restart
 }
 
+mkdir -p "$test_tmp/home/.config/omarchy/plugins/test.plugin/.git"
+
 run_update -y || fail "an update where everything works reports a failure"
 diff <(expected_steps) <(steps_run) >"$test_tmp/order" ||
   fail "an update where everything works does not run every step in order" "$(cat "$test_tmp/order")"
@@ -87,11 +96,15 @@ pass "an update where every step works runs all of them, in order"
 
 grep -q '^omarchy-update-system-pkgs unattended=1$' "$test_tmp/steps" ||
   fail "-y does not mark the update unattended"
+grep -qx -- '--yes' "$test_tmp/plugin-update-arg" ||
+  fail "-y does not approve plugin updates without another prompt"
 run_update </dev/null || fail "a confirmed update reports a failure"
 diff <(expected_steps confirmed) <(steps_run) >"$test_tmp/order" ||
   fail "a confirmed update runs a different set of steps" "$(cat "$test_tmp/order")"
 grep -q '^omarchy-update-system-pkgs unattended=$' "$test_tmp/steps" ||
   fail "an update a person confirmed is treated as unattended"
+grep -qx '' "$test_tmp/plugin-update-arg" ||
+  fail "an interactive update does not leave plugin review enabled"
 pass "-y is what marks an update unattended, not the update itself"
 
 # Migrations ship with the packages the upgrade installs and are written against
