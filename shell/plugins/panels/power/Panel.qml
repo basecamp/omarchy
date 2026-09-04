@@ -67,7 +67,12 @@ Panel {
   }
   readonly property bool discharging: {
     var device = UPower.displayDevice
-    return !!(device && device.isPresent && UPower.onBattery)
+    if (!(device && device.isPresent)) return false
+    // Trust the battery's own reported state in addition to the global
+    // UPower.onBattery flag. The two can disagree (AC-detection can lag or
+    // get stuck), and when they do, the per-device state is the one that
+    // matches physical reality — it's what /sys/class/power_supply reports.
+    return !!(UPower.onBattery || device.state === UPowerDeviceState.Discharging)
   }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
@@ -84,7 +89,7 @@ Panel {
 
   readonly property bool charging: {
     var d = UPower.displayDevice
-    return d && d.isPresent && !UPower.onBattery && !root.batteryFlowIdle
+    return d && d.isPresent && !root.discharging && !root.batteryFlowIdle
   }
 
   readonly property color batteryFillColor: {
