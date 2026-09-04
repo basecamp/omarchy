@@ -327,6 +327,11 @@ assert(/\[\[ \$2 == "sae" \]\] && pmf="wifi-sec\.pmf 3"/.test(network.hiddenPskC
 assert(!/connection delete id "\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never deletes an existing profile by name')
 assert(!network.hiddenPskConnectScript.includes('connection delete id '), 'hidden PSK connect script never deletes any existing profile by name (id), regardless of the argument')
 assert(/nmcli -t -f UUID,TYPE connection show/.test(network.hiddenPskConnectScript), 'hidden PSK connect script lists all connections (UUID + type) in a single nmcli call')
+assert(network.hiddenPskConnectScript.includes('done < <(nmcli -t -f UUID,TYPE connection show)'), 'hidden PSK connect script reads the dedupe queries through process substitution, keeping bash in an interruptible read instead of waiting on a foreground command substitution')
+assert(network.hiddenPskConnectScript.includes('done < <(LC_ALL=C nmcli --escape no -g'), 'hidden PSK connect script reads the dedupe queries through process substitution, keeping bash in an interruptible read instead of waiting on a foreground command substitution')
+assert(network.hiddenPskConnectScript.includes('>/dev/null & wait $!; }'), 'hidden PSK connect script backgrounds connection add under wait so the TERM trap can preempt it')
+assert(network.hiddenPskConnectScript.includes('nmcli connection edit uuid "$u" >/dev/null & wait $!; }'), 'hidden PSK connect script backgrounds connection edit under wait so the TERM trap can preempt it')
+assert(network.hiddenPskConnectScript.includes('trap \'timeout -k 1 5 nmcli connection delete uuid "$u"'), 'hidden PSK connect script bounds the EXIT-trap cleanup delete so a wedged NetworkManager cannot stall the dying process')
 assert(!/for c in \$\(nmcli/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never runs nmcli once per connection (N+1)')
 assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wireless\.hidden,802-11-wireless-security\.key-mgmt,802-11-wireless\.bssid,802-11-wireless\.mac-address,connection\.interface-name,ipv4\.method,ipv6\.method,ipv4\.addresses,ipv4\.dns,ipv4\.routes,ipv6\.addresses,ipv6\.dns,ipv6\.routes connection show \$wifi/.test(network.hiddenPskConnectScript), 'hidden PSK connect script fetches ssid/hidden/identity/IP-customization fields for all wifi profiles in one batched, unescaped query so a colon/backslash SSID still compares equal to the raw $1')
 assert(/\[\[ \$t == "802-11-wireless" \]\] && wifi=/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers 802-11-wireless connections for cleanup')
@@ -340,8 +345,8 @@ assert(/connection up uuid "\$u"[\s\S]*nmcli connection delete \$old/.test(netwo
 // it on any failure or TERM/INT kill, and disarmed (`trap - EXIT`) only
 // after `connection up` proves it. `true` pins the success block's status
 // so a stale old-UUID delete can't flip the chain to failure.
-assert(/trap 'nmcli connection delete uuid "\$u"[^']*' EXIT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script arms an EXIT trap that removes the unproven profile on any failure or kill')
-assert(/trap 'exit 143' TERM INT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script converts TERM/INT into an exit so the EXIT trap cleanup runs on a panel kill')
+assert(/trap 'timeout -k 1 5 nmcli connection delete uuid "\$u"[^']*' EXIT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script arms an EXIT trap that removes the unproven profile on any failure or kill')
+assert(/trap 'kill -TERM \$! 2>\/dev\/null; exit 143' TERM INT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script\'s TERM trap kills the in-flight nmcli so a panel kill is never deferred behind a foreground child')
 assert(
   network.hiddenPskConnectScript.indexOf("' EXIT") < network.hiddenPskConnectScript.indexOf('connection add'),
   'hidden PSK connect script arms the cleanup trap before the profile is created'
@@ -369,6 +374,9 @@ assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*
 // between profiles, so the uuid read skips blanks to keep 3-line groups aligned.
 assert(/IFS= read -r ssid; IFS= read -r hidden;/.test(network.hiddenPskConnectScript), 'hidden PSK connect script parses ssid/hidden with IFS= read -r so a space-padded SSID is not trimmed')
 assert(/\[\[ -n \$c \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script skips the blank separator lines between batched profiles so field groups stay aligned')
+assert(network.hiddenPskConnectScript.includes('[[ $c != "$u" ]] || continue'), 'hidden PSK connect script dedupe skips the profile this attempt just created, so the late snapshot cannot delete it')
+assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*--escape no -g[\s\S]*nmcli connection delete \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script snapshots duplicates inside the modify-success block, immediately before the batched delete (TOCTOU guard)')
+assert(/connection modify[\s\S]*trap 'kill -TERM \$! 2>\/dev\/null; exit 143' TERM INT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script re-arms the kill-child TERM trap before the late snapshot so a panel kill still interrupts it')
 
 // An open hidden network has no credentials, but must still avoid `nmcli
 // device wifi connect`, which persists an autoconnecting profile before
@@ -381,8 +389,8 @@ assert(/connection\.autoconnect no/.test(network.hiddenOpenConnectScript), 'hidd
 assert(!/wifi-sec/.test(network.hiddenOpenConnectScript), 'hidden open connect script sets no wifi security properties on an open profile')
 assert(!/IFS= read -r pw/.test(network.hiddenOpenConnectScript), 'hidden open connect script never reads a passphrase, since open networks have none')
 
-assert(/trap 'nmcli connection delete uuid "\$u"[^']*' EXIT/.test(network.hiddenOpenConnectScript), 'hidden open connect script arms an EXIT trap that removes the unproven profile on any failure or kill')
-assert(/trap 'exit 143' TERM INT/.test(network.hiddenOpenConnectScript), 'hidden open connect script converts TERM/INT into an exit so the EXIT trap cleanup runs on a panel kill')
+assert(/trap 'timeout -k 1 5 nmcli connection delete uuid "\$u"[^']*' EXIT/.test(network.hiddenOpenConnectScript), 'hidden open connect script arms an EXIT trap that removes the unproven profile on any failure or kill')
+assert(/trap 'kill -TERM \$! 2>\/dev\/null; exit 143' TERM INT/.test(network.hiddenOpenConnectScript), 'hidden open connect script\'s TERM trap kills the in-flight nmcli so a panel kill is never deferred behind a foreground child')
 assert(
   network.hiddenOpenConnectScript.indexOf("' EXIT") < network.hiddenOpenConnectScript.indexOf('connection add'),
   'hidden open connect script arms the cleanup trap before the profile is created'
@@ -399,4 +407,11 @@ assert(
 assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*nmcli connection delete \$old/.test(network.hiddenOpenConnectScript), 'hidden open connect script deletes old profiles only if the autoconnect arm succeeded')
 
 assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wireless\.hidden,802-11-wireless-security\.key-mgmt,802-11-wireless\.bssid,802-11-wireless\.mac-address,connection\.interface-name,ipv4\.method,ipv6\.method,ipv4\.addresses,ipv4\.dns,ipv4\.routes,ipv6\.addresses,ipv6\.dns,ipv6\.routes connection show \$wifi/.test(network.hiddenOpenConnectScript), 'hidden open connect script shares the same batched dedupe query as the PSK script, so it dedupes prior hidden profiles too')
+assert(network.hiddenOpenConnectScript.includes('done < <(nmcli -t -f UUID,TYPE connection show)'), 'hidden open connect script reads the dedupe queries through process substitution, keeping bash in an interruptible read instead of waiting on a foreground command substitution')
+assert(network.hiddenOpenConnectScript.includes('done < <(LC_ALL=C nmcli --escape no -g'), 'hidden open connect script reads the dedupe queries through process substitution, keeping bash in an interruptible read instead of waiting on a foreground command substitution')
+assert(network.hiddenOpenConnectScript.includes('>/dev/null & wait $!; }'), 'hidden open connect script backgrounds connection add under wait so the TERM trap can preempt it')
+assert(network.hiddenOpenConnectScript.includes('trap \'timeout -k 1 5 nmcli connection delete uuid "$u"'), 'hidden open connect script bounds the EXIT-trap cleanup delete so a wedged NetworkManager cannot stall the dying process')
+assert(network.hiddenOpenConnectScript.includes('[[ $c != "$u" ]] || continue'), 'hidden open connect script dedupe skips the profile this attempt just created, so the late snapshot cannot delete it')
+assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*--escape no -g[\s\S]*nmcli connection delete \$old/.test(network.hiddenOpenConnectScript), 'hidden open connect script snapshots duplicates inside the modify-success block, immediately before the batched delete (TOCTOU guard)')
+assert(/connection modify[\s\S]*trap 'kill -TERM \$! 2>\/dev\/null; exit 143' TERM INT/.test(network.hiddenOpenConnectScript), 'hidden open connect script re-arms the kill-child TERM trap before the late snapshot so a panel kill still interrupts it')
 JS

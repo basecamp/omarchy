@@ -60,6 +60,12 @@ case "$*" in
     exit 0
     ;;
   *"-t -f UUID,TYPE connection show"*)
+    [[ -n ${NM_LIST_PID_FILE:-} ]] && printf '%s\n' "$$" >"$NM_LIST_PID_FILE"
+    if [[ -n ${NM_LIST_SLEEP:-} ]]; then
+      sleep "$NM_LIST_SLEEP" & sleep_pid=$!
+      trap 'kill -TERM $sleep_pid 2>/dev/null; exit 143' TERM
+      wait $sleep_pid
+    fi
     printf '%s' "$NM_CONNECTIONS"
     ;;
   *"--escape no -g"*)
@@ -90,14 +96,16 @@ wifi_record() {
 # must leave it alone -- it is not hidden), and an unrelated ethernet profile
 # (dedupe must not even consider non-wifi types). The SSID carries a space to
 # prove the scripts stay space-safe end to end.
-NM_CONNECTIONS=$'old-hidden:802-11-wireless\nbroadcast:802-11-wireless\neth:802-3-ethernet\n'
+NM_CONNECTIONS=$'old-hidden:802-11-wireless\nbroadcast:802-11-wireless\neth:802-3-ethernet\nnew-uuid-0000:802-11-wireless\n'
 NM_WIFI_FIELDS_PSK=$(
   wifi_record old-hidden "my ssid" yes wpa-psk "" "" "" auto auto "" "" "" "" "" ""
   wifi_record broadcast "my ssid" no "" "" "" "" auto auto "" "" "" "" "" ""
+  wifi_record new-uuid-0000 "my ssid" yes wpa-psk "" "" "" auto auto "" "" "" "" "" ""
 )
 NM_WIFI_FIELDS_OPEN=$(
   wifi_record old-hidden "my ssid" yes "" "" "" "" auto auto "" "" "" "" "" ""
   wifi_record broadcast "my ssid" no "" "" "" "" auto auto "" "" "" "" "" ""
+  wifi_record new-uuid-0000 "my ssid" yes "" "" "" "" auto auto "" "" "" "" "" ""
 )
 
 assert_contains() {
@@ -151,7 +159,7 @@ printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
 (( rc == 0 )) || fail "hidden PSK connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
 pass "hidden PSK connect succeeds when activation and autoconnect arm both succeed"
 
-add_line=$(grep -m1 -F "connection add" "$log")
+add_line=$(grep -m1 -F "connection add" "$log") || true
 [[ $add_line == *"connection.autoconnect no"* ]] || fail "hidden PSK success creates the profile inert (autoconnect no)" "$add_line"
 pass "hidden PSK success creates the profile inert (autoconnect no)"
 [[ $add_line == *"802-11-wireless.hidden yes"* ]] || fail "hidden PSK success marks the new profile hidden" "$add_line"
@@ -167,18 +175,21 @@ assert_contains "$edit" "set wifi-sec.psk secret pass" "hidden PSK success sets 
 # readable in /proc, so a leak here is a local secret-disclosure bug.
 assert_not_contains "$log" "secret pass" "hidden PSK success never puts the passphrase in nmcli argv"
 
-delete_line=$(grep -m1 -F "connection delete" "$log")
+delete_line=$(grep -m1 -F "connection delete" "$log") || true
 [[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden PSK success deletes an uncustomized prior hidden profile for this ssid" "$delete_line"
 pass "hidden PSK success deletes an uncustomized prior hidden profile for this ssid"
 [[ $delete_line != *"broadcast"* ]] || fail "hidden PSK success never deletes a same-ssid broadcast profile" "$delete_line"
 pass "hidden PSK success never deletes a same-ssid broadcast profile"
 [[ $delete_line != *"eth"* ]] || fail "hidden PSK success never deletes an unrelated ethernet profile" "$delete_line"
 pass "hidden PSK success never deletes an unrelated ethernet profile"
-[[ $delete_line != *"new-uuid-0000"* ]] || fail "hidden PSK success never deletes the profile it just proved" "$delete_line"
-pass "hidden PSK success never deletes the profile it just proved"
+[[ $delete_line != *"new-uuid-0000"* ]] || fail "hidden PSK success never deletes the profile it just activated (self-exclusion)" "$delete_line"
+pass "hidden PSK success never deletes the profile it just activated (self-exclusion)"
 
 assert_order "$log" "connection up" "connection modify" "hidden PSK success brings the profile up before arming autoconnect"
 assert_order "$log" "connection modify" "connection delete" "hidden PSK success arms autoconnect before deleting the old profile"
+assert_order "$log" "connection modify" "-t -f UUID,TYPE" "hidden PSK success runs the whole snapshot, both queries, only after the autoconnect arm"
+assert_order "$log" "connection modify" "--escape no -g" "hidden PSK success snapshots duplicates only after the autoconnect arm, adjacent to the delete"
+assert_order "$log" "--escape no -g" "connection delete" "hidden PSK success deletes from the fresh snapshot, not a stale pre-connect one"
 
 # --- Scenario 2: PSK activation failure ----------------------------------
 
@@ -271,6 +282,60 @@ pass "hidden PSK termination terminates the child nmcli process rather than orph
 assert_contains "$log" "connection delete uuid new-uuid-0000" "hidden PSK termination lets the EXIT trap delete the unproven profile"
 assert_not_contains "$log" "delete uuid old-hidden" "hidden PSK termination leaves the old profile in place"
 
+# --- Scenario 4b: PSK termination during the post-activation snapshot -----
+#
+# Mirrors scenario 4, but hangs the dedupe's `-t -f UUID,TYPE` query instead
+# of `connection up`. The snapshot now runs inside the modify-success block,
+# after the profile is created and activated -- this proves the re-armed TERM
+# trap still reaches the process substitution's nmcli at that later point,
+# and that a kill there leaves the already-activated connection and every
+# duplicate alone (nothing left to delete yet).
+
+log=$tmp/log_psk_list_term
+edit=$tmp/edit_psk_list_term
+input=$tmp/input_psk_list_term
+pidfile=$tmp/pid_list_term
+: >"$log"
+rm -f "$pidfile"
+printf 'secret pass\n' >"$input"
+
+PATH="$tmp/bin:$PATH" \
+  NM_CALL_LOG="$log" NM_EDIT_INPUT="$edit" \
+  NM_CONNECTIONS="$NM_CONNECTIONS" NM_WIFI_FIELDS="$NM_WIFI_FIELDS_PSK" \
+  NM_LIST_SLEEP=20 NM_LIST_PID_FILE="$pidfile" \
+  bash -c "$psk_script" nmcli-hidden-psk "my ssid" wpa-psk <"$input" &
+pid=$!
+
+waited=0
+while [[ ! -s $pidfile ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+  (( waited < 50 )) || fail "hidden PSK post-activation snapshot termination test setup" "nmcli stub pid file never appeared within 5s"
+done
+nmcli_pid=$(<"$pidfile")
+
+start_ns=$(date +%s%N)
+kill -TERM "$pid"
+rc=0
+wait "$pid" || rc=$?
+elapsed_ms=$(( ($(date +%s%N) - start_ns) / 1000000 ))
+
+(( elapsed_ms < 2000 )) || fail "hidden PSK post-activation snapshot termination interrupts the trap-armed read instead of waiting out the query" "elapsed: ${elapsed_ms}ms"
+pass "hidden PSK post-activation snapshot termination interrupts the trap-armed read instead of waiting out the query"
+
+(( rc != 0 )) || fail "hidden PSK connect reports failure when killed during the post-activation snapshot"
+pass "hidden PSK connect reports failure when killed during the post-activation snapshot"
+
+sleep 0.3
+if kill -0 "$nmcli_pid" 2>/dev/null; then
+  fail "hidden PSK post-activation snapshot termination kills the query's nmcli rather than orphaning it" "pid $nmcli_pid is still running"
+fi
+pass "hidden PSK post-activation snapshot termination kills the query's nmcli rather than orphaning it"
+
+assert_contains "$log" "connection add" "hidden PSK snapshot-phase termination happens after the profile was created"
+assert_contains "$log" "connection up" "hidden PSK snapshot-phase termination happens after activation"
+assert_not_contains "$log" "connection delete" "hidden PSK snapshot-phase termination deletes nothing: the activated profile survives and duplicates are left alone"
+
 # --- Scenario 5: dedupe preserves customized same-SSID hidden profiles ----
 #
 # Each of these profiles matches on SSID/hidden/key-mgmt alone -- the same
@@ -298,7 +363,7 @@ printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
 (( rc == 0 )) || fail "hidden PSK connect succeeds alongside customized same-ssid profiles" "exit code: $rc"
 pass "hidden PSK connect succeeds alongside customized same-ssid profiles"
 
-delete_line=$(grep -m1 -F "connection delete" "$log")
+delete_line=$(grep -m1 -F "connection delete" "$log") || true
 [[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden PSK dedupe still deletes the uncustomized duplicate" "$delete_line"
 pass "hidden PSK dedupe still deletes the uncustomized duplicate"
 [[ $delete_line != *"custom-ip4method"* ]] || fail "hidden PSK dedupe spares a same-ssid profile with a manual ipv4.method" "$delete_line"
@@ -328,7 +393,7 @@ printf 'secret pass\n' | PATH="$tmp/bin:$PATH" \
 (( rc == 0 )) || fail "hidden PSK connect succeeds alongside a same-ssid sae profile" "exit code: $rc"
 pass "hidden PSK connect succeeds alongside a same-ssid sae profile"
 
-delete_line=$(grep -m1 -F "connection delete" "$log")
+delete_line=$(grep -m1 -F "connection delete" "$log") || true
 [[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden PSK dedupe still deletes the same-key-mgmt duplicate" "$delete_line"
 pass "hidden PSK dedupe still deletes the same-key-mgmt duplicate"
 [[ $delete_line != *"custom-keymgmt"* ]] || fail "hidden PSK dedupe spares a same-ssid profile using a different key-mgmt (sae vs wpa-psk)" "$delete_line"
@@ -347,7 +412,7 @@ printf '\n' | PATH="$tmp/bin:$PATH" \
 (( rc == 0 )) || fail "hidden open connect succeeds when activation and autoconnect arm both succeed" "exit code: $rc"
 pass "hidden open connect succeeds when activation and autoconnect arm both succeed"
 
-add_line=$(grep -m1 -F "connection add" "$log")
+add_line=$(grep -m1 -F "connection add" "$log") || true
 [[ $add_line == *"802-11-wireless.hidden yes"* ]] || fail "hidden open success marks the new profile hidden" "$add_line"
 pass "hidden open success marks the new profile hidden"
 [[ $add_line == *"connection.autoconnect no"* ]] || fail "hidden open success creates the profile inert (autoconnect no)" "$add_line"
@@ -356,16 +421,21 @@ pass "hidden open success creates the profile inert (autoconnect no)"
 assert_not_contains "$log" "wifi-sec" "hidden open success sets no wifi security properties on an open profile"
 assert_not_contains "$log" "connection edit" "hidden open success never opens the connection editor, since there is no secret to set"
 
-delete_line=$(grep -m1 -F "connection delete" "$log")
+delete_line=$(grep -m1 -F "connection delete" "$log") || true
 [[ $delete_line == *"uuid old-hidden"* ]] || fail "hidden open success deletes the prior hidden profile for this ssid" "$delete_line"
 pass "hidden open success deletes the prior hidden profile for this ssid"
 [[ $delete_line != *"broadcast"* ]] || fail "hidden open success never deletes a same-ssid broadcast profile" "$delete_line"
 pass "hidden open success never deletes a same-ssid broadcast profile"
 [[ $delete_line != *"eth"* ]] || fail "hidden open success never deletes an unrelated ethernet profile" "$delete_line"
 pass "hidden open success never deletes an unrelated ethernet profile"
+[[ $delete_line != *"new-uuid-0000"* ]] || fail "hidden open success never deletes the profile it just activated (self-exclusion)" "$delete_line"
+pass "hidden open success never deletes the profile it just activated (self-exclusion)"
 
 assert_order "$log" "connection up" "connection modify" "hidden open success brings the profile up before arming autoconnect"
 assert_order "$log" "connection modify" "connection delete" "hidden open success arms autoconnect before deleting the old profile"
+assert_order "$log" "connection modify" "-t -f UUID,TYPE" "hidden open success runs the whole snapshot, both queries, only after the autoconnect arm"
+assert_order "$log" "connection modify" "--escape no -g" "hidden open success snapshots duplicates only after the autoconnect arm, adjacent to the delete"
+assert_order "$log" "--escape no -g" "connection delete" "hidden open success deletes from the fresh snapshot, not a stale pre-connect one"
 
 # --- Scenario 8: Open network activation failure --------------------------
 
