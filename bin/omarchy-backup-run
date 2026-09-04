@@ -1,0 +1,325 @@
+#!/bin/bash
+
+# omarchy:summary=Run one backup pass, honoring pauses, power, locks, and maintenance
+# omarchy:hidden=true
+
+# The unit target of omarchy-backup.timer, and what "Back Up Now" ultimately
+# starts. Every decision it makes — ran, skipped, failed — lands in status.json,
+# because the panel and the CLI both read that file and never restic itself.
+
+set -uo pipefail
+
+source omarchy-backup-env
+
+RUN_OUTPUT_DIR="$BACKUP_STATE_DIR/run"
+SUMMARY_FILE="$RUN_OUTPUT_DIR/summary.json"
+ERRORS_FILE="$RUN_OUTPUT_DIR/unreadable"
+EXIT_FILE="$RUN_OUTPUT_DIR/exit"
+STDERR_FILE="$RUN_OUTPUT_DIR/stderr"
+
+MAINTENANCE_INTERVAL_DAYS=30
+WARNING_AFTER_HOURS=24
+WARNING_REPEAT_DAYS=7
+READ_DATA_SUBSETS=12
+
+now() {
+  date +%s
+}
+
+skip() {
+  local reason="$1"
+
+  backup_log "Skipped: $reason"
+  backup_status_update '.phase = (if .phase == "running" then "idle" else .phase end) |
+    .last_skip = {time: $now, reason: $reason}' --arg reason "$reason"
+  exit 0
+}
+
+# A run recorded as `running` by a process that no longer exists is a crash or a
+# reboot mid-backup. Left alone the panel shows an eternal upload, so the next
+# run rewrites it as the failure it was.
+reconcile_stale_run() {
+  local phase=""
+  local pid=""
+
+  [[ -s $BACKUP_STATUS_FILE ]] || return 0
+
+  phase=$(jq -r '.phase // ""' "$BACKUP_STATUS_FILE" 2>/dev/null)
+  pid=$(jq -r '.pid // 0' "$BACKUP_STATUS_FILE" 2>/dev/null)
+
+  [[ $phase == "running" ]] || return 0
+  [[ $pid =~ ^[0-9]+$ ]] && (( pid > 0 )) && kill -0 "$pid" 2>/dev/null && return 0
+
+  backup_log "Reconciled a run that died without reporting (pid ${pid:-unknown})"
+  backup_status_update '.phase = "error" | .pid = 0 |
+    .last_backup = (.last_backup + {time: $now, result: "failed", error: "The backup process stopped without finishing"})'
+}
+
+destination_json() {
+  jq -n --arg label "$BACKUP_DESTINATION_LABEL" \
+    --arg kind "$BACKUP_DESTINATION_KIND" \
+    --argjson offsite "$(backup_destination_offsite && echo true || echo false)" \
+    '{label: $label, kind: $kind, offsite: $offsite}'
+}
+
+run_backup() {
+  local run_id="$1"
+  local exit_code=0
+
+  rm -rf "$RUN_OUTPUT_DIR"
+  mkdir -p "$RUN_OUTPUT_DIR"
+
+  backup_write_exclude_file
+  backup_status_update '.phase = "running" | .run_id = $run | .pid = $pid | .started_at = $now |
+    .progress = {percent: 0, bytes_done: 0, bytes_total: 0, files_done: 0} |
+    .destination = $destination' \
+    --arg run "$run_id" --argjson pid "$$" --argjson destination "$(destination_json)"
+
+  {
+    backup_restic backup --json --one-file-system \
+      --exclude-file "$BACKUP_EXCLUDE_FILE" \
+      --tag omarchy "$HOME" 2>"$STDERR_FILE"
+    printf '%s\n' "$?" >"$EXIT_FILE"
+  } | consume_backup_output
+
+  if [[ -s $EXIT_FILE ]]; then
+    exit_code=$(<"$EXIT_FILE")
+  else
+    exit_code=1
+  fi
+
+  return "$exit_code"
+}
+
+# restic reports progress several times a second. Matching on the raw line keeps
+# the common case out of jq, and the throttle keeps status.json from being
+# rewritten faster than anyone can read it.
+consume_backup_output() {
+  local line=""
+  local last_progress=0
+
+  while IFS= read -r line; do
+    if [[ $line == *'"message_type":"status"'* ]]; then
+      if (( SECONDS - last_progress >= 3 )); then
+        last_progress=$SECONDS
+        record_progress "$line"
+      fi
+    elif [[ $line == *'"message_type":"summary"'* ]]; then
+      printf '%s\n' "$line" >"$SUMMARY_FILE"
+    elif [[ $line == *'"message_type":"error"'* ]]; then
+      jq -r '.item // empty' <<<"$line" >>"$ERRORS_FILE"
+    fi
+  done
+}
+
+record_progress() {
+  backup_status_update '.progress = {
+      percent: (($status.percent_done // 0) * 100 | floor),
+      bytes_done: ($status.bytes_done // 0),
+      bytes_total: ($status.total_bytes // 0),
+      files_done: ($status.files_done // 0)
+    }' --argjson status "$1"
+}
+
+unreadable_json() {
+  if [[ -s $ERRORS_FILE ]]; then
+    jq -R -s 'split("\n") | map(select(length > 0)) | unique | .[0:20]' "$ERRORS_FILE"
+  else
+    echo '[]'
+  fi
+}
+
+# Exit 3 means restic wrote a snapshot but could not read everything in it. That
+# is a real backup and worth keeping, but it must never become the snapshot a
+# restore silently defaults to.
+record_result() {
+  local exit_code="$1"
+  local snapshot=""
+  local error=""
+
+  [[ -s $SUMMARY_FILE ]] && snapshot=$(jq -r '.snapshot_id // ""' "$SUMMARY_FILE")
+
+  case "$exit_code" in
+  0)
+    backup_status_update '.phase = "idle" | .pid = 0 |
+      .last_backup = {time: $now, snapshot: $snapshot, result: "complete", error: "", unreadable: []} |
+      .last_complete = {time: $now, snapshot: $snapshot}' --arg snapshot "$snapshot"
+    backup_log "Backed up as ${snapshot:-unknown}"
+    ;;
+  3)
+    backup_status_update '.phase = "idle" | .pid = 0 |
+      .last_backup = {time: $now, snapshot: $snapshot, result: "partial", error: "Some files could not be read", unreadable: $unreadable}' \
+      --arg snapshot "$snapshot" --argjson unreadable "$(unreadable_json)"
+    backup_log "Backed up as ${snapshot:-unknown} with unreadable files"
+    ;;
+  *)
+    error=$(tail -n 3 "$STDERR_FILE" 2>/dev/null | tr '\n' ' ' | cut -c1-300)
+    [[ -n $error ]] || error="restic exited with code $exit_code"
+    backup_status_update '.phase = "error" | .pid = 0 |
+      .last_backup = {time: $now, snapshot: "", result: "failed", error: $error, unreadable: []}' \
+      --arg error "$error"
+    backup_log "Backup failed: $error"
+    ;;
+  esac
+}
+
+# restic timestamps carry an offset (+01:00), which jq's strptime cannot read,
+# so the conversion to epoch seconds — what everything downstream displays —
+# happens here rather than inside a jq program that would silently return zero.
+snapshot_records() {
+  local raw="$1"
+  local records="[]"
+  local id=""
+  local timestamp=""
+  local host=""
+
+  while IFS=$'\t' read -r id timestamp host; do
+    [[ -n $id ]] || continue
+    records=$(jq -c --arg id "$id" --arg host "$host" \
+      --argjson time "$(date -d "$timestamp" +%s 2>/dev/null || echo 0)" \
+      '. + [{id: $id, time: $time, hostname: $host}]' <<<"$records")
+  done < <(jq -r 'sort_by(.time) | reverse | .[0:10] | .[] |
+    [(.short_id // .id // ""), .time, (.hostname // "")] | @tsv' <<<"$raw")
+
+  printf '%s' "$records"
+}
+
+refresh_repository_facts() {
+  local snapshots=""
+  local stats=""
+
+  snapshots=$(backup_restic snapshots --json --host "$(hostname)" 2>/dev/null) || return 0
+  [[ -n $snapshots ]] || return 0
+  stats=$(backup_restic stats --json --mode raw-data 2>/dev/null) || stats='{}'
+
+  backup_status_update '.snapshots = $snapshots |
+    .repository = {size_bytes: ($stats.total_size // 0), snapshot_count: $count}' \
+    --argjson snapshots "$(snapshot_records "$snapshots")" \
+    --argjson stats "$stats" \
+    --argjson count "$(jq 'length' <<<"$snapshots")"
+}
+
+maintenance_due() {
+  local last=0
+
+  # Exactly one machine prunes and checks: the expensive, lock-contending half
+  # of the work has no reason to run on every laptop sharing the repository.
+  if [[ -n $BACKUP_MAINTENANCE_HOST && $BACKUP_MAINTENANCE_HOST != "$(hostname)" ]]; then
+    return 1
+  fi
+
+  [[ -s $BACKUP_MAINTENANCE_FILE ]] && last=$(cut -d' ' -f1 "$BACKUP_MAINTENANCE_FILE")
+  [[ $last =~ ^[0-9]+$ ]] || last=0
+
+  (( $(now) - last > MAINTENANCE_INTERVAL_DAYS * 86400 ))
+}
+
+# prune re-uploads packs it rewrites, so this is bandwidth and API spend, not
+# housekeeping — monthly, and read-data one slice at a time so the whole
+# repository is eventually read without paying for it all at once.
+run_maintenance() {
+  local subset=0
+  local result="ok"
+  local error=""
+
+  [[ -s $BACKUP_MAINTENANCE_FILE ]] && subset=$(cut -d' ' -f2 "$BACKUP_MAINTENANCE_FILE")
+  [[ $subset =~ ^[0-9]+$ ]] || subset=0
+  subset=$(( subset % READ_DATA_SUBSETS + 1 ))
+
+  backup_log "Running maintenance (forget --prune, check, read-data subset $subset/$READ_DATA_SUBSETS)"
+
+  if ! backup_restic forget --prune \
+    --group-by host,paths \
+    --keep-hourly "$BACKUP_KEEP_HOURLY" \
+    --keep-daily "$BACKUP_KEEP_DAILY" \
+    --keep-weekly "$BACKUP_KEEP_WEEKLY" \
+    --keep-monthly "$BACKUP_KEEP_MONTHLY" >>"$BACKUP_LOG_FILE" 2>&1; then
+    result="failed"
+    error="Could not forget and prune old snapshots"
+  elif ! backup_restic check --read-data-subset="$subset/$READ_DATA_SUBSETS" >>"$BACKUP_LOG_FILE" 2>&1; then
+    result="failed"
+    error="Repository check reported a problem"
+  fi
+
+  printf '%s %s\n' "$(now)" "$subset" >"$BACKUP_MAINTENANCE_FILE"
+  backup_status_update '.last_maintenance = {time: $now, result: $result, error: $error}' \
+    --arg result "$result" --arg error "$error"
+
+  if [[ $result == "failed" ]]; then
+    backup_log "Maintenance failed: $error"
+  fi
+}
+
+# One failed run is a café's wifi, not a broken backup. A day without a complete
+# one is worth saying out loud, and worth repeating weekly — a single warning
+# would let a dead credential rot silently for months.
+warn_if_stale() {
+  local last_complete=0
+  local last_warning=0
+
+  last_complete=$(jq -r '.last_complete.time // 0' "$BACKUP_STATUS_FILE" 2>/dev/null)
+  last_warning=$(jq -r '.last_warning // 0' "$BACKUP_STATUS_FILE" 2>/dev/null)
+
+  (( $(now) - last_complete > WARNING_AFTER_HOURS * 3600 )) || return 0
+  (( $(now) - last_warning > WARNING_REPEAT_DAYS * 86400 )) || return 0
+
+  backup_status_update '.last_warning = $now'
+  omarchy-notification-send \
+    --exec "omarchy-shell omarchy.backup toggle" \
+    -u normal -g "󰁯" \
+    "Backups are behind" \
+    "No complete backup in over ${WARNING_AFTER_HOURS} hours."
+}
+
+if omarchy-cmd-missing restic; then
+  exit 127
+fi
+
+if ! backup_configured; then
+  backup_status_update '.phase = "unconfigured"'
+  exit 0
+fi
+
+reconcile_stale_run
+
+if backup_pause_active; then
+  pause_until=$(<"$BACKUP_PAUSE_FILE")
+  [[ $pause_until =~ ^[0-9]+$ ]] || pause_until=0
+  backup_status_update '.phase = "paused" | .pause = {until: $until, reason: "paused"}' \
+    --argjson until "$pause_until"
+  skip "backups are paused"
+fi
+
+backup_status_update '.pause = {until: 0, reason: ""}'
+
+exec 9>"$BACKUP_LOCK_FILE"
+if ! flock -n 9; then
+  skip "another backup is already running on this machine"
+fi
+
+backup_load_credentials
+
+if omarchy-battery-below "$BACKUP_BATTERY_FLOOR"; then
+  skip "running on battery below ${BACKUP_BATTERY_FLOOR}%"
+fi
+
+if ! backup_local_destination_present; then
+  skip "the backup disk is not mounted"
+fi
+
+run_id="$(now)-$$"
+run_backup "$run_id"
+exit_code=$?
+
+if (( exit_code == 11 )); then
+  skip "another machine is using the repository"
+fi
+
+record_result "$exit_code"
+refresh_repository_facts
+
+if maintenance_due; then
+  run_maintenance
+fi
+
+warn_if_stale

@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# omarchy:summary=List the backups you can restore from
+# omarchy:args=[--all-hosts] [--json]
+
+set -uo pipefail
+
+source omarchy-backup-env
+
+if ! backup_configured; then
+  echo "Backups are not set up. Run: omarchy setup backup" >&2
+  exit 1
+fi
+
+args=(--host "$(hostname)")
+
+while (( $# > 0 )); do
+  case "$1" in
+  --all-hosts)
+    args=()
+    ;;
+  --json)
+    args+=(--json)
+    ;;
+  -h | --help)
+    echo "Usage: omarchy backup snapshots [--all-hosts] [--json]"
+    exit 0
+    ;;
+  *)
+    echo "omarchy-backup-snapshots: unknown option '$1'. Try --help." >&2
+    exit 2
+    ;;
+  esac
+  shift
+done
+
+backup_load_credentials
+backup_restic snapshots "${args[@]}"

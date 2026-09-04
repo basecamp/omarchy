@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.backup",
+  "name": "Backup",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "Backup status, progress, pausing, and restores in the Omarchy bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Backup",
+    "description": "See when your files were last backed up, back up now, pause, and browse older versions.",
+    "category": "Files",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "staleAfterHours": 24
+    },
+    "schema": [
+      {
+        "key": "staleAfterHours",
+        "type": "integer",
+        "label": "Warn after hours without a backup",
+        "min": 2,
+        "max": 168,
+        "step": 1,
+        "defaultValue": 24
+      }
+    ]
+  }
+}

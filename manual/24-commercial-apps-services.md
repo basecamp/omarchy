@@ -20,7 +20,7 @@ You start Spotify using `Super + Shift + M`. Like 1Password, the hotkey kicks of
 
 ## Dropbox
 
-[Dropbox](https://www.dropbox.com/) is a great way to sync files between machines while keeping a backup in the cloud. To set it up, select _Install > Service > Dropbox_ from the Omarchy menu. Once it's running, hover the tray in the top right of the bar and right-click the Dropbox icon to finish the setup.
+[Dropbox](https://www.dropbox.com/) is a great way to sync files between machines. Sync is not backup, though — it copies your deletions too, and only keeps old versions for a while — so pair it with [backups](52-backups.md) rather than relying on it for one. To set it up, select _Install > Service > Dropbox_ from the Omarchy menu. Once it's running, hover the tray in the top right of the bar and right-click the Dropbox icon to finish the setup.
 
 ## Tailscale
 

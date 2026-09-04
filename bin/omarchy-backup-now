@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# omarchy:summary=Back up now instead of waiting for the next scheduled run
+
+set -uo pipefail
+
+source omarchy-backup-env
+
+if ! backup_configured; then
+  echo "Backups are not set up. Run: omarchy setup backup" >&2
+  exit 1
+fi
+
+if backup_pause_active; then
+  echo "Backups are paused. Run 'omarchy backup resume' first." >&2
+  exit 1
+fi
+
+# Started through the unit rather than directly so a manual run and a scheduled
+# one are the same run, with the same journal and the same restart behavior.
+systemctl --user start --no-block omarchy-backup.service
+echo "Backing up in the background. Watch it with: omarchy backup status"

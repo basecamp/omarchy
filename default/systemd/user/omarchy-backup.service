@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up the home folder off-site with restic
+# Unconfigured means inert. Pause is deliberately not a condition here: a unit
+# that never runs while paused could never notice the pause expiring, so the
+# runner starts and decides for itself.
+ConditionPathExists=%h/.local/share/omarchy/backup/env
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/omarchy-backup-run
+Nice=10
+IOSchedulingClass=idle

@@ -1,0 +1,444 @@
+#!/bin/bash
+
+# omarchy:summary=Set up encrypted, versioned, off-site backups of your home folder
+# omarchy:args=[--repository <url>] [--access-key-id <id>] [--secret-access-key <key>] [--passphrase-file <path>] [--no-first-backup] [--remove]
+# omarchy:examples=omarchy setup backup | omarchy setup backup --remove
+
+set -eo pipefail
+
+source omarchy-backup-env
+
+REPOSITORY=""
+ACCESS_KEY_ID=""
+SECRET_ACCESS_KEY=""
+REGION=""
+PASSPHRASE_FILE=""
+FIRST_BACKUP="true"
+REMOVE="false"
+RECOVERY_CARD="$HOME/Omarchy Backup Recovery.txt"
+
+while (( $# > 0 )); do
+  case "$1" in
+  --repository) shift; REPOSITORY="${1:-}" ;;
+  --repository=*) REPOSITORY="${1#--repository=}" ;;
+  --access-key-id) shift; ACCESS_KEY_ID="${1:-}" ;;
+  --access-key-id=*) ACCESS_KEY_ID="${1#--access-key-id=}" ;;
+  --secret-access-key) shift; SECRET_ACCESS_KEY="${1:-}" ;;
+  --secret-access-key=*) SECRET_ACCESS_KEY="${1#--secret-access-key=}" ;;
+  --region) shift; REGION="${1:-}" ;;
+  --region=*) REGION="${1#--region=}" ;;
+  --passphrase-file) shift; PASSPHRASE_FILE="${1:-}" ;;
+  --passphrase-file=*) PASSPHRASE_FILE="${1#--passphrase-file=}" ;;
+  --no-first-backup) FIRST_BACKUP="false" ;;
+  --remove) REMOVE="true" ;;
+  -h | --help)
+    echo "Usage: omarchy setup backup [--repository <url>] [--access-key-id <id>]"
+    echo "                            [--secret-access-key <key>] [--region <region>]"
+    echo "                            [--passphrase-file <path>] [--no-first-backup]"
+    echo "                            [--remove]"
+    echo
+    echo "Sets up hourly, encrypted, versioned backups of your home folder to an"
+    echo "S3-compatible bucket, a local disk, or any restic repository URL."
+    echo
+    echo "Passing --repository and its credentials skips the prompts, so the setup"
+    echo "can run unattended from a script or an unattended install."
+    exit 0
+    ;;
+  *)
+    echo "omarchy-setup-backup: unknown option '$1'. Try --help." >&2
+    exit 2
+    ;;
+  esac
+  shift
+done
+
+record_phase() {
+  mkdir -p "$BACKUP_STATE_DIR"
+  printf '%s\n' "$1" >"$BACKUP_SETUP_PHASE_FILE"
+}
+
+abort() {
+  echo -e "\e[31m$1\e[0m" >&2
+  exit 1
+}
+
+teardown() {
+  echo -e "\e[32mRemoving the backup setup.\e[0m\n"
+
+  echo "Stopping any running backup..."
+  systemctl --user stop omarchy-backup.timer omarchy-backup.service 2>/dev/null || true
+  systemctl --user disable omarchy-backup.timer 2>/dev/null || true
+
+  fusermount -u "$BACKUP_MOUNT_DIR" 2>/dev/null || true
+
+  echo "Removing the bar widget..."
+  omarchy-plugin-disable omarchy.backup 2>/dev/null || true
+
+  echo "Deleting local credentials and state..."
+  rm -f "$BACKUP_UNIT_DIR/omarchy-backup.service" "$BACKUP_UNIT_DIR/omarchy-backup.timer"
+  systemctl --user daemon-reload
+  rm -rf "$BACKUP_SECRETS_DIR" "$BACKUP_STATE_DIR"
+  rm -f "$BACKUP_SETTINGS_FILE"
+
+  echo -e "\n\e[32mDone.\e[0m"
+  echo "Your repository and every snapshot in it are untouched — this only forgot"
+  echo "how to reach them. Keep the passphrase and recovery card: they are still"
+  echo "the only way to read those backups. restic stays installed."
+}
+
+install_dependencies() {
+  echo -e "\e[32mInstalling restic\e[0m"
+  omarchy-pkg-add restic fuse2
+}
+
+prompt_destination() {
+  local choice=""
+  local endpoint=""
+  local bucket=""
+  local path=""
+
+  choice=$(gum choose \
+    "S3-compatible bucket" \
+    "Local disk or NAS folder" \
+    "Any restic repository URL" \
+    --header "Where should your backups live?")
+
+  case "$choice" in
+  "S3-compatible bucket")
+    endpoint=$(gum input --prompt "Endpoint> " --placeholder "https://s3.us-west-002.backblazeb2.com")
+    bucket=$(gum input --prompt "Bucket (and optional /prefix)> " --placeholder "my-backups/laptop")
+    REGION=$(gum input --prompt "Region (optional)> " --placeholder "us-west-002")
+    ACCESS_KEY_ID=$(gum input --prompt "Access key ID> ")
+    SECRET_ACCESS_KEY=$(gum input --password --prompt "Secret access key> ")
+
+    [[ -n $endpoint && -n $bucket ]] || abort "An endpoint and a bucket are both needed."
+    REPOSITORY="s3:${endpoint%/}/${bucket#/}"
+    BACKUP_DESTINATION_KIND="s3"
+    BACKUP_DESTINATION_LABEL="${bucket%%/*} at ${endpoint#https://}"
+    ;;
+  "Local disk or NAS folder")
+    path=$(gum input --prompt "Folder> " --placeholder "/run/media/$USER/backup-disk/omarchy")
+    [[ -n $path ]] || abort "A folder is needed."
+    mkdir -p "$path"
+    REPOSITORY="$path"
+    BACKUP_DESTINATION_KIND="local"
+    BACKUP_DESTINATION_LABEL="$path"
+    # Recorded so a run can tell the disk being missing from the disk being
+    # empty, and skip rather than write a backup onto the root filesystem.
+    BACKUP_DESTINATION_UUID=$(findmnt -no UUID --target "$path" 2>/dev/null || true)
+    echo -e "\e[33mA local destination dies with the machine it is plugged into.\e[0m"
+    ;;
+  "Any restic repository URL")
+    REPOSITORY=$(gum input --prompt "Repository> " --placeholder "sftp:user@host:/srv/backups")
+    [[ -n $REPOSITORY ]] || abort "A repository URL is needed."
+    BACKUP_DESTINATION_KIND="other"
+    BACKUP_DESTINATION_LABEL="$REPOSITORY"
+    ;;
+  *)
+    exit 1
+    ;;
+  esac
+}
+
+label_for_repository() {
+  case "$REPOSITORY" in
+  s3:*)
+    BACKUP_DESTINATION_KIND="s3"
+    BACKUP_DESTINATION_LABEL="${REPOSITORY##*/} at ${REPOSITORY#s3:https://}"
+    ;;
+  /*)
+    BACKUP_DESTINATION_KIND="local"
+    BACKUP_DESTINATION_LABEL="$REPOSITORY"
+    BACKUP_DESTINATION_UUID=$(findmnt -no UUID --target "$REPOSITORY" 2>/dev/null || true)
+    ;;
+  *)
+    BACKUP_DESTINATION_KIND="other"
+    BACKUP_DESTINATION_LABEL="$REPOSITORY"
+    ;;
+  esac
+}
+
+generate_passphrase() {
+  local group=""
+  local groups=()
+
+  for _ in 1 2 3 4 5 6; do
+    group=$(LC_ALL=C tr -dc 'a-z2-9' </dev/urandom | head -c 5)
+    groups+=("$group")
+  done
+
+  printf '%s' "$(IFS=-; printf '%s' "${groups[*]}")"
+}
+
+prompt_passphrase() {
+  local choice=""
+
+  if [[ -n $PASSPHRASE_FILE ]]; then
+    [[ -s $PASSPHRASE_FILE ]] || abort "No passphrase in $PASSPHRASE_FILE."
+    PASSPHRASE=$(<"$PASSPHRASE_FILE")
+    return
+  fi
+
+  choice=$(gum choose \
+    "Generate a strong passphrase" \
+    "Enter an existing passphrase" \
+    --header "This passphrase encrypts every backup. Nobody can recover it for you.")
+
+  case "$choice" in
+  "Generate a strong passphrase")
+    PASSPHRASE=$(generate_passphrase)
+    ;;
+  "Enter an existing passphrase")
+    PASSPHRASE=$(gum input --password --prompt "Passphrase> ")
+    [[ -n $PASSPHRASE ]] || abort "An empty passphrase is not a passphrase."
+    ;;
+  *)
+    exit 1
+    ;;
+  esac
+}
+
+write_secrets() {
+  mkdir -p "$BACKUP_SECRETS_DIR"
+  chmod 700 "$BACKUP_SECRETS_DIR"
+
+  # Mode-restricted files rather than the keyring: Omarchy's keyring is
+  # passwordless anyway, and a locked one at 3am would mean no backup.
+  umask 077
+  {
+    printf 'RESTIC_REPOSITORY=%s\n' "$REPOSITORY"
+    if [[ -n $ACCESS_KEY_ID ]]; then
+      printf 'AWS_ACCESS_KEY_ID=%s\n' "$ACCESS_KEY_ID"
+    fi
+    if [[ -n $SECRET_ACCESS_KEY ]]; then
+      printf 'AWS_SECRET_ACCESS_KEY=%s\n' "$SECRET_ACCESS_KEY"
+    fi
+    if [[ -n $REGION ]]; then
+      printf 'AWS_DEFAULT_REGION=%s\n' "$REGION"
+    fi
+  } >"$BACKUP_ENV_FILE"
+  printf '%s\n' "$PASSPHRASE" >"$BACKUP_PASSPHRASE_FILE"
+  chmod 600 "$BACKUP_ENV_FILE" "$BACKUP_PASSPHRASE_FILE"
+}
+
+# An apparently empty bucket is not proof that a repository is safe to create
+# there, so the probe distinguishes absent (10) from wrong passphrase (12) from
+# "we could not even reach the storage", and only the first one initializes.
+probe_repository() {
+  local status=0
+
+  backup_load_credentials
+  set +e
+  restic cat config >/dev/null 2>"$BACKUP_STATE_DIR/probe.log"
+  status=$?
+  set -e
+
+  case "$status" in
+  0)
+    EXISTING_REPOSITORY="true"
+    echo "Found an existing repository, and the passphrase opens it."
+    ;;
+  10)
+    echo "Creating a new repository..."
+    restic init
+    ;;
+  12)
+    abort "That passphrase does not open the repository. Nothing was changed."
+    ;;
+  *)
+    echo "$(tail -n 3 "$BACKUP_STATE_DIR/probe.log")" >&2
+    abort "Could not reach the repository. Check the endpoint and credentials; nothing was created."
+    ;;
+  esac
+}
+
+# The payoff of the whole feature: a fresh machine pointed at the old bucket
+# gets its home folder back before anything else happens.
+offer_disaster_recovery() {
+  local hosts=()
+  local source_host=""
+  local source_home=""
+
+  [[ ${EXISTING_REPOSITORY:-false} == "true" ]] || return 0
+
+  mapfile -t hosts < <(restic snapshots --json 2>/dev/null |
+    jq -r --arg host "$(hostname)" '[.[] | select(.hostname != $host) | .hostname] | unique | .[]')
+  (( ${#hosts[@]} > 0 )) || return 0
+
+  echo
+  echo "This repository already holds backups from: ${hosts[*]}"
+  if ! gum confirm "Restore a home folder from one of them into $HOME first?"; then
+    return 0
+  fi
+
+  source_host=$(gum choose "${hosts[@]}" --header "Restore from which machine?")
+  [[ -n $source_host ]] || return 0
+
+  # The other machine's home folder is not necessarily at this machine's path,
+  # so the snapshot's own home directory is restored *as* this one rather than
+  # landing in ~/home/someone-else.
+  source_home=$(restic snapshots --json --host "$source_host" |
+    jq -r 'sort_by(.time) | last | .paths[0]')
+
+  echo -e "\e[33mRestoring $source_host:$source_home into $HOME.\e[0m"
+  echo "Files that already exist here under the same name are overwritten."
+  if ! gum confirm "Continue?"; then
+    return 0
+  fi
+
+  restic restore "latest:$source_home" --host "$source_host" --target "$HOME"
+  echo -e "\e[32mRestored. Look around $HOME before carrying on.\e[0m"
+}
+
+write_recovery_card() {
+  cat >"$RECOVERY_CARD" <<CARD
+Omarchy backup recovery card
+============================
+
+Destination : $BACKUP_DESTINATION_LABEL
+Repository  : $REPOSITORY
+Created     : $(date '+%Y-%m-%d')
+Machine     : $(hostname)
+
+Passphrase  : ______________________________________________
+              (write it here by hand, then keep this off the machine)
+
+To recover on any machine, with restic installed:
+
+  export RESTIC_REPOSITORY='$REPOSITORY'
+  export AWS_ACCESS_KEY_ID=...        # if the destination is a bucket
+  export AWS_SECRET_ACCESS_KEY=...
+  restic snapshots
+  restic restore latest --target ~/Restored
+
+On a fresh Omarchy install, run "omarchy setup backup", point it at this
+repository, and it offers to restore your home folder.
+
+Without the passphrase these backups cannot be read. Not by you, not by
+Omarchy, not by whoever stores the bytes.
+CARD
+
+  chmod 600 "$RECOVERY_CARD"
+
+  echo
+  gum style --border normal --padding "1 2" "$(cat "$RECOVERY_CARD")"
+  echo
+  echo -e "\e[33mSaved to: $RECOVERY_CARD\e[0m"
+
+  if [[ -z $PASSPHRASE_FILE ]]; then
+    echo -e "\e[33mYour passphrase is: $PASSPHRASE\e[0m"
+    echo "Write it onto the card and store the card somewhere that is not this machine."
+    local confirmation=""
+    confirmation=$(gum input --prompt "Type SAVED once the passphrase is somewhere safe> ")
+    [[ $confirmation == "SAVED" ]] || abort "Nothing enabled. Run the setup again when the passphrase is safe."
+  fi
+}
+
+install_units() {
+  mkdir -p "$BACKUP_UNIT_DIR"
+  ln -sf "$BACKUP_SHIPPED_UNIT_DIR/omarchy-backup.service" "$BACKUP_UNIT_DIR/omarchy-backup.service"
+  ln -sf "$BACKUP_SHIPPED_UNIT_DIR/omarchy-backup.timer" "$BACKUP_UNIT_DIR/omarchy-backup.timer"
+  systemctl --user daemon-reload
+}
+
+run_first_backup() {
+  local pid=""
+  local percent=0
+  local result=""
+
+  echo -e "\n\e[32mBacking up for the first time. Later runs only send what changed.\e[0m"
+  echo -n "Measuring your home folder... "
+  # Source size, not an upload estimate: deduplication and compression usually
+  # shrink it a lot, and saying otherwise would make the first run look broken.
+  echo "$(du -sh --exclude=.cache "$HOME" 2>/dev/null | cut -f1) of files to consider."
+  echo
+
+  systemctl --user start omarchy-backup.service &
+  pid=$!
+
+  while kill -0 "$pid" 2>/dev/null; do
+    percent=$(jq -r '.progress.percent // 0' "$BACKUP_STATUS_FILE" 2>/dev/null || echo 0)
+    printf '\rBacking up... %s%%' "$percent"
+    sleep 2
+  done
+  wait "$pid" || true
+  printf '\r                    \r'
+
+  result=$(jq -r '.last_backup.result // ""' "$BACKUP_STATUS_FILE" 2>/dev/null || echo "")
+  case "$result" in
+  complete)
+    echo -e "\e[32mFirst backup done.\e[0m"
+    ;;
+  partial)
+    echo -e "\e[33mFirst backup done, but some files could not be read:\e[0m"
+    jq -r '.last_backup.unreadable[]?' "$BACKUP_STATUS_FILE"
+    ;;
+  *)
+    abort "The first backup failed: $(jq -r '.last_backup.error // "unknown error"' "$BACKUP_STATUS_FILE")"
+    ;;
+  esac
+}
+
+enable_schedule() {
+  systemctl --user enable --now omarchy-backup.timer
+  omarchy-plugin-enable omarchy.backup >/dev/null 2>&1 || true
+}
+
+if [[ $REMOVE == "true" ]]; then
+  teardown
+  exit 0
+fi
+
+echo -e "\e[32mSetting up encrypted, versioned, off-site backups of your home folder.\n\e[0m"
+
+install_dependencies
+
+if [[ -n $REPOSITORY ]]; then
+  label_for_repository
+elif backup_configured && gum confirm "Reuse the destination this machine is already set up for?"; then
+  backup_load_credentials
+  REPOSITORY="$RESTIC_REPOSITORY"
+  PASSPHRASE=$(<"$BACKUP_PASSPHRASE_FILE")
+  PASSPHRASE_FILE="$BACKUP_PASSPHRASE_FILE"
+else
+  prompt_destination
+fi
+record_phase "destination"
+
+if [[ -z ${PASSPHRASE:-} ]]; then
+  prompt_passphrase
+fi
+record_phase "passphrase"
+
+write_secrets
+probe_repository
+record_phase "repository"
+
+offer_disaster_recovery
+
+if [[ -z $BACKUP_MAINTENANCE_HOST ]]; then
+  # Whoever sets the repository up first owns pruning and checking it, so the
+  # expensive half of the work does not run on every machine sharing it.
+  BACKUP_MAINTENANCE_HOST="$(hostname)"
+fi
+backup_write_settings
+backup_write_exclude_file
+
+write_recovery_card
+record_phase "card"
+
+install_units
+
+if [[ $FIRST_BACKUP == "true" ]]; then
+  run_first_backup
+fi
+record_phase "first-backup"
+
+enable_schedule
+record_phase "done"
+
+echo
+echo -e "\e[32mBackups are on. Every hour, only what changed, encrypted before it leaves.\e[0m"
+echo "Status:  omarchy backup status"
+echo "Restore: omarchy backup restore ~/some/file"
+echo "Browse:  omarchy backup browse"

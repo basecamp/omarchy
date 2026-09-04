@@ -29,6 +29,7 @@ declare -A GROUP_DESCRIPTIONS
 GROUP_DESCRIPTIONS[agent]="AI coding agent usage data"
 GROUP_DESCRIPTIONS[ascii]="Text drawn as ASCII art"
 GROUP_DESCRIPTIONS[audio]="Audio input and output controls"
+GROUP_DESCRIPTIONS[backup]="Off-site encrypted backups"
 GROUP_DESCRIPTIONS[bar]="Omarchy shell bar layout and settings"
 GROUP_DESCRIPTIONS[battery]="Battery status helpers"
 GROUP_DESCRIPTIONS[bluetooth]="Bluetooth device controls"

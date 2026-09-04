@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Resume scheduled backups after a pause
+
+set -uo pipefail
+
+source omarchy-backup-env
+
+rm -f "$BACKUP_PAUSE_FILE"
+backup_status_update '.phase = (if .phase == "paused" then "idle" else .phase end) | .pause = {until: 0, reason: ""}'
+backup_log "Resumed"
+echo "Backups resumed. The next scheduled run picks up from here."

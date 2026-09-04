@@ -1,0 +1,44 @@
+# Default backup excludes. Patterns are relative to $HOME and expanded to
+# absolute paths before restic sees them. Regenerable bytes only — when in
+# doubt, include: a backup that skipped something you needed is worse than a
+# backup that carried something you did not.
+#
+# Extend this list in ~/.config/omarchy/backup/excludes rather than editing
+# here, so an Omarchy update does not overwrite your patterns.
+
+.cache
+.local/share/Trash
+.local/state/omarchy/backup
+
+# Browser caches and profile scratch
+.config/*/Cache
+.config/*/Code Cache
+.config/*/GPUCache
+.config/*/Service Worker/CacheStorage
+.mozilla/firefox/*/cache2
+.mozilla/firefox/*/startupCache
+
+# Package and toolchain caches
+.npm/_cacache
+.bun/install/cache
+.cargo/registry/cache
+.gradle/caches
+.local/share/mise/downloads
+.local/share/pnpm/store
+.local/share/uv/cache
+.m2/repository
+.rustup/toolchains
+.yarn/cache
+go/pkg/mod/cache
+
+# Build output that the source rebuilds
+**/node_modules
+**/.next/cache
+**/target/debug
+**/vendor/bundle
+
+# Thumbnails and desktop scratch
+.local/share/thumbnails
+.thumbnails
+.steam
+.local/share/Steam
