@@ -2,8 +2,8 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-  readonly property var hostPresentation: typeof runtime !== "undefined"
-    && runtime.presentation ? runtime.presentation : ({})
+  readonly property var hostPresentation: typeof pluginPresentation !== "undefined"
+    ? pluginPresentation : ({})
   readonly property int cornerRadius: 10
   readonly property int normalBorderWidth: 1
   readonly property int gapsOut: 16

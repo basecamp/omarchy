@@ -2,7 +2,8 @@ import QtQuick
 import Omarchy.PluginPresentation 1.0
 
 Item {
-  objectName: "presentation-loaded"
+  objectName: String(Color.foreground) === "#123456"
+    && Style.bar.statusSlot === 23 ? "presentation-themed" : "presentation-loaded"
   width: 320
   height: 240
 

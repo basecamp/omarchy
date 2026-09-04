@@ -2,8 +2,8 @@ pragma Singleton
 import QtQuick
 
 QtObject {
-  readonly property var hostPresentation: typeof runtime !== "undefined"
-    && runtime.presentation ? runtime.presentation : ({})
+  readonly property var hostPresentation: typeof pluginPresentation !== "undefined"
+    ? pluginPresentation : ({})
   readonly property color foreground: hostPresentation.foreground || "#f2f4f8"
   readonly property color background: hostPresentation.background || "#090a0c"
   readonly property color accent: hostPresentation.accent || "#5e81ac"

@@ -401,6 +401,7 @@ private:
         packet.header.correlation_id != 0 || !packet.descriptors.empty() ||
         !broker_api_->applyPresentationSnapshot(
             packet.header.launch_generation, packet.payload) ||
+        !runtime_.apply_presentation(broker_api_->presentation()) ||
         !control_.send(wire::kPresentationSnapshotAcceptedMessage, {}, 0)) {
       fatal("presentation snapshot failed runtime validation");
       return false;

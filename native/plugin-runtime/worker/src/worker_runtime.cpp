@@ -21,6 +21,7 @@
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQmlPropertyMap>
 #include <QQuickItem>
 #include <QQuickRenderControl>
 #include <QQuickRenderTarget>
@@ -45,6 +46,16 @@
 
 namespace omarchy::plugin_runtime::worker {
 namespace {
+
+class ReadOnlyPresentationMap final : public QQmlPropertyMap {
+public:
+  ReadOnlyPresentationMap() : QQmlPropertyMap(this, nullptr) {}
+
+protected:
+  QVariant updateValue(const QString &key, const QVariant &) override {
+    return value(key);
+  }
+};
 
 RuntimeResult failure(RuntimeFailure code, std::string detail) {
   return {.failure = code, .detail = std::move(detail)};
@@ -349,6 +360,24 @@ struct WorkerRuntime::Impl {
           QQuickWindow::setGraphicsApi(QSGRendererInterface::Software);
           return true;
         }()) {
+    presentation.insert(QStringLiteral("foreground"),
+                        QStringLiteral("#f2f4f8"));
+    presentation.insert(QStringLiteral("background"),
+                        QStringLiteral("#090a0c"));
+    presentation.insert(QStringLiteral("accent"), QStringLiteral("#5e81ac"));
+    presentation.insert(QStringLiteral("urgent"), QStringLiteral("#bf616a"));
+    presentation.insert(QStringLiteral("barForeground"),
+                        QStringLiteral("#f2f4f8"));
+    presentation.insert(QStringLiteral("barBackground"),
+                        QStringLiteral("#090a0c"));
+    presentation.insert(QStringLiteral("fontFamily"),
+                        QStringLiteral("sans-serif"));
+    presentation.insert(QStringLiteral("barSize"), 26);
+    presentation.insert(QStringLiteral("iconSlot"), 27);
+    presentation.insert(QStringLiteral("statusSlot"), 21);
+    presentation.freeze();
+    engine.rootContext()->setContextProperty(
+        QStringLiteral("pluginPresentation"), &presentation);
     QImageReader::setAllocationLimit(kMaximumDecodedImageMiB);
     source_policy.configure(engine);
   }
@@ -432,6 +461,7 @@ struct WorkerRuntime::Impl {
   }
 
   PluginSourcePolicy source_policy;
+  ReadOnlyPresentationMap presentation;
   QQmlEngine engine;
   [[maybe_unused]] bool software_backend;
   QtTouchInjector touch_injector;
@@ -444,6 +474,7 @@ struct WorkerRuntime::Impl {
   std::uint64_t maximum_frame_bytes = 0;
   std::size_t next_render_surface = 0;
   bool runtime_api_bound = false;
+  bool presentation_applied = false;
   std::string last_error;
 };
 
@@ -528,6 +559,25 @@ RuntimeResult WorkerRuntime::bind_runtime_api(QObject &runtime_api) {
       QStringLiteral("runtime"), &runtime_api);
   implementation_->runtime_api_bound = true;
   return {};
+}
+
+bool WorkerRuntime::apply_presentation(const QVariantMap &presentation) {
+  static const std::array<QString, 10> keys{
+      QStringLiteral("foreground"),    QStringLiteral("background"),
+      QStringLiteral("accent"),        QStringLiteral("urgent"),
+      QStringLiteral("barForeground"), QStringLiteral("barBackground"),
+      QStringLiteral("fontFamily"),    QStringLiteral("barSize"),
+      QStringLiteral("iconSlot"),      QStringLiteral("statusSlot")};
+  if (implementation_->presentation_applied ||
+      presentation.size() != static_cast<qsizetype>(keys.size()))
+    return false;
+  for (const auto &key : keys)
+    if (!presentation.contains(key))
+      return false;
+  for (const auto &key : keys)
+    implementation_->presentation.insert(key, presentation.value(key));
+  implementation_->presentation_applied = true;
+  return true;
 }
 
 RuntimeResult WorkerRuntime::load_entry(std::string entry_path) {

@@ -84,6 +84,9 @@ public:
   [[nodiscard]] std::optional<surface::SurfaceKey>
   surface_key(std::string_view surface_name) const;
   [[nodiscard]] RuntimeResult bind_runtime_api(QObject &runtime_api);
+  // Installs the already-validated, authority-free host presentation snapshot
+  // exactly once before plugin QML is instantiated.
+  [[nodiscard]] bool apply_presentation(const QVariantMap &presentation);
   [[nodiscard]] RuntimeResult
   select_software_profile(const surface::ProfileOffer &offer);
   [[nodiscard]] RuntimeResult

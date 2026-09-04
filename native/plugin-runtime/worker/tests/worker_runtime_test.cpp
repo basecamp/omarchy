@@ -1472,6 +1472,26 @@ void hostile_loading() {
               presentation.root_object_name() == "presentation-loaded",
           "worker-owned presentation SDK did not load");
 
+  worker::WorkerRuntime themed_presentation(fixture("presentation"),
+                                            exact_qml.root());
+  QVariantMap theme{
+      {QStringLiteral("foreground"), QStringLiteral("#123456")},
+      {QStringLiteral("background"), QStringLiteral("#654321")},
+      {QStringLiteral("accent"), QStringLiteral("#234567")},
+      {QStringLiteral("urgent"), QStringLiteral("#ff0000")},
+      {QStringLiteral("barForeground"), QStringLiteral("#123456")},
+      {QStringLiteral("barBackground"), QStringLiteral("#654321")},
+      {QStringLiteral("fontFamily"), QStringLiteral("monospace")},
+      {QStringLiteral("barSize"), 26},
+      {QStringLiteral("iconSlot"), 27},
+      {QStringLiteral("statusSlot"), 23}};
+  require(static_cast<bool>(themed_presentation.prepare_trusted_qt_types()) &&
+              themed_presentation.apply_presentation(theme) &&
+              !themed_presentation.apply_presentation(theme) &&
+              static_cast<bool>(themed_presentation.load_manifest_entry()) &&
+              themed_presentation.root_object_name() == "presentation-themed",
+          "authenticated presentation was not applied after trusted preload");
+
   worker::WorkerRuntime shadowed_presentation(fixture("presentation-shadow"),
                                               exact_qml.root());
   require(static_cast<bool>(shadowed_presentation.prepare_trusted_qt_types()) &&
