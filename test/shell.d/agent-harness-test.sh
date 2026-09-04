@@ -47,3 +47,15 @@ if HOME="$home" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-agent-catalog" "$plugin/
   fail "agent catalog accepts a harness alias that conflicts with a built-in id"
 fi
 pass "agent catalog rejects harness identity collisions"
+
+jq '.agentHarness.aliases = ["acme"]' "$plugin/manifest.json" >"$plugin/valid.json"
+mv "$plugin/valid.json" "$plugin/manifest.json"
+second_plugin="$home/.config/omarchy/plugins/example.integration"
+mkdir -p "$second_plugin"
+jq '.id = "example.integration" | .agentHarness.id = "example-agent" | .agentHarness.aliases = ["acme"]' "$plugin/manifest.json" >"$second_plugin/manifest.json"
+HOME="$home" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-agent-catalog" >"$test_tmp/catalog.json" 2>"$test_tmp/catalog.stderr"
+jq -e '[.[] | select(.id == "acme-agent" or .id == "example-agent")] | length == 1' "$test_tmp/catalog.json" >/dev/null ||
+  fail "agent catalog does not choose one existing conflicting harness deterministically"
+grep -Fq 'ignoring conflicting installed harness' "$test_tmp/catalog.stderr" ||
+  fail "agent catalog does not warn about existing harness collisions"
+pass "agent catalog warns while deterministically resolving existing collisions"

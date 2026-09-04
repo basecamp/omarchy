@@ -75,11 +75,12 @@ if [[ -n $candidate ]]; then
     [[ ${inputs[$candidate_index]} == "$candidate" ]] && break
   done
   conflicts=$(jq -r --argjson source "$candidate_index" '.conflicts[] | select(.left == $source or .right == $source) | .message' <<<"$result")
+  if [[ -n $conflicts ]]; then
+    while IFS= read -r conflict; do echo "omarchy-agent-catalog: $conflict" >&2; done <<<"$conflicts"
+    exit 1
+  fi
 else
-  conflicts=""
-fi
-if [[ -n $conflicts ]]; then
-  while IFS= read -r conflict; do echo "omarchy-agent-catalog: $conflict" >&2; done <<<"$conflicts"
-  exit 1
+  jq -r '.conflicts[] | .message' <<<"$result" | sort -u |
+    while IFS= read -r conflict; do echo "omarchy-agent-catalog: ignoring conflicting installed harness: $conflict" >&2; done
 fi
 jq '.catalog | map(del(.pluginId, .source))' <<<"$result"
