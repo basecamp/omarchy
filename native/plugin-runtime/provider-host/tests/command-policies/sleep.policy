@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "profile": "test-timeout",
+  "command": "sleep",
+  "executable": "/usr/bin/sleep",
+  "timeoutMs": 50,
+  "stdoutBytes": 1024,
+  "stderrBytes": 1024,
+  "accountHome": false,
+  "environment": {},
+  "rules": [
+    [
+      {"regex": "[1-9][0-9]*"}
+    ]
+  ]
+}

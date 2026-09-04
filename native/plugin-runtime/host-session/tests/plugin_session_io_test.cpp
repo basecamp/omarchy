@@ -801,7 +801,9 @@ void test_revocation_preempts_remaining_receive_batch() {
   auto [state, clock] = ChannelFixture{};
   SessionLimits limits;
   limits.maximum_pump_batch = SessionLimits::kMaximumPumpBatch;
-  limits.io_timeout = SessionLimits::kMaximumIoTimeout;
+  // Keep this scheduling fixture short. The product ceiling also covers
+  // explicitly profiled network providers and is not its latency budget.
+  limits.io_timeout = std::chrono::milliseconds(1000);
   PluginSessionIo session(token(), fake(state), clock, nullptr, limits);
   start_and_await_running_without_ui(
       session, "revocation-latency fixture did not start");

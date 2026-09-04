@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "profile": "forbidden-shell",
+  "command": "sh",
+  "executable": "/usr/bin/sh",
+  "timeoutMs": 500,
+  "stdoutBytes": 1024,
+  "stderrBytes": 1024,
+  "accountHome": false,
+  "environment": {},
+  "rules": [
+    [
+      {"exact": "-c"},
+      {"regex": ".*"}
+    ]
+  ]
+}

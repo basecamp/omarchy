@@ -158,6 +158,16 @@ expect_failure "invalid policy document" "builtin capability policy is not valid
 
 reset_fixture
 root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+sed -i 's#^executable=/usr/#executable=/tmp/#' "$root/providers.d/bash-execute.profile"
+expect_failure "retargeted command executor" "command provider profile does not pin the installed executor and capability contract" "$verifier" --staging "$scratch/root" "$version"
+
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
+sed -i 's#"executable": "/usr/bin/gh"#"executable": "/usr/bin/sh"#' "$root/commands.d/github-api-v1.policy"
+expect_failure "retargeted GitHub command" "GitHub command policy is invalid" "$verifier" --staging "$scratch/root" "$version"
+
+reset_fixture
+root=$scratch/root/usr/lib/omarchy/plugin-security/$version
 sed -i 's/"manifestReferencesRequireExactPins": true/"manifestReferencesRequireExactPins": false/' \
   "$root/metadata/capability-catalog-v1.json"
 expect_failure "invalid generated capability catalog" "generated capability catalog is invalid" "$verifier" --staging "$scratch/root" "$version"

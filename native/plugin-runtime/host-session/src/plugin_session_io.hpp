@@ -161,8 +161,8 @@ struct SessionLimits {
   static constexpr std::size_t kMaximumBytes = 16ULL * 1024 * 1024;
   static constexpr std::size_t kMaximumDescriptors = 256;
   static constexpr std::size_t kMaximumPumpBatch = 256;
-  static constexpr std::chrono::milliseconds kMaximumStartupTimeout{30000};
-  static constexpr std::chrono::milliseconds kMaximumIoTimeout{1000};
+  static constexpr std::chrono::milliseconds kMaximumStartupTimeout{30500};
+  static constexpr std::chrono::milliseconds kMaximumIoTimeout{30500};
 
   std::size_t maximum_queued_messages = 64;
   std::size_t maximum_queued_bytes = 1024ULL * 1024;

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "profile": "test-printf",
+  "command": "printf",
+  "executable": "/usr/bin/printf",
+  "timeoutMs": 500,
+  "stdoutBytes": 1024,
+  "stderrBytes": 1024,
+  "accountHome": false,
+  "environment": {},
+  "rules": [
+    [
+      {"exact": "%s"},
+      {"regex": "[a-z]{1,8}"}
+    ]
+  ]
+}

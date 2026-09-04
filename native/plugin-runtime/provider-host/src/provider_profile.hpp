@@ -4,6 +4,8 @@
 
 #include <unistd.h>
 
+#include <chrono>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -50,6 +52,7 @@ struct ProviderCatalog::Profile final {
   std::string executable_path;
   definitions::Digest executable_digest;
   std::vector<std::string> arguments;
+  std::optional<std::chrono::milliseconds> invocation_timeout;
   detail::Descriptor executable;
 };
 

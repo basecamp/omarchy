@@ -78,7 +78,9 @@ for directory in \
   usr/lib/omarchy \
   usr/lib/omarchy/plugin-security \
   "usr/lib/omarchy/plugin-security/$version" \
-  "usr/lib/omarchy/plugin-security/$version/capabilities.d"; do
+  "usr/lib/omarchy/plugin-security/$version/capabilities.d" \
+  "usr/lib/omarchy/plugin-security/$version/commands.d" \
+  "usr/lib/omarchy/plugin-security/$version/providers.d"; do
   add_expected "$directory" d 755
 done
 
@@ -139,6 +141,9 @@ for relative in "${!expected_type[@]}"; do
 done
 
 worker=$root/bin/omarchy-plugin-qml-worker
+command_executor=$root/bin/omarchy-plugin-command-executor
+command_policy=$root/commands.d/github-api-v1.policy
+command_provider=$root/providers.d/bash-execute.profile
 bridge=$root/qml/Omarchy/PluginHost/libomarchy-plugin-host-bridge.so
 runtime_dependencies=$root/metadata/runtime-dependencies-v1.txt
 runtime_paths=$root/metadata/runtime-paths-v1.txt
@@ -163,9 +168,41 @@ EOF
 [[ $(<"$runtime_dependencies") == $expected_dependencies ]] ||
   fail "runtime dependency contract differs from the required Arch package set"
 
+command_contract=$(jq -er '.definitions[] | select(.capability == "bash.execute") | .contractDigest' "$root/metadata/capability-catalog-v1.json") ||
+  fail "command capability contract is unavailable"
+command_executor_digest=$(sha256sum "$command_executor")
+command_executor_digest=${command_executor_digest%% *}
+expected_command_provider=$(cat <<EOF
+schema=1
+adapter-class=bounded-command-execute
+contract-digest=$command_contract
+abi-version=1
+group=command.executor
+executable=/usr/lib/omarchy/plugin-security/$version/bin/omarchy-plugin-command-executor
+executable-sha256=$command_executor_digest
+arg=/usr/lib/omarchy/plugin-security/$version/commands.d
+arg=/etc/omarchy/plugin-command-profiles.d
+arg=0
+invocation-timeout-ms=30000
+EOF
+)
+[[ $(<"$command_provider") == "$expected_command_provider" ]] ||
+  fail "command provider profile does not pin the installed executor and capability contract"
+if ! jq -e '
+  .schemaVersion == 1 and
+  .profile == "github-api-v1" and
+  .command == "gh" and
+  .executable == "/usr/bin/gh" and
+  .accountHome == true and
+  (.rules | type == "array" and length > 0)
+' "$command_policy" >/dev/null; then
+  fail "GitHub command policy is invalid"
+fi
+
 qt_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libxkbcommon\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6)$'
 bridge_allowed='^(libQt6(Quick|OpenGL|Gui|Qml|Network|DBus|Core)\.so\.6|lib(GLX|OpenGL)\.so\.0|libseccomp\.so\.2|libsystemd\.so\.0|libstdc\+\+\.so\.6|libm\.so\.6|libgcc_s\.so\.1|libc\.so\.6|ld-linux-x86-64\.so\.2)$'
 verify_elf "$worker" pie "$qt_allowed" libseccomp.so.2
+verify_elf "$command_executor" pie "$qt_allowed" libQt6Core.so.6
 verify_elf "$bridge" shared "$bridge_allowed" libQt6Qml.so.6
 needed_libraries "$bridge" | grep -Fx libseccomp.so.2 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libseccomp.so.2"
 needed_libraries "$bridge" | grep -Fx libsystemd.so.0 >/dev/null || fail "libomarchy-plugin-host-bridge.so omits required DT_NEEDED libsystemd.so.0"

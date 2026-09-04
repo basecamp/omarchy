@@ -21,7 +21,59 @@ target_link_libraries(omarchy-plugin-provider-host PUBLIC
   omarchy-plugin-capability-definitions
   omarchy-plugin-launcher)
 
+set(OMARCHY_COMMAND_CONTRACT_DIGEST
+  "7cfb8547d49ea0d43248227c049f19d9f711c7838452789c9ef2fdfe41e82142")
+configure_file(cmake/command_contract.hpp.in
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/command_contract.hpp" @ONLY)
+add_executable(omarchy-plugin-command-executor
+  src/command_executor.cpp)
+target_compile_features(omarchy-plugin-command-executor PRIVATE cxx_std_20)
+target_compile_options(omarchy-plugin-command-executor PRIVATE
+  -Wall -Wextra -Wpedantic -Werror)
+target_include_directories(omarchy-plugin-command-executor PRIVATE
+  "${CMAKE_CURRENT_BINARY_DIR}/generated")
+target_link_libraries(omarchy-plugin-command-executor PRIVATE
+  Qt6::Core)
+install(TARGETS omarchy-plugin-command-executor
+  RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
+install(FILES commands/github-api-v1.policy
+  DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/commands.d")
+configure_file(cmake/install_command_provider.cmake.in
+  "${CMAKE_CURRENT_BINARY_DIR}/install_command_provider.cmake" @ONLY)
+install(SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/install_command_provider.cmake")
+
 if(BUILD_TESTING)
+  add_executable(omarchy-plugin-command-executor-test-peer
+    src/command_executor.cpp)
+  target_compile_features(omarchy-plugin-command-executor-test-peer PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-command-executor-test-peer PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_definitions(omarchy-plugin-command-executor-test-peer PRIVATE
+    OMARCHY_COMMAND_EXECUTOR_TESTING=1)
+  target_include_directories(omarchy-plugin-command-executor-test-peer PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated")
+  target_link_libraries(omarchy-plugin-command-executor-test-peer PRIVATE
+    Qt6::Core)
+
+  add_executable(omarchy-plugin-command-executor-test
+    tests/command_executor_test.cpp)
+  target_compile_features(omarchy-plugin-command-executor-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-command-executor-test PRIVATE
+    -Wall -Wextra -Wpedantic -Werror)
+  target_compile_definitions(omarchy-plugin-command-executor-test PRIVATE
+    COMMAND_EXECUTOR_PATH="$<TARGET_FILE:omarchy-plugin-command-executor-test-peer>"
+    POLICY_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/command-policies"
+    BUILTIN_POLICY_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/commands"
+    REJECTED_POLICY_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/rejected-command-policies"
+    MISSING_POLICY_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/missing-command-policies")
+  target_link_libraries(omarchy-plugin-command-executor-test PRIVATE Qt6::Core)
+  add_dependencies(omarchy-plugin-command-executor-test
+    omarchy-plugin-command-executor-test-peer)
+  add_test(NAME plugin-command-executor
+    COMMAND omarchy-plugin-command-executor-test)
+  set_tests_properties(plugin-command-executor PROPERTIES
+    TIMEOUT 10 LABELS "unit;security;providers;commands;adversarial")
+
   add_executable(omarchy-plugin-provider-peer tests/provider_peer.cpp)
   target_compile_features(omarchy-plugin-provider-peer PRIVATE cxx_std_20)
   target_compile_options(omarchy-plugin-provider-peer PRIVATE

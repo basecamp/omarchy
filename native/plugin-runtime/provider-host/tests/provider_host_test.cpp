@@ -169,7 +169,8 @@ struct Fixture final {
                std::string_view mode = "pid", bool admin = false,
                std::string_view executable = "/bin/provider-peer",
                std::string_view digest = {},
-               std::span<const std::string_view> extra_arguments = {}) const {
+               std::span<const std::string_view> extra_arguments = {},
+               std::string_view invocation_timeout = {}) const {
     std::ofstream output(profile_path(name, admin));
     output << "schema=1\n"
            << "adapter-class=" << adapter << "\n"
@@ -182,6 +183,8 @@ struct Fixture final {
            << "arg=" << mode << "\n";
     for (const auto argument : extra_arguments)
       output << "arg=" << argument << "\n";
+    if (!invocation_timeout.empty())
+      output << "invocation-timeout-ms=" << invocation_timeout << "\n";
     output.close();
     std::filesystem::permissions(profile_path(name, admin),
                                  std::filesystem::perms::owner_read |
@@ -262,6 +265,22 @@ void catalog_security() {
           "exact adapter unavailable");
   require(!catalog->available(binding("test.adapter", 'e')),
           "wrong contract digest available");
+
+  Fixture invalid_timeout;
+  invalid_timeout.profile("zero-timeout", "test.adapter", digest('a'),
+                          "test.group", "pid", false,
+                          "/bin/provider-peer", {}, {}, "0");
+  require(!load(invalid_timeout, error) &&
+              error == host::CatalogError::profile_rejected,
+          "zero provider timeout accepted");
+
+  Fixture excessive_timeout;
+  excessive_timeout.profile("long-timeout", "test.adapter", digest('a'),
+                            "test.group", "pid", false,
+                            "/bin/provider-peer", {}, {}, "30001");
+  require(!load(excessive_timeout, error) &&
+              error == host::CatalogError::profile_rejected,
+          "provider timeout above the product ceiling accepted");
 
   Fixture bad_hash;
   bad_hash.profile("bad", "test.adapter", digest('a'), "test.group", "pid",
@@ -497,6 +516,32 @@ void aggregate_invocation_deadline_bounds_cancel_wait() {
   errno = 0;
   require(::waitpid(-1, nullptr, WNOHANG) < 0 && errno == ECHILD,
           "aggregate-timeout provider child was not reaped");
+}
+
+void profile_invocation_timeout() {
+  Fixture short_fixture;
+  short_fixture.profile("short", "test.adapter", digest('a'), "short.group",
+                        "late", false, "/bin/provider-peer", {}, {}, "150");
+  host::CatalogError error{};
+  auto catalog = load(short_fixture, error);
+  auto scope = recording_scope();
+  auto runtime = host::ProviderActivation::create(catalog, activation(14), scope);
+  auto route = runtime->route(binding("test.adapter"));
+  std::string output;
+  require(!invoke(route, activation(14), output) &&
+              scope->termination_count() == 1,
+          "short trusted profile did not bound a slow provider");
+
+  Fixture long_fixture;
+  long_fixture.profile("long", "test.adapter", digest('a'), "long.group",
+                       "late", false, "/bin/provider-peer", {}, {}, "1000");
+  catalog = load(long_fixture, error);
+  scope = recording_scope();
+  runtime = host::ProviderActivation::create(catalog, activation(15), scope);
+  route = runtime->route(binding("test.adapter"));
+  require(invoke(route, activation(15), output) && output == "ok",
+          "trusted profile could not extend a bounded network-style call");
+  require(runtime->cancel(), "long-timeout provider did not cancel cleanly");
 }
 
 void launch_boundary() {
@@ -808,6 +853,7 @@ int main(int argc, char **argv) {
   protocol_and_lifecycle();
   failure_modes();
   aggregate_invocation_deadline_bounds_cancel_wait();
+  profile_invocation_timeout();
   launch_boundary();
   scope_fail_closed();
   std::cout << "provider host tests passed\n";

@@ -41,9 +41,9 @@ constexpr std::uint64_t kProviderCpuQuotaUsec = 250000;
 constexpr std::uint64_t kProviderCpuWeight = 10;
 constexpr std::uint64_t kProviderIoWeight = 10;
 // Leave a bounded tail of every invocation for fail-closed process and scope
-// cleanup. The product's 750 ms aggregate budget gives provider work 650 ms
-// and cleanup 100 ms; shorter test policies retain half for provider work.
-constexpr std::chrono::milliseconds kProviderCleanupReserve{100};
+// cleanup. Short policies retain half for cleanup; network-capable policies
+// retain 500 ms without turning their complete profile-bound budget into work.
+constexpr std::chrono::milliseconds kProviderCleanupReserve{500};
 
 using detail::Descriptor;
 
@@ -658,7 +658,9 @@ bool ProviderActivation::invoke(
     (void)group;
     return exchange(process, *profile, implementation_->binding,
                     *implementation_->resource_scope, binding, request,
-                    response, written, implementation_->timeout);
+                    response, written,
+                    profile->invocation_timeout.value_or(
+                        implementation_->timeout));
   } catch (...) {
     return false;
   }

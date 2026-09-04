@@ -186,6 +186,20 @@ bool same_process(const ProviderCatalog::Profile &left,
          left.arguments == right.arguments;
 }
 
+std::optional<std::optional<std::chrono::milliseconds>>
+parse_timeout(const std::map<std::string, std::vector<std::string>> &fields) {
+  const auto found = fields.find("invocation-timeout-ms");
+  if (found == fields.end())
+    return std::optional<std::chrono::milliseconds>{};
+  if (found->second.size() != 1)
+    return std::nullopt;
+  const auto value = parse_u32(found->second.front());
+  const auto timeout = std::chrono::milliseconds(value);
+  if (value == 0 || timeout > kMaximumProviderInvocationTimeout)
+    return std::nullopt;
+  return timeout;
+}
+
 std::optional<ProviderCatalog::Profile>
 load_profile(int root_fd, std::string_view name, int filesystem_root_fd,
              std::uint32_t trusted_uid, CatalogError &error) {
@@ -210,6 +224,7 @@ load_profile(int root_fd, std::string_view name, int filesystem_root_fd,
   const auto fields = parse_document(*document);
   std::string schema, adapter_class, contract_digest, abi, group, executable_path,
       executable_digest;
+  const auto invocation_timeout = parse_timeout(fields);
   if (fields.empty() || !single(fields, "schema", schema) || schema != "1" ||
       !single(fields, "adapter-class", adapter_class) ||
       !single(fields, "contract-digest", contract_digest) ||
@@ -219,14 +234,16 @@ load_profile(int root_fd, std::string_view name, int filesystem_root_fd,
       !definitions::canonical_identifier(adapter_class) ||
       !definitions::canonical_identifier(group) ||
       !definitions::valid_digest(contract_digest) ||
-      !definitions::valid_digest(executable_digest) || parse_u32(abi) == 0) {
+      !definitions::valid_digest(executable_digest) || parse_u32(abi) == 0 ||
+      !invocation_timeout) {
     error = CatalogError::profile_rejected;
     return std::nullopt;
   }
   for (const auto &[key, values] : fields) {
     if (key != "schema" && key != "adapter-class" &&
         key != "contract-digest" && key != "abi-version" && key != "group" &&
-        key != "executable" && key != "executable-sha256" && key != "arg") {
+        key != "executable" && key != "executable-sha256" && key != "arg" &&
+        key != "invocation-timeout-ms") {
       error = CatalogError::profile_rejected;
       return std::nullopt;
     }
@@ -266,6 +283,7 @@ load_profile(int root_fd, std::string_view name, int filesystem_root_fd,
         .executable_path = std::move(executable_path),
         .executable_digest = definitions::Digest(executable_digest),
         .arguments = std::move(arguments),
+        .invocation_timeout = *invocation_timeout,
         .executable = std::move(executable)};
   } catch (...) {
     error = CatalogError::profile_rejected;

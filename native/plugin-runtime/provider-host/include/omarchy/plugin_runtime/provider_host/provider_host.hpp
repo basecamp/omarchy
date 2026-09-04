@@ -20,6 +20,7 @@ namespace launcher = omarchy::plugin_runtime::launcher;
 
 constexpr std::size_t kMaximumProviderPayload = 64 * 1024;
 constexpr std::chrono::milliseconds kProviderInvocationTimeout{750};
+constexpr std::chrono::milliseconds kMaximumProviderInvocationTimeout{30000};
 
 enum class CatalogError : std::uint8_t {
   none,

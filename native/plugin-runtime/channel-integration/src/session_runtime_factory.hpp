@@ -65,7 +65,7 @@ struct Limits final {
 };
 
 inline constexpr std::chrono::milliseconds kProviderSettlementMargin{250};
-static_assert(provider_host::kProviderInvocationTimeout +
+static_assert(provider_host::kMaximumProviderInvocationTimeout +
                   kProviderSettlementMargin <=
               session::SessionLimits::kMaximumIoTimeout);
 
@@ -76,7 +76,8 @@ static_assert(provider_host::kProviderInvocationTimeout +
 provider_backed_session_limits() noexcept {
   session::SessionLimits limits;
   limits.io_timeout =
-      provider_host::kProviderInvocationTimeout + kProviderSettlementMargin;
+      provider_host::kMaximumProviderInvocationTimeout +
+      kProviderSettlementMargin;
   return limits;
 }
 
