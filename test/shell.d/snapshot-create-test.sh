@@ -30,6 +30,12 @@ echo 4.0.0
 STUB
 chmod +x "$fake_bin/omarchy-version"
 
+cat >"$fake_bin/swapon" <<'STUB'
+#!/bin/bash
+echo '{"swapdevices":[]}'
+STUB
+chmod +x "$fake_bin/swapon"
+
 # Snapper with no configs: list-configs prints only the CSV header.
 cat >"$fake_bin/snapper" <<'STUB'
 #!/bin/bash
@@ -75,6 +81,49 @@ grep -qFx 'snapper -c root create -c number -d 4.0.0' "$test_tmp/calls.log" ||
 grep -qFx 'snapper -c root cleanup number' "$test_tmp/calls.log" ||
   fail "snapshot create prunes older snapshots"
 pass "snapshot create snapshots every configured Snapper config"
+
+cat >"$fake_bin/swapon" <<'STUB'
+#!/bin/bash
+echo '{"swapdevices":[{"name":"/swapfile","type":"file"}]}'
+STUB
+
+cat >"$fake_bin/btrfs" <<'STUB'
+#!/bin/bash
+[[ $* == "inspect-internal rootid /" || $* == "inspect-internal rootid /swapfile" ]] || exit 1
+echo 256
+STUB
+chmod +x "$fake_bin/swapon" "$fake_bin/btrfs"
+
+: >"$test_tmp/calls.log"
+set +e
+stderr=$(TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
+  bash "$snapshot" create 2>&1 >/dev/null)
+status=$?
+set -e
+
+(( status != 0 )) || fail "snapshot create fails before snapshotting a subvolume with an active swapfile"
+grep -qF 'Cannot snapshot / while the active swapfile /swapfile is inside its Btrfs subvolume.' <<<"$stderr" ||
+  fail "snapshot create explains the active Btrfs swapfile failure" "$stderr"
+! grep -q '^snapper -c .* create ' "$test_tmp/calls.log" ||
+  fail "snapshot create does not ask Snapper to snapshot a subvolume with an active swapfile"
+pass "snapshot create identifies active swapfiles that prevent Btrfs snapshots"
+
+cat >"$fake_bin/btrfs" <<'STUB'
+#!/bin/bash
+case "$*" in
+  "inspect-internal rootid /") echo 256 ;;
+  "inspect-internal rootid /swapfile") echo 257 ;;
+  *) exit 1 ;;
+esac
+STUB
+
+: >"$test_tmp/calls.log"
+TEST_LOG="$test_tmp/calls.log" PATH="$fake_bin:$PATH" \
+  bash "$snapshot" create >/dev/null
+
+grep -qFx 'snapper -c root create -c number -d 4.0.0' "$test_tmp/calls.log" ||
+  fail "snapshot create allows swapfiles isolated in their own Btrfs subvolume"
+pass "snapshot create allows active swapfiles in a different Btrfs subvolume"
 
 # Snapper being deliberately absent is the one skip that stays quiet, and the
 # update has to keep treating it as such.
