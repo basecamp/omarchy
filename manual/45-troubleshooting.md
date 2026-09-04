@@ -26,6 +26,18 @@ hl.config({
 
 Before you reboot, try restarting the offending subsystem on its own. _Update > Hardware_ in the Omarchy menu has Wi-Fi, Bluetooth, Audio, and Trackpad, and reloading one of those clears up the majority of "it worked five minutes ago" situations — a Bluetooth headset that won't reconnect, a trackpad that went dead after a suspend, sound that vanished when you unplugged a monitor.
 
+### My mouse or other USB peripherals are frozen after waking from sleep
+
+On some AMD systems, the USB controller doesn't come back cleanly after suspend: the mouse, keyboard, or a USB receiver still shows up as connected, but stops responding until you unplug and replug it (or reboot). The kernel log shows the controller failing to resume:
+
+```text
+xHC error in resume, USBSTS 0x401, Reinit
+xHCI host controller not responding, assume dead
+HC died; cleaning up
+```
+
+This is a known upstream AMD xHCI resume bug — the controller fails to redeliver its MSI/MSI-X interrupts after waking ([Bugzilla 221073](https://bugzilla.kernel.org/show_bug.cgi?id=221073)) — not something caused by Omarchy. The reliable workaround is to force the controller back to legacy INTx interrupts by adding `xhci_hcd.quirks=0x40` (XHCI_BROKEN_MSI) to your kernel command line in the boot loader (Limine by default). Switching to the lighter `s2idle` sleep state with `mem_sleep_default=s2idle` keeps USB controllers powered and helps in some cases, but it does not fully avoid the broken resume path on long sleeps. Note that disabling USB autosuspend alone does not help: Omarchy's shipped `/etc/modprobe.d/omarchy-usb-autosuspend.conf` is inert for this, because `usbcore` is built into the kernel and modprobe.d options never apply to built-in modules — the fix has to come from the kernel command line (or a udev rule that reinitializes the controller on resume).
+
 ### Why are my external speakers not playing?
 
 Probably because they're not set as the primary output. Click on the speaker icon on the right side of the bar, and it'll open the volume popup where you can pick the output device (and mix per-app volumes too).
