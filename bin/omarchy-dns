@@ -19,6 +19,7 @@ if (( EUID == 0 )); then
 fi
 
 NM_DNS_CONF=/etc/NetworkManager/conf.d/20-omarchy-dns.conf
+RESOLVED_DROP_IN=/etc/systemd/resolved.conf.d/90-dot.conf
 
 provider_from_arg() {
   case "${1:-}" in
@@ -97,11 +98,30 @@ resolved_dns() {
   ' /etc/systemd/resolved.conf 2>/dev/null || true
 }
 
+resolved_dropin_dns() {
+  [[ -f $RESOLVED_DROP_IN ]] || return 0
+
+  awk -F= '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*\[Resolve\]/ { in_resolve = 1; next }
+    /^[[:space:]]*\[/ { in_resolve = 0 }
+    in_resolve && /^[[:space:]]*DNS[[:space:]]*=/ {
+      value=$0
+      sub(/^[^=]*=/, "", value)
+      print value
+      exit
+    }
+  ' "$RESOLVED_DROP_IN"
+}
+
 current_dns_provider() {
   local dns=""
   local compact=""
 
   dns=$(networkmanager_global_dns)
+  if [[ -z $(printf '%s' "$dns" | tr -d '[:space:],') ]]; then
+    dns=$(resolved_dropin_dns)
+  fi
   if [[ -z $(printf '%s' "$dns" | tr -d '[:space:],') ]]; then
     dns=$(resolved_dns)
   fi
@@ -117,6 +137,76 @@ current_dns_provider() {
   else
     echo "Custom"
   fi
+}
+
+is_ipv4() {
+  [[ $1 =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]
+}
+
+is_ipv6() {
+  [[ $1 == *:* ]]
+}
+
+resolve_host() {
+  { getent ahostsv4 "$1" 2>/dev/null | awk '{print $1}'; getent ahostsv6 "$1" 2>/dev/null | awk '{print $1}'; } | sort -u || true
+}
+
+# Parses a space/comma-separated server list into dot_mode, resolved_servers,
+# and plain_servers. A hostname in any entry enables DoT mode: systemd-resolved
+# sends it as the TLS SNI, so custom endpoints (AdGuard DNS, NextDNS, a
+# self-hosted AdGuard Home...) get their per-device identifier.
+parse_entries() {
+  local input="$1"
+  local token host ip ips
+  dot_mode=0
+  resolved_servers=""
+  plain_servers=""
+
+  for token in ${input//,/ }; do
+    case "$token" in
+      https://* | dns+https://*)
+        echo "Error: DoH ($token) cannot be used via systemd-resolved; use the AdGuard CLI or dnsproxy." >&2
+        return 1
+        ;;
+      quic://* | dns+quic://* | dns+doq://*)
+        echo "Error: DoQUIC ($token) cannot be used via systemd-resolved; use the AdGuard CLI or dnsproxy." >&2
+        return 1
+        ;;
+      tls://* | dns+tls://*)
+        token="${token#*//}"
+        ;;
+      udp://* | dns+udp://*)
+        token="${token#*//}"
+        ;;
+    esac
+
+    if [[ $token == *"#"* ]]; then
+      ip="${token%%#*}"
+      host="${token#*#}"
+      if ! is_ipv4 "$ip" && ! is_ipv6 "$ip"; then
+        echo "Error: '$token' -- expected IP#hostname, got non-IP '$ip'." >&2
+        return 1
+      fi
+      if [[ -z $host ]]; then
+        echo "Error: '$token' has an empty hostname after '#'." >&2
+        return 1
+      fi
+      dot_mode=1
+      resolved_servers+=" ${ip}#${host}"
+    elif is_ipv4 "$token" || is_ipv6 "$token"; then
+      plain_servers+=" $token"
+    else
+      ips=$(resolve_host "$token")
+      if [[ -z $ips ]]; then
+        echo "Error: could not resolve '$token'." >&2
+        return 1
+      fi
+      dot_mode=1
+      while read -r ip; do
+        [[ -n $ip ]] && resolved_servers+=" ${ip}#${token}"
+      done <<<"$ips"
+    fi
+  done
 }
 
 normalize_servers() {
@@ -206,6 +296,47 @@ clear_connection_dns() {
   done < <(nmcli -t -f UUID,TYPE connection show)
 }
 
+# DoT mode needs no per-link DNS at all so the global drop-in (which carries the
+# SNI hostname) serves each link; per-link plain IPs would drop the SNI and make
+# certificate validation fail for most custom endpoints.
+clear_connection_dns_dot() {
+  local uuid type
+
+  while IFS=: read -r uuid type; do
+    [[ -n $uuid ]] || continue
+    networkmanager_dns_connection "$type" || continue
+
+    nmcli connection modify "$uuid" \
+      ipv4.ignore-auto-dns yes \
+      ipv4.dns "" \
+      ipv6.ignore-auto-dns yes \
+      ipv6.dns "" \
+      >/dev/null
+  done < <(nmcli -t -f UUID,TYPE connection show)
+}
+
+write_dot_drop_in() {
+  local servers="$1"
+
+  install -d -m 0755 "$(dirname "$RESOLVED_DROP_IN")"
+  # omarchy:heredoc-expands paths=none -- $servers is a space-separated list of
+  # IP#hostname DNS entries written as data, not a path or command.
+  cat >"$RESOLVED_DROP_IN" <<EOF
+# Managed by omarchy-dns. Custom DNS-over-TLS endpoint; remove with `omarchy dns DHCP`.
+[Resolve]
+DNS=$servers
+DNSOverTLS=opportunistic
+EOF
+}
+
+# A resolved.conf DNS= line merges with the drop-in, so a stale plain-IP line
+# would otherwise end up in the global server list alongside the DoT entries.
+disable_base_dns() {
+  [[ -f /etc/systemd/resolved.conf ]] || return 0
+  grep -Eq '^DNS=' /etc/systemd/resolved.conf || return 0
+  sed -i -E 's/^DNS=(.*)$/# DNS=\1  # disabled by omarchy-dns (90-dot.conf)/' /etc/systemd/resolved.conf
+}
+
 reapply_active_dns_connections() {
   local device type state
 
@@ -260,6 +391,7 @@ require_root "$provider"
 
 case "$provider" in
 Cloudflare)
+  rm -f "$RESOLVED_DROP_IN"
   write_networkmanager_dns "1.1.1.1,1.0.0.1,2606:4700:4700::1111,2606:4700:4700::1001"
   set_connection_dns "1.1.1.1 1.0.0.1" "2606:4700:4700::1111 2606:4700:4700::1001"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
@@ -271,6 +403,7 @@ EOF
   ;;
 
 Google)
+  rm -f "$RESOLVED_DROP_IN"
   write_networkmanager_dns "8.8.8.8,8.8.4.4,2001:4860:4860::8888,2001:4860:4860::8844"
   set_connection_dns "8.8.8.8 8.8.4.4" "2001:4860:4860::8888 2001:4860:4860::8844"
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
@@ -282,6 +415,7 @@ EOF
   ;;
 
 DHCP)
+  rm -f "$RESOLVED_DROP_IN"
   clear_networkmanager_dns
   clear_connection_dns
   tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
@@ -291,28 +425,46 @@ EOF
   ;;
 
 Custom)
-  echo "Enter your DNS servers (space-separated, e.g. '192.168.1.1 1.1.1.1'):"
+  echo "Enter DNS servers (space-separated): plain IPs, tls://host, IP#host, or a bare hostname for DoT:"
   if ! read -r dns_servers; then
     dns_servers=""
   fi
 
-  dns_servers=$(normalize_servers "$dns_servers")
-  if [[ -z $dns_servers ]]; then
+  if [[ -z ${dns_servers//[[:space:]]/} ]]; then
     echo "Error: No DNS servers provided." >&2
     exit 1
   fi
 
-  split_dns_servers "$dns_servers"
-  write_networkmanager_dns "$dns_servers"
-  set_connection_dns "$ipv4_dns" "$ipv6_dns"
-  # omarchy:heredoc-expands paths=none -- $dns_servers is a normalized,
-  # single-line DNS server list; the //,/ turns its comma separators into the
-  # spaces resolved.conf wants. It is written as data, not a path or command.
-  tee /etc/systemd/resolved.conf >/dev/null <<EOF
+  if ! parse_entries "$dns_servers"; then
+    exit 1
+  fi
+
+  if (( dot_mode == 1 )); then
+    set -- $resolved_servers $plain_servers
+    dns_servers="$*"
+    [[ -n $dns_servers ]] || {
+      echo "Error: No usable DNS servers." >&2
+      exit 1
+    }
+    write_dot_drop_in "$dns_servers"
+    disable_base_dns
+    clear_networkmanager_dns
+    clear_connection_dns_dot
+  else
+    rm -f "$RESOLVED_DROP_IN"
+    dns_servers=$(normalize_servers "$dns_servers")
+    split_dns_servers "$dns_servers"
+    write_networkmanager_dns "$dns_servers"
+    set_connection_dns "$ipv4_dns" "$ipv6_dns"
+    # omarchy:heredoc-expands paths=none -- $dns_servers is a normalized,
+    # single-line DNS server list; the //,/ turns its comma separators into the
+    # spaces resolved.conf wants. It is written as data, not a path or command.
+    tee /etc/systemd/resolved.conf >/dev/null <<EOF
 [Resolve]
 DNS=${dns_servers//,/ }
 FallbackDNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
 EOF
+  fi
   ;;
 esac
 
