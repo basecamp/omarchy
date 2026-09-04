@@ -74,6 +74,10 @@ QtObject {
     property color background: root.composed("bar.background", "bar.background-alpha", root.background, 1.0)
     property color text: root.pick("bar.text", root.foreground)
     property color active: root.pick("bar.active", root.urgent)
+    // Optional per-section pill containers (left/center/right). Transparent
+    // by default so the stock single-background bar is unchanged.
+    property color sectionBackground: root.composed("bar.section-background", "bar.section-background-alpha", "transparent", 0.0)
+    property color sectionBorder: root.composed("bar.section-border", "bar.section-border-alpha", root.foreground, 0.0)
   }
   readonly property QtObject popups: QtObject {
     property color background: root.composed("popups.background", "popups.background-alpha", root.background, 1.0)

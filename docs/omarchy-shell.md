@@ -374,6 +374,27 @@ size-vertical   = 28   # left/right bar width at base-size 12
 
 Set `scale-with-font = false` to keep those bar sizes as fixed pixels.
 
+### Section pills
+
+Optional pill containers behind the left/center/right sections (a
+waybar-style capsule look). All keys default to transparent/zero, so the
+stock single-background bar is unchanged unless a theme opts in:
+
+```toml
+[bar]
+section-background       = "{{ background }}"
+section-background-alpha = 0.72
+section-border           = "{{ accent }}"
+section-border-alpha     = 0.10
+section-radius           = 14
+section-padding-x        = 5
+section-padding-y        = 2
+```
+
+`section-background` / `section-border` are colors (or palette roles)
+with `-alpha` companions; `section-radius` and the paddings scale with
+`scale-with-font` like other bar sizes.
+
 ## Custom bar modules
 
 If a full plugin is overkill, declare a one-off module inline in

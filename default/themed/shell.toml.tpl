@@ -16,6 +16,17 @@ scale-with-font  = true
 size-horizontal  = 26
 size-vertical    = 28
 
+# Optional per-section pill containers (left/center/right). Leave
+# section-background unset/transparent for the stock single-background
+# bar. Example (waybar-style capsules):
+#   section-background       = "{{ background }}"
+#   section-background-alpha = 0.72
+#   section-border           = "{{ accent }}"
+#   section-border-alpha     = 0.10
+#   section-radius           = 14
+#   section-padding-x        = 5
+#   section-padding-y        = 2
+
 [hyprland]
 # Shared Hyprland-derived border tokens. Surface sections reference these so
 # lock, notifications, popups, and menu-style cards stay aligned with the
