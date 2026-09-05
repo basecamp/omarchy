@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Open the link under the mouse in the active Kitty window
+# omarchy:hidden=true
+
+# Fail closed: only the active default-class Kitty process receives the click,
+# and only through its own remote-control socket. Never surfaces errors.
+
+active=$(hyprctl activewindow -j 2>/dev/null) || exit 0
+terminal_pid=$(jq -r 'select(.class == "kitty") | .pid // empty' <<<"$active" 2>/dev/null)
+
+[[ $terminal_pid =~ ^[0-9]+$ ]] || exit 0
+
+socket="${XDG_RUNTIME_DIR:-/run/user/$UID}/omarchy-kitty-$terminal_pid"
+[[ -S $socket ]] || exit 0
+
+kitten @ --to "unix:$socket" action --no-response --match state:focused mouse_handle_click link >/dev/null 2>&1
+
+exit 0

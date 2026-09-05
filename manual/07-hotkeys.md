@@ -39,7 +39,8 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + Ctrl + Minus/Equal` | Same resizing in bigger steps |
 | `Super + Alt + Home` | Save window width |
 | `Super + Home` | Restore saved window width |
-| `Super + Left Mouse` | Drag window around |
+| `Super + Left Mouse` (click) | Open hyperlink under pointer (Kitty only) |
+| `Super + Left Mouse` (drag) | Drag window around |
 | `Super + Right Mouse` | Resize window |
 | `Super + Scroll Wheel` | Scroll through workspaces |
 | `Super + G`               | Toggle window grouping      |
