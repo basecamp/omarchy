@@ -850,8 +850,8 @@ install_cidata() {
 install_guest_display_resize() {
   local script="$OMARCHY_PATH/default/lab-vm/display-resize"
   local unit="$OMARCHY_PATH/default/lab-vm/display-resize.service"
-  lab_ssh "sudo tee /usr/local/bin/omarchy-lab-display-resize >/dev/null && sudo chmod 755 /usr/local/bin/omarchy-lab-display-resize" <"$script" >/dev/null
-  lab_ssh "sudo tee /etc/systemd/user/omarchy-lab-display-resize.service >/dev/null" <"$unit" >/dev/null
+  lab_ssh "sudo tee /usr/local/bin/omarchy-lab-display-resize >/dev/null && sudo chmod 755 /usr/local/bin/omarchy-lab-display-resize" <"$script" >/dev/null || return 1
+  lab_ssh "sudo tee /etc/systemd/user/omarchy-lab-display-resize.service >/dev/null" <"$unit" >/dev/null || return 1
   # Fresh ISO guests can also lack sync databases. Use the same safe bootstrap
   # for guest tools, and keep update/package failures visible in the installer.
   lab_ssh "$session_env
@@ -859,29 +859,51 @@ $(declare -f ensure_install_packages)
 STATE_DIR=\"\$HOME/.config/omarchy/lab-vm\"
 HYPERVISOR_PACKAGES=(spice-vdagent)
 ensure_install_packages" || return 1
-  lab_ssh_quiet "sudo systemctl start spice-vdagentd.socket"
-  lab_ssh_quiet "sudo systemctl --global enable omarchy-lab-display-resize.service"
-  lab_ssh_quiet "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user daemon-reload"
-  lab_ssh_quiet "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user enable omarchy-lab-display-resize.service"
+  lab_ssh_quiet "sudo systemctl start spice-vdagentd.socket" || return 1
+  lab_ssh_quiet "sudo systemctl --global enable omarchy-lab-display-resize.service" || return 1
+  lab_ssh_quiet "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user daemon-reload" || return 1
+  lab_ssh_quiet "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user enable omarchy-lab-display-resize.service" || return 1
   # This is best-effort on the install boot because Hyprland may not be ready
   # yet. The global enable above starts it normally on every overlay boot.
   lab_ssh_quiet "XDG_RUNTIME_DIR=/run/user/\$(id -u) systemctl --user restart omarchy-lab-display-resize.service" || true
 }
 
-configure_guest() {
-  LIBVIRT_NET=$(nat_gateway) || return 1
-  local username=$1 password=$2 timezone=$3
+configure_guest_sudo() {
+  local username=$1 password=${2:-}
   local sudoers
-
+  valid_username "$username" || return 1
   printf -v sudoers '%s ALL=(ALL) NOPASSWD: ALL\nDefaults:%s verifypw=any' "$username" "$username"
   if ! lab_ssh_quiet "sudo -n true"; then
-    printf '%s\n%s\n' "$password" "$sudoers" | lab_ssh "sudo -S -p '' tee /etc/sudoers.d/${username} >/dev/null" >/dev/null 2>&1
-    printf '%s\n' "$password" | lab_ssh "sudo -S -p '' chmod 440 /etc/sudoers.d/${username}" >/dev/null 2>&1
+    if [[ -z $password ]]; then
+      echo "Guest display tools need passwordless Lab sudo. Rebuild the Lab to restore its integration." >&2
+      return 1
+    fi
+    printf '%s\n%s\n' "$password" "$sudoers" | lab_ssh "sudo -S -p '' tee /etc/sudoers.d/${username} >/dev/null" >/dev/null 2>&1 || return 1
+    printf '%s\n' "$password" | lab_ssh "sudo -S -p '' chmod 440 /etc/sudoers.d/${username}" >/dev/null 2>&1 || return 1
   else
     # sudo -v otherwise asks for a password when any wheel rule has PASSWD,
     # even though the Lab account already has NOPASSWD for every command.
-    printf '%s\n' "$sudoers" | lab_ssh "sudo tee /etc/sudoers.d/${username} >/dev/null && sudo chmod 440 /etc/sudoers.d/${username}"
+    printf '%s\n' "$sudoers" | lab_ssh "sudo tee /etc/sudoers.d/${username} >/dev/null && sudo chmod 440 /etc/sudoers.d/${username}" || return 1
   fi
+}
+
+ensure_guest_display_resize() {
+  # Legacy gold images predate these tools. Repair only the current overlay;
+  # neither reset nor an aspect change may rewrite gold or its checkpoints.
+  if ! lab_ssh_quiet 'test -x /usr/local/bin/omarchy-lab-display-resize && test -f /etc/systemd/user/omarchy-lab-display-resize.service && pacman -Q spice-vdagent'; then
+    echo "Restoring missing Lab display tools in the guest (a fresh guest may need a full Omarchy update)..."
+    configure_guest_sudo "$(guest_user)" || return 1
+    install_guest_display_resize || return 1
+  fi
+  lab_ssh "$session_env
+sudo -n systemctl start spice-vdagentd.socket &&
+systemctl --user start spice-vdagent.service omarchy-lab-display-resize.service" || return 1
+}
+
+configure_guest() {
+  LIBVIRT_NET=$(nat_gateway) || return 1
+  local username=$1 password=$2 timezone=$3
+  configure_guest_sudo "$username" "$password" || return 1
 
   lab_ssh_quiet "printf '[Autologin]\nUser=${username}\nSession=omarchy.desktop\n' | sudo tee /etc/sddm.conf.d/autologin.conf >/dev/null"
   lab_ssh_quiet "sudo timedatectl set-timezone ${timezone}" || true
@@ -1327,6 +1349,7 @@ resize_viewer_aspect() {
 
   ensure_viewer
   wait_ssh
+  ensure_guest_display_resize || return 1
   if ! geometry=$(wait_viewer_geometry); then
     systemctl --user restart "$VIEWER_UNIT" >/dev/null 2>&1 || true
     if ! geometry=$(wait_viewer_geometry); then
@@ -1513,6 +1536,7 @@ reset_lab() {
   run_virsh start "$NAME"
   wait_ssh
   wait_hypr || true
+  ensure_guest_display_resize || return 1
   echo "reset $(guest_ip)"
 }
 

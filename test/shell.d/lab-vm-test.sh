@@ -199,6 +199,7 @@ have_domain() { return 0; }
 domain_running() { return 0; }
 ensure_viewer() { :; }
 wait_ssh() { :; }
+ensure_guest_display_resize() { :; }
 wait_viewer_geometry() { printf '%s\n' '0xabc 2460 930 1 false 2460 883 0 47'; }
 viewer_monitor_available_geometry() { printf '%s\n' '40 66 5040 1334'; }
 wait_guest_display_update() { printf '%s\n' '2288 1287'; }

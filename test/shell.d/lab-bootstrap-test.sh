@@ -45,6 +45,69 @@ pass 'update failure blocks dependencies and retries the full update even after 
 )
 pass 'dependency failure is propagated'
 
+(
+  lab_ssh_quiet() { return 0; }
+  configure_guest_sudo() { fail 'healthy guest must not rewrite sudo policy'; }
+  install_guest_display_resize() { fail 'healthy guest must not reinstall or update'; }
+  lab_ssh() {
+    [[ $1 == *'sudo -n systemctl start spice-vdagentd.socket'* ]] || fail 'SPICE socket not started'
+    [[ $1 == *'systemctl --user start spice-vdagent.service omarchy-lab-display-resize.service'* ]] || fail 'both guest session services must start without reboot'
+  }
+  ensure_guest_display_resize
+)
+pass 'healthy display integration starts services without reinstalling packages'
+
+(
+  lab_ssh_quiet() { return 1; }
+  guest_user() { echo lab; }
+  configure_guest_sudo() { echo sudo >>"$test_tmp/display-calls"; }
+  install_guest_display_resize() { echo install >>"$test_tmp/display-calls"; }
+  lab_ssh() { echo start >>"$test_tmp/display-calls"; }
+  ensure_guest_display_resize
+  [[ $(paste -sd ' ' "$test_tmp/display-calls") == 'sudo install start' ]] || fail 'legacy guest repair order'
+  install_guest_display_resize() { return 8; }
+  lab_ssh() { fail 'failed repair must not continue'; }
+  if ensure_guest_display_resize; then fail 'failed display installation accepted'; fi
+  configure_guest_sudo() { return 9; }
+  install_guest_display_resize() { fail 'failed sudo must not install'; }
+  if ensure_guest_display_resize; then fail 'failed guest authentication accepted'; fi
+)
+pass 'legacy gold display tools are repaired with explicit failure propagation'
+
+(
+  lab_ssh_quiet() { return 1; }
+  lab_ssh() { fail 'noninteractive repair must not ask for a password'; }
+  if configure_guest_sudo lab; then fail 'guest without passwordless sudo accepted'; fi
+)
+(
+  lab_ssh() { return 7; }
+  lab_ssh_quiet() { fail 'failed asset upload must stop provisioning'; }
+  if install_guest_display_resize; then fail 'failed asset upload accepted'; fi
+)
+pass 'display repair cannot hang on a sudo prompt or swallow asset upload failures'
+
+(
+  is_tty() { return 0; }
+  sudo() { :; }
+  have_domain() { return 0; }
+  find_pool() { echo test-pool; }
+  domain_running() { return 1; }
+  restore_gold_network() { :; }
+  run_virsh() { :; }
+  CONFIG_FILE="$test_tmp/no-config"
+  KNOWN_HOSTS="$test_tmp/no-known-hosts"
+  wait_ssh() { echo ssh >>"$test_tmp/reset-calls"; }
+  wait_hypr() { echo hypr >>"$test_tmp/reset-calls"; }
+  ensure_guest_display_resize() { echo repair >>"$test_tmp/reset-calls"; }
+  guest_ip() { echo 192.0.2.2; }
+  reset_lab >"$test_tmp/reset-output"
+  [[ $(paste -sd ' ' "$test_tmp/reset-calls") == 'ssh hypr repair' ]] || fail 'reset must repair the restored guest'
+  ensure_guest_display_resize() { return 8; }
+  if reset_lab >"$test_tmp/reset-output"; then fail 'reset ignored failed display repair'; fi
+  [[ ! -s $test_tmp/reset-output ]] || fail 'reset falsely reported success'
+)
+pass 'reset repairs integration on the restored overlay and cannot report a failed repair as success'
+
 routes='[{"dst":"default","dev":"eth0"},{"dst":"192.168.122.0/24","dev":"eth0"},{"dst":"192.168.124.0/23","dev":"vpn0"}]'
 if lab_subnet_available 192.168.122.1 "$routes"; then fail 'nested subnet overlap accepted'; fi
 if lab_subnet_available 192.168.125.1 "$routes"; then fail 'larger VPN route overlap accepted'; fi
@@ -88,6 +151,10 @@ pass 'only an unused conflicting default network is renumbered, with a backup an
 run_node_test <<'JS'
 const fs = require('fs')
 const source = fs.readFileSync(path.join(root, 'bin/omarchy-lab-vm'), 'utf8')
+const reset = source.match(/reset_lab\(\) \{[^]*?\n}/)[0]
+assert(reset.indexOf('ensure_guest_display_resize || return 1') > reset.indexOf('wait_ssh'), 'reset repairs legacy gold integration after SSH comes up')
+const aspect = source.match(/resize_viewer_aspect\(\) \{[^]*?\n}/)[0]
+assert(aspect.indexOf('ensure_guest_display_resize || return 1') < aspect.indexOf('geometry=$(wait_viewer_geometry)'), 'aspect repairs guest integration before negotiating viewer geometry')
 assert(source.includes('LIBVIRT_NET=$(nat_gateway) || return 1'), 'guest SSH firewall uses the actual NAT gateway')
 assert(source.includes('HYPERVISOR_PACKAGES=(spice-vdagent)') && source.includes('$(declare -f ensure_install_packages)'), 'first-boot guest dependencies use the same database recovery as the installer')
 assert(source.includes('Defaults:%s verifypw=any'), 'passwordless Lab account can validate sudo for unattended guest updates')
