@@ -320,7 +320,7 @@ Ghostty terminal is installed using _Install > Terminal_ via the Omarchy menu.
 | `Space B D`                | Close file tab                  |
 
 ### While in sidebar
-
+ 
 | Hotkey                   | Function                        |
 | ------------------------ | ------------------------------- |
 | `A`                        | Add new file in parent dir      |
@@ -329,6 +329,26 @@ Ghostty terminal is installed using _Install > Terminal_ via the Omarchy menu.
 | `M`                        | Move highlighted file/dir       |
 | `R`                        | Rename highlighted file/dir     |
 | `?`                        | Show help for all commands      |
+
+### Interactive REPL (iron.nvim)
+
+| Hotkey                   | Function                        |
+| ------------------------ | ------------------------------- |
+| `Space R R`              | Toggle / open REPL              |
+| `Space R Shift + R`      | Restart REPL                    |
+| `Space R F`              | Focus REPL                      |
+| `Space R H`              | Hide REPL                       |
+| `Space R S L`            | Send line to REPL               |
+| `Space R S F`            | Send entire file to REPL        |
+| `Space R S P`            | Send paragraph to REPL          |
+| `Space R S U`            | Send until cursor to REPL       |
+| `Space R S B`            | Send code block (delimited by `# %%`) |
+| `Space R S N`            | Send code block & jump to next  |
+| `Space R S` (Visual)     | Send selected lines             |
+| `Space R Q`              | Interrupt REPL (`Ctrl + C`)     |
+| `Space R X`              | Exit / close REPL               |
+| `Space R C C`            | Clear REPL screen               |
+| `Escape` (REPL terminal) | Exit terminal mode to normal    |
 
 [See all the Neovim hotkeys configured by LazyVim](https://www.lazyvim.org/keymaps).
 

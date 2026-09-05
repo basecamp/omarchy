@@ -33,6 +33,33 @@ If you want to pickup the basic vim language, I've written about [the three-part
 
 You can see all the possible commands on [the LazyVim Keymaps page](https://www.lazyvim.org/keymaps).
 
+## Interactive REPL
+
+Omarchy's Neovim setup includes [iron.nvim](https://github.com/Vigemus/iron.nvim) for an interactive Read-Eval-Print Loop (REPL). It gives you a notebook-like interactive workflow directly inside Neovim without leaving your editor.
+
+### Opening and Managing the REPL
+
+- `Space R R` - Open or toggle the REPL split (defaults to Python/IPython or Shell based on filetype).
+- `Space R Shift+R` - Restart the active REPL.
+- `Space R F` - Focus the cursor into the REPL window.
+- `Space R H` - Hide the REPL window.
+- `Space R Q` - Interrupt the running REPL (`Ctrl + C`).
+- `Space R X` - Exit and close the REPL session.
+- `Space R C C` - Clear the REPL screen.
+- `Escape` (while in REPL terminal mode) - Return to normal vim mode.
+
+### Sending Code to the REPL
+
+You can evaluate lines, paragraphs, entire files, or code blocks:
+
+- `Space R S L` - Send the current line.
+- `Space R S F` - Send the entire file.
+- `Space R S P` - Send the current paragraph / block of code.
+- `Space R S U` - Send everything from the start of the file up to the cursor.
+- `Space R S B` - Send the current code block (delimited by `# %%`).
+- `Space R S N` - Send the current code block and advance cursor to the next block.
+- `Space R S` (in Visual mode) - Send the selected lines.
+
 ## Starting Neovim
 
 You can start Neovim using `Super + Shift + N` (the binding launches your default editor, which is Neovim out of the box), but it's usually easier to drive it from the terminal by navigating to the directory you wish to work in and typing `n`. The `n` is the alias for `nvim`, which will use the the present directory to open by default. You can open a single file with `n myfile.txt`.

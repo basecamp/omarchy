@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# omarchy:summary=Display annotated Neovim REPL keybindings using an interactive search menu.
+# omarchy:args=[--print|-p]
+
+print_only=false
+
+while (($#)); do
+  case "$1" in
+    --print|-p)
+      print_only=true
+      ;;
+  esac
+  shift
+done
+
+output_keybindings() {
+  cat <<'BINDINGS'
+SPACE + r + r                    → Toggle REPL
+SPACE + r + R                    → Restart REPL
+SPACE + r + f                    → Focus REPL
+SPACE + r + h                    → Hide REPL
+SPACE + r + s + l                → Send Line
+SPACE + r + s + f                → Send File
+SPACE + r + s + p                → Send Paragraph
+SPACE + r + s + u                → Send Until Cursor
+SPACE + r + s + b                → Send Code Block (delimited by # %%)
+SPACE + r + s + n                → Send Code Block & Move to Next
+SPACE + r + s + m                → Send Motion
+SPACE + r + s (VISUAL)           → Send Visual Selection
+SPACE + r + m + m                → Mark Motion
+SPACE + r + m + v (VISUAL)       → Mark Visual Selection
+SPACE + r + m + d                → Remove Last Mark
+SPACE + r + m + r                → Send Marked Block
+SPACE + r + q                    → Interrupt REPL (Ctrl+C)
+SPACE + r + x                    → Exit / Close REPL
+SPACE + r + c + c                → Clear REPL Screen
+SPACE + r + c + l                → Clear Mark Highlights
+ESC (REPL TERMINAL)              → Exit Terminal Mode to Normal Mode
+BINDINGS
+}
+
+if [[ $print_only == "true" ]]; then
+  output_keybindings
+  exit 0
+fi
+
+records=$(output_keybindings)
+
+monitor_height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .height' 2>/dev/null)
+
+if [[ ! $monitor_height =~ ^[0-9]+$ ]] || ((monitor_height <= 0)); then
+  monitor_height=900
+fi
+
+menu_height=$((monitor_height * 40 / 100))
+printf '%s\n' "$records" | omarchy-menu-select 'Neovim REPL keybindings' -- --width 800 --height "$menu_height" >/dev/null || true
