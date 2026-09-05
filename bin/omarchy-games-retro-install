@@ -53,12 +53,46 @@ desktop_dir="$HOME/.local/share/applications"
 desktop_file="$desktop_dir/$desktop_id.desktop"
 mkdir -p "$desktop_dir"
 
+desktop_string_escape() {
+  # The game name comes from a file name, and a file name can hold a newline.
+  # A raw newline in a desktop value would start a new key line, so a game named
+  # on two lines could add keys of its own to its launcher entry. Escape
+  # backslash first, then tab, CR and LF, and a leading space, the same way
+  # omarchy-webapp-install escapes every value it writes.
+  local value="$1"
+
+  value=${value//\\/\\\\}
+  value=${value//$'\t'/\\t}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\n'/\\n}
+  [[ $value == " "* ]] && value="\\s${value# }"
+
+  printf '%s' "$value"
+}
+
+desktop_exec_arg() {
+  # One argument of the Exec line, double-quoted as the desktop spec wants.
+  # Inside the quotes a backslash, double quote, backtick or dollar sign takes
+  # another backslash, and a literal % becomes %%, so a path with those
+  # characters cannot step outside its argument or ask for a field code.
+  local escaped
+  escaped=$(printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\$/g' -e 's/%/%%/g')
+  printf '"%s"' "$escaped"
+}
+
+name_field=$(desktop_string_escape "$desktop_name")
+comment_field=$(desktop_string_escape "Play $game_name with RetroArch")
+# The paths are quoted as one Exec argument each, then the whole line gets the
+# file escaping the launcher undoes first, so the two layers work together.
+exec_field=$(desktop_string_escape "retroarch -L $(desktop_exec_arg "$core_path") $(desktop_exec_arg "$game_path")")
+
 cat >"$desktop_file" <<EOF
 [Desktop Entry]
 Version=1.0
-Name=$desktop_name
-Comment=Play $game_name with RetroArch
-Exec=retroarch -L "$core_path" "$game_path"
+Name=$name_field
+Comment=$comment_field
+Exec=$exec_field
 Terminal=false
 Type=Application
 Icon=retro-gaming
