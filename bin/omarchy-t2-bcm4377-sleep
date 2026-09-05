@@ -1,0 +1,282 @@
+#!/bin/bash
+
+# omarchy:summary=Unload BCM4377 Wi-Fi around sleep on T2 Macs
+# omarchy:args=pre|post
+# omarchy:group=hw
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+# BCM4377b firmware does not acknowledge the PCI D3 request on current T2
+# kernels. Keep this helper reversible: a failed preparation must restore the
+# state it changed, and resume must restore only what preparation removed.
+
+set -u
+
+export PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
+
+STATE="${OMARCHY_T2_BCM4377_STATE:-/run/omarchy-t2-bcm4377-sleep.state}"
+PROC_MODULES="${OMARCHY_T2_BCM4377_PROC_MODULES:-/proc/modules}"
+SYS_CLASS_NET="${OMARCHY_T2_BCM4377_SYS_CLASS_NET:-/sys/class/net}"
+T2BCE_MODULE="${OMARCHY_T2_BCM4377_T2BCE_MODULE:-/sys/module/t2bce_core}"
+PM_ASYNC="${OMARCHY_T2_BCM4377_PM_ASYNC:-/sys/power/pm_async}"
+
+prepared=0
+brcmfmac_was_loaded=0
+wcc_was_loaded=0
+wifi_disconnected=0
+wifi_iface_before=""
+wifi_uuid=""
+
+reset_state_vars() {
+  prepared=0
+  brcmfmac_was_loaded=0
+  wcc_was_loaded=0
+  wifi_disconnected=0
+  wifi_iface_before=""
+  wifi_uuid=""
+}
+
+log() {
+  printf '%s\n' "$*"
+}
+
+module_loaded() {
+  grep -q "^$1 " "$PROC_MODULES"
+}
+
+wifi_iface() {
+  local d driver
+
+  for d in "$SYS_CLASS_NET"/*; do
+    [[ -e $d/device/driver ]] || continue
+    driver=$(basename "$(readlink -f "$d/device/driver")")
+    if [[ $driver == "brcmfmac" ]]; then
+      basename "$d"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+runtime_supports_deep_sleep() {
+  [[ -d $T2BCE_MODULE ]] || return 1
+  [[ -r $PM_ASYNC ]] || return 1
+  [[ $(<"$PM_ASYNC") == "0" ]]
+}
+
+save_state() {
+  local state_tmp="${STATE}.$$"
+
+  umask 077
+  if ! {
+    printf '%s\n' "$prepared"
+    printf '%s\n' "$brcmfmac_was_loaded"
+    printf '%s\n' "$wcc_was_loaded"
+    printf '%s\n' "$wifi_disconnected"
+    printf '%s\n' "$wifi_iface_before"
+    printf '%s\n' "$wifi_uuid"
+  } >"$state_tmp"; then
+    rm -f "$state_tmp"
+    return 1
+  fi
+
+  if ! mv "$state_tmp" "$STATE"; then
+    rm -f "$state_tmp"
+    return 1
+  fi
+}
+
+load_state() {
+  local extra=""
+
+  [[ -f $STATE ]] || return 1
+
+  {
+    IFS= read -r prepared &&
+      IFS= read -r brcmfmac_was_loaded &&
+      IFS= read -r wcc_was_loaded &&
+      IFS= read -r wifi_disconnected &&
+      IFS= read -r wifi_iface_before &&
+      IFS= read -r wifi_uuid &&
+      ! IFS= read -r extra
+  } <"$STATE" || return 1
+
+  [[ $prepared == "1" ]] || return 1
+  [[ $brcmfmac_was_loaded == "0" || $brcmfmac_was_loaded == "1" ]] || return 1
+  [[ $wcc_was_loaded == "0" || $wcc_was_loaded == "1" ]] || return 1
+  [[ $wifi_disconnected == "0" || $wifi_disconnected == "1" ]] || return 1
+}
+
+wait_for_wifi_iface() {
+  local i iface=""
+
+  for ((i = 1; i <= 20; i++)); do
+    iface=$(wifi_iface || true)
+    if [[ -n $iface ]]; then
+      printf '%s\n' "$iface"
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  return 1
+}
+
+restore() {
+  local iface="" status=0
+
+  if ! load_state; then
+    log "no prepared BCM4377 state to restore"
+    return 0
+  fi
+
+  if (( brcmfmac_was_loaded )) && ! module_loaded brcmfmac; then
+    if modprobe brcmfmac; then
+      log "loaded brcmfmac"
+    else
+      log "failed to load brcmfmac"
+      status=1
+    fi
+  fi
+
+  if (( wcc_was_loaded )) && module_loaded brcmfmac && ! module_loaded brcmfmac_wcc; then
+    if modprobe brcmfmac_wcc; then
+      log "loaded brcmfmac_wcc"
+    else
+      log "failed to load brcmfmac_wcc"
+      status=1
+    fi
+  fi
+
+  if (( brcmfmac_was_loaded )) && module_loaded brcmfmac; then
+    iface=$(wait_for_wifi_iface || true)
+    if [[ -z $iface ]]; then
+      log "brcmfmac loaded but its network interface did not appear"
+      status=1
+    fi
+  fi
+
+  if (( wifi_disconnected )) &&
+    [[ -n $wifi_uuid && -n $iface ]] &&
+    omarchy-cmd-present nmcli; then
+    if nmcli --wait 0 connection up uuid "$wifi_uuid" ifname "$iface" >/dev/null 2>&1; then
+      log "requested NetworkManager connection $wifi_uuid on $iface"
+    else
+      log "NetworkManager could not queue connection $wifi_uuid; autoconnect may retry"
+    fi
+  fi
+
+  if (( status == 0 )); then
+    rm -f "$STATE"
+  fi
+
+  return $status
+}
+
+rollback() {
+  log "rolling back incomplete BCM4377 sleep preparation"
+  restore || true
+}
+
+unload_brcmfmac() {
+  local i
+
+  if (( wcc_was_loaded )) && module_loaded brcmfmac_wcc; then
+    if ! modprobe -r brcmfmac_wcc; then
+      log "failed to unload brcmfmac_wcc"
+      return 1
+    fi
+  fi
+
+  for ((i = 1; i <= 5; i++)); do
+    if ! module_loaded brcmfmac; then
+      log "unloaded brcmfmac"
+      return 0
+    fi
+    if modprobe -r brcmfmac; then
+      log "unloaded brcmfmac"
+      return 0
+    fi
+    if (( i < 5 )); then
+      log "unload attempt $i failed, retrying"
+      sleep 1
+    fi
+  done
+
+  log "failed to unload brcmfmac"
+  return 1
+}
+
+prepare() {
+  local active=""
+
+  if [[ -e $STATE ]]; then
+    log "restoring stale BCM4377 state before a new sleep attempt"
+    restore || return 1
+  fi
+  reset_state_vars
+
+  if ! runtime_supports_deep_sleep; then
+    log "skipping BCM4377 unload: requires t2bce_core with pm_async=0"
+    return 0
+  fi
+
+  if module_loaded brcmfmac; then
+    brcmfmac_was_loaded=1
+  else
+    log "brcmfmac was already unloaded"
+    return 0
+  fi
+  module_loaded brcmfmac_wcc && wcc_was_loaded=1
+
+  wifi_iface_before=$(wifi_iface || true)
+  if [[ -n $wifi_iface_before ]] && omarchy-cmd-present nmcli; then
+    active=$(nmcli -t -f UUID,DEVICE connection show --active 2>/dev/null || true)
+    wifi_uuid=$(awk -F: -v iface="$wifi_iface_before" '$2 == iface { print $1; exit }' <<<"$active")
+  fi
+
+  prepared=1
+  if ! save_state; then
+    log "failed to save BCM4377 sleep state"
+    return 1
+  fi
+
+  if [[ -n $wifi_uuid ]]; then
+    if nmcli --wait 5 device disconnect "$wifi_iface_before" >/dev/null 2>&1; then
+      wifi_disconnected=1
+      if ! save_state; then
+        log "failed to record disconnected Wi-Fi state"
+        nmcli --wait 0 connection up uuid "$wifi_uuid" \
+          ifname "$wifi_iface_before" >/dev/null 2>&1 || true
+        rm -f "$STATE"
+        return 1
+      fi
+      log "disconnected $wifi_iface_before (uuid=$wifi_uuid)"
+    fi
+  fi
+
+  # Give firmware a bounded interval to finish NetworkManager's disconnect or
+  # its own PrepareForSleep transition before removing the driver.
+  sleep 1
+
+  if ! unload_brcmfmac; then
+    rollback
+    return 1
+  fi
+}
+
+case "${1:-}" in
+  pre)
+    if omarchy-hw-t2-bcm4377; then
+      prepare
+    fi
+    ;;
+  post)
+    restore
+    ;;
+  *)
+    echo "usage: $0 pre|post" >&2
+    exit 2
+    ;;
+esac

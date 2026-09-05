@@ -1,0 +1,20 @@
+[Unit]
+Description=Unload BCM4377 Wi-Fi around sleep (T2 Mac)
+Documentation=https://github.com/omacom/omarchy/discussions/4695
+DefaultDependencies=no
+Before=sleep.target
+StopWhenUnneeded=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=30
+TimeoutStopSec=30
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/usr/bin/omarchy-t2-bcm4377-sleep pre
+# ExecStopPost also runs after a failed or timed-out ExecStart, so partial
+# preparation is rolled back before systemd completes the failed start job.
+ExecStopPost=/usr/bin/omarchy-t2-bcm4377-sleep post
+
+[Install]
+RequiredBy=sleep.target
