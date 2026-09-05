@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle floating for the focused window without breaking pop mode
+
+set -euo pipefail
+
+active=$(hyprctl activewindow -j)
+addr=$(jq -r '.address // empty' <<<"$active")
+[[ -n $addr ]] || exit 0
+window="address:$addr"
+
+# Pop is a separate mode, not another floating state. Leave it before
+# applying the normal floating toggle.
+is_pop=$(jq -r 'any(.tags[]?; sub("\\*$"; "") == "pop")' <<<"$active")
+
+if [[ $is_pop == "true" ]]; then
+  omarchy-hyprland-window-pop
+else
+  hyprctl dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" >/dev/null 2>&1 || \
+    hyprctl dispatch togglefloating "$window" >/dev/null
+fi

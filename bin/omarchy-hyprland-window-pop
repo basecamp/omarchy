@@ -3,15 +3,24 @@
 # omarchy:summary=Toggle to pop-out a tile to stay fixed on a display basis.
 # omarchy:args=[width height x y]
 
+set -euo pipefail
+
 width=${1:-1300}
 height=${2:-900}
 x=${3:-}
 y=${4:-}
 
 active=$(hyprctl activewindow -j)
-pinned=$(echo "$active" | jq ".pinned")
-addr=$(echo "$active" | jq -r ".address")
+addr=$(jq -r '.address // empty' <<<"$active")
+[[ -n $addr ]] || exit 0
 window="address:$addr"
+
+floating=$(jq -r '.floating == true' <<<"$active")
+pinned=$(jq -r '.pinned == true' <<<"$active")
+# `pop` is the mode bit: pop windows are floating and pinned, and leaving
+# the mode always returns them to the tiled state.
+# Dynamic tags are reported with a trailing '*', while static tags are not.
+is_pop=$(jq -r 'any(.tags[]?; sub("\\*$"; "") == "pop")' <<<"$active")
 
 hypr_dispatch() {
   local lua="$1"
@@ -20,12 +29,24 @@ hypr_dispatch() {
   hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
 }
 
-if [[ $pinned == "true" ]]; then
-  hypr_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
-  hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+if [[ $is_pop == "true" ]]; then
+  # Target state: tiled, unpinned, and without the pop tag.
+  if [[ $pinned == "true" ]]; then
+    hypr_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
+  fi
+  if [[ $floating == "true" ]]; then
+    hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+  fi
   hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"-pop\" })" tagwindow -pop "$window"
-elif [[ -n $addr ]]; then
-  hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+else
+  # Target state: floating, pinned, and tagged as pop.
+  if [[ $floating != "true" ]]; then
+    hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"toggle\" })" togglefloating "$window"
+  fi
+  if [[ $pinned != "true" ]]; then
+    hypr_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
+  fi
+
   hypr_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
 
   if [[ -n $x && -n $y ]]; then
@@ -34,7 +55,6 @@ elif [[ -n $addr ]]; then
     hypr_dispatch "hl.dsp.window.center({ window = \"$window\" })" centerwindow "$window"
   fi
 
-  hypr_dispatch "hl.dsp.window.pin({ window = \"$window\" })" pin "$window"
   hypr_dispatch "hl.dsp.window.alter_zorder({ window = \"$window\", mode = \"top\" })" alterzorder top "$window"
   hypr_dispatch "hl.dsp.window.tag({ window = \"$window\", tag = \"+pop\" })" tagwindow +pop "$window"
 fi
