@@ -32,7 +32,23 @@ Item {
   // it; the progress bar's hard edge keeps the full gap.
   readonly property int messageGap: Math.round(root.gap * 2 / 3)
   readonly property int barWidth: Style.space(142)
-  readonly property int maxMessageWidth: root.mediaOsd ? Style.space(325) : Style.space(190)
+  // The panel is anchored to every edge, so its width is the output's. The
+  // compositor sizes it before the first frame is drawn, whereas panel.screen
+  // still names the primary output at that point.
+  readonly property int screenWidth: panel.width
+  // Everything the card spends on a message that is not the message itself:
+  // the frame on both sides, the icon column, and the gap after it.
+  readonly property int messageChromeWidth: Math.ceil(card.contentLeftInset + card.contentRightInset) + root.iconWidth + root.messageGap
+  // A status message may grow to half the output, so a long app name or
+  // device description fits where there is room; past half, the card stops
+  // reading as a card and starts reading as a bar. It never drops below the
+  // old fixed width, so a narrow or heavily scaled output keeps the room it
+  // had before. Media OSDs keep a fixed cap of their own. Track metadata is
+  // unbounded and arrives on every track change, and the card should not
+  // resize with it.
+  readonly property int maxMessageWidth: root.mediaOsd
+    ? Style.space(325)
+    : Math.max(Style.space(190), Math.round(root.screenWidth / 2) - root.messageChromeWidth)
 
   // Nerd Font glyphs draw well outside their monospace cell, so the icon
   // column is measured by ink rather than by advance width. Progress OSDs pin
@@ -138,22 +154,23 @@ Item {
 
     BorderSurface {
       id: card
-      width: card.borderLeft + root.pad + root.contentWidth + root.pad + card.borderRight
-      height: card.borderTop + root.pad + Style.font.displayLarge + root.pad + card.borderBottom
+      width: card.contentLeftInset + root.contentWidth + card.contentRightInset
+      height: card.contentTopInset + Style.font.displayLarge + card.contentBottomInset
       anchors.horizontalCenter: parent.horizontalCenter
       anchors.bottom: parent.bottom
       anchors.bottomMargin: Style.space(67)
       color: Util.alpha(Color.background, 0.97)
       borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
+      padding: root.pad
       radius: Style.cornerRadius
       opacity: root.opened ? 1 : 0
 
       Row {
         anchors.fill: parent
-        anchors.topMargin: card.borderTop + root.pad
-        anchors.rightMargin: card.borderRight + root.pad
-        anchors.bottomMargin: card.borderBottom + root.pad
-        anchors.leftMargin: card.borderLeft + root.pad
+        anchors.topMargin: card.contentTopInset
+        anchors.rightMargin: card.contentRightInset
+        anchors.bottomMargin: card.contentBottomInset
+        anchors.leftMargin: card.contentLeftInset
         spacing: root.hasProgress ? root.gap : root.messageGap
         Item {
           width: root.iconWidth
