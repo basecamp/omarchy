@@ -90,9 +90,17 @@ while IFS=$'\t' read -r name file marker <&3; do
 
   if [[ ! -f $marker ]]; then
     echo -e "\e[32m\nRunning migration (${name%.sh})\e[0m"
-    OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file" 3<&-
-    mkdir -p "$(dirname "$marker")"
-    touch "$marker"
+    if OMARCHY_PATH="$OMARCHY_PATH" bash -euo pipefail "$file" 3<&-; then
+      mkdir -p "$(dirname "$marker")"
+      touch "$marker"
+    else
+      migration_status=$?
+      if (( migration_status == 75 )); then
+        echo -e "\e[33mMigration deferred until it can run interactively; later migrations remain pending.\e[0m"
+        exit 0
+      fi
+      exit "$migration_status"
+    fi
   fi
 done 3< <(migration_entries)
 

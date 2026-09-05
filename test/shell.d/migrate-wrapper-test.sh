@@ -56,3 +56,34 @@ if run_migrate --force >"$test_tmp/force.out" 2>&1; then
 fi
 grep -q 'Unknown option: --force' "$test_tmp/force.out" || fail "omarchy-migrate reports obsolete --force option"
 pass "omarchy-migrate no longer needs --force"
+
+rm -rf "$test_home/.local/state/omarchy/migrations"
+cat >"$test_root/migrations/100-migration.sh" <<'SH'
+echo deferred >>"$TEST_CALLS"
+exit 75
+SH
+cat >"$test_root/migrations/200-migration.sh" <<'SH'
+echo later >>"$TEST_CALLS"
+SH
+: >"$test_tmp/calls"
+run_migrate >"$test_tmp/deferred.out" || fail "a safely deferred migration aborts the surrounding update"
+[[ $(<"$test_tmp/calls") == "deferred" ]] || fail "later migrations run past a deferred predecessor"
+[[ ! -e $test_home/.local/state/omarchy/migrations/100-migration.sh ]] || fail "a deferred migration receives a completion marker"
+grep -q 'Migration deferred' "$test_tmp/deferred.out" || fail "a deferred migration is not explained"
+pass "exit 75 leaves a migration pending, stops its queue, and lets the update continue"
+
+cat >"$test_root/migrations/100-migration.sh" <<'SH'
+exit 2
+SH
+if run_migrate >"$test_tmp/usage-error.out" 2>&1; then
+  fail "a migration usage error is normalized as a safe deferral"
+fi
+pass "conventional exit 2 remains a migration failure"
+
+cat >"$test_root/migrations/100-migration.sh" <<'SH'
+exit 9
+SH
+if run_migrate >"$test_tmp/failed.out" 2>&1; then
+  fail "an actual migration failure is normalized as a safe deferral"
+fi
+pass "migration failures other than exit 75 still fail the update"

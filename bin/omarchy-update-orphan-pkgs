@@ -12,7 +12,7 @@ echo -e "\e[32m\nOrphan system packages\e[0m"
 printf '  %s\n' "${orphans[@]}"
 echo
 
-if [[ ! -t 0 || ! -t 1 ]]; then
+if ! omarchy-update-can-prompt 0 1; then
   echo "${#orphans[@]} orphaned package(s) found. Re-run omarchy-update-orphan-pkgs in a terminal to review/remove them."
   echo
   exit 0
