@@ -275,7 +275,9 @@ Panel {
 
   function connectDevice(device) {
     if (!device || device.connected) return
-    if (device.paired || device.bonded || device.trusted) runDeviceAction(device, "connect", "connecting")
+    // Trusted-without-a-bond is not paired. Connecting it skips the passkey
+    // and leaves BLE keyboards stuck; pair again instead.
+    if (Model.isBonded(device)) runDeviceAction(device, "connect", "connecting")
     else runDeviceAction(device, "pair", "connecting")
   }
 

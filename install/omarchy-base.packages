@@ -102,6 +102,7 @@ plocate
 plymouth
 postgresql-libs
 power-profiles-daemon
+python-dbus
 python-gobject
 python-poetry-core
 ttfx

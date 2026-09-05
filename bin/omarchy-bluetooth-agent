@@ -1,0 +1,125 @@
+#!/usr/bin/python3
+
+# omarchy:summary=BlueZ pairing agent that shows passkeys
+# omarchy:group=bluetooth
+# omarchy:hidden=true
+
+# Python because a BlueZ agent has to hold one D-Bus connection for its whole
+# lifetime and answer DisplayPasskey / RequestConfirmation on that connection.
+# bt-agent -c NoInputNoOutput auto-accepts Just Works but cannot show a PIN,
+# so BLE HID keyboards (HHKB, many others) fail to pair from the panel.
+
+import shutil
+import subprocess
+import sys
+
+import dbus
+import dbus.mainloop.glib
+import dbus.service
+from gi.repository import GLib
+
+AGENT_PATH = "/org/omarchy/BluetoothAgent"
+AGENT_IFACE = "org.bluez.Agent1"
+AGENT_MANAGER = "org.bluez.AgentManager1"
+DEVICE_IFACE = "org.bluez.Device1"
+PROPS_IFACE = "org.freedesktop.DBus.Properties"
+BLUEZ = "org.bluez"
+
+
+def notify(headline, description):
+    sender = shutil.which("omarchy-notification-send")
+    if sender:
+        # Critical toasts never expire in the Omarchy shell and nothing here can
+        # retract one, so an unanswered passkey would sit on screen forever.
+        subprocess.Popen(
+            [sender, "-u", "normal", "-g", "󰂯", headline, description, "-t", "30000"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return
+    print(f"{headline}: {description}", flush=True)
+
+
+def device_label(bus, path):
+    try:
+        props = dbus.Interface(bus.get_object(BLUEZ, path), PROPS_IFACE)
+        values = props.GetAll(DEVICE_IFACE)
+        return str(values.get("Name") or values.get("Alias") or path)
+    except dbus.exceptions.DBusException:
+        return path
+
+
+class Agent(dbus.service.Object):
+    def __init__(self, bus, path):
+        self.bus = bus
+        super().__init__(bus, path)
+
+    def _passkey_notice(self, device, passkey):
+        name = device_label(self.bus, device)
+        notify(
+            f"Pair {name}",
+            f"Type {int(passkey):06d} on the device, then press Enter.",
+        )
+
+    @dbus.service.method(AGENT_IFACE, in_signature="ou", out_signature="")
+    def RequestConfirmation(self, device, passkey):
+        self._passkey_notice(device, passkey)
+
+    @dbus.service.method(AGENT_IFACE, in_signature="ouq", out_signature="")
+    def DisplayPasskey(self, device, passkey, entered):
+        if int(entered) == 0:
+            self._passkey_notice(device, passkey)
+
+    @dbus.service.method(AGENT_IFACE, in_signature="os", out_signature="")
+    def DisplayPinCode(self, device, pincode):
+        name = device_label(self.bus, device)
+        notify(f"Pair {name}", f"Type {pincode} on the device, then press Enter.")
+
+    @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="")
+    def RequestAuthorization(self, device):
+        return
+
+    @dbus.service.method(AGENT_IFACE, in_signature="os", out_signature="")
+    def AuthorizeService(self, device, uuid):
+        return
+
+    @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="s")
+    def RequestPinCode(self, device):
+        return "000000"
+
+    @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="u")
+    def RequestPasskey(self, device):
+        return dbus.UInt32(0)
+
+    @dbus.service.method(AGENT_IFACE, in_signature="", out_signature="")
+    def Cancel(self):
+        return
+
+    @dbus.service.method(AGENT_IFACE, in_signature="", out_signature="")
+    def Release(self):
+        return
+
+
+def main():
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SystemBus()
+    Agent(bus, AGENT_PATH)
+    mgr = dbus.Interface(bus.get_object(BLUEZ, "/org/bluez"), AGENT_MANAGER)
+    try:
+        mgr.UnregisterAgent(AGENT_PATH)
+    except dbus.exceptions.DBusException:
+        pass
+    # KeyboardDisplay: host shows the passkey, the peripheral types it.
+    # Just Works still auto-accepts via RequestAuthorization / AuthorizeService.
+    mgr.RegisterAgent(AGENT_PATH, "KeyboardDisplay")
+    mgr.RequestDefaultAgent(AGENT_PATH)
+    GLib.MainLoop().run()
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)

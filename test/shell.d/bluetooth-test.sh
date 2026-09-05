@@ -19,6 +19,10 @@ assert(/manageIpc: false/.test(panelSource), 'bluetooth owns its IPC handler so 
 // Writing adapter.enabled sets BlueZ Powered, which does not survive a reboot.
 assert(/function toggleBluetooth\(\)[\s\S]*?execDetached\(\["omarchy-bluetooth-power", adapter\.enabled \? "off" : "on"\]\)/.test(panelSource), 'bluetooth toggles the radio through the rfkill soft block')
 assert(!/adapter\.enabled = /.test(panelSource), 'bluetooth never writes the adapter power state directly')
+const connectFn = panelSource.match(/function connectDevice\(device\) \{[\s\S]*?\n  \}/)
+assert(connectFn, 'bluetooth has connectDevice')
+assert(/Model\.isBonded\(device\)/.test(connectFn[0]), 'bluetooth connects only after a real bond')
+assert(!/device\.trusted/.test(connectFn[0]), 'bluetooth does not treat trusted-only devices as paired')
 
 // Discovery is a BlueZ session that nothing ends at panel close: it persists
 // until StopDiscovery or until quickshell's D-Bus connection drops with the
@@ -55,6 +59,10 @@ assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-
 assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'bluetooth normalizes BlueZ and PipeWire address formats')
 assert(!bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF' }), 'bluetooth rejects address-only device labels')
 assert(bluetooth.hasHumanName({ deviceName: 'MX Master 3S' }), 'bluetooth accepts human device labels')
+assert(bluetooth.isBonded({ paired: true }), 'bluetooth treats paired as bonded')
+assert(bluetooth.isBonded({ bonded: true }), 'bluetooth treats bonded as bonded')
+assert(!bluetooth.isBonded({ trusted: true }), 'bluetooth does not treat trusted-only as bonded')
+assert(!bluetooth.isBonded({}), 'bluetooth does not treat unknown devices as bonded')
 
 const devices = [
   { name: 'Speaker', connected: false, paired: true, address: '2' },
@@ -94,7 +102,7 @@ assertDeepEqual(arrayLikeLists.discovered.map(bluetooth.deviceLabel), ['Gamepad'
 
 assertDeepEqual(
   bluetooth.deviceRow({ name: 'Deadbeef', address: '1', connected: false }),
-  { address: '1', name: 'Deadbeef', deviceName: '', connected: false, state: -1, batteryAvailable: false, battery: 0, pairing: false },
+  { address: '1', name: 'Deadbeef', deviceName: '', connected: false, paired: false, bonded: false, trusted: false, state: -1, batteryAvailable: false, battery: 0, pairing: false },
   'bluetooth projects device rows with primitives only'
 )
 assertEqual(
@@ -165,6 +173,7 @@ if [[ $1 == "show" ]]; then
   [[ -n ${2:-} && -f "$POWERED_FILE.$2" ]] && state="$POWERED_FILE.$2"
   printf '\tPowered: %s\n' "$(cat "$state")"
 fi
+[[ $1 == "pair" && -n ${PAIR_FAIL:-} ]] && exit 1
 exit 0
 SH
 
@@ -236,6 +245,33 @@ toggle_off_log=$(bluetooth_power no toggle)
 grep -qx "rfkill unblock bluetooth" "$toggle_off_log" ||
   fail "bluetooth toggles an unpowered adapter on" "$(cat "$toggle_off_log")"
 pass "bluetooth toggles an unpowered adapter on"
+
+# A failed pair must not trust the device. Trust-without-bond is what made
+# the panel skip pairing on the next click.
+pair_fail_log=$(
+  echo yes >"$POWERED_FILE"
+  : >"$device_tmp/log"
+  PATH="$mock_bin:$ROOT/bin:$PATH" BLUETOOTHCTL_LOG="$device_tmp/log" PAIR_FAIL=1 \
+    OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 \
+    "$ROOT/bin/omarchy-bluetooth-device" pair AA:BB:CC:DD:EE:FF ||
+    fail "pair still exits cleanly when bonding fails"
+  printf '%s' "$device_tmp/log"
+)
+grep -qx "pair AA:BB:CC:DD:EE:FF" "$pair_fail_log" ||
+  fail "bluetooth still attempts to pair" "$(cat "$pair_fail_log")"
+pass "bluetooth still attempts to pair"
+grep -q "^trust " "$pair_fail_log" &&
+  fail "bluetooth does not trust a device that failed to pair" "$(cat "$pair_fail_log")"
+pass "bluetooth does not trust a device that failed to pair"
+
+pair_ok_log=$(bluetooth_run yes "$ROOT/bin/omarchy-bluetooth-device" pair AA:BB:CC:DD:EE:FF)
+grep -qx "pair AA:BB:CC:DD:EE:FF" "$pair_ok_log" ||
+  fail "bluetooth pairs before it trusts" "$(cat "$pair_ok_log")"
+grep -qx "trust AA:BB:CC:DD:EE:FF" "$pair_ok_log" ||
+  fail "bluetooth trusts after a successful pair" "$(cat "$pair_ok_log")"
+grep -qx "connect AA:BB:CC:DD:EE:FF" "$pair_ok_log" ||
+  fail "bluetooth connects after a successful pair" "$(cat "$pair_ok_log")"
+pass "bluetooth trusts and connects only after a successful pair"
 
 # The power-on shortcut is the whole point of skipping the stabilization sleep:
 # pair/connect from the panel run against an adapter that is already powered.

@@ -1,6 +1,5 @@
 [Unit]
-Description=Bluetooth pairing agent (auto-accept)
-Documentation=man:bt-agent(1)
+Description=Bluetooth pairing agent (shows passkeys, auto-accepts Just Works)
 ConditionPathIsDirectory=/sys/class/bluetooth
 # bluez must be reachable on the system bus before we can register.
 After=dbus.socket
@@ -11,11 +10,10 @@ Type=simple
 # If bluetoothd is unavailable (for example in VMs or machines without a
 # usable adapter), skip cleanly instead of entering a restart loop.
 ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service
-# NoInputNoOutput auto-accepts pair requests. Safe because the adapter
-# is only `pairable: true` when the user explicitly opens the omarchy
-# bluetoothPanel and starts scanning; outside that window bluez refuses
-# inbound pair attempts at a lower layer.
-ExecStart=/usr/bin/bt-agent -c NoInputNoOutput
+# KeyboardDisplay shows the six-digit passkey BLE HID keyboards need.
+# Just Works (mice, headphones) still auto-accepts. Pairable remains a
+# BlueZ policy; this agent only answers pairing prompts.
+ExecStart=/usr/bin/omarchy-bluetooth-agent
 Restart=on-failure
 RestartSec=2
 
