@@ -72,4 +72,5 @@ export OMARCHY_INSTALL_LOG_FILE="${OMARCHY_INSTALL_LOG_FILE:-/var/log/omarchy-in
 export PATH="$OMARCHY_PATH/bin:$PATH"
 
 source "$OMARCHY_INSTALL/helpers/logging.sh"
+omarchy_log_to_stdout || prepare_install_log_file
 source "$OMARCHY_INSTALL/hardware/all.sh"

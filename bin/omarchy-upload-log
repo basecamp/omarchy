@@ -4,9 +4,114 @@
 # omarchy:args=<log-file>
 # omarchy:hidden=true
 
+set -euo pipefail
+
+source "${BASH_SOURCE[0]%/*}/omarchy-security-functions" || exit 126
+
 LOG_TYPE="${1:-install}"
-TEMP_LOG="/tmp/upload-log.txt"
-SYSTEM_INFO="/tmp/system-info.txt"
+
+read_private_install_log() {
+  local selector=${1:-} path parent current canonical owner mode first=1
+  ((EUID == 0)) || {
+    echo "The private install-log reader must run through sudo." >&2
+    return 1
+  }
+
+  case "$selector" in
+  live) path=/var/log/omarchy-install.log ;;
+  target) path=/mnt/var/log/omarchy-install.log ;;
+  *)
+    echo "Unknown private install-log selector." >&2
+    return 2
+    ;;
+  esac
+
+  [[ -e $path || -L $path ]] || return 3
+  if [[ -L $path || ! -f $path ]]; then
+    echo "Refusing to read an unsafe Omarchy install log." >&2
+    return 4
+  fi
+  canonical=$(/usr/bin/realpath -e -- "$path" 2>/dev/null) || return 4
+  owner=$(/usr/bin/stat -c '%u' -- "$path" 2>/dev/null) || return 4
+  mode=$(/usr/bin/stat -c '%a' -- "$path" 2>/dev/null) || return 4
+  if [[ $canonical != "$path" || $owner != 0 || $mode != 600 ]]; then
+    echo "Refusing to read an install log without root ownership and mode 0600." >&2
+    return 4
+  fi
+
+  parent=$(/usr/bin/dirname -- "$path") || return 4
+  canonical=$(/usr/bin/realpath -e -- "$parent" 2>/dev/null) || return 4
+  [[ $canonical == "$parent" ]] || return 4
+  current=$parent
+  while :; do
+    [[ -d $current && ! -L $current ]] || return 4
+    owner=$(/usr/bin/stat -c '%u' -- "$current" 2>/dev/null) || return 4
+    mode=$(/usr/bin/stat -c '%a' -- "$current" 2>/dev/null) || return 4
+    [[ $owner =~ ^[0-9]+$ && $mode =~ ^[0-7]+$ ]] || return 4
+    [[ $owner == 0 ]] || return 4
+    if ((first)); then
+      ! ((8#$mode & 0022)) || return 4
+      first=0
+    elif ((8#$mode & 0022)); then
+      [[ $owner == 0 ]] && ((8#$mode & 01000)) || return 4
+    fi
+    [[ $current == / ]] && break
+    current=$(/usr/bin/dirname -- "$current") || return 4
+  done
+
+  /usr/bin/cat -- "$path"
+}
+
+if [[ $LOG_TYPE == __read-private-install-log ]]; then
+  (($# == 2)) || exit 2
+  read_private_install_log "$2"
+  exit
+fi
+
+PRIVATE_LOG_AUTHORIZATION=false
+
+prepare_private_log_authorization() {
+  [[ $LOG_TYPE == install ]] || return 0
+  ((EUID != 0)) || return 0
+  omarchy_security_sudo_supports_no_update || {
+    echo "This sudo does not support --no-update; refusing to collect private install logs." >&2
+    return 1
+  }
+  # Collectors such as fastfetch are intentionally extensible user commands.
+  # Start them with no reusable authorization, then authorize only the fixed
+  # private-log reader without publishing a timestamp they can wait for.
+  omarchy_security_revoke_sudo_timestamp || {
+    echo "Could not invalidate cached sudo authorization." >&2
+    return 1
+  }
+  PRIVATE_LOG_AUTHORIZATION=true
+}
+
+prepare_private_log_authorization
+
+ORIGINAL_UMASK=$(umask)
+umask 077
+WORK_DIR=$(mktemp -d) || {
+  echo "Could not create a private support-log workspace." >&2
+  exit 1
+}
+cleanup() {
+  local status=$?
+  trap - EXIT HUP INT TERM
+  /usr/bin/rm -rf -- "$WORK_DIR"
+  umask "$ORIGINAL_UMASK"
+  if [[ $PRIVATE_LOG_AUTHORIZATION == true ]]; then
+    omarchy_security_exit_with_revoked_sudo "$status"
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+TEMP_LOG="$WORK_DIR/upload-log.txt"
+SYSTEM_INFO="$WORK_DIR/system-info.txt"
 
 # Get system information if fastfetch is available
 if omarchy-cmd-present fastfetch; then
@@ -56,6 +161,22 @@ same_or_prefix_log() {
   cmp -n "$min_size" "$a" "$b" >/dev/null 2>&1
 }
 
+collect_private_install_log() {
+  local selector="$1" destination="$2" status
+  if ((EUID == 0)); then
+    read_private_install_log "$selector" >"$destination"
+    return
+  elif /usr/bin/sudo -N -- /usr/bin/omarchy-upload-log __read-private-install-log "$selector" >"$destination"; then
+    return 0
+  else
+    status=$?
+  fi
+  /usr/bin/rm -f -- "$destination"
+  ((status == 3)) && return 3
+  echo "Could not safely read the private Omarchy install log ($selector)." >&2
+  return 1
+}
+
 case "$LOG_TYPE" in
 install)
   # In the live ISO before reboot, the target system is mounted at /mnt so the
@@ -66,6 +187,10 @@ install)
   ARCHINSTALL_LOG="/var/log/archinstall/install.log"
   LIVE_OMARCHY_LOG="/var/log/omarchy-install.log"
   TARGET_OMARCHY_LOG="/mnt/var/log/omarchy-install.log"
+  LIVE_OMARCHY_COPY="$WORK_DIR/live-omarchy-install.log"
+  TARGET_OMARCHY_COPY="$WORK_DIR/target-omarchy-install.log"
+  live_found=0
+  target_found=0
 
   cat "$SYSTEM_INFO" >"$TEMP_LOG"
   if [[ -s $ARCHINSTALL_LOG ]]; then
@@ -73,17 +198,31 @@ install)
     cat "$ARCHINSTALL_LOG" >>"$TEMP_LOG"
   fi
 
-  if [[ -s $LIVE_OMARCHY_LOG ]]; then
+  if collect_private_install_log live "$LIVE_OMARCHY_COPY"; then
+    live_found=1
+  else
+    status=$?
+    ((status == 3)) || exit 1
+  fi
+  if collect_private_install_log target "$TARGET_OMARCHY_COPY"; then
+    target_found=1
+  else
+    status=$?
+    ((status == 3)) || exit 1
+  fi
+
+  if ((live_found)) && [[ -s $LIVE_OMARCHY_COPY ]]; then
     printf '\n========================================\nOMARCHY INSTALL LOG (%s)\n========================================\n\n' "$LIVE_OMARCHY_LOG" >>"$TEMP_LOG"
-    cat "$LIVE_OMARCHY_LOG" >>"$TEMP_LOG"
+    cat "$LIVE_OMARCHY_COPY" >>"$TEMP_LOG"
   fi
 
-  if [[ -s $TARGET_OMARCHY_LOG ]] && ! same_or_prefix_log "$LIVE_OMARCHY_LOG" "$TARGET_OMARCHY_LOG"; then
+  if ((target_found)) && [[ -s $TARGET_OMARCHY_COPY ]] &&
+    ! same_or_prefix_log "$LIVE_OMARCHY_COPY" "$TARGET_OMARCHY_COPY"; then
     printf '\n========================================\nTARGET OMARCHY INSTALL LOG (%s)\n========================================\n\n' "$TARGET_OMARCHY_LOG" >>"$TEMP_LOG"
-    cat "$TARGET_OMARCHY_LOG" >>"$TEMP_LOG"
+    cat "$TARGET_OMARCHY_COPY" >>"$TEMP_LOG"
   fi
 
-  if [[ ! -s $LIVE_OMARCHY_LOG && ! -s $TARGET_OMARCHY_LOG ]]; then
+  if ((!live_found && !target_found)); then
     echo "Warning: omarchy install log not found (looked at /var/log and /mnt/var/log)" >&2
   fi
 
@@ -152,9 +291,7 @@ esac
 
 echo ""
 
-URL=$(curl -sf -F "file=@$TEMP_LOG" -Fexpires=24 https://logs.omarchy.org/)
-
-if (( $? == 0 )) && [[ -n $URL ]]; then
+if URL=$(curl -sf -F "file=@$TEMP_LOG" -Fexpires=24 https://logs.omarchy.org/) && [[ -n $URL ]]; then
   echo "✓ Log uploaded successfully!"
   echo "Share this URL:"
   echo ""
