@@ -303,6 +303,32 @@ function sortWifiRows(rows) {
   return nets
 }
 
+// Case-insensitive subsequence match: every query character appears in the
+// SSID in order, but not necessarily adjacent ("cfe" finds "Coffee-Guest").
+// An empty query matches everything, so the list is whole until typing starts.
+function fuzzyMatchSsid(ssid, query) {
+  var haystack = String(ssid || "").toLowerCase()
+  var needle = String(query || "").toLowerCase()
+  var pos = 0
+  for (var i = 0; i < needle.length; i++) {
+    pos = haystack.indexOf(needle[i], pos)
+    if (pos < 0) return false
+    pos++
+  }
+  return true
+}
+
+// Narrows sorted rows by fuzzy SSID match, preserving their order so the
+// connected/known/signal ranking still decides who is on top. Hidden-SSID
+// rows (ssid == "") have nothing to match against, so any query drops them.
+function filterWifiRows(rows, query) {
+  var nets = Array.isArray(rows) ? rows : []
+  if (!query) return nets
+  return nets.filter(function(row) {
+    return !!(row && row.ssid) && fuzzyMatchSsid(row.ssid, query)
+  })
+}
+
 function wifiSectionTitle(wifiNetworks, index) {
   var networks = Array.isArray(wifiNetworks) ? wifiNetworks : []
   if (index < 0 || index >= networks.length) return ""
@@ -388,6 +414,8 @@ if (typeof module !== "undefined") {
     formatPingLatency: formatPingLatency,
     wifiRow: wifiRow,
     sortWifiRows: sortWifiRows,
+    fuzzyMatchSsid: fuzzyMatchSsid,
+    filterWifiRows: filterWifiRows,
     wifiSectionTitle: wifiSectionTitle,
     requiresCredentials: requiresCredentials,
     canForgetNetwork: canForgetNetwork,

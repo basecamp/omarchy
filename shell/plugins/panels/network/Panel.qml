@@ -16,16 +16,37 @@ Panel {
   // permits — needed for the toggleNetwork method below.
   manageIpc: false
 
-  // Centralized close so callers can't forget to drop the passphrase prompt.
+  // Centralized close so callers can't forget to drop the passphrase prompt
+  // or a network filter left mid-search.
   function close() {
     root.controller.hide()
     cancelPasswordPrompt()
+    cancelFilter()
   }
 
   function cancelPasswordPrompt() {
     passwordSsid = ""
     passwordText = ""
     identityText = ""
+  }
+
+  function cancelFilter() {
+    filterOpen = false
+    filterText = ""
+  }
+
+  // Opening is separate from focusing: the field grabs focus when it first
+  // becomes visible, and the callLater covers re-entering "/" after focus
+  // wandered back to the list.
+  function openFilter() {
+    filterOpen = true
+    if (wifiNetworks.length > 0) {
+      focusSection = "wifi"
+      if (selectedIndex < 0) selectedIndex = 0
+      cursorActive = true
+      wifiActionFocused = false
+    }
+    Qt.callLater(function() { if (filterField.visible) filterField.forceActiveFocus() })
   }
 
   // Live connection details from `ip` / /sys / iw.
@@ -97,6 +118,12 @@ Panel {
   property string passwordSsid: ""
   property string passwordText: ""
   property string identityText: ""
+
+  // Fuzzy filter over the network list, opened with "/" (fzf-style). The
+  // query narrows `wifiNetworks` itself so selection clamping, section
+  // titles, and keyboard nav all see the same list the eye does.
+  property bool filterOpen: false
+  property string filterText: ""
 
   // ConnectionFailReason values as a plain object, so Model.js helpers stay
   // pure JS and Node-testable.
@@ -321,6 +348,9 @@ Panel {
   // what makes the SUPER+CTRL+W keybind land here with navigation ready.
   onOpenedChanged: {
     if (opened) {
+      // Outside-click closes skip close(), so a filter from the previous
+      // open could otherwise still be narrowing the list on reopen.
+      cancelFilter()
       refresh(true)
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       wifiActionFocused = false
@@ -356,7 +386,13 @@ Panel {
   onPasswordSsidChanged: {
     if (passwordSsid === "" && opened) {
       passwordText = ""
-      Qt.callLater(function() { if (keyCatcher) keyCatcher.forceActiveFocus() })
+      // A prompt reached through the filter hands focus back to the still-
+      // visible search field, not the key catcher — otherwise typing would
+      // silently turn into j/k navigation under an open editor.
+      Qt.callLater(function() {
+        if (filterOpen && filterField.visible) filterField.forceActiveFocus()
+        else if (keyCatcher) keyCatcher.forceActiveFocus()
+      })
     }
   }
 
@@ -658,9 +694,21 @@ Panel {
       var row = Model.wifiRow(network)
       if (row) nets.push(row)
     }
-    wifiNetworks = Model.sortWifiRows(nets)
+    wifiNetworks = Model.filterWifiRows(Model.sortWifiRows(nets), filterText)
     wifiStationAvailable = !!wifiDevice
     scanning = false
+  }
+
+  // Every keystroke re-narrows the list and parks the cursor on the top
+  // match, so Enter connects to the best hit fzf-style without an extra j.
+  onFilterTextChanged: {
+    syncWifiNetworks()
+    if (wifiNetworks.length > 0) {
+      selectedIndex = 0
+      focusSection = "wifi"
+      cursorActive = true
+      wifiActionFocused = false
+    }
   }
 
   function wifiSectionTitle(index) {
@@ -1049,9 +1097,10 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      // Freeze the cursor model while the inline password prompt is open;
-      // the TextField inside owns input until Esc/Enter/Cancel.
-      blocked: root.passwordSsid !== ""
+      // Freeze the cursor model while the inline password prompt or the
+      // network filter field owns input; keys reach them normally until
+      // Esc/Enter hands focus back.
+      blocked: root.passwordSsid !== "" || filterField.activeFocus
 
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) {
@@ -1140,11 +1189,17 @@ Panel {
           else root.activateSelected()
         }
       }
-      onCloseRequested: root.close()
+      // Esc first backs out of an active filter (vim-style staged escape);
+      // only a second Esc, or Esc with no filter, closes the panel.
+      onCloseRequested: {
+        if (root.filterOpen || root.filterText !== "") root.cancelFilter()
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refresh()
         else if (t === "w" || t === "W") root.toggleNetwork()
+        else if (t === "/" && root.wifiStationAvailable) root.openFilter()
       }
 
     Column {
@@ -1579,6 +1634,42 @@ Panel {
       PanelSectionHeader {
         visible: root.wifiStationAvailable && root.scanning
         text: "SCANNING WI-FI…"
+        foreground: root.bar.foreground
+        fontFamily: root.bar.fontFamily
+      }
+
+      // Fuzzy filter over the network list, summoned with "/". Same inline
+      // sizing as the passphrase prompt so it reads as part of the list.
+      TextField {
+        id: filterField
+        visible: root.filterOpen && root.wifiStationAvailable
+        width: parent.width
+        placeholderText: "Search networks"
+        font.family: Style.font.family
+        font.pixelSize: Style.font.body
+        foreground: root.bar.foreground
+        horizontalPadding: Style.spacing.controlGap
+        verticalPadding: Style.spacing.controlPaddingY
+
+        text: root.filterOpen ? root.filterText : ""
+        onTextChanged: if (root.filterOpen && text !== root.filterText) root.filterText = text
+
+        // Enter connects to the highlighted match; j/k stay literal while
+        // typing, so the arrows drive the selection from inside the field.
+        onAccepted: root.activateSelected()
+        Keys.onUpPressed: root.selectByDelta(-1)
+        Keys.onDownPressed: root.selectByDelta(1)
+        Keys.onEscapePressed: {
+          root.cancelFilter()
+          keyCatcher.forceActiveFocus()
+        }
+
+        onVisibleChanged: if (visible) Qt.callLater(forceActiveFocus)
+      }
+
+      PanelSectionHeader {
+        visible: root.wifiStationAvailable && root.filterText !== "" && root.wifiNetworks.length === 0
+        text: "NO MATCHING NETWORKS"
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
       }
