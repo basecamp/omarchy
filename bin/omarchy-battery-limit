@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# omarchy:summary=Inspect and control UPower battery charge limits
+# omarchy:args=[status|enable|disable] [--shell]
+# omarchy:examples=omarchy battery limit | omarchy battery limit enable
+
+case "$*" in
+  "" | status) action=status; shell_output=false ;;
+  --shell | "status --shell") action=status; shell_output=true ;;
+  enable | disable) action="$1"; shell_output=false ;;
+  *)
+    echo "Usage: omarchy-battery-limit [status|enable|disable] [--shell]" >&2
+    exit 2
+    ;;
+esac
+
+upower_property() {
+  local raw value
+
+  raw=$(busctl get-property org.freedesktop.UPower "$1" org.freedesktop.UPower.Device "$2" 2>/dev/null) || return 1
+  read -r _ value <<<"$raw"
+  value=${value#\"}
+  value=${value%\"}
+  printf '%s\n' "$value"
+}
+
+declare -a batteries=()
+enabled=true
+policy=unknown
+
+while IFS= read -r device; do
+  [[ $device != */DisplayDevice ]] || continue
+  [[ $(upower_property "$device" ChargeThresholdSupported || true) == true ]] || continue
+
+  batteries+=("$device")
+  [[ $(upower_property "$device" ChargeThresholdEnabled || true) == true ]] || enabled=false
+
+  if [[ $policy == unknown ]]; then
+    settings=$(upower_property "$device" ChargeThresholdSettingsSupported || true)
+    start=$(upower_property "$device" ChargeStartThreshold || true)
+    end=$(upower_property "$device" ChargeEndThreshold || true)
+
+    if [[ $settings =~ ^[0-9]+$ ]] && (( (settings & 2) != 0 )) && [[ $end =~ ^[0-9]+$ ]]; then
+      if (( (settings & 1) != 0 )) && [[ $start =~ ^[0-9]+$ ]] && (( start < end )); then
+        policy="$start-$end"
+      else
+        policy="$end"
+      fi
+    elif [[ $settings =~ ^[0-9]+$ ]] && (( (settings & 4) != 0 )); then
+      policy=firmware
+    fi
+  fi
+done < <(upower -e 2>/dev/null)
+
+if (( ${#batteries[@]} == 0 )); then
+  state=unsupported
+elif [[ $enabled == true ]]; then
+  state=enabled
+else
+  state=disabled
+fi
+
+if [[ $action == status ]]; then
+  if [[ $shell_output == true ]]; then
+    printf 'state\t%s\npolicy\t%s\n' "$state" "$policy"
+  else
+    case "$state" in
+      unsupported) echo "Battery protection is not supported" ;;
+      enabled) echo "Battery protection is enabled" ;;
+      disabled) echo "Battery protection is disabled" ;;
+    esac
+  fi
+  exit 0
+fi
+
+if [[ $state == unsupported ]]; then
+  echo "Battery charge limits are not supported by UPower on this system" >&2
+  exit 1
+fi
+
+[[ $action == enable ]] && desired=true || desired=false
+failed=false
+
+for device in "${batteries[@]}"; do
+  if ! busctl call org.freedesktop.UPower "$device" org.freedesktop.UPower.Device EnableChargeThreshold b "$desired" >/dev/null; then
+    echo "Failed to update charge limits for $device" >&2
+    failed=true
+  fi
+done
+
+[[ $failed == false ]] || exit 1
+echo "Battery protection ${action}d"

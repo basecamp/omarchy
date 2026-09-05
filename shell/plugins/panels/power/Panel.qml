@@ -14,11 +14,16 @@ Panel {
   // permits — needed for the togglePercentage method below.
   manageIpc: false
   property var batteryInfo: ({})
+  property var limitInfo: ({ state: "unsupported", policy: "unknown" })
   property var systemInfo: ({})
   property var profiles: []
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
+  property string cursorSection: "profiles"
+  property string limitError: ""
+  readonly property bool limitVisible: limitInfo.state !== "unsupported"
+  readonly property string limitDescription: Model.limitDescription(limitInfo.state, limitInfo.policy)
   readonly property bool showPercentage: setting("showPercentage", false) === true
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
@@ -59,6 +64,37 @@ Panel {
 
   function profileIcon(name) {
     return Model.profileIcon(name)
+  }
+
+  function moveCursor(dx, dy) {
+    if (!cursorActive) {
+      cursorActive = true
+      return
+    }
+
+    if (limitVisible && ((cursorSection === "limit" && dy > 0) || (cursorSection === "profiles" && dy < 0))) {
+      cursorSection = cursorSection === "limit" ? "profiles" : "limit"
+      return
+    }
+
+    if (cursorSection === "profiles") selectProfileByDelta(dx !== 0 ? dx : dy)
+  }
+
+  function activateCursor() {
+    if (!cursorActive) {
+      cursorActive = true
+      return
+    }
+
+    if (cursorSection === "profiles") activateSelectedProfile()
+    else setLimit(limitInfo.state === "enabled" ? "disable" : "enable")
+  }
+
+  function setLimit(action) {
+    if (!action || limitActionProc.running) return
+    limitError = ""
+    limitActionProc.command = ["omarchy-battery-limit", action]
+    limitActionProc.running = true
   }
 
   readonly property bool fullyCharged: {
@@ -136,8 +172,13 @@ Panel {
     if (!batteryPresent) return
 
     if (!batteryProc.running) batteryProc.running = true
+    refreshLimit()
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
+  }
+
+  function refreshLimit() {
+    if (batteryPresent && !limitProc.running) limitProc.running = true
   }
 
   function updateKeyValue(raw, targetName) {
@@ -146,6 +187,10 @@ Panel {
     // around AC plug/unplug events. Avoids the section collapsing mid-transition.
     if (Object.keys(next).length === 0) return
     if (targetName === "battery") batteryInfo = next
+    else if (targetName === "limit") {
+      limitInfo = next
+      if (!cursorActive) cursorSection = next.state !== "unsupported" ? "limit" : "profiles"
+    }
     else systemInfo = next
   }
 
@@ -196,6 +241,7 @@ Panel {
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
       cursorActive = false
+      cursorSection = limitVisible ? "limit" : "profiles"
     }
   }
 
@@ -209,6 +255,12 @@ Panel {
     id: batteryProc
     command: ["omarchy-battery-status", "--shell"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateKeyValue(text, "battery") }
+  }
+
+  Process {
+    id: limitProc
+    command: ["omarchy-battery-limit", "status", "--shell"]
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateKeyValue(text, "limit") }
   }
 
   Process {
@@ -226,6 +278,22 @@ Panel {
   Process {
     id: actionProc
     onExited: root.refresh()
+  }
+
+  Process {
+    id: limitActionProc
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var message = text.trim()
+        if (message !== "") root.limitError = message
+      }
+    }
+    onExited: function(exitCode) {
+      if (exitCode === 0) root.limitError = ""
+      else if (root.limitError === "") root.limitError = "Could not update battery protection"
+      root.refresh()
+    }
   }
 
   Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: root.refresh() }
@@ -303,11 +371,9 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       onMoveRequested: function(dx, dy) {
-        if (!root.cursorActive) { root.cursorActive = true; return }
-        if (dx !== 0) root.selectProfileByDelta(dx)
-        else if (dy !== 0) root.selectProfileByDelta(dy)
+        root.moveCursor(dx, dy)
       }
-      onActivateRequested: if (root.cursorActive) root.activateSelectedProfile()
+      onActivateRequested: root.activateCursor()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -451,6 +517,51 @@ Panel {
           }
         }
 
+        // ---------- Battery health ----------
+        Column {
+          visible: root.limitVisible
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSeparator {
+            foreground: root.bar.foreground
+          }
+
+          PanelSectionHeader {
+            text: "BATTERY HEALTH"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Toggle {
+            width: parent.width
+            label: "Preserve battery health"
+            description: root.limitDescription
+            checked: root.limitInfo.state === "enabled"
+            enabled: !limitActionProc.running
+            hasCursor: root.cursorActive && root.cursorSection === "limit"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            onClicked: root.setLimit(root.limitInfo.state === "enabled" ? "disable" : "enable")
+            onHovered: function(h) {
+              if (h) {
+                root.cursorActive = true
+                root.cursorSection = "limit"
+              }
+            }
+          }
+
+          Text {
+            visible: root.limitError !== ""
+            width: parent.width
+            text: root.limitError
+            color: Color.urgent
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+        }
+
         // ---------- Power profile picker ----------
         PanelSeparator {
           foreground: root.bar.foreground
@@ -491,11 +602,12 @@ Panel {
                 verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
                 bordered: true
                 active: root.activeProfile === modelData
-                hasCursor: root.cursorActive && root.profileIndex === index
+                hasCursor: root.cursorActive && root.cursorSection === "profiles" && root.profileIndex === index
                 onClicked: root.setProfile(modelData)
                 onHovered: function(h) {
                   if (h) {
                     root.cursorActive = true
+                    root.cursorSection = "profiles"
                     root.profileIndex = index
                   }
                 }

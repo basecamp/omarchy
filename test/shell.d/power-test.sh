@@ -19,7 +19,9 @@ assertDeepEqual(
   { profiles: ['power-saver', 'balanced', 'performance'], activeProfile: 'balanced', profileIndex: 2 },
   'power parses profile output and clamps selection'
 )
-
+assertEqual(power.limitDescription('enabled', '75-80'), 'Starts charging at 75% and stops at 80%', 'power explains active threshold ranges')
+assertEqual(power.limitDescription('disabled', '75-80'), 'Start charging at 75% and stop at 80%', 'power makes inactive threshold ranges actionable')
+assertEqual(power.limitDescription('disabled', 'firmware'), 'Use firmware optimized charging', 'power makes inactive firmware policy actionable')
 assert(power.profileIcon('performance').length > 0, 'power maps profile icons')
 assertEqual(power.batteryFraction({ isPresent: true, percentage: 1.5 }), 1, 'power clamps battery fraction')
 
@@ -48,4 +50,11 @@ assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon
 assert(/openPanelIndicatorWidth:.*showPercentage.*button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
 assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentage\(\) \}/.test(panelSource), 'power exposes togglePercentage over IPC')
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
+assert(/command: \["omarchy-battery-limit", "status", "--shell"\]/.test(panelSource), 'power reads charge-limit state through the Omarchy command')
+assert(/if \(!cursorActive\) cursorSection = next\.state !== "unsupported" \? "limit" : "profiles"/.test(panelSource), 'power initializes keyboard focus after limit status loads')
+assert(/if \(message !== ""\) root\.limitError = message/.test(panelSource), 'power keeps fallback errors when stderr is empty')
+assert(/text: "BATTERY HEALTH"/.test(panelSource), 'power includes a battery health section')
+assert(/Toggle \{[\s\S]*label: "Preserve battery health"/.test(panelSource), 'power uses the shared toggle control')
+assert(!/takeover|ConfirmDialog/.test(panelSource), 'power keeps battery health to one toggle')
+assert(!/pkexec|charge_control_end_threshold/.test(panelSource), 'power panel does not perform privileged or vendor-specific writes')
 JS
