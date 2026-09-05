@@ -211,3 +211,17 @@ grep -Fx 'omarchy-dev-checkout 1 new commit on origin/quattro' "$stdout" >/dev/n
   fail "update checker reports cached dev commits after a fetch failure" "$(cat "$stdout")"
 [[ ! -s $stderr ]] || fail "update checker keeps dev fetch failures quiet" "$(cat "$stderr")"
 pass "update checker uses cached dev state when fetching is unavailable"
+
+: >"$git_log"
+if TEST_CHECKUPDATES=updates TEST_INSTALLED_PACKAGE=omarchy TEST_GIT_LOG="$git_log" \
+  PATH="$stub_bin:$PATH" env -u OMARCHY_PATH \
+  "$ROOT/bin/omarchy-update-available" >"$stdout" 2>"$stderr"; then
+  status=0
+else
+  status=$?
+fi
+[[ ! -s $stderr ]] || fail "sudo's stripped environment does not break the update checker" "$(cat "$stderr")"
+[[ $status -eq 0 ]] || fail "update checker still reports package updates without OMARCHY_PATH"
+grep -q '^omarchy ' "$stdout" || fail "update checker still reports package updates without OMARCHY_PATH" "$(cat "$stdout")"
+[[ ! -s $git_log ]] || fail "an unset OMARCHY_PATH checks no dev checkout" "$(cat "$git_log")"
+pass "an unset OMARCHY_PATH means the package install"
