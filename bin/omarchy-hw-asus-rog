@@ -2,5 +2,8 @@
 
 # omarchy:summary=Detect whether the computer is an Asus ROG machine.
 
-[[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == "ASUSTeK COMPUTER INC." ]] &&
-   grep -q "ROG" /sys/class/dmi/id/product_family 2>/dev/null
+# Newer ASUS firmware reports sys_vendor as "ASUS" rather than the older
+# "ASUSTeK COMPUTER INC." (seen on the ROG Zephyrus G14 GU405AR), so match on
+# the vendor prefix instead of the full string.
+[[ $(cat /sys/class/dmi/id/sys_vendor 2>/dev/null) == ASUS* ]] &&
+  grep -q "ROG" /sys/class/dmi/id/product_family 2>/dev/null
