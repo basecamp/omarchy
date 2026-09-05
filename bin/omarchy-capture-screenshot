@@ -38,8 +38,16 @@ PROCESSING="${2:-slurp}"
 #
 # Software-composited cursors (Hyprland's fallback on GPUs without working
 # hardware cursors) are baked into the frames grim captures, so force
-# hardware cursors until after grim runs and restore the setting on exit.
+# hardware cursors for the capture itself and restore the setting on exit.
+#
+# Only for the capture. Software cursors are what a machine whose hardware
+# cursor plane does not work is left with -- nouveau on older NVIDIA GPUs,
+# vmwgfx in a VMware guest -- and Omarchy turns them on itself there
+# (install/user/hardware/fix-nouveau-cursor.sh). Forcing them off around the
+# picker takes the pointer off the screen for the whole selection, which is
+# exactly the part of a screenshot that needs one.
 NO_HW_CURSORS=$(hyprctl getoption cursor:no_hardware_cursors -j | jq '.int')
+FORCED_HW_CURSORS=false
 
 set_no_hw_cursors() {
   hyprctl eval "hl.config({ cursor = { no_hardware_cursors = $1 } })" &>/dev/null ||
@@ -48,14 +56,18 @@ set_no_hw_cursors() {
 
 cleanup() {
   [[ -n $FREEZE_PID ]] && kill $FREEZE_PID 2>/dev/null
-  set_no_hw_cursors "$NO_HW_CURSORS"
+  [[ $FORCED_HW_CURSORS == true ]] && set_no_hw_cursors "$NO_HW_CURSORS"
 }
 trap cleanup EXIT
 
-set_no_hw_cursors 0
 { read -r FREEZE_PID; read -r SELECTION; } < <(omarchy-capture-region "$MODE" --keep-freeze)
 
 [[ -z $SELECTION ]] && exit 0
+
+# The screen is frozen and the selection is made; nobody is pointing at
+# anything now, so the pointer can move to its own plane for the shot.
+FORCED_HW_CURSORS=true
+set_no_hw_cursors 0
 
 FILENAME="screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
 FILEPATH="$OUTPUT_DIR/$FILENAME"
