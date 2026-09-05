@@ -107,6 +107,18 @@ index_file="$cache_dir/index.tsv"
 rows=""
 mkdir -p "$cache_dir"
 
+# One pass over the index instead of an awk scan per image. Opening the
+# background picker with a large custom set used to re-read this file for
+# every row.
+declare -A thumbnail_index=()
+if [[ -f $index_file ]]; then
+  while IFS=$'\t' read -r index_path index_sig index_hash; do
+    [[ -n $index_hash ]] || continue
+    [[ -n ${thumbnail_index["$index_path"$'\t'"$index_sig"]+x} ]] && continue
+    thumbnail_index["$index_path"$'\t'"$index_sig"]=$index_hash
+  done < "$index_file"
+fi
+
 cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
 rows_cache_file="$cache_dir/$cache_key.rows"
 rows_signature_file="$cache_dir/$cache_key.signature"
@@ -176,10 +188,11 @@ thumbnail_for() {
   local signature hash thumbnail
 
   signature=$(stat -Lc '%s:%Y' "$image") || return
-  hash=$(awk -F '\t' -v path="$image" -v sig="$signature" '$1 == path && $2 == sig { print $3; exit }' "$index_file" 2>/dev/null)
+  hash=${thumbnail_index["$image"$'\t'"$signature"]-}
 
   if [[ -z $hash ]]; then
     hash=$(printf '%s\t%s' "$image" "$signature" | md5sum | cut -d ' ' -f 1)
+    thumbnail_index["$image"$'\t'"$signature"]=$hash
     printf '%s\t%s\t%s\n' "$image" "$signature" "$hash" >>"$index_file"
   fi
 

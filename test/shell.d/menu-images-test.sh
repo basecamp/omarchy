@@ -139,3 +139,8 @@ PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" VIPSTHUMBNAIL_CALLS_FILE="$t
 
 (( $(wc -l <"$tmp/calls") == 6 )) || fail "image menu releases thumbnail locks after generation"
 pass "image menu owns locks for exactly one generator lifetime"
+
+# The per-image awk scan of index.tsv was the cost of a large wallpaper set.
+awk_hits=$(awk '/^thumbnail_for\(\)/,/^}/' "$ROOT/bin/omarchy-menu-images" | grep -c awk || true)
+(( awk_hits == 0 )) || fail "thumbnail_for looks up the index in memory, not via awk per image"
+pass "thumbnail_for does not scan index.tsv with awk per image"
