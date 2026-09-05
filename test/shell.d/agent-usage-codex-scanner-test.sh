@@ -142,6 +142,80 @@ pass "Codex collector counts OpenAI usage, reasoning included, from opencode ses
   fail "Codex collector ignores prefix-colliding providers, user messages, and malformed rows" "$result"
 pass "Codex collector ignores prefix-colliding providers, user messages, and malformed rows"
 
+# The opencode database keeps every historical message, but only the trailing
+# month is subscription burn: older OpenAI messages must be skipped in SQL,
+# and OpenCode Go traffic is another subscription entirely.
+WINDOW_HOME="$TEST_HOME/window-home"
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$WINDOW_HOME"' EXIT
+mkdir -p "$WINDOW_HOME/bin"
+cp "$TEST_HOME/bin/codex" "$WINDOW_HOME/bin/codex"
+
+python3 - "$WINDOW_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+db = Path(sys.argv[1])
+db.parent.mkdir(parents=True, exist_ok=True)
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)")
+now_ms = int(time.time() * 1000)
+old_ms = now_ms - 31 * 24 * 60 * 60 * 1000
+
+def message(id, created, provider, model, input=0):
+  return (id, "ses_1", created, created, json.dumps({
+    "role": "assistant",
+    "providerID": provider,
+    "modelID": model,
+    "tokens": {"input": input, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+    "time": {"created": created},
+  }))
+
+conn.executemany("INSERT INTO message VALUES (?, ?, ?, ?, ?)", [
+  message("w_1", now_ms, "openai", "gpt-5.2-codex", input=6),
+  # A month-old OpenAI turn: history, not burn.
+  message("w_2", old_ms, "openai", "gpt-5.2-codex", input=400),
+  # Recent OpenCode Go usage belongs to the opencode agent record, not codex.
+  message("w_3", now_ms, "opencode-go", "claude-test-go", input=500),
+])
+
+# OpenCode v2 writes its messages to session_message instead of message, so
+# recent v2 traffic on an OpenAI provider must be picked up there too.
+conn.execute("""CREATE TABLE session_v2 (
+  id text PRIMARY KEY, time_created integer NOT NULL, time_updated integer NOT NULL)""")
+conn.execute("""CREATE TABLE session_message (
+  id text PRIMARY KEY, session_id text NOT NULL, type text NOT NULL,
+  seq integer NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)""")
+
+def v2_message(id, created, provider, model, input=0):
+  return (id, "ses_v2", "assistant", 1, created, created, json.dumps({
+    "time": {"created": created},
+    "model": {"id": model, "providerID": provider},
+    "tokens": {"input": input, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
+  }))
+
+conn.executemany("INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)", [
+  v2_message("v_1", now_ms, "openai", "gpt-5.6-terra", input=9),
+  v2_message("v_2", old_ms, "openai", "gpt-5.6-terra", input=800),
+  v2_message("v_3", now_ms, "opencode-go", "gpt-x-go", input=900),
+])
+conn.commit()
+conn.close()
+PY
+
+result=$(HOME="$WINDOW_HOME" CODEX_HOME="$WINDOW_HOME/.codex" XDG_DATA_HOME="$WINDOW_HOME/.local/share" \
+  PATH="$WINDOW_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "15" ]] ||
+  fail "Codex collector windows opencode usage to the trailing month" "$result"
+[[ $(jq -r '.totalPrompts' <<<"$result") == "2" ]] ||
+  fail "Codex collector skips opencode messages outside the window" "$result"
+[[ $(jq -r '.modelUsage | keys[0]' <<<"$result") == "gpt-5.2-codex" && $(jq -c '.modelUsage["gpt-5.6-terra"]' <<<"$result") == '{"inputTokens":9,"outputTokens":0,"cacheReadInputTokens":0,"cacheCreationInputTokens":0}' && $(jq -r '.modelUsage["opencode-go/claude-test-go"] // empty' <<<"$result") == "" && $(jq -r '.modelUsage["gpt-x-go"] // empty' <<<"$result") == "" ]] ||
+  fail "Codex collector reads v2 OpenAI sessions and never counts OpenCode Go providers" "$result"
+pass "Codex collector counts only recent OpenAI usage from opencode sessions"
+
 # A warm cache makes --limits-only cheap: local stats come from the last scan
 # instead of another walk over the opencode database, and --force bypasses it.
 CACHE_HOME=$(mktemp -d)
@@ -188,7 +262,7 @@ cache_file=$(ls "$CACHE_HOME/.cache/omarchy/agent-usage/"/codex-scan-*.json 2>/d
   fail "Codex collector leaves a cache file behind" "$result"
 [[ $(stat -c %a "$cache_file") == "644" ]] ||
   fail "Codex collector keeps cache files readable" "$result"
-[[ $(jq -r '.schemaVersion' "$cache_file") == "1" && $(jq -r '.stats.todayTotalTokens' "$cache_file") == "5" ]] ||
+[[ $(jq -r '.schemaVersion' "$cache_file") == "2" && $(jq -r '.stats.todayTotalTokens' "$cache_file") == "5" ]] ||
   fail "Codex collector writes a versioned cache envelope" "$result"
 pass "Codex collector writes a local-stats cache on first scan"
 
@@ -200,7 +274,7 @@ result=$(HOME="$CACHE_HOME" CODEX_HOME="$CACHE_HOME/.codex" XDG_CACHE_HOME="$CAC
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "5" ]] ||
   fail "Codex collector recovers from a corrupt cache file" "$result"
-[[ $(jq -r '.schemaVersion' "$cache_file") == "1" ]] ||
+[[ $(jq -r '.schemaVersion' "$cache_file") == "2" ]] ||
   fail "Codex collector rewrites the cache after a corrupt read" "$result"
 pass "Codex collector recovers from a corrupt cache file"
 
