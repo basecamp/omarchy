@@ -760,9 +760,15 @@ Item {
   }
 
   function moduleClickTargetAt(slot, localX, localY) {
+    // clickTargets is shared by every bar surface. Only consider targets on
+    // the slot's own window so a click on one output's bar does not fire a
+    // widget at the same global point on an overlapping output's bar. A slot
+    // without a window yet keeps the unfiltered scan rather than nothing.
+    var window = slotWindow(slot)
     for (var i = clickTargets.length - 1; i >= 0; i--) {
       var target = clickTargets[i]
       if (!moduleTargetClickable(target)) continue
+      if (window && !targetBelongsToWindow(target, window)) continue
 
       var targetPoint = { x: localX, y: localY }
       try {

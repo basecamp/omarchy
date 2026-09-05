@@ -199,6 +199,14 @@ assert(
   'bar tabs between panels within one bar surface'
 )
 
+// clickTargets is shared by every bar surface, so a click on one output's bar
+// must only resolve to widgets on that bar: with overlapping outputs the
+// surface that registered last would otherwise win every contested click.
+assert(
+  /function moduleClickTargetAt\(slot, localX, localY\) \{[\s\S]*?var window = slotWindow\(slot\)[\s\S]*?if \(window && !targetBelongsToWindow\(target, window\)\) continue/.test(barSource),
+  'bar clicks resolve only to widgets on the slot\'s own bar surface'
+)
+
 // A positional hotkey means "the third panel in this section", so it counts the
 // panels the bar actually draws. Reusing the tab-order walk is what keeps the
 // count honest: a widget with no panel and a hidden one are already passed over
