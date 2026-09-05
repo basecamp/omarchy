@@ -5,7 +5,8 @@ set -euo pipefail
 source "$(dirname "$0")/base-test.sh"
 
 test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"' EXIT
+linger_pids=()
+trap 'for pid in "${linger_pids[@]}"; do kill "$pid" 2>/dev/null || true; done; rm -rf "$test_tmp"' EXIT
 
 stub_bin="$test_tmp/bin"
 test_home="$test_tmp/home"
@@ -212,3 +213,98 @@ kill -0 "$unrelated_pid" 2>/dev/null ||
 kill "$unrelated_pid"
 wait "$unrelated_pid" 2>/dev/null || true
 pass "stale inhibitor state does not terminate a reused PID"
+
+# The lock wrapper used to exec the update, so every child inherited the flock.
+# Flutter's adb daemonizes onto user systemd and kept it after the update
+# exited; the next omarchy update then reported one was already running (#8077).
+linger="$test_tmp/linger"
+daemon_pid_file="$test_tmp/daemon.pid"
+cat >"$linger" <<'SH'
+#!/bin/bash
+printf '%s\n' "$$" >"$1"
+exec sleep 30
+SH
+chmod +x "$linger"
+
+lock_held_by_pid() {
+  local pid="$1"
+  local lock_target="$2"
+  local fd
+
+  for fd in /proc/"$pid"/fd/*; do
+    [[ -e $fd ]] || continue
+    [[ $(readlink -f "$fd" 2>/dev/null) == "$lock_target" ]] && return 0
+  done
+  return 1
+}
+
+run_with_lock_env "$ROOT/bin/omarchy-update-lock" run \
+  bash -c 'setsid -f "$1" "$2"' bash "$linger" "$daemon_pid_file" ||
+  fail "omarchy-update-lock run succeeds while spawning a daemonized child"
+
+for _ in {1..50}; do
+  [[ -s $daemon_pid_file ]] && break
+  sleep 0.02
+done
+[[ -s $daemon_pid_file ]] || fail "daemonized child recorded its pid"
+linger_pid=$(<"$daemon_pid_file")
+linger_pids+=("$linger_pid")
+kill -0 "$linger_pid" 2>/dev/null || fail "daemonized child outlives omarchy-update-lock"
+
+lock_target=$(readlink -f "$runtime_dir/omarchy-update.lock")
+lock_held_by_pid "$linger_pid" "$lock_target" &&
+  fail "daemonized child does not inherit the update lock descriptor"
+
+flock -n "$runtime_dir/omarchy-update.lock" true ||
+  fail "update lock is released after omarchy-update-lock exits despite a living daemonized child"
+
+run_with_lock_env "$ROOT/bin/omarchy-update-lock" run true ||
+  fail "a later omarchy-update-lock run acquires the lock after a daemonized child was left behind"
+pass "omarchy-update-lock does not leak its flock to daemonized children"
+
+# Same leak through the real update pipeline, via the AUR step that starts adb.
+write_stub omarchy-snapshot 'exit 0'
+write_stub omarchy-update-keyring 'exit 0'
+write_stub omarchy-update-restart 'exit 0'
+write_stub systemd-inhibit 'exec sleep infinity'
+rm -f "$daemon_pid_file" "$test_home/.local/state/omarchy/indicators/stay-awake"
+write_stub omarchy-update-aur-pkgs 'setsid -f "$LINGER" "$DAEMON_PID_FILE"'
+
+OMARCHY_UPDATE_LOGGED=1 LINGER="$linger" DAEMON_PID_FILE="$daemon_pid_file" \
+  run_with_lock_env "$ROOT/bin/omarchy-update" -y ||
+  fail "omarchy-update succeeds when the AUR step daemonizes a child"
+
+for _ in {1..50}; do
+  [[ -s $daemon_pid_file ]] && break
+  sleep 0.02
+done
+[[ -s $daemon_pid_file ]] || fail "AUR step recorded a daemonized child"
+update_linger_pid=$(<"$daemon_pid_file")
+linger_pids+=("$update_linger_pid")
+kill -0 "$update_linger_pid" 2>/dev/null || fail "AUR daemonized child outlives omarchy-update"
+
+lock_target=$(readlink -f "$runtime_dir/omarchy-update.lock")
+lock_held_by_pid "$update_linger_pid" "$lock_target" &&
+  fail "AUR daemonized child does not inherit the update lock descriptor"
+
+flock -n "$runtime_dir/omarchy-update.lock" true ||
+  fail "update lock is released after omarchy-update exits despite a living AUR daemon"
+
+write_stub omarchy-update-aur-pkgs 'exit 0'
+OMARCHY_UPDATE_LOGGED=1 run_with_lock_env "$ROOT/bin/omarchy-update" -y ||
+  fail "a later omarchy-update runs after a previous AUR step daemonized a child"
+pass "omarchy-update does not leak its lock through AUR daemons"
+
+# held() is how omarchy-update avoids re-acquiring the lock after the wrapper
+# starts it. It must be true only inside that child, never because a leftover
+# daemon still has an open descriptor.
+held_inside="$test_tmp/held-inside"
+run_with_lock_env "$ROOT/bin/omarchy-update-lock" run \
+  bash -c 'omarchy-update-lock held && echo yes >"$1" || echo no >"$1"' bash "$held_inside" ||
+  fail "omarchy-update-lock run with a held check exits 0"
+[[ $(<"$held_inside") == "yes" ]] || fail "omarchy-update-lock held is true inside the locked child"
+
+if run_with_lock_env "$ROOT/bin/omarchy-update-lock" held; then
+  fail "omarchy-update-lock held is false outside a locked child"
+fi
+pass "omarchy-update-lock held is only true for the locked child"
