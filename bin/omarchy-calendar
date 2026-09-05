@@ -1,0 +1,493 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Manage local calendar events and planning
+# omarchy:group=calendar
+# omarchy:args=[--json] <command> [options]
+# omarchy:examples=omarchy calendar add-event --title "Dentist" --start 2026-09-07T10:00:00+02:00 --end 2026-09-07T11:00:00+02:00
+
+"""User-facing calendar client for the native Omarchy calendar service."""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+
+class CalendarError(Exception):
+    pass
+
+
+def call(target, method, *arguments, allow_empty=False):
+    try:
+        result = subprocess.run(
+            ["omarchy-shell", target, method, *arguments],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise CalendarError(f"could not contact the Omarchy shell: {error}") from error
+
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout).strip()
+        if target == "omarchy.calendar":
+            message = message or "the calendar service is not loaded"
+        raise CalendarError(message)
+
+    output = result.stdout.strip()
+    if not output and not allow_empty:
+        raise CalendarError("the Omarchy shell returned an empty response")
+    return output
+
+
+def call_json(target, method, *arguments):
+    output = call(target, method, *arguments)
+    try:
+        response = json.loads(output)
+    except json.JSONDecodeError as error:
+        raise CalendarError(f"the Omarchy shell returned invalid JSON: {output}") from error
+    if not isinstance(response, dict):
+        raise CalendarError("the Omarchy shell returned an invalid calendar response")
+    if response.get("ok") is False:
+        raise CalendarError(response.get("error") or "calendar operation failed")
+    return response
+
+
+def status():
+    return call_json("omarchy.calendar", "status")
+
+
+def loaded_status(timeout_seconds=10):
+    deadline = time.monotonic() + timeout_seconds
+    value = status()
+    while not value.get("loaded") and time.monotonic() < deadline:
+        time.sleep(0.1)
+        value = status()
+    if not value.get("loaded"):
+        raise CalendarError("the calendar service is still loading")
+    return value
+
+
+def state():
+    return loaded_status()["state"]
+
+
+def mutate(method, *arguments):
+    loaded_status()
+    return call_json("omarchy.calendar", method, *arguments)["state"]
+
+
+def json_argument(value):
+    return json.dumps(value, separators=(",", ":"))
+
+
+def emit(value, json_output):
+    if json_output:
+        print(json.dumps(value, indent=2, ensure_ascii=False))
+
+
+def human_events(events):
+    for event in sorted(events, key=lambda item: (item.get("startAt", ""), item.get("id", ""))):
+        origin = event.get("origin", "manual")
+        print(f"{event['id']}  {event['startAt']} — {event['endAt']}  {event['title']} [{origin}]")
+        if event.get("description"):
+            print(f"  {event['description']}")
+
+
+def human_tasks(tasks):
+    order = {"high": 0, "normal": 1, "low": 2}
+    rows = sorted(tasks, key=lambda item: (order.get(item.get("priority"), 9), item.get("title", ""), item.get("id", "")))
+    for task in rows:
+        state_label = task.get("state", "inbox")
+        details = f"{task['durationMinutes']}m, {task['priority']}, {task['cognitiveLoad']}"
+        if task.get("deadlineAt"):
+            details += f", {task['deadlineKind']} deadline {task['deadlineAt']}"
+        print(f"{task['id']}  {task['title']} [{state_label}; {details}]")
+
+
+def human_status(value):
+    current = value.get("state", {})
+    proposal = current.get("proposal") or {}
+    proposal_status = proposal.get("status", "none")
+    print(f"Calendar service: {'ready' if value.get('loaded') else 'loading'}")
+    print(f"Planning configuration: {'ready' if value.get('configured') else 'needed'}")
+    print(f"Planning: {value.get('solveState', 'unknown')}")
+    print(f"Events: {len(current.get('events', []))}")
+    print(f"Tasks: {len(current.get('tasks', []))} ({sum(task.get('state') == 'inbox' for task in current.get('tasks', []))} in inbox)")
+    print(f"Suggested schedule: {proposal_status}")
+    if value.get("error"):
+        print(f"Error: {value['error']}", file=sys.stderr)
+
+
+def human_proposal(proposal):
+    if not proposal:
+        print("No suggested schedule is available.")
+        return
+    print(f"Suggested schedule ({proposal.get('status', 'unknown')})")
+    print(f"Horizon: {proposal.get('horizonStart', '')} for {proposal.get('horizonDays', '')} days ({proposal.get('timezone', '')})")
+    for item in proposal.get("items", []):
+        outcome = item.get("diagnostics", {}).get("outcome", "unknown")
+        if item.get("scheduled"):
+            when = f"{item.get('startAt', '')} — {item.get('endAt', '')}"
+        else:
+            when = "unscheduled"
+        explanation = item.get("explanation") or outcome
+        print(f"{item.get('taskId', '')}  {when}  {explanation}")
+
+
+def add_common_event_arguments(parser, required=True):
+    parser.add_argument("--title", required=required)
+    parser.add_argument("--start", dest="startAt", required=required)
+    parser.add_argument("--end", dest="endAt", required=required)
+    parser.add_argument("--timezone")
+    parser.add_argument("--description", default=None)
+    parser.add_argument("--rrule", default=None)
+    parser.add_argument("--id")
+    parser.add_argument("--all-day", action="store_true")
+
+
+def add_common_task_arguments(parser, required=True):
+    parser.add_argument("--title", required=required)
+    parser.add_argument("--duration", dest="durationMinutes", type=int, required=required)
+    parser.add_argument("--priority", choices=("low", "normal", "high"))
+    parser.add_argument("--cognitive-load", choices=("low", "medium", "high"), dest="cognitiveLoad")
+    parser.add_argument("--earliest", dest="earliestAt")
+    parser.add_argument("--deadline-kind", choices=("none", "hard", "soft"), dest="deadlineKind")
+    parser.add_argument("--deadline-at", dest="deadlineAt")
+    parser.add_argument("--id")
+
+
+def add_settings_arguments(parser):
+    parser.add_argument("--timezone")
+    parser.add_argument("--availability", action="append", metavar="DAY=START-END")
+    parser.add_argument("--clear-availability", action="store_true")
+    parser.add_argument("--horizon-days", type=int)
+    parser.add_argument("--slot-minutes", type=int)
+    parser.add_argument("--solve-seconds", type=int)
+    parser.add_argument("--priority-low-weight", type=int)
+    parser.add_argument("--priority-normal-weight", type=int)
+    parser.add_argument("--priority-high-weight", type=int)
+    parser.add_argument("--cognitive-enabled", action="store_true", default=None)
+    parser.add_argument("--no-cognitive", action="store_false", dest="cognitive_enabled")
+    for load in ("low", "medium", "high"):
+        parser.add_argument(f"--{load}-window-start")
+        parser.add_argument(f"--{load}-window-end")
+        parser.add_argument(f"--{load}-outside-penalty", type=int)
+    parser.add_argument("--high-streak-limit", type=int)
+    parser.add_argument("--recovery-minutes", type=int)
+    parser.add_argument("--excess-high-penalty", type=int)
+
+
+def settings_patch(arguments, current):
+    patch = {}
+    mapping = {
+        "timezone": "timezone",
+        "horizon_days": "horizonDays",
+        "slot_minutes": "slotMinutes",
+        "solve_seconds": "solveSeconds",
+        "priority_low_weight": "priorityLowWeight",
+        "priority_normal_weight": "priorityNormalWeight",
+        "priority_high_weight": "priorityHighWeight",
+        "cognitive_enabled": "cognitiveEnabled",
+        "high_streak_limit": "highStreakLimit",
+        "recovery_minutes": "recoveryMinutes",
+        "excess_high_penalty": "excessHighPenalty",
+    }
+    for load in ("low", "medium", "high"):
+        mapping[f"{load}_window_start"] = f"{load}WindowStart"
+        mapping[f"{load}_window_end"] = f"{load}WindowEnd"
+        mapping[f"{load}_outside_penalty"] = f"{load}OutsidePenalty"
+    for source, target in mapping.items():
+        value = getattr(arguments, source, None)
+        if value is not None:
+            patch[target] = value
+
+    if arguments.clear_availability:
+        patch["availability"] = {}
+    elif arguments.availability:
+        availability = dict(current.get("availability", {}))
+        for specification in arguments.availability:
+            match = re.fullmatch(r"([a-z]+)=(\d{1,2}:\d{1,2})-(\d{1,2}:\d{1,2})", specification.strip())
+            if not match:
+                raise CalendarError(f"invalid availability; use DAY=START-END: {specification}")
+            day, start, end = match.groups()
+            availability[day] = [{"start": start, "end": end}]
+        patch["availability"] = availability
+    return patch
+
+
+def event_input(arguments, current):
+    value = {
+        "title": arguments.title,
+        "startAt": arguments.startAt,
+        "endAt": arguments.endAt,
+        "allDay": bool(arguments.all_day),
+    }
+    timezone = arguments.timezone or current.get("settings", {}).get("timezone")
+    if not timezone:
+        raise CalendarError("--timezone is required until planner settings has a timezone")
+    value["timezone"] = timezone
+    for name in ("description", "rrule", "id"):
+        argument = getattr(arguments, name, None)
+        if argument is not None:
+            value[name] = argument
+    return value
+
+
+def event_patch(arguments):
+    value = {}
+    for argument, field in (("title", "title"), ("startAt", "startAt"), ("endAt", "endAt"), ("timezone", "timezone"), ("description", "description"), ("rrule", "rrule")):
+        data = getattr(arguments, argument, None)
+        if data is not None:
+            value[field] = data
+    if arguments.no_rrule:
+        value["rrule"] = None
+    if arguments.all_day:
+        value["allDay"] = True
+    if arguments.not_all_day:
+        value["allDay"] = False
+    if not value:
+        raise CalendarError("edit-event needs at least one field")
+    return value
+
+
+def task_input(arguments):
+    value = {
+        "title": arguments.title,
+        "durationMinutes": arguments.durationMinutes,
+        "priority": arguments.priority or "normal",
+        "cognitiveLoad": arguments.cognitiveLoad or "medium",
+        "deadlineKind": arguments.deadlineKind or "none",
+        "earliestAt": arguments.earliestAt,
+        "deadlineAt": arguments.deadlineAt,
+    }
+    if arguments.id is not None:
+        value["id"] = arguments.id
+    if value["deadlineKind"] == "none":
+        value["deadlineAt"] = None
+    elif not value["deadlineAt"]:
+        raise CalendarError("--deadline-at is required when --deadline-kind is hard or soft")
+    return value
+
+
+def task_patch(arguments):
+    value = {}
+    for argument, field in (("title", "title"), ("durationMinutes", "durationMinutes"), ("priority", "priority"), ("cognitiveLoad", "cognitiveLoad"), ("earliestAt", "earliestAt"), ("deadlineKind", "deadlineKind"), ("deadlineAt", "deadlineAt")):
+        data = getattr(arguments, argument, None)
+        if data is not None:
+            value[field] = data
+    if value.get("deadlineKind") == "none":
+        value["deadlineAt"] = None
+    if not value:
+        raise CalendarError("edit-task needs at least one field")
+    return value
+
+
+def wait_for_proposal(timeout_seconds):
+    deadline = time.monotonic() + timeout_seconds
+    first = status()
+    if not first.get("loaded"):
+        while time.monotonic() < deadline:
+            time.sleep(0.1)
+            first = status()
+            if first.get("loaded"):
+                break
+    if not first.get("configured"):
+        raise CalendarError("planning is not configured; use `omarchy calendar settings`")
+    if not any(task.get("state") == "inbox" for task in first.get("state", {}).get("tasks", [])):
+        raise CalendarError("there are no planning tasks in the inbox")
+
+    call_json("omarchy.calendar", "plan")
+    while time.monotonic() < deadline:
+        current = status()
+        current_state = current.get("state", {})
+        proposal = current_state.get("proposal")
+        if (
+            proposal
+            and proposal.get("status") == "ready"
+            and proposal.get("baseInputRevision") == current_state.get("inputRevision")
+        ):
+            return proposal
+        if current.get("solveState") == "error":
+            detail = current.get("error") or current.get("errorOutput") or "the planner failed"
+            raise CalendarError(detail)
+        time.sleep(0.1)
+    raise CalendarError("timed out waiting for the schedule proposal")
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(prog="omarchy calendar", description="Manage Omarchy's local calendar and planner.")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    commands.add_parser("status", help="show service, configuration, and proposal status")
+    commands.add_parser("events", aliases=("event",), help="list calendar events")
+    commands.add_parser("tasks", aliases=("task",), help="list planner tasks")
+    commands.add_parser("proposal", help="show the latest schedule proposal")
+    commands.add_parser("plan", help="generate and show a suggested schedule")
+    commands.add_parser("apply", help="apply the current suggested schedule to the calendar")
+
+    add_event = commands.add_parser("add-event", help="add a manual busy event")
+    add_common_event_arguments(add_event)
+    edit_event = commands.add_parser("edit-event", help="edit a manual event")
+    edit_event.add_argument("id")
+    add_common_event_arguments(edit_event, required=False)
+    edit_event.add_argument("--no-rrule", action="store_true")
+    edit_event.add_argument("--not-all-day", action="store_true")
+    delete_event = commands.add_parser("delete-event", help="delete a manual event")
+    delete_event.add_argument("id")
+
+    add_task = commands.add_parser("add-task", help="add a task to the planner inbox")
+    add_common_task_arguments(add_task)
+    edit_task = commands.add_parser("edit-task", help="edit an inbox task")
+    edit_task.add_argument("id")
+    add_common_task_arguments(edit_task, required=False)
+    delete_task = commands.add_parser("delete-task", help="delete an inbox task")
+    delete_task.add_argument("id")
+
+    dependency = commands.add_parser("dependency", aliases=("dependencies",), help="manage task dependencies")
+    dependency_commands = dependency.add_subparsers(dest="dependency_command", required=True)
+    dependency_add = dependency_commands.add_parser("add", help="make the first task precede the second")
+    dependency_add.add_argument("from_task")
+    dependency_add.add_argument("to_task")
+    dependency_remove = dependency_commands.add_parser("remove", help="remove a dependency")
+    dependency_remove.add_argument("from_task")
+    dependency_remove.add_argument("to_task")
+
+    settings = commands.add_parser("settings", help="show or update planner settings")
+    add_settings_arguments(settings)
+    return_inbox = commands.add_parser("return-inbox", help="return an applied task and remove its linked planner event")
+    return_inbox.add_argument("task_id")
+    open_view = commands.add_parser("open", help="open the calendar popup in a chosen view")
+    open_view.add_argument("view", choices=("calendar", "agenda", "plan"), nargs="?", default="calendar")
+    return parser
+
+
+def main(argv):
+    json_output = "--json" in argv
+    parser = build_parser()
+    arguments = parser.parse_args([value for value in argv if value != "--json"])
+
+    try:
+        command = arguments.command
+        if command == "status":
+            value = status()
+            if json_output:
+                emit(value, True)
+            else:
+                human_status(value)
+            return 0
+        if command in ("events", "event"):
+            values = state().get("events", [])
+            emit(values, json_output)
+            if not json_output:
+                human_events(values)
+            return 0
+        if command in ("tasks", "task"):
+            values = state().get("tasks", [])
+            emit(values, json_output)
+            if not json_output:
+                human_tasks(values)
+            return 0
+        if command == "proposal":
+            value = state().get("proposal")
+            emit(value, json_output)
+            if not json_output:
+                human_proposal(value)
+            return 0
+        if command == "plan":
+            value = wait_for_proposal(180)
+            emit(value, json_output)
+            if not json_output:
+                human_proposal(value)
+            return 0
+        if command == "apply":
+            value = mutate("apply")
+            emit(value, json_output)
+            if not json_output:
+                print("Proposal applied.")
+            return 0
+        if command == "add-event":
+            value = mutate("addEvent", json_argument(event_input(arguments, state())))
+            emit(value, json_output)
+            if not json_output:
+                print(f"Added event {value['events'][-1]['id']}.")
+            return 0
+        if command == "edit-event":
+            value = mutate("updateEvent", arguments.id, json_argument(event_patch(arguments)))
+            emit(value, json_output)
+            if not json_output:
+                print(f"Updated event {arguments.id}.")
+            return 0
+        if command == "delete-event":
+            value = mutate("deleteEvent", arguments.id)
+            emit(value, json_output)
+            if not json_output:
+                print(f"Deleted event {arguments.id}.")
+            return 0
+        if command == "add-task":
+            value = mutate("addTask", json_argument(task_input(arguments)))
+            emit(value, json_output)
+            if not json_output:
+                print(f"Added task {value['tasks'][-1]['id']}.")
+            return 0
+        if command == "edit-task":
+            value = mutate("updateTask", arguments.id, json_argument(task_patch(arguments)))
+            emit(value, json_output)
+            if not json_output:
+                print(f"Updated task {arguments.id}.")
+            return 0
+        if command == "delete-task":
+            value = mutate("deleteTask", arguments.id)
+            emit(value, json_output)
+            if not json_output:
+                print(f"Deleted task {arguments.id}.")
+            return 0
+        if command in ("dependency", "dependencies"):
+            if arguments.dependency_command == "add":
+                value = mutate("addDependency", arguments.from_task, arguments.to_task)
+            else:
+                value = mutate("deleteDependency", arguments.from_task, arguments.to_task)
+            emit(value, json_output)
+            if not json_output:
+                print("Dependency updated.")
+            return 0
+        if command == "settings":
+            current = state().get("settings", {})
+            patch = settings_patch(arguments, current)
+            if not patch:
+                emit(current, json_output)
+                if not json_output:
+                    print(json.dumps(current, indent=2, ensure_ascii=False))
+            else:
+                value = mutate("setSettings", json_argument(patch))
+                emit(value.get("settings", {}), json_output)
+                if not json_output:
+                    print("Planner settings updated.")
+            return 0
+        if command == "return-inbox":
+            value = mutate("returnToInbox", arguments.task_id)
+            emit(value, json_output)
+            if not json_output:
+                print(f"Returned task {arguments.task_id} to the inbox.")
+            return 0
+        if command == "open":
+            call("omarchy.clock", "openView", arguments.view, allow_empty=True)
+            if json_output:
+                print(json.dumps({"ok": True, "view": arguments.view}))
+            else:
+                print(f"Opened calendar {arguments.view} view.")
+            return 0
+    except CalendarError as error:
+        print(f"omarchy calendar: {error}", file=sys.stderr)
+        return 2
+    except (KeyError, TypeError, ValueError) as error:
+        print(f"omarchy calendar: invalid service response: {error}", file=sys.stderr)
+        return 2
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -54,9 +54,18 @@ The panels aren't read-outs. They're where you actually do the thing:
 - **Bluetooth** lists your devices with connect/disconnect and battery levels.
 - **Power** shows battery stats, switches power profiles (it remembers a separate choice for battery and AC), and prints some system info.
 - **Display** carries a brightness slider, text size, monitor scaling presets, and — when you have more than one screen — per-monitor controls. See [monitors](33-monitors.md) for the deeper story.
-- **Clock** opens a month grid with ISO week numbers and month stepping.
+- **Clock** opens a month grid with ISO week numbers and month stepping. The same popup also has **Agenda** for manual and applied events and **Plan** for an inbox of tasks and schedule suggestions.
+
+The planner is local to Omarchy. Open **Plan → Settings** once to choose a timezone and at least one weekly availability window. In **Plan**, add a planning task, choose **Plan tasks**, then choose **Review schedule** to see the suggested times. The calendar is unchanged until you choose **Apply schedule**. Applied planner events can be returned to the inbox from their task or agenda entry.
+
+The same planner is available from a terminal through `omarchy calendar`.
+`status`, `events`, and `tasks` inspect the shared state; `add-event`,
+`edit-event`, `delete-event`, `add-task`, `edit-task`, `delete-task`,
+`dependency`, and `settings` manage it; `plan` generates and shows a suggested schedule and `apply` commits it. Add `--json` to any command for scripting, and use `omarchy calendar open agenda` or `omarchy calendar open plan` to open the corresponding view in this popup. The CLI and the popup use the same service, revision checks, and atomic state file.
 
 Every panel takes the keyboard as well as the mouse: arrows move, Return activates, Tab steps to the neighbouring panel, and Escape closes.
+
+Inside the Clock popup, `[` and `]` step months, `{` and `}` step years, `t` returns to today, and `w` toggles the week start. Press `a` for Agenda or `p` for Plan. Escape goes back one view before closing the popup.
 
 `Super + Ctrl + 1-9` counts panels left to right in the right section, skipping the tray since it has no panel of its own. So the number matches the icon you'd point at.
 

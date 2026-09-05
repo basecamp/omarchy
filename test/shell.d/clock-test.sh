@@ -8,6 +8,7 @@ run_node_test <<'JS'
 const fs = require('fs')
 const calendar = requireFromRoot('shell/plugins/panels/clock/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/clock/Panel.qml', 'utf8')
+const calendarViewSource = fs.readFileSync(root + '/shell/plugins/panels/clock/CalendarView.qml', 'utf8')
 // Comments stripped: a wiring assertion that a commented-out line can satisfy
 // passes while the widget is broken.
 const widgetSource = fs.readFileSync(root + '/shell/plugins/panels/clock/BarWidget.qml', 'utf8')
@@ -203,31 +204,33 @@ assert(/onDateChanged: root\.displayDate = date/.test(widgetSource), 'clock repa
 assert(/setting\("weekStartDay", null\)/.test(panelSource) && /persistSettings\(\{ weekStartDay:/.test(panelSource), 'calendar reads and writes the week start as weekStartDay')
 assert(/updateEntryInline/.test(panelSource), 'calendar panel persists the week start to shell.json')
 assert(/function moveMonth\(delta\)/.test(panelSource), 'calendar panel steps between months')
+assert(/function openAgenda\(\)/.test(panelSource) && /t === "a" \|\| t === "A"/.test(panelSource), 'calendar panel exposes the agenda shortcut')
 assert(!/property bool onToday/.test(panelSource) && !/root\.onToday/.test(panelSource), 'calendar panel avoids the on-prefixed property name QML reads as a signal handler')
-assert(/readonly property bool viewingCurrentMonth:/.test(panelSource), 'calendar panel tracks whether the current month is on screen')
-assert(!/MouseArea/.test(panelSource.slice(panelSource.indexOf('model: modelData.days'), panelSource.indexOf('// Hairline'))), 'calendar day cells are not selectable')
-assert(/yearDone: Model\.yearProgress\(today\./.test(panelSource), 'calendar year bar stays pinned to today while months are stepped')
+assert(/CalendarView\s*\{/.test(panelSource), 'calendar panel delegates the month view to CalendarView')
+assert(/readonly property bool viewingCurrentMonth:/.test(calendarViewSource), 'calendar view tracks whether the current month is on screen')
+assert(!/MouseArea/.test(calendarViewSource.slice(calendarViewSource.indexOf('model: modelData.days'), calendarViewSource.indexOf('Rectangle {\n          x: gridColumn.x'))), 'calendar day cells are not selectable')
+assert(/yearDone: Model\.yearProgress\(today\./.test(calendarViewSource), 'calendar year bar stays pinned to today while months are stepped')
 assert(/Qt\.callLater\(function\(\) \{\s*\n\s*if \(root\.opened\) setCenterHoverRevealSuppressed\(true\)/.test(panelSource), 'calendar claims the shared hover-reveal flag after the popout handoff, so the panel taking over wins')
 assert(/function close\(\) \{\s*\n\s*setCenterHoverRevealSuppressed\(false\)/.test(panelSource), 'calendar always releases the shared hover-reveal flag on close')
-assert(/width: Math\.max\(calendarScroll\.width, gridColumn\.width\)/.test(panelSource), 'calendar scrolls rather than clipping the grid on a narrow popup')
-assert(/enabled: !root\.viewingCurrentMonth/.test(panelSource) && /onClicked: root\.goToToday\(\)/.test(panelSource), 'calendar hero returns to today once the view has stepped away')
+assert(/width: Math\.max\(calendarScroll\.width, gridColumn\.width\)/.test(calendarViewSource), 'calendar scrolls rather than clipping the grid on a narrow popup')
+assert(/enabled: !root\.viewingCurrentMonth/.test(calendarViewSource) && /onClicked: root\.todayRequested\(\)/.test(calendarViewSource), 'calendar hero returns to today once the view has stepped away')
 assert(!/clampMonth/.test(panelSource), 'calendar steps freely into future months')
-assert(/Qt\.formatDate\(root\.today, "MMMM d"\)/.test(panelSource), 'calendar hero spells out today')
-assert(/id: yearLabel/.test(panelSource) && /root\.yearDone/.test(panelSource), 'calendar panel shows the year progress bar')
+assert(/Qt\.formatDate\(root\.today, "MMMM d"\)/.test(calendarViewSource), 'calendar hero spells out today')
+assert(/id: yearLabel/.test(calendarViewSource) && /root\.yearDone/.test(calendarViewSource), 'calendar view shows the year progress bar')
 
 // The memento mori bar is opt-in: double-tapping the year bar asks for an age,
 // and nothing shows until one has been given.
-assert(/onDoubleTapped: root\.startEditingLife\(\)/.test(panelSource), 'calendar asks for an age when the year bar is double-tapped')
+assert(/onDoubleTapped: root\.lifeEditRequested\(\)/.test(calendarViewSource), 'calendar asks for an age when the year bar is double-tapped')
 assert(/persistSettings\(\{ birthYear: born, lifeExpectancy: span \}\)/.test(panelSource), 'calendar saves birth year and expectancy together, so neither lands on a stale copy')
 assert(/readonly property int birthYear: Model\.parseBirthYear\(setting\("birthYear", 0\)/.test(panelSource), 'calendar reads the saved birth year back')
 assert(/readonly property int age: Model\.ageFromBirthYear\(birthYear/.test(panelSource), 'calendar derives the age from the stored birth year')
 assert(/readonly property int lifeExpectancy: Model\.parseLifeExpectancy\(setting\("lifeExpectancy", 0\)\)/.test(panelSource), 'calendar reads the saved expectancy back')
-assert(/id: expectancyField/.test(panelSource) && /id: bornField/.test(panelSource), 'calendar offers both inputs')
-assert(/visible: root\.editingLife\s*\n\s*anchors\.horizontalCenter: parent\.horizontalCenter/.test(panelSource), 'calendar centers the inputs over the bar they replace')
-assert(/visible: root\.birthYear > 0/.test(panelSource), 'calendar hides the life bar until a birth year is known')
-assert(/text: "LIFE"/.test(panelSource) && /root\.lifeDone/.test(panelSource), 'calendar shows the life bar')
-assert(/text: "Memento Mori"/.test(panelSource), 'calendar names the life bar on hover')
-assert(/onDoubleTapped: root\.clearLife\(\)/.test(panelSource), 'calendar puts the life bar away when it is double-tapped')
+assert(/id: expectancyField/.test(calendarViewSource) && /id: bornField/.test(calendarViewSource), 'calendar offers both inputs')
+assert(/visible: root\.editingLife\s*\n\s*anchors\.horizontalCenter: parent\.horizontalCenter/.test(calendarViewSource), 'calendar centers the inputs over the bar they replace')
+assert(/visible: root\.birthYear > 0/.test(calendarViewSource), 'calendar hides the life bar until a birth year is known')
+assert(/text: "LIFE"/.test(calendarViewSource) && /root\.lifeDone/.test(calendarViewSource), 'calendar shows the life bar')
+assert(/text: "Memento Mori"/.test(calendarViewSource), 'calendar names the life bar on hover')
+assert(/onDoubleTapped: root\.lifeClearRequested\(\)/.test(calendarViewSource), 'calendar puts the life bar away when it is double-tapped')
 assert(/persistSettings\(\{ birthYear: 0 \}\)/.test(panelSource), 'calendar clears the birth year to hide the life bar')
 assertEqual(calendar.parseBirthYear(0, 2026), 0, 'a cleared birth year reads back as unset')
 assert(/blocked: root\.editingLife/.test(panelSource), 'calendar lets the inputs have the keyboard while they are up')
@@ -257,7 +260,7 @@ assert(/readonly property real labelWidth:/.test(fs.readFileSync(root + '/shell/
 
 // A horizontal wheel reports angleDelta.y === 0; without the guard every one
 // of them would read as a forward step.
-assert(/if \(event\.angleDelta\.y === 0\) return/.test(panelSource), 'calendar ignores wheel events with no vertical delta')
+assert(/if \(event\.angleDelta\.y === 0\) return/.test(calendarViewSource), 'calendar ignores wheel events with no vertical delta')
 JS
 
 shell_json=$(cd "$ROOT" && jq -r '[.bar.layout.center[].id] | join(",")' config/omarchy/shell.json)
