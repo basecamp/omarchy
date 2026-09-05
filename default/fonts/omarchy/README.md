@@ -13,7 +13,8 @@ The private-use glyphs in `omarchy.ttf` are:
 - `U+E908` — T3 Code, traced from the app icon in <https://aur.archlinux.org/cgit/aur.git/plain/t3code-icon.png?h=t3code-bin>, since upstream publishes no monochrome SVG
 - `U+E909` — Ori, from <https://openrouter.ai/brand/v2/openrouter-glyph-dark.svg>, OpenRouter's own mark: Ori ships no separate logo and its product page uses this one
 - `U+E90A` — Hermes, Font Awesome's staff-snake (CC BY 4.0) from <https://fontawesome.com/icons/staff-snake>, the mark Hermes serves as its favicon: their app icon is a portrait that reads as a smudge at menu size
-- `U+E90C` — OpenClaw, traced from the lobster mascot the openclaw package ships as `dist/control-ui/favicon.svg`, since upstream publishes no monochrome SVG; `E90B` is left for the Perplexity mark already in flight on another branch
+- `U+E90B` — Perplexity, from <https://simpleicons.org/icons/perplexity.svg>
+- `U+E90C` — OpenClaw, traced from the lobster mascot the openclaw package ships as `dist/control-ui/favicon.svg`, since upstream publishes no monochrome SVG
 
 The agent marks are monochrome so the menu can render them using the active
 theme's foreground and selection colors.
