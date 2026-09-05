@@ -60,11 +60,20 @@ pass "Windows VM stays fully opaque"
   mkdir -p "$test_home/runtime/mounts/users/1000/shared" "$test_home/runtime/mounts/users/1001/shared"
   chmod 2777 "$test_home/runtime/mounts/users/1000/shared" "$test_home/runtime/mounts/users/1001/shared"
   chmod 2777 "$HOME/Windows"
+  # The mounts tree is root-owned and not listable unprivileged, so the walk is
+  # root-only: here it must do nothing at all, not look like a restore.
   RUNTIME_DIR=$test_home/runtime restore_all_shared_privacy
+  [[ $(stat -Lc '%a' "$test_home/runtime/mounts/users/1000/shared") == 2777 ]] ||
+    fail "unprivileged restore_all_shared_privacy touched uid 1000 share: $(stat -Lc '%a' "$test_home/runtime/mounts/users/1000/shared")"
+  [[ $(stat -Lc '%a' "$test_home/runtime/mounts/users/1001/shared") == 2777 ]] ||
+    fail "unprivileged restore_all_shared_privacy touched uid 1001 share: $(stat -Lc '%a' "$test_home/runtime/mounts/users/1001/shared")"
+  # A sudoless-Docker stop instead restores the caller's own anchor owner-side,
+  # and never another user's.
+  EXPECTED_SHARED=$test_home/runtime/mounts/users/1000/shared restore_shared_privacy
   [[ $(stat -Lc '%a' "$test_home/runtime/mounts/users/1000/shared") == 700 ]] ||
-    fail "restore_all_shared_privacy left uid 1000 share at $(stat -Lc '%a' "$test_home/runtime/mounts/users/1000/shared")"
-  [[ $(stat -Lc '%a' "$test_home/runtime/mounts/users/1001/shared") == 700 ]] ||
-    fail "restore_all_shared_privacy left uid 1001 share at $(stat -Lc '%a' "$test_home/runtime/mounts/users/1001/shared")"
+    fail "owner-side restore left uid 1000 share at $(stat -Lc '%a' "$test_home/runtime/mounts/users/1000/shared")"
+  [[ $(stat -Lc '%a' "$test_home/runtime/mounts/users/1001/shared") == 2777 ]] ||
+    fail "owner-side restore touched uid 1001 share: $(stat -Lc '%a' "$test_home/runtime/mounts/users/1001/shared")"
   [[ $(stat -Lc '%a' "$HOME/Windows") == 2777 ]] ||
     fail "restore_all_shared_privacy chmodded the caller home share"
 )

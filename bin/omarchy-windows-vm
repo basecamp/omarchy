@@ -573,11 +573,17 @@ restore_shared_privacy() {
   chmod_private_dir "$EXPECTED_SHARED" || true
 }
 
-# After `dc down` there is no PKEXEC_UID on a direct `sudo ... stop`, and a
-# second user on the box would resolve a different per-uid anchor. Walk the
-# root-owned mounts tree instead of calling resolve_caller.
+# Root-only: the mounts tree is 0711, so an unprivileged caller cannot list it
+# and the glob below would silently match nothing. After `dc down` there is no
+# PKEXEC_UID on a direct `sudo ... stop`, and a second user on the box would
+# resolve a different per-uid anchor, so root walks the tree instead. A
+# sudoless caller restores its own anchor through restore_shared_privacy.
 restore_all_shared_privacy() {
   local dir canonical prefix
+  ((EUID == 0)) || return 0
+  # Same refusal prepare_runtime_tree applies: a non-standard privileged
+  # runtime is supported only for unprivileged tests/development.
+  [[ $RUNTIME_DIR == /var/lib/omarchy/windows ]] || return 0
   prefix=$(realpath -e -- "$RUNTIME_DIR/mounts/users" 2>/dev/null) || return 0
   for dir in "$prefix"/*/shared; do
     [[ -d $dir && ! -L $dir ]] || continue
@@ -600,14 +606,25 @@ schedule_share_privacy_restore() {
     # still hangs it up from the kernel side, seconds after install returns.
     trap '' HUP
     local i mode
-    for i in {1..1800}; do
+    # 2x the documented 10-15 minute download is a thin margin on a slow link,
+    # so budget an hour; on expiry the final restore below still closes the
+    # 2777 window for anything that happened before it.
+    for i in {1..3600}; do
       mode=$(stat -Lc '%a' "$dir" 2>/dev/null) || mode=""
       if [[ $mode == 2777 || $mode == 777 ]]; then
-        chmod_private_dir "$dir" || true
-        exit 0
+        chmod_private_dir "$dir" 2>/dev/null || true
+        # Do not exit on a failed chmod: a transient failure (a swapped path,
+        # an unwritable moment) must not end the watcher permanently while the
+        # share is still exposed. Leave only once the mode is really 700.
+        [[ $(stat -Lc '%a' "$dir" 2>/dev/null) == 700 ]] && exit 0
       fi
       sleep 1
     done
+    chmod_private_dir "$dir" 2>/dev/null || true
+    # The subshell output goes to /dev/null, so the only visible trace of an
+    # expiry is this journal entry.
+    logger -t omarchy-windows-vm \
+      "share privacy watcher timed out; applied a final restore to $dir" 2>/dev/null || true
   ) >/dev/null 2>&1 &
   disown || true
 }
@@ -957,7 +974,20 @@ __priv_up() { assert_mounts_safe && dc up -d; }
 __priv_down() {
   local rc=0
   dc down || rc=$?
-  restore_all_shared_privacy
+  if ((EUID == 0)); then
+    restore_all_shared_privacy
+  else
+    # A sudoless-Docker stop runs unelevated, where the mounts tree is not
+    # listable. restore_shared_privacy still works here: the anchor sits under
+    # the root-owned boundary tree the caller cannot rename, and while the
+    # bind exists it is the caller's own inode, so the owner chmod succeeds.
+    # If the bind is gone (fresh reboot) the chmod fails and the next launch
+    # re-hardens through prepare_user_mount_sources instead. Best-effort: the
+    # container is already down, so a failed restore must not fail the stop.
+    if resolve_caller; then
+      restore_shared_privacy
+    fi
+  fi
   return "$rc"
 }
 
