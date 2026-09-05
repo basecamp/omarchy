@@ -75,8 +75,11 @@ Item {
     screensaverLaunchGraceTimer.stop()
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
-    resetScreensaverWindows()
-    runProcess(lockProcess, "lock", "omarchy-system-lock")
+
+    // Keep the fullscreen screensaver over the desktop until the concealed
+    // lock surface is secure on every output. If the lock request disappears,
+    // leave the already-dark screensaver mapped instead of exposing the session.
+    runProcess(lockProcess, "lock", "omarchy-shell lock lockFromIdle >/dev/null 2>&1 || exit 1; while [[ $(omarchy-shell lock isLocked 2>/dev/null) == true ]]; do [[ $(omarchy-shell lock status 2>/dev/null | jq -r '.secure // false') == true ]] && exec omarchy-system-lock; sleep 0.05; done; exit 1")
   }
 
   function startIdleCycle() {
