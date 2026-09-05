@@ -115,3 +115,55 @@ output=$(validate "$dir") && fail "validate refuses an entry point file that is 
 grep -qF "entry point file not found" <<<"$output" \
   || fail "validate reports a missing file as a missing file" "$output"
 pass "validate refuses an entry point file that is not there"
+
+# --- PKGBUILD-style Arch dependencies ---------------------------------------
+#
+# The installer reads 'dependencies' to offer missing packages for install.
+# Required ones are plain name arrays split by source; optional ones use the
+# PKGBUILD "name: reason" optdepends strings. Validation keeps malformed
+# declarations out before anything is offered to the user.
+dir=$(write_plugin "deps-ok" '["bar-widget"]' '{"barWidget": "Widget.qml"}')
+jq '. + {
+  "dependencies": {
+    "pacman": ["jq", "gum"],
+    "aur": ["some-aur-package"],
+    "optdepends": {
+      "pacman": ["brightnessctl: needed for the brightness slider"],
+      "aur": ["google-chrome: needed for the browser widget"]
+    }
+  }
+}' "$dir/manifest.json" >"$dir/manifest.tmp" && mv "$dir/manifest.tmp" "$dir/manifest.json"
+validate "$dir" >/dev/null || fail "validate accepts a well-formed dependencies block"
+pass "validate accepts a well-formed dependencies block"
+
+dir=$(write_plugin "deps-not-object" '["bar-widget"]' '{"barWidget": "Widget.qml"}')
+jq '. + {"dependencies": ["jq"]}' "$dir/manifest.json" >"$dir/manifest.tmp" \
+  && mv "$dir/manifest.tmp" "$dir/manifest.json"
+output=$(validate "$dir") && fail "validate refuses a non-object dependencies block" "$output"
+grep -qF "'dependencies' must be an object" <<<"$output" \
+  || fail "validate explains the dependencies object contract" "$output"
+pass "validate refuses a non-object dependencies block"
+
+dir=$(write_plugin "deps-bad-pacman" '["bar-widget"]' '{"barWidget": "Widget.qml"}')
+jq '. + {"dependencies": {"pacman": "jq"}}' "$dir/manifest.json" >"$dir/manifest.tmp" \
+  && mv "$dir/manifest.tmp" "$dir/manifest.json"
+output=$(validate "$dir") && fail "validate refuses a non-array pacman dependency list" "$output"
+grep -qF "'dependencies.pacman' must be an array of package names" <<<"$output" \
+  || fail "validate explains the pacman dependency array contract" "$output"
+pass "validate refuses a non-array pacman dependency list"
+
+dir=$(write_plugin "deps-bad-optdep" '["bar-widget"]' '{"barWidget": "Widget.qml"}')
+jq '. + {"dependencies": {"optdepends": {"pacman": ["brightnessctl no reason here"]}}}' \
+  "$dir/manifest.json" >"$dir/manifest.tmp" && mv "$dir/manifest.tmp" "$dir/manifest.json"
+output=$(validate "$dir") && fail "validate refuses an optdepends entry without a reason" "$output"
+grep -qF "'dependencies.optdepends.pacman' entries must be 'name: reason' strings" <<<"$output" \
+  || fail "validate explains the optdepends string contract" "$output"
+pass "validate refuses an optdepends entry without a reason"
+
+dir=$(write_plugin "deps-bad-optdep-shape" '["bar-widget"]' '{"barWidget": "Widget.qml"}')
+jq '. + {"dependencies": {"optdepends": "brightnessctl: x"}}' \
+  "$dir/manifest.json" >"$dir/manifest.tmp" && mv "$dir/manifest.tmp" "$dir/manifest.json"
+output=$(validate "$dir") && fail "validate refuses a non-object optdepends block" "$output"
+grep -qF "'dependencies.optdepends' must be an object with pacman/aur arrays" <<<"$output" \
+  || fail "validate explains the optdepends object contract" "$output"
+pass "validate refuses a non-object optdepends block"

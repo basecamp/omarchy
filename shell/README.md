@@ -67,6 +67,12 @@ shell should load it. Minimal example:
     "schema": [
       { "key": "format", "type": "string", "label": "Format" }
     ]
+  },
+  "dependencies": {
+    "pacman": ["jq"],
+    "optdepends": {
+      "pacman": ["brightnessctl: needed for the brightness slider"]
+    }
   }
 }
 ```
@@ -81,6 +87,15 @@ Supported `kinds`:
 | `menu`       | A summoned menu surface                                      |
 | `service`    | A headless singleton, no UI                                  |
 | `bar`        | A full bar option that can replace the built-in `omarchy.bar` |
+
+Plugins can declare the Arch packages they need with a `dependencies` block
+(PKGBUILD-style): required packages are plain name arrays split by source
+(`pacman` for repo packages, `aur` for AUR packages), and optional ones use
+the PKGBUILD `optdepends` strings of `"name: reason"`. When `omarchy plugin
+add` finds declared packages missing from the system, it lists them with
+their reasons and asks whether to install them. See
+[../docs/omarchy-shell.md](../docs/omarchy-shell.md) for the full
+contract.
 
 Only one `bar` plugin is active at a time. Missing or invalid selections fall
 back to the built-in `omarchy.bar`, so users always have a safe path home.

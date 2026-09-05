@@ -20,7 +20,14 @@ wait).
   "author": "You",
   "description": "A clock that does cool things",
   "kinds": ["bar-widget"],
-  "entryPoints": { "barWidget": "Widget.qml" }
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "dependencies": {
+    "pacman": ["jq"],
+    "aur": ["some-aur-package"],
+    "optdepends": {
+      "pacman": ["brightnessctl: needed for the brightness slider"]
+    }
+  }
 }
 ```
 
@@ -43,6 +50,28 @@ Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
 `open(payloadJson)` and `close()` for summon/hide; on load the host injects
 `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
 `barWidgetRegistry`) as properties.
+
+A plugin may declare the Arch packages it needs with a `dependencies` block,
+formatted like a PKGBUILD: required packages are plain name arrays split by
+source (`pacman` for repo packages, `aur` for AUR packages), and optional ones
+use the PKGBUILD `optdepends` strings of `"name: reason"`. When `omarchy plugin
+add` finds declared packages missing from the system, it lists them with their
+reasons and asks whether to install them — required ones through
+`omarchy-pkg-add` / `omarchy-pkg-aur-add`, optional ones only if you accept.
+With `--yes`, required packages are installed automatically and optional ones
+are skipped. A missing package never blocks the install itself: the plugin
+lands and can be enabled once its dependencies are in place.
+
+```json
+"dependencies": {
+  "pacman": ["jq"],
+  "aur": ["some-aur-package"],
+  "optdepends": {
+    "pacman": ["brightnessctl: needed for the brightness slider"],
+    "aur": ["google-chrome: needed for the browser widget"]
+  }
+}
+```
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 

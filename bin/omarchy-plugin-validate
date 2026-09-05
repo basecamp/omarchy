@@ -22,7 +22,8 @@ Usage: omarchy plugin validate <plugin-folder>
 
 Checks a plugin folder's manifest.json against the schema the shell enforces:
 schemaVersion, required fields, safe relative entry points that exist, an entry
-point for each kind that needs one, no symlinks, and an id that is not reserved.
+point for each kind that needs one, no symlinks, an id that is not reserved,
+and PKGBUILD-style Arch dependencies (pacman/AUR, required and optdepends).
 Exits 0 if valid — handy for plugin authors before publishing.
 USAGE
   exit 0
@@ -72,6 +73,38 @@ jq -e '
   end
 ' "$MANIFEST" >/dev/null 2>&1 \
   || fail "'barWidget.defaultSection' must be left, center, or right"
+
+# Optional Arch package dependencies, PKGBUILD-style: required ones are plain
+# package-name arrays split by source (pacman repo vs AUR), optional ones use
+# the PKGBUILD "name: reason" optdepends strings. The installer reads these to
+# offer installs; validation keeps malformed declarations out.
+jq -e 'if has("dependencies") then (.dependencies | type) == "object" else true end' "$MANIFEST" >/dev/null 2>&1 \
+  || fail "'dependencies' must be an object"
+
+for source in pacman aur; do
+  jq -e --arg source "$source" '
+    if ((.dependencies | type) == "object") and (.dependencies | has($source)) then
+      (.dependencies[$source] | type) == "array" and
+      all(.dependencies[$source][]; (type) == "string" and length > 0)
+    else true end' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "'dependencies.$source' must be an array of package names"
+done
+
+jq -e '
+  if ((.dependencies | type) == "object") and (.dependencies | has("optdepends")) then
+    (.dependencies.optdepends | type) == "object"
+  else true end' "$MANIFEST" >/dev/null 2>&1 \
+  || fail "'dependencies.optdepends' must be an object with pacman/aur arrays"
+
+for source in pacman aur; do
+  jq -e --arg source "$source" '
+    if ((.dependencies | type) == "object") and
+      (((.dependencies.optdepends // {}) | has($source))) then
+      all(.dependencies.optdepends[$source][];
+        (type) == "string" and test("^[^[:space:]][^:]*:[[:space:]]*[^[:space:]]"))
+    else true end' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "'dependencies.optdepends.$source' entries must be 'name: reason' strings"
+done
 
 # Read each entry point as a JSON-encoded string (one per line), then decode it,
 # so a value that itself contains a newline stays one literal path instead of

@@ -175,3 +175,75 @@ for good in \
     fail "plugin add did not reach git clone for a legitimate URL: $good" "$output"
 done
 pass "plugin add lets legitimate git URLs reach git clone"
+
+# --- Manifest dependencies (PKGBUILD-style) ---------------------------------
+#
+# A plugin may declare required pacman/AUR packages plus PKGBUILD-style
+# "name: reason" optdepends. With --yes the installer installs missing
+# required packages through omarchy-pkg-add / omarchy-pkg-aur-add and skips
+# the optional ones; the stubs record what was offered so the contract is
+# observable without touching the real system.
+
+dep_stubs="$TMPDIR/dep-stubs"
+mkdir -p "$dep_stubs"
+dep_log="$TMPDIR/dep-install.log"
+: >"$dep_log"
+cat >"$dep_stubs/omarchy-shell" <<'STUB'
+#!/bin/bash
+exit 0
+STUB
+cat >"$dep_stubs/omarchy-pkg-missing" <<'STUB'
+#!/bin/bash
+# report every package as missing so the install path always runs
+exit 0
+STUB
+cat >"$dep_stubs/omarchy-pkg-add" <<STUB
+#!/bin/bash
+echo "pacman \$*" >>"$dep_log"
+STUB
+cat >"$dep_stubs/omarchy-pkg-aur-add" <<STUB
+#!/bin/bash
+echo "aur \$*" >>"$dep_log"
+STUB
+chmod +x "$dep_stubs"/*
+
+dep_home="$TMPDIR/dep-home"
+mkdir -p "$dep_home/.config/omarchy/plugins"
+dep_incoming="$TMPDIR/dep-incoming"
+mkdir -p "$dep_incoming"
+cat >"$dep_incoming/manifest.json" <<'JSON'
+{
+  "schemaVersion": 1,
+  "id": "acme.deps",
+  "name": "Deps",
+  "version": "1.0.0",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Widget.qml" },
+  "dependencies": {
+    "pacman": ["jq", "gum"],
+    "aur": ["some-aur-package"],
+    "optdepends": {
+      "pacman": ["brightnessctl: needed for the brightness slider"],
+      "aur": ["google-chrome: needed for the browser widget"]
+    }
+  }
+}
+JSON
+printf 'import QtQuick\nItem {}\n' >"$dep_incoming/Widget.qml"
+git -C "$dep_incoming" init -q
+git -C "$dep_incoming" add .
+git -C "$dep_incoming" -c user.name=Test -c user.email=test@example.com commit -qm "Initial"
+
+output=$(HOME="$dep_home" OMARCHY_PATH="$ROOT" PATH="$dep_stubs:$ROOT/bin:$PATH" \
+  omarchy-plugin-add "$dep_incoming" --yes 2>&1) ||
+  fail "plugin add succeeds when required dependencies install" "$output"
+grep -qF "pacman jq gum" "$dep_log" ||
+  fail "plugin add installs required pacman dependencies" "$(cat "$dep_log")"
+grep -qF "aur some-aur-package" "$dep_log" ||
+  fail "plugin add installs required AUR dependencies" "$(cat "$dep_log")"
+if grep -qF "brightnessctl" "$dep_log" || grep -qF "google-chrome" "$dep_log"; then
+  fail "plugin add skips optional dependencies under --yes" "$(cat "$dep_log")"
+fi
+[[ -d $dep_home/.config/omarchy/plugins/acme.deps ]] ||
+  fail "plugin add still installs the plugin alongside its dependencies" "$output"
+pass "plugin add installs required dependencies and skips optional ones under --yes"
