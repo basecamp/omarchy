@@ -1,6 +1,8 @@
 -- Essential application bindings.
 o.bind("SUPER + RETURN", "Terminal", { omarchy = "terminal" })
+o.bind("SUPER + KP_Enter", "Terminal", { omarchy = "terminal" })
 o.bind("SUPER + SHIFT + RETURN", "Browser", { omarchy = "browser" })
+o.bind("SUPER + SHIFT + KP_Enter", "Browser", { omarchy = "browser" })
 o.bind("SUPER + SHIFT + F", "File manager", { omarchy = "nautilus" })
 o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)", { omarchy = "nautilus-cwd" })
 o.bind("SUPER + SHIFT + B", "Browser", { omarchy = "browser" })
@@ -10,7 +12,9 @@ o.bind("SUPER + SHIFT + N", "Editor", { omarchy = "editor" })
 if o.preinstalled_bindings_enabled() then
   -- Bindings for preinstalled Omarchy applications, TUIs, and web apps.
   o.bind("SUPER + ALT + RETURN", "Tmux", { omarchy = "terminal-tmux" })
+  o.bind("SUPER + ALT + KP_Enter", "Tmux", { omarchy = "terminal-tmux" })
   o.bind("SUPER + CTRL + RETURN", "Herdr", { omarchy = "terminal-herdr" })
+  o.bind("SUPER + CTRL + KP_Enter", "Herdr", { omarchy = "terminal-herdr" })
   o.bind("SUPER + SHIFT + M", "Music", { omarchy = "spotify" })
   o.bind("SUPER + SHIFT + ALT + M", "Music TUI", { tui = "cliamp", focus = true })
   o.bind("SUPER + SHIFT + D", "Docker", { tui = "omarchy-launch-docker-tui" })
