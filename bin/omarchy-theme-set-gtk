@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# omarchy:summary=Expose the generated GTK4 theme to GTK and Nautilus
+# omarchy:hidden=true
+
+GENERATED_CSS="$HOME/.local/state/omarchy/current/theme/gtk.css"
+GTK_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-4.0"
+GTK_CSS="$GTK_CONFIG_DIR/gtk.css"
+OMARCHY_CSS="$GTK_CONFIG_DIR/omarchy.css"
+OMARCHY_IMPORT='@import url("omarchy.css");'
+MISSING_THEME_SENTINEL='/* Omarchy GTK theme unavailable. */'
+
+notify_nautilus() {
+  if [[ ${OMARCHY_THEME_HEADLESS:-} != "1" && ${OMARCHY_THEME_OFFLINE:-} != "1" && -n ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
+    gdbus emit --session \
+      --object-path /org/omarchy/Theme \
+      --signal org.omarchy.Theme.Changed >/dev/null 2>&1 || true
+  fi
+}
+
+mkdir -p "$GTK_CONFIG_DIR"
+
+if [[ -L $OMARCHY_CSS ]] || [[ -f $OMARCHY_CSS && $(<"$OMARCHY_CSS") == $MISSING_THEME_SENTINEL ]]; then
+  rm -f "$OMARCHY_CSS"
+elif [[ -e $OMARCHY_CSS ]]; then
+  exit 0
+fi
+
+if [[ -f $GENERATED_CSS ]]; then
+  link_tmp=$(mktemp --tmpdir="$GTK_CONFIG_DIR" .omarchy.css.XXXXXX)
+  rm -f "$link_tmp"
+  ln -s "$GENERATED_CSS" "$link_tmp"
+  mv -T "$link_tmp" "$OMARCHY_CSS"
+else
+  printf '%s\n' "$MISSING_THEME_SENTINEL" >"$OMARCHY_CSS"
+fi
+
+if [[ ! -e $GTK_CSS && ! -L $GTK_CSS ]]; then
+  printf '%s\n' "$OMARCHY_IMPORT" >"$GTK_CSS"
+elif [[ -L $GTK_CSS ]]; then
+  notify_nautilus
+  exit 0
+elif [[ -f $GTK_CSS ]] && ! grep -Fxq "$OMARCHY_IMPORT" "$GTK_CSS"; then
+  css_tmp=$(mktemp --tmpdir="$GTK_CONFIG_DIR" .gtk.css.XXXXXX)
+  {
+    printf '%s\n\n' "$OMARCHY_IMPORT"
+    cat "$GTK_CSS"
+  } >"$css_tmp"
+  mv -T "$css_tmp" "$GTK_CSS"
+fi
+
+notify_nautilus

@@ -22,7 +22,7 @@ marker="omarchy-theme-staging-marker"
 set_theme() {
   HOME="$home" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" \
     OMARCHY_THEME_HEADLESS=1 OMARCHY_THEME_SKIP_BACKGROUND=1 \
-    XDG_RUNTIME_DIR="$test_tmp" \
+    XDG_CONFIG_HOME="$home/.config" XDG_RUNTIME_DIR="$test_tmp" \
     bash "$ROOT/bin/omarchy-theme-set" "$1" 2>"$test_tmp/stderr" || return $?
 }
 
@@ -93,6 +93,7 @@ grep -q '#7aa2f7' "$(staged colors.toml)" || fail "the staged colors.toml is the
 assert_staged light.mode "the light mode marker is staged"
 assert_staged preview.png "the theme's preview image is staged"
 assert_staged backgrounds/1-real.png "an image in backgrounds/ is staged"
+[[ -f $home/.config/gtk-4.0/gtk.css ]] || fail "headless theme setup installs the GTK entrypoint"
 
 assert_not_staged unlock.png "a symlink is not followed out of the theme"
 assert_not_staged vscode.json "vscode.json names an extension to install and is not staged"
@@ -118,6 +119,7 @@ grep -q 'hyprland.lua' "$test_tmp/stderr" || fail "omarchy-theme-set names the f
 ! grep -q 'README.md' "$test_tmp/stderr" || fail "omarchy-theme-set does not report a theme's documentation"
 
 pass "an installed theme keeps its colour and loses everything that runs code"
+pass "headless theme setup installs persistent GTK config"
 
 # icons.theme is staged verbatim and handed to gsettings, so a symlinked one
 # would stage a copy of whatever it points at.
@@ -207,7 +209,7 @@ pass "a theme name cannot climb out of the theme directories"
 # generates. Every generated theme file is either denied to an installed theme or
 # recorded here as carrying colour, so a new template fails until it is placed.
 denied=(alacritty.toml foot.ini ghostty.conf kitty.conf gum_env.lua hyprland.lua neovim.lua vscode.json)
-colour_only=(btop.theme chromium.theme claude.json helix.toml hyprland-preview-share-picker.css keyboard.rgb obsidian.css pi.json shell.toml vscode-theme.json)
+colour_only=(btop.theme chromium.theme claude.json gtk.css helix.toml hyprland-preview-share-picker.css keyboard.rgb obsidian.css pi.json shell.toml vscode-theme.json)
 
 for tpl in "$ROOT"/default/themed/*.tpl; do
   generated=$(basename "$tpl" .tpl)
