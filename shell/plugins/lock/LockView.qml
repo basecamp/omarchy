@@ -76,6 +76,16 @@ Item {
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
   }
 
+  // Suspend leaves this surface mapped, so onCompleted never runs again.
+  // Resume also rebuilds the keymap and drops Qt activeFocus; a click already
+  // calls forcePasswordFocus, and this recovers the same path without one.
+  Timer {
+    interval: 100
+    repeat: true
+    running: root.inputEnabled && !root.authenticatingPassword && !passwordInput.activeFocus
+    onTriggered: root.forcePasswordFocus()
+  }
+
   // Measures the masked password at full size; passwordDotScale compares this
   // against the field width to decide how far the dots must shrink to fit.
   TextMetrics {
