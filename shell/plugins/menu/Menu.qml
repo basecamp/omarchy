@@ -49,6 +49,14 @@ Item {
   // path doesn't have to shell out to bash + jq on every open.
   property string defaultMenuPath: omarchyPath + "/default/omarchy/omarchy-menu.jsonc"
   property string userMenuPath: Quickshell.env("HOME") + "/.config/omarchy/extensions/omarchy-menu.jsonc"
+  // Search-engine URL template for the "search the web" fallback row. The
+  // {searchTerms} placeholder is replaced with the URL-encoded query; the
+  // menu falls back to Google when the shell config does not set one.
+  readonly property string webSearchUrl: {
+    var menu = root.shell && root.shell.shellConfig ? root.shell.shellConfig.menu : null
+    var url = menu && typeof menu.webSearchUrl === "string" ? menu.webSearchUrl : ""
+    return url || "https://www.google.com/search?q={searchTerms}"
+  }
   property var defaultMenuItems: []
   property var userMenuItems: []
   property bool opened: false
@@ -646,6 +654,25 @@ Item {
         for (var d = 0; d < drilldownRows.length; d++) drilldownRows[d].section = "drilldown"
       }
       rows = currentRows.concat(drilldownRows)
+      var webIsUrl = MenuModel.webSearchLooksLikeUrl(query)
+      rows.push({
+        itemId: "websearch",
+        disabled: false,
+        kind: "action",
+        icon: "\udb80\udf49",
+        iconFont: "",
+        appIcon: "",
+        appId: "",
+        label: webIsUrl ? ("Open \"" + query + "\"") : ("Search the web for \"" + query + "\""),
+        target: "",
+        detail: "",
+        path: "",
+        childCount: 0,
+        action: "omarchy-launch-browser " + Util.shellQuote(MenuModel.webSearchTarget(query, root.webSearchUrl)),
+        provider: "",
+        score: 0,
+        section: ""
+      })
     } else {
       for (var j = 0; j < root.itemOrder.length; j++) {
         var child = root.item(root.itemOrder[j])
