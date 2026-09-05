@@ -12,8 +12,10 @@ fi
 direction="${1:-up}"
 
 # Find keyboard backlight device (look for *kbd_backlight* pattern in leds class).
+# The root is overridable so the save/restore behaviour can be tested without hardware.
+leds_dir="${OMARCHY_LEDS_DIR:-/sys/class/leds}"
 device=""
-for candidate in /sys/class/leds/*kbd_backlight*; do
+for candidate in "$leds_dir"/*kbd_backlight*; do
   if [[ -e $candidate ]]; then
     device="$(basename "$candidate")"
     break
@@ -26,6 +28,12 @@ if [[ -z $device ]]; then
 fi
 
 if [[ $direction == "off" ]]; then
+  # brightnessctl keeps a single saved slot per device, so saving again while
+  # already off would make `restore` restore darkness. Two blanks can land in one
+  # idle period: the idle service's, and the lock screen's own.
+  if (( $(brightnessctl -d "$device" get) == 0 )); then
+    exit 0
+  fi
   brightnessctl -sd "$device" set 0 >/dev/null
   exit 0
 elif [[ $direction == "restore" ]]; then

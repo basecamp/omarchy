@@ -1,0 +1,242 @@
+#!/bin/bash
+
+# omarchy:summary=Configure idle behavior: the screensaver, locking, and turning the screens off, each with its own switch and timeout
+# omarchy:group=config
+# omarchy:name=idle
+
+# Interactive editor for the Omarchy shell's idle behavior (the `idle` key in
+# ~/.config/omarchy/shell.json). Every change is written through
+# omarchy-shell-config's commit(), which applies live via
+# `omarchy-shell shell reloadConfig` -- no restart needed. "Restore Omarchy defaults"
+# reverts to the shipped timeouts and re-enables the screensaver and lock-on-idle.
+#
+# Lock-on-idle only gates the automatic lock fired by the idle timeout. Explicit
+# locking (the menu's Lock entry, SUPER+CTRL+L, lid close, pre-suspend locking) is
+# unaffected and always locks regardless of this setting.
+#
+# "Screens off" puts the displays (and the keyboard backlight) to sleep on idle,
+# independently of the screensaver and the lock. It is off by default. Locking
+# already turns the screens off, so with lock on idle enabled and a screens-off
+# timeout at or past the lock timeout the lock does the blanking -- the "On idle"
+# line spells out what will actually happen.
+#
+# The global idle on/off switch ("Stay Awake") is a separate, already-exposed toggle
+# (omarchy-toggle-idle / the Stay Awake menu entry) and is intentionally left alone here.
+
+set -euo pipefail
+
+source omarchy-shell-config
+
+DEFAULT_SCREENSAVER_SECONDS=$(jq -r '.idle.screensaver // 150' "$DEFAULTS_FILE")
+DEFAULT_LOCK_SECONDS=$(jq -r '.idle.lock // 300' "$DEFAULTS_FILE")
+DEFAULT_SCREEN_OFF_SECONDS=$(jq -r '.idle.screenOff // 600' "$DEFAULTS_FILE")
+# Booleans never go through jq's `//`: it treats an explicit false the same as a
+# missing key and would turn every deliberate off back on.
+DEFAULT_LOCK_ON_IDLE=$(jq -r 'if .idle.lockOnIdle == false then false else true end' "$DEFAULTS_FILE")
+DEFAULT_SCREEN_OFF_ON_IDLE=$(jq -r 'if .idle.screenOffOnIdle == true then true else false end' "$DEFAULTS_FILE")
+
+current_screensaver_seconds() {
+  jq -r --argjson d "$DEFAULT_SCREENSAVER_SECONDS" \
+    '(.idle.screensaver // $d) | if (type == "number" and . >= 0) then floor else $d end' \
+    "$(source_file)"
+}
+
+current_lock_seconds() {
+  jq -r --argjson d "$DEFAULT_LOCK_SECONDS" \
+    '(.idle.lock // $d) | if (type == "number" and . >= 0) then floor else $d end' \
+    "$(source_file)"
+}
+
+screensaver_enabled() {
+  ! omarchy-toggle-enabled screensaver-off
+}
+
+lock_on_idle_enabled() {
+  jq -e '.idle.lockOnIdle != false' "$(source_file)" >/dev/null
+}
+
+current_screen_off_seconds() {
+  jq -r --argjson d "$DEFAULT_SCREEN_OFF_SECONDS" \
+    '(.idle.screenOff // $d) | if (type == "number" and . >= 0) then floor else $d end' \
+    "$(source_file)"
+}
+
+# Opt-in, so this is `== true` -- the mirror of lockOnIdle's `!= false`. Both
+# forms sidestep jq's `//`.
+screen_off_enabled() {
+  jq -e '.idle.screenOffOnIdle == true' "$(source_file)" >/dev/null
+}
+
+fmt_mins() { awk "BEGIN { printf \"%g\", $1 / 60 }"; }
+
+fmt_screensaver_enabled() {
+  if screensaver_enabled; then echo "on"; else echo "off"; fi
+}
+
+fmt_lock_on_idle() {
+  if lock_on_idle_enabled; then echo "on"; else echo "off"; fi
+}
+
+fmt_screen_off() {
+  if screen_off_enabled; then echo "on"; else echo "off"; fi
+}
+
+# Describes what the shell will actually do, in order. Locking turns the screens
+# off as part of locking, so a screens-off timeout at or past the lock timeout is
+# reported as happening with the lock rather than as a step of its own.
+idle_timeline() {
+  local -a steps=()
+  local subsumed=0 line="" step
+
+  if screensaver_enabled; then
+    steps+=("$screensaver_seconds screensaver after $(fmt_mins "$screensaver_seconds") min")
+  fi
+
+  if screen_off_enabled; then
+    if lock_on_idle_enabled && ((screen_off_seconds >= lock_seconds)); then
+      subsumed=1
+    else
+      steps+=("$screen_off_seconds screens off after $(fmt_mins "$screen_off_seconds") min")
+    fi
+  fi
+
+  if lock_on_idle_enabled; then
+    steps+=("$lock_seconds lock after $(fmt_mins "$lock_seconds") min")
+  fi
+
+  if ((${#steps[@]} == 0)); then
+    echo "nothing happens on idle"
+    return
+  fi
+
+  while IFS= read -r step; do
+    if [[ -n $line ]]; then line+=" → "; fi
+    line+="$step"
+  done < <(printf '%s\n' "${steps[@]}" | sort -n -s | cut -d' ' -f2-)
+
+  if ((subsumed)); then line+=" (screens off with the lock)"; fi
+  echo "$line"
+}
+
+notify_status() {
+  omarchy-notification-send -g 󱄄 "$1" 2>/dev/null || true
+}
+
+set_screensaver_seconds() {
+  commit "$NORMALIZE | .idle.screensaver = \$value" --argjson value "$1"
+}
+
+set_lock_seconds() {
+  commit "$NORMALIZE | .idle.lock = \$value" --argjson value "$1"
+}
+
+toggle_screensaver() {
+  omarchy-toggle screensaver-off
+  if screensaver_enabled; then
+    notify_status "Screensaver enabled"
+  else
+    notify_status "Screensaver disabled"
+  fi
+}
+
+toggle_lock_on_idle() {
+  commit "$NORMALIZE | .idle.lockOnIdle = (.idle.lockOnIdle == false)"
+  if lock_on_idle_enabled; then
+    notify_status "Lock on idle enabled"
+  else
+    notify_status "Lock on idle disabled"
+  fi
+}
+
+set_screen_off_seconds() {
+  commit "$NORMALIZE | .idle.screenOff = \$value" --argjson value "$1"
+}
+
+toggle_screen_off() {
+  commit "$NORMALIZE | .idle.screenOffOnIdle = (.idle.screenOffOnIdle != true)"
+  if screen_off_enabled; then
+    notify_status "Screens turn off on idle"
+  else
+    notify_status "Screens stay on when idle"
+  fi
+}
+
+choose_timeout() {
+  local label="$1" current="$2" setter="$3"
+  local choice secs
+  choice=$(gum choose --header "$label:" \
+    "1 minute" "2.5 minutes" "5 minutes" "10 minutes" "30 minutes" "Custom…") || return
+  case $choice in
+  "1 minute") secs=60 ;;
+  "2.5 minutes") secs=150 ;;
+  "5 minutes") secs=300 ;;
+  "10 minutes") secs=600 ;;
+  "30 minutes") secs=1800 ;;
+  "Custom…")
+    secs=$(gum input --header "$label in seconds (min 5):" --value "$current") || return
+    if [[ ! $secs =~ ^[0-9]+$ ]] || ((secs < 5)); then
+      echo "Invalid value."
+      sleep 1.5
+      return
+    fi
+    ;;
+  esac
+  "$setter" "$secs"
+  notify_status "$label set to ${secs}s"
+}
+
+restore_defaults() {
+  commit "$NORMALIZE | .idle.screensaver = \$s | .idle.lock = \$l | .idle.lockOnIdle = \$lk | .idle.screenOff = \$so | .idle.screenOffOnIdle = \$soi" \
+    --argjson s "$DEFAULT_SCREENSAVER_SECONDS" --argjson l "$DEFAULT_LOCK_SECONDS" --argjson lk "$DEFAULT_LOCK_ON_IDLE" \
+    --argjson so "$DEFAULT_SCREEN_OFF_SECONDS" --argjson soi "$DEFAULT_SCREEN_OFF_ON_IDLE"
+  omarchy-toggle screensaver-off off
+  notify_status "Restored default idle settings"
+}
+
+while true; do
+  clear
+  screensaver_seconds=$(current_screensaver_seconds)
+  lock_seconds=$(current_lock_seconds)
+  screen_off_seconds=$(current_screen_off_seconds)
+
+  echo "Idle & screensaver settings"
+  echo
+  echo "  Screensaver : $(fmt_screensaver_enabled)"
+  if screensaver_enabled; then
+    echo "  Show after  : ${screensaver_seconds}s ($(fmt_mins "$screensaver_seconds") min)"
+  fi
+  echo "  Lock on idle: $(fmt_lock_on_idle)"
+  if lock_on_idle_enabled; then
+    echo "  Lock after  : ${lock_seconds}s ($(fmt_mins "$lock_seconds") min)"
+  fi
+  echo "  Screens off : $(fmt_screen_off)"
+  if screen_off_enabled; then
+    echo "  Off after   : ${screen_off_seconds}s ($(fmt_mins "$screen_off_seconds") min)"
+  fi
+  echo
+  echo "  On idle     : $(idle_timeline)"
+  echo
+  echo "  Global idle on/off lives under Stay Awake (Setup → Stay Awake)."
+  echo
+
+  choice=$(gum choose --header "Edit:" \
+    "Screensaver on/off" "Screensaver timeout" \
+    "Lock on idle on/off" "Lock timeout" \
+    "Screens off on/off" "Screens off timeout" \
+    "Restore Omarchy defaults" "Quit") || exit 0
+
+  case $choice in
+  "Screensaver on/off") toggle_screensaver ;;
+  "Screensaver timeout") choose_timeout "Screensaver timeout" "$screensaver_seconds" set_screensaver_seconds ;;
+  "Lock on idle on/off") toggle_lock_on_idle ;;
+  "Lock timeout") choose_timeout "Lock timeout" "$lock_seconds" set_lock_seconds ;;
+  "Screens off on/off") toggle_screen_off ;;
+  "Screens off timeout") choose_timeout "Screens off timeout" "$screen_off_seconds" set_screen_off_seconds ;;
+  "Restore Omarchy defaults")
+    gum confirm "Restore the default Omarchy idle configuration?" && restore_defaults
+    ;;
+  "Quit")
+    exit 0
+    ;;
+  esac
+done
