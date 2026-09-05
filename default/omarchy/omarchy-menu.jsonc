@@ -39,6 +39,7 @@
   "system.hibernate": {"icon":"󰤁","label":"Hibernate","when":"omarchy-hibernation-available","action":"systemctl hibernate"},
   "system.logout": {"icon":"󰍃","label":"Logout","action":"omarchy-system-logout"},
   "system.reboot": {"icon":"󰜉","label":"Reboot","action":"omarchy-system-reboot"},
+  "system.reboot-windows": {"icon":"󰍲","label":"Reboot to Windows","when":"efibootmgr | grep -q 'Windows Boot Manager'","action":"omarchy-launch-floating-terminal-with-presentation omarchy-system-reboot-windows"}
   "system.shutdown": {"icon":"󰐥","label":"Shutdown","action":"omarchy-system-shutdown"},
 
   // Learn
