@@ -25,7 +25,18 @@ done
 if [[ $kernel_updated == "true" ]]; then
   confirm_reboot "Linux kernel has been updated. Reboot?"
 elif [[ -f $HOME/.local/state/omarchy/reboot-required ]]; then
-  confirm_reboot "Updates require reboot. Ready?"
+  # Only omarchy-system-reboot clears this flag, so a reboot by any other route
+  # (systemctl reboot, the power button, a crash) leaves it behind to prompt
+  # after every later update. A flag written before the current boot has
+  # already been honored.
+  boot_time=$(awk '/^btime/ {print $2}' /proc/stat)
+  flag_time=$(stat -c %Y "$HOME/.local/state/omarchy/reboot-required")
+
+  if (( flag_time < boot_time )); then
+    omarchy-state clear reboot-required
+  else
+    confirm_reboot "Updates require reboot. Ready?"
+  fi
 fi
 
 running_hyprland=$(readlink /proc/$(pgrep -x Hyprland)/exe 2>/dev/null)
