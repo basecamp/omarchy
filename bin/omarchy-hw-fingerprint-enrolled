@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when a user has fingerprints enrolled
+# omarchy:hidden=true
+
+user=${1:-$USER}
+
+# fprintd arrives with the fingerprint setup, so a machine that never ran it has
+# nothing to ask.
+omarchy-cmd-present fprintd-list || exit 1
+
+# fprintd-list states an empty enrollment in prose — "User kalle has no fingers
+# enrolled for Goodix MOC Fingerprint Sensor." — so matching the word "finger"
+# reads as enrolled either way. Enrolled fingers are listed one per line as
+# " - #0: right-index-finger"; that shape is what separates the two.
+fprintd-list "$user" 2>/dev/null | grep -qE '^[[:space:]]*-[[:space:]]*#[0-9]+:'

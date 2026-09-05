@@ -34,7 +34,7 @@ auth       required                    pam_faillock.so authsucc
 account    include                     system-local-login
 EOF
 
-if omarchy-cmd-present fprintd-list && fprintd-list "$target_user" 2>/dev/null | grep -qi finger; then
+if omarchy-hw-fingerprint-enrolled "$target_user"; then
   echo "Configuring lock screen fingerprint authentication..."
   as_root tee /etc/pam.d/omarchy-lock-fingerprint >/dev/null <<'EOF'
 #%PAM-1.0
