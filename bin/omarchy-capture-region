@@ -335,22 +335,16 @@ smart | *)
   # A bare click (area < 20px^2) snaps to whichever rectangle it landed in,
   # so users don't end up with accidental 2px captures. X and Y can be
   # negative (Hyprland monitor positions in multi-display layouts).
+  #
+  # Through resolve_rect_at, so the click lands on the rectangle slurp was
+  # highlighting under the cursor: the smallest one containing the point.
+  # The candidates start with the monitors, which contain every click, so
+  # taking the first match instead would snap every click to the whole
+  # monitor and never to the window the user was pointing at.
   if [[ $SELECTION =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] && ((BASH_REMATCH[3] * BASH_REMATCH[4] < 20)); then
-    click_x=${BASH_REMATCH[1]}
-    click_y=${BASH_REMATCH[2]}
-
-    while IFS= read -r rect; do
-      [[ $rect =~ ^(-?[0-9]+),(-?[0-9]+)[[:space:]]([0-9]+)x([0-9]+)$ ]] || continue
-      rect_x=${BASH_REMATCH[1]}
-      rect_y=${BASH_REMATCH[2]}
-      rect_width=${BASH_REMATCH[3]}
-      rect_height=${BASH_REMATCH[4]}
-
-      if ((click_x >= rect_x && click_x < rect_x + rect_width && click_y >= rect_y && click_y < rect_y + rect_height)); then
-        SELECTION="${rect_x},${rect_y} ${rect_width}x${rect_height}"
-        break
-      fi
-    done <<<"$RECTS"
+    if resolve_rect_at "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" <<<"$RECTS"; then
+      SELECTION=$RESOLVED_RECT
+    fi
   fi
   ;;
 esac
