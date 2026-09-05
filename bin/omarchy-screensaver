@@ -7,14 +7,20 @@ screensaver_in_focus() {
 }
 
 exit_screensaver() {
+  # The pkill below hangs up this script's own pty, and bash re-enters a trap for
+  # the signal it is already handling, so disarm before killing anything.
+  trap : SIGINT SIGTERM SIGHUP SIGQUIT
+
   hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
   pkill -x ttfx 2>/dev/null
   pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null
   exit 0
 }
 
-# Exit the screensaver on signals and input from keyboard and mouse
-trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+# Exit the screensaver on signals and input from keyboard and mouse. The disarm
+# repeats here because bash re-enters at the call boundary, before the function's
+# own first line has run.
+trap 'trap : SIGINT SIGTERM SIGHUP SIGQUIT; exit_screensaver' SIGINT SIGTERM SIGHUP SIGQUIT
 
 printf '\033]11;rgb:00/00/00\007'  # Set background color to black
 
