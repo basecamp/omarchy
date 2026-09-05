@@ -144,6 +144,7 @@ Panel {
   }
 
   readonly property real outputVolume: volumeSink && volumeSink.audio ? volumeSink.audio.volume : 0
+  readonly property real outputVolumeMaximum: 1.25
   readonly property bool outputMuted: volumeSink && volumeSink.audio ? volumeSink.audio.muted : false
   readonly property real inputVolume: source && source.audio ? source.audio.volume : 0
   readonly property bool inputMuted: source && source.audio ? source.audio.muted : false
@@ -425,7 +426,7 @@ Panel {
 
   function setOutputVolume(v) {
     if (!volumeSink || !volumeSink.audio) return outputVolume
-    var volume = Math.max(0, Math.min(1, v))
+    var volume = Math.max(0, Math.min(outputVolumeMaximum, v))
     volumeSink.audio.volume = volume
     return volume
   }
@@ -831,7 +832,7 @@ Panel {
                 anchors.leftMargin: Style.space(6)
                 anchors.rightMargin: Style.space(6)
                 minimum: 0
-                maximum: 1
+                maximum: root.outputVolumeMaximum
                 step: 0.05
                 value: root.outputVolume
                 opacity: root.outputMuted ? 0.5 : 1.0

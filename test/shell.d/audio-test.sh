@@ -47,3 +47,11 @@ assertEqual(audio.unmatchedMprisStreamLabel('audio-src', players, streams), 'Spo
 assertEqual(audio.streamLabel(streams[1], players, streams), 'Spotify', 'audio labels generic streams from MPRIS')
 assert(audio.streamRepresentsPlayer(streams[1], players[0], players, streams), 'audio links generic streams to active player')
 JS
+
+grep -Fq 'readonly property real outputVolumeMaximum: 1.25' "$ROOT/shell/plugins/panels/audio/Panel.qml" ||
+  fail "audio panel allows 125% master output volume"
+pass "audio panel allows 125% master output volume"
+
+grep -Fq 'max_volume=125' "$ROOT/bin/omarchy-audio-output-volume" ||
+  fail "audio volume command allows 125% output volume"
+pass "audio volume command allows 125% output volume"
