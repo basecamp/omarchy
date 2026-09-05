@@ -49,10 +49,20 @@ function batteryFraction(device) {
   return device && device.isPresent ? Math.max(0, Math.min(1, device.percentage)) : 0
 }
 
-function chargeThresholdActive(device, onBattery, states) {
+function chargeThresholdActive(device, onBattery, states, threshold) {
   var d = device || {}
   var s = states || {}
   if (!(d && d.isPresent && !onBattery)) return false
+
+  // A charge can only be held at a threshold the hardware actually has.
+  // omarchy-battery-status gates its own charge_holding block on a non-empty
+  // threshold, and omits the field entirely when the battery exposes no
+  // charge_control_* attribute, so an absent threshold here means the machine
+  // cannot limit charging at all. Without this guard the states below misread
+  // firmware that merely stops topping the pack up: Apple's SMC parks at
+  // FullyCharged around 94% by design, and that read as a limit the machine
+  // has no way to set.
+  if (!threshold) return false
 
   var fraction = batteryFraction(d)
   if (d.state === s.Discharging) return false
@@ -63,27 +73,27 @@ function chargeThresholdActive(device, onBattery, states) {
   return Number(d.changeRate || 0) <= 0.2 || Number(d.timeToFull || 0) >= 8 * 60 * 60
 }
 
-function batteryIcon(device, onBattery, states) {
+function batteryIcon(device, onBattery, states, threshold) {
   var d = device || {}
   if (!d.isPresent) return ""
 
   var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
   var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
   var index = Math.max(0, Math.min(9, Math.floor(d.percentage * 10)))
-  var threshold = chargeThresholdActive(d, onBattery, states)
+  var holding = chargeThresholdActive(d, onBattery, states, threshold)
 
-  if (threshold) return defaultIcons[index]
+  if (holding) return defaultIcons[index]
   if (d.state === states.FullyCharged) return "󰂅"
   if (!onBattery) return chargingIcons[index]
   return defaultIcons[index]
 }
 
-function modeLabel(device, onBattery, states) {
+function modeLabel(device, onBattery, states, threshold) {
   var d = device || {}
   if (!d.isPresent) return ""
 
   var percentage = d.isPresent ? d.percentage : 0
-  if (chargeThresholdActive(d, onBattery, states)) return "Threshold"
+  if (chargeThresholdActive(d, onBattery, states, threshold)) return "Threshold"
   if (onBattery) return "On battery"
   if (!onBattery && percentage >= 1) return "Fully charged"
   return "Charging"
