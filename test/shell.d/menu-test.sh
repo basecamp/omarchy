@@ -104,6 +104,17 @@ assert(!menu.matchesQuery(entry, 'missing', true), 'menu rejects missing terms')
 assert(!menu.matchesQuery(entry, 'theme', false), 'menu hides invisible matches')
 assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
 
+assertEqual(menu.fuzzyTextScore('', 'Anything'), 0, 'empty fuzzy search term matches with zero score')
+assertEqual(menu.fuzzyTextScore('xyz', 'abc'), -1, 'non-matching fuzzy search term returns -1')
+assert(menu.fuzzyTextScore('stm', 'System') >= 0, 'fuzzy text score matches in-order characters')
+assert(menu.fuzzyTextScore('stm', 'Steam') >= 0, 'fuzzy text score matches word-start and consecutive characters')
+assert(menu.fuzzyTextScore('sys', 'System') < menu.fuzzyTextScore('stm', 'System'), 'contiguous prefix matches rank higher than scattered characters')
+assert(menu.fuzzyQueryScore('thm pick', 'Theme picker') >= 0, 'fuzzy query score matches multiple terms')
+assertEqual(menu.fuzzyQueryScore('thm zzz', 'Theme picker'), -1, 'fuzzy query score rejects queries with missing terms')
+assert(menu.matchesQuery(entry, 'thm', true), 'menu matches fuzzy queries')
+assert(menu.matchesQuery(entry, 'thm pck', true), 'menu matches multi-term fuzzy queries')
+assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'thm'), 'exact matches score higher than fuzzy matches')
+
 assertDeepEqual(
   menu.displayRow(merged.items, merged.itemOrder, {}, {}, entry, 'Style', 12, 'search'),
   {
