@@ -39,3 +39,11 @@ write_stub pacman 'if [[ $1 == "-Qtdq" ]]; then exit 0; fi; exit 1'
 run_orphan_checker >"$test_tmp/none.out" 2>"$test_tmp/none.err"
 [[ ! -s $test_tmp/none.out ]] || fail "orphan checker stays quiet when no orphans exist"
 pass "orphan checker stays quiet without orphans"
+
+# -y leaves stdin/stdout as TTYs in a real terminal, so the unattended flag
+# has to be checked explicitly or gum confirm blocks forever.
+write_stub pacman 'if [[ $1 == "-Qtdq" ]]; then printf "old-lib\n"; exit 0; fi; exit 1'
+write_stub gum 'echo "gum should not be called under -y" >&2; exit 99'
+OMARCHY_UPDATE_UNATTENDED=1 run_orphan_checker >"$test_tmp/unattended.out" 2>"$test_tmp/unattended.err"
+grep -q 'Re-run omarchy-update-orphan-pkgs in a terminal' "$test_tmp/unattended.out" || fail "unattended orphan step must not prompt"
+pass "orphan checker skips the prompt under OMARCHY_UPDATE_UNATTENDED"

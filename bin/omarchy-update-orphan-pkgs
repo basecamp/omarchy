@@ -12,7 +12,9 @@ echo -e "\e[32m\nOrphan system packages\e[0m"
 printf '  %s\n' "${orphans[@]}"
 echo
 
-if [[ ! -t 0 || ! -t 1 ]]; then
+# omarchy update -y keeps a TTY but promises not to ask. Treat unattended
+# the same as a non-interactive pipe: report and move on.
+if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 || ! -t 0 || ! -t 1 ]]; then
   echo "${#orphans[@]} orphaned package(s) found. Re-run omarchy-update-orphan-pkgs in a terminal to review/remove them."
   echo
   exit 0
