@@ -27,11 +27,18 @@ remove_lock_fingerprint_pam() {
   fi
 }
 
+remove_resume_recovery() {
+  if [[ -f /usr/lib/systemd/system-sleep/fprintd-reset ]]; then
+    echo "Removing fingerprint suspend recovery hook..."
+    sudo rm -f /usr/lib/systemd/system-sleep/fprintd-reset
+  fi
+}
 
 echo -e "\e[32mRemoving fingerprint scanner from authentication.\n\e[0m"
 
 remove_pam_config
 remove_lock_fingerprint_pam
+remove_resume_recovery
 
 echo "Removing fingerprint packages..."
 omarchy-pkg-drop fprintd libfprint libfprint-git

@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# Restart fprintd after resume so fingerprint authentication keeps working.
+#
+# fprintd and libfprint do not survive the USB re-enumeration that a suspend or
+# hibernate causes: the daemon holds its pre-sleep handle for the reader, every
+# later Claim call fails with "Device was already claimed", and pam_fprintd
+# falls through to the password prompt for sudo, polkit and the lock screen.
+# Nothing tells the user why, and the daemon stays broken until the next reboot.
+#
+# The restart must happen on resume, not before suspend. A "pre" stop loses the
+# race, because fprintd is D-Bus activated and the shell polkit and lock plugins
+# re-activate it before the machine goes down.
+#
+# try-restart is a no-op when the daemon is not running, which is the normal
+# idle state for a D-Bus activated unit.
+
+if [[ $1 == "post" ]]; then
+  systemctl try-restart fprintd.service
+fi
