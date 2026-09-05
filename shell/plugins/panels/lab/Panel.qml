@@ -11,10 +11,18 @@ import "Model.js" as Model
 Item {
   id: root
 
+  function labCommand(name) {
+    if (name.startsWith("/")) return name
+    return Quickshell.env("OMARCHY_PATH") + "/bin/" + name
+  }
+
   property var shell: null
   property var manifest: null
   property bool opened: false
   property bool busy: false
+  property string openingTerminalAction: ""
+  readonly property bool installerOpening: busy && actionLabel === "Opening installer"
+  readonly property bool inlineInstallError: currentPage === 0 && !status.installed && actionLabel === "Opening installer" && errorText !== ""
   property bool resetArmed: armedAction === "reset"
   property string armedAction: ""
   property string errorText: ""
@@ -43,7 +51,7 @@ Item {
   property real cardOffsetX: 0
   property real cardOffsetY: 0
 
-  readonly property string viewerCommand: "omarchy-lab-viewer"
+  readonly property string viewerCommand: labCommand("omarchy-lab-viewer")
   readonly property var pageOptions: ["Console", "Develop", "Environment", "Capture", "Automate"]
   readonly property var aspectOptions: ["16:9", "16:10", "3:2", "4:3", "21:9", "32:9"]
   readonly property var zoomOptions: ["50", "75", "100", "125", "150", "200"]
@@ -108,14 +116,32 @@ Item {
     errorText = ""
     actionOutput = ""
     stderrText = ""
-    actionLabel = label
-    closeAfterAction = closeAfter === true
-    actionProc.command = [command].concat(args)
+    var terminalArgs = Model.terminalCommand(command, args)
+    openingTerminalAction = terminalArgs ? terminalArgs[1] : ""
+    actionLabel = terminalArgs ? "Opening " + label + " terminal" : label
+    closeAfterAction = closeAfter === true || terminalArgs !== null
+    actionProc.command = terminalArgs ? [labCommand("omarchy-lab-terminal-launch")].concat(terminalArgs) : [labCommand(command)].concat(args)
     actionProc.running = true
   }
 
   function runViewer(args, label, closeAfter) {
     runCommand(viewerCommand, args, label, closeAfter)
+  }
+
+  function openInstaller() {
+    runCommand("omarchy-lab-install-launch", [], "Opening installer", true)
+  }
+
+  function terminalButtonText(action, text) {
+    return busy && openingTerminalAction === action ? "Opening terminal…" : text
+  }
+
+  function actionFailedToStart() {
+    if (!actionProc.running && busy) {
+      busy = false
+      errorText = "Could not start the Lab command. Check that the plugin is installed correctly and try again."
+      closeAfterAction = false
+    }
   }
 
   function recordViewer() {
@@ -180,13 +206,13 @@ Item {
 
   Process {
     id: healthProc
-    command: ["omarchy-lab-health", "--json"]
+    command: [root.labCommand("omarchy-lab-health"), "--json"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.healthSummary = Model.healthText(text) }
   }
 
   Process {
     id: branchListProc
-    command: ["omarchy-lab-checkout", "branches", "--json"]
+    command: [root.labCommand("omarchy-lab-checkout"), "branches", "--json"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -203,13 +229,13 @@ Item {
 
   Process {
     id: checkoutStatusProc
-    command: ["omarchy-lab-checkout", "status", "--json"]
+    command: [root.labCommand("omarchy-lab-checkout"), "status", "--json"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.deploymentSummary = Model.deploymentText(text) }
   }
 
   Process {
     id: checkpointListProc
-    command: ["omarchy-lab-checkpoint", "list", "--json"]
+    command: [root.labCommand("omarchy-lab-checkpoint"), "list", "--json"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -222,13 +248,13 @@ Item {
 
   Process {
     id: networkStatusProc
-    command: ["omarchy-lab-network", "status", "--json"]
+    command: [root.labCommand("omarchy-lab-network"), "status", "--json"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.networkSummary = Model.networkText(text) }
   }
 
   Process {
     id: resourceStatusProc
-    command: ["omarchy-lab-resource", "status", "--json"]
+    command: [root.labCommand("omarchy-lab-resource"), "status", "--json"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -245,19 +271,19 @@ Item {
 
   Process {
     id: goldStatusProc
-    command: ["omarchy-lab-gold", "status", "--json"]
+    command: [root.labCommand("omarchy-lab-gold"), "status", "--json"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.goldSummary = Model.goldText(text) }
   }
 
   Process {
     id: artifactListProc
-    command: ["omarchy-lab-capture", "list", "--json"]
+    command: [root.labCommand("omarchy-lab-capture"), "list", "--json"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.artifactSummary = Model.artifactText(text) }
   }
 
   Process {
     id: scenarioListProc
-    command: ["omarchy-lab-scenario", "list", "--json"]
+    command: [root.labCommand("omarchy-lab-scenario"), "list", "--json"]
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -269,6 +295,9 @@ Item {
 
   Process {
     id: actionProc
+    onRunningChanged: {
+      if (!running) Qt.callLater(root.actionFailedToStart)
+    }
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.actionOutput = String(text || "").trim() }
     stderr: StdioCollector { waitForEnd: true; onStreamFinished: root.stderrText = String(text || "").trim() }
     onExited: function(exitCode) {
@@ -394,7 +423,7 @@ Item {
             onChanged: function(value) { root.pageChanged(value) }
           }
 
-          Text { visible: root.errorText !== ""; text: root.errorText; textFormat: Text.PlainText; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+          Text { visible: root.errorText !== "" && !root.inlineInstallError; text: root.errorText; textFormat: Text.PlainText; color: Color.urgent; font.family: Style.font.family; font.pixelSize: Style.font.bodySmall; wrapMode: Text.WordWrap; Layout.fillWidth: true }
 
           QQC.ScrollView {
             id: pageScroll
@@ -415,6 +444,26 @@ Item {
                 visible: root.currentPage === 0
                 Layout.fillWidth: true
                 spacing: Style.space(12)
+
+                WorkbenchSection {
+                  visible: !root.status.installed
+                  title: "Install the guest"
+                  subtitle: "Creates a disposable VM; a terminal opens for setup and authentication"
+                  ActionButton {
+                    text: root.installerOpening ? "Opening installer…" : "Install Lab VM"
+                    onClicked: root.openInstaller()
+                  }
+                  Text {
+                    Layout.fillWidth: true
+                    visible: root.inlineInstallError
+                    text: root.errorText
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    color: Color.urgent
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.caption
+                  }
+                }
 
                 WorkbenchSection {
                   title: "Aspect ratio"
@@ -456,7 +505,7 @@ Item {
                     ActionButton { text: "Screenshot"; onClicked: root.runViewer(["screenshot"], "Screenshot") }
                     ActionButton { text: "Reboot"; onClicked: root.runViewer(["reboot"], "Reboot") }
                     ActionButton { text: "Stop"; danger: true; onClicked: root.runViewer(["stop"], "Stop", true) }
-                    ActionButton { text: root.armedAction === "reset" ? "Confirm reset" : "Reset"; danger: true; onClicked: root.armOrRun("reset", root.viewerCommand, ["reset"], "reset") }
+                    ActionButton { text: root.terminalButtonText("reset", root.armedAction === "reset" ? "Confirm reset" : "Reset"); danger: true; onClicked: root.armOrRun("reset", root.viewerCommand, ["reset"], "reset") }
                   }
                 }
               }
@@ -638,8 +687,8 @@ Item {
                   subtitle: root.goldSummary
                   RowLayout {
                     Layout.fillWidth: true
-                    ActionButton { text: root.armedAction === "promote" ? "Confirm promote" : "Promote current"; danger: true; onClicked: root.armOrRun("promote", "omarchy-lab-gold", ["promote", "--yes"], "promote") }
-                    ActionButton { text: root.armedAction === "rebuild" ? "Confirm rebuild" : "Rebuild from ISO"; danger: true; onClicked: root.armOrRun("rebuild", "omarchy-lab-gold", ["rebuild", "--yes"], "rebuild") }
+                    ActionButton { text: root.terminalButtonText("promote", root.armedAction === "promote" ? "Confirm promote" : "Promote current"); danger: true; onClicked: root.armOrRun("promote", "omarchy-lab-gold", ["promote", "--yes"], "promote") }
+                    ActionButton { text: root.terminalButtonText("rebuild", root.armedAction === "rebuild" ? "Confirm rebuild" : "Rebuild from ISO"); danger: true; onClicked: root.armOrRun("rebuild", "omarchy-lab-gold", ["rebuild", "--yes"], "rebuild") }
                   }
                 }
               }

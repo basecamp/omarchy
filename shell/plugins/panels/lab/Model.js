@@ -242,8 +242,24 @@ function artifactText(raw) {
   return items.length + " artifacts · latest " + String(items[0].type || "file") + " · " + String(items[0].path || "")
 }
 
+function terminalCommand(command, args) {
+  var name = String(command).split("/").pop()
+  var action = args[0] || ""
+  if (name === "omarchy-lab-viewer" && action === "reset") name = "omarchy-lab-vm"
+  var actions = {
+    "omarchy-lab-vm": ["install", "reset"],
+    "omarchy-lab-gold": ["promote", "rebuild"],
+    "omarchy-lab-checkpoint": ["create", "restore"],
+    "omarchy-lab-resource": ["set"],
+    "omarchy-lab-network": ["nat", "isolated", "offline"],
+    "omarchy-lab-scenario": ["run"]
+  }
+  return actions[name] && actions[name].indexOf(action) !== -1 ? [name].concat(args) : null
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
+    terminalCommand: terminalCommand,
     defaultStatus: defaultStatus,
     parseStatus: parseStatus,
     parseBarStatus: parseBarStatus,

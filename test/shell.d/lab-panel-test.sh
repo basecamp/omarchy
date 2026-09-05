@@ -81,7 +81,7 @@ assertDeepEqual(Model.parseBarStatus('broken'), { viewerActive: false, keepInBar
 
 assertDeepEqual(manifest.kinds, ['panel', 'bar-widget'], 'Lab plugin exposes a panel and bar widget')
 assertEqual(manifest.keepLoaded, true, 'Lab panel preserves its moved position across close and reopen')
-assert(panel.includes('viewerCommand: "omarchy-lab-viewer"'), 'Lab panel resolves its controller through the shell PATH')
+assert(panel.includes('viewerCommand: labCommand("omarchy-lab-viewer")') && panel.includes('Quickshell.env("OMARCHY_PATH") + "/bin/" + name'), 'Lab panel resolves its controller through the native Omarchy runtime')
 assert(panel.includes('resetArmed') && panel.includes('Confirm reset'), 'Lab reset requires a second confirmation')
 assert(panel.includes('["Console", "Develop", "Environment", "Capture", "Automate"]'), 'Lab panel exposes the complete workbench as keyboard-navigable pages')
 assert(panel.includes('readonly property real currentPageHeight'), 'Lab panel sizes itself to the active workbench page')
@@ -98,7 +98,7 @@ assert(panel.includes('sequence: "Alt+Left"') && panel.includes('sequence: "Alt+
 assert(panel.includes('horizontalLimit') && panel.includes('verticalLimit'), 'Lab card movement stays constrained to the visible screen')
 assert(panel.includes('if (!opened || keyCatcher.width <= 0 || keyCatcher.height <= 0) return'), 'Lab card is not recentered when its hidden surface collapses')
 assert(panel.includes('text: "Keep in bar"') && panel.includes('["set", "keep-in-bar"'), 'Lab panel exposes the persistent bar preference')
-assert(panel.includes('SearchableDropdown') && panel.includes('["omarchy-lab-checkout", "branches", "--json"]'), 'Lab Develop page offers searchable local branches')
+assert(panel.includes('SearchableDropdown') && panel.includes('[root.labCommand("omarchy-lab-checkout"), "branches", "--json"]'), 'Lab Develop page offers searchable local branches')
 assert(panel.includes('["deploy", "--branch", root.selectedBranch]'), 'Lab Develop page deploys the selected local branch')
 assert(panel.includes('[root.selectedBranch, "--branch"]'), 'Lab checkpoint deployment scenario uses the selected branch')
 assert(panel.includes('Light · ') && panel.includes('Balanced (recommended) · ') && panel.includes('Performance · ') && panel.includes('Full · '), 'Lab resource presets show their CPU and memory allocations and recommendation')
