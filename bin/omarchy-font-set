@@ -46,22 +46,27 @@ fi
 
 # fontconfig is the canonical source of truth — the omarchy shell, Qt apps,
 # and anything resolving "monospace" all read from here. This file is loaded
-# after the package-owned default, and prepend_first puts the chosen family at
-# the head of the list so it wins over the family that default prefers.
+# after the package-owned default, and the alias inserts the chosen family
+# right where the generic sits, ahead of the family that default appends.
+#
+# An alias rather than a prepend_first edit: /etc/fonts/conf.d/48-guessfamily.conf
+# appends the generic "monospace" to every pattern whose family name merely
+# contains "mono", so a request for "Liberation Mono" arrives here carrying the
+# generic too. prepend_first would put the chosen family at the head of that
+# list, ahead of the family the application actually asked for, and every
+# installed font with "mono" in its name would resolve to this one.
 fontconfig_file="$HOME/.config/fontconfig/fonts.conf"
 mkdir -p "$(dirname "$fontconfig_file")"
 cat >"$fontconfig_file" <<XML
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
 <fontconfig>
-  <match target="pattern">
-    <test name="family" qual="any">
-      <string>monospace</string>
-    </test>
-    <edit name="family" mode="prepend_first" binding="strong">
-      <string>$font_name</string>
-    </edit>
-  </match>
+  <alias binding="strong">
+    <family>monospace</family>
+    <prefer>
+      <family>$font_name</family>
+    </prefer>
+  </alias>
 </fontconfig>
 XML
 
