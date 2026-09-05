@@ -45,6 +45,9 @@
           "id": "omarchy.agents"
         },
         {
+          "id": "omarchy.plugin-workbench"
+        },
+        {
           "id": "omarchy.bluetooth"
         },
         {

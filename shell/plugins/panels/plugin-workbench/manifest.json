@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.plugin-workbench",
+  "name": "Plugin Workbench",
+  "version": "0.3.0",
+  "author": "Tom Ballard",
+  "license": "MIT",
+  "description": "Discover, install, build, validate, test, deploy, maintain, and update Omarchy plugins.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Plugin Workbench",
+    "description": "Discover, install, maintain, and build Omarchy plugins",
+    "category": "Development",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
