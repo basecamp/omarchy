@@ -55,6 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `ollama` | Ollama Cloud's usage endpoint (5-hour session + 7-day weekly) | pi and omp sessions on the `ollama-cloud` provider |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -62,7 +63,29 @@ falls back to local stats only. A non-default Claude directory is honored via
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
-signed in there.
+signed in there. Ollama Cloud reads `OLLAMA_API_KEY` first, then the key pi
+or omp signed in with in `~/.pi/agent/auth.json` or `~/.omp/agent/auth.json`.
+
+### Ollama Cloud limits
+
+Ollama's usage endpoint reports the account's session and weekly usage as
+0..1 fractions but not the reset times; the resets are the same for every
+account (epoch-aligned 5-hour session windows, weekly windows ending Monday
+00:00 UTC), so the collector computes them. The limits cover the whole
+account — every model the key can reach — while the local stats count pi and
+omp sessions on the `ollama-cloud` provider. To count only the Claude models
+Ollama Cloud serves, set a model prefix in
+`~/.config/omarchy/agents/ollama.json`:
+
+```json
+{
+  "modelPrefix": "claude",
+  "apiKey": ""
+}
+```
+
+`modelPrefix` restricts the local stats to models whose name starts with the
+prefix (empty means every model); `apiKey` overrides the key lookup order.
 
 ### Fireworks balance
 
@@ -128,7 +151,8 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
-  "fireworks": { "enabled": true }
+  "fireworks": { "enabled": true },
+  "ollama": { "enabled": true }
 }' --json
 ```
 
