@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# omarchy:summary=Create a stable signature for one kind of process crash
+# omarchy:hidden=true
+
+set -euo pipefail
+
+exe=${1:-unknown}
+signal=${2:-unknown}
+cmdline=${3:-unknown}
+
+# NUL separators make distinct field boundaries unambiguous. The executable,
+# signal and command line are all recorded by systemd-coredump and are stable
+# enough to distinguish one failure probe from another without making a broad
+# per-program mute.
+printf '%s\0%s\0%s\0' "$exe" "$signal" "$cmdline" | sha256sum | cut -d' ' -f1

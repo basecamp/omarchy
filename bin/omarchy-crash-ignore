@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# omarchy:summary=List or change permanently ignored crash types
+# omarchy:args=[<signature> on|off]
+# omarchy:examples=omarchy crash ignore | omarchy crash ignore <signature> off
+
+set -euo pipefail
+umask 077
+
+readonly STATE_ROOT="${OMARCHY_CRASH_STATE_ROOT:-$HOME/.local/state/omarchy/crash-watch}"
+
+list() {
+  local rule signature metadata found=0
+
+  for rule in "$STATE_ROOT/ignored"/*; do
+    [[ -f $rule ]] || continue
+    signature=${rule##*/}
+    metadata="$STATE_ROOT/metadata/$signature.json"
+    if [[ -f $metadata ]]; then
+      jq -r --arg signature "$signature" \
+        '[$signature, (.name // "unknown"), (.signal // "unknown"), (.cmdline // "unknown")] | @tsv' \
+        "$metadata"
+    else
+      printf '%s\tunknown\tunknown\tdetails unavailable\n' "$signature"
+    fi
+    found=1
+  done
+
+  ((found)) || echo "No crash types ignored."
+}
+
+if (($# == 0)); then
+  list
+  exit 0
+fi
+
+signature=$1
+action=${2:-on}
+
+[[ $signature =~ ^[0-9a-f]{64}$ ]] || { echo "Not a crash signature: $signature" >&2; exit 1; }
+[[ $action == "on" || $action == "off" ]] || { echo "Not an action: $action" >&2; exit 1; }
+
+rule="$STATE_ROOT/ignored/$signature"
+if [[ $action == "on" ]]; then
+  mkdir -p "${rule%/*}"
+  touch "$rule"
+  echo "Ignored crash type $signature."
+else
+  rm -f "$rule"
+  echo "Crash type $signature will notify again."
+fi
