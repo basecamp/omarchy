@@ -574,6 +574,10 @@ Item {
     return BarModel.customModuleType(entry)
   }
 
+  function groupItems(entry) {
+    return BarModel.groupItems(entry)
+  }
+
   function customModuleSource(entry) {
     var source = BarModel.customModulePath(entry, home, omarchyConfigDir)
     return source ? Util.fileUrl(source) : ""
@@ -693,6 +697,10 @@ Item {
     for (var i = 0; i < moduleSlots.length; i++) {
       var slot = moduleSlots[i]
       if (!slot || slot === sourceSlot || !slot.visible || slot.width <= 0 || slot.height <= 0) continue
+      // A group and its children are not drop targets: their ids do not address
+      // the top-level layout a drop is persisted against. Drops snap to the
+      // nearest ordinary widget instead.
+      if (slot.isGroup || !slot.draggable) continue
       if (sourceWindow && !root.sameWindow(root.slotWindow(slot), sourceWindow)) continue
 
       var slotPoint = { x: slot.x, y: slot.y }
@@ -1491,6 +1499,9 @@ Item {
 
     property var entries: []
     property string region: ""
+    // Children of a group opt out of individual dragging: the drawer reorders
+    // as one block, and drop persistence addresses top-level entries by id.
+    property bool draggable: true
 
     visible: entries.length > 0
     // A hidden list must not build its modules. The center section declares
@@ -1516,6 +1527,7 @@ Item {
             required property var modelData
             entry: modelData
             region: moduleListRoot.region
+            draggable: moduleListRoot.draggable
           }
         }
       }
@@ -1534,10 +1546,20 @@ Item {
             required property var modelData
             entry: modelData
             region: moduleListRoot.region
+            draggable: moduleListRoot.draggable
           }
         }
       }
     }
+  }
+
+  // The child list for a group is a plain ModuleList, handed to BarGroup (a
+  // file type) as a Component. Passing it at runtime — rather than BarGroup
+  // naming ModuleList, or ModuleSlot naming an inline group component — is what
+  // keeps the bar's inline components from forming a resolution cycle.
+  Component {
+    id: groupListComponent
+    ModuleList {}
   }
 
   component ModuleSlot: Item {
@@ -1545,9 +1567,13 @@ Item {
 
     required property var entry
     property string region: ""
+    // Slots inside a group opt out of individual dragging; the group reorders
+    // as one block. Top-level slots are draggable as before.
+    property bool draggable: true
     readonly property string moduleName: root.entryId(entry)
     readonly property var moduleSettings: root.entrySettings(entry)
     readonly property string customType: root.customModuleType(entry)
+    readonly property bool isGroup: customType === "group"
     // Re-evaluate when the registry mutates (Component reference changes,
     // plugin enabled/disabled, etc.). Reading the `widgets` property creates
     // the binding dependency — the wrapped function call alone wouldn't.
@@ -1561,6 +1587,7 @@ Item {
     readonly property bool commandCustom: customType === "command"
     readonly property bool registered: registryComponent !== null
     readonly property var activeItem: {
+      if (isGroup) return groupLoader.item
       if (registered) return registryLoader.item
       if (qmlCustom) return qmlLoader.item
       return componentLoader.item
@@ -1604,11 +1631,31 @@ Item {
 
     Loader {
       id: componentLoader
-      active: !slot.qmlCustom && !slot.registered
+      active: !slot.qmlCustom && !slot.registered && !slot.isGroup
       sourceComponent: slot.commandCustom ? customCommandModuleComponent : emptyModuleComponent
       anchors.fill: parent
       opacity: slot.dragSource ? 0.22 : 1.0
       onLoaded: {
+        slot.injectProps()
+        Qt.callLater(slot.injectProps)
+      }
+    }
+
+    Loader {
+      id: groupLoader
+      active: slot.isGroup
+      // Loaded from a file (not an inline component) so the group -> slot -> group
+      // recursion does not make the bar's inline components form a cycle.
+      source: slot.isGroup ? Qt.resolvedUrl("BarGroup.qml") : ""
+      anchors.fill: parent
+      opacity: slot.dragSource ? 0.22 : 1.0
+      onLoaded: {
+        if (item) {
+          item.bar = root
+          item.entry = slot.entry
+          item.region = slot.region
+          item.listComponent = groupListComponent
+        }
         slot.injectProps()
         Qt.callLater(slot.injectProps)
       }
@@ -1673,7 +1720,11 @@ Item {
       property bool suppressClick: false
       property real pressedX: 0
       property real pressedY: 0
+      // A group and its children are not individually draggable: the group has
+      // no id to persist a move against, and its children reorder as one block.
+      // Clicks still route normally — only drag initiation is gated here.
       readonly property bool canReorder: root.shell && typeof root.shell.mutateShellConfig === "function"
+        && slot.draggable && !slot.isGroup
       readonly property real dragThreshold: Style.space(4)
 
       anchors.fill: parent

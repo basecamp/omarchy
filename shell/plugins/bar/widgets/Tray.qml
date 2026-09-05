@@ -11,7 +11,6 @@ BarWidget {
   id: root
   moduleName: "omarchy.tray"
 
-  property bool expanded: false
   property bool managePopupOpen: false
   property bool trayMenuOpen: false
   property var activeTrayItem: null
@@ -27,11 +26,8 @@ BarWidget {
   readonly property int trayItemExtent: Style.bar.iconSlot
   readonly property int trayItemGap: 0
   readonly property int trayJoinGap: 0
-  readonly property int drawerExtent: drawerCount > 0 ? drawerCount * trayItemExtent + (drawerCount - 1) * trayItemGap : 0
   // Match Waybar's group/tray-expander drawer transition-duration.
   readonly property int animationDuration: 600
-  property real revealProgress: expanded ? 1 : 0
-  readonly property real revealExtent: drawerExtent * revealProgress
 
   // Submenu drill-down state. QsMenuEntry.display() renders a *platform* menu,
   // which Quickshell refuses unless the shell root sets `//@ pragma
@@ -215,10 +211,6 @@ BarWidget {
   implicitWidth: root.vertical ? root.barSize : trayContent.implicitWidth
   implicitHeight: root.vertical ? trayContent.implicitHeight : root.barSize
 
-  Behavior on revealProgress {
-    NumberAnimation { duration: root.animationDuration; easing.type: Easing.OutCubic }
-  }
-
   Loader {
     id: trayContent
     anchors.fill: parent
@@ -231,65 +223,29 @@ BarWidget {
     Item {
       id: horizontalTrayRoot
 
-      readonly property int pinnedWidth: pinnedRow.implicitWidth
-      readonly property int drawerBlockWidth: root.allItems.length > 0 ? expandIcon.implicitWidth + root.drawerExtent : 0
+      readonly property int drawerBlockWidth: horizontalDrawer.visible ? horizontalDrawer.implicitWidth : 0
 
-      implicitWidth: pinnedWidth + drawerBlockWidth
+      implicitWidth: drawerBlockWidth + pinnedRow.implicitWidth
       implicitHeight: root.barSize
 
-      // Mask out the empty area the collapsed drawer reserves for its slide-in,
-      // so hovering it doesn't trigger expand and clicks pass through.
-      containmentMask: QtObject {
-        function contains(point: point): bool {
-          if (point.y < 0 || point.y > horizontalTrayRoot.height) return false
-          // Drawer reveals leftward; chevron sits at the right end when collapsed
-          // and slides left as it opens. The visible region starts at the chevron.
-          var chevronX = root.drawerExtent - root.revealExtent
-          if (point.x >= chevronX && point.x <= horizontalTrayRoot.drawerBlockWidth) return true
-          // Pinned items, placed to the right of the drawer block.
-          var pinnedStart = horizontalTrayRoot.drawerBlockWidth
-          return point.x >= pinnedStart && point.x <= horizontalTrayRoot.implicitWidth
-        }
-      }
-
-      Item {
-        id: drawerArea
-        x: 0
-        width: horizontalTrayRoot.drawerBlockWidth
+      BarCollapsible {
+        id: horizontalDrawer
+        bar: root.bar
+        reserveSpace: true
+        pinOnClick: false
+        animationDuration: root.animationDuration
+        // Size explicitly to the reserved drawer block so the hover/click area
+        // is unambiguous (Item defaults to implicit size, but be explicit here).
+        width: implicitWidth
         height: root.barSize
         visible: root.allItems.length > 0
-
-        HoverHandler {
-          onHoveredChanged: root.expanded = hovered
+        onChevronPressed: function(button) {
+          if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
         }
-
-        BarIconButton {
-          id: expandIcon
-          bar: root.bar
-          width: implicitWidth
-          height: implicitHeight
-          x: root.drawerExtent - root.revealExtent
-          text: "\uf053"
-          onPressed: function(button) {
-            if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
-          }
-        }
-
-        Item {
-          id: trayClip
-          x: expandIcon.width
-          anchors.verticalCenter: parent.verticalCenter
-          width: root.drawerExtent
-          height: root.barSize
-          clip: true
-
+        contentComponent: Component {
           Row {
-            id: trayIcons
-            x: root.drawerExtent - root.revealExtent
-            anchors.verticalCenter: parent.verticalCenter
             spacing: root.trayItemGap
             layer.enabled: true
-
             Repeater {
               model: root.drawerItems
               TrayItem {}
@@ -300,7 +256,7 @@ BarWidget {
 
       Row {
         id: pinnedRow
-        x: drawerArea.x + horizontalTrayRoot.drawerBlockWidth
+        x: horizontalTrayRoot.drawerBlockWidth
         anchors.verticalCenter: parent.verticalCenter
         spacing: root.trayItemGap
         leftPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayJoinGap : 0
@@ -318,61 +274,29 @@ BarWidget {
     Item {
       id: verticalTrayRoot
 
-      readonly property int pinnedHeight: pinnedCol.implicitHeight
-      readonly property int drawerBlockHeight: root.allItems.length > 0 ? expandIcon.implicitHeight + root.drawerExtent : 0
+      readonly property int drawerBlockHeight: verticalDrawer.visible ? verticalDrawer.implicitHeight : 0
 
       implicitWidth: root.barSize
-      implicitHeight: pinnedHeight + drawerBlockHeight
+      implicitHeight: drawerBlockHeight + pinnedCol.implicitHeight
 
-      containmentMask: QtObject {
-        function contains(point: point): bool {
-          if (point.x < 0 || point.x > verticalTrayRoot.width) return false
-          var chevronY = root.drawerExtent - root.revealExtent
-          if (point.y >= chevronY && point.y <= verticalTrayRoot.drawerBlockHeight) return true
-          var pinnedStart = verticalTrayRoot.drawerBlockHeight
-          return point.y >= pinnedStart && point.y <= verticalTrayRoot.implicitHeight
-        }
-      }
-
-      Item {
-        id: drawerArea
-        y: 0
+      BarCollapsible {
+        id: verticalDrawer
+        bar: root.bar
+        reserveSpace: true
+        pinOnClick: false
+        animationDuration: root.animationDuration
+        // Size explicitly to the reserved drawer block so the hover/click area
+        // is unambiguous (Item defaults to implicit size, but be explicit here).
         width: root.barSize
-        height: verticalTrayRoot.drawerBlockHeight
+        height: implicitHeight
         visible: root.allItems.length > 0
-
-        HoverHandler {
-          onHoveredChanged: root.expanded = hovered
+        onChevronPressed: function(button) {
+          if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
         }
-
-        BarIconButton {
-          id: expandIcon
-          bar: root.bar
-          width: implicitWidth
-          height: implicitHeight
-          y: root.drawerExtent - root.revealExtent
-          text: "\uf053"
-          textRotation: 90
-          onPressed: function(button) {
-            if (button === Qt.RightButton) root.managePopupOpen = !root.managePopupOpen
-          }
-        }
-
-        Item {
-          id: trayClip
-          y: expandIcon.height
-          anchors.horizontalCenter: parent.horizontalCenter
-          width: root.barSize
-          height: root.drawerExtent
-          clip: true
-
+        contentComponent: Component {
           Column {
-            id: trayIcons
-            y: root.drawerExtent - root.revealExtent
-            anchors.horizontalCenter: parent.horizontalCenter
             spacing: root.trayItemGap
             layer.enabled: true
-
             Repeater {
               model: root.drawerItems
               TrayItem {}
@@ -383,7 +307,7 @@ BarWidget {
 
       Column {
         id: pinnedCol
-        y: drawerArea.y + verticalTrayRoot.drawerBlockHeight
+        y: verticalTrayRoot.drawerBlockHeight
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: root.trayItemGap
         topPadding: root.pinnedItems.length > 0 && root.allItems.length > 0 ? root.trayJoinGap : 0

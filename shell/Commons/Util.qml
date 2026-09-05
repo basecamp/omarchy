@@ -126,6 +126,16 @@ QtObject {
   // input config; consumers can mutate without leaking back to shell.json.
   function normalizeLayoutEntry(entry) {
     if (typeof entry === "string") return { id: canonicalWidgetId(entry) }
+    // A group wraps child entries behind a collapsible chevron. It has no widget
+    // id of its own (one is optional, for addressing), so it must be recognized
+    // before the id branch below, which would otherwise drop it. Its children
+    // are normalized recursively so the same rules apply at every depth.
+    if (isPlainObject(entry) && String(entry.type || "") === "group") {
+      var group = cloneJson(entry)
+      if (group.id) group.id = canonicalWidgetId(group.id)
+      group.items = normalizeLayoutSection(group.items)
+      return group
+    }
     if (isPlainObject(entry) && entry.id) {
       var copy = cloneJson(entry)
       copy.id = canonicalWidgetId(copy.id)

@@ -168,6 +168,11 @@ Rules:
 6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
 8. `version: 1` is required.
+9. A `bar.layout.<section>` entry may be a **group**:
+   `{ "type": "group", "collapsed": true, "items": [ ... ] }`. It wraps its
+   `items` behind a collapsible chevron (the tray-drawer gesture) and nests
+   ordinary entries. Groups are additive — older flat layouts stay valid without
+   a migration. See [`../shell/plugins/bar/README.md`](../shell/plugins/bar/README.md#widget-groups).
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user

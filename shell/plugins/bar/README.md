@@ -74,6 +74,54 @@ Example `shell.json` (bar subtree only shown):
 
 The `omarchy.indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "Reminder", "NightLight"]`. Set `alwaysShow` to `true` to keep inactive indicators visible instead of revealing them only on hover. Multiple `omarchy.indicators` instances are allowed, so different sections can show different subsets.
 
+## Widget groups
+
+Wrap several widgets in a `type: "group"` entry to tuck them behind a collapsible
+chevron that reveals them on hover — the same gesture the system tray drawer
+uses. A group is just another entry in the same flat `bar.layout.<section>` array,
+so existing layouts keep working unchanged and no migration is needed.
+
+```json
+{
+  "version": 1,
+  "bar": {
+    "layout": {
+      "right": [
+        {
+          "type": "group",
+          "collapsed": true,
+          "items": [
+            { "id": "omarchy.agents" },
+            { "id": "omarchy.system-update" }
+          ]
+        },
+        { "id": "omarchy.audio" }
+      ]
+    }
+  }
+}
+```
+
+Group settings:
+
+- `items` — the child entries. Each child is an ordinary bar entry (a string id,
+  an `{ id, ...settings }` object, or a custom `command`/`qml` module), so
+  children keep their own settings, panels, and IPC ids.
+- `collapsed` — start collapsed (default `true`). Set `false` to start open.
+- `expandOnHover` — reveal on hover (default `true`). With it set to `false`, click
+  the chevron to toggle.
+- `icon` — override the chevron glyph.
+- `id` — optional; only needed if you want to address the group by id.
+
+Left-clicking the chevron pins the drawer open so it stays revealed after the
+pointer leaves; clicking again unpins it.
+
+A group is repositioned as one block by editing `shell.json`; its widgets are not
+individually draggable and dragging the group itself is not yet supported.
+Widgets inside a group are reachable by id (`omarchy toggle <id>`) but not by the
+positional panel hotkeys, which count only top-level widgets. Do not nest
+`omarchy.tray` inside a group.
+
 ## Orientation
 
 All widgets work in `top`, `bottom`, `left`, and `right` positions. Popups anchor on the side opposite the bar edge, sliding into the workspace. Vertical bars use 28px width; widgets that show text fall back to compact icon-only forms (e.g. `media` hides its scrolling label).

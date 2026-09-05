@@ -1,5 +1,6 @@
 module qs.Ui
 
+BarCollapsible 1.0 BarCollapsible.qml
 BarIndicator 1.0 BarIndicator.qml
 BarIconButton 1.0 BarIconButton.qml
 BarWidget 1.0 BarWidget.qml
