@@ -142,6 +142,118 @@ function parseKeyValue(raw) {
   return next
 }
 
+function wifiQrError(message) {
+  throw new Error(message)
+}
+
+function splitWifiQrFields(raw) {
+  var fields = []
+  var field = ""
+  var escaped = false
+
+  for (var i = 0; i < raw.length; i++) {
+    var ch = raw[i]
+    if (escaped) {
+      field += "\\" + ch
+      escaped = false
+    } else if (ch === "\\") {
+      escaped = true
+    } else if (ch === ";") {
+      fields.push(field)
+      field = ""
+    } else {
+      field += ch
+    }
+  }
+
+  if (escaped) wifiQrError("Invalid Wi-Fi QR code")
+  if (field !== "") fields.push(field)
+  return fields
+}
+
+function wifiQrDelimiter(value) {
+  var escaped = false
+  for (var i = 0; i < value.length; i++) {
+    if (escaped) escaped = false
+    else if (value[i] === "\\") escaped = true
+    else if (value[i] === ":") return i
+  }
+  return -1
+}
+
+function decodeWifiQrField(value) {
+  var raw = String(value || "")
+  // Unescaped surrounding quotes are syntax for a literal ASCII value.
+  // Escaped quotes remain part of the SSID/password.
+  if (wifiQrFieldQuoted(raw))
+    raw = raw.substring(1, raw.length - 1)
+
+  var decoded = ""
+  for (var i = 0; i < raw.length; i++) {
+    if (raw[i] !== "\\") {
+      decoded += raw[i]
+      continue
+    }
+    if (i + 1 >= raw.length || !/^[\\;,":]$/.test(raw[i + 1]))
+      wifiQrError("Invalid Wi-Fi QR code")
+    decoded += raw[++i]
+  }
+  return decoded
+}
+
+function wifiQrFieldQuoted(value) {
+  var raw = String(value || "")
+  return raw.length >= 2 && raw[0] === '"' && raw[raw.length - 1] === '"'
+}
+
+function parseWifiQr(raw) {
+  var payload = String(raw || "").replace(/\r?\n+$/, "")
+  if (payload.substring(0, 5).toUpperCase() !== "WIFI:")
+    wifiQrError("That QR code does not contain Wi-Fi credentials")
+
+  var parts = splitWifiQrFields(payload.substring(5))
+  var fields = {}
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] === "") continue
+    var delimiter = wifiQrDelimiter(parts[i])
+    if (delimiter <= 0) wifiQrError("Invalid Wi-Fi QR code")
+    var key = parts[i].substring(0, delimiter).toUpperCase()
+    if (fields[key] !== undefined) wifiQrError("Invalid Wi-Fi QR code")
+    var value = parts[i].substring(delimiter + 1)
+    fields[key] = decodeWifiQrField(value)
+  }
+
+  var ssid = fields.S || ""
+  if (ssid === "") wifiQrError("Wi-Fi QR code has no network name")
+
+  var rawSecurity = String(fields.T || "nopass").toUpperCase()
+  var security = ""
+  if (rawSecurity === "" || rawSecurity === "NOPASS" || rawSecurity === "OPEN") security = "nopass"
+  else if (rawSecurity === "WPA" || rawSecurity === "WPA2" || rawSecurity === "WPA-PSK") security = "WPA"
+  else if (rawSecurity === "WPA3" || rawSecurity === "SAE") security = "SAE"
+  else if (rawSecurity === "WEP") security = "WEP"
+  else if (rawSecurity.indexOf("EAP") !== -1) wifiQrError("Enterprise Wi-Fi QR codes are not supported")
+  else wifiQrError("Unsupported Wi-Fi security type: " + (fields.T || rawSecurity))
+
+  var hiddenValue = String(fields.H || "").toLowerCase()
+  var hidden = false
+  if (hiddenValue === "true" || hiddenValue === "yes" || hiddenValue === "1") hidden = true
+  else if (hiddenValue !== "" && hiddenValue !== "false" && hiddenValue !== "no" && hiddenValue !== "0")
+    wifiQrError("Invalid hidden network flag")
+
+  var password = security === "nopass" ? "" : String(fields.P || "")
+  if (security !== "nopass" && password === "") wifiQrError("Wi-Fi QR code has no password")
+  if (/[\x00-\x1f\x7f]/.test(ssid) || /[\x00-\x1f\x7f]/.test(password))
+    wifiQrError("Wi-Fi QR code contains unsupported control characters")
+
+  return {
+    ssid: ssid,
+    password: password,
+    security: security,
+    hidden: hidden
+  }
+}
+
 function throughputState(previous, next, now) {
   var prev = previous || {}
   var sample = next || {}
@@ -379,6 +491,7 @@ if (typeof module !== "undefined") {
     parseBandStatus: parseBandStatus,
     decodeIwSsid: decodeIwSsid,
     parseKeyValue: parseKeyValue,
+    parseWifiQr: parseWifiQr,
     throughputState: throughputState,
     pingLatencyState: pingLatencyState,
     pingPacketLossPercent: pingPacketLossPercent,

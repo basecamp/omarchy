@@ -18,6 +18,10 @@ Panel {
 
   // Centralized close so callers can't forget to drop the passphrase prompt.
   function close() {
+    qrScanPending = false
+    cancelQrScan()
+    cancelQrConnect()
+    clearQrCandidate()
     root.controller.hide()
     cancelPasswordPrompt()
   }
@@ -73,6 +77,26 @@ Panel {
   property var wifiNetworks: []
   property bool scanning: false
   property bool wifiStationAvailable: false
+  property bool webcamAvailable: false
+  property bool webcamProbeComplete: false
+  property var qrCandidate: null  // { ssid, password, security, hidden }
+  property string qrError: ""
+  property int qrChoiceIndex: 1  // 0 = Cancel, 1 = Connect
+  property bool qrScanPending: false
+  property bool qrScanActive: false
+  property bool qrScanExpectedStop: false
+  property bool qrScanFailed: false
+  property bool qrScanExited: false
+  property bool qrScanStdoutDone: false
+  property bool qrScanStderrDone: false
+  property string qrScanStderr: ""
+  property bool qrConnectActive: false
+  property bool qrConnectExpectedStop: false
+  property bool qrConnectFailed: false
+  property bool qrConnectExited: false
+  property bool qrConnectStderrDone: false
+  property string qrConnectStderr: ""
+  property string qrConnectSecret: ""
   property string dnsProvider: ""
   property string pendingDnsProvider: ""
   // Wi-Fi band state from `omarchy-network-band`. `bandCurrent` is the band
@@ -111,7 +135,7 @@ Panel {
   // True while any wifi action is mid-flight. Rows
   // disable themselves on this so clicks on the other rows don't silently
   // no-op against runNetworkAction's serialized guard.
-  readonly property bool busy: actionKind !== ""
+  readonly property bool busy: actionKind !== "" || qrConnectActive
 
   // Index into `wifiNetworks` for keyboard navigation. -1 = no selection.
   property int selectedIndex: -1
@@ -121,20 +145,24 @@ Panel {
   // Keyboard focus zone for the panel. j/k crosses row boundaries:
   // header actions ⇄ portal ⇄ band ⇄ DNS row ⇄ Wi-Fi networks. h/l move
   // within header actions, band pills, or DNS providers.
-  property string focusSection: "dns"  // "header" | "portal" | "band" | "dns" | "wifi"
+  property string focusSection: "dns"  // "header" | "portal" | "qr" | "band" | "dns" | "wifi"
   property int headerIndex: 0
   readonly property bool canDisconnect: !!connectedWifiNetwork
   readonly property bool headerHasDisconnect: false
   readonly property bool canShareWifi: info.type === "wifi" && canShareNetwork(connectedWifiNetwork)
+  readonly property bool canStartWifiQrScan: !connectedWifiNetwork && webcamAvailable && networkManagerAvailable && wifiStationAvailable
+  readonly property bool canScanWifiQr: qrScanActive || canStartWifiQrScan
   // The hero switch is the Wi-Fi radio, so it only exists when there is a
   // radio to switch. On a wired box it would otherwise sit there reading
   // "off" beside a perfectly live Ethernet connection.
   readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
   readonly property int qrHeaderIndex: canShareWifi ? 0 : -1
-  readonly property int speedHeaderIndex: canRunSpeedTest ? (canShareWifi ? 1 : 0) : -1
-  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) : -1
-  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  readonly property int scanQrHeaderIndex: canScanWifiQr ? (canShareWifi ? 1 : 0) : -1
+  readonly property int speedHeaderIndex: canRunSpeedTest ? (canShareWifi ? 1 : 0) + (canScanWifiQr ? 1 : 0) : -1
+  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) + (canScanWifiQr ? 1 : 0) + (canRunSpeedTest ? 1 : 0) : -1
+  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canScanWifiQr ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
   readonly property bool qrHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === qrHeaderIndex
+  readonly property bool scanQrHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === scanQrHeaderIndex
   readonly property bool speedHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === speedHeaderIndex
   readonly property bool toggleHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === toggleHeaderIndex
   readonly property string toggleHint: Networking.wifiEnabled ? "Turn Wi-Fi off" : "Turn Wi-Fi on"
@@ -219,6 +247,7 @@ Panel {
     // Compat routes for configs that summon the centered cards through the
     // network target; both cards are their own plugins now.
     function showQr() { root.summonWifiQr(true) }
+    function scanQr() { root.requestQrScan() }
     function speedTest() { root.summonSpeedTest() }
     function openCaptivePortal() { root.openCaptivePortal() }
     function checkConnectivity() { root.checkConnectivity() }
@@ -226,6 +255,7 @@ Panel {
 
   function activateHeader() {
     if (headerIndex === qrHeaderIndex) summonWifiQr()
+    else if (headerIndex === scanQrHeaderIndex) toggleQrScan()
     else if (headerIndex === speedHeaderIndex) summonSpeedTest()
     else if (headerIndex === toggleHeaderIndex) toggleNetwork()
   }
@@ -315,6 +345,10 @@ Panel {
 
   Component.onDestruction: {
     if (scannerDevice) scannerDevice.scannerEnabled = false
+    if (qrScanProc.running) qrScanProc.running = false
+    if (qrConnectProc.running) qrConnectProc.running = false
+    qrConnectSecret = ""
+    qrCandidate = null
   }
 
   // KeyboardPanel primes layer-shell focus whenever the panel opens. That's
@@ -322,6 +356,9 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh(true)
+      webcamAvailable = false
+      webcamProbeComplete = false
+      if (!webcamProbe.running) webcamProbe.running = true
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       wifiActionFocused = false
       focusSection = hasCaptivePortal ? "portal" : (wifiNetworks.length > 0 ? "wifi" : "dns")
@@ -330,6 +367,7 @@ Panel {
       syncBandIndex()
       cursorActive = hasCaptivePortal
     } else {
+      qrScanPending = false
       // Drop a restart armed by this open: without it a close/reopen inside
       // the 100ms window reuses the running timer and re-enables the scanner
       // almost immediately, undoing the deferral #6605 restored.
@@ -346,6 +384,20 @@ Panel {
       internetPingLatency = -1
       internetPingPacketLoss = 0
       setScannerEnabled(false)
+      cancelQrScan()
+      cancelQrConnect()
+      clearQrCandidate()
+    }
+  }
+
+  onQrCandidateChanged: {
+    if (qrCandidate) {
+      qrChoiceIndex = 1
+      focusSection = "qr"
+      cursorActive = true
+    } else if (focusSection === "qr") {
+      focusSection = headerActionCount > 0 ? "header" : (canSelectBand ? "band" : "dns")
+      clampHeaderIndex()
     }
   }
 
@@ -819,6 +871,192 @@ Panel {
     runNetworkAction("connect", networkForSsid(ssid), function(network) { network.connectWithPsk(passphrase) })
   }
 
+  function clearQrCandidate() {
+    if (qrCandidate) qrCandidate.password = ""
+    qrCandidate = null
+    qrError = ""
+  }
+
+  function toggleQrScan() {
+    if (qrScanActive) cancelQrScan()
+    else startQrScan()
+  }
+
+  function requestQrScan() {
+    root.open()
+    if (qrScanActive && !qrScanExpectedStop) return
+    qrScanPending = true
+    startPendingQrScan()
+  }
+
+  function startPendingQrScan() {
+    if (qrScanPending && opened && webcamProbeComplete && !qrScanActive) {
+      qrScanPending = false
+      startQrScan()
+    }
+  }
+
+  function startQrScan() {
+    if (!canStartWifiQrScan || busy || qrScanActive) return
+    clearQrCandidate()
+    qrScanActive = true
+    qrScanExpectedStop = false
+    qrScanFailed = false
+    qrScanExited = false
+    qrScanStdoutDone = false
+    qrScanStderrDone = false
+    qrScanStderr = ""
+    qrScanProc.command = ["omarchy-network-qr-scan"]
+    qrScanProc.running = true
+  }
+
+  function cancelQrScan() {
+    if (!qrScanActive) return
+    qrScanExpectedStop = true
+    if (qrScanProc.running) qrScanProc.running = false
+  }
+
+  function settleQrScan() {
+    if (qrScanExited && qrScanStdoutDone && qrScanStderrDone) {
+      qrScanActive = false
+      startPendingQrScan()
+    }
+  }
+
+  function acceptQrScan(raw) {
+    if (!opened || qrScanExpectedStop) return
+    var payload = String(raw || "")
+    if (payload === "") return
+    try {
+      qrCandidate = Model.parseWifiQr(payload)
+      qrError = ""
+    } catch (error) {
+      qrCandidate = null
+      qrError = String(error.message || "Invalid Wi-Fi QR code")
+    }
+  }
+
+  function confirmQrCandidate() {
+    if (!qrCandidate || busy) return
+    var candidate = qrCandidate
+    var network = candidate.hidden || candidate.security === "WEP" ? null : networkForSsid(candidate.ssid)
+    qrError = ""
+
+    if (network) {
+      if (candidate.security === "nopass") connectDirectly(candidate.ssid)
+      else connectWithPassphrase(candidate.ssid, candidate.password)
+      clearQrCandidate()
+      return
+    }
+
+    qrConnectActive = true
+    qrConnectExpectedStop = false
+    qrConnectFailed = false
+    qrConnectExited = false
+    qrConnectStderrDone = false
+    qrConnectStderr = ""
+    qrConnectSecret = candidate.password
+    qrConnectProc.command = [
+      "omarchy-network-connect-qr",
+      candidate.security,
+      candidate.hidden ? "true" : "false",
+      candidate.ssid
+    ]
+    qrConnectProc.running = true
+  }
+
+  function cancelQrConnect() {
+    qrConnectSecret = ""
+    if (!qrConnectActive) return
+    qrConnectExpectedStop = true
+    if (qrConnectProc.running) qrConnectProc.running = false
+  }
+
+  function settleQrConnect() {
+    if (qrConnectExited && qrConnectStderrDone) qrConnectActive = false
+  }
+
+  function activateQrChoice() {
+    if (qrChoiceIndex === 0) dismissQrCandidate()
+    else confirmQrCandidate()
+  }
+
+  function dismissQrCandidate() {
+    cancelQrConnect()
+    clearQrCandidate()
+  }
+
+  Process {
+    id: webcamProbe
+    command: ["omarchy-hw-webcam"]
+    onExited: function(exitCode) {
+      root.webcamAvailable = exitCode === 0
+      root.webcamProbeComplete = true
+      root.startPendingQrScan()
+    }
+  }
+
+  Process {
+    id: qrScanProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (!root.qrScanExpectedStop) root.acceptQrScan(text)
+        root.qrScanStdoutDone = true
+        root.settleQrScan()
+      }
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.qrScanStderr = String(text || "").trim()
+        if (root.qrScanFailed && !root.qrScanExpectedStop)
+          root.qrError = root.qrScanStderr || "Could not scan the Wi-Fi QR code"
+        root.qrScanStderrDone = true
+        root.settleQrScan()
+      }
+    }
+    onExited: function(exitCode) {
+      root.qrScanExited = true
+      root.qrScanFailed = !root.qrScanExpectedStop && exitCode !== 0
+      if (root.qrScanFailed) {
+        root.qrError = root.qrScanStderr || "Could not scan the Wi-Fi QR code"
+      }
+      root.settleQrScan()
+    }
+  }
+
+  Process {
+    id: qrConnectProc
+    stdinEnabled: true
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.qrConnectStderr = String(text || "").trim()
+        if (root.qrConnectFailed && !root.qrConnectExpectedStop)
+          root.qrError = root.qrConnectStderr || "Could not connect to the Wi-Fi network"
+        root.qrConnectStderrDone = true
+        root.settleQrConnect()
+      }
+    }
+    onStarted: {
+      write(root.qrConnectSecret + "\n")
+      root.qrConnectSecret = ""
+    }
+    onExited: function(exitCode) {
+      root.qrConnectSecret = ""
+      root.qrConnectExited = true
+      root.qrConnectFailed = !root.qrConnectExpectedStop && exitCode !== 0
+      if (root.qrConnectFailed) {
+        root.qrError = root.qrConnectStderr || "Could not connect to the Wi-Fi network"
+      } else if (!root.qrConnectExpectedStop) {
+        root.clearQrCandidate()
+        root.refresh(true)
+      }
+      root.settleQrConnect()
+    }
+  }
+
   function connectEnterprise(ssid, identity, passphrase) {
     runNetworkAction("connect", networkForSsid(ssid), function(network) {
       enterpriseConnect.secret = passphrase
@@ -1059,11 +1297,14 @@ Panel {
           if (dy >= 0) return
         }
         if (dy !== 0) {
-          // Hidden sections drop out of the keyboard chain entirely.
+          // Vertical order is header ⇄ portal ⇄ QR confirmation ⇄ band ⇄ DNS ⇄ wifi,
+          // with hidden sections dropping out of the keyboard chain entirely.
           if (root.focusSection === "header") {
             if (dy > 0) {
               if (root.hasCaptivePortal) {
                 root.focusSection = "portal"
+              } else if (root.qrCandidate) {
+                root.focusSection = "qr"
               } else if (root.canSelectBand) {
                 root.focusSection = "band"
                 root.bandAutoFocused = true
@@ -1076,8 +1317,28 @@ Panel {
               root.focusSection = "header"
               root.headerIndex = 0
             } else if (dy > 0) {
-              root.focusSection = root.canSelectBand ? "band" : "dns"
-              root.bandAutoFocused = true
+              if (root.qrCandidate) {
+                root.focusSection = "qr"
+              } else {
+                root.focusSection = root.canSelectBand ? "band" : "dns"
+                root.bandAutoFocused = true
+              }
+            }
+          } else if (root.focusSection === "qr") {
+            if (dy < 0) {
+              if (root.hasCaptivePortal) {
+                root.focusSection = "portal"
+              } else if (root.headerActionCount > 0) {
+                root.focusSection = "header"
+                root.headerIndex = root.scanQrHeaderIndex >= 0 ? root.scanQrHeaderIndex : 0
+              }
+            } else if (dy > 0) {
+              if (root.canSelectBand) {
+                root.focusSection = "band"
+                root.bandAutoFocused = true
+              } else {
+                root.focusSection = "dns"
+              }
             }
           } else if (root.focusSection === "band") {
             // Automatic on the header line, then the pills -- which collapse
@@ -1085,6 +1346,8 @@ Panel {
             if (dy < 0) {
               if (!root.bandAutoFocused) {
                 root.bandAutoFocused = true
+              } else if (root.qrCandidate) {
+                root.focusSection = "qr"
               } else if (root.hasCaptivePortal) {
                 root.focusSection = "portal"
               } else if (root.headerActionCount > 0) {
@@ -1104,6 +1367,8 @@ Panel {
               if (root.canSelectBand) {
                 root.focusSection = "band"
                 root.bandAutoFocused = !root.bandPillsVisible
+              } else if (root.qrCandidate) {
+                root.focusSection = "qr"
               } else if (root.hasCaptivePortal) {
                 root.focusSection = "portal"
               } else if (root.headerActionCount > 0) {
@@ -1126,6 +1391,7 @@ Panel {
         }
         if (dx !== 0) {
           if (root.focusSection === "header") root.selectHeaderByDelta(dx)
+          else if (root.focusSection === "qr") root.qrChoiceIndex = Math.max(0, Math.min(1, root.qrChoiceIndex + dx))
           else if (root.focusSection === "band") { if (!root.bandAutoFocused) root.selectBandByDelta(dx) }
           else if (root.focusSection === "dns") root.selectDnsByDelta(dx)
           else if (root.focusSection === "wifi") root.selectWifiActionByDelta(dx)
@@ -1135,6 +1401,7 @@ Panel {
         if (root.cursorActive) {
           if (root.focusSection === "header") root.activateHeader()
           else if (root.focusSection === "portal") root.openCaptivePortal()
+          else if (root.focusSection === "qr") root.activateQrChoice()
           else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
           else root.activateSelected()
@@ -1194,6 +1461,23 @@ Panel {
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setHeaderCursor(root.qrHeaderIndex) }
             onClicked: root.summonWifiQr()
+          }
+
+          Button {
+            id: scanQrAction
+            visible: root.canScanWifiQr
+            iconText: "󰄀"
+            tooltipText: root.qrScanActive ? "Cancel Wi-Fi QR scan" : "Scan Wi-Fi QR code"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            iconSize: Style.font.subtitle * 1.5
+            horizontalPadding: Style.space(5)
+            verticalPadding: Style.space(2)
+            hasCursor: root.scanQrHeaderHasCursor
+            active: root.qrScanActive
+            Layout.alignment: Qt.AlignVCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor(root.scanQrHeaderIndex) }
+            onClicked: root.toggleQrScan()
           }
 
           Button {
@@ -1326,6 +1610,113 @@ Panel {
           opacity: 0.7
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.bodySmall
+        }
+      }
+
+      PanelSeparator {
+        visible: root.qrScanActive || root.qrCandidate !== null || root.qrError !== ""
+        foreground: root.bar.foreground
+      }
+
+      Column {
+        visible: root.qrScanActive || root.qrCandidate !== null || root.qrError !== ""
+        width: parent.width
+        spacing: Style.space(8)
+
+        PanelSectionHeader {
+          text: root.qrScanActive ? "SCANNING WI-FI QR CODE…" : "WI-FI QR CODE"
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+        }
+
+        Text {
+          visible: root.qrScanActive
+          width: parent.width
+          text: "Hold the code in front of the camera. Close the preview or press the camera button to cancel."
+          color: Qt.darker(root.bar.foreground, 1.25)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          wrapMode: Text.Wrap
+        }
+
+        Text {
+          visible: root.qrCandidate !== null
+          width: parent.width
+          text: root.qrCandidate ? root.qrCandidate.ssid : ""
+          textFormat: Text.PlainText
+          color: root.bar.foreground
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.title
+          font.bold: true
+          elide: Text.ElideRight
+        }
+
+        Text {
+          visible: root.qrCandidate !== null
+          width: parent.width
+          text: {
+            if (!root.qrCandidate) return ""
+            var security = root.qrCandidate.security === "nopass" ? "OPEN" : root.qrCandidate.security
+            return security + (root.qrCandidate.hidden ? " · HIDDEN NETWORK" : "")
+          }
+          textFormat: Text.PlainText
+          color: Qt.darker(root.bar.foreground, 1.4)
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+          font.letterSpacing: 1.0
+        }
+
+        Text {
+          visible: root.qrError !== ""
+          width: parent.width
+          text: root.qrError
+          textFormat: Text.PlainText
+          color: root.bar.urgent
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          wrapMode: Text.Wrap
+        }
+
+        Row {
+          visible: root.qrCandidate !== null
+          width: parent.width
+          spacing: Style.space(6)
+
+          Button {
+            width: (parent.width - parent.spacing) / 2
+            text: "Cancel"
+            bordered: true
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            fontSize: Style.font.bodySmall
+            hasCursor: root.cursorActive && root.focusSection === "qr" && root.qrChoiceIndex === 0
+            onHovered: function(on) {
+              if (!on) return
+              root.cursorActive = true
+              root.focusSection = "qr"
+              root.qrChoiceIndex = 0
+            }
+            onClicked: root.dismissQrCandidate()
+          }
+
+          Button {
+            width: (parent.width - parent.spacing) / 2
+            text: root.qrConnectActive ? "Connecting…" : "Connect"
+            bordered: true
+            active: root.qrConnectActive
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            fontSize: Style.font.bodySmall
+            hasCursor: root.cursorActive && root.focusSection === "qr" && root.qrChoiceIndex === 1
+            onHovered: function(on) {
+              if (!on) return
+              root.cursorActive = true
+              root.focusSection = "qr"
+              root.qrChoiceIndex = 1
+            }
+            onClicked: root.confirmQrCandidate()
+          }
         }
       }
 

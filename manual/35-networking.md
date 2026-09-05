@@ -4,6 +4,10 @@ Networking in Omarchy is handled by NetworkManager, and you drive it from the ne
 
 That panel scans for Wi-Fi networks, shows signal strength, and connects. Ethernet needs nothing at all — plug it in and it works. If you'd rather stay in the terminal, `nmtui` gives you the same controls, and there's an `omarchy network` command group too.
 
+## Joining with a QR code
+
+If someone shares personal Wi-Fi as a QR code, open the network panel and press the camera button. Hold the code in front of your webcam, check the network name Omarchy reads, then press _Connect_. Open, WEP, WPA, WPA2, WPA3, and hidden personal networks are supported; enterprise Wi-Fi still needs its organization-specific setup.
+
 ## Sharing your Wi-Fi
 
 Rather than reading a long password out loud, run _Setup > Network > QR Code_ while you're on Wi-Fi. That puts a QR code on screen that any phone camera can scan to join. It's one of those things you'll use more than you'd expect once you know it's there.
