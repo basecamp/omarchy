@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic update check (notify when updates are available)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
