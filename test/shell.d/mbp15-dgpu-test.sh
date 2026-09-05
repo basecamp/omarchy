@@ -159,17 +159,49 @@ cat >"$test_tmp/bl-set" <<SH
 #!/bin/bash
 printf '%s\n' "\$1" >"$test_tmp/bl"
 SH
-chmod +x "$test_tmp/stub/"* "$test_tmp/bl-get" "$test_tmp/bl-set"
+: >"$test_tmp/dpms.log"
+cat >"$test_tmp/dpms" <<SH
+#!/bin/bash
+echo "dpms \$1" >>"$test_tmp/dpms.log"
+SH
+chmod +x "$test_tmp/stub/"* "$test_tmp/bl-get" "$test_tmp/bl-set" "$test_tmp/dpms"
 
 PATH="$test_tmp/stub:$ROOT/bin:$PATH" \
   OMARCHY_DMI_PRODUCT_NAME="$dmi" \
   OMARCHY_MBP15_LID_STATE="$lid_state" \
   OMARCHY_MBP15_BRIGHTNESS_GET="$test_tmp/bl-get" \
   OMARCHY_MBP15_BRIGHTNESS_SET="$test_tmp/bl-set" \
+  OMARCHY_MBP15_DPMS="$test_tmp/dpms" \
   "$lid" close
 
 [[ $(cat "$test_tmp/bl") == 0 ]] || fail "lid close dims the backlight" "bl=$(cat "$test_tmp/bl")"
 [[ $(cat "$lid_state/backlight") == 675 ]] || fail "lid close remembers brightness"
 grep -Fq 'pp set power-saver' "$test_tmp/pp.log" || fail "lid close overlays power-saver"
+grep -Fxq 'dpms disable' "$test_tmp/dpms.log" || fail "lid close DPMS-offs the panel" "$(cat "$test_tmp/dpms.log")"
 ! grep -q omarchy-powerprofiles-set "$test_tmp/pp.log" || fail "lid close must not persist via omarchy-powerprofiles-set"
-pass "lid close dims and overlays power-saver without persisting the profile"
+pass "lid close stops the panel and overlays power-saver without persisting the profile"
+
+: >"$test_tmp/pp.log"
+: >"$test_tmp/dpms.log"
+cat >"$test_tmp/stub/omarchy-hw-laptop-closed" <<'SH'
+#!/bin/bash
+exit 1
+SH
+cat >"$test_tmp/stub/omarchy-powerprofiles-set" <<SH
+#!/bin/bash
+echo "pps \$*" >>"$test_tmp/pp.log"
+SH
+chmod +x "$test_tmp/stub/omarchy-hw-laptop-closed" "$test_tmp/stub/omarchy-powerprofiles-set"
+
+PATH="$test_tmp/stub:$ROOT/bin:$PATH" \
+  OMARCHY_DMI_PRODUCT_NAME="$dmi" \
+  OMARCHY_MBP15_LID_STATE="$lid_state" \
+  OMARCHY_MBP15_BRIGHTNESS_GET="$test_tmp/bl-get" \
+  OMARCHY_MBP15_BRIGHTNESS_SET="$test_tmp/bl-set" \
+  OMARCHY_MBP15_DPMS="$test_tmp/dpms" \
+  "$lid" open
+
+grep -Fxq 'dpms enable' "$test_tmp/dpms.log" || fail "lid open DPMS-ons the panel" "$(cat "$test_tmp/dpms.log")"
+[[ $(cat "$test_tmp/bl") == 675 ]] || fail "lid open restores brightness" "bl=$(cat "$test_tmp/bl")"
+grep -Fq 'pps autodetect' "$test_tmp/pp.log" || fail "lid open restores the AC/battery profile"
+pass "lid open brings the panel back and restores the remembered profile"

@@ -1,11 +1,13 @@
 #!/bin/bash
 
-# omarchy:summary=Dim the panel and overlay power-saver while a 15-inch Radeon lid is shut
+# omarchy:summary=Stop driving the panel and overlay power-saver while a 15-inch Radeon lid is shut
 # omarchy:hidden=true
 # omarchy:args=<close|open>
 
 # Temporary overlay only. Does not write Omarchy's remembered AC/battery
-# profile. Close: backlight 0 + power-saver. Open: restore + autodetect.
+# profile. Close: save brightness, DPMS off the internal panel, power-saver.
+# Backlight-off alone still scans out eDP; a closed 15" then soaks heat for
+# as long as the machine stays on. Open: DPMS on, restore brightness, autodetect.
 
 set -euo pipefail
 
@@ -42,6 +44,23 @@ backlight_set() {
   brightnessctl -d gmux_backlight set "$1" >/dev/null
 }
 
+# DPMS the laptop panel so the 560 stops scanning out. Clamshell already
+# returned above; this only runs when the internal display is the one in use.
+panel_dpms() {
+  local action=$1
+  if [[ -n ${OMARCHY_MBP15_DPMS:-} ]]; then
+    "$OMARCHY_MBP15_DPMS" "$action"
+    return
+  fi
+  local internal
+  internal=$(omarchy-hyprland-monitor-laptop 2>/dev/null || true)
+  if [[ -n $internal && $internal =~ ^[A-Za-z0-9._-]+$ ]]; then
+    hyprctl dispatch "hl.dsp.dpms({ action = \"$action\", monitor = \"$internal\" })" >/dev/null 2>&1 || true
+    return
+  fi
+  hyprctl dispatch "hl.dsp.dpms({ action = \"$action\" })" >/dev/null 2>&1 || true
+}
+
 if [[ $cmd == close ]]; then
   if command -v omarchy-hw-external-monitors >/dev/null && omarchy-hw-external-monitors; then
     exit 0
@@ -55,6 +74,7 @@ if [[ $cmd == close ]]; then
     printf '%s\n' "$current" >"$state_dir/backlight"
   fi
   backlight_set 0 || true
+  panel_dpms disable
   # Not omarchy-powerprofiles-set: that would persist as the AC/battery default.
   powerprofilesctl set power-saver >/dev/null 2>&1 || true
   exit 0
@@ -64,6 +84,7 @@ if command -v omarchy-hw-laptop-closed >/dev/null && omarchy-hw-laptop-closed; t
   exit 0
 fi
 
+panel_dpms enable
 if [[ -r $state_dir/backlight ]]; then
   backlight_set "$(cat "$state_dir/backlight")" || true
 fi
