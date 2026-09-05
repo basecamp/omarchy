@@ -14,6 +14,34 @@ right place:
   https://omarchy.org/discord. Start here when the problem isn't clearly a bug
   in Omarchy itself.
 
+## Check It Isn't Already Known
+
+Search issues **and** pull requests before writing anything up. An open PR
+often already fixes the bug, and it is easy to miss when only issues are
+searched:
+
+```bash
+gh search issues --repo basecamp/omarchy "<keywords>" --limit 10
+gh search prs --repo basecamp/omarchy "<keywords>" --limit 10
+```
+
+If a PR is already open, add to that discussion instead of filing again.
+
+## Verify Against the Default Branch
+
+Check the bug against the branch development actually happens on. A fresh
+`git clone` lands there, but an older checkout or a raw URL pinned to
+`master` does not — `master` can be weeks behind a shipped release, so a bug
+"confirmed" there may already be fixed, or the code may not match what users
+are running:
+
+```bash
+gh repo view basecamp/omarchy --json defaultBranchRef --jq .defaultBranchRef.name
+```
+
+Compare against the installed copy in `$OMARCHY_PATH` too; when they agree,
+the bug is current.
+
 ## Filing a Good Bug Report
 
 The bug template asks for system details (CPU, GPU, Omarchy version), a
@@ -59,7 +87,14 @@ cd omarchy
 ```
 
 Follow the repository's own `AGENTS.md` for style, testing, and commit
-conventions — it is the authority on contributions. Keep commits atomic, run
-`./test/all` before pushing, and open the PR with `gh pr create`. A PR that
-fixes a visual problem should include before/after captures (again, see
-[`capture.md`](capture.md)).
+conventions — it is the authority on contributions. Keep commits atomic and
+open the PR with `gh pr create`. A PR that fixes a visual problem should
+include before/after captures (again, see [`capture.md`](capture.md)).
+
+For tests, `AGENTS.md` asks for the focused suite covering the area changed —
+`./test/cli` or `./test/shell` — rather than `./test/all`. Run `./test/all`
+too if you like, but treat unrelated failures as a signal about the machine
+rather than the change: parts of it depend on the local environment, such as
+attached-monitor counts or a sibling checkout, and can fail on a clean tree.
+Confirm by stashing the change (`git stash -u`, so new files go too) and
+re-running, then `git stash pop` and say what you ran in the PR.
