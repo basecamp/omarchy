@@ -1,0 +1,19 @@
+[Unit]
+Description=GZ302 chassis window LED follow of keyboard backlight
+# Fn+F11 is consumed in-kernel by hid-asus. This waits on brightness_hw_changed
+# and mirrors that level to the Flow Z13 2025 chassis window only.
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+ConditionPathExists=/sys/class/leds/asus::kbd_backlight/brightness_hw_changed
+
+[Service]
+Type=simple
+ExecCondition=/usr/bin/omarchy-hw-asus-rog
+ExecCondition=/usr/bin/omarchy-hw-match GZ302
+ExecStart=/usr/bin/omarchy-brightness-keyboard-watch watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

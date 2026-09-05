@@ -1,0 +1,255 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Mirror GZ302 keyboard backlight onto the chassis window LED
+# omarchy:args=[watch|show|sync]
+# omarchy:hidden=true
+
+import errno
+import json
+import os
+import re
+import select
+import subprocess
+import sys
+from typing import NamedTuple
+
+Gio = None
+GLib = None
+try:
+    import gi
+
+    gi.require_version("Gio", "2.0")
+    from gi.repository import Gio, GLib
+except (ImportError, ValueError):
+    pass
+
+OSD_MS = 1200
+OSD_LABELS = ("Off", "Low", "Med", "High")
+SYSFS = "/sys/class/leds/asus::kbd_backlight/brightness"
+HW = "/sys/class/leds/asus::kbd_backlight/brightness_hw_changed"
+ASUSD = "xyz.ljones.Asusd"
+AURA_IFACE = "xyz.ljones.Aura"
+THEME_RGB = os.path.expanduser("~/.local/state/omarchy/current/theme/keyboard.rgb")
+DEFAULT_RGB = (240, 130, 116)
+
+
+class Apply(NamedTuple):
+    level: int
+    rgb: tuple[int, int, int]
+    osd: bool
+
+
+def read_level() -> int | None:
+    try:
+        with open(SYSFS, encoding="utf-8") as fh:
+            return max(0, min(3, int(fh.read().strip() or "0")))
+    except (OSError, ValueError):
+        return None
+
+
+def read_rgb() -> tuple[int, int, int]:
+    try:
+        with open(THEME_RGB, encoding="utf-8") as fh:
+            raw = fh.read().strip().lstrip("#")
+        if len(raw) == 6:
+            return int(raw[0:2], 16), int(raw[2:4], 16), int(raw[4:6], 16)
+    except (OSError, ValueError):
+        pass
+    return DEFAULT_RGB
+
+
+def show_osd(cmd: Apply) -> None:
+    payload = json.dumps({
+        "icon": "keyboard",
+        "message": "",
+        "value": str(cmd.level),
+        "max": "3",
+        "progressText": OSD_LABELS[cmd.level],
+        "duration": str(OSD_MS),
+    })
+    subprocess.run(
+        ["omarchy-shell", "-q", "osd", "show", payload],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def open_hw():
+    fd = os.open(HW, os.O_RDONLY)
+    try:
+        os.read(fd, 4096)
+    except OSError as e:
+        if e.errno != errno.ENODATA:
+            os.close(fd)
+            raise
+    return fd
+
+
+def _pkt(*bs: int) -> bytes:
+    buf = bytearray(64)
+    for i, b in enumerate(bs):
+        buf[i] = b
+    return bytes(buf)
+
+
+class ChassisLed:
+    def __init__(self) -> None:
+        self._bus = None
+        self._path: str | None = None
+
+    def _bus_conn(self):
+        if Gio is None:
+            return None
+        if self._bus is None:
+            try:
+                self._bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+            except Exception:
+                return None
+        return self._bus
+
+    def _call(self, path: str, iface: str, method: str, params, reply_type):
+        bus = self._bus_conn()
+        if bus is None:
+            raise RuntimeError("no dbus")
+        return bus.call_sync(
+            ASUSD,
+            path,
+            iface,
+            method,
+            params,
+            reply_type,
+            Gio.DBusCallFlags.NONE,
+            3000,
+            None,
+        )
+
+    def _find_path(self) -> str | None:
+        try:
+            xml = self._call(
+                "/xyz/ljones/aura",
+                "org.freedesktop.DBus.Introspectable",
+                "Introspect",
+                None,
+                GLib.VariantType.new("(s)"),
+            ).unpack()[0]
+        except Exception:
+            return None
+        for name in re.findall(r'<node name="([^"]+)"', xml):
+            if "18c6" in name:
+                return f"/xyz/ljones/aura/{name}"
+        return None
+
+    def _send_one(self, packet: bytes) -> None:
+        # DirectAddressingRaw writes only effect[0], then SET, so each packet is its own call.
+        path = self._path or self._find_path()
+        if not path:
+            raise RuntimeError("no chassis Aura device")
+        self._path = path
+        self._call(
+            path,
+            AURA_IFACE,
+            "DirectAddressingRaw",
+            GLib.Variant("(aay)", ([list(packet)],)),
+            None,
+        )
+
+    def apply(self, cmd: Apply) -> None:
+        if Gio is None:
+            return
+        path = self._path or self._find_path()
+        if not path:
+            return
+        self._path = path
+        ident = b"]ASUS Tech.Inc." + b"\x00" * (64 - 15)
+        packets = [
+            _pkt(0x5D, 0xB9),
+            ident,
+            _pkt(0x5D, 0x05, 0x20, 0x31, 0x00, 0x1A),
+            _pkt(0x5D, 0xC0, 0x03, 0x01),
+        ]
+        if cmd.level <= 0:
+            packets += [
+                _pkt(0x5D, 0xBD, 0x01, 0x00, 0x00, 0x00, 0x00, 0xFF),
+                _pkt(0x5D, 0xBA, 0xC5, 0xC4, 0x00),
+            ]
+        else:
+            r, g, b = cmd.rgb
+            packets += [
+                _pkt(0x5D, 0xBD, 0x01, 0xFF, 0x1F, 0xFF, 0xFF, 0xFF),
+                _pkt(0x5D, 0xBA, 0xC5, 0xC4, cmd.level),
+            ]
+            for zone in (0, 1):
+                packets += [
+                    _pkt(0x5D, 0xB3, zone, 0x00, r, g, b, 0xEB, 0x00, 0x00),
+                    _pkt(0x5D, 0xB4),
+                ]
+        try:
+            for packet in packets:
+                self._send_one(packet)
+        except Exception as exc:
+            self._path = None
+            self._bus = None
+            print(f"chassis LED: {exc}", file=sys.stderr)
+
+
+CHASSIS = ChassisLed()
+
+
+def apply(cmd: Apply) -> None:
+    CHASSIS.apply(cmd)
+    if cmd.osd:
+        show_osd(cmd)
+
+
+def follow(last: int | None, *, osd: bool) -> int | None:
+    while True:
+        now = read_level()
+        if now is None or now == last:
+            return last
+        last = now
+        apply(Apply(level=last, rgb=read_rgb(), osd=osd))
+
+
+def watch() -> int:
+    if not os.path.isfile(HW):
+        return 1
+
+    last = follow(None, osd=False)
+
+    poller = select.poll()
+    fd = open_hw()
+    poller.register(fd, select.POLLPRI | select.POLLERR | select.POLLHUP)
+
+    while True:
+        events = poller.poll()
+        if not events:
+            continue
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.read(fd, 4096)
+        poller.unregister(fd)
+        os.close(fd)
+        fd = open_hw()
+        poller.register(fd, select.POLLPRI | select.POLLERR | select.POLLHUP)
+        last = follow(last, osd=True)
+
+
+def main(argv: list[str]) -> int:
+    action = (argv[1] if len(argv) > 1 else "watch").lower()
+    if action in ("show", "sync"):
+        level = read_level()
+        if level is None:
+            return 0 if action == "sync" else 1
+        apply(Apply(level=level, rgb=read_rgb(), osd=(action == "show")))
+        return 0
+    if action == "watch":
+        return watch()
+    print(f"Usage: {argv[0]} [watch|show|sync]", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv))
+    except KeyboardInterrupt:
+        sys.exit(0)
