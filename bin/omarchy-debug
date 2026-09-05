@@ -26,7 +26,12 @@ while (( $# > 0 )); do
   esac
 done
 
-LOG_FILE="/tmp/omarchy-debug.log"
+# The log holds sudo dmesg output and the boot journal. At a fixed name in /tmp
+# it was created with the default umask, so every local user on the machine
+# could read it, and it stayed there after the command exited. mktemp makes it
+# 0600 under a name nobody can guess, and the trap clears it on the way out.
+LOG_FILE=$(mktemp) || exit 1
+trap 'rm -f "$LOG_FILE"' EXIT
 
 if [[ $NO_SUDO = "true" ]]; then
   DMESG_OUTPUT="(skipped - --no-sudo flag used)"

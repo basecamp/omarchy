@@ -5,8 +5,13 @@
 # omarchy:hidden=true
 
 LOG_TYPE="${1:-install}"
-TEMP_LOG="/tmp/upload-log.txt"
-SYSTEM_INFO="/tmp/system-info.txt"
+# The bundle collects the boot journal and the install logs before it is sent.
+# At fixed names in /tmp both files were world readable under the default umask
+# and were never removed, so the last bundle sat there for any local user to
+# read. mktemp makes them 0600, and the trap clears them on the way out.
+TEMP_LOG=$(mktemp) || exit 1
+SYSTEM_INFO=$(mktemp) || exit 1
+trap 'rm -f "$TEMP_LOG" "$SYSTEM_INFO"' EXIT
 
 # Get system information if fastfetch is available
 if omarchy-cmd-present fastfetch; then
