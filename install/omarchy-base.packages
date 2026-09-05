@@ -27,6 +27,7 @@ dosfstools
 dotnet-runtime
 dua-cli
 evince
+ex-vi-compat
 exfatprogs
 expac
 eza
