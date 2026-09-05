@@ -100,6 +100,7 @@ QtObject {
   // Standard Qt text-editing keys shared by every searchable panel's filter:
   //   Backspace       delete previous character
   //   Ctrl+Backspace  delete previous word (Qt DeleteStartOfWord)
+  //   Ctrl+W          delete previous word (terminal werase)
   //   Ctrl+U          clear the whole field
   // True only when the event would actually change the text, so an empty
   // filter never swallows the key — panels keep their own empty-filter
@@ -108,7 +109,8 @@ QtObject {
     if (!text) return false
     // Alt/Meta-modified sequences belong to other shortcuts — never edit here.
     if (event.modifiers & (Qt.AltModifier | Qt.MetaModifier)) return false
-    if (event.key === Qt.Key_U)                     // Ctrl+U only (not Ctrl+Shift+U → Unicode input)
+    // Ctrl only, never Ctrl+Shift — Ctrl+Shift+U is Unicode input.
+    if (event.key === Qt.Key_U || event.key === Qt.Key_W)
       return event.modifiers === Qt.ControlModifier
     return event.key === Qt.Key_Backspace           // plain, Shift, or Ctrl Backspace
   }
@@ -116,8 +118,8 @@ QtObject {
   // New filter text after applying an edit key. Assumes editsFilter(event, text).
   function editedFilter(event, text) {
     if (event.key === Qt.Key_U) return ""                        // Ctrl+U: clear
-    if (event.modifiers & Qt.ControlModifier)                    // Ctrl+Backspace: word
-      return text.replace(/\s+$/, "").replace(/\S+$/, "")
+    if (event.key === Qt.Key_W || (event.modifiers & Qt.ControlModifier))
+      return text.replace(/\s+$/, "").replace(/\S+$/, "")        // Ctrl+W / Ctrl+Backspace: word
     return text.slice(0, -1)                                     // Backspace: char
   }
 
