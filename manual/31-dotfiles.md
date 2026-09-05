@@ -32,7 +32,7 @@ That starts the command as part of the session, so it's properly cleaned up when
 
 ### Running scripts on system events
 
-Omarchy fires hooks at a handful of moments, and you can hang your own scripts off them. They live in `~/.config/omarchy/hooks/<event>.d/`, one directory per event, and every executable file in there runs when the event happens:
+Omarchy fires hooks at a handful of moments, and you can hang your own scripts off them. User hooks live under `~/.config/omarchy/hooks/`:
 
 | Event | When it runs |
 | ----- | ------------ |
@@ -43,7 +43,11 @@ Omarchy fires hooks at a handful of moments, and you can hang your own scripts o
 | `font-set` | After a font change (font name in `$1`) |
 | `battery-low` | When the battery gets low (percentage in `$1`) |
 
-Each of those directories already holds a `.sample` file showing the shape of a hook — drop the `.sample` from the name to put it to work. To install a script you've written elsewhere, use `omarchy hook install post-boot ~/my-hook`, which copies it in and makes it executable.
+For each event, the runner supports one flat `~/.config/omarchy/hooks/<event>` hook plus any non-hidden regular files directly inside `~/.config/omarchy/hooks/<event>.d/`. The flat hook runs first, then the directory files run in filename order. Nested directories, names beginning with `.`, and directory entries ending in `.sample` are skipped. Event names must start with an ASCII letter or number and can otherwise contain ASCII letters, numbers, `.`, `_`, and `-`.
+
+Each event directory already holds a `.sample` file showing the shape of a hook — drop the `.sample` from the name to put it to work. To install a script you've written elsewhere, use `omarchy hook install post-boot ~/my-hook`, which preserves its basename, copies it in, and makes it executable. Rename a hidden script or one ending in `.sample` before installing it.
+
+Software packages can provide the same flat and directory forms under `$OMARCHY_PATH/hooks/` or `<data-dir>/omarchy/hooks/`, where `<data-dir>` is an absolute entry in `XDG_DATA_DIRS`. The default package roots are `/usr/local/share/omarchy/hooks/` and `/usr/share/omarchy/hooks/`; `XDG_DATA_HOME` is not searched. The active Omarchy tree runs first, package roots run in `XDG_DATA_DIRS` order, and your hooks under `~/.config/omarchy/hooks/` always run last so they can react to or customize packaged behavior. For safety, package hook paths cannot contain symlinks, must be controlled by root or your account, and cannot be shared-writable at or below the package hook root. A sticky shared directory such as `/tmp` is supported only as an ancestor above that root.
 
 ### Adding your own menu entries
 

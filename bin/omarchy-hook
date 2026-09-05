@@ -1,28 +1,280 @@
 #!/bin/bash
 
-# omarchy:summary=Run a named hook from ~/.config/omarchy/hooks/<name> and ~/.config/omarchy/hooks/<name>.d/.
+# omarchy:summary=Run package, core, and user hooks for a named event
 # omarchy:args=[name] [args...]
 
 set -e
 
-if (( $# < 1 )); then
-  echo "Usage: omarchy-hook [name] [args...]"
-  exit 1
-fi
+omarchy_hook_event_valid() (
+  LC_ALL=C
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+)
 
-HOOK=$1
-HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
-HOOK_DIR="$HOOK_PATH.d"
-shift
+omarchy_realpath() {
+  local mode=$1
+  local path=$2
 
-if [[ -f $HOOK_PATH ]]; then
-  bash "$HOOK_PATH" "$@" || echo "Hook failed: $HOOK_PATH"
-fi
+  OMARCHY_REALPATH=
+  case $mode in
+  existing)
+    IFS= read -r -d '' OMARCHY_REALPATH < <(/usr/bin/realpath -z -e -- "$path" 2>/dev/null)
+    ;;
+  lexical)
+    IFS= read -r -d '' OMARCHY_REALPATH < <(/usr/bin/realpath -z -m -s -- "$path" 2>/dev/null)
+    ;;
+  missing)
+    IFS= read -r -d '' OMARCHY_REALPATH < <(/usr/bin/realpath -z -m -- "$path" 2>/dev/null)
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+}
 
-if [[ -d $HOOK_DIR ]]; then
-  for hook in "$HOOK_DIR"/*; do
-    [[ -f $hook ]] || continue
-    [[ $hook == *.sample ]] && continue
-    bash "$hook" "$@" || echo "Hook failed: $hook"
+omarchy_package_hook_path_trusted() {
+  local root=$1
+  local path=$2
+  local expected_type=$3
+  local lexical canonical probe parent metadata owner hex mode type
+  local -a chain=()
+
+  omarchy_realpath lexical "$path" || return 1
+  lexical=$OMARCHY_REALPATH
+  omarchy_realpath existing "$path" || return 1
+  canonical=$OMARCHY_REALPATH
+
+  [[ $lexical == "$canonical" ]] || return 1
+  [[ $canonical == "$root" || $canonical == "$root/"* ]] || return 1
+
+  probe=$canonical
+  while :; do
+    chain=("$probe" "${chain[@]}")
+    [[ $probe == / ]] && break
+    parent=${probe%/*}
+    [[ -n $parent ]] || parent=/
+    probe=$parent
   done
+
+  for probe in "${chain[@]}"; do
+    metadata=$(/usr/bin/stat -c '%u:%f' -- "$probe" 2>/dev/null) || return 1
+    owner=${metadata%%:*}
+    hex=${metadata#*:}
+    mode=$((16#$hex))
+    type=$((mode & 0170000))
+
+    (( owner == 0 || owner == EUID )) || return 1
+    (( type != 0120000 )) || return 1
+
+    if [[ $probe != "$canonical" ]]; then
+      (( type == 0040000 )) || return 1
+    fi
+
+    if (( mode & 0022 )); then
+      if [[ $probe == "$root" || $probe == "$root/"* ]]; then
+        return 1
+      fi
+
+      (( type == 0040000 && (mode & 01000) )) || return 1
+    fi
+  done
+
+  case $expected_type in
+  directory)
+    (( type == 0040000 )) || return 1
+    ;;
+  file)
+    (( type == 0100000 )) || return 1
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+
+  OMARCHY_TRUSTED_HOOK_PATH=$canonical
+}
+
+omarchy_warn_unsafe_package_hook_path() {
+  printf 'Skipping unsafe package hook path: %q\n' "$1" >&2
+}
+
+omarchy_hook_roots() {
+  local data_dirs=${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+  local -a xdg_data_dirs candidates=("$OMARCHY_PATH/hooks") candidate_types=(core) seen
+  local data_dir candidate candidate_type canonical lexical seen_root user_root
+  local i
+
+  omarchy_realpath missing "$HOME/.config/omarchy/hooks" || return
+  user_root=$OMARCHY_REALPATH
+
+  IFS=: read -r -d '' -a xdg_data_dirs < <(printf '%s\0' "$data_dirs")
+
+  for data_dir in "${xdg_data_dirs[@]}"; do
+    [[ $data_dir == /* ]] || continue
+    candidates+=("$data_dir/omarchy/hooks")
+    candidate_types+=(package)
+  done
+
+  for ((i = 0; i < ${#candidates[@]}; i++)); do
+    candidate=${candidates[$i]}
+    candidate_type=${candidate_types[$i]}
+
+    omarchy_realpath missing "$candidate" || continue
+    canonical=$OMARCHY_REALPATH
+
+    if [[ $candidate_type == package ]]; then
+      omarchy_realpath lexical "$candidate" || continue
+      lexical=$OMARCHY_REALPATH
+      if [[ $lexical != "$canonical" ]]; then
+        [[ ! -e $candidate && ! -L $candidate ]] || omarchy_warn_unsafe_package_hook_path "$candidate"
+        continue
+      fi
+    fi
+
+    [[ $canonical == "$user_root" ]] && continue
+
+    for seen_root in "${seen[@]}"; do
+      [[ $canonical == "$seen_root" ]] && continue 2
+    done
+
+    seen+=("$canonical")
+    printf '%s\0' "$canonical"
+  done
+
+  printf '%s\0' "$user_root"
+}
+
+omarchy_system_hook_seen() {
+  local name=$1
+  local seen_name
+
+  for seen_name in "${OMARCHY_SEEN_SYSTEM_HOOKS[@]}"; do
+    [[ $name == "$seen_name" ]] && return 0
+  done
+
+  return 1
+}
+
+omarchy_run_hook_file() {
+  local name=$1
+  local path=$2
+  local shadow_duplicates=$3
+  shift 3
+
+  if [[ $shadow_duplicates == "true" ]]; then
+    omarchy_system_hook_seen "$name" && return
+    OMARCHY_SEEN_SYSTEM_HOOKS+=("$name")
+  fi
+
+  /bin/bash "$path" "$@" || echo "Hook failed: $path"
+}
+
+omarchy_run_hook_root() {
+  local root=$1
+  local event=$2
+  local shadow_duplicates=$3
+  local validate_package_paths=$4
+  local hook_path="$root/$event"
+  local hook_dir="$hook_path.d"
+  local hook trusted_hook
+  shift 4
+
+  if [[ $validate_package_paths == true ]]; then
+    if [[ ! -e $root && ! -L $root ]]; then
+      return
+    elif omarchy_package_hook_path_trusted "$root" "$root" directory; then
+      root=$OMARCHY_TRUSTED_HOOK_PATH
+      hook_path="$root/$event"
+      hook_dir="$hook_path.d"
+    else
+      omarchy_warn_unsafe_package_hook_path "$root"
+      return
+    fi
+  fi
+
+  if [[ -f $hook_path || -L $hook_path ]]; then
+    if [[ $validate_package_paths == true ]]; then
+      if omarchy_package_hook_path_trusted "$root" "$hook_path" file; then
+        trusted_hook=$OMARCHY_TRUSTED_HOOK_PATH
+        omarchy_run_hook_file flat "$trusted_hook" "$shadow_duplicates" "$@"
+      else
+        omarchy_warn_unsafe_package_hook_path "$hook_path"
+      fi
+    elif [[ -f $hook_path ]]; then
+      omarchy_run_hook_file flat "$hook_path" "$shadow_duplicates" "$@"
+    fi
+  fi
+
+  if [[ -d $hook_dir || -L $hook_dir ]]; then
+    if [[ $validate_package_paths == true ]]; then
+      if omarchy_package_hook_path_trusted "$root" "$hook_dir" directory; then
+        hook_dir=$OMARCHY_TRUSTED_HOOK_PATH
+      else
+        omarchy_warn_unsafe_package_hook_path "$hook_dir"
+        return
+      fi
+    elif [[ ! -d $hook_dir ]]; then
+      return
+    fi
+
+    for hook in "$hook_dir"/*; do
+      [[ -f $hook || -L $hook ]] || continue
+      [[ $hook == *.sample ]] && continue
+
+      if [[ $validate_package_paths == true ]]; then
+        if omarchy_package_hook_path_trusted "$root" "$hook" file; then
+          trusted_hook=$OMARCHY_TRUSTED_HOOK_PATH
+        else
+          omarchy_warn_unsafe_package_hook_path "$hook"
+          continue
+        fi
+      elif [[ -f $hook ]]; then
+        trusted_hook=$hook
+      else
+        continue
+      fi
+
+      omarchy_run_hook_file "directory/${hook##*/}" "$trusted_hook" "$shadow_duplicates" "$@"
+    done
+  fi
+}
+
+omarchy_hook_main() {
+  if (( $# < 1 )); then
+    echo "Usage: omarchy-hook [name] [args...]"
+    exit 1
+  fi
+
+  local event=$1 core_root user_root root shadow_duplicates validate_package_paths
+  local -a OMARCHY_SEEN_SYSTEM_HOOKS=() roots=()
+  shift
+
+  if ! omarchy_hook_event_valid "$event"; then
+    printf 'Invalid hook event: %q\n' "$event" >&2
+    return 2
+  fi
+
+  omarchy_realpath missing "$OMARCHY_PATH/hooks"
+  core_root=$OMARCHY_REALPATH
+  omarchy_realpath missing "$HOME/.config/omarchy/hooks"
+  user_root=$OMARCHY_REALPATH
+  mapfile -d '' -t roots < <(omarchy_hook_roots)
+
+  for root in "${roots[@]}"; do
+    if [[ $root == "$user_root" ]]; then
+      shadow_duplicates=false
+      validate_package_paths=false
+    elif [[ $root == "$core_root" ]]; then
+      shadow_duplicates=true
+      validate_package_paths=false
+    else
+      shadow_duplicates=true
+      validate_package_paths=true
+    fi
+
+    omarchy_run_hook_root "$root" "$event" "$shadow_duplicates" "$validate_package_paths" "$@"
+  done
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  omarchy_hook_main "$@"
 fi

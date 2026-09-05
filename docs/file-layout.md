@@ -59,6 +59,8 @@ Current generated theme state lives under
 may intentionally version in a dotfile manager, such as user themes, hooks,
 shell layout, plugins, and themed template overrides.
 
+Independently packaged event hooks use `<data-dir>/omarchy/hooks/<event>` or `<data-dir>/omarchy/hooks/<event>.d/*`, where `<data-dir>` is a trusted absolute directory listed by `XDG_DATA_DIRS`, such as `/usr/share`. `XDG_DATA_HOME` is not searched. Hook discovery does not rely only on `$OMARCHY_PATH`, so package-provided integrations remain available while `omarchy dev link` points the active Omarchy tree at a checkout. Unsafe writable paths and symlinked package hook paths are ignored. See [`default/agents/skills/omarchy/hooks.md`](../default/agents/skills/omarchy/hooks.md) for the complete supported path matrix, lookup order, and trust requirements.
+
 ## Build-time map (repo → installed paths)
 
 ```
