@@ -233,6 +233,33 @@ function streamRepresentsPlayer(node, player, players, streams) {
   return streamRepresentsMprisPlayer(streamLabel(node, players, streams), playerLabel)
 }
 
+function deduplicateNodes(nodes, preferredNode) {
+  var seen = {}
+  var order = []
+  var list = Array.isArray(nodes) ? nodes : []
+  for (var i = 0; i < list.length; i++) {
+    var n = list[i]
+    if (!n) continue
+    var name = String(n.name || "")
+    if (!name) continue
+    if (!seen[name]) {
+      seen[name] = n
+      order.push(name)
+    } else {
+      if (preferredNode && n === preferredNode) {
+        seen[name] = n
+      } else if (seen[name] !== preferredNode && n.id !== undefined && seen[name].id !== undefined && n.id > seen[name].id) {
+        seen[name] = n
+      }
+    }
+  }
+  var result = []
+  for (var j = 0; j < order.length; j++) {
+    result.push(seen[order[j]])
+  }
+  return result
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     isPlaybackStream: isPlaybackStream,
@@ -257,6 +284,7 @@ if (typeof module !== "undefined") {
     matchingMprisStreamLabel: matchingMprisStreamLabel,
     unmatchedMprisStreamLabel: unmatchedMprisStreamLabel,
     streamLabel: streamLabel,
-    streamRepresentsPlayer: streamRepresentsPlayer
+    streamRepresentsPlayer: streamRepresentsPlayer,
+    deduplicateNodes: deduplicateNodes
   }
 }

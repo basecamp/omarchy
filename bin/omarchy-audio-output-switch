@@ -8,8 +8,8 @@ fronted=$(omarchy-audio-tuning fronted-sink 2>/dev/null || true)
 
 sinks=$(timeout 2 pactl -f json list sinks |
   jq --arg fronted "$fronted" '[.[]
-    | select((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any))
-    | select($fronted == "" or .name != $fronted)]')
+    | select(if (.name | startswith("alsa_output.")) then ((.ports | length > 0) and ([.ports[]? | .availability != "not available"] | any)) else ((.ports | length == 0) or ([.ports[]? | .availability != "not available"] | any)) end)
+    | select($fronted == "" or .name != $fronted)] | unique_by(.name)')
 sinks_count=$(jq 'length' <<<"$sinks")
 
 if (( sinks_count == 0 )); then
