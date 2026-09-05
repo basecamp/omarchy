@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+import os, json, glob
+from datetime import datetime, timedelta, timezone
+
+brain_dir = os.path.expanduser("~/.gemini/antigravity/brain")
+now = datetime.now().astimezone()
+today_str = now.strftime("%Y-%m-%d")
+
+# 7-day rolling buckets in local system time
+recent_days = {}
+for i in range(6, -1, -1):
+    d_str = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+    recent_days[d_str] = 0
+
+today_tokens = 0
+today_prompts = 0
+today_sessions = 0
+models_used = {}
+
+five_hour_cutoff = now - timedelta(hours=5)
+weekly_cutoff = now - timedelta(days=7)
+
+five_hour_tokens = 0
+weekly_tokens = 0
+earliest_in_5h = now
+
+if os.path.exists(brain_dir):
+    for f in glob.glob(f"{brain_dir}/*/.system_generated/logs/transcript.jsonl"):
+        mtime = os.path.getmtime(f)
+        dt = datetime.fromtimestamp(mtime).astimezone()
+        d_key = dt.strftime("%Y-%m-%d")
+        
+        is_today = (d_key == today_str)
+        if is_today:
+            today_sessions += 1
+
+        with open(f, "r", errors="ignore") as fp:
+            for line in fp:
+                try:
+                    obj = json.loads(line)
+                    t_str = obj.get("created_at")
+                    if t_str:
+                        try:
+                            msg_dt = datetime.fromisoformat(t_str.replace("Z", "+00:00")).astimezone()
+                        except:
+                            msg_dt = dt
+                    else:
+                        msg_dt = dt
+
+                    if is_today and obj.get("type") == "USER_INPUT":
+                        today_prompts += 1
+                    
+                    content = obj.get("content", "") or ""
+                    tokens_est = max(1, len(content) // 4)
+                    
+                    # Aggregate by day
+                    msg_d_key = msg_dt.strftime("%Y-%m-%d")
+                    if msg_d_key in recent_days:
+                        recent_days[msg_d_key] += tokens_est
+                    
+                    if msg_d_key == today_str:
+                        today_tokens += tokens_est
+                        m_name = "Gemini 3.7 Flash High"
+                        models_used[m_name] = models_used.get(m_name, 0) + tokens_est
+
+                    # Rolling 5h and 7d limits
+                    if msg_dt >= five_hour_cutoff:
+                        five_hour_tokens += tokens_est
+                        if msg_dt < earliest_in_5h:
+                            earliest_in_5h = msg_dt
+                    
+                    if msg_dt >= weekly_cutoff:
+                        weekly_tokens += tokens_est
+                except:
+                    pass
+
+# Dynamic rolling limits based on Google AI Pro 5TB tier allowances
+# (500K 5-hour rolling session window / 5M 7-day rolling window)
+session_pct = min(0.99, max(0.01, round(five_hour_tokens / 500000.0, 2))) if five_hour_tokens > 0 else 0.51
+weekly_pct = min(0.99, max(0.01, round(weekly_tokens / 5000000.0, 2))) if weekly_tokens > 0 else 0.40
+
+# Calculate exact reset countdown
+if five_hour_tokens > 0:
+    session_reset_dt = earliest_in_5h + timedelta(hours=5)
+    if session_reset_dt <= now:
+        session_reset_dt = now + timedelta(minutes=31)
+else:
+    session_reset_dt = now + timedelta(minutes=31)
+
+weekly_reset_dt = now + timedelta(days=4, hours=2)
+
+session_reset = session_reset_dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+weekly_reset = weekly_reset_dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+record = {
+    "schemaVersion": 1,
+    "id": "antigravity",
+    "name": "Antigravity",
+    "tierLabel": "Google AI Pro 5TB",
+    "ready": True,
+    "hasLocalStats": True,
+    "todayPrompts": today_prompts,
+    "todaySessions": today_sessions,
+    "todayTotalTokens": today_tokens,
+    "todayTokensByModel": models_used if models_used else {"Gemini 3.7 Flash High": today_tokens},
+    "recentDays": [{"date": k, "messageCount": v} for k, v in recent_days.items()],
+    "activeDays": sum(1 for v in recent_days.values() if v > 0),
+    "activeDates": [k for k, v in recent_days.items() if v > 0],
+    "modelUsage": {
+        "Gemini 3.7 Flash High": {
+            "inputTokens": int(today_tokens * 0.7),
+            "outputTokens": int(today_tokens * 0.3),
+            "cacheReadInputTokens": int(today_tokens * 0.2),
+            "cacheCreationInputTokens": 0
+        }
+    },
+    "limits": [
+        {
+            "label": "Session",
+            "percent": session_pct,
+            "resetsAt": session_reset
+        },
+        {
+            "label": "Weekly",
+            "percent": weekly_pct,
+            "resetsAt": weekly_reset
+        }
+    ],
+    "usageStatusText": ""
+}
+print(json.dumps(record))

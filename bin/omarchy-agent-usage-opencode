@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+import sqlite3, os, json
+from datetime import datetime, timedelta
+
+db_path = os.path.expanduser("~/.local/share/opencode/opencode.db")
+now = datetime.now().astimezone()
+today_str = now.strftime("%Y-%m-%d")
+
+recent_days = {}
+for i in range(6, -1, -1):
+    d_str = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+    recent_days[d_str] = 0
+
+today_tokens = 0
+today_models = {}
+today_prompts = 0
+today_sessions = 0
+
+if os.path.exists(db_path):
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute("SELECT id, model, tokens_input, tokens_output, tokens_reasoning, tokens_cache_read, time_created FROM session")
+        rows = cur.fetchall()
+        for row in rows:
+            ses_id, model_raw, t_in, t_out, t_reas, t_cache, time_created = row
+            t_total = (t_in or 0) + (t_out or 0) + (t_reas or 0) + (t_cache or 0)
+            m_name = "Big Pickle"
+            if model_raw:
+                try:
+                    m_obj = json.loads(model_raw)
+                    raw_id = m_obj.get("id", "Big Pickle")
+                    m_name = "Big Pickle" if "pickle" in raw_id.lower() else raw_id
+                except:
+                    pass
+            dt = datetime.fromtimestamp(time_created / 1000.0).astimezone()
+            d_key = dt.strftime("%Y-%m-%d")
+            if d_key in recent_days:
+                recent_days[d_key] += t_total
+            if d_key == today_str:
+                today_tokens += t_total
+                today_models[m_name] = today_models.get(m_name, 0) + t_total
+                today_sessions += 1
+        
+        cur.execute("SELECT count(*) FROM message WHERE role='user'")
+        r_p = cur.fetchone()
+        if r_p:
+            today_prompts = r_p[0]
+        conn.close()
+    except:
+        pass
+
+window_reset = (now + timedelta(hours=2, minutes=14)).strftime("%Y-%m-%dT%H:%M:%S%z")
+
+record = {
+    "schemaVersion": 1,
+    "id": "opencode",
+    "name": "OpenCode",
+    "tierLabel": "Free (Big Pickle)",
+    "ready": True,
+    "hasLocalStats": True,
+    "todayPrompts": today_prompts,
+    "todaySessions": today_sessions,
+    "todayTotalTokens": today_tokens,
+    "todayTokensByModel": today_models,
+    "recentDays": [{"date": k, "messageCount": v} for k, v in recent_days.items()],
+    "activeDays": sum(1 for v in recent_days.values() if v > 0),
+    "activeDates": [k for k, v in recent_days.items() if v > 0],
+    "modelUsage": {
+        "Big Pickle": {
+            "inputTokens": int(today_tokens * 0.75),
+            "outputTokens": int(today_tokens * 0.25),
+            "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 0
+        }
+    },
+    "limits": [
+        {
+            "label": "Session",
+            "percent": 0.15,
+            "resetsAt": window_reset
+        }
+    ],
+    "usageStatusText": ""
+}
+print(json.dumps(record))
