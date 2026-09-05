@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the computer has display GPUs from more than one vendor (hybrid graphics).
+
+# Unlike omarchy-hw-hybrid-gpu, this only inspects the hardware and never
+# queries supergfxd, so it stays fast enough to run during Hyprland's config
+# reload. Read the cached sysfs IDs rather than lspci, which reads PCI config
+# space and resumes runtime-suspended GPUs.
+pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
+
+shopt -s nullglob
+
+declare -A vendors=()
+
+for device in "$pci_devices_path"/*; do
+  [[ $(< "$device/class") == 0x03* ]] || continue
+  vendors[$(< "$device/vendor")]=1
+  (( ${#vendors[@]} >= 2 )) && exit 0
+done
+
+exit 1
