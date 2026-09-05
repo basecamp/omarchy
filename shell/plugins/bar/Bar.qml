@@ -1767,8 +1767,17 @@ Item {
       var target = activeItem
       if (!target) return
       if ("bar" in target) target.bar = root
-      if ("moduleName" in target) target.moduleName = moduleName
-      if ("settings" in target) target.settings = moduleSettings
+      // Custom command modules (and any other target) may declare moduleName /
+      // settings as readonly bindings derived from their entry. `"x" in target`
+      // is still true for those, and a bare write throws TypeError and aborts
+      // the rest of injection (#9701). Swallow readonly writes so peers that
+      // need injection still receive bar/settings.
+      try {
+        if ("moduleName" in target) target.moduleName = moduleName
+      } catch (e) {}
+      try {
+        if ("settings" in target) target.settings = moduleSettings
+      } catch (e) {}
     }
 
     Component {
