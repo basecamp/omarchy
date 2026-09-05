@@ -6,7 +6,7 @@ If you screw something up, you can restore individual configs to their original 
 
 ### Reveal all tray icons all the time
 
-By default, tray icons, like Dropbox, 1password, or Steam, are hidden behind the tray expander arrow, which reveals them when you hover it. If you'd like to have them exposed all the time, right-click the expander arrow to open the tray icon manager, then pin the icons you want to keep visible (you can also hide the ones you never want to see).
+By default, tray icons, like Dropbox, 1password, or Steam, are hidden behind the tray expander arrow, which reveals them when you hover it. If you'd like to have them exposed all the time, right-click the expander arrow to open the tray icon manager and turn on **Always show**. New apps then stay visible instead of landing in the drawer. You can still pin, unpin, or hide individual icons.
 
 ### Rounded window corners
 
