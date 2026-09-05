@@ -218,13 +218,17 @@ const execSnapshot = notifications.snapshotOf({
   id: 3,
   appName: 'omarchy-action',
   summary: 'Download complete',
-  hints: { 'omarchy-exec-argv': '["mpv","--","/tmp/clip.mp4"]' }
+  hints: {
+    'omarchy-exec-argv': '["mpv","--","/tmp/clip.mp4"]',
+    'omarchy-drag-file': '/tmp/clip.mp4'
+  }
 }, 1)
 assertEqual(
   execSnapshot.execArgv,
   '["mpv","--","/tmp/clip.mp4"]',
   'notifications carry the exec argv hint onto the snapshot'
 )
+assertEqual(execSnapshot.dragFile, '/tmp/clip.mp4', 'notifications carry the drag file hint onto the snapshot')
 
 assertDeepEqual(
   notifications.popupPlacement('top', 32, 6),
@@ -266,7 +270,7 @@ const notification = {
   summary: 42,
   body: 'Body',
   image: 'file:///tmp/mail.png',
-  hints: { 'omarchy-glyph': '!' },
+  hints: { 'omarchy-glyph': '!', 'omarchy-drag-file': '/tmp/mail.png' },
   urgency: 1,
   expireTimeout: 1.5
 }
@@ -281,6 +285,7 @@ assertDeepEqual(
     body: snapshot.body,
     image: snapshot.image,
     glyph: snapshot.glyph,
+    dragFile: snapshot.dragFile,
     urgency: snapshot.urgency,
     expireTimeout: snapshot.expireTimeout,
     timestamp: snapshot.timestamp
@@ -294,6 +299,7 @@ assertDeepEqual(
     body: 'Body',
     image: 'file:///tmp/mail.png',
     glyph: '!',
+    dragFile: '/tmp/mail.png',
     urgency: 1,
     expireTimeout: 1.5,
     timestamp: 12345
@@ -556,6 +562,14 @@ assertEqual(
   '["xdg-open","/tmp/received"]',
   'notifications keep the click argv on history rows'
 )
+assertEqual(
+  notifications.popupEntry(
+    JSON.parse(notifications.serializePopup({ id: 1, originalId: 1, timestamp: 5, dragFile: '/tmp/a b.png' }, 1)),
+    1
+  ).dragFile,
+  '/tmp/a b.png',
+  'notifications round-trip the drag file through popup files'
+)
 
 // Upgrade fail-closed: a popup persisted by a pre-upgrade shell carried its
 // click action as an `exec` shell string. After the update-triggered shell
@@ -714,6 +728,26 @@ assert(
 assert(
   /parseExecArgv\(entry \? entry\.execArgv : ""\)[\s\S]{0,200}?Util\.execArgv\(argv\)/.test(serviceQml),
   'notifications service runs the popup click argv itself instead of a libnotify action'
+)
+assert(
+  /required property string dragFile[\s\S]*?dragFile: cardSlot\.dragFile/.test(serviceQml),
+  'notifications service passes the drag file to popup cards'
+)
+assert(
+  /onFileDragFinished: service\.dismissPopup\(cardSlot\.index\)/.test(serviceQml),
+  'notifications dismiss a popup after its file drag finishes'
+)
+assert(
+  /Drag\.dragType: Drag\.Automatic[\s\S]*?"text\/uri-list"[\s\S]*?DragHandler/.test(cardQml),
+  'notification cards expose marked files through native drag-and-drop'
+)
+assert(
+  /Drag\.supportedActions: Qt\.CopyAction \| Qt\.MoveAction[\s\S]{0,100}?Drag\.proposedAction: Qt\.MoveAction/.test(cardQml),
+  'notification cards prefer moving files while allowing copy-only targets'
+)
+assert(
+  /Drag\.onDragFinished: root\.fileDragFinished\(\)/.test(cardQml),
+  'notification cards report completed drags even when a Wayland target returns IgnoreAction'
 )
 assert(
   /function clear\(\): string \{\s*service\.clearHistory\(\)/.test(serviceQml),

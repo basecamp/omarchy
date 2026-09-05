@@ -150,6 +150,10 @@ function execArgvFromHints(hints) {
   return stringHint(hints, "omarchy-exec-argv")
 }
 
+function dragFileFromHints(hints) {
+  return stringHint(hints, "omarchy-drag-file")
+}
+
 // Validate a persisted omarchy-exec-argv into a runnable argv, or null. This is
 // a STRUCTURAL check only: it fails closed on a malformed hint (non-array, a
 // non-string or empty program, or a leading-dash program that argv would read as
@@ -195,6 +199,7 @@ function snapshotOf(notification, timestamp) {
     image: n.image || "",
     glyph: glyphFromHints(n.hints),
     execArgv: execArgvFromHints(n.hints),
+    dragFile: dragFileFromHints(n.hints),
     urgency: n.urgency,
     expireTimeout: expireTimeout,
     timestamp: timestamp === undefined ? Date.now() : timestamp
@@ -203,7 +208,7 @@ function snapshotOf(notification, timestamp) {
 
 // Everything the popup card draws, and therefore everything an in-place
 // update has to write through to the row and its file.
-var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "execArgv", "urgency", "expireTimeout"]
+var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "execArgv", "dragFile", "urgency", "expireTimeout"]
 
 function popupRoles() {
   return POPUP_ROLES
@@ -246,6 +251,7 @@ function historyEntry(value, normalUrgency) {
     image: e.image || "",
     glyph: e.glyph || "",
     execArgv: e.execArgv || "",
+    dragFile: e.dragFile || "",
     urgency: typeof e.urgency === "number" ? e.urgency : normalUrgency,
     expireTimeout: 0,
     timestamp: e.timestamp || 0
@@ -457,6 +463,7 @@ if (typeof module !== "undefined") {
     stringHint: stringHint,
     glyphFromHints: glyphFromHints,
     execArgvFromHints: execArgvFromHints,
+    dragFileFromHints: dragFileFromHints,
     parseExecArgv: parseExecArgv,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
     snapshotOf: snapshotOf,

@@ -49,7 +49,7 @@ hint_value() { # key -> variant value
 
 # ---------------------------------------------------------------- happy path
 send --app-name custom-app -g K -u critical -i battery-caution -t 5000 \
-  "Download complete" "A body" --exec mpv -- "/tmp/a b.mp4"
+  "Download complete" "A body" --drag-file "/tmp/a b.mp4" --exec mpv -- "/tmp/a b.mp4"
 load
 
 [[ ${args[2]} == "call" ]] || fail "notification wrapper calls a bus method"
@@ -63,7 +63,8 @@ load
 [[ $(hint_value urgency) == "2" ]] || fail "notification wrapper maps critical urgency to 2"
 [[ $(hint_value omarchy-glyph) == "K" ]] || fail "notification wrapper sets the glyph hint"
 [[ $(hint_value omarchy-exec-argv) == '["mpv","--","/tmp/a b.mp4"]' ]] || fail "notification wrapper builds the click argv hint" "$(hint_value omarchy-exec-argv)"
-pass "notification wrapper issues a Notify call with app, icon, urgency, glyph, and click argv"
+[[ $(hint_value omarchy-drag-file) == "/tmp/a b.mp4" ]] || fail "notification wrapper sets the drag file hint" "$(hint_value omarchy-drag-file)"
+pass "notification wrapper issues a Notify call with app, icon, urgency, glyph, drag file, and click argv"
 
 [[ -f $tripwire ]] && fail "notification wrapper must never invoke notify-send"
 pass "notification wrapper never invokes notify-send"
@@ -106,8 +107,9 @@ pass "notification wrapper accepts the --flag=value form"
 send "Plain" >/dev/null
 load
 has_hint omarchy-exec-argv && fail "notification wrapper adds no click hint without --exec"
+has_hint omarchy-drag-file && fail "notification wrapper adds no drag hint without --drag-file"
 [[ ${args[11]} == "Plain" ]] || fail "notification wrapper still sends a plain toast"
-pass "notification wrapper omits the click hint when no command is given"
+pass "notification wrapper omits click and drag hints when neither is requested"
 
 # ------------------------------------------------ rest-of-line --exec is literal
 : >"$args_file"

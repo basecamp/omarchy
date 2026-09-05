@@ -70,6 +70,7 @@ case "$PROCESSING" in
     # notification outage must not report the capture itself as failed.
     omarchy-notification-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" \
       --image "$FILEPATH" \
+      --drag-file "$FILEPATH" \
       --exec "$SCREENSHOT_EDITOR" "$FILEPATH" || true
     ;;
   copy)
