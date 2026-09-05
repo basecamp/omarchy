@@ -331,6 +331,66 @@ cmd_move() {
   echo "Moved $id"
 }
 
+# Look up the type the widget's own manifest declares for this key. Empty when
+# the catalog has no schema entry (unknown widget, free-form key, or catalog
+# unavailable) — callers then keep the historical string encoding.
+bar_setting_type() {
+  local id="$1" key="$2"
+  omarchy-plugin-catalog 2>/dev/null | jq -r --arg id "$id" --arg key "$key" '
+    .[]
+    | select(.id == $id)
+    | (.barWidget.schema // [])[]
+    | select(.key == $key)
+    | .type // empty
+  ' | head -n1
+}
+
+# Encode a bare CLI value as JSON. Without --json, match the manifest type so
+# `omarchy bar set … alwaysShow true` stores a boolean rather than the string
+# "true" (which QML's `=== true` then ignores while still printing success).
+encode_setting_value() {
+  local id="$1" key="$2" value="$3" value_is_json="$4"
+  local value_json schema_type lowered
+
+  if [[ $value_is_json == "true" ]]; then
+    value_json=$(jq -cn --argjson value "$value" '$value') ||
+      fail "invalid JSON value: $value"
+    printf '%s' "$value_json"
+    return
+  fi
+
+  schema_type=$(bar_setting_type "$id" "$key")
+  case "$schema_type" in
+    boolean)
+      lowered=${value,,}
+      case "$lowered" in
+        true | 1 | yes | on)
+          printf 'true'
+          ;;
+        false | 0 | no | off)
+          printf 'false'
+          ;;
+        *)
+          fail "setting $key expects a boolean (true/false), got: $value"
+          ;;
+      esac
+      ;;
+    number | integer)
+      [[ $value =~ ^-?[0-9]+([.][0-9]+)?$ ]] ||
+        fail "setting $key expects a number, got: $value"
+      # --argjson keeps a real JSON number rather than a quoted string.
+      value_json=$(jq -cn --argjson value "$value" '$value') ||
+        fail "setting $key expects a number, got: $value"
+      printf '%s' "$value_json"
+      ;;
+    *)
+      # Strings, multiselect, and undeclared keys stay strings unless --json.
+      value_json=$(jq -cn --arg value "$value" '$value')
+      printf '%s' "$value_json"
+      ;;
+  esac
+}
+
 cmd_set() {
   local id="${1:-}"
   local key="${2:-}"
@@ -350,12 +410,7 @@ cmd_set() {
     fail "set does not accept --before or --after"
 
   local value_json
-  if [[ $value_is_json == "true" ]]; then
-    value_json=$(jq -cn --argjson value "$value" '$value') ||
-      fail "invalid JSON value: $value"
-  else
-    value_json=$(jq -cn --arg value "$value" '$value')
-  fi
+  value_json=$(encode_setting_value "$id" "$key" "$value" "$value_is_json")
 
   local result
   result=$(omarchy-shell shell setBarWidget "$id" "$key" "$value_json" "$(placement_json)")

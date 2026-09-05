@@ -298,6 +298,35 @@ HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent toggle
 jq -e '.bar.transparent == false' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
 pass "shell config toggles bar transparency"
 
+# Manifest-declared booleans must not be stored as the string "true"/"false":
+# Indicators.qml reads alwaysShow with `=== true`, which rejects the string form
+# while the CLI still reports success.
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.indicators alwaysShow true
+grep -Fqx 'shell setBarWidget omarchy.indicators alwaysShow true {}' \
+  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls" ||
+  fail "bar set coerces a bare true to a JSON boolean for alwaysShow" \
+    "$(tail -5 "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls")"
+pass "bar set coerces bare true to a boolean for alwaysShow"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.indicators alwaysShow false
+grep -Fqx 'shell setBarWidget omarchy.indicators alwaysShow false {}' \
+  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls" ||
+  fail "bar set coerces a bare false to a JSON boolean for alwaysShow"
+pass "bar set coerces bare false to a boolean for alwaysShow"
+
+if HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.indicators alwaysShow maybe 2>/dev/null; then
+  fail "bar set accepted a non-boolean for a boolean setting"
+fi
+pass "bar set rejects a non-boolean for alwaysShow"
+
+# Free-form string settings stay strings without --json.
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.clock format HH:mm
+grep -Fqx 'shell setBarWidget omarchy.clock format "HH:mm" {}' \
+  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls" ||
+  fail "bar set still stores string settings as JSON strings" \
+    "$(tail -5 "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls")"
+pass "bar set keeps free-form string settings as strings"
+
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.bluetooth enabled false --json
 grep -Fqx 'shell setBarWidget omarchy.bluetooth enabled false {}' \
   "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls"
