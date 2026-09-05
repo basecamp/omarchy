@@ -487,8 +487,54 @@ assert(
   'menu filter changes disarm pointer selection'
 )
 assert(
-  /function setActiveMenu\(id, pushHistory, fromPointer\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
+  /function setActiveMenu\(id, pushHistory, fromPointer, restoredFilter\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
   'menu route changes only accept an initial pointer sample for mouse activation'
+)
+const filteredParent = menu.captureNavigationState('root', 'style', 0, 'style')
+assertDeepEqual(
+  filteredParent,
+  { menuId: 'root', filterText: 'style', selectedIndex: 0, selectedItemId: 'style' },
+  'menu history preserves the parent filter and selected row identity'
+)
+assertDeepEqual(
+  menu.restoreNavigationState([
+    { itemId: 'apps', disabled: false },
+    { itemId: 'system', disabled: false },
+    { itemId: 'style', disabled: false }
+  ], filteredParent),
+  { menuId: 'root', filterText: 'style', selectedIndex: 2 },
+  'menu restores the same filtered parent row after rows are rebuilt or reordered'
+)
+assertEqual(
+  menu.restoreNavigationState([
+    { itemId: 'apps', disabled: false },
+    { itemId: 'style', disabled: true },
+    { itemId: 'system', disabled: false }
+  ], filteredParent).selectedIndex,
+  2,
+  'menu advances to a selectable row when the restored row became disabled'
+)
+assertEqual(
+  menu.restoreNavigationState([
+    { itemId: 'apps', disabled: true },
+    { itemId: 'style', disabled: true }
+  ], filteredParent).selectedIndex,
+  -1,
+  'menu restores no cursor when every rebuilt row is disabled'
+)
+assertEqual(
+  menu.restoreNavigationState([
+    { itemId: 'apps', disabled: false },
+    { itemId: 'system', disabled: false }
+  ], menu.captureNavigationState('root', '', 8, 'missing')).selectedIndex,
+  1,
+  'menu clamps the saved index when its row disappeared'
+)
+assert(
+  /MenuModel\.captureNavigationState\([\s\S]*root\.activeMenu, root\.filterText, root\.selectedIndex, selectedItemId/.test(menuQml)
+    && /root\.setActiveMenu\(previous\.menuId, false, false, previous\.filterText\)/.test(menuQml)
+    && /MenuModel\.restoreNavigationState\(rows, previous\)/.test(menuQml),
+  'menu wires captured navigation state through back navigation'
 )
 assert(
   /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),

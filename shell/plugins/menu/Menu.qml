@@ -726,16 +726,24 @@ Item {
     root.rebuildDisplay()
   }
 
-  function setActiveMenu(id, pushHistory, fromPointer) {
+  function setActiveMenu(id, pushHistory, fromPointer, restoredFilter) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
-    if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
+    if (pushHistory && id !== root.activeMenu) {
+      var selectedItemId = ""
+      if (root.cursorActive && root.selectedIndex >= 0 && root.selectedIndex < displayModel.count)
+        selectedItemId = displayModel.get(root.selectedIndex).itemId
+      root.navStack = root.navStack.concat([MenuModel.captureNavigationState(
+        root.activeMenu, root.filterText, root.selectedIndex, selectedItemId
+      )])
+    }
     root.activeMenu = id
-    root.filterText = ""
+    root.filterText = restoredFilter === undefined ? "" : String(restoredFilter)
     root.selectedIndex = 0
     root.cursorActive = true
     if (fromPointer) pointerGate.allowInitialSample()
     else root.disarmPointer()
+    if (root.filterText.trim()) root.loadProvidersForSearch()
     root.rebuildDisplay()
     root.invalidateVolatileProvider(id)
     root.loadProviderForMenu(id)
@@ -747,7 +755,17 @@ Item {
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
       root.navStack = root.navStack.slice(0, root.navStack.length - 1)
-      root.setActiveMenu(previous, false)
+      root.setActiveMenu(previous.menuId, false, false, previous.filterText)
+
+      Qt.callLater(function() {
+        var rows = []
+        for (var i = 0; i < displayModel.count; i++) rows.push(displayModel.get(i))
+        var restored = MenuModel.restoreNavigationState(rows, previous)
+        root.selectedIndex = restored.selectedIndex >= 0 ? restored.selectedIndex : 0
+        root.cursorActive = restored.selectedIndex >= 0
+        if (root.cursorActive) root.revealCursor()
+      })
+
       return true
     }
 
