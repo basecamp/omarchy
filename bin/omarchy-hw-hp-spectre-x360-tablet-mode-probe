@@ -1,0 +1,126 @@
+#!/usr/bin/python3
+# omarchy:summary=Probe the live tablet-mode switch on a 2019 HP Spectre x360 and report whether it is stuck
+# omarchy:args=[--proc-devices PATH] [--device PATH] [--samples 0,1,...] [--duration SECONDS]
+# omarchy:hidden=true
+"""Watch the "Intel HID switches" SW_TABLET_MODE bit and classify the sensor.
+
+`omarchy-setup-hp-spectre-x360-tablet-mode` calls this to decide whether a unit
+is actually affected before it blacklists anything. A healthy sensor toggles the
+switch as the lid moves; the defective hinge sensor on some 13-ap0xxx units
+reports tablet mode no matter what, and intel_hid then tells the EC to cut the
+keyboard and touchpad.
+
+Output is a single verdict line on stdout:
+
+  STUCK          every reading over the window was tablet-mode = 1
+  OK             the reading changed, so the sensor is fine
+  NOT_FOUND      no "Intel HID switches" device (intel_hid not loaded)
+  NO_PERMISSION  the switch device exists but is not readable
+
+The flags exist so the behavior can be exercised without the hardware: point
+`--proc-devices` / `--device` at fixtures, or replay a reading sequence with
+`--samples` instead of polling a real evdev node.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import os
+import sys
+import time
+from collections.abc import Callable, Iterable
+
+
+def eviocgsw(length: int) -> int:
+  # asm-generic/ioctl.h + linux/input.h: EVIOCGSW(len) = _IOC(_IOC_READ, 'E', 0x1b, len)
+  _IOC_READ = 2
+  return (_IOC_READ << 30) | (length << 16) | (ord("E") << 8) | 0x1B
+
+
+EVIOCGSW = eviocgsw(8)
+SW_TABLET_MODE_BIT = 1  # linux/input-event-codes.h: SW_TABLET_MODE 0x01
+
+
+def find_switch_device(proc_devices: str = "/proc/bus/input/devices") -> str | None:
+  """Resolve the /dev/input/eventN node for the "Intel HID switches" device."""
+  try:
+    blocks = open(proc_devices).read().split("\n\n")
+  except FileNotFoundError:
+    return None
+
+  for block in blocks:
+    name = handler = None
+    for line in block.splitlines():
+      if line.startswith("N: Name="):
+        name = line.split("=", 1)[1].strip('"')
+      elif line.startswith("H: Handlers="):
+        for token in line.split("=", 1)[1].split():
+          if token.startswith("event"):
+            handler = "/dev/input/" + token
+    if name == "Intel HID switches" and handler:
+      return handler
+  return None
+
+
+def read_tablet_mode(fd: int) -> int:
+  buf = bytearray(8)
+  fcntl.ioctl(fd, EVIOCGSW, buf, True)
+  return (buf[0] >> SW_TABLET_MODE_BIT) & 1
+
+
+def poll_tablet_mode(
+  read: Callable[[], int],
+  duration: float = 15.0,
+  interval: float = 0.5,
+  clock: Callable[[], float] = time.monotonic,
+  sleep: Callable[[float], None] = time.sleep,
+) -> set[int]:
+  """Sample `read` until `duration` elapses; return the set of values seen."""
+  seen: set[int] = set()
+  deadline = clock() + duration
+  while clock() < deadline:
+    seen.add(read())
+    sleep(interval)
+  return seen
+
+
+def classify(readings: Iterable[int]) -> str:
+  return "STUCK" if set(readings) == {1} else "OK"
+
+
+def main(argv: list[str] | None = None) -> int:
+  parser = argparse.ArgumentParser(add_help=True, description=__doc__)
+  parser.add_argument("--proc-devices", default="/proc/bus/input/devices")
+  parser.add_argument("--device", help="switch device node; skips /proc discovery")
+  parser.add_argument("--samples", help="comma-separated readings to classify instead of polling")
+  parser.add_argument("--duration", type=float, default=15.0)
+  args = parser.parse_args(argv)
+
+  if args.samples is not None:
+    readings = [int(value) for value in args.samples.split(",") if value != ""]
+    print(classify(readings))
+    return 0
+
+  device = args.device or find_switch_device(args.proc_devices)
+  if not device:
+    print("NOT_FOUND")
+    return 0
+
+  try:
+    fd = os.open(device, os.O_RDONLY)
+  except PermissionError:
+    print("NO_PERMISSION")
+    return 0
+
+  try:
+    readings = poll_tablet_mode(lambda: read_tablet_mode(fd), args.duration)
+  finally:
+    os.close(fd)
+
+  print(classify(readings))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

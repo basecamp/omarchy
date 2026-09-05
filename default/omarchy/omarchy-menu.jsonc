@@ -176,6 +176,8 @@
   "setup.plugin.remove": {"icon":"󰭌","label":"Remove Plugin","when":"compgen -G \"$HOME/.config/omarchy/plugins/*/manifest.json\"","action":"omarchy-menu-plugin remove"},
   "setup.security": {"icon":"","label":"Security"},
   "setup.config": {"icon":"","label":"Config"},
+  "setup.hardware": {"icon":"","label":"Hardware"},
+  "setup.hardware.hp-spectre-x360-tablet-mode": {"icon":"󰌌","label":"Tablet-Mode Sensor","when":"omarchy-hw-hp-spectre-x360-2019","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-hp-spectre-x360-tablet-mode"},
   "setup.security.fingerprint": {"icon":"󰈷","label":"Fingerprint","when":"omarchy-hw-fingerprint","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fingerprint"},
   "setup.security.fido2": {"icon":"","label":"Fido2","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fido2"},
   "setup.security.sshd": {"icon":"󰣀","label":"SSHD","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-sshd"},
