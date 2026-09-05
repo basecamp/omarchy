@@ -11,7 +11,7 @@ ship `backgrounds/` (users overlay their own via
 `~/.config/omarchy/backgrounds/<name>/`; the active image is the
 `~/.local/state/omarchy/current/background` symlink), `preview.png` and
 `preview-unlock.png` for the theme switcher, `icons.theme`, `keyboard.rgb`,
-`unlock.png`, and a `light.mode` marker file.
+`unlock.png`, a `light.mode` marker file, and a [startup sound](#startup-sound).
 
 A theme installed from a git repo is held to a much shorter list; see [What an installed theme may not ship](#what-an-installed-theme-may-not-ship).
 
@@ -64,6 +64,25 @@ A theme predating `colors.toml` is not left without a palette: its `alacritty.to
 The restriction lives in `omarchy-theme-set` rather than in `omarchy-theme-install` on purpose. Filtering at staging also covers themes installed before the rule existed and files a theme gains later through `omarchy theme update`.
 
 What this does not cover: a theme distributed as an archive rather than a git repo, extracted into `~/.config/omarchy/themes/` by hand, is indistinguishable from one the user wrote and stages in full. `omarchy theme install` only takes git URLs, so the supported path is always filtered, but the check is a statement about where a theme came from and not a sandbox.
+
+## Startup sound
+
+A theme can ship one sound named `startup.wav`. `default/hypr/autostart.lua` runs `omarchy-theme-startup-sound` on `hyprland.start`; the command waits up to ten seconds for WirePlumber to expose a default sink and plays the sound only after the user opts in with `omarchy toggle startup sound`. Startup sounds are off by default so selecting a visual theme never unexpectedly makes noise.
+
+The sound is the one theme file a stranger's repo can ship that is neither colour nor code, so its processing deliberately avoids general-purpose media decoders:
+
+- A cloned theme's regular `startup.wav` is staged, while `stage_installed_theme` drops symlinks. At playback, `omarchy-theme-startup-sound` copies no more than one byte beyond the 2,880,044-byte valid-file limit into a private runtime snapshot without following a final symlink.
+- The snapshot must be a canonical 44-byte-header RIFF/WAVE file containing signed 16-bit little-endian PCM, one or two channels, a sample rate of 44.1 or 48 kHz, no metadata or extra chunks, and no more than 15 seconds of samples.
+- The command extracts only the sample bytes and invokes `pw-play --raw` with the validated format values. This bypasses libsndfile and other container or codec parsers entirely.
+- Playback uses a private sample file with an exact validated length, a 25% stream-volume cap, and a `timeout --kill-after` deadline. WirePlumber probes and the bounded snapshot copy have hard deadlines too.
+
+Convert another audio file to the accepted layout with:
+
+```bash
+ffmpeg -i input.ext -t 15 -map_metadata -1 -ac 2 -ar 48000 -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact startup.wav
+```
+
+`test/shell.d/theme-startup-sound-test.sh` covers the format boundary, known malicious fixtures, timeout enforcement, opt-in state, and concurrent theme replacement against a stub `pw-play`.
 
 ## `colors.toml`
 

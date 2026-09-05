@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle the theme startup sound played at login
+
+# nf-md-volume_high, escaped so this file reads without a Nerd Font.
+readonly SOUND_GLYPH=$'\U000f057e'
+
+omarchy-toggle startup-sound-enabled
+
+if omarchy-toggle-enabled startup-sound-enabled; then
+  omarchy-notification-send -g "$SOUND_GLYPH" "Startup sound enabled"
+else
+  omarchy-notification-send -g "$SOUND_GLYPH" "Startup sound disabled"
+fi

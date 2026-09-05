@@ -1,0 +1,162 @@
+#!/bin/bash
+
+# omarchy:summary=Play the current theme's startup sound, if enabled
+
+# A startup sound may come from a stranger's theme repo. Keep those bytes out
+# of native media decoders: accept one small, canonical PCM WAV layout, copy its
+# samples into a private file, and give pw-play raw PCM instead of the container.
+
+THEME_PATH="$HOME/.local/state/omarchy/current/theme"
+SOUND_PATH="$THEME_PATH/startup.wav"
+MAX_SOUND_SECONDS=15
+PLAYER_TIMEOUT_SECONDS=$((MAX_SOUND_SECONDS + 2))
+WAVE_HEADER_BYTES=44
+MAX_SOUND_BYTES=$((WAVE_HEADER_BYTES + MAX_SOUND_SECONDS * 48000 * 2 * 2))
+MAX_STREAM_VOLUME=0.25
+SINK_WAIT_SECONDS=10
+COMMAND_KILL_GRACE=1s
+
+WAVE_CHANNELS=""
+WAVE_SAMPLE_RATE=""
+WAVE_DATA_BYTES=""
+snapshot_dir=""
+
+cleanup() {
+  if [[ -n $snapshot_dir && -d $snapshot_dir ]]; then
+    rm -rf -- "$snapshot_dir"
+  fi
+}
+
+refuse_invalid_wave() {
+  echo "Refusing $SOUND_PATH: startup.wav must be canonical 16-bit PCM WAV audio" >&2
+  return 1
+}
+
+startup_sound_exists() {
+  if [[ -L $SOUND_PATH ]]; then
+    echo "Refusing $SOUND_PATH: a startup sound cannot be a symlink" >&2
+    return 1
+  elif [[ -e $SOUND_PATH && ! -f $SOUND_PATH ]]; then
+    echo "Refusing $SOUND_PATH: a startup sound must be a regular file" >&2
+    return 1
+  else
+    [[ -f $SOUND_PATH ]]
+  fi
+}
+
+# Copy at most one byte beyond the limit. Validation and playback then use only
+# this private snapshot, so a concurrent theme switch cannot swap the decoder's
+# input after it has been checked.
+snapshot_startup_sound() {
+  local snapshot="$1"
+
+  if [[ -L $SOUND_PATH || ! -f $SOUND_PATH ]]; then
+    echo "Refusing $SOUND_PATH: the startup sound changed before it could be checked" >&2
+    return 1
+  fi
+
+  if ! timeout --kill-after="$COMMAND_KILL_GRACE" 2s \
+    dd if="$SOUND_PATH" of="$snapshot" bs=64K count="$((MAX_SOUND_BYTES + 1))" \
+      iflag=nofollow,count_bytes status=none; then
+    echo "Refusing $SOUND_PATH: the startup sound could not be copied safely" >&2
+    return 1
+  fi
+}
+
+sound_is_playable() {
+  local sound="$1"
+  local -a header
+  local file_size riff_size fmt_size audio_format channels sample_rate
+  local byte_rate block_align bits_per_sample data_size expected_block_align
+
+  file_size=$(stat -c %s -- "$sound") || return 1
+  if (( file_size > MAX_SOUND_BYTES )); then
+    echo "Refusing $SOUND_PATH: larger than $MAX_SOUND_BYTES bytes" >&2
+    return 1
+  fi
+
+  read -r -a header < <(od -An -v -tu1 -w44 -N"$WAVE_HEADER_BYTES" -- "$sound")
+  if (( ${#header[@]} != WAVE_HEADER_BYTES )); then
+    refuse_invalid_wave
+    return 1
+  fi
+
+  # Exact canonical layout: RIFF(size) WAVE fmt\x20(16, PCM, mono/stereo,
+  # rate, byte rate, alignment, 16-bit) data(size), followed by samples.
+  if (( header[0] != 82 || header[1] != 73 || header[2] != 70 || header[3] != 70 ||
+        header[8] != 87 || header[9] != 65 || header[10] != 86 || header[11] != 69 ||
+        header[12] != 102 || header[13] != 109 || header[14] != 116 || header[15] != 32 ||
+        header[36] != 100 || header[37] != 97 || header[38] != 116 || header[39] != 97 )); then
+    refuse_invalid_wave
+    return 1
+  fi
+
+  riff_size=$((header[4] | header[5] << 8 | header[6] << 16 | header[7] << 24))
+  fmt_size=$((header[16] | header[17] << 8 | header[18] << 16 | header[19] << 24))
+  audio_format=$((header[20] | header[21] << 8))
+  channels=$((header[22] | header[23] << 8))
+  sample_rate=$((header[24] | header[25] << 8 | header[26] << 16 | header[27] << 24))
+  byte_rate=$((header[28] | header[29] << 8 | header[30] << 16 | header[31] << 24))
+  block_align=$((header[32] | header[33] << 8))
+  bits_per_sample=$((header[34] | header[35] << 8))
+  data_size=$((header[40] | header[41] << 8 | header[42] << 16 | header[43] << 24))
+  expected_block_align=$((channels * 2))
+
+  if (( fmt_size != 16 || audio_format != 1 ||
+        (channels != 1 && channels != 2) ||
+        (sample_rate != 44100 && sample_rate != 48000) ||
+        bits_per_sample != 16 || block_align != expected_block_align ||
+        byte_rate != sample_rate * block_align ||
+        riff_size != file_size - 8 || data_size != file_size - WAVE_HEADER_BYTES ||
+        data_size == 0 || data_size % block_align != 0 )); then
+    refuse_invalid_wave
+    return 1
+  fi
+
+  if (( data_size > MAX_SOUND_SECONDS * byte_rate )); then
+    echo "Refusing $SOUND_PATH: longer than $MAX_SOUND_SECONDS seconds" >&2
+    return 1
+  fi
+
+  WAVE_CHANNELS=$channels
+  WAVE_SAMPLE_RATE=$sample_rate
+  WAVE_DATA_BYTES=$data_size
+}
+
+# Hyprland starts this before WirePlumber has necessarily brought a sink up.
+# Each probe has its own hard deadline as well as the overall wait deadline.
+wait_for_audio_sink() {
+  local deadline=$((SECONDS + SINK_WAIT_SECONDS))
+
+  while ! timeout --kill-after=0.1s 0.5s wpctl inspect @DEFAULT_AUDIO_SINK@ >/dev/null 2>&1; do
+    (( SECONDS < deadline )) || return 1
+    sleep 0.5
+  done
+}
+
+# Third-party themes can carry the sound, so playback requires an explicit
+# opt-in instead of letting a newly selected theme make noise by default.
+omarchy-toggle-enabled startup-sound-enabled || exit 0
+startup_sound_exists || exit 0
+wait_for_audio_sink || exit 0
+
+umask 077
+snapshot_dir=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/omarchy-startup-sound.XXXXXX") || exit 1
+trap cleanup EXIT
+
+snapshot="$snapshot_dir/startup.wav"
+raw_sound="$snapshot_dir/startup.raw"
+
+snapshot_startup_sound "$snapshot" || exit 1
+sound_is_playable "$snapshot" || exit 1
+tail -c +$((WAVE_HEADER_BYTES + 1)) -- "$snapshot" >"$raw_sound" || exit 1
+
+if (( $(stat -c %s -- "$raw_sound") != WAVE_DATA_BYTES )); then
+  echo "Refusing $SOUND_PATH: the startup sound changed while being prepared" >&2
+  exit 1
+fi
+
+timeout --kill-after="$COMMAND_KILL_GRACE" "$PLAYER_TIMEOUT_SECONDS" \
+  pw-play --raw --format=s16 --rate="$WAVE_SAMPLE_RATE" --channels="$WAVE_CHANNELS" \
+    --volume="$MAX_STREAM_VOLUME" "$raw_sound" \
+    >/dev/null 2>&1

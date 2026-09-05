@@ -12,7 +12,7 @@ A theme you write yourself in `~/.config/omarchy/themes` can contain whatever yo
 
 A theme you install from someone else's repo with `omarchy theme install` keeps everything that's colour, and loses the handful of files that would run code on your machine: any `.lua` file, the terminal configs (`alacritty.toml`, `foot.ini`, `ghostty.conf`, `kitty.conf`), and `vscode.json`. A theme's `hyprland.lua` is Lua your compositor runs at login, a terminal config names the program your terminal starts, and `vscode.json` names a VSCode extension to install. Installing someone's theme should change what your desktop looks like, never what it runs.
 
-Everything else still works exactly as the theme author wrote it — `btop.theme`, `chromium.theme`, `helix.toml`, `icons.theme`, `shell.toml`, the backgrounds and the previews are all kept. Only what was dropped gets regenerated from `colors.toml` on your machine.
+Everything else still works exactly as the theme author wrote it — `btop.theme`, `chromium.theme`, `helix.toml`, `icons.theme`, `shell.toml`, the backgrounds, the previews and the startup sound are all kept. Only what was dropped gets regenerated from `colors.toml` on your machine.
 
 Omarchy tells the two apart by whether the theme has its own git repo inside it, which is what `omarchy theme install` leaves behind when it clones. So a theme you wrote stays yours, and one you pulled off the internet stays colours.
 
@@ -27,6 +27,12 @@ If you'd like to color-match the file manager icons to your theme, add a file ca
 ### Unlock image
 
 Themes supplied with `unlock.png` and `preview-unlock.png` images will be listed under _Style > Unlock_. Your `unlock.png` should preferably be a transparent png. And you can create the preview image using `omarchy plymouth preview`.
+
+### Startup sound
+
+A theme can play a short sound when you log in. Add a file called `startup.wav` to the root of your theme. For safety, it must be a plain 16-bit PCM WAV with one or two channels, a 44.1 or 48 kHz sample rate, no metadata chunks, and no more than 15 seconds of audio. Convert another audio file to that exact layout with `ffmpeg -i input.ext -t 15 -map_metadata -1 -ac 2 -ar 48000 -c:a pcm_s16le -fflags +bitexact -flags:a +bitexact startup.wav`.
+
+Startup sounds are off by default. Enable them under _Toggle > Startup Sound_ in the Omarchy menu, or with `omarchy toggle startup sound`, then try the current theme's sound without logging in again with `omarchy theme startup sound`. Playback is capped at 25% stream volume and stops after 15 seconds.
 
 ### Theming apps Omarchy doesn't cover
 

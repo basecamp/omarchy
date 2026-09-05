@@ -84,7 +84,9 @@ printf 'png\n' >"$hostile/preview.png"
 printf 'png\n' >"$hostile/backgrounds/1-real.png"
 printf '%s\n' "$marker" >"$hostile/backgrounds/payload.sh"
 printf '# notes\n' >"$hostile/README.md"
+printf 'RIFF\n' >"$hostile/startup.wav"
 ln -s /etc/hostname "$hostile/unlock.png"
+ln -s /etc/hostname "$hostile/startup.ogg"
 
 set_theme hostile || fail "omarchy-theme-set applies a theme that ships disallowed files"
 
@@ -96,6 +98,11 @@ assert_staged backgrounds/1-real.png "an image in backgrounds/ is staged"
 
 assert_not_staged unlock.png "a symlink is not followed out of the theme"
 assert_not_staged vscode.json "vscode.json names an extension to install and is not staged"
+
+# A startup sound is kept as data. The playback command accepts only canonical
+# PCM and extracts raw samples rather than sending the container to a decoder.
+assert_staged startup.wav "the theme's startup sound is staged"
+assert_not_staged startup.ogg "a symlinked startup sound is not followed"
 
 assert_staged icons.theme "the theme's icon set name is staged"
 grep -q 'Yaru-red' "$(staged icons.theme)" || fail "the staged icons.theme is the theme's"
