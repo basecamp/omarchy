@@ -1020,7 +1020,8 @@ Item {
             Layout.preferredWidth: card.implicitWidth
             // The model stays newest-first for notification actions. Visually,
             // new toasts extend the stack away from the configured screen edge.
-            Layout.row: popupWindow.popupPlacement.anchors.bottom ? index : popupModel.count - 1 - index
+            Layout.row: popupWindow.popupPlacement.anchors.bottom
+              ? index : popupModel.count - 1 - index
             Layout.column: 0
             Layout.alignment: popupWindow.popupPlacement.anchors.left ? Qt.AlignLeft : Qt.AlignRight
             implicitHeight: card.implicitHeight
