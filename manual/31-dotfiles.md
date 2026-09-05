@@ -45,6 +45,51 @@ Omarchy fires hooks at a handful of moments, and you can hang your own scripts o
 
 Each of those directories already holds a `.sample` file showing the shape of a hook — drop the `.sample` from the name to put it to work. To install a script you've written elsewhere, use `omarchy hook install post-boot ~/my-hook`, which copies it in and makes it executable.
 
+#### Checking services without startup alerts
+
+`post-boot` means the desktop has started, not that every application or user service is ready. A health check can otherwise report a failure while the service it checks is still starting. Wait for the readiness condition you actually need, with a bounded retry, before notifying.
+
+For example, save this as `~/check-my-service`, replace `my-service.service` with your user service, and install it with `omarchy hook install post-boot ~/check-my-service`:
+
+```bash
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+state="$HOME/.local/state/check-my-service"
+mkdir -p "$state"
+exec 9>"$state/lock"
+flock -n 9 || exit 0
+
+report=$(mktemp "$state/.report-XXXXXX")
+trap 'rm -f -- "$report"' EXIT
+status="FAIL"
+for attempt in {1..12}; do
+  if timeout 2s systemctl --user is-active --quiet my-service.service; then
+    status="OK"
+    break
+  fi
+  if (( attempt < 12 )); then
+    sleep 5
+  fi
+done
+
+printf 'Status: %s\nChecked: %s\nAttempts: %s\n' \
+  "$status" "$(date --iso-8601=seconds)" "$attempt" > "$report"
+mv -f -- "$report" "$state/health.txt"
+
+if [[ $status == "OK" ]]; then
+  omarchy notification dismiss "My service health check failed"
+else
+  omarchy notification send -u critical "My service health check failed" "Report: $state/health.txt"
+  exit 1
+fi
+```
+
+This keeps a private, dated report, publishes it atomically, and clears only the matching old notification after a successful check. Use a distinct notification title and state directory for each check. `systemctl is-active` checks the unit's active state; if you need application readiness, replace it with a read-only probe for that application's ready state. Keep a timeout on the probe so a stalled check cannot wait indefinitely.
+
+You can install the same script as a `post-update` hook; the lock avoids overlapping runs. Hooks run sequentially, so retries delay the remaining hooks. Keep the wait short, or use a separate user service/timer for longer-running monitoring. Recovery is checked the next time the hook runs, not continuously. Retry only read-only checks: rerunning an installation, migration, or other state-changing hook may repeat its side effects. This example does not change how Omarchy runs other hooks.
+
 ### Adding your own menu entries
 
 The Omarchy menu (`Super + Space`) can be extended with your own rows by editing `~/.config/omarchy/extensions/omarchy-menu.jsonc`. Entries are keyed by a dotted id, and the id is what places them in the tree, so `personal` shows up on the root menu and `personal.notes` shows up inside it:
