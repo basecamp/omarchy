@@ -74,6 +74,9 @@ assert_detects "a reader is detected by an existing product-name match"
 write_usb_devices '27c6:1234'
 assert_detects "a reader is detected by an existing vendor match"
 
+write_usb_devices '0a5c:5843:58200'
+assert_detects "a Broadcom reader is detected by vendor match despite a non-descriptive product string"
+
 bind_driver() {
   local dev="$1" driver="$2"
 
