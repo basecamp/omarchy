@@ -46,6 +46,7 @@ ln -s "$sleep_monitor" "$mock_omarchy/bin/omarchy-system-sleep-monitor"
 
 start_us=${EPOCHREALTIME//[!0-9]/}
 OMARCHY_PATH="$mock_omarchy" \
+  DBUS_MONITOR="$mock_bin/dbus-monitor" \
   PATH="$mock_bin:$PATH" \
   PRODUCER_PID_FILE="$producer_pid_file" \
   LOCK_LOG="$lock_log" \
@@ -79,6 +80,7 @@ chmod +x "$mock_bin/dbus-monitor"
 rm -f "$producer_pid_file"
 
 OMARCHY_PATH="$mock_omarchy" \
+  DBUS_MONITOR="$mock_bin/dbus-monitor" \
   PATH="$mock_bin:$PATH" \
   PRODUCER_PID_FILE="$producer_pid_file" \
   LOCK_LOG="$lock_log" \
@@ -104,3 +106,13 @@ if kill -0 "$producer_pid" 2>/dev/null; then
   fail "sleep monitor cleans up its producer when terminated" "producer still running: $producer_pid"
 fi
 pass "sleep monitor cleans up its producer when terminated"
+
+# The monitor must not resolve dbus-monitor by bare PATH lookup — a shadowing
+# PATH entry (Homebrew's relocatable dbus build) would redirect it to the wrong
+# system bus and leave omarchy-sleep-lock.service restart-looping silently.
+grep -q 'DBUS_MONITOR="${DBUS_MONITOR:-/usr/bin/dbus-monitor}"' "$sleep_monitor" ||
+  fail "sleep monitor resolves dbus-monitor by absolute path by default"
+if grep -Eq 'exec[[:space:]]+dbus-monitor[[:space:]]' "$sleep_monitor"; then
+  fail "sleep monitor still invokes bare dbus-monitor from PATH"
+fi
+pass "sleep monitor resolves dbus-monitor by absolute path by default"
