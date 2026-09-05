@@ -49,4 +49,7 @@ automatically. If a change somehow fails to apply, force a reload with
 
 Set `idle.screensaver` and `idle.lock` in `~/.config/omarchy/shell.json`,
 in seconds since user idle began. Example: "lock after ten minutes" means
-setting `idle.lock` to `600`.
+setting `idle.lock` to `600`. Firefox-family browsers (Firefox, Zen,
+LibreWolf) also inhibit idle while their MPRIS player reports Playing, so
+the screensaver stays off during windowed or fullscreen video without
+turning Stay Awake on.

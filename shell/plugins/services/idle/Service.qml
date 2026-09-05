@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Services.Mpris
 import "IdleModel.js" as IdleModel
 
 Item {
@@ -22,7 +23,9 @@ Item {
   readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
   readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
-  readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
+  readonly property var players: Mpris.players ? Mpris.players.values : []
+  readonly property bool firefoxFamilyPlaying: IdleModel.firefoxFamilyIsPlaying(players)
+  readonly property bool idleEnabled: IdleModel.idleEnabledAfter(stayAwakeStateLoaded, stayAwake, mediaInhibiting)
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
   property bool stayAwake: false
@@ -35,6 +38,7 @@ Item {
   property string lastEventAt: ""
   property var screensaverWindows: ({})
   property int screensaverWindowCount: 0
+  property bool mediaInhibiting: false
 
   function secondsFromConfig(value, fallback) {
     return IdleModel.secondsFromConfig(value, fallback)
@@ -183,6 +187,8 @@ Item {
       stayAwake: root.stayAwake,
       stayAwakeStateLoaded: root.stayAwakeStateLoaded,
       stayAwakeStatePath: root.stayAwakeStatePath,
+      firefoxFamilyPlaying: root.firefoxFamilyPlayingNow(),
+      mediaInhibiting: root.mediaInhibiting,
       idle: idleMonitor.isIdle,
       inIdleCycle: root.idledThisCycle,
       screensaverStarted: root.screensaverStartedThisCycle,
@@ -247,6 +253,23 @@ Item {
     return applyStayAwake(!value, true, "ipc")
   }
 
+  function firefoxFamilyPlayingNow() {
+    return IdleModel.firefoxFamilyIsPlaying(players)
+  }
+
+  function syncMediaInhibit() {
+    if (firefoxFamilyPlayingNow()) {
+      mediaReleaseTimer.stop()
+      if (root.mediaInhibiting) return
+      root.mediaInhibiting = true
+      logEvent("media-inhibit", "firefox-family playing")
+      cancelIdleCycle("media-playing")
+      return
+    }
+
+    if (root.mediaInhibiting) mediaReleaseTimer.restart()
+  }
+
   IdleMonitor {
     id: idleMonitor
     enabled: root.idleEnabled
@@ -268,6 +291,30 @@ Item {
     repeat: false
     onTriggered: if (root.idleEnabled && root.idledThisCycle) root.lockSystem("lock-timeout")
   }
+
+  Timer {
+    id: mediaReleaseTimer
+    interval: 2000
+    repeat: false
+    onTriggered: {
+      if (root.firefoxFamilyPlayingNow()) return
+      root.mediaInhibiting = false
+      logEvent("media-inhibit", "released")
+      Qt.callLater(root.handleIdleChanged)
+    }
+  }
+
+  Instantiator {
+    model: root.players
+    delegate: Connections {
+      required property var modelData
+      target: modelData
+      function onIsPlayingChanged() { root.syncMediaInhibit() }
+    }
+  }
+
+  onFirefoxFamilyPlayingChanged: root.syncMediaInhibit()
+  onPlayersChanged: root.syncMediaInhibit()
 
   Timer {
     id: screensaverLaunchGraceTimer
@@ -332,6 +379,7 @@ Item {
   Component.onCompleted: {
     logEvent("service-ready")
     refreshStayAwakeState()
+    root.syncMediaInhibit()
   }
 
   IpcHandler {
@@ -354,7 +402,7 @@ Item {
     }
 
     function toggle(): string {
-      return root.setIdleEnabled(!root.idleEnabled)
+      return root.setIdleEnabled(root.stayAwake)
     }
   }
 }
