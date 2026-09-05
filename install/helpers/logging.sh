@@ -13,8 +13,33 @@ omarchy_log_line() {
 start_install_log() {
   if ! omarchy_log_to_stdout; then
     mkdir -p "$(dirname "$OMARCHY_INSTALL_LOG_FILE")"
-    touch "$OMARCHY_INSTALL_LOG_FILE"
-    chmod 666 "$OMARCHY_INSTALL_LOG_FILE" 2>/dev/null || true
+
+    # Only root writes here through this helper: the ISO runs the target setup
+    # with OMARCHY_LOG_TO_STDOUT=1 and copies the log itself, so this branch is
+    # reached when omarchy-apply-system or omarchy-apply-hardware is rerun by
+    # hand on an installed system. The old world-writable mode then let every
+    # local account read the step output and append forged lines.
+    #
+    # The log is published as a fresh file, not chmodded in place. A chmod only
+    # changes who can open the file from now on; a process that already had the
+    # old 0666 file open keeps writing to it. Building the new file privately
+    # and moving it over the old name leaves such a descriptor pointing at an
+    # unlinked inode. Existing content is carried across.
+    #
+    # Mode 0640 with group wheel: the owner account is in wheel and already has
+    # full sudo, so wheel read gives up nothing, and omarchy-upload-log can
+    # still read the log as that user. Other local accounts are shut out.
+    local old_umask staged
+    old_umask=$(umask)
+    umask 077
+    staged=$(mktemp "$OMARCHY_INSTALL_LOG_FILE.XXXXXX")
+    umask "$old_umask"
+    if [[ -f $OMARCHY_INSTALL_LOG_FILE ]]; then
+      cat "$OMARCHY_INSTALL_LOG_FILE" >>"$staged" 2>/dev/null || true
+    fi
+    chgrp wheel "$staged" 2>/dev/null || true
+    chmod 640 "$staged"
+    mv -f "$staged" "$OMARCHY_INSTALL_LOG_FILE"
   fi
 
   export OMARCHY_START_TIME="${OMARCHY_START_TIME:-$(date '+%Y-%m-%d %H:%M:%S')}"
