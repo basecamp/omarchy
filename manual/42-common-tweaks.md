@@ -35,3 +35,13 @@ hl.config({
   },
 })
 ```
+
+### Tile the Steam window
+
+Omarchy floats every Steam window by default, so the client opens as a centered window instead of joining the tiling layout. If you'd rather the main window tile like any other app, add this to the bottom of `~/.config/hypr/hyprland.lua`:
+
+```
+o.window({ class = "steam", title = "Steam" }, { tile = true })
+```
+
+Window rules are applied top to bottom and the last match wins, so this re-tiles only the main client. Steam's login prompt, Friends List, Settings, and popup menus all keep floating.
