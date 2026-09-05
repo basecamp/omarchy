@@ -10,7 +10,12 @@ trap 'rm -rf "$test_tmp"' EXIT
 mock_bin="$test_tmp/bin"
 mkdir -p "$mock_bin" "$test_tmp/home" "$test_tmp/home/.hermes/profiles/james"
 
-for command in xdg-user-dirs-update xdg-settings xdg-mime; do
+cat >"$mock_bin/xdg-user-dirs-update" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$TEST_XDG_USER_DIRS_CALLS"
+SH
+
+for command in update-desktop-database xdg-settings xdg-mime; do
   printf '#!/bin/bash\nexit 0\n' >"$mock_bin/$command"
 done
 chmod +x "$mock_bin"/*
@@ -22,9 +27,17 @@ chmod +x "$mock_bin"/*
 mkdir -p "$test_tmp/install/user"
 : >"$test_tmp/install/user/all.sh"
 
+xdg_user_dirs_calls="$test_tmp/xdg-user-dirs-calls"
 HOME="$test_tmp/home" PATH="$mock_bin:$ROOT/bin:$PATH" OMARCHY_PATH="$ROOT" \
+  TEST_XDG_USER_DIRS_CALLS="$xdg_user_dirs_calls" \
   OMARCHY_INSTALL="$test_tmp/install" bash "$ROOT/bin/omarchy-provision-user" >/dev/null ||
   fail "omarchy-provision-user finishes"
+
+grep -qxF -- "--set DESKTOP $test_tmp/home/.local/share/desktop" "$xdg_user_dirs_calls" ||
+  fail "omarchy-provision-user points XDG Desktop at a hidden directory"
+[[ -d $test_tmp/home/.local/share/desktop ]] ||
+  fail "omarchy-provision-user creates the hidden Desktop directory"
+pass "omarchy-provision-user points XDG Desktop at a hidden directory"
 
 for skill in omarchy diagnose-crash; do
   link="$test_tmp/home/.gemini/config/skills/$skill"
