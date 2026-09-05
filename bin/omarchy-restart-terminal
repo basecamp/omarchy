@@ -13,3 +13,14 @@ fi
 if pgrep -x ghostty >/dev/null; then
   killall -SIGUSR2 ghostty
 fi
+
+# foot has no runtime config-reload mechanism, so a running instance keeps
+# reading foot.ini's font/padding/alpha/etc. from whenever it started no
+# matter what this script does. Say so instead of silently doing nothing --
+# but only when the user asked directly: a theme switch only ever touches
+# colors, which omarchy-theme-set-foot already applies live over OSC, so
+# foot needs no restart on that path and the warning would be noise fired
+# on every theme change.
+if [[ -z ${OMARCHY_THEME_SWITCHING:-} ]] && pgrep -x foot >/dev/null; then
+  echo "foot cannot reload foot.ini (font, padding, alpha, ...) at runtime; restart open foot windows to pick up those changes." >&2
+fi
