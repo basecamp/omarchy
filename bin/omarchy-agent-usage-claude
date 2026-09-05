@@ -581,16 +581,21 @@ def merge_stats(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
 # CLI's login. Nothing else leaves the credential store: the token goes
 # nowhere but the Authorization header of the limits probe, and only the
 # plan label may travel into the printed record.
-def oauth_login(claude_dir: Path) -> tuple[str, int, str]:
+def oauth_login(claude_dir: Path) -> tuple[str, int, int, str]:
   try:
     data = json.loads((claude_dir / ".credentials.json").read_text(encoding="utf-8"))
   except Exception:
-    return "", 0, ""
+    return "", 0, 0, ""
   login = data.get("claudeAiOauth")
   if not isinstance(login, dict):
-    return "", 0, ""
+    return "", 0, 0, ""
   plan = plan_label(str(login.get("rateLimitTier") or ""), str(login.get("subscriptionType") or ""))
-  return str(login.get("accessToken") or ""), number(login.get("expiresAt")), plan
+  return (
+    str(login.get("accessToken") or ""),
+    number(login.get("expiresAt")),
+    number(login.get("refreshTokenExpiresAt")),
+    plan,
+  )
 
 
 def plan_label(tier: str, subscription: str) -> str:
@@ -791,7 +796,7 @@ def usable_cached_limits(cached: dict[str, Any]) -> list[dict[str, Any]]:
   return [entry for entry in entries if isinstance(entry, dict) and limit_window_open(entry, now)]
 
 
-def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[str, Any]:
+def collect_limits(access_token: str, expires_at_ms: int, refresh_expires_at_ms: int, force: bool) -> dict[str, Any]:
   result = {"limits": [], "usageStatusText": "", "authHelpText": AUTH_HELP}
 
   # A panel that is opened and shut repeatedly must not turn into a request
@@ -812,6 +817,19 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
     return result
   if expires_at_ms > 0 and expires_at_ms <= time.time() * 1000:
     result["limits"] = fallback
+    # A lapsed access token is routine, not a sign-out: it lives about eight
+    # hours, and the CLI mints a new one from the refresh token the next time
+    # it runs. Only a lapsed *refresh* token is a sign-in a person must redo,
+    # and saying so either way sends people to `claude auth login` nightly --
+    # which does not restore anything the CLI would not have restored itself.
+    if refresh_expires_at_ms > time.time() * 1000:
+      result["usageStatusText"] = "Limits paused"
+      result["authHelpText"] = (
+        "Claude Code's access token has lapsed"
+        + (" — showing the last known limits." if fallback else ".")
+        + " Start Claude Code to refresh it; signing in again is not needed."
+      )
+      return result
     result["usageStatusText"] = "Sign-in expired"
     result["authHelpText"] = (
       "Claude Code's saved sign-in expired"
@@ -879,8 +897,8 @@ def main() -> int:
   if opencode is not None:
     stats = merge_stats(stats, opencode)
 
-  access_token, expires_at_ms, plan = oauth_login(claude_dir)
-  limits = collect_limits(access_token, expires_at_ms, args.force)
+  access_token, expires_at_ms, refresh_expires_at_ms, plan = oauth_login(claude_dir)
+  limits = collect_limits(access_token, expires_at_ms, refresh_expires_at_ms, args.force)
 
   record = {
     "schemaVersion": 1,
