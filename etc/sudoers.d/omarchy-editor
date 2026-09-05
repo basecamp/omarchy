@@ -1,0 +1,13 @@
+# Omarchy installs nvim and ships no vi, vim, or nano, but sudo's built-in
+# fallback is still the compiled-in /usr/bin/vi. The EDITOR and SUDO_EDITOR
+# exports live in default/bash/envs, which is the login user's shell, so a root
+# shell carries neither -- and `visudo` there died with "no editor found
+# (editor path = /usr/bin/vi)" instead of opening an editor. Name editors this
+# system actually has.
+#
+# env_editor is on by default, so SUDO_EDITOR, VISUAL, and EDITOR still win
+# wherever they are set and a user who picked nano keeps nano. This list is
+# only the fallback for shells carrying none of them. Each entry is
+# fully-qualified because sudo ignores a bare command name here, and sudo walks
+# the list in order, skipping any that is not installed.
+Defaults editor=/usr/bin/nvim:/usr/bin/vim:/usr/bin/nano:/usr/bin/vi
