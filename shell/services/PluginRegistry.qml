@@ -500,7 +500,7 @@ QtObject {
         removeDisabled(config, key)
         var entry = { id: key }
         var insertedWithPlacement = false
-        if (!location.found && isBarWidget) {
+        if (isBarWidget && location.kind !== "bar") {
           var sourceLocation = clonedFrom ? findEntryLocation(config, clonedFrom) : { found: false }
           if (sourceLocation.kind === "bar") {
             var sourceEntry = config.bar.layout[sourceLocation.section][sourceLocation.index]

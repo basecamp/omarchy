@@ -84,6 +84,7 @@ ShellRoot {
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("firstparty", "/first/hybrid", manifest("omarchy.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
+    scan += block("thirdparty", "/third/hybrid", manifest("third.hybrid", ["overlay", "bar-widget"], { overlay: "Overlay.qml", barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
     scan += block("thirdparty", "/third/center-widget", manifest("third.center-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/right-widget", manifest("third.right-widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "right" }))
@@ -125,6 +126,7 @@ ShellRoot {
       "omarchy.hybrid",
       "third.bar",
       "third.center-widget",
+      "third.hybrid",
       "third.panel",
       "third.right-widget",
       "third.widget"
@@ -167,6 +169,23 @@ ShellRoot {
     root.assertTrue(registry.isEnabled("third.widget"), "enabled bar widgets are found")
     registry.setEnabled("third.widget", false)
     root.assertDeepEqual(root.config.bar.layout.left, [], "disabling bar widgets removes layout entry")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [], right: [] } },
+      plugins: [{ id: "third.hybrid" }]
+    }
+    registry.setEnabled("third.hybrid", true)
+    root.assertDeepEqual(root.config.bar.layout.center, [{ id: "third.hybrid" }], "enabling an active hybrid plugin adds its widget")
+    root.assertDeepEqual(root.config.plugins, [{ id: "third.hybrid" }], "enabling a hybrid widget preserves its other plugin kinds")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [], right: [] } },
+      plugins: [{ id: "third.hybrid" }]
+    }
+    root.assertEqual(registry.putBarWidget("third.hybrid", {}), "", "put accepts an active hybrid plugin")
+    root.assertDeepEqual(root.config.bar.layout.center, [{ id: "third.hybrid" }], "put adds the hybrid plugin's widget")
 
     root.config = {
       version: 1,
