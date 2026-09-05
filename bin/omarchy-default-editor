@@ -1,8 +1,73 @@
 #!/bin/bash
 
-# omarchy:summary=Set the default editor used by omarchy-launch-editor
+# omarchy:summary=Set the default editor used by Omarchy and XDG handlers
 # omarchy:args=[code|cursor|zed|sublime_text|helix|vim|emacs|nvim]
 # omarchy:examples=omarchy default editor | omarchy default editor code | omarchy default editor helix
+
+# Desktop entry that owns each supported editor. Kept in sync with
+# test/shell.d/default-apps-test.sh.
+editor_desktop_ids=(
+  code:code.desktop
+  cursor:cursor.desktop
+  zeditor:dev.zed.Zed.desktop
+  sublime_text:sublime_text.desktop
+  helix:helix.desktop
+  vim:vim.desktop
+  emacs:emacs.desktop
+  nvim:nvim.desktop
+)
+
+# MIME types the editor becomes the XDG default for. Kept in sync with the
+# text handlers Omarchy's packaged system mimeapps.list ships for nvim.
+editor_text_mimes=(
+  text/plain
+  text/english
+  text/x-makefile
+  text/x-c++hdr
+  text/x-c++src
+  text/x-chdr
+  text/x-csrc
+  text/x-java
+  text/x-moc
+  text/x-pascal
+  text/x-tcl
+  text/x-tex
+  text/x-c
+  text/x-c++
+  application/xml
+  text/xml
+)
+
+# MIME list as a single semicolon-separated string for the MimeType= line of
+# desktop overrides.
+mime_override_list=(
+  "text/plain;text/english;text/x-makefile;text/x-c++hdr;text/x-c++src;text/x-chdr;text/x-csrc;text/x-java;text/x-moc;text/x-pascal;text/x-tcl;text/x-tex;text/x-c;text/x-c++;application/xml;text/xml"
+)
+
+# Editors whose packaged desktop entry does not declare the text/* MIME types,
+# so a per-user desktop override must add them for XDG to honour the
+# association. nvim, vim, helix and emacs ship Terminal=true entries that
+# already work from a file manager.
+xdg_overrides=(
+  code.desktop
+  cursor.desktop
+  dev.zed.Zed.desktop
+  sublime_text.desktop
+)
+
+# Every desktop entry Omarchy can set as the default editor. Used when
+# rewriting the user mimeapps defaults so an earlier Omarchy selection cannot
+# shadow the new one.
+all_editor_desktops=(
+  code.desktop
+  cursor.desktop
+  dev.zed.Zed.desktop
+  sublime_text.desktop
+  helix.desktop
+  vim.desktop
+  emacs.desktop
+  nvim.desktop
+)
 
 installing=false
 if [[ ${1:-} == "--install" ]]; then
@@ -11,13 +76,133 @@ if [[ ${1:-} == "--install" ]]; then
 fi
 
 editor_file="$HOME/.local/state/omarchy/defaults/editor"
+mimeapps="$HOME/.config/mimeapps.list"
 
-if (($# == 0)); then
+default_editor() {
+  local editor
   if [[ -f $editor_file ]]; then
     read -r editor <"$editor_file"
   fi
 
   [[ -n $editor ]] && echo "$editor" || echo "nvim"
+}
+
+xdg_desktop_id() {
+  local selection=$1
+  local entry
+  for entry in "${editor_desktop_ids[@]}"; do
+    if [[ ${entry%%:*} == "$selection" ]]; then
+      echo "${entry#*:}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Rewrite the user's mimeapps.list [Default Applications] section so every
+# text MIME type the editor owns maps to the new desktop entry. Other keys and
+# sections are preserved verbatim, including the [Added Associations] list.
+sync_xdg_defaults() {
+  local desktop_id=$1
+  mkdir -p "$(dirname "$mimeapps")"
+  [[ -f $mimeapps ]] || touch "$mimeapps"
+
+  local text_mimes=${editor_text_mimes[*]}
+  local tmp="$mimeapps.tmp"
+  ED_DESKTOP_ID="$desktop_id" ED_MIMES="$text_mimes" python3 - "$tmp" "$mimeapps" <<'PY'
+import os
+import sys
+
+tmp, path = sys.argv[1:3]
+desktop_id = os.environ["ED_DESKTOP_ID"]
+mimes = os.environ["ED_MIMES"].split()
+mime_set = set(mimes)
+
+lines = open(path, encoding="utf-8").read().splitlines()
+sections = []
+cur_name = None
+cur_body = None
+for line in lines:
+    stripped = line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        cur_name = stripped[1:-1]
+        cur_body = []
+        sections.append((cur_name, cur_body))
+        continue
+    if cur_body is not None:
+        cur_body.append(line)
+
+out = []
+for name, body in sections:
+    out.append(f"[{name}]")
+    if name == "Default Applications":
+        for mime in mimes:
+            out.append(f"{mime}={desktop_id}")
+        for line in body:
+            key = line.split("=", 1)[0].strip()
+            if key not in mime_set:
+                out.append(line)
+    else:
+        out.extend(body)
+
+if not sections:
+    # No file or no sections: create one so the file stays a valid mimeapps.list.
+    out.append("[Default Applications]")
+    for mime in mimes:
+        out.append(f"{mime}={desktop_id}")
+
+with open(tmp, "w", encoding="utf-8") as fh:
+    fh.write("\n".join(out) + "\n")
+PY
+  mv "$tmp" "$mimeapps"
+}
+
+# Copy a packaged desktop entry into the user's applications directory with
+# the text/* MIME types added to its MimeType line, so XDG accepts the
+# association even though the packaged entry does not declare them. No-op when
+# the packaged entry already declares them or the source cannot be found.
+install_xdg_override() {
+  local desktop_id=$1
+  local user_apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+  local target="$user_apps/$desktop_id"
+  local source="$target"
+  local system_apps="/usr/share/applications/$desktop_id"
+
+  if [[ -f $system_apps ]]; then
+    source=$system_apps
+  elif [[ ! -f $source ]]; then
+    return 0
+  fi
+
+  if grep -q "^MimeType=.*text/plain" "$source" && [[ $source == "$target" ]]; then
+    return 0
+  fi
+
+  mkdir -p "$user_apps"
+  ED_MIMES="${mime_override_list[0]}" python3 - "$source" "$target" <<'PY'
+import os
+import sys
+
+source, target = sys.argv[1:3]
+mimes = os.environ["ED_MIMES"]
+out = []
+found = False
+with open(source, encoding="utf-8") as fh:
+    for line in fh:
+        if line.startswith("MimeType=") and not found:
+            line = line.rstrip("\n").rstrip(";") + ";" + mimes + "\n"
+            found = True
+        out.append(line)
+    if not found:
+        out.append("MimeType=" + mimes + "\n")
+
+with open(target, "w", encoding="utf-8") as fh:
+    fh.writelines(out)
+PY
+}
+
+if (($# == 0)); then
+  default_editor
   exit 0
 fi
 
@@ -55,5 +240,12 @@ fi
 
 mkdir -p "$(dirname "$editor_file")"
 printf '%s\n' "$editor" >"$editor_file"
+
+desktop_id=$(xdg_desktop_id "$editor")
+sync_xdg_defaults "$desktop_id"
+
+if [[ " ${xdg_overrides[*]} " == *" $desktop_id "* ]]; then
+  install_xdg_override "$desktop_id"
+fi
 
 omarchy-notification-send -g $glyph "$name is now the default editor"
