@@ -703,6 +703,27 @@ remove_conflicting_legacy_packages() {
   done
 }
 
+remove_legacy_bcm4350_wl_driver() {
+  local sys_vendor
+  sys_vendor=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true)
+
+  [[ $sys_vendor == Apple* ]] || return 0
+  lspci -nn | grep -F '14e4:43a3' >/dev/null || return 0
+
+  local pkg
+  local legacy_wl_packages=()
+  for pkg in broadcom-wl broadcom-wl-dkms; do
+    package_installed_exact "$pkg" && legacy_wl_packages+=("$pkg")
+  done
+
+  ((${#legacy_wl_packages[@]})) || return 0
+
+  log "Removing legacy Broadcom wl driver for Apple BCM4350"
+  # BCM4350 uses the in-kernel brcmfmac driver. The legacy wl packages blacklist
+  # it, so remove only those packages while ignoring pre-quattro dependency edges.
+  as_root pacman -Rdd --noconfirm "${legacy_wl_packages[@]}" || warn "Could not remove legacy Broadcom driver(s) ${legacy_wl_packages[*]}; continuing."
+}
+
 migrate_1password_beta_package() {
   if ! package_installed_exact 1password-beta && ! package_installed_exact 1password-beta-bin; then
     return 0
@@ -2356,6 +2377,7 @@ install_keyrings
 remove_legacy_installer_package
 remove_legacy_limine_configs
 remove_conflicting_legacy_packages
+remove_legacy_bcm4350_wl_driver
 install_omarchy_quattro_packages
 install_hardware_transition_packages
 normalize_limine_config

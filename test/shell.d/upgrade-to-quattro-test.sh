@@ -203,6 +203,28 @@ grep -F 'apply_user_hardware_transition' "$upgrade_to_quattro" >/dev/null
 grep -F 'DX13260' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade backfills hardware support from the legacy release"
 
+bcm4350_body=$(function_body remove_legacy_bcm4350_wl_driver)
+grep -F '[[ $sys_vendor == Apple* ]]' <<<"$bcm4350_body" >/dev/null ||
+  fail "Omarchy 4 upgrade limits BCM4350 wl cleanup to Apple hardware"
+grep -F "lspci -nn | grep -F '14e4:43a3'" <<<"$bcm4350_body" >/dev/null ||
+  fail "Omarchy 4 upgrade limits BCM4350 wl cleanup to PCI ID 14e4:43a3"
+for package in broadcom-wl broadcom-wl-dkms; do
+  grep -F "package_installed_exact \"\$pkg\"" <<<"$bcm4350_body" >/dev/null ||
+    fail "Omarchy 4 upgrade makes BCM4350 wl cleanup idempotent"
+  grep -F "$package" <<<"$bcm4350_body" >/dev/null ||
+    fail "Omarchy 4 upgrade removes legacy package $package from Apple BCM4350 systems"
+done
+grep -F 'pacman -Rdd --noconfirm "${legacy_wl_packages[@]}" ||' <<<"$bcm4350_body" >/dev/null ||
+  fail "Omarchy 4 upgrade survives a failed legacy wl removal"
+! function_body remove_retired_default_packages | grep -F 'broadcom-wl' >/dev/null ||
+  fail "Omarchy 4 upgrade does not retire broadcom-wl globally"
+bcm4350_line=$(grep -n '^remove_legacy_bcm4350_wl_driver$' "$upgrade_to_quattro" | cut -d: -f1)
+packages_line=$(grep -n '^install_omarchy_quattro_packages$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $bcm4350_line && -n $packages_line ]] || fail "BCM4350 cleanup and package install calls exist"
+(( bcm4350_line < packages_line )) ||
+  fail "BCM4350 cleanup runs before the Quattro package transaction"
+pass "Omarchy 4 upgrade removes legacy wl packages only from Apple BCM4350 systems"
+
 grep -F 'omarchy-refresh-applications' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade refreshes application launchers"
 
