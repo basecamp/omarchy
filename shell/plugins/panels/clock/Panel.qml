@@ -313,7 +313,7 @@ Panel {
                 id: heroDate
                 textFormat: Text.PlainText
                 anchors.verticalCenter: parent.verticalCenter
-                text: Qt.formatDate(root.today, "MMMM d")
+                text: Qt.locale().toString(root.today, "MMMM d")
                 color: heroMouse.containsMouse
                   ? Style.hoverStateColor(root.contentForeground, Color.accent)
                   : root.contentForeground
@@ -721,7 +721,7 @@ Panel {
                 // "MAY 2026" and a "SEPTEMBER 2026".
                 width: Style.space(130)
                 horizontalAlignment: Text.AlignHCenter
-                text: Qt.formatDate(root.viewDate, "MMMM yyyy").toUpperCase()
+                text: Qt.locale().toString(root.viewDate, "MMMM yyyy").toLocaleUpperCase(Qt.locale())
                 color: Qt.darker(root.contentForeground, 1.4)
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.body
