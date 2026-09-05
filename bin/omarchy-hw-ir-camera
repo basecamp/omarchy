@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when an infrared camera is present
+# omarchy:hidden=true
+
+[[ -n $(omarchy-capture-ir-camera-list) ]]

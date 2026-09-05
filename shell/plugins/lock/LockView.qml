@@ -9,6 +9,7 @@ Item {
   property string backgroundPath: ""
   property int backgroundVersion: 0
   property bool fingerprintConfigured: false
+  property bool faceConfigured: false
   property bool authenticatingPassword: false
   property string failureMessage: ""
   property int failedAttempts: 0
@@ -27,6 +28,10 @@ Item {
   // Space to keep clear on each side of the field for the fingerprint icon
   // (icon width plus a gap) so the centered dots never run under it.
   readonly property real fingerprintReserve: fingerprintConfigured ? Math.round(fingerprintIcon.implicitWidth + 12) : 0
+  readonly property real faceReserve: faceConfigured ? Math.round(faceIcon.implicitWidth + 12) : 0
+  // Both hints sit inside the field, one per edge, and the dots are centered, so
+  // the clear margin is symmetric and has to satisfy whichever icon is wider.
+  readonly property real indicatorReserve: Math.max(fingerprintReserve, faceReserve)
   // Shrink the dots to fit once the password outgrows the field, so every
   // keystroke stays visible — otherwise long passwords clip with no feedback.
   readonly property real passwordDotScale: dotMetrics.advanceWidth > 0
@@ -135,9 +140,9 @@ Item {
         anchors.topMargin: inputField.borderTop
         // Reserve the fingerprint icon's width on both sides so the centered
         // dots stay symmetric and never slide under the icon as they grow.
-        anchors.rightMargin: inputField.borderRight + 18 + root.fingerprintReserve
+        anchors.rightMargin: inputField.borderRight + 18 + root.indicatorReserve
         anchors.bottomMargin: inputField.borderBottom
-        anchors.leftMargin: inputField.borderLeft + 18 + root.fingerprintReserve
+        anchors.leftMargin: inputField.borderLeft + 18 + root.indicatorReserve
         verticalAlignment: TextInput.AlignVCenter
         horizontalAlignment: TextInput.AlignHCenter
         activeFocusOnPress: true
@@ -200,6 +205,23 @@ Item {
       // Fingerprint hint pinned inside the field's right edge when a sensor is
       // enrolled, so the user knows they can touch to unlock instead of typing.
       // Matches hyprlock, which draws its fingerprint icon in the same spot.
+      // Face hint on the opposite edge from the fingerprint, so a machine with
+      // both enrolled shows one per side instead of stacking them.
+      Text {
+        id: faceIcon
+        objectName: "faceIndicator"
+        anchors.left: parent.left
+        anchors.leftMargin: inputField.borderLeft + 18
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.faceConfigured
+        text: "󰙃"
+        color: Color.lock.placeholder
+        font.family: Style.font.family
+        font.pixelSize: Math.round(root.fieldFontSize * 1.1)
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+      }
+
       Text {
         id: fingerprintIcon
         objectName: "fingerprintIndicator"

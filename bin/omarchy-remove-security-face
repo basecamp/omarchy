@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# omarchy:summary=Remove face authentication from sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+remove_pam_config() {
+  if grep -q pam_howdy.so /etc/pam.d/sudo; then
+    echo "Removing face authentication from sudo..."
+    sudo sed -i '/pam_howdy\.so/d' /etc/pam.d/sudo
+  fi
+
+  if [[ -f /etc/pam.d/polkit-1 ]] && grep -q pam_howdy.so /etc/pam.d/polkit-1; then
+    echo "Removing face authentication from polkit..."
+    sudo sed -i '/pam_howdy\.so/d' /etc/pam.d/polkit-1
+  fi
+}
+
+remove_ir_emitter_pam() {
+  local pam
+
+  # omarchy-lock-face is deleted whole, so only the shared stacks need editing.
+  for pam in /etc/pam.d/sudo /etc/pam.d/polkit-1; do
+    if [[ -f $pam ]] && grep -q linux-enable-ir-emitter "$pam"; then
+      echo "Removing the infrared emitter hook from ${pam##*/}..."
+      sudo sed -i '/linux-enable-ir-emitter/d' "$pam"
+    fi
+  done
+}
+
+remove_lock_face_pam() {
+  if [[ -f /etc/pam.d/omarchy-lock-face ]]; then
+    echo "Removing lock screen face authentication..."
+    sudo rm -f /etc/pam.d/omarchy-lock-face
+  fi
+}
+
+
+echo -e "\e[32mRemoving face authentication.\n\e[0m"
+
+# PAM first: dropping the module while the stacks still reference it would leave
+# every listed service unable to authenticate at all.
+remove_pam_config
+remove_ir_emitter_pam
+remove_lock_face_pam
+
+echo "Removing enrolled face models..."
+sudo howdy -U "$USER" clear -y
+
+echo "Removing face authentication packages..."
+omarchy-pkg-drop howdy-next
+
+echo -e "\e[32mFace authentication has been completely removed.\e[0m"

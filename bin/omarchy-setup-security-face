@@ -1,0 +1,217 @@
+#!/bin/bash
+
+# omarchy:summary=Set up face authentication for sudo, polkit, and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+# Howdy only accepts /dev/video* or a /dev/v4l/by-path entry. Bare /dev/video
+# numbers are handed out in probe order and move when a USB device is replugged
+# into another port, so prefer the by-path link that survives a reboot.
+stable_device_path() {
+  local device="$1" link target
+
+  for link in /dev/v4l/by-path/*; do
+    [[ -e $link ]] || continue
+    target=$(readlink -f "$link")
+
+    if [[ $target == "$device" ]]; then
+      echo "$link"
+      return 0
+    fi
+  done
+
+  echo "$device"
+}
+
+# Some infrared modules keep their emitter dark until a vendor-specific UVC
+# control is written, and that control resets every time the stream closes.
+# linux-enable-ir-emitter finds the control once, stores it, and reapplies it on
+# demand. Cameras whose emitter is always lit never need any of this, so every
+# helper below is a no-op until a configuration actually exists.
+ir_emitter_config="$HOME/.config/linux-enable-ir-emitter.toml"
+
+ir_emitter_configured() {
+  # Both halves matter: a configuration left behind after the tool was removed
+  # would otherwise build a PAM line with an empty command in it.
+  [[ -s $ir_emitter_config ]] && omarchy-cmd-present linux-enable-ir-emitter
+}
+
+enable_ir_emitter() {
+  ir_emitter_configured || return 0
+
+  # Never fatal: a camera that lights up on its own still enrolls fine.
+  linux-enable-ir-emitter run --config "$ir_emitter_config" >/dev/null 2>&1 || true
+}
+
+setup_ir_emitter_pam() {
+  ir_emitter_configured || return 0
+
+  # PAM resolves nothing from PATH and runs this as root, so the line spells out
+  # both halves: the tool by absolute path, and the config, which the tool would
+  # otherwise look for in root's home and not find. `ir_emitter_configured` has
+  # already established the tool is installed. pam_exec sends the command's
+  # stdout to /dev/null unless asked not to, which keeps the emitter from
+  # printing over the sudo prompt.
+  local emitter_command
+  emitter_command=$(type -P linux-enable-ir-emitter)
+
+  local line="auth      optional  pam_exec.so quiet $emitter_command run --config $ir_emitter_config"
+  local pam line_number
+
+  echo "Configuring the infrared emitter to light up for authentication..."
+
+  for pam in /etc/pam.d/sudo /etc/pam.d/polkit-1 /etc/pam.d/omarchy-lock-face; do
+    [[ -f $pam ]] || continue
+    grep -q linux-enable-ir-emitter "$pam" && continue
+
+    # The emitter has to be lit before Howdy opens the camera, not after.
+    line_number=$(grep -n 'pam_howdy\.so' "$pam" | head -1 | cut -d: -f1)
+    [[ -n $line_number ]] || continue
+
+    sudo sed -i "${line_number}i ${line}" "$pam"
+  done
+}
+
+setup_pam_config() {
+  # Face auth goes in ahead of the password so PAM never has a token in hand
+  # when Howdy runs; pam_howdy declines to touch a prompt that already has one.
+  if grep -q pam_howdy.so /etc/pam.d/sudo; then
+    echo "Sudo is already configured for face authentication."
+  else
+    echo "Configuring sudo for face authentication..."
+    # `workaround=native` lets Howdy take over the terminal conversation and
+    # retire the password prompt itself once a face matches.
+    sudo sed -i '1i auth      sufficient pam_howdy.so workaround=native' /etc/pam.d/sudo
+  fi
+
+  if [[ -f /etc/pam.d/polkit-1 ]]; then
+    if grep -q pam_howdy.so /etc/pam.d/polkit-1; then
+      echo "Polkit is already configured for face authentication."
+    else
+      echo "Configuring polkit for face authentication..."
+      sudo sed -i '1i auth      sufficient pam_howdy.so' /etc/pam.d/polkit-1
+    fi
+  else
+    # Graphical prompts get no workaround: the input fallback injects Enter into
+    # whatever holds keyboard focus, which is not necessarily the polkit dialog.
+    echo "Creating polkit configuration with face authentication..."
+    sudo tee /etc/pam.d/polkit-1 >/dev/null <<EOF
+auth      sufficient pam_howdy.so
+auth      include system-auth
+account   include system-auth
+password  include system-auth
+session   include system-auth
+EOF
+  fi
+}
+
+setup_lock_face_pam() {
+  echo "Configuring lock screen for face authentication..."
+  # pam_deny closes the stack, and the face module is sufficient so that a match
+  # returns before reaching it. A face module that cannot reach its backend
+  # answers PAM_IGNORE rather than failing, which is safe on sudo or a greeter
+  # because the password sits behind it in the same stack and answers instead.
+  # This service has nothing behind it: the password is a separate service on
+  # its own lane, so an ignored module would leave the stack with no verdict at
+  # all, and PAM reads that as success. Measured against a stopped backend:
+  # without pam_deny the stack authenticated anyone in 0.1s, and a face that
+  # simply did not match got in the same way.
+  sudo tee /etc/pam.d/omarchy-lock-face >/dev/null <<'EOF'
+#%PAM-1.0
+auth       sufficient                  pam_howdy.so
+auth       required                    pam_deny.so
+account    include                     system-local-login
+EOF
+}
+
+
+echo -e "\e[32mSetting up face authentication.\n\e[0m"
+
+# Bail before installing anything if there's no IR camera to talk to. A colour
+# webcam is deliberately not enough: it cannot see in the dark and is far easier
+# to fool with a photo.
+if ! omarchy-hw-ir-camera; then
+  echo -e "\e[31mNo infrared camera detected.\e[0m"
+  echo "Face authentication needs an IR sensor, such as the one in a Windows Hello webcam."
+  exit 1
+fi
+
+ir_cameras=$(omarchy-capture-ir-camera-list)
+ir_count=$(wc -l <<<"$ir_cameras")
+
+if (( ir_count > 1 )); then
+  echo "Multiple infrared cameras found:"
+  echo "$ir_cameras"
+  echo
+fi
+
+ir_device=$(awk 'NR == 1 { print $1 }' <<<"$ir_cameras")
+device_path=$(stable_device_path "$ir_device")
+echo -e "Using infrared camera \e[32m$ir_device\e[0m\n"
+
+echo "Installing required packages..."
+# howdy-next lives in the AUR only, so pacman cannot resolve it.
+omarchy-pkg-aur-add howdy-next || exit 1
+
+echo "Downloading face recognition models..."
+sudo howdy download-models
+
+sudo howdy set device_path "$device_path"
+
+# Skip face auth over SSH, where there is nobody in front of the camera to check.
+sudo howdy set abort_if_ssh true
+
+echo -e "\e[32m\nLet's capture your face.\e[0m"
+echo -e "Look straight at the camera until the scan completes.\n"
+
+enable_ir_emitter
+
+if sudo howdy -U "$USER" add primary; then
+  echo -e "\e[32m\nFace enrolled successfully!\e[0m"
+
+  # PAM comes last, once a face is enrolled. Detection only proves an IR stream
+  # exists, not that a face can be captured from it — a sensor behind a closed
+  # privacy shutter gets this far and then enrolls nothing. Editing the stacks up
+  # front would leave those machines pointing at pam_howdy with nothing to match.
+  setup_pam_config
+  setup_lock_face_pam
+  setup_ir_emitter_pam
+
+  echo -e "\e[32m\nPerfect! Face authentication is now configured.\e[0m"
+  echo "You can use your face for sudo, polkit, and lock screen (Super + Ctrl + L)."
+  echo -e "\nLet's verify it works. Look at the camera:\n"
+
+  # A real end-to-end check through the stack just configured. Nothing is at
+  # stake if the face is missed: sudo falls through to the password prompt.
+  sudo -k -v
+else
+  echo -e "\e[31m\nEnrollment failed. Please try again.\e[0m"
+
+  # Detection proves the sensor streams; it says nothing about whether anything
+  # is lit. An emitter that never switches on looks exactly like this — the
+  # stream opens, frames arrive, and there is no face anywhere in them.
+  if ! ir_emitter_configured; then
+    echo
+    echo "If the camera saw nothing at all, its infrared emitter may stay off"
+    echo "until it is told otherwise. Configure it, then run this setup again:"
+    echo
+    echo "  omarchy pkg aur add linux-enable-ir-emitter"
+    echo "  linux-enable-ir-emitter configure"
+    echo
+    # 6.1.2, the current stable release, builds against opencv4 and so fails
+    # outright on a current Arch: "Dependency opencv4 not found". Version 7 is a
+    # rewrite that dropped OpenCV altogether and builds cleanly, but upstream
+    # has only tagged a beta of it, so -git is presently the one that works.
+    # Drop this fallback once 7.x is tagged stable and the AUR package follows.
+    echo "Should that package fail to build against OpenCV 5, install"
+    echo "linux-enable-ir-emitter-git instead. Version 7 dropped the OpenCV"
+    echo "dependency but is still only tagged as a beta."
+    echo
+    echo "Face away from windows while configuring and enrolling. Daylight"
+    echo "carries enough infrared to wash out both."
+  fi
+
+  exit 1
+fi
