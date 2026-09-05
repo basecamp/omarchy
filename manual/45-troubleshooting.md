@@ -26,6 +26,10 @@ hl.config({
 
 Before you reboot, try restarting the offending subsystem on its own. _Update > Hardware_ in the Omarchy menu has Wi-Fi, Bluetooth, Audio, and Trackpad, and reloading one of those clears up the majority of "it worked five minutes ago" situations — a Bluetooth headset that won't reconnect, a trackpad that went dead after a suspend, sound that vanished when you unplugged a monitor.
 
+### My external NTFS drive won't mount
+
+Files says "wrong fs type, bad option, bad superblock" for a drive that works fine on Windows. Run `sudo dmesg | tail` right after the failed mount. If a line ends in `volume is dirty and "force" flag is not set!`, Windows didn't detach the drive cleanly (Fast Startup, hibernation, or pulling the cable without Safely Remove), and the kernel's ntfs3 driver refuses to write to it. Clear the flag with `sudo ntfsfix --clear-dirty /dev/sdX1` and mount again, or plug it into Windows once and eject it properly. To read the files without changing anything, `udisksctl mount -b /dev/sdX1 -o ro` mounts it read-only.
+
 ### Why are my external speakers not playing?
 
 Probably because they're not set as the primary output. Click on the speaker icon on the right side of the bar, and it'll open the volume popup where you can pick the output device (and mix per-app volumes too).
