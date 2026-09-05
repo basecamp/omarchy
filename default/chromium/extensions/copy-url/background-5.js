@@ -11,10 +11,18 @@ function copyUrl(url) {
 }
 
 chrome.commands.onCommand.addListener((command) => {
-  if (command !== 'copy-url') return;
-
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    copyUrl(tabs[0] && tabs[0].url);
+    const [tab] = tabs;
+    const url = tab?.url;
+    if (!url) return;
+    if (command === 'copy-url') {
+      copyUrl(url);
+    } else if (command === 'copy-markdown-link') {
+      const title = tab.title || url;
+      // The title might contain brackets, which must be escaped inside the Markdown link.
+      const escaped = title.replace(/([\\[\]])/g, '\\$1');
+      copyUrl(`[${escaped}](<${url}>)`);
+    }
   });
 });
 
