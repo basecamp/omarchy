@@ -13,6 +13,16 @@ Item {
   readonly property int batteryThreshold: 10
   property string pendingPowerSource: ""
   property string pendingPowerSourceHook: ""
+  property string lastPowerSource: ""
+
+  // UPower hydrates OnBattery before the display device becomes ready. Seed
+  // the baseline then, including when this service loads into an existing shell.
+  Component.onCompleted: initializePowerSource()
+
+  function initializePowerSource() {
+    if (UPower.displayDevice.ready && lastPowerSource === "")
+      lastPowerSource = UPower.onBattery ? "battery" : "ac"
+  }
 
   PersistentProperties {
     id: persisted
@@ -55,7 +65,11 @@ Item {
   }
 
   function dispatchPowerSourceHook() {
-    pendingPowerSourceHook = UPower.onBattery ? "battery" : "ac"
+    if (lastPowerSource === "") return
+    var source = UPower.onBattery ? "battery" : "ac"
+    if (source === lastPowerSource) return
+    lastPowerSource = source
+    pendingPowerSourceHook = source
     if (!powerSourceHookProcess.running) runPendingPowerSourceHook()
   }
 
@@ -83,6 +97,11 @@ Item {
     repeat: true
     triggeredOnStart: true
     onTriggered: root.checkBattery()
+  }
+
+  Connections {
+    target: UPower.displayDevice
+    function onReadyChanged() { root.initializePowerSource() }
   }
 
   Connections {
