@@ -4,7 +4,7 @@ o.window({ tag = "floating-window" }, { center = true })
 o.window({ tag = "floating-window" }, { size = { 875, 600 } })
 
 o.window(
-  "(org.omarchy.btop|org.omarchy.terminal|org.omarchy.bash|org.codeberg.dnkl.foot|org.gnome.NautilusPreviewer|org.gnome.Evince|Omarchy|About|TUI.float|imv|mpv)",
+  "(org.omarchy.terminal|org.omarchy.bash|org.codeberg.dnkl.foot|org.gnome.NautilusPreviewer|org.gnome.Evince|Omarchy|About|TUI.float|imv|mpv)",
   {
     tag = "+floating-window",
   }
@@ -26,6 +26,18 @@ o.window({
 o.window("org.omarchy.about", { float = true })
 o.window("org.omarchy.about", { center = true })
 o.window("org.omarchy.about", { size = { 920, 480 } })
+
+-- btop refuses to draw at all below 80x24 characters. The standard float clears
+-- that easily at the stock terminal font -- roughly 117x33 at foot's shipped 9pt
+-- -- but the margin is spent as soon as the font is raised: 13pt on a 1.25-scaled
+-- 1080p panel lands on exactly 80x24, and ghostty at 11pt on a 1.5-scaled one
+-- comes up a column short at 79x24. Height is the constrained axis -- a 1280x720
+-- logical screen has ~690 usable once the bar takes its cut -- while width has
+-- room to spare, so this is sized to clear 80x24 with margin on both and still
+-- fit the smallest screen.
+o.window("org.omarchy.btop", { float = true })
+o.window("org.omarchy.btop", { center = true })
+o.window("org.omarchy.btop", { size = { 1040, 672 } })
 
 o.window("dev.tensaku.Tensaku", { float = true })
 o.window("dev.tensaku.Tensaku", { center = true })
