@@ -43,10 +43,12 @@ Panel {
   readonly property date viewDate: new Date(viewYear, viewMonth, 1)
   readonly property bool viewingCurrentMonth: viewYear === today.getFullYear() && viewMonth === today.getMonth()
 
-  // Pinned to today, not to the month being browsed — stepping through the
-  // calendar does not change how much of the year is gone.
-  readonly property real yearDone: Model.yearProgress(today.getFullYear(), today.getMonth(), today.getDate())
-  readonly property int yearDonePercent: Model.yearProgressPercent(today.getFullYear(), today.getMonth(), today.getDate())
+  // Pinned to now, not to the month being browsed — stepping through the
+  // calendar does not change how much of the year is gone. Read off the clock
+  // rather than `today`, which only moves at midnight: the figure resolves to
+  // roughly the hour, so a date-only source would hold it still all day.
+  readonly property real yearDone: Model.yearProgressAt(clock.date)
+  readonly property string yearDoneText: Model.yearProgressPercentText(clock.date)
 
   // Memento mori, for anyone who goes looking: double-tapping the year bar
   // asks for a birth year and a life expectancy, and a second bar tracks one
@@ -431,7 +433,7 @@ Panel {
                 visible: !root.editingLife
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.yearDonePercent + "%"
+                text: root.yearDoneText + "%"
                 color: root.contentForeground
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.bodySmall
