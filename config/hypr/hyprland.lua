@@ -16,11 +16,16 @@ require("default.hypr.omarchy")
 -- Put your personal overrides in these files. They're loaded after Omarchy's
 -- defaults so package updates can improve the defaults without rewriting your
 -- ~/.config/hypr files.
-require("hypr.monitors")
-require("hypr.input")
-require("hypr.bindings")
-require("hypr.looknfeel")
-require("hypr.autostart")
+--
+-- Bindings first, each via require_optional.safe: a syntax/runtime error in
+-- monitors or input must not abort evaluation before keybindings load, or the
+-- session starts with no Super shortcuts and no recovery path (#9721).
+local require_optional = require("default.hypr.require_optional")
+require_optional.safe("hypr.bindings")
+require_optional.safe("hypr.monitors")
+require_optional.safe("hypr.input")
+require_optional.safe("hypr.looknfeel")
+require_optional.safe("hypr.autostart")
 
 -- Toggle config flags dynamically.
 require("default.hypr.toggles")
