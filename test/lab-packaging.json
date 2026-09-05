@@ -1,0 +1,10 @@
+{
+  "native": {
+    "ssh_config_block": "ssh_config_block() {\n  local user=$1\n  cat <<EOF\n$SSH_MARK_BEGIN\nHost omarchy-lab\n  User ${user}\n  IdentityFile ~/.ssh/omarchy-lab\n  IdentitiesOnly yes\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n  GlobalKnownHostsFile /dev/null\n  LogLevel QUIET\n  ProxyCommand /bin/bash -c 'exec nc -w 5 \"\\$(omarchy-lab-vm ip)\" %p'\n$SSH_MARK_END\nEOF\n}",
+    "write_desktop": "write_desktop() {\n  mkdir -p \"$(dirname \"$DESKTOP_FILE\")\"\n  cat >\"$DESKTOP_FILE\" <<'EOF'\n[Desktop Entry]\nName=Omarchy Lab\nComment=Disposable Omarchy KVM for development and PoCs\nExec=omarchy-lab-viewer launch\nIcon=omarchy\nTerminal=false\nType=Application\nCategories=System;Emulator;\nEOF\n  update-desktop-database \"$(dirname \"$DESKTOP_FILE\")\" 2>/dev/null || true\n}"
+  },
+  "standalone": {
+    "ssh_config_block": "ssh_config_block() {\n  local user=$1 proxy\n  printf -v proxy '%q' \"$LAB_ROOT/bin/omarchy-labctl\"\n  proxy=${proxy//%/%%}\n  cat <<EOF\n$SSH_MARK_BEGIN\nHost omarchy-lab\n  User ${user}\n  IdentityFile ~/.ssh/omarchy-lab\n  IdentitiesOnly yes\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n  GlobalKnownHostsFile /dev/null\n  LogLevel QUIET\n  ProxyCommand $proxy proxy %p\n$SSH_MARK_END\nEOF\n}",
+    "write_desktop": "write_desktop() {\n  local executable=\"$LAB_ROOT/bin/omarchy-labctl\"\n  executable=${executable//\\\\/\\\\\\\\\\\\\\\\}\n  executable=${executable//\\\"/\\\\\\\"}\n  executable=${executable//\\$/\\\\\\$}\n  executable=${executable//\\`/\\\\\\`}\n  executable=${executable//%/%%}\n  mkdir -p \"$(dirname \"$DESKTOP_FILE\")\"\n  cat >\"$DESKTOP_FILE\" <<EOF\n[Desktop Entry]\nName=Omarchy Lab\nComment=Disposable Omarchy KVM for development and PoCs\nExec=\"$executable\" launch\nIcon=omarchy\nTerminal=false\nType=Application\nCategories=System;Emulator;\nEOF\n  update-desktop-database \"$(dirname \"$DESKTOP_FILE\")\" 2>/dev/null || true\n}"
+  }
+}

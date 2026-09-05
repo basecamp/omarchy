@@ -13,6 +13,8 @@ matching guide before starting:
 
 # Documentation Layout
 
+Lab changes must remain synchronized with the standalone acrogenesis/omarchy-lab repository. Read [the paired-repository workflow](docs/lab-development.md) before changing Lab code; verify both distributions and their parity before publishing.
+
 Three documentation trees, split by genre and audience:
 
 - `agents/skills/` - task procedure ("do this when doing X"), for anyone working on the codebase
