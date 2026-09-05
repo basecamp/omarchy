@@ -772,6 +772,11 @@ Item {
     if (!root.rowSelectable(index)) return
 
     var row = displayModel.get(index)
+    var selection = MenuModel.selectionAfterSearch(root.items, row, root.filterText)
+    if (selection && root.shell
+        && typeof root.shell.publishMenuSelectionAfterSearch === "function") {
+      root.shell.publishMenuSelectionAfterSearch(root.manifest ? root.manifest.id : "", selection)
+    }
     if (row.kind === "menu" || row.kind === "link") {
       root.setActiveMenu(row.target || row.itemId, true, fromPointer)
     } else if (row.kind === "app") {

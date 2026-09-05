@@ -57,6 +57,8 @@ ShellRoot {
   property bool pluginReloading: false
   property bool pluginReloadPending: false
 
+  signal menuSelectionAfterSearch(var event)
+
   Timer {
     id: localPluginReloadTimer
     interval: 150
@@ -110,6 +112,43 @@ ShellRoot {
     payload.version = 1
     shellConfig = payload
     userConfigFile.setText(JSON.stringify(payload, null, 2) + "\n")
+  }
+
+  function pluginSupportStatus(pluginId, capability, minimumVersion) {
+    var version = shell.pluginRegistry.capabilityVersion(pluginId, capability)
+    if (version < 0) return "checking"
+    var minimum = Number(minimumVersion)
+    if (!Number.isInteger(minimum) || minimum < 1) minimum = 1
+    return version >= minimum ? "supported" : "unsupported"
+  }
+
+  function publishMenuSelectionAfterSearch(sourceId, event) {
+    var activeMenuId = shell.pluginRegistry.resolveEnabledId("omarchy.menu")
+    if (String(sourceId || "") !== activeMenuId) return false
+    if (shell.pluginRegistry.capabilityVersionForResolvedId(activeMenuId, "menu-selection-after-search") < 1) return false
+    if (!Util.isPlainObject(event) || Number(event.schemaVersion) !== 1) return false
+
+    var itemId = String(event.itemId || "").trim()
+    var kind = String(event.kind || "").trim()
+    var allowedKinds = ["action", "app", "link", "menu"]
+    var label = String(event.label || "").trim()
+    var path = String(event.path || "").trim()
+    var desktopId = String(event.desktopId || "").trim()
+    if (!itemId || allowedKinds.indexOf(kind) === -1 || !label || !path) return false
+    if (kind === "app" && !desktopId) return false
+    if (kind !== "app") desktopId = ""
+    if (itemId.length > 256 || label.length > 256 || path.length > 1024 || desktopId.length > 256) return false
+
+    shell.menuSelectionAfterSearch({
+      schemaVersion: 1,
+      sourceId: activeMenuId,
+      itemId: itemId,
+      kind: kind,
+      label: label,
+      path: path,
+      desktopId: desktopId,
+    })
+    return true
   }
 
   readonly property var barConfig: shellConfig && Util.isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
@@ -917,6 +956,10 @@ ShellRoot {
     function reloadConfig(): string {
       userConfigFile.reload()
       return "ok"
+    }
+
+    function pluginSupports(id: string, capability: string, minimumVersion: string): string {
+      return shell.pluginSupportStatus(id, capability, Number(minimumVersion) || 1)
     }
 
     function toggleBarTransparency(): string {

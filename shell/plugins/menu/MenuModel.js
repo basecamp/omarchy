@@ -384,6 +384,25 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
   }
 }
 
+function selectionAfterSearch(items, row, filterText) {
+  if (!String(filterText || "").trim() || !row || row.disabled) return null
+  var entry = item(items, row.itemId)
+  if (!entry || entry.providerMenu) return null
+  var allowedKinds = ["action", "app", "link", "menu"]
+  if (allowedKinds.indexOf(entry.kind) === -1) return null
+
+  var desktopId = entry.kind === "app" ? String(entry.appId || "").trim() : ""
+  if (entry.kind === "app" && !desktopId) return null
+  return {
+    schemaVersion: 1,
+    itemId: String(entry.id || ""),
+    kind: String(entry.kind || ""),
+    label: String(entry.label || ""),
+    path: pathFor(items, entry.id),
+    desktopId: desktopId
+  }
+}
+
 // Commands a `checked:` expression reads a value out of. Every sibling row
 // asks the same one -- Defaults > Browser has seven rows all comparing
 // against `omarchy-default-browser` -- so the batch runs it once and the rows
@@ -519,6 +538,7 @@ if (typeof module !== "undefined") {
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
-    displayRow: displayRow
+    displayRow: displayRow,
+    selectionAfterSearch: selectionAfterSearch
   }
 }

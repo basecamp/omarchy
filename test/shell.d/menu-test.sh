@@ -8,7 +8,22 @@ run_node_test <<'JS'
 const fs = require('fs')
 const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
 const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
+const shellQml = fs.readFileSync(path.join(root, 'shell/shell.qml'), 'utf8')
+const menuManifest = JSON.parse(fs.readFileSync(path.join(root, 'shell/plugins/menu/manifest.json'), 'utf8'))
 const defaultMenuJsonc = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8')
+
+assertEqual(
+  menuManifest.capabilities['menu-selection-after-search'],
+  1,
+  'menu declares the searched-menu selection event contract'
+)
+const publishedSelection = menuQml.match(
+  /selectionAfterSearch\s*\([\s\S]*?publishMenuSelectionAfterSearch\s*\(/
+)
+assert(publishedSelection, 'menu publishes explicit normal-menu selections through the shared activation path')
+assert(/signal\s+menuSelectionAfterSearch\s*\(\s*var\s+event\s*\)/.test(shellQml), 'shell exposes a semantic searched-menu event')
+assert(/String\s*\(\s*sourceId\s*\|\|\s*""\s*\)\s*!==\s*activeMenuId/.test(shellQml), 'shell rejects publications from inactive menu implementations')
+assert(/function\s+pluginSupports\s*\(\s*id\s*:\s*string\s*,\s*capability\s*:\s*string\s*,\s*minimumVersion\s*:\s*string\s*\)/.test(shellQml), 'shell IPC exposes capability detection')
 
 const parsed = menu.parseMenuJsonc(`
 {
@@ -57,6 +72,33 @@ const merged = menu.mergeMenuSources(parsed, user)
 assertEqual(merged.items['style.theme'].label, 'Theme picker', 'menu user entries override default entries')
 assertEqual(merged.items['style.theme'].order, 2, 'menu preserves original order on override')
 assert(merged.items.root, 'menu injects root when merging sources')
+
+const selectionItems = menu.mergeMenuSources([
+  menu.normalizeItem('style', { label: 'Style' }),
+  menu.normalizeItem('style.theme', { label: 'Theme', action: 'omarchy-theme-switcher' }),
+  menu.normalizeItem('learn', { label: 'Learn' }),
+  menu.normalizeItem('learn.keybindings', { label: 'Keybindings', action: 'omarchy-menu-keybindings' }),
+  { ...menu.normalizeItem('apps.firefox', { label: 'Firefox' }), kind: 'app', appId: 'firefox.desktop' }
+], []).items
+assertDeepEqual(
+  menu.selectionAfterSearch(selectionItems, { itemId: 'style.theme', disabled: false }, 'theme'),
+  { schemaVersion: 1, itemId: 'style.theme', kind: 'action', label: 'Theme', path: 'Style › Theme', desktopId: '' },
+  'menu creates a query-free static-action selection event'
+)
+assertDeepEqual(
+  menu.selectionAfterSearch(selectionItems, { itemId: 'learn', disabled: false }, 'learn'),
+  { schemaVersion: 1, itemId: 'learn', kind: 'menu', label: 'Learn', path: 'Learn', desktopId: '' },
+  'menu creates a submenu selection event'
+)
+assertDeepEqual(
+  menu.selectionAfterSearch(selectionItems, { itemId: 'apps.firefox', disabled: false }, 'firefox'),
+  { schemaVersion: 1, itemId: 'apps.firefox', kind: 'app', label: 'Firefox', path: 'Firefox', desktopId: 'firefox.desktop' },
+  'menu creates an app selection event with stable desktop identity'
+)
+assertEqual(menu.selectionAfterSearch(selectionItems, { itemId: 'style.theme', disabled: false }, ''), null, 'menu skips empty-search selections')
+const providerSelection = { ...menu.normalizeItem('style.font.fira-code', { label: 'Fira Code', action: 'set-font' }), providerMenu: 'style.font' }
+selectionItems[providerSelection.id] = providerSelection
+assertEqual(menu.selectionAfterSearch(selectionItems, { itemId: providerSelection.id, disabled: false }, 'fira'), null, 'menu skips dynamic provider rows without a stable selection contract')
 
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')

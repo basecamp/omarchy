@@ -10,6 +10,9 @@
     "bar-widget"
   ],
   "keepLoaded": true,
+  "capabilities": {
+    "menu-selection-after-search": 1
+  },
   "entryPoints": {
     "menu": "Menu.qml",
     "barWidget": "BarWidget.qml"

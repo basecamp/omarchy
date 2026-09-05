@@ -69,6 +69,25 @@ QtObject {
       console.warn("PluginRegistry: entryPoints must be an object at " + sourcePath)
       return null
     }
+    if (manifest.capabilities !== undefined) {
+      if (!Util.isPlainObject(manifest.capabilities)) {
+        console.warn("PluginRegistry: capabilities must be an object at " + sourcePath)
+        return null
+      }
+      var capabilityNames = Object.keys(manifest.capabilities)
+      for (var capabilityIndex = 0; capabilityIndex < capabilityNames.length; capabilityIndex++) {
+        var capability = capabilityNames[capabilityIndex]
+        var normalizedCapability = capability.trim()
+        var reservedCapabilityNames = ["__proto__", "constructor", "prototype"]
+        var capabilityVersion = Number(manifest.capabilities[capability])
+        if (!normalizedCapability || normalizedCapability !== capability
+            || reservedCapabilityNames.indexOf(capability) !== -1
+            || !Number.isInteger(capabilityVersion) || capabilityVersion < 1) {
+          console.warn("PluginRegistry: capabilities require trimmed non-reserved names and positive integer versions at " + sourcePath)
+          return null
+        }
+      }
+    }
     if (manifest.barWidget !== undefined && Util.isPlainObject(manifest.barWidget)
         && manifest.barWidget.defaultSection !== undefined) {
       var defaultSection = String(manifest.barWidget.defaultSection)
@@ -154,6 +173,22 @@ QtObject {
         return candidate
     }
     return key
+  }
+
+  // -1 means the registry is still scanning, 0 means unsupported, and a
+  // positive integer is the declared capability contract version.
+  function capabilityVersion(id, capability) {
+    if (scanning) return -1
+    return capabilityVersionForResolvedId(resolveEnabledId(id), capability)
+  }
+
+  function capabilityVersionForResolvedId(resolvedId, capability) {
+    var manifest = installedPlugins[resolvedId]
+    var capabilities = manifest && Util.isPlainObject(manifest.capabilities)
+      ? manifest.capabilities : null
+    if (!capabilities) return 0
+    var version = Number(capabilities[String(capability || "").trim()])
+    return Number.isInteger(version) && version > 0 ? version : 0
   }
 
   // A bar widget is on when it sits in the bar, whoever shipped it. That is a
