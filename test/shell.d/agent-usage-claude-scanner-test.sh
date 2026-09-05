@@ -33,6 +33,76 @@ pass "Claude collector keeps mutually exclusive token categories"
   fail "Claude collector identifies itself and reports missing auth" "$result"
 pass "Claude collector identifies itself and reports missing auth"
 
+# Transcripts the user cannot read are a normal condition, and the shell keeps
+# this collector's stderr in its tmpfs log: the report must be one line per
+# scan, not one per file, and the readable transcripts must still count.
+# Root reads a mode-000 file anyway, so give a root test run something it
+# cannot open either: a directory wearing the transcript suffix.
+make_unreadable() {
+  if (( EUID == 0 )); then
+    mkdir "$1"
+  else
+    : >"$1"
+    chmod 000 "$1"
+  fi
+}
+if (( EUID == 0 )); then
+  unreadable_kind=IsADirectoryError
+else
+  unreadable_kind=PermissionError
+fi
+
+for index in 1 2 3; do
+  make_unreadable "$projects/unreadable-$index.jsonl"
+done
+
+stderr_file="$TEST_HOME/collector.stderr"
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --force 2>"$stderr_file")
+
+[[ $(wc -l <"$stderr_file") == 1 ]] ||
+  fail "Claude collector reports skipped transcripts once per scan" "$(cat "$stderr_file")"
+grep -q "^Skipped 3 Claude project files under .*: $unreadable_kind 3 (first " "$stderr_file" ||
+  fail "Claude collector counts the skipped transcripts by error" "$(cat "$stderr_file")"
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "58793" ]] ||
+  fail "Claude collector still counts the readable transcripts" "$result"
+[[ $(jq -c ".skippedFiles, .skippedFilesByError" <<<"$result") == "3
+{\"$unreadable_kind\":3}" ]] ||
+  fail "Claude collector reports the skipped transcripts in its record" "$result"
+pass "Claude collector reports skipped transcripts once per scan"
+
+# One skipped transcript and nothing readable: the line reads as one file, and
+# the count still reaches the record even though the scan found no usage.
+SKIP_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$SKIP_HOME"' EXIT
+mkdir -p "$SKIP_HOME/.claude/projects/example"
+make_unreadable "$SKIP_HOME/.claude/projects/example/only.jsonl"
+
+result=$(HOME="$SKIP_HOME" XDG_CACHE_HOME="$SKIP_HOME/.cache" XDG_DATA_HOME="$SKIP_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --force 2>"$SKIP_HOME/collector.stderr")
+
+grep -q "^Skipped 1 Claude project file under .*: $unreadable_kind 1 (first " "$SKIP_HOME/collector.stderr" ||
+  fail "Claude collector reports a single skipped transcript as one file" "$(cat "$SKIP_HOME/collector.stderr")"
+[[ $(jq -r '.skippedFiles' <<<"$result") == "1" ]] ||
+  fail "Claude collector keeps the skipped count when nothing was readable" "$result"
+pass "Claude collector reports a single skipped transcript as one file"
+
+# Different failures stay distinguishable in the one line: a directory wearing
+# the suffix and a file the user cannot read are two errors, not one count.
+# Root can read the mode-000 file, so only an unprivileged run can stage both.
+if (( EUID == 0 )); then
+  pass "running as root; skipping the mixed-error scenario"
+else
+  mkdir "$SKIP_HOME/.claude/projects/example/dir.jsonl"
+  result=$(HOME="$SKIP_HOME" XDG_CACHE_HOME="$SKIP_HOME/.cache" XDG_DATA_HOME="$SKIP_HOME/.local/share" \
+    "$ROOT/bin/omarchy-agent-usage-claude" --force 2>"$SKIP_HOME/collector.stderr")
+  grep -q '^Skipped 2 Claude project files under .*: IsADirectoryError 1 (first .*), PermissionError 1 (first ' "$SKIP_HOME/collector.stderr" ||
+    fail "Claude collector keeps skipped transcripts apart by error" "$(cat "$SKIP_HOME/collector.stderr")"
+  [[ $(jq -c '.skippedFilesByError' <<<"$result") == '{"IsADirectoryError":1,"PermissionError":1}' ]] ||
+    fail "Claude collector records skipped transcripts by error" "$result"
+  pass "Claude collector keeps skipped transcripts apart by error"
+fi
+
 # A machine with no transcripts and no stats-cache still gets today's counts
 # from history.jsonl alone.
 HISTORY_HOME=$(mktemp -d)

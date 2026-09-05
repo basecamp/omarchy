@@ -132,6 +132,8 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
   prompts = 0
   today_prompt_count = 0
   today_token_total = 0
+  skipped: dict[str, int] = {}
+  skipped_examples: dict[str, str] = {}
 
   files = projects_path.rglob("*.jsonl") if projects_path.is_dir() else []
   for path in files:
@@ -194,7 +196,21 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
             today_token_total += total
             today_tokens[model] = today_tokens.get(model, 0) + total
     except Exception as exc:
-      print(f"Ignoring unreadable Claude project file {path}: {exc}", file=sys.stderr)
+      # A transcript the user cannot read is a normal condition: Claude Code
+      # run as root with the home mounted leaves thousands behind. The shell
+      # keeps this collector's stderr in its tmpfs log, and a line per file per
+      # refresh filled $XDG_RUNTIME_DIR until the compositor died. Count them
+      # by error and say so once per scan, so ninety thousand permission
+      # errors cannot hide the one failure that is a bug.
+      kind = type(exc).__name__
+      skipped[kind] = skipped.get(kind, 0) + 1
+      skipped_examples.setdefault(kind, f"{path}: {exc}")
+
+  skipped_total = sum(skipped.values())
+  if skipped_total:
+    noun = "file" if skipped_total == 1 else "files"
+    detail = ", ".join(f"{kind} {count} (first {skipped_examples[kind]})" for kind, count in sorted(skipped.items()))
+    print(f"Skipped {skipped_total} Claude project {noun} under {projects_path}: {detail}", file=sys.stderr)
 
   return {
     "todayPrompts": today_prompt_count,
@@ -210,6 +226,10 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
     # union, which a count alone cannot give.
     "activeDays": len(active_days),
     "activeDates": sorted(active_days),
+    # Transcripts the scan could not read, by error, so the panel can say the
+    # numbers above are missing something rather than present them as whole.
+    "skippedFiles": skipped_total,
+    "skippedFilesByError": dict(sorted(skipped.items())),
   }
 
 
@@ -863,7 +883,10 @@ def main() -> int:
   if number(stats.get("totalPrompts")) <= 0:
     fallback = stats_cache_fallback(claude_dir)
     if fallback is not None:
-      stats = fallback
+      # The aggregate cache knows nothing about files the scan could not read,
+      # and a scan that read nothing is the case where that matters most.
+      skipped = {key: stats[key] for key in ("skippedFiles", "skippedFilesByError") if key in stats}
+      stats = dict(fallback, **skipped)
     else:
       # No transcripts and no aggregate cache, but history.jsonl alone can
       # still put numbers on today.
