@@ -408,6 +408,16 @@ bright_foreground #ffffff
 EOF
 pass "legacy short palette resolves every canonical neutral color"
 
+# foot rejects anything outside light/dark, so the mode must be normalized.
+MODE_COLORS_FILE="$PI_TMPDIR/mode-colors.toml"
+printf 'mode = "Light"\nbackground = "#101010"\n' >"$MODE_COLORS_FILE"
+[[ $("$ROOT/bin/omarchy-theme-color" --file "$MODE_COLORS_FILE" mode) == "light" ]] || fail "a capitalized mode is lowercased"
+printf 'mode = "sepia"\nbackground = "#fffcf0"\n' >"$MODE_COLORS_FILE"
+[[ $("$ROOT/bin/omarchy-theme-color" --file "$MODE_COLORS_FILE" mode) == "light" ]] || fail "an unknown mode falls back to background luminance"
+printf 'theme_type = "DARK"\nbackground = "#fffcf0"\n' >"$MODE_COLORS_FILE"
+[[ $("$ROOT/bin/omarchy-theme-color" --file "$MODE_COLORS_FILE" mode) == "dark" ]] || fail "a legacy theme_type is lowercased"
+pass "theme mode is normalized to light or dark"
+
 LEGACY_THEME_HOME="$PI_TMPDIR/legacy-theme-home"
 LEGACY_NEXT_THEME="$LEGACY_THEME_HOME/.local/state/omarchy/current/next-theme"
 mkdir -p "$LEGACY_NEXT_THEME"
@@ -423,6 +433,14 @@ if rg -q '\{\{[^}]+\}\}' "$LEGACY_NEXT_THEME"; then
   fail "legacy theme renders every template placeholder"
 fi
 pass "legacy short palette renders the complete generated theme"
+
+# foot answers the CSI ?996n color-scheme query from whichever section
+# initial-color-theme names, so both have to follow the theme's own mode.
+grep -qFx 'initial-color-theme=light' "$NEXT_THEME/foot.ini" || fail "a light theme selects foot's light color theme"
+grep -qFx '[colors-light]' "$NEXT_THEME/foot.ini" || fail "a light theme renders its palette into foot's light section"
+grep -qFx 'initial-color-theme=dark' "$LEGACY_NEXT_THEME/foot.ini" || fail "a dark theme selects foot's dark color theme"
+grep -qFx '[colors-dark]' "$LEGACY_NEXT_THEME/foot.ini" || fail "a dark theme renders its palette into foot's dark section"
+pass "foot's generated config follows the theme's mode"
 
 osc_summary=$("$ROOT/bin/omarchy-theme-osc" "$NEXT_THEME/colors.toml" | python -c 'import sys; data = sys.stdin.buffer.read(); print(data.count(b"]4;"), b"]4;1;#ff0000" in data, b"]4;7;#ffffff" in data, b"]4;15;#eeeeee" in data, b"]12;#eeeeee" in data, b"]17;#808080" in data, b"]19;#eeeeee" in data)')
 [[ $osc_summary == "16 True True True True True True" ]] || fail "theme OSC aliases semantic colors to ANSI palette"

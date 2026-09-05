@@ -16,6 +16,7 @@
 #
 # Theme mode precedence: `mode` key, legacy `theme_type` key, a light.mode
 # file beside the colors.toml, background luminance auto-detect, dark.
+# The value is lowercased; anything but light/dark falls to auto-detect.
 
 COLORS_FILE="$HOME/.local/state/omarchy/current/theme/colors.toml"
 OUTPUT=""
@@ -118,10 +119,17 @@ alias_theme_color() {
 }
 
 resolve_theme_mode() {
-  local bg_hex lum
+  local declared bg_hex lum
 
-  [[ ${THEME_COLORS[mode]} ]] || THEME_COLORS[mode]="${THEME_COLORS[theme_type]}"
-  [[ ${THEME_COLORS[mode]} ]] && return
+  # foot rejects anything outside light/dark, so only those two values
+  # may leave the resolver.
+  declared="${THEME_COLORS[mode]:-${THEME_COLORS[theme_type]}}"
+  declared="${declared,,}"
+
+  if [[ $declared == "light" || $declared == "dark" ]]; then
+    THEME_COLORS[mode]="$declared"
+    return
+  fi
 
   if [[ -f $COLORS_DIR/light.mode ]]; then
     THEME_COLORS[mode]="light"

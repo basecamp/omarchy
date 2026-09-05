@@ -92,6 +92,8 @@ red = "#f7768e"
 blue = "#7aa2f7"
 ```
 
+`mode` is `light` or `dark`. The resolver lowercases the value and auto-detects from the background when it is neither.
+
 Any key can be referenced from a template with `{{ key }}`. The foundational
 shell palette is loaded from:
 
