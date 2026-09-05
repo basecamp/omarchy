@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Detect the 2017 12-inch MacBook (MacBook10,1).
+
+omarchy-hw-match "MacBook10,1"

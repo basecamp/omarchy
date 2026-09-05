@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# omarchy:summary=Apply the MacBook10,1 RAPL and 3GHz CPU envelope
+# omarchy:args=[status]
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+PL1_UW=4500000
+PL2_UW=7000000
+PL1_WINDOW_US=28000000
+PL2_WINDOW_US=2000000
+CPU_MAX_KHZ=3000000
+
+sysfs_root=${OMARCHY_SYSFS_ROOT:-}
+
+sysfs() {
+  printf '%s%s' "$sysfs_root" "$1"
+}
+
+product_name() {
+  cat "$(sysfs /sys/class/dmi/id/product_name)" 2>/dev/null || true
+}
+
+write_sysfs() {
+  local path=$1
+  local value=$2
+
+  [[ -f $path ]] || return 0
+  printf '%s\n' "$value" >"$path"
+}
+
+print_status() {
+  local rapl cpu0_max cpu0_cur pct temp
+
+  rapl=$(sysfs /sys/class/powercap/intel-rapl:0)
+  cpu0_max=$(sysfs /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq)
+  cpu0_cur=$(sysfs /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq)
+  pct=$(sysfs /sys/devices/system/cpu/intel_pstate/max_perf_pct)
+  temp=$(sysfs /sys/class/thermal/thermal_zone0/temp)
+
+  printf 'product=%s\n' "$(product_name)"
+  printf 'target_pl1_uw=%s\n' "$PL1_UW"
+  printf 'target_pl2_uw=%s\n' "$PL2_UW"
+  printf 'target_cpu_max_khz=%s\n' "$CPU_MAX_KHZ"
+  printf 'pl1_uw=%s\n' "$(cat "$rapl/constraint_0_power_limit_uw" 2>/dev/null || echo missing)"
+  printf 'pl2_uw=%s\n' "$(cat "$rapl/constraint_1_power_limit_uw" 2>/dev/null || echo missing)"
+  printf 'pl1_window_us=%s\n' "$(cat "$rapl/constraint_0_time_window_us" 2>/dev/null || echo missing)"
+  printf 'pl2_window_us=%s\n' "$(cat "$rapl/constraint_1_time_window_us" 2>/dev/null || echo missing)"
+  printf 'cpu0_scaling_max_khz=%s\n' "$(cat "$cpu0_max" 2>/dev/null || echo missing)"
+  printf 'cpu0_scaling_cur_khz=%s\n' "$(cat "$cpu0_cur" 2>/dev/null || echo missing)"
+  printf 'max_perf_pct=%s\n' "$(cat "$pct" 2>/dev/null || echo missing)"
+  printf 'pkg_temp_mc=%s\n' "$(cat "$temp" 2>/dev/null || echo missing)"
+}
+
+apply_envelope() {
+  local rapl cpuinfo_max want pct scaling_max_files path
+
+  if [[ $(product_name) != "MacBook10,1" ]]; then
+    return 0
+  fi
+
+  if [[ -z $sysfs_root ]] && ((EUID != 0)); then
+    echo "omarchy-hw-macbook10-power-envelope must run as root" >&2
+    exit 1
+  fi
+
+  rapl=$(sysfs /sys/class/powercap/intel-rapl:0)
+  if [[ ! -d $rapl ]]; then
+    echo "intel-rapl sysfs is missing" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$PL1_UW" >"$rapl/constraint_0_power_limit_uw"
+  printf '%s\n' "$PL2_UW" >"$rapl/constraint_1_power_limit_uw"
+  write_sysfs "$rapl/constraint_0_time_window_us" "$PL1_WINDOW_US"
+  write_sysfs "$rapl/constraint_1_time_window_us" "$PL2_WINDOW_US"
+  write_sysfs "$rapl/enabled" "1"
+
+  cpuinfo_max=$(cat "$(sysfs /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq)")
+  want=$CPU_MAX_KHZ
+  if ((want > cpuinfo_max)); then
+    want=$cpuinfo_max
+  fi
+
+  shopt -s nullglob
+  scaling_max_files=("$(sysfs /sys/devices/system/cpu)"/cpu*/cpufreq/scaling_max_freq)
+  shopt -u nullglob
+  ((${#scaling_max_files[@]} > 0)) || {
+    echo "cpufreq scaling_max_freq is missing" >&2
+    exit 1
+  }
+
+  for path in "${scaling_max_files[@]}"; do
+    printf '%s\n' "$want" >"$path"
+  done
+
+  if ((cpuinfo_max > 0)); then
+    pct=$((want * 100 / cpuinfo_max))
+    write_sysfs "$(sysfs /sys/devices/system/cpu/intel_pstate/max_perf_pct)" "$pct"
+  fi
+}
+
+case "${1:-apply}" in
+  status)
+    print_status
+    ;;
+  apply | "")
+    apply_envelope
+    ;;
+  *)
+    echo "Usage: omarchy-hw-macbook10-power-envelope [status]" >&2
+    exit 1
+    ;;
+esac
