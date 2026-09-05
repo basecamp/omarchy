@@ -58,8 +58,17 @@ BarWidget {
         readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
         readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
 
+        readonly property string keyLabel: modelData === 10 ? "0" : String(modelData)
+        // Hyprland names a fresh workspace after its own id; anything else is
+        // a name someone gave it -- via `hyprctl dispatch` or a
+        // workspace-naming plugin -- worth surfacing on hover since the pip
+        // itself only shows the number.
+        readonly property bool named: workspace !== null
+          && workspace.name !== "" && workspace.name !== String(modelData)
+
         bar: root.bar
-        text: focused ? "\uDB85\uDCFB" : (modelData === 10 ? "0" : String(modelData))
+        text: focused ? "\uDB85\uDCFB" : keyLabel
+        tooltipText: named ? keyLabel + ": " + workspace.name : "Workspace " + keyLabel
         opacity: occupied || focused ? 1 : 0.5
         horizontalMargin: 6
         verticalPadding: 6
