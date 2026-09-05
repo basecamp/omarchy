@@ -12,20 +12,29 @@ Item {
   id: root
 
   // The omarchy-shell host injects omarchyPath from OMARCHY_PATH.
-  required property string omarchyPath
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   // Injected by the host shell so bar slots can resolve enabled widgets.
-  required property var barWidgetRegistry
+  property var barWidgetRegistry: fallbackBarWidgetRegistry
+  // Read-only registry view for third-party full bars; the built-in bar does
+  // not otherwise need it, but declaring it keeps clone construction atomic.
+  property var pluginRegistry: null
   // Injected by the host shell every time shell.json is reloaded. Holds the
   // `bar:` subtree: position, centerAnchor, layout. The host owns file IO;
   // the bar just renders whatever it's handed. The bar font follows the
   // OS-level fontconfig monospace binding — it is not stored in shell.json.
-  required property var barConfig
+  property var barConfig: ({})
   // Injected by the host shell. Used for shell-wide actions such as opening
   // settings and persisting inline widget state.
   property var shell: null
   // Manifest for the active bar option. Present for custom bars and useful for
   // diagnostics; the built-in bar does not otherwise need it.
   property var manifest: null
+  QtObject {
+    id: fallbackBarWidgetRegistry
+    property var widgets: ({})
+    property int revision: 0
+    function metadataFor(id) { return null }
+  }
   // Mirrors the on-disk `bar-off` flag so the user can hide the bar without
   // killing the entire shell. Hidden panels stay mapped but park off-screen
   // without an exclusion zone; updated by the FileView watcher further down.
@@ -100,6 +109,219 @@ Item {
   property var barMoveScreen: null
   property var clickTargets: []
   property var moduleSlots: []
+  property var pluginBarApis: ({})
+  property var pluginObjectOwners: []
+
+  Component {
+    id: pluginBarApiComponent
+    PluginBarApi { }
+  }
+
+  function publicLayoutConfig() {
+    return JSON.parse(JSON.stringify(root.layoutConfig || {}))
+  }
+
+  function bindPluginBarApi(api) {
+    if (!api) return
+    api.foreground = Qt.binding(function() { return root.foreground })
+    api.barForeground = Qt.binding(function() { return root.barForeground })
+    api.background = Qt.binding(function() { return root.background })
+    api.urgent = Qt.binding(function() { return root.urgent })
+    api.fontFamily = Qt.binding(function() { return root.fontFamily })
+    api.position = Qt.binding(function() { return root.position })
+    api.vertical = Qt.binding(function() { return root.vertical })
+    api.barSize = Qt.binding(function() { return root.barSize })
+    api.transparent = Qt.binding(function() { return root.transparent })
+    api.foregroundAnimationEnabled = Qt.binding(function() { return root.foregroundAnimationEnabled })
+    api.centerSectionRevealHeld = Qt.binding(function() { return root.centerSectionRevealHeld })
+    api._centerHoverRevealSuppressed = Qt.binding(function() { return root.centerHoverRevealSuppressed })
+    root.syncPluginBarApiObjects(api)
+  }
+
+  function syncPluginBarApiObjects(api) {
+    if (!api) return
+    api.activePopout = root.pluginOwnsBarObject(api.pluginId, root.activePopout)
+      ? root.activePopout : (root.activePopout ? api.foreignPopoutMarker : null)
+    api.clickTargets = root.pluginClickTargets(api.pluginId)
+    api.layoutConfig = root.publicLayoutConfig()
+  }
+
+  function pluginObjectRecord(target) {
+    for (var i = 0; i < pluginObjectOwners.length; i++) {
+      var record = pluginObjectOwners[i]
+      if (record && record.target === target) return record
+    }
+    return null
+  }
+
+  function markPluginObject(pluginId, target, role) {
+    var key = String(pluginId || "")
+    if (!key || !target) return false
+    var record = root.pluginObjectRecord(target)
+    if (record && record.pluginId !== key) return false
+    var next = []
+    for (var i = 0; i < pluginObjectOwners.length; i++) {
+      var existing = pluginObjectOwners[i]
+      if (!existing || existing.target !== target) next.push(existing)
+    }
+    var updated = record || { target: target, pluginId: key, clickTarget: false, popout: false }
+    updated[role] = true
+    next.push(updated)
+    pluginObjectOwners = next
+    return true
+  }
+
+  function unmarkPluginObject(pluginId, target, role) {
+    var key = String(pluginId || "")
+    var next = []
+    for (var i = 0; i < pluginObjectOwners.length; i++) {
+      var record = pluginObjectOwners[i]
+      if (!record || record.target !== target || record.pluginId !== key) {
+        next.push(record)
+        continue
+      }
+      record[role] = false
+      if (record.clickTarget || record.popout) next.push(record)
+    }
+    pluginObjectOwners = next
+  }
+
+  function pluginOwnsBarObject(pluginId, target) {
+    var record = target ? root.pluginObjectRecord(target) : null
+    return !!record && record.pluginId === String(pluginId || "")
+  }
+
+  function pluginClickTargets(pluginId) {
+    var out = []
+    for (var i = 0; i < root.clickTargets.length; i++) {
+      var target = root.clickTargets[i]
+      if (root.pluginOwnsBarObject(pluginId, target)) out.push(target)
+    }
+    return out
+  }
+
+  function syncAllPluginBarApiObjects() {
+    for (var id in pluginBarApis) root.syncPluginBarApiObjects(pluginBarApis[id])
+  }
+
+  function registerPluginClickTarget(pluginId, target) {
+    if (!root.markPluginObject(pluginId, target, "clickTarget")) return
+    root.registerClickTarget(target)
+  }
+
+  function unregisterPluginClickTarget(pluginId, target) {
+    if (!root.pluginOwnsBarObject(pluginId, target)) return
+    root.unregisterClickTarget(target)
+    root.unmarkPluginObject(pluginId, target, "clickTarget")
+  }
+
+  function requestPluginPopout(pluginId, owner) {
+    if (!root.markPluginObject(pluginId, owner, "popout")) return
+    root.requestPopout(owner)
+  }
+
+  function releasePluginPopout(pluginId, owner) {
+    if (!root.pluginOwnsBarObject(pluginId, owner)) return
+    root.releasePopout(owner)
+    root.unmarkPluginObject(pluginId, owner, "popout")
+  }
+
+  function pluginBarApiFor(pluginId, moduleName, registered) {
+    var key = String(pluginId || "")
+    if (!key) return null
+    if (pluginBarApis[key]) return pluginBarApis[key]
+
+    var pluginShell = null
+    if (registered && root.shell && typeof root.shell.pluginShellForId === "function") {
+      // Only the trusted built-in bar receives ShellRoot and can request a
+      // service-capable facade for the widget it is instantiating.
+      pluginShell = root.shell.pluginShellForId(moduleName)
+    } else if (root.shell && typeof root.shell.pluginShellForBarEntry === "function") {
+      // Replacement bars receive a service-less entry facade. Giving an
+      // untrusted bar a generic facade factory would let it retrieve another
+      // third-party plugin's live service object.
+      pluginShell = root.shell.pluginShellForBarEntry(key, moduleName)
+    }
+
+    var api = pluginBarApiComponent.createObject(null, {
+      pluginId: key,
+      moduleName: String(moduleName || ""),
+      shell: pluginShell,
+      _showTooltip: function(target, text) { root.showTooltip(target, text) },
+      _hideTooltip: function(target) { root.hideTooltip(target) },
+      _registerClickTarget: function(target) { root.registerPluginClickTarget(key, target) },
+      _unregisterClickTarget: function(target) { root.unregisterPluginClickTarget(key, target) },
+      _requestPopout: function(owner) { root.requestPluginPopout(key, owner) },
+      _releasePopout: function(owner) { root.releasePluginPopout(key, owner) },
+      _switchPanelFrom: function(owner, direction) { return root.switchPanelFrom(owner, direction) },
+      _targetBelongsToWindow: function(target, window) { return root.targetBelongsToWindow(target, window) },
+      _moduleWidgets: function(requestedId) {
+        return String(requestedId || "") === String(moduleName || "")
+          ? root.moduleWidgets(moduleName) : []
+      },
+      _run: function(command) { root.run(command) },
+      _setCenterHoverRevealSuppressed: function(value) {
+        root.centerHoverRevealSuppressed = !!value
+      }
+    })
+    if (!api) return null
+    root.bindPluginBarApi(api)
+
+    var next = ({})
+    for (var id in pluginBarApis) next[id] = pluginBarApis[id]
+    next[key] = api
+    pluginBarApis = next
+    return api
+  }
+
+  function pluginBarApiUsed(pluginId) {
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
+      if (slot && slot.pluginApiId === pluginId) return true
+    }
+    return false
+  }
+
+  function releasePluginObjects(pluginId) {
+    var owned = pluginObjectOwners.slice()
+    for (var i = 0; i < owned.length; i++) {
+      var record = owned[i]
+      if (!record || record.pluginId !== pluginId) continue
+      if (record.clickTarget) root.unregisterClickTarget(record.target)
+      if (record.popout && root.activePopout === record.target) root.releasePopout(record.target)
+    }
+    pluginObjectOwners = pluginObjectOwners.filter(function(record) {
+      return record && record.pluginId !== pluginId
+    })
+  }
+
+  function prunePluginBarApis() {
+    var next = ({})
+    for (var id in pluginBarApis) {
+      var api = pluginBarApis[id]
+      if (root.pluginBarApiUsed(id)) {
+        next[id] = api
+        continue
+      }
+      root.releasePluginObjects(id)
+      if (api && typeof api.destroy === "function") api.destroy()
+    }
+    pluginBarApis = next
+  }
+
+  onActivePopoutChanged: syncAllPluginBarApiObjects()
+  onClickTargetsChanged: syncAllPluginBarApiObjects()
+  onLayoutConfigChanged: syncAllPluginBarApiObjects()
+  onModuleSlotsChanged: Qt.callLater(prunePluginBarApis)
+
+  Component.onDestruction: {
+    for (var id in pluginBarApis) {
+      root.releasePluginObjects(id)
+      if (pluginBarApis[id] && typeof pluginBarApis[id].destroy === "function")
+        pluginBarApis[id].destroy()
+    }
+    pluginBarApis = ({})
+  }
 
   function registerClickTarget(target) {
     if (!target || clickTargets.indexOf(target) !== -1) return
@@ -597,6 +819,10 @@ Item {
   function setBarHovered(hovered) {
     barHoverCount = Math.max(0, barHoverCount + (hovered ? 1 : -1))
     if (barHoverCount === 0) centerSectionRevealTimer.restart()
+  }
+
+  function setCenterHoverRevealSuppressed(value) {
+    centerHoverRevealSuppressed = !!value
   }
 
   Timer {
@@ -1548,6 +1774,9 @@ Item {
     readonly property string moduleName: root.entryId(entry)
     readonly property var moduleSettings: root.entrySettings(entry)
     readonly property string customType: root.customModuleType(entry)
+    readonly property var registryMetadata: root.barWidgetRegistry.metadataFor(root.canonicalWidgetId(moduleName))
+    readonly property bool firstParty: registryMetadata && registryMetadata.firstParty === true
+    readonly property string pluginApiId: registered ? root.canonicalWidgetId(moduleName) : "bar-entry:" + moduleName
     // Re-evaluate when the registry mutates (Component reference changes,
     // plugin enabled/disabled, etc.). Reading the `widgets` property creates
     // the binding dependency — the wrapped function call alone wouldn't.
@@ -1766,7 +1995,8 @@ Item {
     function injectProps() {
       var target = activeItem
       if (!target) return
-      if ("bar" in target) target.bar = root
+      if ("bar" in target) target.bar = firstParty
+        ? root : root.pluginBarApiFor(pluginApiId, moduleName, registered)
       if ("moduleName" in target) target.moduleName = moduleName
       if ("settings" in target) target.settings = moduleSettings
     }

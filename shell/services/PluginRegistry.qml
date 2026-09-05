@@ -20,7 +20,7 @@ QtObject {
   property var shellConfigProvider: null
   property var shellConfigMutator: null
 
-  // { pluginId: manifest } — manifests have __sourceDir and __isFirstParty stamped in.
+  // { pluginId: manifest } — manifests have source/trust metadata stamped in.
   property var installedPlugins: ({})
   property int registryRevision: 0
   property bool scanning: false
@@ -78,8 +78,7 @@ QtObject {
       }
     }
     // Every entry point must be a relative path inside the plugin's source
-    // directory. Reject the whole manifest if anything looks like an attempt
-    // to escape the plugin's sandbox.
+    // directory. Reject the whole manifest if an entry point escapes it.
     for (var key in manifest.entryPoints) {
       if (!isSafeEntryPoint(manifest.entryPoints[key])) {
         console.warn("PluginRegistry: unsafe entryPoint '" + key + "'='"
@@ -88,6 +87,32 @@ QtObject {
       }
     }
     return manifest
+  }
+
+  function trustedCapabilities(manifest) {
+    if (!manifest || !manifest.__isFirstParty) return []
+    var metadata = Util.isPlainObject(manifest.omarchy) ? manifest.omarchy : null
+    var declared = metadata && Array.isArray(metadata.capabilities) ? metadata.capabilities : []
+    var out = []
+    for (var i = 0; i < declared.length; i++) {
+      var capability = String(declared[i] || "")
+      if (capability && out.indexOf(capability) === -1) out.push(capability)
+    }
+    return out
+  }
+
+  function stampHostCapabilities(firstParty, thirdParty) {
+    for (var firstPartyId in firstParty)
+      firstParty[firstPartyId].__hostCapabilities = trustedCapabilities(firstParty[firstPartyId])
+
+    for (var thirdPartyId in thirdParty) {
+      var manifest = thirdParty[thirdPartyId]
+      var metadata = manifest && Util.isPlainObject(manifest.omarchy) ? manifest.omarchy : null
+      var clonedFrom = metadata ? String(metadata.clonedFrom || "") : ""
+      var source = clonedFrom ? firstParty[clonedFrom] : null
+      manifest.__hostCapabilities = source && Array.isArray(source.__hostCapabilities)
+        ? source.__hostCapabilities.slice() : []
+    }
   }
 
   function entryPointUrl(manifest, kind) {
@@ -593,6 +618,8 @@ QtObject {
       if (currentSource) currentJson.push(line)
     }
     flush()
+
+    stampHostCapabilities(firstParty, thirdParty)
 
     var merged = {}
     for (var fk in firstParty) merged[fk] = firstParty[fk]

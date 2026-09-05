@@ -7,6 +7,7 @@ import qs.Commons
 
 import "plugins/bar"
 import "services"
+import "services/AuthServiceStore.js" as AuthServiceStore
 
 ShellRoot {
   id: shell
@@ -113,7 +114,10 @@ ShellRoot {
   }
 
   readonly property var barConfig: shellConfig && Util.isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
-  onBarConfigChanged: if (bar && "barConfig" in bar) bar.barConfig = shell.barConfig
+  onBarConfigChanged: {
+    if (bar && "barConfig" in bar)
+      bar.barConfig = shell.barConfigFor(shell.activeBarManifest)
+  }
   FileView {
     id: defaultsFile
     path: shell.defaultsPath
@@ -214,11 +218,11 @@ ShellRoot {
   function configureBar(target, manifest) {
     if (!target) return
     if ("omarchyPath" in target) target.omarchyPath = shell.omarchyPath
-    if ("shell" in target) target.shell = shell
-    if ("manifest" in target) target.manifest = manifest
-    if ("barWidgetRegistry" in target) target.barWidgetRegistry = shell.barWidgetRegistry
-    if ("pluginRegistry" in target) target.pluginRegistry = shell.pluginRegistry
-    if ("barConfig" in target) target.barConfig = shell.barConfig
+    if ("shell" in target) target.shell = shell.pluginShellFor(manifest)
+    if ("manifest" in target) target.manifest = shell.publicPluginManifest(manifest)
+    if ("barWidgetRegistry" in target) target.barWidgetRegistry = shell.pluginBarWidgetRegistryFor(manifest)
+    if ("pluginRegistry" in target) target.pluginRegistry = shell.pluginRegistryFor(manifest)
+    if ("barConfig" in target) target.barConfig = shell.barConfigFor(manifest)
     shell.bar = target
   }
 
@@ -253,8 +257,7 @@ ShellRoot {
     onActiveChanged: if (!active) shell.bar = null
     onStatusChanged: {
       if (status === Loader.Error) {
-        var detail = errorString && errorString() ? errorString() : ""
-        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId + ":", detail)
+        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId)
         shell.failedBarId = shell.activeBarId
       }
     }
@@ -271,13 +274,577 @@ ShellRoot {
   }
 
   property var _services: ({})
+  property var _pluginShellApis: ({})
+  property var _pluginShellApiDescriptors: ({})
+  property var _pluginBarEntryShellApis: ({})
+  property var _pluginRegistryApis: ({})
+  property var _pluginBarWidgetRegistryApis: ({})
+  property var _pluginAppLibraryApis: ({})
+  property var _pluginBarStateApis: ({})
+  property var _pluginFirstPartyServiceApis: ({})
+
+  Component {
+    id: pluginShellApiComponent
+    PluginShellApi { }
+  }
+
+  Component {
+    id: pluginRegistryApiComponent
+    PluginRegistryApi { }
+  }
+
+  Component {
+    id: pluginBarWidgetRegistryApiComponent
+    PluginBarWidgetRegistryApi { }
+  }
+
+  Component {
+    id: pluginAppLibraryApiComponent
+    PluginAppLibraryApi { }
+  }
+
+  Component {
+    id: pluginBarStateApiComponent
+    PluginBarStateApi { }
+  }
+
+  Component {
+    id: pluginFirstPartyServiceApiComponent
+    PluginFirstPartyServiceApi { }
+  }
+
+  function publicPluginManifest(manifest) {
+    if (!manifest) return null
+    if (manifest.__isFirstParty) return manifest
+    var copy = JSON.parse(JSON.stringify(manifest))
+    delete copy.__sourceDir
+    delete copy.__isFirstParty
+    delete copy.__hostCapabilities
+    return copy
+  }
+
+  function publicBarConfig() {
+    return JSON.parse(JSON.stringify(shell.barConfig || {}))
+  }
+
+  function barConfigFor(manifest) {
+    return !manifest || manifest.__isFirstParty
+      ? shell.barConfig : shell.publicBarConfig()
+  }
+
+  function publicBarWidgetSnapshot() {
+    var source = shell.barWidgetRegistry.widgets || {}
+    var snapshot = {}
+    for (var id in source) {
+      var entry = source[id]
+      if (!entry) continue
+      snapshot[id] = {
+        component: entry.component,
+        metadata: JSON.parse(JSON.stringify(entry.metadata || {}))
+      }
+    }
+    return snapshot
+  }
+
+  function manifestHasKind(manifest, kind) {
+    return !!manifest && Array.isArray(manifest.kinds)
+      && manifest.kinds.indexOf(kind) !== -1
+  }
+
+  function pluginHasBarCapabilities(manifest) {
+    return shell.manifestHasKind(manifest, "bar")
+  }
+
+  function pluginOwnsTarget(pluginId, requestedId) {
+    var caller = String(pluginId || "")
+    if (!caller) return false
+    return shell.pluginRegistry.resolveEnabledId(String(requestedId || "")) === caller
+  }
+
+  function pluginServiceFor(pluginId, requestedId) {
+    if (!shell.pluginOwnsTarget(pluginId, requestedId)) return null
+    return shell.serviceFor(shell.pluginRegistry.resolveEnabledId(requestedId))
+  }
+
+  function barEntryConfigured(pluginId) {
+    var location = shell.pluginRegistry.findEntryLocation(shell.shellConfig, pluginId)
+    return location && location.kind === "bar"
+  }
+
+  function barPluginMayControl(manifest, requestedId) {
+    if (!shell.pluginHasBarCapabilities(manifest)) return false
+    var id = shell.pluginRegistry.resolveEnabledId(String(requestedId || ""))
+    var target = shell.pluginRegistry.installedPlugins[id]
+    if (!target || shell.isAuthenticationService(target)) return false
+    if (shell.barEntryConfigured(id)) return true
+    var uiKinds = ["bar-widget", "panel", "overlay", "menu"]
+    for (var i = 0; i < uiKinds.length; i++)
+      if (shell.manifestHasKind(target, uiKinds[i])) return true
+    return false
+  }
+
+  function mutatePluginBarConfig(mutator) {
+    if (typeof mutator !== "function") return false
+    shell.mutateShellConfig(function(config) {
+      var scoped = { bar: JSON.parse(JSON.stringify(config.bar || {})) }
+      mutator(scoped)
+      if (Util.isPlainObject(scoped.bar)) config.bar = JSON.parse(JSON.stringify(scoped.bar))
+    })
+    return true
+  }
+
+  function pluginAppLibraryFor(cacheKey, pluginId) {
+    if (_pluginAppLibraryApis[cacheKey]) return _pluginAppLibraryApis[cacheKey]
+    var api = pluginAppLibraryApiComponent.createObject(null, {
+      ownerPluginId: pluginId,
+      _entryName: function(entry) { return shell.appLibrary.entryName(entry) },
+      _entrySubtext: function(entry) { return shell.appLibrary.entrySubtext(entry) },
+      _sortedEntries: function(query) { return shell.appLibrary.sortedEntries(query) },
+      _iconSource: function(icon) { return shell.appLibrary.iconSource(icon) },
+      _refreshIcons: function() { shell.appLibrary.refreshIcons() },
+      _launch: function(desktopId, name) { shell.appLibrary.launch(desktopId, name) },
+      _remove: function(desktopId, name) { shell.appLibrary.remove(desktopId, name) }
+    })
+    if (!api) return null
+    var next = ({})
+    for (var id in _pluginAppLibraryApis) next[id] = _pluginAppLibraryApis[id]
+    next[cacheKey] = api
+    _pluginAppLibraryApis = next
+    return api
+  }
+
+  function pluginBarStateFor(cacheKey, pluginId) {
+    if (_pluginBarStateApis[cacheKey]) return _pluginBarStateApis[cacheKey]
+    var api = pluginBarStateApiComponent.createObject(null, { ownerPluginId: pluginId })
+    if (!api) return null
+    api.barHidden = Qt.binding(function() { return shell.bar ? shell.bar.barHidden === true : false })
+    api.barSize = Qt.binding(function() { return shell.bar ? Math.max(0, shell.bar.barSize || 0) : 0 })
+    api.fontFamily = Qt.binding(function() { return shell.bar ? String(shell.bar.fontFamily || "") : "" })
+    api.position = Qt.binding(function() { return shell.bar ? String(shell.bar.position || "top") : "top" })
+    var next = ({})
+    for (var id in _pluginBarStateApis) next[id] = _pluginBarStateApis[id]
+    next[cacheKey] = api
+    _pluginBarStateApis = next
+    return api
+  }
+
+  function pluginFirstPartyServiceFor(cacheKey, pluginId, requestedId) {
+    var id = String(requestedId || "")
+    var allowed = ["omarchy.idle", "omarchy.media", "omarchy.nightlight", "omarchy.notifications"]
+    if (allowed.indexOf(id) === -1) return null
+    var proxyKey = cacheKey + "::" + id
+    if (_pluginFirstPartyServiceApis[proxyKey]) return _pluginFirstPartyServiceApis[proxyKey]
+
+    function service() {
+      return shell.serviceFor(shell.pluginRegistry.resolveEnabledId(id))
+    }
+    var api = pluginFirstPartyServiceApiComponent.createObject(null, {
+      ownerPluginId: pluginId,
+      serviceId: id,
+      _setIdleEnabled: function(value) {
+        var target = service()
+        if (target && typeof target.setIdleEnabled === "function") target.setIdleEnabled(value)
+      },
+      _setNightlight: function(value) {
+        var target = service()
+        if (target && typeof target.setNightlight === "function") target.setNightlight(value)
+      },
+      _setDoNotDisturb: function(value) {
+        var target = service()
+        if (target && typeof target.setDoNotDisturb === "function") target.setDoNotDisturb(value)
+      },
+      _runAction: function(action, showFeedback, targetKey) {
+        var target = service()
+        if (target && typeof target.runAction === "function") target.runAction(action, showFeedback, targetKey)
+      },
+      _playerKey: function(player) {
+        var target = service()
+        return target && typeof target.playerKey === "function" ? target.playerKey(player) : ""
+      },
+      _selectPlayer: function(playerKey) {
+        var target = service()
+        if (target && typeof target.selectPlayer === "function") target.selectPlayer(playerKey)
+      }
+    })
+    if (!api) return null
+    api.stayAwake = Qt.binding(function() {
+      var target = service()
+      return target ? target.stayAwake === true : false
+    })
+    api.enabled = Qt.binding(function() {
+      var target = service()
+      return target ? target.enabled === true : false
+    })
+    api.doNotDisturb = Qt.binding(function() {
+      var target = service()
+      return target ? target.doNotDisturb === true : false
+    })
+    api.activePlayer = Qt.binding(function() {
+      var target = service()
+      return target ? target.activePlayer : null
+    })
+    api.sourcePlayers = Qt.binding(function() {
+      var target = service()
+      return target && Array.isArray(target.sourcePlayers) ? target.sourcePlayers : []
+    })
+    var next = ({})
+    for (var existing in _pluginFirstPartyServiceApis) next[existing] = _pluginFirstPartyServiceApis[existing]
+    next[proxyKey] = api
+    _pluginFirstPartyServiceApis = next
+    return api
+  }
+
+  function pluginShellCapabilityProfile(manifest, allowOwnService, barCapabilities) {
+    return [
+      allowOwnService ? "own-service" : "no-own-service",
+      barCapabilities ? "bar" : "no-bar",
+      shell.manifestHasKind(manifest, "menu") ? "menu" : "no-menu"
+    ].join("|")
+  }
+
+  function cacheWithoutKey(cache, key, destroyValue) {
+    var next = ({})
+    for (var existing in cache) {
+      if (existing === key) {
+        var value = cache[existing]
+        if (destroyValue && value && typeof value.destroy === "function") value.destroy()
+      } else {
+        next[existing] = cache[existing]
+      }
+    }
+    return next
+  }
+
+  function cacheWithoutPrefix(cache, prefix) {
+    var next = ({})
+    for (var existing in cache) {
+      if (existing.indexOf(prefix) === 0) {
+        var value = cache[existing]
+        if (value && typeof value.destroy === "function") value.destroy()
+      } else {
+        next[existing] = cache[existing]
+      }
+    }
+    return next
+  }
+
+  function revokePluginShellApi(cacheKey) {
+    var key = String(cacheKey || "")
+    if (!key) return
+    _pluginAppLibraryApis = shell.cacheWithoutKey(_pluginAppLibraryApis, key, true)
+    _pluginFirstPartyServiceApis = shell.cacheWithoutPrefix(_pluginFirstPartyServiceApis, key + "::")
+    _pluginBarEntryShellApis = shell.cacheWithoutPrefix(_pluginBarEntryShellApis, key + ":")
+    _pluginShellApis = shell.cacheWithoutKey(_pluginShellApis, key, true)
+    _pluginShellApiDescriptors = shell.cacheWithoutKey(_pluginShellApiDescriptors, key, false)
+  }
+
+  function createScopedPluginShell(manifest, cacheKey, allowOwnService, barCapabilities) {
+    var key = String(manifest && manifest.id || "")
+    if (!key) return null
+    var profile = shell.pluginShellCapabilityProfile(manifest, allowOwnService, barCapabilities)
+    var cached = _pluginShellApis[cacheKey]
+    var descriptor = _pluginShellApiDescriptors[cacheKey]
+    if (cached && descriptor && descriptor.pluginId === key
+        && descriptor.profile === profile) return cached
+    if (cached || descriptor) shell.revokePluginShellApi(cacheKey)
+
+    function currentManifest() {
+      return shell.pluginRegistry.installedPlugins[key] || null
+    }
+
+    function hasCurrentBarCapabilities() {
+      return barCapabilities && shell.pluginHasBarCapabilities(currentManifest())
+    }
+
+    // Construct the narrow service proxies before any plugin binding can call
+    // firstPartyServiceFor(). Creating a QObject while evaluating that binding
+    // makes QML re-enter the binding and report a loop on the caller's service
+    // property, even though the resulting proxy is otherwise acyclic.
+    var firstPartyServices = ({})
+    if (barCapabilities) {
+      var serviceIds = ["omarchy.idle", "omarchy.media", "omarchy.nightlight", "omarchy.notifications"]
+      for (var i = 0; i < serviceIds.length; i++) {
+        var serviceId = serviceIds[i]
+        firstPartyServices[serviceId] = shell.pluginFirstPartyServiceFor(cacheKey, key, serviceId)
+      }
+    }
+
+    var api = pluginShellApiComponent.createObject(null, {
+      pluginId: key,
+      appLibrary: shell.manifestHasKind(manifest, "menu")
+        ? shell.pluginAppLibraryFor(cacheKey, key) : null,
+      bar: shell.pluginBarStateFor(cacheKey, key),
+      barConfig: shell.publicBarConfig(),
+      _serviceLookup: function(requestedId) {
+        return allowOwnService ? shell.pluginServiceFor(key, requestedId) : null
+      },
+      _firstPartyServiceLookup: function(requestedId) {
+        if (allowOwnService && shell.pluginOwnsTarget(key, requestedId))
+          return shell.pluginServiceFor(key, requestedId)
+        return hasCurrentBarCapabilities() ? (firstPartyServices[requestedId] || null) : null
+      },
+      _barEntryShellLookup: function(ownerId, moduleName) {
+        return hasCurrentBarCapabilities()
+          ? shell.pluginShellForBarEntry(cacheKey + ":" + ownerId, moduleName) : null
+      },
+      _summon: function(requestedId, payloadJson) {
+        if (!shell.pluginOwnsTarget(key, requestedId)
+            && !shell.barPluginMayControl(currentManifest(), requestedId)) return false
+        return shell.summon(shell.pluginRegistry.resolveEnabledId(requestedId), payloadJson)
+      },
+      _hide: function(requestedId) {
+        if (!shell.pluginOwnsTarget(key, requestedId)
+            && !shell.barPluginMayControl(currentManifest(), requestedId)) return false
+        return shell.hide(shell.pluginRegistry.resolveEnabledId(requestedId))
+      },
+      _toggle: function(requestedId, payloadJson) {
+        if (!shell.pluginOwnsTarget(key, requestedId)
+            && !shell.barPluginMayControl(currentManifest(), requestedId)) return false
+        return shell.toggle(shell.pluginRegistry.resolveEnabledId(requestedId), payloadJson)
+      },
+      _isOpen: function(requestedId) {
+        if (!shell.pluginOwnsTarget(key, requestedId)
+            && !shell.barPluginMayControl(currentManifest(), requestedId)) return false
+        return shell.isPluginOpen(shell.pluginRegistry.resolveEnabledId(requestedId))
+      },
+      _updateSettings: function(requestedId, settings) {
+        if (shell.pluginOwnsTarget(key, requestedId)) return shell.updateEntryInline(key, settings)
+        if (hasCurrentBarCapabilities() && shell.barEntryConfigured(requestedId))
+          return shell.updateEntryInline(requestedId, settings)
+        return false
+      },
+      _mutateBarConfig: function(mutator) {
+        return hasCurrentBarCapabilities() ? shell.mutatePluginBarConfig(mutator) : false
+      }
+    })
+    if (!api) return null
+
+    var next = ({})
+    for (var id in _pluginShellApis) next[id] = _pluginShellApis[id]
+    next[cacheKey] = api
+    _pluginShellApis = next
+    var descriptorNext = ({})
+    for (var descriptorKey in _pluginShellApiDescriptors)
+      descriptorNext[descriptorKey] = _pluginShellApiDescriptors[descriptorKey]
+    descriptorNext[cacheKey] = {
+      pluginId: key,
+      allowOwnService: allowOwnService === true,
+      profile: profile
+    }
+    _pluginShellApiDescriptors = descriptorNext
+    return api
+  }
+
+  function scopedPluginShellForId(pluginId) {
+    var key = String(pluginId || "")
+    var manifest = shell.pluginRegistry.installedPlugins[key]
+    if (!manifest) return null
+    if (!manifest.__isFirstParty) return shell.pluginShellFor(manifest)
+    return shell.createScopedPluginShell(manifest, "hosted:" + key, false, false)
+  }
+
+  function pluginShellForId(pluginId) {
+    return shell.scopedPluginShellForId(pluginId)
+  }
+
+  function pluginShellForBarEntry(ownerId, moduleName) {
+    var owner = String(ownerId || "")
+    var target = String(moduleName || "")
+    if (!owner || !target) return null
+    if (!shell.barEntryConfigured(target)) return null
+    var cacheKey = owner + "::" + target
+    if (_pluginBarEntryShellApis[cacheKey]) return _pluginBarEntryShellApis[cacheKey]
+
+    function owns(requestedId) {
+      return shell.pluginRegistry.resolveEnabledId(String(requestedId || ""))
+        === shell.pluginRegistry.resolveEnabledId(target)
+    }
+
+    var api = pluginShellApiComponent.createObject(null, {
+      pluginId: target,
+      barConfig: shell.publicBarConfig(),
+      _summon: function(requestedId, payloadJson) {
+        return owns(requestedId)
+          ? shell.summon(shell.pluginRegistry.resolveEnabledId(target), payloadJson) : false
+      },
+      _hide: function(requestedId) {
+        return owns(requestedId)
+          ? shell.hide(shell.pluginRegistry.resolveEnabledId(target)) : false
+      },
+      _toggle: function(requestedId, payloadJson) {
+        return owns(requestedId)
+          ? shell.toggle(shell.pluginRegistry.resolveEnabledId(target), payloadJson) : false
+      },
+      _isOpen: function(requestedId) {
+        return owns(requestedId)
+          ? shell.isPluginOpen(shell.pluginRegistry.resolveEnabledId(target)) : false
+      },
+      _updateSettings: function(requestedId, settings) {
+        return String(requestedId || "") === target
+          ? shell.updateEntryInline(target, settings) : false
+      }
+    })
+    if (!api) return null
+    var next = ({})
+    for (var id in _pluginBarEntryShellApis) next[id] = _pluginBarEntryShellApis[id]
+    next[cacheKey] = api
+    _pluginBarEntryShellApis = next
+    return api
+  }
+
+  function pluginShellFor(manifest) {
+    if (!manifest || manifest.__isFirstParty) return shell
+    var key = String(manifest.id || "")
+    if (!key) return null
+    return shell.createScopedPluginShell(manifest, key, true, shell.pluginHasBarCapabilities(manifest))
+  }
+
+  function pluginRegistryFor(manifest) {
+    if (!manifest || manifest.__isFirstParty) return shell.pluginRegistry
+    var key = String(manifest.id || "")
+    if (!key) return null
+    if (_pluginRegistryApis[key]) return _pluginRegistryApis[key]
+
+    var api = pluginRegistryApiComponent.createObject(null, {
+      pluginId: key,
+      manifest: shell.publicPluginManifest(manifest),
+      enabled: shell.pluginRegistry.isEnabled(key),
+      _entryPointUrl: function(kind) {
+        var current = shell.pluginRegistry.installedPlugins[key]
+        return current ? shell.pluginRegistry.entryPointUrl(current, kind) : ""
+      }
+    })
+    if (!api) return null
+
+    var next = ({})
+    for (var id in _pluginRegistryApis) next[id] = _pluginRegistryApis[id]
+    next[key] = api
+    _pluginRegistryApis = next
+    return api
+  }
+
+  function pluginBarWidgetRegistryFor(manifest) {
+    if (!manifest || manifest.__isFirstParty) return shell.barWidgetRegistry
+    var key = String(manifest.id || "")
+    if (!key) return null
+    if (_pluginBarWidgetRegistryApis[key]) return _pluginBarWidgetRegistryApis[key]
+
+    var api = pluginBarWidgetRegistryApiComponent.createObject(null, {
+      widgets: shell.publicBarWidgetSnapshot(),
+      revision: shell.barWidgetRegistry.revision
+    })
+    if (!api) return null
+
+    var next = ({})
+    for (var id in _pluginBarWidgetRegistryApis) next[id] = _pluginBarWidgetRegistryApis[id]
+    next[key] = api
+    _pluginBarWidgetRegistryApis = next
+    return api
+  }
+
+  function pluginApiActive(api, plugins) {
+    var id = api ? String(api.pluginId || api.ownerPluginId || "") : ""
+    var manifest = id ? plugins[id] : null
+    return !!manifest && shell.pluginRegistry.isEnabled(id)
+  }
+
+  function prunePluginApis() {
+    var plugins = shell.pluginRegistry.installedPlugins
+    var shellKeys = Object.keys(_pluginShellApis)
+    for (var si = 0; si < shellKeys.length; si++) {
+      var shellKey = shellKeys[si]
+      var shellApi = _pluginShellApis[shellKey]
+      var descriptor = _pluginShellApiDescriptors[shellKey]
+      var manifest = descriptor ? plugins[descriptor.pluginId] : null
+      var barCapabilities = descriptor && descriptor.allowOwnService
+        && shell.pluginHasBarCapabilities(manifest)
+      var expectedProfile = descriptor
+        ? shell.pluginShellCapabilityProfile(manifest, descriptor.allowOwnService, barCapabilities) : ""
+      var active = descriptor && manifest && shell.pluginRegistry.isEnabled(descriptor.pluginId)
+      if (!active || descriptor.profile !== expectedProfile)
+        shell.revokePluginShellApi(shellKey)
+    }
+
+    var registryNext = ({})
+    for (var registryKey in _pluginRegistryApis) {
+      var registryApi = _pluginRegistryApis[registryKey]
+      if (shell.pluginApiActive(registryApi, plugins)) registryNext[registryKey] = registryApi
+      else if (registryApi && typeof registryApi.destroy === "function") registryApi.destroy()
+    }
+    _pluginRegistryApis = registryNext
+
+    var widgetNext = ({})
+    for (var widgetKey in _pluginBarWidgetRegistryApis) {
+      var widgetApi = _pluginBarWidgetRegistryApis[widgetKey]
+      if (plugins[widgetKey] && shell.pluginRegistry.isEnabled(widgetKey)) widgetNext[widgetKey] = widgetApi
+      else if (widgetApi && typeof widgetApi.destroy === "function") widgetApi.destroy()
+    }
+    _pluginBarWidgetRegistryApis = widgetNext
+
+    var appNext = ({})
+    for (var appKey in _pluginAppLibraryApis) {
+      var appApi = _pluginAppLibraryApis[appKey]
+      if (shell.pluginApiActive(appApi, plugins)) appNext[appKey] = appApi
+      else if (appApi && typeof appApi.destroy === "function") appApi.destroy()
+    }
+    _pluginAppLibraryApis = appNext
+
+    var barStateNext = ({})
+    for (var barStateKey in _pluginBarStateApis) {
+      var barStateApi = _pluginBarStateApis[barStateKey]
+      if (shell.pluginApiActive(barStateApi, plugins)) barStateNext[barStateKey] = barStateApi
+      else if (barStateApi && typeof barStateApi.destroy === "function") barStateApi.destroy()
+    }
+    _pluginBarStateApis = barStateNext
+
+    var serviceNext = ({})
+    for (var serviceKey in _pluginFirstPartyServiceApis) {
+      var serviceApi = _pluginFirstPartyServiceApis[serviceKey]
+      if (shell.pluginApiActive(serviceApi, plugins)) serviceNext[serviceKey] = serviceApi
+      else if (serviceApi && typeof serviceApi.destroy === "function") serviceApi.destroy()
+    }
+    _pluginFirstPartyServiceApis = serviceNext
+
+    var entryNext = ({})
+    for (var entryKey in _pluginBarEntryShellApis) {
+      var entryApi = _pluginBarEntryShellApis[entryKey]
+      if (entryApi && shell.barEntryConfigured(entryApi.pluginId)) entryNext[entryKey] = entryApi
+      else if (entryApi && typeof entryApi.destroy === "function") entryApi.destroy()
+    }
+    _pluginBarEntryShellApis = entryNext
+  }
+
+  function syncPluginApis() {
+    shell.prunePluginApis()
+    var plugins = shell.pluginRegistry.installedPlugins
+    for (var id in _pluginRegistryApis) {
+      var registryApi = _pluginRegistryApis[id]
+      var manifest = plugins[id]
+      registryApi.manifest = shell.publicPluginManifest(manifest)
+      registryApi.enabled = !!manifest && shell.pluginRegistry.isEnabled(id)
+    }
+    for (var widgetId in _pluginBarWidgetRegistryApis) {
+      var widgetApi = _pluginBarWidgetRegistryApis[widgetId]
+      widgetApi.widgets = shell.publicBarWidgetSnapshot()
+      widgetApi.revision = shell.barWidgetRegistry.revision
+    }
+    for (var shellKey in _pluginShellApis)
+      _pluginShellApis[shellKey].barConfig = shell.publicBarConfig()
+    for (var entryKey in _pluginBarEntryShellApis)
+      _pluginBarEntryShellApis[entryKey].barConfig = shell.publicBarConfig()
+  }
 
   function serviceFor(pluginId) {
     return _services[String(pluginId)] || null
   }
 
   function firstPartyServiceFor(pluginId) {
-    return serviceFor(pluginId)
+    return serviceFor(shell.pluginRegistry.resolveEnabledId(pluginId))
+  }
+
+  function isAuthenticationService(manifest) {
+    return !!manifest && Array.isArray(manifest.__hostCapabilities)
+      && manifest.__hostCapabilities.indexOf("authentication") !== -1
   }
 
   function ensureService(pluginId) {
@@ -290,6 +857,8 @@ ShellRoot {
     if (!manifest.entryPoints || !manifest.entryPoints.service) return null
     var url = pluginRegistry.entryPointUrl(manifest, "service")
     if (!url) return null
+    var authenticationService = shell.isAuthenticationService(manifest)
+    if (authenticationService && AuthServiceStore.has(key)) return null
 
     var comp = Qt.createComponent(url, Component.PreferSynchronous)
     function finalize() {
@@ -297,27 +866,37 @@ ShellRoot {
         console.warn("service plugin load failed for " + key + ": " + comp.errorString())
         return
       }
-      var inst = comp.createObject(serviceHost)
+      // Authentication services and third-party services have no visual
+      // parent. Parenting either to serviceHost would let a plugin's object
+      // traversal walk between the host and credential-bearing QML.
+      var inst = comp.createObject(manifest.__isFirstParty && !authenticationService ? serviceHost : null)
       if (!inst) {
         console.warn("service plugin createObject returned null for", key)
         return
       }
       if ("omarchyPath" in inst) inst.omarchyPath = shell.omarchyPath
-      if ("shell" in inst) inst.shell = shell
-      if ("manifest" in inst) inst.manifest = manifest
-      if ("barWidgetRegistry" in inst) inst.barWidgetRegistry = shell.barWidgetRegistry
-      if ("pluginRegistry" in inst) inst.pluginRegistry = shell.pluginRegistry
-      var snext = ({})
-      for (var sk in _services) snext[sk] = _services[sk]
-      snext[key] = inst
-      _services = snext
+      if ("shell" in inst) inst.shell = shell.pluginShellFor(manifest)
+      if ("manifest" in inst) inst.manifest = shell.publicPluginManifest(manifest)
+      if ("barWidgetRegistry" in inst) inst.barWidgetRegistry = shell.pluginBarWidgetRegistryFor(manifest)
+      if ("pluginRegistry" in inst) inst.pluginRegistry = shell.pluginRegistryFor(manifest)
+      if (authenticationService) {
+        // Never publish lock/polkit through ShellRoot._services. The private JS
+        // import retains their lifetime without adding a traversable property
+        // or QObject parent back to the host shell.
+        AuthServiceStore.put(key, inst)
+      } else {
+        var snext = ({})
+        for (var sk in _services) snext[sk] = _services[sk]
+        snext[key] = inst
+        _services = snext
+      }
     }
     if (comp.status === Component.Loading) {
       comp.statusChanged.connect(finalize)
       return null
     }
     finalize()
-    return _services[key] || null
+    return authenticationService ? null : (_services[key] || null)
   }
 
   function _syncServices() {
@@ -329,11 +908,33 @@ ShellRoot {
       if (!Array.isArray(m.kinds) || m.kinds.indexOf("service") === -1) continue
       if (!m.entryPoints || !m.entryPoints.service) continue
       if (!pluginRegistry.isEnabled(id)) continue
+      var authenticationService = shell.isAuthenticationService(m)
       if (_services[id]) {
-        // A kept instance outlives the rescan; hand it the fresh manifest.
-        var kept = _services[id]
-        if (kept && "manifest" in kept) kept.manifest = m
-        continue
+        if (authenticationService) {
+          // A service that gains a trusted authentication capability must move
+          // out of the host's public service map before it is recreated.
+          var published = _services[id]
+          if (published && typeof published.destroy === "function") published.destroy()
+          var withoutPublished = ({})
+          for (var publishedId in _services)
+            if (publishedId !== id) withoutPublished[publishedId] = _services[publishedId]
+          _services = withoutPublished
+        } else {
+          // A kept instance outlives the rescan; hand it the fresh manifest.
+          var kept = _services[id]
+          if (kept && "shell" in kept) kept.shell = shell.pluginShellFor(m)
+          if (kept && "manifest" in kept) kept.manifest = shell.publicPluginManifest(m)
+          continue
+        }
+      }
+      if (AuthServiceStore.has(id)) {
+        if (authenticationService) {
+          AuthServiceStore.updateManifest(id, shell.publicPluginManifest(m))
+          continue
+        }
+        // A service that loses its trusted authentication capability can move
+        // back to the ordinary service map only after the isolated copy dies.
+        AuthServiceStore.destroy(id)
       }
       ensureService(id)
     }
@@ -351,6 +952,21 @@ ShellRoot {
       var next = ({})
       for (var k in _services) if (k !== existingId) next[k] = _services[k]
       _services = next
+    }
+    // Authentication services are retained outside the root object graph, so
+    // reconcile their disable/remove lifecycle separately from _services.
+    var authenticationIds = AuthServiceStore.ids()
+    for (var ai = 0; ai < authenticationIds.length; ai++) {
+      var authenticationId = authenticationIds[ai]
+      var authenticationManifest = plugins[authenticationId]
+      var stillAuthenticationService = authenticationManifest
+        && Array.isArray(authenticationManifest.kinds)
+        && authenticationManifest.kinds.indexOf("service") !== -1
+        && authenticationManifest.entryPoints
+        && authenticationManifest.entryPoints.service
+      if (stillAuthenticationService && pluginRegistry.isEnabled(authenticationId)
+          && shell.isAuthenticationService(authenticationManifest)) continue
+      AuthServiceStore.destroy(authenticationId)
     }
   }
 
@@ -374,11 +990,33 @@ ShellRoot {
       if (inst && typeof inst.destroy === "function") inst.destroy()
     }
     _services = next
+    var authenticationIds = AuthServiceStore.ids()
+    for (var ai = 0; ai < authenticationIds.length; ai++) {
+      var authenticationId = authenticationIds[ai]
+      if (!serviceKeepLoaded(authenticationId))
+        AuthServiceStore.destroy(authenticationId)
+    }
   }
 
   Connections {
     target: shell.pluginRegistry
-    function onPluginsChanged() { if (!shell.pluginReloading) shell._syncServices() }
+    function onPluginsChanged() {
+      shell.syncPluginApis()
+      if (!shell.pluginReloading) shell._syncServices()
+    }
+  }
+
+  Connections {
+    target: shell.barWidgetRegistry
+    function onChanged() { shell.syncPluginApis() }
+  }
+
+  Connections {
+    target: shell.appLibrary
+    function onAppsChanged() {
+      for (var id in shell._pluginAppLibraryApis)
+        shell._pluginAppLibraryApis[id].appsChanged()
+    }
   }
 
   // Writes inline settings to a bar layout entry or top-level plugin entry in
@@ -650,10 +1288,10 @@ ShellRoot {
         onLoaded: {
           if (!item) return
           if ("omarchyPath" in item) item.omarchyPath = shell.omarchyPath
-          if ("shell" in item) item.shell = shell
-          if ("manifest" in item) item.manifest = panelEntry.manifest
-          if ("barWidgetRegistry" in item) item.barWidgetRegistry = shell.barWidgetRegistry
-          if ("pluginRegistry" in item) item.pluginRegistry = shell.pluginRegistry
+          if ("shell" in item) item.shell = shell.pluginShellFor(panelEntry.manifest)
+          if ("manifest" in item) item.manifest = shell.publicPluginManifest(panelEntry.manifest)
+          if ("barWidgetRegistry" in item) item.barWidgetRegistry = shell.pluginBarWidgetRegistryFor(panelEntry.manifest)
+          if ("pluginRegistry" in item) item.pluginRegistry = shell.pluginRegistryFor(panelEntry.manifest)
           // Plugins that pair a panel UI with a service entry read shared
           // state off `service`. Hand them the matching singleton if one was
           // loaded.
@@ -719,7 +1357,8 @@ ShellRoot {
         schema: meta.schema || [],
         pluginId: manifest.id,
         sourceDir: manifest.__sourceDir || "",
-        source: "plugin"
+        source: "plugin",
+        firstParty: !!manifest.__isFirstParty
       }
 
       // A load already in flight for this URL registers itself when it

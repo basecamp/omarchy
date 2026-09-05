@@ -4,7 +4,7 @@ The Omarchy desktop runs as a single long-lived Quickshell process called `omarc
 
 That's not just an implementation detail. It means you can turn pieces of the desktop off, swap them out, or write your own without touching a line of Omarchy's source.
 
-The first-party plugins ship with Omarchy and live in `$OMARCHY_PATH/shell/plugins/`. Anything you add yourself — your own experiments, or something you found on GitHub — lives in `~/.config/omarchy/plugins/`. Both are discovered the same way at startup; the only difference is where they sit on disk.
+The first-party plugins ship with Omarchy and live in `$OMARCHY_PATH/shell/plugins/`. Anything you add yourself — your own experiments, or something you found on GitHub — lives in `~/.config/omarchy/plugins/`. Both are discovered the same way at startup, but built-ins receive trusted shell interfaces while third-party plugins receive a limited interface scoped to their own service and lifecycle.
 
 ## Seeing what you have
 
@@ -37,7 +37,9 @@ A third-party plugin is just a git repo with a `manifest.json` at its root.
 omarchy plugin add https://github.com/acme/omarchy-weather.git --enable
 ```
 
-Before it does anything, it tells you plainly that plugins run as arbitrary, unsandboxed code inside your long-lived shell process, shows you the URL, and asks you to confirm. Take that seriously. A plugin isn't a config file — it's code that runs for as long as your session does, with everything your user account can reach. Only add repos you're willing to run, and read them before you enable them.
+Before it does anything, it tells you plainly that plugins run as arbitrary, unsandboxed code inside your long-lived shell process, shows you the URL, and asks you to confirm. Take that seriously. The third-party plugin interface does not directly expose authentication services, and a replacement bar receives only limited capabilities for configured non-authentication UI. Visual plugins still share the shell's QML scene and can walk ordinary parent objects, while all plugin code runs with everything your user account can reach. Authentication state is protected separately by keeping those services outside the reachable host object graph. Only add repos you're willing to run, and read them before you enable them.
+
+A replacement bar can render installed widgets, but service-backed third-party widgets may have reduced functionality there because the bar is not allowed to request another plugin's live service object. Switch back to the built-in `omarchy.bar` if such a widget needs its companion service.
 
 Then it clones the repo into a staging directory, validates the manifest, refuses the install if another plugin already claims that id, and moves it into `~/.config/omarchy/plugins/<id>/`. Without `--enable` it asks whether you want it on now, and you can say no and go read the code first. It never runs anything from the plugin, never executes an install hook, and never asks for sudo — it clones files, checks the manifest, and flips a bit over IPC.
 

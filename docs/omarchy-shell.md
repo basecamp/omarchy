@@ -39,10 +39,9 @@ Only one full bar option is active at a time. The built-in `omarchy.bar` is
 used when `bar.id` is omitted or when a selected third-party bar cannot load.
 Panels, overlays, and menus are loaded when summoned. Plugins can set the top-level manifest key `keepLoaded: true` to survive between summons, and to keep a service mounted across plugin hot-reload (so `omarchy.lock` is not destroyed while Hyprland still holds the session lock). First-party services are loaded at startup.
 
-Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
-`open(payloadJson)` and `close()` for summon/hide; on load the host injects
-`omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
-`barWidgetRegistry`) as properties.
+Entry points are QML `Item`s. Panel, overlay, and menu entry points expose `open(payloadJson)` and `close()` for summon/hide; on load the host injects `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` / `barWidgetRegistry`) as properties. Built-in plugins receive the trusted host objects. Third-party plugins receive capability-scoped facades instead: ordinary plugins may look up and control only their own service and lifecycle, menu plugins receive an application-library facade, and plugins can read detached scalar bar state. A full-bar plugin additionally receives detached bar configuration and widget-catalog snapshots, narrow proxies for the non-authentication services used by built-in bar widgets, and lifecycle control over configured non-authentication UI plugins. Authentication capabilities are stamped from trusted first-party manifests, authentication services are kept out of the host's public service map and QML object tree, and third-party registry/configuration snapshots can be changed only locally without mutating host state. The facades are API boundaries, not same-process QML sandboxes: a visual widget shares the host bar's scene and can walk its parent hierarchy to ordinary host objects. Sensitive state must not rely on the facade alone for isolation.
+
+A third-party replacement bar can render registered widget components, but widgets it hosts receive a service-less entry facade. Allowing the bar to manufacture an own-service facade for an arbitrary widget would also let it retrieve that plugin's live service object. Service-backed third-party widgets therefore retain their full integration only under the trusted built-in bar; a replacement bar may still provide their target-scoped lifecycle and settings operations.
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 
@@ -79,12 +78,7 @@ one replaces the active bar, and it is therefore never offered under Disable.
 Bar widgets may set `barWidget.defaultSection` to `left`, `center`, or `right`;
 widgets that omit it default to `center`.
 
-Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you
-before cloning, plugins land disabled so you can review the code before
-`omarchy plugin enable`, and updates show a diff before touching anything.
-Commands confirm in a terminal even when given arguments; without one they
-refuse rather than guess. Add `--yes` to skip every prompt (the path for
-scripts and agents).
+Plugins run as **unsandboxed code** inside `omarchy-shell`. Adding warns you before cloning, plugins land disabled so you can review the code before `omarchy plugin enable`, and updates show a diff before touching anything. Commands confirm in a terminal even when given arguments; without one they refuse rather than guess. Add `--yes` to skip every prompt (the path for scripts and agents). The scoped interfaces remove direct access to authentication services and avoid handing generic cross-plugin service factories to replacement bars, but visual plugins can still traverse ordinary objects in their shared QML scene. Plugin code also has the same user-level file and process access as the shell.
 
 You can still install by hand: drop a plugin into
 `~/.config/omarchy/plugins/<id>/`, run `omarchy-shell shell rescanPlugins`, then

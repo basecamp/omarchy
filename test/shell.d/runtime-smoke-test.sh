@@ -112,6 +112,184 @@ Item {
 }
 QML
 
+# A replacement bar must not receive a generic factory for another plugin's
+# live service, and its barConfig must be a detached snapshot on both initial
+# injection and later host-config updates.
+victim_service_id="acme.victim-service"
+victim_service_dir="$test_home/.config/omarchy/plugins/$victim_service_id"
+mkdir -p "$victim_service_dir"
+cat >"$victim_service_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$victim_service_id",
+  "name": "Victim Service",
+  "version": "1.0.0",
+  "kinds": ["service"],
+  "entryPoints": {"service": "Service.qml"}
+}
+JSON
+cat >"$victim_service_dir/Service.qml" <<'QML'
+import QtQuick
+
+Item {
+  property string privateValue: "victim-secret"
+}
+QML
+
+# A clone of the built-in media service exercises both supported service paths:
+# its own widget receives the raw companion service under the trusted bar, while
+# a replacement bar receives only the narrow media proxy resolved to the clone.
+media_clone_id="acme.media-clone"
+media_clone_dir="$test_home/.config/omarchy/plugins/$media_clone_id"
+mkdir -p "$media_clone_dir"
+cat >"$media_clone_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$media_clone_id",
+  "name": "Media Clone",
+  "version": "1.0.0",
+  "kinds": ["service", "bar-widget"],
+  "entryPoints": {"service": "Service.qml", "barWidget": "BarWidget.qml"},
+  "barWidget": {"defaultSection": "center"},
+  "omarchy": {"clonedFrom": "omarchy.media"}
+}
+JSON
+cat >"$media_clone_dir/Service.qml" <<'QML'
+import QtQuick
+import Quickshell.Io
+
+Item {
+  property string marker: "clone-service"
+  property bool enabled: true
+  property var activePlayer: null
+  property var sourcePlayers: []
+
+  function runAction(action, showFeedback, targetKey) {}
+  function playerKey(player) { return "" }
+  function selectPlayer(playerKey) {}
+
+  IpcHandler {
+    target: "acme-media-clone-service"
+    function ping(): string { return marker }
+  }
+}
+QML
+cat >"$media_clone_dir/BarWidget.qml" <<'QML'
+import QtQuick
+import Quickshell.Io
+
+Item {
+  id: root
+  property var bar: null
+
+  IpcHandler {
+    target: "acme-media-clone-widget"
+    function probeOwnService(): string {
+      var service = root.bar && root.bar.shell
+        ? root.bar.shell.firstPartyServiceFor("omarchy.media") : null
+      return JSON.stringify({
+        reachable: !!service,
+        marker: service ? String(service.marker || "") : ""
+      })
+    }
+  }
+}
+QML
+
+review_bar_id="acme.review-bar"
+review_bar_dir="$test_home/.config/omarchy/plugins/$review_bar_id"
+mkdir -p "$review_bar_dir"
+cat >"$review_bar_dir/manifest.json" <<JSON
+{
+  "schemaVersion": 1,
+  "id": "$review_bar_id",
+  "name": "Review Bar",
+  "version": "1.0.0",
+  "kinds": ["bar", "service"],
+  "keepLoaded": true,
+  "entryPoints": {"bar": "Bar.qml", "service": "Service.qml"}
+}
+JSON
+cat >"$review_bar_dir/Bar.qml" <<'QML'
+import QtQuick
+import Quickshell.Io
+
+Item {
+  id: root
+
+  property var shell: null
+  property var barConfig: ({})
+
+  IpcHandler {
+    target: "acme-review-bar"
+
+    function probeVictim(): string {
+      var genericFactory = root.shell
+        && typeof root.shell.pluginShellForId === "function"
+      var entryFacade = root.shell
+        && typeof root.shell.pluginShellForBarEntry === "function"
+        ? root.shell.pluginShellForBarEntry("probe", "acme.victim-service") : null
+      var victim = entryFacade && typeof entryFacade.serviceFor === "function"
+        ? entryFacade.serviceFor("acme.victim-service") : null
+      return JSON.stringify({
+        genericFactory: !!genericFactory,
+        entryFacade: !!entryFacade,
+        victimServiceReachable: !!victim
+      })
+    }
+
+    function snapshot(): string {
+      return JSON.stringify(root.barConfig || {})
+    }
+
+    function probeMediaProxy(): string {
+      var service = root.shell
+        ? root.shell.firstPartyServiceFor("omarchy.media") : null
+      return JSON.stringify({ reachable: !!service, enabled: service ? service.enabled === true : false })
+    }
+
+    function mutateSnapshot(): string {
+      if (root.barConfig && root.barConfig.layout
+          && root.barConfig.layout.left && root.barConfig.layout.left.length > 0)
+        root.barConfig.layout.left[0].id = "tampered.by.review-bar"
+      return snapshot()
+    }
+  }
+}
+QML
+cat >"$review_bar_dir/Service.qml" <<'QML'
+import QtQuick
+import Quickshell.Io
+
+Item {
+  id: root
+  property var shell: null
+  property var retainedShell: null
+
+  onShellChanged: if (!retainedShell && shell) retainedShell = shell
+
+  function mutationAllowed(candidate) {
+    if (!candidate) return false
+    try {
+      return typeof candidate.mutateShellConfig === "function"
+        && candidate.mutateShellConfig(function(config) {}) === true
+    } catch (e) {
+      return false
+    }
+  }
+
+  IpcHandler {
+    target: "acme-review-capability"
+    function probe(): string {
+      return JSON.stringify({
+        currentAllowed: root.mutationAllowed(root.shell),
+        retainedAllowed: root.mutationAllowed(root.retainedShell)
+      })
+    }
+  }
+}
+QML
+
 cat >"$stub_bin/omarchy-update-available" <<'SH'
 #!/bin/bash
 echo "Omarchy update available (test)"
@@ -434,3 +612,111 @@ jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.keyboard-layout")' \
   <<<"$(shell_ipc shell listShellConfig)" >/dev/null ||
   fail_with_log "bar put added a second copy of a widget already on the bar"
 pass "bar put leaves a widget already on the bar alone"
+
+# Run the replacement-bar probes last: switching bar loaders can transiently
+# leave bar-aware panels without a visual host, which should not add noise to
+# the default-bar assertions above.
+[[ $(shell_ipc shell setPluginEnabled "$media_clone_id" true) == "ok" ]] ||
+  fail_with_log "media clone fixture could not be enabled"
+clone_widget_probe=""
+for _ in {1..80}; do
+  clone_widget_probe=$(shell_ipc acme-media-clone-widget probeOwnService 2>/dev/null || true)
+  if jq -e '.reachable == true and .marker == "clone-service"' \
+    <<<"$clone_widget_probe" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+jq -e '.reachable == true and .marker == "clone-service"' \
+  <<<"$clone_widget_probe" >/dev/null || {
+  printf 'Clone own-service probe: %s\n' "$clone_widget_probe" >&2
+  fail_with_log "a cloned widget resolves its source id to its own companion service"
+}
+pass "trusted bar gives a cloned widget its own companion service"
+
+[[ $(shell_ipc shell setPluginEnabled "$victim_service_id" true) == "ok" ]] ||
+  fail_with_log "victim service fixture could not be enabled"
+[[ $(shell_ipc shell enablePlugin "$review_bar_id" '{}') == "ok" ]] ||
+  fail_with_log "replacement-bar fixture could not be enabled"
+
+review_probe=""
+for _ in {1..80}; do
+  review_probe=$(shell_ipc acme-review-bar probeVictim 2>/dev/null || true)
+  if jq -e '.genericFactory == false and .entryFacade == false and .victimServiceReachable == false' \
+    <<<"$review_probe" >/dev/null 2>&1; then
+    break
+  fi
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while loading the replacement-bar fixture"
+  fi
+  sleep 0.1
+done
+jq -e '.genericFactory == false and .entryFacade == false and .victimServiceReachable == false' \
+  <<<"$review_probe" >/dev/null || {
+  printf 'Replacement-bar service probe: %s\n' "$review_probe" >&2
+  fail_with_log "replacement bar cannot recover another plugin's live service"
+}
+
+media_proxy_probe=$(shell_ipc acme-review-bar probeMediaProxy)
+jq -e '.reachable == true and .enabled == true' <<<"$media_proxy_probe" >/dev/null || {
+  printf 'Replacement-bar media proxy probe: %s\n' "$media_proxy_probe" >&2
+  fail_with_log "replacement-bar service proxies resolve enabled clones"
+}
+
+bar_config_before=$(shell_ipc shell listShellConfig | jq -c '.bar')
+shell_ipc acme-review-bar mutateSnapshot >/dev/null
+bar_config_after=$(shell_ipc shell listShellConfig | jq -c '.bar')
+[[ $bar_config_after == "$bar_config_before" ]] ||
+  fail_with_log "replacement bar mutated the initially injected host configuration"
+
+[[ $(shell_ipc shell setBarWidget omarchy.clock format '"HH:mm:ss"' '{}') == "ok" ]] ||
+  fail_with_log "host bar configuration could not be updated for snapshot testing"
+updated_snapshot=""
+for _ in {1..80}; do
+  updated_snapshot=$(shell_ipc acme-review-bar snapshot 2>/dev/null || true)
+  if jq -e 'any(.layout.center[]; (.id // .) == "omarchy.clock" and .format == "HH:mm:ss")' \
+    <<<"$updated_snapshot" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+jq -e 'any(.layout.center[]; (.id // .) == "omarchy.clock" and .format == "HH:mm:ss")' \
+  <<<"$updated_snapshot" >/dev/null ||
+  fail_with_log "replacement bar did not receive the refreshed configuration snapshot"
+bar_config_before=$(shell_ipc shell listShellConfig | jq -c '.bar')
+shell_ipc acme-review-bar mutateSnapshot >/dev/null
+bar_config_after=$(shell_ipc shell listShellConfig | jq -c '.bar')
+[[ $bar_config_after == "$bar_config_before" ]] ||
+  fail_with_log "replacement bar mutated a refreshed host configuration"
+
+pass "replacement-bar service and configuration boundaries hold at runtime"
+
+capability_before=$(shell_ipc acme-review-capability probe)
+jq -e '.currentAllowed == true and .retainedAllowed == true' \
+  <<<"$capability_before" >/dev/null ||
+  fail_with_log "bar service fixture did not initially receive bar capabilities"
+
+# Keep the same enabled plugin ID and service instance while dropping the bar
+# kind. Both the currently injected facade and a reference retained by the
+# plugin must lose the old configuration capability after the manifest rescan.
+jq '.kinds = ["service"] | .entryPoints = {"service": "Service.qml"}' \
+  "$review_bar_dir/manifest.json" >"$review_bar_dir/manifest.json.tmp"
+mv "$review_bar_dir/manifest.json.tmp" "$review_bar_dir/manifest.json"
+capability_after=""
+for _ in {1..80}; do
+  capability_after=$(shell_ipc acme-review-capability probe 2>/dev/null || true)
+  if jq -e '.currentAllowed == false and .retainedAllowed == false' \
+    <<<"$capability_after" >/dev/null 2>&1; then
+    break
+  fi
+  if ! kill -0 "$QS_PID" 2>/dev/null; then
+    fail_with_log "test shell exited while revoking changed manifest capabilities"
+  fi
+  sleep 0.1
+done
+jq -e '.currentAllowed == false and .retainedAllowed == false' \
+  <<<"$capability_after" >/dev/null || {
+  printf 'Capability revocation probe: %s\n' "$capability_after" >&2
+  fail_with_log "cached plugin facades revoke capabilities removed from the manifest"
+}
+pass "manifest reload revokes cached facade capabilities"

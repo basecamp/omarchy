@@ -5,6 +5,11 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "Quickshell session lock with separate password and fingerprint PAM flows.",
+  "omarchy": {
+    "capabilities": [
+      "authentication"
+    ]
+  },
   "kinds": [
     "service"
   ],

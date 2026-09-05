@@ -5,6 +5,11 @@
   "version": "1.0.0",
   "author": "Omarchy",
   "description": "Theme-aware authentication dialog for privileged actions.",
+  "omarchy": {
+    "capabilities": [
+      "authentication"
+    ]
+  },
   "kinds": [
     "service"
   ],

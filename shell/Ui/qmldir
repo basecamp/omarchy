@@ -23,6 +23,7 @@ PanelSectionHeader 1.0 PanelSectionHeader.qml
 PanelSeparator 1.0 PanelSeparator.qml
 PanelSlider 1.0 PanelSlider.qml
 PanelToolTip 1.0 PanelToolTip.qml
+PluginBarApi 1.0 PluginBarApi.qml
 PointerMoveGate 1.0 PointerMoveGate.qml
 ScreenMoveRemap 1.0 ScreenMoveRemap.qml
 PopupCard 1.0 PopupCard.qml

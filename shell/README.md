@@ -93,6 +93,10 @@ holds the session lock. The kept instance is not replaced, so code
 changes to a `keepLoaded` service itself only take effect on a shell
 restart. First-party services are loaded at startup.
 
+Entry points may declare `omarchyPath`, `shell`, `manifest`, `pluginRegistry`, and `barWidgetRegistry` properties for host injection. Built-in plugins receive the trusted host objects. Third-party plugins receive capability-scoped facades: ordinary plugins can look up and control only their own service and lifecycle, menu plugins receive an application-library facade, and plugins can read detached scalar bar state. A full-bar plugin additionally receives detached bar configuration and widget-catalog snapshots, narrow proxies for the non-authentication services used by built-in bar widgets, and lifecycle control over configured non-authentication UI plugins. Authentication capabilities are stamped from trusted first-party manifests, authentication services are retained outside the host's public service map and QML object tree, and changing a third-party registry or configuration snapshot cannot mutate host state. Facades do not isolate visual widgets from the parent hierarchy of the shared QML scene, so sensitive state must remain outside that reachable graph.
+
+Widgets rendered by a third-party replacement bar receive a service-less entry facade with target-scoped lifecycle and settings operations. Their live service objects are available only when the trusted built-in bar hosts them; otherwise the replacement bar could request and retain any configured widget's service.
+
 The full schema lives in `services/PluginRegistry.qml`.
 
 ## Installing a third-party plugin
@@ -108,10 +112,7 @@ omarchy plugin update                    # updates every git-managed plugin
 omarchy plugin remove acme.weather
 ```
 
-> ⚠️ **Plugins run as unsandboxed code inside `omarchy-shell`.** Adding warns
-> you before cloning, plugins land disabled so you can review the code before
-> enabling, and updates show a diff of the changes before touching anything.
-> Only add repos whose code you are willing to run.
+> ⚠️ **Plugins run as unsandboxed code inside `omarchy-shell`.** Adding warns you before cloning, plugins land disabled so you can review the code before enabling, and updates show a diff of the changes before touching anything. The scoped QML interfaces remove direct authentication-service and generic replacement-bar service lookups, but visual plugins still share and can traverse the ordinary host scene. Only add repos whose code you are willing to run.
 
 Each command is **interactive** when run bare in a terminal (gum pickers,
 confirmation, a diff to review) and fully **non-interactive** when given

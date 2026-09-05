@@ -83,6 +83,9 @@ ShellRoot {
     scan += block("firstparty", "/first/bar", manifest("omarchy.bar", ["bar"], { bar: "Bar.qml" }))
     scan += block("firstparty", "/first/panels/grouped", manifest("omarchy.grouped-panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("firstparty", "/first/hybrid", manifest("omarchy.hybrid", ["menu", "bar-widget"], { menu: "Menu.qml", barWidget: "Widget.qml" }))
+    var futureAuth = manifest("omarchy.future-auth", ["service"], { service: "Service.qml" })
+    futureAuth.omarchy = { capabilities: ["authentication"] }
+    scan += block("firstparty", "/first/future-auth", futureAuth)
     scan += block("thirdparty", "/third/panel", manifest("third.panel", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
     scan += block("thirdparty", "/third/center-widget", manifest("third.center-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
@@ -103,6 +106,12 @@ ShellRoot {
     localBar.omarchy = { clonedFrom: "omarchy.bar" }
     scan += block("thirdparty", "/third/local-bar", localBar)
     scan += block("thirdparty", "/third/bar", manifest("third.bar", ["bar"], { bar: "Bar.qml" }))
+    var localFutureAuth = manifest("local.future-auth", ["service"], { service: "Service.qml" })
+    localFutureAuth.omarchy = { clonedFrom: "omarchy.future-auth" }
+    scan += block("thirdparty", "/third/local-future-auth", localFutureAuth)
+    var spoofedAuth = manifest("third.spoofed-auth", ["service"], { service: "Service.qml" })
+    spoofedAuth.omarchy = { capabilities: ["authentication"] }
+    scan += block("thirdparty", "/third/spoofed-auth", spoofedAuth)
     scan += block("thirdparty", "/third/shadow", manifest("omarchy.first-widget", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/reserved", manifest("omarchy.reserved", ["panel"], { panel: "Panel.qml" }))
     scan += block("thirdparty", "/third/unsafe", manifest("third.unsafe", ["panel"], { panel: "../Panel.qml" }))
@@ -116,22 +125,28 @@ ShellRoot {
     root.assertDeepEqual(pluginIds(), [
       "local.bar",
       "local.first-widget",
+      "local.future-auth",
       "local.grouped-panel",
       "local.hybrid",
       "local.weather",
       "omarchy.bar",
       "omarchy.first-widget",
+      "omarchy.future-auth",
       "omarchy.grouped-panel",
       "omarchy.hybrid",
       "third.bar",
       "third.center-widget",
       "third.panel",
       "third.right-widget",
+      "third.spoofed-auth",
       "third.widget"
     ], "registry merges valid first-party and third-party manifests")
 
     root.assertTrue(registry.installedPlugins["omarchy.first-widget"].__isFirstParty === true, "first-party manifests are stamped")
     root.assertTrue(registry.installedPlugins["third.panel"].__isFirstParty === false, "third-party manifests are stamped")
+    root.assertDeepEqual(registry.installedPlugins["omarchy.future-auth"].__hostCapabilities, ["authentication"], "trusted manifests stamp authentication capability")
+    root.assertDeepEqual(registry.installedPlugins["local.future-auth"].__hostCapabilities, ["authentication"], "clones inherit trusted host capabilities")
+    root.assertDeepEqual(registry.installedPlugins["third.spoofed-auth"].__hostCapabilities, [], "third-party manifests cannot self-grant host capabilities")
     root.assertEqual(registry.installedPlugins["omarchy.grouped-panel"].__sourceDir, "/first/panels/grouped", "grouped plugin source paths are preserved")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.panel"], "panel"), "file:///third/panel/Panel.qml", "entryPointUrl resolves plugin-relative paths")
     root.assertEqual(registry.entryPointUrl(registry.installedPlugins["third.widget"], "barWidget"), "file:///third/widget/Widget.qml", "entryPointUrl resolves bar widget paths")
