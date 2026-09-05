@@ -282,7 +282,7 @@ Panel {
     }
     if (focusSection === "streams" && selectedIndex >= 0 && selectedIndex < displayAudioStreams.length) {
       var s = displayAudioStreams[selectedIndex]
-      if (s && s.audio) s.audio.volume = Math.max(0, Math.min(1.5, s.audio.volume + delta))
+      if (s && s.audio) setStreamVolume(s, streamVolume(s) + delta)
     }
   }
 
@@ -568,6 +568,18 @@ Panel {
 
   function streamRepresentsPlayer(node, player) {
     return Model.streamRepresentsPlayer(node, player, mprisPlayers, displayAudioStreams)
+  }
+
+  function mprisPlayerForStream(node) {
+    return Model.mprisPlayerForStream(node, mprisPlayers, displayAudioStreams)
+  }
+
+  function streamVolume(node) {
+    return Model.streamVolume(node, mprisPlayerForStream(node))
+  }
+
+  function setStreamVolume(node, volume) {
+    return Model.setStreamVolume(node, mprisPlayerForStream(node), volume)
   }
 
   implicitWidth: button.implicitWidth
@@ -1140,7 +1152,8 @@ Panel {
     required property var node
     required property int rowIndex
 
-    readonly property real streamVolume: node && node.audio ? node.audio.volume : 0
+    readonly property var mediaPlayer: root.mprisPlayerForStream(node)
+    readonly property real streamVolume: Model.streamVolume(node, mediaPlayer)
     readonly property bool streamMuted: node && node.audio ? node.audio.muted : false
     readonly property bool isActive: root.streamRepresentsPlayer(node, root.activeMediaPlayer)
 
@@ -1224,7 +1237,7 @@ Panel {
         opacity: streamRow.streamMuted ? 0.5 : 1.0
 
         onMoved: function(v) {
-          if (streamRow.node && streamRow.node.audio) streamRow.node.audio.volume = v
+          root.setStreamVolume(streamRow.node, v)
         }
         onRightClicked: {
           if (streamRow.node && streamRow.node.audio)

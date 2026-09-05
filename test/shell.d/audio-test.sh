@@ -46,4 +46,24 @@ assertEqual(audio.matchingMprisStreamLabel('Chromium', players), 'Chromium', 'au
 assertEqual(audio.unmatchedMprisStreamLabel('audio-src', players, streams), 'Spotify', 'audio uses unmatched MPRIS player for generic streams')
 assertEqual(audio.streamLabel(streams[1], players, streams), 'Spotify', 'audio labels generic streams from MPRIS')
 assert(audio.streamRepresentsPlayer(streams[1], players[0], players, streams), 'audio links generic streams to active player')
+
+players[0].canControl = true
+players[0].volumeSupported = true
+players[0].volume = 0.39
+streams[1].audio = { volume: 0.8 }
+
+assertEqual(audio.mprisPlayerForStream(streams[1], players, streams), players[0], 'audio finds the MPRIS player for a stream')
+const qmlPlayerList = { 0: players[0], length: 1 }
+assertEqual(audio.mprisPlayerForStream(streams[1], qmlPlayerList, streams), players[0], 'audio reads Quickshell array-like player lists')
+assertEqual(audio.streamLabel(streams[1], qmlPlayerList, streams), 'Spotify', 'audio labels generic streams from array-like player lists')
+assertEqual(audio.streamVolume(streams[1], players[0]), 0.39, 'audio reads persistent player volume when available')
+assertEqual(audio.setStreamVolume(streams[1], players[0], 0.65), 0.65, 'audio returns the updated stream volume')
+assertEqual(players[0].volume, 0.65, 'audio updates persistent player volume')
+assertEqual(streams[1].audio.volume, 0.65, 'audio updates live stream volume')
+
+const unsupportedPlayer = { canControl: true, volumeSupported: false, volume: 0.2 }
+assertEqual(audio.streamVolume(streams[1], unsupportedPlayer), 0.65, 'audio falls back to live stream volume')
+audio.setStreamVolume(streams[1], unsupportedPlayer, 0.5)
+assertEqual(unsupportedPlayer.volume, 0.2, 'audio leaves unsupported player volume unchanged')
+assertEqual(streams[1].audio.volume, 0.5, 'audio still updates streams without player volume support')
 JS
