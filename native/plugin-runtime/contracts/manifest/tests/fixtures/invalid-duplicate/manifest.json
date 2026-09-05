@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "id": "org.example.duplicate",
+  "id": "org.example.substitute",
+  "name": "Duplicate",
+  "version": "2.0.0",
+  "runtime": { "apiVersion": 1, "qml": "Main.qml" },
+  "surfaces": {},
+  "permissions": { "required": [], "optional": [] }
+}

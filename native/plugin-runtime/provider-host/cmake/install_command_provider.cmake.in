@@ -1,0 +1,25 @@
+set(runtime_root "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@OMARCHY_PLUGIN_INSTALL_ROOT@")
+set(executor_path "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@OMARCHY_PLUGIN_INSTALL_ROOT@/bin/omarchy-plugin-command-executor")
+set(profile_root "${runtime_root}/providers.d")
+set(command_root "${runtime_root}/commands.d")
+if(NOT EXISTS "${executor_path}")
+  message(FATAL_ERROR "command executor was not installed before its provider profile")
+endif()
+file(SHA256 "${executor_path}" executor_digest)
+file(MAKE_DIRECTORY "${profile_root}" "${command_root}")
+file(CHMOD "${profile_root}" "${command_root}"
+  PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+file(WRITE "${profile_root}/bash-execute.profile"
+  "schema=1\n"
+  "adapter-class=bounded-command-execute\n"
+  "contract-digest=@OMARCHY_COMMAND_CONTRACT_DIGEST@\n"
+  "abi-version=1\n"
+  "group=command.executor\n"
+  "executable=/usr/@OMARCHY_PLUGIN_INSTALL_ROOT@/bin/omarchy-plugin-command-executor\n"
+  "executable-sha256=${executor_digest}\n"
+  "arg=/usr/@OMARCHY_PLUGIN_INSTALL_ROOT@/commands.d\n"
+  "arg=/etc/omarchy/plugin-command-profiles.d\n"
+  "arg=0\n"
+  "invocation-timeout-ms=30000\n")
+file(CHMOD "${profile_root}/bash-execute.profile"
+  PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)

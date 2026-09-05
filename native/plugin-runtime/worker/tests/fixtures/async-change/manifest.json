@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 2,
+  "id": "example.async-change",
+  "name": "Async change fixture",
+  "version": "1.0.0",
+  "runtime": {"apiVersion": 1, "qml": "Main.qml", "worker": []},
+  "surfaces": {"proof": {"role": "panel"}},
+  "permissions": {"required": [], "optional": []}
+}

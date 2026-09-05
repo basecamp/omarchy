@@ -1,0 +1,2 @@
+module QtQuick.Effects
+FakeEffect 1.0 FakeEffect.qml

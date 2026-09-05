@@ -1,0 +1,44 @@
+cmake_minimum_required(VERSION 3.24)
+
+project(omarchy_plugin_trusted_bridge LANGUAGES CXX)
+
+include(CTest)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
+qt_standard_project_setup()
+
+if(NOT TARGET omarchy-plugin-surface-contract)
+  add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../contracts/surface"
+                   "${CMAKE_CURRENT_BINARY_DIR}/surface")
+endif()
+
+add_library(omarchy-plugin-trusted-bridge STATIC
+  src/TrustedInputAuthority.cpp
+  src/TrustedInputAuthority.h
+  src/pointer_provenance.hpp
+  src/remote_surface.cpp
+  src/remote_surface.hpp
+  src/render_input_transport.cpp
+  src/render_input_transport.hpp
+)
+set_target_properties(omarchy-plugin-trusted-bridge PROPERTIES
+  POSITION_INDEPENDENT_CODE ON)
+target_compile_features(omarchy-plugin-trusted-bridge PUBLIC cxx_std_20)
+target_compile_options(omarchy-plugin-trusted-bridge PRIVATE -Wall -Wextra -Wpedantic -Werror)
+target_include_directories(omarchy-plugin-trusted-bridge PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(omarchy-plugin-trusted-bridge PUBLIC
+  Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick omarchy-plugin-surface-contract
+)
+
+if(BUILD_TESTING)
+  find_package(Qt6 REQUIRED COMPONENTS Test)
+  add_executable(omarchy-plugin-trusted-bridge-test tests/trusted_bridge_test.cpp)
+  target_compile_features(omarchy-plugin-trusted-bridge-test PRIVATE cxx_std_20)
+  target_compile_options(omarchy-plugin-trusted-bridge-test PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  target_link_libraries(omarchy-plugin-trusted-bridge-test PRIVATE omarchy-plugin-trusted-bridge Qt6::Gui Qt6::Quick Qt6::Test)
+  add_test(NAME plugin-trusted-bridge COMMAND omarchy-plugin-trusted-bridge-test)
+  set_tests_properties(plugin-trusted-bridge PROPERTIES
+    TIMEOUT 30
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME="
+    LABELS "unit;integration;adversarial;render;qml;security"
+  )
+endif()

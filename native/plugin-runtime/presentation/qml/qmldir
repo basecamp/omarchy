@@ -1,0 +1,28 @@
+module Omarchy.PluginPresentation
+singleton Border 1.0 Border.qml
+singleton Color 1.0 Color.qml
+singleton Style 1.0 Style.qml
+BarWidget 1.0 BarWidget.qml
+BorderSurface 1.0 BorderSurface.qml
+BrokerProcess 1.0 BrokerProcess.qml
+Button 1.0 Button.qml
+ConfirmDialog 1.0 ConfirmDialog.qml
+CursorSurface 1.0 CursorSurface.qml
+Dropdown 1.0 Dropdown.qml
+KeyboardPanel 1.0 KeyboardPanel.qml
+PackagedText 1.0 PackagedText.qml
+Panel 1.0 Panel.qml
+PanelActionButton 1.0 PanelActionButton.qml
+PanelHero 1.0 PanelHero.qml
+PanelKeyCatcher 1.0 PanelKeyCatcher.qml
+PanelSectionHeader 1.0 PanelSectionHeader.qml
+PanelSeparator 1.0 PanelSeparator.qml
+PanelSlider 1.0 PanelSlider.qml
+PrivateStorage 1.0 PrivateStorage.qml
+StdioCollector 1.0 StdioCollector.qml
+TextField 1.0 TextField.qml
+ToolTip 1.0 ToolTip.qml
+Toggle 1.0 Toggle.qml
+ToggleSwitch 1.0 ToggleSwitch.qml
+singleton Util 1.0 Util.qml
+WidgetButton 1.0 WidgetButton.qml

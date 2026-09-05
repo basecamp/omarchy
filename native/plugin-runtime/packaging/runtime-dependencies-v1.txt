@@ -1,0 +1,12 @@
+bubblewrap
+curl
+glibc
+libgcc
+libseccomp
+libstdc++
+mpv
+omarchy
+qt6-base
+qt6-declarative
+quickshell
+systemd-libs

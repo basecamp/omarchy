@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "profile": "test-output-limit",
+  "command": "yes",
+  "executable": "/usr/bin/yes",
+  "timeoutMs": 500,
+  "stdoutBytes": 256,
+  "stderrBytes": 256,
+  "accountHome": false,
+  "environment": {},
+  "rules": [
+    []
+  ]
+}

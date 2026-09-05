@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 2,
+  "id": "example.expressive",
+  "name": "Expressive fixture",
+  "version": "1.0.0",
+  "description": "Animated arbitrary QML worker fixture",
+  "runtime": {"apiVersion": 1, "qml": "Main.qml", "worker": []},
+  "surfaces": {
+    "barWidget": {"role": "bar-embedded", "defaultSection": "right"}
+  },
+  "permissions": {"required": [], "optional": []}
+}

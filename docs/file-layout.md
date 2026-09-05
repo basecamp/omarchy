@@ -81,6 +81,12 @@ shell/**                       ──►  omarchy             /usr/share/omarchy
 version                        ──►  omarchy             /usr/share/omarchy/version
                                                         + /etc/skel/.local/state/omarchy/migrations/*
 
+native/plugin-runtime/         ──►  versioned native    /usr/lib/omarchy/plugin-security/<version>/bin/omarchy-plugin-qml-worker
+                                      package             /usr/lib/omarchy/plugin-security/<version>/policy/
+                                                          /usr/lib/omarchy/plugin-security/<version>/qml/Omarchy/PluginHost/
+                                                          /usr/lib/omarchy/plugin-security/<version>/shell/
+                                                        (side-by-side and inert until explicitly activated)
+
 config/**                      ──►  omarchy-settings    /etc/skel/.config/**         (seeds new users)
                                                         /usr/share/omarchy/config/** (resync source)
 etc/fastfetch/config.jsonc     ──►  omarchy-settings    /etc/fastfetch/config.jsonc
