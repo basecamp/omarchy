@@ -30,6 +30,16 @@ setup_pam_config() {
   fi
 
   # Configure polkit
+  if [[ ! -f /etc/pam.d/polkit-1 && -f /usr/lib/pam.d/polkit-1 ]]; then
+    # polkit ships its stack under /usr/lib, and any file in /etc shadows it
+    # whole -- there's no way to prepend to the vendor copy in place. Start
+    # from an exact copy so the machine keeps faillock, the keyring, and
+    # everything else system-auth pulls in; building a stack from pam_unix by
+    # hand instead (the fallback below) loses all of it.
+    echo "Seeding polkit configuration from the vendor default..."
+    sudo cp /usr/lib/pam.d/polkit-1 /etc/pam.d/polkit-1
+  fi
+
   if [[ -f /etc/pam.d/polkit-1 ]]; then
     if ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
       echo "Configuring polkit for fingerprint authentication..."
@@ -40,6 +50,9 @@ setup_pam_config() {
       sudo sed -i "/pam_fprintd\.so/i $fprintd_gate" /etc/pam.d/polkit-1
     fi
   else
+    # No vendor file to seed from -- fall back to a minimal stack that still
+    # routes through system-auth rather than pam_unix directly, so faillock
+    # and the rest of the system's auth policy still apply.
     echo "Creating polkit configuration with fingerprint authentication..."
     # omarchy:heredoc-expands paths=none -- $fprintd_gate is the literal PAM
     # line defined above, shared with the two sed insertions so the gate cannot
@@ -47,11 +60,11 @@ setup_pam_config() {
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<EOF
 $fprintd_gate
 auth      sufficient pam_fprintd.so
-auth      required pam_unix.so
+auth      include    system-auth
 
-account   required pam_unix.so
-password  required pam_unix.so
-session   required pam_unix.so
+account   include    system-auth
+password  include    system-auth
+session   include    system-auth
 EOF
   fi
 }
