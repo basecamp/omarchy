@@ -38,6 +38,7 @@ Panel {
 
   readonly property var limits: limitWindows(provider)
   readonly property var models: modelRows(provider)
+  readonly property var cacheStats: inputCacheStats(provider)
   readonly property var headline: bindingWindow(provider)
   readonly property var balance: provider ? (provider.balance || null) : null
   // A prepaid account runs low the way a subscription window fills up: the
@@ -229,6 +230,46 @@ Panel {
     return peak
   }
 
+  // Cache efficiency is an input-side ratio. Both collectors normalize their
+  // records so inputTokens excludes cache reads and writes; adding the three
+  // therefore reconstructs all input without counting any category twice.
+  // Output is deliberately excluded because it can never be served by the
+  // prompt cache.
+  function inputCachePercent(input, cacheRead, cacheWrite) {
+    var totalInput = input + cacheRead + cacheWrite
+    return totalInput > 0 ? Math.max(0, Math.min(1, cacheRead / totalInput)) : -1
+  }
+
+  function inputCacheStats(p) {
+    if (!p || (p.providerId !== "claude" && p.providerId !== "codex")) return null
+    var usageByModel = p.modelUsage || {}
+    var input = 0
+    var cacheRead = 0
+    var cacheWrite = 0
+    for (var id in usageByModel) {
+      var bucket = usageByModel[id] || {}
+      input += Math.max(0, Number(bucket.inputTokens || 0))
+      cacheRead += Math.max(0, Number(bucket.cacheReadInputTokens || 0))
+      cacheWrite += Math.max(0, Number(bucket.cacheCreationInputTokens || 0))
+    }
+    var totalInput = input + cacheRead + cacheWrite
+    if (!(totalInput > 0)) return null
+    return {
+      percent: inputCachePercent(input, cacheRead, cacheWrite),
+      input: input,
+      cacheRead: cacheRead,
+      cacheWrite: cacheWrite,
+      totalInput: totalInput
+    }
+  }
+
+  function cacheDetailText(stats) {
+    if (!stats) return ""
+    return usage.formatTokenCount(stats.cacheRead) + " reused · "
+      + usage.formatTokenCount(stats.cacheWrite) + " written · "
+      + usage.formatTokenCount(stats.input) + " uncached"
+  }
+
   function modelRows(p) {
     var usageByModel = p ? (p.modelUsage || {}) : {}
     var rows = []
@@ -244,7 +285,8 @@ Panel {
         input: input,
         output: output,
         cacheRead: cacheRead,
-        cacheWrite: cacheWrite
+        cacheWrite: cacheWrite,
+        cachePercent: inputCachePercent(input, cacheRead, cacheWrite)
       })
     }
     rows.sort(function(a, b) { return b.total - a.total })
@@ -253,10 +295,13 @@ Panel {
 
   function modelTooltip(row) {
     if (!row) return ""
-    return "In " + usage.formatTokenCount(row.input)
+    var text = "In " + usage.formatTokenCount(row.input)
       + " · out " + usage.formatTokenCount(row.output)
       + " · cache read " + usage.formatTokenCount(row.cacheRead)
       + " · cache write " + usage.formatTokenCount(row.cacheWrite)
+    if (row.cachePercent >= 0)
+      text += " · " + Math.round(row.cachePercent * 100) + "% of input cached"
+    return text
   }
 
   // Only speaks up when the numbers cover more than this machine.
@@ -608,6 +653,68 @@ Panel {
                 width: limitsSection.width
                 window: modelData
               }
+            }
+          }
+
+          // ---------- Input cache ----------
+          PanelSeparator {
+            visible: cacheSection.visible
+            foreground: root.foreground
+          }
+
+          Column {
+            id: cacheSection
+            visible: !!root.cacheStats
+            width: parent.width
+            spacing: Style.space(10)
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "INPUT CACHE"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(cacheLabel.implicitHeight, cacheValue.implicitHeight)
+
+              Text {
+                id: cacheLabel
+                text: "Hit rate"
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                id: cacheValue
+                textFormat: Text.PlainText
+                text: root.cacheStats ? Math.round(root.cacheStats.percent * 100) + "%" : ""
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Meter {
+              width: parent.width
+              value: root.cacheStats ? root.cacheStats.percent : -1
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: root.cacheDetailText(root.cacheStats)
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              elide: Text.ElideRight
             }
           }
 

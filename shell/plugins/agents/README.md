@@ -15,6 +15,8 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
   It appears only when more than one agent is enabled.
 - **Limits** — the percentage of each allowance used, a matching meter, and
   the time until the session or weekly window resets.
+- **Input cache** — Claude and Codex show the percentage of recorded input
+  served from cache, with reused, newly written, and uncached token counts.
 - **Balance** — prepaid agents report a credit ledger instead of limits:
   remaining credit, a fuel-gauge meter that drains toward empty, and
   funded-versus-spent detail.
@@ -23,7 +25,7 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
 - **Tokens by model** — tokens per model with the bar behind each row scaled
   to the heaviest model,
   the same way the weekly chart scales to its busiest day. Hover for the
-  input / output / cache split.
+  input / output / cache split and that model's cache-hit percentage.
 
 A subscription appears only when it is enabled in settings and has actually
 recorded usage — on this machine or on a synced one. With one such agent
