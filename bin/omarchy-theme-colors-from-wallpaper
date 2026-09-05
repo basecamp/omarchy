@@ -1,0 +1,135 @@
+#!/bin/bash
+
+# omarchy:summary=Generate a theme's colors.toml from a wallpaper
+# omarchy:args=<image> <theme-dir> [smart|dark|light]
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+IMAGE="${1:-}"
+THEME_DIR="${2:-}"
+MODE="${3:-smart}"
+MATUGEN_CONFIG="$OMARCHY_PATH/default/omarchy/matugen-theme.toml"
+
+if [[ -z $IMAGE || -z $THEME_DIR ]]; then
+  echo "Usage: omarchy-theme-colors-from-wallpaper <image> <theme-dir> [smart|dark|light]" >&2
+  exit 1
+fi
+
+if [[ $MODE != "smart" && $MODE != "dark" && $MODE != "light" ]]; then
+  echo "Error: mode must be smart, dark, or light." >&2
+  exit 1
+fi
+
+IMAGE=$(realpath -e -- "$IMAGE" 2>/dev/null) || {
+  echo "Error: wallpaper does not exist: $1" >&2
+  exit 1
+}
+
+if [[ ! -f $IMAGE ]]; then
+  echo "Error: wallpaper is not a regular file: $IMAGE" >&2
+  exit 1
+fi
+
+mkdir -p "$THEME_DIR"
+COLORS_OUTPUT="$THEME_DIR/colors.toml"
+[[ -f $COLORS_OUTPUT ]] && exit 0
+
+if omarchy-cmd-missing matugen; then
+  echo "Installing matugen for wallpaper palette generation..." >&2
+  omarchy-pkg-add matugen
+fi
+
+PALETTE_JSON=$(mktemp)
+COLORS_STAGE=$(mktemp "$THEME_DIR/.colors.toml.XXXXXXXX")
+
+cleanup() {
+  rm -f -- "$PALETTE_JSON" "$COLORS_STAGE"
+}
+trap cleanup EXIT
+
+if ! matugen --config "$MATUGEN_CONFIG" --mode "$MODE" --source-color-index 0 --dry-run --json hex image "$IMAGE" >"$PALETTE_JSON"; then
+  echo "Error: matugen could not extract a palette from $IMAGE" >&2
+  exit 1
+fi
+
+# Material roles supply contrast-aware surfaces and text. The custom colors in
+# matugen-theme.toml retain recognizable ANSI hues while Matugen harmonizes
+# them with the wallpaper's source color.
+if ! jq -er '
+  def hex:
+    select(type == "string" and test("^#[0-9a-fA-F]{6}$")) | ascii_downcase;
+  def color($name):
+    .colors[$name].default.color | hex;
+
+  .mode as $mode
+  | select($mode == "dark" or $mode == "light")
+  | {
+      mode: $mode,
+      accent: color("primary"),
+      selection: color("secondary_container"),
+      muted: color("outline_variant"),
+      background: color("surface"),
+      dark_background: (if $mode == "dark" then color("surface_container_lowest") else color("surface_container") end),
+      darker_background: (if $mode == "dark" then color("shadow") else color("surface_container_highest") end),
+      lighter_background: (if $mode == "dark" then color("surface_container") else color("surface_container_low") end),
+      foreground: color("on_surface"),
+      dark_foreground: color("outline"),
+      light_foreground: color("on_surface_variant"),
+      bright_foreground: color("on_surface"),
+      red: color("red"),
+      yellow: color("yellow"),
+      orange: color("orange"),
+      green: color("green"),
+      cyan: color("cyan"),
+      blue: color("blue"),
+      magenta: color("magenta"),
+      brown: color("brown"),
+      bright_red: (if $mode == "dark" then color("on_red_container") else color("red") end),
+      bright_yellow: (if $mode == "dark" then color("on_yellow_container") else color("yellow") end),
+      bright_green: (if $mode == "dark" then color("on_green_container") else color("green") end),
+      bright_cyan: (if $mode == "dark" then color("on_cyan_container") else color("cyan") end),
+      bright_blue: (if $mode == "dark" then color("on_blue_container") else color("blue") end),
+      bright_magenta: (if $mode == "dark" then color("on_magenta_container") else color("magenta") end)
+    }
+  | [
+      "mode = \(.mode | @json)",
+      "",
+      "accent = \(.accent | @json)",
+      "selection = \(.selection | @json)",
+      "muted = \(.muted | @json)",
+      "",
+      "background = \(.background | @json)",
+      "dark_background = \(.dark_background | @json)",
+      "darker_background = \(.darker_background | @json)",
+      "lighter_background = \(.lighter_background | @json)",
+      "",
+      "foreground = \(.foreground | @json)",
+      "dark_foreground = \(.dark_foreground | @json)",
+      "light_foreground = \(.light_foreground | @json)",
+      "bright_foreground = \(.bright_foreground | @json)",
+      "",
+      "red = \(.red | @json)",
+      "yellow = \(.yellow | @json)",
+      "orange = \(.orange | @json)",
+      "green = \(.green | @json)",
+      "cyan = \(.cyan | @json)",
+      "blue = \(.blue | @json)",
+      "magenta = \(.magenta | @json)",
+      "brown = \(.brown | @json)",
+      "",
+      "bright_red = \(.bright_red | @json)",
+      "bright_yellow = \(.bright_yellow | @json)",
+      "bright_green = \(.bright_green | @json)",
+      "bright_cyan = \(.bright_cyan | @json)",
+      "bright_blue = \(.bright_blue | @json)",
+      "bright_magenta = \(.bright_magenta | @json)"
+    ]
+  | .[]
+' "$PALETTE_JSON" >"$COLORS_STAGE"; then
+  echo "Error: matugen returned an incomplete or invalid palette." >&2
+  exit 1
+fi
+
+mv -- "$COLORS_STAGE" "$COLORS_OUTPUT"

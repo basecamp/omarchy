@@ -1,0 +1,170 @@
+#!/bin/bash
+
+# omarchy:name=from-wallpaper
+# omarchy:summary=Create an Omarchy theme from a wallpaper
+# omarchy:args=<image> [--name <name>] [--mode smart|dark|light] [--apply] [--force]
+# omarchy:examples=omarchy theme from-wallpaper ~/Pictures/wall.jpg | omarchy theme from-wallpaper ~/Pictures/wall.jpg --name aurora --apply
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+IMAGE_INPUT=""
+THEME_NAME=""
+MODE="smart"
+APPLY=false
+FORCE=false
+
+usage() {
+  echo "Usage: omarchy-theme-from-wallpaper <image> [--name <name>] [--mode smart|dark|light] [--apply] [--force]"
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --name)
+      if (( $# < 2 )); then
+        echo "Error: --name requires a value." >&2
+        exit 1
+      fi
+      THEME_NAME="$2"
+      shift 2
+      ;;
+    --mode)
+      if (( $# < 2 )); then
+        echo "Error: --mode requires smart, dark, or light." >&2
+        exit 1
+      fi
+      MODE="$2"
+      shift 2
+      ;;
+    --apply)
+      APPLY=true
+      shift
+      ;;
+    --force)
+      FORCE=true
+      shift
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --)
+      shift
+      if (( $# != 1 )) || [[ -n $IMAGE_INPUT ]]; then
+        usage >&2
+        exit 1
+      fi
+      IMAGE_INPUT="$1"
+      shift
+      ;;
+    -*)
+      echo "Error: unknown option: $1" >&2
+      exit 1
+      ;;
+    *)
+      if [[ -n $IMAGE_INPUT ]]; then
+        echo "Error: only one wallpaper can be used at a time." >&2
+        exit 1
+      fi
+      IMAGE_INPUT="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z $IMAGE_INPUT ]]; then
+  usage >&2
+  exit 1
+fi
+
+if [[ $MODE != "smart" && $MODE != "dark" && $MODE != "light" ]]; then
+  echo "Error: mode must be smart, dark, or light." >&2
+  exit 1
+fi
+
+IMAGE=$(realpath -e -- "$IMAGE_INPUT" 2>/dev/null) || {
+  echo "Error: wallpaper does not exist: $IMAGE_INPUT" >&2
+  exit 1
+}
+
+if [[ ! -f $IMAGE ]]; then
+  echo "Error: wallpaper is not a regular file: $IMAGE" >&2
+  exit 1
+fi
+
+IMAGE_EXTENSION="${IMAGE##*.}"
+IMAGE_EXTENSION="${IMAGE_EXTENSION,,}"
+case "$IMAGE_EXTENSION" in
+  jpg | jpeg | png | gif | bmp | webp) ;;
+  *)
+    echo "Error: wallpaper must be a jpg, jpeg, png, gif, bmp, or webp image." >&2
+    exit 1
+    ;;
+esac
+
+if [[ -z $THEME_NAME ]]; then
+  IMAGE_NAME="${IMAGE##*/}"
+  IMAGE_NAME="${IMAGE_NAME%.*}"
+  THEME_SLUG=$(printf '%s' "$IMAGE_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+  THEME_NAME="wallpaper-${THEME_SLUG:-theme}"
+else
+  THEME_NAME=$(printf '%s' "$THEME_NAME" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+fi
+
+if ! (LC_ALL=C; [[ $THEME_NAME =~ ^[a-z0-9_][a-z0-9._+-]*$ ]]); then
+  echo "Error: theme names may only use ASCII letters, digits, '.', '_', '+', and '-', and cannot start with '.' or '-'." >&2
+  exit 1
+fi
+
+THEMES_DIR="$HOME/.config/omarchy/themes"
+THEME_PATH="$THEMES_DIR/$THEME_NAME"
+
+if [[ -e $THEME_PATH || -L $THEME_PATH ]]; then
+  if [[ $FORCE == false ]]; then
+    echo "Error: theme '$THEME_NAME' already exists. Pass --force to replace it." >&2
+    exit 1
+  fi
+fi
+
+mkdir -p "$THEMES_DIR"
+STAGING_DIR=$(mktemp -d "$THEMES_DIR/.${THEME_NAME}.XXXXXXXX")
+BACKUP_PATH=""
+
+cleanup() {
+  if [[ -n $STAGING_DIR && ( -e $STAGING_DIR || -L $STAGING_DIR ) ]]; then
+    rm -rf -- "$STAGING_DIR"
+  fi
+
+  if [[ -n $BACKUP_PATH && ( -e $BACKUP_PATH || -L $BACKUP_PATH ) ]]; then
+    if [[ ! -e $THEME_PATH && ! -L $THEME_PATH ]]; then
+      mv -- "$BACKUP_PATH" "$THEME_PATH"
+    fi
+  fi
+}
+trap cleanup EXIT
+
+mkdir -p "$STAGING_DIR/backgrounds"
+cp -- "$IMAGE" "$STAGING_DIR/backgrounds/wallpaper.$IMAGE_EXTENSION"
+omarchy-theme-colors-from-wallpaper "$IMAGE" "$STAGING_DIR" "$MODE"
+
+if [[ -e $THEME_PATH || -L $THEME_PATH ]]; then
+  BACKUP_PATH=$(mktemp -d "$THEMES_DIR/.${THEME_NAME}.backup.XXXXXXXX")
+  rmdir -- "$BACKUP_PATH"
+  mv -- "$THEME_PATH" "$BACKUP_PATH"
+fi
+
+mv -- "$STAGING_DIR" "$THEME_PATH"
+STAGING_DIR=""
+
+if [[ -n $BACKUP_PATH ]]; then
+  rm -rf -- "$BACKUP_PATH"
+  BACKUP_PATH=""
+fi
+
+trap - EXIT
+
+if [[ $APPLY == true ]]; then
+  omarchy-theme-set "$THEME_NAME"
+fi
+
+printf '%s\n' "$THEME_NAME"

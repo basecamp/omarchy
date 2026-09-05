@@ -45,6 +45,14 @@ Making a new app follow theme changes means adding its restart/retint command
 to that list. Runs serialize on a `flock`, so scripted theme changes queue
 instead of racing.
 
+## Wallpaper-derived themes
+
+`omarchy theme from-wallpaper <image>` creates a normal user theme under `~/.config/omarchy/themes/`; `--apply` then hands that theme to the unchanged activation flow above. The source image is resolved before generation and copied into the theme's `backgrounds/` directory, so a generated theme remains usable if the original image moves and the theme switcher can use that image as its preview.
+
+Palette extraction uses Matugen as an optional dependency installed on first use. `default/omarchy/matugen-theme.toml` adds harmonized red, orange, yellow, green, cyan, blue, magenta, and brown source colors, while `omarchy-theme-colors-from-wallpaper` maps Matugen's contrast-aware Material roles into Omarchy's semantic background, foreground, selection, and accent steps. Smart mode lets Matugen select light or dark from the image; the CLI also accepts an explicit `--mode light` or `--mode dark`.
+
+Generation happens in a temporary sibling of the final theme directory. Omarchy only moves it into place after the image and a schema-complete `colors.toml` have both been written successfully. Existing themes require `--force`; even then, the previous directory is retained as a temporary backup until the replacement move succeeds.
+
 ## What an installed theme may not ship
 
 `themes/<name>/` in this repo is Omarchy's own code and is trusted. So is a theme the user wrote by hand in `~/.config/omarchy/themes/<name>/`: it is their machine and their file, and both stage in full.

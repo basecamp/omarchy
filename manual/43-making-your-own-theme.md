@@ -6,6 +6,22 @@ The main file you have to tweak is `colors.toml`. That defines the color set tha
 
 You can also use the included Aether application to create a new theme using a lovely GUI interface to play with colors and search for backgrounds. Just start it via the apps menu on `Super + Alt + Space`.
 
+### Create a theme from a wallpaper
+
+You can turn an image into a complete theme from the command line:
+
+```bash
+omarchy theme from-wallpaper ~/Pictures/wall.jpg
+```
+
+This creates `~/.config/omarchy/themes/wallpaper-wall`, copies the image into the theme, and prints the new theme name. It does not change the running desktop unless you pass `--apply`:
+
+```bash
+omarchy theme from-wallpaper ~/Pictures/wall.jpg --name aurora --apply
+```
+
+Omarchy installs Matugen the first time it is needed. Matugen picks a dark or light palette from the image by default; use `--mode dark` or `--mode light` to override that choice. Existing themes are never overwritten unless you explicitly pass `--force`.
+
 ### What an installed theme can contain
 
 A theme you write yourself in `~/.config/omarchy/themes` can contain whatever you like — it's your machine and your file, and Omarchy applies all of it.
