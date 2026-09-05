@@ -19,6 +19,10 @@
   //                  goes dim, takes a ✓ and can no longer be selected. Install
   //                  rows use it so software already on the machine reads as
   //                  installed instead of vanishing from the list.
+  //   hotkey         chord chip shown on the row's right edge. Normally derived
+  //                  from the live keybindings (a bind running the row's action,
+  //                  or opening its route); set explicitly only when the
+  //                  spellings differ and the chip is still right.
 
   // Root Menu
   "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"provider":"apps"},

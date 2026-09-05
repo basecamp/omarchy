@@ -107,6 +107,7 @@ base-size = 12
 # Per-token overrides, in px. Uncomment any to pin a specific size without
 # affecting the rest of the scale. Useful for stylistic emphasis (a
 # minimalist theme that wants a bigger heading without scaling everything).
+# micro         = 9
 # caption       = 10
 # body-small    = 11
 # body          = 12

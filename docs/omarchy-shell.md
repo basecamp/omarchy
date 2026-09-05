@@ -320,6 +320,7 @@ bumping `base-size` rescales the whole shell proportionally:
 
 | Token                 | Multiplier | Default |
 |-----------------------|------------|---------|
+| `Style.font.micro`        | 0.75  | 9  |
 | `Style.font.caption`      | 0.833 | 10 |
 | `Style.font.bodySmall`    | 0.917 | 11 |
 | `Style.font.body`         | 1.0   | 12 |
@@ -349,7 +350,7 @@ heading       = 20
 display-large = 36
 ```
 
-Recognized override keys: `base-size`, `caption`, `body-small`,
+Recognized override keys: `base-size`, `micro`, `caption`, `body-small`,
 `body`, `subtitle`, `title`, `heading`, `display`, `display-large`,
 `icon-small`, `icon`, `icon-large`.
 

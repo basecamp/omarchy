@@ -15,6 +15,9 @@
   //   description Optional subtitle and extra search text.
   //   when        Shell condition; hide row when it fails.
   //   checked     Shell condition; append ✓ when it succeeds.
+  //   hotkey      Chord chip shown on the row's right edge. Derived from your
+  //               keybindings when a bind runs the row's action or opens its
+  //               route; set it only when the spellings differ.
   //
   // Examples:
   // "personal": {"icon":"","label":"Personal"},

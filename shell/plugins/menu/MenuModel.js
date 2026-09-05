@@ -35,7 +35,8 @@ function normalizeItem(id, raw) {
     aliases: aliases,
     when: value.when || "",
     checked: value.checked || "",
-    disabled: value.disabled || ""
+    disabled: value.disabled || "",
+    hotkey: value.hotkey || ""
   }
 }
 
@@ -84,7 +85,7 @@ function mergeMenuSources(defaultItems, userItems) {
   }
 
   if (!nextItems.root) {
-    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", description: "", aliases: [], when: "", checked: "", disabled: "", action: "", provider: "" }
+    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", description: "", aliases: [], when: "", checked: "", disabled: "", hotkey: "", action: "", provider: "" }
     nextOrder.unshift("root")
   }
   for (var k3 = 0; k3 < nextOrder.length; k3++) nextItems[nextOrder[k3]].order = k3
@@ -287,6 +288,140 @@ function labelFor(entry, checkedResults, disabledResults) {
   return marked ? entry.label + " ✓" : entry.label
 }
 
+// ------------------------------------------------------------------ hotkeys
+//
+// A row a keybinding also reaches carries that chord as a chip, derived from
+// the live binds (via `omarchy-menu-hotkeys`) rather than declared twice — a
+// rebind in the hypr config moves the chip with it. An explicit `hotkey:` in
+// JSONC wins over anything derived, so an extension can label a row whose
+// action spells the same launch differently.
+
+// The same launch arrives in three spellings: the bind's command
+// (`omarchy-launch-webapp 'https://x.com/'`), a desktop entry's Exec
+// (`omarchy-launch-webapp https://x.com/ %U`), and a JSONC action. Collapse
+// quoting, Exec field codes, and launcher prefixes so equal launches compare
+// equal, and reduce webapp launches to their URL: the focus-variant bind
+// (`omarchy-launch-or-focus-webapp 'HEY' <url>`) opens the same page the
+// webapp's desktop entry does.
+function commandKey(value) {
+  var cmd = String(value || "")
+    .replace(/["']/g, "")
+    .replace(/\s+%[a-zA-Z]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^setsid /, "")
+    .replace(/^uwsm-app -- /, "")
+  var webapp = cmd.match(/^omarchy-launch(?:-or-focus)?-webapp\b.*?(https?:\/\/\S+)/)
+  if (webapp) return "webapp:" + webapp[1].replace(/\/+$/, "")
+  return cmd
+}
+
+// A chip annotates a label; it must not out-shout it. On a 300px card a
+// spelled-out "SUPER SHIFT CTRL + SPACE" is wider than the title it sits
+// beside, so the chip renders a compact spelling: modifiers to three letters,
+// the long X11 key names to what the key does, joined by a bare `+`. The
+// keybindings menu keeps the spelled-out form — it has the width for it.
+var CHORD_SHORT = {
+  SUPER: "SUP", META: "SUP", SHIFT: "SFT", CTRL: "CTL", ALT: "ALT",
+  RETURN: "RET", ESCAPE: "ESC", SPACE: "SPC", BACKSPACE: "BKSP",
+  DELETE: "DEL", INSERT: "INS", PRINT: "PRT", TAB: "TAB",
+  PAGEUP: "PGUP", PAGEDOWN: "PGDN",
+  BRACKETLEFT: "[", BRACKETRIGHT: "]", COMMA: ",", PERIOD: ".", SLASH: "/",
+  MINUS: "-", EQUAL: "=", SEMICOLON: ";", APOSTROPHE: "'", GRAVE: "`",
+  XF86AUDIORAISEVOLUME: "VOLUP", XF86AUDIOLOWERVOLUME: "VOLDN",
+  XF86AUDIOMUTE: "MUTE", XF86AUDIOMICMUTE: "MICMUTE",
+  XF86AUDIONEXT: "NEXT", XF86AUDIOPREV: "PREV",
+  XF86AUDIOPLAY: "PLAY", XF86AUDIOPAUSE: "PAUSE",
+  XF86MONBRIGHTNESSUP: "BRIUP", XF86MONBRIGHTNESSDOWN: "BRIDN",
+  XF86KBDBRIGHTNESSUP: "KBDUP", XF86KBDBRIGHTNESSDOWN: "KBDDN",
+  XF86KBDLIGHTONOFF: "KBDLT",
+  XF86TOUCHPADTOGGLE: "TPAD", XF86TOUCHPADON: "TPADON", XF86TOUCHPADOFF: "TPADOFF",
+  XF86POWEROFF: "PWR", XF86EJECT: "EJECT"
+}
+
+function compactChordToken(token) {
+  var upper = String(token || "").trim().toUpperCase()
+  if (!upper) return ""
+  if (CHORD_SHORT[upper]) return CHORD_SHORT[upper]
+  // A media key we have no short name for still drops the vendor prefix,
+  // so an unknown XF86 bind reads as the key rather than as the vendor.
+  if (upper.indexOf("XF86") === 0 && upper.length > 4) return upper.slice(4)
+  return upper
+}
+
+function compactChord(chord) {
+  var tokens = String(chord || "").replace(/\+/g, " ").split(/\s+/)
+  var out = []
+  for (var i = 0; i < tokens.length; i++) {
+    var token = compactChordToken(tokens[i])
+    if (token) out.push(token)
+  }
+  return out.join("+")
+}
+
+// `omarchy-menu-hotkeys` reports one chord per line, tab-separated:
+// `cmd\t<command>\t<chord>` for what the chord runs verbatim, and
+// `app\t<desktop id>\t<chord>` where a launcher indirection resolves to an
+// installed app — the default terminal's SUPER + RETURN lands on that
+// terminal's row in Apps.
+function parseHotkeyLines(raw) {
+  var rows = []
+  var lines = String(raw || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split("\t")
+    if (parts.length < 3) continue
+    var kind = parts[0]
+    var match = parts[1]
+    var chord = parts[2].trim()
+    if ((kind !== "cmd" && kind !== "app") || !match || !chord) continue
+    rows.push({ kind: kind, match: match, chord: chord })
+  }
+  return rows
+}
+
+// id → chord for every row a chord reaches. The first chord claiming a
+// command wins, matching how the keybindings menu leads a merged row with
+// the chord declared first. A bind that opens the menu itself
+// (`omarchy-menu toggle capture`) lands on the submenu its route resolves
+// to, so section rows advertise their direct chord too.
+function hotkeyIndex(items, itemOrder, hotkeyRows) {
+  var byCommand = ({})
+  var byApp = ({})
+  var byRoute = ({})
+  var rows = Array.isArray(hotkeyRows) ? hotkeyRows : []
+
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i]
+    if (row.kind === "app") {
+      if (!byApp[row.match]) byApp[row.match] = row.chord
+      continue
+    }
+    var key = commandKey(row.match)
+    if (key && !byCommand[key]) byCommand[key] = row.chord
+    var route = key.match(/^omarchy-menu\s+(?:toggle|summon)\s+([A-Za-z0-9._-]+)$/)
+    if (route) {
+      var routeId = resolveRoute(items, itemOrder, route[1])
+      if (routeId !== "root" && item(items, routeId) && !byRoute[routeId]) byRoute[routeId] = row.chord
+    }
+  }
+
+  var byId = ({})
+  var order = Array.isArray(itemOrder) ? itemOrder : []
+  for (var j = 0; j < order.length; j++) {
+    var entry = item(items, order[j])
+    if (!entry || entry.id === "root") continue
+    var chord = ""
+    if (entry.hotkey) chord = entry.hotkey
+    else if (byRoute[entry.id]) chord = byRoute[entry.id]
+    else if (entry.kind === "app" && byApp[entry.appId]) chord = byApp[entry.appId]
+    else if (entry.kind === "app" && entry.exec) chord = byCommand[commandKey(entry.exec)] || ""
+    else if (entry.action) chord = byCommand[commandKey(entry.action)] || ""
+    if (chord) byId[entry.id] = compactChord(chord)
+  }
+
+  return byId
+}
+
 function searchableToken(value) {
   return String(value || "").replace(/[._-]+/g, " ")
 }
@@ -362,7 +497,7 @@ function searchScore(items, entry, query) {
   return score * 1000 + depthFor(items, entry.id) * 25 + entry.order
 }
 
-function displayRow(items, itemOrder, checkedResults, disabledResults, entry, detail, score, section) {
+function displayRow(items, itemOrder, checkedResults, disabledResults, hotkeys, entry, detail, score, section) {
   var target = entry.kind === "link" ? entry.target : entry.id
   return {
     itemId: entry.id,
@@ -374,6 +509,7 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
     appId: entry.appId || "",
     label: labelFor(entry, checkedResults, disabledResults),
     target: target,
+    hotkey: (hotkeys && hotkeys[entry.id]) || "",
     detail: detail || "",
     path: pathFor(items, entry.id),
     childCount: (entry.kind === "menu" || entry.kind === "link") ? childCount(items, itemOrder, target) : 0,
@@ -512,6 +648,10 @@ if (typeof module !== "undefined") {
     isVisible: isVisible,
     isDisabled: isDisabled,
     labelFor: labelFor,
+    commandKey: commandKey,
+    compactChord: compactChord,
+    parseHotkeyLines: parseHotkeyLines,
+    hotkeyIndex: hotkeyIndex,
     searchableToken: searchableToken,
     leafIdFor: leafIdFor,
     nameSearchText: nameSearchText,

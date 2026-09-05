@@ -42,6 +42,7 @@ submenu. The fields:
 | `aliases` | Alternate `omarchy menu summon <name>` routes; also searchable |
 | `description` | Subtitle shown while searching, and extra search text matched by whole word |
 | `when` / `checked` / `disabled` | Shell conditions (see Guards) |
+| `hotkey` | Chord chip on the row's right edge, written as `SUPER + K` and shortened for display; normally derived from the live keybindings (see Hotkey chips), declared only to override |
 
 Do not add `aliases` to new entries. They are reserved for established
 alternate names users already type (`power-menu`, `settings`), kept for
@@ -96,6 +97,20 @@ The three guards differ in what failure means:
 Install rows should therefore carry `disabled:` with the presence check, not
 `when:`; Remove rows are the opposite, hiding via `when:` what is not there
 to remove. `menu-test.sh` enforces the Install side of this convention.
+
+## Hotkey chips
+
+A row a keybinding also reaches shows that chord as a small chip on its right edge — Learn > Keybindings carries `SUP+K`, the System submenu carries `SUP+ESC`, and the default terminal's row in Apps carries `SUP+RET`. The chips teach the faster path to what the user just navigated to.
+
+A chip annotates a label, so it is spelled to stay out of its way: modifiers shorten to three letters, long X11 key names read as what the key does (`XF86MonBrightnessDown` becomes `BRIDN`), and the chip renders a step under caption, capped at a third of the row so a long chord elides before the title does. The keybindings menu keeps the spelled-out `SUPER + K` — it has the width for it.
+
+The chords are derived, not declared: `omarchy-menu-hotkeys` reads the same records as the keybindings menu (`omarchy-menu-keybindings --records`, cached in `~/.cache/omarchy`) and reports one `cmd`/`app` row per exec chord. The shell runs it like the guard batch — once per (re)load and per open, never blocking the open path — and `MenuModel.hotkeyIndex` matches the rows on:
+
+- the row's `action`, compared after collapsing quoting, desktop Exec field codes, and `uwsm-app -- `/`setsid ` prefixes, with webapp launches reduced to their URL so the focus variant still matches
+- binds that open the menu itself (`omarchy-menu toggle capture`), resolved through the same route/alias resolution as `omarchy menu summon`
+- app rows, by desktop id (`omarchy-menu-hotkeys` resolves the default terminal and browser indirections to today's app) or by the desktop entry's Exec matching what a chord runs — how each webapp row finds its chord
+
+Because the chords come from the live binds, a rebind in the hypr config moves the chip with it. An explicit `hotkey:` in JSONC wins over anything derived, for the rare row whose action spells the same launch differently; the first chord claiming a command wins when several run it, matching how the keybindings menu leads a merged row.
 
 ## Providers
 

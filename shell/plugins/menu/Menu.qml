@@ -252,6 +252,8 @@ Item {
     root.itemOrder = mergedMenu.itemOrder
     root.rowsLoaded = true
     root.evaluateGuards()
+    root.rebuildHotkeyIndex()
+    root.refreshHotkeys()
     if (root.opened) {
       root.rebuildDisplay()
       if (!root.dmenuActive) {
@@ -318,6 +320,10 @@ Item {
         when: "",
         checked: "",
         disabled: "",
+        hotkey: "",
+        // What the entry launches, so a bind running the same command —
+        // a webapp chord and that webapp's row — meet in the hotkey index.
+        exec: String(entry.execString || ""),
         order: 0
       })
     }
@@ -325,6 +331,7 @@ Item {
     var merged = MenuModel.mergeAppRows(root.items, root.itemOrder, appRows)
     root.items = merged.items
     root.itemOrder = merged.itemOrder
+    root.rebuildHotkeyIndex()
     if (root.opened) root.rebuildDisplay()
   }
 
@@ -384,12 +391,14 @@ Item {
         when: "",
         checked: "",
         disabled: "",
+        hotkey: "",
         order: 0
       })
     }
     var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, menuId, providerRows)
     root.items = merged.items
     root.itemOrder = merged.itemOrder
+    root.rebuildHotkeyIndex()
     if (root.opened) root.rebuildDisplay()
   }
 
@@ -516,7 +525,7 @@ Item {
   }
 
   function displayRow(entry, detail, score, section) {
-    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, root.disabledResults, entry, detail, score, section)
+    return MenuModel.displayRow(root.items, root.itemOrder, root.checkedResults, root.disabledResults, root.hotkeysById, entry, detail, score, section)
   }
 
   function rowSelectable(index) {
@@ -581,6 +590,7 @@ Item {
         appId: "",
         label: label,
         target: "",
+        hotkey: "",
         detail: detail,
         path: "",
         childCount: 0,
@@ -847,6 +857,7 @@ Item {
     cursorActive = true
     root.disarmPointer()
     root.evaluateGuards()
+    root.refreshHotkeys()
     opened = true
     rebuildDisplay()
     invalidateVolatileProvider(activeMenu)
@@ -1062,6 +1073,52 @@ Item {
       if (root.guardsPending) Qt.callLater(function() { root.evaluateGuards() })
     }
   }
+
+  // ----------------------------------------------------------- hotkey chips
+  //
+  // A row a keybinding also reaches shows that chord as a chip on its right
+  // edge. `omarchy-menu-hotkeys` derives the chords from the live binds, so a
+  // rebind moves the chip; matching onto rows is pure (MenuModel.hotkeyIndex)
+  // and re-runs whenever the items or the chords change. Like the guards, the
+  // batch never blocks the open path: the menu opens on the previous answers.
+
+  property var hotkeyRows: []
+  property var hotkeysById: ({})
+  property bool hotkeysPending: false
+
+  function rebuildHotkeyIndex() {
+    root.hotkeysById = MenuModel.hotkeyIndex(root.items, root.itemOrder, root.hotkeyRows)
+  }
+
+  function refreshHotkeys() {
+    // Same discipline as evaluateGuards: a run in flight keeps its output,
+    // and the refresh that arrived meanwhile goes once it lands.
+    if (hotkeysProc.running) {
+      root.hotkeysPending = true
+      return
+    }
+    root.hotkeysPending = false
+    hotkeysProc.collected = ""
+    hotkeysProc.running = true
+  }
+
+  Process {
+    id: hotkeysProc
+    command: ["bash", "-lc", "omarchy-menu-hotkeys"]
+    property string collected: ""
+    stdout: SplitParser {
+      onRead: function(data) { hotkeysProc.collected += data + "\n" }
+    }
+    onExited: function(exitCode, exitStatus) {
+      if (exitCode === 0 && exitStatus === 0) {
+        root.hotkeyRows = MenuModel.parseHotkeyLines(hotkeysProc.collected)
+        root.rebuildHotkeyIndex()
+        if (root.opened) root.rebuildDisplay()
+      }
+      if (root.hotkeysPending) Qt.callLater(function() { root.refreshHotkeys() })
+    }
+  }
+
   PanelWindow {
     id: panel
     visible: root.opened && root.rowsLoaded
@@ -1256,6 +1313,7 @@ Item {
               required property string appId
               required property string label
               required property string target
+              required property string hotkey
               required property string detail
               required property string path
               required property string action
@@ -1323,7 +1381,7 @@ Item {
                 id: contentColumn
                 anchors.left: row.hasIcon ? iconText.right : parent.left
                 anchors.leftMargin: row.hasIcon ? Style.space(6) : root.rowReservedBorderLeft + Style.space(18)
-                anchors.right: trail.left
+                anchors.right: hotkeyChip.left
                 anchors.rightMargin: Style.space(6)
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: Style.space(3)
@@ -1351,6 +1409,25 @@ Item {
                   font.pixelSize: Style.font.bodySmall
                   elide: Text.ElideRight
                 }
+              }
+
+              // The chord that also reaches this row, kept on the label line —
+              // an empty chip is zero-width, so rows without one lose nothing.
+              // The chip annotates the label and must never crowd it out: a
+              // step under caption, and capped at a third of the row so a long
+              // chord elides before the title it belongs to does.
+              Text {
+                id: hotkeyChip
+                text: row.hotkey
+                color: row.hasCursor ? root.selectedText : root.foreground
+                opacity: 0.4
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.micro
+                width: Math.min(implicitWidth, row.width / 3)
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignRight
+                anchors.right: trail.left
+                y: contentColumn.y + labelText.y + (labelText.height - height) / 2
               }
 
               Row {

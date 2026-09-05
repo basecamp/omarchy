@@ -654,6 +654,11 @@ dispatch_binding() {
 
 if [[ $1 == "--print" || $1 == "-p" ]]; then
   output_keybindings
+elif [[ $1 == "--records" ]]; then
+  # The raw records behind the menu: `<chords> → <action>\t<dispatcher>\t<arg>`
+  # per line. `omarchy-menu-hotkeys` reads these to chip menu rows with the
+  # chord that reaches them.
+  output_binding_records
 else
   records=$(output_binding_records)
   selection=$(cut -f1 <<<"$records" |

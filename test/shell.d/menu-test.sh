@@ -44,7 +44,8 @@ assertDeepEqual(
     aliases: ['theme'],
     when: '',
     checked: '',
-    disabled: ''
+    disabled: '',
+    hotkey: ''
   },
   'menu normalizes parsed items'
 )
@@ -89,7 +90,7 @@ assert(menu.isDisabled({ 'install.browser.zen': true }, installed), 'menu disabl
 assert(!menu.isDisabled({ 'install.browser.zen': false }, installed), 'menu leaves a row selectable when its disabled: failed')
 assert(!menu.isDisabled({ 'install.browser.zen': true }, visibilityItems.laptop), 'menu never disables a row that declares no disabled:')
 assert(
-  menu.displayRow({ 'install.browser.zen': installed }, ['install.browser.zen'], {}, { 'install.browser.zen': true }, installed, '', 0).disabled,
+  menu.displayRow({ 'install.browser.zen': installed }, ['install.browser.zen'], {}, { 'install.browser.zen': true }, {}, installed, '', 0).disabled,
   'menu display rows carry their disabled state'
 )
 assert(
@@ -105,7 +106,7 @@ assert(!menu.matchesQuery(entry, 'theme', false), 'menu hides invisible matches'
 assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
 
 assertDeepEqual(
-  menu.displayRow(merged.items, merged.itemOrder, {}, {}, entry, 'Style', 12, 'search'),
+  menu.displayRow(merged.items, merged.itemOrder, {}, {}, {}, entry, 'Style', 12, 'search'),
   {
     itemId: 'style.theme',
     disabled: false,
@@ -116,6 +117,7 @@ assertDeepEqual(
     appId: '',
     label: 'Theme picker',
     target: 'style.theme',
+    hotkey: '',
     detail: 'Style',
     path: 'Style › Theme picker',
     childCount: 0,
