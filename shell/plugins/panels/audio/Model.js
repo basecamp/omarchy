@@ -18,8 +18,34 @@ function isAudioSource(node) {
     || mediaClass.indexOf("Source") !== -1
 }
 
-function listSnapshot(list) {
-  return list && list.slice ? list.slice() : []
+// PipeWire can destroy a PwNode while the panel still holds a reference to it:
+// during a service restart, or on any graph churn that re-enumerates devices.
+// A destroyed node left in a Repeater's model is dereferenced as a null
+// QObject* while the delegate is incubated -- qtdeclarative's
+// qqmldmlistaccessordata_p.h:222 calls row->value<QObject *>()->metaObject()
+// with no null guard -- and the shell segfaults.
+//
+// Keeping only the nodes PipeWire still lists drops those references before
+// they can reach a Repeater. Membership is an identity comparison, so it is
+// safe to test on a node that is already gone.
+function liveNodeSnapshot(list, liveNodes) {
+  if (!list || !list.length) return []
+  if (!liveNodes || !liveNodes.length) return []
+
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    var node = list[i]
+    if (!node) continue
+    // Indexed access only: the live list arrives as a QML sequence type, which
+    // is not guaranteed to carry Array.prototype methods such as indexOf.
+    for (var j = 0; j < liveNodes.length; j++) {
+      if (liveNodes[j] === node) {
+        out.push(node)
+        break
+      }
+    }
+  }
+  return out
 }
 
 function outputVolumeName(volume, muted) {
@@ -237,7 +263,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     isPlaybackStream: isPlaybackStream,
     isAudioSource: isAudioSource,
-    listSnapshot: listSnapshot,
+    liveNodeSnapshot: liveNodeSnapshot,
     outputVolumeName: outputVolumeName,
     parseSinkAvailability: parseSinkAvailability,
     friendlyDeviceLabel: friendlyDeviceLabel,
