@@ -30,4 +30,14 @@ assert(
   !/onAuthenticatingChanged:/.test(serviceQml),
   'the combined authenticating state no longer drives the blank timer'
 )
+
+assert(
+  /function runWake\(\) \{[\s\S]*?if \(lockRequested\) armBlankTimer\(30000\)/.test(serviceQml),
+  'waking a locked session re-arms blanking with a 30s DPMS re-sync budget'
+)
+
+assert(
+  /function armBlankTimer\(customInterval\)/.test(serviceQml),
+  'blank timer accepts a custom interval for wake vs initial lock'
+)
 JS
