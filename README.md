@@ -6,9 +6,7 @@ Read more at [omarchy.org](https://omarchy.org).
 
 ## The Omarchy Manual
 
-The manual lives in [`manual/`](manual/), which is its authoritative source. It's
-mirrored to [learn.omacom.io](https://learn.omacom.io/2/the-omarchy-manual), where
-its screenshots are also hosted.
+The manual lives in [`manual/`](manual/), which is its authoritative source.
 
 - [Welcome to Omarchy!](manual/01-welcome-to-omarchy.md)
 
