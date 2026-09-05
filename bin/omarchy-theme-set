@@ -85,7 +85,7 @@ choose_theme_background() {
   current_background=$(readlink "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
   index=-1
   for i in "${!backgrounds[@]}"; do
-    if [[ ${backgrounds[$i]} == $current_background ]]; then
+    if [[ ${backgrounds[$i]} == "$current_background" ]]; then
       index=$i
       break
     fi
