@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Install a supported development environment
 # omarchy:name=dev-env
@@ -6,22 +6,63 @@
 # omarchy:examples=omarchy install dev-env ruby | omarchy install dev-env node
 # omarchy:requires-sudo=true
 
-if [[ -z $1 ]]; then
-  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
-  exit 1
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for development-environment installation." >&2
+  exit 126
 fi
 
-install_php() {
-  omarchy-pkg-add php composer php-sqlite xdebug
+source "${BASH_SOURCE[0]%/*}/omarchy-install-security-functions" || exit 126
 
-  # Install Path for Composer
-  if [[ :$PATH: != *:$HOME/.config/composer/vendor/bin:* ]]; then
-    echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >>"$HOME/.bashrc"
-    source "$HOME/.bashrc"
-    echo "Added Composer global bin directory to PATH."
-  else
-    echo "Composer global bin directory already in PATH."
-  fi
+omarchy_security_require_privileged_bash_startup || {
+  echo "Refusing an unsafe Bash startup for development-environment installation." >&2
+  exit 126
+}
+
+set -euo pipefail
+
+environment=${1:-}
+
+usage() {
+  echo "Usage: omarchy-install-dev-env <ruby|node|bun|deno|go|laravel|symfony|php|python|elixir|phoenix|rust|java|zig|ocaml|dotnet|clojure|scala>" >&2
+}
+
+case "$environment" in
+ruby | node | bun | deno | go | laravel | symfony | php | python | elixir | phoenix | rust | java | zig | ocaml | dotnet | clojure | scala) ;;
+*)
+  usage
+  exit 1
+  ;;
+esac
+
+# These mixed installers intentionally invalidate the calling terminal's sudo
+# timestamp, including one that predated this command. sudo cannot selectively
+# distinguish a timestamp refreshed by this workflow from an older one. The
+# explicit contract prevents any home-owned tool manager, downloaded backend,
+# language hook, or remote script below from inheriting silent root authority.
+finish_privileged_phase() {
+  omarchy_install_security_finish_privileged_phase \
+    "Could not invalidate cached sudo authorization; refusing to run user-owned installer code."
+}
+
+install_packages() {
+  OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-pkg-add "$@"
+}
+
+omarchy_security_install_sudo_cleanup_traps
+
+finish_privileged_phase
+case "$environment" in
+  ruby|php|laravel|symfony|clojure)
+    omarchy_security_sudo_supports_no_update || {
+      echo "This sudo does not support --no-update; refusing a mixed-trust installer." >&2
+      exit 1
+    }
+    ;;
+esac
+echo "Security note: this installer clears cached sudo authorization before running user-level tooling."
+
+install_php() {
+  install_packages php composer php-sqlite xdebug
 
   # Enable some extensions
   local php_ini_path="/etc/php/php.ini"
@@ -34,15 +75,33 @@ install_php() {
     "pdo_mysql"
   )
 
-  # Enable Xdebug
-  sudo sed -i \
-    -e 's/^;zend_extension=xdebug.so/zend_extension=xdebug.so/' \
-    -e 's/^;xdebug.mode=debug/xdebug.mode=debug/' \
-    /etc/php/conf.d/xdebug.ini
-
+  # Keep the trusted configuration phase to one command-scoped authorization.
+  # sudo --no-update deliberately cannot reuse or publish a timestamp, so one
+  # sed process avoids prompting once per extension without opening a reusable
+  # credential window.
+  local -a sed_expressions=(
+    -e 's/^;zend_extension=xdebug.so/zend_extension=xdebug.so/'
+    -e 's/^;xdebug.mode=debug/xdebug.mode=debug/'
+  )
+  local ext
   for ext in "${extensions_to_enable[@]}"; do
-    sudo sed -i "s/^;extension=${ext}/extension=${ext}/" "$php_ini_path"
+    sed_expressions+=(-e "s/^;extension=${ext}/extension=${ext}/")
   done
+
+  /usr/bin/sudo -N -- /usr/bin/sed -i "${sed_expressions[@]}" \
+    /etc/php/conf.d/xdebug.ini "$php_ini_path"
+}
+
+configure_composer_path() {
+  # This touches user-owned shell configuration only after the caller has
+  # finished and revoked the privileged phase. Never source the file here.
+  if [[ :$PATH: != *:$HOME/.config/composer/vendor/bin:* ]]; then
+    echo 'export PATH="$HOME/.config/composer/vendor/bin:$PATH"' >>"$HOME/.bashrc"
+    export PATH="$HOME/.config/composer/vendor/bin:$PATH"
+    echo "Added Composer global bin directory to PATH."
+  else
+    echo "Composer global bin directory already in PATH."
+  fi
 }
 
 install_node() {
@@ -50,10 +109,11 @@ install_node() {
   mise use --global node
 }
 
-case "$1" in
+case "$environment" in
 ruby)
   echo -e "Installing Ruby on Rails...\n"
-  omarchy-pkg-add libyaml
+  install_packages libyaml
+  finish_privileged_phase
   mise settings add ruby.compile false
   mise settings add idiomatic_version_file_enable_tools ruby
   mise use --global ruby@latest
@@ -79,10 +139,14 @@ go)
 php)
   echo -e "Installing PHP...\n"
   install_php
+  finish_privileged_phase
+  configure_composer_path
   ;;
 laravel)
   echo -e "Installing PHP and Laravel...\n"
   install_php
+  finish_privileged_phase
+  configure_composer_path
   install_node
   composer global require laravel/installer
   echo -e "\nYou can now run: laravel new myproject"
@@ -90,7 +154,9 @@ laravel)
 symfony)
   echo -e "Installing PHP and Symfony...\n"
   install_php
-  omarchy-pkg-add symfony-cli
+  install_packages symfony-cli
+  finish_privileged_phase
+  configure_composer_path
   echo -e "\nYou can now run: symfony new --webapp myproject"
   ;;
 python)
@@ -143,7 +209,8 @@ dotnet)
   ;;
 clojure)
   echo -e "Installing Clojure...\n"
-  omarchy-pkg-add rlwrap
+  install_packages rlwrap
+  finish_privileged_phase
   mise use --global clojure@latest
   ;;
 scala)

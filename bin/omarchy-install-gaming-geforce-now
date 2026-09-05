@@ -1,19 +1,65 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Install and launch Geforce Now.
 # omarchy:group=install
 # omarchy:name=gaming geforce-now
 
-set -e
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for GeForce NOW installation." >&2
+  exit 126
+fi
+
+source "${BASH_SOURCE[0]%/*}/omarchy-install-security-functions" || exit 126
+
+omarchy_security_require_privileged_bash_startup || {
+  echo "Refusing an unsafe Bash startup for GeForce NOW installation." >&2
+  exit 126
+}
+
+set -euo pipefail
+
+installer=""
+
+cleanup() {
+  local status=$?
+  if [[ -n $installer ]] && ! /usr/bin/rm -f -- "$installer"; then
+    (( status != 0 )) || status=1
+  fi
+  omarchy_security_exit_with_revoked_sudo "$status"
+}
+
+trap cleanup EXIT
+omarchy_security_install_signal_exit_traps
+
+# This command deliberately invalidates even a sudo timestamp that predated
+# the workflow. sudo cannot identify which command refreshed a shared terminal
+# timestamp, and downloaded vendor code must never inherit silent root access.
+omarchy_install_security_prepare_cold_command_scoped_sudo \
+  "Could not invalidate cached sudo authorization; refusing to continue." \
+  "This sudo does not support --no-update; refusing a mixed-trust installer."
+echo "Security note: this installer clears cached sudo authorization before running downloaded vendor code."
 
 echo "Installing GeForce NOW..."
-omarchy-pkg-add flatpak
-cd /tmp
+OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-pkg-add flatpak
 
-# Download and run GeForce NOW
-curl -LO https://international.download.nvidia.com/GFNLinux/GeForceNOWSetup.bin
-chmod +x GeForceNOWSetup.bin
-./GeForceNOWSetup.bin
+if ! omarchy_security_revoke_sudo_timestamp; then
+  echo "Could not invalidate cached sudo authorization; refusing to run the downloaded installer." >&2
+  exit 1
+fi
+
+installer=$(/usr/bin/mktemp -- /tmp/omarchy-geforce-now.XXXXXXXX.bin)
+owner=$(/usr/bin/stat -c '%u' -- "$installer")
+mode=$(/usr/bin/stat -c '%a' -- "$installer")
+links=$(/usr/bin/stat -c '%h' -- "$installer")
+if [[ -L $installer || ! -f $installer || $owner != "$(/usr/bin/id -u)" || $mode != 600 || $links != 1 ]]; then
+  echo "Could not create a private GeForce NOW installer file." >&2
+  exit 1
+fi
+
+/usr/bin/curl --fail --location --output "$installer" \
+  https://international.download.nvidia.com/GFNLinux/GeForceNOWSetup.bin
+/usr/bin/chmod 0700 -- "$installer"
+(cd /tmp && exec "$installer")
 
 # Ensure a separate browser process not started by GFN is available.
 # If not, it seems like GFN has a tendency to hang on login.

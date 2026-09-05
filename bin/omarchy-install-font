@@ -1,8 +1,24 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Install a Nerd Font package and switch the system to it
 # omarchy:args=<display-name> <package> <family>
 # omarchy:examples=omarchy install font 'Cascadia Mono' ttf-cascadia-mono-nerd 'CaskaydiaMono Nerd Font'
+
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for font installation." >&2
+  exit 126
+fi
+
+source "${BASH_SOURCE[0]%/*}/omarchy-install-security-functions" || exit 126
+
+if ! omarchy_security_require_privileged_bash_startup; then
+  echo "Refusing an unsafe Bash startup for font installation." >&2
+  exit 126
+fi
+
+set -e
+
+omarchy_install_security_sanitize_bash_startup_environment "$0" "$@"
 
 name="${1-}"
 package="${2-}"
@@ -17,5 +33,9 @@ printf -v install_message '%q' "Installing ${name}..."
 printf -v package_arg '%q' "$package"
 printf -v family_arg '%q' "$family"
 
-exec omarchy-launch-floating-terminal-with-presentation \
-  "echo ${install_message}; omarchy-pkg-add ${package_arg} && sleep 2 && omarchy-font-set ${family_arg}"
+omarchy_install_security_prepare_cold_command_scoped_sudo \
+  "Could not invalidate cached sudo authorization." \
+  "This sudo does not support --no-update; refusing a mixed-trust font install."
+
+exec /usr/bin/omarchy-launch-floating-terminal-with-presentation \
+  "echo ${install_message}; trap '/usr/bin/sudo -k >/dev/null 2>&1 || true' EXIT; /usr/bin/sudo -k && OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-pkg-add ${package_arg} && /usr/bin/sudo -k && /usr/bin/sleep 2 && /usr/bin/omarchy-font-set ${family_arg}"

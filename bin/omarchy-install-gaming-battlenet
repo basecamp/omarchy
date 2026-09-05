@@ -1,9 +1,39 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Install Battle.net standalone via umu-launcher + GE-Proton (no Steam, no Lutris, no Heroic).
 # omarchy:requires-sudo=true
 
-set -e
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for Battle.net installation." >&2
+  exit 126
+fi
+
+source "${BASH_SOURCE[0]%/*}/omarchy-install-security-functions" || exit 126
+
+omarchy_security_require_privileged_bash_startup || {
+  echo "Refusing an unsafe Bash startup for Battle.net installation." >&2
+  exit 126
+}
+
+set -euo pipefail
+
+# This mixed installer intentionally invalidates the calling terminal's sudo
+# timestamp, including one that predates this command. sudo cannot identify
+# which package helper refreshed a shared timestamp, and downloaded vendor code
+# must never inherit silent root access.
+finish_privileged_phase() {
+  omarchy_install_security_finish_privileged_phase \
+    "Could not invalidate cached sudo authorization; refusing to run Battle.net installer code."
+}
+
+omarchy_security_install_sudo_cleanup_traps
+
+finish_privileged_phase
+omarchy_security_sudo_supports_no_update || {
+  echo "This sudo does not support --no-update; refusing a mixed-trust installer." >&2
+  exit 1
+}
+echo "Security note: this installer clears cached sudo authorization before running downloaded vendor code."
 
 PREFIX="$HOME/Games/battlenet"
 LAUNCHER="$PREFIX/drive_c/Program Files (x86)/Battle.net/Battle.net Launcher.exe"
@@ -11,8 +41,9 @@ INSTALLER_URL="https://downloader.battle.net/download/getInstallerForGame?os=win
 
 echo "Installing Battle.net..."
 
-omarchy-pkg-add umu-launcher
-omarchy-install-gaming-gpu-lib32
+OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-pkg-add umu-launcher
+OMARCHY_SUDO_NO_UPDATE=1 /usr/bin/omarchy-install-gaming-gpu-lib32
+finish_privileged_phase
 
 # Detect a half-finished prefix from a closed/crashed previous run and offer
 # to wipe it before trying again. Battle.net's installer isn't idempotent.

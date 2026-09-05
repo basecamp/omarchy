@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# omarchy:hidden=true
+# omarchy:summary=Provide internal security helpers for mixed-trust installers
+
+# Install-specific extensions to the shared security primitives. This file is
+# sourced from the same package-owned bin directory as its consumers.
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  echo "omarchy-install-security-functions is an internal function library." >&2
+  exit 64
+fi
+
+source "${BASH_SOURCE[0]%/*}/omarchy-security-functions" || return 126
+
+omarchy_install_security_sanitize_bash_startup_environment() {
+  local script=$1
+  shift
+  local environment_entry environment_name
+  local needs_reexec=0
+  local -a environment_unsets=(-u BASH_ENV -u ENV)
+
+  [[ -z ${BASH_ENV+x} && -z ${ENV+x} ]] || needs_reexec=1
+  while IFS= read -r -d '' environment_entry; do
+    environment_name=${environment_entry%%=*}
+    if [[ $environment_name == BASH_FUNC_*%% ]]; then
+      environment_unsets+=(-u "$environment_name")
+      needs_reexec=1
+    fi
+  done < <(/usr/bin/env -0)
+
+  if (( needs_reexec )); then
+    exec /usr/bin/env "${environment_unsets[@]}" /usr/bin/bash -p -- "$script" "$@"
+  fi
+}
+
+omarchy_install_security_finish_privileged_phase() {
+  local message=${1:-Could not invalidate cached sudo authorization.}
+
+  if ! omarchy_security_revoke_sudo_timestamp; then
+    echo "$message" >&2
+    return 1
+  fi
+}
+
+omarchy_install_security_prepare_cold_command_scoped_sudo() {
+  local cold_message=$1 no_update_message=$2
+
+  omarchy_install_security_finish_privileged_phase "$cold_message" || return 1
+  if ! omarchy_security_sudo_supports_no_update; then
+    echo "$no_update_message" >&2
+    return 1
+  fi
+}

@@ -1,11 +1,23 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Install lib32 graphics drivers (Vulkan + NVIDIA) for any detected GPUs.
 # omarchy:group=install
 # omarchy:name=gaming gpu-lib32
 # omarchy:requires-sudo=true
 
-set -e
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for graphics-driver installation." >&2
+  exit 126
+fi
+
+source "${BASH_SOURCE[0]%/*}/omarchy-security-functions" || exit 126
+
+omarchy_security_require_privileged_bash_startup || {
+  echo "Refusing an unsafe Bash startup for graphics-driver installation." >&2
+  exit 126
+}
+
+set -euo pipefail
 
 echo "Installing lib32 graphics drivers..."
 
@@ -16,15 +28,15 @@ declare -A VULKAN_DRIVERS=(
   [AMD]=lib32-vulkan-radeon
 )
 for vendor in "${!VULKAN_DRIVERS[@]}"; do
-  if lspci | grep -iE "(VGA|Display).*$vendor" >/dev/null; then
+  if /usr/bin/lspci | /usr/bin/grep -iE "(VGA|Display).*$vendor" >/dev/null; then
     PACKAGES+=("${VULKAN_DRIVERS[$vendor]}")
   fi
 done
 
-if omarchy-hw-nvidia-gsp; then
+if /usr/bin/omarchy-hw-nvidia-gsp; then
   PACKAGES+=(lib32-nvidia-utils)
-elif omarchy-hw-nvidia-without-gsp; then
+elif /usr/bin/omarchy-hw-nvidia-without-gsp; then
   PACKAGES+=(lib32-nvidia-580xx-utils)
 fi
 
-(( ${#PACKAGES[@]} > 0 )) && omarchy-pkg-add "${PACKAGES[@]}"
+(( ${#PACKAGES[@]} == 0 )) || /usr/bin/omarchy-pkg-add "${PACKAGES[@]}"
