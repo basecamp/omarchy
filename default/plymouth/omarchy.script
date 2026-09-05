@@ -9,6 +9,152 @@ logo.sprite.SetX(Window.GetWidth() / 2 - logo.image.GetWidth() / 2);
 logo.sprite.SetY(Window.GetHeight() / 2 - logo.image.GetHeight() / 2);
 logo.sprite.SetOpacity(1);
 
+#----------------------------------------- Shutdown --------------------------------
+
+# Settings come from [script-env-vars] in omarchy.plymouth. They are strings.
+# An absent/unknown style keeps the static logo, including on older installs.
+global.shutdown.style = ShutdownAnimation;
+global.shutdown.duration = 2.4;
+global.shutdown.frame = 0;
+global.shutdown.active = 0;
+global.shutdown.started = 0;
+global.shutdown.particles = [];
+global.shutdown.count = 0;
+global.shutdown.fps = 30;
+
+fun shutdown_duration(value) {
+  if (!value) return 2.4;
+  text = String(value);
+  if (text.Length() > 5) return 2.4;
+  number = 0;
+  divisor = 0;
+  digits = 0;
+  for (i = 0; i < text.Length(); i++) {
+    character = text.CharAt(i);
+    if (character == "." && divisor == 0) {
+      divisor = 1;
+    } else {
+      digit = 0;
+      while (digit < 10 && character != "" + digit) digit++;
+      if (digit == 10) return 2.4;
+      number = number * 10 + digit;
+      digits++;
+      if (divisor > 0) divisor *= 10;
+    }
+  }
+  if (divisor > 0) number /= divisor;
+  if (digits == 0 || number < 0.8 || number > 5) return 2.4;
+  return number;
+}
+
+fun start_shutdown_animation() {
+  if (Plymouth.GetMode() != "shutdown") return;
+  if (global.shutdown.style != "dust-drift") return;
+
+  width = logo.image.GetWidth();
+  height = logo.image.GetHeight();
+  if (width < 1 || height < 1) return;
+
+  # Bound allocations for custom logos. Cache crops and reduced sizes once;
+  # native Plymouth's software renderer should not transform images per frame.
+  tile = Math.Int(Math.Sqrt(width * height / 600)) + 1;
+  if (tile < 3) tile = 3;
+  while ((Math.Int((width + tile - 1) / tile) * Math.Int((height + tile - 1) / tile)) > 600) tile++;
+  index = 0;
+  for (y = 0; y < height; y += tile) {
+    for (x = 0; x < width; x += tile) {
+      particle = [];
+      particle.x = x;
+      particle.y = y;
+      tile_width = tile;
+      tile_height = tile;
+      if (x + tile_width > width) tile_width = width - x;
+      if (y + tile_height > height) tile_height = height - y;
+      particle.image = logo.image.Crop(x, y, tile_width, tile_height);
+      small_width = Math.Int(tile_width / 2);
+      small_height = Math.Int(tile_height / 2);
+      if (small_width < 1) small_width = 1;
+      if (small_height < 1) small_height = 1;
+      particle.dust = particle.image.Scale(small_width, small_height);
+      particle.offset_x = (tile_width - small_width) / 2;
+      particle.offset_y = (tile_height - small_height) / 2;
+      particle.sprite = Sprite(particle.image);
+      particle.sprite.SetPosition(logo.sprite.GetX() + x, logo.sprite.GetY() + y, 2);
+      particle.sprite.SetOpacity(0);
+      particle.small = 0;
+      particle.finished = 0;
+      particle.release = 0.10 + (1 - x / width) * 0.34 + Math.Random() * 0.065;
+      particle.life = 0.46 * (0.75 + Math.Random() * 0.25);
+      particle.speed = 0.45 + Math.Random() * 0.85;
+      particle.phase = Math.Random() * 6.283185;
+      particle.wobble = 4 + Math.Random() * 22;
+      global.shutdown.particles[index] = particle;
+      index++;
+    }
+  }
+  global.shutdown.count = index;
+  global.shutdown.duration = shutdown_duration(ShutdownDuration);
+  global.shutdown.active = 1;
+  Plymouth.SetRefreshRate(global.shutdown.fps);
+}
+
+fun stop_shutdown_animation(restore_logo) {
+  if (restore_logo) logo.sprite.SetOpacity(1);
+  if (global.shutdown.active == 0) return;
+  for (index = 0; index < global.shutdown.count; index++) {
+    global.shutdown.particles[index].sprite.SetOpacity(0);
+  }
+  global.shutdown.active = 0;
+  global.shutdown.particles = [];
+}
+
+fun refresh_shutdown_animation() {
+  if (global.shutdown.active == 0) return;
+  global.shutdown.frame++;
+  progress = global.shutdown.frame / (global.shutdown.fps * global.shutdown.duration);
+  if (progress >= 1) {
+    stop_shutdown_animation(0);
+    return;
+  }
+  # Keep the original image during the hold; even translucent logos stay exact.
+  if (progress <= 0.10) return;
+  if (global.shutdown.started == 0) {
+    for (index = 0; index < global.shutdown.count; index++) {
+      global.shutdown.particles[index].sprite.SetOpacity(1);
+    }
+    global.shutdown.started = 1;
+    logo.sprite.SetOpacity(0);
+  }
+  origin_x = Window.GetWidth() / 2 - logo.image.GetWidth() / 2;
+  origin_y = Window.GetHeight() / 2 - logo.image.GetHeight() / 2;
+  for (index = 0; index < global.shutdown.count; index++) {
+    particle = global.shutdown.particles[index];
+    if (particle.finished) continue;
+    age = (progress - particle.release) / particle.life;
+    if (age <= 0) {
+      particle.sprite.SetPosition(origin_x + particle.x, origin_y + particle.y, 2);
+      continue;
+    }
+    if (age >= 1) {
+      particle.sprite.SetOpacity(0);
+      particle.finished = 1;
+      continue;
+    }
+    travel = age * age * 0.45 + age * 0.55;
+    flutter = Math.Sin(age * 7 + particle.phase) - Math.Sin(particle.phase);
+    dx = travel * 230 * particle.speed + flutter * particle.wobble * age;
+    dy = -travel * 100 * particle.speed + Math.Sin(age * 6 + particle.phase) * 35 * age;
+    if (age > 0.15 && particle.small == 0) {
+      particle.sprite.SetImage(particle.dust);
+      particle.small = 1;
+    }
+    particle.sprite.SetPosition(origin_x + particle.x + dx + particle.offset_x * particle.small, origin_y + particle.y + dy + particle.offset_y * particle.small, 2);
+    particle.sprite.SetOpacity((1 - age) * (1 - age));
+  }
+}
+
+start_shutdown_animation();
+
 # Use these to adjust the progress bar timing
 global.fake_progress_limit = 0.7;  # Target percentage for fake progress (0.0 to 1.0)
 global.fake_progress_duration = 15.0;  # Duration in seconds to reach limit
@@ -23,6 +169,7 @@ global.password_shown = 0;  # Track if password dialog has been shown
 global.max_progress = 0.0;  # Track the maximum progress reached to prevent backwards movement
 
 fun refresh_callback() {
+  refresh_shutdown_animation();
   global.animation_frame++;
 
   # Animate fake progress to limit over time with easing
@@ -143,6 +290,8 @@ fun display_normal_callback() {
 }
 
 fun display_password_callback(prompt, bullets) {
+  # A prompt must remain readable even if shutdown unexpectedly asks for input.
+  stop_shutdown_animation(1);
   global.password_shown = 1;  # Mark that password dialog has been shown
 
   # Stop fake progress when password dialog appears
