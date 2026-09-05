@@ -64,6 +64,16 @@ You can do the same for screenrecordings using `OMARCHY_SCREENRECORD_DIR`.
 
 Just remember to create the directoy you want to save to and restart Omarchy for this to take effect.
 
+### How do I stop screenshots from being saved as files?
+
+If you only paste screenshots and never want them cluttering up a directory, put this in the same place:
+
+```
+export OMARCHY_SCREENSHOT_SAVE_FILE=false
+```
+
+`Print Screen` then copies the shot to the clipboard without writing anything to disk. Since there's no file, the notification is a plain one rather than a thumbnail you can click into the editor.
+
 ### How do I get the speakers + webcam working on my Apple Studio Display?
 
 You'd think that it should all work just plugging in USB C, but unfortunately that isn't the case. The solution I've found to make it work reliably is using [the WJESOG DisplayPort + USB-A => USB-C cable](https://www.amazon.com/WJESOG-DisplayPort-Adapter-Converter-Thunderbolt/dp/B0BNX7MS6N/). Then speakers and webcam work like a charm.

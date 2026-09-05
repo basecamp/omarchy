@@ -19,6 +19,8 @@ The result goes two places at once: a PNG in your pictures directory, and the cl
 
 Files land in `~/Pictures` by default, named `screenshot-2026-08-13_14-22-05.png`. If you'd rather keep them in their own folder, set `OMARCHY_SCREENSHOT_DIR` — see [the FAQ](46-faq.md) for where to put session environment variables. Omarchy creates the directory for you if it isn't there. You can swap the editor too with `OMARCHY_SCREENSHOT_EDITOR`.
 
+If you only ever paste your screenshots and don't want the pile of files, set `OMARCHY_SCREENSHOT_SAVE_FILE=false`. `Print Screen` then puts the shot on the clipboard and nothing else: no file, and a plain notification instead of the clickable thumbnail, since there's nothing on disk for the editor to open. The explicit `omarchy capture screenshot ... save` still writes a file when you ask for one.
+
 From the terminal, `omarchy screenshot` takes the same shot, and you can be explicit about it: `omarchy capture screenshot region` for freeform only, `windows` to snap to window and monitor rectangles, or `fullscreen` to skip the picker entirely and grab the focused monitor. A second argument of `copy` puts the shot only on the clipboard, and `save` only on disk.
 
 ### Driving the picker from the keyboard
