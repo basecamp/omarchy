@@ -32,3 +32,36 @@ assertEqual(
   'dropbox file metadata includes relative time and folder'
 )
 JS
+
+require_command python3
+
+# The plan table describes what a plan ships with, so an account carrying bonus
+# space needs the override to win. Everything unusable has to defer to the
+# table instead, since a broken setting must not blank out the quota.
+read_override() {
+  HELPER="$ROOT/shell/plugins/panels/dropbox/status.py" RAW="$1" python3 - <<'PY'
+import importlib.machinery, importlib.util, os
+
+loader = importlib.machinery.SourceFileLoader("status", os.environ["HELPER"])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+status = importlib.util.module_from_spec(spec)
+loader.exec_module(status)
+
+print(status.quota_override_bytes(os.environ["RAW"]))
+PY
+}
+
+assert_override() {
+  local raw=$1 expected=$2 description=$3
+  local actual
+
+  actual=$(read_override "$raw")
+  [[ $actual == "$expected" ]] || fail "$description" "expected $expected, got $actual"
+  pass "$description"
+}
+
+assert_override 21380 21380000000 "dropbox override reads megabytes as bytes"
+assert_override 0 0 "dropbox override of zero defers to the plan table"
+assert_override -5 0 "dropbox override refuses negative megabytes"
+assert_override "" 0 "dropbox override ignores a blank setting"
+assert_override "lots" 0 "dropbox override ignores a non-numeric setting"
