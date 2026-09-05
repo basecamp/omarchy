@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Run what the Quake console is set to
+# omarchy:hidden=true
+
+# The console seeds itself with this from default/hypr/qconsole.lua. It is a
+# workspace like any other, so what drops into it is a preference: an agent is
+# only where Omarchy starts. See `omarchy default console`.
+console=$(omarchy-default-console)
+
+if [[ -z $console ]]; then
+  exec omarchy-agent
+else
+  # A stored command line, so let the shell split it the way omarchy-launch-or-focus
+  # does with the one it is handed.
+  eval exec setsid $console
+fi

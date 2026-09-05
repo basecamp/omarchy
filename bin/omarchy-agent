@@ -40,10 +40,37 @@ agent=$(omarchy-default-agent)
 # Omarchy ships without a default, so there is nothing to launch until one is
 # picked. --pick offers the choice instead of the error, which is what the
 # keybinding wants: a keypress that opens nothing explains nothing.
+#
+# Saying so on stderr only reaches a caller that has a terminal to read it in.
+# The Quake console does not: it seeds itself by spawning this from Hyprland, so
+# the message goes nowhere and Super + S dims the screen over an empty console.
+# The device node is there whether or not a terminal is behind it, so opening it
+# is the only test that means anything — the same one omarchy-show-done makes.
 if [[ -z $agent ]]; then
-  [[ $pick == "true" ]] && exec omarchy-menu summon setup.default.agent
-  echo "Choose default agent with: omarchy default agent <name>" >&2
-  exit 1
+  if [[ $pick == "true" ]]; then
+    exec omarchy-menu summon setup.default.agent
+  elif : 2>/dev/null <>/dev/tty; then
+    echo "Choose default agent with: omarchy default agent <name>" >&2
+    exit 1
+  else
+    notice=$(
+      cat <<'NOTICE'
+No default coding agent set, so there is nothing to run here yet.
+
+  Pick one from the menu:  SUPER + SHIFT + CTRL + A
+  Or from a terminal:      omarchy default agent <name>
+
+The console can run something else instead:
+
+  omarchy default console terminal
+NOTICE
+    )
+
+    # Launched the way an agent would be, so the notice lands where the agent
+    # was meant to: pinned into the console by the exec rule that seeded it.
+    exec omarchy-launch-tui --app-id=org.omarchy.agent \
+      bash -c 'omarchy-show-logo; printf "%s\n" "$1"; omarchy-show-done' omarchy-agent "$notice"
+  fi
 fi
 
 if omarchy-cmd-missing "$agent"; then

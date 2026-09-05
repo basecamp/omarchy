@@ -5,14 +5,14 @@
 -- How much of the usable screen the console covers, measured from the top.
 local share = 0.5
 
--- Seed the console with the default agent the first time it opens, rather than
--- at boot, so nothing is running until it is wanted. The exec rule has to pin
--- the workspace itself: Hyprland only tags a spawn with the workspace it came
--- from while misc.initial_workspace_tracking is on, and looknfeel turns it off.
--- Omarchy ships without a default agent, and omarchy-agent exits without
--- opening anything when none is set, so until one is picked this just opens an
--- empty console.
-local seed = "[workspace special:scratchpad silent] omarchy-agent"
+-- Seed the console the first time it opens, rather than at boot, so nothing is
+-- running until it is wanted. The exec rule has to pin the workspace itself:
+-- Hyprland only tags a spawn with the workspace it came from while
+-- misc.initial_workspace_tracking is on, and looknfeel turns it off. What drops
+-- in is `omarchy default console` — the coding agent unless it is pointed at a
+-- terminal or anything else — and with no agent picked yet that is a notice on
+-- how to choose one, rather than an empty console.
+local seed = "[workspace special:scratchpad silent] omarchy-launch-console"
 
 -- Dimming only applies while a special workspace is open, so the console gets
 -- its separation from the workspace underneath without costing anything the
