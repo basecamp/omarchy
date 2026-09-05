@@ -42,6 +42,8 @@ Hyprland works great with multiple screens. Read more about how to lay them out 
 
 You can also checkout [Hyprmon](https://github.com/erans/hyprmon/), if you'd like a TUI to help you with the positioning of multiple screens.
 
+If another monitor manager handles hotplug and lid events, turn Omarchy's automatic monitor management off with `omarchy toggle monitor-management off`. Run `omarchy toggle monitor-management on` to hand control back to Omarchy.
+
 ### Controlling brightness
 
 Monitor brightness is controlled by the dedicated function keys for brightness up/down. If you hold down shift while pressing these, you'll go to maximum or minimum brightness. The keys control the display you're focused on, so external monitors that speak DDC/CI are adjusted the same way as the laptop screen.

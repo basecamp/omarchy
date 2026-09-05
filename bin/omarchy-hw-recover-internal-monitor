@@ -2,6 +2,8 @@
 
 # omarchy:summary=Clear the internal-monitor-disable toggle if no external display is connected.
 
+omarchy-toggle-enabled monitor-management || exit 0
+
 TOGGLE="$HOME/.local/state/omarchy/toggles/hypr/internal-monitor-disable.lua"
 
 if [[ -f $TOGGLE ]] && ! omarchy-hw-external-monitors; then
