@@ -125,7 +125,7 @@ All of it is stored in `~/.config/omarchy/shell.json`, under the `bar` key. Here
 }
 ```
 
-Every widget is one entry in one of the three layout arrays, and its settings sit inline on that entry — there's no separate settings file and no `config` sub-object. The clock's `format`, `formatAlt` (what right-click cycles to), and `verticalFormat` all live right there on `{ "id": "omarchy.clock" }`.
+Every widget is one entry in one of the three layout arrays, and its settings sit inline on that entry — there's no separate settings file and no `config` sub-object. The clock's `format`, `formatAlt` (what right-click cycles to), and `verticalFormat` all live right there on `{ "id": "omarchy.clock" }`. The weather widget takes `{ "id": "omarchy.weather", "showTemperature": true }` to put the current temperature next to its icon instead of showing the icon alone.
 
 `centerAnchor` names the one center widget that gets pinned to the exact center of the screen, with the others flanking it. That's how the clock stays dead center even as the weather and update badge come and go. Set it to an empty string and the center list is just centered as a group instead.
 

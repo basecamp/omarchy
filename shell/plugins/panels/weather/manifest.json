@@ -16,6 +16,15 @@
     "description": "Weather pill with detail popup",
     "category": "Info",
     "allowMultiple": false,
-    "settingsForm": "weatherSettings"
+    "settingsForm": "weatherSettings",
+    "schema": [
+      {
+        "key": "showTemperature",
+        "type": "boolean",
+        "label": "Show temperature",
+        "description": "Show the current temperature next to the weather icon in the bar.",
+        "defaultValue": false
+      }
+    ]
   }
 }

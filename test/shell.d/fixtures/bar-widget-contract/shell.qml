@@ -111,6 +111,35 @@ ShellRoot {
 
   Item { id: host }
 
+  // Second weather instance, opted into showTemperature, checked in both
+  // orientations alongside the generic contract loop below.
+  property var weatherTempWidget: null
+
+  function loadWeatherTempVariant(entries) {
+    for (var e = 0; e < entries.length; e++) {
+      if (entries[e].id !== "omarchy.weather") continue
+      var component = Qt.createComponent(entries[e].url, Component.PreferSynchronous)
+      if (component.status !== Component.Ready) {
+        fail("omarchy.weather showTemperature variant failed to load: " + component.errorString())
+        return
+      }
+      weatherTempWidget = component.createObject(host, {
+        moduleName: "omarchy.weather",
+        settings: { showTemperature: true }
+      })
+      // createObject() can return null on an instantiation-time error even
+      // after Ready; record it rather than letting the guarded checks below
+      // skip and the file still pass.
+      if (!weatherTempWidget) {
+        fail("omarchy.weather showTemperature variant failed to instantiate: " + component.errorString())
+        return
+      }
+      weatherTempWidget.bar = fakeBar
+      return
+    }
+    fail("omarchy.weather is missing from the bar widget list")
+  }
+
   QtObject {
     id: mockShell
     property var bar: fakeBar
@@ -151,6 +180,7 @@ ShellRoot {
       var entries = widgets()
       root.assertTrue(entries.length > 0, "bar widget list is not empty")
       for (var i = 0; i < entries.length; i++) root.loadWidget(entries[i])
+      root.loadWeatherTempVariant(entries)
 
       Qt.callLater(function() {
         for (var j = 0; j < root.createdObjects.length; j++) {
@@ -158,6 +188,17 @@ ShellRoot {
           var id = root.createdIds[j]
           root.assertTrue(root.finiteDimension(item.implicitWidth), id + " has a finite implicitWidth")
           root.assertTrue(root.finiteDimension(item.implicitHeight), id + " has a finite implicitHeight")
+          if (id === "omarchy.weather")
+            root.assertEqual(item.openPanelIndicatorWidth, 0, "omarchy.weather leaves the open-panel mark on the slot fallback when icon-only")
+        }
+
+        if (root.weatherTempWidget) {
+          root.assertTrue(root.weatherTempWidget.showTemperature === true,
+            "omarchy.weather composes the temperature label on a horizontal bar when showTemperature is set")
+          root.assertTrue(root.finiteDimension(root.weatherTempWidget.implicitWidth),
+            "omarchy.weather showTemperature variant has a finite implicitWidth")
+          root.assertTrue(root.finiteDimension(root.weatherTempWidget.openPanelIndicatorWidth),
+            "omarchy.weather temperature variant exposes a finite open-panel indicator width tied to the label")
         }
 
         fakeBar.vertical = true
@@ -173,6 +214,15 @@ ShellRoot {
               root.assertEqual(verticalItem.implicitHeight, Style.bar.statusSlot, verticalId + " uses one compact status slot")
             if (verticalItem && typeof verticalItem.destroy === "function") verticalItem.destroy()
           }
+
+          if (root.weatherTempWidget) {
+            root.assertTrue(root.weatherTempWidget.showTemperature === false,
+              "omarchy.weather forces icon-only on a vertical bar even with showTemperature set")
+            root.assertEqual(root.weatherTempWidget.implicitHeight, Style.bar.statusSlot,
+              "omarchy.weather keeps the compact status slot on a vertical bar with showTemperature set")
+            if (typeof root.weatherTempWidget.destroy === "function") root.weatherTempWidget.destroy()
+          }
+
           root.assertTrue(root.createdIds.length === entries.length, "all bar widgets instantiate")
           root.writeResult()
         })

@@ -6,6 +6,35 @@ BarWidget {
   id: root
   moduleName: "omarchy.weather"
 
+  // "showTemperature" on the bar entry turns the icon-only pill into a padded
+  // "<icon> <temp>°" label, laid out like the clock. Default is icon-only, so
+  // an existing bar is unchanged. Vertical bars keep the compact icon-only
+  // slot regardless (as the clock and media widgets do) -- a text label would
+  // paint past the narrow edge.
+  readonly property bool showTemperature: !vertical && setting("showTemperature", false) === true
+
+  readonly property string barLabel: {
+    var p = panelLoader.item
+    if (!p) return ""
+    if (!root.showTemperature || !p.reportTempNum) return p.label
+    return p.label + " " + p.reportTempNum + p.tempUnit
+  }
+
+  // With the padded text label showing, the open-panel marker should span the
+  // painted "<icon> <temp>°" text rather than 55% of the whole padded slot
+  // (Bar.qml's fallback), the same hint the clock exposes. Icon-only keeps the
+  // fallback, unchanged from the stock widget.
+  readonly property real openPanelIndicatorWidth: root.showTemperature && button.item
+    ? (button.item.labelWidth || 0)
+    : 0
+
+  function handlePress(b) {
+    if (!root.bar) return
+    if (b === Qt.RightButton) root.bar.run("omarchy-notification-send \"$(omarchy-weather-status)\"")
+    else if (b === Qt.MiddleButton) root.refresh()
+    else root.togglePanel()
+  }
+
   function injectPanel() {
     var target = panelLoader.item
     if (!target) return
@@ -64,20 +93,37 @@ BarWidget {
     }
   }
 
-  BarIconButton {
+  // Icon-only is a fixed square glyph slot (BarIconButton); the temperature
+  // variant needs a padded text label (WidgetButton), the same split the bar
+  // makes between icon widgets and text widgets like the clock.
+  Loader {
     id: button
     anchors.fill: parent
-    bar: root.bar
-    text: panelLoader.item ? panelLoader.item.label : ""
-    slotSize: Style.bar.statusSlot
-    // Tooltip suppressed because the panel is the detail view.
-    tooltipText: ""
+    sourceComponent: root.showTemperature ? temperatureLabel : iconOnly
+  }
 
-    onPressed: function(b) {
-      if (!root.bar) return
-      if (b === Qt.RightButton) root.bar.run("omarchy-notification-send \"$(omarchy-weather-status)\"")
-      else if (b === Qt.MiddleButton) root.refresh()
-      else root.togglePanel()
+  Component {
+    id: iconOnly
+    BarIconButton {
+      bar: root.bar
+      text: root.barLabel
+      slotSize: Style.bar.statusSlot
+      // Tooltip suppressed because the panel is the detail view.
+      tooltipText: ""
+      onPressed: function(b) { root.handlePress(b) }
+    }
+  }
+
+  Component {
+    id: temperatureLabel
+    WidgetButton {
+      bar: root.bar
+      text: root.barLabel
+      hasVisualContent: text !== ""
+      horizontalMargin: 8.75
+      verticalPadding: 8.75
+      tooltipText: ""
+      onPressed: function(b) { root.handlePress(b) }
     }
   }
 }
