@@ -288,7 +288,7 @@ Item {
       placeholder: "Fetching updates from git…",
       emptyLabel: "All plugins are up to date",
       volatile: true,
-      actionFor: function(value) { return "omarchy-launch-floating-terminal-with-presentation 'omarchy-plugin-update " + value + "'" }
+      actionFor: function(value) { return "omarchy-launch-floating-terminal-with-presentation " + Util.shellQuote("omarchy-plugin-update " + value) }
     }
   })
 
