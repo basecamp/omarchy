@@ -260,6 +260,7 @@ Item {
     return applyStayAwake(true, true, "timed", Date.now() + Math.ceil(duration * 1000))
   }
 
+  // Check the saved wall-clock deadline so suspend does not extend the session.
   Timer {
     interval: 1000
     repeat: true
@@ -327,6 +328,7 @@ Item {
     command: ["bash", "-c", "mkdir -p \"$HOME/.local/state/omarchy/indicators\"; if [[ -f $HOME/.local/state/omarchy/indicators/stay-awake ]]; then printf 'yes:'; cat \"$HOME/.local/state/omarchy/indicators/stay-awake\"; echo; else echo no; fi"]
     stdout: SplitParser {
       onRead: function(line) {
+        // A probe started before a newer choice must not replace it.
         if (stayAwakeStateProbe.revision !== root.stayAwakeRevision || stayAwakeStateWriter.running || root.hasPendingStayAwakePersist) return
         var state = IdleModel.stayAwakeState(String(line).trim(), Date.now())
         root.applyStayAwake(state.enabled, state.expired, "state-file", state.until)
