@@ -30,9 +30,12 @@ BarWidget {
     return ids
   }
 
+  // Straight down the socket this widget already holds open for
+  // Hyprland.workspaces, rather than out through the bar to a new process. The
+  // expression is the one tiling.lua binds, deliberately, so a click and the
+  // keybinding cannot drift apart.
   function focusWorkspace(id) {
-    if (!root.bar) return
-    root.bar.run("hyprctl dispatch " + Util.shellQuote("hl.dsp.focus({ workspace = \"" + id + "\" })"))
+    Hyprland.dispatch("hl.dsp.focus({ workspace = \"" + id + "\" })")
   }
 
   readonly property real trailingGap: root.vertical ? 0 : Style.spaceReal(1.5)

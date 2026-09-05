@@ -614,6 +614,14 @@ Item {
     Util.execDetached(command)
   }
 
+  // Same as run, for a fixed argv naming a system tool that needs nothing from
+  // the login shell. Skips the profile sourcing run pays for on every call.
+  function runProgram(argv) {
+    if (!argv || !argv.length) return
+
+    Util.execProgram(argv)
+  }
+
   function toggleTransparency() {
     var nextTransparent = !(root.requestedTransparent === true)
     if (root.shell && typeof root.shell.mutateShellConfig === "function") {

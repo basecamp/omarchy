@@ -73,7 +73,7 @@ BarWidget {
   // follows the button.
   function cycleLayout() {
     if (!root.keyboardName || !root.bar) return
-    root.bar.run("hyprctl switchxkblayout " + Util.shellQuote(root.keyboardName) + " next")
+    root.bar.runProgram(["hyprctl", "switchxkblayout", root.keyboardName, "next"])
     refreshTimer.restart()
   }
 
