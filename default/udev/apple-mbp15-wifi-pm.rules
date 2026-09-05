@@ -1,0 +1,4 @@
+# 15" 2016–2017: BCM43602 (14e4:43ba) dies if PCI runtime PM or D3cold
+# takes the card. Same stay-awake as the Thunderbolt xHCI quirk.
+# The helper no-ops on other hardware; this rule matches the chip.
+ACTION=="add", SUBSYSTEM=="pci", ATTR{vendor}=="0x14e4", ATTR{device}=="0x43ba", ATTR{power/control}="on", ATTR{d3cold_allowed}="0"

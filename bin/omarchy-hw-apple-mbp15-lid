@@ -1,14 +1,16 @@
 #!/bin/bash
 
-# omarchy:summary=Stop driving the panel and overlay power-saver while a 15-inch Radeon lid is shut
+# omarchy:summary=Stop driving the panel while a 15-inch Radeon lid is shut
 # omarchy:hidden=true
 # omarchy:args=<close|open>
 
 # Temporary overlay only. Does not write Omarchy's remembered AC/battery
 # profile. Close: save brightness, hold DPMS-wake keys/mouse off, DPMS off
-# the internal panel, power-saver. Backlight-off alone still scans out eDP;
-# stock key/mouse DPMS-wake would turn the 560's scanout back on while the
-# lid is shut. Open: DPMS on, restore brightness and wake flags, autodetect.
+# the internal panel. Backlight-off alone still scans out eDP; stock
+# key/mouse DPMS-wake would turn the 560's scanout back on while the lid
+# is shut. Do not set power-saver: that puts BCM43602 into PCI D3 and
+# brcmfmac does not come back. Open: DPMS on, restore brightness and wake
+# flags, autodetect (unsticks a profile a previous close already set).
 
 set -euo pipefail
 
@@ -128,8 +130,6 @@ if [[ $cmd == close ]]; then
   dpms_wake_save_and_disable
   panel_dpms disable
   backlight_set 0 || true
-  # Not omarchy-powerprofiles-set: that would persist as the AC/battery default.
-  powerprofilesctl set power-saver >/dev/null 2>&1 || true
   exit 0
 fi
 
