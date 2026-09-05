@@ -9,3 +9,7 @@ ScriptFile=/usr/share/plymouth/themes/omarchy/omarchy.script
 ConsoleLogBackgroundColor=0x1a1b26
 MonospaceFont=Cantarell 11
 Font=Cantarell 11
+
+[script-env-vars]
+ShutdownAnimation=dust-drift
+ShutdownDuration=2.4
