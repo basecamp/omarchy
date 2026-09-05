@@ -1,0 +1,644 @@
+#!/bin/bash
+
+# omarchy:summary=Create managed accounts and control their allowed websites
+# omarchy:args=<add|allow|deny|list|remove> [username] [websites...]
+# omarchy:examples=omarchy managed add kid khanacademy.org | omarchy managed allow kid https://school.example/lessons | omarchy managed list kid
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+MANAGED_STATE_DIR=/etc/omarchy/managed-accounts
+MANAGED_NFT_TABLE=omarchy_managed_accounts
+MANAGED_FIREWALL_UNIT=omarchy-managed-firewall.service
+MANAGED_PROXY_UNIT=omarchy-managed-proxy@.service
+
+if (( EUID == 0 )); then
+  export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin
+  command_path=$(realpath -e "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")
+  command_dir=$(cd -- "$(dirname -- "$command_path")" && pwd)
+  if [[ -r $command_dir/../install/helpers/managed-account.sh ]]; then
+    # omarchy dev link deliberately puts the checkout's bin directory in
+    # sudo's secure_path, so its helper comes from the same checkout.
+    MANAGED_HELPER=$command_dir/../install/helpers/managed-account.sh
+  else
+    MANAGED_HELPER=/usr/share/omarchy/install/helpers/managed-account.sh
+  fi
+else
+  MANAGED_HELPER="$OMARCHY_PATH/install/helpers/managed-account.sh"
+fi
+
+if [[ ! -r $MANAGED_HELPER ]]; then
+  echo "omarchy-managed: missing helper $MANAGED_HELPER" >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$MANAGED_HELPER"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  omarchy managed add <username> [website...]
+  omarchy managed allow <username> <website...>
+  omarchy managed deny <username> <website...>
+  omarchy managed list [username]
+  omarchy managed remove <username>
+
+Managed accounts have no sudo access and can reach only the website hosts in
+their allowlist. A pasted HTTP or HTTPS URL allows its host and subdomains;
+paths cannot be filtered inside encrypted HTTPS traffic.
+
+Removing management leaves the Linux user and their home directory in place.
+USAGE
+}
+
+error() {
+  printf 'omarchy-managed: %s\n' "$*" >&2
+  exit 1
+}
+
+require_username() {
+  local username=${1:-}
+
+  [[ -n $username ]] || error "a username is required"
+  managed_account_username_valid "$username" || error "invalid username: $username"
+}
+
+validate_sites() {
+  local site
+
+  for site in "$@"; do
+    managed_account_site_normalize "$site" >/dev/null || error "invalid website: $site"
+  done
+}
+
+require_root() {
+  if (( EUID == 0 )); then
+    return
+  elif [[ -t 0 ]]; then
+    exec sudo omarchy-managed "$@"
+  else
+    exec pkexec /usr/bin/omarchy-managed "$@"
+  fi
+}
+
+safe_root_directory() {
+  local dir=$1 mode uid
+
+  if [[ -L $dir || ( -e $dir && ! -d $dir ) ]]; then
+    error "$dir is not a safe configuration directory"
+  fi
+
+  if [[ -d $dir ]]; then
+    uid=$(stat -c '%u' "$dir")
+    mode=$(stat -c '%a' "$dir")
+    (( uid == 0 && (8#$mode & 0022) == 0 )) || error "$dir must be owned by root and not writable by other users"
+  else
+    install -d -m 0755 -o root -g root "$dir"
+  fi
+}
+
+ensure_state_root() {
+  safe_root_directory /etc/omarchy
+  safe_root_directory "$MANAGED_STATE_DIR"
+}
+
+account_directory() {
+  local username=$1
+
+  managed_account_username_valid "$username" || return 1
+  printf '%s/%s\n' "$MANAGED_STATE_DIR" "$username"
+}
+
+ensure_account_directory() {
+  local username=$1 dir
+
+  dir=$(account_directory "$username") || error "invalid username: $username"
+  ensure_state_root
+  safe_root_directory "$dir"
+
+  for file in uid port allowlist squid.conf; do
+    if [[ -L $dir/$file || ( -e $dir/$file && ! -f $dir/$file ) ]]; then
+      error "$dir/$file is not a safe managed-account file"
+    fi
+  done
+}
+
+write_root_file() {
+  local destination=$1 mode=$2 tmp
+
+  tmp=$(mktemp "${destination}.new.XXXXXX") || return 1
+  cat >"$tmp"
+  chown root:root "$tmp"
+  chmod "$mode" "$tmp"
+  mv -f -- "$tmp" "$destination"
+}
+
+account_port() {
+  local username=$1 dir port
+
+  dir=$(account_directory "$username") || return 1
+  [[ -f $dir/port && ! -L $dir/port ]] || return 1
+  read -r port <"$dir/port"
+  [[ $port =~ ^[0-9]+$ ]] || return 1
+  (( port >= OMARCHY_MANAGED_PROXY_PORT_MIN && port <= OMARCHY_MANAGED_PROXY_PORT_MAX )) || return 1
+  printf '%s\n' "$port"
+}
+
+account_stored_uid() {
+  local username=$1 dir uid
+
+  dir=$(account_directory "$username") || return 1
+  [[ -f $dir/uid && ! -L $dir/uid ]] || return 1
+  read -r uid <"$dir/uid"
+  [[ $uid =~ ^[0-9]+$ ]] || return 1
+  (( uid >= 1000 && uid != 65534 )) || return 1
+  printf '%s\n' "$uid"
+}
+
+allocate_port() {
+  local candidate dir used
+
+  for ((candidate = OMARCHY_MANAGED_PROXY_PORT_MIN; candidate <= OMARCHY_MANAGED_PROXY_PORT_MAX; candidate++)); do
+    used=0
+    if ss -H -ltn "sport = :$candidate" | grep -q .; then
+      continue
+    fi
+    for dir in "$MANAGED_STATE_DIR"/*; do
+      [[ -d $dir && ! -L $dir ]] || continue
+      if [[ -f $dir/port ]] && grep -qxF "$candidate" "$dir/port"; then
+        used=1
+        break
+      fi
+    done
+    (( used == 0 )) && { printf '%s\n' "$candidate"; return; }
+  done
+
+  error "no managed-account proxy ports are available"
+}
+
+account_uid() {
+  local username=$1 uid
+
+  uid=$(id -u "$username" 2>/dev/null) || return 1
+  [[ $uid =~ ^[0-9]+$ ]] || return 1
+  (( uid >= 1000 && uid != 65534 )) || return 1
+  printf '%s\n' "$uid"
+}
+
+account_has_privilege() {
+  local username=$1 group
+
+  for group in $(id -nG "$username"); do
+    case "$group" in
+      wheel|disk|docker|input|libvirt|libvirt-qemu) return 0 ;;
+    esac
+  done
+
+  LC_ALL=C sudo -n -ll -U "$username" 2>/dev/null | grep -q '^Sudoers entry:'
+}
+
+ensure_unprivileged_account() {
+  local username=$1 uid
+
+  uid=$(account_uid "$username") || error "$username must be a regular user with UID 1000 or higher"
+  if [[ -n ${SUDO_USER:-} && $username == "$SUDO_USER" ]]; then
+    error "the administrator running this command cannot manage their own account"
+  fi
+  account_has_privilege "$username" && error "$username has sudo or root-equivalent group access and cannot be managed"
+  printf '%s\n' "$uid"
+}
+
+managed_rows() {
+  local dir username uid current_uid port
+
+  ensure_state_root
+  for dir in "$MANAGED_STATE_DIR"/*; do
+    [[ -d $dir && ! -L $dir ]] || continue
+    username=${dir##*/}
+    managed_account_username_valid "$username" || error "invalid account directory: $dir"
+    uid=$(account_stored_uid "$username") || error "invalid stored UID for $username"
+    port=$(account_port "$username") || error "invalid proxy port for $username"
+    printf '%s %s\n' "$uid" "$port"
+
+    # Keep the restriction fail-closed if an administrator changes the UID
+    # behind this command's back. The next explicit managed-account update
+    # records the new UID and drops the stale rule.
+    if current_uid=$(account_uid "$username") && [[ $current_uid != "$uid" ]]; then
+      printf '%s %s\n' "$current_uid" "$port"
+    fi
+  done
+}
+
+apply_firewall() {
+  local rules
+
+  command -v nft >/dev/null || error "nft is required (it is normally installed with Omarchy's firewall)"
+  ensure_state_root
+
+  if ! nft list table inet "$MANAGED_NFT_TABLE" >/dev/null 2>&1; then
+    nft add table inet "$MANAGED_NFT_TABLE"
+  fi
+
+  rules=$(mktemp /run/omarchy-managed-nft.XXXXXX)
+  if ! managed_rows | managed_account_render_nft_config >"$rules" || ! nft --check --file "$rules" || ! nft --file "$rules"; then
+    rm -f -- "$rules"
+    error "could not apply the managed-account firewall"
+  fi
+  rm -f -- "$rules"
+}
+
+install_runtime_files() {
+  local env_script
+
+  install -Dm644 /dev/stdin "/etc/systemd/system/$MANAGED_FIREWALL_UNIT" <<'UNIT'
+[Unit]
+Description=Omarchy managed-account egress firewall
+Wants=network-pre.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/omarchy-managed firewall
+ExecReload=/usr/bin/omarchy-managed firewall
+ExecStop=-/usr/bin/nft delete table inet omarchy_managed_accounts
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  install -Dm644 /dev/stdin "/etc/systemd/system/$MANAGED_PROXY_UNIT" <<'UNIT'
+[Unit]
+Description=Web allowlist proxy for managed account %i
+After=network.target
+ConditionPathExists=/etc/omarchy/managed-accounts/%i/squid.conf
+
+[Service]
+Type=simple
+User=proxy
+Group=proxy
+ExecStart=/usr/bin/squid --foreground -f /etc/omarchy/managed-accounts/%i/squid.conf
+ExecReload=/usr/bin/squid -k reconfigure -f /etc/omarchy/managed-accounts/%i/squid.conf
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=2s
+RuntimeDirectory=omarchy-managed-proxy-%i
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  env_script=$(mktemp /run/omarchy-managed-env.XXXXXX)
+  cat >"$env_script" <<'ENV'
+# Generated by omarchy-managed. The firewall still enforces restrictions if a
+# managed user overrides these variables; doing so only removes their access.
+managed_account_name=$(id -un 2>/dev/null)
+managed_account_port_file="/etc/omarchy/managed-accounts/$managed_account_name/port"
+if [ -r "$managed_account_port_file" ]; then
+  IFS= read -r managed_account_port <"$managed_account_port_file"
+  case "$managed_account_port" in
+    ''|*[!0-9]*) ;;
+    *)
+      all_proxy="http://127.0.0.1:$managed_account_port"
+      http_proxy="$all_proxy"
+      https_proxy="$all_proxy"
+      no_proxy="localhost,127.0.0.1,::1"
+      export all_proxy http_proxy https_proxy no_proxy
+      ALL_PROXY="$all_proxy"
+      HTTP_PROXY="$http_proxy"
+      HTTPS_PROXY="$https_proxy"
+      NO_PROXY="$no_proxy"
+      export ALL_PROXY HTTP_PROXY HTTPS_PROXY NO_PROXY
+      ;;
+  esac
+fi
+unset managed_account_name managed_account_port managed_account_port_file
+ENV
+  install -Dm644 -o root -g root "$env_script" /etc/xdg/uwsm/env.d/90-omarchy-managed-proxy
+  install -Dm644 -o root -g root "$env_script" /etc/profile.d/90-omarchy-managed-proxy.sh
+  rm -f -- "$env_script"
+
+  systemctl daemon-reload
+}
+
+write_proxy_config() {
+  local username=$1 dir port config parse_output
+
+  dir=$(account_directory "$username")
+  port=$(account_port "$username") || error "invalid proxy port for $username"
+  config=$dir/squid.conf
+  managed_account_render_squid_config "$username" "$port" "$dir/allowlist" | write_root_file "$config" 0644
+  if ! parse_output=$(runuser -u proxy -- squid -k parse -f "$config" 2>&1); then
+    printf '%s\n' "$parse_output" >&2
+    error "Squid rejected the proxy configuration for $username"
+  fi
+}
+
+enable_account_services() {
+  local username=$1 proxy_unit="omarchy-managed-proxy@$1.service" port attempt
+
+  apply_firewall
+  systemctl enable "$MANAGED_FIREWALL_UNIT" >/dev/null
+  systemctl enable "$proxy_unit" >/dev/null
+  if systemctl is-active --quiet "$proxy_unit"; then
+    systemctl reload "$proxy_unit"
+    sleep 0.2
+  else
+    systemctl start "$proxy_unit"
+  fi
+
+  port=$(account_port "$username")
+  for ((attempt = 0; attempt < 50; attempt++)); do
+    if systemctl is-active --quiet "$proxy_unit" && ss -H -ltn "sport = :$port" | grep -q .; then
+      return
+    fi
+    sleep 0.1
+  done
+
+  systemctl --no-pager --full status "$proxy_unit" >&2 || true
+  error "the website proxy for $username did not become ready"
+}
+
+disable_sddm_autologin() {
+  # Omarchy writes autologin.conf, while community images and existing systems
+  # can have an additional drop-in under another name. A late override keeps
+  # those files from silently booting into the administrator account.
+  rm -f /etc/sddm.conf.d/autologin.conf
+  install -Dm644 /dev/stdin /etc/sddm.conf.d/99-omarchy-managed-no-autologin.conf <<'CONF'
+[Autologin]
+User=
+Session=
+Relogin=false
+CONF
+}
+
+seed_omarchy_home() {
+  local username=$1 home group omarchy_root state_dir done_dir
+
+  home=$(getent passwd "$username" | cut -d: -f6)
+  group=$(id -gn "$username")
+  omarchy_root=$(cd -- "$command_dir/.." && pwd)
+  [[ -d $home && -d $omarchy_root/config ]] || return 1
+
+  # omarchy-settings normally seeds these through /etc/skel. Keep new managed
+  # accounts usable on older and community images whose skeleton predates the
+  # current desktop, without copying any private files from the administrator.
+  if [[ ! -f $home/.config/hypr/hyprland.lua ]]; then
+    install -d -m 0700 -o "$username" -g "$group" "$home/.config"
+    cp -a "$omarchy_root/config/." "$home/.config/"
+    install -m 0644 -o "$username" -g "$group" "$omarchy_root/default/bashrc" "$home/.bashrc"
+    chown -R "$username:$group" "$home/.config"
+  fi
+
+  # The normal first-run path installs developer tools from the network and
+  # applies machine-wide browser theming. Neither belongs in a restricted
+  # child's first session, and both would fail after the firewall is active.
+  install -d -m 0755 -o "$username" -g "$group" \
+    "$home/Downloads" "$home/Pictures" "$home/Videos"
+  state_dir=$home/.local/state/omarchy
+  install -d -m 0755 -o "$username" -g "$group" \
+    "$home/.local" "$home/.local/state" "$state_dir"
+  done_dir=$state_dir/done
+  install -d -m 0700 -o "$username" -g "$group" "$done_dir"
+  install -m 0644 -o "$username" -g "$group" /dev/null "$done_dir/finalize-user"
+  install -m 0644 -o "$username" -g "$group" /dev/null "$done_dir/first-run-user"
+
+  runuser -u "$username" -- env HOME="$home" \
+    /bin/bash -eE "$omarchy_root/install/user/default-keyring.sh"
+}
+
+ensure_squid() {
+  omarchy-pkg-add squid
+  getent passwd proxy >/dev/null || error "the Squid proxy account was not installed"
+}
+
+add_account() {
+  local username=$1
+  shift
+  local dir uid port created=0
+
+  ensure_squid
+  if getent passwd "$username" >/dev/null; then
+    ensure_unprivileged_account "$username" >/dev/null
+  else
+    [[ -t 0 ]] || error "creating an account requires a terminal for its password prompt"
+    useradd -m -s /bin/bash "$username"
+    created=1
+    echo "Set the login password for $username:"
+    if ! passwd "$username"; then
+      userdel -r "$username" 2>/dev/null || true
+      error "password setup failed; the new account was rolled back"
+    fi
+    if ! seed_omarchy_home "$username"; then
+      userdel -r "$username" 2>/dev/null || true
+      error "Omarchy desktop setup failed; the new account was rolled back"
+    fi
+  fi
+
+  ensure_account_directory "$username"
+  dir=$(account_directory "$username")
+  uid=$(ensure_unprivileged_account "$username")
+  printf '%s\n' "$uid" | write_root_file "$dir/uid" 0644
+  if ! port=$(account_port "$username"); then
+    port=$(allocate_port)
+    printf '%s\n' "$port" | write_root_file "$dir/port" 0644
+  fi
+  [[ -f $dir/allowlist ]] || : | write_root_file "$dir/allowlist" 0644
+
+  if (( $# )); then
+    managed_account_allowlist_add "$dir/allowlist" "$@" || error "one or more websites are invalid"
+    chown root:root "$dir/allowlist"
+  fi
+
+  install_runtime_files
+  write_proxy_config "$username"
+  enable_account_services "$username"
+
+  # Omarchy keeps autologin on encrypted single-user installs because the LUKS
+  # prompt is normally the authentication boundary. Once a managed account
+  # exists, booting straight into the administrator would defeat that split.
+  disable_sddm_autologin
+
+  if (( created )); then
+    echo "Created managed account $username."
+  else
+    echo "Updated managed account $username."
+  fi
+  echo "Log out before using the account so its proxy environment is loaded."
+}
+
+update_allowlist() {
+  local operation=$1 username=$2
+  shift 2
+  local dir uid
+
+  ensure_squid
+  dir=$(account_directory "$username")
+  [[ -d $dir && ! -L $dir ]] || error "$username is not a managed account"
+  ensure_account_directory "$username"
+  uid=$(ensure_unprivileged_account "$username")
+  printf '%s\n' "$uid" | write_root_file "$dir/uid" 0644
+
+  if [[ $operation == "allow" ]]; then
+    managed_account_allowlist_add "$dir/allowlist" "$@" || error "one or more websites are invalid"
+  else
+    managed_account_allowlist_remove "$dir/allowlist" "$@" || error "one or more websites are invalid"
+  fi
+  chown root:root "$dir/allowlist"
+
+  install_runtime_files
+  write_proxy_config "$username"
+  enable_account_services "$username"
+  echo "Updated the website allowlist for $username."
+}
+
+list_account() {
+  local username=$1 dir port site status="stopped"
+
+  dir=$(account_directory "$username") || return 1
+  [[ -d $dir && ! -L $dir ]] || return 1
+  port=$(account_port "$username") || port="invalid"
+  systemctl is-active --quiet "omarchy-managed-proxy@$username.service" 2>/dev/null && status="active"
+
+  printf '%s (proxy %s, %s)\n' "$username" "$port" "$status"
+  if [[ -s $dir/allowlist ]]; then
+    while IFS= read -r site; do
+      printf '  %s\n' "${site#.}"
+    done <"$dir/allowlist"
+  else
+    echo "  No websites allowed"
+  fi
+}
+
+list_accounts() {
+  local requested=${1:-} dir found=0 username
+
+  if [[ -n $requested ]]; then
+    list_account "$requested" || error "$requested is not a managed account"
+    return
+  fi
+
+  if [[ ! -d $MANAGED_STATE_DIR || -L $MANAGED_STATE_DIR ]]; then
+    echo "No managed accounts."
+    return
+  fi
+
+  for dir in "$MANAGED_STATE_DIR"/*; do
+    [[ -d $dir && ! -L $dir ]] || continue
+    username=${dir##*/}
+    list_account "$username" || continue
+    found=1
+  done
+  (( found )) || echo "No managed accounts."
+}
+
+choose_managed_account() {
+  local accounts=() dir username
+
+  if [[ -d $MANAGED_STATE_DIR && ! -L $MANAGED_STATE_DIR ]]; then
+    for dir in "$MANAGED_STATE_DIR"/*; do
+      [[ -d $dir && ! -L $dir ]] || continue
+      username=${dir##*/}
+      managed_account_username_valid "$username" || continue
+      accounts+=("$username")
+    done
+  fi
+
+  (( ${#accounts[@]} )) || error "there are no managed accounts"
+  printf '%s\n' "${accounts[@]}" | gum choose --header "Managed account"
+}
+
+remove_account() {
+  local username=$1 dir proxy_unit="omarchy-managed-proxy@$1.service"
+
+  dir=$(account_directory "$username")
+  [[ -d $dir && ! -L $dir ]] || error "$username is not a managed account"
+
+  systemctl kill --signal=SIGKILL "$proxy_unit" >/dev/null 2>&1 || true
+  systemctl disable --now "$proxy_unit" >/dev/null 2>&1 || true
+  rm -rf -- "$dir"
+  apply_firewall
+
+  echo "Stopped managing $username. The Linux user and home directory were not deleted."
+  echo "Log out and back in to clear the old proxy environment."
+}
+
+action=${1:-}
+case "$action" in
+  -h|--help|help|"")
+    usage
+    exit 0
+    ;;
+  add)
+    shift
+    username=${1:-}
+    if [[ -z $username ]]; then
+      [[ -t 0 ]] || error "a username is required"
+      username=$(gum input --prompt "Managed username> " --placeholder "kid")
+      sites_input=$(gum input --prompt "Allowed websites (separate multiple with spaces)> " --placeholder "code.org khanacademy.org")
+      sites=()
+      [[ -z $sites_input ]] || read -ra sites <<<"$sites_input"
+      set -- "$username" "${sites[@]}"
+    fi
+    require_username "$username"
+    shift
+    validate_sites "$@"
+    require_root add "$username" "$@"
+    add_account "$username" "$@"
+    ;;
+  allow|deny)
+    shift
+    username=${1:-}
+    if [[ -z $username ]]; then
+      [[ -t 0 ]] || error "a username is required"
+      username=$(choose_managed_account)
+      if [[ $action == "allow" ]]; then
+        sites_input=$(gum input --prompt "Websites to allow (separate multiple with spaces)> " --placeholder "scratch.mit.edu khanacademy.org")
+      else
+        sites_input=$(gum input --prompt "Websites to remove (separate multiple with spaces)> " --placeholder "scratch.mit.edu khanacademy.org")
+      fi
+      sites=()
+      [[ -z $sites_input ]] || read -ra sites <<<"$sites_input"
+      set -- "$username" "${sites[@]}"
+    fi
+    require_username "$username"
+    shift
+    (( $# )) || error "$action needs at least one website"
+    validate_sites "$@"
+    require_root "$action" "$username" "$@"
+    update_allowlist "$action" "$username" "$@"
+    ;;
+  list)
+    shift
+    (( $# <= 1 )) || error "list accepts at most one username"
+    [[ $# == 0 ]] || require_username "$1"
+    list_accounts "${1:-}"
+    ;;
+  remove)
+    shift
+    (( $# == 1 )) || error "remove needs exactly one username"
+    require_username "$1"
+    require_root remove "$1"
+    remove_account "$1"
+    ;;
+  firewall)
+    (( $# == 1 )) || error "firewall takes no arguments"
+    (( EUID == 0 )) || error "firewall must run as root"
+    apply_firewall
+    ;;
+  *)
+    error "unknown action: $action (try --help)"
+    ;;
+esac

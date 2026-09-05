@@ -24,6 +24,38 @@ Sometimes you want `sudo` to stop asking, most often when an AI agent is doing a
 
 Be clear-eyed about this one: while it's on, anything running as your user can do anything as root without being asked. That's the whole point, and it's also the whole risk.
 
+## Managed accounts
+
+A managed account is a separate, non-administrator login that can reach only websites you approve. This is useful for a child's account: the restriction applies to every network client under that Linux user, not only Chromium, so installing another browser, changing DNS, using QUIC, or running `curl` does not bypass it.
+
+Create one from _Setup > Security > Managed Accounts > Add Account_, or from a terminal:
+
+```bash
+omarchy managed add kid khanacademy.org https://school.example/lessons
+```
+
+The menu asks for the login name, the initial allowed websites, and the account's login password. Separate multiple websites with spaces. New logins receive a minimal desktop from Omarchy's shipped defaults without copying private files from the administrator or running the developer-oriented first-login setup. Omarchy disables automatic administrator login when the first managed account is added, so after logging out or rebooting you can choose between the administrator and managed accounts at the login screen.
+
+The allowlist is made of website hosts. Pasting a URL is convenient, but `https://school.example/lessons` becomes `school.example` and includes its subdomains. HTTPS encrypts the path after the host, and Omarchy deliberately does not install a certificate to intercept it. Modern sites often load sign-in pages, video, fonts, or other assets from additional hosts; add those hosts when a page needs them.
+
+To change an existing account, use _Allow Websites_, _Remove Websites_, or _View Websites_ in the same _Managed Accounts_ menu. The first two let you choose the managed account before entering one or more websites.
+
+```bash
+omarchy managed allow kid accounts.example school-cdn.example
+omarchy managed deny kid school-cdn.example
+omarchy managed list kid
+```
+
+Under the hood, each managed account gets its own loopback-only Squid proxy and a root-owned allowlist. An nftables output rule tied to that account's numeric user ID rejects every other network connection, including local-network destinations. The administrator account remains unrestricted. Squid is installed from the official Arch repositories the first time this feature is used.
+
+To stop restricting an account without deleting its files:
+
+```bash
+omarchy managed remove kid
+```
+
+This first version intentionally requires a separate administrator account. Do not give the managed user `sudo`, `wheel`, `docker`, or another root-equivalent capability; Omarchy refuses to manage an account that already has one. A future dedicated kids setup could hide the administrator login and make the managed account the only day-to-day surface, while retaining a safe recovery path.
+
 ## Signing Keys
 
 The public key for all ISO signatures and Omarchy repo package is `40DFB630FF42BCFFB047046CF0134EE680CAC571` ([verify at openpgp.org](https://keys.openpgp.org/search?q=pkgs%40omarchy.org)). The `omarchy/omarchy-keyring` package contains this as well and will be used to rollout any potential updates seamlessly.
