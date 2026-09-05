@@ -31,6 +31,9 @@ Panel {
   readonly property var provider: providers.length > 0 ? providers[providerIndex] : null
 
   property bool cursorActive: false
+  // Limit rows default to the provider's "used" metric. Clicking any row
+  // switches the panel as one unit so providers and windows never disagree.
+  property bool showLimitRemaining: false
 
   // Countdowns and "updated" read this instead of Date.now() so the
   // panel keeps telling the truth while it sits open.
@@ -704,8 +707,14 @@ Panel {
   component LimitRow: Column {
     id: limitRow
     property var window: null
+    readonly property real usedRatio: window && window.percent >= 0
+      ? root.clamp(window.percent, 0, 1)
+      : -1
+    readonly property real displayedRatio: usedRatio < 0
+      ? -1
+      : root.showLimitRemaining ? 1 - usedRatio : usedRatio
 
-    readonly property bool alarming: window && window.percent >= 0.9
+    readonly property bool alarming: usedRatio >= 0.9
 
     spacing: Style.space(6)
 
@@ -732,8 +741,8 @@ Panel {
       Text {
         id: limitValue
         textFormat: Text.PlainText
-        text: limitRow.window && limitRow.window.percent >= 0
-          ? Math.round(limitRow.window.percent * 100) + "%"
+        text: limitRow.displayedRatio >= 0
+          ? Math.round(limitRow.displayedRatio * 100) + (root.showLimitRemaining ? "% left" : "% used")
           : "—"
         color: limitRow.alarming ? root.urgent : root.foreground
         font.family: root.fontFamily
@@ -741,11 +750,19 @@ Panel {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
       }
+
+      MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        acceptedButtons: Qt.LeftButton
+        onClicked: root.showLimitRemaining = !root.showLimitRemaining
+      }
     }
 
     Meter {
       width: parent.width
-      value: limitRow.window ? limitRow.window.percent : -1
+      value: limitRow.displayedRatio
       alarming: limitRow.alarming
     }
 
@@ -763,7 +780,7 @@ Panel {
     }
   }
 
-  // Rounded track showing the percentage of the allowance used.
+  // Rounded track showing the same used/left percentage as its row label.
   component Meter: Item {
     id: meter
     property real value: -1
