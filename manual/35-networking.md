@@ -16,6 +16,12 @@ Omarchy uses whatever DNS your network hands out over DHCP. You can override tha
 
 From the terminal, `omarchy dns` prints the current provider and `omarchy dns Cloudflare` sets one.
 
+## VPN connections
+
+VPN profiles managed by NetworkManager are available from the network panel's VPN button. The button opens NetworkManager's connection editor, where you can import an OpenVPN `.ovpn` profile or create an OpenConnect profile for a Cisco AnyConnect gateway. OpenConnect profiles that use browser-based SSO open the external authentication flow when you connect.
+
+From the terminal, `omarchy network vpn list` lists saved VPN profiles, `omarchy network vpn active` lists active tunnels, and `omarchy network vpn up <connection>` or `omarchy network vpn down <connection>` connects or disconnects one. The available VPN types depend on the NetworkManager plugins installed on the system.
+
 ## Pinning the Wi-Fi band
 
 If your router puts 2.4GHz, 5GHz, and 6GHz on the same network name, your laptop will sometimes cling to the slow one. `omarchy network band` shows which band you're on, and `omarchy network band 5` pins it. Use `auto` to let it choose again.
