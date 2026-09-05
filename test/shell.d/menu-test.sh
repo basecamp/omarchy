@@ -58,6 +58,21 @@ assertEqual(merged.items['style.theme'].label, 'Theme picker', 'menu user entrie
 assertEqual(merged.items['style.theme'].order, 2, 'menu preserves original order on override')
 assert(merged.items.root, 'menu injects root when merging sources')
 
+const partialUser = menu.parseMenuOverridesJsonc(`
+{
+  "style.theme": { "description": "appearance colors" }
+}
+`)
+const partiallyMerged = menu.mergeMenuSources(parsed, partialUser)
+assertEqual(partiallyMerged.items['style.theme'].label, 'Themes', 'menu partial user override preserves default label')
+assertEqual(partiallyMerged.items['style.theme'].action, 'omarchy-theme-set', 'menu partial user override preserves default action')
+assertDeepEqual(partiallyMerged.items['style.theme'].aliases, ['theme'], 'menu partial user override preserves default aliases')
+assertEqual(partiallyMerged.items['style.theme'].description, 'appearance colors', 'menu partial user override replaces declared field')
+assert(
+  /root\.userMenuItems = root\.parseMenuOverridesJsonc\(text\(\)\)/.test(menuQml),
+  'menu parses the user extension without filling its omitted fields'
+)
+
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')
 assertEqual(menu.parentPathFor(merged.items, 'style.theme'), 'Style', 'menu builds parent paths')
