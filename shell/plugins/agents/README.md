@@ -54,15 +54,18 @@ light surfaces — and the bar glyph stands in when there is none.
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
+| `grok` | SuperGrok weekly pool (and leftover prepaid credits) via Grok ACP `_x.ai/billing` | `$GROK_HOME/sessions` (default `~/.grok/sessions`), from `updates.jsonl` `turn_completed` token ledgers, plus pi/omp and opencode sessions on an xAI provider |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
-falls back to local stats only. A non-default Claude directory is honored via
-`CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`. Fireworks reads
-`FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
-`~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
-opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
-signed in there.
+falls back to local stats only. Grok's weekly meter comes from `grok agent
+stdio` (`_x.ai/billing`); a missing or expired login keeps the local token
+charts and names the recovery (`grok login`). A non-default Claude directory
+is honored via `CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`, Grok via
+`GROK_HOME`. Fireworks reads `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID`
+first, then `~/.fireworks/auth.ini` (which `firectl set-api-key` creates),
+then the key opencode stores in `~/.local/share/opencode/auth.json` when
+Fireworks is signed in there.
 
 ### Fireworks balance
 
@@ -128,6 +131,7 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
+  "grok": { "enabled": true },
   "fireworks": { "enabled": true }
 }' --json
 ```
