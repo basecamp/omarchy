@@ -13,6 +13,10 @@ fi
 focused=$(omarchy-hyprland-monitor-focused)
 terminal=$(xdg-terminal-exec --print-id)
 
+# omarchy_screensaver_font_size scales each terminal's font to the monitor so
+# the wordmark keeps its physical size (and column budget) at any DPI scale.
+. "${OMARCHY_PATH:-/usr/share/omarchy}/default/bash/fns/screensaver"
+
 case $terminal in
 *Alacritty* | *ghostty* | *foot* | *kitty*) ;;
 *)
@@ -49,25 +53,27 @@ wait_for_screensaver_window() {
   done
 }
 
-for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
+while read -r m scale; do
+  [[ -n $m ]] || continue
   hypr_focus_monitor "$m"
+  font=$(omarchy_screensaver_font_size "${scale:-1}")
 
   case $terminal in
   *Alacritty*)
-    hypr_exec alacritty --class=org.omarchy.screensaver --config-file "$OMARCHY_PATH/default/alacritty/screensaver.toml" -e omarchy-screensaver
+    hypr_exec alacritty --class=org.omarchy.screensaver --config-file "$OMARCHY_PATH/default/alacritty/screensaver.toml" --option "font.size=$font" -e omarchy-screensaver
     ;;
   *ghostty*)
-    hypr_exec ghostty --class=org.omarchy.screensaver --config-file="$OMARCHY_PATH/default/ghostty/screensaver" --font-size=18 -e omarchy-screensaver
+    hypr_exec ghostty --class=org.omarchy.screensaver --config-file="$OMARCHY_PATH/default/ghostty/screensaver" --font-size="$font" -e omarchy-screensaver
     ;;
   *foot*)
-    hypr_exec foot --app-id=org.omarchy.screensaver --config="$OMARCHY_PATH/default/foot/screensaver.ini" -e omarchy-screensaver
+    hypr_exec foot --app-id=org.omarchy.screensaver --config="$OMARCHY_PATH/default/foot/screensaver.ini" --font="JetBrainsMono Nerd Font:size=$font" -e omarchy-screensaver
     ;;
   *kitty*)
-    hypr_exec kitty --class=org.omarchy.screensaver --override font_size=18 --override window_padding_width=0 -e omarchy-screensaver
+    hypr_exec kitty --class=org.omarchy.screensaver --override "font_size=$font" --override window_padding_width=0 -e omarchy-screensaver
     ;;
   esac
 
   wait_for_screensaver_window
-done
+done < <(hyprctl monitors -j | jq -r '.[] | "\(.name) \(.scale // 1)"')
 
 hypr_focus_monitor "$focused"
