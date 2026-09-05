@@ -55,6 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `opencode` | OpenCode's official usage endpoint (rolling 5-hour, weekly, monthly) | opencode's own database, messages on the `opencode-go` provider |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -62,7 +63,20 @@ falls back to local stats only. A non-default Claude directory is honored via
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
-signed in there.
+signed in there. OpenCode reads `OPENCODE_API_KEY` first, then the
+`opencode-go` entry of that same `auth.json`.
+
+### OpenCode Go limits
+
+The collector asks `GET https://opencode.ai/zen/go/v1/usage` with the Go API
+key and shows the same rolling / weekly / monthly percentages the
+opencode.ai dashboard does, so the meters are authoritative account-wide —
+even for usage burned on other machines or in other harnesses. Local token
+stats are only what opencode recorded on this machine, like the claude and
+codex collectors. The endpoint is rate-limited on the server, so probes are
+reused for 15 seconds; a failed probe keeps the last successful numbers while
+their windows are still open — a rejected key says so in the panel — and one
+that cannot reach the server at all asks the panel to retry sooner.
 
 ### Fireworks balance
 
