@@ -258,6 +258,38 @@ assert(/readonly property real labelWidth:/.test(fs.readFileSync(root + '/shell/
 // A horizontal wheel reports angleDelta.y === 0; without the guard every one
 // of them would read as a forward step.
 assert(/if \(event\.angleDelta\.y === 0\) return/.test(panelSource), 'calendar ignores wheel events with no vertical delta')
+
+// ---- Resync after a wall-clock step. SystemClock waits out a delay measured
+//      on a clock that stops during suspend, so without a nudge the bar wakes
+//      still reporting the time the lid closed at. Comments stripped so a
+//      commented-out wiring cannot satisfy the assertions.
+const wallclock = requireFromRoot('shell/Commons/WallclockMath.js')
+const wallclockCode = fs.readFileSync(root + '/shell/Commons/Wallclock.qml', 'utf8').replace(/^\s*\/\/.*$/gm, '')
+const panelCode = panelSource.replace(/^\s*\/\/.*$/gm, '')
+
+// A tick is expected to find `interval` gone; only the deviation from that
+// says the clock was stepped rather than advanced. Testing the elapsed time
+// against the threshold instead would fire on every ordinary tick.
+assert(!wallclock.isDiscontinuity(1000, 1000, 3000), 'an on-time tick is not a step')
+assert(!wallclock.isDiscontinuity(1400, 1000, 3000), 'a tick running late under load is not a step')
+assert(!wallclock.isDiscontinuity(3999, 1000, 3000), 'a gap just under the threshold is not a step')
+assert(wallclock.isDiscontinuity(4000, 1000, 3000), 'a gap at the threshold is a step')
+assert(wallclock.isDiscontinuity(8 * 60 * 60 * 1000, 1000, 3000), 'waking from an eight-hour suspend is a step')
+assert(wallclock.isDiscontinuity(-5000, 1000, 3000), 'a clock stepped backwards is a step')
+
+assert(/singleton Wallclock 1\.0 Wallclock\.qml/.test(fs.readFileSync(root + '/shell/Commons/qmldir', 'utf8')), 'Wallclock is registered as a Commons singleton')
+assert(/isDiscontinuity\(elapsed, root\.interval, root\.threshold\)/.test(wallclockCode), 'Wallclock reports a step using the tested predicate')
+assert(/clock\.enabled = false\s*\n\s*clock\.enabled = true/.test(wallclockCode), 'Wallclock.resync toggles SystemClock off and back on to force a re-read')
+
+assert(/target: Wallclock\s*\n\s*function onJumped\(\) \{ Wallclock\.resync\(clock\) \}/.test(widgetSource), 'clock widget resyncs when the wall clock steps')
+assert(/target: Wallclock\s*\n\s*function onJumped\(\) \{ Wallclock\.resync\(clock\) \}/.test(panelCode), 'calendar panel resyncs when the wall clock steps')
+
+// Resyncing reports the new time through each clock's own onDateChanged, so
+// neither handler needs refresh() — and the panel must not call it, because
+// refresh() calls goToToday() and would drag a calendar left open on another
+// month back to today every time the machine wakes.
+const panelJumpBody = /function onJumped\(\) \{([^}]*)\}/.exec(panelCode)[1]
+assert(!/refresh\(\)/.test(panelJumpBody), 'calendar panel does not force itself back to today on a step', panelJumpBody.trim())
 JS
 
 shell_json=$(cd "$ROOT" && jq -r '[.bar.layout.center[].id] | join(",")' config/omarchy/shell.json)

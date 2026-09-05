@@ -119,6 +119,14 @@ BarWidget {
     onDateChanged: root.displayDate = date
   }
 
+  // Suspend freezes the deadline the clock is waiting on, so it wakes still
+  // reporting the time the lid closed at — see Wallclock. Resyncing is all
+  // this takes: the handler above puts the recovered time on the label.
+  Connections {
+    target: Wallclock
+    function onJumped() { Wallclock.resync(clock) }
+  }
+
   Loader {
     id: panelLoader
     active: true

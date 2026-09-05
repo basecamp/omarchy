@@ -94,6 +94,26 @@ bar from the CLI — `use | reset | defaults | position | transparent | put |
 move | set`, with placement flags such as `--section` and `--index`.
 The lower-level IPC methods remain available through `omarchy-shell shell ...`.
 
+## Wall-clock jumps
+
+`SystemClock` waits out a delay measured on a clock that stops while the machine is suspended, so it wakes still reporting the time it had before — for up to one full precision period, a whole minute at `SystemClock.Minutes`. An NTP correction after a long time offline steps the clock the same way. A plugin that displays a time should resync when `Wallclock` reports the step:
+
+```qml
+import qs.Commons
+
+SystemClock {
+  id: clock
+  precision: SystemClock.Minutes
+}
+
+Connections {
+  target: Wallclock
+  function onJumped() { Wallclock.resync(clock) }
+}
+```
+
+`Wallclock.resync(clock)` makes the clock re-read the wall clock and reschedule from now.
+
 ## IPC
 
 The shell exposes a `shell` target (the host also registers

@@ -233,6 +233,16 @@ Panel {
     }
   }
 
+  // Only reachable for a calendar left open across a suspend that crossed
+  // midnight — open() refreshes, so a panel opened after waking is already
+  // right. Resyncing rather than refreshing is the point: refresh() calls
+  // goToToday(), and waking the machine is no reason to drag a calendar left
+  // open on another month back to this one.
+  Connections {
+    target: Wallclock
+    function onJumped() { Wallclock.resync(clock) }
+  }
+
   KeyboardPanel {
     id: panel
     anchorItem: root.anchorItem
