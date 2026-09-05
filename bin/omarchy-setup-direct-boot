@@ -26,36 +26,87 @@ case "${bios_vendor,,}" in
     ;;
 esac
 
+format_kernel_name() {
+  local file="$1"
+  local name="${file%.efi}"
+  name="${name#omarchy_}"
+  name="${name#omarchy-}"
+  name=$(echo "$name" | sed -E 's/^[0-9a-f]{32}[_-]//')
+
+  if [[ $name =~ (.*)[_-]fallback$ ]]; then
+    echo "${BASH_REMATCH[1]} (fallback)"
+  else
+    echo "$name"
+  fi
+}
+
 existing_entry=$(efibootmgr | grep -E "^Boot[0-9A-Fa-f]+\*? Omarchy([[:space:]]|$)" | head -1)
+boot_num=""
 
 if [[ -n $existing_entry ]]; then
   boot_num=$(echo "$existing_entry" | sed -n 's/^Boot\([0-9A-Fa-f]\+\).*/\1/p')
 
-  if gum confirm "Disable direct boot (remove Omarchy EFI entry)?"; then
+  action=$(gum choose "Change kernel" "Disable direct boot" --header "Direct boot is currently enabled (Boot$boot_num)") || exit 0
+
+  if [[ $action == "Disable direct boot" ]]; then
     echo "Removing EFI boot entry $boot_num"
+    sudo efibootmgr --bootnum "$boot_num" --delete-bootnum >/dev/null
+    exit 0
+  fi
+fi
+
+mapfile -t uki_files < <(sudo find /boot/EFI/Linux/ -maxdepth 1 -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | sort)
+if (( ${#uki_files[@]} == 0 )); then
+  mapfile -t uki_files < <(sudo find /boot/EFI/Linux/ -maxdepth 1 -name "*.efi" -printf "%f\n" 2>/dev/null | sort)
+fi
+
+if (( ${#uki_files[@]} == 0 )); then
+  echo "Error: No Omarchy UKI found in /boot/EFI/Linux/" >&2
+  exit 1
+fi
+
+if (( ${#uki_files[@]} == 1 )); then
+  selected_uki="${uki_files[0]}"
+  kernel_display=$(format_kernel_name "$selected_uki")
+else
+  options=()
+  default_choice=""
+  for file in "${uki_files[@]}"; do
+    kname=$(format_kernel_name "$file")
+    opt="$kname ($file)"
+    options+=("$opt")
+    if [[ -z $default_choice && $kname == "linux" ]]; then
+      default_choice="$opt"
+    fi
+  done
+
+  if [[ -z $default_choice ]]; then
+    default_choice="${options[0]}"
+  fi
+
+  choice=$(printf "%s\n" "${options[@]}" | gum choose --header "Select Linux kernel for direct boot:" --selected "$default_choice") || exit 0
+  selected_uki=$(echo "$choice" | sed -n 's/.*(\([^()]*\))$/\1/p')
+  if [[ -z $selected_uki ]]; then
+    selected_uki="$choice"
+  fi
+  kernel_display=$(format_kernel_name "$selected_uki")
+fi
+
+boot_source=$(findmnt -n -o SOURCE /boot)
+disk=$(echo "$boot_source" | sed 's/p\?[0-9]*$//')
+part=$(echo "$boot_source" | grep -o 'p\?[0-9]*$' | sed 's/^p//')
+
+if gum confirm "Setup direct boot with $kernel_display (so snapshot booting must be done via bios)?"; then
+  if [[ -n $boot_num ]]; then
+    echo "Removing existing EFI boot entry $boot_num"
     sudo efibootmgr --bootnum "$boot_num" --delete-bootnum >/dev/null
   fi
 
-  exit 0
-else
-  uki_file=$(sudo find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
+  echo "Creating EFI boot entry for $selected_uki"
 
-  if [[ -z $uki_file ]]; then
-    echo "Error: No Omarchy UKI found in /boot/EFI/Linux/" >&2
-    exit 1
-  fi
-
-  boot_source=$(findmnt -n -o SOURCE /boot)
-  disk=$(echo "$boot_source" | sed 's/p\?[0-9]*$//')
-  part=$(echo "$boot_source" | grep -o 'p\?[0-9]*$' | sed 's/^p//')
-
-  if gum confirm "Setup direct boot (so snapshot booting must be done via bios)?"; then
-    echo "Creating EFI boot entry for $uki_file"
-
-    sudo efibootmgr --create \
-      --disk "$disk" \
-      --part "$part" \
-      --label "Omarchy" \
-      --loader "\\EFI\\Linux\\$uki_file"
-  fi
+  sudo efibootmgr --create \
+    --disk "$disk" \
+    --part "$part" \
+    --label "Omarchy" \
+    --loader "\\EFI\\Linux\\$selected_uki"
 fi
