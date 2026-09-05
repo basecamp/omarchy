@@ -5,4 +5,5 @@ Exec=omarchy-launch-webapp https://x.com/
 Terminal=false
 Type=Application
 Icon=x
+StartupWMClass=chrome-x.com__-Default
 StartupNotify=true

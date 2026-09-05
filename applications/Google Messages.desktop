@@ -5,4 +5,5 @@ Exec=omarchy-launch-webapp https://messages.google.com/web/conversations
 Terminal=false
 Type=Application
 Icon=google-messages
+StartupWMClass=chrome-messages.google.com__web_conversations-Default
 StartupNotify=true

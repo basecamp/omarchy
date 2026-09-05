@@ -5,4 +5,5 @@ Exec=omarchy-launch-webapp https://photos.google.com/
 Terminal=false
 Type=Application
 Icon=google-photos
+StartupWMClass=chrome-photos.google.com__-Default
 StartupNotify=true
