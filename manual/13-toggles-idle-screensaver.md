@@ -80,6 +80,25 @@ Both numbers are seconds counted from the moment you went idle — not from each
 
 If you dismiss the screensaver before the lock deadline, that counts as activity and the pending lock is cancelled. You don't get locked out for glancing at your machine.
 
+Idle means idle, not merely "nobody touched the keyboard". The compositor counts only the input libinput handles, and that leaves out two everyday cases. Gamepads are one: joystick devices are neither pointers nor keyboards, so an entire evening on a controller registers as nothing at all. Media playback is the other, since staying awake through a film depends on the player asking to, and not every player does. Omarchy watches both directly, so a game on a controller and a video in a browser tab each keep the screen up on their own.
+
+Both are on by default, and either can be turned off in the same `idle` block:
+
+```json
+{
+  "version": 1,
+  "idle": {
+    "screensaver": 150,
+    "lock": 300,
+    "inhibitWhenGamepadActive": true,
+    "inhibitWhenAudioPlaying": false,
+    "gamepadGrace": 120
+  }
+}
+```
+
+`gamepadGrace` is how long a controller keeps the machine awake after the last button or stick you actually moved, so setting the pad down for a moment doesn't lock you out. Turn `inhibitWhenAudioPlaying` off if you'd rather music in the background didn't hold the lock screen back.
+
 To stop locking on idle entirely, `Super + Ctrl + I` — or `omarchy toggle idle` — flips stay awake on, and the coffee cup indicator appears in the bar. That's the one to hit before a long presentation or a build you want to watch. Hit it again to go back to normal. `omarchy toggle idle status` prints the current state as JSON if you need it from a script.
 
 This is about locking and the screensaver, not power. Suspend and hibernation have their own setup in [system sleep](36-system-sleep.md).
