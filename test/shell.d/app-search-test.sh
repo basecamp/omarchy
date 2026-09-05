@@ -69,6 +69,30 @@ assertEqual(acronymMatches[0], 'Google Contacts', 'short acronym matching still 
 const directMatches = search.sortedEntries(entries, 'obs').map(row => search.entryName(row.entry))
 assertEqual(directMatches[0], 'OBS Studio', 'direct app-name matching still works')
 
+// Fuzzy fallback: typo-tolerant subsequence matching against the app name,
+// only once substring/id/keyword/acronym matching has already failed.
+const rustdeskFuzzy = search.sortedEntries(entries, 'rustesk').map(row => search.entryName(row.entry))
+assertEqual(rustdeskFuzzy[0], 'RustDesk', 'fuzzy fallback finds RustDesk despite a dropped letter')
+
+const googleFuzzy = search.sortedEntries(entries, 'gogle').map(row => search.entryName(row.entry))
+assertEqual(googleFuzzy[0], 'Google Contacts', 'fuzzy fallback finds Google Contacts despite a dropped letter')
+
+// A real substring match still outranks a fuzzy one when both exist.
+assert(
+  search.fuzzyScore(entries[0], 'contact') > search.fuzzyScore(entries[0], 'cntct'),
+  'a real substring match outranks a fuzzy fallback match on the same entry'
+)
+
+// False-positive guard: "arsci" is a genuine subsequence of Calculator's own
+// keywords/comment ("arithmetic", "scientific") but not of its name
+// "Calculator" — fuzzy must not reach into keywords/comment/id, only the
+// name, or it reintroduces the same false-positive class "contact" would
+// otherwise trigger.
+assert(
+  search.fuzzyScore(entries[1], 'arsci') < 0,
+  'calculator does not fuzzy-match through its keywords/comment, only through its own name'
+)
+
 // The menu's Apps submenu is the launcher now: app rows launch and uninstall
 // through the shared app library instead of running commands themselves.
 const activateMatch = menuQml.match(/function activateIndex\(index, fromPointer\) \{([\s\S]*?)\n  \}/)

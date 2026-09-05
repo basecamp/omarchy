@@ -48,6 +48,16 @@ alternate names users already type (`power-menu`, `settings`), kept for
 compatibility — see `AGENTS.md`. Search does not need them: labels, the last
 id segment, and descriptions are all searchable.
 
+A query that matches nowhere as a substring or whole word falls back to
+fuzzy (subsequence) matching against the label alone: typing `lean` finds
+`Learn` because `l-e-a-n` appears in order inside `L-e-a-r-n`, skipping the
+`r`. This fallback is scoped to the label only — never the description or
+aliases — because subsequence-matching a longer field turns almost any short
+query into a hit; it is also always the lowest-ranked tier, so a real
+substring or whole-word match wins whenever one exists. The same fallback,
+scoped to the app name, applies when browsing the Apps submenu directly
+(`AppSearch.js`).
+
 ## Load and merge
 
 `mergeMenuSources` overlays user entries on the defaults per key: reusing a

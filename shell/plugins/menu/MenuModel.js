@@ -320,11 +320,44 @@ function descriptionTextMatches(query, text) {
   return true
 }
 
+// fzf-style subsequence match: every character of `term` must appear in
+// `text` in order, not necessarily adjacent. Returns -1 when `term` is not a
+// subsequence of `text`. Otherwise a quality score (higher is better): +3 for
+// a matched char at a word boundary, +2 for each char continuing an unbroken
+// run, minus how far into `text` the first match sits. Scoped to the short
+// label/name only wherever it's called — running it over a longer combined
+// field (description, keywords) turns most short queries into false hits.
+function fuzzySubsequenceScore(text, term) {
+  var hay = String(text || "")
+  var needle = String(term || "")
+  if (!needle || !hay) return -1
+
+  var hi = 0, ni = 0, firstIndex = -1, run = 0, bonus = 0
+  while (hi < hay.length && ni < needle.length) {
+    if (hay.charAt(hi) === needle.charAt(ni)) {
+      if (firstIndex < 0) firstIndex = hi
+      var prev = hi > 0 ? hay.charAt(hi - 1) : ""
+      var boundary = hi === 0 || /[^a-z0-9]/i.test(prev)
+      run += 1
+      bonus += (boundary ? 3 : 0) + (run > 1 ? 2 : 0)
+      ni += 1
+    } else {
+      run = 0
+    }
+    hi += 1
+  }
+  if (ni < needle.length) return -1
+  return bonus - firstIndex
+}
+
+var MIN_FUZZY_TERM_LENGTH = 3
+
 function matchesQuery(entry, query, visible) {
   if (!entry || entry.id === "root") return false
   if (!visible) return false
 
   var nameText = nameSearchText(entry)
+  var label = entry.label.toLowerCase()
   var descriptionText = String(entry.description || "").toLowerCase()
   var terms = String(query || "").toLowerCase().trim().split(/\s+/)
 
@@ -332,6 +365,7 @@ function matchesQuery(entry, query, visible) {
     if (!terms[i]) continue
     if (nameText.indexOf(terms[i]) >= 0) continue
     if (termInSearchWords(terms[i], descriptionText)) continue
+    if (terms[i].length >= MIN_FUZZY_TERM_LENGTH && fuzzySubsequenceScore(label, terms[i]) >= 0) continue
     return false
   }
 
@@ -353,6 +387,7 @@ function searchScore(items, entry, query) {
   else if (label.indexOf(needle) >= 0) score = 30
   else if (nameText.indexOf(needle) >= 0) score = 40
   else if (descriptionTextMatches(needle, descriptionText)) score = 60
+  else if (needle.length >= MIN_FUZZY_TERM_LENGTH && fuzzySubsequenceScore(label, needle) >= 0) score = 70
 
   if (entry.kind === "menu" || entry.kind === "link") score -= 2
   // App rows sort after all menu items, so they lose the tiebreak below to an
@@ -517,6 +552,7 @@ if (typeof module !== "undefined") {
     nameSearchText: nameSearchText,
     termInSearchWords: termInSearchWords,
     descriptionTextMatches: descriptionTextMatches,
+    fuzzySubsequenceScore: fuzzySubsequenceScore,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
     displayRow: displayRow

@@ -46,6 +46,39 @@ function entryAcronym(entry) {
   return result
 }
 
+// fzf-style subsequence match: every character of `term` must appear in
+// `text` in order, not necessarily adjacent. Returns -1 when `term` is not a
+// subsequence of `text`. Otherwise a quality score (higher is better): +3 for
+// a matched char at a word boundary, +2 for each char continuing an unbroken
+// run, minus how far into `text` the first match sits. Scoped to the app
+// name only wherever it's called — running it over the full search haystack
+// (keywords/comment/id) turns most short queries into false hits, e.g.
+// "contact" is an in-order subsequence of Calculator's own keywords.
+function fuzzySubsequenceScore(text, term) {
+  var hay = String(text || "")
+  var needle = String(term || "")
+  if (!needle || !hay) return -1
+
+  var hi = 0, ni = 0, firstIndex = -1, run = 0, bonus = 0
+  while (hi < hay.length && ni < needle.length) {
+    if (hay.charAt(hi) === needle.charAt(ni)) {
+      if (firstIndex < 0) firstIndex = hi
+      var prev = hi > 0 ? hay.charAt(hi - 1) : ""
+      var boundary = hi === 0 || /[^a-z0-9]/i.test(prev)
+      run += 1
+      bonus += (boundary ? 3 : 0) + (run > 1 ? 2 : 0)
+      ni += 1
+    } else {
+      run = 0
+    }
+    hi += 1
+  }
+  if (ni < needle.length) return -1
+  return bonus - firstIndex
+}
+
+var MIN_FUZZY_TERM_LENGTH = 3
+
 function termMatches(entry, term) {
   if (!term) return true
 
@@ -56,8 +89,9 @@ function termMatches(entry, term) {
   if (name.indexOf(term) >= 0) return true
   if (id.indexOf(term) >= 0) return true
   if (haystack.indexOf(term) >= 0) return true
+  if (term.length <= 5 && entryAcronym(entry).indexOf(term) >= 0) return true
 
-  return term.length <= 5 && entryAcronym(entry).indexOf(term) >= 0
+  return term.length >= MIN_FUZZY_TERM_LENGTH && fuzzySubsequenceScore(name, term) >= 0
 }
 
 function allTermsMatch(entry, query) {
@@ -90,6 +124,11 @@ function fuzzyScore(entry, query) {
   var acronymIndex = acronym.indexOf(q)
   if (acronymIndex === 0) return 5000 - acronym.length
   if (acronymIndex > 0) return 4600 - acronymIndex * 10 - acronym.length
+
+  if (q.length >= MIN_FUZZY_TERM_LENGTH) {
+    var fuzzy = fuzzySubsequenceScore(name, q)
+    if (fuzzy >= 0) return 2000 + Math.max(0, Math.min(900, fuzzy))
+  }
 
   return 4000 - name.length
 }
@@ -128,6 +167,7 @@ if (typeof module !== "undefined") {
     entrySortKey: entrySortKey,
     entrySearchText: entrySearchText,
     entryAcronym: entryAcronym,
+    fuzzySubsequenceScore: fuzzySubsequenceScore,
     fuzzyScore: fuzzyScore,
     sortedEntries: sortedEntries
   }
