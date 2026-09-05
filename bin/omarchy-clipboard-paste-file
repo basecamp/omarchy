@@ -8,6 +8,16 @@
 
 copy_only=false
 
+# Terminals take Shift+Insert, everything else Ctrl+V — same split as universal
+# paste in default/hypr/bindings/clipboard.lua.
+paste_into_focused_window() {
+  if hyprctl -j activewindow 2>/dev/null | jq -e '[.tags[]? | sub("\\*$"; "")] | index("terminal")' >/dev/null; then
+    wtype -M shift -k Insert -m shift 2>/dev/null || true
+  else
+    wtype -M ctrl v -m ctrl 2>/dev/null || true
+  fi
+}
+
 if [[ ${1:-} == "--copy-only" ]]; then
   copy_only=true
   shift
@@ -30,4 +40,4 @@ if [[ $copy_only == "true" ]]; then
 fi
 
 sleep 0.15
-wtype -M shift -k Insert -m shift 2>/dev/null || true
+paste_into_focused_window

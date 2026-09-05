@@ -266,6 +266,15 @@ cat >"$TMPDIR/bin/wtype" <<'SH'
 printf '%s\n' "$*" >"$WTYPE_OUT"
 SH
 
+cat >"$TMPDIR/bin/hyprctl" <<'SH'
+#!/bin/bash
+if [[ ${FOCUSED_IS_TERMINAL:-} == "1" ]]; then
+  printf '{"tags":["terminal"]}'
+else
+  printf '{"tags":["floating-window"]}'
+fi
+SH
+
 cat >"$TMPDIR/bin/omarchy-launch-browser" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >"$BROWSER_OUT"
@@ -282,7 +291,7 @@ cat >"$TMPDIR/bin/tensaku-edit" <<'SH'
 printf '%s\n' "$*" >"$TENSAKU_OUT"
 SH
 
-chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wl-paste" "$TMPDIR/bin/wtype" "$TMPDIR/bin/omarchy-launch-browser" "$TMPDIR/bin/omarchy-launch-editor" "$TMPDIR/bin/tensaku-edit"
+chmod +x "$TMPDIR/bin/wl-copy" "$TMPDIR/bin/wl-paste" "$TMPDIR/bin/wtype" "$TMPDIR/bin/hyprctl" "$TMPDIR/bin/omarchy-launch-browser" "$TMPDIR/bin/omarchy-launch-editor" "$TMPDIR/bin/tensaku-edit"
 
 capture_output=$(XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
 [[ $capture_output == '{"type":"text","text":"terminal copy"}' ]] || fail "clipboard capture records normal text events"
@@ -465,14 +474,21 @@ pass "clipboard watcher dies with its owner via pdeathsig"
 
 jq -n --arg text "$(printf 'large block line 1\nlarge block line 2\n')" '[{type:"text", text:"ignored"}, {type:"text", text:$text}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
 
-WL_COPY_OUT="$TMPDIR/copied" WTYPE_OUT="$TMPDIR/wtype" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
+FOCUSED_IS_TERMINAL=1 WL_COPY_OUT="$TMPDIR/copied" WTYPE_OUT="$TMPDIR/wtype" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
   "$ROOT/bin/omarchy-clipboard-paste-text" --shift-insert --history-index 1
 
 [[ $(<"$TMPDIR/copied") == "$(printf 'large block line 1\nlarge block line 2')" ]] || fail "clipboard paste helper copies history entry text"
 pass "clipboard paste helper copies history entry text"
 
-[[ $(<"$TMPDIR/wtype") == "-M shift -k Insert -m shift" ]] || fail "clipboard paste helper pastes history entries with shift insert"
-pass "clipboard paste helper pastes history entries with shift insert"
+[[ $(<"$TMPDIR/wtype") == "-M shift -k Insert -m shift" ]] || fail "clipboard paste helper pastes into terminals with shift insert"
+pass "clipboard paste helper pastes into terminals with shift insert"
+
+rm -f "$TMPDIR/wtype"
+WL_COPY_OUT="$TMPDIR/copied" WTYPE_OUT="$TMPDIR/wtype" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-paste-text" --shift-insert --history-index 1
+
+[[ $(<"$TMPDIR/wtype") == "-M ctrl v -m ctrl" ]] || fail "clipboard paste helper pastes into non-terminals with ctrl v"
+pass "clipboard paste helper pastes into non-terminals with ctrl v"
 
 rm -f "$TMPDIR/wtype"
 WL_COPY_OUT="$TMPDIR/copied" WTYPE_OUT="$TMPDIR/wtype" HOME="$TMPDIR/home" PATH="$TMPDIR/bin:$PATH" \
