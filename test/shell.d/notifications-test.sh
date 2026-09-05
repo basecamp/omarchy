@@ -596,12 +596,12 @@ assert(
   'notifications service archives by moving the popup file into the history dir'
 )
 assert(
-  /head -n \\"-\$limit\\"/.test(serviceQml),
-  'notifications service trims history to the newest entries in the same job'
+  /cat \/proc\/sys\/kernel\/random\/boot_id/.test(serviceQml),
+  'notifications service scopes history to the current boot'
 )
 assert(
-  /\\"\$imgs\/\$\{stale%\.json\}\\"-\*/.test(serviceQml),
-  'notifications service drops a trimmed history entry\'s image copies with it'
+  /\$boot != \$old[\s\S]{0,180}?rm -f/.test(serviceQml),
+  'notifications service clears the previous boot history and images'
 )
 assert(
   /readonly property string imagesDir: popupStateDir \+ "images\/"/.test(serviceQml),
@@ -723,4 +723,12 @@ assert(
   !/pendingModel|pastModel/.test(serviceQml),
   'notifications service keeps no in-memory history models'
 )
+
+const barWidgetQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/BarWidget.qml'), 'utf8')
+const notificationManifest = JSON.parse(fs.readFileSync(path.join(root, 'shell/plugins/notifications/manifest.json'), 'utf8'))
+assert(notificationManifest.kinds.includes('bar-widget'), 'notifications provide a bar widget')
+assert(/Notification center/.test(barWidgetQml), 'notification bar widget opens a notification center')
+assert(/Flickable \{[\s\S]*NotificationCard \{/.test(barWidgetQml), 'notification center renders scrollable notification cards')
+assert(/historyRows\(text, \[\], 1, 1000000\)/.test(barWidgetQml), 'notification center loads the full boot history')
+assert(/clearHistory\(\)/.test(barWidgetQml), 'notification center can clear its history')
 JS

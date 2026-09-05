@@ -26,6 +26,7 @@ BorderSurface {
   property int urgency: 1
   property double timestamp: 0
   property int cornerRadius: 0
+  property bool dismissible: true
 
   // System monospace font injected by the container.
   property string fontFamily: ""
@@ -204,7 +205,7 @@ BorderSurface {
     anchors.rightMargin: root.borderRight + Style.space(3)
     width: Style.space(18)
     height: Style.space(18)
-    visible: opacity > 0
+    visible: root.dismissible && opacity > 0
     opacity: root.hovered ? 1 : 0
 
     Behavior on opacity { NumberAnimation { duration: 100 } }
