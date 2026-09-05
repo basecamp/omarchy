@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Console
+Comment=Opens the default terminal for apps that ask for GNOME Console
+Exec=omarchy-cmd-console
+DBusActivatable=true
+NoDisplay=true
+Terminal=false

@@ -1,0 +1,67 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Answer org.gnome.Console activations by opening the default terminal.
+# omarchy:hidden=true
+
+# Nautilus hands "Open in Console" (Ctrl+.) to the org.gnome.Console D-Bus
+# service over org.freedesktop.Application. That service is GNOME Console, which
+# Omarchy does not ship, so the shortcut and its menu entry are both inert. This
+# stands in for it and opens the terminal xdg-terminal-exec selects.
+#
+# GApplication exports org.freedesktop.Application at the object path derived
+# from the application id, which is exactly the interface Nautilus calls, so
+# there is no hand-rolled D-Bus plumbing here.
+
+import os
+import subprocess
+import sys
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio  # noqa: E402
+
+
+def open_terminal(directory):
+    if not os.path.isdir(directory):
+        directory = os.path.dirname(directory) or os.path.expanduser("~")
+
+    try:
+        subprocess.Popen(
+            ["setsid", "uwsm-app", "--", "xdg-terminal-exec", f"--dir={directory}"],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as error:
+        print(f"omarchy-cmd-console: {error}", file=sys.stderr)
+
+
+class Console(Gio.Application):
+    def __init__(self):
+        super().__init__(
+            application_id="org.gnome.Console",
+            # IS_SERVICE matters: without it run() reads the empty argv as a
+            # plain launch and fires activate as well as the incoming Open, so a
+            # single request opens two terminals.
+            flags=Gio.ApplicationFlags.HANDLES_OPEN | Gio.ApplicationFlags.IS_SERVICE,
+        )
+        self.set_inactivity_timeout(3000)
+
+    def do_open(self, files, n_files, hint):
+        self.hold()
+        for file in files:
+            path = file.get_path()
+            if path:
+                open_terminal(path)
+        self.release()
+
+    def do_activate(self):
+        self.hold()
+        open_terminal(os.path.expanduser("~"))
+        self.release()
+
+
+if __name__ == "__main__":
+    sys.exit(Console().run(sys.argv))
