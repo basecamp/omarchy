@@ -35,7 +35,7 @@ It is necessary to disable Apple's Secure Boot in order to boot the bootable USB
 3. Select the orange EFI Boot device
 4. Proceed with the [install as normal](02-getting-started.md)
 
-The installer detects Mac hardware and applies the needed fixes automatically: Broadcom Wi-Fi drivers and firmware, the SPI keyboard driver on the MacBook models that need it, and an NVMe suspend fix for those same models.
+The installer detects Mac hardware and applies the needed fixes automatically: Broadcom Wi-Fi drivers and firmware, the SPI keyboard driver on the MacBook models that need it, the CS8409 speaker driver on 2016–2017 MacBook Pros, and an NVMe suspend fix for those same models.
 
 ### Known Limitations
 
@@ -51,7 +51,7 @@ The Apple T1 chip was introduced in late 2016 and used exclusively in the first-
 #### Known Issues
 
 - Touch Bar is non-functional
-- Sound is not functioning
+- Internal microphone capture is quiet and not fully wired up yet. Speakers and headphones work; the installer installs the CS8409 driver (`snd-hda-macbookpro-dkms`) automatically. Reboot once after install so the patched module replaces the silent in-tree codec.
 
 #### Devices with T2 Chip
 
