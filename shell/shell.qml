@@ -253,8 +253,12 @@ ShellRoot {
     onActiveChanged: if (!active) shell.bar = null
     onStatusChanged: {
       if (status === Loader.Error) {
-        var detail = errorString && errorString() ? errorString() : ""
-        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId + ":", detail)
+        // Loader has no errorString(); referencing the bare identifier throws a
+        // ReferenceError that aborted this handler before either diagnostics or
+        // the fallback could run. The engine already logs the underlying QML
+        // errors, so point at those instead of inventing a detail string.
+        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to "
+          + shell.defaultBarId + " (source: " + shell.activeBarSourceUrl + "); see the QML errors above")
         shell.failedBarId = shell.activeBarId
       }
     }
@@ -662,12 +666,13 @@ ShellRoot {
         }
         onStatusChanged: {
           if (status === Loader.Error) {
-            // Loader.errorString() reflects the source-load failure even when
-            // sourceComponent is null. Surface both so the user sees something
-            // actionable instead of a panel that silently refuses to open.
-            var detail = errorString && errorString() ? errorString() : ""
-            if (!detail && sourceComponent) detail = sourceComponent.errorString()
-            console.warn("panel plugin " + panelEntry.pluginId + " failed to load:", detail)
+            // Loader exposes no errorString(); the bare identifier threw a
+            // ReferenceError and this handler never reached shell.hide(). Only
+            // sourceComponent can carry a detail, and it is null for a source-load
+            // failure — so name the source and defer to the engine's own errors.
+            var detail = sourceComponent ? sourceComponent.errorString() : ""
+            console.warn("panel plugin " + panelEntry.pluginId + " failed to load (source: "
+              + panelEntry.sourceUrl + "):", detail || "see the QML errors above")
             shell.hide(panelEntry.pluginId)
           }
         }
