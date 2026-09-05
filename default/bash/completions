@@ -1,3 +1,156 @@
+_omarchy_add_candidates() {
+  local item
+  for item in "$@"; do
+    [[ -n $item && -z ${seen[$item]:-} ]] || continue
+    seen[$item]=1
+    candidates+=("$item")
+  done
+}
+
+_omarchy_plugin_catalog_json() {
+  local catalog_bin="$bin_dir/omarchy-plugin-catalog"
+  [[ -x $catalog_bin ]] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  local omarchy_root
+  omarchy_root=$(dirname -- "$bin_dir")
+  OMARCHY_PATH="${OMARCHY_PATH:-$omarchy_root}" "$catalog_bin" 2>/dev/null
+}
+
+_omarchy_add_bar_layout_ids() {
+  local config="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/shell.json"
+  [[ -f $config ]] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  local line
+  while IFS= read -r line; do
+    _omarchy_add_candidates "$line"
+  done < <(jq -r '.bar.layout // {} | to_entries[] | .value[]? |
+    if type == "object" then (.id // empty) else . end' "$config" 2>/dev/null)
+}
+
+_omarchy_add_plugin_ids() {
+  local kind="${1:-}"
+  local first_party="${2:-}"
+  local catalog
+  catalog=$(_omarchy_plugin_catalog_json) || return 0
+  [[ -n $catalog ]] || return 0
+  local line
+  while IFS= read -r line; do
+    _omarchy_add_candidates "$line"
+  done < <(jq -r --arg kind "$kind" --arg firstParty "$first_party" '
+    .[]
+    | select($kind == "" or (.kinds | index($kind)))
+    | select($firstParty != "true" or .firstParty == true)
+    | .id
+  ' <<<"$catalog" 2>/dev/null)
+}
+
+_omarchy_add_user_plugin_ids() {
+  local user_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins"
+  [[ -d $user_dir ]] || return 0
+  local dir
+  for dir in "$user_dir"/*/; do
+    [[ -d $dir ]] || continue
+    _omarchy_add_candidates "$(basename -- "$dir")"
+  done
+}
+
+_omarchy_add_id_candidates() {
+  local command_name="$1"
+  local verb="$2"
+
+  case "$command_name" in
+  omarchy-bar)
+    case "$verb" in
+    set | move)
+      _omarchy_add_bar_layout_ids
+      ;;
+    put)
+      _omarchy_add_plugin_ids bar-widget
+      ;;
+    use)
+      _omarchy_add_plugin_ids bar
+      ;;
+    esac
+    ;;
+  omarchy-plugin-enable | omarchy-plugin-disable)
+    _omarchy_add_plugin_ids
+    ;;
+  omarchy-plugin-clone)
+    _omarchy_add_plugin_ids "" true
+    ;;
+  omarchy-plugin-remove | omarchy-plugin-update)
+    _omarchy_add_user_plugin_ids
+    ;;
+  esac
+}
+
+_omarchy_add_args_from() {
+  local command_path="$1"
+  local first_arg_index="$2"
+  [[ -x $command_path ]] || return 0
+
+  local args spec alt token actual alts value match current_arg_index j
+  args=$(grep -m 1 '^# omarchy:args=' "$command_path" 2>/dev/null) || return 0
+  args="${args#*omarchy:args=}"
+  [[ -n $args ]] || return 0
+  current_arg_index=$((COMP_CWORD - first_arg_index))
+  (( current_arg_index >= 0 )) || return 0
+
+  alts="${args// | /$'\n'}"
+  while IFS= read -r alt; do
+    read -r -a spec <<<"$alt"
+    match=true
+
+    for ((j = 0; j < current_arg_index; j++)); do
+      token="${spec[j]:-}"
+      actual="${COMP_WORDS[first_arg_index + j]:-}"
+      if [[ -z $token ]]; then
+        match=false
+        break
+      fi
+
+      if [[ $token == \<*\> || $token == \[*\] ]]; then
+        value="${token#<}"
+        value="${value#\[}"
+        value="${value%>}"
+        value="${value%\]}"
+        if [[ $value == *"|"* ]]; then
+          [[ " ${value//|/ } " == *" $actual "* ]] || match=false
+        fi
+      elif [[ $token != "$actual" ]]; then
+        match=false
+      fi
+    done
+
+    [[ $match == true ]] || continue
+
+    token="${spec[current_arg_index]:-}"
+    [[ -n $token ]] || continue
+
+    if [[ $token == \<*\> || $token == \[*\] ]]; then
+      value="${token#<}"
+      value="${value#\[}"
+      value="${value%>}"
+      value="${value%\]}"
+      if [[ $value == *"|"* ]]; then
+        read -r -a spec <<<"${value//|/ }"
+        _omarchy_add_candidates "${spec[@]}"
+      elif [[ $value == "id" || $value == "source-id" ]]; then
+        _omarchy_add_id_candidates "${command_path##*/}" "${COMP_WORDS[first_arg_index]:-}"
+      elif [[ $value == --* ]]; then
+        _omarchy_add_candidates "$value"
+        if [[ ${spec[current_arg_index + 1]:-} == "[placement]" ]]; then
+          _omarchy_add_candidates --section --index --before --after --from-section --from-index
+        fi
+      elif [[ $value == "placement" ]]; then
+        _omarchy_add_candidates --section --index --before --after --from-section --from-index
+      fi
+    else
+      _omarchy_add_candidates "$token"
+    fi
+  done <<<"$alts"
+}
+
 _omarchy_complete() {
   COMPREPLY=()
   local cur="${COMP_WORDS[COMP_CWORD]}"
@@ -22,6 +175,11 @@ _omarchy_complete() {
   shopt -s nullglob
   for file in "$bin_dir/$prefix"-*; do
     [[ -f $file && -x $file ]] || continue
+    # Hidden siblings of a resolved command (omarchy-bar-text-color next to
+    # omarchy-bar) used to steal this slot and hide the command's own verbs.
+    if (( COMP_CWORD > 1 )) && grep -q -m 1 '^# omarchy:hidden=true' "$file" 2>/dev/null; then
+      continue
+    fi
     basename="${file##*/}"
     rest="${basename#"$prefix"-}"
     next="${rest%%-*}"
@@ -33,88 +191,44 @@ _omarchy_complete() {
   shopt -u nullglob
 
   if (( COMP_CWORD == 1 )); then
-    candidates+=("commands")
+    _omarchy_add_candidates commands
   fi
 
   if [[ ${COMP_WORDS[1]:-} == "commands" ]] && (( COMP_CWORD >= 2 )); then
-    candidates+=("--all" "--json" "--markdown" "--check")
+    _omarchy_add_candidates --all --json --markdown --check
   fi
 
-  if (( ${#candidates[@]} == 0 )); then
-    local command_prefix command_path first_arg_index n j
-    for ((n = COMP_CWORD - 1; n >= 0; n--)); do
-      command_prefix="omarchy"
-      for ((j = 1; j <= n; j++)); do
-        part="${COMP_WORDS[j]}"
-        [[ -z $part || $part == -* ]] && continue
-        command_prefix+="-$part"
-      done
-
-      command_path="$bin_dir/$command_prefix"
-      if [[ -x $command_path ]]; then
-        first_arg_index=$((n + 1))
-        break
-      fi
+  local command_prefix command_path first_arg_index n j
+  for ((n = COMP_CWORD - 1; n >= 0; n--)); do
+    command_prefix="omarchy"
+    for ((j = 1; j <= n; j++)); do
+      part="${COMP_WORDS[j]}"
+      [[ -z $part || $part == -* ]] && continue
+      command_prefix+="-$part"
     done
 
-    if [[ -n ${command_path:-} && -x $command_path ]]; then
-      local args spec alt token actual alts value match current_arg_index
-      args=$(grep -m 1 '^# omarchy:args=' "$command_path" 2>/dev/null)
-      args="${args#*omarchy:args=}"
-      current_arg_index=$((COMP_CWORD - first_arg_index))
-
-      alts="${args// | /$'\n'}"
-      while IFS= read -r alt; do
-        read -r -a spec <<<"$alt"
-        match=true
-
-        for ((j = 0; j < current_arg_index; j++)); do
-          token="${spec[j]:-}"
-          actual="${COMP_WORDS[first_arg_index + j]:-}"
-          if [[ -z $token ]]; then
-            match=false
-            break
-          fi
-
-          if [[ $token == \<*\> || $token == \[*\] ]]; then
-            value="${token#<}"
-            value="${value#\[}"
-            value="${value%>}"
-            value="${value%\]}"
-            if [[ $value == *"|"* ]]; then
-              [[ " ${value//|/ } " == *" $actual "* ]] || match=false
-            fi
-          elif [[ $token != "$actual" ]]; then
-            match=false
-          fi
-        done
-
-        [[ $match == true ]] || continue
-
-        token="${spec[current_arg_index]:-}"
-        [[ -n $token ]] || continue
-
-        if [[ $token == \<*\> || $token == \[*\] ]]; then
-          value="${token#<}"
-          value="${value#\[}"
-          value="${value%>}"
-          value="${value%\]}"
-          if [[ $value == *"|"* ]]; then
-            read -r -a spec <<<"${value//|/ }"
-            for actual in "${spec[@]}"; do
-              [[ -n ${seen[$actual]:-} ]] && continue
-              seen[$actual]=1
-              candidates+=("$actual")
-            done
-          fi
-        else
-          [[ -n ${seen[$token]:-} ]] && continue
-          seen[$token]=1
-          candidates+=("$token")
-        fi
-      done <<<"$alts"
+    command_path="$bin_dir/$command_prefix"
+    if [[ -x $command_path ]]; then
+      first_arg_index=$((n + 1))
+      break
     fi
+  done
+
+  # Always merge args-spec literals with glob hits. Otherwise a hidden child
+  # binary (or any omarchy-<cmd>-*) hides verbs declared on omarchy-<cmd>.
+  if [[ -n ${command_path:-} && -x $command_path ]]; then
+    _omarchy_add_args_from "$command_path" "$first_arg_index"
   fi
+
+  local prev="${COMP_WORDS[COMP_CWORD - 1]:-}"
+  case "$prev" in
+  --section | --from-section)
+    _omarchy_add_candidates left center right
+    ;;
+  --before | --after)
+    _omarchy_add_bar_layout_ids
+    ;;
+  esac
 
   if (( ${#candidates[@]} > 0 )); then
     local IFS=$'\n'
