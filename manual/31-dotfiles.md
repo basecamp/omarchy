@@ -20,6 +20,20 @@ Here's a list of the key files in `~/.config` and what they control:
 
 If you end up making a lot of changes to tweak your own setup, it's a good idea to backup all these dotfiles. [Stow is a great way to do that](https://www.youtube.com/watch?v=NoFiYOqnC4o).
 
+## Cloud backup
+
+Omarchy can save your whole home directory — desktop settings, dotfiles, documents, projects, and application data — to any cloud provider supported by [rclone](https://rclone.org/): Google Drive, Dropbox, OneDrive, S3-compatible storage, WebDAV/Nextcloud, and many more. Run `omarchy backup setup` to configure a provider and a shared folder. That opens rclone's provider setup when needed, then records only the chosen remote, folder, and device name locally; cloud credentials remain in rclone's private configuration. Each device has a separate subfolder, so several computers can use the same cloud endpoint safely. For an off-site backup, use rclone's `crypt` remote wrapper so cloud-stored filenames and contents are encrypted.
+
+Run `omarchy backup create` to upload a fresh archive. `omarchy backup restore --dry-run` shows the top-level home-directory items in the most recent archive, and `omarchy backup restore` asks before replacing matching files. It does not remove files that are absent from the backup. Backups exclude only regenerable caches and Trash plus rclone credentials and the cloud-backup configuration itself; set up the rclone remote on the restoring machine before downloading.
+
+## Shared personal settings
+
+Backups are per-device. Shared personal settings use a Git repository over SSH, so each device publishes a versioned `profiles/<hostname>` branch and shared `main` is an explicit merge of those profiles. Create an empty bare repository on your backup node, then connect it with `omarchy backup sync setup --repo 'user@host:omarchy-profile.git'`. Use `omarchy backup sync push` on the computer that has changes, `omarchy backup sync merge` to create the new shared latest profile, and `omarchy backup sync pull --dry-run` followed by `omarchy backup sync pull` on another machine. `omarchy backup sync history` shows all versions, while `omarchy backup sync rollback <commit>` makes an older version the new shared latest without deleting history.
+
+Git combines independent files and non-overlapping edits automatically. When two machines edit the same setting incompatibly, the merge stops and reports a normal Git conflict instead of silently choosing a winner; resolve it deliberately, then rerun the merge. The profile includes keybindings, input and look-and-feel preferences, Omarchy shell settings and custom themes, terminal settings, and common developer-tool preferences. It deliberately leaves out monitor layout and autostart because those are device-specific.
+
+Add extra relative paths to `~/.config/omarchy/backup/sync-paths`, one per line, to share another app's preferences. Push is explicit rather than automatic, so a change on one machine cannot silently overwrite a newer setting on another.
+
 ### Starting your own apps with the session
 
 If you want something to run every time you log in — a sync daemon, a chat app, your own script — put it in `~/.config/hypr/autostart.lua`:
