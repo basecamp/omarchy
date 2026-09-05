@@ -6,9 +6,14 @@
 if gum confirm "Are you sure you want to restore all preinstalled web apps, TUI wrappers, and desktop applications?"; then
   echo -e "Restoring preinstalled Omarchy applications...\n"
 
-  # Recreates the shipped .desktop launchers (web apps and TUIs) and the mise stubs
-  # that back claude, gh, opencode, and the rest of the agents
+  # Recreates the shipped .desktop launchers (web apps and TUIs).
   omarchy-refresh-applications
+
+  # Restore the system-owned lazy mise declarations before rebuilding their
+  # collocated user shim farm.
+  MISE_CONFIG_PATH="${OMARCHY_MISE_CONFIG_PATH:-/etc/mise/config.toml}"
+  sudo install -Dm644 "$OMARCHY_PATH/default/mise/config.toml" "$MISE_CONFIG_PATH"
+  mise reshim --system
 
   # Mirrors the list in omarchy-remove-preinstalls; both track omarchy-base.packages
   if ! omarchy-pkg-add \

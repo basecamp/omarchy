@@ -74,6 +74,11 @@ cat >"$mock_bin/omarchy-test-noop" <<'SH'
 exit 0
 SH
 
+cat >"$mock_bin/sudo" <<'SH'
+#!/bin/bash
+exec "$@"
+SH
+
 for command in gum hyprctl omarchy-webapp-remove-all omarchy-tui-remove-all omarchy-pkg-drop; do
   ln -s omarchy-test-noop "$mock_bin/$command"
 done
@@ -92,12 +97,14 @@ export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
 export OMARCHY_PATH="$ROOT"
+export OMARCHY_MISE_CONFIG_PATH="$test_tmp/etc/mise/config.toml"
 
-grok_package="npm:@xai-official/grok"
-omp_package="github:can1357/oh-my-pi"
+grok_package="grok"
+omp_package="oh-my-pi"
+legacy_omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
 agy_package="antigravity-cli"
-ori_package="github:OpenRouterLabs/ori-releases"
+ori_package="ori"
 
 assert_lazy_stub() {
   local package=$1
@@ -119,12 +126,77 @@ assert_lazy_stub "$ori_package" ori
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
-grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity lazy stub"
-grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
-grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
-grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
-grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "user setup creates the Ori lazy stub"
-pass "user setup creates the custom agent lazy stubs"
+lazy_config="$ROOT/default/mise/config.toml"
+[[ -f $lazy_config ]] || fail "Omarchy ships the system mise config"
+grep -Fx 'locked_scopes = ["project", "global"]' "$lazy_config" >/dev/null ||
+  fail "system tools remain installable when the user enables locked mode"
+for tool in "$agy_package" "$grok_package" "$omp_package" "$crush_package" "$ori_package"; do
+  grep -Eq "^$tool = \\{ version = \"latest\", lazy = true, minimum_release_age = \"0s\" \\}$" "$lazy_config" ||
+    fail "user setup declares $tool as a native lazy tool"
+done
+grep -Eq '^uv = \{ version = "latest", lazy = true, minimum_release_age = "0s" \}$' "$lazy_config" ||
+  fail "user setup declares uv as a native lazy tool"
+[[ $(grep -c 'lazy = true' "$lazy_config") == 16 ]] || fail "user setup declares every default mise tool as lazy"
+grep -Fx "reshim --system" "$mise_history" >/dev/null || fail "user setup builds the system lazy bootstrap shims"
+pass "user setup configures system lazy tools from registry shorthands"
+
+write_legacy_wrapper() {
+  local package=$1 command=$2
+
+  printf '#!/bin/bash\nexport MISE_MINIMUM_RELEASE_AGE=0\nmise use -g --quiet "%s" || exit 1\nexec mise x "%s" -- "%s" "$@"\n' \
+    "$package" "$package" "$command" >"$test_home/.local/bin/$command"
+  chmod +x "$test_home/.local/bin/$command"
+}
+
+wrapper_migrations=(
+  'npm:playwright|playwright|playwright'
+  'github:can1357/oh-my-pi|oh-my-pi|omp'
+  'npm:@xai-official/grok|grok|grok'
+  'npm:@kitlangton/ghui|ghui|ghui'
+  'aqua:modem-dev/hunk|hunk|hunk'
+  'github:basecamp/hey-cli|hey-cli|hey'
+  'github:OpenRouterLabs/ori-releases|ori|ori'
+)
+
+for mapping in "${wrapper_migrations[@]}"; do
+  IFS='|' read -r legacy_package shorthand_package command <<<"$mapping"
+  write_legacy_wrapper "$legacy_package" "$command"
+done
+
+: >"$stub_log"
+export OMARCHY_TEST_MISE_FAIL=true
+source "$ROOT/migrations/1787590397.sh" >/dev/null
+unset OMARCHY_TEST_MISE_FAIL
+[[ ! -s $stub_log ]] || fail "registry shorthand migration preserves wrappers unsupported by the installed mise"
+for mapping in "${wrapper_migrations[@]}"; do
+  IFS='|' read -r legacy_package shorthand_package command <<<"$mapping"
+  grep -Fq "$legacy_package" "$test_home/.local/bin/$command" ||
+    fail "registry shorthand migration leaves unsupported $command wrapper intact"
+done
+pass "registry shorthand migration requires shorthand support from the installed mise"
+
+source "$ROOT/migrations/1787590397.sh" >/dev/null
+for mapping in "${wrapper_migrations[@]}"; do
+  IFS='|' read -r legacy_package shorthand_package command <<<"$mapping"
+  expected="$shorthand_package $command"
+  grep -Fx "$expected" "$stub_log" >/dev/null ||
+    fail "registry shorthand migration rewrites $command with $shorthand_package"
+  rm -f "$test_home/.local/bin/$command"
+done
+[[ $(wc -l <"$stub_log") == ${#wrapper_migrations[@]} ]] || fail "registry shorthand migration rewrites each known wrapper once"
+pass "registry shorthand migration rewrites every known Omarchy wrapper"
+
+cat >"$test_home/.local/bin/hunk" <<'EOF'
+#!/bin/bash
+echo "user-owned hunk"
+EOF
+chmod +x "$test_home/.local/bin/hunk"
+: >"$stub_log"
+source "$ROOT/migrations/1787590397.sh" >/dev/null
+[[ ! -s $stub_log ]] || fail "registry shorthand migration leaves unrecognized wrappers alone"
+grep -Fq 'user-owned hunk' "$test_home/.local/bin/hunk" || fail "registry shorthand migration preserves a user-owned wrapper"
+rm -f "$test_home/.local/bin/hunk"
+pass "registry shorthand migration rewrites only recognized Omarchy wrappers"
 
 : >"$stub_log"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
@@ -132,12 +204,12 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "Oh My Pi migration c
 
 : >"$stub_log"
 source "$ROOT/migrations/1787342993.sh" >/dev/null
-grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "Ori migration creates a working lazy stub"
+grep -Fx "$ori_package" "$stub_log" >/dev/null || fail "Ori migration creates a working lazy stub"
 
 : >"$stub_log"
 source "$ROOT/migrations/1785846769.sh" >/dev/null
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "agent migration repairs the Oh My Pi lazy stub"
-grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
+grep -Fx "$grok_package" "$stub_log" >/dev/null || fail "agent migration creates the Grok lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "agent migration creates the Crush lazy stub"
 
 : >"$stub_log"
@@ -216,6 +288,7 @@ touch "$test_home/.local/state/omarchy/preinstalls-removed"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
 source "$ROOT/migrations/1787342993.sh" >/dev/null
+source "$ROOT/migrations/1787590397.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 
@@ -229,11 +302,11 @@ for obsolete_form in 'mise use -g "oh-my-pi"' 'mise use -g --quiet "oh-my-pi"'; 
     fail "agent migration removes a wrapper built on [$obsolete_form]"
 done
 
-printf '#!/bin/bash\nmise use -g --quiet "%s" || exit 1\n' "$omp_package" >"$test_home/.local/bin/omp"
+printf '#!/bin/bash\nmise use -g --quiet "%s" || exit 1\n' "$legacy_omp_package" >"$test_home/.local/bin/omp"
 chmod +x "$test_home/.local/bin/omp"
 source "$ROOT/migrations/1785846769.sh" >/dev/null
 [[ -e $test_home/.local/bin/omp ]] ||
-  fail "agent migration keeps a wrapper built on $omp_package"
+  fail "agent migration keeps a wrapper built on $legacy_omp_package"
 rm -f "$test_home/.local/bin/omp"
 
 rm "$test_home/.local/state/omarchy/preinstalls-removed"

@@ -61,7 +61,7 @@ desktop_hermes_ready() {
 # Whether Hermes is really installed, not merely whether the stub exists. A
 # stub on its own is cold: running it installs Hermes, which takes minutes.
 installed() {
-  [[ -d "$(mise where "$tool" 2>/dev/null)/hermes-agent/lib/python$python" ]]
+  [[ -d "$(MISE_LOCKED=0 mise where "$tool" 2>/dev/null)/hermes-agent/lib/python$python" ]]
 }
 
 # The stub is the only thing this installer owns. Anything else at that path
@@ -174,7 +174,7 @@ if desktop_owns_hermes; then
   # Not gated on that copy being healthy: `mise up` can rebuild it against the
   # wrong interpreter and a half-finished install answers to neither test, and
   # either way it is still a second Hermes. Removing nothing is harmless.
-  if mise where "$tool" >/dev/null 2>&1; then
+  if MISE_LOCKED=0 mise where "$tool" >/dev/null 2>&1; then
     echo "Hermes Desktop provides Hermes; removing the separate CLI install..." >&2
   fi
 
@@ -228,6 +228,13 @@ if installed && ! hermes_prompt_ready; then
   fi
 fi
 
+# Older versions activated Hermes in the user's global config. The marked
+# wrapper proves that declaration belongs to Omarchy, so retire it while
+# keeping the installed environment for the config-free wrapper below.
+if ours; then
+  mise rm -g "$tool" >/dev/null 2>&1 || true
+fi
+
 mkdir -p "$HOME/.local/bin"
 rm -f "$HOME/.local/bin/hermes"
 
@@ -243,26 +250,24 @@ export UV_PYTHON="$python"
 # and mise's cooldown would otherwise hold a new release back for days.
 export MISE_MINIMUM_RELEASE_AGE=0
 
-# mise up -- which omarchy update runs -- reinstalls without that pin, so this
-# asks which interpreter is actually there rather than whether anything is.
-if ! [[ -d "\$(mise where '$tool' 2>/dev/null)/hermes-agent/lib/python$python" ]]; then
+# Resolve the rolling request on every launch, so a new Hermes release or an
+# environment built with the wrong interpreter both trigger a pinned reinstall.
+if ! [[ -d "\$(MISE_LOCKED=0 mise where '$tool' 2>/dev/null)/hermes-agent/lib/python$python" ]]; then
   echo "Installing Hermes on Python $python (this takes a minute)..." >&2
 
-  # mise's pipx backend shells out to uv, which a stock Omarchy does not have.
-  # It is fetched here rather than when this stub was written, so setting up a
-  # machine that never runs Hermes costs nothing.
-  if omarchy-cmd-missing uv && ! mise where uv >/dev/null 2>&1; then
-    mise use -g --quiet uv@latest || exit 1
-  fi
-
-  mise use -g --quiet --force '$tool' || exit 1
+  # mise's pipx backend shells out to uv. Omarchy declares uv as a system lazy
+  # tool, so install it without adding it to the user's global config, then put
+  # it on PATH only for the Hermes install. Hermes is an Omarchy-managed rolling
+  # tool, so do not apply the user's invocation-wide lock policy to its install.
+  mise install uv || exit 1
+  MISE_LOCKED=0 mise x uv -- mise install --force '$tool' || exit 1
 fi
 
 # The pin belongs to building Hermes, not to everything Hermes then runs.
 # Exported it would reach the agent and every command it shells out to, so a
 # uv in the user's own project would resolve 3.13 there too -- uv only warns
 # when that contradicts the project's requires-python, and builds it anyway.
-exec env -u UV_PYTHON mise x '$tool' -- hermes "\$@"
+exec env -u UV_PYTHON MISE_LOCKED=0 mise x '$tool' -- hermes "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/hermes"
