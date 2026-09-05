@@ -13,6 +13,50 @@ assertEqual(monitor.clampBrightness(42.4), 42, 'monitor rounds brightness')
 assertEqual(monitor.clampBrightness('nope'), 1, 'monitor rejects invalid brightness')
 
 assertEqual(monitor.normalizeScale('1.250'), '1.25', 'monitor normalizes fractional scale')
+
+assertEqual(
+  monitor.displayToggleSpec('DP-1', false),
+  'hl.monitor({ output = "DP-1", disabled = false, mode = "preferred", position = "auto", scale = "auto" })',
+  'monitor enables a display through the Lua config API'
+)
+assertEqual(
+  monitor.displayToggleSpec('DP-1', true),
+  'hl.monitor({ output = "DP-1", disabled = true })',
+  'monitor disables a display through the Lua config API'
+)
+assertEqual(monitor.displayToggleSpec('', false), '', 'monitor ignores a display with no name')
+
+assertDeepEqual(
+  monitor.displayToggleCommand('DP-2', true, 'eDP-1'),
+  ['hyprctl', 'eval', 'hl.monitor({ output = "DP-2", disabled = true })'],
+  'monitor changes an external display with a direct Lua call'
+)
+assertDeepEqual(
+  monitor.displayToggleCommand('eDP-1', true, 'eDP-1'),
+  ['omarchy-hyprland-monitor-internal', 'off'],
+  'monitor disables the built-in panel through the command that owns it'
+)
+assertDeepEqual(
+  monitor.displayToggleCommand('eDP-1', false, 'eDP-1'),
+  ['omarchy-hyprland-monitor-internal', 'on'],
+  'monitor enables the built-in panel through the command that owns it'
+)
+assertDeepEqual(
+  monitor.displayToggleCommand('LVDS-1', true, 'LVDS-1'),
+  ['omarchy-hyprland-monitor-internal', 'off'],
+  'monitor recognises a built-in panel that is not named eDP'
+)
+assertDeepEqual(
+  monitor.displayToggleCommand('DP-2', true, ''),
+  ['hyprctl', 'eval', 'hl.monitor({ output = "DP-2", disabled = true })'],
+  'monitor takes the direct call where there is no built-in panel'
+)
+assertEqual(
+  monitor.displayToggleCommand('', true, 'eDP-1'),
+  null,
+  'monitor names no command for a display with no name'
+)
+assertEqual(monitor.quoteLua('DP"1'), '"DP\\"1"', 'monitor escapes a quote in a display name')
 assertEqual(monitor.normalizeScale('nope'), '', 'monitor rejects invalid scale')
 assertEqual(monitor.cleanScale(3, 1280, 800), '3.2', 'monitor matches clean VM scale')
 assertEqual(monitor.cleanScale(1.25, 1280, 800), '1.25', 'monitor preserves an already clean scale')

@@ -68,6 +68,39 @@ set -e
 [[ ! -e $disable_flag ]] || fail "an unsafe monitor name is not written as Lua"
 pass "internal off refuses an unsafe monitor name"
 
+# `on` and `recover` both clear the toggle flag and are expected to leave the
+# panel lit. Clearing the flag does not do that on its own: the output stays
+# disabled until a spec says disabled = false.
+rm -f "$disable_flag"
+printf '[{"name":"eDP-1"},{"name":"DP-3"}]\n' >"$monitors_json"
+run_monitor omarchy-hyprland-monitor-internal on
+grep -Fx 'hl.monitor({ output = "eDP-1", disabled = false })' "$eval_log" >/dev/null ||
+  fail "internal on re-enables the output it stopped disabling"
+pass "internal on turns the panel back on"
+
+set +e
+LAPTOP_NAME='eDP-1", disabled = false })os.execute("calc")--' \
+  run_monitor omarchy-hyprland-monitor-internal on >/dev/null 2>&1
+set -e
+! grep -F 'os.execute' "$eval_log" >/dev/null ||
+  fail "internal on eval's an unsafe monitor name"
+pass "internal on refuses an unsafe monitor name"
+
+# recover runs from the clamshell watcher, so it re-enables only once the
+# external is gone and the flag is set, and stays silent otherwise.
+make_stub omarchy-hyprland-monitor-external-active 'exit 1'
+printf 'hl.monitor({ output = "eDP-1", disabled = true })\n' >"$disable_flag"
+run_monitor omarchy-hyprland-monitor-internal recover
+grep -Fx 'hl.monitor({ output = "eDP-1", disabled = false })' "$eval_log" >/dev/null ||
+  fail "clamshell recovery re-enables the panel it cleared the flag for"
+pass "recover turns the panel back on"
+
+rm -f "$disable_flag"
+run_monitor omarchy-hyprland-monitor-internal recover
+[[ ! -s $eval_log ]] || fail "recover drives the output with no flag set"
+pass "recover stays a no-op with nothing to recover"
+make_stub omarchy-hyprland-monitor-external-active 'exit 0'
+
 mirror_flag="$flag_dir/internal-monitor-mirror.lua"
 run_monitor omarchy-hyprland-monitor-internal-mirror on
 grep -Fx 'hl.monitor({ output = "DP-3", mode = "preferred", position = "auto", scale = 1, mirror = "eDP-1" })' \
