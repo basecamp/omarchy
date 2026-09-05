@@ -69,11 +69,7 @@ logo_dimensions() {
   printf '%s %s' "$(display_columns <"$LOGO_FILE")" "$(wc -l <"$LOGO_FILE")"
 }
 
-hypr_dispatch() {
-  local lua="$1"
-  shift
-  hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null
-}
+source omarchy-hyprland-window-resize-helpers
 
 remember_fit() {
   local directory tmp
@@ -112,23 +108,6 @@ presize_window() {
   fi
 
   apply_size_rule
-}
-
-# Hyprland animates a resize and the terminal reflows to every step of it, so
-# wait for the grid to hold still before measuring it.
-settle_grid() {
-  local current previous="" held=0
-
-  for _ in {1..20}; do
-    current=$(stty size)
-    if [[ $current == $previous ]]; then
-      (( ++held == 3 )) && break
-    else
-      held=0
-      previous=$current
-    fi
-    sleep 0.05
-  done
 }
 
 fit_window() {

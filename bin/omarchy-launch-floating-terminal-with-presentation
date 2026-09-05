@@ -3,11 +3,149 @@
 # omarchy:summary=Launch a floating terminal with the Omarchy presentation wrapper
 # omarchy:args=<command>
 
-# Export the current theme's gum styling so gum widgets match the active theme
-# even after a theme switch (the inherited environment is captured at login).
-source omarchy-restart-gum
+# This window's float rule gives it a flat 875x600px, which is only wide enough
+# for the logo at the default terminal font size -- at a bumped
+# `omarchy display text-size` the logo wraps mid-glyph into an unreadable mess.
+# The size that hugs the logo depends on the terminal font, so it can only be
+# measured from inside the terminal, which is what the live nudge below does
+# on every launch. A window-rule cache mirroring omarchy-launch-about's own was
+# tried first, but a rule set that way turned out not to affect the size a
+# window opens at, so there is nothing here worth caching.
 
-cmd="$*"
-presentation_script="omarchy-show-logo; $cmd; if (( \$? != 130 )); then omarchy-show-done; fi"
+LOGO_FILE="$OMARCHY_PATH/logo.txt"
+APP_ID="org.omarchy.terminal"
 
-exec setsid uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal --title=Omarchy -e bash -c "$presentation_script"
+source omarchy-hyprland-window-resize-helpers
+
+# A little breathing room around the logo's own width. The row target isn't a
+# flat number either: the old float rule was a fixed 875x600px box, and that
+# box's aspect ratio is worth keeping even though its width no longer is, so
+# the row target is derived below to match it at whatever width the logo needs.
+LOGO_PAD=2
+OLD_WIDTH_PX=875
+OLD_HEIGHT_PX=600
+
+# wc -L counts display columns only in a UTF-8 locale. A session that never set
+# one counts every box-drawing glyph in the logo as nothing, which measures it
+# narrower than it renders.
+display_columns() {
+  LC_ALL=C.UTF-8 wc -L
+}
+
+logo_width() {
+  [[ -f $LOGO_FILE ]] || return 1
+  display_columns <"$LOGO_FILE"
+}
+
+# This terminal isn't necessarily the focused window -- a slow-to-appear popup
+# can lose a focus race to whatever the user clicked on meanwhile, and
+# `hyprctl activewindow` would then silently report someone else's window
+# instead of skipping the fit -- so identify it by walking up our own process
+# ancestry instead, matching whichever ancestor Hyprland knows as this class.
+own_client() {
+  local pid=$$ ppid match
+
+  while [[ -n $pid && $pid != 1 ]]; do
+    match=$(hyprctl clients -j | jq -r --arg id "$APP_ID" --arg p "$pid" \
+      '.[] | select(.class == $id and (.pid | tostring) == $p) | "\(.address) \(.size[0]) \(.size[1])"')
+    [[ -n $match ]] && { printf '%s\n' "$match"; return 0; }
+    ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    [[ $ppid == $pid ]] && break
+    pid=$ppid
+  done
+
+  # The ancestry walk only finds a window whose owning process is a descendant
+  # of this script -- which misses a terminal that runs as a persistent server
+  # (e.g. `foot --server`), since the process that maps the window there is
+  # never our ancestor. $APP_ID is exclusive to this launcher, so when exactly
+  # one client carries it, that one is unambiguously ours even without a pid
+  # match; more than one is ambiguous and left to the caller to skip.
+  match=$(hyprctl clients -j | jq -r --arg id "$APP_ID" \
+    '[.[] | select(.class == $id)] | if length == 1 then .[0] | "\(.address) \(.size[0]) \(.size[1])" else empty end')
+  [[ -n $match ]] && { printf '%s\n' "$match"; return 0; }
+
+  return 1
+}
+
+# The window's current size, read directly by address rather than repeating
+# the ancestry walk -- the address own_client found does not change for the
+# rest of a single fit, only the size behind it does.
+client_geometry() {
+  local address="$1"
+  hyprctl clients -j | jq -r --arg a "$address" '.[] | select(.address == $a) | "\(.size[0]) \(.size[1])"'
+}
+
+fit_window() {
+  local logo_w
+  logo_w=$(logo_width)
+  [[ -n ${logo_w:-} ]] || return 1
+
+  local target_c=$(( logo_w + LOGO_PAD * 2 ))
+
+  local address width height
+  read -r address width height <<<"$(own_client)"
+  [[ -n ${address:-} ]] || return 1
+
+  local rows cols
+  read -r rows cols <<<"$(stty size)"
+  [[ -n ${cols:-} && -n ${width:-} ]] || return 1
+  (( height > 0 )) || return 1
+
+  # Row target: scale the pixel width the column target needs at this
+  # window's current cell size, apply the old fixed rule's own aspect ratio to
+  # get the pixel height that goes with it, then convert that back to a row
+  # count at this window's current row height. Same shape as the old 875x600
+  # box, just as wide as the logo actually needs.
+  local target_w_px target_h_px target_r
+  target_w_px=$(awk -v c="$target_c" -v cols="$cols" -v w="$width" 'BEGIN { printf "%d", c * w / cols + 0.5 }')
+  target_h_px=$(awk -v w="$target_w_px" -v ow="$OLD_WIDTH_PX" -v oh="$OLD_HEIGHT_PX" 'BEGIN { printf "%d", w * oh / ow + 0.5 }')
+  target_r=$(awk -v h="$target_h_px" -v rows="$rows" -v ht="$height" 'BEGIN { printf "%d", h * rows / ht + 0.5 }')
+
+  local nudges=0 shift_w shift_h target_w target_h
+  while :; do
+    read -r rows cols <<<"$(stty size)"
+    read -r width height <<<"$(client_geometry "$address")"
+    (( cols > 0 && rows > 0 && width > 0 && height > 0 )) || return 1
+
+    # A window has to land on the terminal's cell boundaries, so take a cell of
+    # slack over chasing an exact grid, and remember where it came to rest.
+    (( cols >= target_c && cols <= target_c + 1 && rows >= target_r && rows <= target_r + 1 )) && return 0
+
+    # Two nudges is the budget, and each one is measured before the next is spent.
+    (( ++nudges <= 2 )) || return 1
+
+    # Move by the cells the window is off by, rather than scaling it to the grid,
+    # which would multiply up the terminal's padding along with them. Dividing a
+    # window that carries that padding still leaves the cell a touch generous, so
+    # round the move away from the grid that would clip.
+    shift_w=$(( (target_c - cols) * width ))
+    shift_h=$(( (target_r - rows) * height ))
+    target_w=$(( width + (shift_w >= 0 ? (shift_w + cols - 1) / cols : shift_w / cols) ))
+    target_h=$(( height + (shift_h >= 0 ? (shift_h + rows - 1) / rows : shift_h / rows) ))
+
+    hypr_dispatch "hl.dsp.window.resize({ window = \"address:$address\", x = $target_w, y = $target_h })" resizewindowpixel "exact $target_w $target_h,address:$address"
+    hypr_dispatch "hl.dsp.window.center({ window = \"address:$address\" })" centerwindow
+    settle_grid
+  done
+}
+
+if [[ ${1:-} == "--render" ]]; then
+  shift
+  cmd="$*"
+
+  # Hidden only for the resize itself -- the command that follows may be
+  # interactive (a sudo prompt, a gum form) and needs the cursor back.
+  printf '\e[?25l'
+  settle_grid
+  fit_window
+  printf '\e[?25h'
+
+  presentation_script="omarchy-show-logo; $cmd; if (( \$? != 130 )); then omarchy-show-done; fi"
+  exec bash -c "$presentation_script"
+else
+  # Export the current theme's gum styling so gum widgets match the active theme
+  # even after a theme switch (the inherited environment is captured at login).
+  source omarchy-restart-gum
+
+  exec setsid uwsm-app -- xdg-terminal-exec --app-id="$APP_ID" --title=Omarchy -e bash -c "omarchy-launch-floating-terminal-with-presentation --render $(printf '%q' "$*")"
+fi
