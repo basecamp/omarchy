@@ -16,6 +16,8 @@ You can quickly access the date and time, battery status, and current weather us
 
 The location is detected from your IP address, which is usually close enough, but not always. You can pin it down with `omarchy weather location --set Malibu`, or be exact about it by adding coordinates: `omarchy weather location --set Malibu 34.0259,-118.7798`. Run `omarchy weather location` on its own to see where it thinks you are, and `--clear` to go back to auto-detection.
 
+The forecast itself comes from Open-Meteo by default. Open the weather panel and use the **Forecast** dropdown to switch providers (`f` from the keyboard) — National Weather Service if you want the US official forecast that Apple Weather tracks, NOAA National Blend for a calibrated US model, or ECMWF / DWD ICON for independent global models. From the terminal that's `omarchy bar set omarchy.weather provider nws`.
+
 ### Battery
 
 `Super + Ctrl + Alt + B`

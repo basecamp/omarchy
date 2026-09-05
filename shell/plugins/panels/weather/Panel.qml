@@ -70,7 +70,11 @@ Panel {
   // Parsed wttr.in j1 response. Kept on failure so stale data stays visible.
   property var report: null
   property var dailyForecastReport: null
+  property var nwsReport: null
   property string wttrLocation: ""
+
+  readonly property string weatherProvider: Model.normalizedProvider(setting("provider", "open-meteo"))
+  readonly property var weatherProviderInfo: Model.providerInfo(weatherProvider)
 
   // Configured location, read from the weather.json state file (owned by
   // omarchy-weather-location). The query is the wttr.in path segment
@@ -87,8 +91,10 @@ Panel {
     if (savingLocation) savingLocationQueryStarted = true
     forecastRetries = 0
     dailyForecastRetries = 0
+    nwsRetries = 0
     forecastProc.running = false
     dailyForecastProc.running = false
+    nwsProc.running = false
     Qt.callLater(refresh)
   }
 
@@ -113,6 +119,7 @@ Panel {
 
   property int forecastRetries: 0
   property int dailyForecastRetries: 0
+  property int nwsRetries: 0
 
   // Click-to-edit state for the location label.
   property bool editingLocation: false
@@ -128,9 +135,12 @@ Panel {
 
   // wttr's current conditions when available; open-meteo's (bundled with the
   // much faster daily forecast fetch) fill the hero while wttr is in flight.
+  // NWS uses its own observation (or the first forecast period if that misses).
   readonly property bool hasConfiguredCoordinates: !isNaN(parseFloat(String(configuredLocationState.latitude))) && !isNaN(parseFloat(String(configuredLocationState.longitude)))
   readonly property var openMeteoCurrent: Model.openMeteoCurrentCondition(dailyForecastReport)
-  readonly property var current: (hasConfiguredCoordinates && openMeteoCurrent) ? openMeteoCurrent : ((report && report.current_condition && report.current_condition[0]) ? report.current_condition[0] : openMeteoCurrent)
+  readonly property var wttrCurrent: (report && report.current_condition && report.current_condition[0]) ? report.current_condition[0] : null
+  readonly property var nwsCurrent: Model.nwsCurrentCondition(nwsReport)
+  readonly property var current: Model.currentCondition(hasConfiguredCoordinates, openMeteoCurrent, wttrCurrent, nwsCurrent, weatherProvider)
   readonly property var areaInfo: report && report.nearest_area && report.nearest_area[0] ? report.nearest_area[0] : null
   readonly property var forecastDays: buildForecastDays()
   readonly property string reportCountry: areaInfo && areaInfo.country && areaInfo.country[0] ? areaInfo.country[0].value : ""
@@ -145,7 +155,7 @@ Panel {
   readonly property string tempUnit:        "°" + (useImperial ? "F" : "C")
   readonly property string reportFeels:     current ? formatTemp(useImperial ? current.FeelsLikeF : current.FeelsLikeC) : ""
   readonly property string reportWind:      current ? (useImperial ? (current.windspeedMiles + " mph") : (current.windspeedKmph + " km/h")) : ""
-  readonly property string reportHumidity:  current ? (current.humidity + "%") : ""
+  readonly property string reportHumidity:  current && current.humidity !== undefined && current.humidity !== null && String(current.humidity) !== "" ? (current.humidity + "%") : (current ? "—" : "")
 
   function refresh() {
     // Each full refresh cycle gets a fresh retry budget, so an earlier
@@ -153,36 +163,81 @@ Panel {
     // starve retries for the rest of the session.
     forecastRetries = 0
     dailyForecastRetries = 0
-    if (!forecastProc.running) forecastProc.running = true
+    nwsRetries = 0
+    var kind = root.weatherProviderInfo.kind
+    if (kind !== "nws" || !root.hasConfiguredCoordinates) {
+      if (!forecastProc.running) forecastProc.running = true
+    }
     if (root.locationQuery === "" && !locationProc.running) locationProc.running = true
-    // With stored coordinates this fetches open-meteo right away — no need
-    // to wait for the slow wttr response. Without them it's a no-op until
-    // wttr reports the detected area.
-    refreshDailyForecast(null)
+    // With stored coordinates this fetches open-meteo / NWS right away — no
+    // need to wait for the slow wttr response. Without them it's a no-op
+    // until wttr reports the detected area.
+    if (kind === "open-meteo") refreshDailyForecast(null)
+    if (kind === "nws") refreshNwsForecast(null)
+  }
+
+  function resolvedCoordinates(sourceReport) {
+    var lat = parseFloat(String(root.configuredLocationState.latitude))
+    var lon = parseFloat(String(root.configuredLocationState.longitude))
+    if (!isNaN(lat) && !isNaN(lon)) return { latitude: lat, longitude: lon }
+
+    var area = sourceReport && sourceReport.nearest_area && sourceReport.nearest_area[0] ? sourceReport.nearest_area[0] : root.areaInfo
+    if (!area) return null
+    lat = parseFloat(String(area.latitude || ""))
+    lon = parseFloat(String(area.longitude || ""))
+    if (isNaN(lat) || isNaN(lon)) return null
+    return { latitude: lat, longitude: lon }
   }
 
   function refreshDailyForecast(sourceReport) {
     if (dailyForecastProc.running) return
+    if (root.weatherProviderInfo.kind !== "open-meteo") return
 
-    var lat = parseFloat(String(root.configuredLocationState.latitude))
-    var lon = parseFloat(String(root.configuredLocationState.longitude))
-    if (isNaN(lat) || isNaN(lon)) {
-      var area = sourceReport && sourceReport.nearest_area && sourceReport.nearest_area[0] ? sourceReport.nearest_area[0] : root.areaInfo
-      if (!area) return
-      lat = parseFloat(String(area.latitude || ""))
-      lon = parseFloat(String(area.longitude || ""))
-    }
-    if (isNaN(lat) || isNaN(lon)) return
+    var coords = root.resolvedCoordinates(sourceReport)
+    if (!coords) return
 
-    var url = "https://api.open-meteo.com/v1/forecast"
-      + "?latitude=" + encodeURIComponent(String(lat))
-      + "&longitude=" + encodeURIComponent(String(lon))
-      + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
-      + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day"
-      + "&forecast_days=4"
-      + "&timezone=auto"
-    dailyForecastProc.command = ["curl", "-fsS", "--max-time", "5", url]
+    dailyForecastProc.command = ["curl", "-fsS", "--max-time", "5", Model.openMeteoForecastUrl(coords.latitude, coords.longitude, root.weatherProviderInfo.model)]
     dailyForecastProc.running = true
+  }
+
+  function refreshNwsForecast(sourceReport) {
+    if (nwsProc.running) return
+    if (root.weatherProviderInfo.kind !== "nws") return
+
+    var coords = root.resolvedCoordinates(sourceReport)
+    if (!coords) return
+
+    nwsProc.command = Model.nwsFetchCommand(coords.latitude, coords.longitude)
+    nwsProc.running = true
+  }
+
+  // Applied locally first so the dropdown redraws on the click itself; the
+  // shell.json write comes back through the bar as the same value.
+  function persistSettings(values) {
+    var entry = { id: root.moduleName }
+    for (var existing in root.settings) if (existing !== "id") entry[existing] = root.settings[existing]
+    for (var key in values) entry[key] = values[key]
+
+    root.settings = entry
+    if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+  }
+
+  function setProvider(id) {
+    var next = Model.normalizedProvider(id)
+    if (next === root.weatherProvider) return
+    persistSettings({ provider: next })
+  }
+
+  onWeatherProviderChanged: {
+    forecastRetries = 0
+    dailyForecastRetries = 0
+    nwsRetries = 0
+    forecastProc.running = false
+    dailyForecastProc.running = false
+    nwsProc.running = false
+    Qt.callLater(refresh)
   }
 
   // ---- Location editing. Clicking the location label swaps it for a search
@@ -278,7 +333,7 @@ Panel {
   }
 
   function buildForecastDays() {
-    return Model.buildForecastDays(report, dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"))
+    return Model.buildForecastDays(report, dailyForecastReport, Qt.formatDate(new Date(), "yyyy-MM-dd"), nwsReport, weatherProvider)
   }
 
   function openMeteoForecastDays() {
@@ -342,15 +397,19 @@ Panel {
         try {
           var parsed = JSON.parse(raw)
           root.report = parsed
-          if (!root.hasConfiguredCoordinates)
+          if (root.weatherProviderInfo.kind === "wttr")
+            root.label = Model.currentIcon(parsed.current_condition && parsed.current_condition[0], root.label)
+          else if (!root.hasConfiguredCoordinates)
             root.label = Model.provisionalCurrentIcon(parsed.current_condition && parsed.current_condition[0], root.label)
           root.forecastRetries = 0
-          if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "wttr"))
+          if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "wttr", root.weatherProvider))
             root.finishSavingLocation()
-          // Stored coordinates already drove the fast open-meteo fetch from
-          // refresh(); only auto-detect needs the area wttr reported.
-          if (isNaN(parseFloat(String(root.configuredLocationState.latitude))))
+          // Stored coordinates already drove the fast open-meteo / NWS fetch
+          // from refresh(); only auto-detect needs the area wttr reported.
+          if (isNaN(parseFloat(String(root.configuredLocationState.latitude)))) {
             root.refreshDailyForecast(parsed)
+            root.refreshNwsForecast(parsed)
+          }
         } catch (e) {
           // Keep last-good report visible, but try again shortly.
           root.scheduleForecastRetry()
@@ -377,15 +436,29 @@ Panel {
   // bar icon, so a dropped response (e.g. waking before the network is back)
   // must retry rather than wait out the refresh timer with a stale icon.
   function scheduleDailyForecastRetry() {
+    if (root.weatherProviderInfo.kind !== "open-meteo") return
     if (dailyForecastRetries >= 3) return
     dailyForecastRetries++
     dailyForecastRetryTimer.restart()
+  }
+
+  function scheduleNwsRetry() {
+    if (root.weatherProviderInfo.kind !== "nws") return
+    if (nwsRetries >= 3) return
+    nwsRetries++
+    nwsRetryTimer.restart()
   }
 
   Timer {
     id: dailyForecastRetryTimer
     interval: 2500
     onTriggered: root.refreshDailyForecast(null)
+  }
+
+  Timer {
+    id: nwsRetryTimer
+    interval: 2500
+    onTriggered: root.refreshNwsForecast(null)
   }
 
   Process {
@@ -402,13 +475,40 @@ Panel {
           var parsed = JSON.parse(raw)
           var parsedCurrent = Model.openMeteoCurrentCondition(parsed)
           root.dailyForecastReport = parsed
-          root.label = Model.currentIcon(parsedCurrent, root.label)
+          if (root.weatherProviderInfo.kind === "open-meteo")
+            root.label = Model.currentIcon(parsedCurrent, root.label)
           root.dailyForecastRetries = 0
-          if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "open-meteo"))
+          if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "open-meteo", root.weatherProvider))
             root.finishSavingLocation()
         } catch (e) {
           // Keep last-good daily forecast visible, but try again shortly.
           root.scheduleDailyForecastRetry()
+        }
+      }
+    }
+  }
+
+  Process {
+    id: nwsProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var raw = String(text || "").trim()
+        if (!raw) {
+          root.scheduleNwsRetry()
+          return
+        }
+        try {
+          var parsed = JSON.parse(raw)
+          var parsedCurrent = Model.nwsCurrentCondition(parsed)
+          root.nwsReport = parsed
+          if (root.weatherProviderInfo.kind === "nws")
+            root.label = Model.currentIcon(parsedCurrent, root.label)
+          root.nwsRetries = 0
+          if (Model.weatherResponseCompletesSave(root.hasConfiguredCoordinates, "nws", root.weatherProvider))
+            root.finishSavingLocation()
+        } catch (e) {
+          root.scheduleNwsRetry()
         }
       }
     }
@@ -444,8 +544,10 @@ Panel {
         root.savingLocationQueryStarted = true
         root.forecastRetries = 0
         root.dailyForecastRetries = 0
+        root.nwsRetries = 0
         forecastProc.running = false
         dailyForecastProc.running = false
+        nwsProc.running = false
         Qt.callLater(root.refresh)
       }
     }
@@ -498,10 +600,13 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      blocked: root.editingLocation
+      blocked: root.editingLocation || providerDropdown.popupOpen
       onReturnRequested: root.startEditingLocation()
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      onTextKey: function(t) {
+        if (t === "f" || t === "F") providerDropdown.toggle()
+      }
 
       Flickable {
         id: weatherScroll
@@ -869,6 +974,36 @@ Panel {
               }
             }
           }
+        }
+      }
+
+      PanelSeparator {
+        visible: !root.editingLocation
+        foreground: root.bar.foreground
+      }
+
+      Column {
+        visible: !root.editingLocation
+        width: parent.width
+        spacing: Style.space(8)
+
+        PanelSectionHeader {
+          text: "FORECAST"
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          leftPadding: Style.space(16)
+        }
+
+        Dropdown {
+          id: providerDropdown
+          x: Style.space(16)
+          width: parent.width - Style.space(32)
+          showLabel: false
+          fontFamily: root.bar.fontFamily
+          foreground: root.bar.foreground
+          options: Model.providerOptions()
+          value: root.weatherProvider
+          onChanged: function(v) { root.setProvider(v) }
         }
       }
     }

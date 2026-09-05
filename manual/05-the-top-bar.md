@@ -55,6 +55,7 @@ The panels aren't read-outs. They're where you actually do the thing:
 - **Power** shows battery stats, switches power profiles (it remembers a separate choice for battery and AC), and prints some system info.
 - **Display** carries a brightness slider, text size, monitor scaling presets, and — when you have more than one screen — per-monitor controls. See [monitors](33-monitors.md) for the deeper story.
 - **Clock** opens a month grid with ISO week numbers and month stepping.
+- **Weather** shows current conditions and the next few days. Open-Meteo is the default forecast. If those highs look hotter than Apple Weather or weather.gov, open the panel and switch **Forecast** to National Weather Service (US official) or NOAA National Blend — `f` opens that dropdown from the keyboard. ECMWF and DWD ICON are independent global models; wttr.in is the original lookup service. The same setting is `omarchy bar set omarchy.weather provider nws`.
 
 Every panel takes the keyboard as well as the mouse: arrows move, Return activates, Tab steps to the neighbouring panel, and Escape closes.
 

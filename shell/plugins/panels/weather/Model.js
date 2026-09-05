@@ -86,6 +86,12 @@ function celsiusToFahrenheit(value) {
   return isNaN(n) ? "" : (n * 9 / 5) + 32
 }
 
+function fahrenheitToCelsius(value) {
+  if (value === undefined || value === null || value === "") return ""
+  var n = parseFloat(String(value))
+  return isNaN(n) ? "" : (n - 32) * 5 / 9
+}
+
 function formatTemp(value, useImperial) {
   if (value === undefined || value === null || value === "") return ""
   return value + "°" + (useImperial ? "F" : "C")
@@ -120,6 +126,239 @@ function shouldUseImperial(unitOverride, localeName, countryName) {
   if (countryPreference !== null) return countryPreference
 
   return localeUsesImperial(localeName)
+}
+
+// Forecast sources the panel can switch between. Open-Meteo remains the
+// default: no API key, global coverage, one request for current + daily.
+// The other Open-Meteo entries pin a model. NWS is the US official forecast
+// (what Apple Weather tracks). wttr.in is the original lookup service.
+var WEATHER_PROVIDERS = [
+  { id: "open-meteo", label: "Open-Meteo", kind: "open-meteo", model: "" },
+  { id: "nws", label: "National Weather Service", kind: "nws", model: "" },
+  { id: "nbm", label: "NOAA National Blend", kind: "open-meteo", model: "ncep_nbm_conus" },
+  { id: "gfs", label: "NOAA GFS", kind: "open-meteo", model: "gfs_seamless" },
+  { id: "ecmwf", label: "ECMWF", kind: "open-meteo", model: "ecmwf_ifs025" },
+  { id: "icon", label: "DWD ICON", kind: "open-meteo", model: "icon_seamless" },
+  { id: "wttr", label: "wttr.in", kind: "wttr", model: "" }
+]
+
+function providerCatalog() {
+  return WEATHER_PROVIDERS
+}
+
+function providerOptions() {
+  var out = []
+  for (var i = 0; i < WEATHER_PROVIDERS.length; i++) {
+    out.push({ value: WEATHER_PROVIDERS[i].id, label: WEATHER_PROVIDERS[i].label })
+  }
+  return out
+}
+
+function normalizedProvider(value) {
+  var id = String(value || "").replace(/^\s+|\s+$/g, "").toLowerCase()
+  for (var i = 0; i < WEATHER_PROVIDERS.length; i++) {
+    if (WEATHER_PROVIDERS[i].id === id) return id
+  }
+  return "open-meteo"
+}
+
+function providerInfo(value) {
+  var id = normalizedProvider(value)
+  for (var i = 0; i < WEATHER_PROVIDERS.length; i++) {
+    if (WEATHER_PROVIDERS[i].id === id) return WEATHER_PROVIDERS[i]
+  }
+  return WEATHER_PROVIDERS[0]
+}
+
+function shellQuote(value) {
+  return "'" + String(value).replace(/'/g, "'\\''") + "'"
+}
+
+function openMeteoForecastUrl(lat, lon, model) {
+  var url = "https://api.open-meteo.com/v1/forecast"
+    + "?latitude=" + encodeURIComponent(String(lat))
+    + "&longitude=" + encodeURIComponent(String(lon))
+    + "&daily=weather_code,temperature_2m_max,temperature_2m_min"
+    + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code,is_day"
+    + "&forecast_days=4"
+    + "&timezone=auto"
+  var pinned = String(model || "")
+  if (pinned) url += "&models=" + encodeURIComponent(pinned)
+  return url
+}
+
+function nwsUserAgent() {
+  return "Omarchy weather (+https://github.com/basecamp/omarchy)"
+}
+
+function nwsPointsUrl(lat, lon) {
+  return "https://api.weather.gov/points/" + encodeURIComponent(String(lat)) + "," + encodeURIComponent(String(lon))
+}
+
+// One bash process: points -> forecast + latest observation. weather.gov
+// requires an identifying User-Agent; observation is best-effort so a
+// missing station still yields the daily forecast.
+function nwsFetchCommand(lat, lon) {
+  var ua = nwsUserAgent()
+  var script = "set -euo pipefail\n"
+    + "ua=" + shellQuote(ua) + "\n"
+    + "points=$(curl -fsS -A \"$ua\" --max-time 6 " + shellQuote(nwsPointsUrl(lat, lon)) + ")\n"
+    + "forecast_url=$(jq -er .properties.forecast <<<\"$points\")\n"
+    + "forecast=$(curl -fsS -A \"$ua\" --max-time 6 \"$forecast_url\")\n"
+    + "obs='{}'\n"
+    + "stations_url=$(jq -r '.properties.observationStations // empty' <<<\"$points\" || true)\n"
+    + "if [[ -n $stations_url ]]; then\n"
+    + "  station=$(curl -fsS -A \"$ua\" --max-time 6 \"$stations_url\" | jq -r '.observationStations[0] // empty' || true)\n"
+    + "  if [[ -n $station ]]; then\n"
+    + "    obs=$(curl -fsS -A \"$ua\" --max-time 6 \"$station/observations/latest\" || printf '%s' '{}')\n"
+    + "  fi\n"
+    + "fi\n"
+    + "jq -nc --argjson forecast \"$forecast\" --argjson observation \"$obs\" '{forecast:$forecast,observation:$observation}'\n"
+  return ["bash", "-c", script]
+}
+
+function nwsQuantity(value) {
+  if (value === undefined || value === null || value === "") return null
+  if (typeof value === "number") return value
+  if (typeof value === "object" && value.value !== undefined && value.value !== null && value.value !== "") {
+    var n = parseFloat(String(value.value))
+    return isNaN(n) ? null : n
+  }
+  var parsed = parseFloat(String(value))
+  return isNaN(parsed) ? null : parsed
+}
+
+function nwsTemps(value, unit) {
+  var n = parseFloat(String(value))
+  if (isNaN(n)) return { c: "", f: "" }
+  var isF = !unit || String(unit).toUpperCase() === "F"
+  if (isF) return { c: roundedTemp(fahrenheitToCelsius(n)), f: roundedTemp(n) }
+  return { c: roundedTemp(n), f: roundedTemp(celsiusToFahrenheit(n)) }
+}
+
+function nwsWindMph(text) {
+  var matches = String(text || "").match(/(\d+(?:\.\d+)?)/g)
+  if (!matches || !matches.length) return ""
+  return parseFloat(matches[matches.length - 1])
+}
+
+function iconCodeFromNwsText(text) {
+  var t = String(text || "").toLowerCase()
+  if (!t) return 3
+  if (t.indexOf("thunder") !== -1) return 95
+  if (t.indexOf("snow") !== -1 || t.indexOf("sleet") !== -1 || t.indexOf("blizzard") !== -1) return 71
+  if (t.indexOf("freezing") !== -1 || t.indexOf("ice") !== -1) return 71
+  if (t.indexOf("rain") !== -1 || t.indexOf("shower") !== -1 || t.indexOf("drizzle") !== -1) return 63
+  if (t.indexOf("fog") !== -1 || t.indexOf("mist") !== -1 || t.indexOf("haze") !== -1) return 45
+  if (t.indexOf("overcast") !== -1) return 3
+  if (t.indexOf("cloud") !== -1 && t.indexOf("partly") === -1 && t.indexOf("mostly sunny") === -1 && t.indexOf("mostly clear") === -1) return 3
+  if (t.indexOf("partly") !== -1 || t.indexOf("mostly sunny") !== -1 || t.indexOf("mostly clear") !== -1) return 2
+  if (t.indexOf("sunny") !== -1 || t.indexOf("clear") !== -1 || t.indexOf("fair") !== -1) return 0
+  return 3
+}
+
+function nwsPeriodIsDay(period) {
+  if (!period || period.isDaytime === undefined || period.isDaytime === null) return 1
+  return period.isDaytime ? 1 : 0
+}
+
+function nwsObservationCondition(observation, isDay) {
+  var props = observation && observation.properties ? observation.properties : null
+  if (!props) return null
+  var tempC = nwsQuantity(props.temperature)
+  if (tempC === null) return null
+  var feelsC = nwsQuantity(props.heatIndex)
+  if (feelsC === null) feelsC = nwsQuantity(props.windChill)
+  if (feelsC === null) feelsC = tempC
+  var windKmh = nwsQuantity(props.windSpeed)
+  if (windKmh === null) windKmh = 0
+  var humidity = nwsQuantity(props.relativeHumidity)
+  return {
+    temp_C: roundedTemp(tempC),
+    temp_F: roundedTemp(celsiusToFahrenheit(tempC)),
+    FeelsLikeC: roundedTemp(feelsC),
+    FeelsLikeF: roundedTemp(celsiusToFahrenheit(feelsC)),
+    windspeedKmph: roundedTemp(windKmh),
+    windspeedMiles: roundedTemp(windKmh * 0.621371),
+    humidity: humidity === null ? "" : roundedTemp(humidity),
+    openMeteoWeatherCode: iconCodeFromNwsText(props.textDescription),
+    isDay: Number(isDay) === 0 ? 0 : 1
+  }
+}
+
+function nwsPeriodCondition(period) {
+  if (!period || period.temperature === undefined || period.temperature === null) return null
+  var temps = nwsTemps(period.temperature, period.temperatureUnit)
+  var mph = nwsWindMph(period.windSpeed)
+  var kmh = mph === "" ? 0 : mph * 1.60934
+  return {
+    temp_C: temps.c,
+    temp_F: temps.f,
+    FeelsLikeC: temps.c,
+    FeelsLikeF: temps.f,
+    windspeedKmph: roundedTemp(kmh),
+    windspeedMiles: roundedTemp(mph === "" ? 0 : mph),
+    humidity: "",
+    openMeteoWeatherCode: iconCodeFromNwsText(period.shortForecast),
+    isDay: period.isDaytime ? 1 : 0
+  }
+}
+
+function nwsCurrentCondition(nwsReport) {
+  var periods = nwsReport && nwsReport.forecast && nwsReport.forecast.properties
+    ? nwsReport.forecast.properties.periods : []
+  var period = periods && periods[0] ? periods[0] : null
+  var fromObs = nwsObservationCondition(nwsReport && nwsReport.observation, nwsPeriodIsDay(period))
+  if (fromObs) return fromObs
+  return nwsPeriodCondition(period)
+}
+
+function nwsForecastDays(nwsReport, todayString) {
+  var forecast = nwsReport && nwsReport.forecast ? nwsReport.forecast : nwsReport
+  var periods = forecast && forecast.properties && forecast.properties.periods ? forecast.properties.periods : []
+  if (!periods.length) return []
+
+  var byDate = {}
+  var order = []
+  for (var i = 0; i < periods.length; i++) {
+    var period = periods[i]
+    if (!period || !period.startTime) continue
+    var date = String(period.startTime).slice(0, 10)
+    if (!byDate[date]) {
+      byDate[date] = { date: date, day: null, night: null }
+      order.push(date)
+    }
+    if (period.isDaytime) byDate[date].day = period
+    else byDate[date].night = period
+  }
+
+  var result = []
+  for (var j = 0; j < order.length && result.length < 3; j++) {
+    var day = byDate[order[j]]
+    if (!isFutureForecastDate(day.date, todayString)) continue
+    var highPeriod = day.day || day.night
+    var lowPeriod = day.night || day.day
+    if (!highPeriod) continue
+    var high = nwsTemps(highPeriod.temperature, highPeriod.temperatureUnit)
+    var low = nwsTemps(lowPeriod.temperature, lowPeriod.temperatureUnit)
+    result.push({
+      date: day.date,
+      maxtempC: high.c,
+      mintempC: low.c,
+      maxtempF: high.f,
+      mintempF: low.f,
+      openMeteoWeatherCode: iconCodeFromNwsText(highPeriod.shortForecast)
+    })
+  }
+  return result
+}
+
+function currentCondition(hasConfiguredCoordinates, openMeteoCurrent, wttrCurrent, nwsCurrent, providerId) {
+  var kind = providerInfo(providerId).kind
+  if (kind === "nws") return nwsCurrent || null
+  if (kind === "wttr") return wttrCurrent || null
+  if (hasConfiguredCoordinates && openMeteoCurrent) return openMeteoCurrent
+  return wttrCurrent || openMeteoCurrent || null
 }
 
 function dayName(dateString, formatter) {
@@ -188,7 +427,10 @@ function provisionalCurrentIcon(current, resolvedIcon) {
   return resolvedIcon || currentIcon(current, "")
 }
 
-function weatherResponseCompletesSave(hasConfiguredCoordinates, source) {
+function weatherResponseCompletesSave(hasConfiguredCoordinates, source, providerId) {
+  var kind = providerInfo(providerId).kind
+  if (kind === "nws") return source === "nws"
+  if (kind === "wttr") return source === "wttr"
   return hasConfiguredCoordinates ? source === "open-meteo" : source === "wttr"
 }
 
@@ -201,7 +443,10 @@ function wttrNextForecastDays(report, todayString) {
   return result
 }
 
-function buildForecastDays(report, dailyForecastReport, todayString) {
+function buildForecastDays(report, dailyForecastReport, todayString, nwsReport, providerId) {
+  var kind = providerInfo(providerId).kind
+  if (kind === "nws") return nwsForecastDays(nwsReport, todayString)
+  if (kind === "wttr") return wttrNextForecastDays(report, todayString)
   var days = openMeteoForecastDays(dailyForecastReport, todayString)
   return days.length > 0 ? days : wttrNextForecastDays(report, todayString)
 }
@@ -274,11 +519,29 @@ if (typeof module !== "undefined") {
     isFutureForecastDate: isFutureForecastDate,
     roundedTemp: roundedTemp,
     celsiusToFahrenheit: celsiusToFahrenheit,
+    fahrenheitToCelsius: fahrenheitToCelsius,
     formatTemp: formatTemp,
     normalizedUnit: normalizedUnit,
     localeUsesImperial: localeUsesImperial,
     countryUsesImperial: countryUsesImperial,
     shouldUseImperial: shouldUseImperial,
+    providerCatalog: providerCatalog,
+    providerOptions: providerOptions,
+    normalizedProvider: normalizedProvider,
+    providerInfo: providerInfo,
+    openMeteoForecastUrl: openMeteoForecastUrl,
+    nwsUserAgent: nwsUserAgent,
+    nwsPointsUrl: nwsPointsUrl,
+    nwsFetchCommand: nwsFetchCommand,
+    nwsQuantity: nwsQuantity,
+    nwsTemps: nwsTemps,
+    nwsWindMph: nwsWindMph,
+    iconCodeFromNwsText: iconCodeFromNwsText,
+    nwsPeriodIsDay: nwsPeriodIsDay,
+    nwsObservationCondition: nwsObservationCondition,
+    nwsCurrentCondition: nwsCurrentCondition,
+    nwsForecastDays: nwsForecastDays,
+    currentCondition: currentCondition,
     dayName: dayName,
     openMeteoForecastDays: openMeteoForecastDays,
     openMeteoCurrentCondition: openMeteoCurrentCondition,
