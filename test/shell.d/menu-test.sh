@@ -96,6 +96,10 @@ assert(
   /function matchesQuery\(entry, query\) \{\s*\n\s*return MenuModel\.matchesQuery\(entry, query, root\.isVisible\(entry\) && !root\.isDisabled\(entry\)\)/.test(menuQml),
   'menu search skips disabled rows, which belong to the submenu they sit in rather than a list of what you can do'
 )
+assert(
+  /if \(currentRows\.length === 0 && drilldownRows\.length === 0\) \{[\s\S]*?var searchUrl = "https:\/\/www\.google\.com\/search\?q=" \+ encodeURIComponent\(query\)[\s\S]*?rows\.push\(\{\s*\n\s*itemId: "search-web\." \+ query,[\s\S]*?kind: "action",[\s\S]*?action: "omarchy-launch-browser " \+ Util\.shellQuote\(searchUrl\),/.test(menuQml),
+  'menu offers to search the default browser when a query matches nothing'
+)
 
 const entry = merged.items['style.theme']
 assert(menu.matchesQuery(entry, 'theme', true), 'menu matches labels and aliases')
