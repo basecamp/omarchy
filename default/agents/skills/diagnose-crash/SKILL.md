@@ -120,9 +120,6 @@ None of this fixes anything, and a mute offered in place of a fix that was withi
 reach is the wrong answer. For every program rather than one, the switch is
 _Trigger > Toggle > Crash Capture_.
 
-## If it is an Omarchy bug
+## Decide where the fix belongs
 
-Most application crashes are upstream bugs in those applications, not Omarchy's
-doing. In the minority of cases where the cause really does sit within Omarchy's
-sphere of control, read [`reporting.md`](reporting.md) before offering to file
-anything.
+A crash may originate in an application, a dependency or driver, or the way Omarchy packages, configures, launches, or integrates it. Use the evidence to determine ownership without defaulting toward either Omarchy or a third party. When Omarchy may be able to fix the cause, or ownership remains uncertain, read [`reporting.md`](reporting.md) before proposing the next reporting step.
