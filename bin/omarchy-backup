@@ -1,0 +1,410 @@
+#!/bin/bash
+
+# omarchy:summary=Save or restore your personal home directory through any rclone cloud remote
+# omarchy:args=<setup|create|restore|sync|status> [options]
+# omarchy:examples=omarchy backup setup | omarchy backup create | omarchy backup sync push | omarchy backup sync pull --dry-run
+
+set -euo pipefail
+
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+CONFIG_DIR="$CONFIG_HOME/omarchy/backup"
+CONFIG_FILE="$CONFIG_DIR/settings.conf"
+ARCHIVE_NAME="personal-home.tar.gz"
+
+usage() {
+  cat <<'EOF'
+Usage: omarchy backup <setup|create|restore|sync|status> [options]
+
+Backs up your personal home directory using an rclone remote. rclone supports
+Google Drive, Dropbox, OneDrive, S3-compatible storage, WebDAV/Nextcloud, and many
+other providers. Credentials stay in rclone's own configuration and are never added
+to the backup.
+
+  setup [--remote NAME] [--path PATH] [--device NAME]
+                                        Configure the cloud remote, shared folder, and this device's subfolder
+  create                              Upload a fresh personal-home archive
+  restore [--dry-run] [--yes]          Preview or restore the latest archive
+  sync <setup|push|pull|merge|history|rollback|status> [options]
+                                        Version and merge portable personal settings between devices
+  status                              Show the configured remote and latest backup
+EOF
+}
+
+fail() {
+  echo "omarchy-backup: $*" >&2
+  exit 1
+}
+
+require_rclone() {
+  if omarchy-cmd-missing rclone; then
+    echo "Installing rclone..."
+    omarchy-pkg-add rclone
+  fi
+}
+
+read_config() {
+  [[ -f $CONFIG_FILE ]] || fail "No cloud backup is configured. Run: omarchy backup setup"
+
+  REMOTE=$(sed -n 's/^remote=//p' "$CONFIG_FILE" | head -1)
+  REMOTE_PATH=$(sed -n 's/^path=//p' "$CONFIG_FILE" | head -1)
+  DEVICE=$(sed -n 's/^device=//p' "$CONFIG_FILE" | head -1)
+  PROFILE_REPO=$(sed -n 's/^profile_repo=//p' "$CONFIG_FILE" | head -1)
+  [[ $REMOTE =~ ^[[:alnum:]_.-]+$ ]] || fail "The configured rclone remote is invalid. Run: omarchy backup setup"
+  [[ -n $REMOTE_PATH && $REMOTE_PATH != /* && $REMOTE_PATH != *".."* ]] || fail "The configured backup path is invalid. Run: omarchy backup setup"
+  [[ $DEVICE =~ ^[[:alnum:]_.-]+$ ]] || fail "The configured device name is invalid. Run: omarchy backup setup"
+}
+
+remote_destination() {
+  printf '%s:%s/%s' "$REMOTE" "$REMOTE_PATH" "$DEVICE"
+}
+
+persona_destination() {
+  printf '%s:%s/me' "$REMOTE" "$REMOTE_PATH"
+}
+
+save_config() {
+  mkdir -p "$CONFIG_DIR"
+  umask 077
+  printf 'remote=%s\npath=%s\ndevice=%s\n' "$REMOTE" "$REMOTE_PATH" "$DEVICE" >"$CONFIG_FILE"
+  [[ -n ${PROFILE_REPO:-} ]] && printf 'profile_repo=%s\n' "$PROFILE_REPO" >>"$CONFIG_FILE"
+  chmod 600 "$CONFIG_FILE"
+}
+
+valid_remote() {
+  rclone listremotes | sed 's/:$//' | grep -Fxq "$1"
+}
+
+setup() {
+  local supplied_remote="" supplied_path="" supplied_device="" remotes=()
+
+  while (( $# > 0 )); do
+    case "$1" in
+    --remote)
+      supplied_remote="${2:-}"
+      shift 2
+      ;;
+    --path)
+      supplied_path="${2:-}"
+      shift 2
+      ;;
+    --device)
+      supplied_device="${2:-}"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      return
+      ;;
+    *) fail "Unknown setup option: $1" ;;
+    esac
+  done
+
+  require_rclone
+  if [[ -z $supplied_remote ]]; then
+    mapfile -t remotes < <(rclone listremotes | sed 's/:$//')
+    if (( ${#remotes[@]} == 0 )); then
+      echo "No rclone cloud remotes are configured yet. Set one up now."
+      rclone config
+      mapfile -t remotes < <(rclone listremotes | sed 's/:$//')
+    fi
+    (( ${#remotes[@]} > 0 )) || fail "No rclone remote was configured."
+    supplied_remote=$(gum choose --header "Cloud remote" "${remotes[@]}") || exit 1
+  fi
+  valid_remote "$supplied_remote" || fail "rclone remote '$supplied_remote' does not exist. Run 'rclone config' to create it."
+
+  if [[ -z $supplied_path ]]; then
+    supplied_path=$(gum input --prompt "Backup folder> " --value "omarchy-backups") || exit 1
+  fi
+  [[ -n $supplied_path && $supplied_path != /* && $supplied_path != *".."* ]] || fail "Backup folder must be a relative path without '..'."
+
+  if [[ -z $supplied_device ]]; then
+    supplied_device=$(hostname --short)
+  fi
+  [[ $supplied_device =~ ^[[:alnum:]_.-]+$ ]] || fail "Device name may contain only letters, numbers, dots, underscores, and hyphens."
+
+  REMOTE="$supplied_remote"
+  REMOTE_PATH="${supplied_path%/}"
+  DEVICE="$supplied_device"
+  save_config
+  rclone mkdir "$(remote_destination)"
+  echo "Cloud backups for $DEVICE will be stored in $(remote_destination)"
+}
+
+make_archive() {
+  local stage="$1"
+
+  # This is deliberately a home backup, not only an Omarchy config backup:
+  # projects, documents, dotfiles, and application data are all included.
+  # Exclude only regenerable data and credentials that need to be configured on
+  # the restoring machine before it can reach the cloud remote.
+  tar -C "$HOME" -czf "$stage/$ARCHIVE_NAME" \
+    --exclude='./.cache' \
+    --exclude='./.local/share/Trash' \
+    --exclude='./.config/rclone' \
+    --exclude='./.config/omarchy/backup' \
+    --exclude='./.local/state/omarchy/backup' \
+    .
+}
+
+create() {
+  local stage destination timestamp
+  read_config
+  require_rclone
+  stage=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-backup.XXXXXX")
+  trap 'rm -rf "$stage"' RETURN
+  make_archive "$stage"
+  destination=$(remote_destination)
+  timestamp=$(date -u +%Y%m%dT%H%M%SZ)
+  rclone copyto "$stage/$ARCHIVE_NAME" "$destination/$timestamp-$ARCHIVE_NAME"
+  rclone copyto "$stage/$ARCHIVE_NAME" "$destination/latest-$ARCHIVE_NAME"
+  echo "Saved your home directory to $destination/$timestamp-$ARCHIVE_NAME"
+}
+
+safe_archive() {
+  local archive="$1" entry
+  while IFS= read -r entry; do
+    [[ $entry != /* && $entry != *"../"* && $entry != *"/.." ]] || return 1
+  done < <(tar -tzf "$archive")
+}
+
+persona_paths() {
+  local path
+  local -a defaults=(
+    .bashrc
+    .config/hypr/bindings.lua
+    .config/hypr/input.lua
+    .config/hypr/looknfeel.lua
+    .config/hypr/hyprland.lua
+    .config/omarchy
+    .config/alacritty
+    .config/foot
+    .config/ghostty
+    .config/kitty
+    .config/btop
+    .config/fastfetch
+    .config/lazygit
+    .config/tmux
+    .config/starship.toml
+  )
+
+  printf '%s\n' "${defaults[@]}"
+  [[ -f $CONFIG_DIR/sync-paths ]] || return
+  while IFS= read -r path; do
+    [[ -z $path || $path == \#* ]] && continue
+    [[ $path != /* && $path != *".."* ]] || fail "Invalid path in $CONFIG_DIR/sync-paths: $path"
+    printf '%s\n' "$path"
+  done <"$CONFIG_DIR/sync-paths"
+}
+
+make_persona_archive() {
+  local stage="$1" path
+  local -a paths=()
+
+  while IFS= read -r path; do
+    [[ -e $HOME/$path ]] && paths+=("$path")
+  done < <(persona_paths | sort -u)
+  (( ${#paths[@]} > 0 )) || fail "No portable settings were found to sync."
+
+  # Monitor geometry and autostart programs belong to a device, not a person.
+  # Rclone credentials and this feature's own destination configuration never
+  # leave the machine.
+  tar -C "$HOME" -czf "$stage/personal-settings.tar.gz" \
+    --exclude='.config/hypr/monitors.lua' \
+    --exclude='.config/hypr/autostart.lua' \
+    --exclude='.config/rclone' \
+    --exclude='.config/omarchy/backup' \
+    "${paths[@]}"
+}
+
+sync() {
+  local action="${1:-}" dry_run="false" assume_yes="false" repo_url="" stage destination archive restore_dir repo branch revision
+  local -a profiles=()
+  [[ -n $action ]] || fail "Sync needs setup, push, pull, merge, history, rollback, or status."
+  shift || true
+  while (( $# > 0 )); do
+    case "$1" in
+    --repo)
+      repo_url="${2:-}"
+      shift
+      ;;
+    --dry-run) dry_run="true" ;;
+    --yes) assume_yes="true" ;;
+    *) profiles+=("$1") ;;
+    esac
+    shift
+  done
+
+  read_config
+  case "$action" in
+  setup)
+    [[ -n $repo_url ]] || fail "Sync setup needs --repo <ssh-git-url>."
+    PROFILE_REPO="$repo_url"
+    save_config
+    if ! git ls-remote "$PROFILE_REPO" HEAD >/dev/null 2>&1; then
+      fail "Cannot reach $PROFILE_REPO. Create a bare Git repository there first."
+    fi
+    if ! git ls-remote --exit-code --heads "$PROFILE_REPO" main >/dev/null 2>&1; then
+      stage=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-profile.XXXXXX")
+      trap 'rm -rf "$stage"' RETURN
+      git -C "$stage" init --quiet
+      git -C "$stage" checkout --quiet -b main
+      git -C "$stage" -c user.name="Omarchy profile" -c user.email="profile@omarchy" commit --quiet --allow-empty -m "Initialize shared profile"
+      git -C "$stage" remote add origin "$PROFILE_REPO"
+      git -C "$stage" push --quiet origin main
+    fi
+    echo "Shared profile history will use $PROFILE_REPO"
+    ;;
+  status)
+    [[ -n $PROFILE_REPO ]] || fail "No shared profile repository is configured. Run: omarchy backup sync setup --repo <ssh-git-url>"
+    echo "Shared personal settings: $PROFILE_REPO"
+    git ls-remote --heads "$PROFILE_REPO"
+    ;;
+  push)
+    [[ -n $PROFILE_REPO ]] || fail "No shared profile repository is configured. Run: omarchy backup sync setup --repo <ssh-git-url>"
+    stage=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-profile.XXXXXX")
+    trap 'rm -rf "$stage"' RETURN
+    repo="$stage/repo"
+    git clone --quiet "$PROFILE_REPO" "$repo"
+    branch="profiles/$DEVICE"
+    if git -C "$repo" show-ref --verify --quiet "refs/remotes/origin/$branch"; then
+      git -C "$repo" checkout --quiet -B "$branch" "origin/$branch"
+    else
+      git -C "$repo" checkout --quiet -B "$branch" origin/main
+    fi
+    make_persona_archive "$stage"
+    tar -xzf "$stage/personal-settings.tar.gz" -C "$repo"
+    git -C "$repo" add -A
+    if ! git -C "$repo" diff --cached --quiet; then
+      git -C "$repo" -c user.name="Omarchy profile ($DEVICE)" -c user.email="profile@$DEVICE" commit --quiet -m "Update profile from $DEVICE"
+      git -C "$repo" push --quiet origin "HEAD:$branch"
+      echo "Published a versioned profile on $branch"
+    else
+      echo "No portable settings changed on $DEVICE."
+    fi
+    ;;
+  pull)
+    [[ -n $PROFILE_REPO ]] || fail "No shared profile repository is configured. Run: omarchy backup sync setup --repo <ssh-git-url>"
+    stage=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-profile.XXXXXX")
+    trap 'rm -rf "$stage"' RETURN
+    repo="$stage/repo"
+    git clone --quiet --branch main "$PROFILE_REPO" "$repo"
+    restore_dir="$stage/settings"
+    mkdir -p "$restore_dir"
+    tar -C "$repo" --exclude=.git -cf - . | tar -C "$restore_dir" --no-same-owner --no-same-permissions -xf -
+    echo "Shared settings to apply:"
+    find "$restore_dir" -mindepth 1 -maxdepth 2 -printf '  %P\n' | sort
+    [[ $dry_run == "true" ]] && return
+    if [[ $assume_yes != "true" ]] && ! gum confirm "Apply the shared personal settings to this device? Matching files will be replaced."; then
+      echo "Sync cancelled."
+      return
+    fi
+    cp -a "$restore_dir/." "$HOME/"
+    echo "Applied shared personal settings. Log out and back in to apply desktop changes."
+    ;;
+  history)
+    [[ -n $PROFILE_REPO ]] || fail "No shared profile repository is configured."
+    stage=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-profile.XXXXXX")
+    trap 'rm -rf "$stage"' RETURN
+    git clone --quiet "$PROFILE_REPO" "$stage/repo"
+    git -C "$stage/repo" log --all --decorate --oneline
+    ;;
+  merge)
+    [[ -n $PROFILE_REPO ]] || fail "No shared profile repository is configured."
+    stage=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-profile.XXXXXX")
+    trap 'rm -rf "$stage"' RETURN
+    repo="$stage/repo"
+    git clone --quiet --branch main "$PROFILE_REPO" "$repo"
+    if (( ${#profiles[@]} == 0 )); then
+      mapfile -t profiles < <(git -C "$repo" for-each-ref --format='%(refname:short)' refs/remotes/origin/profiles/)
+    else
+      for branch in "${!profiles[@]}"; do
+        [[ ${profiles[$branch]} == origin/profiles/* ]] && continue
+        [[ ${profiles[$branch]} == profiles/* ]] || profiles[$branch]="profiles/${profiles[$branch]}"
+        profiles[$branch]="origin/${profiles[$branch]}"
+      done
+    fi
+    (( ${#profiles[@]} > 0 )) || fail "There are no device profiles to merge."
+    git -C "$repo" -c user.name="Omarchy profile merge" -c user.email="profile-merge@omarchy" merge --no-ff --no-edit "${profiles[@]}"
+    git -C "$repo" push --quiet origin main
+    echo "Updated shared latest by merging: ${profiles[*]}"
+    ;;
+  rollback)
+    [[ -n $PROFILE_REPO ]] || fail "No shared profile repository is configured."
+    revision="${profiles[0]:-}"
+    [[ -n $revision ]] || fail "Rollback needs a commit from: omarchy backup sync history"
+    stage=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-profile.XXXXXX")
+    trap 'rm -rf "$stage"' RETURN
+    repo="$stage/repo"
+    git clone --quiet --branch main "$PROFILE_REPO" "$repo"
+    git -C "$repo" rev-parse --verify "$revision^{commit}" >/dev/null || fail "Unknown profile revision: $revision"
+    if [[ $assume_yes != "true" ]] && ! gum confirm "Make $revision the new shared latest profile?"; then
+      echo "Rollback cancelled."
+      return
+    fi
+    git -C "$repo" read-tree --reset -u "$revision"
+    git -C "$repo" -c user.name="Omarchy profile merge" -c user.email="profile-merge@omarchy" commit --quiet -m "Restore shared profile to $revision"
+    git -C "$repo" push --quiet origin main
+    echo "Restored shared latest from $revision."
+    ;;
+  *) fail "Unknown sync action '$action'. Use setup, push, pull, merge, history, rollback, or status." ;;
+  esac
+}
+
+restore() {
+  local dry_run="false" assume_yes="false" stage destination backup restore_dir
+  while (( $# > 0 )); do
+    case "$1" in
+    --dry-run) dry_run="true" ;;
+    --yes) assume_yes="true" ;;
+    -h | --help)
+      usage
+      return
+      ;;
+    *) fail "Unknown restore option: $1" ;;
+    esac
+    shift
+  done
+
+  read_config
+  require_rclone
+  stage=$(mktemp -d "${TMPDIR:-/tmp}/omarchy-restore.XXXXXX")
+  trap 'rm -rf "$stage"' RETURN
+  destination=$(remote_destination)
+  backup="$stage/$ARCHIVE_NAME"
+  rclone copyto "$destination/latest-$ARCHIVE_NAME" "$backup"
+  safe_archive "$backup" || fail "The cloud archive has an unsafe layout; refusing to restore it."
+  restore_dir="$stage/home"
+  mkdir -p "$restore_dir"
+  tar --no-same-owner --no-same-permissions -xzf "$backup" -C "$restore_dir"
+
+  echo "Home-directory items to restore:"
+  find "$restore_dir" -mindepth 1 -maxdepth 1 -printf '  %f\n' | sort
+  [[ $dry_run == "true" ]] && return
+
+  if [[ $assume_yes != "true" ]] && ! gum confirm "Restore this home backup? Matching files in your home directory will be replaced."; then
+    echo "Restore cancelled."
+    return
+  fi
+
+  cp -a "$restore_dir/." "$HOME/"
+  echo "Restored your home backup. Files that did not exist in the backup were left in place."
+  echo "Log out and back in to apply restored desktop settings."
+}
+
+status() {
+  read_config
+  require_rclone
+  echo "Cloud backup: $(remote_destination)"
+  rclone lsf "$(remote_destination)" --include "latest-$ARCHIVE_NAME" || true
+}
+
+command="${1:-}"
+case "$command" in
+setup) shift; setup "$@" ;;
+create) shift; create "$@" ;;
+restore) shift; restore "$@" ;;
+sync) shift; sync "$@" ;;
+status) shift; status "$@" ;;
+-h | --help | "") usage ;;
+*) fail "Unknown command '$command'. Try: omarchy backup --help" ;;
+esac
