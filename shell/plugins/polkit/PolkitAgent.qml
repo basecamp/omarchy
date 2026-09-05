@@ -125,6 +125,50 @@ Item {
     if (flow) flow.cancelAuthenticationRequest()
   }
 
+  // Quickshell Exclusive surfaces don't seed numlock from the seat (#7162).
+  // Hyprland reports numLock:true yet the surface sees numlock off until a
+  // modifier toggle, so numpad keys arrive as navigation (Home/End/Left…)
+  // with KeypadModifier instead of digits. Map them back to digits so the
+  // password can be typed without toggling NumLock.
+  function numpadDigitForEvent(event) {
+    if (!(event.modifiers & Qt.KeypadModifier)) return null
+    switch (event.key) {
+      case Qt.Key_Home: return "7"
+      case Qt.Key_Up: return "8"
+      case Qt.Key_PageUp: return "9"
+      case Qt.Key_Left: return "4"
+      case Qt.Key_Clear: return "5"
+      case Qt.Key_Right: return "6"
+      case Qt.Key_End: return "1"
+      case Qt.Key_Down: return "2"
+      case Qt.Key_PageDown: return "3"
+      case Qt.Key_Insert: return "0"
+      case Qt.Key_Delete: return "."
+      // Some xkb maps send KP_5 as Key_5 with KeypadModifier when numlock off
+      case Qt.Key_5: return "5"
+      default: break
+    }
+    // When numlock is on, some compositors still send KP_0..KP_9
+    if (event.key >= Qt.Key_KP_0 && event.key <= Qt.Key_KP_9) {
+      return String.fromCharCode(48 + (event.key - Qt.Key_KP_0))
+    }
+    if (event.key === Qt.Key_KP_Multiply) return "*"
+    if (event.key === Qt.Key_KP_Divide) return "/"
+    if (event.key === Qt.Key_KP_Add) return "+"
+    if (event.key === Qt.Key_KP_Subtract) return "-"
+    if (event.key === Qt.Key_KP_Decimal) return "."
+    if (event.key === Qt.Key_KP_Enter) return null
+    return null
+  }
+
+  function handleNumpadEvent(event, field) {
+    var digit = numpadDigitForEvent(event)
+    if (digit === null) return false
+    field.insert(field.cursorPosition, digit)
+    event.accepted = true
+    return true
+  }
+
   function triggerFailureFeedback() {
     submitted = false
     errorFlash = true
@@ -324,6 +368,7 @@ Item {
             enabled: root.dialogVisible
             onAccepted: root.submitResponse()
             Keys.onPressed: function(event) {
+              if (root.handleNumpadEvent(event, passwordInput)) return
               if (event.key === Qt.Key_Escape) {
                 root.cancelRequest()
                 event.accepted = true
