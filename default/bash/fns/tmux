@@ -97,6 +97,10 @@ tdlm() {
 # Usage: tsl <pane_count> <command>
 tsl() {
   [[ -z $1 || -z $2 ]] && { echo "Usage: tsl <pane_count> <command>"; return 1; }
+  if [[ ! $1 =~ ^[1-9][0-9]*$ ]]; then
+    echo "Usage: tsl <pane_count> <command>"
+    return 1
+  fi
   [[ -z $TMUX ]] && { echo "You must start tmux to use tsl."; return 1; }
 
   local count="$1"

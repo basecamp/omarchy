@@ -5,6 +5,28 @@ set -euo pipefail
 source "$(dirname "$0")/base-test.sh"
 source "$ROOT/default/bash/fns/herdr"
 
+assert_invalid_pane_count() {
+  local function_name="$1"
+  local count="$2"
+  local expected="Usage: $function_name <pane_count> <command>"
+  local output status=0
+
+  if [[ $function_name == tsl ]]; then
+    output=$(TMUX= bash -c 'source "$1"; tsl "$2" echo' _ "$ROOT/default/bash/fns/tmux" "$count" 2>&1) || status=$?
+  else
+    output=$(HERDR_PANE_ID= bash -c 'source "$1"; hsl "$2" echo' _ "$ROOT/default/bash/fns/herdr" "$count" 2>&1) || status=$?
+  fi
+
+  (( status != 0 )) || fail "$function_name rejects an invalid pane count"
+  [[ $output == *"$expected"* ]] || fail "$function_name prints usage for an invalid pane count" "$output"
+  pass "$function_name rejects an invalid pane count"
+}
+
+assert_invalid_pane_count tsl not-a-number
+assert_invalid_pane_count tsl 0
+assert_invalid_pane_count hsl not-a-number
+assert_invalid_pane_count hsl 0
+
 test_dir=$(mktemp -d)
 trap 'rm -rf -- "$test_dir"' EXIT
 

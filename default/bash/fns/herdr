@@ -109,6 +109,10 @@ hdlm() {
 # Usage: hsl <pane_count> <command>
 hsl() {
   [[ -z $1 || -z $2 ]] && { echo "Usage: hsl <pane_count> <command>"; return 1; }
+  if [[ ! $1 =~ ^[1-9][0-9]*$ ]]; then
+    echo "Usage: hsl <pane_count> <command>"
+    return 1
+  fi
   [[ -z $HERDR_PANE_ID ]] && { echo "You must start herdr to use hsl."; return 1; }
 
   local count="$1"
