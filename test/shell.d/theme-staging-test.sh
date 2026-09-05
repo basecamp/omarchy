@@ -19,9 +19,22 @@ mkdir -p "$state" "$themes"
 
 marker="omarchy-theme-staging-marker"
 
+# A refusal is only useful if it reaches the person who switched the theme, so
+# record what would have been sent rather than trusting the stderr lines.
+notifications="$test_tmp/notifications"
+stub_bin="$test_tmp/stub-bin"
+mkdir -p "$stub_bin"
+cat >"$stub_bin/omarchy-notification-send" <<'STUB'
+#!/bin/bash
+printf '%s\n' "$*" >>"$OMARCHY_TEST_NOTIFICATIONS"
+STUB
+chmod +x "$stub_bin/omarchy-notification-send"
+
 set_theme() {
-  HOME="$home" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" \
+  : >"$notifications"
+  HOME="$home" OMARCHY_PATH="$ROOT" PATH="$stub_bin:$ROOT/bin:$PATH" \
     OMARCHY_THEME_HEADLESS=1 OMARCHY_THEME_SKIP_BACKGROUND=1 \
+    OMARCHY_TEST_NOTIFICATIONS="$notifications" \
     XDG_RUNTIME_DIR="$test_tmp" \
     bash "$ROOT/bin/omarchy-theme-set" "$1" 2>"$test_tmp/stderr" || return $?
 }
@@ -96,6 +109,12 @@ assert_staged backgrounds/1-real.png "an image in backgrounds/ is staged"
 
 assert_not_staged unlock.png "a symlink is not followed out of the theme"
 assert_not_staged vscode.json "vscode.json names an extension to install and is not staged"
+
+grep -q 'hyprland.lua' "$notifications" ||
+  fail "the refusal is announced, not left on stderr" "$(cat "$notifications")"
+grep -q 'not applied' "$notifications" ||
+  fail "the announcement says something was not applied" "$(cat "$notifications")"
+pass "an installed theme's refused files are announced to the user"
 
 assert_staged icons.theme "the theme's icon set name is staged"
 grep -q 'Yaru-red' "$(staged icons.theme)" || fail "the staged icons.theme is the theme's"
@@ -186,6 +205,12 @@ assert_staged vscode.json "a theme the user wrote keeps every file it ships"
 [[ ! -s $test_tmp/stderr ]] || fail "a theme the user wrote reports nothing ignored" "$(cat "$test_tmp/stderr")"
 
 pass "a theme the user wrote is not held to the installed-theme list"
+
+# Nothing was refused, so nothing should be announced: the notification has to
+# report a real loss, not fire on every theme switch.
+[[ ! -s $notifications ]] ||
+  fail "a theme with nothing refused announces nothing" "$(cat "$notifications")"
+pass "a theme with nothing refused announces nothing"
 
 # A working copy symlinked into the themes folder is the user's own too.
 ln -s "$mine" "$themes/mine-link"

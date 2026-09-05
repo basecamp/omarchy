@@ -237,6 +237,13 @@ report_ignored_theme_files() {
 
   echo "Ignored in $USER_THEMES_PATH/$THEME_NAME: ${IGNORED_THEME_FILES[*]}" >&2
   echo "A theme installed from a git repo cannot supply Lua, a terminal config, or vscode.json." >&2
+
+  # Switching themes from the menu discards stderr, so a theme that lost its
+  # rounding, shadows or blur just looked broken with nothing said. Report the
+  # refusal where the switch was made.
+  omarchy-notification-send -t 10000 \
+    "Part of $THEME_NAME was not applied" \
+    "An installed theme cannot supply: ${IGNORED_THEME_FILES[*]}" || true
 }
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
