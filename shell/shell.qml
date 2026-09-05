@@ -69,11 +69,14 @@ ShellRoot {
     pluginRegistry.pluginsChanged()
   }
 
+  property var _lastGoodUserConfig: null
+
   function applyShellConfig() {
     // Decide which source is canonical: a valid user shell.json overrides
     // defaults entirely; otherwise fall back to defaults. We do not deep-merge.
     var defaults = Util.isPlainObject(defaultsConfig) ? defaultsConfig : builtinShellConfig
     var user = null
+    var hadParseError = false
     var userText = userConfigFile.text() || ""
     if (userText.trim()) {
       try {
@@ -81,10 +84,15 @@ ShellRoot {
         if (Util.isPlainObject(parsed) && parsed.version === 1) user = parsed
         else if (Util.isPlainObject(parsed)) console.warn("shell.json missing version: 1, using defaults")
       } catch (e) {
-        console.warn("shell.json parse failed, using defaults:", e)
+        hadParseError = true
+        console.warn("shell.json parse failed, using " + (_lastGoodUserConfig ? "last good config" : "defaults") + ":", e)
       }
     }
-    shellConfig = user || defaults
+    // Only an unreadable file keeps the remembered config alive. A file that
+    // reads is the user's intent whatever it holds, so emptying or deleting one
+    // forgets what was there instead of restoring it on the next typo.
+    if (!hadParseError) _lastGoodUserConfig = user
+    shellConfig = user || _lastGoodUserConfig || defaults
   }
 
   function loadDefaults(raw) {
