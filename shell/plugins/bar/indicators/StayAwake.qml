@@ -34,80 +34,87 @@ BarIndicator {
     anchorItem: root
     owner: root
     bar: root.bar
-    focusTarget: options
+    focusTarget: keys
     contentWidth: fittedContentWidth(Style.space(232))
     contentHeight: fittedContentHeight(options.implicitHeight)
-    onOpenChanged: if (open) Qt.callLater(function() { options.focusChoice(0) })
+    onOpenChanged: if (open) keys.currentIndex = 0
 
-    Column {
-      id: options
-      width: parent.width
-      spacing: Style.spacing.labelGap
-      property int focusedIndex: 0
+    PanelKeyCatcher {
+      id: keys
+      anchors.fill: parent
+      property int currentIndex: 0
 
-      function focusChoice(index) {
-        focusedIndex = (index + choices.count + 1) % (choices.count + 1)
-        var button = focusedIndex === choices.count ? turnOff : choices.itemAt(focusedIndex)
-        if (button) button.forceActiveFocus()
+      function moveChoice(direction) {
+        currentIndex = (currentIndex + direction + choices.count + 1) % (choices.count + 1)
       }
 
-      Keys.onDownPressed: focusChoice(focusedIndex + 1)
-      Keys.onUpPressed: focusChoice(focusedIndex - 1)
-      Keys.onEscapePressed: root.close()
-
-      Text {
-        text: "Stay awake"
-        textFormat: Text.PlainText
-        color: Color.popups.text
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-        font.bold: true
-        leftPadding: Style.spacing.controlPaddingX
-        height: implicitHeight + Style.space(8)
+      onMoveRequested: function(dx, dy) { if (dy) moveChoice(dy) }
+      onTabRequested: function(direction) { moveChoice(direction) }
+      onActivateRequested: {
+        var button = currentIndex === choices.count ? turnOff : choices.itemAt(currentIndex)
+        if (button) button.clicked()
       }
+      onCloseRequested: root.close()
 
-      Repeater {
-        id: choices
-        model: [
-          { label: "30 minutes", seconds: 1800 },
-          { label: "1 hour", seconds: 3600 },
-          { label: "3 hours", seconds: 10800 },
-          { label: "8 hours", seconds: 28800 },
-          { label: "Indefinitely", seconds: 0 }
-        ]
+      Column {
+        id: options
+        width: parent.width
+        spacing: Style.spacing.labelGap
 
-        Button {
-          required property var modelData
-          required property int index
-          width: options.width
-          text: modelData.label
-          foreground: Color.popups.text
-          leftAlign: true
-          focusable: true
-          onActiveFocusChanged: if (activeFocus) options.focusedIndex = index
-          onClicked: {
-            root.close()
-            if (root.idleService) {
-              if (modelData.seconds > 0) root.idleService.stayAwakeFor(modelData.seconds)
-              else root.idleService.setIdleEnabled(false)
+        Text {
+          text: "Stay awake"
+          textFormat: Text.PlainText
+          color: Color.popups.text
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          font.bold: true
+          leftPadding: Style.spacing.controlPaddingX
+          height: implicitHeight + Style.space(8)
+        }
+
+        Repeater {
+          id: choices
+          model: [
+            { label: "30 minutes", seconds: 1800 },
+            { label: "1 hour", seconds: 3600 },
+            { label: "3 hours", seconds: 10800 },
+            { label: "8 hours", seconds: 28800 },
+            { label: "Indefinitely", seconds: 0 }
+          ]
+
+          Button {
+            required property var modelData
+            required property int index
+            width: options.width
+            text: modelData.label
+            foreground: Color.popups.text
+            leftAlign: true
+            hasCursor: keys.currentIndex === index
+            onHovered: function(hovered) { if (hovered) keys.currentIndex = index }
+            onClicked: {
+              root.close()
+              if (root.idleService) {
+                if (modelData.seconds > 0) root.idleService.stayAwakeFor(modelData.seconds)
+                else root.idleService.setIdleEnabled(false)
+              }
             }
           }
         }
-      }
 
-      PanelSeparator { foreground: Color.popups.text }
+        PanelSeparator { foreground: Color.popups.text }
 
-      Button {
-        id: turnOff
-        width: options.width
-        text: "Turn off"
-        foreground: Color.popups.text
-        leftAlign: true
-        focusable: true
-        onActiveFocusChanged: if (activeFocus) options.focusedIndex = choices.count
-        onClicked: {
-          root.close()
-          if (root.idleService) root.idleService.setIdleEnabled(true)
+        Button {
+          id: turnOff
+          width: options.width
+          text: "Turn off"
+          foreground: Color.popups.text
+          leftAlign: true
+          hasCursor: keys.currentIndex === choices.count
+          onHovered: function(hovered) { if (hovered) keys.currentIndex = choices.count }
+          onClicked: {
+            root.close()
+            if (root.idleService) root.idleService.setIdleEnabled(true)
+          }
         }
       }
     }
