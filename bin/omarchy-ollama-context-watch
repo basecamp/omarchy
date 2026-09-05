@@ -1,0 +1,696 @@
+#!/usr/bin/python3
+# omarchy:summary=Watch the local Ollama model and keep live stats for the bar widget
+# omarchy:hidden=true
+"""Tail the ollama systemd journal and keep a live JSON snapshot of context-
+window usage, for the omarchy.ollama-stats bar widget to read.
+
+Written state (atomic replace) at $XDG_STATE_HOME/omarchy/ollama-context-watch/state.json:
+
+  {
+    "updatedAt": ISO8601,
+    "modelLoaded": "qwen3.8:27b" | null,
+    "configuredMax": 196608 | null,
+    "phase": "idle" | "prefill" | "generating",
+    "prefillProgress": {"nTokens": int, "percent": float} | null,
+    "contextPos": int | null,        # absolute position NOW (live while generating)
+    "contextPeak": int | null,       # highest absolute position reached since the model loaded
+    "lastPromptTokens": int | null,  # absolute position at the END of last finished request
+    "lastPercent": float | null,      # lastPromptTokens / configuredMax
+    # contextPos is the live absolute offset in the window; lastPromptTokens
+    # is the same figure at the end of the last finished request. Both are
+    # absolute — they must NOT come from "prompt eval time", which reports
+    # only the NEW delta of a request when a prefix was already cached.
+    # contextPeak is the high-water mark of contextPos since the model was
+    # loaded: it only ever increases, and resets when ollama unloads/reloads
+    # the model. The widget shows the peak so that stray requests on other
+    # conversation lineages (which genuinely shrink the single slot's usage)
+    # don't make the meter bounce around.
+    "lastTokensPerSec": float | null, # average decode speed of the last finished generation
+    "liveTokensPerSec": float | null, # tg_3s from the in-flight generation, ~1 update / 3 s
+    "maxTokensPerSec": float | null,  # fastest decode speed seen since the model loaded
+    "lastPrefillTokensPerSec": float | null, # whole-prefill average from the "prompt eval time" line
+    "livePrefillTokensPerSec": float | null, # ingest speed between two "prompt processing" progress lines
+    "maxPrefillTokensPerSec": float | null,  # fastest ingest speed seen since the model loaded
+    "ttftLastMs": float | null,       # time from request start to first token, latest request
+    "ttftBestMs": float | null,       # fastest TTFT since the model loaded
+    "ttftWorstMs": float | null,      # slowest TTFT since the model loaded
+    "ttftAvgMs": float | null,        # running average TTFT since the model loaded
+    "ttftMedianMs": float | null,     # median TTFT since the model loaded
+    "ttftCount": int,                 # requests measured for the TTFT stats (0 = none yet)
+    "truncated": bool,                # true if the MOST RECENT event was a truncation
+    "truncatedDetail": {"limit": int, "prompt": int, "keep": int, "new": int} | null,
+    "processor": "100% GPU" | null,   # the CPU/GPU split ollama settled on
+    "layers": {"offloaded": int, "total": int} | null,
+    "modelBufferMiB": float | null,   # VRAM the weights themselves occupy
+    "gpu": {"util": int, "memUsed": int, "memTotal": int,
+            "temp": int, "power": float} | null,
+  }
+
+Why this exists: ollama does not enforce its configured context length
+(OLLAMA_CONTEXT_LENGTH) as a hard ceiling. Under VRAM pressure from stale
+prompt-cache entries, it silently truncates a new prompt to whatever it can
+free — sometimes far below the configured max — and only says so in a WARN
+line in its own journal. This watcher surfaces that in real time instead of
+finding out from a garbled response.
+
+The journal tail and the `ollama ps` poll run on separate clocks on purpose.
+Reading the journal blocks until ollama says something, and a model that has
+been loaded but not yet prompted says nothing at all — polling `ollama ps`
+from inside that read loop leaves the widget reporting "no model" for as long
+as the journal stays quiet.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+STATE_DIR = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local" / "state")) / "omarchy" / "ollama-context-watch"
+STATE_PATH = STATE_DIR / "state.json"
+
+PROGRESS_RE = re.compile(r"prompt processing,\s*n_tokens\s*=\s*(\d+),\s*progress\s*=\s*([\d.]+)")
+# Both of these carry the ABSOLUTE position in the context window. The
+# "prompt eval time" count must NOT be used for that: a cached prefix makes it
+# report only the new delta (one request showed 1012 while the real window in
+# use was 37041 tokens), which is exactly what makes the meter look "tiny"
+# while the session is actually large.
+NEW_PROMPT_RE = re.compile(r"new prompt,\s*n_ctx_slot\s*=\s*\d+,\s*n_keep\s*=\s*\d+,\s*task\.n_tokens\s*=\s*(\d+)")
+# Printed when the request's prefix is already in the KV cache — the same
+# conversation continues where it left off. Its absence after a "new prompt"
+# means a fresh conversation lineage, and the load-session peak must reset
+# then (a stale high-water mark from another lineage freezes the meter).
+RESTORE_RE = re.compile(r"restored context checkpoint \(pos_min = \d+, pos_max = \d+, n_tokens = \d+, n_past = (\d+),")
+STOP_RE = re.compile(r"stop processing:\s*n_tokens\s*=\s*(\d+)")
+# llama.cpp prints one of these ~every second while a generation is in flight;
+# tg_3s is its own rolling average, which is exactly the "current speed".
+LIVE_TGS_RE = re.compile(r"\bn_gen\s*=\s*(\d+),\s*tg\s*=\s*[\d.]+\s*t/s,\s*tg_3s\s*=\s*([\d.]+)\s*t/s")
+# The last "eval time" line of a finished generation carries its average speed.
+# Lookbehind keeps this from matching "prompt eval time", whose speed is the
+# prefill rate — a different figure altogether.
+GEN_AVG_RE = re.compile(r"(?<!prompt )eval time\s*=\s*[\d.]+\s*ms\s*/\s*\d+\s*tokens\s*\(\s*[\d.]+\s*ms per token,\s*([\d.]+)\s*tokens per second\)")
+PROMPT_DONE_RE = re.compile(r"prompt eval time\s*=\s*[\d.]+\s*ms\s*/\s*(\d+)\s*tokens\s*\(\s*[\d.]+\s*ms per token,\s*([\d.]+)\s*tokens per second\)")
+TRUNC_RE = re.compile(r'msg="truncating input prompt"\s*limit=(\d+)\s*prompt=(\d+)\s*keep=(\d+)\s*new=(\d+)')
+LAYERS_RE = re.compile(r"offloaded\s+(\d+)\s*/\s*(\d+)\s+layers to GPU")
+BUFFER_RE = re.compile(r"CUDA0 model buffer size\s*=\s*([\d.]+)\s*MiB")
+
+NOTIFY_COOLDOWN_SECONDS = 120
+PS_INTERVAL_SECONDS = 3
+
+# nvidia-smi's own loop, rather than one process per sample: 2 Hz is fast
+# enough to watch a generation spin the GPU up and cheap enough to leave
+# running forever.
+GPU_QUERY = ["utilization.gpu", "memory.used", "memory.total", "temperature.gpu", "power.draw"]
+GPU_SAMPLE_MS = 500
+
+
+def now_iso() -> str:
+  return datetime.now(timezone.utc).isoformat()
+
+
+def notify(urgency: str, headline: str, description: str) -> None:
+  try:
+    subprocess.run(
+      ["omarchy-notification-send", "-u", urgency, "--app-name", "Ollama Context", headline, description],
+      check=False, timeout=5,
+    )
+  except (OSError, subprocess.TimeoutExpired):
+    pass
+
+
+def ollama_ps() -> tuple[str | None, int | None, str | None] | None:
+  """Returns (model_name, configured_context, processor_split).
+
+  (None, None, None) means ollama answered and has nothing loaded. A bare
+  None means the question could not be answered at all — and the two must
+  not be conflated: `ollama ps` can take seconds while a model is being
+  placed, and reading a timeout as an unload wipes the very numbers the
+  reload is about to make interesting.
+
+  `ollama ps` is a fixed-width table, not whitespace-delimited: SIZE ("18 GB")
+  and PROCESSOR ("30%/70% CPU/GPU") are each two space-separated words, so
+  naively splitting the data row and indexing by the header's word position
+  misaligns every column after SIZE. Slicing at the header's character
+  column instead sidesteps that.
+  """
+  try:
+    result = subprocess.run(["ollama", "ps"], capture_output=True, text=True, timeout=20)
+  except (OSError, subprocess.TimeoutExpired):
+    return None
+  if result.returncode != 0:
+    return None
+  lines = [l for l in result.stdout.splitlines() if l.strip()]
+  if not lines:
+    return None  # Not even a header: ollama is not answering properly.
+  if len(lines) < 2:
+    return None, None, None  # Header only — genuinely nothing loaded.
+  header_line, data_line = lines[0], lines[1]
+  model = data_line.split()[0] if data_line.split() else None
+
+  context = None
+  context_col = header_line.find("CONTEXT")
+  if context_col != -1 and context_col < len(data_line):
+    field = data_line[context_col:].split()
+    if field:
+      try:
+        context = int(field[0])
+      except ValueError:
+        context = None
+
+  # PROCESSOR spans to the start of CONTEXT, so it survives being two words.
+  processor = None
+  processor_col = header_line.find("PROCESSOR")
+  if processor_col != -1 and context_col > processor_col and processor_col < len(data_line):
+    processor = data_line[processor_col:context_col].strip() or None
+
+  return model, context, processor
+
+
+class Watcher:
+  def __init__(self) -> None:
+    self.lock = threading.Lock()
+    self.state = {
+      "modelLoaded": None,
+      "configuredMax": None,
+      "phase": "idle",
+      "prefillProgress": None,
+      "contextPos": None,
+      "contextPeak": None,
+      "lastPromptTokens": None,
+      "lastPercent": None,
+      "lastTokensPerSec": None,
+      "liveTokensPerSec": None,
+      "maxTokensPerSec": None,
+      "lastPrefillTokensPerSec": None,
+      "livePrefillTokensPerSec": None,
+      "maxPrefillTokensPerSec": None,
+      "ttftLastMs": None,
+      "ttftBestMs": None,
+      "ttftWorstMs": None,
+      "ttftAvgMs": None,
+      "ttftMedianMs": None,
+      "ttftCount": 0,
+      "truncated": False,
+      "truncatedDetail": None,
+      "processor": None,
+      "layers": None,
+      "modelBufferMiB": None,
+      "gpu": None,
+    }
+    # A truncated request still logs its own normal "prompt eval time" line
+    # once it finishes — that would otherwise immediately clear the flag the
+    # truncation branch just set. Carry the truncation forward through that
+    # one completion, and only clear it on the *next* request's completion.
+    self.pending_truncation: dict | None = None
+    self.last_notify_at = 0.0
+    # Highest progress n_tokens seen for the in-flight request — the position
+    # at the end of prefill, to which n_gen (decoded tokens) is added for the
+    # live context position during generation. Reset at each "new prompt".
+    self.prefill_baseline: int | None = None
+    # Progress-line bookkeeping for live ingest speed and TTFT. Both are
+    # wall-clock deltas between journal lines, so they live outside state.
+    self.prev_progress: tuple[int, float] | None = None  # (n_tokens, time.time())
+    self.request_started_at: float | None = None         # "new prompt" line arrived
+    # TTFT samples since the model loaded — needed for the median. Reset
+    # alongside the other TTFT stats when the model changes.
+    self.ttft_samples: list[float] = []
+    # True from a "new prompt" line until either the "restored context
+    # checkpoint" line (same conversation → keep the peak) or the first
+    # prefill/progress/stop line (fresh lineage → reset the peak) arrives.
+    self.pending_restore = False
+
+  # ------------------------------------------------------------------ output
+
+  def write_state(self) -> None:
+    """Caller must hold self.lock."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    snapshot = dict(self.state)
+    snapshot["updatedAt"] = now_iso()
+    fd, tmp_path = tempfile.mkstemp(dir=STATE_DIR, prefix=".state-", suffix=".json")
+    try:
+      with os.fdopen(fd, "w") as f:
+        json.dump(snapshot, f, separators=(",", ":"))
+      os.replace(tmp_path, STATE_PATH)
+    except Exception:
+      try:
+        os.unlink(tmp_path)
+      except OSError:
+        pass
+      raise
+
+  def set_percent(self) -> None:
+    """Caller must hold self.lock."""
+    tokens = self.state["contextPeak"] or self.state["contextPos"] or self.state["lastPromptTokens"]
+    configured = self.state["configuredMax"]
+    self.state["lastPercent"] = tokens / configured if tokens is not None and configured else None
+
+  def set_context(self, pos: int) -> None:
+    """Update the live context position and the load-session peak.
+
+    The single slot genuinely shrinks when a request on another conversation
+    lineage lands (cache miss → the window re-fills from scratch). The peak is
+    what the widget shows, so the meter only moves up while the model stays
+    loaded; a smaller stray request no longer drags it down. Caller must hold
+    self.lock."""
+    self.state["contextPos"] = pos
+    peak = self.state["contextPeak"]
+    if peak is None or pos > peak:
+      self.state["contextPeak"] = pos
+
+  def update_speed_max(self, key: str, value: float) -> None:
+    """Raise the load-session speed high-water mark. The widget sizes the
+    live/avg speed meters against this, so bars show the current speed as a
+    fraction of the fastest ever seen while the model stays loaded. Caller
+    must hold self.lock."""
+    maximum = self.state[key]
+    if maximum is None or value > maximum:
+      self.state[key] = value
+
+  # -------------------------------------------------------------- ps polling
+
+  def poll_models(self) -> None:
+    """Track load/unload independently of journal traffic."""
+    while True:
+      result = ollama_ps()
+      if result is None:
+        # Unanswerable, not empty. Leave the last known good state standing.
+        time.sleep(PS_INTERVAL_SECONDS)
+        continue
+      model, configured_max, processor = result
+      with self.lock:
+        was_loaded = self.state["modelLoaded"]
+        changed = (model != was_loaded
+                   or configured_max != self.state["configuredMax"]
+                   or processor != self.state["processor"])
+        if changed:
+          self.state["modelLoaded"] = model
+          self.state["configuredMax"] = configured_max
+          self.state["processor"] = processor
+          if model != was_loaded:
+            # Whichever direction it went, the numbers on screen belong to a
+            # window that no longer exists. An unload is also exactly what
+            # clears the cache pressure behind a truncation, so the stale
+            # warning goes with it rather than waiting for the next request.
+            self.state["phase"] = "idle"
+            self.state["prefillProgress"] = None
+            self.state["contextPos"] = None
+            self.state["contextPeak"] = None
+            self.state["lastPromptTokens"] = None
+            self.state["lastTokensPerSec"] = None
+            self.state["liveTokensPerSec"] = None
+            self.state["maxTokensPerSec"] = None
+            self.state["lastPrefillTokensPerSec"] = None
+            self.state["livePrefillTokensPerSec"] = None
+            self.state["maxPrefillTokensPerSec"] = None
+            self.state["ttftLastMs"] = None
+            self.state["ttftBestMs"] = None
+            self.state["ttftWorstMs"] = None
+            self.state["ttftAvgMs"] = None
+            self.state["ttftMedianMs"] = None
+            self.state["ttftCount"] = 0
+            self.ttft_samples.clear()
+            self.state["truncated"] = False
+            self.state["truncatedDetail"] = None
+            self.pending_truncation = None
+            self.prefill_baseline = None
+            self.prev_progress = None
+            self.request_started_at = None
+            self.pending_restore = False
+            # The offload figures are printed once at load time, so they
+            # describe whichever model is resident now. On an unload they
+            # describe nothing; on a load the new ones arrive via the journal.
+            if model is None:
+              self.state["layers"] = None
+              self.state["modelBufferMiB"] = None
+          self.set_percent()
+          self.write_state()
+      time.sleep(PS_INTERVAL_SECONDS)
+
+  # ------------------------------------------------------------ gpu sampling
+
+  def sample_gpu(self) -> None:
+    while True:
+      try:
+        proc = subprocess.Popen(
+          ["nvidia-smi", "--query-gpu=" + ",".join(GPU_QUERY),
+           "--format=csv,noheader,nounits", "-lms", str(GPU_SAMPLE_MS)],
+          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
+        )
+      except OSError:
+        return  # No nvidia-smi: the GPU section simply stays absent.
+
+      assert proc.stdout is not None
+      for line in proc.stdout:
+        sample = self.parse_gpu_line(line)
+        if sample is None:
+          continue
+        with self.lock:
+          # An idle GPU reports the same numbers forever; only writing on a
+          # change keeps this from churning the state file twice a second.
+          if sample != self.state["gpu"]:
+            self.state["gpu"] = sample
+            self.write_state()
+
+      proc.wait()
+      time.sleep(5)
+
+  @staticmethod
+  def parse_gpu_line(line: str) -> dict | None:
+    fields = [f.strip() for f in line.split(",")]
+    if len(fields) != len(GPU_QUERY):
+      return None
+
+    def number(text, cast):
+      try:
+        return cast(text)
+      except ValueError:
+        return None  # nvidia-smi prints "[N/A]" for unsupported sensors.
+
+    sample = {
+      "util": number(fields[0], int),
+      "memUsed": number(fields[1], int),
+      "memTotal": number(fields[2], int),
+      "temp": number(fields[3], int),
+      "power": number(fields[4], float),
+    }
+    return sample if sample["util"] is not None else None
+
+  # ------------------------------------------------------------ journal tail
+
+  def handle_line(self, line: str) -> None:
+    # Load-time facts: printed once, when llama.cpp places the model.
+    m = LAYERS_RE.search(line)
+    if m:
+      with self.lock:
+        self.state["layers"] = {"offloaded": int(m.group(1)), "total": int(m.group(2))}
+        self.write_state()
+      return
+
+    m = BUFFER_RE.search(line)
+    if m:
+      with self.lock:
+        self.state["modelBufferMiB"] = float(m.group(1))
+        self.write_state()
+      return
+
+    m = TRUNC_RE.search(line)
+    if m:
+      limit, prompt, keep, new = (int(x) for x in m.groups())
+      with self.lock:
+        self.pending_truncation = {"limit": limit, "prompt": prompt, "keep": keep, "new": new}
+        self.state["truncated"] = True
+        self.state["truncatedDetail"] = self.pending_truncation
+        self.state["phase"] = "idle"
+        self.state["prefillProgress"] = None
+        self.state["lastPromptTokens"] = new
+        self.state["contextPos"] = new
+        self.state["contextPeak"] = new  # the window was forcibly cut; start over
+        self.state["lastPercent"] = new / limit if limit else None
+        self.write_state()
+        now = time.time()
+        should_notify = now - self.last_notify_at > NOTIFY_COOLDOWN_SECONDS
+        if should_notify:
+          self.last_notify_at = now
+      if should_notify:
+        notify(
+          "critical",
+          "Ollama truncated a prompt",
+          f"Cache pressure cut the usable window to {new:,} tokens "
+          f"(requested {prompt:,}) — reload the model to clear it.",
+        )
+      return
+
+    # Absolute input position for this request (cached + new). Trust this
+    # over "prompt eval time", which reports only the new delta.
+    m = NEW_PROMPT_RE.search(line)
+    if m:
+      task_tokens = int(m.group(1))
+      with self.lock:
+        # Whether this is the same conversation (a restore line follows) or a
+        # fresh lineage is only known once the next journal lines land.
+        self.pending_restore = True
+        self.state["phase"] = "prefill"
+        self.state["prefillProgress"] = {"nTokens": 0, "percent": 0.0}
+        self.state["livePrefillTokensPerSec"] = None
+        self.set_context(task_tokens)
+        self.prefill_baseline = task_tokens
+        self.prev_progress = None
+        self.request_started_at = time.time()
+        self.write_state()
+      return
+
+    m = RESTORE_RE.search(line)
+    if m:
+      n_past = int(m.group(1))
+      with self.lock:
+        # Same conversation lineage: the cache resumes where it left off, so
+        # the load-session peak stays — this request only extends it.
+        self.pending_restore = False
+        self.set_context(n_past)
+        self.write_state()
+      return
+
+    m = PROGRESS_RE.search(line)
+    if m:
+      n_tokens, progress = int(m.group(1)), float(m.group(2))
+      now = time.time()
+      with self.lock:
+        if self.pending_restore:
+          # No restore line followed the "new prompt": a fresh conversation
+          # lineage re-fills the single slot from scratch. The load-session
+          # peak belongs to a different session and would freeze the meter
+          # on a stale high-water mark — reset it here.
+          self.pending_restore = False
+          self.state["contextPeak"] = None
+        self.state["phase"] = "prefill"
+        self.state["prefillProgress"] = {"nTokens": n_tokens, "percent": progress}
+        self.set_context(n_tokens)
+        # Live ingest speed: the journal streams one progress line per batch,
+        # so the delta between two of them is the current prefill rate.
+        if self.prev_progress is not None:
+          prev_tokens, prev_time = self.prev_progress
+          dt = now - prev_time
+          dn = n_tokens - prev_tokens
+          if dt > 0.05 and dn > 0:
+            self.state["livePrefillTokensPerSec"] = dn / dt
+            self.update_speed_max("maxPrefillTokensPerSec", dn / dt)
+        self.prev_progress = (n_tokens, now)
+        self.write_state()
+      return
+
+    # One of these lands roughly every second while tokens are being decoded.
+    m = LIVE_TGS_RE.search(line)
+    if m:
+      n_gen, live_tps = int(m.group(1)), float(m.group(2))
+      with self.lock:
+        self.state["phase"] = "generating"
+        self.state["liveTokensPerSec"] = live_tps
+        self.state["lastTokensPerSec"] = live_tps
+        self.update_speed_max("maxTokensPerSec", live_tps)
+        if self.prefill_baseline is not None:
+          self.set_context(self.prefill_baseline + n_gen)
+        self.write_state()
+      return
+
+    m = GEN_AVG_RE.search(line)
+    if m:
+      with self.lock:
+        self.state["lastTokensPerSec"] = float(m.group(1))
+        self.state["liveTokensPerSec"] = None
+        self.update_speed_max("maxTokensPerSec", float(m.group(1)))
+        self.state["phase"] = "idle"
+        self.write_state()
+      return
+
+    # Definitive context position at the end of the request.
+    m = STOP_RE.search(line)
+    if m:
+      final_tokens = int(m.group(1))
+      with self.lock:
+        if self.pending_restore:
+          # A request too short to stream progress lines: it still did not
+          # restore a checkpoint, so it is a fresh lineage like any other.
+          self.pending_restore = False
+          self.state["contextPeak"] = None
+        self.set_context(final_tokens)
+        self.state["lastPromptTokens"] = final_tokens
+        self.state["lastPercent"] = final_tokens / self.state["configuredMax"] if self.state["configuredMax"] else None
+        if self.pending_truncation is not None:
+          self.state["truncated"] = True
+          self.state["truncatedDetail"] = self.pending_truncation
+          self.pending_truncation = None
+        self.state["phase"] = "idle"
+        self.prefill_baseline = None
+        self.write_state()
+      return
+
+    m = PROMPT_DONE_RE.search(line)
+    if m:
+      tokens = int(m.group(1))
+      now = time.time()
+      with self.lock:
+        self.state["liveTokensPerSec"] = None
+        if self.pending_restore:
+          # Same safety as PROGRESS/STOP: a prompt so short it produced no
+          # progress line still belongs to a fresh lineage if no restore
+          # checkpoint was printed.
+          self.pending_restore = False
+          self.state["contextPeak"] = None
+        # Whole-prefill average: this is the line that closes prefill out, so
+        # its tokens-per-second is the definitive ingest speed for the request.
+        # (Same paren-group shape as GEN_AVG_RE, but this regex anchors on
+        # "prompt eval time", so there is no overlap between the two.)
+        self.state["lastPrefillTokensPerSec"] = float(m.group(2))
+        self.state["livePrefillTokensPerSec"] = None
+        self.update_speed_max("maxPrefillTokensPerSec", float(m.group(2)))
+        # TTFT: the "new prompt" line marks the request start; the "prompt
+        # eval time" line lands the moment prefill finishes and the first
+        # token is about to be decoded — the closest the journal gets to a
+        # first-token timestamp.
+        if self.request_started_at is not None:
+          ttft_ms = (now - self.request_started_at) * 1000.0
+          self.state["ttftLastMs"] = ttft_ms
+          best, worst, avg, count = (
+            self.state["ttftBestMs"], self.state["ttftWorstMs"],
+            self.state["ttftAvgMs"], self.state["ttftCount"],
+          )
+          count += 1
+          self.state["ttftCount"] = count
+          self.state["ttftBestMs"] = ttft_ms if best is None else min(best, ttft_ms)
+          self.state["ttftWorstMs"] = ttft_ms if worst is None else max(worst, ttft_ms)
+          self.state["ttftAvgMs"] = (avg * (count - 1) + ttft_ms) / count if avg is not None else ttft_ms
+          self.ttft_samples.append(ttft_ms)
+          self.ttft_samples.sort()
+          n = len(self.ttft_samples)
+          midpoint = n // 2
+          self.state["ttftMedianMs"] = (
+            self.ttft_samples[midpoint] if n % 2
+            else (self.ttft_samples[midpoint - 1] + self.ttft_samples[midpoint]) / 2.0
+          )
+        self.request_started_at = None
+        if self.pending_truncation is not None:
+          # This completion is the truncated request finishing — keep the
+          # warning visible, and consume the marker so the *next* clean
+          # request is what finally clears it.
+          self.state["truncated"] = True
+          self.state["truncatedDetail"] = self.pending_truncation
+          self.pending_truncation = None
+        else:
+          self.state["truncated"] = False
+          self.state["truncatedDetail"] = None
+        self.state["phase"] = "generating"
+        self.state["prefillProgress"] = None
+        self.state["lastPromptTokens"] = tokens
+        self.set_percent()
+        self.write_state()
+      return
+
+    if "slot print_timing" in line and "eval time" in line and "prompt eval time" not in line:
+      with self.lock:
+        self.state["phase"] = "idle"
+        self.write_state()
+
+  def tail_journal(self) -> None:
+    while True:
+      try:
+        proc = subprocess.Popen(
+          ["journalctl", "-u", "ollama", "-f", "-n", "0", "-o", "cat"],
+          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1,
+        )
+      except OSError as error:
+        print(f"omarchy-ollama-context-watch: cannot start journalctl: {error}", file=sys.stderr)
+        time.sleep(10)
+        continue
+
+      assert proc.stdout is not None
+      for line in proc.stdout:
+        self.handle_line(line)
+
+      proc.wait()
+      time.sleep(3)  # journalctl -f exited (service restarted?) — retry
+
+  # ------------------------------------------------------------------ startup
+
+  @staticmethod
+  def last_journal_match(pattern: str) -> str:
+    try:
+      return subprocess.run(
+        ["journalctl", "-u", "ollama", "--no-pager", "-g", pattern, "-n", "1", "-o", "cat"],
+        capture_output=True, text=True, timeout=10,
+      ).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+      return ""
+
+  def seed_offload(self) -> None:
+    """The offload figures are printed once, when the model loads. A watcher
+    started afterwards would otherwise show nothing until the next reload."""
+    if self.state["modelLoaded"] is None:
+      return
+    m = LAYERS_RE.search(self.last_journal_match("offloaded .* layers to GPU"))
+    if m:
+      self.state["layers"] = {"offloaded": int(m.group(1)), "total": int(m.group(2))}
+    m = BUFFER_RE.search(self.last_journal_match("CUDA0 model buffer size"))
+    if m:
+      self.state["modelBufferMiB"] = float(m.group(1))
+
+  def seed_from_recent_journal(self) -> None:
+    """Best-effort: pull the last completed prefill/truncation event so the
+    display isn't blank right after the watcher (re)starts."""
+    out = self.last_journal_match("prompt eval time|truncating input prompt")
+    if not out:
+      return
+    m = TRUNC_RE.search(out)
+    if m:
+      limit, prompt, keep, new = (int(x) for x in m.groups())
+      self.state["truncated"] = True
+      self.state["truncatedDetail"] = {"limit": limit, "prompt": prompt, "keep": keep, "new": new}
+      self.state["lastPromptTokens"] = new
+      self.state["contextPos"] = new
+      self.state["contextPeak"] = new
+      return
+    m = PROMPT_DONE_RE.search(out)
+    if m:
+      self.state["lastPromptTokens"] = int(m.group(1))
+      self.state["contextPos"] = int(m.group(1))
+      self.state["lastPrefillTokensPerSec"] = float(m.group(2))
+
+    # Definitive end-of-request context position, if one exists.
+    out_stop = self.last_journal_match("stop processing:")
+    m = STOP_RE.search(out_stop)
+    if m:
+      self.state["contextPos"] = int(m.group(1))
+      self.state["contextPeak"] = int(m.group(1))
+
+    # Last finished generation's average decode speed — a different line, so
+    # a separate last-match (the lookbehind keeps the "prompt eval" line out).
+    out2 = self.last_journal_match("eval time =")
+    m = GEN_AVG_RE.search(out2)
+    if m:
+      self.state["lastTokensPerSec"] = float(m.group(1))
+
+  def run(self) -> int:
+    model, configured_max, processor = ollama_ps() or (None, None, None)
+    with self.lock:
+      self.state["modelLoaded"] = model
+      self.state["configuredMax"] = configured_max
+      self.state["processor"] = processor
+      self.seed_offload()
+      self.seed_from_recent_journal()
+      self.set_percent()
+      self.write_state()
+
+    threading.Thread(target=self.poll_models, daemon=True).start()
+    threading.Thread(target=self.sample_gpu, daemon=True).start()
+    self.tail_journal()
+    return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(Watcher().run())

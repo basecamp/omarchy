@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.ollama-stats",
+  "name": "Ollama stats",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Live context-window usage, speeds, and latency for the local Ollama model",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Ollama stats",
+    "description": "Live context-window usage for the locally loaded Ollama model, sourced from omarchy-ollama-context-watch.",
+    "category": "AI",
+    "allowMultiple": false
+  }
+}

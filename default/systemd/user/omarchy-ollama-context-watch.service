@@ -1,0 +1,14 @@
+[Unit]
+Description=Live Ollama context-window stats for the bar widget
+# Ollama is optional; the widget's numbers all come from this watcher, but a
+# machine without ollama has nothing to watch.
+ConditionPathExists=/usr/bin/ollama
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-ollama-context-watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
