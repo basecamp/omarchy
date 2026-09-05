@@ -26,4 +26,4 @@ include "%L"
 <Multi_key> <m> <b> : "🤯" # blowing
 
 # Typography
-<Multi_key> <space> <space> : "—"
+<Multi_key> <space> <space> : "→"
