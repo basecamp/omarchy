@@ -1,0 +1,148 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Publish AI agent usage for cross-device aggregation
+# omarchy:args=[--output <path>] [--device-id <id>] [--force] [--except <agent>] [agent...]
+# omarchy:examples=omarchy agent usage-snapshot --output ~/Sync/agent-usage/server.json | omarchy agent usage-snapshot --device-id server
+"""Refresh agent usage and publish the panel's cross-device snapshot format."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+
+def parse_args() -> argparse.Namespace:
+  parser = argparse.ArgumentParser(description=__doc__)
+  parser.add_argument("--output", help="atomically write the snapshot to this path instead of stdout")
+  parser.add_argument("--device-id", help="stable device name stored in the snapshot")
+  parser.add_argument("--force", action="store_true", help="force collectors to refresh cached data")
+  parser.add_argument("--except", dest="excluded", action="append", default=[], metavar="AGENT")
+  parser.add_argument("agents", nargs="*", help="publish only these agents")
+  return parser.parse_args()
+
+
+def safe_device_id(raw: str | None) -> str:
+  value = (raw or os.environ.get("HOSTNAME") or os.uname().nodename or os.environ.get("HOST") or os.environ.get("USER") or "device").strip()
+  value = re.sub(r"[^A-Za-z0-9_.-]+", "-", value)
+  value = re.sub(r"^[._-]+|[._-]+$", "", value)
+  return (value or "device")[:80]
+
+
+def number_value(value: Any) -> int:
+  try:
+    return round(float(value or 0))
+  except (TypeError, ValueError):
+    return 0
+
+
+def clone_container(value: Any, fallback: list[Any] | dict[str, Any]) -> list[Any] | dict[str, Any]:
+  if isinstance(value, type(fallback)):
+    return value
+  return fallback
+
+
+def provider_snapshot(record: dict[str, Any]) -> dict[str, Any]:
+  provider_id = str(record["id"])
+  return {
+    "providerId": provider_id,
+    "providerName": str(record.get("name") or provider_id),
+    "ready": record.get("ready") is True,
+    "hasLocalStats": record.get("hasLocalStats") is not False,
+    "hasPromptStats": record.get("hasPromptStats") is not False,
+    "scope": str(record.get("scope") or "device"),
+    "todayPrompts": number_value(record.get("todayPrompts")),
+    "todaySessions": number_value(record.get("todaySessions")),
+    "todayTotalTokens": number_value(record.get("todayTotalTokens")),
+    "todayTokensByModel": clone_container(record.get("todayTokensByModel"), {}),
+    "recentDays": clone_container(record.get("recentDays"), []),
+    "totalPrompts": number_value(record.get("totalPrompts")),
+    "totalSessions": number_value(record.get("totalSessions")),
+    "activeDays": number_value(record.get("activeDays")),
+    "activeDates": clone_container(record.get("activeDates"), []),
+    "modelUsage": clone_container(record.get("modelUsage"), {}),
+  }
+
+
+def refresh_usage(args: argparse.Namespace) -> None:
+  command = ["omarchy-agent-usage-update"]
+  if args.force:
+    command.append("--force")
+  for agent in args.excluded:
+    command.extend(["--except", agent])
+  command.extend(args.agents)
+  subprocess.run(command, check=True)
+
+
+def load_providers(args: argparse.Namespace) -> dict[str, Any]:
+  state_home = Path(os.environ.get("XDG_STATE_HOME") or (Path.home() / ".local/state"))
+  usage_dir = state_home / "omarchy/agents/usage"
+  requested = set(args.agents)
+  excluded = set(args.excluded)
+  providers: dict[str, Any] = {}
+
+  for path in sorted(usage_dir.glob("*.json")):
+    if requested and path.stem not in requested:
+      continue
+    if path.stem in excluded:
+      continue
+    try:
+      record = json.loads(path.read_text())
+      if not isinstance(record, dict) or not record.get("id"):
+        raise ValueError("missing agent id")
+      providers[str(record["id"])] = provider_snapshot(record)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+      print(f"omarchy-agent-usage-snapshot: ignoring {path.name}: {error}", file=sys.stderr)
+
+  return providers
+
+
+def snapshot_text(args: argparse.Namespace) -> str:
+  snapshot = {
+    "schemaVersion": 1,
+    "deviceId": safe_device_id(args.device_id),
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+    "providers": load_providers(args),
+  }
+  return json.dumps(snapshot, indent=2, sort_keys=True) + "\n"
+
+
+def write_snapshot(path_value: str, content: str) -> None:
+  path = Path(os.path.expandvars(os.path.expanduser(path_value)))
+  path.parent.mkdir(parents=True, exist_ok=True)
+  with tempfile.NamedTemporaryFile("w", dir=path.parent, prefix=f".{path.name}.", delete=False) as temp:
+    temp.write(content)
+    temp.flush()
+    os.fsync(temp.fileno())
+    temp_path = Path(temp.name)
+  try:
+    temp_path.replace(path)
+  except BaseException:
+    temp_path.unlink(missing_ok=True)
+    raise
+
+
+def main() -> int:
+  args = parse_args()
+  try:
+    refresh_usage(args)
+    content = snapshot_text(args)
+    if args.output:
+      write_snapshot(args.output, content)
+    else:
+      sys.stdout.write(content)
+  except (OSError, subprocess.CalledProcessError) as error:
+    print(f"omarchy-agent-usage-snapshot: {error}", file=sys.stderr)
+    return 1
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
