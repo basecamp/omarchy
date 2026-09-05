@@ -17,8 +17,18 @@ BarWidget {
     return null
   }
 
+  // How many workspaces stay on the bar even while empty. Occupied
+  // workspaces past that count are still appended below.
+  readonly property int workspaceCount: {
+    var count = Math.floor(Number(root.setting("workspaceCount", 5)))
+    if (!isFinite(count)) return 5
+    return Math.max(1, Math.min(10, count))
+  }
+
   function workspaceIds() {
-    var ids = [1, 2, 3, 4, 5]
+    var ids = []
+    for (var n = 1; n <= root.workspaceCount; n++) ids.push(n)
+
     var values = Hyprland.workspaces.values
 
     for (var i = 0; i < values.length; i++) {
