@@ -98,11 +98,13 @@ grep -F 'omarchy-hyprland-monitor-external-active' "$monitor_mirror" >/dev/null
 pass "internal mirror helper recovers when no active external display remains"
 
 grep -F 'switch:on:Lid Switch", nil, "omarchy-system-lid-close"' "$utilities" >/dev/null
-grep -F 'switch:off:Lid Switch", nil, "omarchy-hyprland-monitor-clamshell"' "$utilities" >/dev/null
-pass "lid switch bindings lock on close and reconcile clamshell display state"
+grep -F 'switch:off:Lid Switch", nil, "omarchy-system-wake"' "$utilities" >/dev/null
+pass "lid switch bindings lock on close and wake displays on open"
 
+grep -F 'omarchy-brightness-display on' "$system_wake" >/dev/null
+grep -F 'omarchy-brightness-keyboard restore' "$system_wake" >/dev/null
 grep -F 'omarchy-hyprland-monitor-clamshell >/dev/null 2>&1 || true' "$system_wake" >/dev/null
-pass "system wake resyncs clamshell display state"
+pass "system wake restores display and keyboard brightness then resyncs clamshell"
 
 grep -F 'lock-pending: no-real-screen' "$lock_service" >/dev/null
 grep -F 'lock-pending: screen-stabilizing' "$lock_service" >/dev/null
