@@ -121,6 +121,11 @@ assertEqual(model.isTypedKeyboard('power-button'), false, 'a power button is not
 assertEqual(model.isTypedKeyboard('lid-switch'), false, 'a lid switch is not')
 assertEqual(model.isTypedKeyboard('sleep-button'), false, 'a sleep button is not')
 assertEqual(model.isTypedKeyboard('hl-virtual-keyboard-1'), false, 'the keyboard an input method injects through is not')
+assertEqual(model.isTypedKeyboard('acer-wmi-hotkeys'), false, 'vendor WMI hotkeys are not a keyboard')
+assertEqual(model.isTypedKeyboard('acer-wireless-radio-control'), false, 'vendor radio controls are not a keyboard')
+assertEqual(model.isTypedKeyboard('asus-wmi-hotkeys-1'), false, 'a duplicate vendor hotkey device is not a keyboard')
+assertEqual(model.isTypedKeyboard('dell-wmi'), true, 'an unrecognized device stays available')
+assertEqual(model.isTypedKeyboard('logitech-k380'), true, 'an external keyboard stays available')
 assertEqual(model.isTypedKeyboard(''), true, 'a keyboard reporting no name is left where it was found')
 
 // The activelayout event names the keyboard ahead of the layout it moved to,
