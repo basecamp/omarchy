@@ -153,6 +153,10 @@ ShellRoot {
     // case the user dir already existed at startup.
     pluginRegistry.rescan()
     shell._syncServices()
+    // The plugin bar loader below only reacts to property changes; run it
+    // once up front in case activeBarSourceUrl is already correct before
+    // anything else changes (e.g. a prior scan already populated the registry).
+    shell.loadPluginBar()
   }
 
   function mutateShellConfig(mutator) {
@@ -243,21 +247,123 @@ ShellRoot {
     onActiveChanged: if (!active && shell.activeBarId !== shell.defaultBarId) shell.bar = null
   }
 
-  Loader {
-    id: pluginBarLoader
+  // ------------------------------------------------------- plugin bar loader
+  //
+  // A third-party/cloned bar (kind "bar") is not a static import like the
+  // built-in one above, so it cannot be wrapped in an inline Component the
+  // same way — its QML lives at an arbitrary file URL discovered at runtime.
+  // A Loader's `source:` property was tried first, but it constructs the
+  // object immediately and only assigns properties afterwards in onLoaded,
+  // which fails Bar.qml's `required property` checks (omarchyPath,
+  // barWidgetRegistry, barConfig) before configureBar() ever gets to run.
+  //
+  // Qt.createComponent(url).createObject(parent, initialProperties) is the
+  // dynamic equivalent of the inline-Component binding defaultBarComponent
+  // uses: initialProperties are applied atomically as part of construction,
+  // so required properties are satisfied before the object finishes being
+  // created — same guarantee, still resolved from an arbitrary URL.
+  property var pluginBarComponent: null
+  property var pluginBarInstance: null
+  property string pluginBarComponentUrl: ""
 
-    active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
-    source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
-    asynchronous: true
-    onLoaded: shell.configureBar(item, shell.activeBarManifest)
-    onActiveChanged: if (!active) shell.bar = null
-    onStatusChanged: {
-      if (status === Loader.Error) {
-        var detail = errorString && errorString() ? errorString() : ""
-        console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId + ":", detail)
-        shell.failedBarId = shell.activeBarId
-      }
+  // createObject only places the created object in the render scene when its
+  // parent argument is itself a QQuickItem (Loader gives this for free by
+  // being one itself). shell is a ShellRoot, not an Item, so parenting to it
+  // directly leaves the bar fully constructed but never inserted into the
+  // scene graph — it exists, but renders incorrectly until some unrelated
+  // event (e.g. a relayout) forces the compositor to notice it. This host
+  // gives the dynamically created bar a real place in the scene from the
+  // moment it is created.
+  Item {
+    id: pluginBarHost
+    visible: false
+  }
+
+  function destroyPluginBar() {
+    if (shell.bar && shell.bar === shell.pluginBarInstance) shell.bar = null
+    if (shell.pluginBarInstance) {
+      shell.pluginBarInstance.destroy()
+      shell.pluginBarInstance = null
     }
+    shell.pluginBarComponent = null
+    shell.pluginBarComponentUrl = ""
+  }
+
+  function loadPluginBar() {
+    if (shell.pluginReloading || shell.activeBarId === shell.defaultBarId || shell.activeBarSourceUrl === "") {
+      shell.destroyPluginBar()
+      return
+    }
+
+    // Already built for this exact url and id — leave the live instance alone.
+    if (shell.pluginBarInstance && shell.pluginBarComponentUrl === shell.activeBarSourceUrl) return
+
+    var url = shell.activeBarSourceUrl
+    var barIdAtRequest = shell.activeBarId
+
+    shell.destroyPluginBar()
+    shell.pluginBarComponentUrl = url
+
+    var comp = Qt.createComponent(url, Component.Asynchronous)
+    shell.pluginBarComponent = comp
+
+    function finalize() {
+      // Superseded by a later call (config changed again while this was
+      // loading, or the bar was disabled) — drop this attempt entirely.
+      if (shell.pluginBarComponentUrl !== url || shell.pluginBarComponent !== comp) return
+
+      if (comp.status === Component.Error) {
+        console.warn("bar option " + barIdAtRequest + " failed to load, falling back to " + shell.defaultBarId + ":", comp.errorString())
+        shell.pluginBarComponent = null
+        shell.pluginBarComponentUrl = ""
+        shell.failedBarId = barIdAtRequest
+        return
+      }
+
+      if (comp.status !== Component.Ready) return
+
+      // Component.createObject's initial-properties object assigns plain
+      // values, not bindings — unlike defaultBarComponent's inline
+      // `barConfig: shell.barConfig`, which stays live for the object's whole
+      // lifetime. A plain value here can also be stale: loading is
+      // asynchronous, so shell.activeBarManifest may have moved on by the
+      // time this callback runs. Qt.binding() re-establishes a genuine live
+      // binding for each property, matching what the static Bar {} component
+      // gets for free, and re-reading shell.activeBarManifest fresh (rather
+      // than a value captured back when loadPluginBar() was first called)
+      // keeps the very first frame in sync with whatever is current now.
+      var inst = comp.createObject(pluginBarHost, {
+        omarchyPath: Qt.binding(function() { return shell.omarchyPath }),
+        barWidgetRegistry: Qt.binding(function() { return shell.barWidgetRegistry }),
+        barConfig: Qt.binding(function() { return shell.barConfig }),
+        shell: shell,
+        manifest: Qt.binding(function() { return shell.activeBarManifest })
+      })
+
+      if (!inst) {
+        console.warn("bar option " + barIdAtRequest + " failed to construct, falling back to " + shell.defaultBarId)
+        shell.pluginBarComponent = null
+        shell.pluginBarComponentUrl = ""
+        shell.failedBarId = barIdAtRequest
+        return
+      }
+
+      shell.pluginBarInstance = inst
+      shell.bar = inst
+    }
+
+    if (comp.status === Component.Loading) {
+      comp.statusChanged.connect(finalize)
+    } else {
+      finalize()
+    }
+  }
+
+  onActiveBarSourceUrlChanged: shell.loadPluginBar()
+  onActiveBarIdChanged: shell.loadPluginBar()
+onPluginReloadingChanged: {
+    if (!shell.pluginReloading && shell.failedBarId !== "") shell.failedBarId = ""
+    shell.loadPluginBar()
   }
 
   // ------------------------------------------------------------- services
