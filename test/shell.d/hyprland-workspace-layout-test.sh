@@ -18,7 +18,7 @@ cat >"$stub_dir/hyprctl" <<'EOF'
 if [[ $1 == "activeworkspace" && -n $HYPRCTL_BROKEN ]]; then
   printf '{}\n'
 elif [[ $1 == "activeworkspace" ]]; then
-  printf '{"id":3,"tiledLayout":"dwindle"}\n'
+  printf '{"id":3,"tiledLayout":"%s"}\n' "${HYPRCTL_LAYOUT:-dwindle}"
 else
   printf '%s\n' "$*" >>"$HYPRCTL_LOG"
 fi
@@ -42,6 +42,20 @@ grep -Fx 'eval hl.workspace_rule({ workspace = "3", layout = "scrolling" })' "$l
   fail "workspace layout toggle applies the selected layout immediately"
 pass "workspace layout toggle persists and applies the selected layout"
 
+HOME="$home_dir" HYPRCTL_LAYOUT=scrolling HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" \
+  "$ROOT/bin/omarchy-hyprland-workspace-layout-toggle"
+
+[[ ! -f $layout_file ]] || fail "workspace layout toggle clears its persisted workspace rule"
+grep -Fx 'reload' "$log_file" >/dev/null ||
+  fail "workspace layout toggle reloads Hyprland after clearing a workspace rule"
+pass "workspace layout toggle restores the global layout after a workspace override"
+
+HOME="$home_dir" HYPRCTL_LAYOUT=master HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" \
+  "$ROOT/bin/omarchy-hyprland-workspace-layout-toggle"
+grep -Fx 'hl.workspace_rule({ workspace = "3", layout = "dwindle" })' "$layout_file" >/dev/null ||
+  fail "workspace layout toggle can override a custom global layout"
+pass "workspace layout toggle preserves a path back to a custom global layout"
+
 if HOME="$home_dir" HYPRCTL_LOG="$log_file" HYPRCTL_BROKEN=1 PATH="$stub_dir:$PATH" \
   "$ROOT/bin/omarchy-hyprland-workspace-layout-toggle" 2>/dev/null; then
   fail "workspace layout toggle exits nonzero without a workspace id"
@@ -64,6 +78,6 @@ require("default.hypr.workspace-layouts")
 
 assert(#rules == 1)
 assert(rules[1].workspace == "3")
-assert(rules[1].layout == "scrolling")
+assert(rules[1].layout == "dwindle")
 LUA
 pass "saved workspace layouts load into Hyprland configuration"
