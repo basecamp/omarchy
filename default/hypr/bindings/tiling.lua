@@ -1,3 +1,37 @@
+local function scrolling_direction(workspace)
+  local opts = workspace.layout_opts
+  local direction = type(opts) == "table" and opts.direction or hl.get_config("scrolling.direction")
+  if direction == "left" or direction == "right" or direction == "up" or direction == "down" then
+    return direction
+  end
+
+  return "right"
+end
+
+local function horizontal_resize(pixel_delta, scrolling_delta)
+  local window_resize = hl.dsp.window.resize({ x = pixel_delta, y = 0, relative = true })
+  local column_resize = hl.dsp.layout("colresize " .. scrolling_delta)
+
+  return function()
+    local workspace = hl.get_active_special_workspace() or hl.get_active_workspace()
+    if not workspace then
+      return
+    end
+
+    -- colresize follows the tape axis, so only use it for horizontal scrolling.
+    -- A column at the workspace edge has no neighboring split to resize.
+    if workspace.tiled_layout == "scrolling" then
+      local direction = scrolling_direction(workspace)
+      if direction == "left" or direction == "right" then
+        hl.dispatch(column_resize)
+        return
+      end
+    end
+
+    hl.dispatch(window_resize)
+  end
+end
+
 o.bind("SUPER + W", "Close window", hl.dsp.window.close())
 o.bind("SUPER + Q", "Close window", hl.dsp.window.close())
 o.bind("CTRL + ALT + DELETE", "Close all windows", "omarchy-hyprland-window-close-all")
@@ -52,18 +86,18 @@ o.bind("ALT + SHIFT + TAB", "Reveal active window on top", hl.dsp.window.bring_t
 o.bind("CTRL + ALT + TAB", "Focus on next monitor", hl.dsp.focus({ monitor = "+1" }))
 o.bind("CTRL + ALT + SHIFT + TAB", "Focus on previous monitor", hl.dsp.focus({ monitor = "-1" }))
 
-o.bind("SUPER + code:20", "Expand window left", hl.dsp.window.resize({ x = -100, y = 0, relative = true }))
-o.bind("SUPER + code:21", "Shrink window left", hl.dsp.window.resize({ x = 100, y = 0, relative = true }))
+o.bind("SUPER + code:20", "Expand window left", horizontal_resize(-100, "-0.05"))
+o.bind("SUPER + code:21", "Shrink window left", horizontal_resize(100, "+0.05"))
 o.bind("SUPER + SHIFT + code:20", "Shrink window up", hl.dsp.window.resize({ x = 0, y = -100, relative = true }))
 o.bind("SUPER + SHIFT + code:21", "Expand window down", hl.dsp.window.resize({ x = 0, y = 100, relative = true }))
 
-o.bind("SUPER + ALT + code:20", "Expand window left a little", hl.dsp.window.resize({ x = -25, y = 0, relative = true }))
-o.bind("SUPER + ALT + code:21", "Shrink window left a little", hl.dsp.window.resize({ x = 25, y = 0, relative = true }))
+o.bind("SUPER + ALT + code:20", "Expand window left a little", horizontal_resize(-25, "-0.0125"))
+o.bind("SUPER + ALT + code:21", "Shrink window left a little", horizontal_resize(25, "+0.0125"))
 o.bind("SUPER + SHIFT + ALT + code:20", "Shrink window up a little", hl.dsp.window.resize({ x = 0, y = -25, relative = true }))
 o.bind("SUPER + SHIFT + ALT + code:21", "Expand window down a little", hl.dsp.window.resize({ x = 0, y = 25, relative = true }))
 
-o.bind("SUPER + CTRL + code:20", "Expand window left a lot", hl.dsp.window.resize({ x = -300, y = 0, relative = true }))
-o.bind("SUPER + CTRL + code:21", "Shrink window left a lot", hl.dsp.window.resize({ x = 300, y = 0, relative = true }))
+o.bind("SUPER + CTRL + code:20", "Expand window left a lot", horizontal_resize(-300, "-0.15"))
+o.bind("SUPER + CTRL + code:21", "Shrink window left a lot", horizontal_resize(300, "+0.15"))
 o.bind("SUPER + CTRL + SHIFT + code:20", "Shrink window up a lot", hl.dsp.window.resize({ x = 0, y = -300, relative = true }))
 o.bind("SUPER + CTRL + SHIFT + code:21", "Expand window down a lot", hl.dsp.window.resize({ x = 0, y = 300, relative = true }))
 
