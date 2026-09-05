@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.widget-picker",
+  "name": "Widget Picker",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "Add widgets to the bar",
+  "kinds": [
+    "overlay"
+  ],
+  "entryPoints": {
+    "overlay": "WidgetPicker.qml"
+  }
+}

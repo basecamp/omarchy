@@ -749,6 +749,17 @@ Item {
     return dropBarModule(sourceSlot, targetSlot.region, beforeName)
   }
 
+  // The add button sits at the outer end of the right section, so its pick
+  // lands exactly where the button is: the end of that section. The screen
+  // rides along so the picker opens on the bar that was clicked.
+  function openWidgetPicker(window) {
+    if (!shell || typeof shell.summon !== "function") return
+
+    var placement = { section: "right", index: layoutEntries("right").length }
+    if (window && window.screen && window.screen.name) placement.screen = String(window.screen.name)
+    shell.summon("omarchy.widget-picker", JSON.stringify(placement))
+  }
+
   function moduleTargetClickable(target) {
     return target
       && target.visible !== false
@@ -1132,9 +1143,35 @@ Item {
         }
 
         RightModules {
+          id: rightModules
           anchors.right: parent.right
-          anchors.rightMargin: Style.space(8)
+          // The stock margin, widened only while the add button is revealed.
+          anchors.rightMargin: addWidgetButton.hunting ? Style.space(3) + addWidgetButton.implicitWidth : Style.space(8)
           anchors.verticalCenter: parent.verticalCenter
+
+          Behavior on anchors.rightMargin {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+          }
+        }
+
+        AddWidgetButton {
+          id: addWidgetButton
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(3)
+          anchors.verticalCenter: parent.verticalCenter
+        }
+
+        // The dwell trigger: the bar's natural end margin, widening to cover
+        // the revealed button so the hunt stays alive through the click.
+        Item {
+          anchors.left: rightModules.right
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          height: parent.height
+
+          HoverHandler {
+            onHoveredChanged: addWidgetButton.setHunting(hovered)
+          }
         }
       }
     }
@@ -1154,9 +1191,35 @@ Item {
         }
 
         RightModules {
+          id: rightModules
           anchors.bottom: parent.bottom
-          anchors.bottomMargin: Style.space(8)
+          // The stock margin, widened only while the add button is revealed.
+          anchors.bottomMargin: addWidgetButton.hunting ? Style.space(3) + addWidgetButton.implicitHeight : Style.space(8)
           anchors.horizontalCenter: parent.horizontalCenter
+
+          Behavior on anchors.bottomMargin {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+          }
+        }
+
+        AddWidgetButton {
+          id: addWidgetButton
+          anchors.bottom: parent.bottom
+          anchors.bottomMargin: Style.space(3)
+          anchors.horizontalCenter: parent.horizontalCenter
+        }
+
+        // The dwell trigger: the bar's natural end margin, widening to cover
+        // the revealed button so the hunt stays alive through the click.
+        Item {
+          anchors.top: rightModules.bottom
+          anchors.bottom: parent.bottom
+          anchors.horizontalCenter: parent.horizontalCenter
+          width: parent.width
+
+          HoverHandler {
+            onHoveredChanged: addWidgetButton.setHunting(hovered)
+          }
         }
       }
     }
@@ -1401,6 +1464,46 @@ Item {
           anchors.horizontalCenter: centerAnchorModule.horizontalCenter
         }
       }
+    }
+  }
+
+  // A + at the bar's end that summons the widget picker, invisible and
+  // taking no space at all until a pointer dwells on the bar's end margin —
+  // someone hunting for it. Only then do the end widgets slide over to make
+  // room, the same manner as the indicators peek; ordinary traffic elsewhere
+  // on the bar, or crossing the corner on the way somewhere, changes nothing.
+  component AddWidgetButton: WidgetButton {
+    id: addButton
+
+    property bool hunting: false
+
+    // Driven by the dwell zone that spans the bar's end gap, which also
+    // keeps the reveal alive while the pointer is on the button itself.
+    function setHunting(hovered) {
+      if (hovered) {
+        huntDwell.restart()
+      } else {
+        huntDwell.stop()
+        hunting = false
+      }
+    }
+
+    bar: root
+    text: ""
+    tooltipText: "Add widget"
+    concealed: !hunting
+    interactive: hunting
+    horizontalMargin: 5
+    onPressed: function(button) {
+      if (button === Qt.LeftButton) root.openWidgetPicker(root.targetWindow(addButton))
+    }
+
+    // A deliberate pause, not a pass-through: nothing surfaces until the
+    // pointer has sat on the corner for a beat.
+    Timer {
+      id: huntDwell
+      interval: 600
+      onTriggered: addButton.hunting = true
     }
   }
 
