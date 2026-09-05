@@ -8,7 +8,7 @@ tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
 mkdir -p "$tmp_dir/bin" "$tmp_dir/home"
 
-for stub in gtk-update-icon-cache update-desktop-database omarchy-notification-send; do
+for stub in gtk-update-icon-cache update-desktop-database omarchy-notification-send omarchy-webapp-shortcut; do
   printf '#!/bin/bash\n:\n' >"$tmp_dir/bin/$stub"
   chmod +x "$tmp_dir/bin/$stub"
 done

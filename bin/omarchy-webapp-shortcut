@@ -1,0 +1,346 @@
+#!/bin/bash
+
+# omarchy:summary=Assign, list, or clear a keyboard shortcut for a web app
+# omarchy:args=<list | sync [--no-reload] | set <app> <keys...> [--match <regex>] [--force] | unset <app>>
+# omarchy:examples=omarchy webapp shortcut set Figma SUPER SHIFT F | omarchy webapp shortcut unset Figma | omarchy webapp shortcut list
+
+# A shortcut is stored on the web app itself, as an X-Omarchy-Shortcut key in its
+# ~/.local/share/applications/<name>.desktop file:
+#
+#   X-Omarchy-Shortcut=SUPER + SHIFT + F
+#   X-Omarchy-Shortcut-Match=figma          (optional; window class/title regex)
+#
+# `sync` compiles every such key into a single Hyprland bindings file that
+# default/hypr/webapp-shortcuts.lua loads. omarchy-webapp-install and
+# omarchy-webapp-remove call `sync` for you, so this command is only needed to
+# add, change, or drop a shortcut on an already-installed web app.
+
+# No pipefail: several helpers below end a pipe with `head -1`, which closes the
+# pipe early and would surface as a SIGPIPE failure in the producer.
+set -eu
+
+APPS_DIR="$HOME/.local/share/applications"
+STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+GENERATED="$STATE_HOME/omarchy/webapp-shortcuts.lua"
+OMARCHY_ROOT="${OMARCHY_PATH:-/usr/share/omarchy}"
+
+usage() {
+  echo "Usage: omarchy webapp shortcut <list | sync | set <app> <keys...> [--match <regex>] [--force] | unset <app>>"
+}
+
+# Normalize a free-form combo ("super shift f", "SUPER+SHIFT+F", "SUPER + SHIFT + F")
+# to Omarchy's canonical "SUPER + SHIFT + F": modifiers in a fixed order followed
+# by the single non-modifier key. Returns 1 when no key is present.
+canonical_combo() {
+  local raw="${1//+/ }" token upper key=""
+  local -A mods=()
+
+  for token in $raw; do
+    upper="${token^^}"
+    case $upper in
+      SUPER | WIN | MOD) mods[SUPER]=1 ;;
+      CTRL | CONTROL) mods[CTRL]=1 ;;
+      ALT | MOD1) mods[ALT]=1 ;;
+      SHIFT) mods[SHIFT]=1 ;;
+      "") ;;
+      *) key="$upper" ;;
+    esac
+  done
+
+  if [[ -z $key ]]; then
+    return 1
+  fi
+
+  local out="" modifier
+  for modifier in SUPER CTRL ALT SHIFT; do
+    if [[ -n ${mods[$modifier]:-} ]]; then
+      out+="$modifier + "
+    fi
+  done
+
+  printf '%s%s\n' "$out" "$key"
+}
+
+# The registrable-domain label of a URL, used as the default focus match:
+# https://www.icloud.com/foo -> icloud, https://sub.example.co.uk/ -> example.
+# A user can override a wrong guess with --match / X-Omarchy-Shortcut-Match.
+default_match_for_url() {
+  local host="${1#*://}"
+  host="${host%%/*}"
+  host="${host%%:*}"
+  host="${host#www.}"
+  awk -F. '
+    {
+      if (NF < 2) { print $0; next }
+      label = $(NF - 1)
+      if (NF >= 3 && label ~ /^(co|com|org|net|gov|edu|ac)$/) {
+        label = $(NF - 2)
+      }
+      print label
+    }
+  ' <<<"$host"
+}
+
+# The http(s) URL an omarchy-launch-webapp Exec line launches.
+url_from_desktop() {
+  local exec_line
+  exec_line=$(sed -n 's/^Exec=//p' "$1" | head -1)
+  grep -oE 'https?://[^ "'"'"']+' <<<"$exec_line" | head -1
+}
+
+is_webapp() {
+  grep -q '^Exec=.*omarchy-launch-webapp' "$1"
+}
+
+# Resolve a user-supplied name to a .desktop path, matching either the Name= field
+# or the file's basename, case-insensitively.
+resolve_desktop() {
+  local want="${1,,}" file base name
+  for file in "$APPS_DIR"/*.desktop; do
+    [[ -f $file ]] || continue
+    base=$(basename "$file" .desktop)
+    name=$(sed -n 's/^Name=//p' "$file" | head -1)
+    if [[ ${base,,} == "$want" || ${name,,} == "$want" ]]; then
+      printf '%s\n' "$file"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Every canonical combo already claimed by Omarchy's shipped bindings, the user's
+# own bindings.lua, or another web app. Source-derived, so no compositor needed.
+# Pass a .desktop path to exclude that web app's own shortcut from the list.
+claimed_combos() {
+  local exclude="${1:-}" file combo value desktop
+
+  for file in "$OMARCHY_ROOT"/default/hypr/bindings/*.lua "$CONFIG_HOME/hypr/bindings.lua"; do
+    [[ -f $file ]] || continue
+    # Anchor to the start of the line (allowing indentation) so a commented-out
+    # `-- o.bind("SUPER + SHIFT + R", ...)` example is not read as a live binding.
+    while IFS= read -r combo; do
+      canonical_combo "$combo" || true
+    done < <(grep -oE '^[[:space:]]*o\.bind\([[:space:]]*"[^"]+"' "$file" | sed -E 's/.*"([^"]+)".*/\1/')
+  done
+
+  for desktop in "$APPS_DIR"/*.desktop; do
+    [[ -f $desktop ]] || continue
+    [[ $desktop == "$exclude" ]] && continue
+    value=$(sed -n 's/^X-Omarchy-Shortcut=//p' "$desktop" | head -1)
+    [[ -n $value ]] || continue
+    canonical_combo "$value" || true
+  done
+}
+
+# Replace (or add) a Key=value line. Delete-then-append rather than sed
+# substitution so a --match value containing sed-significant characters (| & \)
+# cannot corrupt the write.
+set_desktop_key() {
+  local file="$1" key="$2" value="$3"
+  sed -i "/^$key=/d" "$file"
+  printf '%s=%s\n' "$key" "$value" >>"$file"
+}
+
+reload_hyprland() {
+  hyprctl reload >/dev/null 2>&1 || true
+}
+
+# Escape a value for a Lua "..." string literal.
+lua_string() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s' "$value"
+}
+
+cmd_sync() {
+  local reload=1
+  if [[ ${1:-} == --no-reload ]]; then
+    reload=0
+  fi
+
+  local tmp
+  tmp=$(mktemp)
+  {
+    echo "-- Generated by 'omarchy webapp shortcut sync'. Do not edit."
+    echo "-- Source of truth: X-Omarchy-Shortcut in ~/.local/share/applications/*.desktop"
+    echo
+  } >"$tmp"
+
+  local count=0 desktop key name url match combo
+  for desktop in "$APPS_DIR"/*.desktop; do
+    [[ -f $desktop ]] || continue
+
+    key=$(sed -n 's/^X-Omarchy-Shortcut=//p' "$desktop" | head -1)
+    [[ -n $key ]] || continue
+
+    if ! combo=$(canonical_combo "$key"); then
+      echo "omarchy-webapp-shortcut: skipping $(basename "$desktop"): cannot parse '$key'" >&2
+      continue
+    fi
+
+    url=$(url_from_desktop "$desktop")
+    if [[ -z $url ]]; then
+      echo "omarchy-webapp-shortcut: skipping $(basename "$desktop"): no http(s) URL in Exec=" >&2
+      continue
+    fi
+    if [[ $url == *"'"* ]]; then
+      echo "omarchy-webapp-shortcut: skipping $(basename "$desktop"): URL contains a single quote" >&2
+      continue
+    fi
+
+    name=$(sed -n 's/^Name=//p' "$desktop" | head -1)
+    match=$(sed -n 's/^X-Omarchy-Shortcut-Match=//p' "$desktop" | head -1)
+    if [[ -z $match ]]; then
+      match=$(default_match_for_url "$url")
+    fi
+
+    {
+      printf 'o.bind("%s", "%s", {\n' "$(lua_string "$combo")" "$(lua_string "$name")"
+      printf '  launch = %s,\n' "'omarchy-launch-webapp \"$url\"'"
+      printf '  focus = "%s",\n' "$(lua_string "$match")"
+      printf '})\n'
+    } >>"$tmp"
+    count=$((count + 1))
+  done
+
+  mkdir -p "$(dirname "$GENERATED")"
+  mv "$tmp" "$GENERATED"
+
+  if (( reload )); then
+    reload_hyprland
+  fi
+
+  echo "Compiled $count web app shortcut(s)."
+}
+
+cmd_list() {
+  local file name key match found=0
+  for file in "$APPS_DIR"/*.desktop; do
+    [[ -f $file ]] || continue
+    key=$(sed -n 's/^X-Omarchy-Shortcut=//p' "$file" | head -1)
+    [[ -n $key ]] || continue
+    found=1
+    name=$(sed -n 's/^Name=//p' "$file" | head -1)
+    match=$(sed -n 's/^X-Omarchy-Shortcut-Match=//p' "$file" | head -1)
+    printf '%-24s %-20s %s\n' "$name" "$(canonical_combo "$key" || echo "$key")" "${match:+match: $match}"
+  done
+
+  if (( ! found )); then
+    echo "No web app shortcuts are defined."
+  fi
+}
+
+cmd_set() {
+  local app="" match="" force=0
+  local -a keys=()
+
+  while (($#)); do
+    case $1 in
+      --match)
+        shift
+        match="${1:-}"
+        ;;
+      --force)
+        force=1
+        ;;
+      --*)
+        echo "Unknown option: $1" >&2
+        usage >&2
+        exit 1
+        ;;
+      *)
+        if [[ -z $app ]]; then
+          app="$1"
+        else
+          keys+=("$1")
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -z $app ]] || (( ${#keys[@]} == 0 )); then
+    usage >&2
+    exit 1
+  fi
+
+  local file
+  if ! file=$(resolve_desktop "$app"); then
+    echo "No web app named '$app' found in $APPS_DIR" >&2
+    exit 1
+  fi
+  if ! is_webapp "$file"; then
+    echo "'$(basename "$file")' is not an Omarchy web app." >&2
+    exit 1
+  fi
+
+  local combo
+  if ! combo=$(canonical_combo "${keys[*]}"); then
+    echo "Could not parse a key combo from: ${keys[*]}" >&2
+    exit 1
+  fi
+
+  local name
+  name=$(sed -n 's/^Name=//p' "$file" | head -1)
+
+  local claimed
+  claimed=$(claimed_combos "$file")
+  if (( ! force )) && grep -Fxq "$combo" <<<"$claimed"; then
+    echo "$combo is already bound. Re-run with --force to take it for \"$name\"." >&2
+    exit 1
+  fi
+
+  set_desktop_key "$file" "X-Omarchy-Shortcut" "$combo"
+  if [[ -n $match ]]; then
+    set_desktop_key "$file" "X-Omarchy-Shortcut-Match" "$match"
+  fi
+
+  echo "$combo -> \"$name\""
+  cmd_sync
+}
+
+cmd_unset() {
+  local app="${1:-}"
+  if [[ -z $app ]]; then
+    usage >&2
+    exit 1
+  fi
+
+  local file
+  if ! file=$(resolve_desktop "$app"); then
+    echo "No web app named '$app' found in $APPS_DIR" >&2
+    exit 1
+  fi
+
+  sed -i '/^X-Omarchy-Shortcut=/d; /^X-Omarchy-Shortcut-Match=/d' "$file"
+  echo "Cleared the shortcut for $(basename "$file" .desktop)."
+  cmd_sync
+}
+
+case "${1:-}" in
+  set)
+    shift
+    cmd_set "$@"
+    ;;
+  unset)
+    shift
+    cmd_unset "$@"
+    ;;
+  list)
+    cmd_list
+    ;;
+  sync)
+    shift
+    cmd_sync "$@"
+    ;;
+  -h | --help | help | "")
+    usage
+    ;;
+  *)
+    echo "Unknown command: $1" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

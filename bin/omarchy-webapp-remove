@@ -59,3 +59,8 @@ if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
   omarchy-notification-send -g  "Web app removed" "$APP_NAME"
 fi
 update-desktop-database "$DESKTOP_DIR" &>/dev/null
+
+# Drop any keyboard shortcut the removed web app had claimed. Best effort, and
+# silent: this also runs from minimal contexts (the gaming removers) that do not
+# hide stderr.
+omarchy-webapp-shortcut sync >/dev/null 2>&1 || true

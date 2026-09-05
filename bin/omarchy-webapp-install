@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Create a desktop launcher for a web app
-# omarchy:args=[name url icon-url-or-name [custom-exec] [mime-types]]
+# omarchy:args=[name url icon-url-or-name [custom-exec] [mime-types] [shortcut]]
 
 set -e
 
@@ -154,6 +154,8 @@ if (( $# < 3 )); then
     ICON_REF=$(gum input --prompt "Icon URL/name> " --placeholder "Could not fetch favicon automatically. Enter PNG icon URL or icon name")
   fi
 
+  WEBAPP_SHORTCUT=$(gum input --prompt "Shortcut> " --placeholder "Optional keyboard shortcut, e.g. SUPER SHIFT G (Enter to skip)")
+
   CUSTOM_EXEC=""
   MIME_TYPES=""
   INTERACTIVE_MODE=true
@@ -162,8 +164,9 @@ else
   APP_URL=$(normalize_webapp_url "$2")
   require_http_url "$APP_URL"
   ICON_REF="$3"
-  CUSTOM_EXEC="$4" # Optional custom exec command
-  MIME_TYPES="$5"  # Optional mime types
+  CUSTOM_EXEC="$4"      # Optional custom exec command
+  MIME_TYPES="$5"       # Optional mime types
+  WEBAPP_SHORTCUT="$6"  # Optional keyboard shortcut, e.g. "SUPER SHIFT G"
   INTERACTIVE_MODE=false
 fi
 
@@ -235,6 +238,11 @@ if [[ -n $MIME_TYPES ]]; then
 fi
 
 chmod +x "$DESKTOP_FILE"
+
+if [[ -n $WEBAPP_SHORTCUT ]] && ! omarchy-webapp-shortcut set "$APP_NAME" "$WEBAPP_SHORTCUT"; then
+  echo "The web app was installed, but the shortcut was not assigned (see above)."
+  echo "Assign one later with: omarchy webapp shortcut set \"$APP_NAME\" \"$WEBAPP_SHORTCUT\""
+fi
 
 if [[ $INTERACTIVE_MODE == "true" ]]; then
   echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"

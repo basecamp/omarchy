@@ -34,4 +34,7 @@ if omarchy-cmd-present update-desktop-database; then
   update-desktop-database "$APP_DIR" &>/dev/null || true
 fi
 
+# Every web app is gone, so recompile shortcuts down to nothing.
+omarchy-webapp-shortcut sync >/dev/null 2>&1 || true
+
 echo "Web apps removed successfully."
