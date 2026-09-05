@@ -12,13 +12,15 @@ fi
 direction="${1:-up}"
 
 # Find keyboard backlight device (look for *kbd_backlight* pattern in leds class).
-device=""
-for candidate in /sys/class/leds/*kbd_backlight*; do
-  if [[ -e $candidate ]]; then
-    device="$(basename "$candidate")"
-    break
-  fi
-done
+device="${OMARCHY_KBD_BACKLIGHT_DEVICE:-}"
+if [[ -z $device ]]; then
+  for candidate in /sys/class/leds/*kbd_backlight*; do
+    if [[ -e $candidate ]]; then
+      device="$(basename "$candidate")"
+      break
+    fi
+  done
+fi
 
 if [[ -z $device ]]; then
   echo "No keyboard backlight device found" >&2
@@ -26,7 +28,15 @@ if [[ -z $device ]]; then
 fi
 
 if [[ $direction == "off" ]]; then
-  brightnessctl -sd "$device" set 0 >/dev/null
+  # brightnessctl -s snapshots the current value before writing. A second off
+  # while already at 0 would save 0 over the pre-blank level, so restore then
+  # permanently restores darkness (#10105).
+  current_brightness="$(brightnessctl -d "$device" get)"
+  if [[ $current_brightness =~ ^[0-9]+$ ]] && (( current_brightness > 0 )); then
+    brightnessctl -sd "$device" set 0 >/dev/null
+  else
+    brightnessctl -d "$device" set 0 >/dev/null
+  fi
   exit 0
 elif [[ $direction == "restore" ]]; then
   brightnessctl -rd "$device" >/dev/null
