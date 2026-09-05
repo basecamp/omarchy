@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Dropbox",
-    "description": "Log in to Dropbox, view storage usage, and open recent synced files.",
+    "description": "Log in to Dropbox, view storage usage, and open recent synced files. Set the DROPBOX_API_TOKEN environment variable for the shell to report real server-side usage and quota (plan-based quotas are used otherwise).",
     "category": "Files",
     "allowMultiple": false,
     "defaultSection": "right",

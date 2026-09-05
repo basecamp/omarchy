@@ -3,6 +3,8 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 import heapq
 from pathlib import Path
 
@@ -14,6 +16,37 @@ PLAN_QUOTAS = {
   "professional": 3_000_000_000_000,
   "essentials": 3_000_000_000_000,
 }
+
+
+def read_api_token():
+  # The Dropbox API token is read from the environment only, so no secret is
+  # stored in the panel config or this repository.
+  token = os.environ.get("DROPBOX_API_TOKEN", "").strip()
+  return token or None
+
+
+def fetch_api_usage(token):
+  if token is None:
+    return None
+  request = urllib.request.Request(
+    "https://api.dropboxapi.com/2/users/get_space_usage",
+    method="POST",
+    headers={"Authorization": "Bearer " + token},
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=5) as response:
+      body = json.loads(response.read().decode("utf-8"))
+  except (OSError, ValueError, urllib.error.URLError):
+    return None
+  allocation = body.get("allocation", {})
+  try:
+    allocated = int(allocation.get("allocated", 0))
+    used = int(body.get("used", 0))
+  except (TypeError, ValueError):
+    return None
+  if allocated <= 0 or used < 0:
+    return None
+  return used, allocated
 
 
 def read_info():
@@ -93,7 +126,6 @@ def main():
   account = dropbox_account(info)
   account_path = account.get("path") if isinstance(account.get("path"), str) else ""
   plan = account.get("subscription_type") if isinstance(account.get("subscription_type"), str) else ""
-  quota = PLAN_QUOTAS.get(plan.lower(), 0)
   authenticated = account_path != "" and Path(account_path).exists()
 
   running = False
@@ -106,6 +138,16 @@ def main():
     running = status_exit == 0 and status_output != "" and not stopped
 
   used, files = scan_dropbox(account_path, limit) if authenticated else (0, [])
+
+  # Prefer server-reported usage and quota when an API token is configured:
+  # plan-based quotas ignore bonus/referral space, so e.g. a Basic account
+  # can hold more than the base 2 GB and used can exceed quota locally.
+  api_usage = fetch_api_usage(read_api_token())
+  if api_usage is not None:
+    used, quota = api_usage
+  else:
+    quota = PLAN_QUOTAS.get(plan.lower(), 0)
+
   usage_percent = (used / quota * 100) if quota > 0 else 0
 
   print(json.dumps({
