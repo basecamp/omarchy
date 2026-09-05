@@ -1180,32 +1180,28 @@ Panel {
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
 
-          Button {
+          PanelActionButton {
             id: qrAction
             visible: root.canShareWifi
             iconText: "󰐲"
             tooltipText: "Show QR code"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
-            iconSize: Style.font.subtitle * 1.5
-            horizontalPadding: Style.space(5)
-            verticalPadding: Style.space(2)
+            fontSize: Style.font.subtitle * 1.5
             hasCursor: root.qrHeaderHasCursor
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setHeaderCursor(root.qrHeaderIndex) }
             onClicked: root.summonWifiQr()
           }
 
-          Button {
+          PanelActionButton {
             id: speedAction
             visible: root.canRunSpeedTest
             iconText: "󰓅"
             tooltipText: "Run a speed test"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
-            iconSize: Style.font.subtitle * 1.5
-            horizontalPadding: Style.space(5)
-            verticalPadding: Style.space(2)
+            fontSize: Style.font.subtitle * 1.5
             hasCursor: root.speedHeaderHasCursor
             Layout.alignment: Qt.AlignVCenter
             onHovered: function(on) { if (on) root.setHeaderCursor(root.speedHeaderIndex) }
