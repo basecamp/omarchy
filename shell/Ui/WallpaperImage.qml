@@ -28,6 +28,8 @@ Item {
   property alias mipmap: image.mipmap
   readonly property alias status: image.status
 
+  readonly property bool blurBackdropActive: fill !== "crop" && backdrop === "blur" && path !== ""
+
   readonly property bool centeredFocal: Math.abs(focalX - 0.5) < 0.001 && Math.abs(focalY - 0.5) < 0.001
   // PreserveAspectCrop always crops around the center, so a non-center focal
   // needs a manual crop window: size the image to its cover dimensions and
@@ -47,7 +49,7 @@ Item {
   // The solid fill remains beneath it as the decode/error fallback.
   Item {
     anchors.fill: parent
-    visible: root.fill !== "crop" && root.backdrop === "blur" && root.path !== ""
+    visible: root.blurBackdropActive
     opacity: 0.35
     layer.enabled: visible
     layer.smooth: true
@@ -61,7 +63,9 @@ Item {
 
     Image {
       anchors.fill: parent
-      source: root.path ? Util.fileUrl(root.path) + (root.sourceVersion > 0 ? "?v=" + root.sourceVersion : "") : ""
+      source: root.blurBackdropActive ? Util.fileUrl(root.path) + (root.sourceVersion > 0 ? "?v=" + root.sourceVersion : "") : ""
+      sourceSize.width: root.useSourceSizeCap ? image.physWidth : 0
+      sourceSize.height: root.useSourceSizeCap ? image.physHeight : 0
       fillMode: Image.PreserveAspectCrop
       asynchronous: root.asynchronous
       cache: root.cache

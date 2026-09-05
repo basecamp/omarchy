@@ -225,9 +225,8 @@ Item {
       property bool maskReady: false
 
       // Last successful displayed resolution for this panel. It drives the
-      // base layer and stands in for the old frame's fill/meta during theme
-      // switches, when the old canonical handed to the transition is only a
-      // snapshot copy whose directory carries no metadata.
+      // base layer throughout the outgoing reveal and supplies fallback meta
+      // for an incoming snapshot whose directory carries no metadata.
       property string lastDisplayedCanonical: ""
       property string lastDisplayedPath: ""
       property string lastDisplayedFill: "crop"
@@ -321,14 +320,6 @@ Item {
         }
       }
 
-      BackgroundResolver {
-        id: oldResolver
-        canonicalPath: root.oldBackground
-        screenWidth: panel.modelData.width
-        screenHeight: panel.modelData.height
-        refreshToken: root.backgroundVersion
-      }
-
       // A theme switch hands transitionBackground a snapshot copy for pixels
       // while root.currentBackground already holds the real post-swap
       // canonical, whose directory carries the variants and metadata — so the
@@ -349,6 +340,10 @@ Item {
         }
       }
 
+      // Keep the already-decoded per-screen pixels beneath the reveal. The
+      // canonical snapshot can differ from this variant, and the old theme
+      // directory may already have been replaced. Only advance the base once
+      // the reveal finishes; no outgoing source needs to be decoded again.
       WallpaperImage {
         id: base
         anchors.fill: parent
@@ -361,29 +356,6 @@ Item {
         asynchronous: true
         cache: true
         onStatusChanged: root.maybeFinishTransition()
-      }
-
-      WallpaperImage {
-        id: oldFrame
-        anchors.fill: parent
-        // The old theme dir can be gone after the swap: an unchanged canonical
-        // keeps this panel's displayed pixels, anything else (a snapshot) shows
-        // the resolver's echo of the handed-down file.
-        path: root.oldBackground === "" ? ""
-          : root.oldBackground === panel.lastDisplayedCanonical ? panel.lastDisplayedPath
-          : oldResolver.ready ? oldResolver.resolvedPath
-          : root.oldBackground
-        fill: panel.lastDisplayedFill
-        backdrop: panel.lastDisplayedBackdrop
-        fillColor: panel.lastDisplayedFillColor
-        focalX: panel.lastDisplayedFocalX
-        focalY: panel.lastDisplayedFocalY
-        asynchronous: true
-        cache: false
-        smooth: true
-        mipmap: true
-        visible: root.oldBackground !== "" && root.revealProgress < 1
-        onStatusChanged: panel.maybeStartReveal()
       }
 
       Item {

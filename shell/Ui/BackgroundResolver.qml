@@ -12,6 +12,7 @@ Item {
   property string canonicalPath: ""
   property int screenWidth: 0
   property int screenHeight: 0
+  property real devicePixelRatio: Screen.devicePixelRatio
   // Consumers bump this to force a re-resolve when the inputs are
   // string-identical but the underlying content may have changed (a forced
   // theme transition re-renders the same canonical path in place, giving a
@@ -43,6 +44,7 @@ Item {
   onCanonicalPathChanged: requestResolve()
   onScreenWidthChanged: requestResolve()
   onScreenHeightChanged: requestResolve()
+  onDevicePixelRatioChanged: requestResolve()
   onRefreshTokenChanged: requestResolve()
   Component.onCompleted: requestResolve()
 
@@ -74,7 +76,7 @@ Item {
     resolveProc.seq = requestSeq
     resolveProc.command = [
       "omarchy-theme-bg-resolve",
-      "--screen", screenWidth + "x" + screenHeight,
+      "--screen", Math.round(screenWidth * devicePixelRatio) + "x" + Math.round(screenHeight * devicePixelRatio),
       "--canonical", canonicalPath
     ]
     resolveProc.running = true
@@ -93,6 +95,16 @@ Item {
     resolveVersion += 1
   }
 
+  function parseFillColor(value) {
+    const hex = String(value)
+    if (!/^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$/.test(hex)) return Color.background
+    // Metadata follows CSS RGBA; QML eight-digit strings use ARGB instead.
+    return Qt.rgba(parseInt(hex.slice(1, 3), 16) / 255,
+      parseInt(hex.slice(3, 5), 16) / 255,
+      parseInt(hex.slice(5, 7), 16) / 255,
+      hex.length === 9 ? parseInt(hex.slice(7, 9), 16) / 255 : 1)
+  }
+
   function publishResult(seq, raw) {
     if (seq !== requestSeq) return
     var meta = null
@@ -108,7 +120,7 @@ Item {
     resolvedPath = meta.path
     fill = ["crop", "fit", "center", "tile"].indexOf(meta.fill) >= 0 ? meta.fill : "crop"
     backdrop = ["solid", "edge", "blur"].indexOf(meta.backdrop) >= 0 ? meta.backdrop : "solid"
-    fillColor = /^#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?$/.test(String(meta.fill_color)) ? meta.fill_color : Color.background
+    fillColor = parseFillColor(meta.fill_color)
     focalX = isFinite(Number(meta.focal_x)) ? Util.clamp(meta.focal_x, 0, 1) : 0.5
     focalY = isFinite(Number(meta.focal_y)) ? Util.clamp(meta.focal_y, 0, 1) : 0.5
     usedFallback = false

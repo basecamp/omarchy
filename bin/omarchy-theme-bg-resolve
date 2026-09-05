@@ -344,7 +344,8 @@ rasterize_svg() {
 
   mtime=$(stat -c %Y "$svg" 2>/dev/null) || return 1
   siblings=$(sibling_digest "$(dirname "$svg")" "$svg")
-  cache_key=$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "$svg" "$mtime" "${SCREEN_W}x${SCREEN_H}" "$FILL" "$FILL_COLOR" "$SVG_LAYOUT" "$MAX_SVG_RENDER_DIMENSION" "$MAX_SVG_RENDER_PIXELS" "$siblings" | md5sum)
+  # Invalidate renders made by the old textual viewport rewriter.
+  cache_key=$(printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s' "svg-root-v2:$svg" "$mtime" "${SCREEN_W}x${SCREEN_H}" "$FILL" "$FILL_COLOR" "$SVG_LAYOUT" "$MAX_SVG_RENDER_DIMENSION" "$MAX_SVG_RENDER_PIXELS" "$siblings" | md5sum)
   cache_key=${cache_key%% *}
   cache_file="$cache_dir/$cache_key.png"
 
@@ -376,11 +377,28 @@ rasterize_svg() {
         cp --reflink=auto -- "$asset" "$render_work/$(basename "$asset")"
     done
     render_source="$render_work/$(basename "$svg")"
-    sed -E \
-      -e "0,/width=\"[^\"]*\"/s//width=\"$SCREEN_W\"/" \
-      -e "0,/height=\"[^\"]*\"/s//height=\"$SCREEN_H\"/" \
-      -e "0,/viewBox=\"[^\"]*\"/s//viewBox=\"0 0 $SCREEN_W $SCREEN_H\"/" \
-      "$svg" >"$render_source"
+    # Parse the root as XML: quoting, whitespace, missing viewport attributes,
+    # and child attributes must not change which viewport gets rewritten.
+    if ! timeout --kill-after=2 10 python3 - "$svg" "$render_source" "$SCREEN_W" "$SCREEN_H" <<'PYXML'
+import sys
+from xml.dom import minidom
+
+source, destination, width, height = sys.argv[1:]
+document = minidom.parse(source)
+root = document.documentElement
+if root.localName != "svg":
+  raise ValueError("Expected an SVG root")
+root.setAttribute("width", width)
+root.setAttribute("height", height)
+root.setAttribute("viewBox", f"0 0 {width} {height}")
+with open(destination, "wb") as output:
+  output.write(document.toxml(encoding="utf-8"))
+PYXML
+    then
+      rm -rf -- "$render_work"
+      rm -f -- "$render_tmp"
+      return 1
+    fi
   fi
 
   rsvg_args=(--width "$target_w" --height "$target_h" --background-color "$FILL_COLOR")

@@ -236,6 +236,39 @@ center=$(magick "$rendered" -format '%[pixel:p{100,100}]' info:)
 
 pass "responsive SVG backgrounds render against the exact screen viewport"
 
+# Equivalent XML spellings must reflow identically. Absolute child geometry
+# exposes accidental viewport scaling, and a nested SVG must stay untouched.
+cat >"$backgrounds/backgrounds.toml" <<'TOML'
+[defaults]
+svg_layout = "responsive"
+TOML
+for spelling in double single spaced missing; do
+  case "$spelling" in
+    double) attributes='width="100" height="50" viewBox="0 0 100 50"' ;;
+    single) attributes="width='100' height='50' viewBox='0 0 100 50'" ;;
+    spaced) attributes=$'width = "100"\n height = \'50\' viewBox = "0 0 100 50"' ;;
+    missing) attributes='' ;;
+  esac
+  cat >"$backgrounds/xml-$spelling.svg" <<SVG
+<?xml version="1.0"?>
+<!-- width="777" height="777" viewBox="0 0 777 777" -->
+<svg xmlns="http://www.w3.org/2000/svg" $attributes>
+  <rect width="100%" height="100%" fill="red"/>
+  <rect x="10" y="10" width="20" height="20" fill="blue"/>
+  <svg x="50" y="50" width="20" height="20" viewBox="0 0 10 10">
+    <rect width="10" height="10" fill="green"/>
+  </svg>
+</svg>
+SVG
+  output=$(resolve --fields --screen 200x200 --canonical "$backgrounds/xml-$spelling.svg")
+  rendered=$(fields_value path "$output")
+  [[ $rendered == *.png ]] || fail "$spelling XML rasterizes" "$output"
+  pixels=$(magick "$rendered" -format '%[pixel:p{15,15}] %[pixel:p{35,15}] %[pixel:p{65,65}] %[pixel:p{75,75}]' info:)
+  [[ $pixels == 'srgb(0,0,255) srgb(255,0,0) srgb(0,128,0) srgb(255,0,0)' ]] || fail "$spelling XML rewrites only the root viewport" "$pixels"
+done
+pass "responsive SVG roots accept XML quoting, whitespace, and omitted viewport attributes"
+
+
 # Librsvg may load sibling assets, but its base-directory guard must keep a
 # downloaded SVG from climbing out of backgrounds/ to read another user file.
 magick -size 20x20 xc:blue "$state/theme/private.png"
