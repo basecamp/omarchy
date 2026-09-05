@@ -2,6 +2,10 @@
 
 You can quickly access the date and time, battery status, and current weather using the hotkey notices.
 
+### Dismissing Notifications
+
+Click the **✕** button on a notification to dismiss it without opening the app or running its action. You can also right-click anywhere on the notification to dismiss it. Left-clicking the notification text keeps its usual action.
+
 ### Date & Time
 
 `Super + Ctrl + Alt + T`
