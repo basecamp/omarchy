@@ -19,5 +19,7 @@ printf '%s\n' "$monitors_json" | jq -r '
 printf '%s\n' "$focused_monitor"
 omarchy-hyprland-monitor-scaling 2>/dev/null || echo
 
+# scale and position ride along so the panel can put an output back where it
+# was after switching it off; a disabled output no longer reports them dependably.
 printf '%s\n' "$monitors_json" | jq -c \
-  '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true), width, height}]'
+  '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true), width, height, scale, x, y}]'

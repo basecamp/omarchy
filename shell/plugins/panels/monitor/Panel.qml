@@ -26,6 +26,8 @@ Panel {
   property string monitorScale: ""
   property var displays: []
   property int enabledDisplayCount: 0
+  // name -> { scale, position } last seen while that output was on
+  property var displayLayouts: ({})
 
   // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
@@ -294,13 +296,14 @@ Panel {
     var parsed = Model.parseDisplays(displaysJson)
     root.displays = parsed.displays
     root.enabledDisplayCount = parsed.enabledDisplayCount
+    root.displayLayouts = Model.rememberLayouts(root.displayLayouts, parsed.displays)
   }
 
   function toggleDisplay(name, enabled) {
     if (!name) return
     if (enabled && root.enabledDisplayCount <= 1) return
 
-    actionProc.command = ["hyprctl", "keyword", "monitor", name + (enabled ? ",disable" : ",preferred,auto,auto")]
+    actionProc.command = ["hyprctl", "eval", Model.monitorRule(name, enabled, root.displayLayouts[name])]
     if (!actionProc.running) actionProc.running = true
   }
 

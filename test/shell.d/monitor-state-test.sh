@@ -57,26 +57,26 @@ assert_line_count() {
 }
 
 extended='[
-  { "name": "eDP-1", "mirrorOf": "none", "disabled": false, "focused": false, "width": 1920, "height": 1080 },
-  { "name": "DP-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 2560, "height": 1440 }
+  { "name": "eDP-1", "mirrorOf": "none", "disabled": false, "focused": false, "width": 1920, "height": 1080, "scale": 2, "x": 0, "y": 0 },
+  { "name": "DP-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 2560, "height": 1440, "scale": 1.5, "x": 960, "y": 0 }
 ]'
 
 # Omarchy mirrors by pointing the external at the internal, so `mirrorOf` lands
 # on the external and the internal keeps saying "none".
 mirrored='[
-  { "name": "eDP-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 1920, "height": 1080 },
-  { "name": "DP-1", "mirrorOf": "eDP-1", "disabled": false, "focused": false, "width": 1920, "height": 1080 }
+  { "name": "eDP-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 1920, "height": 1080, "scale": 2, "x": 0, "y": 0 },
+  { "name": "DP-1", "mirrorOf": "eDP-1", "disabled": false, "focused": false, "width": 1920, "height": 1080, "scale": 2, "x": 0, "y": 0 }
 ]'
 
 # A monitors.lua of the user's own can mirror the other way instead.
 reverse_mirrored='[
-  { "name": "eDP-1", "mirrorOf": "DP-1", "disabled": false, "focused": false, "width": 2560, "height": 1440 },
-  { "name": "DP-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 2560, "height": 1440 }
+  { "name": "eDP-1", "mirrorOf": "DP-1", "disabled": false, "focused": false, "width": 2560, "height": 1440, "scale": 1.5, "x": 0, "y": 0 },
+  { "name": "DP-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 2560, "height": 1440, "scale": 1.5, "x": 0, "y": 0 }
 ]'
 
 clamshell='[
-  { "name": "eDP-1", "mirrorOf": "none", "disabled": true, "focused": false, "width": 0, "height": 0 },
-  { "name": "DP-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 2560, "height": 1440 }
+  { "name": "eDP-1", "mirrorOf": "none", "disabled": true, "focused": false, "width": 0, "height": 0, "scale": 1, "x": 0, "y": 0 },
+  { "name": "DP-1", "mirrorOf": "none", "disabled": false, "focused": true, "width": 2560, "height": 1440, "scale": 1.5, "x": 0, "y": 0 }
 ]'
 
 monitor_state "$extended"
@@ -109,9 +109,9 @@ assert_line 4 "" "monitor state reports no mirror while clamshelled"
 pass "monitor state separates a disabled internal monitor from a missing one"
 
 monitor_state "$extended"
-[[ ${state_lines[7]-} == '[{"name":"eDP-1","enabled":true,"focused":false,"width":1920,"height":1080},{"name":"DP-1","enabled":true,"focused":true,"width":2560,"height":1440}]' ]] ||
+[[ ${state_lines[7]-} == '[{"name":"eDP-1","enabled":true,"focused":false,"width":1920,"height":1080,"scale":2,"x":0,"y":0},{"name":"DP-1","enabled":true,"focused":true,"width":2560,"height":1440,"scale":1.5,"x":960,"y":0}]' ]] ||
   fail "monitor state lists every display for the panel" "actual: ${state_lines[7]-<missing>}"
 monitor_state "$clamshell"
-[[ ${state_lines[7]-} == '[{"name":"eDP-1","enabled":false,"focused":false,"width":0,"height":0},{"name":"DP-1","enabled":true,"focused":true,"width":2560,"height":1440}]' ]] ||
+[[ ${state_lines[7]-} == '[{"name":"eDP-1","enabled":false,"focused":false,"width":0,"height":0,"scale":1,"x":0,"y":0},{"name":"DP-1","enabled":true,"focused":true,"width":2560,"height":1440,"scale":1.5,"x":0,"y":0}]' ]] ||
   fail "monitor state lists every display for the panel" "actual: ${state_lines[7]-<missing>}"
-pass "monitor state lists every display with its enabled and focused state"
+pass "monitor state lists every display with its enabled state, focus, scale and position"
