@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# omarchy:summary=Update the AppImages installed from GitHub releases
+# omarchy:args=[--check] [--notify] [--quiet]
+# omarchy:examples=omarchy appimage update | omarchy appimage update --check
+
+set -uo pipefail
+
+source omarchy-appimage-release
+
+DESKTOP_DIR="$HOME/.local/share/applications"
+
+CHECK_ONLY=false
+NOTIFY=false
+QUIET=false
+
+while (( $# > 0 )); do
+  case $1 in
+  --check) CHECK_ONLY=true ;;
+  --notify) NOTIFY=true ;;
+  --quiet) QUIET=true ;;
+  *)
+    echo "Unknown option: $1" >&2
+    exit 1
+    ;;
+  esac
+  shift
+done
+
+# --quiet is for the timer, which should say nothing on the days when nothing
+# moved: progress is muted, news is not.
+say() {
+  if [[ $QUIET == "false" ]]; then
+    echo -e "$@"
+  fi
+}
+
+read_key() {
+  awk -v key="$2" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }' "$1"
+}
+
+shopt -s nullglob
+ENTRIES=("$DESKTOP_DIR"/appimage-*.desktop)
+shopt -u nullglob
+
+TRACKED=0
+UPDATED=()
+FAILED=()
+
+for entry in "${ENTRIES[@]}"; do
+  repo=$(read_key "$entry" X-AppImage-Repo)
+  [[ -n $repo ]] || continue
+  (( TRACKED++ ))
+
+  name=$(read_key "$entry" Name)
+  have_tag=$(read_key "$entry" X-AppImage-Release)
+  have_published=$(read_key "$entry" X-AppImage-Published)
+  asset_pattern=$(read_key "$entry" X-AppImage-Asset-Glob)
+  [[ -n $asset_pattern ]] || asset_pattern=$(read_key "$entry" X-AppImage-Asset)
+
+  say "Checking $name ($repo)..."
+  release=$(appimage_latest_release "$repo")
+
+  if [[ -z $release ]]; then
+    FAILED+=("$name: could not reach GitHub")
+    continue
+  fi
+
+  tag=$(jq -r '.tag_name // empty' <<<"$release")
+  published=$(jq -r '.published_at // empty' <<<"$release")
+
+  if ! appimage_release_moved "$have_tag" "$have_published" "$tag" "$published"; then
+    say "  up to date ($tag)"
+    continue
+  fi
+
+  if [[ $CHECK_ONLY == "true" ]]; then
+    echo -e "$name: $have_tag -> $tag"
+    UPDATED+=("$name $tag")
+    continue
+  fi
+
+  # Reinstalling is the update: the installer resolves the release again, picks
+  # the asset the pattern names, rewrites the launcher, and drops the image the
+  # new one supersedes.
+  echo -e "Updating $name: $have_tag -> $tag"
+  if omarchy-appimage-install --github "$repo" --asset "$asset_pattern" --quiet; then
+    UPDATED+=("$name $tag")
+  else
+    FAILED+=("$name: could not install $tag")
+  fi
+done
+
+if (( TRACKED == 0 )); then
+  say "No AppImages are tracked from GitHub releases."
+  exit 0
+fi
+
+if (( ${#UPDATED[@]} > 0 )); then
+  echo -e "\n\e[32mUpdated:\e[0m ${UPDATED[*]}"
+  if [[ $NOTIFY == "true" && $CHECK_ONLY == "false" ]]; then
+    omarchy-notification-send -g 󰣇 "AppImages updated" "${UPDATED[*]}"
+  fi
+else
+  say "\nAll tracked AppImages are current."
+fi
+
+if (( ${#FAILED[@]} > 0 )); then
+  printf '\e[33m%s\e[0m\n' "${FAILED[@]}" >&2
+  exit 1
+fi
+
+exit 0

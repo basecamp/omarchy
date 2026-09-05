@@ -1,0 +1,341 @@
+#!/bin/bash
+
+# omarchy:summary=Install an AppImage as a desktop app
+# omarchy:args=[path-to-appimage] [--github [owner/repo]] [--asset <name-or-glob>] [--quiet]
+# omarchy:examples=omarchy appimage install ~/Downloads/Cursor-1.2.3-x86_64.AppImage | omarchy appimage install --github AppImage/appimagetool
+
+set -euo pipefail
+
+source omarchy-appimage-release
+
+APPS_DIR="$HOME/Applications"
+DESKTOP_DIR="$HOME/.local/share/applications"
+ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
+
+safe_icon_name() {
+  printf '%s\n' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//'
+}
+
+desktop_string_escape() {
+  # Desktop Entry "string" value (freedesktop Desktop Entry Spec, "Value types"):
+  # a raw newline would start a new key line and let a value lifted out of the
+  # image inject a second Exec=. Same escaping as omarchy-webapp-install, for the
+  # same reason -- here the values come from a downloaded file rather than a
+  # prompt, so nothing about them is trusted either.
+  local value="$1"
+
+  value=${value//\\/\\\\}
+  value=${value//$'\t'/\\t}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\n'/\\n}
+  [[ $value == " "* ]] && value="\\s${value# }"
+
+  printf '%s' "$value"
+}
+
+desktop_exec_arg() {
+  # One Exec argument, double-quoted per the freedesktop Exec spec: inside quotes
+  # " ` $ \ take a backslash and a literal % becomes %%. The AppImage lives under
+  # a path the user chose, so it can hold every one of those characters.
+  local escaped
+  escaped=$(printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/`/\\`/g' -e 's/\$/\\$/g' -e 's/%/%%/g')
+  printf '"%s"' "$escaped"
+}
+
+# A key from the .desktop entry bundled inside the image. awk rather than
+# `sed | head` so a key that never appears is an empty answer, not a pipeline
+# whose first stage was killed by SIGPIPE under `pipefail`.
+read_embedded_key() {
+  [[ -n $EMBEDDED_DESKTOP ]] || return 0
+
+  awk -v key="$1" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }' "$EMBEDDED_DESKTOP"
+}
+
+# The largest match wins. AppImages ship the same icon at several resolutions,
+# and byte size tracks resolution far more reliably than the theme path does.
+largest_file() {
+  find "$@" -printf '%s\t%p\n' 2>/dev/null | sort -rn | sed -n '1s/^[0-9]*\t//p'
+}
+
+# --quiet is for omarchy-appimage-update, which prints its own line per app and
+# runs from a timer whose output lands in the journal.
+say() {
+  if [[ $QUIET == "false" ]]; then
+    echo -e "$@"
+  fi
+}
+
+SOURCE=""
+REPO=""
+FROM_GITHUB=false
+WANTED_ASSET=""
+QUIET=false
+
+while (( $# > 0 )); do
+  case $1 in
+  --github)
+    FROM_GITHUB=true
+    # The repo is optional so the menu row can hand the prompt over.
+    if [[ -n ${2-} && ${2-} != -* ]]; then
+      REPO="$2"
+      shift
+    fi
+    ;;
+  --asset)
+    if [[ -z ${2-} ]]; then
+      echo "--asset requires an asset name or pattern." >&2
+      exit 1
+    fi
+    WANTED_ASSET="$2"
+    shift
+    ;;
+  --quiet) QUIET=true ;;
+  -*)
+    echo "Unknown option: $1" >&2
+    exit 1
+    ;;
+  *) SOURCE="$1" ;;
+  esac
+  shift
+done
+
+mkdir -p "$APPS_DIR" "$DESKTOP_DIR" "$ICON_DIR"
+
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+RELEASE_TAG=""
+RELEASE_PUBLISHED=""
+ASSET_NAME=""
+ASSET_GLOB=""
+
+if [[ $FROM_GITHUB == "true" ]]; then
+  if [[ -z $REPO ]]; then
+    echo -e "\e[32mLet's install an AppImage from a GitHub repository's releases.\n\e[0m"
+    REPO=$(gum input --prompt "Repo> " --placeholder "owner/repo or https://github.com/owner/repo")
+  fi
+
+  REPO=$(appimage_normalize_repo "$REPO")
+  if [[ $REPO != */* ]]; then
+    echo "Not a GitHub repository: ${REPO:-nothing}"
+    exit 1
+  fi
+
+  say "Looking up the latest release of $REPO..."
+  RELEASE=$(appimage_latest_release "$REPO" || true)
+
+  if [[ -z $RELEASE ]]; then
+    echo "No releases found for $REPO (or GitHub rate-limited the request)."
+    exit 1
+  fi
+
+  RELEASE_TAG=$(jq -r '.tag_name // empty' <<<"$RELEASE")
+  RELEASE_PUBLISHED=$(jq -r '.published_at // empty' <<<"$RELEASE")
+
+  mapfile -t ASSETS < <(appimage_release_assets <<<"$RELEASE")
+
+  if (( ${#ASSETS[@]} == 0 )); then
+    echo "Release $RELEASE_TAG of $REPO ships no .AppImage asset."
+    exit 1
+  fi
+
+  SELECTED=""
+  if [[ -n $WANTED_ASSET ]]; then
+    SELECTED=$(printf '%s\n' "${ASSETS[@]}" | appimage_match_asset "$WANTED_ASSET" || true)
+    if [[ -z $SELECTED ]]; then
+      echo "Release $RELEASE_TAG of $REPO has no asset matching $WANTED_ASSET."
+      exit 1
+    fi
+  elif (( ${#ASSETS[@]} == 1 )); then
+    SELECTED="${ASSETS[0]}"
+  else
+    CHOICE=$(printf '%s\n' "${ASSETS[@]}" | cut -f1 |
+      gum choose --header "Asset from $REPO $RELEASE_TAG" --height 12)
+    SELECTED=$(printf '%s\n' "${ASSETS[@]}" | appimage_match_asset "$CHOICE" || true)
+  fi
+
+  if [[ -z $SELECTED ]]; then
+    echo "You must select an asset to install."
+    exit 1
+  fi
+
+  ASSET_NAME="${SELECTED%%$'\t'*}"
+  ASSET_GLOB=$(appimage_asset_glob "$ASSET_NAME")
+
+  say "\nDownloading \e[32m$ASSET_NAME\e[0m ($REPO $RELEASE_TAG)..."
+  # Into the scratch directory first: a download interrupted halfway must not
+  # leave a truncated image sitting in ~/Applications looking installed.
+  if ! appimage_download "${SELECTED#*$'\t'}" "$WORK/$ASSET_NAME" "$QUIET"; then
+    echo "Could not download $ASSET_NAME."
+    exit 1
+  fi
+
+  SOURCE="$WORK/$ASSET_NAME"
+elif [[ -z $SOURCE ]]; then
+  echo -e "\e[32mLet's install an AppImage you can start with the app launcher.\n\e[0m"
+
+  mapfile -t FOUND < <(find "$HOME/Downloads" "$HOME/Desktop" "$HOME" -maxdepth 1 -iname '*.appimage' -type f 2>/dev/null | sort -u)
+
+  if (( ${#FOUND[@]} > 0 )); then
+    SOURCE=$(printf '%s\n' "${FOUND[@]}" "Browse..." | gum choose --header "AppImage to install" --height 12)
+    if [[ $SOURCE == "Browse..." ]]; then
+      SOURCE=$(gum file "$HOME")
+    fi
+  else
+    SOURCE=$(gum file "$HOME")
+  fi
+fi
+
+if [[ -z $SOURCE ]]; then
+  echo "You must select an AppImage to install."
+  exit 1
+fi
+
+if [[ ! -f $SOURCE ]]; then
+  echo "Not a file: $SOURCE"
+  exit 1
+fi
+
+SOURCE=$(realpath "$SOURCE")
+
+# Type-2 AppImages self-mount through libfuse2. Without it they only run via
+# --appimage-extract-and-run, which is slow and breaks some apps.
+omarchy-pkg-add fuse2
+
+BASENAME=$(basename "$SOURCE")
+TARGET="$APPS_DIR/$BASENAME"
+
+if [[ $SOURCE != "$TARGET" ]]; then
+  cp -f "$SOURCE" "$TARGET"
+fi
+chmod +x "$TARGET"
+
+say "Reading metadata out of $BASENAME..."
+
+# --appimage-extract unpacks the embedded squashfs directly, so it needs no FUSE
+# mount and works even on the run that just installed fuse2. An image with no
+# runtime to ask still installs; it only loses its name and icon.
+( cd "$WORK" && "$TARGET" --appimage-extract >/dev/null 2>&1 ) || true
+
+ROOT="$WORK/squashfs-root"
+EMBEDDED_DESKTOP=""
+
+if [[ -d $ROOT ]]; then
+  EMBEDDED_DESKTOP=$(largest_file "$ROOT" -maxdepth 1 -name '*.desktop' -type f)
+  if [[ -z $EMBEDDED_DESKTOP && -d $ROOT/usr/share/applications ]]; then
+    EMBEDDED_DESKTOP=$(largest_file "$ROOT/usr/share/applications" -name '*.desktop' -type f)
+  fi
+fi
+
+APP_NAME=$(read_embedded_key Name)
+if [[ -z $APP_NAME ]]; then
+  # Cursor-1.2.3-x86_64.AppImage reads as "Cursor": drop the suffix, the
+  # architecture, and the version, in that order.
+  APP_NAME=$(sed 's/\.[Aa]pp[Ii]mage$//; s/[-_]x86_64$//; s/[-_][0-9][^-_]*$//' <<<"$BASENAME")
+fi
+
+APP_ID="appimage-$(safe_icon_name "$APP_NAME")"
+
+APP_COMMENT=$(read_embedded_key Comment)
+[[ -n $APP_COMMENT ]] || APP_COMMENT="$APP_NAME (AppImage)"
+
+APP_CATEGORIES=$(read_embedded_key Categories)
+[[ -n $APP_CATEGORIES ]] || APP_CATEGORIES="Utility;"
+
+APP_MIME=$(read_embedded_key MimeType)
+
+APP_TERMINAL=$(read_embedded_key Terminal)
+[[ $APP_TERMINAL == "true" ]] || APP_TERMINAL="false"
+
+# Keep the field code off the bundled Exec so file and URL arguments still reach
+# the app -- an editor opened through "Open with" is passing one.
+EMBEDDED_EXEC=$(read_embedded_key Exec)
+FIELD_CODE=""
+if [[ $EMBEDDED_EXEC =~ (%[fFuU]) ]]; then
+  FIELD_CODE=" ${BASH_REMATCH[1]}"
+fi
+
+ICON_VALUE="application-x-executable"
+ICON_SOURCE=""
+
+if [[ -d $ROOT ]]; then
+  ICON_NAME=$(read_embedded_key Icon)
+  if [[ -n $ICON_NAME ]]; then
+    ICON_SOURCE=$(largest_file "$ROOT" \( -name "$ICON_NAME.png" -o -name "$ICON_NAME.svg" \) -type f)
+  fi
+  if [[ -z $ICON_SOURCE && -f $ROOT/.DirIcon ]]; then
+    ICON_SOURCE=$(realpath "$ROOT/.DirIcon")
+  fi
+  if [[ -z $ICON_SOURCE ]]; then
+    ICON_SOURCE=$(largest_file "$ROOT" -maxdepth 1 \( -name '*.png' -o -name '*.svg' \) -type f)
+  fi
+fi
+
+if [[ -n $ICON_SOURCE && -f $ICON_SOURCE ]]; then
+  ICON_EXT="${ICON_SOURCE##*.}"
+  [[ $ICON_EXT != "$ICON_SOURCE" ]] || ICON_EXT="png"
+  cp -f "$ICON_SOURCE" "$ICON_DIR/$APP_ID.$ICON_EXT"
+  gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+  ICON_VALUE="$APP_ID"
+fi
+
+DESKTOP_FILE="$DESKTOP_DIR/$APP_ID.desktop"
+
+# Reinstalling the same app from a newer file leaves the previous image behind
+# under its own versioned name, so remember it before the launcher is rewritten.
+PREVIOUS_TARGET=""
+if [[ -f $DESKTOP_FILE ]]; then
+  PREVIOUS_TARGET=$(awk 'index($0, "X-AppImage-Source=") == 1 { print substr($0, 19); exit }' "$DESKTOP_FILE")
+fi
+
+cat >"$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=$(desktop_string_escape "$APP_NAME")
+Comment=$(desktop_string_escape "$APP_COMMENT")
+Exec=$(desktop_string_escape "$(desktop_exec_arg "$TARGET")")$FIELD_CODE
+Terminal=$APP_TERMINAL
+Type=Application
+Icon=$(desktop_string_escape "$ICON_VALUE")
+StartupNotify=true
+Categories=$(desktop_string_escape "$APP_CATEGORIES")
+X-AppImage-Source=$(desktop_string_escape "$TARGET")
+EOF
+
+if [[ -n $APP_MIME ]]; then
+  printf 'MimeType=%s\n' "$(desktop_string_escape "$APP_MIME")" >>"$DESKTOP_FILE"
+fi
+
+# Where the image came from, so omarchy-appimage-update can tell whether the
+# release moved. The tag alone is not enough: a project on a rolling tag such
+# as "continuous" publishes every build under the same one.
+if [[ $FROM_GITHUB == "true" ]]; then
+  {
+    printf 'X-AppImage-Repo=%s\n' "$(desktop_string_escape "$REPO")"
+    printf 'X-AppImage-Release=%s\n' "$(desktop_string_escape "$RELEASE_TAG")"
+    printf 'X-AppImage-Asset=%s\n' "$(desktop_string_escape "$ASSET_NAME")"
+    printf 'X-AppImage-Asset-Glob=%s\n' "$(desktop_string_escape "$ASSET_GLOB")"
+    printf 'X-AppImage-Published=%s\n' "$(desktop_string_escape "$RELEASE_PUBLISHED")"
+  } >>"$DESKTOP_FILE"
+fi
+
+chmod +x "$DESKTOP_FILE"
+
+if [[ -n $PREVIOUS_TARGET && $PREVIOUS_TARGET != "$TARGET" && -f $PREVIOUS_TARGET ]]; then
+  rm -f "$PREVIOUS_TARGET"
+fi
+
+update-desktop-database "$DESKTOP_DIR" &>/dev/null || true
+
+if [[ $QUIET == "false" ]]; then
+  echo -e "\n\e[32m$APP_NAME installed.\e[0m"
+  echo "  AppImage: $TARGET"
+  echo "  Launcher: $DESKTOP_FILE"
+  if [[ $FROM_GITHUB == "true" ]]; then
+    echo "  Tracking: github.com/$REPO @ $RELEASE_TAG"
+  fi
+  echo -e "\nYou can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+fi

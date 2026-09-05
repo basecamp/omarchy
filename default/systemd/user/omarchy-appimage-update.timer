@@ -1,0 +1,13 @@
+[Unit]
+Description=Daily check for new AppImage releases
+
+# Persistent catches up a run missed while the machine was off or asleep, and
+# the randomized delay keeps every Omarchy machine from asking GitHub at the
+# same second.
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target
