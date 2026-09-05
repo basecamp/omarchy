@@ -175,6 +175,7 @@ All capture options are also accessible under _Trigger > Capture_ in the Omarchy
 | `Super + Ctrl + Space` | Pick theme background |
 | `Super + Backspace` | Toggle transparency on a window |
 | `Super + Ctrl + Backspace` | Toggle single-window square aspect |
+| `Super + Ctrl + Shift + Backspace` | Toggle single-window half tile |
 
 Extra background images live in `~/.config/omarchy/backgrounds/<theme name>`. Also available via _Install > Style > Background_ in the Omarchy menu.
 

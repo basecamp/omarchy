@@ -113,7 +113,8 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ bashrc                                             /usr/share/omarchy/etc-overrides/dot.bashrc
   │                                                       → /etc/skel/.bashrc (post_install cp -f)
   ├─ hypr/toggles/*.lua (flags,
-  │    single-window-aspect-ratio, window-no-gaps)      /etc/skel/.local/state/omarchy/toggles/hypr/
+  │    single-window-aspect-ratio, single-window-half-tile,
+  │    window-no-gaps)                                  /etc/skel/.local/state/omarchy/toggles/hypr/
   ├─ nautilus-python/extensions/*.py                    /etc/skel/.local/share/nautilus-python/extensions/
   ├─ tensaku/state.toml                                 /etc/skel/.local/state/tensaku/state.toml
   ├─ uwsm/env.d/10-omarchy                              /usr/share/uwsm/env.d/

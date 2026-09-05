@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle single-window left/right half tile.
+
+flag_dir="$HOME/.local/state/omarchy/toggles/hypr"
+
+# Square and half-tile both own a lone window's shape; turning one on drops the other.
+if [[ ! -f $flag_dir/single-window-half-tile.lua ]]; then
+  rm -f "$flag_dir/single-window-aspect-ratio.lua"
+fi
+
+case $(omarchy-hyprland-toggle single-window-half-tile) in
+  on) omarchy-notification-send -g  "Enable single-window half tile" ;;
+  off) omarchy-notification-send -g  "Disable single-window half tile" ;;
+esac

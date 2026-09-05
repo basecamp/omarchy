@@ -2,6 +2,13 @@
 
 # omarchy:summary=Toggle single-window square aspect ratio.
 
+flag_dir="$HOME/.local/state/omarchy/toggles/hypr"
+
+# Square and half-tile both own a lone window's shape; turning one on drops the other.
+if [[ ! -f $flag_dir/single-window-aspect-ratio.lua ]]; then
+  rm -f "$flag_dir/single-window-half-tile.lua"
+fi
+
 case $(omarchy-hyprland-toggle single-window-aspect-ratio) in
   on) omarchy-notification-send -g  "Enable single-window square aspect ratio" ;;
   off) omarchy-notification-send -g  "Disable single-window square aspect ratio" ;;

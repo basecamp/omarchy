@@ -39,8 +39,18 @@ o.bind("SUPER + SHIFT + ALT + RIGHT", "Move workspace to right monitor", hl.dsp.
 o.bind("SUPER + SHIFT + ALT + UP", "Move workspace to up monitor", hl.dsp.workspace.move({ monitor = "u" }))
 o.bind("SUPER + SHIFT + ALT + DOWN", "Move workspace to down monitor", hl.dsp.workspace.move({ monitor = "d" }))
 
-o.bind("SUPER + SHIFT + LEFT", "Swap window to the left", hl.dsp.window.swap({ direction = "l" }))
-o.bind("SUPER + SHIFT + RIGHT", "Swap window to the right", hl.dsp.window.swap({ direction = "r" }))
+o.bind("SUPER + SHIFT + LEFT", "Swap window to the left", function()
+  if o.half_tile_move and o.half_tile_move("left") then
+    return
+  end
+  hl.dispatch(hl.dsp.window.swap({ direction = "l" }))
+end)
+o.bind("SUPER + SHIFT + RIGHT", "Swap window to the right", function()
+  if o.half_tile_move and o.half_tile_move("right") then
+    return
+  end
+  hl.dispatch(hl.dsp.window.swap({ direction = "r" }))
+end)
 o.bind("SUPER + SHIFT + UP", "Swap window up", hl.dsp.window.swap({ direction = "u" }))
 o.bind("SUPER + SHIFT + DOWN", "Swap window down", hl.dsp.window.swap({ direction = "d" }))
 

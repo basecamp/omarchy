@@ -21,3 +21,4 @@ disabled_input_device("touchpad")
 disabled_input_device("touchscreen")
 
 require("default.hypr.workspace-layouts")
+require("default.hypr.half-tile")
