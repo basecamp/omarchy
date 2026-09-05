@@ -1,0 +1,13 @@
+[Unit]
+Description=Restore the Omarchy battery charge limit
+# Some embedded controllers forget the charge threshold across power cycles.
+# omarchy-battery-limit-set saves the choice to /etc/omarchy/battery-limit, and
+# this unit re-applies it at boot. No saved limit, nothing to do.
+ConditionPathExists=/etc/omarchy/battery-limit
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '/usr/bin/omarchy-battery-limit-set "$(cat /etc/omarchy/battery-limit)"'
+
+[Install]
+WantedBy=multi-user.target

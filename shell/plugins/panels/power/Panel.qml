@@ -138,6 +138,7 @@ Panel {
     if (!batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
+    if (chargeLimitSupported && !thresholdReadProc.running) thresholdReadProc.running = true
   }
 
   function updateKeyValue(raw, targetName) {
@@ -169,6 +170,26 @@ Panel {
     actionProc.running = true
   }
 
+  // Charge limit (the battery's end threshold in sysfs), selectable from
+  // chargeLimitOptions. Read/set through the omarchy-battery-limit-* commands
+  // so the first capable battery is targeted instead of assuming BAT0, and
+  // read straight from sysfs rather than upower, which caches and can report
+  // a "75-80%" start-end range. Support is probed once per panel open via
+  // omarchy-hw-battery-charge-limit and cached in chargeLimitSupported.
+  property string chargeLimitRaw: ""
+  readonly property int chargeLimit: {
+    var parsed = Model.parseChargeLimit(root.chargeLimitRaw)
+    return parsed === null ? 100 : parsed
+  }
+  readonly property var chargeLimitOptions: [80, 90, 100]
+  property bool chargeLimitSupported: false
+
+  function setChargeLimit(value) {
+    if (thresholdProc.running) return
+    thresholdProc.command = ["omarchy-battery-limit-set", String(value)]
+    thresholdProc.running = true
+  }
+
   function togglePercentage() {
     root.settings = Object.assign({}, root.settings, { showPercentage: !root.showPercentage })
     if (root.bar && root.bar.shell) root.bar.shell.updateEntryInline(root.moduleName, root.settings)
@@ -193,6 +214,7 @@ Panel {
       }
 
       refresh()
+      if (!chargeLimitCheckProc.running) chargeLimitCheckProc.running = true
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
       cursorActive = false
@@ -226,6 +248,26 @@ Panel {
   Process {
     id: actionProc
     onExited: root.refresh()
+  }
+
+  Process {
+    id: thresholdProc
+    onExited: root.refresh()
+  }
+
+  Process {
+    id: thresholdReadProc
+    command: ["omarchy-battery-limit-get"]
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.chargeLimitRaw = text.trim() }
+  }
+
+  Process {
+    id: chargeLimitCheckProc
+    command: ["omarchy-hw-battery-charge-limit"]
+    onExited: function(exitCode) {
+      root.chargeLimitSupported = exitCode === 0
+      if (root.chargeLimitSupported && !thresholdReadProc.running) thresholdReadProc.running = true
+    }
   }
 
   Timer { interval: 5000; running: root.opened; repeat: true; onTriggered: root.refresh() }
@@ -499,6 +541,54 @@ Panel {
                     root.profileIndex = index
                   }
                 }
+              }
+            }
+          }
+        }
+
+        // ---------- Charge limit picker ----------
+        PanelSeparator {
+          visible: root.chargeLimitSupported
+          foreground: root.bar.foreground
+        }
+
+        Column {
+          visible: root.chargeLimitSupported
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSectionHeader {
+            text: "CHARGE LIMIT — " + root.chargeLimit + "%"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Row {
+            id: chargeLimitRow
+            width: parent.width
+            spacing: Style.space(6)
+
+            readonly property real cellWidth: (width - spacing * (root.chargeLimitOptions.length - 1)) / root.chargeLimitOptions.length
+            readonly property var labels: ({ 80: "Max conserve", 90: "Conserve", 100: "Max battery" })
+            readonly property var icons: ({ 80: "󰹦", 90: "󰌪", 100: "󰁹" })
+
+            Repeater {
+              model: root.chargeLimitOptions
+              Button {
+                required property var modelData
+                width: chargeLimitRow.cellWidth
+                iconText: chargeLimitRow.icons[modelData] || ""
+                iconSize: Style.font.title
+                text: chargeLimitRow.labels[modelData] || ""
+                fontSize: Style.font.bodySmall
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                horizontalPadding: Style.space(2)
+                verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+                bordered: true
+                active: root.chargeLimit === modelData
+                selected: root.chargeLimit === modelData
+                onClicked: root.setChargeLimit(modelData)
               }
             }
           }

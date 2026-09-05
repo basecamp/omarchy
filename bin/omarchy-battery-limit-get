@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Print the current battery charge limit percentage.
+# omarchy:hidden=true
+
+power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-/sys/class/power_supply}"
+
+for threshold in "$power_supply_path"/BAT*/charge_control_end_threshold; do
+  if [[ -r $threshold ]]; then
+    cat "$threshold"
+    exit 0
+  fi
+done
+
+exit 1
