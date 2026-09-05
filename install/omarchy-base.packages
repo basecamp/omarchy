@@ -95,6 +95,7 @@ omacalc
 omacut
 omawrite
 omarchy-nvim
+omasnap
 pacman-contrib
 pamixer
 pinta
@@ -111,7 +112,6 @@ qt6-imageformats
 quickshell
 ripgrep
 ruby
-tensaku
 sddm
 slurp
 socat

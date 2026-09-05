@@ -2,81 +2,22 @@
 
 # omarchy:summary=Take a screenshot
 # omarchy:group=capture
-# omarchy:args=[smart|region|windows|fullscreen] [slurp|copy|save] [--editor=<name>]
+# omarchy:args=[smart|region|windows|fullscreen|scroll] [copy|save]
 # omarchy:examples=omarchy screenshot | omarchy capture screenshot region
 # omarchy:aliases=omarchy screenshot
 
-[[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
-OUTPUT_DIR="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"
-
-if [[ ! -d $OUTPUT_DIR ]]; then
-  mkdir -p "$OUTPUT_DIR"
-  omarchy-notification-send "Created screenshot directory: $OUTPUT_DIR" -t 2000
+if [[ -n ${OMARCHY_SCREENSHOT_DIR:-} && -z ${OMASNAP_SCREENSHOT_DIR:-} ]]; then
+  export OMASNAP_SCREENSHOT_DIR="$OMARCHY_SCREENSHOT_DIR"
 fi
 
-pkill slurp && exit 0
-
-SCREENSHOT_EDITOR="${OMARCHY_SCREENSHOT_EDITOR:-tensaku-edit}"
-
-# Parse --editor flag from any position
-ARGS=()
+omasnap_args=()
 for arg in "$@"; do
-  if [[ $arg == --editor=* ]]; then
-    SCREENSHOT_EDITOR="${arg#--editor=}"
-  else
-    ARGS+=("$arg")
-  fi
+  case "$arg" in
+    copy) omasnap_args+=(--copy) ;;
+    save) omasnap_args+=(--save) ;;
+    slurp) ;;
+    *) omasnap_args+=("$arg") ;;
+  esac
 done
-set -- "${ARGS[@]}"
 
-MODE="${1:-smart}"
-PROCESSING="${2:-slurp}"
-
-# The picker leaves the screen freeze running (PID on its first output line)
-# so grim captures the frozen overlay rather than live content shifting
-# during teardown.
-#
-# Software-composited cursors (Hyprland's fallback on GPUs without working
-# hardware cursors) are baked into the frames grim captures, so force
-# hardware cursors until after grim runs and restore the setting on exit.
-NO_HW_CURSORS=$(hyprctl getoption cursor:no_hardware_cursors -j | jq '.int')
-
-set_no_hw_cursors() {
-  hyprctl eval "hl.config({ cursor = { no_hardware_cursors = $1 } })" &>/dev/null ||
-    hyprctl keyword cursor:no_hardware_cursors "$1" &>/dev/null
-}
-
-cleanup() {
-  [[ -n $FREEZE_PID ]] && kill $FREEZE_PID 2>/dev/null
-  set_no_hw_cursors "$NO_HW_CURSORS"
-}
-trap cleanup EXIT
-
-set_no_hw_cursors 0
-{ read -r FREEZE_PID; read -r SELECTION; } < <(omarchy-capture-region "$MODE" --keep-freeze)
-
-[[ -z $SELECTION ]] && exit 0
-
-FILENAME="screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
-FILEPATH="$OUTPUT_DIR/$FILENAME"
-
-case "$PROCESSING" in
-  slurp)
-    grim -g "$SELECTION" "$FILEPATH" || exit 1
-    echo "$FILEPATH"
-    wl-copy --type image/png <"$FILEPATH"
-
-    # Best-effort: the screenshot is already saved and on the clipboard, so a
-    # notification outage must not report the capture itself as failed.
-    omarchy-notification-send "Screenshot saved to clipboard and file" "Edit with Super + Alt + , (or click this)" \
-      --image "$FILEPATH" \
-      --exec "$SCREENSHOT_EDITOR" "$FILEPATH" || true
-    ;;
-  copy)
-    grim -g "$SELECTION" - | wl-copy --type image/png
-    ;;
-  save)
-    grim -g "$SELECTION" "$FILEPATH" || exit 1
-    echo "$FILEPATH"
-    ;;
-esac
+exec omasnap "${omasnap_args[@]}"

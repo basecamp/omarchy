@@ -25,13 +25,13 @@ if ! command -v quickshell >/dev/null 2>&1; then
   exit 0
 fi
 
-if pgrep -x slurp >/dev/null 2>&1; then
-  pass "slurp is already running; skipping screenshot sanity test"
+if pgrep -x omasnap >/dev/null 2>&1; then
+  pass "omasnap is already running; skipping screenshot sanity test"
   exit 0
 fi
 
 require_command hyprctl
-require_command grim
+require_command omasnap
 require_command jq
 require_command python3
 
@@ -118,13 +118,13 @@ jq -e '
   fail_with_log "screenshot test shell rendered visible bar widgets"
 }
 
-screenshot=$(
-  OMARCHY_PATH="$test_root" \
-  OMARCHY_SCREENSHOT_DIR="$screenshot_dir" \
-  HOME="$test_home" \
-  PATH="$stub_bin:$ROOT/bin:$PATH" \
-    "$ROOT/bin/omarchy" capture screenshot fullscreen save 2>"$screenshot_err" | tail -n 1
-)
+OMARCHY_PATH="$test_root" \
+OMASNAP_SCREENSHOT_DIR="$screenshot_dir" \
+HOME="$test_home" \
+PATH="$stub_bin:$ROOT/bin:$PATH" \
+  "$ROOT/bin/omarchy" capture screenshot fullscreen save >/dev/null 2>"$screenshot_err"
+
+screenshot=$(find "$screenshot_dir" -maxdepth 1 -type f -name '*.png' -print -quit)
 
 [[ -n $screenshot && -f $screenshot ]] || fail_with_log "fullscreen screenshot was captured"
 
