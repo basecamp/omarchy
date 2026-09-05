@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Install the optional Ponte phone remote without starting a service.
+# omarchy:requires-sudo=true
+
+set -e
+
+omarchy-pkg-add ponte-remote
+
+cat <<'EOF'
+Ponte is installed. No service has been started.
+
+To configure this computer, connect it to Tailscale and run:
+  ponte setup
+
+To enable Ponte for your graphical session, run:
+  ponte install
+
+Phone setup and experimental release limitations:
+  https://github.com/LucasOl1337/ponte/tree/v0.1.0-alpha.1
+EOF

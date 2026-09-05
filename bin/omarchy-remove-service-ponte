@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Stop and remove Ponte while keeping its private configuration and recordings.
+# omarchy:requires-sudo=true
+
+set -e
+
+if omarchy-pkg-present ponte-remote; then
+  ponte uninstall
+  omarchy-pkg-drop ponte-remote
+fi
