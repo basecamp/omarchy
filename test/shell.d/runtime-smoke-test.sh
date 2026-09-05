@@ -178,6 +178,30 @@ jq -e '
 }
 pass "shell IPC lists plugin metadata"
 
+# Sample the handler collisions from startup, before anything below mutates the
+# plugin set. Enabling a plugin, hot-reloading one, and rescanning all rebuild
+# the widgets by design, and each rebuild adds a further collision per screen
+# past the first -- so a count taken after them measures this test's own work
+# rather than the duplicate loads it means to catch. Asserted further down,
+# beside the other geometry checks.
+# Widgets load asynchronously, so wait for the count to stop moving instead of
+# guessing a sleep. No matches is the good case, and pipefail would otherwise
+# abort the run.
+count_handler_collisions() {
+  local n
+  n=$(grep -oE "another handler is registered for target [a-z.-]+" "$log" |
+    sort | uniq -c | sort -rn | head -1 | awk '{print $1}' || true)
+  printf '%s' "${n:-0}"
+}
+
+startup_handler_collisions=$(count_handler_collisions)
+for _ in {1..40}; do
+  sleep 0.25
+  settled=$(count_handler_collisions)
+  [[ $settled == "$startup_handler_collisions" ]] && break
+  startup_handler_collisions=$settled
+done
+
 jq '.name = "After Hot Reload"' "$hot_reload_dir/manifest.json" >"$hot_reload_dir/manifest.json.tmp"
 mv "$hot_reload_dir/manifest.json.tmp" "$hot_reload_dir/manifest.json"
 
@@ -357,13 +381,10 @@ pass "direct panel IPC opens and closes default panels"
 # past the first. Anything beyond that is two instances on the same screen —
 # the shape duplicate component loads produced, where a sync pass that ran
 # while a widget's asynchronous load was still in flight started a second one.
-# Checked before the reload below, which rebuilds widgets by design.
+# Sampled above, before the first rescan rebuilt the widgets.
 screens=$(hyprctl -j monitors 2>/dev/null | jq 'length' 2>/dev/null || true)
 [[ $screens =~ ^[0-9]+$ ]] && (( screens > 0 )) || screens=1
-# No matches is the good case, and pipefail would otherwise abort the run.
-worst=$(grep -oE "another handler is registered for target [a-z.-]+" "$log" |
-  sort | uniq -c | sort -rn | head -1 | awk '{print $1}' || true)
-worst=${worst:-0}
+worst=$startup_handler_collisions
 if (( worst > screens - 1 )); then
   grep "another handler is registered for target" "$log" | sed 's/^/  /' | head -20 >&2
   fail_with_log "each widget registers its IPC handler once per screen (saw $worst for $screens screen(s))"
