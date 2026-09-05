@@ -14,8 +14,19 @@ fi
 MODE="$1"
 shift
 
+TEMP_FILE=""
+cleanup() {
+  [[ -n ${TEMP_FILE:-} && -f $TEMP_FILE ]] && rm -f "$TEMP_FILE"
+}
+trap cleanup EXIT
+
 if [[ $MODE == "clipboard" ]]; then
-  TEMP_FILE=$(mktemp --suffix=.txt)
+  # Private runtime dir — shared /tmp left clipboard contents readable to peers.
+  share_dir="${XDG_RUNTIME_DIR:-$HOME/.local/state/omarchy}"
+  mkdir -p "$share_dir"
+  chmod 700 "$share_dir" 2>/dev/null || true
+  TEMP_FILE=$(mktemp "$share_dir/omarchy-share.XXXXXX.txt")
+  chmod 600 "$TEMP_FILE"
   wl-paste >"$TEMP_FILE"
   FILE_ARRAY=("$TEMP_FILE")
 elif (($# > 0)); then
@@ -41,10 +52,11 @@ else
   readarray -t FILE_ARRAY <<<"$picked"
 fi
 
-# Run LocalSend in its own systemd service (detached from terminal)
-systemd-run --user --quiet --collect localsend --headless send "${FILE_ARRAY[@]}"
-
-# Note: Temporary file will remain until system cleanup for clipboard mode
-# This ensures the file content is available for the LocalSend GUI
+if [[ $MODE == "clipboard" ]]; then
+  # Wait so LocalSend can read the private temp before EXIT removes it.
+  systemd-run --user --quiet --collect --wait localsend --headless send "${FILE_ARRAY[@]}"
+else
+  systemd-run --user --quiet --collect localsend --headless send "${FILE_ARRAY[@]}"
+fi
 
 exit 0
