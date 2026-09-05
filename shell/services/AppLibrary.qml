@@ -31,6 +31,7 @@ Item {
   // down.
   property bool launchOsdOpen: false
   property string launchOsdMessage: ""
+  property string launchName: ""
 
   // Emitted whenever the visible application set may have changed: desktop
   // entries appeared or vanished, or the hidden-entry filters reloaded.
@@ -78,11 +79,13 @@ Item {
     var id = String(desktopId || "")
     if (!id) return
     root.beginLaunchFeedback(name)
+    root.launchName = String(name || "application")
+    launchProcess.command = ["uwsm-app", "--", "gtk-launch", id + ".desktop"]
+    launchProcess.running = true
     // Start gtk-launch inside a scope under app-graphical.slice so apps do not
     // inherit wayland-wm@.service. Keeping gtk-launch as the desktop-entry
     // resolver supports IDs with spaces and entries that UWSM rejects.
     // Keep the .desktop suffix or ids like org.telegram.desktop won't resolve.
-    Util.execDetached("uwsm-app -- gtk-launch " + Util.shellQuote(id + ".desktop"))
   }
 
   function remove(desktopId, name) {
@@ -185,6 +188,19 @@ Item {
   QtObject {
     id: hiddenEntryOutput
     property string text: ""
+  }
+
+  // Keep the desktop-entry launch attached long enough to observe gtk-launch's
+  // exit status. This lets the shell report failures instead of discarding
+  // them with a detached command.
+  Process {
+    id: launchProcess
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        Quickshell.execDetached(["omarchy-notification-send", "-u", "critical", "Unable to launch " + root.launchName, "The application command could not be found."])
+        root.closeLaunchFeedback(root.launchSerial)
+      }
+    }
   }
 
   // Both scans must run in non-login shells. A login shell sources the user's
