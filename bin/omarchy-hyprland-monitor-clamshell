@@ -112,6 +112,11 @@ current_internal_scale() {
   hyprctl monitors all -j | jq -r --arg internal "$INTERNAL" '.[] | select(.name == $internal and .disabled != true) | .scale' | head -1
 }
 
+internal_enabled() {
+  [[ -n $INTERNAL ]] || return 1
+  hyprctl monitors all -j | jq -e --arg internal "$INTERNAL" '.[] | select(.name == $internal and .disabled != true)' >/dev/null 2>&1
+}
+
 store_internal_scale() {
   local scale="$1"
   valid_scale "$scale" || return 0
@@ -236,9 +241,20 @@ disable_internal() {
   local config
   config=$(printf 'hl.monitor({ output = "%s", disabled = true })' "$INTERNAL")
 
+  local changed=0
   if [[ ! -f $CLAMSHELL_FLAG ]] || [[ $(< "$CLAMSHELL_FLAG") != $config ]]; then
     printf '%s\n' "$config" >"$CLAMSHELL_FLAG"
+    changed=1
+  fi
+
+  if (( changed )); then
     hyprctl reload >/dev/null 2>&1 || true
+  elif internal_enabled; then
+    # Idle/DPMS wake can relight the panel without touching the flag. Reloading
+    # identical config is skipped above, which leaves an extended layout until
+    # the next lid open/close. Apply disable at runtime the same way
+    # enable_internal applies enable.
+    hyprctl eval "$config" >/dev/null 2>&1 || true
   fi
 }
 

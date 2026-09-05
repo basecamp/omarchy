@@ -265,6 +265,20 @@ OMARCHY_TEST_INTERNAL_SCALE=1.6 OMARCHY_TEST_EXTERNAL_ACTIVE=true OMARCHY_TEST_C
 [[ $(<"$scale_state") == "1.6" ]] || fail "clamshell disable remembers internal scale value"
 pass "clamshell disable remembers internal scale"
 
+# Regression: idle/DPMS wake can re-enable the panel while the clamshell flag
+# is already correct. Skipping apply then leaves an extended layout until the
+# next lid open/close, which is the only path that rewrites the flag.
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_SCALE=1.6 OMARCHY_TEST_EXTERNAL_ACTIVE=true OMARCHY_TEST_CLAMSHELL=true run_clamshell
+grep -F 'hl.monitor({ output = "eDP-1", disabled = true })' "$eval_log" >/dev/null || fail "clamshell disable reapplies when the panel is on with a matching flag"
+! grep -Fx 'reload' "$eval_log" >/dev/null || fail "clamshell disable does not reload identical config to recover a drifted panel"
+pass "clamshell disable reapplies when idle-wake relights the internal panel"
+
+: >"$eval_log"
+OMARCHY_TEST_INTERNAL_DISABLED=true OMARCHY_TEST_EXTERNAL_ACTIVE=true OMARCHY_TEST_CLAMSHELL=true run_clamshell
+[[ ! -s $eval_log ]] || fail "clamshell disable is a no-op when the panel is already off" "$(cat "$eval_log")"
+pass "clamshell disable is a no-op when the panel is already off"
+
 : >"$eval_log"
 OMARCHY_TEST_INTERNAL_DISABLED=true run_clamshell
 grep -F 'scale = 1.6' "$eval_log" >/dev/null || fail "clamshell recovery uses remembered internal scale"
