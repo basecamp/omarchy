@@ -18,7 +18,8 @@ A toast lives on screen for at least 5s (low), 8s (normal), or forever
 (critical), stretched up to 30s if the sender asked for a longer
 `expire_timeout`. Hovering pauses the countdown, and a content update restarts
 it — new text deserves a full look. Left-click invokes the default action,
-right-click or the hover-revealed close button dismisses.
+right-click or the always-visible close button dismisses without invoking an action.
+The close button occupies its own space beside the text, including on compact single-line toasts, so long summaries cannot paint underneath it.
 
 Every on-screen popup is mirrored to its own file under
 `~/.local/state/omarchy/notifications/` (one JSON line per file, named
