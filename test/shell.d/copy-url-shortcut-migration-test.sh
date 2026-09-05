@@ -236,3 +236,16 @@ run_migration || fail "migration leaves installed third-party extensions alone"
 [[ $(sha256sum "$preferences" | cut -d' ' -f1) == "$untouched_hash" ]] ||
   fail "migration does not steal a third-party copy-url command registration"
 pass "migration leaves installed third-party extensions alone"
+
+# Brave Origin profiles were skipped by the first repair, so a rerun through
+# the follow-up migration must reach them. Sourcing the original needs
+# OMARCHY_PATH, which the migrator always sets.
+rm -f "$preferences" "$preferences.omarchy-copy-url-repair.bak"
+brave_origin_preferences="$home/.config/BraveSoftware/Brave-Origin/Default/Preferences"
+mkdir -p "$(dirname "$brave_origin_preferences")"
+jq -n --arg ghost "$ghost_id" '{extensions: {commands: {"linux:Alt+Shift+L": {command_name: "copy-url", extension: $ghost, global: false}}, settings: {}}}' >"$brave_origin_preferences"
+HOME="$home" PATH="$stub_bin:$PATH" OMARCHY_PATH="$ROOT" bash -euo pipefail "$ROOT/migrations/1788604821.sh" >/dev/null 2>&1 ||
+  fail "Brave Origin rerun migration repairs the shortcut"
+jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$brave_origin_preferences" >/dev/null ||
+  fail "Brave Origin rerun migration rebinds the Copy URL shortcut in a Brave Origin profile"
+pass "Brave Origin rerun migration repairs Brave Origin profiles"
