@@ -1,0 +1,13 @@
+[Unit]
+Description=Match Hyprland to the SPICE virt-viewer framebuffer
+PartOf=graphical-session.target
+After=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+ExecStart=/usr/local/bin/omarchy-lab-display-resize
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,215 @@
+#!/bin/bash
+
+# omarchy:summary=Transfer clipboard text or files to and from the Omarchy Lab
+# omarchy:args=<clipboard-to|clipboard-from|push|pull|pick-to|pull-downloads> [options]
+# omarchy:examples=printf '%s' hello | omarchy lab transfer clipboard-to | omarchy lab transfer clipboard-from | omarchy lab transfer push ./fix.patch
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+clipboard_to_guest() {
+  local json=false use_host=false payload encoded expected actual
+  local -a text=()
+  while (($#)); do
+    case $1 in
+    --json) json=true ;;
+    --host) use_host=true ;;
+    --) shift; text+=("$@"); break ;;
+    *) text+=("$1") ;;
+    esac
+    shift
+  done
+
+  require_running_lab
+  if $use_host; then
+    payload=$(timeout 2 wl-paste --no-newline 2>/dev/null || true)
+  elif ((${#text[@]})); then
+    payload=${text[*]}
+  elif [[ ! -t 0 ]]; then
+    payload=$(</dev/stdin)
+  else
+    payload=$(wl-paste --no-newline)
+  fi
+
+  encoded=$(printf '%s' "$payload" | base64 -w 0)
+  expected=$(printf '%s' "$payload" | sha256sum | awk '{print $1}')
+  actual=$(session_lab "
+    clipboard_file=\"\$XDG_RUNTIME_DIR/omarchy-lab-clipboard\"
+    printf '%s' '$encoded' | base64 -d >\"\$clipboard_file\"
+    systemctl --user stop omarchy-lab-clipboard.service >/dev/null 2>&1 || true
+    systemctl --user reset-failed omarchy-lab-clipboard.service >/dev/null 2>&1 || true
+    pkill -x wl-copy >/dev/null 2>&1 || true
+    systemd-run --user --quiet --collect --unit=omarchy-lab-clipboard.service \\
+      --setenv=WAYLAND_DISPLAY=\"\$WAYLAND_DISPLAY\" \\
+      --setenv=XDG_RUNTIME_DIR=\"\$XDG_RUNTIME_DIR\" \\
+      --setenv=DBUS_SESSION_BUS_ADDRESS=\"\$DBUS_SESSION_BUS_ADDRESS\" \\
+      --property=StandardOutput=null \\
+      --property=StandardError=null \\
+      -- /bin/bash -c 'exec /usr/bin/wl-copy --foreground <\"\$1\"' _ \"\$clipboard_file\"
+    sleep 0.2
+    (timeout 2 wl-paste --no-newline 2>/dev/null || true) | sha256sum | cut -d ' ' -f1
+    rm -f \"\$clipboard_file\"
+  " | tail -1)
+  [[ $actual == "$expected" ]] || lab_fail "guest clipboard did not retain the transferred text"
+
+  if $json; then
+    jq -cn --arg sha256 "$expected" --argjson bytes "${#payload}" '{direction:"to-guest", bytes:$bytes, sha256:$sha256}'
+  else
+    printf 'Copied %s bytes to the guest clipboard.\n' "${#payload}"
+  fi
+}
+
+pick_to_guest() {
+  local json=false file result='[]' item
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then json=true; else lab_fail "unknown option: $1"; fi
+    shift
+  done
+  while IFS= read -r file; do
+    [[ -n $file ]] || continue
+    item=$(push_file "$file" --json)
+    result=$(jq -cn --argjson current "$result" --argjson item "$item" '$current + [$item]')
+  done < <(omarchy-file-select --title "Send to Omarchy Lab" --multiple)
+  if $json; then
+    jq -cn --argjson transfers "$result" '{transfers:$transfers}'
+  else
+    jq -r '.[] | "\(.source) -> omarchy-lab:\(.destination)"' <<<"$result"
+  fi
+}
+
+pull_downloads() {
+  local json=false user destination
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then json=true; else lab_fail "unknown option: $1"; fi
+    shift
+  done
+  user=$(guest_user)
+  destination="$ARTIFACT_DIR/files/downloads-$(date +%Y%m%d-%H%M%S)"
+  mkdir -p "$destination"
+  require_running_lab
+  lab_scp_from "/home/$user/Downloads/." "$destination" >&2
+  if $json; then
+    jq -cn --arg source "/home/$user/Downloads" --arg destination "$destination" '{direction:"from-guest",source:$source,destination:$destination}'
+  else
+    printf 'Guest Downloads -> %s\n' "$destination"
+  fi
+}
+
+clipboard_from_guest() {
+  local copy=false json=false payload expected actual
+  while (($#)); do
+    case $1 in
+    --copy) copy=true ;;
+    --json) json=true ;;
+    *) lab_fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+
+  require_running_lab
+  payload=$(session_lab 'timeout 2 wl-paste --no-newline 2>/dev/null || true')
+  expected=$(printf '%s' "$payload" | sha256sum | awk '{print $1}')
+  if $copy; then
+    printf '%s' "$payload" | wl-copy
+    sleep 0.2
+    actual=$(timeout 2 wl-paste --no-newline | sha256sum | awk '{print $1}')
+    [[ $actual == "$expected" ]] || lab_fail "host clipboard did not retain the transferred text"
+  fi
+
+  if $json; then
+    jq -cn --arg text "$payload" --arg sha256 "$expected" --argjson copied "$copy" '{direction:"from-guest", copiedToHost:$copied, bytes:($text | utf8bytelength), sha256:$sha256, text:$text}'
+  else
+    printf '%s' "$payload"
+  fi
+}
+
+push_file() {
+  local source=${1:-} destination="" json=false user
+  [[ -n $source ]] || lab_fail "usage: omarchy lab transfer push SOURCE [GUEST_DEST] [--json]"
+  shift || true
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then
+      json=true
+    elif [[ -z $destination ]]; then
+      destination=$1
+    else
+      lab_fail "push accepts one guest destination"
+    fi
+    shift
+  done
+  [[ -e $source ]] || lab_fail "source does not exist: $source"
+  source=$(realpath -e "$source")
+  user=$(guest_user)
+  [[ -n $destination ]] || destination="/home/$user/Downloads/$(basename "$source")"
+  require_running_lab
+  lab_ssh "mkdir -p -- $(printf '%q' "$(dirname "$destination")")"
+  lab_scp_to "$source" "$destination" >&2
+  if $json; then
+    jq -cn --arg source "$source" --arg destination "$destination" '{direction:"to-guest", source:$source, destination:$destination}'
+  else
+    printf '%s -> omarchy-lab:%s\n' "$source" "$destination"
+  fi
+}
+
+pull_file() {
+  local source=${1:-} destination="" json=false
+  [[ -n $source ]] || lab_fail "usage: omarchy lab transfer pull GUEST_SOURCE [HOST_DEST] [--json]"
+  shift || true
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then
+      json=true
+    elif [[ -z $destination ]]; then
+      destination=$1
+    else
+      lab_fail "pull accepts one host destination"
+    fi
+    shift
+  done
+  [[ -n $destination ]] || destination="$ARTIFACT_DIR/files/$(basename "$source")"
+  mkdir -p "$(dirname "$destination")"
+  require_running_lab
+  lab_scp_from "$source" "$destination" >&2
+  destination=$(realpath -e "$destination")
+  if $json; then
+    jq -cn --arg source "$source" --arg destination "$destination" '{direction:"from-guest", source:$source, destination:$destination}'
+  else
+    printf 'omarchy-lab:%s -> %s\n' "$source" "$destination"
+  fi
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab transfer <command>
+
+  clipboard-to [TEXT] [--host] [--json] copy text, stdin, or the host clipboard into the guest
+  clipboard-from [--copy] [--json]      print guest clipboard text and optionally copy it on the host
+  push SOURCE [GUEST_DEST] [--json]     copy a host file or directory into the guest
+  pull GUEST_SOURCE [HOST_DEST] [--json] copy a guest file or directory onto the host
+  pick-to [--json]                      select host files and copy them to guest Downloads
+  pull-downloads [--json]              copy guest Downloads into a timestamped artifact directory
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+  case $command in
+  clipboard-to) clipboard_to_guest "$@" ;;
+  clipboard-from) clipboard_from_guest "$@" ;;
+  push) push_file "$@" ;;
+  pull) pull_file "$@" ;;
+  pick-to) pick_to_guest "$@" ;;
+  pull-downloads) pull_downloads "$@" ;;
+  help | --help | -h) show_usage ;;
+  *)
+    echo "Unknown command: $command" >&2
+    show_usage >&2
+    return 1
+    ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

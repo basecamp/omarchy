@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# Follow the virtio-gpu mode virt-viewer publishes when the SPICE window
+# resizes. Hyprland keeps the firmware preferred mode across DRM hotplugs,
+# so this writes an explicit Virtual-* mode and reloads.
+
+set -euo pipefail
+
+MARKER_BEGIN='-- BEGIN OMARCHY-LAB-SPICE'
+MARKER_END='-- END OMARCHY-LAB-SPICE'
+DRM_ROOT=${OMARCHY_LAB_DRM_ROOT:-/sys/class/drm}
+MONITORS_LUA=${OMARCHY_LAB_MONITORS_LUA:-"${HOME}/.config/hypr/monitors.lua"}
+
+hypr_ready() {
+  local dir
+  if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    dir=$(compgen -G "/run/user/$(id -u)/hypr/*" | head -1) || return 1
+    [[ -n $dir ]] || return 1
+    export HYPRLAND_INSTANCE_SIGNATURE=${dir##*/}
+  fi
+  hyprctl version >/dev/null 2>&1
+}
+
+current_hypr_mode() {
+  local output=$1
+  hyprctl monitors -j 2>/dev/null |
+    jq -r --arg o "$output" '.[] | select(.name == $o) | "\(.width)x\(.height)"'
+}
+
+write_monitor_block() {
+  local output=$1 mode=$2 file=$MONITORS_LUA tmp
+  [[ -f $file ]] || return 0
+  tmp=$(mktemp "${file}.XXXXXX")
+  awk -v begin="$MARKER_BEGIN" -v end="$MARKER_END" -v output="$output" -v mode="$mode" '
+    $0 == begin { skip = 1; next }
+    $0 == end { skip = 0; next }
+    skip { next }
+    { lines[++count] = $0 }
+    END {
+      while (count > 0 && lines[count] ~ /^[[:space:]]*$/) count--
+      for (i = 1; i <= count; i++) print lines[i]
+      print ""
+      print begin
+      printf "hl.monitor({ output = \"%s\", mode = \"%s\", position = \"auto\", scale = 1 })\n", output, mode
+      print end
+    }
+  ' "$file" >"$tmp"
+  mv "$tmp" "$file"
+}
+
+apply_virtio_modes() {
+  local connector status mode name current
+  hypr_ready || return 0
+  for connector in "$DRM_ROOT"/card*-*; do
+    [[ -f $connector/status && -f $connector/modes ]] || continue
+    status=$(<"$connector/status")
+    [[ $status == connected ]] || continue
+    name=${connector##*/}
+    name=${name#card*-}
+    [[ $name == Virtual-* ]] || continue
+    mode=$(head -n1 "$connector/modes")
+    [[ $mode =~ ^[0-9]+x[0-9]+$ ]] || continue
+    current=$(current_hypr_mode "$name")
+    [[ $current == "$mode" ]] && continue
+    write_monitor_block "$name" "$mode"
+    hyprctl reload >/dev/null
+    # virtio-gpu/SPICE drops the scanout across a modeset until input
+    # or a renderer kick; without this the viewer stays on
+    # "Display output is not active."
+    sleep 0.2
+    hyprctl eval 'hl.dsp.force_renderer_reload()' >/dev/null || true
+    wtype -M shift -m shift >/dev/null 2>&1 || true
+  done
+}
+
+apply_virtio_modes
+[[ ${1:-} == --once ]] && exit 0
+
+while read -r _; do
+  while read -r -t 0.25 _; do
+    :
+  done
+  apply_virtio_modes
+done < <(stdbuf -oL udevadm monitor --udev --subsystem-match=drm)

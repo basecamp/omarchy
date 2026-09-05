@@ -5,11 +5,16 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 lab_vm="$ROOT/bin/omarchy-lab-vm"
+lab_viewer="$ROOT/bin/omarchy-lab-viewer"
 lab_rules="$ROOT/default/hypr/apps/lab-vm.lua"
 menu="$ROOT/default/omarchy/omarchy-menu.jsonc"
 
 [[ -x $lab_vm ]] || fail "omarchy-lab-vm is executable"
 pass "omarchy-lab-vm is executable"
+
+[[ -x $lab_viewer ]] || fail "omarchy-lab-viewer is executable"
+rg -q '^# omarchy:summary=' "$lab_viewer" || fail "omarchy-lab-viewer declares a summary"
+pass "omarchy-lab-viewer is executable and declares command metadata"
 
 rg -q '^# omarchy:summary=' "$lab_vm" || fail "omarchy-lab-vm declares a summary"
 rg -q 'omarchy:requires-sudo=true' "$lab_vm" || fail "omarchy-lab-vm is marked as requiring sudo"
@@ -25,7 +30,9 @@ rg -q 'ssh-keygen -q' "$lab_vm" ||
   fail "lab SSH keygen must be quiet"
 rg -q 'Guest is off; starting' "$lab_vm" ||
   fail "wait_ssh restarts a guest that powered off after install"
-rg -q 'virt-viewer --connect .* --attach --reconnect' "$lab_vm" ||
+rg -q 'omarchy-lab-viewer.*run' "$lab_vm" ||
+  fail "Lab VM launch paths use the dedicated viewer controller"
+rg -q -- '--attach' "$lab_viewer" && rg -q -- '--reconnect' "$lab_viewer" ||
   fail "virt-viewer reconnects after the guest installer reboots"
 rg -q 'systemd-run --user' "$lab_vm" ||
   fail "virt-viewer must be a user unit so the installer terminal can close"
@@ -43,6 +50,36 @@ if rg -q 'systemctl reboot' "$lab_vm"; then
   fail "install must not reboot after configure_guest; overlay boot is the new-UKI boot"
 fi
 pass "install freezes gold without a UKI-rebuild reboot"
+
+resize_helper="$ROOT/default/lab-vm/display-resize"
+[[ -f $resize_helper ]] || fail "lab VM ships a guest SPICE display-resize helper"
+rg -q 'udevadm monitor --udev --subsystem-match=drm' "$resize_helper" ||
+  fail "display-resize watches DRM hotplugs from virt-viewer auto-resize"
+rg -q 'hl.monitor' "$resize_helper" ||
+  fail "display-resize applies the virtio-gpu mode through Hyprland Lua"
+rg -q 'force_renderer_reload' "$resize_helper" ||
+  fail "display-resize reattaches the SPICE scanout after a Hyprland reload"
+rg -q 'wtype -M shift' "$resize_helper" ||
+  fail "display-resize wakes DPMS after a modeset without typing into the guest"
+rg -q 'Virtual-\*' "$resize_helper" ||
+  fail "display-resize only touches QEMU Virtual-* outputs"
+if rg -q '1920x1080|5120x1440|1280x800' "$resize_helper" "$ROOT/default/lab-vm/display-resize.service"; then
+  fail "display-resize must not hard-code a host resolution"
+fi
+rg -q 'omarchy-pkg-add spice-vdagent' "$lab_vm" ||
+  fail "configure_guest installs spice-vdagent so the client can publish framebuffer size"
+if rg -q 'LAB_VM_ROOT\|readlink -f.*BASH_SOURCE' "$lab_vm"; then
+  fail "lab VM defaults must resolve through OMARCHY_PATH"
+fi
+rg -q -- '--auto-resize=' "$lab_viewer" ||
+  fail "virt-viewer requests guest auto-resize"
+rg -q 'install_guest_display_resize' "$lab_vm" ||
+  fail "configure_guest installs the display-resize user unit"
+rg -q 'systemctl --user restart omarchy-lab-display-resize.service' "$lab_vm" ||
+  fail "reinstalling the helper restarts an already-running resize service"
+rg -q -- '--setenv=OMARCHY_PATH=' "$lab_vm" ||
+  fail "Lab viewer services preserve the selected Omarchy tree"
+pass "lab VM follows virt-viewer size instead of a fixed guest mode"
 
 rg -q 'echo "Reusing \$iso_path" >&2' "$lab_vm" ||
   fail "ISO reuse status must not pollute command substitution"
@@ -83,16 +120,153 @@ pass "lab VM stays fully opaque"
 
 rg -q '"install.lab"' "$menu" || fail "menu offers Install > Lab"
 rg -q '"remove.lab"' "$menu" || fail "menu offers Remove > Lab"
-rg -q 'lab-vm.desktop' "$menu" || fail "menu presence check looks at the lab desktop entry"
-pass "menu wires Install/Remove > Lab"
+rg -q '"trigger.lab-controls"' "$menu" || fail "menu offers Trigger > Lab Controls"
+rg -q '"when":"omarchy-lab-viewer active"' "$menu" || fail "Lab Controls only appears while the viewer is open"
+rg -q 'shell summon omarchy.lab' "$menu" || fail "Lab Controls summons the native plugin"
+if rg -q '"setup.lab-aspect-ratio"' "$menu"; then
+  fail "Lab aspect ratio no longer occupies the global Setup menu"
+fi
+rg -q 'omarchy-bar put omarchy.lab' "$lab_vm" || fail "install puts the Lab widget on the bar"
+rg -q 'setPluginEnabled omarchy.lab false' "$lab_vm" || fail "remove disables the Lab plugin"
+rg -q 'Exec=omarchy-lab-viewer launch' "$lab_vm" || fail "desktop launch uses the viewer controller without nesting app scopes"
+rg -q 'Categories=System;Emulator;' "$lab_vm" || fail "desktop launch uses registered application categories"
+awk '/^screenshot_lab\(\)/,/^}/' "$lab_vm" | rg -q 'run_virsh screenshot .* >/dev/null' ||
+  fail "screenshot prints only its reusable output path"
+pass "menu, bar, and desktop launcher wire the native Lab controls"
 
 tmpdir=$(mktemp -d)
 export HOME="$tmpdir/home"
 mkdir -p "$HOME"
 trap 'rm -rf "$tmpdir"' EXIT
 
+(
+  # shellcheck disable=SC1090
+  source "$lab_vm"
+  run_virsh() {
+    printf '%s\n' "$NAME"
+    seq 1 100000
+  }
+  have_domain && domain_running
+) || fail "domain probes consume all virsh output without a pipefail race"
+pass "domain probes do not race virsh output"
+
 # shellcheck disable=SC1090
 source "$lab_vm"
+
+[[ $(lab_resource_plan 123 32) == "4 8 8 16 16 32 24 92" ]] ||
+  fail "large hosts keep workload-based profiles and custom headroom"
+[[ $(lab_resource_plan 31 16) == "4 8 8 16 12 20 12 20" ]] ||
+  fail "ordinary hosts cap high profiles to retained host capacity"
+[[ $(lab_resource_plan 7 4) == "3 4 3 4 3 4 3 4" ]] ||
+  fail "small hosts keep a viable bounded Lab allocation"
+if rg -q '^RAM_DEFAULT=\|^CORES_DEFAULT=' "$lab_vm"; then
+  fail "Lab installer defaults must derive from host hardware"
+fi
+rg -q 'safe limit:' "$lab_vm" || fail "Lab installer explains its host-safe limits"
+pass "Lab installer derives resource recommendations from host hardware"
+
+for ratio in 16:9 16:10 3:2 4:3 21:9 32:9; do
+  valid_aspect_ratio "$ratio" || fail "common aspect ratio is accepted" "$ratio"
+done
+if valid_aspect_ratio 5:4; then
+  fail "unsupported aspect ratios are rejected"
+fi
+omarchy-menu-select() { printf '16:10\tProductivity\n'; }
+[[ $(pick_aspect_ratio) == "16:10" ]] || fail "aspect picker returns the selected ratio without its description"
+unset -f omarchy-menu-select
+
+read -r guest_width guest_height outer_width outer_height < <(
+  aspect_window_size 16:9 2460 883 0 47 5040 1334
+)
+[[ $guest_width == 2288 && $guest_height == 1287 && $outer_width == 2288 && $outer_height == 1334 ]] ||
+  fail "16:9 is exact and fits beneath host chrome" "$guest_width $guest_height $outer_width $outer_height"
+
+read -r guest_width guest_height outer_width outer_height < <(
+  aspect_window_size 21:9 1920 1080 0 47 5000 2000
+)
+[[ $guest_width == 4557 && $guest_height == 1953 && $outer_width == 4557 && $outer_height == 2000 ]] ||
+  fail "aspect resizing maximizes the viewer within the host monitor" "$guest_width $guest_height $outer_width $outer_height"
+
+read -r guest_width guest_height outer_width outer_height < <(
+  aspect_window_size 16:10 1009 1074 0 48 3840 1334 125
+)
+[[ $guest_width == 1632 && $guest_height == 1020 && $outer_width == 2040 && $outer_height == 1323 ]] ||
+  fail "aspect sizing accounts for viewer zoom" "$guest_width $guest_height $outer_width $outer_height"
+pass "common aspect ratios preserve exact guest dimensions and maximize the host monitor"
+
+aspect_calls="$tmpdir/aspect-calls"
+have_domain() { return 0; }
+domain_running() { return 0; }
+ensure_viewer() { :; }
+wait_ssh() { :; }
+wait_viewer_geometry() { printf '%s\n' '0xabc 2460 930 1 false 2460 883 0 47'; }
+viewer_monitor_available_geometry() { printf '%s\n' '40 66 5040 1334'; }
+wait_guest_display_update() { printf '%s\n' '2288 1287'; }
+hypr_dispatch() { printf '%s\n' "$*" >>"$aspect_calls"; }
+
+resize_viewer_aspect 16:9 >/dev/null
+rg -q 'float.*address:0xabc' "$aspect_calls" || fail "aspect control floats a tiled viewer"
+rg -q 'move.*x = 40, y = 66' "$aspect_calls" || fail "aspect control makes room before enlarging the viewer"
+rg -q 'resize.*x = 2288, y = 1334' "$aspect_calls" || fail "aspect control resizes the viewer around exact guest dimensions"
+rg -q 'center.*address:0xabc' "$aspect_calls" || fail "aspect control centers the resized viewer"
+pass "aspect control floats, resizes, and centers the live viewer"
+
+resize_home="$tmpdir/resize-home"
+resize_drm="$tmpdir/drm"
+resize_bin="$tmpdir/resize-bin"
+resize_calls="$tmpdir/resize-calls"
+resize_monitors="$resize_home/.config/hypr/monitors.lua"
+mkdir -p "$resize_home/.config/hypr" "$resize_drm/card1-Virtual-1" "$resize_bin"
+printf '%s\n' 'hl.monitor({ output = "", mode = "preferred", position = "auto", scale = "auto" })' >"$resize_monitors"
+printf '%s\n' connected >"$resize_drm/card1-Virtual-1/status"
+printf '%s\n' 1440x900 >"$resize_drm/card1-Virtual-1/modes"
+
+cat >"$resize_bin/hyprctl" <<'SH'
+#!/bin/bash
+if [[ $1 == "monitors" && ${2:-} == "-j" ]]; then
+  printf '%s\n' '[{"name":"Virtual-1","width":1280,"height":800}]'
+else
+  printf '%s\n' "$*" >>"$RESIZE_CALLS"
+fi
+SH
+cat >"$resize_bin/wtype" <<'SH'
+#!/bin/bash
+printf 'wtype %s\n' "$*" >>"$RESIZE_CALLS"
+SH
+chmod +x "$resize_bin/hyprctl" "$resize_bin/wtype"
+
+PATH="$resize_bin:$PATH" \
+  HOME="$resize_home" \
+  HYPRLAND_INSTANCE_SIGNATURE=test \
+  OMARCHY_LAB_DRM_ROOT="$resize_drm" \
+  OMARCHY_LAB_MONITORS_LUA="$resize_monitors" \
+  RESIZE_CALLS="$resize_calls" \
+  "$resize_helper" --once
+
+rg -q 'output = "Virtual-1", mode = "1440x900"' "$resize_monitors" ||
+  fail "display-resize writes the virtio-gpu mode to monitors.lua"
+[[ $(rg -c '^-- BEGIN OMARCHY-LAB-SPICE$' "$resize_monitors") == 1 ]] ||
+  fail "display-resize writes one managed monitor block"
+rg -qx reload "$resize_calls" || fail "display-resize reloads Hyprland"
+rg -q 'force_renderer_reload' "$resize_calls" || fail "display-resize refreshes the SPICE scanout"
+rg -q 'wtype -M shift -m shift' "$resize_calls" || fail "display-resize wakes the guest display"
+
+printf '%s\n' 1600x950 >"$resize_drm/card1-Virtual-1/modes"
+PATH="$resize_bin:$PATH" \
+  HOME="$resize_home" \
+  HYPRLAND_INSTANCE_SIGNATURE=test \
+  OMARCHY_LAB_DRM_ROOT="$resize_drm" \
+  OMARCHY_LAB_MONITORS_LUA="$resize_monitors" \
+  RESIZE_CALLS="$resize_calls" \
+  "$resize_helper" --once
+
+rg -q 'output = "Virtual-1", mode = "1600x950"' "$resize_monitors" ||
+  fail "display-resize replaces the managed mode"
+[[ $(rg -c '^-- BEGIN OMARCHY-LAB-SPICE$' "$resize_monitors") == 1 ]] ||
+  fail "display-resize stays idempotent across repeated resizes"
+[[ $(tail -n 5 "$resize_monitors" | rg -c '^$') == 1 ]] ||
+  fail "display-resize does not accumulate blank lines"
+pass "display-resize applies changing virtio modes idempotently"
 
 bytes=$(disk_bytes_from_spec 80G)
 [[ $bytes == 85899345920 ]] || fail "80G is 80 GiB in bytes" "$bytes"

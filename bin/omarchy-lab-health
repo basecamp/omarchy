@@ -1,0 +1,154 @@
+#!/bin/bash
+
+# omarchy:summary=Report Omarchy Lab health and resource telemetry
+# omarchy:args=[--json]
+# omarchy:examples=omarchy lab health --json
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+stat_value() {
+  local stats=$1 key=$2
+  awk -F= -v key="$key" '{ field=$1; gsub(/^[[:space:]]+|[[:space:]]+$/, "", field); if (field == key) {print $2; exit} }' <<<"$stats"
+}
+
+guest_health_json() {
+  session_lab '
+    failed=$(systemctl --failed --no-legend --plain 2>/dev/null | awk "NF {print \$1}")
+    errors=$(hyprctl configerrors 2>/dev/null || true)
+    version=$(omarchy version 2>/dev/null | tr "\n" " " | sed "s/[[:space:]]*$//")
+    root_total=$(df -B1 --output=size / | awk "NR == 2 {print \$1}")
+    root_used=$(df -B1 --output=used / | awk "NR == 2 {print \$1}")
+    memory_total=$(awk "/^MemTotal:/ {print \$2 * 1024}" /proc/meminfo)
+    memory_available=$(awk "/^MemAvailable:/ {print \$2 * 1024}" /proc/meminfo)
+    jq -cn \
+      --argjson uptime "$(cut -d. -f1 /proc/uptime)" \
+      --arg failed "$failed" \
+      --arg errors "$errors" \
+      --arg version "$version" \
+      --arg source "${OMARCHY_PATH:-/usr/share/omarchy}" \
+      --arg bootId "$(cat /proc/sys/kernel/random/boot_id)" \
+      --argjson rootTotal "${root_total:-0}" \
+      --argjson rootUsed "${root_used:-0}" \
+      --argjson memoryTotal "${memory_total:-0}" \
+      --argjson memoryAvailable "${memory_available:-0}" \
+      "{
+        reachable:true,
+        uptimeSeconds:\$uptime,
+        failedUnits:(\$failed | split(\"\\n\") | map(select(length > 0))),
+        hyprlandErrors:\$errors,
+        omarchyVersion:\$version,
+        omarchyPath:\$source,
+        bootId:\$bootId,
+        rootDisk:{totalBytes:\$rootTotal, usedBytes:\$rootUsed},
+        memory:{totalBytes:\$memoryTotal, availableBytes:\$memoryAvailable}
+      }"
+  '
+}
+
+health_json() {
+  local state=not-installed running=false ip="" stats="" guest='{"reachable":false}'
+  local vcpus=0 max_memory_kib=0 memory_kib=0 unused_kib=0 disk_allocation=0 disk_capacity=0
+  local cpu_time=0 net_rx=0 net_tx=0 severity=error
+
+  if ! have_domain; then
+    jq -cn --arg name "$NAME" '{severity:"error", issues:["Lab is not installed"], domain:{name:$name,state:"not-installed",running:false}, guest:{reachable:false}}'
+    return 0
+  fi
+
+  state=$(run_virsh domstate "$NAME" 2>/dev/null | head -1)
+  if [[ $state == "running" ]]; then
+    running=true
+    severity=ok
+    ip=$(guest_ip || true)
+    stats=$(run_virsh domstats "$NAME" --cpu-total --balloon --block --interface --state --nowait 2>/dev/null || true)
+    vcpus=$(run_virsh vcpucount "$NAME" --active --config 2>/dev/null | head -1)
+    max_memory_kib=$(run_virsh dominfo "$NAME" 2>/dev/null | awk -F: '/^Max memory/ {gsub(/[^0-9]/, "", $2); print $2; exit}')
+    memory_kib=$(stat_value "$stats" balloon.current)
+    unused_kib=$(stat_value "$stats" balloon.unused)
+    disk_allocation=$(stat_value "$stats" block.0.allocation)
+    disk_capacity=$(stat_value "$stats" block.0.capacity)
+    cpu_time=$(stat_value "$stats" cpu.time)
+    net_rx=$(stat_value "$stats" net.0.rx.bytes)
+    net_tx=$(stat_value "$stats" net.0.tx.bytes)
+    guest=$(guest_health_json 2>/dev/null || printf '%s' '{"reachable":false}')
+  else
+    severity=warning
+    vcpus=$(run_virsh vcpucount "$NAME" --active --config 2>/dev/null | head -1 || true)
+    max_memory_kib=$(run_virsh dominfo "$NAME" 2>/dev/null | awk -F: '/^Max memory/ {gsub(/[^0-9]/, "", $2); print $2; exit}')
+  fi
+
+  [[ $vcpus =~ ^[0-9]+$ ]] || vcpus=0
+  [[ $max_memory_kib =~ ^[0-9]+$ ]] || max_memory_kib=0
+  [[ $memory_kib =~ ^[0-9]+$ ]] || memory_kib=0
+  [[ $unused_kib =~ ^[0-9]+$ ]] || unused_kib=0
+  [[ $disk_allocation =~ ^[0-9]+$ ]] || disk_allocation=0
+  [[ $disk_capacity =~ ^[0-9]+$ ]] || disk_capacity=0
+  [[ $cpu_time =~ ^[0-9]+$ ]] || cpu_time=0
+  [[ $net_rx =~ ^[0-9]+$ ]] || net_rx=0
+  [[ $net_tx =~ ^[0-9]+$ ]] || net_tx=0
+
+  jq -cn \
+    --arg name "$NAME" \
+    --arg state "$state" \
+    --arg ip "$ip" \
+    --arg severity "$severity" \
+    --argjson running "$running" \
+    --argjson vcpus "$vcpus" \
+    --argjson maximumMemoryBytes "$((max_memory_kib * 1024))" \
+    --argjson memoryBytes "$((memory_kib * 1024))" \
+    --argjson unusedMemoryBytes "$((unused_kib * 1024))" \
+    --argjson diskAllocationBytes "$disk_allocation" \
+    --argjson diskCapacityBytes "$disk_capacity" \
+    --argjson cpuTimeNs "$cpu_time" \
+    --argjson rxBytes "$net_rx" \
+    --argjson txBytes "$net_tx" \
+    --argjson guest "$guest" '
+      ($guest.failedUnits // []) as $failed |
+      ($guest.hyprlandErrors // "") as $hyprErrors |
+      ([
+        (if $running and ($guest.reachable != true) then "Guest SSH is unavailable" else empty end),
+        (if ($failed | length) > 0 then (($failed | length | tostring) + " failed systemd unit(s)") else empty end),
+        (if ($hyprErrors | length) > 0 then "Hyprland reports configuration errors" else empty end),
+        (if $running | not then "Lab is " + $state else empty end)
+      ]) as $issues |
+      {
+        severity:(if ($issues | length) > 0 then "warning" else $severity end),
+        issues:$issues,
+        domain:{name:$name,state:$state,running:$running,ip:$ip,vcpus:$vcpus,maximumMemoryBytes:$maximumMemoryBytes},
+        hypervisor:{memoryBytes:$memoryBytes,unusedMemoryBytes:$unusedMemoryBytes,cpuTimeNs:$cpuTimeNs,diskAllocationBytes:$diskAllocationBytes,diskCapacityBytes:$diskCapacityBytes,network:{rxBytes:$rxBytes,txBytes:$txBytes}},
+        guest:$guest
+      }
+    '
+}
+
+health_human() {
+  local json=$1
+  jq -r '
+    "Lab health: " + (.severity | ascii_upcase),
+    "State: " + .domain.state,
+    "IP: " + (if .domain.ip == "" then "n/a" else .domain.ip end),
+    "CPU: " + (.domain.vcpus | tostring) + " vCPU",
+    "Memory: " + ((.guest.memory.totalBytes // .hypervisor.memoryBytes // 0) / 1073741824 | floor | tostring) + " GiB",
+    "Disk: " + ((.guest.rootDisk.usedBytes // 0) / 1073741824 | floor | tostring) + "/" + ((.guest.rootDisk.totalBytes // 0) / 1073741824 | floor | tostring) + " GiB",
+    "Omarchy: " + (.guest.omarchyVersion // "unknown"),
+    "Source: " + (.guest.omarchyPath // "unknown"),
+    (if (.issues | length) > 0 then "Issues: " + (.issues | join("; ")) else "Issues: none" end)
+  ' <<<"$json"
+}
+
+main() {
+  local output
+  [[ $# == 0 || ($# == 1 && $1 == "--json") ]] || lab_fail "usage: omarchy lab health [--json]"
+  output=$(health_json)
+  if [[ ${1:-} == "--json" ]]; then
+    printf '%s\n' "$output"
+  else
+    health_human "$output"
+  fi
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

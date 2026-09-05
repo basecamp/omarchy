@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.lab",
+  "name": "Lab",
+  "version": "1.1.0",
+  "author": "Omarchy",
+  "description": "Develop, test, capture, isolate, and automate the Omarchy Lab virtual machine",
+  "keepLoaded": true,
+  "kinds": [
+    "panel",
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "panel": "Panel.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Lab",
+    "description": "Lab VM console and development workbench",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

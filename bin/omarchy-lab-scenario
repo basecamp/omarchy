@@ -1,0 +1,242 @@
+#!/bin/bash
+
+# omarchy:summary=Validate and run repeatable Omarchy Lab workflows
+# omarchy:args=<list|validate|run> [name|file] [args] [--json]
+# omarchy:examples=omarchy lab scenario list --json | omarchy lab scenario run smoke --json | omarchy lab scenario run checkpoint-deploy feature/my-change --branch --json
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+scenario_file() {
+  local value=$1
+  if [[ -f $value ]]; then
+    realpath -e "$value"
+  elif [[ -f $SCENARIO_DIR/$value.json ]]; then
+    printf '%s\n' "$SCENARIO_DIR/$value.json"
+  else
+    return 1
+  fi
+}
+
+scenario_valid() {
+  jq -e '
+    type == "object" and
+    (.name | type == "string" and length > 0) and
+    (.description | type == "string") and
+    (.steps | type == "array" and length > 0) and
+    all(.steps[];
+      type == "object" and
+      (.command | type == "array" and length > 0) and
+      all(.command[]; type == "string") and
+      (.command[0] | IN("action","capture","checkpoint","checkout","gold","health","network","resource","transfer","viewer","vm"))
+    )
+  ' "$1" >/dev/null
+}
+
+validate_scenario() {
+  local value=${1:-} json=false file
+  [[ -n $value ]] || lab_fail "usage: omarchy lab scenario validate NAME_OR_FILE [--json]"
+  shift || true
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then json=true; else lab_fail "unknown option: $1"; fi
+    shift
+  done
+  file=$(scenario_file "$value") || lab_fail "scenario does not exist: $value"
+  scenario_valid "$file" || lab_fail "invalid scenario: $file"
+  if $json; then
+    jq -cn --arg file "$file" --arg name "$(jq -r .name "$file")" '{valid:true,file:$file,name:$name}'
+  else
+    printf 'Valid scenario: %s (%s)\n' "$(jq -r .name "$file")" "$file"
+  fi
+}
+
+scenario_list_json() {
+  local result file
+  result='[
+    {"name":"smoke","description":"Wake the guest, check health, and capture a screenshot plus diagnostics","builtin":true},
+    {"name":"visual-check","description":"Wake, reload Hyprland, check health, and capture a screenshot","builtin":true},
+    {"name":"checkpoint-deploy","description":"Checkpoint, deploy a checkout, and capture the rebooted guest","builtin":true}
+  ]'
+  mkdir -p "$SCENARIO_DIR"
+  while IFS= read -r file; do
+    scenario_valid "$file" || continue
+    result=$(jq -cn --argjson current "$result" --arg name "$(jq -r .name "$file")" --arg description "$(jq -r .description "$file")" --arg file "$file" '$current + [{name:$name,description:$description,builtin:false,file:$file}]')
+  done < <(find "$SCENARIO_DIR" -maxdepth 1 -type f -name '*.json' -print | sort)
+  printf '%s\n' "$result"
+}
+
+list_scenarios() {
+  local output
+  [[ $# == 0 || ($# == 1 && $1 == "--json") ]] || lab_fail "usage: omarchy lab scenario list [--json]"
+  output=$(scenario_list_json)
+  if [[ ${1:-} == "--json" ]]; then
+    jq -cn --argjson scenarios "$output" '{scenarios:$scenarios}'
+  else
+    jq -r '.[] | "\(.name)\t\(.description)"' <<<"$output" | column -t -s $'\t'
+  fi
+}
+
+run_command_array() {
+  local encoded=$1 command output status=0
+  local -a args=()
+  command=$(base64 -d <<<"$encoded" | jq -r '.[0]')
+  mapfile -t args < <(base64 -d <<<"$encoded" | jq -r '.[1:][]')
+  case $command in
+  viewer | vm)
+    output=$("$OMARCHY_PATH/bin/omarchy-lab-$command" "${args[@]}" 2>&1) || status=$?
+    ;;
+  action | capture | checkpoint | checkout | gold | health | network | resource | transfer)
+    output=$("$OMARCHY_PATH/bin/omarchy-lab-$command" "${args[@]}" 2>&1) || status=$?
+    ;;
+  *) status=64; output="command is not allowed: $command" ;;
+  esac
+  jq -cn --argjson command "$(base64 -d <<<"$encoded")" --arg output "$output" --argjson exitCode "$status" '{command:$command,exitCode:$exitCode,output:$output}'
+  return "$status"
+}
+
+run_saved_scenario() {
+  local file=$1 json=$2 result='[]' encoded step status=0
+  scenario_valid "$file" || lab_fail "invalid scenario: $file"
+  while IFS= read -r encoded; do
+    echo "Running: $(base64 -d <<<"$encoded" | jq -r 'join(" ")')" >&2
+    if step=$(run_command_array "$encoded"); then
+      result=$(jq -cn --argjson current "$result" --argjson step "$step" '$current + [$step]')
+    else
+      status=$?
+      result=$(jq -cn --argjson current "$result" --argjson step "$step" '$current + [$step]')
+      break
+    fi
+  done < <(jq -r '.steps[].command | @base64' "$file")
+  if $json; then
+    jq -cn --arg name "$(jq -r .name "$file")" --arg file "$file" --argjson steps "$result" --argjson exitCode "$status" '{name:$name,file:$file,exitCode:$exitCode,steps:$steps}'
+  else
+    jq -r '.[] | "$ " + (.command | join(" ")) + "\n" + .output' <<<"$result"
+  fi
+  return "$status"
+}
+
+run_builtin_scenario() {
+  local name=$1 json=$2 checkout=${3:-} branch_mode=${4:-false} checkpoint_name result='[]' step status=0
+  local -a commands=()
+  case $name in
+  smoke)
+    commands=(
+      '["action","wake"]'
+      '["health","--json"]'
+      '["capture","screenshot","--json"]'
+      '["capture","bundle","--json"]'
+    )
+    ;;
+  visual-check)
+    commands=(
+      '["action","wake"]'
+      '["action","reload-hyprland"]'
+      '["health","--json"]'
+      '["capture","screenshot","--json"]'
+    )
+    ;;
+  checkpoint-deploy)
+    [[ -n $checkout ]] || lab_fail "checkpoint-deploy needs a host checkout path or local branch"
+    checkpoint_name="before-deploy-$(date +%Y%m%d-%H%M%S)"
+    if $branch_mode; then
+      commands=(
+        "$(jq -cn --arg name "$checkpoint_name" '["checkpoint","create",$name,"--json"]')"
+        "$(jq -cn --arg branch "$checkout" '["checkout","deploy","--branch",$branch,"--json"]')"
+        '["health","--json"]'
+        '["capture","screenshot","--json"]'
+      )
+    else
+      commands=(
+        "$(jq -cn --arg name "$checkpoint_name" '["checkpoint","create",$name,"--json"]')"
+        "$(jq -cn --arg path "$checkout" '["checkout","deploy",$path,"--json"]')"
+        '["health","--json"]'
+        '["capture","screenshot","--json"]'
+      )
+    fi
+    ;;
+  *) return 64 ;;
+  esac
+
+  for command_json in "${commands[@]}"; do
+    encoded=$(base64 -w 0 <<<"$command_json")
+    echo "Running: $(jq -r 'join(" ")' <<<"$command_json")" >&2
+    if step=$(run_command_array "$encoded"); then
+      result=$(jq -cn --argjson current "$result" --argjson step "$step" '$current + [$step]')
+    else
+      status=$?
+      result=$(jq -cn --argjson current "$result" --argjson step "$step" '$current + [$step]')
+      break
+    fi
+  done
+  if $json; then
+    jq -cn --arg name "$name" --argjson steps "$result" --argjson exitCode "$status" '{name:$name,builtin:true,exitCode:$exitCode,steps:$steps}'
+  else
+    jq -r '.[] | "$ " + (.command | join(" ")) + "\n" + .output' <<<"$result"
+  fi
+  return "$status"
+}
+
+run_scenario() {
+  local value=${1:-} json=false branch_mode=false file="" checkout=""
+  [[ -n $value ]] || lab_fail "usage: omarchy lab scenario run NAME_OR_FILE [CHECKOUT|BRANCH] [--branch] [--json]"
+  shift || true
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then
+      json=true
+    elif [[ $1 == "--branch" ]]; then
+      branch_mode=true
+    elif [[ -z $checkout ]]; then
+      checkout=$1
+    else
+      lab_fail "too many scenario arguments"
+    fi
+    shift
+  done
+  case $value in
+  checkpoint-deploy) run_builtin_scenario "$value" "$json" "$checkout" "$branch_mode" ;;
+  smoke | visual-check)
+    $branch_mode && lab_fail "--branch is only valid for checkpoint-deploy"
+    [[ -z $checkout ]] || lab_fail "$value does not accept a checkout"
+    run_builtin_scenario "$value" "$json"
+    ;;
+  *)
+    $branch_mode && lab_fail "--branch is only valid for checkpoint-deploy"
+    [[ -z $checkout ]] || lab_fail "saved scenarios do not accept a checkout"
+    file=$(scenario_file "$value") || lab_fail "scenario does not exist: $value"
+    run_saved_scenario "$file" "$json"
+    ;;
+  esac
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab scenario <command>
+
+  list [--json]
+  validate NAME_OR_FILE [--json]
+  run smoke [--json]
+  run visual-check [--json]
+  run checkpoint-deploy CHECKOUT [--json]
+  run checkpoint-deploy BRANCH --branch [--json]
+  run NAME_OR_FILE [--json]
+
+Saved scenarios live in ~/.config/omarchy/lab-vm/scenarios/*.json. Each has name, description, and steps whose command value is an argument array such as ["health","--json"]. Shell command strings are not evaluated.
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+  case $command in
+  list) list_scenarios "$@" ;;
+  validate) validate_scenario "$@" ;;
+  run) run_scenario "$@" ;;
+  help | --help | -h) show_usage ;;
+  *) echo "Unknown command: $command" >&2; show_usage >&2; return 1 ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

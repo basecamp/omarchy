@@ -1,0 +1,225 @@
+#!/bin/bash
+
+# omarchy:summary=Create and manage named Omarchy Lab disk checkpoints
+# omarchy:args=<create|list|restore|rename|delete> [name] [options]
+# omarchy:examples=omarchy lab checkpoint create before-theme | omarchy lab checkpoint list --json | omarchy lab checkpoint restore before-theme --yes
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+checkpoint_image() { printf '%s/%s.qcow2\n' "$CHECKPOINT_DIR" "$1"; }
+checkpoint_metadata() { printf '%s/%s.json\n' "$CHECKPOINT_DIR" "$1"; }
+
+checkpoint_json() {
+  local name=$1 metadata image virtual_bytes
+  metadata=$(checkpoint_metadata "$name")
+  image=$(checkpoint_image "$name")
+  [[ -f $metadata && -f $image ]] || return 1
+  virtual_bytes=$(qemu-img info --output=json "$image" | jq -r '."virtual-size"')
+  jq --arg image "$image" \
+    --argjson allocatedBytes "$(( $(stat -c %b "$image") * 512 ))" \
+    --argjson virtualBytes "$virtual_bytes" \
+    '. + {image:$image,allocatedBytes:$allocatedBytes,virtualBytes:$virtualBytes}' "$metadata"
+}
+
+checkpoint_list_json() {
+  local result='[]' metadata name item
+  mkdir -p "$CHECKPOINT_DIR"
+  while IFS= read -r metadata; do
+    name=$(basename "$metadata" .json)
+    item=$(checkpoint_json "$name" 2>/dev/null || true)
+    [[ -n $item ]] || continue
+    result=$(jq -cn --argjson current "$result" --argjson item "$item" '$current + [$item]')
+  done < <(find "$CHECKPOINT_DIR" -maxdepth 1 -type f -name '*.json' -print | sort)
+  jq 'sort_by(.createdAt) | reverse' <<<"$result"
+}
+
+list_checkpoints() {
+  local output
+  [[ $# == 0 || ($# == 1 && $1 == "--json") ]] || lab_fail "usage: omarchy lab checkpoint list [--json]"
+  output=$(checkpoint_list_json)
+  if [[ ${1:-} == "--json" ]]; then
+    jq -cn --argjson checkpoints "$output" '{checkpoints:$checkpoints}'
+  elif [[ $(jq 'length' <<<"$output") == 0 ]]; then
+    echo "No Lab checkpoints."
+  else
+    jq -r '.[] | "\(.name)\t\(.createdAt)\t\(.allocatedBytes)\t\(.guestVersion // "unknown")"' <<<"$output" |
+      while IFS=$'\t' read -r name created bytes version; do
+        printf '%-24s  %-25s  %8s  %s\n' "$name" "$created" "$(human_bytes "$bytes")" "$version"
+      done
+  fi
+}
+
+create_checkpoint() {
+  local name="" json=false was_running=false pool image metadata guest_version="" created
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then
+      json=true
+    elif [[ $1 == --* ]]; then
+      lab_fail "unknown option: $1"
+    elif [[ -z $name ]]; then
+      name=$1
+    else
+      lab_fail "create accepts one checkpoint name"
+    fi
+    shift
+  done
+  [[ -n $name ]] || name="checkpoint-$(date +%Y%m%d-%H%M%S)"
+  safe_name "$name" || lab_fail "checkpoint names use 1-48 letters, numbers, dots, dashes, or underscores"
+  require_lab
+  mkdir -p "$CHECKPOINT_DIR"
+  image=$(checkpoint_image "$name")
+  metadata=$(checkpoint_metadata "$name")
+  [[ ! -e $image && ! -e $metadata ]] || lab_fail "checkpoint already exists: $name"
+  pool=$(find_pool) || lab_fail "no libvirt pool owns $IMAGES"
+  if domain_running; then
+    was_running=true
+    guest_version=$(lab_ssh 'omarchy version 2>/dev/null | head -1' || true)
+    echo "Stopping the Lab for a consistent checkpoint ..." >&2
+    stop_guest
+  fi
+
+  echo "Saving checkpoint $name ..." >&2
+  if ! run_virsh vol-download "$OVERLAY_VOL" "$image" --pool "$pool" --sparse; then
+    rm -f "$image"
+    $was_running && run_virsh start "$NAME" >/dev/null 2>&1 || true
+    return 1
+  fi
+  created=$(iso_timestamp)
+  write_private_json "$metadata" "$(jq -cn \
+    --arg name "$name" \
+    --arg createdAt "$created" \
+    --arg guestVersion "$guest_version" \
+    '{name:$name,createdAt:$createdAt,guestVersion:$guestVersion,diskOnly:true}')"
+
+  if $was_running; then
+    run_virsh start "$NAME" >/dev/null
+    wait_ssh >&2
+  fi
+  if $json; then
+    checkpoint_json "$name"
+  else
+    printf 'Created checkpoint %s (%s).\n' "$name" "$(human_bytes "$(( $(stat -c %b "$image") * 512 ))")"
+  fi
+}
+
+restore_checkpoint() {
+  local name=${1:-} yes=0 json=false was_running=false pool image size result
+  [[ -n $name ]] || lab_fail "usage: omarchy lab checkpoint restore NAME [--yes] [--json]"
+  shift || true
+  while (($#)); do
+    case $1 in
+    --yes) yes=1 ;;
+    --json) json=true ;;
+    *) lab_fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+  safe_name "$name" || lab_fail "invalid checkpoint name: $name"
+  image=$(checkpoint_image "$name")
+  [[ -f $image ]] || lab_fail "checkpoint does not exist: $name"
+  confirm_destructive "$yes" "Restore checkpoint $name and discard the current Lab overlay?" || return 0
+  require_lab
+  pool=$(find_pool) || lab_fail "no libvirt pool owns $IMAGES"
+  domain_running && was_running=true
+  $was_running && stop_guest
+  size=$(qemu-img info --output=json "$image" | jq -r '."virtual-size"')
+  echo "Restoring checkpoint $name ..." >&2
+  run_virsh vol-delete --pool "$pool" "$OVERLAY_VOL" >/dev/null
+  run_virsh vol-create-as "$pool" "$OVERLAY_VOL" "$size" --format qcow2 >/dev/null
+  run_virsh vol-upload "$OVERLAY_VOL" "$image" --pool "$pool" --sparse
+  run_virsh pool-refresh "$pool" >/dev/null
+  rm -f "$KNOWN_HOSTS"
+  if $was_running; then
+    run_virsh start "$NAME" >/dev/null
+    wait_ssh >&2
+    wait_hypr >&2 || true
+  fi
+  result=$(checkpoint_json "$name")
+  if $json; then
+    jq '. + {restored:true}' <<<"$result"
+  else
+    printf 'Restored checkpoint %s.\n' "$name"
+  fi
+}
+
+rename_checkpoint() {
+  local old=${1:-} new=${2:-} json=false old_image old_metadata new_image new_metadata value
+  [[ -n $old && -n $new ]] || lab_fail "usage: omarchy lab checkpoint rename OLD NEW [--json]"
+  shift 2
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then json=true; else lab_fail "unknown option: $1"; fi
+    shift
+  done
+  safe_name "$old" && safe_name "$new" || lab_fail "invalid checkpoint name"
+  old_image=$(checkpoint_image "$old")
+  old_metadata=$(checkpoint_metadata "$old")
+  new_image=$(checkpoint_image "$new")
+  new_metadata=$(checkpoint_metadata "$new")
+  [[ -f $old_image && -f $old_metadata ]] || lab_fail "checkpoint does not exist: $old"
+  [[ ! -e $new_image && ! -e $new_metadata ]] || lab_fail "checkpoint already exists: $new"
+  mv "$old_image" "$new_image"
+  value=$(jq -c --arg name "$new" '.name = $name' "$old_metadata")
+  write_private_json "$new_metadata" "$value"
+  rm -f "$old_metadata"
+  if $json; then checkpoint_json "$new"; else printf 'Renamed %s to %s.\n' "$old" "$new"; fi
+}
+
+delete_checkpoint() {
+  local name=${1:-} yes=0 json=false image metadata bytes=0
+  [[ -n $name ]] || lab_fail "usage: omarchy lab checkpoint delete NAME [--yes] [--json]"
+  shift || true
+  while (($#)); do
+    case $1 in
+    --yes) yes=1 ;;
+    --json) json=true ;;
+    *) lab_fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+  safe_name "$name" || lab_fail "invalid checkpoint name: $name"
+  image=$(checkpoint_image "$name")
+  metadata=$(checkpoint_metadata "$name")
+  [[ -f $image && -f $metadata ]] || lab_fail "checkpoint does not exist: $name"
+  confirm_destructive "$yes" "Delete checkpoint $name?" || return 0
+  bytes=$(( $(stat -c %b "$image") * 512 ))
+  rm -f "$image" "$metadata"
+  if $json; then
+    jq -cn --arg name "$name" --argjson freedBytes "$bytes" '{deleted:true,name:$name,freedBytes:$freedBytes}'
+  else
+    printf 'Deleted checkpoint %s and freed %s.\n' "$name" "$(human_bytes "$bytes")"
+  fi
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab checkpoint <command>
+
+  create [NAME] [--json]             stop briefly and save a consistent disk checkpoint
+  list [--json]                      list checkpoints and allocated storage
+  restore NAME [--yes] [--json]      replace the current overlay with a checkpoint
+  rename OLD NEW [--json]            rename a checkpoint
+  delete NAME [--yes] [--json]       permanently delete a checkpoint
+
+Checkpoints contain the guest disk only; the virtual TPM state is shared.
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+  case $command in
+  create) create_checkpoint "$@" ;;
+  list) list_checkpoints "$@" ;;
+  restore) restore_checkpoint "$@" ;;
+  rename) rename_checkpoint "$@" ;;
+  delete) delete_checkpoint "$@" ;;
+  help | --help | -h) show_usage ;;
+  *) echo "Unknown command: $command" >&2; show_usage >&2; return 1 ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

@@ -1,0 +1,233 @@
+#!/bin/bash
+
+# omarchy:summary=Inspect or change Omarchy Lab CPU and memory profiles
+# omarchy:args=<status|set> [light|balanced|performance|full|custom] [values] [options]
+# omarchy:examples=omarchy lab resource status --json | omarchy lab resource set balanced | omarchy lab resource set custom 6 12
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+resource_status_json() {
+  local maximum_cpus configured_cpus live_cpus maximum_memory_kib configured_memory_kib running=false profile=custom stored_profile=custom
+  local total_memory_gib total_cpus balanced_cpus balanced_memory_gib performance_cpus performance_memory_gib
+  local full_cpus full_memory_gib safe_cpus safe_memory_gib inactive_xml
+  local light_cpus light_memory_gib expected_cpus expected_memory_gib configured_memory_gib
+  require_lab
+  maximum_cpus=$(run_virsh vcpucount "$NAME" --maximum --config 2>/dev/null | head -1)
+  configured_cpus=$(run_virsh vcpucount "$NAME" --active --config 2>/dev/null | head -1)
+  live_cpus=$configured_cpus
+  domain_running && running=true
+  if $running; then
+    live_cpus=$(run_virsh vcpucount "$NAME" --active --live 2>/dev/null | head -1)
+  fi
+  inactive_xml=$(run_virsh dumpxml "$NAME" --inactive 2>/dev/null)
+  maximum_memory_kib=$(sed -n "s/.*<memory unit='KiB'>\([0-9]*\)<\/memory>.*/\1/p" <<<"$inactive_xml" | head -1)
+  configured_memory_kib=$(sed -n "s/.*<currentMemory unit='KiB'>\([0-9]*\)<\/currentMemory>.*/\1/p" <<<"$inactive_xml" | head -1)
+  [[ -n $configured_memory_kib ]] || configured_memory_kib=$maximum_memory_kib
+  total_memory_gib=$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo)
+  total_cpus=$(nproc)
+  read -r balanced_cpus balanced_memory_gib performance_cpus performance_memory_gib full_cpus full_memory_gib safe_cpus safe_memory_gib <<<"$(lab_resource_plan "$total_memory_gib" "$total_cpus")"
+  light_cpus=$((safe_cpus < 2 ? safe_cpus : 2))
+  light_memory_gib=$((safe_memory_gib < 4 ? safe_memory_gib : 4))
+  if [[ -f $RESOURCE_FILE ]]; then
+    stored_profile=$(jq -r '.profile // "custom"' "$RESOURCE_FILE" 2>/dev/null || echo custom)
+  fi
+  configured_memory_gib=$((${configured_memory_kib:-0} / 1024 / 1024))
+  profile=$stored_profile
+  case $stored_profile in
+  light)
+    expected_cpus=$light_cpus
+    expected_memory_gib=$light_memory_gib
+    ;;
+  balanced)
+    expected_cpus=$balanced_cpus
+    expected_memory_gib=$balanced_memory_gib
+    ;;
+  performance)
+    expected_cpus=$performance_cpus
+    expected_memory_gib=$performance_memory_gib
+    ;;
+  full)
+    expected_cpus=$full_cpus
+    expected_memory_gib=$full_memory_gib
+    ;;
+  *)
+    expected_cpus=0
+    expected_memory_gib=0
+    ;;
+  esac
+  if ((configured_cpus != expected_cpus || configured_memory_gib != expected_memory_gib)); then
+    if ((configured_cpus == light_cpus && configured_memory_gib == light_memory_gib)); then
+      profile=light
+    elif ((configured_cpus == balanced_cpus && configured_memory_gib == balanced_memory_gib)); then
+      profile=balanced
+    elif ((configured_cpus == performance_cpus && configured_memory_gib == performance_memory_gib)); then
+      profile=performance
+    elif ((configured_cpus == full_cpus && configured_memory_gib == full_memory_gib)); then
+      profile=full
+    else
+      profile=custom
+    fi
+  fi
+  jq -cn \
+    --arg profile "$profile" \
+    --argjson running "$running" \
+    --argjson maximumCpus "${maximum_cpus:-0}" \
+    --argjson configuredCpus "${configured_cpus:-0}" \
+    --argjson liveCpus "${live_cpus:-0}" \
+    --argjson maximumMemoryBytes "$(( ${maximum_memory_kib:-0} * 1024 ))" \
+    --argjson configuredMemoryBytes "$(( ${configured_memory_kib:-0} * 1024 ))" \
+    --argjson hostCpus "$total_cpus" \
+    --argjson hostMemoryBytes "$((total_memory_gib * 1024 * 1024 * 1024))" \
+    --argjson balancedCpus "$balanced_cpus" \
+    --argjson balancedMemoryBytes "$((balanced_memory_gib * 1024 * 1024 * 1024))" \
+    --argjson performanceCpus "$performance_cpus" \
+    --argjson performanceMemoryBytes "$((performance_memory_gib * 1024 * 1024 * 1024))" \
+    --argjson fullCpus "$full_cpus" \
+    --argjson fullMemoryBytes "$((full_memory_gib * 1024 * 1024 * 1024))" \
+    --argjson safeCpus "$safe_cpus" \
+    --argjson safeMemoryBytes "$((safe_memory_gib * 1024 * 1024 * 1024))" \
+    '{profile:$profile,running:$running,cpus:{maximum:$maximumCpus,configured:$configuredCpus,live:$liveCpus},memory:{maximumBytes:$maximumMemoryBytes,configuredBytes:$configuredMemoryBytes},host:{cpus:$hostCpus,memoryBytes:$hostMemoryBytes,balancedCpus:$balancedCpus,balancedMemoryBytes:$balancedMemoryBytes,performanceCpus:$performanceCpus,performanceMemoryBytes:$performanceMemoryBytes,fullCpus:$fullCpus,fullMemoryBytes:$fullMemoryBytes,safeCpus:$safeCpus,safeMemoryBytes:$safeMemoryBytes}}'
+}
+
+show_resource_status() {
+  local output
+  [[ $# == 0 || ($# == 1 && $1 == "--json") ]] || lab_fail "usage: omarchy lab resource status [--json]"
+  output=$(resource_status_json)
+  if [[ ${1:-} == "--json" ]]; then
+    printf '%s\n' "$output"
+  else
+    jq -r '"Profile: " + .profile, "CPU: " + (.cpus.configured|tostring) + " vCPU (domain ceiling " + (.cpus.maximum|tostring) + ")", "Memory: " + ((.memory.configuredBytes / 1073741824)|floor|tostring) + " GiB (domain ceiling " + ((.memory.maximumBytes / 1073741824)|floor|tostring) + ")", "Host: " + (.host.cpus|tostring) + " cores / " + ((.host.memoryBytes / 1073741824)|floor|tostring) + " GiB", "Balanced: " + (.host.balancedCpus|tostring) + " cores / " + ((.host.balancedMemoryBytes / 1073741824)|floor|tostring) + " GiB", "Custom limit: " + (.host.safeCpus|tostring) + " cores / " + ((.host.safeMemoryBytes / 1073741824)|floor|tostring) + " GiB"' <<<"$output"
+  fi
+}
+
+set_resource_profile() {
+  local profile=${1:-} requested_cpus=0 requested_gib=0 no_reboot=false json=false custom=false current maximum_cpus maximum_gib running=false
+  local safe_cpus safe_gib balanced_cpus balanced_gib performance_cpus performance_gib full_cpus full_gib
+  [[ -n $profile ]] || lab_fail "usage: omarchy lab resource set PROFILE [CPUS MEMORY_GIB] [--no-reboot] [--json]"
+  shift || true
+  require_lab
+  current=$(resource_status_json)
+  maximum_cpus=$(jq -r '.cpus.maximum' <<<"$current")
+  maximum_gib=$(( $(jq -r '.memory.maximumBytes' <<<"$current") / 1073741824 ))
+  safe_cpus=$(jq -r '.host.safeCpus' <<<"$current")
+  safe_gib=$(( $(jq -r '.host.safeMemoryBytes' <<<"$current") / 1073741824 ))
+  balanced_cpus=$(jq -r '.host.balancedCpus' <<<"$current")
+  balanced_gib=$(( $(jq -r '.host.balancedMemoryBytes' <<<"$current") / 1073741824 ))
+  performance_cpus=$(jq -r '.host.performanceCpus' <<<"$current")
+  performance_gib=$(( $(jq -r '.host.performanceMemoryBytes' <<<"$current") / 1073741824 ))
+  full_cpus=$(jq -r '.host.fullCpus' <<<"$current")
+  full_gib=$(( $(jq -r '.host.fullMemoryBytes' <<<"$current") / 1073741824 ))
+
+  case $profile in
+  light) requested_cpus=2; requested_gib=4 ;;
+  balanced) requested_cpus=$balanced_cpus; requested_gib=$balanced_gib ;;
+  performance) requested_cpus=$performance_cpus; requested_gib=$performance_gib ;;
+  full) requested_cpus=$full_cpus; requested_gib=$full_gib ;;
+  custom)
+    custom=true
+    requested_cpus=${1:-0}
+    requested_gib=${2:-0}
+    [[ $requested_cpus =~ ^[0-9]+$ && $requested_gib =~ ^[0-9]+$ ]] || lab_fail "custom needs numeric CPU and GiB values"
+    shift 2 || true
+    ;;
+  *) lab_fail "profile must be light, balanced, performance, full, or custom" ;;
+  esac
+  while (($#)); do
+    case $1 in
+    --no-reboot) no_reboot=true ;;
+    --json) json=true ;;
+    *) lab_fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+  if ((requested_cpus < 1)); then
+    requested_cpus=1
+  fi
+  if ((requested_gib < 1)); then
+    requested_gib=1
+  fi
+  if ((requested_cpus > safe_cpus)); then
+    if $custom; then
+      lab_fail "CPU request exceeds the safe Lab limit of $safe_cpus cores"
+      return 1
+    fi
+    requested_cpus=$safe_cpus
+  fi
+  if ((requested_gib > safe_gib)); then
+    if $custom; then
+      lab_fail "memory request exceeds the safe Lab limit of $safe_gib GiB"
+      return 1
+    fi
+    requested_gib=$safe_gib
+  fi
+
+  if domain_running; then
+    running=true
+  fi
+  if $running && ! $no_reboot; then
+    echo "Power-cycling the Lab to apply its resource profile ..." >&2
+    stop_guest
+  fi
+  if ((requested_cpus > maximum_cpus)); then
+    run_virsh setvcpus "$NAME" "$requested_cpus" --maximum --config >/dev/null
+  fi
+  if ((requested_gib > maximum_gib)); then
+    run_virsh setmaxmem "$NAME" "$((requested_gib * 1024 * 1024))" --config >/dev/null
+  fi
+  run_virsh setvcpus "$NAME" "$requested_cpus" --config >/dev/null
+  run_virsh setmem "$NAME" "$((requested_gib * 1024 * 1024))" --config >/dev/null
+  # QEMU boots with maximum memory before the guest balloon driver can reduce
+  # it. Lower current allocations first, then remove any old boot-time excess.
+  if ((requested_cpus < maximum_cpus)); then
+    run_virsh setvcpus "$NAME" "$requested_cpus" --maximum --config >/dev/null
+  fi
+  if ((requested_gib < maximum_gib)); then
+    run_virsh setmaxmem "$NAME" "$((requested_gib * 1024 * 1024))" --config >/dev/null
+  fi
+  write_private_json "$RESOURCE_FILE" "$(jq -cn --arg profile "$profile" --argjson cpus "$requested_cpus" --argjson memoryGiB "$requested_gib" '{profile:$profile,cpus:$cpus,memoryGiB:$memoryGiB}')"
+  if $running && ! $no_reboot; then
+    run_virsh start "$NAME" >/dev/null
+    wait_ssh >&2
+    wait_hypr >&2 || true
+  fi
+  current=$(resource_status_json)
+  if $json; then
+    jq --argjson rebooted "$($running && ! $no_reboot && echo true || echo false)" '. + {rebooted:$rebooted}' <<<"$current"
+  else
+    printf 'Lab resources: %s (%s vCPU, %s GiB)%s\n' "$profile" "$requested_cpus" "$requested_gib" "$($running && $no_reboot && printf ' — reboot required')"
+  fi
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab resource <command>
+
+  status [--json]
+  set light [--no-reboot] [--json]             use up to 2 vCPU and 4 GiB
+  set balanced [--no-reboot] [--json]          use up to 4 vCPU and 8 GiB
+  set performance [--no-reboot] [--json]       use up to 8 vCPU and 16 GiB
+  set full [--no-reboot] [--json]              use up to 16 vCPU and 32 GiB
+  set custom CPUS MEMORY_GIB [--no-reboot] [--json]
+
+Profiles cap downward on smaller hosts instead of growing on larger ones. The
+controller matches the VM boot allocation to the selected profile. Custom retains
+25% of host CPU and RAM for the desktop and other applications.
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+  case $command in
+  status) show_resource_status "$@" ;;
+  set) set_resource_profile "$@" ;;
+  help | --help | -h) show_usage ;;
+  *) echo "Unknown command: $command" >&2; show_usage >&2; return 1 ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi
