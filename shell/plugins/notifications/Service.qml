@@ -429,7 +429,7 @@ Item {
   // match these rows against fresh notifications.
   property var restoredPopups: ({})
 
-  // Entries are either { command, done } for a file job or { read: true } for
+  // Entries are either { command, stdin, done } for a file job or { read: true } for
   // a replay's directory read. Queueing the read rather than running it beside
   // the queue is what makes it a barrier: it takes its place in line, so the
   // history it sees is the one that existed when the replay was asked for.
@@ -439,9 +439,16 @@ Item {
 
   // Done callback of the job popupFileProc is currently running.
   property var runningPopupFileJobDone: null
+  // Stdin payload of the job popupFileProc is currently starting. Cleared as
+  // soon as onStarted has handed it to the process.
+  property var runningPopupFileJobStdin: null
 
-  function enqueuePopupFileJob(command, done) {
-    popupFileQueue = popupFileQueue.concat([{ command: command, done: done || null }])
+  function enqueuePopupFileJob(command, stdin, done) {
+    popupFileQueue = popupFileQueue.concat([{
+      command: command,
+      stdin: stdin === undefined ? null : stdin,
+      done: done || null
+    }])
     runNextPopupFileJob()
   }
 
@@ -463,6 +470,7 @@ Item {
     }
 
     popupFileProc.command = job.command
+    service.runningPopupFileJobStdin = job.stdin
     service.runningPopupFileJobDone = job.done || null
     popupFileProc.running = true
   }
@@ -470,6 +478,13 @@ Item {
   Process {
     id: popupFileProc
     running: false
+    stdinEnabled: true
+    onStarted: {
+      if (service.runningPopupFileJobStdin !== null) {
+        write(service.runningPopupFileJobStdin + "\n")
+        service.runningPopupFileJobStdin = null
+      }
+    }
     onExited: {
       var done = service.runningPopupFileJobDone
       service.runningPopupFileJobDone = null
@@ -496,24 +511,25 @@ Item {
     "done\n"
 
   function persistPopupFile(snapshot) {
-    // The JSON travels as an argument, not through shell interpolation, so
-    // summaries/bodies with quotes or backticks can't break the command. The
-    // mkdir guards notifications that arrive before ensureDirsProc has run.
-    // Copies run before the JSON referencing them, while the source exists.
+    // The JSON travels over stdin so sensitive summaries and bodies never
+    // appear in the process argv. The mkdir guards notifications that arrive
+    // before ensureDirsProc has run. Copies run before the JSON referencing
+    // them, while the source exists.
     var persistable = NotificationLogic.persistablePopup(snapshot, imagesDir)
+    var json = NotificationLogic.serializePopup(persistable.entry, NotificationUrgency.Normal)
     var command = ["bash", "-c",
       "mkdir -p \"$1\" \"$2\" || exit 0\n" +
-      "dir=\"$1\" json=\"$3\" name=\"$4\"\n" +
-      "shift 4\n" +
+      "dir=\"$1\" name=\"$3\"\n" +
+      "shift 3\n" +
       copyImagesScript +
+      "IFS= read -r json || exit 0\n" +
       "printf '%s\\n' \"$json\" > \"$dir/$name\"", "--",
       popupStateDir,
       imagesDir,
-      NotificationLogic.serializePopup(persistable.entry, NotificationUrgency.Normal),
       NotificationLogic.popupFileName(snapshot)]
     for (var i = 0; i < persistable.copies.length; i++)
       command.push(persistable.copies[i].from, persistable.copies[i].to)
-    enqueuePopupFileJob(command)
+    enqueuePopupFileJob(command, json)
   }
 
   function deletePopupFileFor(row) {
@@ -568,21 +584,22 @@ Item {
       return
     }
     var persistable = NotificationLogic.persistablePopup(entry, imagesDir)
+    var json = NotificationLogic.serializePopup(persistable.entry, NotificationUrgency.Normal)
     var command = ["bash", "-c",
-      "mkdir -p \"$1\" \"$5\" || exit 0\n" +
-      "hist=\"$1\" limit=\"$2\" name=\"$3\" json=\"$4\" imgs=\"$5\"\n" +
-      "shift 5\n" +
+      "mkdir -p \"$1\" \"$4\" || exit 0\n" +
+      "hist=\"$1\" limit=\"$2\" name=\"$3\" imgs=\"$4\"\n" +
+      "shift 4\n" +
       copyImagesScript +
+      "IFS= read -r json || exit 0\n" +
       "printf '%s\\n' \"$json\" > \"$hist/$name\" || exit 0\n" +
       trimHistoryScript, "--",
       historyDir,
       String(historyLimit),
       NotificationLogic.popupFileName(entry),
-      NotificationLogic.serializePopup(persistable.entry, NotificationUrgency.Normal),
       imagesDir]
     for (var i = 0; i < persistable.copies.length; i++)
       command.push(persistable.copies[i].from, persistable.copies[i].to)
-    enqueuePopupFileJob(command, done)
+    enqueuePopupFileJob(command, json, done)
   }
 
   function clearHistory() {
