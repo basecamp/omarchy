@@ -16,6 +16,17 @@ Panel {
   // permits — needed for the toggleNetwork method below.
   manageIpc: false
 
+  // Helper for the inline wired-NIC IPv4 settings (DHCP / static IP).
+  readonly property string ethConfigScript: "omarchy-network-eth-config"
+
+  // Plain-object rows returned by ethConfigScript list:
+  // { device, carrier, state, profile, method, address, prefix, gateway, dns,
+  //   liveIp, liveGateway }
+  property var wiredDevices: []
+  // Set while a wired TextField has focus so the poller does not rebuild rows
+  // under the user's cursor.
+  property string editingWiredDevice: ""
+
   // Centralized close so callers can't forget to drop the passphrase prompt.
   function close() {
     root.controller.hide()
@@ -345,6 +356,7 @@ Panel {
       routerPingLatency = -1
       internetPingLatency = -1
       internetPingPacketLoss = 0
+      editingWiredDevice = ""
       setScannerEnabled(false)
     }
   }
@@ -526,6 +538,10 @@ Panel {
     checkConnectivity()
     if (scanWifi === undefined) scanWifi = false
     if (!detailsProc.running) detailsProc.running = true
+    if (!ethListProc.running) {
+      ethListProc.command = [root.ethConfigScript, "list"]
+      ethListProc.running = true
+    }
     if (!dnsProc.running) {
       dnsProc.command = ["bash", "-c", root.dnsCommand("")]
       dnsProc.running = true
@@ -546,6 +562,38 @@ Panel {
       }
     }
     syncWifiNetworks()
+  }
+
+  function refreshWiredDevices() {
+    if (!ethListProc.running) {
+      ethListProc.command = [root.ethConfigScript, "list"]
+      ethListProc.running = true
+    }
+  }
+
+  function updateWiredDevices(raw) {
+    var lines = String(raw || "").split("\n")
+    var rows = []
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].replace(/\r$/, "")
+      if (!line) continue
+      var p = line.split("\t")
+      if (p.length < 11) continue
+      rows.push({
+        device: p[0],
+        carrier: p[1] === "1",
+        state: p[2],
+        profile: p[3],
+        method: p[4] || "auto",
+        address: p[5],
+        prefix: p[6],
+        gateway: p[7],
+        dns: p[8],
+        liveIp: p[9],
+        liveGateway: p[10]
+      })
+    }
+    wiredDevices = rows
   }
 
   function formatHeaderSpeed(mbps) {
@@ -868,6 +916,30 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateDetails(text)
+    }
+  }
+
+  // Pulls the list of NetworkManager-managed wired NICs and their IPv4 mode.
+  Process {
+    id: ethListProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.updateWiredDevices(text)
+    }
+  }
+
+  Timer {
+    id: ethPoll
+    interval: 3000
+    repeat: true
+    running: root.opened
+    onTriggered: {
+      // Don't replace rows while a TextField has focus; the row keeps the
+      // user's draft and the next manual refresh/open catches status changes.
+      if (root.editingWiredDevice !== "") return
+      if (ethListProc.running) return
+      ethListProc.command = [root.ethConfigScript, "list"]
+      ethListProc.running = true
     }
   }
 
@@ -1377,6 +1449,45 @@ Panel {
             text: root.info.gateway || "--"
             copyable: !!root.info.gateway
             tooltipText: "Copy gateway"
+          }
+        }
+      }
+
+      // Wired NIC settings. Every NetworkManager-managed wired adapter gets a
+      // row here, even when no cable is plugged in or no DHCP server has
+      // answered, so an external NIC can be switched to a static IP from the
+      // panel before it ever gets an address.
+      PanelSeparator {
+        visible: root.wiredDevices.length > 0
+        foreground: root.bar.foreground
+      }
+
+      Column {
+        visible: root.wiredDevices.length > 0
+        width: parent.width
+        spacing: Style.space(10)
+
+        PanelSectionHeader {
+          text: root.wiredDevices.length === 1 ? "WIRED NIC" : "WIRED NICS"
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+        }
+
+        Repeater {
+          model: root.wiredDevices
+
+          delegate: Item {
+            required property var modelData
+            required property int index
+            width: parent.width
+            height: wiredNic.implicitHeight
+
+            WiredNicRow {
+              id: wiredNic
+              width: parent.width
+              info: modelData
+              rowIndex: index
+            }
           }
         }
       }
@@ -2046,6 +2157,394 @@ Panel {
     }
   }
 
+
+  // One NetworkManager-managed wired NIC row. The header always shows the
+  // adapter; the mode switch toggles between automatic DHCP and a manual
+  // static IPv4 form that is applied straight through nmcli.
+  component WiredNicRow: Item {
+    id: wiredRow
+    required property var info
+    required property int rowIndex
+
+    readonly property bool connected: info.state === "connected"
+    readonly property bool connecting: info.state === "connecting"
+    readonly property bool hasCarrier: info.carrier
+    readonly property bool manualSaved: info.method === "manual"
+    readonly property string liveAddressText: {
+      var raw = String(info.liveIp || "")
+      var idx = raw.indexOf("/")
+      return idx < 0 ? raw : raw.substring(0, idx)
+    }
+    readonly property string livePrefixText: {
+      var raw = String(info.liveIp || "")
+      var idx = raw.indexOf("/")
+      return idx < 0 ? "" : raw.substring(idx + 1)
+    }
+    readonly property string stateText: {
+      if (info.state === "connected") return "Connected"
+      if (info.state === "connecting") return "Connecting"
+      if (info.state === "unavailable") return "No cable"
+      if (info.state === "disconnected") return hasCarrier ? "Cable present" : "Disconnected"
+      if (info.state) return info.state.charAt(0).toUpperCase() + info.state.slice(1)
+      return "Unknown"
+    }
+    readonly property string summaryText: {
+      var parts = []
+      parts.push(stateText)
+      if (liveAddressText !== "") parts.push(liveAddressText + (livePrefixText !== "" ? "/" + livePrefixText : ""))
+      if (info.profile) parts.push(info.profile)
+      if (statusText !== "") parts.push(statusText)
+      return parts.join(" · ")
+    }
+
+    property bool manualMode: manualSaved
+    property string draftAddress: info.address || ""
+    property string draftPrefix: info.prefix || ""
+    property string draftGateway: info.gateway || ""
+    property string draftDns: info.dns || ""
+    property bool busy: false
+    property string statusText: ""
+    property bool failed: false
+    property string initializedDevice: ""
+
+    function initFromInfo() {
+      if (initializedDevice === info.device) return
+      initializedDevice = info.device
+      manualMode = info.method === "manual"
+      draftAddress = info.address || ""
+      draftPrefix = info.prefix || ""
+      draftGateway = info.gateway || ""
+      draftDns = info.dns || ""
+      busy = false
+      statusText = ""
+      failed = false
+    }
+
+    function setMode(nextManual) {
+      if (busy) return
+      manualMode = nextManual
+      statusText = ""
+      failed = false
+
+      if (manualMode) {
+        if (draftAddress === "") {
+          if (liveAddressText !== "") {
+            draftAddress = liveAddressText
+            if (livePrefixText !== "") draftPrefix = livePrefixText
+          }
+        }
+        if (draftPrefix === "") draftPrefix = "24"
+      }
+    }
+
+    function validIpv4(value) {
+      var text = String(value || "").trim()
+      if (!text) return false
+      var parts = text.split(".")
+      if (parts.length !== 4) return false
+      for (var i = 0; i < parts.length; i++) {
+        var part = parts[i]
+        if (!/^\d{1,3}$/.test(part)) return false
+        var n = parseInt(part, 10)
+        if (n < 0 || n > 255) return false
+      }
+      return true
+    }
+
+    function validPrefix(value) {
+      var text = String(value || "").trim()
+      if (!/^\d{1,2}$/.test(text)) return false
+      var n = parseInt(text, 10)
+      return n >= 0 && n <= 32
+    }
+
+    function validDns(value) {
+      var text = String(value || "").trim()
+      if (text === "") return true
+      var tokens = text.split(/[\s,]+/)
+      for (var i = 0; i < tokens.length; i++) {
+        if (!validIpv4(tokens[i])) return false
+      }
+      return true
+    }
+
+    function applyConfig() {
+      if (busy || !info.device) return
+      statusText = ""
+      failed = false
+
+      if (manualMode) {
+        if (!validIpv4(draftAddress)) {
+          statusText = "Invalid IP address"
+          failed = true
+          return
+        }
+        if (!validPrefix(draftPrefix)) {
+          statusText = "Invalid prefix (0-32)"
+          failed = true
+          return
+        }
+        if (String(draftGateway || "").trim() !== "" && !validIpv4(draftGateway)) {
+          statusText = "Invalid gateway"
+          failed = true
+          return
+        }
+        if (!validDns(draftDns)) {
+          statusText = "Invalid DNS server"
+          failed = true
+          return
+        }
+      }
+
+      busy = true
+      statusText = connected
+        ? "Applying…"
+        : (hasCarrier ? "Applying and connecting…" : "Saving…")
+
+      var args = [root.ethConfigScript, "set", info.device]
+      if (!manualMode) {
+        args.push("dhcp")
+      } else {
+        var prefix = String(draftPrefix || "").trim() || "24"
+        args.push("manual")
+        args.push(String(draftAddress || "").trim())
+        args.push(prefix)
+        args.push(String(draftGateway || "").trim())
+        args.push(String(draftDns || "").trim())
+      }
+      ethApplyProc.command = args
+      ethApplyProc.running = true
+    }
+
+    onInfoChanged: initFromInfo()
+    Component.onCompleted: initFromInfo()
+
+    implicitHeight: contentColumn.implicitHeight
+
+    Column {
+      id: contentColumn
+      width: parent.width
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.top: parent.top
+      spacing: Style.space(6)
+
+      // Header: interface + state on the left, DHCP/manual switch on the right.
+      Item {
+        width: parent.width
+        implicitHeight: Math.max(headerLabels.implicitHeight, modeSwitchGroup.implicitHeight)
+
+        Row {
+          id: modeSwitchGroup
+          spacing: Style.space(6)
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+
+          Text {
+            textFormat: Text.PlainText
+            text: wiredRow.manualMode ? "MANUAL" : "AUTO DHCP"
+            color: Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            font.letterSpacing: 1.0
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          ToggleSwitch {
+            checked: !wiredRow.manualMode
+            foreground: root.bar.foreground
+            onToggled: wiredRow.setMode(!wiredRow.manualMode)
+            onHovered: function(hovered) {
+              if (hovered) root.cursorActive = false
+            }
+          }
+        }
+
+        Column {
+          id: headerLabels
+          anchors.left: parent.left
+          anchors.right: modeSwitchGroup.left
+          anchors.rightMargin: Style.space(12)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(1)
+
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            text: wiredRow.info.device
+            color: (wiredRow.connected || wiredRow.hasCarrier)
+              ? root.bar.foreground
+              : Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.body
+            font.bold: wiredRow.connected || wiredRow.hasCarrier
+            elide: Text.ElideRight
+          }
+
+          Text {
+            textFormat: Text.PlainText
+            width: parent.width
+            text: wiredRow.summaryText
+            color: wiredRow.failed
+              ? root.bar.urgent
+              : Qt.darker(root.bar.foreground, 1.4)
+            font.family: root.bar.fontFamily
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideRight
+          }
+        }
+      }
+
+      // Auto DHCP is the default; no form is needed.
+      Text {
+        textFormat: Text.PlainText
+        visible: !wiredRow.manualMode
+        width: parent.width
+        text: "DHCP — obtain IP, gateway and DNS automatically."
+        color: Qt.darker(root.bar.foreground, 1.6)
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+      }
+
+      // Static IPv4 form.
+      Column {
+        visible: wiredRow.manualMode
+        width: parent.width
+        spacing: Style.space(6)
+
+        RowLayout {
+          width: parent.width
+          spacing: Style.space(6)
+
+          TextField {
+            id: ipField
+            Layout.fillWidth: true
+            placeholderText: "IP address"
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
+            foreground: root.bar.foreground
+            horizontalPadding: Style.spacing.controlGap
+            verticalPadding: Style.spacing.controlPaddingY
+            enabled: !wiredRow.busy
+            text: wiredRow.draftAddress
+            onTextChanged: if (text !== wiredRow.draftAddress) wiredRow.draftAddress = text
+            onActiveFocusChanged: {
+              if (activeFocus) root.editingWiredDevice = wiredRow.info.device
+              else if (root.editingWiredDevice === wiredRow.info.device) root.editingWiredDevice = ""
+            }
+            onAccepted: prefixField.forceActiveFocus()
+          }
+
+          TextField {
+            id: prefixField
+            Layout.preferredWidth: Style.space(72)
+            placeholderText: "/24"
+            font.family: Style.font.family
+            font.pixelSize: Style.font.body
+            foreground: root.bar.foreground
+            horizontalPadding: Style.spacing.controlGap
+            verticalPadding: Style.spacing.controlPaddingY
+            enabled: !wiredRow.busy
+            text: wiredRow.draftPrefix
+            onTextChanged: if (text !== wiredRow.draftPrefix) wiredRow.draftPrefix = text
+            onActiveFocusChanged: {
+              if (activeFocus) root.editingWiredDevice = wiredRow.info.device
+              else if (root.editingWiredDevice === wiredRow.info.device) root.editingWiredDevice = ""
+            }
+            onAccepted: gatewayField.forceActiveFocus()
+          }
+        }
+
+        TextField {
+          id: gatewayField
+          width: parent.width
+          placeholderText: "Gateway (optional)"
+          font.family: Style.font.family
+          font.pixelSize: Style.font.body
+          foreground: root.bar.foreground
+          horizontalPadding: Style.spacing.controlGap
+          verticalPadding: Style.spacing.controlPaddingY
+          enabled: !wiredRow.busy
+          text: wiredRow.draftGateway
+          onTextChanged: if (text !== wiredRow.draftGateway) wiredRow.draftGateway = text
+          onActiveFocusChanged: {
+            if (activeFocus) root.editingWiredDevice = wiredRow.info.device
+            else if (root.editingWiredDevice === wiredRow.info.device) root.editingWiredDevice = ""
+          }
+          onAccepted: dnsField.forceActiveFocus()
+        }
+
+        TextField {
+          id: dnsField
+          width: parent.width
+          placeholderText: "DNS servers (optional, comma or space separated)"
+          font.family: Style.font.family
+          font.pixelSize: Style.font.body
+          foreground: root.bar.foreground
+          horizontalPadding: Style.spacing.controlGap
+          verticalPadding: Style.spacing.controlPaddingY
+          enabled: !wiredRow.busy
+          text: wiredRow.draftDns
+          onTextChanged: if (text !== wiredRow.draftDns) wiredRow.draftDns = text
+          onActiveFocusChanged: {
+            if (activeFocus) root.editingWiredDevice = wiredRow.info.device
+            else if (root.editingWiredDevice === wiredRow.info.device) root.editingWiredDevice = ""
+          }
+          onAccepted: wiredRow.applyConfig()
+        }
+
+        Row {
+          spacing: Style.space(6)
+
+          Button {
+            text: wiredRow.busy
+              ? "Applying…"
+              : ((wiredRow.connected || wiredRow.hasCarrier) ? "Apply & connect" : "Save")
+            enabled: !wiredRow.busy
+            fontSize: Style.font.body
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            horizontalPadding: Style.spacing.controlPaddingX
+            verticalPadding: Style.spacing.controlPaddingY
+            onClicked: wiredRow.applyConfig()
+          }
+
+          Button {
+            text: "Reset"
+            visible: !wiredRow.busy
+            fontSize: Style.font.body
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            horizontalPadding: Style.spacing.controlPaddingX
+            verticalPadding: Style.spacing.controlPaddingY
+            onClicked: wiredRow.initFromInfo()
+          }
+        }
+      }
+    }
+
+    Process {
+      id: ethApplyProc
+      stdout: StdioCollector { id: ethApplyOut; waitForEnd: true }
+      stderr: StdioCollector { id: ethApplyErr; waitForEnd: true }
+      onExited: function(exitCode) {
+        wiredRow.busy = false
+        if (exitCode === 0) {
+          wiredRow.failed = false
+          wiredRow.statusText = wiredRow.hasCarrier ? "Applied" : "Saved"
+          root.refreshWiredDevices()
+          root.refresh()
+        } else {
+          wiredRow.failed = true
+          var firstLine = String(ethApplyErr.text || "").trim().split("\n")[0]
+          wiredRow.statusText = firstLine !== "" ? "Failed: " + firstLine : "Apply failed"
+        }
+        if (root.editingWiredDevice === wiredRow.info.device) root.editingWiredDevice = ""
+      }
+    }
+  }
 
   component DetailValue: InfoValue {
     property bool copyable: false

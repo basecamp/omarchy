@@ -1,0 +1,264 @@
+#!/bin/bash
+
+# omarchy:summary=Show or configure IPv4 settings for managed wired NICs
+# omarchy:group=network
+# omarchy:args=[list | set <device> <dhcp|manual> [ip] [prefix] [gateway] [dns]]
+# omarchy:examples=omarchy network eth-config list | omarchy network eth-config set enp1s0 dhcp | omarchy network eth-config set enp1s0 manual 192.168.1.10 24 192.168.1.1 1.1.1.1
+
+set -euo pipefail
+export LC_ALL=C
+
+# nmcli -e no keeps ':' and '\' verbatim in values; -g asks for one field at a
+# time so values can never be confused with separators.
+nm_get() {
+  local field=$1
+  shift
+  nmcli -e no -g "$field" "$@" 2>/dev/null || true
+}
+
+device_state() {
+  local dev=$1
+  nmcli -e no -t -f DEVICE,TYPE,STATE device status 2>/dev/null | awk -F: -v want="$dev" '
+    $1 == want { print $3; exit }
+  '
+}
+
+device_carrier() {
+  local dev=$1
+  if [[ -r /sys/class/net/$dev/carrier ]]; then
+    cat "/sys/class/net/$dev/carrier" 2>/dev/null || echo 0
+  else
+    echo 0
+  fi
+}
+
+# The profile currently bound to the device: active connection first, then the
+# first saved 802-3-ethernet profile that names this interface (or MAC), with
+# autoconnect profiles preferred so the panel edits what will actually be used.
+profile_for_device() {
+  local dev=$1
+  local active profile
+  local devmac uuid type iface mac name auto found=""
+
+  active=$(nm_get GENERAL.CONNECTION device show "$dev")
+  if [[ -n $active && $active != "--" ]]; then
+    echo "$active"
+    return 0
+  fi
+
+  devmac=$(cat "/sys/class/net/$dev/address" 2>/dev/null || true)
+
+  while IFS=: read -r uuid type; do
+    [[ -n $uuid && $type == 802-3-ethernet ]] || continue
+
+    iface=$(nm_get connection.interface-name connection show uuid "$uuid")
+    mac=$(nm_get 802-3-ethernet.mac-address connection show uuid "$uuid")
+    [[ $iface == "$dev" ]] || { [[ -n $devmac && -n $mac && $mac == "$devmac" ]]; } || continue
+
+    name=$(nm_get connection.id connection show uuid "$uuid")
+    [[ -n $name ]] || continue
+    auto=$(nm_get connection.autoconnect connection show uuid "$uuid")
+    if [[ -z $found ]]; then
+      found=$name
+    fi
+    if [[ $auto == yes ]]; then
+      echo "$name"
+      return 0
+    fi
+  done < <(nmcli -e no -g UUID,TYPE connection show)
+
+  [[ -z $found ]] || echo "$found"
+}
+
+first_line() {
+  head -n 1
+}
+
+clean_dns() {
+  tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
+}
+
+list_devices() {
+  local line dev type state carrier profile method addrs addr prefix gateway dns live_ip live_gw
+
+  while IFS=: read -r dev type state; do
+    [[ $type == ethernet ]] || continue
+    [[ $state != unmanaged ]] || continue
+
+    carrier=$(device_carrier "$dev")
+    state=${state%% *}
+
+    profile=$(profile_for_device "$dev")
+    method=auto
+    addr=""
+    prefix=""
+    gateway=""
+    dns=""
+
+    if [[ -n $profile ]]; then
+      method=$(nm_get ipv4.method connection show "$profile")
+      [[ -n $method ]] || method=auto
+
+      if [[ $method == manual ]]; then
+        addrs=$(nm_get ipv4.addresses connection show "$profile" | first_line)
+        if [[ -n $addrs ]]; then
+          if [[ $addrs == */* ]]; then
+            addr=${addrs%/*}
+            prefix=${addrs##*/}
+          else
+            addr=$addrs
+          fi
+        fi
+        gateway=$(nm_get ipv4.gateway connection show "$profile" | first_line)
+        dns=$(nm_get ipv4.dns connection show "$profile" | clean_dns)
+      fi
+    fi
+
+    live_ip=$(nm_get IP4.ADDRESS device show "$dev" | first_line)
+    live_gw=$(nm_get IP4.GATEWAY device show "$dev" | first_line)
+
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$dev" "$carrier" "$state" "$profile" "$method" \
+      "$addr" "$prefix" "$gateway" "$dns" "$live_ip" "$live_gw"
+  done < <(nmcli -e no -t -f DEVICE,TYPE,STATE device status)
+}
+
+# Make sure there is an editable NetworkManager profile for this interface.
+# NM would normally auto-create one on `device connect`; when we are setting a
+# static IP before any DHCP server answers we need the profile to exist first.
+ensure_profile() {
+  local dev=$1 profile con_name
+
+  profile=$(profile_for_device "$dev")
+  if [[ -n $profile ]]; then
+    echo "$profile"
+    return 0
+  fi
+
+  con_name="Wired $dev"
+  nmcli connection add \
+    type ethernet \
+    con-name "$con_name" \
+    ifname "$dev" \
+    connection.autoconnect yes \
+    >/dev/null
+  echo "$con_name"
+}
+
+apply_connection() {
+  local dev=$1 profile=$2 state carrier
+
+  state=$(device_state "$dev")
+  carrier=$(device_carrier "$dev")
+
+  if [[ $state == connected* ]]; then
+    nmcli device reapply "$dev" >/dev/null 2>&1 \
+      || nmcli --wait 10 connection up "$profile" >/dev/null 2>&1 \
+      || true
+  elif [[ $carrier == 1 ]]; then
+    nmcli --wait 10 device connect "$dev" >/dev/null 2>&1 \
+      || nmcli --wait 10 connection up "$profile" >/dev/null 2>&1 \
+      || true
+  fi
+}
+
+set_command() {
+  local dev=$1 mode=$2
+  local profile ip prefix gateway dns
+
+  if (($# < 2)); then
+    echo "Usage: omarchy-network-eth-config set <device> <dhcp|manual> [ip] [prefix] [gateway] [dns]" >&2
+    exit 2
+  fi
+
+  profile=$(ensure_profile "$dev")
+  if [[ -z $profile ]]; then
+    echo "Error: could not find or create a NetworkManager profile for $dev." >&2
+    exit 1
+  fi
+
+  case $mode in
+    dhcp|auto)
+      nmcli connection modify "$profile" \
+        connection.autoconnect yes \
+        ipv4.method auto \
+        ipv4.addresses "" \
+        ipv4.gateway "" \
+        ipv4.dns "" \
+        ipv4.dns-search "" \
+        ipv4.ignore-auto-dns no \
+        >/dev/null
+      ;;
+
+    manual)
+      if (($# < 4)); then
+        echo "Usage: omarchy-network-eth-config set <device> manual <ip> [prefix] [gateway] [dns]" >&2
+        exit 2
+      fi
+
+      ip=$3
+      prefix=${4:-24}
+      gateway=${5:-}
+      dns=${6:-}
+
+      if [[ -z $ip ]]; then
+        echo "Error: an IP address is required for manual configuration." >&2
+        exit 1
+      fi
+
+      if [[ -n $dns ]]; then
+        nmcli connection modify "$profile" \
+          connection.autoconnect yes \
+          ipv4.method manual \
+          ipv4.addresses "$ip/$prefix" \
+          ipv4.gateway "$gateway" \
+          ipv4.dns "$dns" \
+          ipv4.dns-search "" \
+          ipv4.ignore-auto-dns yes \
+          >/dev/null
+      else
+        nmcli connection modify "$profile" \
+          connection.autoconnect yes \
+          ipv4.method manual \
+          ipv4.addresses "$ip/$prefix" \
+          ipv4.gateway "$gateway" \
+          ipv4.dns "" \
+          ipv4.dns-search "" \
+          ipv4.ignore-auto-dns no \
+          >/dev/null
+      fi
+      ;;
+
+    *)
+      echo "Error: unknown mode '$mode' (expected dhcp or manual)." >&2
+      exit 2
+      ;;
+  esac
+
+  apply_connection "$dev" "$profile"
+}
+
+usage() {
+  echo "Usage: omarchy-network-eth-config list" >&2
+  echo "       omarchy-network-eth-config set <device> dhcp" >&2
+  echo "       omarchy-network-eth-config set <device> manual <ip> [prefix] [gateway] [dns]" >&2
+}
+
+if (($# == 0)); then
+  usage
+  exit 2
+fi
+
+case $1 in
+  list)
+    list_devices
+    ;;
+  set)
+    shift
+    set_command "$@"
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
