@@ -9,6 +9,15 @@ hl.config({
     },
   },
 
+  -- decoration.glow.color is independent of general.col.active_border; without
+  -- these, glow stays on Hyprland's hardcoded default (#9737).
+  decoration = {
+    glow = {
+      color = active_border_color,
+      color_inactive = inactive_border_color,
+    },
+  },
+
   group = {
     col = {
       border_active = active_border_color,
