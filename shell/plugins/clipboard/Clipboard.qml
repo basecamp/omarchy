@@ -141,6 +141,7 @@ Item {
         fullText: row.fullText,
         previewText: row.previewText,
         previewImage: row.previewImage ? Util.fileUrl(row.previewImage) : "",
+        swatchColor: row.swatchColor || "",
         path: row.path,
         mime: row.mime,
         historyIndex: row.index
@@ -474,8 +475,11 @@ Item {
                   required property string previewText
                   required property string fullText
                   required property string previewImage
+                  required property string swatchColor
 
                   readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
+                  readonly property bool hasSwatch: swatchColor.length > 0
+                  readonly property bool hasThumb: !hasSwatch && previewImage.length > 0
 
                   width: ListView.view.width
                   height: root.rowHeight
@@ -490,8 +494,18 @@ Item {
                     anchors.bottomMargin: Style.space(8)
                     spacing: Style.space(10)
 
+                    Rectangle {
+                      visible: parent.parent.hasSwatch
+                      width: visible ? parent.height : 0
+                      height: parent.height
+                      radius: Math.min(root.cornerRadius, height / 2)
+                      color: parent.parent.swatchColor || "transparent"
+                      border.width: Style.normalBorderWidth
+                      border.color: Util.alpha(parent.parent.hasCursor ? root.selectedText : root.border, 0.4)
+                    }
+
                     Image {
-                      visible: parent.parent.previewImage.length > 0
+                      visible: parent.parent.hasThumb
                       width: visible ? parent.height : 0
                       height: parent.height
                       source: parent.parent.previewImage
@@ -502,7 +516,7 @@ Item {
 
                     Text {
                       textFormat: Text.PlainText
-                      width: parent.width - (parent.parent.previewImage.length > 0 ? parent.height + parent.spacing : 0)
+                      width: parent.width - ((parent.parent.hasSwatch || parent.parent.hasThumb) ? parent.height + parent.spacing : 0)
                       height: parent.height
                       text: parent.parent.previewText
                       color: parent.parent.hasCursor ? root.selectedText : root.foreground
@@ -533,6 +547,7 @@ Item {
             }
 
             Item {
+              id: previewPane
               width: parent.width / 2
               height: parent.height
               clip: true
@@ -549,13 +564,13 @@ Item {
 
               Text {
                 textFormat: Text.PlainText
-                visible: parent.activeRow && !parent.activeRow.previewImage
+                visible: previewPane.activeRow && !previewPane.activeRow.previewImage && !previewPane.activeRow.swatchColor
                 anchors.fill: parent
                 anchors.leftMargin: root.contentMargin
                 anchors.rightMargin: 0
                 anchors.topMargin: 0
                 anchors.bottomMargin: 0
-                text: parent.activeRow ? parent.activeRow.fullText : ""
+                text: previewPane.activeRow ? previewPane.activeRow.fullText : ""
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.title
@@ -564,14 +579,41 @@ Item {
                 verticalAlignment: Text.AlignTop
               }
 
-              Image {
-                visible: parent.activeRow && parent.activeRow.previewImage
+              Column {
+                visible: previewPane.activeRow && previewPane.activeRow.swatchColor
                 anchors.fill: parent
                 anchors.leftMargin: root.contentMargin
                 anchors.rightMargin: 0
                 anchors.topMargin: 0
                 anchors.bottomMargin: 0
-                source: parent.activeRow ? parent.activeRow.previewImage : ""
+                spacing: Style.spacing.md
+
+                Rectangle {
+                  width: Math.min(parent.width, Style.space(220))
+                  height: width
+                  radius: Math.min(root.cornerRadius, height / 2)
+                  color: previewPane.activeRow ? previewPane.activeRow.swatchColor : "transparent"
+                  border.width: Style.normalBorderWidth
+                  border.color: Util.alpha(root.border, 0.4)
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: previewPane.activeRow ? previewPane.activeRow.fullText : ""
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.title
+                }
+              }
+
+              Image {
+                visible: previewPane.activeRow && previewPane.activeRow.previewImage
+                anchors.fill: parent
+                anchors.leftMargin: root.contentMargin
+                anchors.rightMargin: 0
+                anchors.topMargin: 0
+                anchors.bottomMargin: 0
+                source: previewPane.activeRow ? previewPane.activeRow.previewImage : ""
                 fillMode: Image.PreserveAspectFit
                 verticalAlignment: Image.AlignTop
                 asynchronous: true

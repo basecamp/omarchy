@@ -150,6 +150,13 @@ function previewText(entry) {
   return String(entry.text || "").replace(/\s+/g, " ")
 }
 
+// Whole-entry hex only: #RRGGBB or RRGGBB. Derived at display time so
+// clipboard-history.json stays text/image and stays compatible with older shells.
+function detectColor(text) {
+  var match = String(text || "").trim().match(/^#?([0-9a-fA-F]{6})$/)
+  return match ? "#" + match[1].toUpperCase() : ""
+}
+
 function fullText(entry) {
   if (!entry) return ""
   var paths = filePaths(entry)
@@ -195,6 +202,7 @@ function displayRows(history, query, limit) {
       fullText: isImage ? "" : fullText(entry),
       previewText: previewText(entry),
       previewImage: previewPath,
+      swatchColor: isFile || isImage ? "" : detectColor(entry.text),
       path: isImage ? String(entry.path || "") : (isFile && paths.length === 1 ? paths[0] : ""),
       mime: isImage ? String(entry.mime || "image/png") : "text/plain",
       index: i
@@ -220,6 +228,7 @@ if (typeof module !== "undefined") {
     filePaths: filePaths,
     fileEntryText: fileEntryText,
     fullText: fullText,
+    detectColor: detectColor,
     displayRows: displayRows
   }
 }

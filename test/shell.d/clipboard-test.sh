@@ -104,6 +104,7 @@ assertDeepEqual(
     fullText: '/home/dhh/Videos/screenrecording-2026-05-29_13-56-43-720p.gif',
     previewText: 'screenrecording-2026-05-29_13-56-43-720p.gif',
     previewImage: '/home/dhh/Videos/screenrecording-2026-05-29_13-56-43-720p.gif',
+    swatchColor: '',
     path: '/home/dhh/Videos/screenrecording-2026-05-29_13-56-43-720p.gif',
     mime: 'text/plain',
     index: 0
@@ -125,6 +126,40 @@ assertDeepEqual(
 
 assertDeepEqual(clipboard.displayRows(history, '', 0), [], 'clipboard display rows supports zero result limit')
 assertDeepEqual(clipboard.addEntry(history, 'next', 0), [], 'clipboard addEntry supports zero history limit')
+
+assertEqual(clipboard.detectColor('#a954f4'), '#A954F4', 'clipboard detectColor normalizes hashed hex')
+assertEqual(clipboard.detectColor(' 3bd671 '), '#3BD671', 'clipboard detectColor accepts unhashed hex')
+assertEqual(clipboard.detectColor('color #a954f4'), '', 'clipboard detectColor ignores embedded hex')
+assertEqual(clipboard.detectColor('#abcd'), '', 'clipboard detectColor rejects short hex')
+assertEqual(clipboard.detectColor('red'), '', 'clipboard detectColor ignores named colors')
+assertEqual(
+  clipboard.displayRows([{ type: 'text', text: '#a954f4' }], '', 50)[0].swatchColor,
+  '#A954F4',
+  'clipboard display rows expose a swatch for whole-entry hex'
+)
+assertEqual(
+  clipboard.displayRows([{ type: 'text', text: 'hello' }], '', 50)[0].swatchColor,
+  '',
+  'clipboard display rows leave ordinary text without a swatch'
+)
+assertEqual(
+  clipboard.displayRows([{ type: 'image', path: '/tmp/a.png', mime: 'image/png' }], '', 50)[0].swatchColor,
+  '',
+  'clipboard display rows leave images without a swatch'
+)
+assert(
+  /required property string swatchColor/.test(clipboardQml),
+  'clipboard list rows declare a swatch color'
+)
+assert(
+  /visible: parent\.parent\.hasSwatch/.test(clipboardQml),
+  'clipboard list rows render a color swatch'
+)
+assertEqual(
+  (clipboardQml.match(/radius: Math\.min\(root\.cornerRadius, height \/ 2\)/g) || []).length,
+  2,
+  'clipboard swatches follow Hyprland decoration rounding'
+)
 
 assert(
   /function select\(delta\)[\s\S]*root\.disarmPointer\(\)[\s\S]*selectedIndex =/.test(clipboardQml),
