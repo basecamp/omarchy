@@ -42,8 +42,10 @@ Panel {
   property real downloadRate: 0  // bytes/sec
   property real uploadRate: 0    // bytes/sec
   property string pingIface: ""
+  property string internetProbeMethod: ""
   property var routerPingSamples: []
   property var internetPingSamples: []
+  property var internetTcpSamples: []
   property real routerPingLatency: -1
   property real internetPingLatency: -1
   property int internetPingPacketLoss: 0
@@ -340,8 +342,10 @@ Panel {
       downloadRate = 0
       uploadRate = 0
       pingIface = ""
+      internetProbeMethod = ""
       routerPingSamples = []
       internetPingSamples = []
+      internetTcpSamples = []
       routerPingLatency = -1
       internetPingLatency = -1
       internetPingPacketLoss = 0
@@ -597,12 +601,15 @@ Panel {
     var state = Model.pingLatencyState({
       pingIface: pingIface,
       routerPingSamples: routerPingSamples,
-      internetPingSamples: internetPingSamples
+      internetPingSamples: internetPingSamples,
+      internetTcpSamples: internetTcpSamples
     }, next, pingHistoryWindow, pingAverageWindow)
 
     pingIface = state.pingIface
+    internetProbeMethod = state.internetProbeMethod
     routerPingSamples = state.routerPingSamples
     internetPingSamples = state.internetPingSamples
+    internetTcpSamples = state.internetTcpSamples
     routerPingLatency = state.routerPingLatency
     internetPingLatency = state.internetPingLatency
     internetPingPacketLoss = state.internetPingPacketLoss
@@ -1345,7 +1352,7 @@ Panel {
           // opened, once the first probe returned, shoving everything below
           // them down. They now hold their place and read "--" until there is
           // a sample.
-          InfoLabel { text: "Ping" }
+          InfoLabel { text: Model.formatPingLabel(root.internetProbeMethod) }
           DetailValue {
             text: root.formatPingLatency(root.internetPingLatency)
             color: root.internetPingPacketLoss > 0 ? root.bar.urgent : root.bar.foreground

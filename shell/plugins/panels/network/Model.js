@@ -226,7 +226,9 @@ function formatPacketLoss(percent, hasSamples) {
   if (hasSamples === false) return "--"
 
   var value = parseInt(percent, 10)
-  if (!value || value < 0) return "0%"
+  // Negative means loss could not be measured: see pingLatencyState.
+  if (value < 0) return "--"
+  if (!value) return "0%"
   return value + "%"
 }
 
@@ -239,17 +241,27 @@ function pingLatencyState(previous, next, limit, averageLimit) {
   var reset = iface === "" || iface !== (prev.pingIface || "")
   var routerSamples = reset ? [] : prev.routerPingSamples
   var internetSamples = reset ? [] : prev.internetPingSamples
+  var tcpSamples = reset ? [] : prev.internetTcpSamples
 
   routerSamples = sample.router_ping_ms === undefined ? [] : appendPingSample(routerSamples, sample.router_ping_ms, window)
   internetSamples = sample.internet_ping_ms === undefined ? [] : appendPingSample(internetSamples, sample.internet_ping_ms, window)
+  tcpSamples = sample.internet_ping_ms === undefined ? [] : appendPingSample(tcpSamples, sample.internet_tcp_ms, window)
+
+  var icmpLatency = averagePingLatency(internetSamples, averageWindow)
+  var tcpLatency = averagePingLatency(tcpSamples, averageWindow)
+
+  // No echo all window but the handshake lands: ICMP is filtered, not the link down.
+  var filtered = icmpLatency < 0 && tcpLatency >= 0
 
   return {
     pingIface: iface,
     routerPingSamples: routerSamples,
     internetPingSamples: internetSamples,
+    internetTcpSamples: tcpSamples,
+    internetProbeMethod: filtered ? "tcp" : "icmp",
     routerPingLatency: averagePingLatency(routerSamples, averageWindow),
-    internetPingLatency: averagePingLatency(internetSamples, averageWindow),
-    internetPingPacketLoss: pingPacketLossPercent(internetSamples)
+    internetPingLatency: filtered ? tcpLatency : icmpLatency,
+    internetPingPacketLoss: filtered ? -1 : pingPacketLossPercent(internetSamples)
   }
 }
 
@@ -264,6 +276,10 @@ function formatBytes(bytes) {
 
 function formatRate(bytesPerSec) {
   return formatBytes(bytesPerSec) + "/s"
+}
+
+function formatPingLabel(method) {
+  return method === "tcp" ? "Ping (TCP)" : "Ping"
 }
 
 // `hasSamples` false means no probe has come back yet, which is different from
@@ -386,6 +402,7 @@ if (typeof module !== "undefined") {
     formatBytes: formatBytes,
     formatRate: formatRate,
     formatPingLatency: formatPingLatency,
+    formatPingLabel: formatPingLabel,
     wifiRow: wifiRow,
     sortWifiRows: sortWifiRows,
     wifiSectionTitle: wifiSectionTitle,

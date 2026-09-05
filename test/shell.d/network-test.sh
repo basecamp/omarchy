@@ -132,27 +132,100 @@ let ping = network.pingLatencyState(
 )
 assertDeepEqual(
   ping,
-  { pingIface: 'wlan0', routerPingSamples: [2], internetPingSamples: [20], routerPingLatency: 2, internetPingLatency: 20, internetPingPacketLoss: 0 },
+  { pingIface: 'wlan0', routerPingSamples: [2], internetPingSamples: [20], internetTcpSamples: [null], internetProbeMethod: 'icmp', routerPingLatency: 2, internetPingLatency: 20, internetPingPacketLoss: 0 },
   'network seeds ping latency samples'
 )
 
 ping = network.pingLatencyState(ping, { iface: 'wlan0', router_ping_ms: '4.0', internet_ping_ms: '' }, 4)
 assertDeepEqual(
   ping,
-  { pingIface: 'wlan0', routerPingSamples: [2, 4], internetPingSamples: [20, null], routerPingLatency: 3, internetPingLatency: 20, internetPingPacketLoss: 50 },
+  { pingIface: 'wlan0', routerPingSamples: [2, 4], internetPingSamples: [20, null], internetTcpSamples: [null, null], internetProbeMethod: 'icmp', routerPingLatency: 3, internetPingLatency: 20, internetPingPacketLoss: 50 },
   'network averages recent successful ping samples'
 )
 
 assertDeepEqual(
   network.pingLatencyState(ping, { iface: 'eth0', router_ping_ms: '1.5', internet_ping_ms: '10.0' }, 4),
-  { pingIface: 'eth0', routerPingSamples: [1.5], internetPingSamples: [10], routerPingLatency: 1.5, internetPingLatency: 10, internetPingPacketLoss: 0 },
+  { pingIface: 'eth0', routerPingSamples: [1.5], internetPingSamples: [10], internetTcpSamples: [null], internetProbeMethod: 'icmp', routerPingLatency: 1.5, internetPingLatency: 10, internetPingPacketLoss: 0 },
   'network resets ping samples when interface changes'
 )
 
 assertDeepEqual(
   network.pingLatencyState(ping, { iface: 'wlan0', internet_ping_ms: '22.0' }, 4),
-  { pingIface: 'wlan0', routerPingSamples: [], internetPingSamples: [20, null, 22], routerPingLatency: -1, internetPingLatency: 21, internetPingPacketLoss: 33 },
+  { pingIface: 'wlan0', routerPingSamples: [], internetPingSamples: [20, null, 22], internetTcpSamples: [null, null, null], internetProbeMethod: 'icmp', routerPingLatency: -1, internetPingLatency: 21, internetPingPacketLoss: 33 },
   'network clears ping samples when a target is unavailable'
+)
+
+// Ping and Packet Loss answer different questions, and the TCP fallback only
+// answers the first. One row per case the two rows have to tell apart.
+function pingWindow(samples) {
+  let state = { pingIface: '', routerPingSamples: [], internetPingSamples: [], internetTcpSamples: [] }
+  for (const s of samples) state = network.pingLatencyState(state, Object.assign({ iface: 'wlan0' }, s), 24, 5)
+  return {
+    loss: network.formatPacketLoss(state.internetPingPacketLoss, true),
+    latency: network.formatPingLatency(state.internetPingLatency, true),
+    label: network.formatPingLabel(state.internetProbeMethod)
+  }
+}
+
+const echo = { internet_ping_ms: '20.0' }
+const rescued = { internet_ping_ms: '', internet_tcp_ms: '10.0' }
+const silent = { internet_ping_ms: '', internet_tcp_ms: '' }
+const every = sample => Array.from({ length: 8 }, () => sample)
+const alternating = (a, b) => Array.from({ length: 8 }, (_, i) => i % 2 ? a : b)
+
+;[
+  [every(silent), { loss: '100%', latency: 'Timeout', label: 'Ping' },
+    'reports a dead link as total loss'],
+  [alternating(echo, rescued), { loss: '50%', latency: '20 ms', label: 'Ping' },
+    'still counts an echo the handshake rescued as lost'],
+  [every(rescued), { loss: '--', latency: '10 ms', label: 'Ping (TCP)' },
+    'holds the loss row where ICMP is filtered rather than inventing a figure'],
+  [every(echo), { loss: '0%', latency: '20 ms', label: 'Ping' },
+    'leaves a healthy link unchanged'],
+  [alternating(echo, { internet_ping_ms: '' }), { loss: '50%', latency: '20 ms', label: 'Ping' },
+    'counts loss unchanged when the status script sends no handshake time']
+].forEach(([samples, expected, description]) => assertDeepEqual(pingWindow(samples), expected, 'network ' + description))
+
+// Varying handshake times prove the window is kept: the last 5 of
+// [30,10,10,10,10,10,10,50] average 18 ms; last-sample-only would say 50.
+;[
+  [
+    [
+      { internet_ping_ms: '', internet_tcp_ms: '30.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '50.0' }
+    ],
+    { loss: '--', latency: '18 ms', label: 'Ping (TCP)' },
+    'averages TCP handshake times over a 5-sample window'
+  ],
+  [
+    [
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '10.0' },
+      { internet_ping_ms: '', internet_tcp_ms: '' }
+    ],
+    { loss: '--', latency: '10 ms', label: 'Ping (TCP)' },
+    'does not flash Timeout after one dropped handshake on a filtered network'
+  ]
+].forEach(([samples, expected, description]) => assertDeepEqual(pingWindow(samples), expected, 'network ' + description))
+
+assert(/InfoLabel \{ text: Model\.formatPingLabel\(root\.internetProbeMethod\) \}/.test(panelSource), 'network panel labels the ping row with the probe that produced it')
+
+// The panel must pass internetTcpSamples back into pingLatencyState so the TCP
+// window is retained across ticks, matching how ICMP samples are passed.
+assert(
+  /pingLatencyState\(\{[\s\S]*?internetTcpSamples: internetTcpSamples[\s\S]*?\},/.test(panelSource),
+  'network panel passes internetTcpSamples into pingLatencyState to retain the TCP window'
 )
 
 assertEqual(network.formatBytes(1536), '1.5 KB', 'network formats bytes')
@@ -294,3 +367,48 @@ assertDeepEqual(
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
 JS
+
+status="$ROOT/bin/omarchy-network-status"
+
+# Run print_ping_samples for real, with ping and the handshake stubbed. ECHO lists
+# the hosts whose echo returns; TCP lists the hosts whose handshake completes.
+stub_bin=$(mktemp -d)
+cat >"$stub_bin/ping" <<'PING'
+#!/bin/bash
+host=${@: -1}
+[[ " $ECHO " == *" $host "* ]] || exit 1
+echo "64 bytes from $host: icmp_seq=1 ttl=57 time=20.0 ms"
+PING
+printf '#!/bin/bash\nexit 0\n' >"$stub_bin/omarchy-cmd-present"
+printf '#!/bin/bash\n' >"$stub_bin/ip"
+chmod +x "$stub_bin"/*
+
+ping_samples() {
+  ECHO="$1" TCP="$2" PATH="$stub_bin:$PATH" bash -c '
+    status=$1; set --
+    source "$status" >/dev/null
+    tcp_latency_ms() { [[ " $TCP " == *" $1 "* ]] && echo 12.000; }
+    print_ping_samples 192.0.2.1
+  ' _ "$status" | grep -v '^router_ping_ms' | tr '\n' '|'
+}
+
+expect_samples() {
+  local actual
+  actual=$(ping_samples "$1" "$2")
+  [[ $actual == "$3" ]] || fail "$4: expected '$3', got '$actual'"
+  pass "omarchy-network-status $4"
+}
+
+expect_samples "1.1.1.1 8.8.8.8" "1.1.1.1 8.8.8.8" $'internet_ping_ms\t20.0|'                     "reports the echo and no handshake on a healthy link"
+expect_samples "8.8.8.8"         "1.1.1.1 8.8.8.8" $'internet_ping_ms\t20.0|'                     "falls back to a second echo host when the first is blocked"
+expect_samples ""                "1.1.1.1 8.8.8.8" $'internet_ping_ms\t|internet_tcp_ms\t12.000|' "reports a handshake separately where ICMP is filtered"
+expect_samples ""                "8.8.8.8"         $'internet_ping_ms\t|internet_tcp_ms\t12.000|' "tries the second host for the handshake too"
+expect_samples ""                ""                $'internet_ping_ms\t|internet_tcp_ms\t|'       "reports nothing rescued on a dead link"
+
+if ! grep -F 'timeout 2 bash -c' "$status" >/dev/null; then
+  fail "omarchy-network-status must bound the TCP probe so a blackholed port cannot stall the panel"
+fi
+if grep -F 'tcp_latency_ms "$gateway"' "$status" >/dev/null; then
+  fail "omarchy-network-status must keep the router row on ICMP"
+fi
+pass "omarchy-network-status bounds the handshake and keeps the router on ICMP"

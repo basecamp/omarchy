@@ -6,6 +6,8 @@
 
 verbose=false
 internet_probe=1.1.1.1
+internet_probes="$internet_probe 8.8.8.8"
+internet_probe_port=443
 
 case "${1:-}" in
   "")
@@ -54,31 +56,58 @@ ping_latency_ms() {
   LC_ALL=C ping -n -c 1 -W 1 "$host" 2>/dev/null | awk -F'time[=<]' '/time[=<]/ { split($2, parts, " "); print parts[1]; exit }'
 }
 
+# Where ICMP is filtered, time a TCP handshake instead: one round trip, like an echo.
+tcp_latency_ms() {
+  local host=$1 port=$2
+
+  LC_ALL=C timeout 2 bash -c '
+    start=${EPOCHREALTIME/./}
+    exec 3<>"/dev/tcp/$1/$2" || exit 1
+    finish=${EPOCHREALTIME/./}
+    exec 3>&- 3<&-
+    elapsed=$((finish - start))
+    printf "%d.%03d\n" $((elapsed / 1000)) $((elapsed % 1000))
+  ' _ "$host" "$port" 2>/dev/null
+}
+
 print_ping_samples() {
   local gateway=$1
-  local tmpdir router_file internet_file
-  local router_pid="" internet_pid=""
+  local tmpdir probe echo_ms="" handshake_ms=""
+  local router_pid="" internet_pids=()
 
   omarchy-cmd-present ping || return
   tmpdir=$(mktemp -d) || return
-  router_file="$tmpdir/router"
-  internet_file="$tmpdir/internet"
 
   if [[ -n $gateway ]]; then
-    ping_latency_ms "$gateway" >"$router_file" &
+    ping_latency_ms "$gateway" >"$tmpdir/router" &
     router_pid=$!
   fi
 
-  ping_latency_ms "$internet_probe" >"$internet_file" &
-  internet_pid=$!
+  # Probed together, so a host the network blocks costs no time; first reply in list order wins.
+  for probe in $internet_probes; do
+    ping_latency_ms "$probe" >"$tmpdir/$probe" &
+    internet_pids+=($!)
+  done
 
   if [[ -n $router_pid ]]; then
     wait "$router_pid"
-    printf 'router_ping_ms\t%s\n' "$(cat "$router_file")"
+    printf 'router_ping_ms\t%s\n' "$(cat "$tmpdir/router")"
   fi
 
-  wait "$internet_pid"
-  printf 'internet_ping_ms\t%s\n' "$(cat "$internet_file")"
+  wait "${internet_pids[@]}"
+  for probe in $internet_probes; do
+    [[ -s $tmpdir/$probe ]] && { echo_ms=$(cat "$tmpdir/$probe"); break; }
+  done
+  printf 'internet_ping_ms\t%s\n' "$echo_ms"
+
+  # Separate field: internet_ping_ms stays echo-only because the loss row counts it.
+  if [[ -z $echo_ms ]]; then
+    for probe in $internet_probes; do
+      handshake_ms=$(tcp_latency_ms "$probe" "$internet_probe_port") && break
+    done
+    printf 'internet_tcp_ms\t%s\n' "$handshake_ms"
+  fi
+
   rm -rf "$tmpdir"
 }
 
