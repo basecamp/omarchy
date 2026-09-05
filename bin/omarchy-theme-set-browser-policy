@@ -96,7 +96,7 @@ for policy_dir in "${POLICY_DIRS[@]}"; do
     failed=1
     continue
   }
-  printf '{"BrowserThemeColor": "#%s", "BrowserColorScheme": "device"}\n' "$color" >"$staged"
+  printf '{"BrowserThemeColor": "#%s", "BrowserColorScheme": "system"}\n' "$color" >"$staged"
 
   if [[ -L $dest || -d $dest ]]; then
     if ! rm -rf -- "$dest"; then
