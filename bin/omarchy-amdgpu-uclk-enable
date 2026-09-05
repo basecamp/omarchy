@@ -1,0 +1,73 @@
+#!/bin/bash
+
+# omarchy:summary=Re-enable memory-clock features after an affected iMac GPU has initialized.
+# omarchy:requires-sudo=true
+# omarchy:hidden=true
+
+set -euo pipefail
+
+readonly boot_mask="amdgpu.ppfeaturemask=0xfff7bffd"
+readonly memory_clock_features=$((0x308))
+cmdline_file="${OMARCHY_KERNEL_CMDLINE:-/proc/cmdline}"
+wait_attempts="${OMARCHY_AMDGPU_WAIT_ATTEMPTS:-30}"
+
+if (( EUID != 0 )) && [[ ${OMARCHY_ALLOW_NON_ROOT_TEST:-0} != 1 ]]; then
+  echo "Error: omarchy-amdgpu-uclk-enable must run as root" >&2
+  exit 1
+fi
+
+[[ -r $cmdline_file ]] || {
+  echo "Error: cannot read kernel command line at $cmdline_file" >&2
+  exit 1
+}
+
+cmdline=" $(<"$cmdline_file") "
+if [[ $cmdline != *" $boot_mask "* ]]; then
+  echo "Error: refusing to change AMDGPU features without $boot_mask" >&2
+  exit 1
+fi
+
+gpu_path="$(omarchy-hw-imac20-amdgpu-uclk)" || {
+  echo "Error: the affected iMac20,2 Radeon Pro 5700 XT was not found" >&2
+  exit 1
+}
+features_file="$gpu_path/pp_features"
+
+for (( attempt = 1; attempt <= wait_attempts; attempt++ )); do
+  [[ -r $features_file && -w $features_file ]] && break
+  (( attempt < wait_attempts )) && sleep 1
+done
+
+if [[ ! -r $features_file || ! -w $features_file ]]; then
+  echo "Error: AMDGPU feature control did not appear at $features_file" >&2
+  exit 1
+fi
+
+read_features() {
+  local label="$1"
+  awk -v label="$label" '$1 == "features" && $2 == label ":" { print $3 }' "$features_file"
+}
+
+features_high="$(read_features high)"
+features_low="$(read_features low)"
+if [[ ! $features_high =~ ^0x[[:xdigit:]]+$ || ! $features_low =~ ^0x[[:xdigit:]]+$ ]]; then
+  echo "Error: cannot parse AMDGPU features from $features_file" >&2
+  exit 1
+fi
+
+(( features_low |= memory_clock_features ))
+features_mask="$(printf '0x%08x%08x' "$features_high" "$features_low")"
+if [[ -n ${OMARCHY_AMDGPU_FEATURES_WRITER:-} ]]; then
+  "$OMARCHY_AMDGPU_FEATURES_WRITER" "$features_mask" "$features_file"
+else
+  printf '%s\n' "$features_mask" >"$features_file"
+fi
+
+verified_low="$(read_features low)"
+if [[ ! $verified_low =~ ^0x[[:xdigit:]]+$ ]] ||
+  (( (verified_low & memory_clock_features) != memory_clock_features )); then
+  echo "Error: AMDGPU rejected the runtime memory-clock features" >&2
+  exit 1
+fi
+
+printf 'AMDGPU runtime memory-clock features enabled: %s\n' "$features_mask"
