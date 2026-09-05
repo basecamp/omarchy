@@ -15,7 +15,7 @@ if gum confirm "Are you sure you want to remove all preinstalled web apps, TUI w
   # Remove mise stubs
   rm -f ~/.local/bin/codex ~/.local/bin/claude ~/.local/bin/agy ~/.local/bin/copilot \
        ~/.local/bin/gh ~/.local/bin/opencode ~/.local/bin/playwright ~/.local/bin/playwright-cli ~/.local/bin/pi \
-       ~/.local/bin/omp ~/.local/bin/ori ~/.local/bin/grok ~/.local/bin/crush ~/.local/bin/ghui ~/.local/bin/hunk
+       ~/.local/bin/omp ~/.local/bin/ori ~/.local/bin/grok ~/.local/bin/crush ~/.local/bin/cursor-agent ~/.local/bin/ghui ~/.local/bin/hunk
 
   # Only the wrapper omarchy-install-hermes-cli wrote is a preinstall. Hermes
   # Desktop's command, an official install, or anything else at that path is
