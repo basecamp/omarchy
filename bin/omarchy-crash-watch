@@ -18,10 +18,47 @@ readonly CRASH_GLYPH=$'\U000f16a1'
 # window.
 readonly dedupe_seconds=${OMARCHY_CRASH_DEDUPE_SECONDS:-60}
 
+# Crash toasts are critical, so they never expire on their own. The dedupe above
+# is per program, and the storms that bury a screen are the ones where the name
+# keeps changing -- a test run whose binaries carry a build hash, a linker dying
+# once per target. Past this many cards in a burst, the rest are counted on one
+# card instead of taking the screen a card at a time.
+readonly stack_after=${OMARCHY_CRASH_STACK_AFTER:-3}
+
+# What ends a burst. Nothing reports a dismissal back here, so quiet is the only
+# evidence the storm is over and the next crash has a clear screen to arrive on.
+readonly burst_idle_seconds=${OMARCHY_CRASH_BURST_IDLE_SECONDS:-300}
+
+# How many of the counted crashes the card carries, and so how many unfolding
+# puts back on screen. A storm past this is a machine on fire: the newest are
+# the ones whose core dumps are still around, and coredumpctl lists the rest.
+readonly expand_max=${OMARCHY_CRASH_EXPAND_MAX:-10}
+
+# Touched by omarchy-crash-expand when a card is unfolded. Read at the next
+# crash rather than watched: this loop is blocked reading the journal, and the
+# only moment the answer changes anything is when there is a crash to announce.
+readonly expanded_marker=${XDG_RUNTIME_DIR:-/tmp}/omarchy/crash-expanded
+
 # Extended regex of process names never worth announcing.
 readonly ignore_pattern=${OMARCHY_CRASH_IGNORE:-}
 
 declare -A last_notified
+
+# Crashes announced in the current burst, how many of them the counting card
+# stands for, and the id it replaces. 0 is "no card yet" in the freedesktop
+# sense: replaces_id 0 asks for a new notification rather than an update.
+announced_count=0
+stacked_count=0
+stack_id=0
+burst_last=0
+
+# The counted crashes themselves, four words each and oldest first, as the card
+# carries them and as unfolding will replay them. `pending` is the next version
+# of that list, held apart so a send that fails leaves the card's argv and the
+# list agreeing about what the card actually says.
+declare -a stacked_crashes=()
+declare -a pending=()
+expanded_seen=0
 
 announce() {
   local comm=$1 pid=$2 exe=$3 signal=$4
@@ -43,6 +80,47 @@ announce() {
     "Process crashed: $comm" \
     "Click to diagnose with AI" \
     --exec omarchy-agent-crash "$pid" "$comm" "$exe" "$signal"
+}
+
+# The card the rest of a burst lands on. It replaces itself through replaces_id,
+# so a storm of any length adds one card, and its click diagnoses the newest
+# crash -- the one whose core dump is least likely to have rotated away, and in
+# a storm with a single cause as good an entry point as any of the others.
+announce_stacked() {
+  local count=$1 comm=$2 pid=$3 exe=$4 signal=$5 headline body id
+  local -a click
+
+  omarchy-notification-wait || return 1
+
+  if ((count == 1)); then
+    # A card standing for one crash is that crash. Unfolding would put back the
+    # very card being clicked, so it leads where a card of its own would have.
+    headline="1 more process crashed"
+    body="Latest: $comm — click to diagnose with AI"
+    click=(omarchy-agent-crash "$pid" "$comm" "$exe" "$signal")
+  else
+    # Past that the card cannot lead to one crash without picking for the user,
+    # so it leads back to all of them and lets them pick.
+    headline="$count more processes crashed"
+    body="Latest: $comm — click to unfold them"
+    click=(omarchy-crash-expand "${pending[@]}")
+  fi
+
+  # A dismissed card leaves an id the shell no longer knows, and the spec has it
+  # post a new notification rather than fail -- so the reply is read back every
+  # time and the burst carries on against whatever id it actually got.
+  id=$(omarchy-notification-send \
+    --urgency critical \
+    --glyph "$CRASH_GLYPH" \
+    --replace-id "$stack_id" \
+    --print-id \
+    "$headline" \
+    "$body" \
+    --exec "${click[@]}") || return 1
+
+  [[ $id =~ ^[0-9]+$ ]] || return 1
+
+  stack_id=$id
 }
 
 # -n 0 so a restart does not re-announce crashes already dealt with.
@@ -102,8 +180,49 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
     now=$EPOCHSECONDS
     (((now - ${last_notified[$name]:-0}) < dedupe_seconds)) && continue
 
-    # Only a delivered toast starts the dedupe window. A failed send that
-    # counted would suppress the rest of a crash loop for a minute, and
-    # `journalctl -n 0` never replays what was missed.
-    announce "$name" "$pid" "$exe" "$signal" && last_notified[$name]=$now
+    # An unfolded card put its crashes on screen under their own names, so the
+    # count starts over -- a later card must not offer to unfold what is already
+    # showing. Only the count: the screen is fuller for it, not emptier, so the
+    # crashes after it keep folding rather than going back to a card each.
+    expanded_at=$(stat -c %Y "$expanded_marker" 2>/dev/null) || expanded_at=0
+    if ((expanded_at > expanded_seen)); then
+      expanded_seen=$expanded_at
+      stacked_count=0
+      stacked_crashes=()
+      stack_id=0
+    fi
+
+    # Measured from the last crash that reached the screen: a crash suppressed
+    # by the dedupe or a mute is not something the user is looking at, so it
+    # cannot be what keeps a burst alive.
+    if ((now - burst_last >= burst_idle_seconds)); then
+      announced_count=0
+      stacked_count=0
+      stacked_crashes=()
+      stack_id=0
+    fi
+
+    # Only a delivered toast starts the dedupe window or counts towards the
+    # burst. A failed send that counted would suppress the rest of a crash loop
+    # for a minute, and `journalctl -n 0` never replays what was missed.
+    if ((announced_count < stack_after)); then
+      if announce "$name" "$pid" "$exe" "$signal"; then
+        last_notified[$name]=$now
+        burst_last=$now
+        announced_count=$((announced_count + 1))
+      fi
+    else
+      # Oldest first, so unfolding replays the storm in the order it happened.
+      pending=("${stacked_crashes[@]}" "$pid" "$name" "$exe" "$signal")
+      while ((${#pending[@]} > expand_max * 4)); do
+        pending=("${pending[@]:4}")
+      done
+
+      if announce_stacked "$((stacked_count + 1))" "$name" "$pid" "$exe" "$signal"; then
+        last_notified[$name]=$now
+        burst_last=$now
+        stacked_count=$((stacked_count + 1))
+        stacked_crashes=("${pending[@]}")
+      fi
+    fi
   done

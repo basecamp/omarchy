@@ -62,13 +62,27 @@ require_command jq
 watch_bin="$TMPDIR/watch-bin"
 watch_home="$TMPDIR/watch-home"
 NOTIFY_LOG="$TMPDIR/notify-log"
+NOTIFY_ID_FILE="$TMPDIR/notify-id"
 JOURNAL_ENTRIES="$TMPDIR/journal-entries"
+WATCH_RUNTIME_DIR="$TMPDIR/runtime"
 
-mkdir -p "$watch_bin" "$watch_home"
+mkdir -p "$watch_bin" "$watch_home" "$WATCH_RUNTIME_DIR"
 
+# Replays the fixture. With EXPAND_AFTER set it also drops the marker
+# omarchy-crash-expand writes, part-way through -- the watcher reads that marker
+# only when it has a crash to announce, so a storm has to still be arriving.
 cat >"$watch_bin/journalctl" <<'SH'
 #!/bin/bash
-cat "$JOURNAL_ENTRIES"
+if [[ -n ${EXPAND_AFTER:-} ]]; then
+  head -n "$EXPAND_AFTER" "$JOURNAL_ENTRIES"
+  sleep 1
+  mkdir -p "$XDG_RUNTIME_DIR/omarchy"
+  : >"$XDG_RUNTIME_DIR/omarchy/crash-expanded"
+  sleep 1
+  tail -n +$((EXPAND_AFTER + 1)) "$JOURNAL_ENTRIES"
+else
+  cat "$JOURNAL_ENTRIES"
+fi
 SH
 
 cat >"$watch_bin/omarchy-default-agent" <<'SH'
@@ -81,9 +95,39 @@ cat >"$watch_bin/omarchy-notification-wait" <<'SH'
 exit 0
 SH
 
+# Stands in for the notification server, ids included: replaces_id 0 asks for a
+# new notification and is answered with a fresh id, any other id is echoed back.
+# A caller updating one card in place has to see that to keep updating the same
+# card rather than posting a new one per crash.
 cat >"$watch_bin/omarchy-notification-send" <<'SH'
 #!/bin/bash
 printf '%s\n' "$*" >>"$NOTIFY_LOG"
+
+replaces_id=0
+print_id=0
+
+while (($# > 0)); do
+  case $1 in
+  --replace-id)
+    replaces_id=$2
+    shift 2
+    ;;
+  --print-id)
+    print_id=1
+    shift
+    ;;
+  *) shift ;;
+  esac
+done
+
+((print_id)) || exit 0
+
+if ((replaces_id == 0)); then
+  replaces_id=$(($(cat "$NOTIFY_ID_FILE" 2>/dev/null || echo 0) + 1))
+  printf '%s\n' "$replaces_id" >"$NOTIFY_ID_FILE"
+fi
+
+printf '%s\n' "$replaces_id"
 SH
 
 chmod +x "$watch_bin/journalctl" "$watch_bin/omarchy-default-agent" \
@@ -112,9 +156,20 @@ run_watch() {
 
   : >"$NOTIFY_LOG"
 
+  # A run is one watcher process and so one burst; the ids it hands out start
+  # over with it, or a later run would be asserted against a counter the watcher
+  # under test never saw.
+  : >"$NOTIFY_ID_FILE"
+
+  # No marker at all, rather than an old one: the watcher takes the first marker
+  # it sees as an unfold, so a leftover would reset a burst nobody unfolded.
+  rm -f "$WATCH_RUNTIME_DIR/omarchy/crash-expanded"
+
   PATH="$watch_bin:$ROOT/bin:$PATH" \
   JOURNAL_ENTRIES="$JOURNAL_ENTRIES" \
   NOTIFY_LOG="$NOTIFY_LOG" \
+  NOTIFY_ID_FILE="$NOTIFY_ID_FILE" \
+  XDG_RUNTIME_DIR="$WATCH_RUNTIME_DIR" \
   HOME="$watch_home" \
     "$ROOT/bin/omarchy-crash-watch" || status=$?
 
@@ -251,6 +306,169 @@ run_watch
   fail "the fallback name cannot be muted, so the one crash most likely to repeat is the one that cannot be silenced"
 pass "the fallback name can be muted like any other"
 mute unknown off
+
+# Crash toasts are critical, so none of them expires on its own, and a storm
+# arrives faster than anyone dismisses it: a build leaving a dozen test binaries
+# dumping core covers the screen and keeps it covered. The dedupe cannot help --
+# those names all differ, which is exactly why the storm is a storm.
+individual_cards() {
+  grep -c "Process crashed: " "$NOTIFY_LOG" || true
+}
+
+storm() {
+  local count="$1" index
+
+  reset_entries
+  for ((index = 1; index <= count; index++)); do
+    crash_entry "crasher$index" "/usr/bin/crasher$index"
+  done
+}
+
+storm 3
+run_watch
+(( $(individual_cards) == 3 )) ||
+  fail "a storm small enough to read is folded away, so the crashes worth reading are the ones hidden"
+! grep -Fq "more process" "$NOTIFY_LOG" ||
+  fail "a storm that fits on the screen still opens a counting card, which then counts nothing"
+pass "crashes up to the threshold each get a card of their own"
+
+storm 4
+run_watch
+(( $(individual_cards) == 3 )) ||
+  fail "past the threshold the screen still fills a card at a time, which is what buries it"
+grep -Fq -- "--replace-id 0 --print-id 1 more process crashed" "$NOTIFY_LOG" ||
+  fail "the crash past the threshold is dropped, or counted plurally on a card that stands for one"
+pass "past the threshold a crash is counted rather than shown"
+
+storm 6
+run_watch
+(( $(individual_cards) == 3 )) ||
+  fail "a longer storm goes back to one card per crash"
+grep -Fq -- "--replace-id 0 --print-id 1 more process crashed" "$NOTIFY_LOG" ||
+  fail "the counting card opens against an id the server never issued"
+grep -Fq -- "--replace-id 1 --print-id 2 more processes crashed" "$NOTIFY_LOG" ||
+  fail "the count is posted as a second card instead of replacing the first, so a storm still stacks up"
+grep -Fq -- "--replace-id 1 --print-id 3 more processes crashed" "$NOTIFY_LOG" ||
+  fail "the card stops following the id the server handed back, so every further crash opens its own"
+pass "a storm of any length adds one counting card, replaced in place"
+
+# The count is only half of it: the card has to lead somewhere. Standing for one
+# crash it is that crash, and making the user unfold a card to reach the crash it
+# already names by name would be a click spent on nothing.
+storm 4
+run_watch
+grep -Fq -- "1 more process crashed Latest: crasher4 — click to diagnose with AI --exec omarchy-agent-crash 4242 crasher4 /usr/bin/crasher4 SIGSEGV" "$NOTIFY_LOG" ||
+  fail "a card standing for a single crash does not lead to it, so reaching one crash costs two clicks"
+pass "a card standing for one crash leads straight to that crash"
+
+# Standing for several it cannot lead to one without choosing for the user, so it
+# leads back to all of them -- carrying every crash it counts, oldest first, so
+# unfolding replays the storm in the order it happened.
+storm 6
+run_watch
+grep -Fq -- "3 more processes crashed Latest: crasher6 — click to unfold them --exec omarchy-crash-expand 4242 crasher4 /usr/bin/crasher4 SIGSEGV 4242 crasher5 /usr/bin/crasher5 SIGSEGV 4242 crasher6 /usr/bin/crasher6 SIGSEGV" "$NOTIFY_LOG" ||
+  fail "the counting card cannot put back what it counted, so the crashes it folded away are only reachable through coredumpctl"
+pass "the counting card carries every crash it counts, oldest first"
+
+# What the card carries is bounded, or a storm nobody stopped hands the user a
+# click that buries the screen worse than the storm did.
+storm 6
+export OMARCHY_CRASH_EXPAND_MAX=2
+run_watch
+unset OMARCHY_CRASH_EXPAND_MAX
+# The card as it stands at the end of the storm, not every version of it: the
+# crash the cap pushed out was legitimately carried before it did.
+last_card=$(grep -- "--exec omarchy-crash-expand" "$NOTIFY_LOG" | tail -1)
+[[ $last_card == *"omarchy-crash-expand 4242 crasher5 /usr/bin/crasher5 SIGSEGV 4242 crasher6 /usr/bin/crasher6 SIGSEGV"* ]] ||
+  fail "the card carries more crashes than it was told to keep, so unfolding is unbounded"
+[[ $last_card != *crasher4* ]] ||
+  fail "the cap drops the newest crashes rather than the oldest, whose core dumps are the ones already rotating away"
+pass "the card keeps the newest crashes up to the cap"
+
+# Unfolding puts the counted crashes on screen under their own names. A card
+# raised afterwards must count from there, or clicking it offers to unfold what
+# the user is already looking at.
+reset_entries
+for index in 1 2 3 4 5 6 7 8; do
+  crash_entry "crasher$index" "/usr/bin/crasher$index"
+done
+export EXPAND_AFTER=6
+run_watch
+unset EXPAND_AFTER
+grep -Fq -- "2 more processes crashed Latest: crasher8 — click to unfold them --exec omarchy-crash-expand 4242 crasher7 /usr/bin/crasher7 SIGSEGV 4242 crasher8 /usr/bin/crasher8 SIGSEGV" "$NOTIFY_LOG" ||
+  fail "the card raised after an unfold counts the crashes the unfold already put on screen, and offers to put them there again"
+pass "an unfold starts the count over without going back to a card per crash"
+
+(( $(individual_cards) == 3 )) ||
+  fail "an unfold sends the watcher back to a card per crash, refilling the screen the fold had just cleared"
+pass "an unfold resets the count but not the folding"
+
+# What the click on a counting card actually runs. Through the real command, so
+# these are the guard that what the card carries and what unfolds it agree.
+run_expand() {
+  : >"$NOTIFY_LOG"
+
+  PATH="$watch_bin:$ROOT/bin:$PATH" \
+  NOTIFY_LOG="$NOTIFY_LOG" \
+  NOTIFY_ID_FILE="$NOTIFY_ID_FILE" \
+  XDG_RUNTIME_DIR="$WATCH_RUNTIME_DIR" \
+  HOME="$watch_home" \
+    "$ROOT/bin/omarchy-crash-expand" "$@"
+}
+
+rm -f "$WATCH_RUNTIME_DIR/omarchy/crash-expanded"
+run_expand 11 alpha /usr/bin/alpha SIGSEGV 22 beta /usr/bin/beta SIGABRT
+(( $(individual_cards) == 2 )) ||
+  fail "unfolding does not put back one card per crash, so the count was all the user ever gets"
+grep -Fq -- "Process crashed: alpha Click to diagnose with AI --exec omarchy-agent-crash 11 alpha /usr/bin/alpha SIGSEGV" "$NOTIFY_LOG" ||
+  fail "an unfolded crash is worth less than one that arrived alone: it cannot be diagnosed from its own card"
+grep -Fq -- "Process crashed: beta Click to diagnose with AI --exec omarchy-agent-crash 22 beta /usr/bin/beta SIGABRT" "$NOTIFY_LOG" ||
+  fail "unfolding drops crashes, or hands one crash another's pid"
+head -1 "$NOTIFY_LOG" | grep -Fq "Process crashed: alpha" ||
+  fail "unfolding replays the storm backwards, so the newest crash ends up at the bottom of the column"
+pass "unfolding puts back one card per crash, in the order the storm happened"
+
+[[ -f "$WATCH_RUNTIME_DIR/omarchy/crash-expanded" ]] ||
+  fail "an unfold leaves no mark where the watcher looks, so the next card offers to unfold what is already on screen"
+pass "an unfold leaves the mark the watcher reads"
+
+# Four words to a crash. A missing one shifts every word after it along, and
+# each card would name somebody else's crash while offering somebody else's pid.
+! run_expand 11 alpha /usr/bin/alpha >/dev/null 2>&1 ||
+  fail "a crash short of a word is unfolded anyway, so the cards name the wrong processes"
+pass "unfolding refuses a crash that is not four words"
+
+# A name can have been muted since the burst folded it away -- that is what the
+# diagnosis offers at the end. Putting it back on screen would undo the mute.
+mute alpha on
+run_expand 11 alpha /usr/bin/alpha SIGSEGV 22 beta /usr/bin/beta SIGABRT
+! announced alpha ||
+  fail "unfolding puts back a crash the user muted in the meantime"
+announced beta ||
+  fail "one muted crash stops the rest of the unfold"
+pass "unfolding honours a mute made since the burst folded"
+mute alpha off
+
+# Nothing reports a dismissal back to the watcher, so quiet is the only evidence
+# a storm is over. Without it the first crash of a calm week lands on a counting
+# card left over from the last one.
+storm 6
+export OMARCHY_CRASH_BURST_IDLE_SECONDS=0
+run_watch
+unset OMARCHY_CRASH_BURST_IDLE_SECONDS
+(( $(individual_cards) == 6 )) ||
+  fail "a burst never ends, so crashes arriving after the quiet are counted onto a stale card instead of announced"
+pass "quiet ends a burst, and the next crash gets a card of its own again"
+
+storm 2
+export OMARCHY_CRASH_STACK_AFTER=1
+run_watch
+unset OMARCHY_CRASH_STACK_AFTER
+(( $(individual_cards) == 1 )) ||
+  fail "the threshold is not honoured, so a machine that crashes often cannot be told to fold sooner"
+grep -Fq -- "1 more process crashed" "$NOTIFY_LOG" ||
+  fail "a lowered threshold shows the extra crash as its own card anyway"
+pass "the threshold is configurable"
 
 # What omarchy-crash-mute does on its own. That it agrees with the watcher is
 # already covered above, which drives it for every mute it makes.
