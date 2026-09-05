@@ -108,13 +108,24 @@ pi)
   command=(pi)
   [[ -n ${prompt:-} ]] && command+=("$prompt")
   ;;
+afk)
+  # Browser-first: AFK owns authentication, workspace/organisation context,
+  # daemon selection, and the New Session modal. Omarchy supplies only the
+  # current project and optional task intent.
+  command=(afk open --project "$PWD")
+  [[ -n ${prompt:-} ]] && command+=("$prompt")
+  ;;
 *)
   echo "Unsupported default agent: $agent" >&2
   exit 1
   ;;
 esac
 
-if [[ $inline == "true" ]]; then
+if [[ $agent == "afk" ]]; then
+  # AFK has no TUI, so bare, prompt, and --inline launches all hand off to its
+  # authenticated browser flow.
+  exec "${command[@]}"
+elif [[ $inline == "true" ]]; then
   exec "${command[@]}"
 else
   # A fixed app-id rather than the default org.omarchy.<binary>, so every agent

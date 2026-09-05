@@ -216,6 +216,7 @@ assertEqual(
   'menu lists Reset Computer last under Setup'
 )
 const expectedAgents = {
+  afk: { icon: '\ue90b', iconFont: 'omarchy', label: 'AFK' },
   agy: { icon: '󰫢', label: 'Antigravity' },
   pi: { icon: '\ue901', iconFont: 'omarchy', label: 'Pi' },
   omp: { icon: '\ue903', iconFont: 'omarchy', label: 'omp' },
@@ -245,7 +246,7 @@ assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Ori', 'Pi'],
+  ['AFK', 'Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Ori', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
 const expectedDefaults = {
@@ -637,5 +638,5 @@ assert(
 JS
 
 font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")
-[[ $font_charset == *"e900-e90a"* ]] || fail "Omarchy icon font includes every custom menu glyph"
+[[ $font_charset == *"e900-e90b"* ]] || fail "Omarchy icon font includes every custom menu glyph"
 pass "Omarchy icon font includes the official agent marks"

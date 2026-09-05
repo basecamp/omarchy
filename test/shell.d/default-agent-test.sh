@@ -19,6 +19,7 @@ mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
 terminal_log="$test_tmp/terminal"
 menu_log="$test_tmp/menu"
+afk_log="$test_tmp/afk"
 mkdir -p "$mock_bin" "$test_home"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
@@ -91,6 +92,7 @@ export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
+export OMARCHY_TEST_AFK_LOG="$afk_log"
 export OMARCHY_PATH="$ROOT"
 
 grok_package="npm:@xai-official/grok"
@@ -98,6 +100,7 @@ omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
 agy_package="antigravity-cli"
 ori_package="github:OpenRouterLabs/ori-releases"
+afk_package="forgejo:mooglest/public[api_url=https://git.mooglest.com/api/v1]"
 
 assert_lazy_stub() {
   local package=$1
@@ -108,7 +111,7 @@ assert_lazy_stub() {
   "$test_home/.local/bin/$command" --version
   mapfile -t mise_calls <"$mise_history"
 
-  [[ ${mise_calls[0]} == "use -g --quiet $package" && ${mise_calls[1]} == "x $package -- $command --version" ]] ||
+  [[ ${mise_calls[0]} == "use -g --quiet $package" && ${mise_calls[-1]} == "x $package -- $command --version" ]] ||
     fail "$command lazy stub preserves its mise package"
 }
 
@@ -116,6 +119,9 @@ assert_lazy_stub "$grok_package" grok
 assert_lazy_stub "$omp_package" omp
 assert_lazy_stub "$crush_package" crush
 assert_lazy_stub "$ori_package" ori
+assert_lazy_stub "$afk_package" afk
+! grep -q 'omarchy-afk-plugin-install' "$test_home/.local/bin/afk" ||
+  fail "AFK lazy stub does not install third-party shell plugins"
 pass "custom agent lazy stubs preserve their mise packages"
 
 source "$ROOT/install/user/mise.sh"
@@ -124,6 +130,7 @@ grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
 grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "user setup creates the Ori lazy stub"
+grep -Fx "$afk_package afk" "$stub_log" >/dev/null || fail "user setup creates the AFK lazy stub"
 pass "user setup creates the custom agent lazy stubs"
 
 : >"$stub_log"
@@ -133,6 +140,10 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "Oh My Pi migration c
 : >"$stub_log"
 source "$ROOT/migrations/1787342993.sh" >/dev/null
 grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "Ori migration creates a working lazy stub"
+
+: >"$stub_log"
+source "$ROOT/migrations/1787709254.sh" >/dev/null
+grep -Fx "$afk_package afk" "$stub_log" >/dev/null || fail "AFK migration creates a working lazy stub"
 
 : >"$stub_log"
 source "$ROOT/migrations/1785846769.sh" >/dev/null
@@ -216,6 +227,7 @@ touch "$test_home/.local/state/omarchy/preinstalls-removed"
 source "$ROOT/migrations/1785617047.sh" >/dev/null
 source "$ROOT/migrations/1785846769.sh" >/dev/null
 source "$ROOT/migrations/1787342993.sh" >/dev/null
+source "$ROOT/migrations/1787709254.sh" >/dev/null
 [[ ! -s $stub_log ]] || fail "agent migrations respect the preinstall opt-out"
 [[ ! -e $test_home/.local/bin/omp ]] || fail "agent migration removes the obsolete Oh My Pi wrapper after opt-out"
 
@@ -242,7 +254,7 @@ pass "agent migrations install working wrappers without overriding the preinstal
 
 touch "$test_home/.local/bin/agy" "$test_home/.local/bin/ori"
 omarchy-remove-preinstalls >/dev/null
-for command in agy omp ori grok crush; do
+for command in agy omp ori grok crush afk; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
@@ -307,6 +319,7 @@ declare -A expected_agents=(
   [gemini-cli]="agy"
   [copilot]="copilot"
   [github-copilot]="copilot"
+  [afk]="afk"
 )
 
 declare -A expected_packages=(
@@ -320,6 +333,7 @@ declare -A expected_packages=(
   [grok]="$grok_package"
   [agy]="$agy_package"
   [copilot]="copilot"
+  [afk]="$afk_package"
 )
 
 for selection in "${!expected_agents[@]}"; do
@@ -329,8 +343,9 @@ for selection in "${!expected_agents[@]}"; do
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
   mapfile -d '' -t mise_args <"$mise_log"
-  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
-    fail "default agent installs $selection globally through mise"
+  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "${expected_packages[$expected]}" ]] ||
+    fail "default agent installs $selection globally through mise" \
+      "expected: use -g ${expected_packages[$expected]}\nactual: ${mise_args[*]}"
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
   [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
@@ -488,6 +503,44 @@ assert_bypass hermes hermes --yolo
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
+
+# AFK is browser-first: Omarchy passes only the current project and optional
+# task; AFK owns the authenticated New Session flow and its confirmation UI.
+cat >"$mock_bin/afk" <<'SH'
+#!/bin/bash
+printf '%s\0' afk "$@" >"$OMARCHY_TEST_AFK_LOG"
+SH
+chmod +x "$mock_bin/afk"
+
+: >"$launch_log"
+: >"$afk_log"
+printf '%s\n' afk >"$agent_file"
+omarchy-agent
+[[ ! -s $launch_log ]] || fail "AFK launch skips the TUI wrapper"
+mapfile -d '' -t afk_args <"$afk_log"
+[[ ${#afk_args[@]} == 4 && ${afk_args[0]} == "afk" && ${afk_args[1]} == "open" \
+   && ${afk_args[2]} == "--project" && ${afk_args[3]} == "$PWD" ]] ||
+  fail "AFK bare launch opens New Session for the current project" "expected: afk open --project $PWD\nactual: ${afk_args[*]}"
+
+: >"$launch_log"
+: >"$afk_log"
+omarchy-agent-prompt "Review this project"
+[[ ! -s $launch_log ]] || fail "AFK prompt launch skips the TUI wrapper"
+mapfile -d '' -t afk_args <"$afk_log"
+[[ ${#afk_args[@]} == 5 && ${afk_args[0]} == "afk" && ${afk_args[1]} == "open" \
+   && ${afk_args[2]} == "--project" && ${afk_args[3]} == "$PWD" \
+   && ${afk_args[4]} == "Review this project" ]] ||
+  fail "AFK prompt launch prefills New Session" "expected: afk open --project $PWD Review this project\nactual: ${afk_args[*]}"
+
+: >"$launch_log"
+: >"$afk_log"
+omarchy-agent --inline
+[[ ! -s $launch_log ]] || fail "AFK --inline skips the TUI wrapper"
+mapfile -d '' -t afk_args <"$afk_log"
+[[ ${#afk_args[@]} == 4 && ${afk_args[0]} == "afk" && ${afk_args[1]} == "open" \
+   && ${afk_args[2]} == "--project" && ${afk_args[3]} == "$PWD" ]] ||
+  fail "AFK --inline uses the browser New Session flow" "expected: afk open --project $PWD\nactual: ${afk_args[*]}"
+pass "AFK opens its authenticated New Session flow with project and optional task intent"
 
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-agent
