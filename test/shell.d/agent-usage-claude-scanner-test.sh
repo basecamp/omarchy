@@ -33,6 +33,44 @@ pass "Claude collector keeps mutually exclusive token categories"
   fail "Claude collector identifies itself and reports missing auth" "$result"
 pass "Claude collector identifies itself and reports missing auth"
 
+# Transcripts only ever grow, so a refresh reads what was appended since the
+# last one and takes the rest from the scan index.
+cat >>"$projects/session.jsonl" <<EOF
+{"timestamp":"$timestamp","type":"assistant","sessionId":"session-1","uuid":"event-4","message":{"id":"message-3","role":"assistant","model":"claude-test","usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":200,"output_tokens":6}}}
+EOF
+
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --cache-seconds 0)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "59000" ]] ||
+  fail "Claude collector picks up lines appended since the last scan" "$result"
+pass "Claude collector picks up lines appended since the last scan"
+
+index=$(ls "$TEST_HOME"/.cache/omarchy/agent-usage/claude-index-*.json 2>/dev/null | head -1)
+[[ -n $index && $(jq -r '.files | to_entries[0].value.records | length' "$index") == "3" ]] ||
+  fail "Claude collector keeps one record per API message in the scan index" "$(cat "$index" 2>/dev/null)"
+pass "Claude collector keeps one record per API message in the scan index"
+
+# An unchanged file is not opened again: its records come from the index.
+chmod 000 "$projects/session.jsonl"
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --cache-seconds 0 2>/dev/null)
+chmod 644 "$projects/session.jsonl"
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "59000" ]] ||
+  fail "Claude collector serves unchanged transcripts from the scan index" "$result"
+pass "Claude collector serves unchanged transcripts from the scan index"
+
+# A file that shrank was rewritten, not appended to; it is read from the start.
+head -n 1 "$projects/session.jsonl" >"$projects/session.jsonl.new"
+mv "$projects/session.jsonl.new" "$projects/session.jsonl"
+result=$(HOME="$TEST_HOME" XDG_CACHE_HOME="$TEST_HOME/.cache" XDG_DATA_HOME="$TEST_HOME/.local/share" \
+  "$ROOT/bin/omarchy-agent-usage-claude" --cache-seconds 0)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "29090" ]] ||
+  fail "Claude collector rescans a transcript that was rewritten" "$result"
+pass "Claude collector rescans a transcript that was rewritten"
+
 # A machine with no transcripts and no stats-cache still gets today's counts
 # from history.jsonl alone.
 HISTORY_HOME=$(mktemp -d)

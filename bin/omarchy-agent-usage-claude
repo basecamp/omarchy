@@ -118,7 +118,134 @@ def empty_bucket() -> dict[str, int]:
 # ---------------------------------------------------------------- local scan
 
 
-def scan_projects(projects_path: Path) -> dict[str, Any]:
+# Transcripts are append-only, and most of the corpus never changes between
+# ticks, so the scan keeps a per-file index: the unique usage records already
+# parsed out of each file plus the byte offset they end at. A file whose size
+# and mtime match the index is not opened; a file that grew is read from the
+# stored offset; anything else (truncated, rewritten, unknown) is read from
+# the start. Without this the whole history was re-parsed every refresh, and
+# the cost grew for the life of the machine.
+
+INDEX_VERSION = 1
+
+
+def load_index(index_file: Path) -> dict[str, Any]:
+  try:
+    data = json.loads(index_file.read_text(encoding="utf-8"))
+    if isinstance(data, dict) and data.get("version") == INDEX_VERSION and isinstance(data.get("files"), dict):
+      return data["files"]
+  except Exception:
+    pass
+  return {}
+
+
+def parse_usage_records(path: Path, entry: dict[str, Any] | None) -> dict[str, Any]:
+  """Return the index entry for one transcript, reusing `entry` where the file
+  only grew. Records are [key, model, day, input, output, cacheRead,
+  cacheWrite, session]; `day` is None when the line carries no timestamp."""
+  stat = path.stat()
+  size = stat.st_size
+  mtime = stat.st_mtime_ns
+
+  if entry and entry.get("size") == size and entry.get("mtime") == mtime:
+    return entry
+
+  if entry and size > number(entry.get("size")) and mtime >= number(entry.get("mtime")):
+    records = list(entry.get("records") or [])
+    offset = number(entry.get("offset"))
+    line_number = number(entry.get("lines"))
+  else:
+    records = []
+    offset = 0
+    line_number = 0
+
+  keys = {record[0] for record in records}
+  with path.open("rb") as handle:
+    handle.seek(offset)
+    for raw in handle:
+      if not raw.endswith(b"\n"):
+        # A line still being written; pick it up whole next time.
+        break
+      offset += len(raw)
+      line_number += 1
+
+      # Cheap pre-filter before JSON parsing keeps files with unrelated
+      # lines inexpensive.
+      if b'"usage":' not in raw:
+        continue
+
+      try:
+        parsed = json.loads(raw.decode("utf-8", errors="replace"))
+      except Exception:
+        continue
+
+      message = parsed.get("message") if isinstance(parsed.get("message"), dict) else {}
+      if parsed.get("type") != "assistant" and message.get("role") != "assistant":
+        continue
+
+      usage = message.get("usage") or parsed.get("usage")
+      if not isinstance(usage, dict):
+        continue
+
+      message_id = message.get("id") or parsed.get("messageId") or ""
+      key = str(message_id) if message_id else f"{path}:{parsed.get('uuid') or parsed.get('requestId') or line_number}"
+      if key in keys:
+        continue
+
+      input_tokens = usage_token(usage, "input_tokens", "inputTokens")
+      output_tokens = usage_token(usage, "output_tokens", "outputTokens")
+      cache_read = usage_token(usage, "cache_read_input_tokens", "cacheReadInputTokens")
+      cache_write = usage_token(usage, "cache_creation_input_tokens", "cacheCreationInputTokens")
+      if input_tokens + output_tokens + cache_read + cache_write <= 0:
+        continue
+
+      keys.add(key)
+      timestamp = parsed.get("timestamp") or message.get("timestamp")
+      records.append([
+        key,
+        str(message.get("model") or parsed.get("model") or "claude"),
+        local_date_from_timestamp(timestamp) if timestamp is not None else None,
+        input_tokens,
+        output_tokens,
+        cache_read,
+        cache_write,
+        str(parsed.get("sessionId") or path),
+      ])
+
+  return {"size": size, "mtime": mtime, "offset": offset, "lines": line_number, "records": records}
+
+
+def scan_projects(projects_path: Path, index_file: Path | None = None) -> dict[str, Any]:
+  previous = load_index(index_file) if index_file else {}
+  current: dict[str, Any] = {}
+
+  # Directory order, as before: when one API message shows up in several
+  # transcripts (a resumed session carries the earlier ones) the first file
+  # visited wins, and the numbers must not move because the scan got faster.
+  order: list[str] = []
+  files = projects_path.rglob("*.jsonl") if projects_path.is_dir() else []
+  for path in files:
+    key = str(path)
+    try:
+      current[key] = parse_usage_records(path, previous.get(key))
+    except Exception as exc:
+      print(f"Ignoring unreadable Claude project file {path}: {exc}", file=sys.stderr)
+      # What was read before is still true of the file.
+      if key in previous:
+        current[key] = previous[key]
+    if key in current:
+      order.append(key)
+
+  if index_file and current != previous:
+    try:
+      write_json(index_file, {"version": INDEX_VERSION, "files": current})
+    except Exception as exc:
+      print(f"Could not write Claude scan index {index_file}: {exc}", file=sys.stderr)
+
+  return summarize_records(current, order)
+
+
+def summarize_records(indexed: dict[str, Any], order: list[str]) -> dict[str, Any]:
   today = local_date_string()
   recent_dates = recent_date_strings()
   recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
@@ -133,68 +260,36 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
   today_prompt_count = 0
   today_token_total = 0
 
-  files = projects_path.rglob("*.jsonl") if projects_path.is_dir() else []
-  for path in files:
-    try:
-      with path.open("r", encoding="utf-8", errors="replace") as handle:
-        for line_number, line in enumerate(handle, 1):
-          # Cheap pre-filter before JSON parsing keeps files with unrelated
-          # lines inexpensive.
-          if '"usage":' not in line:
-            continue
+  for key in order:
+    for record in indexed[key].get("records") or []:
+      unique_key, model, day, input_tokens, output_tokens, cache_read, cache_write, session_key = record
+      if unique_key in seen:
+        continue
+      seen.add(unique_key)
+      if day is None:
+        day = today
+      total = input_tokens + output_tokens + cache_read + cache_write
 
-          try:
-            entry = json.loads(line)
-          except Exception:
-            continue
+      sessions.add(session_key)
+      active_days.add(day)
+      prompts += 1
 
-          message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
-          if entry.get("type") != "assistant" and message.get("role") != "assistant":
-            continue
+      bucket = usage_by_model.setdefault(model, empty_bucket())
+      bucket["inputTokens"] += input_tokens
+      bucket["outputTokens"] += output_tokens
+      bucket["cacheReadInputTokens"] += cache_read
+      bucket["cacheCreationInputTokens"] += cache_write
 
-          usage = message.get("usage") or entry.get("usage")
-          if not isinstance(usage, dict):
-            continue
+      if day in recent:
+        # recentDays.messageCount is actually a token total, despite the
+        # legacy name shared with synced snapshots.
+        recent[day]["messageCount"] += total
 
-          message_id = message.get("id") or entry.get("messageId") or ""
-          unique_key = str(message_id) if message_id else f"{path}:{entry.get('uuid') or entry.get('requestId') or line_number}"
-          if unique_key in seen:
-            continue
-          seen.add(unique_key)
-
-          input_tokens = usage_token(usage, "input_tokens", "inputTokens")
-          output_tokens = usage_token(usage, "output_tokens", "outputTokens")
-          cache_read = usage_token(usage, "cache_read_input_tokens", "cacheReadInputTokens")
-          cache_write = usage_token(usage, "cache_creation_input_tokens", "cacheCreationInputTokens")
-          total = input_tokens + output_tokens + cache_read + cache_write
-          if total <= 0:
-            continue
-
-          model = str(message.get("model") or entry.get("model") or "claude")
-          day = local_date_from_timestamp(entry.get("timestamp") or message.get("timestamp"))
-          session_key = str(entry.get("sessionId") or path)
-          sessions.add(session_key)
-          active_days.add(day)
-          prompts += 1
-
-          bucket = usage_by_model.setdefault(model, empty_bucket())
-          bucket["inputTokens"] += input_tokens
-          bucket["outputTokens"] += output_tokens
-          bucket["cacheReadInputTokens"] += cache_read
-          bucket["cacheCreationInputTokens"] += cache_write
-
-          if day in recent:
-            # recentDays.messageCount is actually a token total, despite the
-            # legacy name shared with synced snapshots.
-            recent[day]["messageCount"] += total
-
-          if day == today:
-            today_prompt_count += 1
-            today_sessions.add(session_key)
-            today_token_total += total
-            today_tokens[model] = today_tokens.get(model, 0) + total
-    except Exception as exc:
-      print(f"Ignoring unreadable Claude project file {path}: {exc}", file=sys.stderr)
+      if day == today:
+        today_prompt_count += 1
+        today_sessions.add(session_key)
+        today_token_total += total
+        today_tokens[model] = today_tokens.get(model, 0) + total
 
   return {
     "todayPrompts": today_prompt_count,
@@ -213,10 +308,10 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
   }
 
 
-def scan_cache_paths(projects_path: Path) -> tuple[Path, Path]:
+def scan_cache_paths(projects_path: Path) -> tuple[Path, Path, Path]:
   digest = hashlib.sha1(str(projects_path).encode("utf-8")).hexdigest()[:16]
   root = cache_root()
-  return root / f"claude-scan-{digest}.json", root / f"claude-scan-{digest}.lock"
+  return root / f"claude-scan-{digest}.json", root / f"claude-scan-{digest}.lock", root / f"claude-index-{digest}.json"
 
 
 def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None:
@@ -248,8 +343,8 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     raise
 
 
-def cached_scan(projects_path: Path, max_age_seconds: float) -> dict[str, Any]:
-  cache_file, lock_file = scan_cache_paths(projects_path)
+def cached_scan(projects_path: Path, max_age_seconds: float, use_index: bool = True) -> dict[str, Any]:
+  cache_file, lock_file, index_file = scan_cache_paths(projects_path)
 
   cached = read_fresh_json(cache_file, max_age_seconds)
   if cached is not None:
@@ -260,7 +355,9 @@ def cached_scan(projects_path: Path, max_age_seconds: float) -> dict[str, Any]:
     cached = read_fresh_json(cache_file, max_age_seconds)
     if cached is not None:
       return cached
-    summary = scan_projects(projects_path)
+    if not use_index:
+      index_file.unlink(missing_ok=True)
+    summary = scan_projects(projects_path, index_file)
     write_json(cache_file, summary)
     return summary
 
@@ -851,14 +948,14 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
 
 def main() -> int:
   parser = argparse.ArgumentParser()
-  parser.add_argument("--force", action="store_true", help="rescan transcripts and re-probe limits, ignoring caches")
+  parser.add_argument("--force", action="store_true", help="rescan transcripts from scratch and re-probe limits, ignoring caches")
   parser.add_argument("--limits-only", action="store_true", help="reuse any recent transcript scan; only the limits probe must be fresh")
   parser.add_argument("--cache-seconds", type=float, default=20)
   args = parser.parse_args()
 
   claude_dir = config_dir()
   scan_age = 0 if args.force else (900 if args.limits_only else args.cache_seconds)
-  stats = cached_scan(claude_dir / "projects", scan_age)
+  stats = cached_scan(claude_dir / "projects", scan_age, use_index=not args.force)
 
   if number(stats.get("totalPrompts")) <= 0:
     fallback = stats_cache_fallback(claude_dir)
