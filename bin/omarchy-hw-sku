@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Match the computer's DMI product SKU, whole value (case-insensitive).
+# omarchy:args=<sku>...
+
+# The SKU is the most precise identifier these machines expose -- narrower than a
+# product name, and it separates models whose names differ only by marketing.
+# Vendors key speaker firmware on it. Compared against the whole value, never a
+# substring, so a caller cannot accidentally widen to a product line.
+
+sku=$(cat /sys/class/dmi/id/product_sku 2>/dev/null)
+
+[[ -n $sku ]] || exit 1
+
+for want in "$@"; do
+  if [[ ${sku,,} == "${want,,}" ]]; then
+    exit 0
+  fi
+done
+
+exit 1
