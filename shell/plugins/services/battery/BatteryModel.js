@@ -9,13 +9,22 @@ function isDischarging(device, onBattery, dischargingState) {
 
 function shouldWarnLowBattery(device, onBattery, dischargingState, threshold, alreadyNotified) {
   var level = batteryPercentage(device)
-  if (level < 0) return { level: level, notify: false, notifiedLowBattery: false }
+  if (level < 0) {
+    return { level: level, notify: false, notifiedLowBattery: !!alreadyNotified }
+  }
 
+  // True only while discharging at/under the threshold. AC-online flaps must not
+  // clear the latch: onBattery false makes low false, and the old latch reset on
+  // that alone re-fired a critical toast on every flap (~3s) until the machine died.
   var low = isDischarging(device, onBattery, dischargingState) && level <= threshold
+  // Clear only after a real recovery above the threshold, not on transient AC state.
+  var recovered = level > threshold
+  var notifiedLowBattery = recovered ? false : !!(alreadyNotified || low)
+
   return {
     level: level,
     notify: low && !alreadyNotified,
-    notifiedLowBattery: low
+    notifiedLowBattery: notifiedLowBattery
   }
 }
 
