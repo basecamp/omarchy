@@ -1,0 +1,3 @@
+# apple-ib-tb is out of tree, so hid-generic (builtin) claims 05ac:8600 first.
+# Rebind once the T1 Touch Bar driver is actually loaded.
+ACTION=="add", SUBSYSTEM=="module", KERNEL=="apple_ib_tb", RUN+="/usr/bin/omarchy-hw-apple-t1-bind"

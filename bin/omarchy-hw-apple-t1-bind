@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=Rebind T1 iBridge HID interfaces to apple-ibridge
+# omarchy:hidden=true
+
+# hid-generic is built in and claims 05ac:8600 before the out-of-tree
+# apple-ibridge driver loads. The udev rule runs this once apple_ib_tb appears.
+hid_root=${OMARCHY_T1_HID_ROOT:-/sys/bus/hid}
+
+for d in "$hid_root"/devices/0003:05AC:8600.*; do
+  [[ -d $d ]] || continue
+  name=$(basename "$d")
+  drv=""
+  if [[ -e $d/driver ]]; then
+    drv=$(basename "$(readlink -f "$d/driver")")
+  fi
+  [[ $drv == "apple-ibridge-hid" ]] && continue
+  [[ -n $drv ]] && echo -n "$name" >"$hid_root/drivers/$drv/unbind"
+  echo -n "$name" >"$hid_root/drivers/apple-ibridge-hid/bind"
+done

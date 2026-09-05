@@ -35,7 +35,25 @@ It is necessary to disable Apple's Secure Boot in order to boot the bootable USB
 3. Select the orange EFI Boot device
 4. Proceed with the [install as normal](02-getting-started.md)
 
-The installer detects Mac hardware and applies the needed fixes automatically: Broadcom Wi-Fi drivers and firmware, the SPI keyboard driver on the MacBook models that need it, and an NVMe suspend fix for those same models.
+The installer detects Mac hardware and applies the needed fixes automatically: Broadcom Wi-Fi drivers and firmware, the SPI keyboard driver on the MacBook models that need it, T1 Touch Bar wiring when the firmware is already on the USB, and an NVMe suspend fix for those same models.
+
+#### T1 Touch Bar firmware (do this before wiping macOS)
+
+The T1 coprocessor loads `EFI/APPLE/EMBEDDEDOS` from the EFI System Partition at boot. That tree is written by macOS, is unique to this machine (`FDRData`), and cannot be shipped in Omarchy. Collect it while macOS still works, then let Omarchy copy it back after the install.
+
+1. On macOS, wait until the Touch Bar lights up (and any "critical software update" finishes).
+2. Copy the collector off the Omarchy ISO at `install/hardware/apple/copy-t1-firmware.command` onto a USB stick. If you do not have the ISO handy, download the same file:
+
+```bash
+curl -fsSL https://github.com/basecamp/omarchy/raw/HEAD/install/hardware/apple/copy-t1-firmware.command -o copy-t1-firmware.command
+chmod +x copy-t1-firmware.command
+```
+
+   Double-click it in Finder, or run `bash copy-t1-firmware.command`. It copies `APPLE/EMBEDDEDOS` onto a USB stick.
+3. Leave that USB plugged in during the Omarchy install. The installer copies the firmware onto the EFI partition when it sees it.
+4. If you install first and copy firmware later: plug the stick in and run `omarchy setup apple touchbar`, then reboot.
+
+Without that reboot, the T1 stays in recovery mode and the bar stays dark. After Apple's EFI memboots it, `apple-ib-tb` draws the icon row (Fn for F1–F12).
 
 ### Known Limitations
 
@@ -43,15 +61,20 @@ Members of the community are constantly working on solutions to these challenges
 
 #### Devices with T1 Chip
 
-The Apple T1 chip was introduced in late 2016 and used exclusively in the first-generation MacBook Pro models with Touch Bar.
-- MacBook Pro 13-inch (2016, two Thunderbolt 3 ports) – Model: A1706
-- MacBook Pro 13-inch (2016, four Thunderbolt 3 ports) – Model: A1708
+The Apple T1 chip was introduced in late 2016 and used exclusively in the first-generation MacBook Pro models with Touch Bar (DMI `MacBookPro13,2` / `13,3` / `14,2` / `14,3`):
+- MacBook Pro 13-inch (2016, four Thunderbolt 3 ports) – Model: A1706
 - MacBook Pro 15-inch (2016) – Model: A1707
+- MacBook Pro 13-inch (2017, four Thunderbolt 3 ports) – Model: A1706
+- MacBook Pro 15-inch (2017) – Model: A1707
+
+The two-port 13-inch models (`MacBookPro13,1` / `14,1`, A1708) have no Touch Bar and no T1.
+
+Collect the Touch Bar firmware on macOS before installing — see above. After that, `omarchy setup apple touchbar` is the post-install command.
 
 #### Known Issues
 
-- Touch Bar is non-functional
 - Sound is not functioning
+- The Touch Bar needs the firmware USB step above; it will not light up from a clean wipe alone
 
 #### Devices with T2 Chip
 

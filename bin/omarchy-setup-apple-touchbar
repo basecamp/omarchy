@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# omarchy:summary=Install T1 Touch Bar firmware from a USB stick onto the EFI partition
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+if (( $(id -u) != 0 )); then
+  echo "Need root to write the EFI System Partition and udev rules."
+  exec sudo --preserve-env=OMARCHY_PATH /bin/bash "$0" "$@"
+fi
+
+OMARCHY_PATH=${OMARCHY_PATH:-/usr/share/omarchy}
+# shellcheck source=../../install/hardware/apple/t1-touchbar.sh
+source "$OMARCHY_PATH/install/hardware/apple/t1-touchbar.sh"
+
+if ! omarchy-hw-apple-t1; then
+  echo "This machine is not a T1 Touch Bar MacBook Pro (MacBookPro13,2/13,3 or 14,2/14,3)."
+  exit 1
+fi
+
+echo "T1 Touch Bar setup"
+echo
+
+t1_install_wiring
+echo "Installed apple-ib-tb udev rule and module load list."
+
+if t1_firmware_present; then
+  echo "EFI already has APPLE/EMBEDDEDOS/combined.memboot."
+  echo "Reboot if the Touch Bar is still dark so Apple's firmware can memboot the T1."
+  exit 0
+fi
+
+if src=$(t1_find_firmware); then
+  echo "Found firmware: $src"
+  esp=$(t1_esp_mount) || {
+    echo "No mounted VFAT EFI System Partition found (/boot, /boot/efi, or /efi)."
+    exit 1
+  }
+  echo "Copying to $esp/EFI/APPLE"
+  if ! t1_copy_firmware "$src" "$esp"; then
+    echo "Found T1 firmware but could not copy it to the EFI partition."
+    echo "Wiring is installed; later run: omarchy setup apple touchbar"
+    exit 1
+  fi
+  echo
+  echo "OK. Reboot so Apple's EFI can memboot the T1:"
+  echo "  sudo reboot"
+  exit 0
+fi
+
+# USB is present but has no firmware: drop the macOS collector onto it.
+wrote=""
+while IFS= read -r vol; do
+  t1_write_collector "$vol"
+  wrote=$vol
+  break
+done < <(t1_media_roots)
+
+if [[ -n $wrote ]]; then
+  echo "No APPLE/EMBEDDEDOS on the USB yet."
+  echo "Wrote copy-t1-firmware.command to:"
+  echo "  $wrote"
+  echo
+  echo "Boot this Mac into macOS, wait until the Touch Bar lights up,"
+  echo "double-click that script in Finder, then come back here and re-run:"
+  echo "  omarchy setup apple touchbar"
+  exit 0
+fi
+
+echo "Plug in the USB that ran copy-t1-firmware.command on macOS,"
+echo "wait for it to mount, then re-run:"
+echo "  omarchy setup apple touchbar"
+echo
+echo "To collect firmware on macOS first, copy this file onto a stick and"
+echo "double-click it in Finder after the Touch Bar is on:"
+echo "  $(t1_collector_path)"
+exit 1
