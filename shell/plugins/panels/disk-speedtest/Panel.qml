@@ -17,7 +17,7 @@ Item {
   property bool running: false
   property bool expectedStop: false
   property bool pendingRun: false
-  property string phase: ""             // "read" | "write" | ""
+  property string phase: ""             // "stage" | "read" | "write" | ""
   property string diskName: ""
   property string writeMBps: ""
   property string readMBps: ""
@@ -63,7 +63,7 @@ Item {
     writeMBps = ""
     readMBps = ""
     stderrText = ""
-    phase = "read"
+    phase = ""
     running = true
     proc.running = true
   }
@@ -73,9 +73,9 @@ Item {
     return isFinite(value) && value > 0 ? value : 0
   }
 
-  // Lines are "disk <model>", then "read <MB/s>" once a second, then
-  // "write <MB/s>". The phase follows whichever figure is streaming, and each
-  // phase's final line is its steady-state average, which the dial settles on.
+  // Lines are "disk <model>", then "stage <MB/s>" while the read data is
+  // written, then "read <MB/s>" / "write <MB/s>" once a second. Staging is
+  // write I/O, so it feeds the write dial instead of leaving both at 0.
   function updateLine(line) {
     var parts = String(line).trim().split(/\s+/)
     if (parts.length < 2) return
@@ -85,8 +85,8 @@ Item {
     }
     var value = parseFloat(parts[1])
     if (!isFinite(value) || value < 0) return
-    if (parts[0] === "write") {
-      phase = "write"
+    if (parts[0] === "write" || parts[0] === "stage") {
+      phase = parts[0]
       writeMBps = String(value)
     } else if (parts[0] === "read") {
       phase = "read"
@@ -141,7 +141,7 @@ Item {
     leftValue: root.toRate(root.readMBps)
     rightValue: root.toRate(root.writeMBps)
     leftLive: root.running && root.phase === "read"
-    rightLive: root.running && root.phase === "write"
+    rightLive: root.running && (root.phase === "write" || root.phase === "stage")
     error: root.error
     open: root.opened
     scaleStops: [500, 1000, 2500, 5000, 10000, 15000]

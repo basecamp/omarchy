@@ -11,7 +11,7 @@ if [[ -n ${1:-} && ! -d $1 ]]; then
 fi
 
 target_dir="${1:-${XDG_CACHE_HOME:-$HOME/.cache}/omarchy}"
-phase_seconds=8
+phase_seconds=${OMARCHY_DISK_PHASE_SECONDS:-8}
 parallel=4
 chunk_mb=4
 file_mb=256
@@ -70,7 +70,7 @@ trap 'exit 143' TERM INT
 # back to the page cache -- and it makes every rewrite land in place instead
 # of churning the extent allocator, which run-to-run reproducibility depends
 # on.
-chunk_file=$(mktemp /dev/shm/omarchy-disk-speedtest-XXXXXX.src)
+chunk_file=$(mktemp "${OMARCHY_DISK_CHUNK_DIR:-/dev/shm}/omarchy-disk-speedtest-XXXXXX.src")
 for (( i = 0; i < parallel; i++ )); do
   file=$(mktemp "$target_dir/disk-speedtest-XXXXXX.dat")
   chattr +C "$file" 2>/dev/null || true
@@ -98,8 +98,9 @@ fi
 
 dev=$(readlink -f "$source_dev")
 dev=${dev##*/}
+io_stat="${OMARCHY_DISK_STAT:-/sys/class/block/$dev/stat}"
 
-if [[ ! -r /sys/class/block/$dev/stat ]]; then
+if [[ ! -r $io_stat ]]; then
   echo "No I/O statistics for $dev" >&2
   exit 1
 fi
@@ -148,7 +149,7 @@ read_worker() {
 
 device_sectors() {
   local -a stats
-  read -r -a stats < "/sys/class/block/$dev/stat"
+  read -r -a stats < "$io_stat"
   if [[ $1 == "read" ]]; then
     echo "${stats[2]}"
   else
@@ -212,20 +213,43 @@ run_phase() {
 
 # The read phase runs first, so its data must be staged before any measuring
 # starts. Direct I/O leaves nothing in the page cache to serve reads from.
-for file in "${test_files[@]}"; do
-  dd if="$chunk_file" of="$file" bs=${chunk_mb}M oflag=direct conv=notrunc status=none 2>/dev/null &
-  worker_pids+=("$!")
-done
-
+# Report the write throughput of this staging so the panel is not stuck at 0.
 stage_failed=0
-for pid in "${worker_pids[@]}"; do
-  wait "$pid" || stage_failed=1
+(
+  fail=0
+  pids=()
+  for file in "${test_files[@]}"; do
+    dd if="$chunk_file" of="$file" bs=${chunk_mb}M oflag=direct conv=notrunc status=none 2>/dev/null &
+    pids+=("$!")
+  done
+  for pid in "${pids[@]}"; do
+    wait "$pid" || fail=1
+  done
+  exit $fail
+) &
+stager=$!
+
+before=$(device_sectors write)
+while kill -0 "$stager" 2>/dev/null; do
+  sleep 1
+  after=$(device_sectors write)
+  rate=$(awk -v before="$before" -v after="$after" 'BEGIN {
+    if (after < before) print 0
+    else print (after - before) * 512 / 1000000
+  }')
+  echo "stage $(format_rate "$rate")"
+  before=$after
 done
+wait "$stager" || stage_failed=1
 worker_pids=()
 
 if (( stage_failed )) || [[ ! -s ${test_files[0]} ]]; then
   echo "Direct disk I/O is not available on $target_dir" >&2
   exit 1
+fi
+
+if [[ ${OMARCHY_DISK_STAGE_ONLY:-} == 1 ]]; then
+  exit 0
 fi
 
 run_phase read
