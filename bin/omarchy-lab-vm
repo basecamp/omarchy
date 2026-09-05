@@ -274,9 +274,9 @@ ssh_opts() {
 
 lab_ssh() {
   local ip user
-  ip=$(guest_ip)
+  ip=$(guest_ip) || return 1
   [[ -n $ip ]] || return 1
-  user=$(guest_user)
+  user=$(guest_user) || return 1
   ssh $(ssh_opts) "${user}@${ip}" "$@"
 }
 
@@ -643,6 +643,8 @@ remove_ssh_artifacts() {
 }
 
 ensure_ssh_key() {
+  mkdir -p "$(dirname "$KEY")"
+  chmod 700 "$(dirname "$KEY")"
   if [[ ! -f $KEY ]]; then
     ssh-keygen -q -t ed25519 -f "$KEY" -N "" -C omarchy-lab
   fi
@@ -1348,8 +1350,33 @@ status_lab() {
     "omarchy lab vm reset"
 }
 
+launch_lifecycle_terminal() {
+  local command
+  printf -v command '%q ' "$@"
+  omarchy-launch-floating-terminal-with-presentation "$command"
+}
+
+restore_gold_network() {
+  local network=default xml interface replacement
+  if [[ -f $STATE_DIR/gold.json ]]; then
+    network=$(jq -er '.networkSource // "default"' "$STATE_DIR/gold.json") || return 1
+  fi
+  [[ $network =~ ^[A-Za-z0-9_.-]+$ ]] || return 1
+  run_virsh net-info "$network" >/dev/null || return 1
+  xml=$(run_virsh dumpxml "$NAME" --inactive) || return 1
+  interface=$(sed -n "/<interface type='network'>/,/<\/interface>/p" <<<"$xml")
+  [[ -n $interface ]] || return 1
+  replacement=$(sed -E "s/<source network='[^']*'[^>]*\/>/<source network='$network'\/>/; s/<link state='down'\/>/<link state='up'\/>/" <<<"$interface")
+  run_virsh update-device "$NAME" /dev/stdin --config <<<"$replacement"
+}
+
 reset_lab() {
   local pool
+  if ! is_tty; then
+    launch_lifecycle_terminal "$OMARCHY_PATH/bin/omarchy-lab-vm" reset
+    return
+  fi
+  sudo -v || return 1
   if ! have_domain; then
     echo "Omarchy Lab is not installed." >&2
     return 1
@@ -1362,6 +1389,7 @@ reset_lab() {
     run_virsh destroy "$NAME" 2>/dev/null || true
     wait_off
   fi
+  restore_gold_network || return 1
   run_virsh vol-delete --pool "$pool" "$OVERLAY_VOL"
   local size=$DISK_DEFAULT
   if [[ -f $CONFIG_FILE ]]; then
@@ -1395,9 +1423,10 @@ push_lab() {
     echo "usage: omarchy lab vm push SRC [DST]" >&2
     return 1
   }
-  wait_ssh
-  ip=$(guest_ip)
-  user=$(guest_user)
+  wait_ssh || return 1
+  ip=$(guest_ip) || return 1
+  [[ -n $ip ]] || return 1
+  user=$(guest_user) || return 1
   dst=${2:-/home/${user}/omarchy}
   src=${src%/}/
   rsync -az --delete --exclude .git \

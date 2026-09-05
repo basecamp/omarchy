@@ -66,7 +66,11 @@ show_gold_status() {
 }
 
 promote_gold() {
-  local yes=0 json=false was_running=false pool base overlay next previous metadata version=""
+  local yes=0 json=false was_running=false pool base overlay next previous metadata version="" network
+  if ! is_tty; then
+    launch_lifecycle_terminal "$OMARCHY_PATH/bin/omarchy-lab-gold" promote "$@"
+    return
+  fi
   while (($#)); do
     case $1 in
     --yes) yes=1 ;;
@@ -76,12 +80,16 @@ promote_gold() {
     shift
   done
   confirm_destructive "$yes" "Promote the current Lab disk to gold and replace the old gold image?" || return 0
+  sudo -v || return 1
   require_lab
   pool=$(find_pool) || lab_fail "no libvirt pool owns $IMAGES"
   base="$IMAGES/$BASE_VOL"
   overlay="$IMAGES/$OVERLAY_VOL"
   next="$IMAGES/${BASE_VOL%.qcow2}.next.qcow2"
   previous="$IMAGES/${BASE_VOL%.qcow2}.previous.qcow2"
+  network=$(run_virsh dumpxml "$NAME" --inactive | sed -n "/<interface type='network'>/,/<\/interface>/s/.*<source network='\([^']*\)'.*/\1/p")
+  [[ -n $network ]] || { lab_fail "could not determine the gold network"; return 1; }
+  preserve_checkpoints || return 1
   if domain_running; then
     was_running=true
     version=$(lab_ssh 'omarchy version 2>/dev/null | head -1' || true)
@@ -102,7 +110,7 @@ promote_gold() {
   run_virsh pool-refresh "$pool" >/dev/null
   run_virsh vol-delete --pool "$pool" "$OVERLAY_VOL" >/dev/null
   run_virsh vol-create-as "$pool" "$OVERLAY_VOL" "$(sed -n 's/^DISK=//p' "$CONFIG_FILE" | head -1)" --format qcow2 --backing-vol "$BASE_VOL" --backing-vol-format qcow2 >/dev/null
-  metadata=$(jq -cn --arg promotedAt "$(iso_timestamp)" --arg guestVersion "$version" --arg previous "$previous" '{promotedAt:$promotedAt,guestVersion:$guestVersion,previousGold:$previous}')
+  metadata=$(jq -cn --arg promotedAt "$(iso_timestamp)" --arg guestVersion "$version" --arg previous "$previous" --arg network "$network" '{promotedAt:$promotedAt,guestVersion:$guestVersion,previousGold:$previous,networkSource:$network}')
   write_private_json "$STATE_DIR/gold.json" "$metadata"
   rm -f "$KNOWN_HOSTS"
   if $was_running; then
@@ -115,6 +123,10 @@ promote_gold() {
 
 rebuild_gold() {
   local yes=0 json=false user disk cores memory_kib memory_gib
+  if ! is_tty; then
+    launch_lifecycle_terminal "$OMARCHY_PATH/bin/omarchy-lab-gold" rebuild "$@"
+    return
+  fi
   while (($#)); do
     case $1 in
     --yes) yes=1 ;;
@@ -125,6 +137,8 @@ rebuild_gold() {
   done
   confirm_destructive "$yes" "Reinstall the entire Lab from the newest Omarchy ISO?" || return 0
   require_lab
+  sudo -v || return 1
+  preserve_checkpoints || return 1
   user=$(guest_user)
   disk=$(sed -n 's/^DISK=//p' "$CONFIG_FILE" | head -1)
   [[ -n $disk ]] || disk=$DISK_DEFAULT

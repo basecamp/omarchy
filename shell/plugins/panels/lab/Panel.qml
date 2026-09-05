@@ -118,6 +118,12 @@ Item {
     runCommand(viewerCommand, args, label, closeAfter)
   }
 
+  function recordViewer() {
+    if (busy || actionProc.running) return
+    close()
+    runCommand("omarchy-lab-capture", ["record", "10", "--copy"], "Recording")
+  }
+
   function setResourceProfile(profile, label) {
     customResourcesDirty = false
     runCommand("omarchy-lab-resource", ["set", profile], label + " resources")
@@ -653,7 +659,7 @@ Item {
                     columnSpacing: Style.space(8)
                     rowSpacing: Style.space(8)
                     ActionButton { text: "Screenshot"; onClicked: root.runCommand("omarchy-lab-capture", ["screenshot", "--copy"], "Screenshot") }
-                    ActionButton { text: "Record 10s"; onClicked: root.runCommand("omarchy-lab-capture", ["record", "10", "--copy"], "Recording") }
+                    ActionButton { text: "Record 10s"; onClicked: root.recordViewer() }
                     ActionButton { text: "Diagnostics"; onClicked: root.runCommand("omarchy-lab-capture", ["bundle", "--copy"], "Diagnostic bundle") }
                     ActionButton { text: "Compare latest"; onClicked: root.runCommand("omarchy-lab-capture", ["compare", "--copy"], "Screenshot comparison") }
                   }

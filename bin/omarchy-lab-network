@@ -21,17 +21,18 @@ interface_source() {
 }
 
 network_status_json() {
-  local mac source link=down mode=offline ip=""
+  local mac source link=down mode=offline ip="" link_output
   require_lab
   mac=$(lab_mac)
   [[ -n $mac ]] || lab_fail "Lab has no libvirt network interface"
   source=$(interface_source)
   if domain_running; then
-    link=$(run_virsh domif-getlink "$NAME" "$mac" 2>/dev/null | awk '{print $NF; exit}')
+    link_output=$(run_virsh domif-getlink "$NAME" "$mac" 2>/dev/null) || return 1
     ip=$(guest_ip || true)
   else
-    link=$(run_virsh domif-getlink "$NAME" "$mac" --config 2>/dev/null | awk '{print $NF; exit}')
+    link_output=$(run_virsh domif-getlink "$NAME" "$mac" --config 2>/dev/null) || return 1
   fi
+  link=$(awk 'NR == 1 {print $NF}' <<<"$link_output")
   if [[ $link == "down" ]]; then
     mode=offline
   elif [[ $source == "$ISOLATED_NETWORK" ]]; then
@@ -89,12 +90,25 @@ switch_source() {
   mac=$(lab_mac)
   [[ -n $mac ]] || lab_fail "Lab has no libvirt network interface"
   domain_running && was_running=true
+  if ! $was_running; then
+    lab_fail "start the Lab on its current network before changing network sources"
+    return 1
+  fi
+  # Offline retains the source profile. Reconnect that source before SSH.
+  run_virsh domif-setlink "$NAME" "$mac" up --config >/dev/null || return 1
+  run_virsh domif-setlink "$NAME" "$mac" up >/dev/null || return 1
+  local attempt
+  for ((attempt = 0; attempt < 10; attempt++)); do
+    if lab_ssh true >/dev/null 2>&1; then break; fi
+    sleep 1
+  done
+  ((attempt < 10)) || { lab_fail "guest is unavailable on its current network"; return 1; }
   if $was_running; then
     if [[ $network == "$ISOLATED_NETWORK" ]]; then
       lab_ssh "sudo ufw allow from $ISOLATED_CIDR to any port 22 proto tcp comment omarchy-lab-isolated >/dev/null" || true
     fi
-    prepare_guest_network "$network" || lab_fail "could not prepare the guest network profile"
-    stop_guest
+    prepare_guest_network "$network" || { lab_fail "could not prepare the guest network profile"; return 1; }
+    stop_guest || return 1
   fi
   domain_xml=$(run_virsh dumpxml "$NAME" --inactive)
   interface_xml=$(sed -n "/<interface type='network'>/,/<\/interface>/p" <<<"$domain_xml")

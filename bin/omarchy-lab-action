@@ -37,7 +37,15 @@ run_action() {
   case $action in
   terminal)
     require_running_lab
-    session_lab omarchy-launch-terminal
+    # Let the guest user manager own the terminal, not the panel's SSH call.
+    # Keep forked launcher children alive after setsid hands off the window.
+    session_lab 'systemd-run --user --quiet --collect --property=Type=exec --property=ExitType=cgroup \
+      --setenv=OMARCHY_PATH="$OMARCHY_PATH" --setenv=PATH="$PATH" \
+      --setenv=XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+      --setenv=DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+      --setenv=WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      --setenv=HYPRLAND_INSTANCE_SIGNATURE="$HYPRLAND_INSTANCE_SIGNATURE" \
+      -- "$OMARCHY_PATH/bin/omarchy-launch-terminal"'
     ;;
   launcher)
     require_running_lab

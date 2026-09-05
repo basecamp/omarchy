@@ -86,6 +86,11 @@ create_checkpoint() {
     $was_running && run_virsh start "$NAME" >/dev/null 2>&1 || true
     return 1
   fi
+  if ! flatten_checkpoint_image "$image"; then
+    rm -f "$image"
+    $was_running && run_virsh start "$NAME" >/dev/null 2>&1 || true
+    return 1
+  fi
   created=$(iso_timestamp)
   write_private_json "$metadata" "$(jq -cn \
     --arg name "$name" \

@@ -84,7 +84,7 @@ omarchy lab gold promote --yes
 omarchy lab gold rebuild --yes
 ```
 
-The _Capture_ page saves framebuffer screenshots, real-time recordings of the Lab viewer, diagnostic bundles, and side-by-side comparisons. It also performs explicit clipboard and file transfers in either direction. There is no permanently shared host folder.
+The _Capture_ page saves framebuffer screenshots, real-time recordings of the Lab viewer, diagnostic bundles, and side-by-side comparisons. Recording closes the controls and focuses the viewer before starting. It captures a region of your desktop, so keep the viewer unobscured during recording. It also performs explicit clipboard and file transfers in either direction. There is no permanently shared host folder.
 
 ```bash
 omarchy lab capture screenshot --copy --json
@@ -134,7 +134,9 @@ After a reboot, `omarchy version` in the guest reports `dev`. `omarchy lab vm re
 
 The guest is on libvirt's `default` NAT (`virbr0`, `192.168.122.0/24`). Host UFW stays default-deny. The installer opens only DHCP (UDP 67 to any, because a discover is broadcast to `255.255.255.255`), DNS to `192.168.122.1`, and FORWARD from `virbr0` out the uplink. It does not `ufw allow in on virbr0` with no port — that would let the guest hit every host service bound on `0.0.0.0`.
 
-Gold is a read-only qcow2. Every `reset` deletes the overlay and creates a new one backing gold. The TPM emulator state under `/var/lib/libvirt/swtpm/` is not wiped on reset.
+Gold is a read-only qcow2. Every `reset` deletes the overlay and creates a new one backing gold, reconnecting it to the network saved with that image (NAT for the original installation). The TPM emulator state under `/var/lib/libvirt/swtpm/` is not wiped on reset. Checkpoints are self-contained disk images; existing dependent checkpoints are flattened before gold is promoted or rebuilt, so replacing gold does not change their contents. This may take time and additional disk space. Reset, promotion, and rebuild open a visible terminal when launched from the controls and request authentication before destructive work begins; promotion reuses that terminal's sudo authentication instead of opening a separate password dialog for each disk operation.
+
+Changing between NAT and isolated networking requires a running guest so Lab can prepare its network profile before switching. If the guest is offline, Lab first reconnects its current network. Start a stopped guest and select NAT or isolated again; source changes are rejected while it is stopped.
 
 To get rid of the whole thing, use _Remove > Lab_ from the Omarchy menu. That deletes the VM and its disks. The hypervisor packages, UFW rules, and downloaded ISO stay, so a later install is faster.
 

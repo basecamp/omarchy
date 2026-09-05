@@ -14,7 +14,11 @@ stat_value() {
 }
 
 guest_health_json() {
-  session_lab '
+  local ip user command
+  ip=$(guest_ip) || return 1
+  [[ -n $ip ]] || return 1
+  user=$(guest_user) || return 1
+  command='
     failed=$(systemctl --failed --no-legend --plain 2>/dev/null | awk "NF {print \$1}")
     errors=$(hyprctl configerrors 2>/dev/null || true)
     version=$(omarchy version 2>/dev/null | tr "\n" " " | sed "s/[[:space:]]*$//")
@@ -45,6 +49,9 @@ guest_health_json() {
         memory:{totalBytes:\$memoryTotal, availableBytes:\$memoryAvailable}
       }"
   '
+  # Bound connection and remote execution; polling must never start the VM.
+  timeout --kill-after=1 8 ssh $(ssh_opts) "${user}@${ip}" \
+    "bash -lc $(printf '%q' "$session_env $command")"
 }
 
 health_json() {
@@ -73,6 +80,9 @@ health_json() {
     net_rx=$(stat_value "$stats" net.0.rx.bytes)
     net_tx=$(stat_value "$stats" net.0.tx.bytes)
     guest=$(guest_health_json 2>/dev/null || printf '%s' '{"reachable":false}')
+    if ! jq -e 'type == "object" and (.reachable | type == "boolean")' <<<"$guest" >/dev/null 2>&1; then
+      guest='{"reachable":false}'
+    fi
   else
     severity=warning
     vcpus=$(run_virsh vcpucount "$NAME" --active --config 2>/dev/null | head -1 || true)

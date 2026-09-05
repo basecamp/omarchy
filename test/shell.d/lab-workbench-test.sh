@@ -254,17 +254,24 @@ pass "comparison joins screenshots and emits structured metadata"
   mkdir -p "$IMAGES" "$STATE_DIR"
   printf 'DISK=16M\n' >"$CONFIG_FILE"
   qemu-img create -q -f qcow2 "$IMAGES/$BASE_VOL" 16M
+  qemu-io -c 'write -P 0x11 8192 4096' "$IMAGES/$BASE_VOL" >/dev/null
   qemu-img create -q -f qcow2 -F qcow2 -b "$IMAGES/$BASE_VOL" "$IMAGES/$OVERLAY_VOL" 16M
   qemu-io -c 'write 0 4096' "$IMAGES/$OVERLAY_VOL" >/dev/null
+  mkdir -p "$CHECKPOINT_DIR"
+  cp "$IMAGES/$OVERLAY_VOL" "$CHECKPOINT_DIR/pre-promotion.qcow2"
+  qemu-io -c 'write -P 0x22 8192 4096' "$IMAGES/$OVERLAY_VOL" >/dev/null
 
   require_lab() { :; }
   find_pool() { echo test-pool; }
   domain_running() { return 1; }
+  is_tty() { return 0; }
+  sudo() { [[ $1 == "-v" ]]; }
   run_as_root() {
     if [[ $1 == "chown" ]]; then return 0; else command "$@"; fi
   }
   run_virsh() {
     case $1 in
+    dumpxml) printf "<interface type='network'>\n<source network='default'/>\n</interface>\n" ;;
     pool-refresh) : ;;
     vol-delete) rm -f "$IMAGES/$OVERLAY_VOL" ;;
     vol-create-as) qemu-img create -q -f qcow2 -F qcow2 -b "$IMAGES/$BASE_VOL" "$IMAGES/$OVERLAY_VOL" "$4" ;;
@@ -276,6 +283,11 @@ pass "comparison joins screenshots and emits structured metadata"
   [[ $(qemu-img info --output=json "$IMAGES/$BASE_VOL" | jq -r 'has("backing-filename")') == "false" ]] || fail "promoted gold is flattened"
   [[ $(qemu-img info --output=json "$IMAGES/$OVERLAY_VOL" | jq -r '."backing-filename"') == "$IMAGES/$BASE_VOL" ]] || fail "promotion creates a fresh overlay over new gold"
   [[ -f $IMAGES/base.previous.qcow2 && -f $STATE_DIR/gold.json ]] || fail "promotion retains previous gold and metadata"
+  qemu-io -c 'read -P 0x11 8192 4096' "$CHECKPOINT_DIR/pre-promotion.qcow2" >/dev/null
+  qemu-io -c 'write -P 0x33 8192 4096' "$IMAGES/$OVERLAY_VOL" >/dev/null
+  promote_gold --yes >/dev/null
+  qemu-io -c 'read -P 0x11 8192 4096' "$CHECKPOINT_DIR/pre-promotion.qcow2" >/dev/null
+  jq -e '.networkSource == "default"' "$STATE_DIR/gold.json" >/dev/null || fail "promotion saves reset network"
 )
 pass "gold promotion flattens safely and retains one previous image"
 
@@ -285,6 +297,9 @@ pass "gold promotion flattens safely and retains one previous image"
   CONFIG_FILE="$test_tmp/rebuild-config"
   printf 'DISK=32G\n' >"$CONFIG_FILE"
   require_lab() { :; }
+  is_tty() { return 0; }
+  sudo() { [[ $1 == "-v" ]]; }
+  preserve_checkpoints() { :; }
   guest_user() { echo agent; }
   run_virsh() {
     if [[ $1 == "vcpucount" ]]; then echo 6

@@ -149,37 +149,37 @@ deploy_checkout() {
     --destination)
       shift
       destination=${1:-}
-      [[ -n $destination ]] || lab_fail "--destination needs a guest path"
+      [[ -n $destination ]] || { lab_fail "--destination needs a guest path"; return 1; }
       ;;
-    --*) lab_fail "unknown option: $1" ;;
+    --*) lab_fail "unknown option: $1"; return 1 ;;
     *)
-      [[ -z $source ]] || lab_fail "deploy accepts one checkout path"
+      [[ -z $source ]] || { lab_fail "deploy accepts one checkout path"; return 1; }
       source=$1
       ;;
     esac
     shift
   done
   [[ -n $source ]] || source=$(default_repository)
-  source=$(realpath -e "$source") || lab_fail "checkout does not exist: $source"
+  source=$(realpath -e "$source") || { lab_fail "checkout does not exist: $source"; return 1; }
   if [[ $source_kind == "branch" ]]; then
-    repository=$(realpath -e "${OMARCHY_LAB_DEPLOY_REPOSITORY:-}") || lab_fail "branch repository does not exist"
+    repository=$(realpath -e "${OMARCHY_LAB_DEPLOY_REPOSITORY:-}") || { lab_fail "branch repository does not exist"; return 1; }
     branch=${OMARCHY_LAB_DEPLOY_BRANCH:-}
     commit=${OMARCHY_LAB_DEPLOY_COMMIT:-}
-    [[ -n $branch && $commit =~ ^[0-9a-f]{40}$ ]] || lab_fail "invalid materialized branch metadata"
+    [[ -n $branch && $commit =~ ^[0-9a-f]{40}$ ]] || { lab_fail "invalid materialized branch metadata"; return 1; }
     source_path=$repository
     source_label="$branch from $repository"
   else
-    [[ $source_kind == "worktree" ]] || lab_fail "unknown deployment source kind: $source_kind"
-    git -C "$source" rev-parse --is-inside-work-tree >/dev/null 2>&1 || lab_fail "not a Git worktree: $source"
+    [[ $source_kind == "worktree" ]] || { lab_fail "unknown deployment source kind: $source_kind"; return 1; }
+    git -C "$source" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { lab_fail "not a Git worktree: $source"; return 1; }
     source_path=$source
     source_label=$source
-    branch=$(git -C "$source" branch --show-current)
-    commit=$(git -C "$source" rev-parse HEAD)
+    branch=$(git -C "$source" branch --show-current) || return 1
+    commit=$(git -C "$source" rev-parse HEAD) || return 1
     [[ -n $(git -C "$source" status --short) ]] && dirty=true
   fi
-  require_running_lab
+  require_running_lab || return 1
 
-  user=$(guest_user)
+  user=$(guest_user) || return 1
   [[ -n $destination ]] || destination="/home/$user/omarchy"
   deployed_at=$(iso_timestamp)
   metadata=$(jq -cn \
@@ -191,19 +191,19 @@ deploy_checkout() {
     --arg commit "$commit" \
     --arg deployedAt "$deployed_at" \
     --argjson dirty "$dirty" \
-    '{sourceKind:$sourceKind,path:$path,repository:(if $repository == "" then null else $repository end),destination:$destination,branch:$branch,commit:$commit,dirty:$dirty,deployedAt:$deployedAt}')
+    '{sourceKind:$sourceKind,path:$path,repository:(if $repository == "" then null else $repository end),destination:$destination,branch:$branch,commit:$commit,dirty:$dirty,deployedAt:$deployedAt}') || return 1
 
   echo "Synchronizing $source_label to $NAME:$destination ..." >&2
-  push_lab "$source" "$destination" >&2
-  encoded=$(printf '%s' "$metadata" | base64 -w 0)
-  lab_ssh "printf '%s' '$encoded' | base64 -d >$(printf '%q' "$destination/.omarchy-lab-deployment.json")" >&2
-  lab_ssh "/usr/bin/omarchy-dev-link $(printf '%q' "$destination") --no-reboot" >&2
-  write_private_json "$DEPLOYMENT_FILE" "$metadata"
+  push_lab "$source" "$destination" >&2 || return 1
+  encoded=$(printf '%s' "$metadata" | base64 -w 0) || return 1
+  lab_ssh "/usr/bin/omarchy-dev-link $(printf '%q' "$destination") --no-reboot" >&2 || return 1
+  lab_ssh "printf '%s' '$encoded' | base64 -d >$(printf '%q' "$destination/.omarchy-lab-deployment.json")" >&2 || return 1
+  write_private_json "$DEPLOYMENT_FILE" "$metadata" || return 1
 
   if $reboot; then
     echo "Rebooting the guest into the deployed checkout ..." >&2
-    lab_reboot >&2
-    wait_ssh >&2
+    lab_reboot >&2 || return 1
+    wait_ssh >&2 || return 1
     wait_hypr >&2 || true
   fi
 
@@ -217,15 +217,15 @@ deploy_checkout() {
 deploy_branch() {
   local branch=$1 repository=$2 temp_dir source commit output status=0
   shift 2
-  repository=$(realpath -e "$repository") || lab_fail "repository does not exist: $repository"
-  git -C "$repository" rev-parse --git-common-dir >/dev/null 2>&1 || lab_fail "not a Git repository: $repository"
-  git check-ref-format --branch "$branch" >/dev/null 2>&1 || lab_fail "invalid local branch: $branch"
-  git -C "$repository" show-ref --verify --quiet "refs/heads/$branch" || lab_fail "local branch does not exist: $branch"
-  commit=$(git -C "$repository" rev-parse "refs/heads/$branch")
+  repository=$(realpath -e "$repository") || { lab_fail "repository does not exist: $repository"; return 1; }
+  git -C "$repository" rev-parse --git-common-dir >/dev/null 2>&1 || { lab_fail "not a Git repository: $repository"; return 1; }
+  git check-ref-format --branch "$branch" >/dev/null 2>&1 || { lab_fail "invalid local branch: $branch"; return 1; }
+  git -C "$repository" show-ref --verify --quiet "refs/heads/$branch" || { lab_fail "local branch does not exist: $branch"; return 1; }
+  commit=$(git -C "$repository" rev-parse "refs/heads/$branch") || return 1
 
-  temp_dir=$(mktemp -d)
+  temp_dir=$(mktemp -d) || return 1
   source="$temp_dir/checkout"
-  mkdir -p "$source"
+  mkdir -p "$source" || return 1
   if ! git -C "$repository" archive "refs/heads/$branch" | tar -xf - -C "$source"; then
     rm -rf -- "$temp_dir"
     lab_fail "could not materialize local branch: $branch"
@@ -287,10 +287,10 @@ sync_checkout() {
   if [[ $source_kind == "branch" ]]; then
     repository=$(jq -er '.repository | select(type == "string" and length > 0)' "$DEPLOYMENT_FILE") || lab_fail "saved branch deployment has no repository"
     branch=$(jq -er '.branch | select(type == "string" and length > 0)' "$DEPLOYMENT_FILE") || lab_fail "saved branch deployment has no branch"
-    deployment=$(deploy_branch "$branch" "$repository" --destination "$destination" --no-reboot --json)
+    deployment=$(deploy_branch "$branch" "$repository" --destination "$destination" --no-reboot --json) || return 1
   else
     path=$(jq -er '.path | select(type == "string" and length > 0)' "$DEPLOYMENT_FILE") || lab_fail "saved deployment has no host path"
-    deployment=$(deploy_checkout "$path" --destination "$destination" --no-reboot --json)
+    deployment=$(deploy_checkout "$path" --destination "$destination" --no-reboot --json) || return 1
   fi
   session_lab omarchy-restart-shell >/dev/null 2>&1 || true
   if $json; then

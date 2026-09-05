@@ -120,20 +120,44 @@ capture_recording() {
   host_dir="$ARTIFACT_DIR/recordings"
   host_path="$host_dir/omarchy-lab-$timestamp.mp4"
   mkdir -p "$host_dir"
+  # This records a composited host region, so remove our overlay and raise
+  # the viewer before measuring it. Allow the shell close animation to finish.
+  omarchy-shell shell hide omarchy.lab
+  "$OMARCHY_PATH/bin/omarchy-lab-viewer" launch >&2
+  until hyprctl activewindow -j | jq -e --arg name "$NAME" '(.class | ascii_downcase) == "virt-viewer" and (.title | startswith($name))' >/dev/null; do
+    ((n++ < 50)) || { lab_fail "the Lab viewer could not be focused for recording"; return 1; }
+    sleep 0.1
+  done
+  n=0
+  sleep 0.5
   region=$(require_viewer_region)
-  echo "Recording the guest framebuffer for $seconds seconds ..." >&2
+  echo "Recording the Lab viewer region for $seconds seconds; keep it unobscured ..." >&2
   send_key_lab KEY_LEFTCTRL >/dev/null 2>&1 || true
-  gpu-screen-recorder -w "$region" -f 30 -k h264 -q high -cursor no -o "$host_path" >&2 &
+  gpu-screen-recorder -w "$region" -s 4096x4096 -f 30 -k h264 -q high -cursor no -o "$host_path" >&2 &
   recorder_pid=$!
-  trap 'kill -INT "$recorder_pid" 2>/dev/null || true' INT TERM EXIT
+  trap "kill -INT $recorder_pid 2>/dev/null || true" INT TERM EXIT
   until [[ -s $host_path ]]; do
-    kill -0 "$recorder_pid" 2>/dev/null || { wait "$recorder_pid"; return 1; }
-    ((n++ < 100)) || { kill -INT "$recorder_pid" 2>/dev/null || true; wait "$recorder_pid" || true; lab_fail "screen recorder did not start"; }
+    if ! kill -0 "$recorder_pid" 2>/dev/null; then
+      wait "$recorder_pid" || true
+      trap - INT TERM EXIT
+      lab_fail "screen recorder failed to start"
+      return 1
+    fi
+    if ((n++ >= 100)); then
+      kill -INT "$recorder_pid" 2>/dev/null || true
+      wait "$recorder_pid" || true
+      trap - INT TERM EXIT
+      lab_fail "screen recorder did not start"
+      return 1
+    fi
     sleep 0.05
   done
   sleep "$((10#$seconds))"
-  kill -INT "$recorder_pid"
-  wait "$recorder_pid"
+  kill -INT "$recorder_pid" 2>/dev/null || true
+  if ! wait "$recorder_pid"; then
+    trap - INT TERM EXIT
+    return 1
+  fi
   trap - INT TERM EXIT
   [[ -s $host_path ]] || lab_fail "screen recorder produced no video"
   if $copy; then printf '%s' "$host_path" | wl-copy; fi
