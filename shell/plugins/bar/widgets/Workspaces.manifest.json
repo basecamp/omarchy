@@ -4,7 +4,7 @@
   "name": "Workspaces",
   "version": "1.0.0",
   "author": "Omarchy",
-  "description": "Workspace number indicators",
+  "description": "Workspace indicators with per-window occupancy squares",
   "kinds": [
     "bar-widget"
   ],
@@ -13,8 +13,16 @@
   },
   "barWidget": {
     "displayName": "Workspaces",
-    "description": "Workspace number indicators",
+    "description": "Workspace indicators with per-window occupancy squares",
     "category": "Compositor",
     "allowMultiple": false
+  },
+  "omarchy": {
+    "clonePaths": [
+      {
+        "source": "WorkspacesModel.js",
+        "target": "WorkspacesModel.js"
+      }
+    ]
   }
 }
