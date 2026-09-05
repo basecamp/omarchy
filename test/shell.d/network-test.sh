@@ -274,18 +274,26 @@ assertEqual(network.bandLabel('6'), '6ghz', 'network labels the 6GHz band')
 assertEqual(network.bandLabel('auto'), 'Auto', 'network labels the automatic band choice')
 
 assertEqual(network.bandSectionTitle('auto', '2.4'), 'WI-FI BAND: 2.4GHZ', 'network names the live band in the header under automatic')
+assertEqual(network.bandSectionTitle('auto', '5', true), 'WI-FI BAND: 5GHZ · MLO', 'network flags MLO beside the live band')
+assertEqual(network.bandSectionTitle('auto', '2.4', false), 'WI-FI BAND: 2.4GHZ', 'network leaves the header plain without MLO')
 assertEqual(network.bandSectionTitle('auto', ''), 'WI-FI BAND', 'network omits an unknown band from the header')
 assertEqual(network.bandSectionTitle('5', '5'), 'WI-FI BAND', 'network drops the header band once the pills are showing')
+assertEqual(network.bandSectionTitle('5', '5', true), 'WI-FI BAND', 'network keeps the header plain while MLO is pinned')
 assertEqual(network.bandSectionTitle('5', '2.4'), 'WI-FI BAND', 'network keeps a plain header while a pin is settling')
 
 assertDeepEqual(
   network.parseBandStatus('band\t5\navailable\t2.4 5 6\nselected\tauto\n'),
-  { band: '5', selected: 'auto', available: ['2.4', '5', '6'] },
-  'network parses band status'
+  { band: '5', selected: 'auto', available: ['2.4', '5', '6'], mlo: false },
+  'network parses band status without MLO'
+)
+assertDeepEqual(
+  network.parseBandStatus('band\t5\nmlo\t1\navailable\t2.4 5\nselected\tauto\n'),
+  { band: '5', selected: 'auto', available: ['2.4', '5'], mlo: true },
+  'network parses band status with MLO'
 )
 assertDeepEqual(
   network.parseBandStatus(''),
-  { band: '', selected: 'auto', available: [] },
+  { band: '', selected: 'auto', available: [], mlo: false },
   'network parses empty band status without a wifi connection'
 )
 
