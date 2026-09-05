@@ -111,6 +111,7 @@ for extension in png jpg jpeg webp gif bmp; do
   fi
 done
 menu_args=(
+  --context theme
   --print-name
   --show-labels
   --filterable

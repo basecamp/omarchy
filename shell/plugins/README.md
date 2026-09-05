@@ -67,6 +67,18 @@ Two ways to drive it:
   uses. Colors come from the central shell theme singleton; there is no
   per-call override surface.
 
+`omarchy-menu-images --context <name> ...` gives a picker request a semantic context without exposing its image-directory layout. The theme and background switchers use `theme` and `background`; other callers may supply their own value. Direct IPC consumers that already have encoded rows can use `openWithContext`, which accepts the normal `open` arguments followed by the context. The original `open` method remains unchanged for compatibility.
+
+While the picker is open, external controllers and local automation can inspect and move its cursor without introducing another selection model:
+
+```bash
+omarchy-shell image-selector state
+omarchy-shell image-selector setCursor <path-or-name>
+omarchy-shell image-selector apply
+```
+
+`state` returns JSON containing `opened`, `context`, `cursorPath`, and `cursorName`. `setCursor` matches an exact loaded path, file name, or extension-free name; it moves the cursor without applying or closing the picker. `apply` uses the normal file-based selection flow. Control calls return `closed` while no picker is visible, and an unknown cursor returns `unknown` without changing the selection.
+
 The selection round-trip remains file-based: callers create a
 `selection_file` and `done_file` (both `mktemp`), pass the paths, and
 poll `done_file` for existence. The plugin writes the chosen path into

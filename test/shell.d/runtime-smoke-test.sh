@@ -236,19 +236,25 @@ for _ in {1..80}; do
 done
 [[ $keep_marker_set == "ok" ]] || fail_with_log "keepLoaded fixture service IPC responds"
 [[ $(shell_ipc image-selector ping) == "ok" ]] || fail_with_log "image selector IPC responds"
+jq -e '.opened == false and .context == "" and .cursorPath == "" and .cursorName == ""' \
+  <<<"$(shell_ipc image-selector state)" >/dev/null || fail_with_log "closed image selector reports empty cursor state"
+[[ $(shell_ipc image-selector setCursor missing) == "closed" ]] || fail_with_log "closed image selector rejects remote cursor changes"
+[[ $(shell_ipc image-selector apply) == "closed" ]] || fail_with_log "closed image selector rejects remote apply"
 [[ $(shell_ipc osd ping) == "ok" ]] || fail_with_log "OSD IPC responds"
 [[ $(shell_ipc osd show '{"message":"Runtime smoke","duration":0}') == "ok" ]] || fail_with_log "OSD IPC opens"
 [[ $(shell_ipc osd close) == "ok" ]] || fail_with_log "OSD IPC closes"
 pass "plugin IPC contracts respond"
 
 shell_ipc_quiet shell rescanPlugins >/dev/null
-selector_rows_b64=$(printf '%s\t%s' "$TMPDIR/selector.png" "$TMPDIR/selector.png" | base64 -w 0)
+selector_one="$TMPDIR/selector-one.png"
+selector_two="$TMPDIR/selector-two.png"
+selector_rows_b64=$(printf '%s\t%s\n%s\t%s' "$selector_one" "$selector_one" "$selector_two" "$selector_two" | base64 -w 0)
 selector_selection_file=$(mktemp "$TMPDIR/selector-selection.XXXXXX")
 selector_done_file=$(mktemp "$TMPDIR/selector-done.XXXXXX")
 rm -f "$selector_done_file"
 selector_open=""
 for _ in {1..80}; do
-  selector_open=$(shell_ipc image-selector open "" "$selector_rows_b64" "" "$selector_selection_file" "$selector_done_file" false false 2>/dev/null || true)
+  selector_open=$(shell_ipc image-selector openWithContext "" "$selector_rows_b64" "" "$selector_selection_file" "$selector_done_file" false false theme 2>/dev/null || true)
   if [[ $selector_open == "ok" ]]; then
     break
   fi
@@ -258,9 +264,36 @@ for _ in {1..80}; do
   sleep 0.1
 done
 [[ $selector_open == "ok" ]] || fail_with_log "image selector IPC survives plugin rescan"
-shell_ipc_quiet image-selector cancel "$selector_done_file" >/dev/null
+
+selector_state=""
+for _ in {1..80}; do
+  selector_state=$(shell_ipc image-selector state 2>/dev/null || true)
+  jq -e --arg path "$selector_one" '.opened == true and .context == "theme" and .cursorPath == $path and .cursorName == "selector-one"' \
+    <<<"$selector_state" >/dev/null 2>&1 && break
+  sleep 0.1
+done
+jq -e --arg path "$selector_one" '.opened == true and .context == "theme" and .cursorPath == $path and .cursorName == "selector-one"' \
+  <<<"$selector_state" >/dev/null || fail_with_log "image selector reports live cursor state and context"
+
+[[ $(shell_ipc image-selector setCursor selector-two) == "ok" ]] || fail_with_log "image selector accepts a remote cursor name"
+selector_state=$(shell_ipc image-selector state)
+jq -e --arg path "$selector_two" '.opened == true and .cursorPath == $path and .cursorName == "selector-two"' \
+  <<<"$selector_state" >/dev/null || fail_with_log "image selector reports a remotely moved cursor"
+[[ $(shell_ipc image-selector setCursor missing) == "unknown" ]] || fail_with_log "image selector rejects an unknown cursor"
+jq -e --arg path "$selector_two" '.cursorPath == $path' <<<"$(shell_ipc image-selector state)" >/dev/null ||
+  fail_with_log "unknown remote cursor leaves the selection unchanged"
+
+[[ $(shell_ipc image-selector apply) == "ok" ]] || fail_with_log "image selector applies the remote cursor"
+for _ in {1..80}; do
+  [[ -e $selector_done_file ]] && break
+  sleep 0.1
+done
+[[ -e $selector_done_file ]] || fail_with_log "image selector remote apply finishes the request"
+[[ $(<"$selector_selection_file") == "$selector_two" ]] || fail_with_log "image selector remote apply writes the selected path"
+jq -e '.opened == false and .cursorPath == "" and .cursorName == ""' \
+  <<<"$(shell_ipc image-selector state)" >/dev/null || fail_with_log "image selector remote apply closes the picker"
 rm -f "$selector_selection_file" "$selector_done_file"
-pass "image selector IPC survives plugin rescan"
+pass "image selector remote-control IPC survives plugin rescan"
 
 lock_status_after=$(shell_ipc lock status)
 jq -e '.locked | type == "boolean"' <<<"$lock_status_after" >/dev/null || fail_with_log "lock IPC survives plugin rescan"

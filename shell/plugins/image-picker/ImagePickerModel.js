@@ -77,6 +77,26 @@ function indexForSelectedImage(images, selectedImage) {
   return 0
 }
 
+function indexForCursor(images, cursor) {
+  var values = Array.isArray(images) ? images : []
+  var needle = String(cursor || "")
+  if (!needle) return -1
+
+  for (var i = 0; i < values.length; i++) {
+    if (values[i].filePath === needle) return i
+  }
+
+  for (var j = 0; j < values.length; j++) {
+    if (values[j].fileName === needle) return j
+  }
+
+  for (var k = 0; k < values.length; k++) {
+    if (nameForPath(values[k].filePath) === needle) return k
+  }
+
+  return -1
+}
+
 function nextSelectedIndexForFilter(images, selectedIndex, filterText) {
   if (itemMatches(images, selectedIndex, filterText)) return selectedIndex
   return firstMatchingIndex(images, filterText)
@@ -92,6 +112,7 @@ if (typeof module !== "undefined") {
     filteredPosition: filteredPosition,
     selectedFilteredPosition: selectedFilteredPosition,
     indexForSelectedImage: indexForSelectedImage,
+    indexForCursor: indexForCursor,
     nextSelectedIndexForFilter: nextSelectedIndexForFilter
   }
 }

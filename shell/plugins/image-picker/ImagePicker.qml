@@ -18,6 +18,7 @@ Item {
   property string loadedImageRows: ""
   property string selectionFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTION_FILE") || Quickshell.env("OMARCHY_BACKGROUND_SELECTION_FILE")
   property string selectedImage: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTED")
+  property string pickerContext: ""
   property int selectedIndex: 0
   property bool imagesLoaded: false
   property bool opened: false
@@ -84,6 +85,36 @@ Item {
     if (!path) return filterText ? "No matches" : ""
 
     return labelForPath(path)
+  }
+
+  function cursorState() {
+    var path = opened ? currentPath() : ""
+    return JSON.stringify({
+      opened: opened,
+      context: opened ? pickerContext : "",
+      cursorPath: path,
+      cursorName: path ? nameForPath(path) : ""
+    })
+  }
+
+  function setCursor(cursor) {
+    if (!opened) return "closed"
+
+    var index = ImagePickerModel.indexForCursor(imageArray, cursor)
+    if (index < 0) return "unknown"
+
+    if (filterText) updateFilter("")
+    select(index, true)
+    focusPicker()
+    return "ok"
+  }
+
+  function applyCursor() {
+    if (!opened) return "closed"
+    if (!currentPath() || !selectionFile) return "unknown"
+
+    applySelected()
+    return "ok"
   }
 
   function itemMatches(index) {
@@ -207,7 +238,7 @@ Item {
     }
   }
 
-  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable) {
+  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable, nextContext) {
     if (requestActive && doneFile && doneFile !== nextDoneFile)
       finishDoneFile(doneFile)
 
@@ -221,6 +252,7 @@ Item {
     requestActive = !!doneFile
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
+    pickerContext = String(nextContext || "")
     filterText = ""
     layoutSettled = false
 
@@ -316,14 +348,14 @@ Item {
     var doneF = String(args.doneFile || "")
     var labels = args.showLabels === true || args.showLabels === "true"
     var filter = args.filterable === true || args.filterable === "true"
-    openSelector(dirs, rows, sel, selFile, doneF, labels, filter)
+    openSelector(dirs, rows, sel, selFile, doneF, labels, filter, args.context)
   }
 
   function close() {
     cancel()
   }
 
-  function preloadRows(nextImageRows, nextSelectedImage, nextShowLabels, nextFilterable) {
+  function preloadRows(nextImageRows, nextSelectedImage, nextShowLabels, nextFilterable, nextContext) {
     // Theme/background set hooks can warm selector rows after a picker was
     // dismissed. Ignore those preloads while a user-visible request is open;
     // otherwise the preload resets layoutSettled without revealing again,
@@ -335,6 +367,7 @@ Item {
     selectedImage = nextSelectedImage
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
+    pickerContext = String(nextContext || "")
     filterText = ""
     layoutSettled = false
 

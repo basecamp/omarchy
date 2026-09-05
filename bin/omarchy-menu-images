@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>...
+# omarchy:args=[--selected <image>] [--context <name>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>...
 
 selected_image=""
+context=""
 print_name=false
 show_labels=false
 filterable=false
@@ -14,7 +15,7 @@ cache_only=false
 image_dirs=()
 
 usage() {
-  echo "Usage: omarchy-menu-images [--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>..."
+  echo "Usage: omarchy-menu-images [--selected <image>] [--context <name>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>..."
 }
 
 while (( $# > 0 )); do
@@ -26,6 +27,15 @@ while (( $# > 0 )); do
       fi
 
       selected_image="$2"
+      shift 2
+      ;;
+    --context)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      context="$2"
       shift 2
       ;;
     --print-name)
@@ -277,18 +287,30 @@ fi
 rows_b64=$(printf '%s' "$rows" | base64 -w 0)
 
 if [[ $preload == true ]]; then
-  omarchy-shell image-selector preload "$rows_b64" "$selected_list_image" "$show_labels" "$filterable" >/dev/null || true
+  if [[ -n $context ]]; then
+    omarchy-shell image-selector preloadWithContext "$rows_b64" "$selected_list_image" "$show_labels" "$filterable" "$context" >/dev/null || true
+  else
+    omarchy-shell image-selector preload "$rows_b64" "$selected_list_image" "$show_labels" "$filterable" >/dev/null || true
+  fi
   exit 0
 fi
 
-if ! open_result=$(omarchy-shell image-selector open \
-     "" \
-     "$rows_b64" \
-     "$selected_list_image" \
-     "$selection_file" \
-     "$done_file" \
-     "$show_labels" \
-     "$filterable"); then
+open_method="open"
+open_args=(
+  ""
+  "$rows_b64"
+  "$selected_list_image"
+  "$selection_file"
+  "$done_file"
+  "$show_labels"
+  "$filterable"
+)
+if [[ -n $context ]]; then
+  open_method="openWithContext"
+  open_args+=("$context")
+fi
+
+if ! open_result=$(omarchy-shell image-selector "$open_method" "${open_args[@]}"); then
   echo "Image selector failed to accept request" >&2
   exit 1
 fi

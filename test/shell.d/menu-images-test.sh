@@ -38,6 +38,13 @@ printf 'thumbnail' >"$output"
 EOF
 chmod +x "$stub_bin/vipsthumbnail"
 
+cat >"$stub_bin/omarchy-shell" <<'EOF'
+#!/bin/bash
+
+printf '%s\n' "$*" >>"$OMARCHY_TEST_IPC_LOG"
+EOF
+chmod +x "$stub_bin/omarchy-shell"
+
 for name in one two three; do
   printf 'image-%s' "$name" >"$images/$name.png"
 done
@@ -139,3 +146,11 @@ PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" VIPSTHUMBNAIL_CALLS_FILE="$t
 
 (( $(wc -l <"$tmp/calls") == 6 )) || fail "image menu releases thumbnail locks after generation"
 pass "image menu owns locks for exactly one generator lifetime"
+
+ipc_log="$tmp/ipc.log"
+PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" OMARCHY_TEST_IPC_LOG="$ipc_log" \
+  "$ROOT/bin/omarchy-menu-images" --preload --context theme "$images"
+
+[[ $(awk '{ print $1, $2, $NF }' "$ipc_log") == "image-selector preloadWithContext theme" ]] ||
+  fail "image menu forwards semantic context over IPC"
+pass "image menu forwards semantic context over IPC"

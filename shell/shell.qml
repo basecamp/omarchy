@@ -863,6 +863,27 @@ ShellRoot {
       return shell.summon("omarchy.image-picker", payload) ? "ok" : "unknown"
     }
 
+    function openWithContext(imageDirs: string,
+                             imageRowsB64: string,
+                             selectedImage: string,
+                             selectionFile: string,
+                             doneFile: string,
+                             showLabels: string,
+                             filterable: string,
+                             context: string): string {
+      var payload = JSON.stringify({
+        imageDirs: imageDirs,
+        imageRows: Util.decodeBase64(imageRowsB64),
+        selectedImage: selectedImage,
+        selectionFile: selectionFile,
+        doneFile: doneFile,
+        showLabels: showLabels,
+        filterable: filterable,
+        context: context
+      })
+      return shell.summon("omarchy.image-picker", payload) ? "ok" : "unknown"
+    }
+
     function preload(imageRowsB64: string,
                      selectedImage: string,
                      showLabels: string,
@@ -875,6 +896,19 @@ ShellRoot {
       return "ok"
     }
 
+    function preloadWithContext(imageRowsB64: string,
+                                selectedImage: string,
+                                showLabels: string,
+                                filterable: string,
+                                context: string): string {
+      var picker = shell.imagePickerItem()
+      if (picker && typeof picker.preloadRows === "function") {
+        picker.preloadRows(Util.decodeBase64(imageRowsB64), selectedImage,
+                           showLabels, filterable, context)
+      }
+      return "ok"
+    }
+
     function cancel(doneFile: string): string {
       var picker = shell.imagePickerItem()
       if (picker && typeof picker.closeSelector === "function") {
@@ -883,6 +917,27 @@ ShellRoot {
         shell.hide("omarchy.image-picker")
       }
       return "ok"
+    }
+
+    function state(): string {
+      var picker = shell.imagePickerItem()
+      return picker && typeof picker.cursorState === "function"
+        ? picker.cursorState()
+        : JSON.stringify({ opened: false, context: "", cursorPath: "", cursorName: "" })
+    }
+
+    function setCursor(cursor: string): string {
+      var picker = shell.imagePickerItem()
+      return picker && typeof picker.setCursor === "function"
+        ? picker.setCursor(cursor)
+        : "closed"
+    }
+
+    function apply(): string {
+      var picker = shell.imagePickerItem()
+      return picker && typeof picker.applyCursor === "function"
+        ? picker.applyCursor()
+        : "closed"
     }
 
     function ping(): string {
