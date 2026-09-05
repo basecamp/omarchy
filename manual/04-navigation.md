@@ -10,7 +10,7 @@ You can then hit `Super + J` to stack them on top of each other instead of side 
 
  ![navigation-stacked](images/navigation-stacked.webp)
 
-Hit `Super + J` again to return them to their side-by-side positions. Then try `Super + Shift + Arrow Right` while on the browser to swap the windows.
+Hit `Super + J` again to return them to their side-by-side positions. Then try `Super + Shift + Arrow Right` while on the browser to swap the windows. On a multi-monitor setup, the same chord throws the window onto the next monitor when there's nothing to swap with in that direction.
 
 Now try `Super + Ctrl + T` to start the Activity monitor. That'll appears as a floating window. You can tile it using `Super + T` (and hit that again to make it floating again). Now press `Super + Shift + F` to open the files manager. You'll have a neat four-way setup:
 
