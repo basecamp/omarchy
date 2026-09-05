@@ -55,6 +55,37 @@ desktop_file=$(path_for_web_app "$APP_NAME")
 rm -f "${desktop_file:-$DESKTOP_DIR/$APP_NAME.desktop}"
 rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_NAME.png"
 
+# The WhatsApp Slim browser extension is loaded through --load-extension
+# flags added for every Chromium-based browser profile (migrations
+# 1785543725 and 1785591762). It pairs with the WhatsApp web app, so removing
+# the launcher must also strip the flag or the extension keeps coming back on
+# every browser restart (issue #9856).
+app_lc=$(printf '%s' "$APP_NAME" | tr '[:upper:]' '[:lower:]')
+if [[ $app_lc == "whatsapp" ]]; then
+  # Matched by path suffix, not by the current $OMARCHY_PATH: the migration
+  # wrote whichever value was live when it ran, and `omarchy dev link` changes
+  # it. Only one Omarchy owns a flags file, so any entry ending in this path is
+  # the one the migration added.
+  whatsapp_slim_ext='[^,]*/default/chromium/extensions/whatsapp-slim'
+  for conf in chromium chrome google-chrome brave brave-beta brave-nightly brave-origin microsoft-edge-stable; do
+    flag_file="$HOME/.config/$conf-flags.conf"
+    [[ -f $flag_file ]] || continue
+    grep -q "extensions/whatsapp-slim" "$flag_file" || continue
+    # Reverse of the migration's append, one expression per position the entry
+    # can hold: sole, first, middle, last. Every one carries a boundary on both
+    # sides, so a sibling whose name merely starts with this path keeps its own
+    # name. A line left loading nothing then goes. The path contains slashes,
+    # so no address may use / as delimiter.
+    sed -i --follow-symlinks \
+      -e "s|^--load-extension=$whatsapp_slim_ext\$|--load-extension=|" \
+      -e "s|^--load-extension=$whatsapp_slim_ext,|--load-extension=|" \
+      -e "s|,$whatsapp_slim_ext,|,|" \
+      -e "s|,$whatsapp_slim_ext\$||" \
+      -e '/^--load-extension=$/d' \
+      "$flag_file"
+  done
+fi
+
 if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then
   omarchy-notification-send -g  "Web app removed" "$APP_NAME"
 fi
