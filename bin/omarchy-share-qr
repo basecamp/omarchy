@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# omarchy:summary=Show a QR code for the clipboard or given text
+# omarchy:group=share
+# omarchy:args=[text]
+# omarchy:examples=omarchy share qr | omarchy share qr 'https://omarchy.org'
+
+set -euo pipefail
+
+display=0
+if [[ ${1:-} == "--display" ]]; then
+  display=1
+  shift
+fi
+
+text=${1:-${OMARCHY_SHARE_QR_TEXT:-}}
+if [[ -z $text ]]; then
+  text=$(wl-paste --no-newline 2>/dev/null || true)
+fi
+
+if [[ -z $text ]]; then
+  omarchy-notification-send -g 󰐲 -u critical "Nothing to share" "Copy some text first, or pass it as an argument"
+  exit 1
+fi
+
+if (( ${#text} > 2000 )); then
+  omarchy-notification-send -g 󰐲 -u critical "Too much to encode" "QR codes top out around 2 KB of text"
+  exit 1
+fi
+
+# Menu actions and other non-tty callers get a floating terminal. Clipboard
+# content is read again inside it; an explicit argument is handed over in the
+# environment so it does not have to stay on the terminal argv.
+if (( ! display )) && [[ ! -t 1 ]]; then
+  if [[ -n ${1:-} ]]; then
+    exec env OMARCHY_SHARE_QR_TEXT="$1" omarchy-launch-floating-terminal-with-presentation "omarchy-share-qr --display"
+  else
+    exec omarchy-launch-floating-terminal-with-presentation "omarchy-share-qr --display"
+  fi
+fi
+
+if ! printf '%s' "$text" | qrencode --type ANSIUTF8 --output -; then
+  omarchy-notification-send -g 󰐲 -u critical "Could not encode QR" "Try a shorter string"
+  exit 1
+fi
