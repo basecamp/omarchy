@@ -12,6 +12,21 @@ const panelSource = fs.readFileSync(root + '/shell/plugins/panels/network/Panel.
 assert(/IpcHandler[\s\S]*?function toggleNetwork\(\) \{ root\.toggleNetwork\(\) \}/.test(panelSource), 'network exposes the Wi-Fi radio toggle over IPC')
 assert(/manageIpc: false/.test(panelSource), 'network owns its IPC handler so it can extend the target methods')
 
+const passwordField = panelSource.match(/TextField \{\s*id: pwField\b[\s\S]*?\n {6}\}/)
+assert(passwordField, 'network has a Wi-Fi passphrase field')
+assert(/password: !root\.passwordVisible/.test(passwordField[0]), 'network can reveal the Wi-Fi passphrase')
+assert(/id: passwordVisibilityBtn/.test(passwordField[0]), 'network puts a password visibility control inside the passphrase field')
+assert(/root\.passwordVisible \? "Hide password" : "Show password"/.test(passwordField[0]), 'network labels both password visibility states')
+assert(/root\.passwordVisible = !root\.passwordVisible/.test(passwordField[0]), 'network password visibility control toggles the masked state')
+
+const cancelPasswordPrompt = panelSource.match(/function cancelPasswordPrompt\(\) \{[\s\S]*?\n {2}\}/)
+assert(cancelPasswordPrompt, 'network has a passphrase prompt cleanup helper')
+assert(/passwordVisible = false/.test(cancelPasswordPrompt[0]), 'network masks the passphrase again when its prompt closes')
+
+const openPasswordPrompt = panelSource.match(/function openPasswordPrompt\(ssid\) \{[\s\S]*?\n {2}\}/)
+assert(openPasswordPrompt, 'network has a passphrase prompt opener')
+assert(/if \(passwordSsid !== ssid\)[\s\S]*passwordVisible = false/.test(openPasswordPrompt[0]), 'network starts each network passphrase prompt masked')
+
 // Opening from the bar must call open() and nothing else. open() runs
 // refresh(true), which defers the PHY scan; a second bare refresh() defaults
 // scanWifi to false, sets scannerEnabled synchronously, and stalls the open on

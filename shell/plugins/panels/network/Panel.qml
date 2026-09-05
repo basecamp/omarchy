@@ -26,6 +26,7 @@ Panel {
     passwordSsid = ""
     passwordText = ""
     identityText = ""
+    passwordVisible = false
   }
 
   // Live connection details from `ip` / /sys / iw.
@@ -97,6 +98,7 @@ Panel {
   property string passwordSsid: ""
   property string passwordText: ""
   property string identityText: ""
+  property bool passwordVisible: false
 
   // ConnectionFailReason values as a plain object, so Model.js helpers stay
   // pure JS and Node-testable.
@@ -743,6 +745,7 @@ Panel {
     if (passwordSsid !== ssid) {
       passwordText = ""
       identityText = ""
+      passwordVisible = false
     }
     passwordSsid = ssid
   }
@@ -1987,7 +1990,7 @@ Panel {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: Style.spacing.rowGap / 2
         anchors.rightMargin: Style.space(6)
-        password: true
+        password: !root.passwordVisible
         placeholderText: "Passphrase"
         font.family: Style.font.family
         font.pixelSize: Style.font.body
@@ -2003,6 +2006,23 @@ Panel {
 
         onVisibleChanged: if (visible && !row.isEnterprise) Qt.callLater(forceActiveFocus)
         Component.onCompleted: if (visible && !row.isEnterprise) Qt.callLater(forceActiveFocus)
+
+        rightPadding: passwordVisibilityBtn.width + Style.spacing.controlGap
+
+        PanelActionButton {
+          id: passwordVisibilityBtn
+          anchors.right: parent.right
+          anchors.rightMargin: Style.space(2)
+          anchors.verticalCenter: parent.verticalCenter
+          iconText: root.passwordVisible ? "\uf070" : "\uf06e"
+          tooltipText: root.passwordVisible ? "Hide password" : "Show password"
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+          onClicked: {
+            root.passwordVisible = !root.passwordVisible
+            pwField.forceActiveFocus()
+          }
+        }
       }
 
       BorderSurface {
