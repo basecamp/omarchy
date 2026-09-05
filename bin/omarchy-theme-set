@@ -74,18 +74,19 @@ choose_theme_background() {
   local current_background index next_index i
 
   CHOSEN_THEME_BACKGROUND=""
+  # Resolve candidates, since the current background symlink stores a real path
   mapfile -d '' -t backgrounds < <(
     find -L "$HOME/.config/omarchy/backgrounds/$THEME_NAME/" "$CURRENT_THEME_PATH/backgrounds/" -maxdepth 1 -type f \
       \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
-      -print0 2>/dev/null | sort -z
+      -print0 2>/dev/null | sort -z | xargs -0 -r realpath -z --
   )
 
   (( ${#backgrounds[@]} > 0 )) || return 1
 
-  current_background=$(readlink "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
+  current_background=$(readlink -f "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
   index=-1
   for i in "${!backgrounds[@]}"; do
-    if [[ ${backgrounds[$i]} == $current_background ]]; then
+    if [[ ${backgrounds[$i]} == "$current_background" ]]; then
       index=$i
       break
     fi

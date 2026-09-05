@@ -519,6 +519,53 @@ expected_background="$THEME_TMPDIR/.local/state/omarchy/current/theme/background
 [[ ! -e $THEME_TMPDIR/.config/omarchy/current ]] || fail "headless theme set avoids config current state"
 pass "headless theme set creates current background symlink"
 
+make_tmpdir BG_TMPDIR
+BG_HOME="$BG_TMPDIR/home"
+BG_STUBS="$BG_TMPDIR/stubs"
+mkdir -p "$BG_HOME/.local/state/omarchy/current/theme/backgrounds" "$BG_HOME/.config/omarchy/backgrounds" "$BG_TMPDIR/walls" "$BG_STUBS"
+printf 'bg-cycle-test\n' >"$BG_HOME/.local/state/omarchy/current/theme.name"
+for background_name in a b c; do
+  printf 'x' >"$BG_TMPDIR/walls/$background_name.jpg"
+done
+printf '#!/bin/bash\nexit 0\n' >"$BG_STUBS/omarchy-shell"
+cp "$BG_STUBS/omarchy-shell" "$BG_STUBS/omarchy-notification-send"
+chmod +x "$BG_STUBS/omarchy-shell" "$BG_STUBS/omarchy-notification-send"
+
+cycle_backgrounds() {
+  local names=()
+  local i
+
+  for (( i = 0; i < 4; i++ )); do
+    PATH="$BG_STUBS:$ROOT/bin:$PATH" HOME="$BG_HOME" "$ROOT/bin/omarchy-theme-bg-next"
+    names+=("$(basename -- "$(readlink -f "$BG_HOME/.local/state/omarchy/current/background")")")
+  done
+
+  printf '%s' "${names[*]}"
+}
+
+ln -s "$BG_TMPDIR/walls" "$BG_HOME/.config/omarchy/backgrounds/bg-cycle-test"
+[[ $(cycle_backgrounds) == "a.jpg b.jpg c.jpg a.jpg" ]] || fail "background cycling advances through a symlinked backgrounds directory"
+pass "background cycling advances through a symlinked backgrounds directory"
+
+rm "$BG_HOME/.config/omarchy/backgrounds/bg-cycle-test" "$BG_HOME/.local/state/omarchy/current/background"
+cp -r "$BG_TMPDIR/walls" "$BG_HOME/.config/omarchy/backgrounds/bg-cycle-test"
+[[ $(cycle_backgrounds) == "a.jpg b.jpg c.jpg a.jpg" ]] || fail "background cycling advances through a real backgrounds directory"
+pass "background cycling advances through a real backgrounds directory"
+
+make_tmpdir BG_THEME_TMPDIR
+mkdir -p "$BG_THEME_TMPDIR/.config/omarchy/backgrounds" "$BG_THEME_TMPDIR/walls"
+for background_name in 1-one 2-two; do
+  printf 'x' >"$BG_THEME_TMPDIR/walls/$background_name.jpg"
+done
+ln -s "$BG_THEME_TMPDIR/walls" "$BG_THEME_TMPDIR/.config/omarchy/backgrounds/tokyo-night"
+OMARCHY_PATH="$ROOT" HOME="$BG_THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
+[[ $(readlink -f "$BG_THEME_TMPDIR/.local/state/omarchy/current/background") == "$BG_THEME_TMPDIR/walls/1-one.jpg" ]] || fail "headless theme set picks a symlinked user background"
+
+PATH="$BG_STUBS:$ROOT/bin:$PATH" HOME="$BG_THEME_TMPDIR" "$ROOT/bin/omarchy-theme-bg-set" "$BG_THEME_TMPDIR/.config/omarchy/backgrounds/tokyo-night/1-one.jpg"
+OMARCHY_PATH="$ROOT" HOME="$BG_THEME_TMPDIR" OMARCHY_THEME_HEADLESS=1 "$ROOT/bin/omarchy-theme-set" "Tokyo Night"
+[[ $(readlink -f "$BG_THEME_TMPDIR/.local/state/omarchy/current/background") == "$BG_THEME_TMPDIR/walls/2-two.jpg" ]] || fail "headless theme set advances past a symlinked user background"
+pass "headless theme set advances through symlinked user backgrounds"
+
 make_tmpdir MIGRATION_TMPDIR
 mkdir -p \
   "$MIGRATION_TMPDIR/.config/omarchy/current/theme" \
