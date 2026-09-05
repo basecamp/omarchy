@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle window split orientation on supported layouts
+# omarchy:hidden=true
+
+set -euo pipefail
+
+layout=$(hyprctl activeworkspace -j 2>/dev/null | jq -r '.tiledLayout // "dwindle"')
+
+if [[ $layout == "dwindle" ]]; then
+  hyprctl dispatch 'hl.dsp.layout("togglesplit")' >/dev/null 2>&1 || \
+    hyprctl dispatch layoutmsg togglesplit >/dev/null 2>&1 || true
+else
+  omarchy-notification-send -g 󱂬 "Split toggle is not supported on $layout layout" >/dev/null 2>&1 || true
+fi
