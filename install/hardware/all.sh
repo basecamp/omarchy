@@ -36,9 +36,12 @@ run_logged "$OMARCHY_INSTALL/hardware/asus/fix-z13-touchpad.sh"
 run_logged "$OMARCHY_INSTALL/hardware/framework/qmk-hid.sh"
 
 run_logged "$OMARCHY_INSTALL/hardware/apple/fix-spi-keyboard.sh"
+run_logged "$OMARCHY_INSTALL/hardware/apple/fix-t1-touchbar.sh"
+run_logged "$OMARCHY_INSTALL/hardware/apple/fix-mbp133-amdgpu.sh"
 run_logged "$OMARCHY_INSTALL/hardware/apple/fix-suspend-nvme.sh"
 run_logged "$OMARCHY_INSTALL/hardware/apple/fix-t2.sh"
 run_logged "$OMARCHY_INSTALL/hardware/apple/fix-brcmfmac-supplicant.sh"
+run_logged "$OMARCHY_INSTALL/hardware/apple/fix-brcmfmac-5ghz.sh"
 
 run_logged "$OMARCHY_INSTALL/hardware/lenovo/fix-yoga-pro7-bass-speakers.sh"
 

@@ -30,6 +30,10 @@ allowed = {
   # Hardware-conditional sleep hooks, installed only on the machines that need
   # them so the hook does not exist where it does not apply.
   "/usr/lib/systemd/system-sleep",
+  # Hardware-conditional BCM43602 board NVRAM. linux-firmware-broadcom ships the
+  # chip firmware but not this calibration file; /usr/lib/firmware/updates/brcm
+  # is the kernel override path so a later packaged txt cannot conflict.
+  "/usr/lib/firmware/updates/brcm",
   # Written through a variable, so the scan below cannot see them at the point
   # they are written. Both drop configuration into another project's tree rather
   # than Omarchy's, which is why neither is a candidate for omarchy-settings.

@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -euo pipefail
+
+dmi_product="${OMARCHY_MBP133_DMI_PRODUCT:-/sys/class/dmi/id/product_name}"
+pci_devices="${OMARCHY_MBP133_PCI_DEVICES:-/sys/bus/pci/devices}"
+apply_helper="${OMARCHY_MBP133_APPLY_HELPER:-/etc/omarchy/hardware/mbp133-amdgpu-stability}"
+
+[[ $(cat "$dmi_product" 2>/dev/null || true) == "MacBookPro13,3" ]] || exit 0
+
+gpu=""
+for candidate in "$pci_devices"/*; do
+  [[ -f $candidate/vendor && -f $candidate/device ]] || continue
+  [[ $(<"$candidate/vendor") == 0x1002 ]] || continue
+  [[ $(<"$candidate/device") == 0x67ef ]] || continue
+  [[ $(<"$candidate/subsystem_vendor") == 0x106b ]] || continue
+  [[ $(<"$candidate/subsystem_device") == 0x0160 ]] || continue
+  gpu=$candidate
+  break
+done
+[[ -n $gpu ]] || exit 0
+
+mclk_is_highest() {
+  local line level highest="" active=""
+
+  while IFS= read -r line; do
+    if [[ $line =~ ^[[:space:]]*([0-9]+): ]]; then
+      level=${BASH_REMATCH[1]}
+      highest=$level
+      [[ $line == *'*'* ]] && active=$level
+    fi
+  done <"$gpu/pp_dpm_mclk"
+
+  [[ -n $highest && $active == "$highest" ]]
+}
+
+started=${SECONDS:-0}
+while true; do
+  if [[ $(<"$gpu/power_dpm_force_performance_level") != manual ]] || ! mclk_is_highest; then
+    if "$apply_helper"; then
+      logger -t mbp133-amdgpu-stability "Reapplied the highest MCLK mask after a driver reset"
+    else
+      logger -t mbp133-amdgpu-stability "Could not reapply the MCLK mask; retrying"
+    fi
+  fi
+
+  if (( SECONDS - started < 90 )); then
+    sleep 0.25
+  else
+    sleep 2
+  fi
+done

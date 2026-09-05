@@ -1,0 +1,82 @@
+#!/bin/bash
+
+set -euo pipefail
+
+dmi_product="${OMARCHY_MBP133_DMI_PRODUCT:-/sys/class/dmi/id/product_name}"
+pci_devices="${OMARCHY_MBP133_PCI_DEVICES:-/sys/bus/pci/devices}"
+
+[[ $(cat "$dmi_product" 2>/dev/null || true) == "MacBookPro13,3" ]] || {
+  echo "Skipping Radeon workaround: this is not a MacBookPro13,3"
+  exit 0
+}
+
+gpu=""
+for candidate in "$pci_devices"/*; do
+  [[ -f $candidate/vendor && -f $candidate/device ]] || continue
+  [[ $(<"$candidate/vendor") == 0x1002 ]] || continue
+  [[ $(<"$candidate/device") == 0x67ef ]] || continue
+  [[ $(<"$candidate/subsystem_vendor") == 0x106b ]] || continue
+  [[ $(<"$candidate/subsystem_device") == 0x0160 ]] || continue
+  gpu=$candidate
+  break
+done
+
+[[ -n $gpu ]] || {
+  echo "Skipping Radeon workaround: Apple Radeon Pro 460 was not found"
+  exit 0
+}
+
+for _ in {1..100}; do
+  if [[ -e $gpu/power_dpm_force_performance_level && \
+        -e $gpu/pp_dpm_sclk && \
+        -e $gpu/pp_dpm_mclk && \
+        -e $gpu/pp_dpm_pcie ]]; then
+    break
+  fi
+  sleep 0.1
+done
+
+for control in power_dpm_force_performance_level pp_dpm_sclk pp_dpm_mclk pp_dpm_pcie; do
+  [[ -e $gpu/$control ]] || {
+    echo "Missing AMDGPU control: $gpu/$control" >&2
+    exit 1
+  }
+done
+
+clock_levels() {
+  awk -F: '/^[[:space:]]*[0-9]+:/ {
+    level=$1
+    gsub(/[[:space:]]/, "", level)
+    print level
+  }' "$1"
+}
+
+sclk_levels=$(clock_levels "$gpu/pp_dpm_sclk" | paste -sd' ' -)
+mclk_level=$(clock_levels "$gpu/pp_dpm_mclk" | tail -n 1)
+pcie_levels=$(clock_levels "$gpu/pp_dpm_pcie" | paste -sd' ' -)
+
+[[ -n $sclk_levels && -n $mclk_level && -n $pcie_levels ]] || {
+  echo "Could not determine the Radeon DPM clock levels" >&2
+  exit 1
+}
+
+printf '%s\n' manual | tee "$gpu/power_dpm_force_performance_level" >/dev/null
+printf '%s\n' "$sclk_levels" | tee "$gpu/pp_dpm_sclk" >/dev/null
+printf '%s\n' "$mclk_level" | tee "$gpu/pp_dpm_mclk" >/dev/null
+printf '%s\n' "$pcie_levels" | tee "$gpu/pp_dpm_pcie" >/dev/null
+
+if [[ ${OMARCHY_MBP133_VERIFY_DPM:-1} == 1 ]]; then
+  for _ in {1..20}; do
+    if grep -Eq "^[[:space:]]*$mclk_level:.*\\*" "$gpu/pp_dpm_mclk"; then
+      echo "MacBookPro13,3 Radeon workaround active: MCLK level $mclk_level pinned;" \
+        "SCLK and PCIe may scale"
+      exit 0
+    fi
+    sleep 0.1
+  done
+
+  echo "AMDGPU did not enter the requested MCLK level $mclk_level" >&2
+  exit 1
+fi
+
+echo "MacBookPro13,3 Radeon workaround wrote MCLK level $mclk_level"
