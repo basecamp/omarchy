@@ -55,6 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `zai` | Z.ai's coding-plan monitor endpoint (5-hour session + 7-day weekly) | pi/omp sessions on the Z.ai provider (`glm-*` models) |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -63,6 +64,12 @@ falls back to local stats only. A non-default Claude directory is honored via
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
 signed in there.
+
+Z.ai limits need a key that carries a GLM Coding Plan; a pay-as-you-go key
+reports "no coding plan" and the panel falls back to local stats only. The key
+comes from `~/.config/omarchy/agents/zai.json`, then `ZAI_API_KEY` /
+`ZHIPU_API_KEY` in the environment, then pi/omp's `.env`. Set `platform` to
+`"zhipu"` in the config for the China (`open.bigmodel.cn`) host.
 
 ### Fireworks balance
 
