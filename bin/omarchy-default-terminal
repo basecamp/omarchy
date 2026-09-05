@@ -11,8 +11,25 @@ if [[ ${1:-} == "--install" ]]; then
 fi
 
 if (($# == 0)); then
-  desktop_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
-  desktop_id=${desktop_id%%:*}
+  # Read back the file this command writes. Asking xdg-terminal-exec to resolve
+  # it instead answers with an empty string and a zero exit wherever that tool
+  # is missing or is a shim that only knows how to exec one terminal, so the
+  # menu showed nothing selected on machines that had a default all along.
+  desktop_id=""
+  if [[ -r ~/.config/xdg-terminals.list ]]; then
+    while IFS= read -r line; do
+      [[ -z $line || $line == \#* ]] && continue
+      desktop_id=$line
+      break
+    done <~/.config/xdg-terminals.list
+  fi
+
+  # Nothing written yet: fall back to whatever the system resolves.
+  if [[ -z $desktop_id ]]; then
+    desktop_id=$(xdg-terminal-exec --print-id 2>/dev/null || true)
+    desktop_id=${desktop_id%%:*}
+  fi
+
   case "$desktop_id" in
   Alacritty.desktop) echo "alacritty" ;;
   foot.desktop) echo "foot" ;;
