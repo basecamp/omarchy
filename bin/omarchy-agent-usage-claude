@@ -219,12 +219,22 @@ def scan_cache_paths(projects_path: Path) -> tuple[Path, Path]:
   return root / f"claude-scan-{digest}.json", root / f"claude-scan-{digest}.lock"
 
 
+def read_json(path: Path) -> dict[str, Any] | None:
+  try:
+    return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+
+
 def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None:
   if max_age_seconds <= 0 or not path.exists():
     return None
   try:
-    if time.time() - path.stat().st_mtime <= max_age_seconds:
-      return json.loads(path.read_text(encoding="utf-8"))
+    # A negative age means the mtime is in the future: the clock moved
+    # backwards since the write, so the cache's freshness cannot be trusted.
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      return read_json(path)
   except Exception:
     return None
   return None
@@ -798,7 +808,7 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
   # per flick, so recent probe results are reused for a short window — and
   # kept as the answer of record when a later probe fails.
   probe_cache = cache_root() / "claude-limits.json"
-  cached = read_fresh_json(probe_cache, float("inf")) or {}
+  cached = read_json(probe_cache) or {}
   fallback = usable_cached_limits(cached)
 
   # Probing needs a live token and only the Claude Code CLI can mint one: it
@@ -824,7 +834,8 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
   # entirely; the interval is there to absorb repeated panel opens, not to
   # overrule someone who pressed refresh.
   fetched_at = number(cached.get("fetchedAtMs")) / 1000
-  if fallback and not force and time.time() - fetched_at < PROBE_MIN_INTERVAL_SECONDS:
+  fetched_age = time.time() - fetched_at
+  if fallback and not force and 0 <= fetched_age < PROBE_MIN_INTERVAL_SECONDS:
     result["limits"] = fallback
     return result
 

@@ -81,8 +81,8 @@ trap 'rm -rf "$CACHE_HOME"' EXIT
 
 collect_limits() {
   COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" TOKEN="$1" EXPIRES_AT="$2" CACHED="$3" \
-    XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
-import importlib.machinery, importlib.util, json, os, pathlib
+    CACHE_MTIME_OFFSET="${4:-0}" XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
+import importlib.machinery, importlib.util, json, os, pathlib, time
 
 loader = importlib.machinery.SourceFileLoader("collector", os.environ["COLLECTOR"])
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -93,6 +93,10 @@ cache = collector.cache_root() / "claude-limits.json"
 cached = os.environ["CACHED"]
 if cached:
   cache.write_text(cached, encoding="utf-8")
+  offset = float(os.environ["CACHE_MTIME_OFFSET"])
+  if offset:
+    timestamp = time.time() + offset
+    os.utime(cache, (timestamp, timestamp))
 elif cache.exists():
   cache.unlink()
 
@@ -146,6 +150,14 @@ signed_out=$(collect_limits "" 0 "$cache")
   fail "Claude collector serves open cached windows without a token" "$signed_out"
 pass "Claude collector serves open cached windows without a token"
 
+# The limits cache is a last-known fallback governed by each window's reset
+# time, not by the file's age. A backwards clock correction must not discard
+# an otherwise open fallback when no token is available to replace it.
+future_fallback=$(collect_limits "" 0 "$cache" 3600)
+[[ $(jq -c '[.limits[].label]' <<<"$future_fallback") == '["Weekly (7-day)"]' ]] ||
+  fail "Claude collector keeps open fallback limits after a backwards clock correction" "$future_fallback"
+pass "Claude collector keeps open fallback limits after a backwards clock correction"
+
 # A live token that cannot reach the endpoint keeps the old contract: the open
 # window stands in, and the shell is asked to retry sooner than its interval.
 unreachable=$(collect_limits "token" 0 "$cache")
@@ -158,9 +170,9 @@ pass "Claude collector falls back to cache when the probe cannot connect"
 # Reuse and --force are decided against a cache that is fresh by the clock, so
 # the probe is answered rather than refused: what matters is whether it ran.
 probe_with_cache() {
-  COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" FORCE="$1" CACHED="$2" PAYLOAD="$3" \
+  COLLECTOR="$ROOT/bin/omarchy-agent-usage-claude" FORCE="$1" CACHED="$2" PAYLOAD="$3" CACHE_MTIME_OFFSET="${4:-0}" \
     XDG_CACHE_HOME="$CACHE_HOME" python3 - <<'PY'
-import importlib.machinery, importlib.util, io, json, os
+import importlib.machinery, importlib.util, io, json, os, time
 
 loader = importlib.machinery.SourceFileLoader("collector", os.environ["COLLECTOR"])
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -169,6 +181,10 @@ loader.exec_module(collector)
 
 cache = collector.cache_root() / "claude-limits.json"
 cache.write_text(os.environ["CACHED"], encoding="utf-8")
+offset = float(os.environ["CACHE_MTIME_OFFSET"])
+if offset:
+  timestamp = time.time() + offset
+  os.utime(cache, (timestamp, timestamp))
 
 probes = []
 
@@ -197,6 +213,27 @@ reused=$(probe_with_cache false "$fresh" "$payload")
 [[ $(jq -r '.probes' <<<"$reused") == "0" && $(jq -c '[.result.limits[].percent]' <<<"$reused") == "[0.11]" ]] ||
   fail "Claude collector reuses a cache younger than the probe interval" "$reused"
 pass "Claude collector reuses a cache younger than the probe interval"
+
+# An early boot probe can be stamped ahead of corrected wall time when NTP
+# moves the clock backwards. That cache must not suppress live probes until
+# the clock catches up.
+future=$(jq -nc --arg open "$open_at" --argjson future "$(python3 -c 'import time; print(round((time.time() + 3600) * 1000))')" '{
+  fetchedAtMs: $future,
+  limits: [{ label: "Weekly (7-day)", percent: 0.11, resetsAt: $open }]
+}')
+
+# If the clock correction makes a probe necessary but that probe cannot
+# connect, the cache remains the last-known answer. Its reset time, rather than
+# its future mtime, decides whether the fallback is still usable.
+future_unreachable=$(collect_limits "token" 0 "$future" 3600)
+[[ $(jq -c '[.limits[].percent]' <<<"$future_unreachable") == "[0.11]" && $(jq -r '.retryAdvised' <<<"$future_unreachable") == "true" ]] ||
+  fail "Claude collector keeps future-dated fallback when the re-probe fails" "$future_unreachable"
+pass "Claude collector keeps future-dated fallback when the re-probe fails"
+
+corrected=$(probe_with_cache false "$future" "$payload" 3600)
+[[ $(jq -r '.probes' <<<"$corrected") == "1" && $(jq -c '[.result.limits[].percent]' <<<"$corrected") == "[0.44]" ]] ||
+  fail "Claude collector re-probes after a backwards clock correction" "$corrected"
+pass "Claude collector re-probes after a backwards clock correction"
 
 # --force is someone pressing refresh, and its help text promises the caches are
 # ignored — so the reuse window must not outrank it.
