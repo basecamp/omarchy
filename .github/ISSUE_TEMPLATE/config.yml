@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Suggestion
-    url: https://github.com/basecamp/omarchy/discussions/categories/suggestions
+    url: https://github.com/omacom/omarchy/discussions/categories/suggestions
     about: Suggest a new feature, change to existing feature, or other ideas in Discussions.
   - name: Support
     url: https://omarchy.org/discord

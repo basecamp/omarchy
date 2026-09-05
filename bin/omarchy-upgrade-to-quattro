@@ -962,7 +962,7 @@ populate_legacy_hypr_defaults() {
     tmp_dir=$(mktemp -d)
     archive_dir="$tmp_dir/archive"
     mkdir -p "$archive_dir"
-    if curl -fsSL https://github.com/basecamp/omarchy/archive/refs/heads/master.tar.gz | tar -xz -C "$archive_dir" &&
+    if curl -fsSL https://github.com/omacom/omarchy/archive/refs/heads/master.tar.gz | tar -xz -C "$archive_dir" &&
       [[ -d $archive_dir/omarchy-master/default/hypr ]]; then
       cp -a "$archive_dir/omarchy-master/default/hypr/." "$shim_hypr_dir/"
     fi

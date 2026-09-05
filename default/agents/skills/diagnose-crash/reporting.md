@@ -40,8 +40,8 @@ useful; filing there yourself is not part of this.
 A duplicate issue costs a maintainer more time than no report at all.
 
 ```bash
-gh search issues --repo basecamp/omarchy "<program> crash"
-gh issue list --repo basecamp/omarchy --state all --search "<signal> <program>"
+gh search issues --repo omacom/omarchy "<program> crash"
+gh issue list --repo omacom/omarchy --state all --search "<signal> <program>"
 ```
 
 Search on the crashing program, the signal, and distinctive symbols from the
@@ -59,7 +59,7 @@ more than another duplicate.
 If a plausible match comes back, read it properly first:
 
 ```bash
-gh issue view <number> --repo basecamp/omarchy --comments
+gh issue view <number> --repo omacom/omarchy --comments
 ```
 
 Confirm it is genuinely the same failure. The same program crashing is not the
@@ -74,7 +74,7 @@ A comment that only says the bug happens to you too is noise. If that is all you
 have, tell the user so and file nothing.
 
 ```bash
-gh issue comment <number> --repo basecamp/omarchy --body "..."
+gh issue comment <number> --repo omacom/omarchy --body "..."
 ```
 
 ## Filing a new issue
@@ -82,7 +82,7 @@ gh issue comment <number> --repo basecamp/omarchy --body "..."
 Only when the search turns up nothing that matches:
 
 ```bash
-gh issue create --repo basecamp/omarchy --title "..." --body "..."
+gh issue create --repo omacom/omarchy --title "..." --body "..."
 ```
 
 Include what happened, what was expected, steps to reproduce, system details from
