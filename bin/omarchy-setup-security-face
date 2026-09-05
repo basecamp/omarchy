@@ -1,0 +1,104 @@
+#!/bin/bash
+
+# omarchy:summary=Set up Howdy face recognition authentication for lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+configure_ir_emitter() {
+  # If an IR emitter tool is present or installable, ensure it is configured
+  if omarchy-cmd-present linux-enable-ir-emitter; then
+    echo "Configuring hardware IR emitter..."
+    sudo linux-enable-ir-emitter configure || true
+    if systemctl list-unit-files | grep -q linux-enable-ir-emitter; then
+      sudo systemctl enable --now linux-enable-ir-emitter.service || true
+    fi
+  fi
+}
+
+configure_howdy_settings() {
+  local config_file="/etc/howdy/config.ini"
+  [[ -f $config_file ]] || return 0
+
+  echo "Optimizing Howdy settings for lock screen responsiveness..."
+  # Clean up notices and synthetic inputs that glitch GUI lock screens
+  sudo sed -i -E \
+    -e 's/^[# ]*detection_notice\s*=.*/detection_notice = false/' \
+    -e 's/^[# ]*timeout_notice\s*=.*/timeout_notice = false/' \
+    -e 's/^[# ]*no_confirmation\s*=.*/no_confirmation = true/' \
+    -e 's/^[# ]*suppress_unknown\s*=.*/suppress_unknown = true/' \
+    -e 's/^[# ]*dark_threshold\s*=.*/dark_threshold = 90/' \
+    -e 's/^[# ]*max_height\s*=.*/max_height = 320/' \
+    -e 's/^[# ]*timeout\s*=.*/timeout = 3/' \
+    -e 's/^[# ]*dark_threshold\s*=.*/dark_threshold = 60/' \
+    "$config_file"
+
+  # Find stable IR camera path if not already configured
+  local ir_device=""
+  if [[ -d /dev/v4l/by-path ]]; then
+    for dev in /dev/v4l/by-path/*; do
+      [[ -e $dev ]] || continue
+      local dev_name
+      dev_name=$(v4l2-ctl --device="$dev" --all 2>/dev/null | grep -i 'card' || true)
+      if [[ ${dev_name,,} == *ir* || ${dev_name,,} == *infra* ]]; then
+        ir_device="$dev"
+        break
+      fi
+    done
+  fi
+
+  if [[ -n $ir_device ]]; then
+    echo "Found IR camera device: $ir_device"
+    sudo sed -i -E "s|^[# ]*device_path\s*=.*|device_path = $ir_device|" "$config_file"
+  fi
+}
+
+setup_lock_howdy_pam() {
+  echo "Configuring lock screen for face authentication..."
+  sudo tee /etc/pam.d/omarchy-lock-howdy >/dev/null <<'EOF'
+#%PAM-1.0
+auth       required                    /usr/local/lib/security/pam_howdy_face_only.so
+account    include                     system-local-login
+EOF
+}
+
+echo -e "\e[32mSetting up face recognition for lock screen authentication.\n\e[0m"
+
+# Bail before installing anything if there's no camera detected
+if ! omarchy-hw-face; then
+  echo -e "\e[31mNo camera or IR face sensor detected.\e[0m"
+  exit 1
+fi
+
+# Install required packages
+echo "Installing Howdy face authentication..."
+omarchy-pkg-add howdy v4l-utils
+
+configure_ir_emitter
+configure_howdy_settings
+
+# Enroll initial model
+echo -e "\e[32m\nStep 1: Baseline Face Model\e[0m"
+echo -e "Look straight at the camera with normal lighting.\n"
+
+if sudo howdy add; then
+  setup_lock_howdy_pam
+  echo -e "\e[32m\nBaseline model enrolled successfully!\e[0m"
+else
+  echo -e "\e[31m\nFace enrollment failed. Please try again.\e[0m"
+  exit 1
+fi
+
+# Offer optional multi-angle / lighting enrollment
+echo -e "\n\e[34mTip: Enrolling a second angle (e.g. low-light or slouched posture) ensures instant unlock in all conditions.\e[0m"
+read -r -p "Would you like to enroll an additional face angle now? (y/N) " -n 1 -r || true
+echo ""
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  echo -e "\e[32m\nStep 2: Secondary Face Model\e[0m"
+  echo -e "Look at the camera from a slight angle, with glasses, or in dimmer light.\n"
+  sudo howdy add || true
+fi
+
+echo -e "\e[32m\nPerfect! Face authentication is now completely configured.\e[0m"
+echo "You can unlock your lock screen (Super + L) instantly by looking at the camera."

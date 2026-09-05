@@ -20,7 +20,9 @@ Item {
   property bool pendingSessionLock: false
   property bool authenticatingPassword: false
   property bool fingerprintAuthenticating: false
+  property bool faceAuthenticating: false
   property bool passwordPamConfigured: false
+  property bool facePamConfigured: false
   property bool fingerprintConfigured: false
   property bool previewVisible: false
   property string enteredPassword: ""
@@ -119,9 +121,12 @@ Item {
     failureMessage = ""
     failedAttempts = 0
     authenticatingPassword = false
+    faceAuthenticating = false
     fingerprintAuthenticating = false
+    faceAttemptTimer.stop()
     fingerprintRetryTimer.stop()
     if (passwordPam.active) passwordPam.abort()
+    if (facePam.active) facePam.abort()
     if (fingerprintPam.active) fingerprintPam.abort()
   }
 
@@ -206,6 +211,25 @@ Item {
     runWake()
   }
 
+  function startFace() {
+    if (!lockRequested || !sessionLock.secure || !facePamConfigured) return
+    if (facePam.active || faceAuthenticating) return
+
+    faceAuthenticating = true
+    if (!facePam.start()) {
+      faceAuthenticating = false
+      return
+    }
+    faceAttemptTimer.restart()
+  }
+
+  function handleFaceFinished(result) {
+    faceAttemptTimer.stop()
+    faceAuthenticating = false
+    if (!lockRequested) return
+    if (result === PamResult.Success) finishUnlock()
+  }
+
   function startFingerprint() {
     if (!lockRequested || !sessionLock.secure || !fingerprintConfigured) return
     if (fingerprintPam.active || fingerprintAuthenticating) return
@@ -239,6 +263,7 @@ Item {
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
         root.startFingerprint()
+        root.startFace()
       }
     }
 
@@ -271,6 +296,8 @@ Item {
         backgroundPath: root.backgroundPath
         backgroundVersion: root.backgroundVersion
         fingerprintConfigured: root.fingerprintConfigured
+        facePamConfigured: root.facePamConfigured
+        faceAuthenticating: root.faceAuthenticating
         authenticatingPassword: root.authenticatingPassword
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
@@ -280,7 +307,10 @@ Item {
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
-        onWakeRequested: root.runWake()
+        onWakeRequested: {
+          root.runWake()
+          root.startFace()
+        }
       }
 
     }
@@ -301,6 +331,8 @@ Item {
       backgroundPath: root.backgroundPath
       backgroundVersion: root.backgroundVersion
       fingerprintConfigured: root.fingerprintConfigured
+      facePamConfigured: root.facePamConfigured
+      faceAuthenticating: false
       authenticatingPassword: false
       failureMessage: ""
       failedAttempts: 0
@@ -335,6 +367,46 @@ Item {
 
     onError: function(error) {
       root.handlePasswordFailure()
+    }
+  }
+
+  PamContext {
+    id: facePam
+    config: "omarchy-lock-howdy"
+    user: root.userName
+
+    onCompleted: function(result) {
+      root.handleFaceFinished(result)
+    }
+
+    onError: function(error) {
+      root.faceAttemptTimer.stop()
+      root.faceAuthenticating = false
+    }
+  }
+
+  Timer {
+    id: faceAttemptTimer
+    interval: 5000
+    repeat: false
+    onTriggered: {
+      if (facePam.active) facePam.abort()
+      root.faceAuthenticating = false
+    }
+  }
+
+  Timer {
+    id: resumeDetectionTimer
+    interval: 1000
+    repeat: true
+    running: root.lockRequested
+    property double lastTick: 0
+
+    onRunningChanged: lastTick = Date.now()
+    onTriggered: {
+      var now = Date.now()
+      if (lastTick > 0 && now - lastTick > interval + 2000) root.startFace()
+      lastTick = now
     }
   }
 
@@ -490,6 +562,15 @@ Item {
     onFileChanged: reload()
   }
 
+  FileView {
+    path: "/etc/pam.d/omarchy-lock-howdy"
+    watchChanges: true
+    printErrors: false
+    onLoaded: root.facePamConfigured = true
+    onLoadFailed: root.facePamConfigured = false
+    onFileChanged: reload()
+  }
+
   // No lock before PAM is known good. An answer from before then may be stale --
   // the failsafe can be cleared from a TTY -- so re-ask rather than act on it.
   onPasswordPamConfiguredChanged: {
@@ -530,6 +611,8 @@ Item {
         realScreens: root.realScreenCount(),
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
+        facePam: root.facePamConfigured,
+        faceAuthenticating: root.faceAuthenticating,
         authenticating: root.authenticating,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt

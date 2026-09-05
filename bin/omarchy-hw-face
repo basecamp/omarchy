@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true when a camera or IR face sensor is present
+# omarchy:hidden=true
+
+# Check for video4linux capture devices
+video_dir="/sys/class/video4linux"
+if [[ -d $video_dir ]]; then
+  for dev in "$video_dir"/video*; do
+    [[ -e $dev ]] || continue
+    # Verify it has video capture capability
+    if [[ -r $dev/name ]]; then
+      name=$(<"$dev/name")
+      name=${name,,}
+      # Match IR cameras, webcams, or video capture devices
+      if [[ $name == *camera* || $name == *video* || $name == *webcam* || $name == *ir* || $name == *sensor* ]]; then
+        exit 0
+      fi
+    fi
+  done
+fi
+
+# Fallback: check device nodes
+if ls /dev/video* >/dev/null 2>&1; then
+  exit 0
+fi
+
+exit 1
