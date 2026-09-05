@@ -10,6 +10,27 @@ const idle = requireFromRoot('shell/plugins/services/idle/IdleModel.js')
 assertEqual(idle.secondsFromConfig('42.9', 10), 42, 'idle floors configured seconds')
 assertEqual(idle.secondsFromConfig('-1', 10), 10, 'idle rejects negative seconds')
 assertEqual(idle.secondsFromConfig('nope', 10), 10, 'idle rejects invalid seconds')
+assertEqual(idle.secondsFromConfig(0, 10), 0, 'idle accepts a zero timeout')
+assertEqual(
+  idle.secondsFromConfig(idle.MAX_TIMER_SECONDS, 10),
+  idle.MAX_TIMER_SECONDS,
+  'idle keeps the largest QTimer-safe timeout'
+)
+assertEqual(
+  idle.secondsFromConfig(idle.MAX_TIMER_SECONDS + 1, 10),
+  idle.MAX_TIMER_SECONDS,
+  'idle clamps just past the QTimer-safe ceiling'
+)
+// 30 days is a common "never lock" approximation and overflows INT32 ms.
+assertEqual(
+  idle.secondsFromConfig(2592000, 10),
+  idle.MAX_TIMER_SECONDS,
+  'idle clamps multi-week lock timeouts that would wrap QTimer intervals negative'
+)
+assert(
+  idle.secondsFromConfig(2592000, 10) * 1000 <= 2147483647,
+  'clamped idle timeouts stay within a signed 32-bit millisecond interval'
+)
 
 assertDeepEqual(idle.eventParts({ data: 'a,b,c' }, 2), ['a', 'b', 'c'], 'idle parses raw event data')
 assertDeepEqual(
