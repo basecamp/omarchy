@@ -1,0 +1,472 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the GitHub Copilot usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect GitHub Copilot usage and quota into one display-ready JSON record.
+
+Reads Copilot session data from the standalone CLI's local session store,
+which lives in COPILOT_HOME (default ~/.copilot) as session-store.db. Quota
+fetches use OAuth tokens managed by editor plugins (VS Code, JetBrains,
+copilot.vim), which are separate from the CLI's local config directory.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import http.client
+import json
+import math
+import os
+import sqlite3
+import stat
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "copilot"
+AGENT_NAME = "Copilot"
+AUTH_HELP = "Sign in with VS Code, JetBrains, or copilot.vim for quota display; the CLI keeps usage in COPILOT_HOME (~/.copilot by default)"
+
+GITHUB_API_BASE = "https://api.github.com"
+COPILOT_INTERNAL_URL = f"{GITHUB_API_BASE}/copilot_internal/user"
+
+COPILOT_EDITOR_CONFIG_DIR = Path("~/.config/github-copilot").expanduser()
+COPILOT_TOKEN_FILES = ("apps.json", "hosts.json", "oauth.json")
+
+QUOTA_PRIORITY = ("premium_interactions", "premium_requests", "chat", "completions")
+QUOTA_DISPLAY_NAMES = {
+  "premium_interactions": "Premium Requests",
+  "premium_requests": "Premium Requests",
+  "chat": "Chat",
+  "completions": "Completions",
+}
+
+# Resource ceilings for data read from the mutable local session store and
+# for the shell-facing output record. Any violation fails closed: the
+# collector publishes a fresh empty-stats record, never a truncated one.
+MAX_DB_BYTES = 512 * 1024 * 1024  # session-store.db plus its -wal sibling
+MAX_STAT_ROWS = 20_000  # grouped date/model rows fetched from the store
+MAX_ACTIVE_DATES = 4_000  # distinct calendar days retained
+MAX_MODELS = 200  # distinct model names retained
+MAX_MODEL_NAME_LEN = 200  # characters per model name
+MAX_COUNTER_VALUE = 10**15  # per-counter ceiling; keeps arithmetic sane
+MAX_RECORD_BYTES = 1_000_000  # serialized JSON record ceiling
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def copilot_dir() -> Path:
+  return expand_path(
+    os.environ.get("COPILOT_HOME")
+    or os.environ.get("COPILOT_DIR")
+    or "~/.copilot"
+  )
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def format_count(value: Any) -> str:
+  try:
+    return f"{int(round(float(value))):,}"
+  except (TypeError, ValueError):
+    return "0"
+
+
+def get_oauth_token() -> str | None:
+  """Read OAuth token from editor plugin config (VS Code, JetBrains, copilot.vim).
+
+  The standalone Copilot CLI stores its local session history under COPILOT_HOME
+  (~/.copilot by default), which is separate from the editor plugin auth store.
+  """
+  max_size = 1_000_000  # 1 MB limit
+  if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_NONBLOCK"):
+    return None
+  flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+
+  for token_file in COPILOT_TOKEN_FILES:
+    token_path = COPILOT_EDITOR_CONFIG_DIR / token_file
+    try:
+      fd = os.open(str(token_path), flags)
+    except OSError:
+      continue
+
+    try:
+      st = os.fstat(fd)
+      if not stat.S_ISREG(st.st_mode) or st.st_uid not in (os.geteuid(), 0):
+        continue
+
+      raw_bytes = os.read(fd, max_size + 1)
+      if len(raw_bytes) > max_size:
+        continue
+
+      content = raw_bytes.decode("utf-8")
+      data = json.loads(content)
+      if isinstance(data, dict):
+        for host_data in data.values():
+          if isinstance(host_data, dict) and "oauth_token" in host_data:
+            return host_data["oauth_token"]
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+      continue
+    finally:
+      os.close(fd)
+
+  return None
+
+
+def fetch_quota(token: str) -> dict[str, Any] | None:
+  """Fetch quota from GitHub API."""
+  try:
+    req = urllib.request.Request(
+      COPILOT_INTERNAL_URL,
+      headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    )
+    with urllib.request.urlopen(req, timeout=5) as response:
+      raw_bytes = response.read(10_000_001)  # 10 MB limit + 1 byte to detect overflow
+    if len(raw_bytes) > 10_000_000:
+      return None
+    data = json.loads(raw_bytes)
+  except (OSError, ValueError, http.client.HTTPException):
+    # OSError covers URLError/timeouts/socket errors, ValueError covers JSON
+    # and unicode decode failures, HTTPException covers IncompleteRead.
+    return None
+
+  if not isinstance(data, dict):
+    return None
+  snapshots = data.get("quota_snapshots")
+  if not isinstance(snapshots, dict):
+    return None
+
+  for quota_key in QUOTA_PRIORITY:
+    snapshot = snapshots.get(quota_key)
+    if not isinstance(snapshot, dict):
+      continue
+    used = snapshot.get("credits_used", 0)
+    total = snapshot.get("entitlement", 0)
+    if not isinstance(used, (int, float)) or not isinstance(total, (int, float)):
+      continue
+    if not math.isfinite(used) or not math.isfinite(total):
+      continue
+    # Unmetered buckets (e.g. "chat" reporting 0/0 with has_quota true) carry
+    # no displayable numbers; skip them so a metered bucket can win instead.
+    if total <= 0 and used <= 0:
+      continue
+
+    # has_quota stays true for finite quotas even when fully consumed (live
+    # verified against premium_interactions at 19.7% remaining, has_quota
+    # true); the authoritative exhaustion signal is remaining/percent_remaining
+    # hitting zero on a non-unlimited bucket. Fall back to has_quota only if
+    # neither field is present, for compatibility with older API shapes.
+    remaining = snapshot.get("remaining")
+    percent_remaining = snapshot.get("percent_remaining")
+    if isinstance(remaining, (int, float)) and math.isfinite(remaining):
+      exhausted = remaining <= 0
+    elif isinstance(percent_remaining, (int, float)) and math.isfinite(percent_remaining):
+      exhausted = percent_remaining <= 0
+    else:
+      exhausted = not snapshot.get("has_quota", False)
+
+    result = {
+      "displayName": QUOTA_DISPLAY_NAMES.get(quota_key, quota_key),
+      "used": used,
+      "total": total,
+      "exhausted": exhausted,
+    }
+    reset_date = data.get("quota_reset_date_utc")
+    if isinstance(reset_date, str) and len(reset_date) <= 64:
+      result["resetsAt"] = reset_date
+    return result
+  return None
+
+
+def empty_usage_stats() -> dict[str, Any]:
+  """Fresh usage-stats record; a new dict each call so callers can mutate freely."""
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTokensByModel": {},
+    "todayTotalTokens": 0,
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "recentDays": [{"date": d, "messageCount": 0} for d in recent_date_strings()],
+    "activeDates": [],
+    "activeDays": 0,
+    "modelUsage": {},
+  }
+
+
+def add_model_tokens(bucket: dict[str, dict[str, int]], model: str,
+                     input_tokens: int, output_tokens: int,
+                     cache_read: int, cache_write: int) -> None:
+  entry = bucket.setdefault(model, {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  })
+  entry["inputTokens"] += input_tokens
+  entry["outputTokens"] += output_tokens
+  entry["cacheReadInputTokens"] += cache_read
+  entry["cacheCreationInputTokens"] += cache_write
+
+
+def session_db_safe_to_read(db_path: Path) -> bool:
+  """Validate the session store before querying it.
+
+  The store is mutable, so oversized or non-regular files must be rejected
+  before sqlite touches them: open the main file once with no-follow and
+  nonblocking semantics, validate that same descriptor as an owner-appropriate
+  regular file within the size ceiling, and check the WAL sibling (which
+  sqlite will also open) via lstat so a symlinked or oversized WAL is
+  rejected too.
+  """
+  if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_NONBLOCK"):
+    return False
+  flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+
+  try:
+    fd = os.open(str(db_path), flags)
+  except OSError:
+    return False
+  try:
+    st = os.fstat(fd)
+  finally:
+    os.close(fd)
+  if not stat.S_ISREG(st.st_mode) or st.st_uid not in (os.geteuid(), 0):
+    return False
+  total_bytes = st.st_size
+
+  wal_path = db_path.parent / (db_path.name + "-wal")
+  try:
+    wal_st = os.lstat(str(wal_path))
+  except OSError:
+    wal_st = None
+  if wal_st is not None:
+    if not stat.S_ISREG(wal_st.st_mode) or wal_st.st_uid not in (os.geteuid(), 0):
+      return False
+    total_bytes += wal_st.st_size
+
+  return total_bytes <= MAX_DB_BYTES
+
+
+def bounded_count(value: Any) -> int | None:
+  """Coerce a sqlite aggregate to a bounded non-negative int, or None."""
+  if value is None:
+    return 0
+  if isinstance(value, bool) or not isinstance(value, (int, float)):
+    return None
+  if isinstance(value, float) and not math.isfinite(value):
+    return None
+  value = int(value)
+  if value < 0 or value > MAX_COUNTER_VALUE:
+    return None
+  return value
+
+
+def read_copilot_stats() -> dict[str, Any]:
+  """Read usage statistics from Copilot session store."""
+  db_path = copilot_dir() / "session-store.db"
+  stats = empty_usage_stats()
+
+  if not db_path.exists():
+    return stats
+
+  # Fail closed on an oversized or unsafe store rather than querying it.
+  if not session_db_safe_to_read(db_path):
+    return stats
+
+  conn = None
+  try:
+    conn = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(DISTINCT session_id) FROM turns")
+    total_sessions = bounded_count(cursor.fetchone()[0])
+    if total_sessions is None:
+      return empty_usage_stats()
+    stats["totalSessions"] = total_sessions
+
+    # created_at is stored in UTC (ISO 8601 with Z suffix); convert to the
+    # local calendar day so buckets line up with the local "today" below.
+    # LIMIT is one past the ceiling so an over-limit store is detected and
+    # rejected instead of silently truncated.
+    cursor.execute("""
+      SELECT DATE(created_at, 'localtime'), COUNT(*),
+             SUM(input_tokens), SUM(output_tokens),
+             SUM(cache_read_tokens), SUM(cache_write_tokens),
+             model
+      FROM assistant_usage_events
+      WHERE created_at IS NOT NULL
+      GROUP BY DATE(created_at, 'localtime'), model
+      LIMIT ?
+    """, (MAX_STAT_ROWS + 1,))
+
+    rows = cursor.fetchall()
+    if len(rows) > MAX_STAT_ROWS:
+      return empty_usage_stats()
+
+    date_stats: dict[str, dict[str, int]] = {}
+    model_stats: dict[str, dict[str, int]] = {}
+    today_tokens: dict[str, int] = {}
+    # recentDays already ends at today; reuse it so the whole record is
+    # consistent on one clock sample even if midnight passes mid-run.
+    today = stats["recentDays"][-1]["date"]
+
+    for date_str, event_count, input_tokens, output_tokens, cache_read, cache_write, model in rows:
+      if not date_str or not isinstance(date_str, str):
+        continue
+
+      event_count = bounded_count(event_count)
+      input_tokens = bounded_count(input_tokens)
+      output_tokens = bounded_count(output_tokens)
+      cache_read = bounded_count(cache_read)
+      cache_write = bounded_count(cache_write)
+      if (event_count is None or input_tokens is None or output_tokens is None
+          or cache_read is None or cache_write is None):
+        return empty_usage_stats()
+
+      # Bound retained cardinality and string lengths; a store that exceeds
+      # these ceilings is rejected outright, never partially published.
+      if date_str not in date_stats and len(date_stats) >= MAX_ACTIVE_DATES:
+        return empty_usage_stats()
+      if model is not None:
+        if not isinstance(model, str) or len(model) > MAX_MODEL_NAME_LEN:
+          return empty_usage_stats()
+        if model and model not in model_stats and len(model_stats) >= MAX_MODELS:
+          return empty_usage_stats()
+
+      # input_tokens already includes cache reads/writes, so the day total is
+      # input + output; adding the cache columns would double-count them.
+      tokens = input_tokens + output_tokens
+
+      day = date_stats.setdefault(date_str, {"count": 0, "tokens": 0})
+      day["count"] += event_count
+      day["tokens"] += tokens
+
+      if model:
+        # The panel sums inputTokens with the cache columns for its per-model
+        # total, so the bucket must carry uncached input only.
+        uncached_input = max(input_tokens - cache_read - cache_write, 0)
+        add_model_tokens(model_stats, model, uncached_input, output_tokens,
+                         cache_read, cache_write)
+        if date_str == today:
+          # todayTokensByModel is a flat model → token-total map; the panel
+          # merges it numerically, so nested buckets would collapse to zero.
+          today_tokens[model] = today_tokens.get(model, 0) + tokens
+
+    if today in date_stats:
+      stats["todayPrompts"] = date_stats[today]["count"]
+      stats["todayTotalTokens"] = date_stats[today]["tokens"]
+      stats["todayTokensByModel"] = today_tokens
+
+    stats["modelUsage"] = model_stats
+
+    for entry in stats["recentDays"]:
+      if entry["date"] in date_stats:
+        entry["messageCount"] = date_stats[entry["date"]]["tokens"]
+
+    stats["activeDates"] = sorted(date_stats)
+    stats["activeDays"] = len(stats["activeDates"])
+
+    cursor.execute("SELECT COUNT(*) FROM assistant_usage_events")
+    total_prompts = bounded_count(cursor.fetchone()[0])
+    if total_prompts is None:
+      return empty_usage_stats()
+    stats["totalPrompts"] = total_prompts
+
+    if today in date_stats:
+      cursor.execute("""
+        SELECT COUNT(DISTINCT session_id)
+        FROM assistant_usage_events
+        WHERE DATE(created_at, 'localtime') = ?
+      """, (today,))
+      today_sessions = bounded_count(cursor.fetchone()[0])
+      if today_sessions is None:
+        return empty_usage_stats()
+      stats["todaySessions"] = today_sessions
+  except (OSError, sqlite3.Error):
+    # A display collector must never crash the panel; fall back to a fresh
+    # empty record rather than returning partially populated stats.
+    return empty_usage_stats()
+  finally:
+    if conn is not None:
+      conn.close()
+
+  return stats
+
+
+def main() -> None:
+  parser = argparse.ArgumentParser(description=__doc__)
+  # This collector has no cache to invalidate or reuse: the sqlite scan takes
+  # milliseconds and the quota probe always goes to the wire. --force and
+  # --limits-only are accepted for panel-contract compatibility; every run
+  # already satisfies both (fresh scan, fresh limits).
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  stats = read_copilot_stats()
+
+  token = get_oauth_token()
+  quota = None
+  if token:
+    quota = fetch_quota(token)
+
+  limits = []
+  if quota:
+    display_name = quota["displayName"]
+    used = quota["used"]
+    total = quota["total"]
+    if quota["exhausted"]:
+      usage_label = f"No more {display_name} available"
+      pct = 1.0
+    else:
+      usage_label = f"{display_name} {format_count(used)}/{format_count(total)} used"
+      pct = min(used / total, 1.0) if total > 0 else 0.0
+    limit_entry = {
+      "label": usage_label,
+      "title": usage_label,
+      "percent": pct,
+      "used": used,
+      "total": total,
+      "unit": display_name.lower(),
+    }
+    if "resetsAt" in quota:
+      limit_entry["resetsAt"] = quota["resetsAt"]
+    limits = [limit_entry]
+
+  def build_record(record_stats: dict[str, Any], record_limits: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+      "schemaVersion": 1,
+      "id": AGENT_ID,
+      "name": AGENT_NAME,
+      "ready": True,
+      "hasLocalStats": bool(record_stats.get("modelUsage")),
+      "authHelpText": AUTH_HELP,
+      "usageStatusText": "",
+      "tierLabel": "",
+      "limits": record_limits,
+      "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+      **record_stats,
+    }
+
+  payload = json.dumps(build_record(stats, limits), indent=2)
+  if len(payload.encode("utf-8")) > MAX_RECORD_BYTES:
+    # Hard ceiling on the shell-facing document: fail closed with a fresh
+    # well-formed empty record rather than publishing a truncated structure.
+    payload = json.dumps(build_record(empty_usage_stats(), []), indent=2)
+
+  print(payload)
+
+
+if __name__ == "__main__":
+  main()
