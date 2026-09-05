@@ -50,6 +50,14 @@ if [[ -z $APP_NAME ]]; then
   exit 1
 fi
 
+# Same rule as omarchy-webapp-install: the name becomes a filename. A slash
+# would turn the fallback paths below into directory levels, so a mistyped name
+# could delete a .desktop or icon outside the directories this command owns.
+if [[ $APP_NAME == */* ]]; then
+  echo "App name cannot contain '/': $APP_NAME" >&2
+  exit 1
+fi
+
 icon_name=$(printf '%s\n' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
 desktop_file=$(path_for_web_app "$APP_NAME")
 rm -f "${desktop_file:-$DESKTOP_DIR/$APP_NAME.desktop}"
