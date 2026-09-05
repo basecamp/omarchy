@@ -6,6 +6,21 @@ machine — including headless CI sandboxes with no compositor. The graphical
 acceptance suite is a separate thing that drives a live session in a disposable
 VM; see [`agents/skills/acceptance-tests.md`](../agents/skills/acceptance-tests.md).
 
+## GitHub Actions CI
+
+The `CI` workflow runs on pull requests and pushes to `quattro`. It exposes separate `cli` and `shell` checks so a failure in one suite does not hide the result of the other.
+
+Both checks run inside the rolling `archlinux:base-devel` container as an unprivileged user. The workflow checks out `omarchy-pkgs` and `omarchy-iso` beside this repository and exports `OMARCHY_PKGS_PATH` and `OMARCHY_ISO_PATH`, because shell tests validate contracts owned by those sibling repositories.
+
+Run the same suite entry points locally from the repository root:
+
+```bash
+./test/cli
+./test/shell
+```
+
+For the complete shell coverage, keep current `omacom/omarchy-pkgs` and `omacom/omarchy-iso` checkouts beside this repository or point `OMARCHY_PKGS_PATH` and `OMARCHY_ISO_PATH` at them explicitly. A non-Arch host can run the entry points, but it does not exactly reproduce the workflow's package and filesystem environment.
+
 ## Suite map
 
 `./test/all` runs both suites below and keeps going when one fails, so a single
