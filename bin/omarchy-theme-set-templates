@@ -401,4 +401,22 @@ if [[ -f $COLORS_FILE ]]; then
   rm "$sed_script"
 fi
 
+# A theme may carry a declarative Neovim integration in colors-neovim.toml. It
+# is pure data -- no Lua is shipped or run -- so an installed theme may ship it,
+# and it replaces whatever neovim.lua was generated above.
+if [[ -f $NEXT_THEME_DIR/colors-neovim.toml ]]; then
+  if ! omarchy-theme-colors-neovim --file "$NEXT_THEME_DIR/colors-neovim.toml" --out "$NEXT_THEME_DIR/neovim.lua"; then
+    echo "omarchy-theme-set-templates: keeping the generated neovim.lua" >&2
+  fi
+fi
+
+# A theme may carry a declarative tmux integration in colors-tmux.toml. It is
+# pure data -- no shell is shipped or run -- so an installed theme may ship it,
+# and it replaces whatever tmux-theme.conf was generated above.
+if [[ -f $NEXT_THEME_DIR/colors-tmux.toml ]]; then
+  if ! omarchy-theme-colors-tmux --file "$NEXT_THEME_DIR/colors-tmux.toml" --out "$NEXT_THEME_DIR/tmux-theme.conf"; then
+    echo "omarchy-theme-set-templates: keeping the generated tmux-theme.conf" >&2
+  fi
+fi
+
 apply_shell_section_overrides
