@@ -4,6 +4,8 @@
 
 set -euo pipefail
 
+: "${OMARCHY_PATH:=/usr/share/omarchy}"
+
 # Dev is a linked source checkout: OMARCHY_PATH points somewhere other than
 # the package-backed install at /usr/share/omarchy. This takes precedence over
 # the package channels, since the checkout overrides whatever is installed.
