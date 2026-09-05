@@ -56,6 +56,18 @@ ShellRoot {
   property var shellConfig: builtinShellConfig
   property bool pluginReloading: false
   property bool pluginReloadPending: false
+  property bool pluginReloadDeferredForLock: false
+  readonly property bool sessionLocked: {
+    var lockService = shell.firstPartyServiceFor("omarchy.lock")
+    return lockService ? lockService.locked : false
+  }
+
+  onSessionLockedChanged: {
+    if (shell.sessionLocked || !shell.pluginReloadDeferredForLock) return
+    shell.pluginReloadDeferredForLock = false
+    console.log("Session unlocked, applying deferred plugin reload")
+    Qt.callLater(shell.reloadPlugins)
+  }
 
   Timer {
     id: localPluginReloadTimer
@@ -760,6 +772,15 @@ ShellRoot {
   }
 
   function reloadPlugins() {
+    // ext-session-lock keeps the compositor locked when its client disappears.
+    // The lock client lives in the service set below, so keep it alive and
+    // coalesce local plugin changes until the user can unlock normally.
+    if (shell.sessionLocked) {
+      if (!shell.pluginReloadDeferredForLock)
+        console.log("Plugin reload deferred while session is locked")
+      shell.pluginReloadDeferredForLock = true
+      return
+    }
     if (shell.pluginReloading || shell.pluginRegistry.scanning) {
       shell.pluginReloadPending = true
       return
