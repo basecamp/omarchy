@@ -180,11 +180,28 @@ function shouldRenderCompactGlyph(glyph, iconSource, singleLineToast) {
   return String(glyph || "").length > 0 && String(iconSource || "").length === 0 && !!singleLineToast
 }
 
+function normalizeExpireTimeout(value) {
+  if (value === undefined || value === null || value === "") return -1
+  var timeout = Number(value)
+  if (!isFinite(timeout) || timeout < 0) return -1
+  return timeout
+}
+
+function popupDuration(expireTimeout, defaultDuration, maxDuration) {
+  var timeout = normalizeExpireTimeout(expireTimeout)
+  if (timeout === 0) return 0
+
+  var fallback = Math.max(0, Number(defaultDuration) || 0)
+  if (timeout < 0) return fallback
+
+  var maximum = Math.max(fallback, Number(maxDuration) || 0)
+  return Math.min(maximum, Math.max(fallback, Math.max(1, Math.round(timeout))))
+}
+
 function snapshotOf(notification, timestamp) {
   var n = notification || {}
   var id = n.id || 0
-  var expireTimeout = Number(n.expireTimeout || 0)
-  if (!isFinite(expireTimeout) || expireTimeout < 0) expireTimeout = 0
+  var expireTimeout = normalizeExpireTimeout(n.expireTimeout)
   return {
     id: id,
     originalId: id,
@@ -247,7 +264,9 @@ function historyEntry(value, normalUrgency) {
     glyph: e.glyph || "",
     execArgv: e.execArgv || "",
     urgency: typeof e.urgency === "number" ? e.urgency : normalUrgency,
-    expireTimeout: 0,
+    // History replays use the server default rather than inheriting the
+    // original toast's requested lifetime.
+    expireTimeout: -1,
     timestamp: e.timestamp || 0
   }
 }
@@ -281,10 +300,15 @@ function parseSettings(raw) {
 // moved into the history/ subdirectory when the toast expires, is dismissed,
 // or its action is invoked. History is those moved files, newest last-10.
 
-function popupEntry(value, normalUrgency) {
-  var entry = historyEntry(value, normalUrgency)
-  var expire = Number((value || {}).expireTimeout || 0)
-  if (!isFinite(expire) || expire < 0) expire = 0
+function popupEntry(value, normalUrgency, fromDisk) {
+  var source = value || {}
+  var entry = historyEntry(source, normalUrgency)
+  var expire = normalizeExpireTimeout(source.expireTimeout)
+  // Popup files written before timeoutPolicyVersion existed normalized the
+  // server default (-1) to 0. Preserve their old timed behavior on upgrade;
+  // newly written files mark 0 as an explicit never-expire request.
+  var timeoutPolicyVersion = Number(source.timeoutPolicyVersion || 0)
+  if (fromDisk && expire === 0 && (!isFinite(timeoutPolicyVersion) || timeoutPolicyVersion < 1)) expire = -1
   entry.expireTimeout = expire
   // Absolute expiry deadline, set only when a restore resets a surviving
   // popup's display lifetime. Kept out of the entry entirely when unset so
@@ -353,7 +377,9 @@ function persistablePopup(entry, imagesDir) {
 function serializePopup(entry, normalUrgency) {
   // Compact (single-line) on purpose: restore cats every file together and
   // parses line by line, which only works when each file is one line.
-  return JSON.stringify(popupEntry(entry, normalUrgency))
+  var persisted = popupEntry(entry, normalUrgency)
+  persisted.timeoutPolicyVersion = 1
+  return JSON.stringify(persisted)
 }
 
 // Parse the concatenation of every persisted popup file into entries,
@@ -372,7 +398,7 @@ function parsePopupFiles(raw, normalUrgency) {
     if (!line) continue
     try {
       var value = JSON.parse(line)
-      if (value && typeof value === "object") entries.push(popupEntry(value, normalUrgency))
+      if (value && typeof value === "object") entries.push(popupEntry(value, normalUrgency, true))
     } catch (e) {
       // A torn write from a crash mid-save — skip the line, keep the rest.
     }
@@ -383,7 +409,8 @@ function parsePopupFiles(raw, normalUrgency) {
 
 // A persisted popup whose lifetime already ran out would have expired on
 // screen had the shell kept running, so it is not restored. duration 0 means
-// the popup never expires (critical urgency) and always survives restarts.
+// the popup never expires (critical urgency or an explicit timeout of 0) and
+// always survives restarts.
 // A restore-reset deadline outranks the original timestamp: without it, a
 // second restart would judge a re-shown toast by a clock that no longer
 // governs its display and drop it while it is still on screen.
@@ -459,6 +486,8 @@ if (typeof module !== "undefined") {
     execArgvFromHints: execArgvFromHints,
     parseExecArgv: parseExecArgv,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
+    normalizeExpireTimeout: normalizeExpireTimeout,
+    popupDuration: popupDuration,
     snapshotOf: snapshotOf,
     popupRoles: popupRoles,
     popupRowChanged: popupRowChanged,

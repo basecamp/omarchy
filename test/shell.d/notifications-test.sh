@@ -300,6 +300,20 @@ assertDeepEqual(
   },
   'notifications create stable snapshots'
 )
+assertEqual(
+  notifications.snapshotOf({ id: 1, urgency: 1 }, 1).expireTimeout,
+  -1,
+  'notifications preserve the server-default timeout separately from never-expire'
+)
+assertEqual(
+  notifications.snapshotOf({ id: 1, urgency: 1, expireTimeout: 0 }, 1).expireTimeout,
+  0,
+  'notifications preserve an explicit never-expire timeout'
+)
+assertEqual(notifications.popupDuration(-1, 8000, 30000), 8000, 'notifications use the default lifetime when requested')
+assertEqual(notifications.popupDuration(0, 8000, 30000), 0, 'notifications honor a never-expire timeout')
+assertEqual(notifications.popupDuration(12000, 8000, 30000), 12000, 'notifications honor a longer requested lifetime')
+assertEqual(notifications.popupDuration(60000, 8000, 30000), 30000, 'notifications cap finite requested lifetimes')
 
 // An in-place update keeps the popup's identity — the file name it was
 // persisted under — and takes everything the card draws from the new content.
@@ -385,7 +399,7 @@ assertDeepEqual(
   ['newest', 'middle'],
   'notifications replay the newest history rows up to the limit'
 )
-assertEqual(historyReplay[0].expireTimeout, 0, 'notifications replay history rows with the standard toast lifetime')
+assertEqual(historyReplay[0].expireTimeout, -1, 'notifications replay history rows with the standard toast lifetime')
 assertEqual('deadline' in historyReplay[0], false, 'notifications drop the restore deadline from replayed history rows')
 assertDeepEqual(notifications.historyRows('', [], 1, 10), [], 'notifications replay nothing from an empty history dir')
 
@@ -438,6 +452,16 @@ assertEqual(
   notifications.popupEntry({ id: 1, timestamp: 5, expireTimeout: 4000 }, 1).expireTimeout,
   4000,
   'notifications preserve popup expire timeouts unlike history rows'
+)
+assertEqual(
+  notifications.popupEntry({ id: 1, timestamp: 5 }, 1).expireTimeout,
+  -1,
+  'notifications keep an omitted popup timeout as the server default'
+)
+assertEqual(
+  notifications.popupEntry({ id: 1, timestamp: 5, expireTimeout: 0 }, 1).expireTimeout,
+  0,
+  'notifications keep an explicit zero popup timeout as never-expire'
 )
 
 // Persisted entries must not reference images another process owns: Chromium
@@ -506,6 +530,22 @@ assertDeepEqual(
   notifications.parsePopupFiles('', 1),
   [],
   'notifications restore nothing from an empty popup dir'
+)
+assertEqual(
+  notifications.parsePopupFiles(
+    notifications.serializePopup({ id: 3, originalId: 3, urgency: 1, expireTimeout: 0, timestamp: 400 }, 1),
+    1
+  )[0].expireTimeout,
+  0,
+  'notifications restore a newly persisted never-expire timeout'
+)
+assertEqual(
+  notifications.parsePopupFiles(
+    JSON.stringify({ id: 3, originalId: 3, urgency: 1, expireTimeout: 0, timestamp: 400 }),
+    1
+  )[0].expireTimeout,
+  -1,
+  'notifications keep legacy default-timeout popup files timed after upgrade'
 )
 
 assert(!notifications.popupExpired({ timestamp: 0 }, 0, 999999), 'critical popups never expire on restore')
