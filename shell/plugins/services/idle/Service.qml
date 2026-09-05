@@ -25,6 +25,12 @@ Item {
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
+  // The lock plugin is a service in this same process, so its state is readable
+  // directly: no subprocess round trip, and no reading as unlocked when an IPC
+  // call fails.
+  readonly property var lockService: shell && shell.firstPartyServiceFor ? shell.firstPartyServiceFor("omarchy.lock") : null
+  readonly property bool sessionLocked: !!(lockService && lockService.locked)
+
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
   property bool hasPendingStayAwakePersist: false
@@ -103,7 +109,14 @@ Item {
     lockTimer.stop()
     screensaverLaunchGraceTimer.stop()
 
-    if (root.idledThisCycle) runProcess(wakeProcess, "wake", "omarchy-system-wake")
+    // A locked session's display belongs to the lock screen: it lights the
+    // panel for input that reaches it and blanks it again afterwards. The idle
+    // monitor resuming is not evidence of input while locked - Hyprland also
+    // reports activity when an idle inhibitor appears, with nobody at the
+    // machine - and waking on that lights the display with nothing left to
+    // blank it again.
+    if (IdleModel.wakeAfterIdle(root.idledThisCycle, root.sessionLocked)) runProcess(wakeProcess, "wake", "omarchy-system-wake")
+    else if (root.idledThisCycle) logEvent("wake-skipped", "session-locked")
 
     root.idledThisCycle = false
     root.screensaverStartedThisCycle = false
@@ -185,6 +198,7 @@ Item {
       stayAwakeStatePath: root.stayAwakeStatePath,
       idle: idleMonitor.isIdle,
       inIdleCycle: root.idledThisCycle,
+      sessionLocked: root.sessionLocked,
       screensaverStarted: root.screensaverStartedThisCycle,
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,

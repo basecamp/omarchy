@@ -5,6 +5,7 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const idle = requireFromRoot('shell/plugins/services/idle/IdleModel.js')
 
 assertEqual(idle.secondsFromConfig('42.9', 10), 42, 'idle floors configured seconds')
@@ -32,6 +33,30 @@ assertDeepEqual(
   idle.screensaverWindowsAfter({ a: true }, '', false),
   { windows: { a: true }, count: 1 },
   'idle leaves screensaver windows unchanged without an address'
+)
+
+assertEqual(idle.wakeAfterIdle(true, false), true, 'idle wakes the display after a cycle it ran')
+assertEqual(idle.wakeAfterIdle(true, true), false, 'idle leaves a locked session\'s display to the lock screen')
+assertEqual(idle.wakeAfterIdle(false, false), false, 'idle does not wake a display it never put to sleep')
+assertEqual(idle.wakeAfterIdle(false, true), false, 'idle does not wake a locked display it never put to sleep')
+
+// Hyprland sends ext-idle "resumed" the moment an idle inhibitor appears, so a
+// browser starting media on a background workspace reads as activity at a
+// blanked lock screen. Waking there lights the display with nothing to blank
+// it again. The compositor fixture proves the behaviour; these keep the wiring
+// honest on machines where that fixture has to skip.
+const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/services/idle/Service.qml'), 'utf8')
+assert(
+  /wakeAfterIdle\(root\.idledThisCycle, root\.sessionLocked\)[^\n]*runProcess\(wakeProcess/.test(serviceQml),
+  'the idle service consults the lock before waking the display'
+)
+assert(
+  !/if \(root\.idledThisCycle\) runProcess\(wakeProcess/.test(serviceQml),
+  'no unconditional display wake remains in the idle service'
+)
+assert(
+  /sessionLocked:[^\n]*lockService[^\n]*\.locked/.test(serviceQml),
+  'the idle service reads the lock state from the in-process lock service'
 )
 JS
 
