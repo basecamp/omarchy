@@ -14,6 +14,8 @@ Item {
   readonly property string home: Quickshell.env("HOME")
   readonly property string stayAwakeStateDir: home + "/.local/state/omarchy/indicators"
   readonly property string stayAwakeStatePath: stayAwakeStateDir + "/stay-awake"
+  readonly property string inhibitorStateDir: home + "/.local/state/omarchy"
+  readonly property string inhibitorStatePath: inhibitorStateDir + "/idle-inhibitors"
   readonly property int defaultScreensaverSeconds: 150
   readonly property int defaultLockSeconds: 300
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
@@ -22,7 +24,7 @@ Item {
   readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
   readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
-  readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
+  readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake && dbusInhibitorCount === 0
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
   property bool stayAwake: false
@@ -35,6 +37,7 @@ Item {
   property string lastEventAt: ""
   property var screensaverWindows: ({})
   property int screensaverWindowCount: 0
+  property int dbusInhibitorCount: 0
 
   function secondsFromConfig(value, fallback) {
     return IdleModel.secondsFromConfig(value, fallback)
@@ -63,6 +66,10 @@ Item {
   }
 
   function launchScreensaver() {
+    // An inhibitor may have arrived while the screensaver timer was running; never
+    // blank the screen while a D-Bus inhibitor is active.
+    if (!root.idleEnabled) return
+
     root.screensaverStartedThisCycle = true
     screensaverLaunchGraceTimer.restart()
     runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
@@ -177,6 +184,37 @@ Item {
     else handleActiveSignal()
   }
 
+  // Apps that call org.freedesktop.ScreenSaver.Inhibit() (browsers playing video,
+  // VLC, …) ask us not to blank the screen. The idle-inhibit daemon tracks those
+  // calls and writes the active count to a state file; we fold that count into
+  // idleEnabled so any active D-Bus inhibitor suppresses the screensaver and lock.
+  function handleInhibitorStateChanged(previous) {
+    switch (IdleModel.inhibitorTransition(previous, root.dbusInhibitorCount)) {
+      case "cancel":
+        // An app started inhibiting mid-cycle: pull back the screensaver/lock.
+        if (root.idledThisCycle) root.cancelIdleCycle("dbus-inhibit")
+        break
+      case "rearm":
+        // All inhibitors released: re-arm idle from the current monitor state.
+        logEvent("dbus-inhibit", "cleared")
+        Qt.callLater(root.handleIdleChanged)
+        break
+    }
+  }
+
+  function parseInhibitorState(text) {
+    var count = IdleModel.inhibitorCountFromText(text)
+
+    if (count !== root.dbusInhibitorCount) {
+      // Capture the old count before overwriting it so the handler can tell
+      // whether inhibitors were added or removed.
+      var previous = root.dbusInhibitorCount
+      root.dbusInhibitorCount = count
+      logEvent("dbus-inhibit", "count=" + count)
+      root.handleInhibitorStateChanged(previous)
+    }
+  }
+
   function statusJson() {
     return JSON.stringify({
       enabled: root.idleEnabled,
@@ -191,6 +229,7 @@ Item {
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
+      dbusInhibitors: root.dbusInhibitorCount,
       timers: {
         screensaver: screensaverTimer.running,
         lock: lockTimer.running,
@@ -329,6 +368,36 @@ Item {
     onFileChanged: root.refreshStayAwakeState()
   }
 
+  // Watch the parent directory, not the file: FileView can't observe a file
+  // that doesn't exist yet, and the idle-inhibit daemon may create idle-inhibitors
+  // after the shell has started. When the directory changes, re-probe the file.
+  Process {
+    id: inhibitorStateProbe
+    running: true
+    // Compact to a single line with jq so the SplitParser sees exactly one JSON
+    // object regardless of how the daemon formats the file.
+    command: ["bash", "-c", "jq -c . \"$HOME/.local/state/omarchy/idle-inhibitors\" 2>/dev/null || echo '{}'"]
+    stdout: SplitParser { onRead: function(line) { root.parseInhibitorState(line) } }
+  }
+
+  FileView {
+    path: root.inhibitorStateDir
+    watchChanges: true
+    printErrors: false
+    onFileChanged: inhibitorProbeDebounce.restart()
+  }
+
+  // The daemon's atomic write creates a temp file and then renames it over the
+  // state file, so a single update emits two directory events. Debounce them:
+  // a process already running when the second event arrives would not be
+  // restarted by setting `running = true` again, leaving the stale count.
+  Timer {
+    id: inhibitorProbeDebounce
+    interval: 50
+    repeat: false
+    onTriggered: inhibitorStateProbe.running = true
+  }
+
   Component.onCompleted: {
     logEvent("service-ready")
     refreshStayAwakeState()
@@ -354,7 +423,13 @@ Item {
     }
 
     function toggle(): string {
-      return root.setIdleEnabled(!root.idleEnabled)
+      // Toggle the user's stay-awake preference, not the effective idle state.
+      // idleEnabled is false while a D-Bus inhibitor is active, so deriving from
+      // it would silently drop a toggle issued during playback: flipping to
+      // "enable idle" would succeed at nothing, and flipping to "stay awake"
+      // would clear the flag to enable idle unexpectedly once the inhibitor was
+      // released.
+      return root.setIdleEnabled(root.stayAwake)
     }
   }
 }

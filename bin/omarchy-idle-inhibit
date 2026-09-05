@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+
+# omarchy:summary=Own the D-Bus idle-inhibit name so apps can suppress the screensaver
+# omarchy:group=system
+# omarchy:hidden=true
+
+"""Own org.freedesktop.ScreenSaver on the session bus and track idle inhibitors.
+
+Quattro replaced hypridle with a Quickshell idle service. hypridle natively owned
+the org.freedesktop.ScreenSaver D-Bus name, so apps playing video (Firefox, Chromium,
+Zen, VLC) could call Inhibit() to keep the screensaver from firing. That role was
+never reimplemented, so D-Bus Inhibit() calls are silently dropped and the
+screensaver fires during playback (issue #6475).
+
+This daemon re-owns that name, counts active Inhibits, and writes the count plus a
+detail list to a state file that the Quickshell idle service watches. The service
+suppresses idle while any inhibitor is active, exactly as hypridle did.
+"""
+
+import argparse
+import json
+import os
+import signal
+import tempfile
+
+import dbus
+import dbus.mainloop.glib
+import dbus.service
+from gi.repository import GLib
+from gi.repository import GLibUnix
+
+# GLib main loop priority for signal handlers.
+_PRIORITY = GLib.PRIORITY_DEFAULT
+
+STATE_DIR = os.path.expanduser("~/.local/state/omarchy")
+STATE_FILE = os.path.join(STATE_DIR, "idle-inhibitors")
+
+SERVICE_NAME = "org.freedesktop.ScreenSaver"
+OBJECT_PATH = "/ScreenSaver"
+
+
+def atomic_write(path, data):
+    """Write JSON atomically so the watcher never reads a half-written file."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".idle-inhibitors-")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+class ScreenSaver(dbus.service.Object):
+    """Minimal org.freedesktop.ScreenSaver that tracks active inhibitors."""
+
+    def __init__(self, bus_name, emit):
+        super().__init__(bus_name, OBJECT_PATH)
+        self._cookies = {}
+        self._next_cookie = 1
+        self._emit = emit
+
+    def _emit_state(self):
+        self._emit(len(self._cookies), list(self._cookies.values()))
+
+    @dbus.service.method(SERVICE_NAME, in_signature="ss", out_signature="u",
+                         sender_keyword="sender")
+    def Inhibit(self, app_name, reason, sender=None):
+        cookie = self._next_cookie
+        self._next_cookie += 1
+        self._cookies[cookie] = {
+            "app": app_name,
+            "reason": reason,
+            "cookie": cookie,
+            "owner": sender,
+        }
+        self._emit_state()
+        return cookie
+
+    @dbus.service.method(SERVICE_NAME, in_signature="u", out_signature="")
+    def UnInhibit(self, cookie):
+        self._cookies.pop(int(cookie), None)
+        self._emit_state()
+
+    def release_owner(self, owner):
+        """Drop every inhibitor registered by a now-disconnected caller.
+
+        Apps can die without calling UnInhibit (a crash, a killed tab, an OOM
+        kill). If we kept their inhibitors, the screen would stay awake forever,
+        so we release them as soon as the owning connection leaves the bus.
+        """
+        dead = [cookie for cookie, info in self._cookies.items()
+                if info.get("owner") == owner]
+        for cookie in dead:
+            del self._cookies[cookie]
+        if dead:
+            self._emit_state()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument(
+        "--state-file",
+        default=STATE_FILE,
+        help="path to the state file (default: %(default)s)",
+    )
+    return parser.parse_args()
+
+
+def run(state_file):
+    def emit(count, inhibitors):
+        atomic_write(state_file, {"count": count, "inhibitors": inhibitors})
+
+    # Fresh ownership: nothing is inhibited until an app calls Inhibit().
+    emit(0, [])
+
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SessionBus()
+    bus_name = dbus.service.BusName(SERVICE_NAME, bus)
+    saver = ScreenSaver(bus_name, emit)
+
+    # Apps can die without UnInhibit; release their inhibitors when their
+    # connection leaves the bus so a crashed browser can't keep the screen
+    # awake forever.
+    def on_name_owner_changed(name, _old_owner, new_owner):
+        if name.startswith(":") and new_owner == "":
+            saver.release_owner(name)
+
+    bus.add_signal_receiver(
+        on_name_owner_changed,
+        dbus_interface="org.freedesktop.DBus",
+        signal_name="NameOwnerChanged",
+        path="/org/freedesktop/DBus",
+    )
+
+    loop = GLib.MainLoop()
+
+    def shutdown():
+        # Releasing the name means no app is inhibited; clear the state file so
+        # the idle service re-arms immediately rather than waiting for a watcher.
+        emit(0, [])
+        loop.quit()
+        return GLib.SOURCE_REMOVE
+
+    # Handle signals through GLib so they integrate with the main loop instead
+    # of racing it. Without this, SIGTERM during loop.run() is dropped.
+    GLibUnix.signal_add(_PRIORITY, signal.SIGTERM, shutdown)
+    GLibUnix.signal_add(_PRIORITY, signal.SIGINT, shutdown)
+
+    loop.run()
+
+
+if __name__ == "__main__":
+    run(parse_args().state_file)

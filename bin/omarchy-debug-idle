@@ -46,6 +46,19 @@ section "Idle inhibitors"
 hyprctl clients -j 2>/dev/null \
   | jq -r '.[] | select(.inhibitingIdle == true or ((.tags // []) | index("noidle"))) | [.pid,.class,.title,((.tags // []) | join(",")),.inhibitingIdle] | @tsv' || true
 
+section "D-Bus idle inhibitors"
+if [[ -f $HOME/.local/state/omarchy/idle-inhibitors ]]; then
+  idle_inhibitors="$(jq -r '.count // 0' "$HOME/.local/state/omarchy/idle-inhibitors" 2>/dev/null)"
+  if [[ $idle_inhibitors -gt 0 ]]; then
+    echo "active count: $idle_inhibitors"
+    jq -r '.inhibitors[]? | "  \(.app): \(.reason) (cookie \(.cookie))"' "$HOME/.local/state/omarchy/idle-inhibitors" 2>/dev/null || true
+  else
+    echo "none"
+  fi
+else
+  echo "none"
+fi
+
 section "Screensaver detector"
 if hyprctl clients -j 2>/dev/null | jq -e '.[] | select(.class == "org.omarchy.screensaver" or .initialClass == "org.omarchy.screensaver")' >/dev/null; then
   echo "running-window"
