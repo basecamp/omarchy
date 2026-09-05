@@ -175,6 +175,7 @@
   "setup.plugin.add": {"icon":"󰖟","label":"Add Plugin","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-plugin-add'"},
   "setup.plugin.clone": {"icon":"󰆏","label":"Clone Plugin","action":"omarchy-menu-plugin clone"},
   "setup.plugin.remove": {"icon":"󰭌","label":"Remove Plugin","when":"compgen -G \"$HOME/.config/omarchy/plugins/*/manifest.json\"","action":"omarchy-menu-plugin remove"},
+  "setup.plugin.update": {"icon":"󰑪","label":"Update Plugin","when":"compgen -G \"$HOME/.config/omarchy/plugins/*/.git\"","provider":"plugin-updates"},
   "setup.security": {"icon":"","label":"Security"},
   "setup.config": {"icon":"","label":"Config"},
   "setup.security.fingerprint": {"icon":"󰈷","label":"Fingerprint","when":"omarchy-hw-fingerprint","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-security-fingerprint"},

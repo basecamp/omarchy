@@ -36,6 +36,26 @@ valid_plugin_id() {
   [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
 }
 
+show_diff() {
+  local id="$1" dir="$2"
+  echo "Changes for $id:"
+  if omarchy-cmd-present delta; then
+    git -C "$dir" diff HEAD FETCH_HEAD | delta --paging=never
+  else
+    git -C "$dir" diff HEAD FETCH_HEAD
+  fi
+  echo
+}
+
+review_update() {
+  local id="$1" dir="$2"
+  local choice
+  choice=$(gum choose --header="Update $id — review the diff first?" \
+    "Show diff" "Update without diff") || return 1
+  if [[ $choice == "Show diff" ]]; then show_diff "$id" "$dir"; fi
+  return 0
+}
+
 update_one() {
   local id="$1"
   local dir="$PLUGINS_DIR/$id"
@@ -51,13 +71,10 @@ update_one() {
   fi
 
   if (( ! ASSUME_YES )); then
-    echo "Changes for $id:"
-    if omarchy-cmd-present delta; then
-      git -C "$dir" diff HEAD FETCH_HEAD | delta --paging=never
-    else
-      git -C "$dir" diff HEAD FETCH_HEAD
-    fi
-    echo
+    review_update "$id" "$dir" || {
+      echo "Skipped $id."
+      return 0
+    }
     confirm "Update $id?" || {
       echo "Skipped $id."
       return 0

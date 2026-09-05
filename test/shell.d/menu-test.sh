@@ -340,7 +340,7 @@ assertEqual(
 )
 assertDeepEqual(
   defaultItems.filter(item => item.parent === 'setup.plugin').map(item => item.label),
-  ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Clone Plugin', 'Remove Plugin'],
+  ['Enable Plugin', 'Disable Plugin', 'Add Plugin', 'Clone Plugin', 'Remove Plugin', 'Update Plugin'],
   'menu manages plugins from Setup > Plugins'
 )
 assert(

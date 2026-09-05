@@ -277,6 +277,14 @@ Item {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",
       actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + Util.shellQuote(value) }
+    },
+    "plugin-updates": {
+      script: "for d in \"$HOME\"/.config/omarchy/plugins/*/; do [[ -d $d/.git ]] || continue; id=$(basename \"$d\"); name=$(jq -r '.name // .id' \"$d/manifest.json\" 2>/dev/null); git -C \"$d\" fetch --quiet origin HEAD 2>/dev/null || continue; head_sha=$(git -C \"$d\" rev-parse --short HEAD); new_sha=$(git -C \"$d\" rev-parse --short FETCH_HEAD); [[ $(git -C \"$d\" rev-parse HEAD) != $(git -C \"$d\" rev-parse FETCH_HEAD) ]] || continue; printf '%s\\t%s\\t%s\\n' \"$name  $head_sha → $new_sha\" \"$id\" \"\"; done",
+      icon: "\udb80\udc72",
+      placeholder: "Fetching updates from git…",
+      emptyLabel: "All plugins are up to date",
+      volatile: true,
+      actionFor: function(value) { return "omarchy-launch-floating-terminal-with-presentation " + Util.shellQuote("omarchy-plugin-update " + value) }
     }
   })
 
@@ -339,6 +347,29 @@ Item {
     var spec = root.providers[entry.provider]
     if (!spec) return
 
+    if (spec.placeholder) {
+      var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, [{
+        id: id + ".placeholder",
+        parent: id,
+        kind: "action",
+        icon: spec.placeholderIcon || "",
+        label: spec.placeholder,
+        title: "",
+        target: "",
+        description: "",
+        action: "",
+        provider: "",
+        aliases: [],
+        when: "",
+        checked: "",
+        disabled: "true",
+        order: 0
+      }])
+      root.items = merged.items
+      root.itemOrder = merged.itemOrder
+      if (root.opened) root.rebuildDisplay()
+    }
+
     root.providersLoaded[id] = true
     providerProc.menuId = id
     providerProc.providerKey = entry.provider
@@ -384,6 +415,25 @@ Item {
         when: "",
         checked: "",
         disabled: "",
+        order: 0
+      })
+    }
+    if (providerRows.length === 0 && spec.emptyLabel) {
+      providerRows.push({
+        id: menuId + ".empty",
+        parent: menuId,
+        kind: "action",
+        icon: "",
+        label: spec.emptyLabel,
+        title: "",
+        target: "",
+        description: "",
+        action: "",
+        provider: "",
+        aliases: [],
+        when: "",
+        checked: "",
+        disabled: "true",
         order: 0
       })
     }
