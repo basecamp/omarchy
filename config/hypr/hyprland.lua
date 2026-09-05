@@ -12,11 +12,13 @@ dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/boo
 
 -- Load Omarchy defaults.
 require("default.hypr.omarchy")
+local require_optional = require("default.hypr.require_optional")
 
 -- Put your personal overrides in these files. They're loaded after Omarchy's
 -- defaults so package updates can improve the defaults without rewriting your
 -- ~/.config/hypr files.
 require("hypr.monitors")
+require_optional.module("hypr.workspaces")
 require("hypr.input")
 require("hypr.bindings")
 require("hypr.looknfeel")
