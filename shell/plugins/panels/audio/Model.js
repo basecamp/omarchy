@@ -100,6 +100,21 @@ function sinkGlyph(node) {
   return "󰓃"
 }
 
+// Bar / OSD glyph for the default sink. Mute wins over device class so
+// headphones can show as muted; an unbound sink uses the device glyph
+// instead of the muted speaker (null .audio used to look like mute).
+function outputBarIcon(node, volume, muted) {
+  if (!node) return ""
+  if (muted) return ""
+  if (!node.audio) return sinkGlyph(node)
+  if (isHeadphones(node)) return "󰋋"
+  var v = volume === undefined || volume === null ? 0 : Number(volume)
+  if (v >= 0.67) return ""
+  if (v >= 0.34) return ""
+  if (v > 0) return ""
+  return ""
+}
+
 function sourceGlyph(node) {
   if (!node) return "󰍬"
   var p = nodeProps(node)
@@ -244,6 +259,7 @@ if (typeof module !== "undefined") {
     nodeProps: nodeProps,
     nodeLabel: nodeLabel,
     isHeadphones: isHeadphones,
+  outputBarIcon: outputBarIcon,
     sinkGlyph: sinkGlyph,
     sourceGlyph: sourceGlyph,
     friendlyStreamLabel: friendlyStreamLabel,

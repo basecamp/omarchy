@@ -401,14 +401,8 @@ Panel {
   function outputIcon(volume) {
     // Match the old Waybar pulseaudio glyph set. The Material Design speaker
     // icons render visually smaller in JetBrainsMono Nerd Font.
-    if (!sink || !sink.audio) return ""
-    if (isHeadphones(sink)) return "󰋋"
-    if (outputMuted) return ""
     var v = volume === undefined ? outputVolume : volume
-    if (v >= 0.67) return ""
-    if (v >= 0.34) return ""
-    if (v > 0) return ""
-    return ""
+    return Model.outputBarIcon(sink, v, outputMuted)
   }
 
   function inputIcon() {
@@ -573,8 +567,23 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  PwObjectTracker { objects: root.candidateSinks }
-  PwObjectTracker { objects: root.candidateSources }
+
+  // Default sink/source can appear after shell start (Bluetooth). Keep them
+  // in the tracker set even if they are briefly missing from nodes.values,
+  // otherwise .audio stays null and the bar paints the muted glyph.
+  readonly property var trackedSinkObjects: {
+    var list = candidateSinks.slice()
+    if (sink && list.indexOf(sink) < 0) list.push(sink)
+    return list
+  }
+  readonly property var trackedSourceObjects: {
+    var list = candidateSources.slice()
+    if (source && list.indexOf(source) < 0) list.push(source)
+    return list
+  }
+
+  PwObjectTracker { objects: root.trackedSinkObjects }
+  PwObjectTracker { objects: root.trackedSourceObjects }
   PwObjectTracker { objects: root.audioStreams }
 
   PwNodePeakMonitor {
