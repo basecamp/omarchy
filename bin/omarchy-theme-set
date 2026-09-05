@@ -4,6 +4,14 @@
 # omarchy:args=<theme-name>
 # omarchy:examples=omarchy theme list | omarchy theme set "Tokyo Night"
 
+if [[ -z ${OMARCHY_PATH:-} ]]; then
+  if [[ -f /etc/omarchy.conf ]]; then
+    . /etc/omarchy.conf
+  fi
+  : "${OMARCHY_PATH:=/usr/share/omarchy}"
+  export OMARCHY_PATH
+fi
+
 if [[ -z $1 ]]; then
   echo "Usage: omarchy-theme-set <theme-name>"
   exit 1

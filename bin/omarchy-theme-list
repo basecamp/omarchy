@@ -3,7 +3,20 @@
 # omarchy:summary=List available themes
 # omarchy:examples=omarchy theme list | omarchy theme set "Tokyo Night"
 
+if [[ -z ${OMARCHY_PATH:-} ]]; then
+  if [[ -f /etc/omarchy.conf ]]; then
+    . /etc/omarchy.conf
+  fi
+  : "${OMARCHY_PATH:=/usr/share/omarchy}"
+  export OMARCHY_PATH
+fi
+
+if [[ ! -d "$OMARCHY_PATH/themes" && ! -d "$HOME/.config/omarchy/themes" ]]; then
+  echo "Error: themes directory not found at $OMARCHY_PATH/themes" >&2
+  exit 1
+fi
+
 {
-  find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -printf '%f\n'
-  find "$OMARCHY_PATH/themes/" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
+  [[ -d "$HOME/.config/omarchy/themes" ]] && find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -printf '%f\n'
+  [[ -d "$OMARCHY_PATH/themes" ]] && find "$OMARCHY_PATH/themes/" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
 } | sort -u | sed -E 's/(^|-)([a-z])/\1\u\2/g; s/-/ /g'
