@@ -10,7 +10,7 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
 IMAGE_DIR="$STATE_DIR/clipboard-images"
 mkdir -p "$IMAGE_DIR"
 
-types=$(wl-paste --list-types 2>/dev/null || true)
+types=$(timeout 2s wl-paste --list-types 2>/dev/null || true)
 
 if [[ ${CLIPBOARD_STATE:-} == "sensitive" ]] || grep -qx 'x-kde-passwordManagerHint' <<<"$types"; then
   exit 0
@@ -102,5 +102,5 @@ for mime in image/png image/jpeg image/webp image/gif image/bmp image/tiff; do
 done
 
 if grep -q '^text/' <<<"$types" || grep -qx 'UTF8_STRING' <<<"$types" || grep -qx 'STRING' <<<"$types"; then
-  wl-paste --type text --no-newline 2>/dev/null | emit_text
+  timeout 2s wl-paste --type text --no-newline 2>/dev/null | emit_text
 fi

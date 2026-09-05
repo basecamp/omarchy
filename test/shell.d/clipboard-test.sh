@@ -255,8 +255,10 @@ SH
 cat >"$TMPDIR/bin/wl-paste" <<'SH'
 #!/bin/bash
 if [[ $1 == "--list-types" ]]; then
+  [[ ${WL_PASTE_STALL:-} == "list-types" ]] && sleep 10
   printf '%b' "${WL_PASTE_TYPES:-text/plain\n}"
 elif [[ $1 == "--type" && $2 == "text" ]]; then
+  [[ ${WL_PASTE_STALL:-} == "text" ]] && sleep 10
   printf '%s' "${WL_PASTE_TEXT:-terminal copy}"
 fi
 SH
@@ -291,6 +293,26 @@ pass "clipboard capture records normal text events"
 capture_output=$(printf 'closing app copy' | WL_PASTE_TEXT="stale read" XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
 [[ $capture_output == '{"type":"text","text":"closing app copy"}' ]] || fail "clipboard capture records watched text from stdin"
 pass "clipboard capture records watched text from stdin"
+
+if capture_output=$(printf 'watched copy after stalled types' | WL_PASTE_STALL="list-types" XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" timeout --preserve-status 4s "$ROOT/shell/plugins/clipboard/capture.sh" text); then
+  capture_status=0
+else
+  capture_status=$?
+fi
+[[ $capture_status -eq 0 ]] || fail "clipboard watched text survives a stalled type query" "capture exited with status $capture_status"
+[[ $capture_output == '{"type":"text","text":"watched copy after stalled types"}' ]] || fail "clipboard watched text remains intact after a stalled type query"
+pass "clipboard watched text survives a stalled type query"
+pass "clipboard watched text remains intact after a stalled type query"
+
+if capture_output=$(WL_PASTE_STALL="text" XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" timeout --preserve-status 4s "$ROOT/shell/plugins/clipboard/capture.sh"); then
+  capture_status=0
+else
+  capture_status=$?
+fi
+[[ $capture_status -eq 124 ]] || fail "clipboard snapshot text read uses its internal timeout" "capture exited with status $capture_status"
+[[ -z $capture_output ]] || fail "clipboard snapshot timeout emits no partial entry" "actual: $capture_output"
+pass "clipboard snapshot text read uses its internal timeout"
+pass "clipboard snapshot timeout emits no partial entry"
 
 capture_output=$(printf '%s' 'UTF-16 clipboard - fixed' | iconv -f UTF-8 -t UTF-16LE | XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
 [[ $capture_output == '{"type":"text","text":"UTF-16 clipboard - fixed"}' ]] || fail "clipboard capture decodes UTF-16LE text"
