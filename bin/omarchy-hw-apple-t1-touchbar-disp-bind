@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# omarchy:summary=Force-bind the T1 Touch Bar's virtual display sub-device
+# omarchy:hidden=true
+
+# apple-ib-tb spawns a virtual HID sub-device (1D6B:0301) once the iBridge's
+# real 05AC:8600 interfaces are bound to apple-ibridge-hid. That sub-device
+# carries the "display on" field, but it does not reliably win its own
+# auto-bind race — the bar then shows icons but stays dark, with nothing
+# logged anywhere. It appears asynchronously right after the parent bind, so
+# this retries briefly rather than assuming it's already there.
+hid_root=${OMARCHY_T1_HID_ROOT:-/sys/bus/hid}
+
+for _ in $(seq 1 15); do
+  found=0
+  for dev in "$hid_root"/devices/0003:1D6B:0301.*; do
+    [[ -d $dev ]] || continue
+    found=1
+    name=$(basename "$dev")
+    drv=""
+    [[ -e $dev/driver ]] && drv=$(basename "$(readlink -f "$dev/driver")")
+    [[ $drv == apple-ib-touchbar ]] && continue
+    [[ -n $drv && -e "$hid_root/drivers/$drv/unbind" ]] &&
+      echo -n "$name" >"$hid_root/drivers/$drv/unbind"
+    [[ -e "$hid_root/drivers/apple-ib-touchbar/bind" ]] &&
+      echo -n "$name" >"$hid_root/drivers/apple-ib-touchbar/bind"
+  done
+  ((found)) && break
+  sleep 0.2
+done

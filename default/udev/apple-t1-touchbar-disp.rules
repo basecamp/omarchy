@@ -1,0 +1,5 @@
+# The T1 iBridge (05AC:8600) re-enumerates on every resume, and the virtual
+# Touch Bar display sub-device it spawns (1D6B:0301) does not reliably win
+# its own bind race when it reappears. See
+# bin/omarchy-hw-apple-t1-touchbar-disp-bind.
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="05ac", ATTR{idProduct}=="8600", RUN+="/usr/bin/omarchy-hw-apple-t1-touchbar-disp-bind"
