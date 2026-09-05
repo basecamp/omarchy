@@ -17,10 +17,19 @@ if [[ $omarchy_path != "/usr/share/omarchy" ]]; then
   exit 0
 fi
 
+# pacman -Q boots ALPM (~200ms) for a one-line version. The local db is
+# world-readable directories named <pkg>-<ver>. Tests override the path.
+pacman_local=${OMARCHY_PACMAN_LOCAL:-/var/lib/pacman/local}
+
+version=
 # The edge channel installs omarchy-dev instead of omarchy, so check both.
 for package in omarchy-dev omarchy; do
-  version=$(pacman -Q "$package" 2>/dev/null | awk '{ print $2 }')
-  [[ -n $version ]] && break
+  for dir in "$pacman_local/${package}"-[0-9]*; do
+    [[ -d $dir ]] || continue
+    version=${dir##*/}
+    version=${version#"${package}-"}
+    break 2
+  done
 done
 
 [[ -n $version ]] || exit 1
