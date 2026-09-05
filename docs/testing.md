@@ -20,11 +20,10 @@ the end and exits non-zero.
   the theme pipeline: template rendering (`omarchy-theme-set-templates`,
   `omarchy-theme-color`, `omarchy-theme-osc`), the theme sync commands
   (tmux, GNOME, VS Code, Pi, Claude) run against stub binaries and a fake
-  `$HOME`, and the theme-state migrations.
+  `$HOME`.
 - **`./test/shell`** — runs every `test/shell.d/*-test.sh` (except
   `base-test.sh` itself). Each file is an independent suite covering one area:
-  a shell plugin, a `bin/` command, a config invariant, a migration. This is
-  where new tests go.
+  a shell plugin, a `bin/` command, a config invariant, or a still-live migration. This is where new tests go.
 - **Acceptance** — everything that needs a real desktop doing real things.
   Deliberately excluded from `./test/all`; it runs in a VM, not the
   development session.
@@ -132,7 +131,7 @@ only a live session can prove.
   fake `$HOME`, runs `bash -euo pipefail "$ROOT/migrations/<ts>.sh"`, and
   asserts the resulting state — including running it twice to prove
   idempotence, and once against non-legacy state to prove it leaves user
-  customization alone.
+  customization alone. Keep that test while the migration is still being written or bugfixed, if it calls an Omarchy helper whose interface can still change, or if it is a security-sensitive privileged repair. Once a one-shot rewrite has shipped in a tagged release and is frozen, drop the test even when that rewrite used sudo, pacman, or limine-mkinitcpio. Keep the migration itself for late-updaters. Tests of `omarchy-migrate`, the login notifier, and `omarchy-upgrade-to-quattro` stay.
 - **Assert the invariant, not the snapshot.** Config tests pin the property a
   test is named for (this widget stays adjacent to that one) rather than whole
   structures, so unrelated churn does not fail them.

@@ -163,6 +163,8 @@ rm ~/.local/state/omarchy/migrations/<migration>.sh
 omarchy-migrate
 ```
 
+Keep a dedicated test while the migration is still being written or bugfixed, if it calls an Omarchy helper whose interface can still change, or if it is a security-sensitive privileged repair (FIDO2, leftover installer artifacts, udev, sshd). Once a one-shot rewrite has shipped in a tagged release and is frozen, drop the test even when that rewrite used sudo, pacman, or limine-mkinitcpio. Keep the migration itself for late-updaters. Tests of `omarchy-migrate`, the login notifier, and `omarchy-upgrade-to-quattro` stay.
+
 Omarchy 4.0 is upgraded through `bin/omarchy-upgrade-to-quattro`, not through the
 normal migration runner. Do not add compatibility migrations for old installer
 layouts; put pre-4 package-layout transition work in the upgrade command instead.
