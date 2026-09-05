@@ -16,9 +16,13 @@ Then select a drive for your installation, and sit back and watch the installati
 
 Now you're ready to Omarchy!
 
-### Use a wired or 2.4ghz keyboard!
+### Use a wired or 2.4ghz keyboard for installation
 
-The full-disk encryption won't allow you to enter the password from a Bluetooth keyboard at startup. Just like you can't use a Bluetooth keyboard to enter the BIOS on a PC. You'll need a keyboard that either uses a 2.4ghz dongle or a cable (which is much nicer for latency anyway!). I personally love the [Lofree Flow84](https://www.lofree.co/products/lofree-flow-the-smoothest-mechanical-keyboard)!
+The installer cannot use a Bluetooth keyboard until the live system has paired with it, and firmware menus cannot use it at all. Keep a cable or 2.4ghz receiver available while installing.
+
+After installation, a paired Bluetooth keyboard can be added to the encrypted-disk unlock environment with Setup > Security > Bluetooth Disk Unlock. This is opt-in: the keyboard's Bluetooth bond key is copied to the unencrypted boot image, and radio or battery trouble can still prevent it connecting. Keep a wired or 2.4ghz recovery keyboard available.
+
+Setup rebuilds the boot image before reporting success. If rebuilding fails, setup restores the previous configuration, but a partially written boot image may still need repair: fix the reported error and run `sudo limine-mkinitcpio` before rebooting. The `status` command checks configuration only. The installer's `--no-rebuild` option defers boot-image generation; it does not verify that the keyboard can unlock the disk. Test the next boot with your recovery keyboard available.
 
 ### Installing for another owner
 

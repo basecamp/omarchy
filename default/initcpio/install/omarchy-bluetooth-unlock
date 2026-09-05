@@ -1,0 +1,93 @@
+#!/bin/bash
+
+build() {
+  local config=${OMARCHY_BLUETOOTH_UNLOCK_CONFIG:-/etc/omarchy/bluetooth-unlock.conf}
+  local controller device controller_dir device_dir firmware
+
+  controller=$(sed -n 's/^CONTROLLER=//p' "$config")
+  device=$(sed -n 's/^DEVICE=//p' "$config")
+  if [[ ! $controller =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ || ! $device =~ ^([0-9A-F]{2}:){5}[0-9A-F]{2}$ ]]; then
+    error "invalid Bluetooth unlock configuration: %s" "$config"
+    return 1
+  fi
+
+  controller_dir="/var/lib/bluetooth/$controller"
+  device_dir="$controller_dir/$device"
+  if [[ ! -d $device_dir || -L $controller_dir || -L $device_dir ]]; then
+    error "Bluetooth unlock bond is missing or unsafe: %s" "$device_dir"
+    return 1
+  fi
+  if [[ -L $controller_dir/settings || -L $controller_dir/identity || -L $controller_dir/cache ]] ||
+    find "$device_dir" -type l -print -quit | grep -q .; then
+    error "Bluetooth unlock bond contains an unsafe symlink: %s" "$device_dir"
+    return 1
+  fi
+
+  # Bluetooth HID can arrive over USB, UART, or platform-specific transports.
+  # autodetect, which runs before this hook in Omarchy's HOOKS, filters this to
+  # the adapter present on the machine. add_module also follows dependencies.
+  add_checked_modules '/drivers/bluetooth/'
+  add_module 'bluetooth'
+  add_module 'uhid'
+  add_module 'hidp?'
+
+  # Some Bluetooth drivers construct firmware names at runtime instead of
+  # exposing them through modinfo. The complete common Bluetooth firmware set
+  # is small enough to include and avoids a boot-only failure on Intel,
+  # Realtek, MediaTek, Qualcomm, and Broadcom adapters.
+  for firmware in \
+    /usr/lib/firmware/intel/ibt-* \
+    /usr/lib/firmware/rtl_bt/* \
+    /usr/lib/firmware/mediatek/*BT* \
+    /usr/lib/firmware/mediatek/*/*BT* \
+    /usr/lib/firmware/qca/* \
+    /usr/lib/firmware/brcm/BCM*.hcd*; do
+    [[ -f $firmware ]] && add_file "$firmware"
+  done
+
+  add_binary /usr/bin/dbus-daemon
+  add_binary /usr/lib/bluetooth/bluetoothd
+  add_file /usr/share/dbus-1/system.conf
+  add_file /usr/share/dbus-1/system.d/bluetooth.conf
+  add_file /etc/machine-id
+  # Boot needs only bonded input devices. Do not inherit host pairing or
+  # experimental settings, and power the controller without a desktop client.
+  printf '[General]\nAlwaysPairable=false\n[Policy]\nAutoEnable=true\n' | add_file - /etc/bluetooth/main.conf 0644
+  printf '[General]\nClassicBondedOnly=true\n' | add_file - /etc/bluetooth/input.conf 0644
+
+  # dbus-daemon drops privileges by numeric uid/gid. Build a minimal account
+  # database rather than copying the host's passwd, group, or shadow database
+  # into the unencrypted boot image.
+  {
+    getent passwd root
+    getent passwd dbus
+  } | add_file - /etc/passwd 0644
+  {
+    getent group root
+    getent group dbus
+  } | add_file - /etc/group 0644
+
+  # Copy only the selected keyboard's bond, not every paired phone, headset,
+  # or controller. Directory modes are tightened after add_full_dir because
+  # mkinitcpio otherwise creates copied directories as 0755.
+  add_dir /var/lib/bluetooth 0700
+  add_dir "$controller_dir" 0700
+  [[ -f $controller_dir/settings ]] && add_file "$controller_dir/settings" "$controller_dir/settings" 0600
+  [[ -f $controller_dir/identity ]] && add_file "$controller_dir/identity" "$controller_dir/identity" 0600
+  add_full_dir "$device_dir"
+  chmod 0700 "$BUILDROOT/var/lib/bluetooth" "$BUILDROOT$controller_dir" "$BUILDROOT$device_dir"
+
+  if [[ -f $controller_dir/cache/$device && ! -L $controller_dir/cache/$device ]]; then
+    add_dir "$controller_dir/cache" 0700
+    add_file "$controller_dir/cache/$device"
+  fi
+
+  add_runscript
+}
+
+help() {
+  cat <<'EOF'
+Starts a minimal D-Bus and BlueZ environment before the encrypted-root prompt,
+using one explicitly selected and already bonded Bluetooth keyboard.
+EOF
+}

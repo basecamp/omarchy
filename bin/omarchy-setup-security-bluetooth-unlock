@@ -1,0 +1,338 @@
+#!/bin/bash
+
+# omarchy:summary=Use a paired Bluetooth keyboard for encrypted disk unlock
+# omarchy:args=[enable|disable|status] [--device <address>] [--controller <address>] [--yes] [--no-rebuild]
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+action=${1:-enable}
+[[ $# -gt 0 ]] && shift
+
+device=""
+controller=""
+assume_yes=false
+no_rebuild=false
+
+while (( $# )); do
+  case "$1" in
+    --device)
+      (( $# >= 2 )) || { echo "Missing address after --device." >&2; exit 1; }
+      device=$2
+      shift 2
+      ;;
+    --controller)
+      (( $# >= 2 )) || { echo "Missing address after --controller." >&2; exit 1; }
+      controller=$2
+      shift 2
+      ;;
+    --yes)
+      assume_yes=true
+      shift
+      ;;
+    --no-rebuild)
+      no_rebuild=true
+      shift
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
+
+case "$action" in
+  enable | disable | status) ;;
+  *)
+    echo "Usage: omarchy setup security bluetooth-unlock [enable|disable|status] [--device <address>] [--controller <address>] [--yes] [--no-rebuild]" >&2
+    exit 1
+    ;;
+esac
+
+config_dir=${OMARCHY_BLUETOOTH_UNLOCK_CONFIG_DIR:-/etc/omarchy}
+config_file="$config_dir/bluetooth-unlock.conf"
+mkinitcpio_dir=${OMARCHY_BLUETOOTH_UNLOCK_MKINITCPIO_DIR:-/etc/mkinitcpio.conf.d}
+hook_dropin="$mkinitcpio_dir/zz-omarchy-bluetooth-unlock.conf"
+initcpio_dir=${OMARCHY_BLUETOOTH_UNLOCK_INITCPIO_DIR:-/usr/lib/initcpio}
+install_hook="$initcpio_dir/install/omarchy-bluetooth-unlock"
+runtime_hook="$initcpio_dir/hooks/omarchy-bluetooth-unlock"
+state_dir=${OMARCHY_BLUETOOTH_UNLOCK_STATE_DIR:-/var/lib/bluetooth}
+
+valid_address() {
+  [[ $1 =~ ^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$ ]]
+}
+
+keyboard_info() {
+  [[ $1 == *"Icon: input-keyboard"* ]] || grep -qE '^[[:space:]]*Appearance: 0x0*3c1([[:space:]]|$)' <<<"$1"
+}
+
+normalize_address() {
+  printf '%s\n' "${1^^}"
+}
+
+configured() {
+  [[ -f $config_file && -f $hook_dropin && -f $install_hook && -f $runtime_hook ]]
+}
+
+rebuild() {
+  $no_rebuild && return 0
+  rebuild_started=true
+  echo "Regenerating the boot image..."
+  sudo limine-mkinitcpio
+}
+
+if [[ $action == "status" ]]; then
+  if configured; then
+    name=$(sudo sed -n 's/^NAME=//p' "$config_file" 2>/dev/null || true)
+    echo "Bluetooth disk unlock is configured${name:+ for $name}."
+    echo "This checks configuration only; the boot image and keyboard connection are not verified."
+    exit 0
+  fi
+  echo "Bluetooth disk unlock is disabled."
+  exit 1
+fi
+
+# Check the rebuild tool before changing the installed configuration.
+if ! $no_rebuild && omarchy-cmd-missing limine-mkinitcpio; then
+  echo "Bluetooth disk unlock requires the Limine boot setup." >&2
+  exit 1
+fi
+
+managed_files=("$config_file" "$hook_dropin" "$install_hook" "$runtime_hook")
+stage=$(mktemp -d)
+transaction_started=false
+transaction_complete=false
+rebuild_started=false
+cleanup() {
+  local result=$? i rollback_failed=false
+  trap - EXIT
+  if $transaction_started && ! $transaction_complete; then
+    echo "Bluetooth unlock setup failed; restoring the previous configuration." >&2
+    for i in "${!managed_files[@]}"; do
+      if sudo test -e "$stage/backup/$i"; then
+        sudo cp -a --remove-destination -- "$stage/backup/$i" "${managed_files[i]}" || rollback_failed=true
+      else
+        sudo rm -f -- "${managed_files[i]}" || rollback_failed=true
+      fi
+    done
+    if $rollback_failed; then
+      echo "Configuration recovery failed. Backups are preserved in $stage/backup; restore them before rebuilding." >&2
+      exit 1
+    fi
+    if $rebuild_started; then
+      echo "The boot image may be incomplete. Fix the error and run sudo limine-mkinitcpio before rebooting." >&2
+    fi
+  fi
+  if [[ -d $stage/backup ]]; then
+    sudo rm -rf -- "$stage"
+  else
+    rm -rf -- "$stage"
+  fi
+  exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+begin_transaction() {
+  local i
+  mkdir -m 700 "$stage/backup"
+  for i in "${!managed_files[@]}"; do
+    if sudo test -L "${managed_files[i]}" || sudo test -d "${managed_files[i]}"; then
+      echo "Refusing unsafe configuration path: ${managed_files[i]}" >&2
+      exit 1
+    fi
+    if sudo test -e "${managed_files[i]}"; then
+      sudo cp -a -- "${managed_files[i]}" "$stage/backup/$i"
+    fi
+  done
+  transaction_started=true
+}
+
+if [[ $action == "disable" ]]; then
+  if [[ ! -e $config_file && ! -e $hook_dropin && ! -e $install_hook && ! -e $runtime_hook ]]; then
+    echo "Bluetooth disk unlock is already disabled."
+    exit 0
+  fi
+
+  if ! $assume_yes && ! gum confirm "Disable Bluetooth keyboard disk unlock?"; then
+    exit 0
+  fi
+
+  begin_transaction
+  sudo rm -f -- "${managed_files[@]}"
+  rebuild
+  transaction_complete=true
+  if $no_rebuild; then
+    echo "Bluetooth disk unlock configuration removed. Rebuild the boot image to remove its bond key."
+  else
+    echo "Bluetooth disk unlock is disabled. Keep a wired or 2.4 GHz keyboard available for the next boot."
+  fi
+  exit 0
+fi
+
+if [[ ! -e /sys/class/bluetooth && -z $controller ]]; then
+  echo "No Bluetooth adapter is available." >&2
+  exit 1
+fi
+
+# Resolve the actual configuration, including later overrides, in mkinitcpio's
+# version-sort order. A textual match can find encrypt in a superseded HOOKS.
+if ! (
+  set +u
+  HOOKS=()
+  base_config=${OMARCHY_BLUETOOTH_UNLOCK_MKINITCPIO_CONFIG:-/etc/mkinitcpio.conf}
+  if [[ -f $base_config ]]; then
+    source "$base_config" || exit 1
+  fi
+  while IFS= read -r -d '' dropin; do
+    if [[ $dropin == "$hook_dropin" ]]; then
+      source "$OMARCHY_PATH/default/initcpio/omarchy-bluetooth-unlock.conf" || exit 1
+    else
+      source "$dropin" || exit 1
+    fi
+  done < <({ find "$mkinitcpio_dir" -maxdepth 1 -xtype f -name '*.conf' -print0; printf '%s\0' "$hook_dropin"; } | LC_ALL=C.UTF-8 sort -zVu)
+  # mkinitcpio also accepts the legacy string form.
+  [[ ${HOOKS@a} == *a* ]] || read -ra HOOKS <<<"$HOOKS"
+  has_encrypt=false
+  has_udev=false
+  previous_hook=""
+  for hook in "${HOOKS[@]}"; do
+    case "$hook" in
+      systemd | sd-encrypt) exit 1 ;;
+      udev) has_udev=true ;;
+      encrypt)
+        $has_udev && [[ $previous_hook == "omarchy-bluetooth-unlock" ]] || exit 1
+        has_encrypt=true
+        ;;
+    esac
+    previous_hook=$hook
+  done
+  $has_encrypt
+); then
+  echo "Bluetooth disk unlock requires udev and its Bluetooth hook immediately before encrypt in the effective mkinitcpio HOOKS." >&2
+  exit 1
+fi
+
+declare -a candidates=()
+if [[ -z $device ]]; then
+  while read -r candidate; do
+    valid_address "$candidate" || continue
+    info=$(timeout 3s bluetoothctl info "$candidate" 2>/dev/null || true)
+    [[ $info == *"Paired: yes"* && $info == *"Trusted: yes"* ]] || continue
+    keyboard_info "$info" || continue
+    name=$(sed -n 's/^[[:space:]]*Name: //p' <<<"$info" | head -1 | tr '\t\r\n' '   ' | sed 's/[[:space:]]*$//')
+    candidates+=("$candidate" "${name:-Bluetooth keyboard}")
+  done < <(bluetoothctl devices Paired 2>/dev/null | awk '{print $2}')
+
+  if (( ${#candidates[@]} == 0 )); then
+    echo "No paired and trusted Bluetooth keyboard was found." >&2
+    echo "Pair and trust the keyboard first, then run this setup again." >&2
+    exit 1
+  fi
+
+  if (( ${#candidates[@]} == 2 )); then
+    device=${candidates[0]}
+    name=${candidates[1]}
+  else
+    choices=()
+    for ((i = 0; i < ${#candidates[@]}; i += 2)); do
+      choices+=("${candidates[i + 1]}  ${candidates[i]}")
+    done
+    selection=$(printf '%s\n' "${choices[@]}" | gum choose --header "Select Bluetooth keyboard") || exit 0
+    device=${selection##*  }
+    name=${selection%  *}
+  fi
+else
+  valid_address "$device" || { echo "Invalid Bluetooth device address." >&2; exit 1; }
+  # bluetoothctl info addresses the default controller. With an explicit
+  # controller, validate its stored bond below instead (also works in chroot).
+  info=""
+  if [[ -z $controller ]]; then
+    info=$(timeout 3s bluetoothctl info "$device" 2>/dev/null || true)
+  fi
+  if [[ -n $info ]]; then
+    [[ $info == *"Paired: yes"* && $info == *"Trusted: yes"* ]] || {
+      echo "The selected Bluetooth device is not paired and trusted." >&2
+      exit 1
+    }
+    keyboard_info "$info" || {
+      echo "The selected Bluetooth device is not a keyboard." >&2
+      exit 1
+    }
+    name=$(sed -n 's/^[[:space:]]*Name: //p' <<<"$info" | head -1 | tr '\t\r\n' '   ' | sed 's/[[:space:]]*$//')
+  else
+    name="Bluetooth keyboard"
+  fi
+fi
+
+device=$(normalize_address "$device")
+if [[ -z $controller ]]; then
+  controller=$(timeout 3s bluetoothctl show 2>/dev/null | awk '/^Controller / {print $2; exit}')
+fi
+valid_address "$controller" || { echo "Could not determine the Bluetooth controller address." >&2; exit 1; }
+controller=$(normalize_address "$controller")
+
+if ! sudo test -d "$state_dir/$controller/$device"; then
+  echo "The bond for $name is missing from BlueZ system storage." >&2
+  exit 1
+fi
+if sudo test -L "$state_dir/$controller" || sudo test -L "$state_dir/$controller/$device"; then
+  echo "Refusing unsafe symlinks in BlueZ system storage." >&2
+  exit 1
+fi
+
+# Validate the selected controller's persisted bond even when the target has
+# no running D-Bus (the ISO finalization path). A generic HID UUID also matches
+# mice and gamepads, so require keyboard-specific appearance or class bits.
+if sudo test -L "$state_dir/$controller/$device/info"; then
+  echo "Refusing a symlinked Bluetooth bond." >&2
+  exit 1
+fi
+bond=$(sudo cat "$state_dir/$controller/$device/info")
+general=$(awk '/^\[General\]$/ { inside=1; next } /^\[/ { inside=0 } inside' <<<"$bond")
+bond_name=$(sed -n 's/^Name=//p' <<<"$general" | head -1 | tr '\t\r\n' '   ' | sed 's/[[:space:]]*$//')
+name=${bond_name:-$name}
+appearance=$(sed -n 's/^Appearance=//p' <<<"$general")
+class=$(sed -n 's/^Class=//p' <<<"$general")
+keyboard=false
+if [[ $appearance =~ ^0x0*3[cC]1$ ]]; then
+  keyboard=true
+elif [[ $class =~ ^0x[0-9A-Fa-f]{1,6}$ ]] && (( (class & 0x1f00) == 0x0500 && (class & 0x40) != 0 )); then
+  keyboard=true
+fi
+if ! $keyboard || ! grep -Fxq 'Trusted=true' <<<"$general" || ! grep -qE '^\[(LinkKey|LongTermKey)\]$' <<<"$bond"; then
+  echo "The selected controller has no trusted keyboard bond. Pair and trust the keyboard first." >&2
+  exit 1
+fi
+
+if ! $assume_yes; then
+  echo
+  echo "This adds $name to the boot image so it can connect before LUKS asks for your disk password."
+  echo "Its Bluetooth bond key will be stored on the unencrypted EFI System Partition."
+  echo "Bluetooth can fail because of radio interference, firmware, batteries, or hardware changes."
+  echo "Keep a wired or 2.4 GHz keyboard available as a recovery method."
+  echo
+  gum confirm "Enable Bluetooth keyboard disk unlock?" || exit 0
+fi
+
+install -Dm755 "$OMARCHY_PATH/default/initcpio/install/omarchy-bluetooth-unlock" "$stage/install/omarchy-bluetooth-unlock"
+install -Dm755 "$OMARCHY_PATH/default/initcpio/hooks/omarchy-bluetooth-unlock" "$stage/hooks/omarchy-bluetooth-unlock"
+install -Dm644 "$OMARCHY_PATH/default/initcpio/omarchy-bluetooth-unlock.conf" "$stage/zz-omarchy-bluetooth-unlock.conf"
+printf 'CONTROLLER=%s\nDEVICE=%s\nNAME=%s\n' "$controller" "$device" "$name" >"$stage/bluetooth-unlock.conf"
+
+begin_transaction
+sudo install -d -m 0755 "$config_dir" "$mkinitcpio_dir" "$initcpio_dir/install" "$initcpio_dir/hooks"
+sudo install -m 0755 "$stage/install/omarchy-bluetooth-unlock" "$install_hook"
+sudo install -m 0755 "$stage/hooks/omarchy-bluetooth-unlock" "$runtime_hook"
+sudo install -m 0644 "$stage/zz-omarchy-bluetooth-unlock.conf" "$hook_dropin"
+sudo install -m 0600 "$stage/bluetooth-unlock.conf" "$config_file"
+
+rebuild
+transaction_complete=true
+if $no_rebuild; then
+  echo "Bluetooth disk unlock is configured for $name. Rebuild the boot image to apply it."
+else
+  echo "Bluetooth disk unlock boot image rebuilt for $name."
+  echo "Test it on the next reboot, with a wired or 2.4 GHz keyboard nearby for recovery."
+fi
