@@ -230,18 +230,31 @@ omarchy-update-available
 - new upstream commits for the active dev-linked checkout
 - `omarchy-dev`, when installed
 - otherwise `omarchy`, when installed
+- git-managed plugins under `~/.config/omarchy/plugins` that are behind their origin
 
 The dev check fetches the checkout's configured upstream before comparing it
 with `HEAD`. A failed fetch is quiet and falls back to the existing remote-
 tracking state.
 
+The plugin check is read-only: `git ls-remote` asks each origin for its `HEAD`
+without writing an object or moving a ref in the user's checkout, because
+fetching belongs to `omarchy plugin update`, which shows the diff before it
+pulls. A plugin is only reported when origin holds a commit the checkout does
+not, so a plugin carrying local commits is left alone. The commit count is
+printed when the remote commit is already present locally — which it is
+whenever the user has looked at an update and declined it — and omitted when
+it is not. Each plugin gets five seconds, and an unreachable origin is quiet.
+
 Exit codes:
 
-- `0` — Omarchy updates are available; stdout is the update list.
-- non-zero — no Omarchy updates are available; stdout says Omarchy is up to date.
+- `0` — updates are available; stdout is the update list.
+- non-zero — nothing is available; stdout says Omarchy is up to date.
 
 The widget runs this check on shell startup and every six hours. Clicking the
-update icon launches `omarchy-update` in a floating terminal.
+update icon launches `omarchy-update` in a floating terminal, which offers
+each behind plugin's diff for confirmation after the system packages are done.
+Unattended runs (`omarchy update -y`) skip plugins rather than fast-forward
+third-party code nobody has read.
 
 ## Channels and versions
 
@@ -280,7 +293,7 @@ scripts.
 | `omarchy-update-pacman-guard` | ALPM pre-transaction guard that aborts direct `pacman -Syu` style upgrades unless Omarchy set `OMARCHY_UPDATE_PACMAN=1` or the user explicitly set `OMARCHY_ALLOW_DIRECT_PACMAN=1`. | **Keep internal/hidden.** This is what nudges users back to `omarchy update`. |
 | `omarchy-migrate-notify` | Internal login-time notification helper. Uses `omarchy-migrate --pending` and shows a notification only when this user has pending migrations. | **Keep internal/hidden.** Clear name now that the public command is `omarchy-migrate`. |
 | `omarchy-update-user-notify` | Hidden compatibility wrapper for `omarchy-migrate-notify`. | **Temporary.** Keep only for old callers. |
-| `omarchy-update-available` | Update checker for shell widget and post-update refresh. | **Keep.** Could eventually be renamed `omarchy-update-check`, but current name matches widget semantics. |
+| `omarchy-update-available` | Update checker for shell widget and post-update refresh. Covers the dev checkout, the Omarchy package, and git-managed plugins that are behind their origin. | **Keep.** Could eventually be renamed `omarchy-update-check`, but current name matches widget semantics. |
 | `omarchy-update-aur-pkgs` | Updates AUR packages with `yay -Sua` if foreign packages exist and AUR is reachable. | **Question.** Omarchy is package-backed now, but users may still install AUR packages. Keep for now. |
 | `omarchy-update-mise` | Runs `MISE_MINIMUM_RELEASE_AGE=0 mise up` for mise-managed tools — the override of mise's release-age cooldown is the point. | **Keep.** Mise-managed tools are intentionally part of the blessed update path. |
 | `omarchy-update-orphan-pkgs` | Lists orphans and prompts before removal; noninteractive mode never removes. | **Keep for now.** Safe because it is prompt-only. |
