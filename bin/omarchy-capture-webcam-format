@@ -1,0 +1,154 @@
+#!/bin/bash
+
+# omarchy:summary=Pick v4l2 size and pixel format for the webcam overlay
+# omarchy:hidden=true
+
+# ffmpeg's v4l2 demuxer picks YUYV when input_format is unset. On common UVC
+# cameras that format is 5–10 fps at 720p, while the same size in MJPG is 30 fps.
+# Probe v4l2-ctl and request the compressed mode explicitly.
+#
+# Preferred 16:9 sizes stay 640x360, 1280x720, 1920x1080. A size is skipped when
+# it cannot deliver 30 fps, so a 640x360 YUYV@5 mode does not hide 1280x720 MJPG@30.
+
+device=${1:-}
+if [[ -z $device ]]; then
+  echo "usage: omarchy-capture-webcam-format <device>" >&2
+  exit 1
+fi
+
+target_fps=30
+preferred_sizes=(640x360 1280x720 1920x1080)
+
+lavf_name() {
+  case $1 in
+  MJPG | JPEG | MJPEG) printf '%s\n' mjpeg ;;
+  H264 | AVC1) printf '%s\n' h264 ;;
+  HEVC | H265) printf '%s\n' hevc ;;
+  NV12) printf '%s\n' nv12 ;;
+  NV21) printf '%s\n' nv21 ;;
+  YU12 | I420) printf '%s\n' yuv420p ;;
+  YUYV | YUY2) printf '%s\n' yuyv422 ;;
+  RGB3) printf '%s\n' rgb24 ;;
+  BGR3) printf '%s\n' bgr24 ;;
+  *) return 1 ;;
+  esac
+}
+
+is_compressed() {
+  case $1 in
+  MJPG | JPEG | MJPEG | H264 | AVC1 | HEVC | H265) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+emit() {
+  local fourcc=$1
+  local size=$2
+  local fps=$3
+  local opts="video_size=$size,framerate=$fps"
+  local lavf
+
+  if lavf=$(lavf_name "$fourcc"); then
+    opts+=",input_format=$lavf"
+  fi
+
+  printf '%s\n' "$opts"
+}
+
+formats=$(v4l2-ctl --list-formats-ext -d "$device" 2>/dev/null) || true
+if [[ -z $formats ]]; then
+  printf '%s\n' "framerate=$target_fps"
+  exit 0
+fi
+
+declare -A max_fps=()
+
+while read -r fourcc size fps; do
+  [[ -n $fourcc && -n $size && -n $fps ]] || continue
+  key="$fourcc $size"
+  if (( fps > ${max_fps[$key]:-0} )); then
+    max_fps[$key]=$fps
+  fi
+done < <(awk '
+  $1 ~ /^\[/ {
+    split($2, parts, "'\''")
+    fourcc = parts[2]
+    next
+  }
+  /Size: Discrete/ {
+    size = $3
+    next
+  }
+  /fps\)/ {
+    fps = 0
+    for (i = 1; i <= NF; i++) {
+      if ($i == "fps)") {
+        fps = $(i - 1)
+        gsub(/[()]/, "", fps)
+        fps = int(fps)
+        break
+      }
+    }
+    if (fourcc != "" && size != "" && fps > 0)
+      print fourcc, size, fps
+  }
+' <<<"$formats")
+
+if (( ${#max_fps[@]} == 0 )); then
+  printf '%s\n' "framerate=$target_fps"
+  exit 0
+fi
+
+best_at_size() {
+  local size=$1
+  local need_compressed=$2
+  local min_fps=$3
+  local fourcc key fps
+  local best_fourcc=""
+  local best_fps=0
+  local best_compressed=1
+
+  for key in "${!max_fps[@]}"; do
+    fourcc=${key%% *}
+    [[ ${key#* } == "$size" ]] || continue
+    fps=${max_fps[$key]}
+    (( fps >= min_fps )) || continue
+    if [[ $need_compressed == "true" ]] && ! is_compressed "$fourcc"; then
+      continue
+    fi
+
+    if (( fps > best_fps )); then
+      best_fourcc=$fourcc
+      best_fps=$fps
+      if is_compressed "$fourcc"; then
+        best_compressed=0
+      else
+        best_compressed=1
+      fi
+      continue
+    fi
+
+    if (( fps == best_fps )) && (( best_compressed == 1 )) && is_compressed "$fourcc"; then
+      best_fourcc=$fourcc
+      best_compressed=0
+    fi
+  done
+
+  [[ -n $best_fourcc ]] || return 1
+  emit "$best_fourcc" "$size" "$best_fps"
+}
+
+for size in "${preferred_sizes[@]}"; do
+  best_at_size "$size" true "$target_fps" && exit 0
+done
+
+for size in "${preferred_sizes[@]}"; do
+  best_at_size "$size" false "$target_fps" && exit 0
+done
+
+for size in "${preferred_sizes[@]}"; do
+  best_at_size "$size" false 1 && exit 0
+done
+
+printf '%s\n' "framerate=$target_fps"
+exit 0
