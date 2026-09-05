@@ -1,13 +1,14 @@
 #!/usr/bin/python3
 # omarchy:summary=Print the Codex usage record as JSON
-# omarchy:args=[--force] [--limits-only]
+# omarchy:args=[--force] [--limits-only] [--opencode-openai-limits]
 # omarchy:hidden=true
 """Collect Codex usage into one display-ready JSON record.
 
 Local stats come from native Codex CLI session files, pi/omp sessions that
 ran through openai-codex, and opencode sessions that ran on an OpenAI
-provider; rate limits and the plan come from the Codex app-server RPC. The agents
-panel only ever reads the JSON this prints.
+provider. Rate limits come from the native Codex login and, when it belongs
+to a different account, OpenCode's OpenAI OAuth login. The agents panel only
+ever reads the JSON this prints.
 """
 
 import argparse
@@ -208,7 +209,10 @@ def scan_pi_sessions():
 def scan_opencode_sessions():
   # A subscription burned entirely through opencode leaves no native session
   # files, but opencode records per-message provider, model, and token usage
-  # in its own database. Read-only: opencode may be writing right now.
+  # in its own database. Newer releases migrate that history from message to
+  # session_message; once the new table exists it is authoritative, so reading
+  # both would double-count the migrated rows. Read-only: opencode may be
+  # writing right now.
   # Returns whether the scan ran to completion: a scan cut short by a
   # database error still contributes what it read, but must not be cached
   # as if it were the whole story.
@@ -221,13 +225,40 @@ def scan_opencode_sessions():
     return False
   try:
     conn.execute("PRAGMA query_only = ON")
+    tables = {
+      str(row[0])
+      for row in conn.execute(
+        "SELECT name FROM sqlite_master"
+        " WHERE type = 'table' AND name IN ('session_message', 'message')"
+      )
+    }
+    if "session_message" in tables:
+      rows = conn.execute(
+        "SELECT session_id, time_created, data FROM session_message"
+        " WHERE type = 'assistant'"
+        " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.model.providerID') END = 'openai'"
+      )
+      current_schema = True
+    elif "message" in tables:
+      rows = conn.execute(
+        "SELECT session_id, time_created, data FROM message"
+        " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+        " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+        " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'openai'"
+      )
+      current_schema = False
+    else:
+      return False
+
     # OpenCode DBs grow huge (every historical message, JSON included), and
     # Python-side json.loads of every row wasted ~600 MB of RSS on machines
     # whose subscription never ran on OpenAI. The json_extract conditions are
-    # the authority for the rows that reach them: role == "assistant" and
+    # the authority for the rows that reach them: an assistant message from
     # providerID == "openai", the same exact-match values the Python filter
-    # below checks. The guards in front are pure acceleration, not a perfect
-    # proxy for the Python filter:
+    # below checks. The LIKE guards are pure acceleration, not a perfect proxy
+    # for the Python filter:
     #   - The LIKE gates skip rows whose JSON cannot contain the two
     #     key/value pairs, avoiding the JSON parse of tens-of-MB blobs. They
     #     can differ from json.loads on duplicate keys (Python keeps the
@@ -243,25 +274,31 @@ def scan_opencode_sessions():
     #     well-formed JSON are skipped here; the per-row try/except below
     #     stays as the final safety net for rows that pass the SQL filter
     #     but fail json.loads.
-    for session_id, raw in conn.execute(
-      "SELECT session_id, data FROM message"
-      " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
-      " AND data LIKE '%\"providerID\"%:%\"openai\"%'"
-      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
-      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'openai'"
-    ):
+    for session_id, row_created, raw in rows:
       # One malformed row must not abort the scan, so every shape assumption
       # lives inside the try.
       try:
         entry = json.loads(raw)
-        # Exact match: opencode provider ids are free-form, and a custom
-        # "openai-local" gateway is not this subscription.
-        if not isinstance(entry, dict) or entry.get("role") != "assistant":
+        if not isinstance(entry, dict):
           continue
-        if str(entry.get("providerID") or "") != "openai":
-          continue
+        if current_schema:
+          model = entry.get("model") or {}
+          if not isinstance(model, dict) or str(model.get("providerID") or "") != "openai":
+            continue
+          model_id = model.get("id")
+        else:
+          # Exact match: opencode provider ids are free-form, and a custom
+          # "openai-local" gateway is not this subscription.
+          if entry.get("role") != "assistant" or str(entry.get("providerID") or "") != "openai":
+            continue
+          model_id = entry.get("modelID")
+
         tokens = entry.get("tokens") or {}
+        if not isinstance(tokens, dict):
+          continue
         cache = tokens.get("cache") or {}
+        if not isinstance(cache, dict):
+          cache = {}
         input_tokens = number(tokens.get("input"))
         # opencode keeps thinking tokens out of output; both are generated.
         output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
@@ -269,8 +306,11 @@ def scan_opencode_sessions():
         cache_write = number(cache.get("write"))
         if not (input_tokens or output_tokens or cache_read or cache_write):
           continue
-        day = local_day((entry.get("time") or {}).get("created"))
-        model = model_name(str(entry.get("modelID") or "").rstrip("/").split("/")[-1])
+        entry_time = entry.get("time") or {}
+        if not isinstance(entry_time, dict):
+          entry_time = {}
+        day = local_day(entry_time.get("created") or row_created)
+        model = model_name(str(model_id or "").rstrip("/").split("/")[-1])
       except Exception:
         continue
       add_usage(day, "opencode:" + str(session_id), model, input_tokens, output_tokens, cache_read, cache_write)
@@ -495,7 +535,7 @@ def rpc_request(proc, request_id, method, params=None, timeout=8):
   raise TimeoutError(method)
 
 
-def limit_window(window):
+def limit_window(window, prefix=""):
   if not isinstance(window, dict):
     return None
   used = window.get("usedPercent")
@@ -504,21 +544,170 @@ def limit_window(window):
   mins = number(window.get("windowDurationMins"))
   if mins == 10080:
     label = "Weekly (7-day)"
+    title = "Weekly"
+  elif mins == 43200:
+    label = "Monthly (30-day)"
+    title = "Monthly"
   elif mins and mins % 60 == 0:
     label = f"{mins // 60}h window"
+    title = "Session"
   elif mins:
     label = f"{mins}m window"
+    title = "Session"
   else:
     label = "Limit"
+    title = "Limit"
+  if prefix:
+    label = f"{prefix} · {label}"
+    title = f"{prefix} · {title}"
   reset = window.get("resetsAt")
-  return {
+  entry = {
     "label": label,
     "percent": float(used) / 100.0,
     "resetsAt": datetime.fromtimestamp(number(reset), timezone.utc).isoformat() if reset else "",
   }
+  if prefix:
+    entry["title"] = title
+  return entry
 
 
-def fetch_codex_rpc():
+def read_json(path):
+  try:
+    with path.open() as handle:
+      data = json.load(handle)
+    return data if isinstance(data, dict) else {}
+  except Exception:
+    return {}
+
+
+def codex_account_id():
+  codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+  auth = read_json(codex_home / "auth.json")
+  tokens = auth.get("tokens") or {}
+  return str(tokens.get("account_id") or "") if isinstance(tokens, dict) else ""
+
+
+def normalize_opencode_openai_auth(auth):
+  if not isinstance(auth, dict) or auth.get("type") != "oauth":
+    return None
+  metadata = auth.get("metadata") or {}
+  if not isinstance(metadata, dict):
+    metadata = {}
+  access_token = str(auth.get("access") or "")
+  account_id = str(auth.get("accountId") or metadata.get("accountID") or metadata.get("accountId") or "")
+  if not access_token or not account_id:
+    return None
+  return {"accessToken": access_token, "accountId": account_id}
+
+
+def opencode_database_auth(database):
+  if not database.is_file():
+    return None
+  try:
+    connection = sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True, timeout=0.25)
+    try:
+      row = connection.execute(
+        "SELECT value FROM credential WHERE integration_id = ? ORDER BY time_updated DESC LIMIT 1",
+        ("openai",),
+      ).fetchone()
+    finally:
+      connection.close()
+    auth = json.loads(row[0]) if row and row[0] else {}
+  except Exception:
+    return None
+  return normalize_opencode_openai_auth(auth)
+
+
+def opencode_openai_auth():
+  data_home = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
+  opencode_data = data_home / "opencode"
+  # Newer OpenCode builds keep provider credentials in their database. Read
+  # that current record first, then retain auth.json compatibility for older
+  # installations and upstream OpenCode releases that still use the file.
+  database_auth = opencode_database_auth(opencode_data / "opencode.db")
+  if database_auth:
+    return database_auth
+  file_auth = read_json(opencode_data / "auth.json").get("openai") or {}
+  return normalize_opencode_openai_auth(file_auth)
+
+
+def stop_process(proc):
+  try:
+    proc.terminate()
+    proc.wait(timeout=1)
+  except Exception:
+    try:
+      proc.kill()
+    except Exception:
+      pass
+
+
+def start_codex_app_server(codex, env):
+  return subprocess.Popen(
+    [codex, "-s", "read-only", "-a", "on-request", "app-server"],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.DEVNULL,
+    text=True,
+    env=env,
+  )
+
+
+def initialize_app_server(proc, experimental=False):
+  params = {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}
+  if experimental:
+    params["capabilities"] = {"experimentalApi": True}
+  rpc_request(proc, 1, "initialize", params, timeout=8)
+  proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
+  proc.stdin.flush()
+
+
+def fetch_opencode_rpc(codex, native_account):
+  auth = opencode_openai_auth()
+  if not auth:
+    return None
+
+  native_id = codex_account_id()
+  if native_id and native_id == auth["accountId"]:
+    return None
+
+  try:
+    with tempfile.TemporaryDirectory(prefix="omarchy-opencode-openai-") as temp_codex_home:
+      env = ENV.copy()
+      env["CODEX_HOME"] = temp_codex_home
+      env.pop("OPENAI_API_KEY", None)
+      proc = start_codex_app_server(codex, env)
+      try:
+        initialize_app_server(proc, experimental=True)
+        login_msg = rpc_request(proc, 2, "account/login/start", {
+          "type": "chatgptAuthTokens",
+          "accessToken": auth["accessToken"],
+          "chatgptAccountId": auth["accountId"],
+        }, timeout=4)
+        if login_msg.get("error"):
+          return None
+        account_msg = rpc_request(proc, 3, "account/read", {"refreshToken": False}, timeout=4)
+        limits_msg = rpc_request(proc, 4, "account/rateLimits/read", timeout=4)
+      finally:
+        stop_process(proc)
+  except Exception:
+    return None
+
+  account = (account_msg.get("result") or {}).get("account") or {}
+  # File-backed Codex auth gives an exact account-id comparison. If Codex
+  # stores credentials elsewhere, use the account email as a conservative
+  # fallback rather than drawing duplicate meters for the same subscription.
+  if not native_id and native_account.get("type") == "chatgpt":
+    native_email = str(native_account.get("email") or "")
+    opencode_email = str(account.get("email") or "")
+    if not native_email or not opencode_email or native_email == opencode_email:
+      return None
+
+  limits = (limits_msg.get("result") or {}).get("rateLimits") or {}
+  return {"account": account, "limits": limits}
+
+
+def fetch_codex_rpc(include_opencode=False):
   result = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
   codex = find_command("codex")
   if not codex:
@@ -527,23 +716,14 @@ def fetch_codex_rpc():
     return result
 
   try:
-    proc = subprocess.Popen(
-      [codex, "-s", "read-only", "-a", "on-request", "app-server"],
-      stdin=subprocess.PIPE,
-      stdout=subprocess.PIPE,
-      stderr=subprocess.DEVNULL,
-      text=True,
-      env=ENV,
-    )
+    proc = start_codex_app_server(codex, ENV)
   except Exception as exc:
     result["usageStatusText"] = "Codex unavailable"
     result["authHelpText"] = str(exc)
     return result
 
   try:
-    rpc_request(proc, 1, "initialize", {"clientInfo": {"name": "omarchy-agent-usage", "version": "1"}}, timeout=8)
-    proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
-    proc.stdin.flush()
+    initialize_app_server(proc)
     account_msg = rpc_request(proc, 2, "account/read", timeout=4)
     limits_msg = rpc_request(proc, 3, "account/rateLimits/read", timeout=4)
 
@@ -556,18 +736,32 @@ def fetch_codex_rpc():
       entry = limit_window(window)
       if entry:
         result["limits"].append(entry)
+
+    opencode = fetch_opencode_rpc(codex, account) if include_opencode else None
+    if opencode:
+      opencode_email = str(opencode["account"].get("email") or "OpenCode")
+      opencode_entries = []
+      for window in (opencode["limits"].get("primary"), opencode["limits"].get("secondary")):
+        entry = limit_window(window, opencode_email)
+        if entry:
+          opencode_entries.append(entry)
+      if opencode_entries:
+        native_email = str(account.get("email") or "Codex")
+        native_entries = []
+        for window in (limits.get("primary"), limits.get("secondary")):
+          entry = limit_window(window, native_email)
+          if entry:
+            native_entries.append(entry)
+        result["limits"] = native_entries + opencode_entries
+      if opencode_entries and not result["tierLabel"]:
+        opencode_account = opencode["account"]
+        plan = opencode["limits"].get("planType") or opencode_account.get("planType") or ""
+        result["tierLabel"] = str(plan) if plan else ""
   except Exception as exc:
     result["usageStatusText"] = "Codex limits unavailable"
     result["authHelpText"] = str(exc)
   finally:
-    try:
-      proc.terminate()
-      proc.wait(timeout=1)
-    except Exception:
-      try:
-        proc.kill()
-      except Exception:
-        pass
+    stop_process(proc)
   return result
 
 
@@ -580,11 +774,12 @@ def main():
   # collector runs.
   parser.add_argument("--force", action="store_true")
   parser.add_argument("--limits-only", action="store_true")
+  parser.add_argument("--opencode-openai-limits", action="store_true")
   args = parser.parse_args()
 
   max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
   stats = cached_local_stats(max_age)
-  rpc = fetch_codex_rpc()
+  rpc = fetch_codex_rpc(args.opencode_openai_limits)
 
   record = {
     "schemaVersion": 1,

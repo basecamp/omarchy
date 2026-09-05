@@ -142,6 +142,47 @@ pass "Codex collector counts OpenAI usage, reasoning included, from opencode ses
   fail "Codex collector ignores prefix-colliding providers, user messages, and malformed rows" "$result"
 pass "Codex collector ignores prefix-colliding providers, user messages, and malformed rows"
 
+# Newer opencode releases migrate messages into session_message. When both
+# tables exist, the migrated table is authoritative: falling through to the
+# legacy table as well would count the same history twice.
+python3 - "$OPENCODE_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+
+db = sys.argv[1]
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE session_message (id text PRIMARY KEY, session_id text NOT NULL, type text NOT NULL, seq integer NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)")
+now_ms = int(time.time() * 1000)
+
+def message(id, provider, model, type="assistant", input=0, output=0, reasoning=0, read=0, write=0):
+  return (id, "ses_2", type, 1, now_ms, now_ms, json.dumps({
+    "model": {"providerID": provider, "id": model},
+    "tokens": {"input": input, "output": output, "reasoning": reasoning, "cache": {"read": read, "write": write}},
+    "time": {"created": now_ms},
+  }))
+
+conn.executemany("INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)", [
+  message("v2_1", "openai", "openai/gpt-new", input=12, output=8, reasoning=3, read=4, write=2),
+  message("v2_2", "anthropic", "claude-opus-5", input=999, output=999),
+  message("v2_3", "openai", "gpt-new", type="user", input=999, output=999),
+  message("v2_4", "openai-local", "gpt-new", input=999, output=999),
+])
+conn.execute("INSERT INTO session_message VALUES ('v2_5', 'ses_2', 'assistant', 2, ?, ?, 'not json')", (now_ms, now_ms))
+conn.commit()
+conn.close()
+PY
+
+result=$(HOME="$OPENCODE_HOME" CODEX_HOME="$OPENCODE_HOME/.codex" XDG_DATA_HOME="$OPENCODE_HOME/.local/share" \
+  PATH="$OPENCODE_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --force)
+
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "29" ]] ||
+  fail "Codex collector prefers migrated opencode messages over the legacy table" "$result"
+[[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-new":{"inputTokens":12,"outputTokens":11,"cacheReadInputTokens":4,"cacheCreationInputTokens":2}}' ]] ||
+  fail "Codex collector parses OpenAI usage from the migrated opencode schema" "$result"
+pass "Codex collector reads the authoritative migrated opencode schema"
+
 # A warm cache makes --limits-only cheap: local stats come from the last scan
 # instead of another walk over the opencode database, and --force bypasses it.
 CACHE_HOME=$(mktemp -d)
@@ -603,3 +644,185 @@ result=$(HOME="$INTERRUPTED_HOME" CODEX_HOME="$INTERRUPTED_HOME/.codex" XDG_CACH
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "9" ]] ||
   fail "Codex collector does not reuse a snapshot from an interrupted scan" "$result"
 pass "Codex collector does not cache an interrupted opencode scan"
+
+# OpenCode can hold a different ChatGPT subscription from the native Codex
+# CLI. Its OAuth token should be handed to an isolated app-server process,
+# and its limits should only be added when the stable account ids differ.
+LIMITS_HOME=$(mktemp -d)
+trap 'rm -rf "$TEST_HOME" "$PI_HOME" "$OPENCODE_HOME" "$CACHE_HOME" "$FRESH_HOME" "$MALFORMED_HOME" "$UNWRITABLE_HOME" "$INTERRUPTED_HOME" "$LIMITS_HOME"' EXIT
+mkdir -p "$LIMITS_HOME/bin" "$LIMITS_HOME/.codex" "$LIMITS_HOME/.local/share/opencode"
+
+cat >"$LIMITS_HOME/bin/codex" <<'EOF'
+#!/bin/bash
+
+external=false
+while read -r request; do
+  id=$(jq -r '.id // empty' <<<"$request")
+  method=$(jq -r '.method // empty' <<<"$request")
+
+  case "$method" in
+    initialize)
+      experimental=$(jq -r '.params.capabilities.experimentalApi // false' <<<"$request")
+      printf 'initialize:%s\n' "$experimental" >>"$RPC_LOG"
+      jq -cn --argjson id "$id" '{id: $id, result: {}}'
+      ;;
+    account/login/start)
+      external=true
+      type=$(jq -r '.params.type // empty' <<<"$request")
+      has_access=$(jq -r '(.params.accessToken // "") != ""' <<<"$request")
+      has_account=$(jq -r '(.params.chatgptAccountId // "") != ""' <<<"$request")
+      printf 'login:%s:%s:%s\n' "$type" "$has_access" "$has_account" >>"$RPC_LOG"
+      if [[ $(jq -r '.params.accessToken == "secret-database-token" and .params.chatgptAccountId == "database-account"' <<<"$request") == "true" ]]; then
+        printf 'credential:database\n' >>"$RPC_LOG"
+      fi
+      if [[ ${FAIL_EXTERNAL_LOGIN:-false} == "true" ]]; then
+        jq -cn --argjson id "$id" '{id: $id, error: {message: "login failed"}}'
+      else
+        jq -cn --argjson id "$id" '{id: $id, result: {type: "chatgptAuthTokens"}}'
+      fi
+      ;;
+    account/read)
+      if [[ $external == "true" ]]; then
+        jq -cn --argjson id "$id" --arg email "${OPENCODE_TEST_EMAIL-opencode@example.com}" \
+          '{id: $id, result: {account: {type: "chatgpt", email: $email, planType: "plus"}}}'
+      else
+        jq -cn --argjson id "$id" --arg email "${NATIVE_TEST_EMAIL-codex@example.com}" \
+          '{id: $id, result: {account: {type: "chatgpt", email: $email, planType: "pro"}}}'
+      fi
+      ;;
+    account/rateLimits/read)
+      if [[ $external == "true" ]]; then
+        if [[ ${NO_EXTERNAL_LIMITS:-false} == "true" ]]; then
+          jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {}}}'
+        else
+          jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {primary: {usedPercent: 25, windowDurationMins: 300, resetsAt: 1780000000}}}}'
+        fi
+      else
+        jq -cn --argjson id "$id" '{id: $id, result: {rateLimits: {primary: {usedPercent: 10, windowDurationMins: 10080, resetsAt: 1780000000}}}}'
+      fi
+      ;;
+  esac
+done
+EOF
+chmod +x "$LIMITS_HOME/bin/codex"
+
+printf '%s\n' '{"tokens":{"account_id":"native-account"}}' >"$LIMITS_HOME/.codex/auth.json"
+printf '%s\n' '{"openai":{"type":"oauth","access":"secret-opencode-token","accountId":"opencode-account"}}' >"$LIMITS_HOME/.local/share/opencode/auth.json"
+
+RPC_LOG="$LIMITS_HOME/rpc.log" result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" PATH="$LIMITS_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
+
+[[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["Weekly (7-day)",0.1]]' ]] ||
+  fail "Codex collector leaves OpenCode limits disabled by default" "$result"
+[[ $(grep -c '^login:' "$LIMITS_HOME/rpc.log") == "0" ]] ||
+  fail "Codex collector does not use OpenCode OAuth without opt-in" "$(<"$LIMITS_HOME/rpc.log")"
+pass "Codex collector requires opt-in for OpenCode limits"
+
+: >"$LIMITS_HOME/rpc.log"
+RPC_LOG="$LIMITS_HOME/rpc.log" result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" PATH="$LIMITS_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+
+[[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["codex@example.com · Weekly (7-day)",0.1],["opencode@example.com · 5h window",0.25]]' ]] ||
+  fail "Codex collector labels distinct account limits with their emails" "$result"
+[[ $(jq -c '[.limits[].title]' <<<"$result") == '["codex@example.com · Weekly","opencode@example.com · Session"]' ]] ||
+  fail "Codex collector supplies display titles that preserve account emails" "$result"
+[[ $(jq -r '.tierLabel' <<<"$result") == "pro" ]] ||
+  fail "Codex collector keeps the native subscription as the hero plan" "$result"
+[[ $(grep -c '^login:chatgptAuthTokens:true:true$' "$LIMITS_HOME/rpc.log") == "1" ]] ||
+  fail "Codex collector supplies OpenCode OAuth through external-token auth" "$(<"$LIMITS_HOME/rpc.log")"
+[[ $(grep -c '^initialize:true$' "$LIMITS_HOME/rpc.log") == "1" ]] ||
+  fail "Codex collector enables the experimental external-token API only for OpenCode" "$(<"$LIMITS_HOME/rpc.log")"
+[[ $result != *"secret-opencode-token"* && $result != *"native-account"* && $result != *"opencode-account"* ]] ||
+  fail "Codex collector keeps account credentials out of its record" "$result"
+pass "Codex collector labels distinct account limits with their emails"
+
+# Empty external windows and a failed external login are both best-effort
+# outcomes. Neither should relabel or otherwise disturb native Codex limits.
+for failure_mode in empty login; do
+  : >"$LIMITS_HOME/rpc.log"
+  if [[ $failure_mode == "empty" ]]; then
+    result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+      RPC_LOG="$LIMITS_HOME/rpc.log" NO_EXTERNAL_LIMITS=true PATH="$LIMITS_HOME/bin:$PATH" \
+      "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+  else
+    result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+      RPC_LOG="$LIMITS_HOME/rpc.log" FAIL_EXTERNAL_LOGIN=true PATH="$LIMITS_HOME/bin:$PATH" \
+      "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+  fi
+  [[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["Weekly (7-day)",0.1]]' ]] ||
+    fail "Codex collector preserves native limits after an OpenCode $failure_mode result" "$result"
+  [[ $(jq -r '.usageStatusText' <<<"$result") == "" ]] ||
+    fail "Codex collector keeps an OpenCode $failure_mode result best-effort" "$result"
+done
+pass "Codex collector preserves native limits when optional OpenCode limits are unavailable"
+
+# App-server account emails are nullable. Both meters still need distinct,
+# stable source labels when neither account supplies one.
+: >"$LIMITS_HOME/rpc.log"
+result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" NATIVE_TEST_EMAIL="" OPENCODE_TEST_EMAIL="" PATH="$LIMITS_HOME/bin:$PATH" \
+  "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+
+[[ $(jq -c '[.limits[].title]' <<<"$result") == '["Codex · Weekly","OpenCode · Session"]' ]] ||
+  fail "Codex collector falls back to source names when account emails are unavailable" "$result"
+pass "Codex collector falls back when account emails are unavailable"
+
+# The same ChatGPT account in both tools must not produce duplicate meters or
+# even start a second app-server authentication flow.
+printf '%s\n' '{"openai":{"type":"oauth","access":"secret-opencode-token","accountId":"native-account"}}' >"$LIMITS_HOME/.local/share/opencode/auth.json"
+: >"$LIMITS_HOME/rpc.log"
+
+RPC_LOG="$LIMITS_HOME/rpc.log" result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" PATH="$LIMITS_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+
+[[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["Weekly (7-day)",0.1]]' ]] ||
+  fail "Codex collector deduplicates matching native and OpenCode accounts" "$result"
+[[ $(grep -c '^login:' "$LIMITS_HOME/rpc.log") == "0" ]] ||
+  fail "Codex collector skips external auth for a matching account" "$(<"$LIMITS_HOME/rpc.log")"
+pass "Codex collector deduplicates matching native and OpenCode accounts"
+
+# Newer OpenCode builds migrate provider credentials into opencode.db. That
+# current database record must take precedence over a stale legacy auth.json,
+# while the file-based cases above retain backwards compatibility.
+python3 - "$LIMITS_HOME/.local/share/opencode/opencode.db" <<'PY'
+import json
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+db = Path(sys.argv[1])
+conn = sqlite3.connect(db)
+conn.execute("CREATE TABLE message (id text PRIMARY KEY, session_id text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL, data text NOT NULL)")
+conn.execute("CREATE TABLE credential (id text PRIMARY KEY, integration_id text, label text NOT NULL, value text NOT NULL, time_created integer NOT NULL, time_updated integer NOT NULL)")
+now_ms = int(time.time() * 1000)
+conn.execute("INSERT INTO credential VALUES (?, ?, ?, ?, ?, ?)", (
+  "cred_openai",
+  "openai",
+  "OAuth",
+  json.dumps({
+    "type": "oauth",
+    "access": "secret-database-token",
+    "refresh": "secret-database-refresh",
+    "expires": now_ms + 3_600_000,
+    "metadata": {"accountID": "database-account"},
+  }),
+  now_ms,
+  now_ms,
+))
+conn.commit()
+conn.close()
+PY
+printf '%s\n' '{"openai":{"type":"oauth","access":"secret-stale-token","accountId":"native-account"}}' >"$LIMITS_HOME/.local/share/opencode/auth.json"
+: >"$LIMITS_HOME/rpc.log"
+
+RPC_LOG="$LIMITS_HOME/rpc.log" result=$(HOME="$LIMITS_HOME" CODEX_HOME="$LIMITS_HOME/.codex" XDG_DATA_HOME="$LIMITS_HOME/.local/share" \
+  RPC_LOG="$LIMITS_HOME/rpc.log" PATH="$LIMITS_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" --opencode-openai-limits)
+
+[[ $(jq -c '[.limits[] | [.label, .percent]]' <<<"$result") == '[["codex@example.com · Weekly (7-day)",0.1],["opencode@example.com · 5h window",0.25]]' ]] ||
+  fail "Codex collector reads current OpenCode database credentials" "$result"
+[[ $(grep -c '^credential:database$' "$LIMITS_HOME/rpc.log") == "1" ]] ||
+  fail "Codex collector prefers OpenCode database credentials over stale auth.json" "$(<"$LIMITS_HOME/rpc.log")"
+[[ $result != *"secret-database-token"* && $result != *"secret-database-refresh"* && $result != *"database-account"* ]] ||
+  fail "Codex collector keeps database-backed OpenCode credentials out of its record" "$result"
+pass "Codex collector reads database-backed OpenCode credentials"
