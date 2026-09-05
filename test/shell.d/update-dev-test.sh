@@ -53,10 +53,26 @@ run_dev_update() {
     "$ROOT/bin/omarchy-update-dev"
 }
 
+run_dev_update_without_path() {
+  env -u OMARCHY_PATH \
+    TEST_GIT_LOG="$git_log" \
+    PATH="$stub_bin:$PATH" \
+    "$ROOT/bin/omarchy-update-dev"
+}
+
 : >"$git_log"
 run_dev_update /usr/share/omarchy
 [[ ! -s $git_log ]] || fail "package-backed updates do not invoke git" "$(cat "$git_log")"
 pass "package-backed updates skip the dev checkout step"
+
+: >"$git_log"
+if run_dev_update_without_path; then
+  :
+else
+  fail "package-backed updates default when OMARCHY_PATH is unset"
+fi
+[[ ! -s $git_log ]] || fail "unset path updates do not invoke git" "$(cat "$git_log")"
+pass "package-backed updates default when OMARCHY_PATH is unset"
 
 : >"$git_log"
 run_dev_update "$checkout"
