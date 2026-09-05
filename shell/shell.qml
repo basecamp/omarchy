@@ -978,7 +978,6 @@ ShellRoot {
       for (var id in plugins) {
         var kinds = plugins[id].kinds || []
         var isBarOption = Array.isArray(kinds) && kinds.indexOf("bar") !== -1
-        var isBarWidget = Array.isArray(kinds) && kinds.indexOf("bar-widget") !== -1
         var active = isBarOption && shell.isActiveBarOption(id)
         var metadata = plugins[id].omarchy
         var clonedFrom = Util.isPlainObject(metadata) ? String(metadata.clonedFrom || "") : ""
@@ -986,10 +985,11 @@ ShellRoot {
           id: id,
           name: plugins[id].name,
           kinds: kinds,
-          // What `omarchy plugin enable/disable` toggles: for a widget that is
-          // its place in the bar, not whether its component is loadable.
-          enabled: isBarOption ? active
-            : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)),
+          // What `omarchy plugin enable/disable` toggles. A bar-only widget's
+          // place is the layout. A plugin that is also an overlay/service can
+          // be on via plugins[] without sitting in bar.layout; inBar alone
+          // would list it disabled while it is still loaded.
+          enabled: isBarOption ? active : shell.pluginRegistry.listedEnabled(id),
           active: active,
           // A bar has no off, only a successor: you leave one by enabling
           // another, so there is nothing for disable to do to it. Said here so

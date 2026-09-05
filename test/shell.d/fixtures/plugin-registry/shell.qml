@@ -87,6 +87,7 @@ ShellRoot {
     scan += block("thirdparty", "/third/widget", manifest("third.widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "left" }))
     scan += block("thirdparty", "/third/center-widget", manifest("third.center-widget", ["bar-widget"], { barWidget: "Widget.qml" }))
     scan += block("thirdparty", "/third/right-widget", manifest("third.right-widget", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "right" }))
+    scan += block("thirdparty", "/third/hybrid", manifest("third.hybrid", ["overlay", "bar-widget"], { overlay: "Overlay.qml", barWidget: "Widget.qml" }))
     var localWidget = manifest("local.first-widget", ["bar-widget"], { barWidget: "Widget.qml" })
     localWidget.omarchy = { clonedFrom: "omarchy.first-widget" }
     scan += block("thirdparty", "/third/local-widget", localWidget)
@@ -125,6 +126,7 @@ ShellRoot {
       "omarchy.hybrid",
       "third.bar",
       "third.center-widget",
+      "third.hybrid",
       "third.panel",
       "third.right-widget",
       "third.widget"
@@ -435,6 +437,39 @@ ShellRoot {
     root.assertDeepEqual(root.config.bar.layout.left, [], "disabling a multi-kind built-in removes its widget")
     root.assertTrue(root.config.disabledPlugins === undefined, "disabling a multi-kind widget records nothing else")
     root.assertTrue(registry.isEnabled("omarchy.hybrid"), "a multi-kind built-in remains loadable without its widget")
+    root.assertTrue(!registry.inBar("omarchy.hybrid"), "a multi-kind built-in off the bar is not inBar")
+    root.assertTrue(!registry.inPlugins("omarchy.hybrid"), "a multi-kind built-in is not recorded in plugins[]")
+    root.assertTrue(!registry.listedEnabled("omarchy.hybrid"), "listPlugins still follows the widget slot for a built-in hybrid")
+
+    // A third-party overlay that is also a bar-widget can be on via plugins[]
+    // without a layout slot — its glyph may live inside another widget instead
+    // of sitting in bar.layout. inBar is then false, but the overlay is loaded.
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [], right: [] } },
+      plugins: [{ id: "third.hybrid" }]
+    }
+    root.assertTrue(!registry.inBar("third.hybrid"), "a plugins[] hybrid is not in the bar layout")
+    root.assertTrue(registry.inPlugins("third.hybrid"), "inPlugins sees a plugins[] entry")
+    root.assertTrue(registry.isEnabled("third.hybrid"), "a plugins[] hybrid is loaded")
+    root.assertTrue(registry.listedEnabled("third.hybrid"), "listPlugins treats a plugins[] hybrid as enabled")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [], right: [] } },
+      plugins: []
+    }
+    root.assertTrue(!registry.inPlugins("third.hybrid"), "inPlugins is false without a plugins[] entry")
+    root.assertTrue(!registry.listedEnabled("third.hybrid"), "an unreferenced third-party hybrid lists as disabled")
+
+    root.config = {
+      version: 1,
+      bar: { layout: { left: [], center: [{ id: "third.widget" }], right: [] } },
+      plugins: []
+    }
+    root.assertTrue(registry.listedEnabled("third.widget"), "a bar-only widget on the bar still lists as enabled")
+    registry.setEnabled("third.widget", false)
+    root.assertTrue(!registry.listedEnabled("third.widget"), "a bar-only widget off the bar still lists as disabled")
 
     var cloneBase = registry.pluginsDir + "/dhh.clock"
     root.assertEqual(registry.localPluginIdForPath(cloneBase + "/BarWidget.qml"), "dhh.clock", "personal clone changes are watched")
