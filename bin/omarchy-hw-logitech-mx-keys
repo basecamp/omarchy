@@ -1,0 +1,191 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Detect a Logitech MX Keys or MX Keys S keyboard (Bluetooth, Unifying or Logi Bolt receiver).
+# omarchy:args=[--keyd-ids]
+
+# Exit 0 if an MX Keys or MX Keys S is present. Both connect only over Bluetooth
+# or a Logitech wireless receiver. A Bluetooth link, and a Unifying receiver's
+# per-device hidraw child, carry the model name in sysfs. Behind the Bolt
+# receiver the name is hidden, so each paired slot is asked its name over
+# HID++ 2.0 (feature 0x0005): the receiver only accepts long (0x11) reports and
+# answers asynchronously, so requests are long and replies are correlated by
+# device index, feature and software id. The non-S MX Keys is Unifying-only, so
+# the Bolt probe never has to recognise it.
+#
+# With --keyd-ids, also print the keyd [ids] entry for each way the keyboard is
+# connected (one per line): "k:046d:c548" for the Bolt receiver, otherwise
+# "k:046d:<pid>" -- the device's own product id on Bluetooth or behind Unifying.
+#
+# The Bolt probe opens /dev/hidraw* read/write and needs root; an error there,
+# or an MX Keys S asleep at probe time, yields exit 1. The sysfs scan that
+# covers Bluetooth and Unifying needs no privileges.
+
+import errno
+import glob
+import os
+import re
+import select
+import sys
+import time
+
+# The full-size "MX Keys" and "MX Keys S" only -- not "MX Keys Mini", "MX
+# Mechanical", or the "... for Mac" editions.
+NAME_RE = re.compile(r"\bmx keys(?: s)?\b", re.IGNORECASE)
+NAME_EXCLUDE = ("mini", "mechanical", "mac")
+
+# "MX Keys" (non-S) pairs only over Bluetooth or a Unifying receiver. Behind
+# Unifying the logitech-hidpp driver still exports this wireless PID even when
+# the keyboard was asleep at probe time and its name did not resolve.
+MX_KEYS_UNIFYING_ID = "k:046d:408a"
+
+BOLT_RECEIVER = 0xC548  # the only receiver the MX Keys S pairs with
+BOLT_ID = "k:046d:%04x" % BOLT_RECEIVER
+SW_ID = 0x0A
+NAME_FEATURE = 0x0005
+
+
+def name_matches(text):
+    text = text or ""
+    if not NAME_RE.search(text):
+        return False
+    lowered = text.lower()
+    return not any(word in lowered for word in NAME_EXCLUDE)
+
+
+def drain(fd):
+    while True:
+        try:
+            if not os.read(fd, 64):
+                return
+        except OSError as exc:
+            if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                return
+            raise
+
+
+def write_hidpp(fd, payload):
+    """Write a 20-byte HID++ long report, retrying the EPIPE the kernel returns
+    for the first write to a freshly opened receiver node."""
+    report = bytes(payload).ljust(20, b"\x00")
+    for attempt in range(4):
+        try:
+            os.write(fd, report)
+            return True
+        except OSError as exc:
+            if exc.errno == errno.EPIPE and attempt < 3:
+                time.sleep(0.02)
+                continue
+            return False
+
+
+def txn(fd, index, feature_index, function, params=b"", timeout=1.0):
+    """One HID++ 2.0 long request; return the response payload, or None."""
+    sw = (function << 4) | SW_ID
+    if not write_hidpp(fd, bytes([0x11, index, feature_index, sw]) + bytes(params)):
+        return None
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        ready, _, _ = select.select([fd], [], [], max(0, deadline - time.time()))
+        if not ready:
+            break
+        try:
+            resp = os.read(fd, 64)
+        except OSError:
+            break
+        if len(resp) < 5 or resp[1] != index:
+            continue
+        if resp[0] == 0x10 and resp[2] == 0x8F:  # HID++ 1.0 error -> slot empty
+            return None
+        if resp[2] == 0xFF:  # HID++ 2.0 error
+            return None
+        if resp[2] == feature_index and (resp[3] & 0x0F) == SW_ID and (resp[3] >> 4) == function:
+            return resp[4:]
+    return None
+
+
+def slot_is_mx_keys_s(fd, index):
+    root = txn(fd, index, 0x00, 0x00, bytes([NAME_FEATURE >> 8, NAME_FEATURE & 0xFF, 0x00]))
+    if not root or root[0] == 0:
+        return False
+    # The model name starts at offset 0 and one 16-byte chunk is enough to see
+    # "MX Keys S", so there's no multi-chunk reassembly to get wrong.
+    chunk = txn(fd, index, root[0], 0x01, bytes([0x00]))
+    return bool(chunk) and name_matches(chunk.decode("latin-1", "ignore"))
+
+
+def bolt_receiver_has_mx_keys_s():
+    for node in sorted(glob.glob("/dev/hidraw*")):
+        try:
+            info = open("/sys/class/hidraw/%s/device/uevent" % os.path.basename(node)).read()
+        except OSError:
+            continue
+        if "HID_ID=0003:0000046D:0000%04X" % BOLT_RECEIVER not in info:
+            continue
+        try:
+            fd = os.open(node, os.O_RDWR | os.O_NONBLOCK)
+        except OSError:
+            continue
+        try:
+            drain(fd)
+            # Absorb the first-write EPIPE with a throwaway root ping. A node
+            # that keeps refusing writes is a non-HID++ interface -- skip it.
+            if not write_hidpp(fd, bytes([0x11, 0xFF, 0x00, (0x01 << 4) | SW_ID])):
+                continue
+            drain(fd)
+            if any(slot_is_mx_keys_s(fd, index) for index in range(1, 7)):
+                return True
+        finally:
+            os.close(fd)
+    return False
+
+
+def _keyd_id(hid_id):
+    parts = hid_id.split(":")
+    if len(parts) != 3:
+        return None
+    try:
+        return "k:%04x:%04x" % (int(parts[1], 16), int(parts[2], 16))
+    except ValueError:
+        return None
+
+
+def sysfs_named_ids():
+    """keyd [ids] for every MX Keys the kernel already names in sysfs -- a
+    Bluetooth link, or a Unifying receiver's per-device hidraw child. Behind the
+    Bolt receiver the name is hidden; bolt_receiver_has_mx_keys_s covers that."""
+    ids = []
+    for uevent in sorted(glob.glob("/sys/class/hidraw/*/device/uevent")):
+        try:
+            info = open(uevent).read()
+        except OSError:
+            continue
+        entries = [_keyd_id(line[len("HID_ID="):])
+                   for line in info.splitlines() if line.startswith("HID_ID=")]
+        entries = [entry for entry in entries if entry]
+        if not name_matches(info) and MX_KEYS_UNIFYING_ID not in entries:
+            continue
+        for entry in entries:
+            if entry not in ids:
+                ids.append(entry)
+    return ids
+
+
+def keyd_ids():
+    ids = list(sysfs_named_ids())
+    if bolt_receiver_has_mx_keys_s() and BOLT_ID not in ids:
+        ids.append(BOLT_ID)
+    return ids
+
+
+def main(argv):
+    ids = keyd_ids()
+    if "--keyd-ids" in argv:
+        print("\n".join(ids))
+    return 0 if ids else 1
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception:
+        sys.exit(1)
