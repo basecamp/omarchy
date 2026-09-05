@@ -28,6 +28,7 @@ Nearly every widget does something on left, right, and middle click, and several
 | Power | Power panel | Toggle the battery percentage | — |
 | Media | Play/pause | Cover-art popup | Middle: next · scroll: prev/next |
 | Agents | Agents panel | Launch your agent | Middle: next subscription |
+| RSS Reader | Desktop RSS reader | Refresh the feeds | — |
 | Tray | Hover to reveal the drawer | Right on the chevron to manage | — |
 | Omarchy update | Run the update | — | — |
 
@@ -45,6 +46,7 @@ Clicking a bar icon opens a panel, which is a proper popup with sliders, lists, 
 | `Super + Ctrl + D` | Display |
 | `Super + Ctrl + P` | Power |
 | `Super + Ctrl + Alt + D` | Calendar |
+| `Super + Alt + N` | RSS Reader |
 | `Super + Ctrl + 1-9` | Toggle the nth panel in the right section |
 
 The panels aren't read-outs. They're where you actually do the thing:
@@ -55,6 +57,7 @@ The panels aren't read-outs. They're where you actually do the thing:
 - **Power** shows battery stats, switches power profiles (it remembers a separate choice for battery and AC), and prints some system info.
 - **Display** carries a brightness slider, text size, monitor scaling presets, and — when you have more than one screen — per-monitor controls. See [monitors](33-monitors.md) for the deeper story.
 - **Clock** opens a month grid with ISO week numbers and month stepping.
+- **RSS Reader** follows official Omarchy and Omacom Foundation announcements alongside the publisher feeds you choose in a two-pane desktop reader. It supports RSS and Atom feeds, refreshes every 15 minutes by default, and marks unread stories on the bar icon. Open the feed manager from the reader header or press `F` to enable curated developer, technology, Linux and AI sources, or add up to ten custom public HTTPS feeds. **Omarchy** is a built-in curated collection for Omarchy-specific news, initially containing only the official Omarchy feed. Its name and sources are managed by Omarchy; it cannot be edited or deleted. From the same manager, create up to eight collections such as **Tech**, **News** or **Linux** by grouping curated sources or your custom subscriptions; collections appear in the source rail and switch instantly without another network request. Collections keep their feeds subscribed even when their individual tabs are off. Use the curated-source switches or **Hide tab** on a custom feed to hide individual tabs without removing articles from collections; the **All** view still includes them. Custom subscriptions and collections are saved immediately, while feed checks happen in the background. Fresh source caches are reused when the feed list changes, while the refresh action always checks publishers directly. The source rail uses the active theme's palette to distinguish feed categories; use `[` and `]` to switch between sources and collections. When a publisher supplies only an excerpt, choose **Open Original** or press `O` to continue to the full article.
 
 Every panel takes the keyboard as well as the mouse: arrows move, Return activates, Tab steps to the neighbouring panel, and Escape closes.
 
