@@ -207,6 +207,49 @@ theme_came_from_a_repo() {
   [[ ! -L $source && -d $source/.git ]]
 }
 
+# User-authored themes may point at files in a dotfiles tree via relative
+# symlinks. `cp -r` would copy the link text verbatim, so once the tree lands
+# under next-theme/ (and later current/theme/) the same relative path resolves
+# from the wrong depth and goes dangling — colors.toml unreadable, templates
+# empty, silent full theming break. Dereference while staging so the content is
+# what ends up in the live theme path. Installed (git-cloned) themes keep the
+# refuse-symlinks path above; that is a stranger's tree.
+stage_user_theme() {
+  local source="$1"
+
+  [[ -d $source ]] || return 0
+  stage_user_theme_dir "$source" "$NEXT_THEME_PATH"
+}
+
+stage_user_theme_dir() {
+  local source="$1"
+  local dest="$2"
+  local entry name
+
+  mkdir -p "$dest"
+
+  for entry in "$source"/*; do
+    [[ -e $entry || -L $entry ]] || continue
+    name=${entry##*/}
+
+    if [[ -L $entry ]]; then
+      if [[ -e $entry ]]; then
+        if [[ -d $entry ]]; then
+          cp -rL "$entry" "$dest/$name"
+        else
+          cp -L "$entry" "$dest/$name"
+        fi
+      else
+        echo "omarchy-theme-set: skipping dangling symlink $source/$name" >&2
+      fi
+    elif [[ -d $entry ]]; then
+      stage_user_theme_dir "$entry" "$dest/$name"
+    else
+      cp "$entry" "$dest/$name"
+    fi
+  done
+}
+
 stage_installed_theme() {
   local source="$1"
   local entry name
@@ -272,7 +315,7 @@ if theme_came_from_a_repo "$USER_THEMES_PATH/$THEME_NAME"; then
   stage_installed_theme "$USER_THEMES_PATH/$THEME_NAME"
   report_ignored_theme_files
 else
-  cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
+  stage_user_theme "$USER_THEMES_PATH/$THEME_NAME"
 fi
 
 # Generate colors.toml from alacritty.toml if theme is missing colors.toml
