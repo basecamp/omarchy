@@ -68,6 +68,19 @@ set -e
 [[ ! -e $disable_flag ]] || fail "an unsafe monitor name is not written as Lua"
 pass "internal off refuses an unsafe monitor name"
 
+run_monitor omarchy-hyprland-monitor-internal on
+grep -Fx 'hl.monitor({ output = "eDP-1", disabled = false })' "$eval_log" >/dev/null ||
+  fail "internal on explicitly enables the connector via hyprctl eval"
+pass "internal on explicitly enables the internal display without flag"
+
+set +e
+LAPTOP_NAME='eDP-1", disabled = false })os.execute("calc")--' \
+  run_monitor omarchy-hyprland-monitor-internal on >/dev/null 2>&1
+set -e
+! grep -F 'os.execute("calc")' "$eval_log" >/dev/null ||
+  fail "internal on evaluates an unsafe connector name"
+pass "internal on refuses an unsafe monitor name"
+
 mirror_flag="$flag_dir/internal-monitor-mirror.lua"
 run_monitor omarchy-hyprland-monitor-internal-mirror on
 grep -Fx 'hl.monitor({ output = "DP-3", mode = "preferred", position = "auto", scale = 1, mirror = "eDP-1" })' \

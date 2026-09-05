@@ -111,6 +111,20 @@ function parseDisplays(raw) {
   }
 }
 
+function isValidMonitorName(name) {
+  return /^[A-Za-z0-9._-]+$/.test(String(name || ""))
+}
+
+function monitorToggleCommand(name, enabled, internalMonitor) {
+  if (!name || !isValidMonitorName(name)) return null
+
+  if (name === internalMonitor || (!internalMonitor && String(name).indexOf("eDP") === 0)) {
+    return ["omarchy-hyprland-monitor-internal", enabled ? "off" : "on"]
+  }
+
+  return ["hyprctl", "eval", 'hl.monitor({ output = "' + name + '", disabled = ' + (enabled ? 'true' : 'false') + ' })']
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
@@ -119,6 +133,8 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    isValidMonitorName: isValidMonitorName,
+    monitorToggleCommand: monitorToggleCommand
   }
 }

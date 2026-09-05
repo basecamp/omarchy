@@ -75,4 +75,36 @@ assertDeepEqual(
 )
 
 assertDeepEqual(monitor.parseDisplays('{'), { displays: [], enabledDisplayCount: 0 }, 'monitor handles invalid display JSON')
+
+assertEqual(monitor.isValidMonitorName('DP-2'), true, 'monitor accepts plain connector name')
+assertEqual(monitor.isValidMonitorName('eDP-1'), true, 'monitor accepts internal connector name')
+assertEqual(monitor.isValidMonitorName('HDMI-A-1'), true, 'monitor accepts HDMI connector name')
+assertEqual(monitor.isValidMonitorName('eDP-1", disabled = false })--'), false, 'monitor rejects unsafe connector name')
+assertEqual(monitor.isValidMonitorName(''), false, 'monitor rejects empty connector name')
+
+assertDeepEqual(
+  monitor.monitorToggleCommand('eDP-1', true, 'eDP-1'),
+  ['omarchy-hyprland-monitor-internal', 'off'],
+  'monitor toggle command disables internal monitor via omarchy helper'
+)
+assertDeepEqual(
+  monitor.monitorToggleCommand('eDP-1', false, 'eDP-1'),
+  ['omarchy-hyprland-monitor-internal', 'on'],
+  'monitor toggle command enables internal monitor via omarchy helper'
+)
+assertDeepEqual(
+  monitor.monitorToggleCommand('DP-2', true, 'eDP-1'),
+  ['hyprctl', 'eval', 'hl.monitor({ output = "DP-2", disabled = true })'],
+  'monitor toggle command disables external monitor via hyprctl eval without layout hook'
+)
+assertDeepEqual(
+  monitor.monitorToggleCommand('DP-2', false, 'eDP-1'),
+  ['hyprctl', 'eval', 'hl.monitor({ output = "DP-2", disabled = false })'],
+  'monitor toggle command enables external monitor via hyprctl eval'
+)
+assertEqual(
+  monitor.monitorToggleCommand('unsafe;cmd', false, 'eDP-1'),
+  null,
+  'monitor toggle command returns null for unsafe monitor name'
+)
 JS
