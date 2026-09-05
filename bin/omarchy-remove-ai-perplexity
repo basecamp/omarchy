@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Remove the Perplexity desktop app along with its configuration and caches.
+# omarchy:summary=Remove the Perplexity desktop app along with its runtime caches.
 # omarchy:requires-sudo=true
 
 # -u so an unset HOME is an error rather than a set of rm -rf paths rooted at /.
@@ -8,14 +8,41 @@ set -euo pipefail
 
 omarchy-pkg-drop perplexity
 
-# Of the perplexity-* dirs under ~/.cache, only the rpc-server runtime is the
-# desktop app's own download; the rest belong to Perplexity products that
-# outlive the desktop app.
+# The runtime the app downloads for itself: llama.cpp builds and local models
+# under ~/.local/share, the older download location under ~/.cache. Of the
+# perplexity-* dirs these are the only ones the desktop app owns; the rest
+# belong to Perplexity products that outlive it.
 rm -rf \
-  "$HOME/.config/Perplexity" \
   "$HOME/.cache/Perplexity" \
-  "$HOME/.cache/perplexity-rpc-server"
-rm -f "$HOME/.config/perplexity-flags.conf"
+  "$HOME/.cache/perplexity-rpc-server" \
+  "$HOME/.local/share/perplexity-rpc-server"
+
+# What is left is the user's: the logins and session in ~/.config/Perplexity,
+# the secret vault and device identity in ~/.local/state/perplexity, and the
+# launcher flags. Keeping them stays the default -- they are small, and being
+# signed in after a reinstall is the better surprise -- but a removal meant to
+# be complete should not leave credentials behind either, so the choice is put
+# in front of the user, default no. Without a terminal to ask in, keeping it
+# is the answer.
+data_removed=false
+if [[ -t 0 ]] && command -v gum >/dev/null; then
+  # du answers non-zero when a directory is missing, and pipefail would turn
+  # that into an aborted removal; the size is worth no such thing.
+  size=$(du -shc "$HOME/.config/Perplexity" "$HOME/.local/state/perplexity" 2>/dev/null | tail -1 | cut -f1 || true)
+  if gum confirm --default=false "Also delete your Perplexity data ($size: logins, settings and the secret vault)?"; then
+    rm -rf \
+      "$HOME/.config/Perplexity" \
+      "$HOME/.local/state/perplexity"
+    rm -f "$HOME/.config/perplexity-flags.conf"
+    data_removed=true
+  fi
+fi
 
 echo ""
 echo "Perplexity has been removed."
+if [[ $data_removed == "true" ]]; then
+  echo "Its logins, settings, and secret vault are gone too."
+else
+  echo "Your logins and settings are still in ~/.config/Perplexity,"
+  echo "and the secret vault in ~/.local/state/perplexity."
+fi
