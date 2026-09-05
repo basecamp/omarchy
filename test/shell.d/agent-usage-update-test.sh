@@ -63,3 +63,33 @@ pass "update succeeds when the requested collectors all pass"
 [[ -e $usage_dir/skipped.json && ! -e $usage_dir/noisy.json ]] ||
   fail "update with agent arguments only runs the named collectors"
 pass "update with agent arguments only runs the named collectors"
+
+# A collector dropped into ~/.local/bin is discovered too: the panel already
+# picks up any record in the usage directory, so adding one should not also
+# require shadowing this script.
+mkdir -p "$TEST_HOME/.local/bin"
+
+cat >"$TEST_HOME/.local/bin/omarchy-agent-usage-userly" <<'COLLECTOR'
+#!/bin/bash
+echo '{"schemaVersion":1,"id":"userly","name":"User Agent"}'
+COLLECTOR
+
+cat >"$TEST_HOME/.local/bin/omarchy-agent-usage-good" <<'COLLECTOR'
+#!/bin/bash
+echo '{"schemaVersion":1,"id":"good","name":"Overridden Agent"}'
+COLLECTOR
+
+chmod +x "$TEST_HOME/.local/bin/"omarchy-agent-usage-*
+
+HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" \
+  "$ROOT/bin/omarchy-agent-usage-update" userly good 2>/dev/null ||
+  fail "update runs collectors from ~/.local/bin"
+pass "update runs collectors from ~/.local/bin"
+
+[[ $(jq -r '.name' "$usage_dir/userly.json") == "User Agent" ]] ||
+  fail "update writes a record for a collector found in ~/.local/bin"
+pass "update writes a record for a collector found in ~/.local/bin"
+
+[[ $(jq -r '.name' "$usage_dir/good.json") == "Overridden Agent" ]] ||
+  fail "a user collector takes precedence over the packaged one"
+pass "a user collector takes precedence over the packaged one"
