@@ -1240,7 +1240,9 @@ run_post_upgrade_update_steps() {
   local update_output update_status
 
   if PATH="$package_path" command -v omarchy-update-aur-pkgs >/dev/null 2>&1; then
-    if ! run_as_user_omarchy omarchy-update-aur-pkgs; then
+    # The upgrade already has the user's consent, so AUR updates within it skip
+    # the interactive confirmation omarchy-update-aur-pkgs now asks for.
+    if ! run_as_user_omarchy omarchy-update-aur-pkgs --yes; then
       warn "Could not update AUR packages; running omarchy-update after reboot may still update AUR packages."
     fi
   fi

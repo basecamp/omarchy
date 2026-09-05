@@ -1,13 +1,46 @@
 #!/bin/bash
 
-# omarchy:summary=Add the named packages to the system from the AUR if they're missing. Returns false if it couldn't be done.
-# omarchy:args=<packages...>
+# omarchy:summary=Add the named packages to the system from the AUR if they're missing, after an interactive confirmation. Returns false if it couldn't be done.
+# omarchy:args=<packages...> [--yes]
+# omarchy:examples=omarchy pkg aur add libfprint-goodix53x5 | omarchy pkg aur add --yes libfprint-goodix53x5
 
-if omarchy-pkg-missing "$@"; then
-  yay -S --noconfirm --needed "$@" || exit 1
+skip_confirmation=0
+packages=()
+
+for arg in "$@"; do
+  if [[ $arg == "--yes" ]]; then
+    skip_confirmation=1
+  else
+    packages+=("$arg")
+  fi
+done
+
+if (( ${#packages[@]} == 0 )); then
+  echo "Usage: omarchy pkg aur add <packages...> [--yes]" >&2
+  exit 1
 fi
 
-for pkg in "$@"; do
+if omarchy-pkg-missing "${packages[@]}"; then
+  # AUR PKGBUILDs are unsigned and run as this user before any sudo prompt,
+  # so installing from the AUR is a trust decision for a human, not for a
+  # script or agent (see manual/48-security.md).
+  if (( skip_confirmation == 0 )); then
+    if [[ ! -t 0 ]]; then
+      echo "AUR installs need an interactive confirmation." >&2
+      echo "The AUR is unsigned: PKGBUILDs run as your user before any sudo" >&2
+      echo "prompt. Run this yourself in a terminal, or pass --yes to accept" >&2
+      echo "that risk on purpose." >&2
+      exit 1
+    fi
+    echo "The AUR is unsigned: the PKGBUILDs for ${packages[*]} run as your user."
+    if ! gum confirm "Install ${packages[*]} from the AUR?"; then
+      exit 1
+    fi
+  fi
+  yay -S --noconfirm --needed "${packages[@]}" || exit 1
+fi
+
+for pkg in "${packages[@]}"; do
   # Secondary check to handle states where pacman doesn't actually register an error
   if ! pacman -Q "$pkg" &>/dev/null; then
     echo -e "\033[31mError: Package '$pkg' did not install\033[0m" >&2

@@ -1,10 +1,31 @@
 #!/bin/bash
 
-# omarchy:summary=Update AUR packages if any are installed
+# omarchy:summary=Update AUR packages if any are installed, after an interactive confirmation
+# omarchy:args=[--yes]
+
+skip_confirmation=0
+if [[ ${1:-} == "--yes" ]]; then
+  skip_confirmation=1
+fi
 
 if pacman -Qem >/dev/null; then
   if omarchy-pkg-aur-accessible; then
+    # An AUR update re-runs each PKGBUILD as this user, so it gets the same
+    # human confirmation as an install (see manual/48-security.md).
+    if (( skip_confirmation == 0 )) && [[ ! -t 0 ]]; then
+      echo -e "\e[33m\nAUR updates skipped: PKGBUILDs re-run as your user, which needs an interactive confirmation\e[0m"
+      echo
+      exit 0
+    fi
     echo -e "\e[32m\nUpdate AUR packages\e[0m"
+    if (( skip_confirmation == 0 )); then
+      echo "AUR packages re-run their PKGBUILDs as your user:"
+      pacman -Qemq
+      if ! gum confirm "Update AUR packages?"; then
+        echo
+        exit 0
+      fi
+    fi
     yay -Sua --noconfirm --cleanafter --ignore gcc14,gcc14-libs
     echo
   else

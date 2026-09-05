@@ -24,6 +24,12 @@ Sometimes you want `sudo` to stop asking, most often when an AI agent is doing a
 
 Be clear-eyed about this one: while it's on, anything running as your user can do anything as root without being asked. That's the whole point, and it's also the whole risk.
 
+## The AUR
+
+The Arch User Repository is where anything not packaged in the official repositories (or Omarchy's own) lives, and it's unsigned. Installing an AUR package means downloading its PKGBUILD recipe and running it as your user _before_ any sudo prompt appears, so a malicious recipe is arbitrary code execution. That's why the base install doesn't touch the AUR at all, and why Omarchy asks you to confirm every AUR install.
+
+When you run `omarchy pkg aur add <package>` in a terminal, you get a yes/no prompt before anything is fetched and built. AUR updates re-run the recipes, so `omarchy update` asks the same way when AUR packages are due. Scripts and agents can't answer prompts, so they fail by design. Pass `--yes` to skip the confirmation when you've already decided to trust a package.
+
 ## Signing Keys
 
 The public key for all ISO signatures and Omarchy repo package is `40DFB630FF42BCFFB047046CF0134EE680CAC571` ([verify at openpgp.org](https://keys.openpgp.org/search?q=pkgs%40omarchy.org)). The `omarchy/omarchy-keyring` package contains this as well and will be used to rollout any potential updates seamlessly.
