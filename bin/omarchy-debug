@@ -26,7 +26,24 @@ while (( $# > 0 )); do
   esac
 done
 
-LOG_FILE="/tmp/omarchy-debug.log"
+# /tmp is world-writable, so a fixed name there is created world-readable by
+# the default umask and left behind until reboot -- and this one holds
+# `sudo dmesg`, the journal, and a full hardware inventory that the invoking
+# user's own uid otherwise cannot read. Keep it under the per-user runtime
+# directory (0700) instead, and fall back to the state directory where
+# Omarchy keeps everything else of its own when there is no session runtime dir.
+log_dir="${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy}"
+LOG_FILE="$log_dir/omarchy-debug.log"
+
+# Nothing here runs under `set -e`, so an unusable log_dir -- a stale
+# XDG_RUNTIME_DIR, a full tmpfs, a read-only home -- would leave `--print`
+# exiting 0 having printed nothing at all. -T is what makes a directory at
+# LOG_FILE an error; without it `install` treats one as a destination
+# directory, writes $LOG_FILE/null, and reports success.
+if ! mkdir -p "$log_dir" || ! install -T -m 600 /dev/null "$LOG_FILE"; then
+  echo "Error: Failed to create $LOG_FILE" >&2
+  exit 1
+fi
 
 if [[ $NO_SUDO = "true" ]]; then
   DMESG_OUTPUT="(skipped - --no-sudo flag used)"
