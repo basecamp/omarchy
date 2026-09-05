@@ -89,9 +89,19 @@ printf '%s\n' "$*" >>"$OMARCHY_TEST_IPC_LOG"
 
 case "$*" in
   *'shell ping')
-    [[ $* == *"-p $OMARCHY_TEST_SESSION_PATH/shell"* ]] &&
+    if [[ -n ${OMARCHY_TEST_QS_READY_AFTER:-} ]]; then
+      attempts=$(<"$OMARCHY_TEST_QS_READY_COUNT")
+      attempts=$((attempts + 1))
+      printf '%s\n' "$attempts" >"$OMARCHY_TEST_QS_READY_COUNT"
+    fi
+
+    if [[ $* == *"-p $OMARCHY_TEST_SESSION_PATH/shell"* ]] &&
       grep -Fx '303' "$OMARCHY_TEST_QS_STATE" >/dev/null &&
+      (( ${attempts:-1} >= ${OMARCHY_TEST_QS_READY_AFTER:-1} )); then
       printf 'ok\n'
+    else
+      exit 1
+    fi
     ;;
   *'lock lock')
     touch "$OMARCHY_TEST_QS_STATE.locked"
@@ -213,6 +223,29 @@ grep -F "kill -p $restart_root/shell --any-display" "$restart_log" >/dev/null ||
 grep -F 'hl.dsp.exec_cmd("omarchy-launch-shell")' "$dispatch_log" >/dev/null || fail "restart launches the fresh shell through Hyprland"
 grep -F "ipc -n -p $restart_root/shell call -- shell ping" "$ipc_log" >/dev/null || fail "restart checks readiness in the session checkout"
 pass "restart replaces duplicate shell instances from the session checkout"
+
+# Plugin discovery and first-load QML compilation can take longer than the old
+# 20-attempt readiness budget. Keep polling long enough for a slow shell that
+# eventually becomes IPC-responsive.
+ready_count="$test_tmp/ready-count"
+printf '0\n' >"$ready_count"
+printf '303\n' >"$restart_state"
+
+PATH="$restart_bin:$PATH" \
+OMARCHY_PATH="$restart_root" \
+XDG_RUNTIME_DIR="$runtime_dir" \
+OMARCHY_TEST_QS_STATE="$restart_state" \
+OMARCHY_TEST_QS_LOG="$restart_log" \
+OMARCHY_TEST_QS_ENV_LOG="$restart_env_log" \
+OMARCHY_TEST_DISPATCH_LOG="$dispatch_log" \
+OMARCHY_TEST_IPC_LOG="$ipc_log" \
+OMARCHY_TEST_SESSION_PATH="$restart_root" \
+OMARCHY_TEST_QS_READY_AFTER=25 \
+OMARCHY_TEST_QS_READY_COUNT="$ready_count" \
+  timeout 8 "$ROOT/bin/omarchy-restart-shell" || fail "restart waits for a slow shell to become ready"
+
+(( $(<"$ready_count") >= 25 )) || fail "restart keeps polling beyond the old readiness budget"
+pass "restart waits for a slow shell to become ready"
 
 : >"$restart_log"
 printf '303\n' >"$restart_state"

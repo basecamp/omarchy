@@ -69,7 +69,9 @@ while timeout 5 quickshell kill -p "$CONFIG_DIR" --any-display >/dev/null 2>&1; 
 # not transient variables from a terminal, SSH connection, or development tool.
 hyprctl dispatch 'hl.dsp.exec_cmd("omarchy-launch-shell")' >/dev/null
 
-for (( attempt = 0; attempt < 20; attempt++ )); do
+# Plugin discovery and first-load QML compilation can take several seconds.
+ready_deadline=$((SECONDS + 30))
+while (( SECONDS < ready_deadline )); do
   if OMARCHY_PATH="$session_omarchy_path" OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell shell ping >/dev/null 2>&1; then
     # The session stays compositor-locked after the old lock client died, so
     # re-acquire the lock and let the user authenticate out of it.
