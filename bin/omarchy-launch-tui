@@ -10,4 +10,17 @@ else
   APP_ID="org.omarchy.$(basename $1)"
 fi
 
+# TUI windows run under their own app id, so the per-terminal scroll_touchpad
+# rules never reach them — agent windows included — and a fullscreen TUI also
+# misses foot's scrollback multiplier. Size a one-off rule here, where the
+# terminal is known: under foot a TUI needs roughly the product a regular foot
+# terminal scrolls with.
+case $(xdg-terminal-exec --print-id 2>/dev/null || true) in
+*foot*) scroll_touchpad=10 ;;
+*ghostty*) scroll_touchpad=0.2 ;;
+*) scroll_touchpad=1.5 ;;
+esac
+
+hyprctl eval "hl.window_rule({ match = { class = [[^${APP_ID}\$]] }, scroll_touchpad = ${scroll_touchpad} })" >/dev/null 2>&1 || true
+
 exec setsid uwsm-app -- xdg-terminal-exec --app-id=$APP_ID -e "$1" "${@:2}"
