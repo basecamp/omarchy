@@ -3,13 +3,16 @@
 # omarchy:summary=Show or set the location used for weather reports
 #
 # State lives in ~/.local/state/omarchy/settings/weather.json as
-# {"name": ..., "latitude": ..., "longitude": ...}. A missing file means the
-# location is auto-detected from the IP address. Coordinates make the weather
-# panel exact; a hand-written {"name": "Malibu"} alone works too.
+# {"name": ..., "latitude": ..., "longitude": ...} plus an optional
+# {"country": ...} the weather panel uses for unit auto-detection. A missing
+# file means the location is auto-detected from the IP address. Coordinates
+# make the weather panel exact; a hand-written {"name": "Malibu"} alone works
+# too.
 #
 #   (no args)           the current location: the stored name, or the
 #                       IP-detected city when nothing is set
-#   --set <name> [lat,lon]  store a location
+#   --set <name> [lat,lon] [country]
+#                       store a location
 #   --clear             return to IP auto-detect
 
 LOC_FILE="$HOME/.local/state/omarchy/settings/weather.json"
@@ -26,21 +29,27 @@ case "${1:-}" in
   [[ -n $name ]] && echo "$name"
   ;;
 --set)
-  [[ -n ${2:-} ]] || { echo "Usage: omarchy-weather-location --set <name> [lat,lon]" >&2; exit 1; }
+  [[ -n ${2:-} ]] || { echo "Usage: omarchy-weather-location --set <name> [lat,lon] [country]" >&2; exit 1; }
   if [[ -n ${3:-} ]]; then
     [[ ${3} =~ $COORDS_PATTERN ]] || { echo "Invalid coordinates: $3 (expected lat,lon)" >&2; exit 1; }
-    location=$(jq -n --arg name "$2" --argjson latitude "${3%,*}" --argjson longitude "${3#*,}" '{$name, $latitude, $longitude}')
+    if [[ -n ${4:-} ]]; then
+      location=$(jq -n --arg name "$2" --argjson latitude "${3%,*}" --argjson longitude "${3#*,}" --arg country "$4" '{$name, $latitude, $longitude, $country}')
+    else
+      location=$(jq -n --arg name "$2" --argjson latitude "${3%,*}" --argjson longitude "${3#*,}" '{$name, $latitude, $longitude}')
+    fi
   else
     location=$(jq -n --arg name "$2" '{$name}')
   fi
   mkdir -p "$(dirname "$LOC_FILE")"
-  echo "$location" >"$LOC_FILE"
+  # Atomic replace: a reader watching the file (the weather panel) never sees
+  # the truncated in-between state of a plain redirect.
+  printf '%s\n' "$location" >"$LOC_FILE.tmp.$$" && mv -f "$LOC_FILE.tmp.$$" "$LOC_FILE"
   ;;
 --clear)
   rm -f "$LOC_FILE"
   ;;
 *)
-  echo "Usage: omarchy-weather-location [--set <name> [lat,lon]|--clear]" >&2
+  echo "Usage: omarchy-weather-location [--set <name> [lat,lon] [country]|--clear]" >&2
   exit 1
   ;;
 esac
