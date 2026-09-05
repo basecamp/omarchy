@@ -255,6 +255,7 @@ mkdir -p "$NEXT_THEME" "$CURRENT_THEME" "$USER_THEMED"
 
 cat >"$NEXT_THEME/colors.toml" <<'EOF'
 mode = "light"
+terminal_opacity = "0.78"
 accent = "#336699"
 hyprland_active_border = "rgba(010203ee) rgba(040506ee) 45deg"
 background = "#000000"
@@ -337,6 +338,12 @@ border = "#ffffff"
 EOF
 
 OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
+grep -qx 'opacity = 0.78' "$NEXT_THEME/alacritty.toml" || fail "Alacritty template uses terminal opacity"
+grep -qx 'alpha=0.78' "$NEXT_THEME/foot.ini" || fail "Foot template uses terminal opacity"
+grep -qx 'background-opacity = 0.78' "$NEXT_THEME/ghostty.conf" || fail "Ghostty template uses terminal opacity"
+grep -qx 'background_opacity 0.78' "$NEXT_THEME/kitty.conf" || fail "Kitty template uses terminal opacity"
+pass "terminal templates use the shared opacity token"
+
 grep -qx 'mix=#808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix helper works"
 grep -qx 'strip=808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_strip helper works"
 grep -qx 'rgb=128,128,128' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_rgb helper works"
@@ -364,6 +371,28 @@ grep -qx 'selection-background=#808080' "$NEXT_THEME/alias-test.txt" || fail "th
 grep -qx 'selection-foreground=#eeeeee' "$NEXT_THEME/alias-test.txt" || fail "theme template derives selection foreground from bright_foreground"
 grep -qx 'cursor-alias=#eeeeee' "$NEXT_THEME/alias-test.txt" || fail "theme template derives cursor alias from bright_foreground"
 pass "theme template semantic aliases expose legacy palette helpers"
+
+while read -r opacity expected; do
+  opacity_file="$PI_TMPDIR/opacity-$opacity.toml"
+  printf 'terminal_opacity = "%s"\n' "$opacity" >"$opacity_file"
+  actual=$("$ROOT/bin/omarchy-theme-color" --file "$opacity_file" terminal_opacity)
+  [[ $actual == "$expected" ]] || fail "terminal opacity resolves $opacity"
+done <<'EOF'
+0 0
+0.78 0.78
+1 1
+1.0 1.0
+EOF
+pass "terminal opacity accepts values from zero through one"
+
+for opacity in -0.1 1.1 transparent; do
+  opacity_file="$PI_TMPDIR/invalid-opacity-${opacity//[^a-zA-Z0-9]/-}.toml"
+  printf 'terminal_opacity = "%s"\n' "$opacity" >"$opacity_file"
+  actual=$("$ROOT/bin/omarchy-theme-color" --file "$opacity_file" terminal_opacity 2>"$PI_TMPDIR/opacity-stderr")
+  [[ $actual == "1.0" ]] || fail "invalid terminal opacity falls back to opaque"
+  grep -q 'invalid terminal_opacity' "$PI_TMPDIR/opacity-stderr" || fail "invalid terminal opacity reports its fallback"
+done
+pass "invalid terminal opacity warns and falls back to opaque"
 
 LEGACY_COLORS_FILE="$PI_TMPDIR/legacy-colors.toml"
 cat >"$LEGACY_COLORS_FILE" <<'EOF'
@@ -415,6 +444,10 @@ cp "$LEGACY_COLORS_FILE" "$LEGACY_NEXT_THEME/colors.toml"
 OMARCHY_PATH="$ROOT" HOME="$LEGACY_THEME_HOME" "$ROOT/bin/omarchy-theme-set-templates"
 grep -qx 'background = #101010' "$LEGACY_NEXT_THEME/ghostty.conf" || fail "legacy theme generates terminal background"
 grep -qx 'foreground = #f0f0f0' "$LEGACY_NEXT_THEME/ghostty.conf" || fail "legacy theme generates terminal foreground"
+grep -qx 'opacity = 1.0' "$LEGACY_NEXT_THEME/alacritty.toml" || fail "legacy Alacritty theme defaults to opaque"
+grep -qx 'alpha=1.0' "$LEGACY_NEXT_THEME/foot.ini" || fail "legacy Foot theme defaults to opaque"
+grep -qx 'background-opacity = 1.0' "$LEGACY_NEXT_THEME/ghostty.conf" || fail "legacy Ghostty theme defaults to opaque"
+grep -qx 'background_opacity 1.0' "$LEGACY_NEXT_THEME/kitty.conf" || fail "legacy Kitty theme defaults to opaque"
 grep -Fq 'dark_bg = "#111111"' "$LEGACY_NEXT_THEME/neovim.lua" || fail "legacy theme preserves dark_bg in generated editor theme"
 grep -Fq 'lighter_bg = "#131313"' "$LEGACY_NEXT_THEME/neovim.lua" || fail "legacy theme preserves lighter_bg in generated editor theme"
 grep -Fq 'dark_fg = "#d0d0d0"' "$LEGACY_NEXT_THEME/neovim.lua" || fail "legacy theme preserves dark_fg in generated editor theme"

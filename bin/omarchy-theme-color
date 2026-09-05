@@ -173,6 +173,17 @@ parse_colors_file() {
   return 0
 }
 
+resolve_terminal_opacity() {
+  local opacity="${THEME_COLORS[terminal_opacity]:-}"
+
+  if [[ -z $opacity ]]; then
+    THEME_COLORS[terminal_opacity]="1.0"
+  elif [[ ! $opacity =~ ^(0([.][0-9]+)?|1([.]0+)?)$ ]]; then
+    printf 'omarchy-theme-color: invalid terminal_opacity %q; using 1.0\n' "$opacity" >&2
+    THEME_COLORS[terminal_opacity]="1.0"
+  fi
+}
+
 resolve_theme_colors() {
   local key
 
@@ -277,6 +288,7 @@ resolve_theme_colors() {
   done
 
   resolve_theme_mode
+  resolve_terminal_opacity
   THEME_COLORS[theme_type]="${THEME_COLORS[mode]}"
 }
 

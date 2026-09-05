@@ -45,6 +45,7 @@ assert_no_marker() {
 write_colors() {
   cat >"$1" <<TOML
 mode = "light"
+terminal_opacity = "0.78"
 
 accent = "#7aa2f7"
 selection = "#292e42"
@@ -109,6 +110,10 @@ for generated in hyprland.lua neovim.lua gum_env.lua kitty.conf alacritty.toml f
   assert_staged "$generated" "$generated is generated from Omarchy's template"
   assert_no_marker "$generated" "an installed theme cannot supply $generated"
 done
+grep -qx 'opacity = 0.78' "$(staged alacritty.toml)" || fail "installed theme opacity reaches Alacritty's generated config"
+grep -qx 'alpha=0.78' "$(staged foot.ini)" || fail "installed theme opacity reaches Foot's generated config"
+grep -qx 'background-opacity = 0.78' "$(staged ghostty.conf)" || fail "installed theme opacity reaches Ghostty's generated config"
+grep -qx 'background_opacity 0.78' "$(staged kitty.conf)" || fail "installed theme opacity reaches Kitty's generated config"
 
 # Colour is kept, including a file Omarchy would otherwise have generated.
 assert_staged shell.toml "shell.toml is staged"
@@ -158,6 +163,7 @@ set_theme legacy || fail "omarchy-theme-set applies a theme that only ships alac
 assert_staged colors.toml "a legacy theme's palette is recovered from its alacritty.toml"
 grep -q '#102030' "$(staged colors.toml)" || fail "the recovered palette is the theme's"
 assert_no_marker alacritty.toml "a legacy theme's alacritty.toml is not staged"
+grep -qx 'opacity = 1.0' "$(staged alacritty.toml)" || fail "a legacy installed theme defaults to opaque"
 
 pass "a theme older than colors.toml keeps its palette and loses its terminal config"
 
@@ -179,10 +185,12 @@ mkdir -p "$mine"
 write_colors "$mine/colors.toml"
 printf 'os.execute("%s")\n' "$marker" >"$mine/hyprland.lua"
 printf '{"name":"Mine","extension":"pub.ext"}\n' >"$mine/vscode.json"
+printf '[colors-dark]\nalpha=0.42\n' >"$mine/foot.ini"
 
 set_theme mine || fail "omarchy-theme-set applies a theme the user wrote"
 grep -q "$marker" "$(staged hyprland.lua)" || fail "a theme the user wrote keeps its own hyprland.lua"
 assert_staged vscode.json "a theme the user wrote keeps every file it ships"
+grep -qx 'alpha=0.42' "$(staged foot.ini)" || fail "a theme the user wrote keeps its terminal config"
 [[ ! -s $test_tmp/stderr ]] || fail "a theme the user wrote reports nothing ignored" "$(cat "$test_tmp/stderr")"
 
 pass "a theme the user wrote is not held to the installed-theme list"

@@ -67,12 +67,11 @@ What this does not cover: a theme distributed as an archive rather than a git re
 
 ## `colors.toml`
 
-`colors.toml` provides the palette keys used by templates. Keys are grouped
-semantic-first: accent/selection/muted, then the backgrounds, then the
-foregrounds, then the named colors:
+`colors.toml` provides the palette and visual settings used by templates. Color keys are grouped semantic-first: accent/selection/muted, then the backgrounds, then the foregrounds, then the named colors:
 
 ```toml
 mode = "dark"
+terminal_opacity = "0.95"
 
 accent = "#7aa2f7"
 selection = "#292e42"
@@ -91,6 +90,8 @@ bright_foreground = "#c0caf5"
 red = "#f7768e"
 blue = "#7aa2f7"
 ```
+
+`terminal_opacity` controls the terminal emulator's default background translucency. It accepts a decimal from `0.0` (transparent) through `1.0` (opaque) and defaults to `1.0` when omitted or invalid. It is separate from Hyprland window opacity, which affects the whole window including its text. Running Foot windows keep the opacity they started with, so reopen Foot after a theme change to apply a new value. Existing windows in other terminals follow their emulator's normal configuration-reload behavior.
 
 Any key can be referenced from a template with `{{ key }}`. The foundational
 shell palette is loaded from:
@@ -374,7 +375,7 @@ local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, a
 ## Adding or overriding theme files
 
 - Add palette values to `themes/<name>/colors.toml`.
-- Hand-written overrides work everywhere except a `.lua`, a terminal config or a `vscode.json` in a theme cloned from a git repo; see [What an installed theme may not ship](#what-an-installed-theme-may-not-ship).
+- Hand-written overrides work everywhere except a `.lua`, a terminal config or a `vscode.json` in a theme cloned from a git repo; see [What an installed theme may not ship](#what-an-installed-theme-may-not-ship). A hand-written terminal config takes precedence over the generated `terminal_opacity` setting.
 - Prefer generated files when the theme can be expressed with templates.
 - Add a hand-written file in `themes/<name>/` only when that theme needs to
   override the generated output entirely.
