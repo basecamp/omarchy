@@ -187,11 +187,11 @@ assert(notifications.shouldRenderCompactGlyph('K', '', true), 'notifications ren
 assert(!notifications.shouldRenderCompactGlyph('K', '', false), 'notifications give glyph hints with bodies the large icon slot')
 assert(!notifications.shouldRenderCompactGlyph('K', 'file:///tmp/image.png', true), 'notifications keep image-backed glyph hints in the icon slot')
 
-assert(notifications.shouldBypassDnd({ appName: 'omarchy-action', urgency: 1 }, 2), 'omarchy action toasts bypass DND')
-assert(notifications.shouldBypassDnd({ appName: 'notify-send', urgency: 2 }, 2), 'critical notify-send bypasses DND')
-assert(!notifications.shouldBypassDnd({ appName: 'notify-send', urgency: 1 }, 2), 'normal notify-send does not bypass DND')
-assert(!notifications.shouldBypassDnd({ appName: 'Slack', urgency: 2 }, 2), 'critical app notifications do not bypass DND')
-assert(!notifications.shouldBypassDnd({ appName: 'omarchy-menu-keybindings', urgency: 1 }, 2), 'omarchy command app names do not bypass DND')
+assert(notifications.shouldBypassDnd({ app: 'omarchy-action', urgency: 1 }, 2), 'omarchy action toasts bypass DND')
+assert(notifications.shouldBypassDnd({ app: 'notify-send', urgency: 2 }, 2), 'critical notify-send bypasses DND')
+assert(!notifications.shouldBypassDnd({ app: 'notify-send', urgency: 1 }, 2), 'normal notify-send does not bypass DND')
+assert(!notifications.shouldBypassDnd({ app: 'Slack', urgency: 2 }, 2), 'critical app notifications do not bypass DND')
+assert(!notifications.shouldBypassDnd({ app: 'omarchy-menu-keybindings', urgency: 1 }, 2), 'omarchy command app names do not bypass DND')
 assert(!notifications.isEphemeralApp('omarchy-menu-keybindings'), 'notifications treat omarchy command app names as normal apps')
 
 // The click action's argv form: parsed from the persisted omarchy-exec-argv
@@ -722,5 +722,125 @@ assert(
 assert(
   !/pendingModel|pastModel/.test(serviceQml),
   'notifications service keeps no in-memory history models'
+)
+
+assertEqual(
+  notifications.mapUrgency(
+    { app: 'Brave Origin', urgency: 2 },
+    [{ app: 'Brave Origin', urgency: 'critical', set: { urgency: 'normal' } }]
+  ),
+  1,
+  'notifications remap a matching sender from critical down to normal'
+)
+
+assertEqual(
+  notifications.mapUrgency(
+    { app: 'Slack', urgency: 2 },
+    [{ app: 'Brave Origin', set: { urgency: 'normal' } }]
+  ),
+  2,
+  'notifications leave a non-matching sender untouched'
+)
+
+assertEqual(
+  notifications.mapUrgency(
+    { app: 'Brave Origin', urgency: 0 },
+    [{ app: 'Brave Origin', set: { urgency: 'normal' } }]
+  ),
+  1,
+  'notifications apply a rule without an urgency matcher to any urgency'
+)
+
+assertEqual(
+  notifications.mapUrgency(
+    { app: 'Brave Origin', summary: 'Manuel Rivero', urgency: 1 },
+    [{ 'summary~': 'Manuel|Rafael', set: { urgency: 'critical' } }]
+  ),
+  2,
+  'notifications match a rule by regular expression on the summary'
+)
+
+assertEqual(
+  notifications.mapUrgency(
+    { app: 'Brave Origin', summary: 'unrelated', urgency: 2 },
+    [{ app: 'Brave Origin', 'summary~': 'Manuel', set: { urgency: 'normal' } }]
+  ),
+  2,
+  'notifications require every matcher in a rule to match'
+)
+
+assertEqual(
+  notifications.mapUrgency(
+    { app: 'Brave Origin', summary: 'Manuel Rivero', urgency: 2 },
+    [
+      { app: 'Brave Origin', set: { urgency: 'normal' } },
+      { 'summary~': 'Manuel', set: { urgency: 'critical' } }
+    ]
+  ),
+  2,
+  'notifications let a later matching rule win over an earlier one'
+)
+
+assertEqual(
+  notifications.mapUrgency(
+    { app: 'Brave Origin', urgency: 2 },
+    [{ app: 'Brave Origin', set: { urgency: 'catastrophic' } }]
+  ),
+  2,
+  'notifications ignore a rule that sets an unknown urgency name'
+)
+
+assertEqual(
+  notifications.mapUrgency({ app: 'Brave Origin', urgency: 2 }, undefined),
+  2,
+  'notifications leave urgency untouched when no rules are configured'
+)
+
+assertEqual(
+  notifications.mapUrgency(
+    { app: 'Brave Origin', summary: 'anything', urgency: 2 },
+    [{ 'summary~': '[', set: { urgency: 'normal' } }]
+  ),
+  2,
+  'notifications skip a rule whose regular expression does not compile'
+)
+
+const remapBrave = [{ app: 'Brave Origin', set: { urgency: 'normal' } }]
+
+assertEqual(
+  notifications.snapshotOf({ appName: 'Brave Origin', urgency: 2 }, 1000, remapBrave).urgency,
+  1,
+  'notifications snapshot a sender with its urgency already remapped'
+)
+
+assertEqual(
+  notifications.replacementSnapshot({ appName: 'Brave Origin', urgency: 2 }, 7, 1000, remapBrave).urgency,
+  1,
+  'notifications remap urgency on an in-place notification update too'
+)
+
+assert(
+  notifications.shouldBypassDnd({ app: 'notify-send', urgency: 2 }, 2),
+  'notifications let a CLI critical alert bypass do-not-disturb'
+)
+
+assert(
+  !notifications.shouldBypassDnd({ app: 'notify-send', urgency: 1 }, 2),
+  'notifications stop bypassing do-not-disturb once a rule maps a sender below critical'
+)
+
+assert(
+  /shouldBypassDnd\(snapshot\)/.test(serviceQml),
+  'notifications service checks do-not-disturb against the mapped snapshot'
+)
+
+assert(
+  /shellConfig\.notifications[\s\S]{0,200}?rules/.test(serviceQml),
+  'notifications service reads its urgency rules from shell.json'
+)
+
+assert(
+  /NotificationLogic\.snapshotOf\(notification, Date\.now\(\), service\.urgencyRules\)/.test(serviceQml),
+  'notifications service hands its urgency rules to every snapshot it takes'
 )
 JS

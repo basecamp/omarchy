@@ -115,10 +115,13 @@ function summaryStartsWithGlyph(summary) {
   return spaces >= 2
 }
 
-function shouldBypassDnd(notification, criticalUrgency) {
-  var appName = String((notification && notification.appName) || "")
+// Takes the snapshot rather than the live notification so it reads the urgency
+// mapUrgency() settled on: a rule that maps a sender below critical has to stop
+// it bypassing do-not-disturb too, or the mapping only half applies.
+function shouldBypassDnd(entry, criticalUrgency) {
+  var appName = String((entry && entry.app) || "")
   if (appName === "omarchy-action") return true
-  return appName === "notify-send" && notification && notification.urgency === criticalUrgency
+  return appName === "notify-send" && entry && entry.urgency === criticalUrgency
 }
 
 function isEphemeralApp(appName) {
@@ -180,12 +183,66 @@ function shouldRenderCompactGlyph(glyph, iconSource, singleLineToast) {
   return String(glyph || "").length > 0 && String(iconSource || "").length === 0 && !!singleLineToast
 }
 
-function snapshotOf(notification, timestamp) {
+var URGENCY_VALUES = { low: 0, normal: 1, critical: 2 }
+
+// Fields a rule may match on, each compared against the same-named snapshot
+// field. A `~` suffix makes the value a regular expression instead of an exact
+// match, following mako's `summary~` / `body~` convention.
+var RULE_MATCH_FIELDS = ["app", "appIcon", "summary", "body"]
+
+// Every matcher a rule carries has to match, so a rule narrows as fields are
+// added to it. A rule that names no matcher at all therefore matches
+// everything, which is the only way to express a blanket remap.
+function ruleMatches(rule, entry) {
+  if (rule.urgency !== undefined && URGENCY_VALUES[rule.urgency] !== entry.urgency) return false
+
+  for (var i = 0; i < RULE_MATCH_FIELDS.length; i++) {
+    var field = RULE_MATCH_FIELDS[i]
+    var value = String(entry[field] || "")
+    if (rule[field] !== undefined && String(rule[field]) !== value) return false
+
+    var pattern = rule[field + "~"]
+    if (pattern === undefined) continue
+    try {
+      if (!new RegExp(String(pattern)).test(value)) return false
+    } catch (error) {
+      // A pattern the user mistyped must not take the notification down with
+      // it: the rule simply does not apply.
+      return false
+    }
+  }
+
+  return true
+}
+
+// Senders lie about urgency — chat apps mark routine messages critical to force
+// visibility — and every downstream decision (popup lifetime, do-not-disturb
+// bypass, card styling, history) reads urgency. Correcting it once, here at
+// ingest, keeps all of them honest rather than special-casing each in turn.
+//
+// Rules apply in order and the last match wins, so a broad rule can be narrowed
+// by a later, more specific one.
+function mapUrgency(entry, rules) {
+  var source = entry || {}
+  var urgency = source.urgency
+  if (!Array.isArray(rules)) return urgency
+
+  for (var i = 0; i < rules.length; i++) {
+    var rule = rules[i] || {}
+    if (!ruleMatches(rule, source)) continue
+    var mapped = URGENCY_VALUES[(rule.set || {}).urgency]
+    if (mapped !== undefined) urgency = mapped
+  }
+
+  return urgency
+}
+
+function snapshotOf(notification, timestamp, rules) {
   var n = notification || {}
   var id = n.id || 0
   var expireTimeout = Number(n.expireTimeout || 0)
   if (!isFinite(expireTimeout) || expireTimeout < 0) expireTimeout = 0
-  return {
+  var snapshot = {
     id: id,
     originalId: id,
     app: n.appName || "",
@@ -199,6 +256,10 @@ function snapshotOf(notification, timestamp) {
     expireTimeout: expireTimeout,
     timestamp: timestamp === undefined ? Date.now() : timestamp
   }
+  // Map before anyone reads it: this snapshot is what the popup, the
+  // do-not-disturb check and the history entry all consume.
+  snapshot.urgency = mapUrgency(snapshot, rules)
+  return snapshot
 }
 
 // Everything the popup card draws, and therefore everything an in-place
@@ -227,8 +288,8 @@ function popupRowChanged(row, updated) {
 // the popup it took over: the file name is the timestamp and id the popup was
 // first persisted under, and the restore, replace and archive paths all key
 // off that name. Only what the card draws comes from the updated object.
-function replacementSnapshot(notification, originalId, timestamp) {
-  var updated = snapshotOf(notification, timestamp)
+function replacementSnapshot(notification, originalId, timestamp, rules) {
+  var updated = snapshotOf(notification, timestamp, rules)
   updated.id = originalId
   updated.originalId = originalId
   return updated
@@ -459,6 +520,7 @@ if (typeof module !== "undefined") {
     execArgvFromHints: execArgvFromHints,
     parseExecArgv: parseExecArgv,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
+    mapUrgency: mapUrgency,
     snapshotOf: snapshotOf,
     popupRoles: popupRoles,
     popupRowChanged: popupRowChanged,

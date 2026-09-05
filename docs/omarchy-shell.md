@@ -167,7 +167,12 @@ Rules:
    First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
 6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
-8. `version: 1` is required.
+8. `notifications.rules[]` rewrites the urgency a sender declared, applied at
+   ingest so popup lifetime, do-not-disturb and history all read the corrected
+   value. Each rule filters on the fields it names (`app`, `appIcon`, `summary`,
+   `body`, `urgency`), a `~` suffix making the value a regular expression, and
+   `set.urgency` carries the replacement. Rules apply in order; the last match wins.
+9. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user
