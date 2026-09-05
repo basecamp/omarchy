@@ -65,6 +65,13 @@ account    include                     system-local-login
 EOF
 }
 
+install_resume_recovery() {
+  echo "Installing fingerprint recovery after resume..."
+  sudo install -Dm755 \
+    "$OMARCHY_PATH/default/systemd/system-sleep/fprintd-resume-stop" \
+    /usr/lib/systemd/system-sleep/fprintd-resume-stop
+}
+
 
 echo -e "\e[32mSetting up fingerprint scanner for authentication.\n\e[0m"
 
@@ -103,6 +110,7 @@ if sudo fprintd-enroll "$USER"; then
     # pam_fprintd with nothing to match.
     setup_pam_config
     setup_lock_fingerprint_pam
+    install_resume_recovery
     echo -e "\e[32m\nPerfect! Fingerprint authentication is now configured.\e[0m"
     echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
   else
