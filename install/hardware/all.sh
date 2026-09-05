@@ -28,6 +28,8 @@ run_logged "$OMARCHY_INSTALL/hardware/intel/sof-firmware.sh"
 # above rather than sit with the other Dell leaf at the top of this file.
 run_logged "$OMARCHY_INSTALL/hardware/dell-xps13-sidecar-amps.sh"
 
+run_logged "$OMARCHY_INSTALL/hardware/dell/fix-inspiron16-plus-psr.sh"
+
 run_logged "$OMARCHY_INSTALL/hardware/asus/fix-asus-ptl-display-backlight.sh"
 run_logged "$OMARCHY_INSTALL/hardware/asus/fix-asus-ptl-b9406-display.sh"
 run_logged "$OMARCHY_INSTALL/hardware/asus/fix-asus-ptl-b9406-touchpad.sh"
