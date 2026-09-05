@@ -21,3 +21,26 @@ omarchy-hyprland-monitor-scaling 2>/dev/null || echo
 
 printf '%s\n' "$monitors_json" | jq -c \
   '[.[] | {name, enabled:(.disabled != true), focused:(.focused == true), width, height}]'
+
+# Extended per-display detail for the display-panel arrangement UI, added as a
+# new trailing line rather than reshaping line 8 above: existing consumers
+# that read this output by line index (the shell panel, monitor-state-test.sh)
+# stay correct without change, and only a panel that knows to look for a 9th
+# line reads the richer shape. Identity is exposed as `description`/`serial`
+# rather than `name` because DisplayLink-backed connector names (DVI-I-1,
+# DVI-I-2, ...) can be reassigned across reconnects; callers that persist or
+# re-address a monitor should key off description, matching the `desc:`
+# selectors monitors.lua and omarchy-hyprland-monitor-scaling already use.
+printf '%s\n' "$monitors_json" | jq -c \
+  '[.[] | {
+     name,
+     description: (.description // ""),
+     serial: (.serial // ""),
+     enabled: (.disabled != true),
+     focused: (.focused == true),
+     x, y, width, height,
+     scale,
+     transform,
+     currentMode: (if (.width // 0) > 0 then "\(.width)x\(.height)@\(.refreshRate)" else "" end),
+     availableModes: (.availableModes // [])
+   }]'

@@ -18,40 +18,154 @@ Panel {
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
   property bool brightnessAvailable: false
-  property string internalMonitor: ""
-  property string externalMonitor: ""
   property string focusedMonitor: ""
-  property bool internalEnabled: false
-  property bool mirrorEnabled: false
-  property string monitorScale: ""
   property var displays: []
   property int enabledDisplayCount: 0
 
   // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
 
-  // Cursor model shared by keyboard and mouse. Sections:
-  //   "brightness" - single slider row, selectedIndex = -1 sentinel
-  //                  (mirrors Audio's slider rows). Only present if a
-  //                  controllable backlight was detected.
-  //   "scale"      - 6 Button scale presets; treated as a single
-  //                  horizontal row from j/k's perspective. h/l moves
-  //                  between presets, identical to bluetooth's header.
-  //   "monitors"   - vertical display row list for enabling/disabling displays;
-  //                  j/k walks each row.
+  // ---------------------------------------------------------------------
+  // Arrangement + per-monitor selection and pending edits
+  // ---------------------------------------------------------------------
+  // Identity is desc:<description> (falling back to connector name), never
+  // the raw connector name alone: matches Model.monitorIdentity and stays
+  // valid across a DisplayLink reconnect that renumbers connectors.
+  property string selectedIdentity: ""
+  property var pendingChanges: ({})   // { identity: { enabled, mode, scale, transform, x, y } }
+
+  readonly property var displayByIdentity: {
+    var map = {}
+    for (var i = 0; i < displays.length; i++) {
+      var d = displays[i]
+      if (d) map[Model.monitorIdentity(d)] = d
+    }
+    return map
+  }
+
+  readonly property var selectedDisplay: displayByIdentity[selectedIdentity] || null
+
+  readonly property var arrangementDisplays: {
+    var result = []
+    for (var i = 0; i < displays.length; i++) {
+      var d = displays[i]
+      if (!d) continue
+      var identity = Model.monitorIdentity(d)
+      var pending = pendingChanges[identity] || {}
+      result.push(Object.assign({}, d, {
+        x: pending.x !== undefined ? pending.x : d.x,
+        y: pending.y !== undefined ? pending.y : d.y,
+        scale: pending.scale !== undefined ? pending.scale : d.scale,
+        transform: pending.transform !== undefined ? pending.transform : d.transform,
+        enabled: pending.enabled !== undefined ? pending.enabled : d.enabled
+      }))
+    }
+    return result
+  }
+
+  readonly property var pendingDiff: Model.diffPending(displayByIdentity, pendingChanges)
+  readonly property bool dirty: Model.isDirty(pendingDiff)
+
+  function monitorValue(identity, field, fallback) {
+    var pending = pendingChanges[identity]
+    if (pending && pending[field] !== undefined) return pending[field]
+    var live = displayByIdentity[identity]
+    if (!live) return fallback
+    if (field === "enabled") return live.enabled
+    if (field === "mode") return live.currentMode
+    if (field === "scale") return live.scale
+    if (field === "transform") return live.transform
+    if (field === "x") return live.x
+    if (field === "y") return live.y
+    return fallback
+  }
+
+  function setPendingField(identity, field, value) {
+    var clone = {}
+    var names = Object.keys(root.pendingChanges)
+    for (var i = 0; i < names.length; i++) {
+      var n = names[i]
+      clone[n] = Object.assign({}, root.pendingChanges[n])
+    }
+    if (!clone[identity]) clone[identity] = {}
+    clone[identity][field] = value
+    root.pendingChanges = clone
+  }
+
+  function clearPending() {
+    root.pendingChanges = {}
+  }
+
+  function selectMonitor(identity) {
+    root.selectedIdentity = identity
+  }
+
+  function snapLogical(value) {
+    return Math.round(Number(value) / 10) * 10
+  }
+
+  // ---------------------------------------------------------------------
+  // Safe apply / preview / revert, through omarchy-monitor-arrange
+  // ---------------------------------------------------------------------
+  // "Apply" pushes the pending layout live (transient, via `arrange apply`)
+  // and starts a preview countdown; "Keep" persists it to monitors.lua
+  // (`arrange persist`), "Revert" re-applies the pre-change snapshot. An
+  // unconfirmed preview auto-reverts so a bad layout can't strand the user.
+  readonly property int previewSeconds: 12
+  property bool previewActive: false
+  property int previewRemaining: 0
+  property var liveSnapshot: []
+  property string statusText: ""
+
+  function startApply() {
+    if (!root.dirty) return
+    root.liveSnapshot = Model.buildArrangeLayout(root.displays, {})
+    var layout = Model.buildArrangeLayout(root.displays, root.pendingDiff)
+    runArrange(arrangeApplyProc, "apply", layout)
+  }
+
+  function keepApplied() {
+    var layout = Model.buildArrangeLayout(root.displays, root.pendingDiff)
+    runArrange(arrangePersistProc, "persist", layout)
+  }
+
+  function revertPreview() {
+    previewCountdown.stop()
+    if (root.previewActive) runArrange(arrangeRevertProc, "apply", root.liveSnapshot)
+    root.previewActive = false
+    root.previewRemaining = 0
+    root.clearPending()
+  }
+
+  function primaryAction() {
+    if (root.previewActive) root.keepApplied()
+    else root.startApply()
+  }
+
+  function secondaryAction() {
+    if (root.previewActive) root.revertPreview()
+    else root.clearPending()
+  }
+
+  function runArrange(proc, command, layout) {
+    proc.command = ["bash", "-c", "omarchy-monitor-arrange " + command + " <<< \"$1\"", "--", JSON.stringify(layout)]
+    if (!proc.running) proc.running = true
+  }
+
+  // ---------------------------------------------------------------------
+  // Keyboard cursor model
+  // ---------------------------------------------------------------------
+  // Sections:
+  //   "brightness" - single slider row, selectedIndex = -1 sentinel.
+  //   "textsize"   - single slider row, selectedIndex = -1 sentinel.
+  //   "canvas"     - arrangement tiles; only present with 2+ displays.
+  //   "enable"/"mode"/"scale"/"rotation" - single rows for the selected
+  //                  monitor; only present once a monitor is selected.
+  //   "actions"    - Apply/Cancel (or Keep/Revert) footer, 2 entries.
   // Mouse hover on a target updates root state via the components' `hovered`
   // signal so keyboard cursor and pointer share one highlight.
-  readonly property var scalePresets: ["1", "1.25", "1.6", "2", "3", "4"]
-  readonly property var scaleValues: {
-    for (var i = 0; i < displays.length; i++) {
-      var display = displays[i]
-      if (display && display.focused)
-        return Model.availableScales(scalePresets, display.width, display.height)
-    }
-    return scalePresets
-  }
-  property string focusSection: "scale"
-  property int selectedIndex: 0
+  property string focusSection: "brightness"
+  property int selectedIndex: -1
   property bool cursorActive: false
 
   // Text size slider — curated macOS-style notches (px). The panel snaps to
@@ -76,22 +190,20 @@ Panel {
     var list = []
     if (brightnessAvailable) list.push("brightness")
     list.push("textsize")
-    list.push("scale")
-    if (displays.length > 1) list.push("monitors")
+    if (displays.length > 1) list.push("canvas")
+    if (selectedDisplay) list.push("enable", "mode", "scale", "rotation")
+    if (dirty || previewActive) list.push("actions")
     return list
   }
 
   function sectionCount(section) {
-    if (section === "brightness") return 0  // only the slider sentinel at -1
-    if (section === "textsize") return 0    // slider sentinel at -1, like brightness
-    if (section === "scale") return scaleValues.length
-    if (section === "monitors") return displays.length
-    return 0
+    if (section === "canvas") return displays.length
+    if (section === "actions") return 2
+    return 0  // brightness/textsize/enable/mode/scale/rotation are lone rows
   }
 
   function sectionIsSingleRow(section) {
-    // brightness and text size are lone sliders; scale presets sit horizontally.
-    return section === "brightness" || section === "textsize" || section === "scale"
+    return section !== "canvas"
   }
 
   function sectionFirstIndex(section) {
@@ -129,15 +241,21 @@ Panel {
     }
   }
 
-  // h/l: in scale section, walks the preset row; everywhere else, no-op
-  // because adjustBrightness handles horizontal motion on the brightness
-  // slider.
+  // h/l: canvas walks tiles left-to-right by array order; actions walks
+  // Apply/Cancel; everywhere else, no-op because adjustBrightness/
+  // adjustTextSize handle horizontal motion on their own sliders.
   function moveCursorH(delta) {
-    if (focusSection !== "scale") return
-    var next = selectedIndex + delta
-    if (next < 0) next = 0
-    if (next > scaleValues.length - 1) next = scaleValues.length - 1
-    selectedIndex = next
+    if (focusSection === "canvas" && displays.length > 0) {
+      var next = selectedIndex + delta
+      if (next < 0) next = 0
+      if (next > displays.length - 1) next = displays.length - 1
+      selectedIndex = next
+      root.selectMonitor(Model.monitorIdentity(displays[selectedIndex]))
+      return
+    }
+    if (focusSection === "actions") {
+      selectedIndex = Math.max(0, Math.min(1, selectedIndex + delta))
+    }
   }
 
   function adjustBrightness(delta) {
@@ -147,15 +265,21 @@ Panel {
   }
 
   function activateCursor() {
-    if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
-      setScale(scaleValues[selectedIndex])
+    if (focusSection === "canvas" && selectedIndex >= 0 && selectedIndex < displays.length) {
+      root.selectMonitor(Model.monitorIdentity(displays[selectedIndex]))
       return
     }
-    if (focusSection === "monitors" && selectedIndex >= 0 && selectedIndex < displays.length) {
-      var d = displays[selectedIndex]
-      if (d) toggleDisplay(d.name, d.enabled)
+    if (focusSection === "enable" && selectedDisplay) {
+      var identity = root.selectedIdentity
+      root.setPendingField(identity, "enabled", !monitorValue(identity, "enabled", selectedDisplay.enabled))
+      return
     }
-    // brightness: no separate action; the slider value is the action.
+    if (focusSection === "actions") {
+      if (selectedIndex === 0) root.primaryAction()
+      else if (selectedIndex === 1) root.secondaryAction()
+    }
+    // brightness/textsize: no separate action; the slider value is the action.
+    // mode/scale/rotation: opened via click; no keyboard-activate shortcut yet.
   }
 
   function clampCursor() {
@@ -168,9 +292,8 @@ Panel {
     }
     var count = sectionCount(focusSection)
     if (sectionIsSingleRow(focusSection)) {
-      // brightness/text size use the -1 sentinel; scale clamps into the presets.
       if (focusSection === "brightness" || focusSection === "textsize") selectedIndex = -1
-      else if (selectedIndex < 0 || selectedIndex >= count) selectedIndex = 0
+      else if (selectedIndex < 0 || selectedIndex >= Math.max(1, count)) selectedIndex = 0
       return
     }
     if (count === 0) {
@@ -212,8 +335,10 @@ Panel {
       brightness: root.brightnessPercent,
       brightnessAvailable: root.brightnessAvailable,
       focusedMonitor: root.focusedMonitor,
-      scale: root.monitorScale,
-      displays: root.displays
+      displays: root.displays,
+      pendingDiff: root.pendingDiff,
+      dirty: root.dirty,
+      previewActive: root.previewActive
     })
   }
 
@@ -261,28 +386,6 @@ Panel {
     }))
   }
 
-  function normalizeScale(scale) {
-    return Model.normalizeScale(scale)
-  }
-
-  function activeScaleIndex() {
-    for (var i = 0; i < displays.length; i++) {
-      var display = displays[i]
-      if (display && display.focused)
-        return Model.matchingScaleIndex(scaleValues, monitorScale, display.width, display.height)
-    }
-    return -1
-  }
-
-  function effectiveScale(scale) {
-    for (var i = 0; i < displays.length; i++) {
-      var display = displays[i]
-      if (display && display.focused)
-        return Model.cleanScale(scale, display.width, display.height)
-    }
-    return normalizeScale(scale)
-  }
-
   // Playful mood-name for a given brightness percent. Bands intentionally
   // span ~10–20 points so casual tweaks change the label, while small
   // nudges within one band don't.
@@ -291,22 +394,12 @@ Panel {
   }
 
   function updateDisplays(displaysJson) {
-    var parsed = Model.parseDisplays(displaysJson)
+    var parsed = Model.parseExtendedDisplays(displaysJson)
     root.displays = parsed.displays
     root.enabledDisplayCount = parsed.enabledDisplayCount
-  }
-
-  function toggleDisplay(name, enabled) {
-    if (!name) return
-    if (enabled && root.enabledDisplayCount <= 1) return
-
-    actionProc.command = ["hyprctl", "keyword", "monitor", name + (enabled ? ",disable" : ",preferred,auto,auto")]
-    if (!actionProc.running) actionProc.running = true
-  }
-
-  function setScale(scale) {
-    actionProc.command = ["bash", "-c", "omarchy-hyprland-monitor-scaling " + scale]
-    if (!actionProc.running) actionProc.running = true
+    if ((!root.selectedIdentity || !root.displayByIdentity[root.selectedIdentity]) && parsed.displays.length > 0) {
+      root.selectMonitor(Model.monitorIdentity(parsed.displays[0]))
+    }
   }
 
   // ---- Text size (shell base font + GTK text-scaling, via one CLI) ----
@@ -357,20 +450,14 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh()
-      if (brightnessAvailable) {
-        focusSection = "brightness"
-        selectedIndex = -1
-      } else {
-        focusSection = "scale"
-        selectedIndex = 0
-      }
+      focusSection = brightnessAvailable ? "brightness" : "textsize"
+      selectedIndex = -1
       cursorActive = false
     }
   }
 
   onBrightnessAvailableChanged: clampCursor()
   onDisplaysChanged: clampCursor()
-  onScaleValuesChanged: clampCursor()
   onVisibleSectionsChanged: clampCursor()
 
   // Only poll while the panel is open; the bar glyph tracks monitor count via
@@ -393,13 +480,15 @@ Panel {
         var brightness = String(lines[0] || "").trim()
         root.brightnessAvailable = brightness !== "unavailable" && brightness !== ""
         root.brightnessPercent = root.brightnessAvailable ? Math.max(0, Math.min(100, parseInt(brightness, 10))) : 0
-        root.internalMonitor = String(lines[1] || "").trim()
-        root.externalMonitor = String(lines[2] || "").trim()
-        root.internalEnabled = String(lines[3] || "").trim() !== ""
-        root.mirrorEnabled = String(lines[4] || "").trim() === root.externalMonitor && root.externalMonitor !== ""
         root.focusedMonitor = String(lines[5] || "").trim()
-        root.monitorScale = root.normalizeScale(String(lines[6] || "").trim())
-        root.updateDisplays(String(lines[7] || "[]").trim())
+        // Line 9 (index 8) is the extended per-display shape the arrangement
+        // canvas and detail controls need — description/serial identity,
+        // position, scale, transform, mode. Lines 1-4/6 (internal/external
+        // connector names, mirror state, legacy scale) aren't read here
+        // since the extended shape already carries everything this panel
+        // needs per display; they stay in omarchy-monitor-state's output
+        // for older consumers.
+        root.updateDisplays(String(lines[8] || "[]").trim())
       }
     }
   }
@@ -429,8 +518,57 @@ Panel {
     }
   }
 
+  // Preview countdown: an applied-but-unconfirmed layout auto-reverts if the
+  // user never taps Keep. Interval matches displaylink.service's observed
+  // RestartUSec=5s crash/restart bounce plus margin, so a transient
+  // DisplayLink drop during apply doesn't eat the whole confirm window.
+  Timer {
+    id: previewCountdown
+    interval: 1000
+    running: root.previewActive && root.previewRemaining > 0
+    repeat: true
+    onTriggered: {
+      root.previewRemaining = Math.max(0, root.previewRemaining - 1)
+      if (root.previewRemaining <= 0) root.revertPreview()
+    }
+  }
+
   Process {
-    id: actionProc
+    id: arrangeApplyProc
+    stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: {
+      if (running) return
+      var res = Model.parseArrangeResult(arrangeApplyProc.stdout.text)
+      if (res.success) {
+        root.previewActive = true
+        root.previewRemaining = root.previewSeconds
+      } else {
+        root.previewActive = false
+        root.statusText = res.message
+      }
+    }
+  }
+
+  Process {
+    id: arrangePersistProc
+    stdout: StdioCollector { waitForEnd: true }
+    onRunningChanged: {
+      if (running) return
+      var res = Model.parseArrangeResult(arrangePersistProc.stdout.text)
+      root.previewActive = false
+      root.previewRemaining = 0
+      if (res.success) root.clearPending()
+      else root.statusText = res.message
+      root.refresh()
+    }
+  }
+
+  // Re-applies the pre-change snapshot on revert/timeout. A failure here
+  // still clears the local preview state (handled by revertPreview's
+  // caller) rather than get stuck showing a countdown that already hit
+  // zero; the next refresh() reports whatever Hyprland actually settled on.
+  Process {
+    id: arrangeRevertProc
     stdout: StdioCollector { waitForEnd: true }
     onRunningChanged: if (!running) root.refresh()
   }
@@ -488,7 +626,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(380))
+    contentWidth: panel.fittedContentWidth(Style.space(430))
     contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
@@ -500,7 +638,7 @@ Panel {
         else if (dx !== 0) {
           if (root.focusSection === "brightness") root.adjustBrightness(dx * 5)
           else if (root.focusSection === "textsize") root.adjustTextSize(dx)
-          else if (root.focusSection === "scale") root.moveCursorH(dx)
+          else root.moveCursorH(dx)
         }
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
@@ -725,72 +863,7 @@ Panel {
             }
           }
 
-          // ---------- Scale ----------
-          PanelSeparator {
-            foreground: root.bar.foreground
-          }
-
-          Column {
-            width: parent.width
-            spacing: Style.space(10)
-
-            Item {
-              width: parent.width
-              implicitHeight: Math.max(scaleHeader.implicitHeight, scaleMonitor.implicitHeight)
-
-              PanelSectionHeader {
-                id: scaleHeader
-                text: "SCALE"
-                foreground: root.bar.foreground
-                fontFamily: root.bar.fontFamily
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              // Name the monitor SCALE targets, since it only applies to the
-              // focused one.
-              Text {
-                id: scaleMonitor
-                textFormat: Text.PlainText
-                text: root.focusedMonitor
-                // Only worth naming when more than one display is in play.
-                visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
-                color: Qt.darker(root.bar.foreground, 1.4)
-                font.family: root.bar.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                anchors.right: parent.right
-                anchors.rightMargin: Style.space(6)
-                anchors.verticalCenter: parent.verticalCenter
-              }
-            }
-
-            Grid {
-              id: scaleRow
-              width: parent.width
-              columns: root.scaleValues.length
-              spacing: Style.spacing.xs
-
-              readonly property real cellWidth: root.scaleValues.length > 0
-                ? (width - spacing * (columns - 1)) / columns
-                : 0
-
-              Repeater {
-                model: root.scaleValues
-
-                ScalePill {
-                  required property string modelData
-                  required property int index
-
-                  scaleValue: modelData
-                  scaleIndex: index
-                  width: scaleRow.cellWidth
-                }
-              }
-            }
-          }
-
-          // ---------- Monitors ----------
+          // ---------- Arrangement (hidden with only one display) ----------
           PanelSeparator {
             visible: root.displays.length > 1
             foreground: root.bar.foreground
@@ -802,21 +875,450 @@ Panel {
             visible: root.displays.length > 1
 
             PanelSectionHeader {
-              text: "DISPLAYS"
+              text: "ARRANGEMENT"
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
             }
 
-            Repeater {
-              model: root.displays
+            CursorSurface {
+              id: canvasSurface
+              width: parent.width
+              height: Style.space(104)
+              hasCursor: root.cursorActive && root.focusSection === "canvas"
+              foreground: root.bar.foreground
+              outline: true
+              current: root.focusSection === "canvas"
 
-              MonitorRow {
-                required property var modelData
-                required property int index
+              // Keep bounds anchored to the live layout while dragging. If
+              // they followed pending coordinates, the viewport would move
+              // with the tile and make upward/leftward motion feel stuck.
+              readonly property var bounds: Model.paddedBounds(Model.arrangementBounds(root.displays), 0.2)
+              readonly property real canvasScale: Model.arrangementCanvasScale(
+                bounds, width - Style.space(12), height - Style.space(12), Style.space(6))
+              readonly property var scaledDisplays: Model.scaleArrangement(
+                root.arrangementDisplays, bounds, width - Style.space(12), height - Style.space(12), Style.space(6), root.selectedIdentity)
 
-                width: panelColumn.width
-                display: modelData
-                rowIndex: index
+              Rectangle {
+                id: canvasRect
+                anchors.fill: parent
+                anchors.margins: Style.space(6)
+                color: Style.hoverFillFor(root.bar.foreground, Color.accent)
+                radius: Style.space(6)
+                border.width: 0
+
+                Repeater {
+                  model: canvasSurface.scaledDisplays
+
+                  Rectangle {
+                    required property var modelData
+                    required property int index
+
+                    x: modelData.x
+                    y: modelData.y
+                    width: Math.max(Style.space(28), modelData.width)
+                    height: Math.max(Style.space(18), modelData.height)
+                    color: modelData.selected
+                      ? Style.selectedFillFor(root.bar.foreground, Color.accent)
+                      : Style.hoverFillFor(root.bar.foreground, Color.accent)
+                    border.color: modelData.selected ? Color.accent : Qt.darker(root.bar.foreground, 1.6)
+                    border.width: modelData.selected ? 2 : 1
+                    radius: Style.space(4)
+                    opacity: modelData.enabled ? 1.0 : 0.45
+
+                    Text {
+                      anchors.centerIn: parent
+                      textFormat: Text.PlainText
+                      text: modelData.name
+                      color: root.bar.foreground
+                      font.family: root.bar.fontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                      elide: Text.ElideRight
+                      horizontalAlignment: Text.AlignHCenter
+                      width: parent.width - Style.space(4)
+                    }
+
+                    MouseArea {
+                      id: tileMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+
+                      property real startCanvasX: 0
+                      property real startCanvasY: 0
+                      property real startLogicalX: 0
+                      property real startLogicalY: 0
+                      property bool dragged: false
+
+                      onPressed: function(mouse) {
+                        dragged = false
+                        var pos = mapToItem(canvasRect, mouse.x, mouse.y)
+                        startCanvasX = pos.x
+                        startCanvasY = pos.y
+                        startLogicalX = root.monitorValue(modelData.identity, "x", 0)
+                        startLogicalY = root.monitorValue(modelData.identity, "y", 0)
+                        root.selectMonitor(modelData.identity)
+                        root.cursorActive = true
+                        root.focusSection = "canvas"
+                        root.selectedIndex = index
+                      }
+
+                      onPositionChanged: function(mouse) {
+                        if (!pressed) return
+                        var pos = mapToItem(canvasRect, mouse.x, mouse.y)
+                        var canvasDx = pos.x - startCanvasX
+                        var canvasDy = pos.y - startCanvasY
+                        if (Math.abs(canvasDx) > 2 || Math.abs(canvasDy) > 2) dragged = true
+                        root.setPendingField(modelData.identity, "x",
+                          root.snapLogical(startLogicalX + Model.logicalFromCanvas(canvasDx, canvasSurface.canvasScale)))
+                        root.setPendingField(modelData.identity, "y",
+                          root.snapLogical(startLogicalY + Model.logicalFromCanvas(canvasDy, canvasSurface.canvasScale)))
+                      }
+
+                      onReleased: function(mouse) {
+                        if (!dragged) root.selectMonitor(modelData.identity)
+                      }
+                      onContainsMouseChanged: if (containsMouse) {
+                        root.cursorActive = true
+                        root.focusSection = "canvas"
+                        root.selectedIndex = index
+                      }
+                    }
+                  }
+                }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered) {
+                  root.cursorActive = true
+                  root.focusSection = "canvas"
+                }
+              }
+            }
+          }
+
+          // ---------- Selected monitor: enable / resolution / scale / rotation ----------
+          PanelSeparator {
+            visible: !!root.selectedDisplay
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            visible: !!root.selectedDisplay
+            width: parent.width
+            spacing: Style.space(10)
+
+            PanelSectionHeader {
+              text: root.selectedDisplay
+                ? (root.selectedDisplay.name + (root.selectedDisplay.description ? " · " + root.selectedDisplay.description : "")).toUpperCase()
+                : "DISPLAY"
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+            }
+
+            // Enabled
+            CursorSurface {
+              id: enableRow
+              width: parent.width
+              height: Style.space(22) + Style.spacing.xl
+              hasCursor: root.cursorActive && root.focusSection === "enable"
+              foreground: root.bar.foreground
+              outline: true
+
+              Row {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.leftMargin: Style.space(12)
+                anchors.rightMargin: Style.space(12)
+                spacing: Style.space(8)
+
+                Text {
+                  text: "Enabled"
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.body
+                  width: parent.width - Style.space(22)
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: root.selectedDisplay && root.monitorValue(root.selectedIdentity, "enabled", root.selectedDisplay.enabled) ? "󰄬" : ""
+                  color: root.bar.foreground
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.subtitle
+                  width: Style.space(14)
+                  horizontalAlignment: Text.AlignRight
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (containsMouse) {
+                  root.cursorActive = true
+                  root.focusSection = "enable"
+                  root.selectedIndex = -1
+                }
+                onClicked: {
+                  if (!root.selectedDisplay) return
+                  var current = root.monitorValue(root.selectedIdentity, "enabled", root.selectedDisplay.enabled)
+                  if (current && root.enabledDisplayCount <= 1) return
+                  root.setPendingField(root.selectedIdentity, "enabled", !current)
+                }
+              }
+            }
+
+            // Resolution
+            CursorSurface {
+              id: modeRow
+              width: parent.width
+              height: Style.space(22) + Style.spacing.xl
+              hasCursor: root.cursorActive && root.focusSection === "mode"
+              foreground: root.bar.foreground
+              outline: true
+
+              Text {
+                text: "Resolution"
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(12)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              // Equal-width dropdowns: mode/scale/rotation all share this
+              // literal width rather than sizing to their own content, so
+              // the three rows line up.
+              Dropdown {
+                id: modeDropdown
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(12)
+                anchors.verticalCenter: parent.verticalCenter
+                width: Style.space(170)
+                showLabel: false
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                hasCursor: modeRow.hasCursor
+                enabled: root.selectedDisplay && (root.selectedDisplay.availableModes || []).length > 0
+                options: root.selectedDisplay
+                  ? Model.modeOptions(root.selectedDisplay.availableModes || [], root.selectedDisplay.currentMode, 6)
+                  : []
+                value: root.selectedDisplay
+                  ? root.monitorValue(root.selectedIdentity, "mode", root.selectedDisplay.currentMode)
+                  : ""
+                onChanged: function(mode) {
+                  if (!root.selectedDisplay) return
+                  root.setPendingField(root.selectedIdentity, "mode", mode)
+                  // Dropdown owns `value` once selected, which breaks this
+                  // binding — restore it so the row keeps tracking pending/
+                  // live state (e.g. after Cancel or selecting another tile).
+                  modeDropdown.value = Qt.binding(function() {
+                    return root.selectedDisplay
+                      ? root.monitorValue(root.selectedIdentity, "mode", root.selectedDisplay.currentMode)
+                      : ""
+                  })
+                }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered) {
+                  root.cursorActive = true
+                  root.focusSection = "mode"
+                  root.selectedIndex = -1
+                }
+              }
+            }
+
+            // Scale
+            CursorSurface {
+              id: scaleRow
+              width: parent.width
+              height: Style.space(22) + Style.spacing.xl
+              hasCursor: root.cursorActive && root.focusSection === "scale"
+              foreground: root.bar.foreground
+              outline: true
+
+              Text {
+                text: "Scale"
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(12)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Dropdown {
+                id: scaleDropdown
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(12)
+                anchors.verticalCenter: parent.verticalCenter
+                width: Style.space(170)
+                showLabel: false
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                hasCursor: scaleRow.hasCursor
+                enabled: !!root.selectedDisplay
+
+                readonly property var currentMode: root.selectedDisplay
+                  ? Model.parseMode(root.monitorValue(root.selectedIdentity, "mode", root.selectedDisplay.currentMode))
+                  : { width: 0, height: 0 }
+
+                options: {
+                  if (!root.selectedDisplay) return []
+                  var presets = ["1", "1.25", "1.6", "2", "3", "4"]
+                  var scales = Model.availableScales(presets, currentMode.width, currentMode.height)
+                  return scales.map(function(s) {
+                    return { value: s, label: Model.cleanScale(s, currentMode.width, currentMode.height) + "x" }
+                  })
+                }
+                value: root.selectedDisplay
+                  ? String(root.monitorValue(root.selectedIdentity, "scale", root.selectedDisplay.scale))
+                  : ""
+                onChanged: function(scale) {
+                  if (!root.selectedDisplay) return
+                  root.setPendingField(root.selectedIdentity, "scale", scale)
+                  scaleDropdown.value = Qt.binding(function() {
+                    return root.selectedDisplay
+                      ? String(root.monitorValue(root.selectedIdentity, "scale", root.selectedDisplay.scale))
+                      : ""
+                  })
+                }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered) {
+                  root.cursorActive = true
+                  root.focusSection = "scale"
+                  root.selectedIndex = -1
+                }
+              }
+            }
+
+            // Rotation
+            CursorSurface {
+              id: rotationRow
+              width: parent.width
+              height: Style.space(22) + Style.spacing.xl
+              hasCursor: root.cursorActive && root.focusSection === "rotation"
+              foreground: root.bar.foreground
+              outline: true
+
+              Text {
+                text: "Rotation"
+                color: root.bar.foreground
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.body
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(12)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Dropdown {
+                id: rotationDropdown
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(12)
+                anchors.verticalCenter: parent.verticalCenter
+                width: Style.space(170)
+                showLabel: false
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                hasCursor: rotationRow.hasCursor
+                enabled: !!root.selectedDisplay
+                options: [
+                  { value: "0", label: "0°" },
+                  { value: "1", label: "90°" },
+                  { value: "2", label: "180°" },
+                  { value: "3", label: "270°" }
+                ]
+                value: root.selectedDisplay
+                  ? String(root.monitorValue(root.selectedIdentity, "transform", root.selectedDisplay.transform))
+                  : "0"
+                onChanged: function(transform) {
+                  if (!root.selectedDisplay) return
+                  root.setPendingField(root.selectedIdentity, "transform", parseInt(transform, 10))
+                  rotationDropdown.value = Qt.binding(function() {
+                    return root.selectedDisplay
+                      ? String(root.monitorValue(root.selectedIdentity, "transform", root.selectedDisplay.transform))
+                      : "0"
+                  })
+                }
+              }
+
+              HoverHandler {
+                onHoveredChanged: if (hovered) {
+                  root.cursorActive = true
+                  root.focusSection = "rotation"
+                  root.selectedIndex = -1
+                }
+              }
+            }
+          }
+
+          // ---------- Apply / Cancel (relabels to Keep / Revert mid-preview) ----------
+          PanelSeparator {
+            visible: root.dirty || root.previewActive
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            visible: root.dirty || root.previewActive
+            width: parent.width
+            spacing: Style.space(8)
+
+            Text {
+              visible: root.statusText !== "" && !root.previewActive
+              width: parent.width
+              text: root.statusText
+              color: Color.accent
+              font.family: root.bar.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.Wrap
+            }
+
+            Row {
+              width: parent.width
+              spacing: Style.spacing.sm
+
+              Button {
+                text: root.previewActive ? "Keep" : "Apply"
+                fontSize: Style.font.body
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                horizontalPadding: Style.spacing.md
+                verticalPadding: Style.spacing.controlPaddingY
+                bordered: true
+                hasCursor: root.cursorActive && root.focusSection === "actions" && root.selectedIndex === 0
+                onHovered: function(isHovered) {
+                  if (!isHovered) return
+                  root.cursorActive = true
+                  root.focusSection = "actions"
+                  root.selectedIndex = 0
+                }
+                onClicked: root.primaryAction()
+              }
+
+              Button {
+                text: root.previewActive ? ("Revert (" + root.previewRemaining + "s)") : "Cancel"
+                fontSize: Style.font.body
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                horizontalPadding: Style.spacing.md
+                verticalPadding: Style.spacing.controlPaddingY
+                bordered: true
+                hasCursor: root.cursorActive && root.focusSection === "actions" && root.selectedIndex === 1
+                onHovered: function(isHovered) {
+                  if (!isHovered) return
+                  root.cursorActive = true
+                  root.focusSection = "actions"
+                  root.selectedIndex = 1
+                }
+                onClicked: root.secondaryAction()
               }
             }
           }
@@ -827,103 +1329,6 @@ Panel {
           }
         }
       }
-    }
-  }
-
-  component ScalePill: Button {
-    id: pill
-    required property string scaleValue
-    required property int scaleIndex
-
-    text: root.effectiveScale(scaleValue) + "x"
-    fontSize: Style.font.caption
-    foreground: root.bar.foreground
-    fontFamily: root.bar.fontFamily
-    horizontalPadding: Style.spacing.sm
-    verticalPadding: Style.spacing.controlPaddingY
-    bordered: true
-
-    active: root.activeScaleIndex() === scaleIndex
-    hasCursor: root.cursorActive && root.focusSection === "scale" && root.selectedIndex === scaleIndex
-
-    onClicked: root.setScale(scaleValue)
-    onHovered: function(isHovered) {
-      if (!isHovered || root.reflowingText) return
-      root.cursorActive = true
-      root.focusSection = "scale"
-      root.selectedIndex = pill.scaleIndex
-    }
-  }
-
-  component MonitorRow: CursorSurface {
-    id: monitorRow
-    required property var display
-    required property int rowIndex
-
-    readonly property bool isFocused: display && display.focused
-    readonly property bool canToggle: display && (!display.enabled || root.enabledDisplayCount > 1)
-
-    hasCursor: root.cursorActive && root.focusSection === "monitors" && root.selectedIndex === rowIndex
-    onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(monitorRow)
-    current: isFocused
-    foreground: root.bar.foreground
-    fill: Style.hoverFillFor(root.bar.foreground, Color.accent)
-    currentFill: Style.selectedFillFor(root.bar.foreground, Color.accent)
-    implicitHeight: monitorInner.implicitHeight + Style.spacing.xl
-    opacity: canToggle ? 1.0 : 0.45
-
-    Row {
-      id: monitorInner
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      anchors.leftMargin: Style.space(6)
-      anchors.rightMargin: Style.space(6)
-      spacing: Style.space(8)
-
-      Text {
-        text: "󰍹"
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.title
-        width: Style.space(22)
-        horizontalAlignment: Text.AlignHCenter
-        anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Text {
-        textFormat: Text.PlainText
-        text: monitorRow.display.name + (monitorRow.display.focused ? " · focused" : "")
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.body
-        elide: Text.ElideRight
-        width: parent.width - Style.space(22) - Style.space(14) - Style.space(16)
-        anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Text {
-        textFormat: Text.PlainText
-        text: monitorRow.display.enabled ? "󰄬" : ""
-        color: root.bar.foreground
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.subtitle
-        width: Style.space(14)
-        horizontalAlignment: Text.AlignRight
-        anchors.verticalCenter: parent.verticalCenter
-      }
-    }
-
-    MouseArea {
-      anchors.fill: parent
-      hoverEnabled: true
-      cursorShape: monitorRow.canToggle ? Qt.PointingHandCursor : Qt.ArrowCursor
-      onContainsMouseChanged: if (containsMouse && !root.reflowingText) {
-        root.cursorActive = true
-        root.focusSection = "monitors"
-        root.selectedIndex = monitorRow.rowIndex
-      }
-      onClicked: if (monitorRow.canToggle) root.toggleDisplay(monitorRow.display.name, monitorRow.display.enabled)
     }
   }
 }
