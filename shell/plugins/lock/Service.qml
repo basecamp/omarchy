@@ -17,6 +17,9 @@ Item {
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
 
   property bool lockRequested: false
+  // True from the moment the lock blanks the panel until a wake has run, so
+  // keys hit at a dark screen wake it instead of landing in the password.
+  property bool displayBlanked: false
   property bool pendingSessionLock: false
   property bool authenticatingPassword: false
   property bool fingerprintAuthenticating: false
@@ -149,6 +152,7 @@ Item {
     if (!root.locked && !lockRequested) return
 
     lockRequested = false
+    displayBlanked = false
     pendingSessionLock = false
     sessionLockStabilizeTimer.stop()
     pendingSessionLockTimer.stop()
@@ -170,6 +174,7 @@ Item {
   }
 
   function runBlank() {
+    displayBlanked = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -275,6 +280,7 @@ Item {
         failureMessage: root.failureMessage
         failedAttempts: root.failedAttempts
         inputEnabled: root.lockRequested
+        displayBlanked: root.displayBlanked
         loadBackground: root.locked
         passwordText: root.enteredPassword
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
@@ -404,6 +410,7 @@ Item {
   Process {
     id: wakeProcess
     command: ["bash", "-c", "omarchy-system-wake"]
+    onExited: root.displayBlanked = false
   }
 
   Process {
@@ -428,6 +435,27 @@ Item {
       // fingerprint PAM stays armed for the whole lock, so gating on
       // `authenticating` here would keep the panel lit until unlock.
       if (root.lockRequested && !root.authenticatingPassword) root.runBlank()
+    }
+  }
+
+  // Suspend freezes the shell, so the first tick after resume sees the clock
+  // jump. Wake the panel right away instead of leaving the user at a dark
+  // lock screen pressing keys to bring it back.
+  Timer {
+    id: resumeWatchTimer
+    interval: 1000
+    repeat: true
+    running: root.lockRequested
+    property double lastTick: 0
+    onRunningChanged: lastTick = 0
+    onTriggered: {
+      var now = Date.now()
+      var resumed = lastTick > 0 && now - lastTick > interval + 2000
+      lastTick = now
+      if (resumed) {
+        root.logEvent("resume-detected")
+        root.runWake()
+      }
     }
   }
 
