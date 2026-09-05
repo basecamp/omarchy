@@ -74,6 +74,42 @@ Item {
   property var providersLoaded: ({})
   property var providerQueue: []
   property int providerRevision: 0
+  property string calculatorQueuedQuery: ""
+  property string calculatorRunningQuery: ""
+  property string calculatorResultQuery: ""
+  property string calculatorResult: ""
+
+  function scheduleCalculation(value) {
+    var query = root.dmenuActive ? "" : MenuModel.calculatorExpression(value)
+    root.calculatorQueuedQuery = query
+    calculatorDebounce.stop()
+
+    if (root.calculatorResultQuery !== query) {
+      root.calculatorResultQuery = ""
+      root.calculatorResult = ""
+    }
+
+    if (query) calculatorDebounce.restart()
+  }
+
+  function startQueuedCalculation() {
+    if (!root.calculatorQueuedQuery || calculatorProc.running) return
+    root.calculatorRunningQuery = root.calculatorQueuedQuery
+    calculatorProc.collected = ""
+    calculatorProc.command = ["qalc", "-t", "-m", "250", "--", root.calculatorRunningQuery]
+    calculatorProc.running = true
+  }
+
+  function copyCalculatorResult(value) {
+    var answer = String(value || "")
+    if (!answer) return
+    Quickshell.execDetached(["wl-copy", "--", answer])
+    root.opened = false
+    root.filterText = ""
+    root.calculatorQueuedQuery = ""
+    root.calculatorResultQuery = ""
+    root.calculatorResult = ""
+  }
 
   // Shared application engine (entries, hidden filters, icons, launch,
   // removal), owned by the shell and also used by the standalone launcher.
@@ -671,6 +707,29 @@ Item {
       }
     }
 
+    if (query
+        && root.calculatorResult
+        && root.calculatorResultQuery === MenuModel.calculatorExpression(query)) {
+      rows.unshift({
+        itemId: "calculator.result",
+        disabled: false,
+        kind: "calculator",
+        icon: "󰃬",
+        iconFont: "",
+        appIcon: "",
+        appId: "",
+        label: root.calculatorResult,
+        target: "",
+        detail: "Press Enter to copy · =" + root.calculatorResultQuery,
+        path: "",
+        childCount: 0,
+        action: "",
+        provider: "",
+        score: -1,
+        section: ""
+      })
+    }
+
     for (var k = 0; k < rows.length; k++) displayModel.append(rows[k])
     layoutSerial += 1
 
@@ -723,6 +782,7 @@ Item {
     root.cursorActive = root.mode !== "input"
     root.disarmPointer()
     if (!root.dmenuActive && root.filterText.trim()) root.loadProvidersForSearch()
+    root.scheduleCalculation(root.filterText)
     root.rebuildDisplay()
   }
 
@@ -781,6 +841,8 @@ Item {
       opened = false
       filterText = ""
       if (root.appLibrary) root.appLibrary.launch(appId, label)
+    } else if (row.kind === "calculator") {
+      root.copyCalculatorResult(row.label)
     } else {
       root.applySelected(row.itemId, row.action)
     }
@@ -944,6 +1006,43 @@ Item {
     onExited: {
       if (root.applySerial === root.requestSerial)
         root.opened = false
+    }
+  }
+
+  Timer {
+    id: calculatorDebounce
+    interval: 80
+    repeat: false
+    onTriggered: root.startQueuedCalculation()
+  }
+
+  Process {
+    id: calculatorProc
+    property string collected: ""
+    stdout: SplitParser {
+      onRead: function(data) { calculatorProc.collected += data + "\n" }
+    }
+    onExited: function(exitCode, exitStatus) {
+      var completedQuery = root.calculatorRunningQuery
+      var answer = MenuModel.calculatorResult(
+        calculatorProc.collected,
+        completedQuery,
+        exitCode,
+        exitStatus
+      )
+      var isCurrent = completedQuery
+        && completedQuery === root.calculatorQueuedQuery
+        && completedQuery === MenuModel.calculatorExpression(root.filterText)
+
+      if (isCurrent) {
+        root.calculatorResultQuery = answer ? completedQuery : ""
+        root.calculatorResult = answer
+        if (root.opened) root.rebuildDisplay()
+      }
+
+      root.calculatorRunningQuery = ""
+      if (root.calculatorQueuedQuery && root.calculatorQueuedQuery !== completedQuery)
+        Qt.callLater(function() { root.startQueuedCalculation() })
     }
   }
 
@@ -1158,7 +1257,7 @@ Item {
             } else if (root.cursorActive) root.activateIndex(root.selectedIndex)
             else root.settleCursor()
             event.accepted = true
-          } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
+          } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && !(event.modifiers & ~(Qt.ShiftModifier | Qt.KeypadModifier))) {
             root.setFilter(root.filterText + event.text)
             event.accepted = true
           }

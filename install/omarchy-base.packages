@@ -67,6 +67,7 @@ kernel-modules-hook
 lazydocker
 lazygit
 less
+libqalculate
 libsecret
 libvips
 libyaml

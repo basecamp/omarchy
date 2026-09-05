@@ -9,6 +9,42 @@ const fs = require('fs')
 const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
 const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
 const defaultMenuJsonc = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8')
+const basePackages = fs.readFileSync(path.join(root, 'install/omarchy-base.packages'), 'utf8').split(/\s+/)
+
+assertEqual(menu.calculatorExpression('=25*18'), '25*18', 'menu recognizes a prefixed calculator expression')
+assertEqual(menu.calculatorExpression('  = sqrt(81)  '), 'sqrt(81)', 'menu trims calculator expressions')
+assertEqual(menu.calculatorExpression('25*18'), '', 'menu requires the calculator prefix')
+assertEqual(menu.calculatorExpression('='), '', 'menu ignores an empty calculator expression')
+assertEqual(menu.calculatorExpression(`=${'1'.repeat(161)}`), '', 'menu bounds calculator expression length')
+assertEqual(menu.calculatorResult('450\n', '25*18', 0, 0), '450', 'menu normalizes calculator output')
+assertEqual(menu.calculatorResult('1 / 0\n', '1/0', 0, 0), '', 'menu hides symbolic calculator failures that echo the input')
+assertEqual(menu.calculatorResult('error: bad input\n', 'bad input', 0, 0), '', 'menu hides calculator errors')
+assertEqual(menu.calculatorResult('450\n', '25*18', 1, 0), '', 'menu hides failed calculator processes')
+assertEqual(menu.calculatorResult('1'.repeat(241), 'long result', 0, 0), '', 'menu bounds calculator result length')
+assert(basePackages.includes('libqalculate'), 'base packages provide qalc for the inline calculator')
+assert(
+  fs.readdirSync(path.join(root, 'migrations')).some(file =>
+    file.endsWith('.sh')
+      && fs.readFileSync(path.join(root, 'migrations', file), 'utf8').includes('omarchy-pkg-add libqalculate')
+  ),
+  'a migration installs qalc on existing systems'
+)
+assert(
+  menuQml.includes('calculatorProc.command = ["qalc", "-t", "-m", "250", "--", root.calculatorRunningQuery]'),
+  'menu evaluates calculator expressions with a bounded direct qalc process'
+)
+assert(
+  menuQml.includes('Quickshell.execDetached(["wl-copy", "--", answer])'),
+  'menu copies calculator answers without shell interpolation'
+)
+assert(
+  menuQml.includes('root.calculatorResultQuery = answer ? completedQuery : ""'),
+  'menu clears stale calculator results when a current evaluation fails'
+)
+assert(
+  menuQml.includes('!(event.modifiers & ~(Qt.ShiftModifier | Qt.KeypadModifier))'),
+  'menu accepts numpad text while preserving modified-key shortcuts'
+)
 
 const parsed = menu.parseMenuJsonc(`
 {
