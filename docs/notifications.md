@@ -37,6 +37,8 @@ from a dead server generation (ids restart from 1 each shell process), so
 they are keyed by timestamp+id and never matched against live objects — a
 fresh notification reusing an old id must not dismiss or replace them.
 
+Exact duplicates are grouped, the way Omarchy 3.8 configured mako (`group-by=app-name,summary,body`). Among the popups on screen, rows with the same app name, summary and body form one group; only the newest member is drawn, with the group size prefixed to its summary (`(3) Task finished`, mako's default grouped format). Every member stays in the model, so each keeps its own server object, countdown, click action, persistence file and history entry, and the delegate only hides the older rows. Click and close act on the visible member, so the next member takes its place with a lower count, matching mako's default bindings. Multi-window Electron apps are the usual source: each window can emit the same completed-task notification under a fresh id, which `replaces_id` handling cannot catch.
+
 ## Silencing
 
 Do-not-disturb is a single boolean, persisted as the `dnd` key in

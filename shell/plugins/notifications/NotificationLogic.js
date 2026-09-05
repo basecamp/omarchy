@@ -223,6 +223,42 @@ function popupRowChanged(row, updated) {
   return false
 }
 
+// Match mako's grouping contract from Omarchy 3.8: among visible
+// notifications, exact app-name + summary + body matches form one group. The
+// newest row is the leader because popupModel is newest-first. Keep every row
+// in the model so each server notification retains its own lifetime, action,
+// persistence file and history entry; the delegate only hides older members.
+function popupGroup(model, index) {
+  // Reading count and each row's fields here is what makes the QML binding
+  // follow inserts, removals and in-place replaces_id rewrites.
+  var count = Array.isArray(model) ? model.length : (model && Number(model.count)) || 0
+
+  function rowAt(i) {
+    if (Array.isArray(model)) return model[i]
+    return model && typeof model.get === "function" ? model.get(i) : null
+  }
+
+  function sameVisibleContent(a, b) {
+    var left = a || {}
+    var right = b || {}
+    return String(left.app || "") === String(right.app || "")
+      && String(left.summary || "") === String(right.summary || "")
+      && String(left.body || "") === String(right.body || "")
+  }
+
+  var current = rowAt(index)
+  if (!current) return { count: 0, leader: false }
+
+  var matches = 0
+  var leader = true
+  for (var i = 0; i < count; i++) {
+    if (!sameVisibleContent(current, rowAt(i))) continue
+    matches++
+    if (i < index) leader = false
+  }
+  return { count: matches, leader: leader }
+}
+
 // A client updating a notification through replaces_id keeps the identity of
 // the popup it took over: the file name is the timestamp and id the popup was
 // first persisted under, and the restore, replace and archive paths all key
@@ -462,6 +498,7 @@ if (typeof module !== "undefined") {
     snapshotOf: snapshotOf,
     popupRoles: popupRoles,
     popupRowChanged: popupRowChanged,
+    popupGroup: popupGroup,
     replacementSnapshot: replacementSnapshot,
     historyEntry: historyEntry,
     parseSettings: parseSettings,
