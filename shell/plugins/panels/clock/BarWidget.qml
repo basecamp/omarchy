@@ -56,8 +56,18 @@ BarWidget {
       root.bar.shell.updateEntryInline(root.moduleName, entry)
   }
 
+  // Qt renders day and month names in English whenever it is handed an
+  // explicit format string. An optional "locale" setting ("nb_NO", "de_DE",
+  // ...) formats the label through that locale instead; unset keeps the
+  // stock names.
+  readonly property string localeName: Model.localeName(setting("locale", ""))
+  readonly property var timeLocale: localeName ? Qt.locale(localeName) : null
+  readonly property var abbreviatedNames: Model.abbreviatedNames(timeLocale)
+
   function formatted(date) {
-    return Qt.formatDateTime(date, activeFormat.replace(/ww/g, Model.isoWeekLiteral(date.getFullYear(), date.getMonth(), date.getDate())))
+    var format = activeFormat.replace(/ww/g, Model.isoWeekLiteral(date.getFullYear(), date.getMonth(), date.getDate()))
+    if (!timeLocale) return Qt.formatDateTime(date, format)
+    return Model.stripAbbreviationPeriods(date.toLocaleString(timeLocale, format), abbreviatedNames)
   }
 
   // ---- Calendar popup. Shape contract for shell.summon/hide/toggle

@@ -15,6 +15,18 @@
     "displayName": "Clock",
     "description": "Date/time label with a calendar popup",
     "category": "Time",
-    "allowMultiple": false
+    "allowMultiple": false,
+    "defaults": {
+      "locale": ""
+    },
+    "schema": [
+      {
+        "key": "locale",
+        "type": "string",
+        "label": "Locale for day and month names",
+        "defaultValue": "",
+        "description": "Empty keeps English. A locale name such as nb_NO or de_DE formats the bar label and the calendar in that language."
+      }
+    ]
   }
 }
