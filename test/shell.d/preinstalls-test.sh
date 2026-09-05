@@ -11,11 +11,17 @@ mock_bin="$test_tmp/bin"
 test_home="$test_tmp/home"
 marker="$test_home/.local/state/omarchy/preinstalls-removed"
 pkg_log="$test_tmp/packages"
+refresh_log="$test_tmp/refresh"
 mkdir -p "$mock_bin" "$test_home/.local/state/omarchy"
 
-for command in omarchy-webapp-remove-all omarchy-tui-remove-all omarchy-refresh-applications hyprctl; do
+for command in omarchy-webapp-remove-all omarchy-tui-remove-all hyprctl; do
   printf '#!/bin/bash\nexit 0\n' >"$mock_bin/$command"
 done
+
+cat >"$mock_bin/omarchy-refresh-applications" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >"$OMARCHY_TEST_REFRESH_LOG"
+SH
 
 cat >"$mock_bin/gum" <<'SH'
 #!/bin/bash
@@ -42,6 +48,7 @@ chmod +x "$mock_bin"/*
 export PATH="$mock_bin:$ROOT/bin:$PATH"
 export HOME="$test_home"
 export OMARCHY_TEST_PKG_LOG="$pkg_log"
+export OMARCHY_TEST_REFRESH_LOG="$refresh_log"
 
 # Both scripts restore and remove the same set, and every package in it has to be
 # one Omarchy actually ships, or Remove Preinstalls takes out an app the user
@@ -83,6 +90,12 @@ pass "restore keeps the opt-out marker when packages fail to install"
 "$ROOT/bin/omarchy-install-preinstalls" >/dev/null
 [[ ! -e $marker ]] || fail "restore clears the opt-out marker once the packages are back"
 pass "restore clears the opt-out marker once the packages are back"
+
+# The refresh holds the preinstalls back while the marker exists, and the marker
+# is still there when restore calls it, so restore has to ask for them by name.
+[[ $(<"$refresh_log") == "--with-preinstalls" ]] ||
+  fail "restore asks the refresh for the preinstalls the marker holds back" "$(cat "$refresh_log")"
+pass "restore asks the refresh for the preinstalls the marker holds back"
 
 rm -f "$marker"
 OMARCHY_TEST_CONFIRM=1 "$ROOT/bin/omarchy-remove-preinstalls" >/dev/null
