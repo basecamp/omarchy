@@ -15,6 +15,7 @@ sed '/^presize_window$/,$d' "$about" >"$tmp_dir/about.bash"
 
 export HOME="$tmp_dir/home"
 export PATH="$ROOT/bin:$PATH"
+unset NO_COLOR
 mkdir -p "$HOME/.config/omarchy/branding"
 printf '%s\n' '████████' '████████' >"$HOME/.config/omarchy/branding/about.txt"
 
@@ -22,8 +23,28 @@ source "$tmp_dir/about.bash"
 [[ $(type -t sheen_build) == "function" ]] || fail "the launcher finds the sheen it sources"
 pass "the launcher finds the sheen it sources"
 
+[[ $(type -t about_fastfetch) == "function" ]] || fail "About has its own fastfetch so it can draw the branding file"
+pass "About has its own fastfetch so it can draw the branding file"
+[[ $(declare -f about_fastfetch) == *"--logo-type file"* && $(declare -f about_fastfetch) == *'"$LOGO_FILE"'* ]] ||
+  fail "About draws the branding file rather than the terminal wordmark"
+pass "About draws the branding file rather than the terminal wordmark"
+[[ $(declare -f measure_layout) == *"about_fastfetch"* ]] || fail "layout measurement draws the branding file"
+pass "layout measurement draws the branding file"
+
 # Kept before the stubs replace it, so the real one can be exercised below.
 real_measure_layout=$(declare -f measure_layout)
+
+# BSD wc -L counts bytes for the block art; GNU wc -L counts cells. The fit
+# below asks for a 10-column logo, so count characters the way the sheen does.
+display_columns() {
+  local line max=0
+  while IFS= read -r line || [[ -n $line ]]; do
+    if (( ${#line} > max )); then
+      max=${#line}
+    fi
+  done
+  printf '%s' "$max"
+}
 
 # Stand in for the terminal, and for the fastfetch run that measures the layout.
 rows_by_cols="45 140"
@@ -174,7 +195,7 @@ pass "an undisturbed sweep writes every frame"
 # Every builder above can be exercised while nothing on screen ever animates, so
 # check that the render loop is what calls them.
 render_block=$(sed -n '/--render/,$p' "$about")
-for called in build_sheen play_sheen rest_sheen; do
+for called in build_sheen play_sheen rest_sheen about_fastfetch; do
   [[ $render_block == *"$called"* ]] || fail "the render loop plays the sheen" "it never calls $called"
 done
 pass "the render loop plays the sheen"
