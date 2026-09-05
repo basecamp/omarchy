@@ -10,6 +10,8 @@ direction="${1:-}"
 probe=1.1.1.1
 parallel=8
 url_count=3
+# The panel normally stops each phase after 5s; this bounds orphaned workers.
+max_runtime_seconds=${OMARCHY_NETWORK_SPEEDTEST_MAX_SECONDS:-10}
 
 case "$direction" in
   down | up)
@@ -19,6 +21,11 @@ case "$direction" in
     exit 2
     ;;
 esac
+
+if [[ ! $max_runtime_seconds =~ ^[1-9][0-9]*$ ]]; then
+  echo "OMARCHY_NETWORK_SPEEDTEST_MAX_SECONDS must be a positive integer" >&2
+  exit 2
+fi
 
 format_mbps() {
   awk -v value="$1" 'BEGIN {
@@ -93,6 +100,7 @@ done
 
 rx_before=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
 tx_before=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+deadline=$((SECONDS + max_runtime_seconds))
 
 any_alive() {
   local pid
@@ -105,7 +113,7 @@ any_alive() {
   return 1
 }
 
-while any_alive; do
+while any_alive && (( SECONDS < deadline )); do
   sleep 1
   rx_after=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
   tx_after=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
@@ -126,5 +134,3 @@ while any_alive; do
   rx_before=$rx_after
   tx_before=$tx_after
 done
-
-wait 2>/dev/null || true
