@@ -571,6 +571,28 @@ assert(!('exec' in legacyRestored), 'a restored legacy popup drops the old exec 
 assertEqual(notifications.parseExecArgv(legacyRestored.execArgv || ''), null, 'a restored legacy popup has no runnable click action')
 
 const serviceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
+const popupWindowQml = serviceQml.slice(serviceQml.indexOf('id: popupWindow'))
+assert(
+  /anchors \{ top: true; bottom: true; right: true \}/.test(popupWindowQml),
+  'notification surfaces keep full height without spanning the output width'
+)
+assert(
+  /implicitWidth: Math\.ceil\(Style\.space\(380\) \+ popupPlacement\.margins\.right\)/.test(popupWindowQml),
+  'notification surface width includes the fixed card width and right clearance'
+)
+assert(
+  /implicitWidth: Style\.space\(380\)/.test(cardQml),
+  'notification surface and card widths remain in sync'
+)
+assert(
+  /mask: Region \{ item: popupColumn \}/.test(popupWindowQml),
+  'notification strips remain click-through outside the popup column'
+)
+const shellLayerRules = fs.readFileSync(path.join(root, 'default/hypr/apps/omarchy-shell.lua'), 'utf8')
+assert(
+  /hl\.layer_rule\(\{ match = \{ namespace = "omarchy-notifications" \}, no_anim = true, animation = "none" \}\)/.test(shellLayerRules),
+  'notification surfaces do not animate at compositor level'
+)
 assert(
   /readonly property int historyLimit: 10/.test(serviceQml),
   'notifications service keeps the last ten notifications in history'

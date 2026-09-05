@@ -4,6 +4,9 @@
 -- Keep the bar instant: no layer-shell fade/slide animation.
 hl.layer_rule({ match = { namespace = "omarchy-bar" }, no_anim = true, animation = "none" })
 
+-- Notification strips should appear without animating the transparent surface.
+hl.layer_rule({ match = { namespace = "omarchy-notifications" }, no_anim = true, animation = "none" })
+
 -- Launcher, image selector, emojis, clipboard overlays, and keyboard-driven
 -- panels should pop without compositor layer fades. Panels keep their own
 -- QML opacity transition for normal open/close, and skip it for panel handoff.

@@ -967,14 +967,14 @@ Item {
       readonly property var popupPlacement: NotificationLogic.popupPlacement(
         service.barPosition, service.barClearance, Style.gapsOut)
 
-      // Full-screen, fixed-size surface (like the OSD overlay). Adding or
-      // removing a toast changes only the content inside; the Wayland surface
-      // never resizes, so the compositor can't briefly scale a stale buffer --
-      // which is what stretched/squished the cards during count changes.
-      anchors { top: true; bottom: true; left: true; right: true }
+      // Keep a fixed-width strip instead of allocating a full-screen
+      // transparent surface on every output. Full height keeps adding and
+      // removing cards from resizing the surface and stretching stale buffers.
+      anchors { top: true; bottom: true; right: true }
+      implicitWidth: Math.ceil(Style.space(380) + popupPlacement.margins.right)
 
       // Keep the surface click-through except over the toast column, so the
-      // rest of the (invisible) full-screen overlay never eats input.
+      // rest of the invisible notification strip never eats input.
       mask: Region { item: popupColumn }
 
       ColumnLayout {
