@@ -466,22 +466,35 @@ assertEqual(
   'file:///state/images/2000-9-appIcon',
   'notifications persist the image copy instead of the sender-owned original'
 )
-assertEqual(persistable.entry.image, '', 'notifications drop dead in-process image URLs from persisted entries')
+assertDeepEqual(
+  persistable.captures,
+  [{ url: 'image://notifs/9', to: '/state/images/2000-9-image.png' }],
+  'notifications capture in-process image URLs while the sender is alive'
+)
+assertEqual(
+  persistable.entry.image,
+  'file:///state/images/2000-9-image.png',
+  'notifications persist the capture an in-process image URL will be grabbed to'
+)
 assertEqual(persistable.entry.summary, 'Hi', 'notifications leave the rest of the persisted entry untouched')
 
 const repersisted = notifications.persistablePopup(persistable.entry, '/state/images/')
 assertDeepEqual(repersisted.copies, [], 'notifications do not re-copy an entry already pointing at its copies')
+assertDeepEqual(repersisted.captures, [], 'notifications do not re-capture an entry already pointing at its capture')
 assertEqual(
   repersisted.entry.appIcon,
   'file:///state/images/2000-9-appIcon',
   'notifications keep a restored entry pointing at its existing copy'
 )
-
 assertEqual(
-  notifications.persistablePopup({ id: 9, originalId: 9, timestamp: 2000, appIcon: 'mail', image: '' }, '/state/images/').copies.length,
-  0,
-  'notifications leave themed icons alone when persisting'
+  repersisted.entry.image,
+  'file:///state/images/2000-9-image.png',
+  'notifications keep a restored entry pointing at its existing capture'
 )
+
+const themedOnly = notifications.persistablePopup({ id: 9, originalId: 9, timestamp: 2000, appIcon: 'mail', image: '' }, '/state/images/')
+assertEqual(themedOnly.copies.length, 0, 'notifications leave themed icons alone when persisting')
+assertEqual(themedOnly.captures.length, 0, 'notifications have nothing to capture without an in-process image URL')
 assertEqual(
   notifications.imageStem({ originalId: 9, timestamp: 2000 }) + '.json',
   notifications.popupFileName({ originalId: 9, timestamp: 2000 }),
@@ -638,6 +651,33 @@ assert(
 assert(
   /function sweepOrphanImages\(\)[\s\S]{0,400}?\|\| rm -f \\"\$img\\"/.test(serviceQml),
   'notifications service sweeps image copies whose JSON never landed'
+)
+assert(
+  /var persistable = NotificationLogic\.persistablePopup\(snapshot, imagesDir\)\s*\n\s*startCaptures\(persistable\.captures\)/.test(serviceQml),
+  'notifications service grabs image-data pixels when persisting a popup'
+)
+assert(
+  /service\.sweepCaptureImage\(job\.to\)/.test(serviceQml) &&
+    /function sweepCaptureImage\(to\)[\s\S]{0,500}?\|\| rm -f \\"\$3\\"/.test(serviceQml),
+  'notifications service sweeps a capture that landed after its entry was removed'
+)
+assert(
+  /startCaptures\(persistable\.captures, finished\)[\s\S]{0,1000}?enqueuePopupFileJob\(command, finished\)/.test(serviceQml),
+  'notifications service holds a silenced notification for its captures as well as its write'
+)
+
+const captureQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/components/ImageCapture.qml'), 'utf8')
+assert(
+  /grabToImage\(function\(result\) \{[\s\S]{0,200}?saveToFile\(job\.to\)/.test(captureQml),
+  'notifications capture grabs the rendered image into the persisted file'
+)
+assert(
+  /visible: capture\.current !== null/.test(captureQml),
+  'notifications capture surface maps only while a grab is pending'
+)
+assert(
+  /id: deadline[\s\S]{0,120}?onTriggered: capture\.finish\(false\)/.test(captureQml),
+  'notifications capture gives up on a sender that dies mid-grab'
 )
 assert(
   /service\.replayCarryOver = liveRowsForReplay\(\)/.test(serviceQml),

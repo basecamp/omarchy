@@ -304,8 +304,9 @@ function popupFileName(entry) {
 // senders (all Omarchy web apps) delete their scoped /tmp files on close,
 // and image-data hints surface as in-process image:// URLs that die with
 // the server object. Persisted entries therefore reference their own
-// copies, named by the entry's file stem so cleanup can find them from
-// the JSON file name alone.
+// copies — duplicated files for the former, PNGs grabbed off the live
+// object for the latter (see ImageCapture) — named by the entry's file
+// stem so cleanup can find them from the JSON file name alone.
 
 var PERSISTED_IMAGE_ROLES = ["appIcon", "image"]
 
@@ -325,29 +326,36 @@ function localImageFile(value) {
   return s.charAt(0) === "/" ? s : ""
 }
 
-// The entry as it should hit the disk, plus the copies that make it true.
-// File-backed images redirect to their copy under imagesDir; dead image://
-// URLs drop to "" (the card falls back to the app icon). Already-redirected
-// values map onto themselves and produce no copy, keeping restores no-ops.
+// The entry as it should hit the disk, plus the work that makes it true:
+// `copies` are file-backed images to duplicate under imagesDir, `captures`
+// are in-process image:// URLs whose pixels must be grabbed to a PNG while
+// the sender is still alive. Values already pointing under imagesDir are
+// kept as they are, so restores and replays stay no-ops.
 function persistablePopup(entry, imagesDir) {
   var e = entry || {}
   var out = {}
   for (var key in e) out[key] = e[key]
+  var dir = String(imagesDir || "")
   var copies = []
+  var captures = []
   for (var i = 0; i < PERSISTED_IMAGE_ROLES.length; i++) {
     var role = PERSISTED_IMAGE_ROLES[i]
     var value = String(out[role] || "")
     if (!value) continue
+    var target = dir + imageStem(e) + "-" + role
     var source = localImageFile(value)
     if (source) {
-      var copy = String(imagesDir || "") + imageStem(e) + "-" + role
-      if (source !== copy) copies.push({ from: source, to: copy })
-      out[role] = "file://" + copy
+      if (dir && source.indexOf(dir) === 0) continue
+      copies.push({ from: source, to: target })
+      out[role] = "file://" + target
     } else if (value.indexOf("image://") === 0) {
-      out[role] = ""
+      // grabToImage saves by extension, so captures carry one; the cleanup
+      // globs all match on the stem prefix and tolerate it.
+      captures.push({ url: value, to: target + ".png" })
+      out[role] = "file://" + target + ".png"
     }
   }
-  return { entry: out, copies: copies }
+  return { entry: out, copies: copies, captures: captures }
 }
 
 function serializePopup(entry, normalUrgency) {

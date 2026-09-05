@@ -415,6 +415,40 @@ Item {
     running: false
   }
 
+  // Grabs image-data pixels (in-process image:// URLs) into files under
+  // imagesDir so persisted entries can reference them past the sender.
+  ImageCapture { id: imageCapture }
+
+  // Kick off the image:// grabs a persistable entry needs. `done` fires once
+  // every capture has finished, successfully or not.
+  function startCaptures(captures, done) {
+    var remaining = captures.length
+    if (remaining === 0) {
+      if (done) done()
+      return
+    }
+    function one(job) {
+      imageCapture.request(job.url, job.to, function() {
+        service.sweepCaptureImage(job.to)
+        remaining--
+        if (remaining === 0 && done) done()
+      })
+    }
+    for (var i = 0; i < captures.length; i++) one(captures[i])
+  }
+
+  // Captures run outside the file queue, so one can land after the trim,
+  // clear, or delete that removed its entry — recreating an image nothing
+  // owns until the startup sweep. Re-check this one file through the queue:
+  // queued behind whatever removed the entry, it sees the final state.
+  function sweepCaptureImage(to) {
+    enqueuePopupFileJob(["bash", "-c",
+      "stem=\"${3##*/}\"\n" +
+      "stem=\"${stem%-*}\"\n" +
+      "[[ -e $1/$stem.json || -e $2/$stem.json ]] || rm -f \"$3\"", "--",
+      popupStateDir, historyDir, to])
+  }
+
   // ---------------------------------------------------- popup persistence
   //
   // Mirror every on-screen popup to its own file under popupStateDir so
@@ -500,7 +534,11 @@ Item {
     // summaries/bodies with quotes or backticks can't break the command. The
     // mkdir guards notifications that arrive before ensureDirsProc has run.
     // Copies run before the JSON referencing them, while the source exists.
+    // Captures run beside the write, not ahead of it: the JSON references
+    // the capture's target optimistically, and a card that finds the file
+    // missing falls back to the app icon.
     var persistable = NotificationLogic.persistablePopup(snapshot, imagesDir)
+    startCaptures(persistable.captures)
     var command = ["bash", "-c",
       "mkdir -p \"$1\" \"$2\" || exit 0\n" +
       "dir=\"$1\" json=\"$3\" name=\"$4\"\n" +
@@ -568,6 +606,15 @@ Item {
       return
     }
     var persistable = NotificationLogic.persistablePopup(entry, imagesDir)
+    // `done` releases the silenced notification (see writeSilenced), and the
+    // captures read pixels off that live object — so completion waits for
+    // them as well as the file write.
+    var pending = 2
+    function finished() {
+      pending--
+      if (pending === 0 && done) done()
+    }
+    startCaptures(persistable.captures, finished)
     var command = ["bash", "-c",
       "mkdir -p \"$1\" \"$5\" || exit 0\n" +
       "hist=\"$1\" limit=\"$2\" name=\"$3\" json=\"$4\" imgs=\"$5\"\n" +
@@ -582,7 +629,7 @@ Item {
       imagesDir]
     for (var i = 0; i < persistable.copies.length; i++)
       command.push(persistable.copies[i].from, persistable.copies[i].to)
-    enqueuePopupFileJob(command, done)
+    enqueuePopupFileJob(command, finished)
   }
 
   function clearHistory() {
