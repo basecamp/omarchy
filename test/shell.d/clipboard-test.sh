@@ -39,6 +39,26 @@ assertDeepEqual(
 
 assertDeepEqual(clipboard.parseHistory(JSON.stringify([' ', '\n', { type: 'text', text: '\t' }])), [], 'clipboard history parser drops whitespace-only text')
 
+assert(
+  /text:\s*root\.filterText \|\| "Search clipboard…"\s*\n\s*textFormat:\s*Text\.PlainText/.test(clipboardQml),
+  'clipboard search header renders filter text as plain text'
+)
+
+assert(
+  /text:\s*parent\.parent\.previewText\s*\n\s*textFormat:\s*Text\.PlainText/.test(clipboardQml),
+  'clipboard list item renders preview text as plain text'
+)
+
+assert(
+  /text:\s*parent\.activeRow \? parent\.activeRow\.fullText : ""\s*\n\s*textFormat:\s*Text\.PlainText/.test(clipboardQml),
+  'clipboard detail pane renders full text as plain text'
+)
+
+assert(
+  /text:\s*root\.history\.length === 0 \? "Clipboard is empty" : "No matches for “" \+ root\.filterText \+ "”"\s*\n\s*textFormat:\s*Text\.PlainText/.test(clipboardQml),     
+  'clipboard empty/no-matches view renders filter text as plain text'
+)
+
 const history = [
   { type: 'text', text: 'old' },
   { type: 'text', text: 'new' },
