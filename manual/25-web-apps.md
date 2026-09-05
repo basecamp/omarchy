@@ -62,6 +62,18 @@ You can start X using `Super + Shift + X` and go straight to writing a new post 
 
 You can start YouTube using `Super + Shift + Y`.
 
+YouTube only knows two sizes: embedded in the page, or fullscreen — and fullscreen takes over the whole monitor, pulling the window out of the tiling layout. Omarchy adds a third: tile mode fills the window with the video while the window stays exactly where the tiling layout put it.
+
+| Key | Action |
+| --- | --- |
+| `f` | Toggle tile mode |
+| `Shift + F` | Real fullscreen, taking over the monitor |
+| `z` | Zoom to fill — crop the video instead of letterboxing it |
+| `Esc` | Leave tile mode |
+| `Alt + S` | Settings |
+
+Videos open in tile mode automatically; turn that off in `Alt + S`. `z` matters more than it sounds: a tile is rarely 16:9, so a letterboxed video leaves black bars down two sides.
+
 ## Zoom
 
 [Zoom](https://zoom.us/) is the most popular video chat system used in the US. Great connections across the world. And 40-minute meetings can be held without a paying account. Omarchy wraps Zoom's web client, and zoom meeting links will open straight into it.

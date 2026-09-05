@@ -1,0 +1,146 @@
+/* ---------------------------------------------------------------------------
+ * Tile mode: make the video fill the browser window (the Hyprland tile),
+ * without ever entering real fullscreen — which would take over the monitor
+ * and pull the window out of the tiling layout.
+ *
+ * Strategy: instead of enumerating (and chasing) every YouTube surface to
+ * hide, we lift #movie_player out of flow as an opaque, viewport-sized fixed
+ * element. Whatever is underneath simply stops being visible.
+ * ------------------------------------------------------------------------- */
+
+html.omy-tile,
+html.omy-tile body {
+  overflow: hidden !important;
+  background: #000 !important;
+}
+
+/* position:fixed is relative to the nearest transformed/filtered/contained
+ * ancestor, and YouTube applies those during miniplayer and page transitions.
+ * Neutralise them on the chain above the player so "fixed" means viewport. */
+html.omy-tile ytd-app,
+html.omy-tile #content,
+html.omy-tile #page-manager,
+html.omy-tile ytd-watch-flexy,
+html.omy-tile #columns,
+html.omy-tile #primary,
+html.omy-tile #primary-inner,
+html.omy-tile #player,
+html.omy-tile #player-container-outer,
+html.omy-tile #player-container-inner,
+html.omy-tile #player-container,
+html.omy-tile #player-wide-container,
+html.omy-tile #full-bleed-container,
+html.omy-tile #player-full-bleed-container,
+html.omy-tile #player-theater-container,
+html.omy-tile #ytd-player,
+html.omy-tile .html5-video-player {
+  transform: none !important;
+  filter: none !important;
+  perspective: none !important;
+  contain: none !important;
+  will-change: auto !important;
+  overflow: visible !important;
+  z-index: auto !important;
+}
+
+html.omy-tile #movie_player {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: #000 !important;
+  z-index: 2147483647 !important;
+}
+
+/* YouTube sizes these with inline styles computed for the in-page layout.
+ * Override them so the video tracks the window instead. */
+html.omy-tile #movie_player .html5-video-container,
+html.omy-tile #movie_player video.html5-main-video {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  transform: none !important;
+}
+
+/* Default: letterbox, never crop. */
+html.omy-tile #movie_player video.html5-main-video {
+  object-fit: contain !important;
+}
+
+/* Zoom-to-fill: crop to the tile's aspect ratio, no bars. Tiles rarely match
+ * 16:9, so this is the one that actually "takes over the whole tile". */
+html.omy-tile-fill #movie_player video.html5-main-video {
+  object-fit: cover !important;
+}
+
+/* Player chrome is also inline-sized to the old player width. */
+html.omy-tile #movie_player .ytp-chrome-bottom {
+  width: calc(100% - 24px) !important;
+  left: 12px !important;
+  right: 12px !important;
+  bottom: 0 !important;
+}
+
+html.omy-tile #movie_player .ytp-chrome-top,
+html.omy-tile #movie_player .ytp-gradient-top,
+html.omy-tile #movie_player .ytp-gradient-bottom,
+html.omy-tile #movie_player .ytp-caption-window-container,
+html.omy-tile #movie_player .ytp-player-content {
+  width: 100% !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+/* Suggestions grid that YouTube paints over a paused/ended video assumes the
+ * embedded player size; let it use the whole surface. */
+html.omy-tile #movie_player .ytp-pause-overlay,
+html.omy-tile #movie_player .ytp-endscreen-content {
+  width: 100% !important;
+  left: 0 !important;
+}
+
+/* The opaque fixed player covers what is painted below it, but not siblings
+ * that YouTube pins at the maximum z-index (the masthead) or that sit in their
+ * own stacking context (live chat, the theater-mode metadata row). No z-index
+ * can win against those, so they have to leave the box tree.
+ *
+ * Which elements those are is not a fixed list — it changes with theater mode,
+ * livestreams, and every YouTube redesign. So the class below is applied by
+ * isolatePlayer() in content.js, which walks up from the player and hides each
+ * ancestor's siblings. That covers anything outside the player's own subtree
+ * without naming it. */
+html.omy-tile .omy-hidden {
+  display: none !important;
+}
+
+/* --- On-screen toast ---------------------------------------------------- */
+
+#omy-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 8%;
+  transform: translateX(-50%);
+  z-index: 2147483647;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font: 500 14px/1.2 "CaskaydiaMono Nerd Font", ui-monospace, monospace;
+  letter-spacing: 0.02em;
+  color: #eaeaea;
+  background: rgba(16, 16, 16, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+#omy-toast[data-show="1"] {
+  opacity: 1;
+}
