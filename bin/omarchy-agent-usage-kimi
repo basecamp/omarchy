@@ -1,0 +1,613 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Kimi Code usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Kimi Code usage into one display-ready JSON record.
+
+Local stats come from native Kimi Code CLI session transcripts
+(~/.kimi-code/sessions/*/session_*/agents/*/wire.jsonl), pi/omp sessions that
+ran through the kimi-coding provider, and opencode sessions that ran on a
+Kimi provider; the official plan quota comes from the endpoint the CLI's
+/usage command uses. The agents panel only ever reads the JSON this prints.
+"""
+
+import argparse
+import fcntl
+import json
+import math
+import os
+import shutil
+import sqlite3
+import subprocess
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+AGENT_ID = "kimi"
+AGENT_NAME = "Kimi Code"
+AUTH_HELP = "Run `kimi login` to restore authoritative usage."
+DEFAULT_BASE_URL = "https://api.kimi.com/coding/v1"
+DEFAULT_OAUTH_HOST = "https://auth.kimi.com"
+CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098"
+REFRESH_SKEW_S = 120
+LOCK_TIMEOUT_S = 8
+TIMEOUT_S = 8
+
+
+def runtime_env():
+  home = str(Path.home())
+  parts = [
+    os.environ.get("PATH", ""),
+    f"{home}/.local/bin",
+    f"{home}/.npm-global/bin",
+    f"{home}/.local/share/mise/shims",
+  ]
+  env = os.environ.copy()
+  env["PATH"] = os.pathsep.join(p for p in parts if p)
+  return env
+
+
+ENV = runtime_env()
+
+
+def kimi_home():
+  return Path(os.environ.get("KIMI_CODE_HOME") or (Path.home() / ".kimi-code")).expanduser().resolve()
+
+
+def cache_root():
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def number(value):
+  try:
+    return int(value or 0)
+  except Exception:
+    return 0
+
+
+def local_day(value):
+  if value is None:
+    return datetime.now().strftime("%Y-%m-%d")
+  if isinstance(value, (int, float)):
+    if value > 10_000_000_000:
+      value = value / 1000
+    return datetime.fromtimestamp(value).strftime("%Y-%m-%d")
+  text = str(value)
+  try:
+    if text.endswith("Z"):
+      parsed = datetime.fromisoformat(text[:-1] + "+00:00")
+    else:
+      parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is not None:
+      parsed = parsed.astimezone()
+    return parsed.strftime("%Y-%m-%d")
+  except Exception:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def normalize_model(raw):
+  """kimi-code/k3, kimi-k3 and opencode-go/kimi-k3 all mean the same k3."""
+  model = str(raw or "kimi-code").rsplit("/", 1)[-1]
+  model = model[len("kimi-"):] if model.startswith("kimi-") else model
+  return model or "kimi-code"
+
+
+def empty_bucket():
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+now_ms = None
+today = None
+recent_dates = None
+
+def init_dates():
+  global now_ms, today, recent_dates, recent
+  now = datetime.now()
+  today = now.strftime("%Y-%m-%d")
+  recent_dates = [(now - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+
+
+recent = {}
+model_usage = {}
+today_tokens_by_model = {}
+total_prompts = 0
+today_prompts = 0
+today_total_tokens = 0
+today_sessions = set()
+total_sessions = set()
+active_days = set()
+seen_pi = set()
+
+
+def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, cache_write):
+  global today_prompts, today_total_tokens, total_prompts
+  total = input_tokens + output_tokens + cache_read + cache_write
+  total_prompts += 1
+  total_sessions.add(session_key)
+  active_days.add(day)
+
+  bucket = model_usage.setdefault(model, empty_bucket())
+  bucket["inputTokens"] += input_tokens
+  bucket["outputTokens"] += output_tokens
+  bucket["cacheReadInputTokens"] += cache_read
+  bucket["cacheCreationInputTokens"] += cache_write
+
+  if day in recent:
+    recent[day]["messageCount"] += total
+
+  if day == today:
+    today_prompts += 1
+    today_sessions.add(session_key)
+    today_total_tokens += total
+    today_tokens_by_model[model] = today_tokens_by_model.get(model, 0) + total
+
+
+def scan_native_kimi_sessions():
+  ses = kimi_home() / "sessions"
+  cutoff = time.time() - 30 * 24 * 60 * 60
+  if not ses.is_dir():
+    return
+  for wire in ses.glob("*/session_*/agents/*/wire.jsonl"):
+    try:
+      if wire.stat().st_mtime < cutoff:
+        continue
+    except OSError:
+      continue
+    session_key = str(wire.parent.parent.parent)
+    try:
+      with wire.open(errors="replace") as handle:
+        for raw in handle:
+          try:
+            event = json.loads(raw)
+          except Exception:
+            continue
+          if event.get("type") != "usage.record":
+            continue
+          usage = event.get("usage") or {}
+          input_tokens = number(usage.get("inputOther"))
+          output_tokens = number(usage.get("output"))
+          cache_read = number(usage.get("inputCacheRead"))
+          cache_write = number(usage.get("inputCacheCreation"))
+          if not (input_tokens or output_tokens or cache_read or cache_write):
+            continue
+          day = local_day(event.get("time"))
+          model = normalize_model(event.get("model"))
+          add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, cache_write)
+    except Exception:
+      continue
+
+
+def scan_pi_sessions():
+  roots = [
+    Path.home() / ".pi" / "agent" / "sessions",
+    Path.home() / ".omp" / "agent" / "sessions",
+  ]
+  rg = shutil.which("rg") or "rg"
+  for root in roots:
+    if not root.exists():
+      continue
+    try:
+      proc = subprocess.Popen(
+        [rg, "--json", "-e", r'"provider"\s*:\s*"kimi-coding"', str(root)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        errors="replace",
+        env=ENV,
+      )
+    except FileNotFoundError:
+      return
+
+    assert proc.stdout is not None
+    for raw in proc.stdout:
+      try:
+        event = json.loads(raw)
+        if event.get("type") != "match":
+          continue
+        line = event.get("data", {}).get("lines", {}).get("text", "")
+        path = event.get("data", {}).get("path", {}).get("text", "pi-session")
+        entry = json.loads(line)
+      except Exception:
+        continue
+
+      if entry.get("type") != "message":
+        continue
+      message_key = path + ":" + str(entry.get("id") or "")
+      if message_key in seen_pi:
+        continue
+      seen_pi.add(message_key)
+      message = entry.get("message") or {}
+      if message.get("role") != "assistant":
+        continue
+      provider = str(message.get("provider") or "")
+      if provider != "kimi-coding":
+        continue
+
+      usage = message.get("usage") or {}
+      if not usage:
+        continue
+      total = number(usage.get("totalTokens"))
+      input_tokens = number(usage.get("input"))
+      output_tokens = number(usage.get("output"))
+      cache_read = number(usage.get("cacheRead"))
+      cache_write = number(usage.get("cacheWrite"))
+      if total and not (input_tokens or output_tokens or cache_read or cache_write):
+        input_tokens = total
+      if not (input_tokens or output_tokens or cache_read or cache_write):
+        continue
+
+      day = local_day(entry.get("timestamp") or message.get("timestamp"))
+      model = normalize_model(message.get("model"))
+      add_usage(day, path, model, input_tokens, output_tokens, cache_read, cache_write)
+
+    try:
+      proc.wait(timeout=1)
+    except Exception:
+      proc.kill()
+
+
+def scan_opencode_sessions():
+  db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  if not db.is_file():
+    return
+  try:
+    conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    for session_id, raw in conn.execute("SELECT session_id, data FROM message"):
+      try:
+        entry = json.loads(raw)
+        if not isinstance(entry, dict) or entry.get("role") != "assistant":
+          continue
+        if str(entry.get("providerID") or "") != "kimi":
+          continue
+        tokens = entry.get("tokens") or {}
+        cache = tokens.get("cache") or {}
+        input_tokens = number(tokens.get("input"))
+        output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
+        cache_read = number(cache.get("read"))
+        cache_write = number(cache.get("write"))
+        if not (input_tokens or output_tokens or cache_read or cache_write):
+          continue
+        day = local_day((entry.get("time") or {}).get("created"))
+        model = normalize_model(str(entry.get("modelID") or "").rstrip("/").split("/")[-1])
+      except Exception:
+        continue
+      add_usage(day, "opencode:" + str(session_id), model, input_tokens, output_tokens, cache_read, cache_write)
+  except sqlite3.Error:
+    pass
+  finally:
+    conn.close()
+
+
+# ------------------------------------------------------------------ limits
+
+
+def credentials_path():
+  return kimi_home() / "credentials" / "kimi-code.json"
+
+
+def urls():
+  base = (os.environ.get("KIMI_CODE_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
+  oauth = (os.environ.get("KIMI_CODE_OAUTH_HOST") or os.environ.get("KIMI_OAUTH_HOST") or DEFAULT_OAUTH_HOST).rstrip("/")
+  return base, oauth
+
+
+def to_seconds(value):
+  n = float(value or 0)
+  return n / 1000.0 if n > 1e12 else n
+
+
+def load_token():
+  try:
+    return json.loads(credentials_path().read_text())
+  except Exception:
+    return None
+
+
+def save_token(token):
+  path = credentials_path()
+  tmp = path.with_suffix(".json.tmp.%d" % os.getpid())
+  try:
+    tmp.parent.mkdir(mode=0o700, exist_ok=True)
+    tmp.write_text(json.dumps(token, indent=2) + "\n")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+  except Exception:
+    try:
+      tmp.unlink()
+    except OSError:
+      pass
+    raise
+
+
+def http_json(url, data=None, headers=None):
+  body = urllib.parse.urlencode(data).encode() if data is not None else None
+  req = urllib.request.Request(url, data=body, headers=headers or {})
+  with urllib.request.urlopen(req, timeout=TIMEOUT_S) as res:
+    return json.loads(res.read())
+
+
+def refresh_token(token):
+  _, oauth = urls()
+  payload = http_json(oauth + "/api/oauth/token", data={
+    "client_id": CLIENT_ID,
+    "grant_type": "refresh_token",
+    "refresh_token": token.get("refresh_token") or "",
+  })
+  access = payload.get("access_token")
+  refresh = payload.get("refresh_token")
+  expires_in = float(payload.get("expires_in") or 0)
+  if not access or not refresh or expires_in <= 0:
+    raise RuntimeError("token refresh returned an incomplete payload")
+  merged = dict(token)
+  merged.update({
+    "access_token": access,
+    "refresh_token": refresh,
+    "expires_at": math.floor(time.time()) + int(expires_in),
+    "scope": payload.get("scope") or token.get("scope") or "",
+    "token_type": payload.get("token_type") or token.get("token_type") or "Bearer",
+    "expires_in": int(expires_in),
+  })
+  save_token(merged)
+  return merged
+
+
+def ensure_fresh(token, force=False):
+  if force or to_seconds(token.get("expires_at")) - time.time() < REFRESH_SKEW_S:
+    return refresh_under_lock(token)
+  return token
+
+
+def refresh_under_lock(token):
+  path = credentials_path()
+  lock_file = open(str(path) + ".lock", "a+")
+  deadline = time.time() + LOCK_TIMEOUT_S
+  locked = False
+  while time.time() < deadline:
+    try:
+      fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+      locked = True
+      break
+    except OSError:
+      time.sleep(0.05)
+  try:
+    if not locked:
+      return load_token() or token
+    current = load_token() or {}
+    if (current.get("refresh_token") or None) != (token.get("refresh_token") or None):
+      return current
+    return refresh_token(token)
+  finally:
+    try:
+      fcntl.flock(lock_file, fcntl.LOCK_UN)
+    except OSError:
+      pass
+    lock_file.close()
+
+
+def fetch_usages(token):
+  base, _ = urls()
+  req = urllib.request.Request(base + "/usages", headers={
+    "Authorization": "Bearer " + (token.get("access_token") or ""),
+    "Accept": "application/json",
+  })
+  try:
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as res:
+      return json.loads(res.read()), token
+  except urllib.error.HTTPError as exc:
+    if exc.code != 401:
+      raise
+    token = refresh_under_lock(token)
+    req = urllib.request.Request(base + "/usages", headers={
+      "Authorization": "Bearer " + token["access_token"],
+      "Accept": "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=TIMEOUT_S) as res:
+      return json.loads(res.read()), token
+
+
+def to_int(value):
+  try:
+    return int(value)
+  except (TypeError, ValueError):
+    return None
+
+
+def limit_label(item, detail, window, idx):
+  for key in ("name", "title", "scope"):
+    value = item.get(key) or detail.get(key)
+    if isinstance(value, str) and value:
+      return value
+  duration = to_int(window.get("duration") or item.get("duration") or detail.get("duration"))
+  unit = str(window.get("timeUnit") or item.get("timeUnit") or detail.get("timeUnit") or "")
+  if duration is not None:
+    if "MINUTE" in unit:
+      return "%dh limit" % (duration // 60) if duration >= 60 and duration % 60 == 0 else "%dm limit" % duration
+    if "HOUR" in unit:
+      return "%dh limit" % duration
+    if "DAY" in unit:
+      return "%dd limit" % duration
+    return "%ds limit" % duration
+  return "Limit #%d" % (idx + 1)
+
+
+def reset_at(detail):
+  for key in ("reset_at", "resetAt", "reset_time", "resetTime"):
+    value = detail.get(key)
+    if isinstance(value, str) and value:
+      return value
+  for key in ("reset_in", "resetIn", "ttl"):
+    seconds = to_int(detail.get(key))
+    if seconds and seconds > 0:
+      at = datetime.fromtimestamp(time.time() + seconds, timezone.utc)
+      return at.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+  return ""
+
+
+def usage_row(raw, default_label):
+  if not isinstance(raw, dict):
+    return None
+  limit = to_int(raw.get("limit"))
+  used = to_int(raw.get("used"))
+  if used is None:
+    remaining = to_int(raw.get("remaining"))
+    if remaining is not None and limit is not None:
+      used = limit - remaining
+  if used is None and limit is None:
+    return None
+  name = raw.get("name") if isinstance(raw.get("name"), str) else raw.get("title") if isinstance(raw.get("title"), str) else default_label
+  return {"label": name, "used": used or 0, "limit": limit or 0, "resetsAt": reset_at(raw)}
+
+
+def to_metric(row):
+  if row and row["limit"] > 0:
+    return {"label": row["label"], "percent": max(0.0, min(1.0, row["used"] / row["limit"])), "resetsAt": row["resetsAt"]}
+  return None
+
+
+def normalize_usage(payload):
+  metrics = []
+  if not isinstance(payload, dict):
+    return metrics, ""
+  metric = to_metric(usage_row(payload.get("usage"), "Weekly limit"))
+  if metric:
+    metrics.append(metric)
+  limits = payload.get("limits")
+  if isinstance(limits, list):
+    for idx, item in enumerate(limits):
+      if not isinstance(item, dict):
+        continue
+      detail = item.get("detail") if isinstance(item.get("detail"), dict) else item
+      window = item.get("window") if isinstance(item.get("window"), dict) else {}
+      metric = to_metric(usage_row(detail, limit_label(item, detail, window, idx)))
+      if metric:
+        metrics.append(metric)
+  level = ((payload.get("user") or {}).get("membership") or {}).get("level") or ""
+  plan = str(level).replace("LEVEL_", "").replace("_", " ").title()
+  return metrics, plan
+
+
+def read_fresh_json(path, max_age_seconds):
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    if time.time() - path.stat().st_mtime <= max_age_seconds:
+      return json.loads(path.read_text())
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path, payload):
+  tmp = path.with_suffix(".tmp.%d" % os.getpid())
+  try:
+    tmp.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+  except Exception:
+    try:
+      tmp.unlink()
+    except OSError:
+      pass
+    raise
+
+
+def collect_limits(force):
+  result = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
+  token = load_token()
+  if not token or not token.get("access_token"):
+    result["usageStatusText"] = "Waiting for auth"
+    result["authHelpText"] = AUTH_HELP
+    return result
+
+  # A panel that is opened and shut repeatedly must not turn into a request
+  # per flick: reuse a recent probe, and keep it as the answer of record when
+  # a later probe fails.
+  probe_cache = cache_root() / "kimi-limits.json"
+  cached = read_fresh_json(probe_cache, float("inf")) or {}
+  fetched_at = number(cached.get("fetchedAtMs")) / 1000
+  min_interval = 0 if force else 15
+  if cached.get("limits") and time.time() - fetched_at < max(min_interval, 15):
+    result["limits"] = cached["limits"]
+    result["tierLabel"] = cached.get("tierLabel") or ""
+    return result
+
+  try:
+    token = ensure_fresh(token, force)
+    payload, _ = fetch_usages(token)
+    metrics, plan = normalize_usage(payload)
+    result["limits"] = metrics
+    result["tierLabel"] = plan
+    if metrics:
+      write_json(probe_cache, {"fetchedAtMs": round(time.time() * 1000), "limits": metrics, "tierLabel": plan})
+    else:
+      result["usageStatusText"] = "Kimi limits unavailable"
+  except Exception as exc:
+    message = str(exc)[:200]
+    if isinstance(exc, urllib.error.HTTPError) and exc.code == 401:
+      message = "authorization failed (try: kimi login)"
+    if cached.get("limits"):
+      result["limits"] = cached["limits"]
+      result["tierLabel"] = cached.get("tierLabel") or ""
+    else:
+      result["usageStatusText"] = "Kimi limits unavailable"
+      result["authHelpText"] = message
+  return result
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.add_argument("--local-only", action="store_true")
+  args = parser.parse_args()
+
+  init_dates()
+
+  scan_native_kimi_sessions()
+  scan_pi_sessions()
+  scan_opencode_sessions()
+
+  limits = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
+  if not args.local_only:
+    limits = collect_limits(args.force)
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": total_prompts > 0 or len(limits["limits"]) > 0,
+    "hasLocalStats": total_prompts > 0,
+    "todayPrompts": today_prompts,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_total_tokens,
+    "todayTokensByModel": today_tokens_by_model,
+    "recentDays": [recent[day] for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": len(total_sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+    "modelUsage": model_usage,
+  }
+  record.update(limits)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
