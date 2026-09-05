@@ -20,7 +20,7 @@ It works by restoring the baseline snapshot the installer takes, so it's only av
 
 ## Passwordless sudo
 
-Sometimes you want `sudo` to stop asking, most often when an AI agent is doing a long stretch of system work for you. _Setup > Security > Passwordless Sudo_ turns that off for 15 minutes and then puts it back automatically. Run it again before the timer runs out to end it early, and pass your own number of minutes with `omarchy-sudo-passwordless 30` if 15 isn't enough.
+Sometimes you want `sudo` to stop asking, most often when an AI agent is doing a long stretch of system work for you. _Setup > Security > Passwordless Sudo_ turns that off for 15 wall-clock minutes and then puts it back automatically, including immediately after resuming from a suspend that crossed the deadline. A package-owned boot-time cleanup rule removes the grant before logins if the computer restarts first. Run the command again before the timer runs out to end it early, and pass your own number of minutes (from 1 to 1440) with `omarchy-sudo-passwordless 30` if 15 isn't enough.
 
 Be clear-eyed about this one: while it's on, anything running as your user can do anything as root without being asked. That's the whole point, and it's also the whole risk.
 

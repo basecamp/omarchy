@@ -1,23 +1,57 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Set up the OpenSSH server, open the firewall, and authorize an SSH key
 # omarchy:args=[--key=<public-key>] [--gh-keys <github-username>]
 # omarchy:examples=omarchy-setup-security-sshd | omarchy-setup-security-sshd --gh-keys dhh | omarchy-setup-security-sshd --key="ssh-ed25519 AAAA... user@host"
 # omarchy:requires-sudo=true
 
-set -e
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for SSH setup." >&2
+  exit 126
+fi
 
-AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
+require_privileged_bash_startup() {
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+require_privileged_bash_startup || {
+  echo "Refusing an unsafe Bash startup for SSH setup." >&2
+  exit 126
+}
+unset -f require_privileged_bash_startup
+
+set -euo pipefail
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+
 KEY=""
 GITHUB_USER=""
+
+CURRENT_UID=$(/usr/bin/id -u)
+PASSWD_ENTRY=$(/usr/bin/getent passwd "$CURRENT_UID") || {
+  echo "Could not resolve the current account from the system user database." >&2
+  exit 1
+}
+IFS=: read -r ACCOUNT_NAME _ PASSWD_UID _ _ ACCOUNT_HOME _ <<<"$PASSWD_ENTRY"
+if [[ $PASSWD_UID != "$CURRENT_UID" || ! $ACCOUNT_NAME =~ ^[a-z_][a-z0-9_-]{0,31}$ || $ACCOUNT_HOME != /* ]]; then
+  echo "The current account has an invalid system user-database entry." >&2
+  exit 1
+fi
+AUTHORIZED_KEYS="$ACCOUNT_HOME/.ssh/authorized_keys"
 
 # Checked while parsing, before anything is installed or opened: an empty or
 # option-shaped username otherwise falls through to the interactive menu having
 # already changed the machine, and `--gh-keys --help` would take --help as the
 # username and set the server up on its way to failing.
 require_github_user() {
-  if [[ -z $1 || $1 == -* ]]; then
-    echo "omarchy-setup-security-sshd: --gh-keys needs a GitHub username." >&2
+  if [[ ! $1 =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]]; then
+    echo "omarchy-setup-security-sshd: --gh-keys needs a valid GitHub username." >&2
     exit 2
   fi
 }
@@ -57,28 +91,174 @@ if [[ -n $KEY && -n $GITHUB_USER ]]; then
   exit 2
 fi
 
-setup_sshd() {
-  echo "Installing and starting the OpenSSH server..."
-  omarchy-pkg-add openssh
-  sudo systemctl enable --now sshd.service
+SERVICE_WAS_ACTIVE=false
+SERVICE_WAS_ENABLED=false
+SERVICE_STARTED=false
+SERVICE_ENABLED=false
+FIREWALL_RULE_WAS_PRESENT=false
+FIREWALL_RULE_ADDED=false
+HARDENING_CONFIG=/etc/ssh/sshd_config.d/00-omarchy-key-only.conf
+HARDENING_BACKUP=""
+HARDENING_WAS_PRESENT=false
+HARDENING_TOUCHED=false
+AUTHORIZED_KEYS_TEMP=""
+AUTHORIZED_KEYS_BACKUP=""
+AUTHORIZED_KEYS_WAS_PRESENT=false
+AUTHORIZED_KEYS_TOUCHED=false
+SETUP_COMPLETE=false
+
+setup_sshd_package() {
+  echo "Installing the OpenSSH server prerequisites..."
+  /usr/bin/omarchy-pkg-add openssh
 }
 
+omarchy_firewall_rule_present() {
+  /usr/bin/sudo ufw show added 2>/dev/null |
+    /usr/bin/grep -Eq "^ufw limit 22/tcp comment ['\"]?omarchy-sshd['\"]?$"
+}
+
+record_existing_state() {
+  /usr/bin/sudo systemctl is-active --quiet sshd.service && SERVICE_WAS_ACTIVE=true || true
+  /usr/bin/sudo systemctl is-enabled --quiet sshd.service && SERVICE_WAS_ENABLED=true || true
+  if ! /usr/bin/omarchy-cmd-missing ufw && omarchy_firewall_rule_present; then
+    FIREWALL_RULE_WAS_PRESENT=true
+  fi
+}
+
+rollback_setup() {
+  local exit_status=$?
+  local rollback_failed=false config_restored=false
+  trap - EXIT
+
+  [[ -z $AUTHORIZED_KEYS_TEMP ]] || /usr/bin/rm -f -- "$AUTHORIZED_KEYS_TEMP"
+
+  if [[ $SETUP_COMPLETE != "true" ]]; then
+    if [[ $FIREWALL_RULE_ADDED == "true" ]]; then
+      /usr/bin/sudo ufw --force delete limit 22/tcp comment "omarchy-sshd" >/dev/null 2>&1 || rollback_failed=true
+      /usr/bin/sudo ufw reload >/dev/null 2>&1 || rollback_failed=true
+    fi
+    if [[ $SERVICE_ENABLED == "true" && $SERVICE_WAS_ENABLED != "true" ]]; then
+      /usr/bin/sudo systemctl disable sshd.service >/dev/null 2>&1 || rollback_failed=true
+    fi
+    if [[ $SERVICE_STARTED == "true" && $SERVICE_WAS_ACTIVE != "true" ]]; then
+      /usr/bin/sudo systemctl stop sshd.service >/dev/null 2>&1 || rollback_failed=true
+    fi
+    if [[ $HARDENING_TOUCHED == "true" ]]; then
+      if [[ -n $HARDENING_BACKUP ]]; then
+        # The backup is in the same root-owned directory, so rename restores
+        # the administrator's exact owner/group/mode atomically.
+        if /usr/bin/sudo mv -fT -- "$HARDENING_BACKUP" "$HARDENING_CONFIG" >/dev/null 2>&1; then
+          HARDENING_BACKUP=""
+          config_restored=true
+        else
+          rollback_failed=true
+        fi
+      elif [[ $HARDENING_WAS_PRESENT != "true" ]]; then
+        if /usr/bin/sudo rm -f "$HARDENING_CONFIG" >/dev/null 2>&1; then
+          config_restored=true
+        else
+          rollback_failed=true
+        fi
+      fi
+      # If an existing daemon consumed our temporary config, apply the
+      # restored, validated administrator config. If it is no longer valid,
+      # leave the already-running key-only policy in memory (fail secure).
+      if [[ $SERVICE_WAS_ACTIVE == "true" && $config_restored == "true" ]]; then
+        if /usr/bin/sudo sshd -t >/dev/null 2>&1; then
+          /usr/bin/sudo systemctl reload sshd.service >/dev/null 2>&1 || rollback_failed=true
+        else
+          rollback_failed=true
+        fi
+      fi
+    fi
+    if [[ $AUTHORIZED_KEYS_TOUCHED == "true" ]]; then
+      if [[ -n $AUTHORIZED_KEYS_BACKUP ]]; then
+        if /usr/bin/mv -fT -- "$AUTHORIZED_KEYS_BACKUP" "$AUTHORIZED_KEYS"; then
+          AUTHORIZED_KEYS_BACKUP=""
+        else
+          rollback_failed=true
+        fi
+      elif [[ $AUTHORIZED_KEYS_WAS_PRESENT != "true" ]]; then
+        /usr/bin/rm -f -- "$AUTHORIZED_KEYS" || rollback_failed=true
+      fi
+    elif [[ -n $AUTHORIZED_KEYS_BACKUP ]]; then
+      /usr/bin/rm -f -- "$AUTHORIZED_KEYS_BACKUP" || rollback_failed=true
+      AUTHORIZED_KEYS_BACKUP=""
+    fi
+  elif [[ -n $HARDENING_BACKUP ]]; then
+    /usr/bin/sudo rm -f "$HARDENING_BACKUP" >/dev/null 2>&1 || {
+      echo "WARNING: SSH setup succeeded but could not remove $HARDENING_BACKUP" >&2
+    }
+  fi
+  if [[ $SETUP_COMPLETE == "true" && -n $AUTHORIZED_KEYS_BACKUP ]]; then
+    /usr/bin/rm -f -- "$AUTHORIZED_KEYS_BACKUP" ||
+      echo "WARNING: SSH setup succeeded but could not remove $AUTHORIZED_KEYS_BACKUP" >&2
+  fi
+
+  if [[ $rollback_failed == "true" ]]; then
+    echo "CRITICAL: SSH setup rollback was incomplete; inspect sshd.service, UFW, and $HARDENING_CONFIG immediately." >&2
+    ((exit_status != 0)) || exit_status=1
+  fi
+
+  if ! /usr/bin/sudo -k >/dev/null 2>&1; then
+    echo "CRITICAL: SSH setup could not invalidate cached sudo authorization." >&2
+    ((exit_status != 0)) || exit_status=1
+  fi
+
+  exit "$exit_status"
+}
+trap rollback_setup EXIT
+
 open_firewall() {
-  if omarchy-cmd-missing ufw; then
+  if /usr/bin/omarchy-cmd-missing ufw; then
     echo "UFW is not installed; skipping firewall rule."
     return
   fi
 
   echo "Opening the SSH port in the firewall (rate limited against brute force)..."
-  sudo ufw limit 22/tcp comment "omarchy-sshd" >/dev/null
-  sudo ufw reload >/dev/null
+  if [[ $FIREWALL_RULE_WAS_PRESENT != "true" ]]; then
+    if ! /usr/bin/sudo ufw limit 22/tcp comment "omarchy-sshd" >/dev/null; then
+      omarchy_firewall_rule_present && FIREWALL_RULE_ADDED=true
+      return 1
+    fi
+    # The rule may exist even if a later status/parse check fails. Record our
+    # successful mutation first so every subsequent failure removes it.
+    FIREWALL_RULE_ADDED=true
+    omarchy_firewall_rule_present || {
+      echo "UFW did not publish the expected Omarchy SSH rule." >&2
+      return 1
+    }
+  fi
+  /usr/bin/sudo ufw reload >/dev/null
 }
 
 valid_key() {
-  ssh-keygen -lf /dev/stdin <<<"$1" >/dev/null 2>&1
+  [[ $1 != *$'\n'* ]] && /usr/bin/ssh-keygen -lf /dev/stdin <<<"$1" >/dev/null 2>&1
 }
 
-authorize_key() {
+account_home_accepts_authorized_keys() {
+  local canonical owner mode
+
+  [[ -d $ACCOUNT_HOME && ! -L $ACCOUNT_HOME ]] || {
+    echo "$ACCOUNT_HOME must be a real directory before SSH can be made key-only." >&2
+    return 1
+  }
+  canonical=$(/usr/bin/realpath -e -- "$ACCOUNT_HOME" 2>/dev/null) || return 1
+  [[ $canonical == "$ACCOUNT_HOME" ]] || {
+    echo "$ACCOUNT_HOME must not resolve through a symbolic link." >&2
+    return 1
+  }
+  read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$ACCOUNT_HOME") || return 1
+  [[ $owner == 0 || $owner == "$CURRENT_UID" ]] && [[ $mode =~ ^[0-7]+$ ]] &&
+    ! ((8#$mode & 0022)) || {
+    echo "$ACCOUNT_HOME must be owned by the account (or root) and not group/world writable before SSH can be made key-only." >&2
+    return 1
+  }
+}
+
+COLLECTED_KEYS=()
+
+collect_key() {
   local key="$1"
 
   if ! valid_key "$key"; then
@@ -86,31 +266,21 @@ authorize_key() {
     return 1
   fi
 
-  mkdir -p "$HOME/.ssh"
-  chmod 700 "$HOME/.ssh"
-  touch "$AUTHORIZED_KEYS"
-  chmod 600 "$AUTHORIZED_KEYS"
-
-  if grep -qxF "$key" "$AUTHORIZED_KEYS"; then
-    echo "Key already authorized: $(ssh-keygen -lf /dev/stdin <<<"$key")"
-  else
-    echo "$key" >>"$AUTHORIZED_KEYS"
-    echo "Authorized key: $(ssh-keygen -lf /dev/stdin <<<"$key")"
-  fi
+  COLLECTED_KEYS+=("$key")
 }
 
 authorize_keys_from_github() {
   local username="$1" keys added=0
 
   echo "Fetching keys from https://github.com/$username.keys..."
-  if ! keys=$(curl -fsSL "https://github.com/$username.keys") || [[ -z $keys ]]; then
+  if ! keys=$(/usr/bin/curl -fsSL "https://github.com/$username.keys") || [[ -z $keys ]]; then
     echo -e "\e[31mCould not fetch any SSH keys for GitHub user '$username'.\e[0m" >&2
     exit 1
   fi
 
   while IFS= read -r key; do
     [[ -z $key ]] && continue
-    authorize_key "$key" && added=$((added + 1))
+    collect_key "$key" && added=$((added + 1))
   done <<<"$keys"
 
   if (( added == 0 )); then
@@ -122,11 +292,13 @@ authorize_keys_from_github() {
 prompt_for_github_user() {
   local username
 
-  username=$(gum input --prompt "GitHub username> " --placeholder "dhh") || exit 1
+  username=$(/usr/bin/gum input --prompt "GitHub username> " --placeholder "dhh") || exit 1
   if [[ -z $username ]]; then
     echo -e "\e[31mNo GitHub username given.\e[0m" >&2
     exit 1
   fi
+
+  require_github_user "$username"
 
   authorize_keys_from_github "$username"
 }
@@ -134,20 +306,111 @@ prompt_for_github_user() {
 authorize_pasted_key() {
   local key
 
-  key=$(gum input --prompt "Public key> " --placeholder "ssh-ed25519 AAAA... user@host") || exit 1
+  key=$(/usr/bin/gum input --prompt "Public key> " --placeholder "ssh-ed25519 AAAA... user@host") || exit 1
   if [[ -z $key ]]; then
     echo -e "\e[31mNo SSH key given.\e[0m" >&2
     exit 1
   fi
 
-  authorize_key "$key" || exit 1
+  collect_key "$key" || exit 1
+}
+
+authorize_collected_keys() {
+  local ssh_dir owner key
+  ((${#COLLECTED_KEYS[@]} > 0)) || {
+    echo "No valid SSH public key was collected." >&2
+    return 1
+  }
+  ssh_dir=$(/usr/bin/dirname "$AUTHORIZED_KEYS")
+  /usr/bin/mkdir -p "$ssh_dir"
+  [[ -d $ssh_dir && ! -L $ssh_dir ]] || {
+    echo "$ssh_dir must be a real directory for atomic key authorization." >&2
+    return 1
+  }
+  /usr/bin/chmod 0700 "$ssh_dir"
+  owner=$(/usr/bin/stat -Lc '%u' -- "$ssh_dir" 2>/dev/null || true)
+  [[ $owner == "$(/usr/bin/id -u)" ]] || return 1
+  if [[ -e $AUTHORIZED_KEYS || -L $AUTHORIZED_KEYS ]]; then
+    [[ -f $AUTHORIZED_KEYS && ! -L $AUTHORIZED_KEYS ]] || {
+      echo "$AUTHORIZED_KEYS is not a regular file; refusing to replace it." >&2
+      return 1
+    }
+    AUTHORIZED_KEYS_WAS_PRESENT=true
+    AUTHORIZED_KEYS_BACKUP=$(/usr/bin/mktemp "$ssh_dir/.authorized_keys.backup.XXXXXX") || return 1
+    /usr/bin/cp -a -- "$AUTHORIZED_KEYS" "$AUTHORIZED_KEYS_BACKUP" || return 1
+  fi
+
+  AUTHORIZED_KEYS_TEMP=$(/usr/bin/mktemp "$ssh_dir/.authorized_keys.XXXXXX") || return 1
+  /usr/bin/chmod 0600 "$AUTHORIZED_KEYS_TEMP"
+  if [[ -f $AUTHORIZED_KEYS ]]; then
+    /usr/bin/cat "$AUTHORIZED_KEYS" >"$AUTHORIZED_KEYS_TEMP" || return 1
+  fi
+  for key in "${COLLECTED_KEYS[@]}"; do
+    if /usr/bin/grep -qxF "$key" "$AUTHORIZED_KEYS_TEMP"; then
+      echo "Key already authorized: $(/usr/bin/ssh-keygen -lf /dev/stdin <<<"$key")"
+    else
+      printf '%s\n' "$key" >>"$AUTHORIZED_KEYS_TEMP" || return 1
+      echo "Authorized key: $(/usr/bin/ssh-keygen -lf /dev/stdin <<<"$key")"
+    fi
+  done
+  /usr/bin/chmod 0600 "$AUTHORIZED_KEYS_TEMP"
+  AUTHORIZED_KEYS_TOUCHED=true
+  /usr/bin/mv -fT -- "$AUTHORIZED_KEYS_TEMP" "$AUTHORIZED_KEYS"
+  AUTHORIZED_KEYS_TEMP=""
+}
+
+validate_hardening_precedence() {
+  local first_dropin
+  # Fail if sshd can establish authentication or Match state before the stock
+  # drop-in include. Our first-expanded file then supplies both global and
+  # Match-context defaults before any later administrator Match can run.
+  /usr/bin/sudo /usr/bin/awk '
+    function clean(line) { sub(/[[:space:]]*#.*/, "", line); sub(/^[[:space:]]+/, "", line); return line }
+    {
+      line = clean($0)
+      if (line ~ /^[[:space:]]*$/) next
+      split(line, field, /[[:space:]]+/)
+      key = tolower(field[1])
+      if (!included) {
+        if (key == "include" && line ~ /^[[:space:]]*[Ii][Nn][Cc][Ll][Uu][Dd][Ee][[:space:]]+\/etc\/ssh\/sshd_config\.d\/\*\.conf[[:space:]]*$/) {
+          included = 1
+          next
+        }
+        if (key == "include" || key == "match" || key == "passwordauthentication" ||
+            key == "kbdinteractiveauthentication" || key == "authenticationmethods") exit 1
+      }
+    }
+    END { if (!included) exit 1 }
+  ' /etc/ssh/sshd_config || {
+    echo "sshd_config must include /etc/ssh/sshd_config.d/*.conf before authentication or Match directives." >&2
+    return 1
+  }
+
+  first_dropin=$(/usr/bin/sudo /usr/bin/find /etc/ssh/sshd_config.d -mindepth 1 -maxdepth 1 -name '*.conf' -printf '%f\n' |
+    LC_ALL=C /usr/bin/sort | /usr/bin/head -n1)
+  [[ $first_dropin == "${HARDENING_CONFIG##*/}" ]] || {
+    echo "$HARDENING_CONFIG is not the first expanded sshd drop-in; refusing ambiguous authentication precedence." >&2
+    return 1
+  }
+}
+
+effective_policy_is_key_only() {
+  local dump="$1"
+  grep -qixF "passwordauthentication no" <<<"$dump" &&
+    grep -qixF "kbdinteractiveauthentication no" <<<"$dump" &&
+    grep -qixF "authenticationmethods publickey" <<<"$dump" &&
+    grep -qixF "pubkeyauthentication yes" <<<"$dump" &&
+    grep -qixF "authorizedkeysfile .ssh/authorized_keys" <<<"$dump"
+}
+
+current_account_name() {
+  printf '%s' "$ACCOUNT_NAME"
 }
 
 # Only called after a key is authorized. Disabling password authentication
 # before then could lock the owner out of the machine.
 disable_password_auth() {
-  local config=/etc/ssh/sshd_config.d/10-omarchy-hardening.conf
-  local effective_config
+  local effective_config matched_config account_name
 
   if [[ ! -s $AUTHORIZED_KEYS ]]; then
     echo -e "\e[31mCannot disable SSH password authentication without an authorized key.\e[0m" >&2
@@ -155,18 +418,50 @@ disable_password_auth() {
   fi
 
   echo "Disabling SSH password authentication, now that a key is authorized..."
-  sudo install -Dm644 /dev/stdin "$config" <<'CONF'
+  if /usr/bin/sudo test -e "$HARDENING_CONFIG" || /usr/bin/sudo test -L "$HARDENING_CONFIG"; then
+    if ! /usr/bin/sudo test -f "$HARDENING_CONFIG" || /usr/bin/sudo test -L "$HARDENING_CONFIG"; then
+      echo "$HARDENING_CONFIG is not a regular file; preserving it and refusing setup." >&2
+      return 1
+    fi
+    HARDENING_WAS_PRESENT=true
+    if ! HARDENING_BACKUP=$(/usr/bin/sudo mktemp /etc/ssh/sshd_config.d/.00-omarchy-key-only.backup.XXXXXX) ||
+      ! /usr/bin/sudo cp -a "$HARDENING_CONFIG" "$HARDENING_BACKUP"; then
+      [[ -z $HARDENING_BACKUP ]] || /usr/bin/sudo rm -f "$HARDENING_BACKUP" >/dev/null 2>&1 || true
+      HARDENING_BACKUP=""
+      return 1
+    fi
+  fi
+  HARDENING_TOUCHED=true
+  # Root consumes an inherited descriptor, never a caller-owned temporary
+  # pathname that another process can swap after validation.
+  if ! /usr/bin/sudo install -DT -o root -g root -m 0644 /dev/stdin "$HARDENING_CONFIG" <<'CONF'; then
 # Written by omarchy-setup-security-sshd once an SSH key was authorized.
 # Delete this file and reload sshd to allow password logins again.
 PasswordAuthentication no
 KbdInteractiveAuthentication no
+AuthenticationMethods publickey
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+Match all
+  PasswordAuthentication no
+  KbdInteractiveAuthentication no
+  AuthenticationMethods publickey
+  PubkeyAuthentication yes
+  AuthorizedKeysFile .ssh/authorized_keys
 CONF
+    return 1
+  fi
+
+  validate_hardening_precedence
+
+  # Arch creates host keys on first daemon start. Generate them explicitly so
+  # the complete configuration can be validated without starting a listener.
+  /usr/bin/sudo ssh-keygen -A
 
   # Validate before reloading: a config sshd rejects would otherwise take the
   # service down on its next restart, potentially stranding a remote owner.
-  if ! sudo sshd -t; then
+  if ! /usr/bin/sudo sshd -t; then
     echo -e "\e[31msshd rejected the hardening config; removing it and leaving passwords on.\e[0m" >&2
-    sudo rm -f "$config"
     return 1
   fi
 
@@ -174,39 +469,72 @@ CONF
   # these settings. An earlier administrator rule could leave passwords enabled.
   # Match keywords case-insensitively: OpenSSH 9.x dumps them lowercase, 10.x
   # in CamelCase.
-  if ! effective_config=$(sudo sshd -T) ||
-    ! grep -qixF "passwordauthentication no" <<<"$effective_config" ||
-    ! grep -qixF "kbdinteractiveauthentication no" <<<"$effective_config"; then
+  account_name=$(current_account_name) || return 1
+  if ! effective_config=$(/usr/bin/sudo sshd -T) || ! effective_policy_is_key_only "$effective_config" ||
+    ! matched_config=$(/usr/bin/sudo sshd -T -C "user=$account_name,host=localhost,addr=127.0.0.1,laddr=127.0.0.1,lport=22") ||
+    ! effective_policy_is_key_only "$matched_config"; then
     echo -e "\e[31msshd did not apply the password-authentication restrictions; removing the ineffective config.\e[0m" >&2
-    sudo rm -f "$config"
     return 1
   fi
+}
 
-  # Reload rather than restart so an administrator already connected keeps
-  # their session.
-  sudo systemctl reload sshd.service
+publish_sshd() {
+  if [[ $SERVICE_WAS_ACTIVE == "true" ]]; then
+    # Preserve established administrator sessions while applying the validated
+    # key-only policy to the already-running daemon.
+    /usr/bin/sudo systemctl reload sshd.service
+  else
+    if ! /usr/bin/sudo systemctl start sshd.service; then
+      /usr/bin/sudo systemctl is-active --quiet sshd.service && SERVICE_STARTED=true
+      return 1
+    fi
+    SERVICE_STARTED=true
+  fi
+
+  if [[ $SERVICE_WAS_ENABLED != "true" ]]; then
+    if ! /usr/bin/sudo systemctl enable sshd.service; then
+      /usr/bin/sudo systemctl is-enabled --quiet sshd.service && SERVICE_ENABLED=true
+      return 1
+    fi
+    SERVICE_ENABLED=true
+  fi
 }
 
 echo -e "\e[32mSetting up SSH server access with key-based authentication.\n\e[0m"
 
-setup_sshd
-open_firewall
+/usr/bin/sudo -k >/dev/null 2>&1 || {
+  echo "Could not invalidate cached sudo authorization; refusing SSH setup." >&2
+  exit 1
+}
 
 echo
 if [[ -n $KEY ]]; then
-  authorize_key "$KEY" || exit 1
+  collect_key "$KEY" || exit 1
 elif [[ -n $GITHUB_USER ]]; then
   authorize_keys_from_github "$GITHUB_USER"
 else
-  case $(gum choose "Grab key from GitHub" "Paste key manually" --header "How would you like to add your SSH key?") in
+  case $(/usr/bin/gum choose "Grab key from GitHub" "Paste key manually" --header "How would you like to add your SSH key?") in
   "Grab key from GitHub") prompt_for_github_user ;;
   "Paste key manually") authorize_pasted_key ;;
   *) exit 1 ;;
   esac
 fi
 
+account_home_accepts_authorized_keys
+authorize_collected_keys
+
+# No caller-resolved executable runs after this point. The key and all remote
+# input have already been validated, so the reusable credential needed for the
+# multi-command rollback-capable system transaction cannot be handed to a
+# downloaded tool, prompt helper, or detached child from this workflow.
+record_existing_state
+setup_sshd_package
 disable_password_auth
+publish_sshd
+open_firewall
+
+SETUP_COMPLETE=true
 
 echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
 echo "Password logins are off; this machine now accepts authorized keys only."
-echo "You can now connect with: ssh $USER@$(hostname)"
+echo "You can now connect with: ssh $ACCOUNT_NAME@$(hostname)"
