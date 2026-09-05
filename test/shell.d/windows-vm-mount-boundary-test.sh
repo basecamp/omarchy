@@ -87,11 +87,13 @@ TEST_PASSWD_HOME=/home/alice
 resolve_caller || fail "valid root PKEXEC_UID/home boundary was rejected"
 pass "root dispatch rejects missing/invalid uid, passwd, owner, symlink, and writable-parent boundaries without mutation"
 
-# Put each familiar source on its own filesystem. Both start with legacy 0755
-# permissions and world-readable payloads to prove migration hardens the leaves.
+# Put each familiar source on its own filesystem. Both start world-readable,
+# and shared is setgid as the VM container can leave it, to prove migration
+# clears inherited special bits while hardening the leaves.
 mkdir /home/storage-target /home/shared-target
 mount -t tmpfs -o uid=1000,gid=1000,mode=0755,size=3g storage-test /home/storage-target
 mount -t tmpfs -o uid=1000,gid=1000,mode=0755,size=64m shared-test /home/shared-target
+chmod 02755 /home/shared-target
 ln -s /home/storage-target /home/alice/.windows
 ln -s /home/shared-target /home/alice/Windows
 chown -h 1000:1000 /home/alice/.windows /home/alice/Windows
