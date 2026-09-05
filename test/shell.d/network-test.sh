@@ -229,25 +229,174 @@ assert(
   /networkFailureReason\(reason, requiresCredentials\(network\.security\)\)/.test(panelSource),
   'network failure copy uses the live network credential requirement'
 )
+
+// A connection or known-state change re-sorts the projected rows. Preserve
+// the selected SSID through that sort so a focused X never jumps to another
+// saved network at the same numeric index.
+const syncWifiNetworksFunction = panelSource.match(/function syncWifiNetworks\(\) \{[\s\S]*?\n {2}\}/)
+assert(syncWifiNetworksFunction, 'network has a Wi-Fi row synchronization helper')
+var Model = network
+var wifiNetworks = [
+  { connected: true, known: true, ssid: 'Alpha', signal: 50, security: security.Open },
+  { connected: false, known: true, ssid: 'Beta', signal: 90, security: security.Open }
+]
+var wifiNetworkObjects = [
+  { connected: false, known: true, name: 'Alpha', signalStrength: 0.5, security: security.Open },
+  { connected: false, known: true, name: 'Beta', signalStrength: 0.9, security: security.Open }
+]
+var selectedIndex = 0
+var focusSection = 'wifi'
+var wifiActionFocused = true
+var wifiDevice = {}
+var wifiStationAvailable = false
+var scanning = true
+function checkActionCompletion() {}
+eval(syncWifiNetworksFunction[0])
+syncWifiNetworks()
+assertEqual(wifiNetworks[selectedIndex].ssid, 'Alpha', 'network selection follows the SSID when rows re-sort')
+
+wifiNetworkObjects = [wifiNetworkObjects[1]]
+syncWifiNetworks()
+assertEqual(wifiActionFocused, false, 'network clears X focus when the selected SSID disappears')
+
 assert(
   /readonly property bool canForget: root\.canForgetNetwork\(net\)/.test(panelSource),
   'network rows derive forget eligibility from the tested model helper'
 )
+const networkRowStart = panelSource.indexOf('component NetworkRow: CursorSurface {')
+const detailValueStart = panelSource.indexOf('component DetailValue: InfoValue {')
+assert(networkRowStart >= 0 && detailValueStart > networkRowStart, 'network exposes its Wi-Fi row component')
+const networkRow = panelSource.slice(networkRowStart, detailValueStart)
+
 const rightAction = panelSource.match(/Item \{\s*id: rightAction\b[\s\S]*?\n {6}\}/)
 assert(rightAction, 'network has a right-edge action target')
 assert(
-  /visible: row\.requiresCredentials \|\| row\.canForget/.test(rightAction[0]),
-  'network keeps a forget target for known passwordless networks'
+  /visible: row\.requiresCredentials \|\| row\.actionVisible/.test(rightAction[0]),
+  'network keeps the right edge available for locks and revealed row actions'
 )
-const lockIndicator = panelSource.match(/Text \{\s*id: lockIndicator\b[\s\S]*?\n {8}\}/)
-assert(lockIndicator, 'network has a lock/forget indicator')
+const lockIndicator = networkRow.match(/Text \{\s*id: lockIndicator\b[\s\S]*?\n {8}\}/)
+assert(lockIndicator, 'network has a lock indicator')
 assert(
-  /visible: row\.requiresCredentials \|\| row\.forgetVisible/.test(lockIndicator[0]),
-  'network hides the lock on passwordless networks until showing their forget action'
+  /visible: row\.requiresCredentials && !row\.actionVisible/.test(lockIndicator[0]),
+  'network replaces a secured row lock while its trailing action is revealed'
 )
 assert(
-  /forgetVisible: canForget && \(!requiresCredentials \|\| forgetFocused \|\| rightMouse\.containsMouse\)/.test(panelSource),
-  'network shows the forget action directly for known passwordless networks'
+  /readonly property bool actionVisible: \(isConnected \|\| canForget\) && \(rowMouse\.containsMouse \|\| rowSelected\)/.test(networkRow),
+  'network reveals a trailing X for connected and saved rows on hover or keyboard focus'
+)
+assert(
+  /readonly property string actionTooltip:[\s\S]{0,220}isConnected[\s\S]{0,220}"Disconnect"/.test(networkRow) &&
+    /PanelToolTip \{[\s\S]*?rowMouse\.containsMouse[\s\S]*?text: row\.actionTooltip/.test(networkRow),
+  'network shows the row Disconnect tooltip while a connected row is hovered'
+)
+assert(
+  /(?:iconText|text):[^\n]*"󰅙"/.test(networkRow) &&
+    /(?:root\.)?forget\(row\.net\)/.test(networkRow),
+  'network trailing X invokes Forget for connected and saved rows'
+)
+assert(
+  /if \(row\.isConnected\) \{\s*root\.disconnectRow\(row\.net\.ssid\)/.test(networkRow),
+  'network row click disconnects a connected row'
+)
+
+// Right/Left navigation must expose the X for a connected row as well as the
+// existing Forget action. Execute the real helper body against a connected
+// row so this fails if navigation still gates solely on canForgetNetwork().
+const selectWifiAction = panelSource.match(/function selectWifiActionByDelta\(delta\) \{[\s\S]*?\n {2}\}/)
+assert(selectWifiAction, 'network has horizontal Wi-Fi action navigation')
+selectedIndex = 0
+var wifiNetworks = [{ connected: true, known: true, security: security.Open }]
+var wifiActionFocused = false
+function canForgetNetwork(net) { return network.canForgetNetwork(net) }
+eval(selectWifiAction[0])
+selectWifiActionByDelta(1)
+assertEqual(wifiActionFocused, true, 'network Right focuses the X on a connected row')
+selectWifiActionByDelta(-1)
+assertEqual(wifiActionFocused, false, 'network Left returns from a focused row action')
+wifiNetworks = [{ connected: false, known: false, security: security.Open }]
+wifiActionFocused = false
+selectWifiActionByDelta(1)
+assertEqual(wifiActionFocused, false, 'network unknown rows have no trailing X action')
+
+const activateSelectedFunction = panelSource.match(/function activateSelected\(\) \{[\s\S]*?\n {2}\}/)
+assert(activateSelectedFunction, 'network has keyboard activation for the selected Wi-Fi row')
+var busy = false
+wifiActionFocused = false
+wifiNetworks = [{ connected: true, known: true, ssid: 'Home', security: security.Open }]
+var actionCalls = []
+function disconnectRow(ssid) { actionCalls.push('disconnect:' + ssid) }
+function forget(net) { actionCalls.push('forget:' + net.ssid) }
+eval(activateSelectedFunction[0])
+activateSelected()
+assertDeepEqual(actionCalls, ['disconnect:Home'], 'network Enter disconnects a connected row')
+
+actionCalls = []
+wifiActionFocused = true
+activateSelected()
+assertDeepEqual(actionCalls, ['forget:Home'], 'network Right+Enter forgets a connected row')
+
+actionCalls = []
+wifiActionFocused = true
+wifiNetworks = [{ connected: false, known: true, ssid: 'Saved', security: security.Open }]
+selectedIndex = 0
+activateSelected()
+assertDeepEqual(actionCalls, ['forget:Saved'], 'network Right+Enter forgets a saved disconnected row')
+
+const forgetFunction = panelSource.match(/function forget\(net\) \{[\s\S]*?\n {2}\}/)
+assert(forgetFunction, 'network has a Forget action')
+var liveNetwork = {
+  name: 'Home',
+  connected: true,
+  known: true,
+  stateChanging: false,
+  disconnect: function() { forgetCalls.push('disconnect') },
+  forget: function() { forgetCalls.push('forget') }
+}
+var forgetCalls = []
+function networkForSsid(ssid) { return ssid === 'Home' ? liveNetwork : null }
+function runNetworkAction(kind, network, callback) {
+  forgetCalls.push('phase:' + kind)
+  if (network) callback(network)
+}
+eval(forgetFunction[0])
+forget({ ssid: 'Home' })
+assertDeepEqual(
+  forgetCalls,
+  ['phase:forget-after-disconnect', 'disconnect'],
+  'network starts connected Forget by disconnecting without racing the serialized Forget action'
+)
+
+forgetCalls = []
+liveNetwork.connected = false
+forget({ ssid: 'Home' })
+assertDeepEqual(
+  forgetCalls,
+  ['phase:forget', 'forget'],
+  'network forgets an already disconnected saved network directly'
+)
+
+const continueForget = panelSource.match(/function continueForgetAfterDisconnect\(ssid\) \{[\s\S]*?\n {2}\}/)
+assert(continueForget, 'network has a second Forget phase after connected-network disconnection')
+var actionKind = 'forget-after-disconnect'
+var actionSsid = 'Home'
+var clearCount = 0
+function clearNetworkAction() { clearCount += 1; actionKind = ''; actionSsid = '' }
+forgetCalls = []
+liveNetwork.forget = function() { forgetCalls.push('forget-during:' + actionKind) }
+eval(continueForget[0])
+continueForgetAfterDisconnect('Home')
+assertDeepEqual(
+  forgetCalls,
+  ['forget-during:forget'],
+  'network enters the Forget phase before deleting the disconnected profile'
+)
+assertEqual(clearCount, 0, 'network keeps the action pending until profile deletion completes')
+
+const checkActionCompletionFunction = panelSource.match(/function checkActionCompletion\(network\) \{[\s\S]*?\n {2}\}/)
+assert(
+  checkActionCompletionFunction &&
+    /actionKind === "forget-after-disconnect"[\s\S]*!network\.connected[\s\S]*!network\.stateChanging[\s\S]*continueForgetAfterDisconnect/.test(checkActionCompletionFunction[0]),
+  'network waits for disconnection to settle before continuing Forget'
 )
 
 const reasons = { NoSecrets: 1, WifiAuthTimeout: 2, WifiNetworkLost: 3, WifiClientDisconnected: 4, WifiClientFailed: 5 }
@@ -260,7 +409,7 @@ assertEqual(network.networkFailureReason(99, true, reasons), 'Failed to connect'
 assertEqual(network.canForgetNetwork({ known: true, connected: false, security: security.Owe }), true, 'network can forget known disconnected OWE networks')
 assertEqual(network.canForgetNetwork({ known: true, connected: false, security: security.Open }), true, 'network can forget known disconnected open networks')
 assertEqual(network.canForgetNetwork({ known: false, connected: false, security: security.Owe }), false, 'network cannot forget unknown networks')
-assertEqual(network.canForgetNetwork({ known: true, connected: true, security: security.Owe }), false, 'network cannot forget the connected network')
+assertEqual(network.canForgetNetwork({ known: true, connected: true, security: security.Owe }), false, 'network keeps connected profiles out of the direct Forget path')
 
 assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, true, reasons), true, 'network reprompts when required credentials are missing')
 assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, false, reasons), false, 'network does not ask a passwordless network for missing secrets')

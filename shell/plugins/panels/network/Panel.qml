@@ -91,7 +91,7 @@ Panel {
   // comparisons on the matching `*Kind`/`*Reason` being non-empty so a
   // hidden-SSID row (ssid == "") doesn't collide with the "" defaults.
   property string actionSsid: ""
-  property string actionKind: ""  // "connect" | "disconnect" | "forget"
+  property string actionKind: ""  // "connect" | "disconnect" | "forget-after-disconnect" | "forget"
   property string failureSsid: ""
   property string failureReason: ""
   property string passwordSsid: ""
@@ -380,7 +380,8 @@ Panel {
       selectedIndex = 0
     }
 
-    if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length || !canForgetNetwork(wifiNetworks[selectedIndex])) {
+    if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length
+        || (!wifiNetworks[selectedIndex].connected && !canForgetNetwork(wifiNetworks[selectedIndex]))) {
       wifiActionFocused = false
     }
   }
@@ -410,7 +411,8 @@ Panel {
 
   function selectWifiActionByDelta(delta) {
     if (selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
-    if (!canForgetNetwork(wifiNetworks[selectedIndex])) {
+    var net = wifiNetworks[selectedIndex]
+    if (!net || (!net.connected && !canForgetNetwork(net))) {
       wifiActionFocused = false
       return
     }
@@ -425,7 +427,7 @@ Panel {
     if (busy || selectedIndex < 0 || selectedIndex >= wifiNetworks.length) return
     var net = wifiNetworks[selectedIndex]
     if (!net) return
-    if (wifiActionFocused && canForgetNetwork(net)) { forget(net); return }
+    if (wifiActionFocused && (net.connected || canForgetNetwork(net))) { forget(net); return }
     // Only act on a row that still resolves. disconnect() falls back to
     // connectedWifiNetwork when handed null, so a row left stale by scan churn
     // would otherwise tear down whatever is connected now instead.
@@ -648,6 +650,10 @@ Panel {
   }
 
   function syncWifiNetworks() {
+    var preserveSelection = focusSection === "wifi"
+      && selectedIndex >= 0
+      && selectedIndex < wifiNetworks.length
+    var selectedSsid = preserveSelection ? wifiNetworks[selectedIndex].ssid : ""
     var nets = []
     var networks = wifiNetworkObjects || []
 
@@ -658,7 +664,25 @@ Panel {
       var row = Model.wifiRow(network)
       if (row) nets.push(row)
     }
-    wifiNetworks = Model.sortWifiRows(nets)
+    var sorted = Model.sortWifiRows(nets)
+
+    // Connection and known-state changes re-sort rows. Move the numeric cursor
+    // to the same SSID before publishing the new list so a focused X cannot
+    // jump to a different saved network at the old index.
+    if (preserveSelection) {
+      var nextSelectedIndex = -1
+      for (var j = 0; j < sorted.length; j++) {
+        if (sorted[j] && sorted[j].ssid === selectedSsid) {
+          nextSelectedIndex = j
+          break
+        }
+      }
+
+      if (nextSelectedIndex >= 0) selectedIndex = nextSelectedIndex
+      else wifiActionFocused = false
+    }
+
+    wifiNetworks = sorted
     wifiStationAvailable = !!wifiDevice
     scanning = false
   }
@@ -808,7 +832,23 @@ Panel {
     if (!network || actionKind === "" || actionSsid !== (network.name || "")) return
     if (actionKind === "connect" && network.connected) clearNetworkAction()
     else if (actionKind === "disconnect" && !network.connected && !network.stateChanging) clearNetworkAction()
+    else if (actionKind === "forget-after-disconnect" && !network.connected && !network.stateChanging) {
+      var ssid = actionSsid
+      Qt.callLater(function() { root.continueForgetAfterDisconnect(ssid) })
+    }
     else if (actionKind === "forget" && !network.known && !network.stateChanging) clearNetworkAction()
+  }
+
+  function continueForgetAfterDisconnect(ssid) {
+    if (actionKind !== "forget-after-disconnect" || actionSsid !== ssid) return
+    var network = networkForSsid(ssid)
+    if (!network || network.connected || network.stateChanging) return
+    if (!network.known) { clearNetworkAction(); return }
+
+    // Flip the phase first so a fast knownChanged signal completes the
+    // intended Forget action instead of re-entering the disconnect phase.
+    actionKind = "forget"
+    network.forget()
   }
 
   function connectDirectly(ssid) {
@@ -853,7 +893,15 @@ Panel {
   }
 
   function forget(net) {
-    runNetworkAction("forget", net ? networkForSsid(net.ssid) : null, function(network) { network.forget() })
+    var network = net ? networkForSsid(net.ssid) : null
+    if (!network || !network.known) return
+
+    if (network.connected) {
+      runNetworkAction("forget-after-disconnect", network, function(current) { current.disconnect() })
+      return
+    }
+
+    runNetworkAction("forget", network, function(current) { current.forget() })
   }
 
   implicitWidth: button.implicitWidth
@@ -998,7 +1046,7 @@ Panel {
       if (!root.actionKind) return
       var reason
       if (root.actionKind === "connect") reason = "Timed out connecting"
-      else if (root.actionKind === "disconnect") reason = "Timed out disconnecting"
+      else if (root.actionKind === "disconnect" || root.actionKind === "forget-after-disconnect") reason = "Timed out disconnecting"
       else reason = "Timed out forgetting"
       root.failureSsid = root.actionSsid
       root.failureReason = reason
@@ -1714,16 +1762,18 @@ Panel {
 
     readonly property bool isConnected: net && net.connected
     readonly property bool isKnown: !!(net && net.known)
+    readonly property string actionTooltip: isConnected ? "Disconnect" : "Connect"
     readonly property bool requiresCredentials: net ? root.requiresCredentials(net.security) : false
     readonly property bool isEnterprise: net
       ? (net.security === WifiSecurityType.Wpa2Eap || net.security === WifiSecurityType.WpaEap)
       : false
     readonly property bool canForget: root.canForgetNetwork(net)
-    readonly property bool isSelected: root.focusSection === "wifi" && root.selectedIndex === index
-    readonly property bool forgetFocused: isSelected && root.wifiActionFocused && canForget
-    readonly property bool forgetVisible: canForget && (!requiresCredentials || forgetFocused || rightMouse.containsMouse)
+    readonly property bool rowSelected: root.cursorActive && root.focusSection === "wifi" && root.selectedIndex === index
+    readonly property bool actionAvailable: isConnected || canForget
+    readonly property bool actionFocused: rowSelected && root.wifiActionFocused && actionAvailable
+    readonly property bool actionVisible: (isConnected || canForget) && (rowMouse.containsMouse || rowSelected)
 
-    hasCursor: root.cursorActive && isSelected && !root.wifiActionFocused
+    hasCursor: rowSelected && !root.wifiActionFocused
     current: isConnected
     foreground: root.bar.foreground
     fill: root.hoverFill
@@ -1765,7 +1815,7 @@ Panel {
       if (!net) return ""
       if (isPasswordOpen) return ""
       if (isBusy && root.actionKind === "connect") return "Connecting…"
-      if (isBusy && root.actionKind === "disconnect") return "Disconnecting…"
+      if (isBusy && (root.actionKind === "disconnect" || root.actionKind === "forget-after-disconnect")) return "Disconnecting…"
       if (isBusy && root.actionKind === "forget") return "Forgetting…"
       if (isFailed) return root.failureReason || "Failed"
       if (isConnected && root.kind === "wifi" && root.hasCaptivePortal) return "Sign-in required"
@@ -1819,6 +1869,12 @@ Panel {
       }
     }
 
+    PanelToolTip {
+      visible: row.actionTooltip !== "" && rowMouse.containsMouse && !root.wifiActionFocused
+      text: row.actionTooltip
+      fontFamily: root.bar.fontFamily
+    }
+
     Item {
       id: rowBody
       anchors.left: parent.left
@@ -1840,54 +1896,51 @@ Panel {
         anchors.verticalCenter: parent.verticalCenter
       }
 
-      // The right edge shows a lock for networks that require credentials and
-      // reveals Forget on hover. Known passwordless networks show Forget
-      // directly rather than reserving an invisible or misleading target.
+      // The right edge shows a lock for networks that require credentials, then
+      // swaps it for the same hover/focus Forget action used by Bluetooth.
       Item {
         id: rightAction
-        visible: row.requiresCredentials || row.canForget
+        visible: row.requiresCredentials || row.actionVisible
         width: Style.space(22)
-        implicitHeight: lockIndicator.implicitHeight
+        implicitHeight: Math.max(lockIndicator.implicitHeight, forgetBtn.implicitHeight)
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
 
         Text {
           id: lockIndicator
           textFormat: Text.PlainText
-          visible: row.requiresCredentials || row.forgetVisible
+          visible: row.requiresCredentials && !row.actionVisible
           width: parent.width
           anchors.verticalCenter: parent.verticalCenter
           horizontalAlignment: Text.AlignHCenter
-          text: row.forgetVisible ? "󰅙" : "󰌾"
-          color: row.forgetVisible ? root.bar.urgent : Qt.darker(root.bar.foreground, 1.4)
+          text: "󰌾"
+          color: Qt.darker(root.bar.foreground, 1.4)
           font.family: root.bar.fontFamily
           font.pixelSize: Style.font.subtitle
         }
 
-        BorderSurface {
-          anchors.fill: parent
-          visible: row.forgetFocused
-          color: Style.hoverFillFor(root.bar.urgent, root.bar.urgent)
-          borderSpec: Border.controlSpec("hover-cursor", root.bar.urgent, root.bar.urgent)
-          radius: Style.cornerRadius
-          z: -1
-        }
-
-        MouseArea {
-          id: rightMouse
-          anchors.fill: parent
-          hoverEnabled: true
-          acceptedButtons: Qt.LeftButton
-          enabled: row.canForget && !root.busy
-          cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-          onContainsMouseChanged: if (containsMouse) { root.cursorActive = true; root.focusSection = "wifi"; root.selectedIndex = row.index; root.wifiActionFocused = true }
-          onClicked: if (row.net) root.forget(row.net)
-        }
-
-        PanelToolTip {
-          visible: rightMouse.containsMouse || row.forgetFocused
-          text: "Forget network"
+        PanelActionButton {
+          id: forgetBtn
+          anchors.centerIn: parent
+          visible: row.actionVisible
+          enabled: row.actionAvailable && !root.busy
+          iconText: "󰅙"
+          tooltipText: "Forget"
+          foreground: root.bar.foreground
+          hoverColor: root.bar.foreground
           fontFamily: root.bar.fontFamily
+          hasCursor: row.actionFocused
+          onHovered: function(isHovered) {
+            if (!isHovered) {
+              if (rowMouse.containsMouse) root.wifiActionFocused = false
+              return
+            }
+            root.cursorActive = true
+            root.focusSection = "wifi"
+            root.selectedIndex = row.index
+            root.wifiActionFocused = true
+          }
+          onClicked: if (row.net) root.forget(row.net)
         }
       }
 
