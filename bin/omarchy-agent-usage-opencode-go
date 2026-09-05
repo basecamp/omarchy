@@ -1,0 +1,454 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the OpenCode Go usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect OpenCode Go usage into one display-ready JSON record.
+
+Local stats come from the opencode session database (~/.local/share/opencode/
+opencode.db) for assistant messages routed through the opencode-go provider;
+usage windows (rolling 5h, weekly, monthly) come from OpenCode's public Zen
+API endpoint GET /zen/go/v1/usage, authenticated with the API key stored in
+opencode's auth store. The agents panel only ever reads the JSON this prints.
+"""
+
+import argparse
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+AGENT_ID = "opencode-go"
+AGENT_NAME = "OpenCode Go"
+AUTH_HELP = "Run \"/connect\" in opencode and pick \"OpenCode Go\" to authenticate."
+USAGE_ENDPOINT = "https://opencode.ai/zen/go/v1/usage"
+GO_PROVIDER = "opencode-go"
+
+# A scan this recent is only reused to dedup concurrent collector runs (the
+# update command backgrounds one per agent while the panel refreshes on its
+# own); every periodic widget refresh lands a real rescan, however low
+# refreshIntervalSec is set. --limits-only promises only fresh limits, so it
+# may reuse a scan for up to 15 minutes.
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+# The usage endpoint reports the same three windows for every subscription.
+WINDOWS = (
+  ("rolling", "Rolling (5h)", "Session"),
+  ("weekly", "Weekly", "Weekly"),
+  ("monthly", "Monthly", "Monthly"),
+)
+
+
+def local_day(value):
+  if value is None:
+    return dt.datetime.now().strftime("%Y-%m-%d")
+  if isinstance(value, (int, float)):
+    # opencode message timestamps are milliseconds.
+    if value > 10_000_000_000:
+      value = value / 1000
+    return dt.datetime.fromtimestamp(value).strftime("%Y-%m-%d")
+  text = str(value)
+  try:
+    if text.endswith("Z"):
+      parsed = dt.datetime.fromisoformat(text[:-1] + "+00:00")
+    else:
+      parsed = dt.datetime.fromisoformat(text)
+    if parsed.tzinfo is not None:
+      parsed = parsed.astimezone()
+    return parsed.strftime("%Y-%m-%d")
+  except Exception:
+    return dt.datetime.now().strftime("%Y-%m-%d")
+
+
+def number(value):
+  try:
+    return max(0, round(float(value or 0)))
+  except (TypeError, ValueError):
+    return 0
+
+
+def model_name(raw):
+  value = str(raw or "unknown").rstrip("/").split("/")[-1]
+  return value or "unknown"
+
+
+def runtime_env():
+  home = str(Path.home())
+  path_parts = [
+    os.environ.get("PATH", ""),
+    f"{home}/.local/bin",
+    f"{home}/.npm-global/bin",
+    f"{home}/.local/share/mise/shims",
+  ]
+  env = os.environ.copy()
+  env["PATH"] = os.pathsep.join(part for part in path_parts if part)
+  return env
+
+
+ENV = runtime_env()
+
+
+now = dt.datetime.now()
+today = now.strftime("%Y-%m-%d")
+recent_dates = [(now - dt.timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+today_tokens_by_model = {}
+model_usage = {}
+today_sessions = set()
+active_days = set()
+
+today_prompts = 0
+today_total_tokens = 0
+total_prompts = 0
+total_sessions = set()
+
+
+def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, cache_write):
+  global today_prompts, today_total_tokens, total_prompts
+  total = input_tokens + output_tokens + cache_read + cache_write
+  if total <= 0:
+    return
+  total_prompts += 1
+  total_sessions.add(session_key)
+  active_days.add(day)
+
+  bucket = model_usage.setdefault(model, {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  })
+  bucket["inputTokens"] += input_tokens
+  bucket["outputTokens"] += output_tokens
+  bucket["cacheReadInputTokens"] += cache_read
+  bucket["cacheCreationInputTokens"] += cache_write
+
+  if day in recent:
+    recent[day]["messageCount"] += total
+
+  if day == today:
+    today_prompts += 1
+    today_sessions.add(session_key)
+    today_total_tokens += total
+    today_tokens_by_model[model] = today_tokens_by_model.get(model, 0) + total
+
+
+def scan_opencode_sessions():
+  # A subscription burned entirely through opencode leaves no native session
+  # files, but opencode records per-message provider, model, and token usage
+  # in its own database. Read-only: opencode may be writing right now.
+  # Returns whether the scan ran to completion: a scan cut short by a
+  # database error still contributes what it read, but must not be cached
+  # as if it were the whole story.
+  db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  if not db.is_file():
+    return True
+  try:
+    conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  except sqlite3.Error:
+    return False
+  try:
+    conn.execute("PRAGMA query_only = ON")
+    # OpenCode DBs grow huge (every historical message, JSON included). The
+    # json_extract conditions are the authority for the rows that reach them:
+    # role == "assistant" and providerID == "opencode-go", the same exact-match
+    # values the Python filter below checks. The guards in front are pure
+    # acceleration, not a perfect proxy for the Python filter (see the codex
+    # collector for the full rationale).
+    for session_id, raw in conn.execute(
+      "SELECT session_id, data FROM message"
+      " WHERE data LIKE '%\"role\"%:%\"assistant\"%'"
+      " AND data LIKE '%\"providerID\"%:%\"opencode-go\"%'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.role') END = 'assistant'"
+      " AND CASE WHEN json_valid(data) THEN json_extract(data, '$.providerID') END = 'opencode-go'"
+    ):
+      # One malformed row must not abort the scan, so every shape assumption
+      # lives inside the try.
+      try:
+        entry = json.loads(raw)
+        if not isinstance(entry, dict) or entry.get("role") != "assistant":
+          continue
+        if str(entry.get("providerID") or "") != GO_PROVIDER:
+          continue
+        tokens = entry.get("tokens") or {}
+        cache = tokens.get("cache") or {}
+        input_tokens = number(tokens.get("input"))
+        # opencode keeps thinking tokens out of output; both are generated.
+        output_tokens = number(tokens.get("output")) + number(tokens.get("reasoning"))
+        cache_read = number(cache.get("read"))
+        cache_write = number(cache.get("write"))
+        if not (input_tokens or output_tokens or cache_read or cache_write):
+          continue
+        day = local_day((entry.get("time") or {}).get("created"))
+        model = model_name(str(entry.get("modelID") or ""))
+      except Exception:
+        continue
+      add_usage(day, "opencode:" + str(session_id), model, input_tokens, output_tokens, cache_read, cache_write)
+  except sqlite3.Error:
+    # Transient lock, schema migration, corruption: the numbers stop here,
+    # incomplete.
+    return False
+  finally:
+    conn.close()
+  return True
+
+
+def cache_root():
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def scan_cache_paths():
+  db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  digest = hashlib.sha1(str(db).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"opencode-go-scan-{digest}.json", root / f"opencode-go-scan-{digest}.lock"
+
+
+def read_fresh_json(path, max_age_seconds):
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    # A negative age means the mtime is in the future: the clock moved
+    # backwards since the write, so the cache's freshness cannot be trusted.
+    age = time.time() - path.stat().st_mtime
+    if 0 <= age <= max_age_seconds:
+      return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path, payload):
+  # A temp name unique to this writer, not derived from the target: several
+  # collectors can run at once (the update command backgrounds one per agent,
+  # the panel refreshes on its own), and a shared temp path means the second
+  # replace finds the first one's file already moved away.
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    # mkstemp opens at 0600; nothing in the cache is sensitive, so open it
+    # up to the usual 0644.
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+# The cache payload is a versioned envelope around the local-stats dict, so a
+# corrupted or foreign-shaped file is a cache miss (rescan + rewrite) instead
+# of a crash or a garbage record.
+def read_cached_stats(cache_file, max_age_seconds):
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+    return None
+  # today* fields only mean "today" on the day they were scanned. A cache
+  # from another local date (midnight passed, or the clock moved) is a miss,
+  # not merely old, whatever its mtime says.
+  if cached.get("scanDate") != today:
+    return None
+  stats = cached.get("stats")
+  if not isinstance(stats, dict):
+    return None
+  if not all(key in stats for key in ("todayPrompts", "todayTotalTokens", "recentDays", "activeDates", "modelUsage")):
+    return None
+  return stats
+
+
+def write_cached_stats(cache_file, stats):
+  try:
+    write_json(cache_file, {"schemaVersion": 1, "scanDate": today, "stats": stats})
+  except Exception as exc:
+    print(f"omarchy-agent-usage-opencode-go: could not write usage cache ({exc})", file=sys.stderr)
+
+
+def local_stats():
+  """Snapshot the aggregated local usage into the record's stats dict."""
+  return {
+    "todayPrompts": today_prompts,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_total_tokens,
+    "todayTokensByModel": today_tokens_by_model,
+    "recentDays": [recent[day] for day in recent_dates],
+    "totalPrompts": total_prompts,
+    "totalSessions": len(total_sessions),
+    # Days with any recorded usage, for the all-time "N days" summary. The
+    # dates travel too: merging snapshots from several machines needs their
+    # union, which a count alone cannot give.
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+    "modelUsage": model_usage,
+  }
+
+
+def run_local_scans():
+  complete = scan_opencode_sessions()
+  return local_stats(), complete
+
+
+def cached_local_stats(max_age):
+  """Local stats, with the cache as a pure optimization.
+
+  The cache must never take the collector down: any cache-layer failure
+  (unwritable cache root, lock errors, disk full) degrades to a direct scan
+  and a warning on stderr. The JSON record is the contract; the cache is not.
+  """
+  try:
+    return _cached_local_stats(max_age)
+  except Exception as exc:
+    print(f"omarchy-agent-usage-opencode-go: cache unavailable ({exc}); scanning directly", file=sys.stderr)
+    stats, _ = run_local_scans()
+    return stats
+
+
+def _cached_local_stats(max_age):
+  cache_file, lock_file = scan_cache_paths()
+
+  cached = read_cached_stats(cache_file, max_age)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age)
+    if cached is not None:
+      return cached
+    stats, complete = run_local_scans()
+    # An interrupted scan still serves this run, but caching it would
+    # suppress the missing usage for every reader until the cache expires.
+    if complete:
+      write_cached_stats(cache_file, stats)
+    return stats
+
+
+# ------------------------------------------------------------------- limits
+
+
+def auth_key():
+  try:
+    data = json.loads((Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "auth.json").read_text(encoding="utf-8"))
+    entry = data.get("opencode-go") if isinstance(data, dict) else None
+    key = str(entry.get("key") or "").strip() if isinstance(entry, dict) else ""
+    if key:
+      return key
+  except Exception:
+    pass
+  return str(os.environ.get("OPENCODE_API_KEY") or "").strip()
+
+
+def request_usage(token):
+  result = {"limits": [], "tierLabel": "Go", "usageStatusText": "", "authHelpText": AUTH_HELP}
+  request = urllib.request.Request(
+    USAGE_ENDPOINT,
+    headers={
+      "Authorization": "Bearer " + token,
+      "Accept": "application/json",
+      "User-Agent": "omarchy-agent-usage-opencode-go",
+      "HTTP-Referer": "https://opencode.ai/",
+      "X-Title": "opencode",
+    },
+  )
+  try:
+    with urllib.request.urlopen(request, timeout=10) as response:
+      payload = json.loads(response.read().decode("utf-8", errors="replace"))
+  except urllib.error.HTTPError as error:
+    if error.code == 401:
+      result["usageStatusText"] = "Sign-in expired"
+      result["authHelpText"] = "OpenCode Go rejected the saved API key. Reconnect with \"/connect\" in opencode."
+      return result
+    result["authHelpText"] = f"OpenCode Go's usage endpoint returned status {error.code}. Local Go stats are still shown."
+    return result
+  except Exception:
+    result["usageStatusText"] = "Limits unavailable"
+    result["authHelpText"] = "Couldn't reach OpenCode Go's usage endpoint. Retrying shortly. Local Go stats are still shown."
+    return result
+  windows = (payload.get("usage") or {}) if isinstance(payload, dict) else {}
+  if not isinstance(windows, dict):
+    result["authHelpText"] = "OpenCode Go's usage endpoint returned no data. Local Go stats are still shown."
+    return result
+  for key, label, title in WINDOWS:
+    window = windows.get(key)
+    if not isinstance(window, dict):
+      continue
+    percent = number(window.get("percent"))
+    if percent <= 0:
+      continue
+    result["limits"].append({
+      "label": label,
+      "percent": min(1.0, percent / 100.0),
+      "resetsAt": str(window.get("resetsAt") or ""),
+      "title": title,
+    })
+  return result
+
+
+def collect_limits(token, force):
+  result = {"limits": [], "tierLabel": "Go", "usageStatusText": "", "authHelpText": AUTH_HELP}
+  probe_cache = cache_root() / "opencode-go-limits.json"
+  cached = read_fresh_json(probe_cache, float("inf")) or {}
+
+  if token == "":
+    result["usageStatusText"] = "Waiting for auth"
+    result["limits"] = cached.get("limits") or []
+    return result
+
+  fetched_at = number(cached.get("fetchedAtMs")) / 1000
+  if cached and not force and time.time() - fetched_at < SCAN_REUSE_SECONDS:
+    result["limits"] = cached.get("limits") or []
+    return result
+
+  fetched = request_usage(token)
+  if fetched.get("usageStatusText") or fetched.get("authHelpText") != AUTH_HELP:
+    result.update(fetched)
+    result["limits"] = cached.get("limits") or []
+    if not result["limits"]:
+      result["usageStatusText"] = result["usageStatusText"] or "Limits unavailable"
+    return result
+
+  result["limits"] = fetched["limits"]
+  write_json(probe_cache, {"fetchedAtMs": round(time.time() * 1000), "limits": fetched["limits"]})
+  return result
+
+
+def main():
+  parser = argparse.ArgumentParser()
+  # --force rescans everything and rewrites the cache. --limits-only is kept
+  # for CLI compatibility with the panel's refreshLimits() call: only the
+  # limits probe must be fresh, so it may reuse a scan for far longer than a
+  # normal run, whose short window exists purely to dedup concurrent
+  # collector runs.
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  args = parser.parse_args()
+
+  max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+  stats = cached_local_stats(max_age)
+  limits = collect_limits(auth_key(), args.force)
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": True,
+    "hasLocalStats": True,
+  }
+  record.update(stats)
+  record.update(limits)
+  print(json.dumps(record, separators=(",", ":")))
+
+
+if __name__ == "__main__":
+  main()
