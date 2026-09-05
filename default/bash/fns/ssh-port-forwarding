@@ -11,10 +11,14 @@ fip() {
 dip() {
   (( $# == 0 )) && echo "Usage: dip <port1> [port2] ..." && return 1
   for port in "$@"; do
-    pkill -f "ssh.*-L ${port}:localhost:${port}" && echo "Stopped forwarding port $port" || echo "No forwarding on port $port"
+    # Anchor on the ssh binary name so an unanchored `pkill -f` cannot match an
+    # unrelated argv that merely mentions the same -L fragment (e.g. this shell
+    # while typing `dip`, or a script that embeds the pattern) (#8917). The
+    # trailing ( |$) keeps `dip 222` off a forward on port 2222.
+    pkill -f "^([^ ]*/)?ssh .*-L ${port}:localhost:${port}( |$)" && echo "Stopped forwarding port $port" || echo "No forwarding on port $port"
   done
 }
 
 lip() {
-  pgrep -af "ssh.*-L [0-9]+:localhost:[0-9]+" || echo "No active forwards"
+  pgrep -af "^([^ ]*/)?ssh .*-L [0-9]+:localhost:[0-9]+( |$)" || echo "No active forwards"
 }
