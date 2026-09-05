@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# omarchy:summary=Install T3 Code and point it at the Omarchy palette
+# omarchy:requires-sudo=true
+
+set -e
+
+T3CODE_HOME="${T3CODE_HOME:-$HOME/.t3}"
+T3CODE_STATE_DIR="$T3CODE_HOME/userdata"
+T3CODE_SETTINGS_PATH="$T3CODE_STATE_DIR/settings.json"
+
+# Ask T3 Code to open on the palette this machine publishes. `t3 theme set`
+# is the supported way, but the desktop package ships only the GUI -- the CLI
+# is a separate npm distribution -- so fall back to the setting it writes.
+# Both run before the first launch, so neither races a running server.
+set_default_theme() {
+  if omarchy-cmd-present t3; then
+    t3 theme set omarchy --base-dir "$T3CODE_HOME" >/dev/null && return
+  fi
+
+  local tmp
+  mkdir -p "$T3CODE_STATE_DIR"
+  [[ -f $T3CODE_SETTINGS_PATH ]] || echo '{}' >"$T3CODE_SETTINGS_PATH"
+
+  tmp=$(mktemp "$T3CODE_SETTINGS_PATH.XXXXXX")
+  if jq '.defaultTheme = "omarchy"' "$T3CODE_SETTINGS_PATH" >"$tmp"; then
+    mv "$tmp" "$T3CODE_SETTINGS_PATH"
+  else
+    rm -f "$tmp"
+    echo "Could not set the default theme in $T3CODE_SETTINGS_PATH." >&2
+  fi
+}
+
+echo "Installing T3 Code..."
+omarchy-pkg-add t3code-bin
+
+# The palette itself, and the request to open on it, are both first-run
+# concerns. `defaultTheme` only decides what a client with no theme of its own
+# starts on, so choosing a theme in T3 Code later is never overridden.
+echo "Matching T3 Code to the current theme..."
+mkdir -p "$T3CODE_STATE_DIR"
+omarchy-theme-set-t3code
+set_default_theme
+
+echo "Opening T3 Code..."
+setsid uwsm-app -- gtk-launch t3code >/dev/null 2>&1 &
+
+echo ""
+echo "T3 Code has been installed."
