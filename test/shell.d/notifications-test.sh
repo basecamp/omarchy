@@ -7,6 +7,20 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 run_node_test <<'JS'
 const fs = require('fs')
 const notifications = requireFromRoot('shell/plugins/notifications/NotificationLogic.js')
+const screensaverServiceQml = fs.readFileSync(path.join(root, 'shell/plugins/notifications/Service.qml'), 'utf8')
+
+assert(
+  /resolveEnabledId\("omarchy\.idle"\)/.test(screensaverServiceQml),
+  'notifications follow the enabled idle service, including a user clone'
+)
+assert(
+  /visible:\s*popupModel\.count\s*>\s*0\s*&&\s*!service\.screensaverActive/.test(screensaverServiceQml),
+  'notification popup surfaces are hidden while the screensaver is active'
+)
+assert(
+  /running:\s*cardSlot\.ticking\s*&&\s*!service\.screensaverActive/.test(screensaverServiceQml),
+  'notification popup lifetimes pause while the screensaver is active'
+)
 
 assert(notifications.isChromiumDerived('Brave Browser', ''), 'notifications detect chromium-derived apps by name')
 assert(notifications.isChromiumDerived('', 'microsoft-edge'), 'notifications detect chromium-derived apps by icon')
