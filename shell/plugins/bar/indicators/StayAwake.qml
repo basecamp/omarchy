@@ -86,11 +86,11 @@ BarIndicator {
           focusable: true
           onActiveFocusChanged: if (activeFocus) options.focusedIndex = index
           onClicked: {
+            root.close()
             if (root.idleService) {
               if (modelData.seconds > 0) root.idleService.stayAwakeFor(modelData.seconds)
               else root.idleService.setIdleEnabled(false)
             }
-            root.close()
           }
         }
       }
@@ -106,8 +106,8 @@ BarIndicator {
         focusable: true
         onActiveFocusChanged: if (activeFocus) options.focusedIndex = choices.count
         onClicked: {
-          if (root.idleService) root.idleService.setIdleEnabled(true)
           root.close()
+          if (root.idleService) root.idleService.setIdleEnabled(true)
         }
       }
     }

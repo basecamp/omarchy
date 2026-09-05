@@ -15,7 +15,9 @@ BarWidget {
   property bool indicatorAreaHovered: false
   property bool indicatorItemHovered: false
   readonly property bool alwaysShowIndicators: setting("alwaysShow", false) === true
-  readonly property bool revealInactiveIndicators: alwaysShowIndicators || indicatorAreaHovered || indicatorItemHovered || (bar && bar.centerSectionRevealHeld === true && bar.centerHoverRevealSuppressed !== true)
+  // A popup owns the pointer while open; keep its indicator and anchor in place.
+  readonly property bool indicatorPopupOpen: bar?.activePopout?.indicatorHost === root
+  readonly property bool revealInactiveIndicators: alwaysShowIndicators || indicatorPopupOpen || indicatorAreaHovered || indicatorItemHovered || (bar && bar.centerSectionRevealHeld === true && bar.centerHoverRevealSuppressed !== true)
 
   signal refreshRequested()
 
