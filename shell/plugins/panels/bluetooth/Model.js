@@ -74,6 +74,24 @@ function bluetoothSinkMatchesDevice(node, device) {
   return label !== "" && text.indexOf(label) !== -1
 }
 
+function deviceBatteryPercentage(device, powerDevices) {
+  if (!device) return null
+  if (device.batteryAvailable) return Math.round(Number(device.battery || 0) * 100)
+
+  var address = normalizedAddress(device.address)
+  if (address === "") return null
+
+  var devices = toArray(powerDevices)
+  for (var i = 0; i < devices.length; i++) {
+    var powerDevice = devices[i]
+    if (!powerDevice || !powerDevice.ready || !powerDevice.isPresent) continue
+    if (normalizedAddress(powerDevice.nativePath).indexOf(address) === -1) continue
+    return Math.round(Number(powerDevice.percentage || 0) * 100)
+  }
+
+  return null
+}
+
 function sortedByLabel(devices) {
   var list = toArray(devices)
   list.sort(function(a, b) { return deviceLabel(a).localeCompare(deviceLabel(b)) })
@@ -165,6 +183,7 @@ if (typeof module !== "undefined") {
     nodeProps: nodeProps,
     nodeText: nodeText,
     bluetoothSinkMatchesDevice: bluetoothSinkMatchesDevice,
+    deviceBatteryPercentage: deviceBatteryPercentage,
     sortedByLabel: sortedByLabel,
     deviceRow: deviceRow,
     deviceLists: deviceLists,

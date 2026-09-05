@@ -140,6 +140,33 @@ assert(
   !bluetooth.bluetoothSinkMatchesDevice({ isSink: false, isStream: false, ready: true, name: 'bluez_output.AA_BB_CC_DD_EE_FF.1', properties: {} }, { address: 'AA:BB:CC:DD:EE:FF', name: 'JBL Go 3' }),
   'bluetooth ignores non-sink nodes when matching audio outputs'
 )
+
+const upowerKeyboard = {
+  ready: true,
+  isPresent: true,
+  nativePath: 'hid-04:69:f8:cd:4e:ea-battery-144',
+  percentage: 0.03
+}
+assertEqual(
+  bluetooth.deviceBatteryPercentage({ address: '04:69:F8:CD:4E:EA' }, [upowerKeyboard]),
+  3,
+  'bluetooth falls back to a matching UPower device battery'
+)
+assertEqual(
+  bluetooth.deviceBatteryPercentage({ address: '04:69:F8:CD:4E:EA', batteryAvailable: true, battery: 0.75 }, [upowerKeyboard]),
+  75,
+  'bluetooth prefers its native battery reading over UPower'
+)
+assertEqual(
+  bluetooth.deviceBatteryPercentage({ address: 'AA:BB:CC:DD:EE:FF' }, [upowerKeyboard]),
+  null,
+  'bluetooth ignores UPower devices with a different address'
+)
+assertEqual(
+  bluetooth.deviceBatteryPercentage({ address: '04:69:F8:CD:4E:EA' }, [{ ...upowerKeyboard, ready: false }]),
+  null,
+  'bluetooth ignores UPower devices that are not ready'
+)
 JS
 
 # Turning Bluetooth off is an rfkill soft block, not a bluetoothctl power off,

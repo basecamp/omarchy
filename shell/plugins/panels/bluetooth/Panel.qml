@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Bluetooth
 import Quickshell.Services.Pipewire
+import Quickshell.Services.UPower
 import qs.Ui
 import qs.Commons
 import "Model.js" as Model
@@ -30,6 +31,7 @@ Panel {
   // never this panel's to stop.
   property bool owesDiscoveryStop: false
   readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
+  readonly property var upowerDevices: UPower.devices ? UPower.devices.values : []
   readonly property var pipewireNodes: Pipewire.nodes ? Pipewire.nodes.values : []
   property var pendingAudioOutputDevice: null
   property int pendingAudioOutputAttempts: 0
@@ -914,7 +916,8 @@ Panel {
       if (action === "forgetting") return "Forgetting…"
       if (action === "disconnecting" || devState === 2) return "Disconnecting…"
       if (isConnected) {
-        if (dev.batteryAvailable) return Math.round(dev.battery * 100) + "%"
+        var batteryPercentage = Model.deviceBatteryPercentage(dev, root.upowerDevices)
+        if (batteryPercentage !== null) return batteryPercentage + "%"
         return sectionName === "connected" ? "" : "Connected"
       }
       if (action === "connecting" || devState === 3 || dev.pairing === true) return "Connecting…"
