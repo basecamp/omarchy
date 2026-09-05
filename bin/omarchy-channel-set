@@ -34,7 +34,7 @@ validate_dev_checkout() {
 
 link_dev_checkout() {
   local checkout="$1"
-  [[ -d $checkout/.git ]] || git clone https://github.com/basecamp/omarchy.git "$checkout"
+  [[ -d $checkout/.git ]] || git clone https://github.com/omacom/omarchy.git "$checkout"
 
   omarchy-dev-link "$checkout" --no-reboot
 }
