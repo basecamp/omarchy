@@ -109,11 +109,17 @@ right)
   ;;
 esac
 
-pixel=$(magick "$background_path" -auto-orient \
-  -resize "${screen_width}x${screen_height}^" \
-  -gravity center -extent "${screen_width}x${screen_height}" \
-  -gravity NorthWest -crop "$crop" +repage \
-  -resize '1x1!' -format '%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]' info:- 2>/dev/null || true)
+# Sample only the first frame. Multi-frame backgrounds (GIF/video/PDF) would
+# otherwise decode every frame before the crop, exhausting system memory (#8906).
+pixel=$(
+  MAGICK_MEMORY_LIMIT=256MiB MAGICK_MAP_LIMIT=256MiB \
+    timeout 10 magick "${background_path}[0]" -auto-orient \
+      -resize "${screen_width}x${screen_height}^" \
+      -gravity center -extent "${screen_width}x${screen_height}" \
+      -gravity NorthWest -crop "$crop" +repage \
+      -resize '1x1!' -format '%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]' info:- \
+      2>/dev/null || true
+)
 [[ $pixel =~ ^([0-9]+),([0-9]+),([0-9]+)$ ]] || fallback
 
 sample=$(printf '#%02x%02x%02x' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
