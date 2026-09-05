@@ -20,7 +20,9 @@ o.bind("SUPER + DOWN", "Focus on below window", hl.dsp.focus({ direction = "d" }
 
 for workspace = 1, 10 do
   local key = "code:" .. tostring(workspace + 9)
-  o.bind("SUPER + " .. key, "Switch to workspace " .. workspace, hl.dsp.focus({ workspace = tostring(workspace) }))
+  -- Super+N switches workspaces; pressing it again on the current workspace
+  -- toggles full width unless that preference is turned off in the menu.
+  o.bind("SUPER + " .. key, "Switch to workspace " .. workspace, "omarchy-hyprland-workspace-focus " .. workspace)
   o.bind("SUPER + SHIFT + " .. key, "Move window to workspace " .. workspace, hl.dsp.window.move({ workspace = tostring(workspace) }))
   o.bind("SUPER + SHIFT + ALT + " .. key, "Move window silently to workspace " .. workspace, hl.dsp.window.move({ workspace = tostring(workspace), follow = false }))
 end

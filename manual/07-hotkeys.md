@@ -20,7 +20,7 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + F`                 | Go full screen              |
 | `Super + Alt + F`                 | Go full width              |
 | `Super + Ctrl + F`                 | Go full screen inside window              |
-| `Super + 1/2/3/4`         | Jump to specific workspace     |
+| `Super + 1/2/3/4`         | Jump to specific workspace (press again to toggle full width)     |
 | `Super + Tab` | Jump to next workspace |
 | `Super + Shift + Tab` | Jump to previous workspace |
 | `Super + Ctrl + Tab` | Jump to former workspace |

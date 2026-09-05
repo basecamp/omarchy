@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle whether Super+workspace on the current workspace toggles full width
+# omarchy:args=[toggle|on|off]
+# omarchy:examples=omarchy toggle workspace fullwidth repress | omarchy toggle workspace fullwidth repress off
+
+set -euo pipefail
+
+FLAG=workspace-fullwidth-repress-off
+ACTION="${1:-toggle}"
+
+case "$ACTION" in
+  toggle|"")
+    if omarchy-toggle-enabled "$FLAG"; then
+      omarchy-toggle "$FLAG" off
+    else
+      omarchy-toggle "$FLAG" on
+    fi
+    ;;
+  on|enable)
+    # Feature on means the off-flag is absent.
+    omarchy-toggle "$FLAG" off
+    ;;
+  off|disable)
+    omarchy-toggle "$FLAG" on
+    ;;
+  *)
+    echo "Usage: omarchy-toggle-workspace-fullwidth-repress [toggle|on|off]" >&2
+    exit 1
+    ;;
+esac
+
+if omarchy-toggle-enabled "$FLAG"; then
+  omarchy-notification-send -g 󰖯 "Workspace repress full width disabled"
+else
+  omarchy-notification-send -g 󰖯 "Workspace repress full width enabled"
+fi

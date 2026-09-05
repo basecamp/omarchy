@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# omarchy:summary=Focus a workspace, or toggle full width when already there
+# omarchy:args=<workspace>
+# omarchy:examples=omarchy hyprland workspace focus 2
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: omarchy-hyprland-workspace-focus <workspace>" >&2
+}
+
+if (($# != 1)) || [[ ! $1 =~ ^[1-9]$|^10$ ]]; then
+  usage
+  exit 1
+fi
+
+workspace="$1"
+
+# When the preference is off, Super+N always just switches workspaces.
+if omarchy-toggle-enabled workspace-fullwidth-repress-off; then
+  hyprctl dispatch "hl.dsp.focus({ workspace = \"$workspace\" })" >/dev/null 2>&1 ||
+    hyprctl dispatch workspace "$workspace" >/dev/null
+  exit 0
+fi
+
+active_workspace=$(hyprctl activeworkspace -j | jq -r '.id')
+[[ $active_workspace =~ ^-?[0-9]+$ ]] || exit 1
+
+if [[ $active_workspace != "$workspace" ]]; then
+  hyprctl dispatch "hl.dsp.focus({ workspace = \"$workspace\" })" >/dev/null 2>&1 ||
+    hyprctl dispatch workspace "$workspace" >/dev/null
+  exit 0
+fi
+
+# Already on this workspace: toggle full width (maximized) on the focused window.
+active=$(hyprctl activewindow -j)
+address=$(jq -r '.address // empty' <<<"$active")
+[[ -n $address && $address != "0x0" ]] || exit 0
+
+fullscreen=$(jq -r '.fullscreen // 0' <<<"$active")
+
+if [[ $fullscreen == "1" ]]; then
+  hyprctl dispatch 'hl.dsp.window.fullscreen_state({ internal = 0, client = 0 })' >/dev/null 2>&1 ||
+    hyprctl dispatch fullscreenstate 0 0 >/dev/null
+else
+  hyprctl dispatch 'hl.dsp.window.fullscreen_state({ internal = 1, client = 1 })' >/dev/null 2>&1 ||
+    hyprctl dispatch fullscreenstate 1 1 >/dev/null
+fi
