@@ -60,6 +60,14 @@ recover_modeless() {
   ) 9>"$MODELESS_LOCK" &
 }
 
+recover_monitors() {
+  # A duplicate internal connector with no identity or modes is permanent, not
+  # a powered-off display that a reload can recover. Disable it first so it
+  # cannot capture workspaces or keep the modeless recovery loop alive.
+  omarchy-hyprland-monitor-disable-ghosts
+  recover_modeless
+}
+
 poll_clamshell_state() {
   while true; do
     sleep 2
@@ -88,7 +96,7 @@ sync_poll_state() {
 
 sync_clamshell_after_monitor_change
 sync_poll_state
-recover_modeless
+recover_monitors
 
 # Process substitution (not a pipe) keeps this loop in the main shell, so
 # sync_poll_state can start and stop the background poll as monitors come and go.
@@ -97,18 +105,18 @@ while read -r event; do
     monitoradded\>\>*|monitoraddedv2\>\>*)
       sync_clamshell_after_monitor_change
       sync_poll_state
-      recover_modeless
+      recover_monitors
       ;;
     monitorremoved\>\>*|monitorremovedv2\>\>*)
       sync_clamshell_after_monitor_change
       sync_poll_state
-      recover_modeless
+      recover_monitors
       ;;
     # A reload while the monitor is unpowered leaves it at 0x0 with no hotplug
     # to notice, same as at boot. Our own recovery reload lands here too, and is
     # a no-op while its loop still holds the pid.
     configreloaded\>\>*)
-      recover_modeless
+      recover_monitors
       ;;
   esac
 done < <(socat -U - "UNIX-CONNECT:$SOCKET")

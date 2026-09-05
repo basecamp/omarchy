@@ -52,6 +52,7 @@ mkdir -p "$fake_bin"
 
 monitors_file="$test_tmp/monitors.json"
 reload_log="$test_tmp/reload.log"
+eval_log="$test_tmp/eval.log"
 recovered="$test_tmp/recovered.json"
 events="$test_tmp/events"
 modeless_lock="$test_tmp/omarchy-monitor-modeless.lock"
@@ -69,6 +70,16 @@ elif [[ ${1:-} == "reload" ]]; then
   printf 'reload\n' >>"$OMARCHY_TEST_RELOAD_LOG"
   [[ -f $OMARCHY_TEST_RECOVERED_MONITORS ]] &&
     cp "$OMARCHY_TEST_RECOVERED_MONITORS" "$OMARCHY_TEST_MONITORS_FILE"
+elif [[ ${1:-} == "eval" ]]; then
+  printf '%s\n' "${2:-}" >>"$OMARCHY_TEST_EVAL_LOG"
+
+  output=$(sed -n 's/.*output = "\([^"]*\)".*/\1/p' <<<"${2:-}")
+  if [[ -n $output ]]; then
+    jq --arg output "$output" \
+      'map(if .name == $output then .disabled = true else . end)' \
+      "$OMARCHY_TEST_MONITORS_FILE" >"$OMARCHY_TEST_MONITORS_FILE.next"
+    mv "$OMARCHY_TEST_MONITORS_FILE.next" "$OMARCHY_TEST_MONITORS_FILE"
+  fi
 fi
 SH
 
@@ -99,6 +110,8 @@ SH
 
 chmod +x "$fake_bin"/*
 ln -s "$ROOT/bin/omarchy-hyprland-monitor-modeless" "$fake_bin/omarchy-hyprland-monitor-modeless"
+ln -s "$ROOT/bin/omarchy-hyprland-monitor-disable-ghosts" \
+  "$fake_bin/omarchy-hyprland-monitor-disable-ghosts"
 
 MODELESS=0
 WORKING=1
@@ -144,6 +157,47 @@ assert_state $WORKING '[{"name":"DP-1","width":0,"height":0,"disabled":true}]' \
 
 assert_state $WORKING '[]' "a session with no monitors is not reported as modeless"
 
+assert_ghosts_disabled() {
+  local expected="$1" monitors="$2" actual
+
+  : >"$eval_log"
+  printf '%s' "$monitors" >"$monitors_file"
+  PATH="$fake_bin:$PATH" OMARCHY_TEST_MONITORS_FILE="$monitors_file" \
+  OMARCHY_TEST_HYPRCTL_FAIL_FLAG="$hyprctl_fail" \
+  OMARCHY_TEST_EVAL_LOG="$eval_log" \
+    "$ROOT/bin/omarchy-hyprland-monitor-disable-ghosts"
+  actual=$(<"$eval_log")
+
+  [[ $actual == "$expected" ]] || fail "$3" "expected '$expected', got '$actual'"
+  pass "$3"
+}
+
+healthy_edp='{"name":"eDP-1","description":"Apple panel","make":"Apple","model":"Color LCD","width":3072,"height":1920,"disabled":false,"availableModes":["3072x1920@60"]}'
+ghost_edp='{"name":"eDP-2","description":"","make":"","model":"","width":0,"height":0,"disabled":false,"availableModes":[]}'
+
+assert_ghosts_disabled 'hl.monitor({ output = "eDP-2", disabled = true })' \
+  "[$healthy_edp,$ghost_edp]" \
+  "an empty duplicate internal connector is disabled"
+
+assert_ghosts_disabled '' \
+  "[$healthy_edp,{\"name\":\"DP-1\",\"description\":\"Dell\",\"make\":\"Dell\",\"model\":\"U2720Q\",\"width\":0,\"height\":0,\"disabled\":false,\"availableModes\":[]}]" \
+  "a modeless external monitor remains eligible for recovery"
+
+assert_ghosts_disabled '' "[$ghost_edp]" \
+  "the only internal connector is never disabled"
+
+assert_ghosts_disabled '' \
+  "[$healthy_edp,{\"name\":\"eDP-2\",\"description\":\"\",\"make\":\"\",\"model\":\"\",\"width\":0,\"height\":0,\"disabled\":true,\"availableModes\":[]}]" \
+  "an already disabled duplicate internal connector is left alone"
+
+assert_ghosts_disabled 'hl.monitor({ output = "eDP-1", disabled = true })' \
+  "[{\"name\":\"eDP-2\",\"description\":\"Apple panel\",\"make\":\"Apple\",\"model\":\"Color LCD\",\"width\":3072,\"height\":1920,\"disabled\":false,\"availableModes\":[\"3072x1920@60\"]},{\"name\":\"eDP-1\",\"description\":\"\",\"make\":\"\",\"model\":\"\",\"width\":0,\"height\":0,\"disabled\":false,\"availableModes\":[]}]" \
+  "the empty connector is detected independently of eDP numbering"
+
+assert_ghosts_disabled '' \
+  "[$healthy_edp,{\"name\":\"eDP-2\\\" })os.execute(\\\"calc\\\")--\",\"description\":\"\",\"make\":\"\",\"model\":\"\",\"width\":0,\"height\":0,\"disabled\":false,\"availableModes\":[]}]" \
+  "an unsafe connector name is never evaluated as Lua"
+
 # Nothing fires an event for this state, so taking an unanswered query for a
 # healthy monitor would leave the screen black for good.
 assert_state $UNDETERMINED 'not json' "an unreadable monitor payload cannot say"
@@ -169,6 +223,7 @@ start_watcher() {
   OMARCHY_TEST_EVENTS="$events" \
   OMARCHY_TEST_MONITORS_FILE="$monitors_file" \
   OMARCHY_TEST_RELOAD_LOG="$reload_log" \
+  OMARCHY_TEST_EVAL_LOG="$eval_log" \
   OMARCHY_TEST_RECOVERED_MONITORS="$recovered" \
   OMARCHY_TEST_GUARD_PAUSED="${1:-0}" \
   OMARCHY_TEST_HYPRCTL_FAIL_FLAG="$hyprctl_fail" \
@@ -176,6 +231,18 @@ start_watcher() {
   watch_pid=$!
 
   exec {events_fd}>"$events"
+}
+
+await_evals() {
+  local waited lines
+
+  for (( waited = 0; waited < 100; waited++ )); do
+    lines=$(wc -l <"$eval_log" | tr -d ' ')
+    (( lines >= $1 )) && return 0
+    sleep 0.05
+  done
+
+  return 1
 }
 
 await_reloads() {
@@ -188,6 +255,21 @@ await_reloads() {
 
   return 1
 }
+
+# A dual-GPU laptop can expose an empty duplicate eDP connector permanently.
+# Disable it before modeless recovery, otherwise every reload re-enables it and
+# starts another reload cycle while the ghost output captures workspaces.
+: >"$eval_log"
+printf '%s' "[$healthy_edp,$ghost_edp]" >"$monitors_file"
+rm -f "$recovered"
+start_watcher
+
+await_evals 1 || fail "a ghost internal connector is disabled at startup"
+sleep 1
+[[ ! -s $reload_log ]] || fail "a ghost internal connector does not start recovery" "$(<"$reload_log")"
+pass "a ghost internal connector is disabled without a reload loop"
+
+stop_watcher
 
 # The watcher reloads until the monitor reports a mode, then stops. It has to
 # stop on its own: powering the monitor on fires no event to stop it.

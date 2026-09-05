@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# omarchy:summary=Disable empty duplicate internal display connectors
+# omarchy:hidden=true
+
+# Dual-GPU laptops can expose a second eDP connector that has no identity or
+# modes because the panel is wired to the other GPU. A generic monitor rule can
+# still enable it at 0x0, where it captures workspaces and can never recover on
+# reload. Only disable one while a separate, healthy internal panel is active.
+monitors=$(hyprctl monitors all -j 2>/dev/null) || exit 0
+
+healthy_internal=$(jq 'any(.[];
+  (.name | startswith("eDP-")) and
+  .disabled != true and
+  .description != "" and
+  .width > 0 and
+  .height > 0 and
+  (.availableModes | length) > 0
+)' <<<"$monitors" 2>/dev/null)
+
+[[ $healthy_internal == "true" ]] || exit 0
+
+while read -r output; do
+  [[ -n $output ]] || continue
+  [[ $output =~ ^eDP-[A-Za-z0-9._-]+$ ]] || continue
+  hyprctl eval "hl.monitor({ output = \"$output\", disabled = true })" >/dev/null 2>&1 || true
+done < <(jq -r '.[] |
+  select(
+    (.name | startswith("eDP-")) and
+    .disabled != true and
+    .description == "" and
+    .make == "" and
+    .model == "" and
+    .width == 0 and
+    .height == 0 and
+    (.availableModes | length) == 0
+  ) |
+  .name
+' <<<"$monitors" 2>/dev/null)
