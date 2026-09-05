@@ -511,7 +511,11 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
               anchors.leftMargin: Style.space(12)
               anchors.rightMargin: Style.space(12)
-              text: root.provider ? String(root.provider.authHelpText || "") : ""
+              // The card is gated on usageStatusText, but the remedy in
+              // authHelpText is the better message when a collector offers
+              // one. A record can carry a status with no auth advice to give,
+              // so fall back to the status rather than render an empty box.
+              text: root.provider ? String(root.provider.authHelpText || root.provider.usageStatusText || "") : ""
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

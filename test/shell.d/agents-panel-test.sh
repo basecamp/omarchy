@@ -14,4 +14,5 @@ assert(/if \(buttonCode === Qt\.RightButton\) root\.launchAgent\(\)/.test(panelS
 assert(/else if \(buttonCode === Qt\.MiddleButton\) root\.selectProvider\(root\.providerIndex \+ 1\)/.test(panelSource), 'agents middle click still advances the subscription')
 assert(/else root\.toggle\(\)/.test(panelSource), 'agents left click still toggles the panel')
 assert(!/if \(buttonCode === Qt\.RightButton\) root\.refreshNow\(\)/.test(panelSource), 'agents right click no longer refreshes')
+assert(/text: root\.provider \? String\(root\.provider\.authHelpText \|\| root\.provider\.usageStatusText \|\| ""\) : ""/.test(panelSource), 'status card falls back to the usage status when a record has no auth help')
 JS
