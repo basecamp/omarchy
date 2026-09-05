@@ -27,3 +27,9 @@ rg -q 'tag = "-default-opacity"' "$windows_vm_rules" ||
 rg -q 'opacity = "1 1"' "$windows_vm_rules" ||
   fail "Windows VM stays fully opaque"
 pass "Windows VM stays fully opaque"
+
+# The guest would otherwise finish the unattended install on the Windows
+# default timezone (US Pacific) regardless of the host's.
+rg -q 'tzutil /s' "$windows_vm_command" ||
+  fail "Windows VM install sets the guest timezone to match the host"
+pass "Windows VM install sets the guest timezone to match the host"

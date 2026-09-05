@@ -1121,6 +1121,25 @@ migrate_legacy_compose() {
   rm -f "$LEGACY_COMPOSE_FILE"
 }
 
+# dockur/windows applies TZ only to the Linux side of the container — the
+# Windows guest finishes its unattended install on the Microsoft default
+# timezone (US Pacific). Seed the OEM script dockur runs at the end of the
+# installation to put the guest on the host timezone instead, translating the
+# IANA name via CLDR's windowsZones table (keyed by original tzdb names, so
+# the zone's tzdb Link aliases are tried too). If the name can't be mapped,
+# write nothing and the install proceeds exactly as today.
+write_oem_timezone_script() {
+  local tz="$1" map name win_tz
+  map=$(curl -fsSL --max-time 15 https://raw.githubusercontent.com/unicode-org/cldr/main/common/supplemental/windowsZones.xml) || return 0
+  for name in "$tz" $(awk -v z="$tz" '$1 == "L" && ($2 == z || $3 == z) { print ($2 == z) ? $3 : $2 }' /usr/share/zoneinfo/tzdata.zi); do
+    win_tz=$(awk -F'"' -v z="$name" '/mapZone/ && index(" " $6 " ", " " z " ") { print $2; exit }' <<<"$map")
+    [[ -n $win_tz ]] && break
+  done
+  [[ -n $win_tz ]] || return 0
+  mkdir -p "$HOME/.windows/oem"
+  printf 'tzutil /s "%s"\r\n' "$win_tz" >"$HOME/.windows/oem/install.bat"
+}
+
 # --- prerequisites -----------------------------------------------------------
 
 check_prerequisites() {
@@ -1305,6 +1324,8 @@ EOF
 
   local tz
   tz=$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
+
+  write_oem_timezone_script "$tz"
 
   # Write the root-owned compose from the validated settings (one prompt if
   # sudoless Docker is off). The writer pins the familiar home directories (or
