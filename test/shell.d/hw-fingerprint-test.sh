@@ -71,6 +71,12 @@ assert_rejects "an FPC token mid-string is not detected"
 write_usb_devices '1234:5678:Goodix Fingerprint USB Device'
 assert_detects "a reader is detected by an existing product-name match"
 
+write_usb_devices '3274:8012:MAFP General Device'
+assert_detects "a Microarray MAFP reader is detected by its exact USB ID"
+
+write_usb_devices '3274:1234:Generic USB Device'
+assert_rejects "an unknown Microarray USB device is not detected"
+
 write_usb_devices '27c6:1234'
 assert_detects "a reader is detected by an existing vendor match"
 
@@ -90,6 +96,14 @@ assert_rejects "a vendor guess bound to a kernel driver is rejected"
 write_usb_devices '27c6:1234'
 bind_driver '1-0/1-0:1.0' usbfs
 assert_detects "a vendor guess claimed through usbfs is still detected"
+
+write_usb_devices '3274:8012:MAFP General Device'
+bind_driver '1-0/1-0:1.0' usbfs
+assert_detects "an exact reader match claimed through usbfs is still detected"
+
+write_usb_devices '3274:8012:MAFP General Device'
+bind_driver '1-0/1-0:1.0' usbhid
+assert_rejects "an exact reader match bound to a kernel driver is rejected"
 
 write_usb_devices '27c6:1234'
 bind_driver '1-0/1-0:1.0' usbfs
