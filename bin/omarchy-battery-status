@@ -85,9 +85,23 @@ if awk -v rate="${power_rate_raw:-0}" 'BEGIN { exit !(rate <= 0.2) }'; then
   charge_idle=true
 fi
 
+# The floor of the band a configured limit holds the pack in. A start of 0 is
+# sysfs saying "no start threshold", not "holds from empty", so fall back to the
+# end value there.
+if [[ -n $threshold_start ]] && (( threshold_start > 0 )); then
+  threshold_floor=$threshold_start
+else
+  threshold_floor=$threshold_end
+fi
+
+# "pending-charge" only means AC is present and the EC is not charging. A
+# threshold hold reports it, but so does a failed pack, an insufficient supply
+# and charge_behaviour=inhibit-charge. Claim a hold only when a limit is really
+# configured and the level has reached its band, or a dead battery at 0% reads
+# as a deliberate "Holding at 75-80%".
 charge_holding=false
-if [[ $ac_online == "true" && -n $threshold_end ]]; then
-  if [[ $state == "pending-charge" ]]; then
+if [[ $ac_online == "true" && -n $threshold_end ]] && (( threshold_end < 100 )); then
+  if [[ $state == "pending-charge" ]] && (( percentage >= threshold_floor )); then
     charge_holding=true
   elif [[ $state == "fully-charged" ]] && (( percentage < 99 )); then
     charge_holding=true
@@ -130,6 +144,11 @@ if [[ $charge_holding == "true" ]]; then
   fi
 
   echo "Battery ${percentage}%  ·  Holding at ${threshold_label}  ·  ${power_rate}W / ${capacity}Wh"
+elif [[ $state == "pending-charge" ]]; then
+  # AC is present and the EC is not charging, but no limit is holding it. There
+  # is no time estimate either way, so say what is happening instead of printing
+  # an empty "left".
+  echo "Battery ${percentage}%  ·  Not charging  ·  ${power_rate}W / ${capacity}Wh"
 elif [[ $state == "charging" ]]; then
   echo "Battery ${percentage}%  ·  ${time_remaining} to full  ·   ${power_rate}W / ${capacity}Wh"
 else
