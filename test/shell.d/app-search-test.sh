@@ -140,6 +140,20 @@ assert(
   'app library keeps owning an OSD a previous launch left on screen'
 )
 
+const closeLaunchMatch = appLibraryQml.match(/function closeLaunchFeedback\(serial\) \{([\s\S]*?)\n  \}/)
+assert(closeLaunchMatch, 'app library closeLaunchFeedback function exists')
+assert(
+  closeLaunchMatch[1].includes('omarchy-shell", "osd", "close"') &&
+    !/if \(root\.launchOsdOpen\) \{[\s\S]*osd", "close"/.test(closeLaunchMatch[1]),
+  'app library always closes launch OSD so a raced show cannot stick forever'
+)
+
+const osdQml = fs.readFileSync(path.join(root, 'shell/plugins/osd/Osd.qml'), 'utf8')
+assert(
+  /id: maxLifetimeTimer[\s\S]*interval: 30000/.test(osdQml),
+  'sticky OSDs have a 30s max lifetime when duration is 0'
+)
+
 const openMatch = menuQml.match(/function openExistingMenu\(initialMenu\) \{([\s\S]*?)\n  \}/)
 assert(openMatch, 'menu openExistingMenu function exists')
 assert(
