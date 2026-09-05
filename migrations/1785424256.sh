@@ -26,6 +26,6 @@ fi
 # Pick up /usr/lib/systemd/user/app.slice.d/10-oomd.conf without waiting for
 # the next login. That drop-in is what marks app.slice as a kill candidate;
 # until the user manager reloads and reports it, oomd is running with nothing
-# to act on. An `omarchy update` over SSH or from a TTY has no user manager to
-# reload, and there the next graphical login picks it up on its own.
+# to act on. There is one user manager per user, not per session, so this also
+# reaches the graphical session when `omarchy update` runs over SSH or a TTY.
 systemctl --user daemon-reload >/dev/null 2>&1 || true
