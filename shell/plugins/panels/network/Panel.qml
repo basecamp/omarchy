@@ -67,9 +67,35 @@ Panel {
   readonly property string connectionPhrase: connectionPhrases[connectionPhraseIndex % connectionPhrases.length]
   readonly property bool networkManagerAvailable: Networking.backend === NetworkBackendType.NetworkManager
   readonly property var networkDevices: Networking.devices ? Networking.devices.values : []
-  readonly property var wifiDevice: findDevice(DeviceType.Wifi)
+  readonly property var allWifiDevices: findAllWifiDevices()
+  readonly property var wifiDevice: selectedWifiDevice
+  // Selection is tracked by interface name, not index: the device list can
+  // reorder or change length as adapters come and go, and an index would
+  // silently point at a different NIC when it did.
+  readonly property var selectedWifiDevice: {
+    var devices = allWifiDevices || []
+    if (devices.length === 0) return null
+    for (var i = 0; i < devices.length; i++) {
+      if (devices[i] && devices[i].name === selectedWifiIface) return devices[i]
+    }
+    // No pin, or the pinned adapter is gone: fall back to the same
+    // prefer-connected rule the panel used before the selector existed.
+    for (var j = 0; j < devices.length; j++) {
+      if (devices[j] && devices[j].connected) return devices[j]
+    }
+    return devices[0]
+  }
   readonly property var wifiNetworkObjects: wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
   readonly property var connectedWifiNetwork: findConnectedWifiNetwork()
+  // The bar pill reports the machine's actual Wi-Fi connectivity, which is not
+  // the same question as "what is the panel listing". Viewing an idle adapter
+  // must not make a connected one look disconnected in the bar.
+  readonly property int activeWifiStrength: findActiveWifiStrength()
+  readonly property bool showAdapterSelector: allWifiDevices.length > 1
+  property string selectedWifiIface: ""
+  property var disabledAdapters: []
+  property string pendingAdapterIface: ""
+  property int adapterIndex: 0
   property var wifiNetworks: []
   property bool scanning: false
   property bool wifiStationAvailable: false
@@ -91,7 +117,7 @@ Panel {
   // comparisons on the matching `*Kind`/`*Reason` being non-empty so a
   // hidden-SSID row (ssid == "") doesn't collide with the "" defaults.
   property string actionSsid: ""
-  property string actionKind: ""  // "connect" | "disconnect" | "forget"
+  property string actionKind: ""  // "connect" | "disconnect" | "forget" | "adapter"
   property string failureSsid: ""
   property string failureReason: ""
   property string passwordSsid: ""
@@ -183,6 +209,27 @@ Panel {
       focusSection = "dns"
       bandAutoFocused = true
     }
+  }
+
+  onAllWifiDevicesChanged: {
+    // Hot-plug or removal: the selector can shrink or disappear entirely, so
+    // an index left pointing past the end would highlight nothing and make
+    // Enter a no-op. Clamp it, and evacuate focus when the section is gone.
+    var count = allWifiDevices.length
+    if (adapterIndex > count - 1) adapterIndex = Math.max(0, count - 1)
+    if (!showAdapterSelector && focusSection === "adapter") {
+      focusSection = wifiNetworks.length > 0 ? "wifi" : "dns"
+    }
+    root.refresh()
+  }
+
+  onSelectedWifiDeviceChanged: {
+    // When the selected adapter changes, reset per-device state and refresh.
+    selectedIndex = -1
+    passwordSsid = ""
+    passwordText = ""
+    identityText = ""
+    root.refresh(true)
   }
 
   // Collapsing the pills out from under the cursor would leave it pointing at
@@ -436,16 +483,20 @@ Panel {
 
   // Bar pill state, derived from the native NetworkManager service so the
   // icon reflects connection changes without polling. Wired is preferred
-  // when both are up, matching the default-route device.
+  // when both are up, matching the default-route device. Wi-Fi presence comes
+  // from `anyWifiConnected` rather than the selected adapter: the bar answers
+  // "am I online", which does not change because the panel is showing a
+  // different NIC's network list.
   readonly property var wiredDevice: findDevice(DeviceType.Wired)
   readonly property string kind: {
     if (wiredDevice && wiredDevice.connected) return "ethernet"
-    if (connectedWifiNetwork) return "wifi"
+    if (anyWifiConnected) return "wifi"
     return "disconnected"
   }
-  readonly property int signalStrength: connectedWifiNetwork
-    ? Math.round((connectedWifiNetwork.signalStrength || 0) * 100)
-    : -1
+  // Strength is -1 only when nothing published one; connectionIcon then draws
+  // the weakest bars, which still reads as "connected" rather than the
+  // crossed-out glyph.
+  readonly property int signalStrength: anyWifiConnected ? activeWifiStrength : -1
 
   function copyToClipboard(value) {
     if (!value || !root.bar) return
@@ -522,16 +573,38 @@ Panel {
     bar.shell.summon("omarchy.wifiqr", JSON.stringify(payload))
   }
 
+  // The interface the panel is currently acting on. Helper scripts default to
+  // the routed / first-connected device, which is the wrong adapter whenever
+  // the user has selected another one, so every invocation pins it explicitly.
+  readonly property string selectedIface: selectedWifiDevice ? (selectedWifiDevice.name || "") : ""
+
+  function statusCommand(verbose) {
+    var command = ["omarchy-network-status"]
+    if (verbose) command.push("--verbose")
+    if (selectedIface !== "") command = command.concat(["--iface", selectedIface])
+    return command
+  }
+
+  function bandCommand(band) {
+    var command = ["omarchy-network-band"]
+    if (selectedIface !== "") command = command.concat(["--iface", selectedIface])
+    if (band) command.push(band)
+    return command
+  }
+
   function refresh(scanWifi) {
     checkConnectivity()
     if (scanWifi === undefined) scanWifi = false
-    if (!detailsProc.running) detailsProc.running = true
+    if (!detailsProc.running) {
+      detailsProc.command = root.statusCommand(true)
+      detailsProc.running = true
+    }
     if (!dnsProc.running) {
       dnsProc.command = ["bash", "-c", root.dnsCommand("")]
       dnsProc.running = true
     }
     if (!bandProc.running) {
-      bandProc.command = ["omarchy-network-band"]
+      bandProc.command = root.bandCommand("")
       bandProc.running = true
     }
     // A closed panel has no nearby-network list to fill, and bare refresh()
@@ -639,12 +712,68 @@ Panel {
     return fallback
   }
 
+  // Every Wi-Fi device, in NetworkManager's own enumeration order. The order
+  // is deliberately not connected-first: these back a selector whose pills
+  // must not reshuffle under the user's cursor when an adapter connects or
+  // drops. `selectedWifiDevice` handles prefer-connected instead.
+  function findAllWifiDevices() {
+    var devices = networkDevices || []
+    var wifi = []
+    for (var i = 0; i < devices.length; i++) {
+      var device = devices[i]
+      if (!device || device.type !== DeviceType.Wifi) continue
+      wifi.push(device)
+    }
+    return wifi
+  }
+
   function findConnectedWifiNetwork() {
     var networks = wifiNetworkObjects || []
     for (var i = 0; i < networks.length; i++) {
       if (networks[i] && networks[i].connected) return networks[i]
     }
     return null
+  }
+
+  // Signal strength for the bar pill, as a percentage, or -1 when unknown.
+  //
+  // A WifiNetwork only reports connected == true on a device whose scanner the
+  // panel has enabled, and the panel only scans the selected device. So when
+  // the panel is showing an idle adapter, the genuinely connected one publishes
+  // its networks with the flag unset -- but they still carry a live
+  // signalStrength. Prefer the flagged network when there is one; otherwise
+  // fall back to the strongest network the connected device publishes, which is
+  // the access point it is associated with.
+  function findActiveWifiStrength() {
+    var devices = allWifiDevices || []
+    var best = -1
+
+    for (var i = 0; i < devices.length; i++) {
+      var device = devices[i]
+      if (!device || !device.connected || !device.networks) continue
+      var networks = device.networks.values || []
+
+      for (var j = 0; j < networks.length; j++) {
+        var network = networks[j]
+        if (!network) continue
+        var pct = Math.round((network.signalStrength || 0) * 100)
+        if (network.connected) return pct
+        if (pct > best) best = pct
+      }
+    }
+
+    return best
+  }
+
+  // True when any Wi-Fi adapter is connected, regardless of which adapter the
+  // panel happens to be showing. NetworkDevice.connected is published for every
+  // device, scanned or not, so this is the honest answer to "am I online".
+  readonly property bool anyWifiConnected: {
+    var devices = allWifiDevices || []
+    for (var i = 0; i < devices.length; i++) {
+      if (devices[i] && devices[i].connected) return true
+    }
+    return false
   }
 
   function syncWifiNetworks() {
@@ -696,8 +825,45 @@ Panel {
     if (!band || actionProc.running) return
 
     root.pendingBand = band
-    actionProc.command = ["omarchy-network-band", band]
+    actionProc.command = root.bandCommand(band)
     actionProc.running = true
+  }
+
+  // Toggle a single Wi-Fi adapter on/off. The device stays managed by
+  // NetworkManager so it remains in the device model and the selector keeps
+  // its pill; only the connection is brought up or down.
+  //
+  // This claims the panel's shared `actionKind` rather than only checking
+  // actionProc: native WifiNetwork.connect()/disconnect() calls do not go
+  // through actionProc at all, so a private guard would let a network row
+  // action and an adapter toggle race and leave the result timing-dependent.
+  //
+  // No shell: the interface name reaches nmcli as its own argv entry, so a
+  // device name carrying shell metacharacters cannot be executed.
+  function toggleAdapter(iface, enable) {
+    if (!iface || actionKind !== "" || actionProc.running) return
+
+    actionKind = "adapter"
+    actionSsid = ""
+    root.pendingAdapterIface = iface
+
+    var disabled = root.disabledAdapters.slice()
+    if (enable) {
+      var idx = disabled.indexOf(iface)
+      if (idx >= 0) {
+        disabled.splice(idx, 1)
+        root.disabledAdapters = disabled
+      }
+    } else if (!disabled.includes(iface)) {
+      disabled.push(iface)
+      root.disabledAdapters = disabled
+    }
+
+    actionProc.command = ["nmcli", "device", enable ? "connect" : "disconnect", iface]
+    actionProc.running = true
+    // Same safety net runNetworkAction uses: if the process never reports,
+    // don't leave the whole panel wedged behind the shared guard.
+    actionTimeout.restart()
   }
 
   // The speed test is its own panel plugin (omarchy.speedtest) so a
@@ -861,10 +1027,11 @@ Panel {
 
   Component.onCompleted: refresh()
 
-  // Pulls everything we want about the active route's interface in one shot.
+  // Pulls everything we want about the selected adapter in one shot. The
+  // command is rebuilt at each launch so it follows the adapter selection.
   Process {
     id: detailsProc
-    command: ["omarchy-network-status", "--verbose"]
+    command: root.statusCommand(true)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.updateDetails(text)
@@ -915,7 +1082,7 @@ Panel {
     running: root.opened
     onTriggered: {
       if (bandProc.running) return
-      bandProc.command = ["omarchy-network-band"]
+      bandProc.command = root.bandCommand("")
       bandProc.running = true
     }
   }
@@ -940,6 +1107,21 @@ Panel {
         // instead of leaving stale readings until the next poll tick.
         root.refresh()
       }
+      if (root.pendingAdapterIface !== "") {
+        var iface = root.pendingAdapterIface
+        root.pendingAdapterIface = ""
+        if (root.actionKind === "adapter") root.actionKind = ""
+        // The pill's state comes from NetworkManager once nothing is in flight,
+        // so the optimistic entry is dropped either way and a refused command
+        // simply leaves the switch showing the device's real state.
+        var disabled = root.disabledAdapters.slice()
+        var idx = disabled.indexOf(iface)
+        if (idx >= 0) {
+          disabled.splice(idx, 1)
+          root.disabledAdapters = disabled
+        }
+        root.refresh()
+      }
     }
   }
 
@@ -950,7 +1132,10 @@ Panel {
     interval: 1500
     repeat: true
     running: root.opened
-    onTriggered: if (!detailsProc.running) detailsProc.running = true
+    onTriggered: if (!detailsProc.running) {
+      detailsProc.command = root.statusCommand(true)
+      detailsProc.running = true
+    }
   }
 
   Timer {
@@ -996,6 +1181,15 @@ Panel {
     repeat: false
     onTriggered: {
       if (!root.actionKind) return
+      // An adapter toggle is not tied to an SSID, so it reports through the
+      // pill rather than a network row's failure line. Release the shared
+      // guard and let the next refresh show whatever actually happened.
+      if (root.actionKind === "adapter") {
+        root.actionKind = ""
+        root.pendingAdapterIface = ""
+        root.refresh()
+        return
+      }
       var reason
       if (root.actionKind === "connect") reason = "Timed out connecting"
       else if (root.actionKind === "disconnect") reason = "Timed out disconnecting"
@@ -1059,7 +1253,8 @@ Panel {
           if (dy >= 0) return
         }
         if (dy !== 0) {
-          // Hidden sections drop out of the keyboard chain entirely.
+          // Hidden sections drop out of the keyboard chain entirely; the
+          // adapter selector is inserted between DNS and the Wi-Fi list.
           if (root.focusSection === "header") {
             if (dy > 0) {
               if (root.hasCaptivePortal) {
@@ -1110,6 +1305,17 @@ Panel {
                 root.focusSection = "header"
                 root.headerIndex = 0
               }
+            } else if (root.showAdapterSelector) {
+              root.focusSection = "adapter"
+              if (root.adapterIndex < 0) root.adapterIndex = 0
+            } else if (root.wifiNetworks.length > 0) {
+              root.focusSection = "wifi"
+              if (root.selectedIndex < 0) root.selectedIndex = 0
+            }
+          } else if (root.focusSection === "adapter") {
+            // k from adapter moves up to DNS; j drops into the wifi list.
+            if (dy < 0) {
+              root.focusSection = "dns"
             } else if (root.wifiNetworks.length > 0) {
               root.focusSection = "wifi"
               if (root.selectedIndex < 0) root.selectedIndex = 0
@@ -1118,7 +1324,7 @@ Panel {
             // k from the top row escapes back up to the DNS row rather than
             // wrapping around to the bottom of the list.
             if (dy < 0 && root.selectedIndex <= 0) {
-              root.focusSection = "dns"
+              root.focusSection = root.showAdapterSelector ? "adapter" : "dns"
               root.wifiActionFocused = false
             }
             else root.selectByDelta(dy)
@@ -1128,6 +1334,11 @@ Panel {
           if (root.focusSection === "header") root.selectHeaderByDelta(dx)
           else if (root.focusSection === "band") { if (!root.bandAutoFocused) root.selectBandByDelta(dx) }
           else if (root.focusSection === "dns") root.selectDnsByDelta(dx)
+          else if (root.focusSection === "adapter") {
+            if (root.allWifiDevices.length > 1) {
+              root.adapterIndex = Math.max(0, Math.min(root.allWifiDevices.length - 1, root.adapterIndex + dx))
+            }
+          }
           else if (root.focusSection === "wifi") root.selectWifiActionByDelta(dx)
         }
       }
@@ -1137,6 +1348,14 @@ Panel {
           else if (root.focusSection === "portal") root.openCaptivePortal()
           else if (root.focusSection === "band") root.activateBand()
           else if (root.focusSection === "dns") root.activateDns()
+          else if (root.focusSection === "adapter") {
+            // Enter on an adapter pill selects it
+            var devices = root.allWifiDevices || []
+            if (root.adapterIndex >= 0 && root.adapterIndex < devices.length) {
+              var device = devices[root.adapterIndex]
+              if (device) root.selectedWifiIface = device.name || ""
+            }
+          }
           else root.activateSelected()
         }
       }
@@ -1570,6 +1789,51 @@ Panel {
       }
 
 
+      // Wi-Fi adapter selection. Only shown when there are multiple Wi-Fi
+      // adapters (e.g. onboard + USB dongle). Each pill shows the interface
+      // name and connection state, with an on/off toggle.
+      PanelSeparator {
+        visible: root.showAdapterSelector
+        foreground: root.bar.foreground
+      }
+
+      Column {
+        visible: root.showAdapterSelector
+        width: parent.width
+        spacing: Style.space(10)
+
+        PanelSectionHeader {
+          text: "WI-FI ADAPTER"
+          foreground: root.bar.foreground
+          fontFamily: root.bar.fontFamily
+        }
+
+        // One pill per adapter. A plain Row dividing the panel width by the
+        // device count makes each cell arbitrarily narrow, and with three or
+        // more adapters the interface name collides with the right-anchored
+        // switch (Button centres its label and reserves nothing for child
+        // controls). Flow wraps to a second line instead, and each pill asks
+        // for its natural width -- label plus reserved switch space -- with a
+        // floor so a long name truncates rather than crushing the control.
+        Flow {
+          id: adapterRow
+          width: parent.width
+          spacing: Style.space(6)
+
+          Repeater {
+            model: root.allWifiDevices
+
+            delegate: AdapterPill {
+              required property var modelData
+              required property int index
+
+              device: modelData
+              slot: index
+            }
+          }
+        }
+      }
+
       // Wi-Fi networks (only if a Wi-Fi station is available).
       PanelSeparator {
         visible: root.wifiStationAvailable
@@ -1700,6 +1964,84 @@ Panel {
       root.cursorActive = true
       root.focusSection = "dns"
       root.dnsIndex = pill.index
+    }
+  }
+
+  // A single Wi-Fi adapter pill. Shows the interface name, connection state,
+  // and an on/off toggle. Clicking selects the adapter; the toggle enables
+  // or disables it.
+  component AdapterPill: Button {
+    id: pill
+    required property var device
+    required property int slot
+
+    readonly property string iface: device ? (device.name || "") : ""
+    readonly property bool isConnected: device ? !!device.connected : false
+    // Compare against the resolved device, not the pin: with no pin set the
+    // panel falls back to prefer-connected, and the pill showing that
+    // adapter is the one that should read as selected.
+    readonly property bool isSelected: root.selectedWifiDevice === device
+    // Derived from NetworkManager, not from a local wish-list. A shell reload
+    // or an external `nmcli device disconnect` must not leave the switch
+    // showing "on" for a device that is actually down -- the first click would
+    // then issue a second disconnect instead of reconnecting it.
+    // `disabledAdapters` only holds the in-flight optimistic state, so the knob
+    // still moves the instant it is clicked.
+    readonly property bool isEnabled: {
+      if (iface === "") return false
+      if (root.pendingAdapterIface === iface) return !root.disabledAdapters.includes(iface)
+      return isConnected
+    }
+
+    text: iface
+    fontSize: Style.font.bodySmall
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    // Button centres its label and reserves no room for child items, so the
+    // trailing padding has to cover the switch explicitly or a longer
+    // interface name runs straight under it.
+    horizontalPadding: Style.spacing.controlPaddingX
+    rightPadding: Style.spacing.controlPaddingX + adapterToggle.implicitWidth + Style.spacing.controlGap
+    verticalPadding: Style.spacing.controlPaddingY + Style.space(2)
+    bordered: true
+
+    // Natural width, floored so a long name elides instead of squeezing the
+    // switch, and capped so one adapter cannot span the whole panel.
+    readonly property real minPillWidth: Style.space(120)
+    width: Math.max(minPillWidth, Math.min(implicitWidth, adapterRow.width))
+
+    active: isSelected
+    selected: isSelected
+    hasCursor: root.cursorActive && root.focusSection === "adapter" && root.adapterIndex === slot
+    tooltipText: isConnected
+      ? "Showing " + iface + " (connected)"
+      : (isEnabled ? "Showing " + iface + " (connecting)" : "Showing " + iface + " (off)")
+
+    onClicked: {
+      root.selectedWifiIface = iface
+    }
+
+    onHovered: function(isHovered) {
+      if (!isHovered) return
+      root.cursorActive = true
+      root.focusSection = "adapter"
+      root.adapterIndex = pill.slot
+    }
+
+    // On/off toggle switch on the right side of the pill
+    ToggleSwitch {
+      id: adapterToggle
+      trackHeight: Math.round(pill.fontSize * 1.2)
+      cursorPad: Style.space(3)
+      anchors.right: parent.right
+      anchors.rightMargin: Style.spacing.controlGap
+      anchors.verticalCenter: parent.verticalCenter
+      checked: isEnabled
+      busy: root.pendingAdapterIface === iface
+      foreground: root.bar.foreground
+      onToggled: {
+        if (iface !== "") root.toggleAdapter(iface, !isEnabled)
+      }
     }
   }
 
