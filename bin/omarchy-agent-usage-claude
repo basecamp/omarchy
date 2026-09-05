@@ -337,11 +337,27 @@ def today_prompts_from_history(claude_dir: Path) -> tuple[int, int]:
 # provider, model, and token usage on every assistant message.
 
 
+# `omp --profile=<name>` (and pi's equivalent) relocates the whole agent tree
+# under <base>/profiles/<name>/, so a subscription driven entirely through a
+# profile leaves the default root empty and its usage uncounted. Sessions are
+# keyed by file path, so a profile adds sessions rather than double-counting
+# the default root.
+def pi_session_roots() -> list[Path]:
+  roots: list[Path] = []
+  for base in (Path.home() / ".pi", Path.home() / ".omp"):
+    roots.append(base / "agent" / "sessions")
+    profiles = base / "profiles"
+    try:
+      # Sorted so the scan order does not depend on directory order.
+      roots.extend(sorted(child / "agent" / "sessions" for child in profiles.iterdir() if child.is_dir()))
+    except OSError:
+      # No profiles directory, or it is unreadable: the default root stands.
+      pass
+  return roots
+
+
 def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
-  roots = [
-    Path.home() / ".pi" / "agent" / "sessions",
-    Path.home() / ".omp" / "agent" / "sessions",
-  ]
+  roots = pi_session_roots()
   cache_file = cache_root() / "claude-pi-sessions.json"
   cached = read_fresh_json(cache_file, max_age_seconds)
   if cached is not None:

@@ -135,11 +135,27 @@ def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, 
     today_tokens_by_model[model] = today_tokens_by_model.get(model, 0) + total
 
 
+# `omp --profile=<name>` (and pi's equivalent) relocates the whole agent tree
+# under <base>/profiles/<name>/, so a subscription driven entirely through a
+# profile leaves the default root empty and its usage uncounted. Each root is
+# scanned separately and sessions are keyed by path, so a profile adds
+# sessions rather than double-counting the default one.
+def pi_session_roots():
+  roots = []
+  for base in (Path.home() / ".pi", Path.home() / ".omp"):
+    roots.append(base / "agent" / "sessions")
+    profiles = base / "profiles"
+    try:
+      # Sorted so the scan order does not depend on directory order.
+      roots.extend(sorted(child / "agent" / "sessions" for child in profiles.iterdir() if child.is_dir()))
+    except OSError:
+      # No profiles directory, or it is unreadable: the default root stands.
+      pass
+  return roots
+
+
 def scan_pi_sessions():
-  roots = [
-    Path.home() / ".pi" / "agent" / "sessions",
-    Path.home() / ".omp" / "agent" / "sessions",
-  ]
+  roots = pi_session_roots()
   rg = find_command("rg") or "rg"
   for root in roots:
     if not root.exists():
