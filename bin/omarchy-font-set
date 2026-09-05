@@ -27,7 +27,7 @@ if ! fc-list | grep -Fqi -- "$font_name"; then
 fi
 
 if [[ -f ~/.config/alacritty/alacritty.toml ]]; then
-  sed -i "s/family = \".*\"/family = \"$font_name\"/g" ~/.config/alacritty/alacritty.toml
+  sed -i "s/family = \"[^\"]*\"/family = \"$font_name\"/g" ~/.config/alacritty/alacritty.toml
 fi
 
 if [[ -f ~/.config/kitty/kitty.conf ]]; then
