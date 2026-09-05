@@ -28,6 +28,12 @@ Both extensions talk to Omarchy through a small native messaging host, which get
 
 These are Chromium-family only. Firefox and Zen don't get them.
 
+## Listen / text to speech
+
+Sites that use the Web Speech API — Google Translate's Listen button is the usual example — talk to a local speech backend on Linux. Chromium still ships Google cloud voices, so it works without one. Brave does not.
+
+Omarchy therefore installs `speech-dispatcher` and `espeak-ng`, and enables the user socket so those sites have voices in every Chromium-family browser, including Brave. After an update on an existing machine, fully quit and reopen the browser once so it picks the new voices up.
+
 ## Firefox and Zen
 
 Firefox and Zen are a different family, so they get different treatment: Omarchy installs a policies file for sensible defaults and switches them into native Wayland mode, which you want for fractional scaling and smooth trackpad scrolling.

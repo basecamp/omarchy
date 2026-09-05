@@ -67,6 +67,10 @@ verify_services() {
   systemctl --user is-active --quiet pipewire.service pipewire-pulse.service wireplumber.service ||
     fail "user audio services are running"
   pass "user audio services are running"
+
+  systemctl --user is-enabled --quiet speech-dispatcher.socket ||
+    fail "speech dispatcher socket is enabled"
+  pass "speech dispatcher socket is enabled"
 }
 
 verify_runtime_tools() {
