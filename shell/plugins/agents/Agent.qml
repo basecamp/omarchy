@@ -14,12 +14,23 @@ Item {
   property var record: null
 
   FileView {
+    id: agentFile
     path: root.path
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
     onLoaded: root.parse(text())
     onLoadFailed: root.record = null
+  }
+
+  // Fallback reload when inotify watch-rearms fail (quota exhaustion, ENOSPC).
+  // The atomic mv rewrite replaces the inode; if inotify can't re-arm, the
+  // FileView stays frozen. Periodic reload bounds staleness (#9974).
+  Timer {
+    interval: 120000
+    repeat: true
+    running: true
+    onTriggered: agentFile.reload()
   }
 
   function parse(content) {
