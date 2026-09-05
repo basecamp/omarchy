@@ -166,26 +166,66 @@ generate_thumbnail() {
   # the lock after this shell is killed.
   if VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]" {lock_fd}>&-; then
     mv -f "$tmp" "$thumbnail"
+    rm -f "$thumbnail.failed"
   else
+    # Record the refusal so later runs stop retrying this image and stop
+    # treating it as a thumbnail that is still on its way. The marker is keyed
+    # by the same size:mtime hash as the thumbnail, so a repaired or replaced
+    # image gets a new hash, and the retry happens on its own.
     rm -f "$tmp" "$thumbnail"
+    : >"$thumbnail.failed"
   fi
+}
+
+declare -A thumbnail_index=()
+thumbnail_index_loaded=false
+
+# index.tsv keeps every image this cache has seen, so it grows without limit
+# while a directory stays small. One read of the file costs less than one scan
+# per image, which was O(images x index) and controlled the whole cold path.
+load_thumbnail_index() {
+  [[ $thumbnail_index_loaded == true ]] && return
+  thumbnail_index_loaded=true
+
+  [[ -f $index_file ]] || return
+
+  local indexed_path indexed_signature indexed_hash key
+  while IFS=$'\t' read -r indexed_path indexed_signature indexed_hash; do
+    [[ -n $indexed_path && -n $indexed_hash ]] || continue
+    key="$indexed_path"$'\t'"$indexed_signature"
+    # The first entry wins, as it did in the awk scan this replaced.
+    [[ -n ${thumbnail_index[$key]-} ]] || thumbnail_index["$key"]="$indexed_hash"
+  done <"$index_file"
 }
 
 thumbnail_for() {
   local image="$1"
-  local signature hash thumbnail
+  local signature hash thumbnail key
 
   signature=$(stat -Lc '%s:%Y' "$image") || return
-  hash=$(awk -F '\t' -v path="$image" -v sig="$signature" '$1 == path && $2 == sig { print $3; exit }' "$index_file" 2>/dev/null)
+  key="$image"$'\t'"$signature"
+  hash="${thumbnail_index[$key]-}"
 
   if [[ -z $hash ]]; then
     hash=$(printf '%s\t%s' "$image" "$signature" | md5sum | cut -d ' ' -f 1)
     printf '%s\t%s\t%s\n' "$image" "$signature" "$hash" >>"$index_file"
+    thumbnail_index["$key"]="$hash"
   fi
 
   thumbnail="$cache_dir/$hash.jpg"
 
   if [[ ! -f $thumbnail ]]; then
+    # An image vips already refused is settled, not pending. A retry on every
+    # run holds rows_cacheable down forever, and one unreadable image then
+    # costs every other image in the directory its cached row. Exit 2 tells the
+    # caller that this row is stable although it carries the source path:
+    # thumbnail_for runs in a command substitution, so it cannot clear
+    # rows_cacheable itself.
+    if [[ -f $thumbnail.failed ]]; then
+      printf '%s' "$image"
+      return 2
+    fi
+
     if [[ $lazy_thumbnails == true && $cache_only != true ]]; then
       rows_cacheable=false
 
@@ -216,10 +256,15 @@ if [[ $rows_cache_hit != true && -f $rows_cache_file && -f $rows_signature_file 
   rows=$(<"$rows_cache_file")
   printf '%s' "$rows_fast_signature" >"$rows_fast_signature_file"
 elif [[ $rows_cache_hit != true ]]; then
+  # thumbnail_for runs in a command substitution. It inherits this map, but it
+  # cannot fill it. Load the index here, once, before the loop calls out.
+  load_thumbnail_index
+
   for image in "${image_files[@]}"; do
     thumbnail=$(thumbnail_for "$image")
+    thumbnail_status=$?
     [[ -n $thumbnail ]] || continue
-    if [[ $lazy_thumbnails == true && $cache_only != true && $thumbnail == $image ]]; then
+    if [[ $lazy_thumbnails == true && $cache_only != true && $thumbnail == $image && $thumbnail_status -ne 2 ]]; then
       rows_cacheable=false
     fi
 
@@ -236,7 +281,9 @@ elif [[ $rows_cache_hit != true ]]; then
     pruned=""
     while IFS=$'\t' read -r row_image row_thumbnail; do
       if [[ ! -e $row_thumbnail ]]; then
-        rows_cacheable=false
+        # A refusal that vips already recorded does not clear on a later run.
+        # Drop the row, but keep the rest of the directory cacheable.
+        [[ -f $row_thumbnail.failed ]] || rows_cacheable=false
         continue
       fi
 
