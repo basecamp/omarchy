@@ -251,7 +251,7 @@ add_mix_values() {
   done
 }
 
-add_gradient_function_value() {
+add_template_function_value() {
   local token="$1"
   local content fn key fallback value
 
@@ -269,6 +269,9 @@ add_gradient_function_value() {
     shell_gradient)
       value=$(shell_gradient_value "$key" "$fallback")
       ;;
+    value)
+      value=$(resolve_theme_ref "$key" "$fallback")
+      ;;
     *)
       return
       ;;
@@ -277,7 +280,7 @@ add_gradient_function_value() {
   printf 's|%s|%s|g\n' "$token" "$value" >>"$sed_script"
 }
 
-add_gradient_function_values() {
+add_template_function_values() {
   local tpl token
   local -A seen=()
 
@@ -285,8 +288,8 @@ add_gradient_function_values() {
     while IFS= read -r token; do
       [[ -n ${seen[$token]:-} ]] && continue
       seen[$token]=1
-      add_gradient_function_value "$token"
-    done < <(grep -hEo '\{\{[[:space:]]*(hypr_gradient|gradient_start|shell_gradient)[[:space:]]+[^}]+[[:space:]]*\}\}' "$tpl" 2>/dev/null || true)
+      add_template_function_value "$token"
+    done < <(grep -hEo '\{\{[[:space:]]*(hypr_gradient|gradient_start|shell_gradient|value)[[:space:]]+[^}]+[[:space:]]*\}\}' "$tpl" 2>/dev/null || true)
   done
 }
 
@@ -385,7 +388,7 @@ if [[ -f $COLORS_FILE ]]; then
   done
 
   add_mix_values
-  add_gradient_function_values
+  add_template_function_values
 
   # Process user templates first, then built-in templates (user overrides built-in)
   for tpl in "${template_files[@]}"; do
