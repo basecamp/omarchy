@@ -21,6 +21,8 @@ Files land in `~/Pictures` by default, named `screenshot-2026-08-13_14-22-05.png
 
 From the terminal, `omarchy screenshot` takes the same shot, and you can be explicit about it: `omarchy capture screenshot region` for freeform only, `windows` to snap to window and monitor rectangles, or `fullscreen` to skip the picker entirely and grab the focused monitor. A second argument of `copy` puts the shot only on the clipboard, and `save` only on disk.
 
+For a mouse-first shortcut, hover the indicator area beside the clock and click the camera icon. Drag over a region and release to copy it straight to the clipboard without saving a file or opening the editor.
+
 ### Driving the picker from the keyboard
 
 While the selection is up, you don't have to use the mouse at all:

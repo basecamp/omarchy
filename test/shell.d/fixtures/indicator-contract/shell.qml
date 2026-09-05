@@ -198,6 +198,14 @@ ShellRoot {
         root.assertTrue(root.commandCount("omarchy-capture-screenrecording --stop-recording") === 1, "Screen Recording left click stops active recording")
       }
 
+      var screenshot = root.createIndicator("Screenshot")
+      if (screenshot) {
+        screenshot.moduleName = "Screenshot"
+        root.injectBar(screenshot)
+        screenshot.triggerPress(Qt.LeftButton)
+        root.assertTrue(root.commandCount("omarchy-capture-screenshot region copy") === 1, "Screenshot left click copies a selected region")
+      }
+
       var dictation = root.createIndicator("Dictation")
       if (dictation) {
         dictation.moduleName = "Dictation"
