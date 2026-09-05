@@ -1457,8 +1457,34 @@ To stop: omarchy-windows-vm stop"
   fi
   # If scale is less than 130%, don't set any scale (use default 100)
 
-  # Connect with RDP in fullscreen (auto-detects resolution)
-  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /clipboard /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
+  # Retry RDP connection: Windows RDP service may need extra time after the VM
+  # reports "started successfully". Retry on connection failure, but stop once
+  # a session connects and the user closes it normally (exit code 0).
+  RDP_MAX_RETRIES=5
+  RDP_RETRY_DELAY=3
+  RDP_ATTEMPT=0
+
+  while (( RDP_ATTEMPT < RDP_MAX_RETRIES )); do
+    (( RDP_ATTEMPT++ ))
+
+    # Connect with RDP in fullscreen (auto-detects resolution)
+    xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /clipboard /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
+    rdp_exit=$?
+
+    if (( rdp_exit == 0 )); then
+      break
+    fi
+
+    if (( RDP_ATTEMPT < RDP_MAX_RETRIES )); then
+      echo "RDP connection failed (attempt $RDP_ATTEMPT/$RDP_MAX_RETRIES). Retrying in ${RDP_RETRY_DELAY}s..."
+      sleep "$RDP_RETRY_DELAY"
+    else
+      echo ""
+      echo "❌ Failed to connect via RDP after $RDP_MAX_RETRIES attempts."
+      echo "   The VM may still be running. Try connecting manually:"
+      echo "   omarchy-windows-vm launch"
+    fi
+  done
 
   # After RDP closes, stop the container unless --keep-alive was specified
   if [[ $KEEP_ALIVE = "false" ]]; then
