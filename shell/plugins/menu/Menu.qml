@@ -279,10 +279,6 @@ Item {
       actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + Util.shellQuote(value) }
     },
     "plugin-updates": {
-      // Lists git-managed plugins with changes available, one row per plugin.
-      // The value is the plugin id; the label carries the sha transition so
-      // the picker itself answers "how far behind am I?". Volatile so the
-      // check re-runs every time the submenu is entered.
       script: "for d in \"$HOME\"/.config/omarchy/plugins/*/; do [[ -d $d/.git ]] || continue; id=$(basename \"$d\"); name=$(jq -r '.name // .id' \"$d/manifest.json\" 2>/dev/null); git -C \"$d\" fetch --quiet origin HEAD 2>/dev/null || continue; head_sha=$(git -C \"$d\" rev-parse --short HEAD); new_sha=$(git -C \"$d\" rev-parse --short FETCH_HEAD); [[ $(git -C \"$d\" rev-parse HEAD) != $(git -C \"$d\" rev-parse FETCH_HEAD) ]] || continue; printf '%s\\t%s\\t%s\\n' \"$name  $head_sha → $new_sha\" \"$id\" \"\"; done",
       icon: "\udb80\udc72",
       placeholder: "Fetching updates from git…",
@@ -351,9 +347,6 @@ Item {
     var spec = root.providers[entry.provider]
     if (!spec) return
 
-    // While the provider runs the submenu would sit empty. A provider with a
-    // placeholder seeds one dimmed row so the wait reads as work in progress
-    // rather than an empty list.
     if (spec.placeholder) {
       var merged = MenuModel.swapProviderRows(root.items, root.itemOrder, id, [{
         id: id + ".placeholder",
@@ -425,9 +418,6 @@ Item {
         order: 0
       })
     }
-    // A provider whose script legitimately produces no rows gets the generic
-    // "Nothing here yet" — one with an emptyLabel replaces it with its own
-    // meaning, e.g. "All plugins are up to date" instead of a dead-end silence.
     if (providerRows.length === 0 && spec.emptyLabel) {
       providerRows.push({
         id: menuId + ".empty",

@@ -37,7 +37,6 @@ valid_plugin_id() {
 }
 
 show_diff() {
-  # id dir
   local id="$1" dir="$2"
   echo "Changes for $id:"
   if omarchy-cmd-present delta; then
@@ -49,7 +48,6 @@ show_diff() {
 }
 
 review_update() {
-  # id dir — show the diff unless the user opts to skip it
   local id="$1" dir="$2"
   local choice
   choice=$(gum choose --header="Update $id — review the diff first?" \
