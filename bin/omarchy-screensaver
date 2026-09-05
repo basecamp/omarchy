@@ -33,11 +33,37 @@ wait_for_terminal_resize() {
   done
 }
 
+# ttfx paints as fast as it is asked to, and the screensaver runs precisely when
+# the machine is idle and most likely on battery. Frames beyond what the panel
+# can show are drawn and then discarded -- on a 60 Hz laptop that is half of a
+# 120 fps animation, spent keeping the CPU and GPU awake for nothing. Follow the
+# refresh rate, and never ask for more than the fixed rate this replaces.
+screensaver_frame_rate() {
+  local refresh
+
+  refresh=$(hyprctl monitors -j 2>/dev/null | jq -r '[.[] | select(.focused)][0].refreshRate // empty' 2>/dev/null)
+  [[ $refresh =~ ^[0-9]+(\.[0-9]+)?$ ]] || refresh=""
+
+  if [[ -n $refresh ]]; then
+    refresh=$(printf '%.0f' "$refresh")
+  else
+    refresh=60
+  fi
+
+  if (( refresh < 120 )); then
+    echo "$refresh"
+  else
+    echo 120
+  fi
+}
+
 wait_for_terminal_resize
+
+frame_rate=$(screensaver_frame_rate)
 
 while true; do
   ttfx -i ~/.config/omarchy/branding/screensaver.txt \
-    --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c\
+    --frame-rate "$frame_rate" --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c\
     --random-effect --no-eol --no-restore-cursor &
 
   while pgrep -t "${tty#/dev/}" -x ttfx >/dev/null; do
