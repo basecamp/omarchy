@@ -57,7 +57,7 @@ Example `shell.json` (bar subtree only shown):
 | `omarchy.menu` | Omarchy menu launcher | left = menu · right = terminal |
 | `omarchy.workspaces` | Hyprland workspace switcher | left = focus workspace |
 | `omarchy.clock` | Date/time label + popup with a month grid, ISO week numbers, and month stepping | left = popup · right = cycle label format · middle = timezone selector |
-| `omarchy.media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
+| `omarchy.media` | MPRIS now-playing — track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `omarchy.indicators` | Manual state indicators | left = indicator action |
 | `omarchy.system-update` | Available update indicator | left = update |
 | `omarchy.tray` | System tray | hover = reveal drawer · right on chevron = manage |
@@ -73,6 +73,12 @@ Example `shell.json` (bar subtree only shown):
 | `omarchy.monitor` | Brightness and laptop display controls | left = popup |
 
 The `omarchy.indicators` widget loads individual bar indicators from `indicators/`. Omit `items` (or set it to an empty array) to show all indicators in the default order, or set `items` to a subset such as `["Dnd", "Reminder", "NightLight"]`. Set `alwaysShow` to `true` to keep inactive indicators visible instead of revealing them only on hover. Multiple `omarchy.indicators` instances are allowed, so different sections can show different subsets.
+
+The `omarchy.media` widget scrolls long track labels by default. Set `scrollLabel` to `false` to keep the label static, and `maxLabelWidth` to a positive pixel value to set its maximum width:
+
+```json
+{ "id": "omarchy.media", "scrollLabel": false, "maxLabelWidth": 110 }
+```
 
 ## Orientation
 

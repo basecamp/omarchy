@@ -5,7 +5,10 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const media = requireFromRoot('shell/plugins/services/media/MediaModel.js')
+const widgetSource = fs.readFileSync(root + '/shell/plugins/services/media/BarWidget.qml', 'utf8')
+  .replace(/^\s*\/\/.*$/gm, '')
 
 assert(media.isProxyPlayer({ dbusName: 'org.mpris.MediaPlayer2.playerctld' }), 'media detects playerctld proxy by DBus name')
 assert(media.isProxyPlayer({ desktopEntry: 'playerctld' }), 'media detects playerctld proxy by desktop entry')
@@ -40,4 +43,10 @@ assert(media.trackChanged(trackSignature, { ...track, trackTitle: 'Next song' })
 assertEqual(media.labelFor({ trackTitle: 'Song', identity: 'Spotify' }), 'Song', 'media labels players by track first')
 assertEqual(media.osdMessage({ trackTitle: 'Song', trackArtist: 'Artist' }, 'Fallback'), 'Song - Artist', 'media builds OSD messages')
 assertEqual(media.osdMessage(null, 'Fallback'), 'Fallback', 'media falls back OSD messages')
+
+assert(widgetSource.includes('setting("scrollLabel", true) !== false'), 'media scrolls labels unless explicitly disabled')
+assert(widgetSource.includes('Number(setting("maxLabelWidth", 180)) > 0'), 'media accepts positive configured label widths')
+assert(widgetSource.includes('width: root.scrollLabel ? implicitWidth : scrollClip.width'), 'media constrains only static labels to the scroll clip width')
+assert(widgetSource.includes('elide: root.scrollLabel ? Text.ElideNone : Text.ElideRight'), 'media elides only static labels that do not fit')
+assert(widgetSource.includes('running: root.scrollLabel && labelText.needsScroll'), 'media only animates labels when scrolling is enabled')
 JS

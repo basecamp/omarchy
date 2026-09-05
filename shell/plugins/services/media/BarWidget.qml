@@ -15,11 +15,13 @@ BarWidget {
   readonly property string playIcon: activePlayer && activePlayer.isPlaying ? "󰏤" : "󰐊"
   readonly property string title: activePlayer ? (activePlayer.trackTitle || "") : ""
   readonly property string artist: activePlayer ? (activePlayer.trackArtist || "") : ""
+  readonly property bool scrollLabel: setting("scrollLabel", true) !== false
+  readonly property real maxLabelWidth: Number(setting("maxLabelWidth", 180)) > 0
+    ? Number(setting("maxLabelWidth", 180)) : 180
 
   property bool popupOpen: false
 
   function close() { popupOpen = false }
-  property real maxLabelWidth: 180
 
   visible: hasMedia
   implicitWidth: hasMedia ? row.implicitWidth + Style.space(14) : 0
@@ -60,12 +62,14 @@ BarWidget {
         font.family: root.bar.fontFamily
         font.pixelSize: Style.font.body
         anchors.verticalCenter: parent.verticalCenter
+        width: root.scrollLabel ? implicitWidth : scrollClip.width
+        elide: root.scrollLabel ? Text.ElideNone : Text.ElideRight
 
         property bool needsScroll: implicitWidth > scrollClip.width
 
         NumberAnimation on x {
           id: scrollAnim
-          running: labelText.needsScroll && !root.popupOpen && !root.bar.vertical
+          running: root.scrollLabel && labelText.needsScroll && !root.popupOpen && !root.bar.vertical
           loops: Animation.Infinite
           duration: Math.max(6000, labelText.implicitWidth * 25)
           from: scrollClip.width
