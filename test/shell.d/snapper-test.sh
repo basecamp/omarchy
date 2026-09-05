@@ -71,6 +71,52 @@ grep -Fx 'systemctl disable --now snapper-timeline.timer' "$test_tmp/calls.log" 
 grep -Fx 'systemctl enable --now snapper-cleanup.timer limine-snapper-sync.service' "$test_tmp/calls.log" >/dev/null || fail "snapshot configure enables cleanup and Limine snapshot sync"
 pass "snapshot configure normalizes Snapper policy and services"
 
+# #9619: re-running snapper.sh must keep non-root configs (e.g. home) registered.
+# Truncating SNAPPER_CONFIGS="root" silently drops them from snapperd and from
+# omarchy-snapshot create, which enumerates configs via snapper list-configs.
+mkdir -p "$test_tmp/etc/conf.d" "$test_tmp/etc/snapper/configs"
+printf 'SNAPPER_CONFIGS="root home"\n' >"$test_tmp/etc/conf.d/snapper"
+: >"$test_tmp/calls.log"
+TEST_LOG="$test_tmp/calls.log" \
+PATH="$fake_bin:$PATH" \
+OMARCHY_SNAPPER_CONFIGURE_TEST=1 \
+OMARCHY_PATH="$ROOT" \
+OMARCHY_SNAPPER_CONFIG_PATH="$test_tmp/etc/snapper/configs/root" \
+OMARCHY_SNAPPER_CONF_PATH="$test_tmp/etc/conf.d/snapper" \
+  bash -euo pipefail "$ROOT/install/config/snapper.sh" >/dev/null
+grep -Fx 'SNAPPER_CONFIGS="root home"' "$test_tmp/etc/conf.d/snapper" >/dev/null ||
+  fail "snapshot configure preserves existing non-root Snapper configs" \
+    "got: $(cat "$test_tmp/etc/conf.d/snapper")"
+pass "snapshot configure preserves existing non-root Snapper configs"
+
+# home-only registry still gets root prepended, without losing home.
+printf 'SNAPPER_CONFIGS="home"\n' >"$test_tmp/etc/conf.d/snapper"
+TEST_LOG="$test_tmp/calls.log" \
+PATH="$fake_bin:$PATH" \
+OMARCHY_SNAPPER_CONFIGURE_TEST=1 \
+OMARCHY_PATH="$ROOT" \
+OMARCHY_SNAPPER_CONFIG_PATH="$test_tmp/etc/snapper/configs/root" \
+OMARCHY_SNAPPER_CONF_PATH="$test_tmp/etc/conf.d/snapper" \
+  bash -euo pipefail "$ROOT/install/config/snapper.sh" >/dev/null
+grep -Fx 'SNAPPER_CONFIGS="root home"' "$test_tmp/etc/conf.d/snapper" >/dev/null ||
+  fail "snapshot configure guarantees root while keeping other configs" \
+    "got: $(cat "$test_tmp/etc/conf.d/snapper")"
+pass "snapshot configure guarantees root while keeping other configs"
+
+# Idempotent on an already-merged file: no duplicated root.
+printf 'SNAPPER_CONFIGS="root home extra"\n' >"$test_tmp/etc/conf.d/snapper"
+TEST_LOG="$test_tmp/calls.log" \
+PATH="$fake_bin:$PATH" \
+OMARCHY_SNAPPER_CONFIGURE_TEST=1 \
+OMARCHY_PATH="$ROOT" \
+OMARCHY_SNAPPER_CONFIG_PATH="$test_tmp/etc/snapper/configs/root" \
+OMARCHY_SNAPPER_CONF_PATH="$test_tmp/etc/conf.d/snapper" \
+  bash -euo pipefail "$ROOT/install/config/snapper.sh" >/dev/null
+grep -Fx 'SNAPPER_CONFIGS="root home extra"' "$test_tmp/etc/conf.d/snapper" >/dev/null ||
+  fail "snapshot configure is idempotent and does not duplicate root" \
+    "got: $(cat "$test_tmp/etc/conf.d/snapper")"
+pass "snapshot configure is idempotent and does not duplicate root"
+
 setup_system="$ROOT/bin/omarchy-apply-system"
 grep -F 'config/all.sh' "$setup_system" >/dev/null ||
   fail "system setup runs the config phase"

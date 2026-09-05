@@ -16,8 +16,26 @@ fi
 
 install -m 0644 "$template" "$SNAPPER_CONFIG_PATH"
 
+# Merge SNAPPER_CONFIGS so a prior user config (commonly "home" on @/@home
+# layouts) is not silently dropped. root is always first and always present;
+# every other existing entry is preserved in order without duplicating root.
 mkdir -p "$(dirname "$SNAPPER_CONF_PATH")"
-printf '%s\n' 'SNAPPER_CONFIGS="root"' >"$SNAPPER_CONF_PATH"
+existing=""
+if [[ -f $SNAPPER_CONF_PATH ]]; then
+  # conf.d/snapper is KEY=value assignments; source only to read SNAPPER_CONFIGS.
+  existing="$(
+    # shellcheck disable=SC1090
+    . "$SNAPPER_CONF_PATH" 2>/dev/null
+    printf '%s' "${SNAPPER_CONFIGS:-}"
+  )"
+fi
+merged="root"
+for config in $existing; do
+  if [[ $config != "root" ]]; then
+    merged+=" $config"
+  fi
+done
+printf 'SNAPPER_CONFIGS="%s"\n' "$merged" >"$SNAPPER_CONF_PATH"
 chmod 0644 "$SNAPPER_CONF_PATH"
 
 systemctl disable --now snapper-timeline.timer >/dev/null 2>&1 || true
