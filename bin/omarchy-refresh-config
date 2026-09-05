@@ -17,6 +17,24 @@ USAGE
   exit 1
 fi
 
+# The path is joined onto both ~/.config and $OMARCHY_PATH/config. A `..`
+# component or an absolute path would copy a file that is not a shipped user
+# config, and could land the write outside ~/.config.
+path_allowed=1
+[[ $config_file != /* ]] || path_allowed=0
+IFS=/ read -ra config_parts <<< "$config_file"
+for part in "${config_parts[@]}"; do
+  if [[ $part == ".." ]]; then
+    path_allowed=0
+    break
+  fi
+done
+
+if (( ! path_allowed )); then
+  echo "Not a shipped user config: $config_file" >&2
+  exit 1
+fi
+
 user_config_file="${HOME}/.config/$config_file"
 default_config_file="$OMARCHY_PATH/config/$config_file"
 backup_config_file="$user_config_file.bak.$(date +%s)"

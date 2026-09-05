@@ -129,5 +129,5 @@ omarchy-refresh-config hypr/hyprland.lua
 ```
 
 This copies `$OMARCHY_PATH/config/hypr/hyprland.lua` to `~/.config/hypr/hyprland.lua`. The argument
-is interpolated into both paths and only checked with `[[ -e ]]`, so pass a plain relative path: a
-name containing `..` resolves and copies, landing outside `~/.config` rather than being rejected.
+must be a relative path with no `..` components; anything else is refused rather than resolved
+outside `~/.config`.
