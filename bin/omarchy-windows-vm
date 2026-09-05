@@ -515,7 +515,12 @@ mounted_leaf_matches() {
   actual=$(stat -Lc '%d:%i' "$stable" 2>/dev/null) || return 1
   owner=$(stat -Lc '%u' "$stable" 2>/dev/null) || return 1
   mode=$(stat -Lc '%a' "$stable" 2>/dev/null) || return 1
-  [[ $actual == "$identity" && $owner == "$CALLER_UID" && $mode == 700 ]]
+  # dockur re-applies mode 2777 to the shared source on every start (Samba
+  # guest share), and btrfs does not clear the resulting setgid bit with a
+  # plain octal chmod (2777/2700 persist). Require only that the caller owns
+  # the source and retains full owner rwx, tolerating the setgid/guest bits
+  # the container intentionally applies while keeping identity checks strict.
+  [[ $actual == "$identity" && $owner == "$CALLER_UID" && $(( (8#$mode & 8#0700) == 8#0700 )) == 1 ]]
 }
 
 bind_mount_leaf() {
@@ -580,6 +585,9 @@ prepare_caller_mounts() {
   # Privacy is an explicit preflight step for both already-pinned sources, not
   # a side effect halfway through the two-mount transaction. Old umask-022
   # installs are hardened together before either Docker-facing anchor changes.
+  # btrfs retains the setgid bit set by dockur's 2777 chmod on the shared
+  # source even after the octal chmod below, so accept any owner-rwx mode
+  # (2777/2700) here rather than demanding the exact private 0700.
   chmod 0700 -- "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
     exec {storage_fd}<&-
     exec {shared_fd}<&-
@@ -587,7 +595,7 @@ prepare_caller_mounts() {
   }
   storage_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$storage_fd" 2>/dev/null) || storage_mode=""
   shared_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$shared_fd" 2>/dev/null) || shared_mode=""
-  if [[ $storage_mode != 700 || $shared_mode != 700 ]]; then
+  if [[ $(( (8#$storage_mode & 8#0700) == 8#0700 )) != 1 || $(( (8#$shared_mode & 8#0700) == 8#0700 )) != 1 ]]; then
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
