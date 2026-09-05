@@ -8,10 +8,10 @@ trap 'rm -rf "$test_tmp"' EXIT
 fake_bin="$test_tmp/bin"
 mkdir -p "$fake_bin"
 
-cat >"$fake_bin/supergfxctl" <<'STUB'
+cat >"$fake_bin/cardwire" <<'STUB'
 #!/bin/bash
 
-[[ $1 == "-s" ]] || exit 64
+[[ $1 == "get" ]] || exit 64
 
 case "${BLOCKED:-no}" in
 kill-only)
@@ -25,7 +25,10 @@ esac
 
 ((${FAIL_STATUS:-0})) && exit "$FAIL_STATUS"
 
-printf '%s\n' "${SUPPORTED_MODES:-Integrated Hybrid}"
+cat <<OUT
+Current Mode: ${MODE:-Hybrid}
+Available Mode: ${AVAILABLE_MODES:-integrated, hybrid, smart}
+OUT
 STUB
 
 cat >"$fake_bin/lspci" <<'STUB'
@@ -39,24 +42,28 @@ STUB
 chmod +x "$fake_bin"/*
 
 hybrid_gpu() {
-  PATH="$fake_bin:$PATH" timeout --kill-after=1s 10s bash "$ROOT/bin/omarchy-hw-hybrid-gpu"
+  PATH="$fake_bin:$ROOT/bin:$PATH" timeout --kill-after=1s 10s bash "$ROOT/bin/omarchy-hw-hybrid-gpu"
 }
 
 hybrid_gpu ||
-  fail "hybrid GPU detection sees a supported Hybrid mode"
-pass "hybrid GPU detection sees a supported Hybrid mode"
+  fail "hybrid GPU detection sees a laptop hybrid system"
+pass "hybrid GPU detection sees a laptop hybrid system"
 
-SUPPORTED_MODES="Integrated Vfio" hybrid_gpu
+AVAILABLE_MODES="hybrid, manual" hybrid_gpu
 status=$?
 ((status == 1)) ||
-  fail "hybrid GPU detection trusts supergfxctl when Hybrid is unsupported" "exit status: $status"
-pass "hybrid GPU detection trusts supergfxctl when Hybrid is unsupported"
+  fail "hybrid GPU detection hides on desktop systems" "exit status: $status"
+pass "hybrid GPU detection hides on desktop systems"
 
-FAIL_STATUS=2 GPU_COUNT=2 hybrid_gpu
+FAIL_STATUS=1 GPU_COUNT=1 hybrid_gpu
 status=$?
 ((status == 1)) ||
-  fail "hybrid GPU detection hides on an ordinary supergfxctl failure" "exit status: $status"
-pass "hybrid GPU detection hides on an ordinary supergfxctl failure"
+  fail "hybrid GPU detection sees one GPU as non-hybrid when cardwire cannot answer" "exit status: $status"
+pass "hybrid GPU detection sees one GPU as non-hybrid when cardwire cannot answer"
+
+FAIL_STATUS=1 GPU_COUNT=2 hybrid_gpu ||
+  fail "hybrid GPU detection counts multiple GPUs when cardwire cannot answer"
+pass "hybrid GPU detection counts multiple GPUs when cardwire cannot answer"
 
 BLOCKED=term GPU_COUNT=1 hybrid_gpu
 status=$?
@@ -71,14 +78,14 @@ pass "hybrid GPU detection counts multiple GPUs after a clean timeout"
 BLOCKED=kill-only GPU_COUNT=1 hybrid_gpu
 status=$?
 ((status != 124 && status != 137)) ||
-  fail "hybrid GPU detection stays bounded when supergfxd ignores the timeout signal"
+  fail "hybrid GPU detection stays bounded when cardwired ignores the timeout signal"
 ((status == 1)) ||
-  fail "hybrid GPU detection sees one GPU as non-hybrid when supergfxd is wedged" "exit status: $status"
-pass "hybrid GPU detection stays bounded when supergfxd ignores the timeout signal"
+  fail "hybrid GPU detection sees one GPU as non-hybrid when cardwired is wedged" "exit status: $status"
+pass "hybrid GPU detection stays bounded when cardwired ignores the timeout signal"
 
 BLOCKED=kill-only GPU_COUNT=2 hybrid_gpu ||
-  fail "hybrid GPU detection counts multiple GPUs when supergfxd is wedged"
-pass "hybrid GPU detection counts multiple GPUs when supergfxd is wedged"
+  fail "hybrid GPU detection counts multiple GPUs when cardwired is wedged"
+pass "hybrid GPU detection counts multiple GPUs when cardwired is wedged"
 
 cat >"$fake_bin/omarchy-cmd-present" <<'STUB'
 #!/bin/bash
@@ -87,5 +94,5 @@ STUB
 chmod +x "$fake_bin/omarchy-cmd-present"
 
 GPU_COUNT=2 hybrid_gpu ||
-  fail "hybrid GPU detection counts GPUs without supergfxctl"
-pass "hybrid GPU detection counts GPUs without supergfxctl"
+  fail "hybrid GPU detection counts GPUs without cardwire"
+pass "hybrid GPU detection counts GPUs without cardwire"

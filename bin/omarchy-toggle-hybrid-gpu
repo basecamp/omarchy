@@ -1,30 +1,27 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
+# omarchy:summary=Toggle dedicated vs integrated GPU mode via cardwire (for hybrid gpu laptops, like Asus G14).
 # omarchy:requires-sudo=true
 
-if omarchy-cmd-missing supergfxctl; then
-  omarchy-pkg-add supergfxctl
+if omarchy-cmd-missing cardwire; then
+  omarchy-pkg-add cardwire || exit 1
 
-  # Create config before starting service to prevent hang on first boot
-  sudo tee /etc/supergfxd.conf >/dev/null <<'CONF'
-{
-  "mode": "Hybrid",
-  "vfio_enable": true,
-  "vfio_save": false,
-  "always_reboot": false,
-  "no_logind": false,
-  "logout_timeout_s": 180,
-  "hotplug_type": "None"
-}
-CONF
+  sudo systemctl enable --now cardwired
+fi
 
-  sudo systemctl enable --now supergfxd
+# The old toggle ran supergfxd. When the deprecated daemon is still present,
+# retire it so it can't fight cardwire over the dGPU.
+if omarchy-pkg-present supergfxctl; then
+  sudo systemctl disable --now supergfxd.service 2>/dev/null || true
+  sudo rm -f /etc/supergfxd.conf
+  sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu
+  sudo rm -rf /etc/systemd/system/supergfxd.service.d
 fi
 
 gpu_mode=""
 for attempt in {1..3}; do
-  if gpu_mode=$(timeout --kill-after=1s 3s supergfxctl -g 2>/dev/null) && [[ -n $gpu_mode ]]; then
+  if output=$(timeout --kill-after=1s 3s cardwire get 2>/dev/null) &&
+    gpu_mode=$(sed -n 's/^Current Mode: //p' <<<"$output") && [[ -n $gpu_mode ]]; then
     break
   fi
 
@@ -33,41 +30,19 @@ for attempt in {1..3}; do
 done
 
 if [[ -z $gpu_mode ]]; then
-  echo "supergfxd is not responding. Try again, or check: systemctl status supergfxd" >&2
+  echo "cardwired is not responding. Try again, or check: systemctl status cardwired" >&2
   exit 1
 fi
 
-case "$gpu_mode" in
-"Integrated")
-  if gum confirm "Enable dedicated GPU and reboot?"; then
-    # Switch to hybrid mode
-    sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Hybrid\"/" /etc/supergfxd.conf
-
-    # Let hybrid mode be the default after system sleep
-    sudo rm -rf /usr/lib/systemd/system-sleep/force-igpu
-
-    # Remove the startup delay override (not needed for Hybrid mode)
-    sudo rm -rf /etc/systemd/system/supergfxd.service.d/delay-start.conf
-
-    omarchy-system-reboot
+case "${gpu_mode,,}" in
+"integrated" | "smart")
+  if gum confirm "Enable the dedicated GPU?"; then
+    cardwire set hybrid || exit 1
   fi
   ;;
-"Hybrid")
-  if gum confirm "Use only integrated GPU and reboot?"; then
-    # Switch to integrated mode and ensure vfio is enabled (needed for sleep/wake trick)
-    sudo sed -i "s/\"mode\": \".*\"/\"mode\": \"Integrated\"/" /etc/supergfxd.conf
-    sudo sed -i 's/"vfio_enable": false/"vfio_enable": true/' /etc/supergfxd.conf
-
-    # Force igpu mode after system sleep (or dgpu could get activated)
-    sudo mkdir -p /usr/lib/systemd/system-sleep
-    sudo cp -p "$OMARCHY_PATH/default/systemd/system-sleep/force-igpu" /usr/lib/systemd/system-sleep/
-
-    # Delay supergfxd startup to avoid race condition with display manager
-    # that can cause system freeze when booting in Integrated mode
-    sudo mkdir -p /etc/systemd/system/supergfxd.service.d
-    sudo cp -p "$OMARCHY_PATH/default/systemd/system/supergfxd.service.d/delay-start.conf" /etc/systemd/system/supergfxd.service.d/
-
-    omarchy-system-reboot
+"hybrid")
+  if gum confirm "Use only the integrated GPU?"; then
+    cardwire set integrated || exit 1
   fi
   ;;
 *)
