@@ -15,8 +15,9 @@
 # start.
 #
 # Env: OMARCHY_SCREENRECORD_DEBUG=true appends gpu-screen-recorder's stderr (and
-# the picker target it was launched with) to /tmp/omarchy-screenrecord.log so
-# users can attach a log when reporting capture failures.
+# the picker target it was launched with) to omarchy-screenrecord.log in
+# ${XDG_RUNTIME_DIR:-/tmp} so users can attach a log when reporting capture
+# failures.
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
@@ -34,9 +35,9 @@ WEBCAM_SIZE="medium"
 RESOLUTION=""
 FULLSCREEN="false"
 STOP_RECORDING="false"
-RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
+RECORDING_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-filename"
 REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
-LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
+LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord.log" || echo "/dev/null")
 
 for arg in "$@"; do
   case "$arg" in
