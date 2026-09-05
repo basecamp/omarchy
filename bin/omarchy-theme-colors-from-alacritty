@@ -120,7 +120,12 @@ background=${background:-$color0}
 foreground=${foreground:-$color7}
 color0=$background
 color7=$foreground
-selection_background=${selection_background:-$foreground}
+# A theme with no [colors.selection] used to fall back to the foreground, which
+# renders every selection as text-on-text. Follow the same chain
+# omarchy-theme-color applies for an unset selection instead: color8, then
+# color0, then background. The normal colors are validated above, so color8 is
+# always set by the time this runs.
+selection_background=${selection_background:-${color8:-${color0:-$background}}}
 accent=$color4
 
 mkdir -p "$THEME_SOURCE"
