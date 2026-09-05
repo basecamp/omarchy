@@ -3,13 +3,13 @@
 # omarchy:summary=Watch for process crashes and offer an AI diagnosis
 # omarchy:hidden=true
 
-# systemd-coredump journals every core dump under a known MESSAGE_ID with
-# structured COREDUMP_* fields, which carry more than the core filenames do.
+# systemd-coredump (Storage=external, the default) writes one compressed core
+# file per crash, named core.<comm>.<uid>.<boot-id>.<pid>.<timestamp>.zst, and
+# journals the COREDUMP_* details under a known MESSAGE_ID. Watching the
+# directory with inotify costs a few MB; the per-crash details come from one
+# transient coredumpctl lookup, so nothing is retained between crashes.
 
 set -uo pipefail
-
-# See systemd.journal-fields(7).
-readonly COREDUMP_MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1
 
 # nf-md-robot_dead, escaped so this file reads without a Nerd Font.
 readonly CRASH_GLYPH=$'\U000f16a1'
@@ -20,6 +20,9 @@ readonly dedupe_seconds=${OMARCHY_CRASH_DEDUPE_SECONDS:-60}
 
 # Extended regex of process names never worth announcing.
 readonly ignore_pattern=${OMARCHY_CRASH_IGNORE:-}
+
+# Where systemd-coredump stores cores with Storage=external (the default).
+readonly coredump_dir=/var/lib/systemd/coredump
 
 declare -A last_notified
 
@@ -45,23 +48,25 @@ announce() {
     --exec omarchy-agent-crash "$pid" "$comm" "$exe" "$signal"
 }
 
-# -n 0 so a restart does not re-announce crashes already dealt with.
-journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
-  while IFS= read -r entry; do
-    # A dash for a field that is empty as well as one that is missing: tab is
-    # IFS whitespace, so an empty field collapses into the next delimiter and
-    # every field after it shifts along one. A process can set its own comm to
-    # nothing, and that crash used to be read as somebody else's and dropped.
-    IFS=$'\t' read -r uid comm pid exe signal < <(
-      jq -r 'def field: if . == null or . == "" then "-" else . end;
-             [(._UID | field),
-              (.COREDUMP_COMM | field),
-              (.COREDUMP_PID | field),
-              (.COREDUMP_EXE | field),
-              (.COREDUMP_SIGNAL_NAME | field)] | @tsv' <<<"$entry" 2>/dev/null
+# A new core file means a crash; there is nothing to watch while idle. A
+# restart misses crashes that happened while it was down; core files already
+# on disk are not replayed.
+inotifywait -m -e create -e moved_to --format '%f' "$coredump_dir" 2>/dev/null |
+  while IFS= read -r filename; do
+    # core.<comm>.<uid>.<boot-id>.<pid>.<timestamp>[.ext]. comm keeps its
+    # spaces, so each field is read from its own line.
+    {
+      IFS= read -r comm
+      read -r uid
+      read -r boot_id
+      read -r pid
+    } < <(
+      [[ $filename =~ ^core\.(.+)\.([0-9]+)\.([0-9a-f]{32})\.([0-9]+)\.[0-9]+(\.[^.]+)?$ ]] &&
+        printf '%s\n%s\n%s\n%s\n' \
+          "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}"
     )
 
-    [[ $pid =~ ^[0-9]+$ ]] || continue
+    [[ $uid =~ ^[0-9]+$ && $pid =~ ^[0-9]+$ ]] || continue
 
     # The toast only offers a diagnosis, so it has nothing to offer until an
     # agent is chosen. Checked per crash, not at startup, so picking one takes
@@ -69,12 +74,30 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
     [[ -n $(omarchy-default-agent) ]] || continue
 
     # Only this user's crashes; a daemon dumping core is a sysadmin's problem.
-    [[ $uid =~ ^[0-9]+$ ]] || continue
     ((uid == UID)) || continue
 
-    # comm is truncated to 15 characters, so prefer the executable's basename.
+    # The filename carries the boot id, so the lookup matches the exact crash
+    # rather than whatever process later reused the pid. systemd-coredump
+    # writes the core file before it journals the entry, so give the entry a
+    # beat to land before falling back to less detail. Runs before the name
+    # filters so they operate on the name that will be announced.
     name=$comm
+
+    attempts=0
+    while (( attempts < 20 )); do
+      IFS=$'\t' read -r exe signal < <(
+        coredumpctl info "COREDUMP_PID=$pid" "_BOOT_ID=$boot_id" 2>/dev/null |
+          awk '/^ +Executable: /{sub(/^ +Executable: /, ""); exe=$0}
+               /^ +Signal: /{sub(/^ +Signal: [0-9]+ \(/, ""); sub(/\).*/, ""); sig=$0}
+               END{print exe "\t" sig}'
+      )
+      [[ -n $exe || -n $signal ]] && break
+      sleep 0.1
+      ((attempts++))
+    done
     [[ $exe == /* ]] && name=${exe##*/}
+    [[ -n $exe ]] || exe=unknown
+    [[ -n $signal ]] || signal=unknown
 
     # A process can set its own comm to anything prctl takes, slashes included,
     # and a crash with no recorded executable falls back to it. The mute below
@@ -103,7 +126,7 @@ journalctl -f -n 0 -o json "MESSAGE_ID=$COREDUMP_MESSAGE_ID" 2>/dev/null |
     (((now - ${last_notified[$name]:-0}) < dedupe_seconds)) && continue
 
     # Only a delivered toast starts the dedupe window. A failed send that
-    # counted would suppress the rest of a crash loop for a minute, and
-    # `journalctl -n 0` never replays what was missed.
+    # counted would suppress the rest of a crash loop for a minute, and there
+    # is no replay of earlier cores to make up for a missed toast.
     announce "$name" "$pid" "$exe" "$signal" && last_notified[$name]=$now
   done
