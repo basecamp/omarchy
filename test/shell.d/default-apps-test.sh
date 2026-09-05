@@ -52,6 +52,22 @@ set) printf '%s\n' "$3" >"$OMARCHY_TEST_BROWSER_FILE" ;;
 esac
 SH
 
+mime_defaults_file="$test_tmp/mime-defaults"
+cat >"$mock_bin/xdg-mime" <<'SH'
+#!/bin/bash
+case "$1" in
+default)
+  shift
+  desktop_id=$1
+  shift
+  for mime in "$@"; do
+    printf '%s=%s\n' "$mime" "$desktop_id" >>"$OMARCHY_TEST_MIME_DEFAULTS_FILE"
+  done
+  ;;
+query) ;;
+esac
+SH
+
 cat >"$mock_bin/omarchy-test-installer" <<'SH'
 #!/bin/bash
 installer=${0##*/}
@@ -136,6 +152,7 @@ export OMARCHY_TEST_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_NOTIFICATION_LOG="$notification_log"
 export OMARCHY_TEST_SETUP_LOG="$setup_log"
 export OMARCHY_TEST_BROWSER_FILE="$browser_file"
+export OMARCHY_TEST_MIME_DEFAULTS_FILE="$mime_defaults_file"
 
 assert_missing_opens_installer() {
   local type=$1
@@ -304,6 +321,19 @@ omarchy-default-terminal kitty
 omarchy-default-editor nvim
 [[ ! -s $install_log && ! -s $terminal_log ]] || fail "installed defaults skip installation"
 pass "installed defaults are selected immediately"
+
+# Setting the default editor must also update XDG MIME defaults so Nautilus
+# opens text files in the selected editor, not just the hardcoded nvim.desktop.
+: >"$mime_defaults_file"
+omarchy-default-editor vim
+[[ -s $mime_defaults_file ]] || fail "setting the default editor updates XDG MIME defaults"
+grep -Fxq "text/plain=omarchy-launch-editor.desktop" "$mime_defaults_file" ||
+  fail "default editor points text/plain at the omarchy-launch-editor handler"
+grep -Fxq "application/xml=omarchy-launch-editor.desktop" "$mime_defaults_file" ||
+  fail "default editor points application/xml at the omarchy-launch-editor handler"
+grep -Fxq "application/x-shellscript=omarchy-launch-editor.desktop" "$mime_defaults_file" ||
+  fail "default editor points application/x-shellscript at the omarchy-launch-editor handler"
+pass "setting the default editor updates XDG MIME defaults for text types"
 
 previous_editor=$(omarchy-default-editor)
 rm -f "$installed_dir/vim"
