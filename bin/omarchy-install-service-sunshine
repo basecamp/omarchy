@@ -15,6 +15,7 @@ SUNSHINE_ADMIN_EXEC="omarchy-launch-webapp $SUNSHINE_ADMIN_URL --ignore-certific
 SUNSHINE_ICON_SOURCE="/usr/share/sunshine/web/images/logo-sunshine-45.png"
 HYPR_AUTOSTART_FILE="$HOME/.config/hypr/autostart.lua"
 HYPR_AUTOSTART_ENTRY='o.launch_on_start("sunshine")'
+SUNSHINE_CONFIG_FILE="$HOME/.config/sunshine/sunshine.conf"
 
 open_ufw_port_for_private_lans() {
   local proto="$1"
@@ -69,8 +70,30 @@ enable_hyprland_autostart() {
   fi
 }
 
+# NVIDIA's Wayland driver hands back its proprietary tiled/compressed
+# framebuffer layout, which Sunshine's default wlr capture (wlr-export-dmabuf)
+# can't read back correctly: streams silently fall back to a corrupted
+# capture that renders as solid black. NVFBC, Nvidia's own fast capture path,
+# doesn't support Wayland at all, so KMS is the only capture method that
+# actually works here. Skip it if the user already has an explicit capture
+# setting, so we don't clobber a deliberate choice.
+configure_nvidia_capture() {
+  omarchy-hw-nvidia || return 0
+
+  mkdir -p "$(dirname "$SUNSHINE_CONFIG_FILE")"
+  touch "$SUNSHINE_CONFIG_FILE"
+
+  if ! grep -Eq '^\s*capture\s*=' "$SUNSHINE_CONFIG_FILE"; then
+    printf 'capture = kms\n' >>"$SUNSHINE_CONFIG_FILE"
+  fi
+}
+
 echo "Installing Sunshine..."
 omarchy-pkg-add sunshine
+
+echo "Configuring capture backend..."
+configure_nvidia_capture
+
 systemctl --user enable --now sunshine
 
 echo "Opening Sunshine firewall ports..."
