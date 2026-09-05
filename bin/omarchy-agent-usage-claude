@@ -90,6 +90,28 @@ def local_date_from_timestamp(value: Any) -> str:
     return local_date_string()
 
 
+def local_weekday_hour(value: Any) -> tuple[int, int] | None:
+  # Local-time (weekday, hour) for a record timestamp — weekday 0=Sunday —
+  # or None when the value carries no usable time. Mirrors the parsing
+  # order of local_date_from_timestamp so both grains always agree.
+  if value is None:
+    return None
+  try:
+    if isinstance(value, (int, float)):
+      seconds = float(value) / 1000.0 if float(value) > 10_000_000_000 else float(value)
+      stamp = dt.datetime.fromtimestamp(seconds)
+    else:
+      raw = str(value).strip()
+      if not raw:
+        return None
+      stamp = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+      if stamp.tzinfo is not None:
+        stamp = stamp.astimezone()
+  except Exception:
+    return None
+  return ((stamp.weekday() + 1) % 7, stamp.hour)
+
+
 def usage_token(usage: dict[str, Any], snake_key: str, camel_key: str) -> int:
   value = usage.get(snake_key, usage.get(camel_key, 0))
   try:
@@ -129,6 +151,7 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
   today_sessions: set[str] = set()
   today_tokens: dict[str, int] = {}
   usage_by_model: dict[str, dict[str, int]] = {}
+  usage_by_hour: dict[tuple[int, int], int] = {}
   prompts = 0
   today_prompt_count = 0
   today_token_total = 0
@@ -188,6 +211,16 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
             # legacy name shared with synced snapshots.
             recent[day]["messageCount"] += total
 
+          # usageByHour: all-time weekday × hour buckets in local time,
+          # feeding the agents-panel punchcard. Same message stream, same
+          # totals — just a different grain. Zero-token rows already
+          # filtered above.
+          stamp = entry.get("timestamp") or message.get("timestamp")
+          weekday_hour = local_weekday_hour(stamp)
+          if weekday_hour is not None:
+            hourly_key = (weekday_hour[0], weekday_hour[1])
+            usage_by_hour[hourly_key] = usage_by_hour.get(hourly_key, 0) + total
+
           if day == today:
             today_prompt_count += 1
             today_sessions.add(session_key)
@@ -202,6 +235,13 @@ def scan_projects(projects_path: Path) -> dict[str, Any]:
     "todayTotalTokens": today_token_total,
     "todayTokensByModel": today_tokens,
     "recentDays": [recent[day] for day in recent_dates],
+    # Sparse all-time weekday × hour punchcard buckets, local time, the
+    # same totals as modelUsage (one reality per record). Sorted by
+    # (weekday, hour); empty hours are absent, never zero.
+    "usageByHour": [
+      {"weekday": wd, "hour": hr, "tokens": usage_by_hour[(wd, hr)]}
+      for (wd, hr) in sorted(usage_by_hour)
+    ],
     "modelUsage": usage_by_model,
     "totalPrompts": prompts,
     "totalSessions": len(sessions),
