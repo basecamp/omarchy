@@ -26,6 +26,22 @@ hl.config({
 
 Before you reboot, try restarting the offending subsystem on its own. _Update > Hardware_ in the Omarchy menu has Wi-Fi, Bluetooth, Audio, and Trackpad, and reloading one of those clears up the majority of "it worked five minutes ago" situations — a Bluetooth headset that won't reconnect, a trackpad that went dead after a suspend, sound that vanished when you unplugged a monitor.
 
+### My USB microphone isn't detected, or keeps dropping out
+
+Some USB condenser mics — the Blue Yeti Nano in particular — fail to fully enumerate when plugged directly into a motherboard's USB root port on certain systems, even though the same mic works fine on Windows. The kernel log repeats control-transfer failures every few seconds and never settles:
+
+```text
+usb 1-4: 1:1: usb_set_interface failed (-110)
+usb 1-4: 6:0: failed to get current value for ch 0 (-110)
+usbhid 1-4:1.3: probe with driver usbhid failed with error -110
+```
+
+This isn't Omarchy-specific — it's a Linux xHCI enumeration issue, and it reproduces the same way no matter which port on the board you try (front panel, rear I/O, USB2 or USB3 controller). The reliable fix is to plug the mic into an external USB hub instead of directly into the motherboard — the hub's own transaction translator changes the negotiation path enough to avoid the bug. Once it enumerates cleanly, ALSA and PipeWire pick it up with no config changes needed.
+
+If the mic does register despite the retries, watch for a second symptom: its ALSA control device node can come up owned root-only (missing the usual `audio` group) instead of `crw-rw----+ root audio`, because udev's permission rule fires before the flaky probe finishes. That leaves PipeWire unable to see it at all, and can wedge WirePlumber (`wpctl status` hangs). Running `sudo udevadm control --reload-rules && sudo udevadm trigger --action=change --subsystem-match=sound --subsystem-match=usb` after a clean enumeration reapplies the missing permissions without unplugging.
+
+One more thing to watch for once the mic works: many USB mics (Yeti Nano included) expose their own headphone-monitoring jack as a playback device, and PipeWire/WirePlumber will often switch your default *output* to that jack the moment the mic connects. If your sound seems to disappear right after plugging in a mic, check the output device — see the next entry.
+
 ### Why are my external speakers not playing?
 
 Probably because they're not set as the primary output. Click on the speaker icon on the right side of the bar, and it'll open the volume popup where you can pick the output device (and mix per-app volumes too).
