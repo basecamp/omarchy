@@ -1,0 +1,647 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Grok usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Grok CLI usage into one display-ready JSON record.
+
+Local stats come from session files under $GROK_HOME/sessions (default
+~/.grok/sessions). Each updates.jsonl turn_completed event is one prompt
+and carries the billed token ledger. The SuperGrok weekly pool, plan
+label, and any leftover prepaid credits come from Grok's ACP
+`_x.ai/billing` method — the same source `/usage` uses. The agents panel
+only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import select
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "grok"
+AGENT_NAME = "Grok"
+AUTH_HELP = "Run `grok login` to sign in."
+
+# Same freshness contract as the Claude/Codex collectors: a scan this recent
+# is only reused to dedup concurrent collector runs. --limits-only reuses the
+# session scan for up to 15 minutes; the billing RPC is always fresh.
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+CACHE_SCHEMA = 2
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def grok_home() -> Path:
+  return expand_path(os.environ.get("GROK_HOME") or "~/.grok")
+
+
+def cache_root() -> Path:
+  root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def number(value: Any) -> int:
+  try:
+    n = float(value or 0)
+    return round(n) if n == n else 0
+  except Exception:
+    return 0
+
+
+def date_string(value: datetime | None = None) -> str:
+  return (value or datetime.now()).strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = datetime.now().date()
+  return [(today - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+
+
+def local_date_from_timestamp(value: Any) -> str:
+  if value is None or value == "":
+    return date_string()
+
+  if isinstance(value, (int, float)):
+    try:
+      seconds = float(value) / 1000.0 if float(value) > 10_000_000_000 else float(value)
+      return date_string(datetime.fromtimestamp(seconds))
+    except Exception:
+      return date_string()
+
+  raw = str(value).strip()
+  try:
+    parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+      parsed = parsed.astimezone()
+    return date_string(parsed)
+  except Exception:
+    return date_string()
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_stats() -> dict[str, Any]:
+  recent_dates = recent_date_strings()
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [{"date": day, "messageCount": 0} for day in recent_dates],
+    "modelUsage": {},
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+  }
+
+
+def read_json(path: Path) -> dict[str, Any] | None:
+  try:
+    data = json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return data if isinstance(data, dict) else None
+
+
+def signed_in(home: Path) -> bool:
+  auth = read_json(home / "auth.json")
+  return bool(auth)
+
+
+def session_kind(session_dir: Path) -> str:
+  summary = read_json(session_dir / "summary.json") or {}
+  return str(summary.get("session_kind") or "")
+
+
+def is_subagent(kind: str) -> bool:
+  # Grok 1.0.x writes "subagent"; older builds used "subagent_fork". Parent
+  # turn_completed already includes finished child spend.
+  return kind.startswith("subagent")
+
+
+def turn_usage(usage: dict[str, Any]) -> tuple[int, int, int, int]:
+  cache_read = number(usage.get("cachedReadTokens", usage.get("cacheReadInputTokens")))
+  cache_write = number(
+    usage.get("cacheCreationTokens", usage.get("cacheCreationInputTokens", usage.get("cachedWriteTokens")))
+  )
+  input_tokens = number(usage.get("inputTokens", usage.get("input_tokens")))
+  output_tokens = number(usage.get("outputTokens", usage.get("output_tokens")))
+  reasoning = number(usage.get("reasoningTokens", usage.get("reasoning_tokens")))
+  # Grok's inputTokens is the full prompt, cache included. Subtract so the
+  # four panel buckets stay mutually exclusive, the same way Codex does.
+  if input_tokens >= cache_read + cache_write:
+    input_tokens -= cache_read + cache_write
+  if reasoning > output_tokens:
+    output_tokens = reasoning
+  return input_tokens, output_tokens, cache_read, cache_write
+
+
+def model_turns(usage: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+  models = usage.get("modelUsage")
+  if isinstance(models, dict) and models:
+    rows = []
+    for name, bucket in models.items():
+      if isinstance(bucket, dict):
+        rows.append((str(name or "grok"), bucket))
+    if rows:
+      return rows
+  return [("grok", usage)]
+
+
+def extract_usage(update: dict[str, Any]) -> dict[str, Any] | None:
+  nested = update.get("usage")
+  if isinstance(nested, dict) and nested:
+    return nested
+  # Some Grok Build builds write the ledger on the update itself, or put an
+  # empty usage object next to the flat token fields.
+  if any(
+    key in update
+    for key in ("inputTokens", "outputTokens", "cachedReadTokens", "cacheCreationTokens")
+  ):
+    return update
+  return None
+
+
+def scan_updates(path: Path) -> list[dict[str, Any]]:
+  turns: list[dict[str, Any]] = []
+  seen: set[str] = set()
+  try:
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+      for line_number, line in enumerate(handle, 1):
+        if "turn_completed" not in line:
+          continue
+        try:
+          entry = json.loads(line)
+        except Exception:
+          continue
+        if not isinstance(entry, dict):
+          continue
+        params = entry.get("params")
+        if not isinstance(params, dict):
+          continue
+        update = params.get("update") or {}
+        if not isinstance(update, dict):
+          continue
+        kind = update.get("sessionUpdate") or update.get("event_name")
+        if kind != "turn_completed":
+          continue
+        usage = extract_usage(update)
+        if usage is None:
+          continue
+        prompt_id = str(update.get("prompt_id") or f"{path}:{line_number}")
+        if prompt_id in seen:
+          continue
+        seen.add(prompt_id)
+        meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
+        day = local_date_from_timestamp(entry.get("timestamp") or meta.get("agentTimestampMs"))
+        for model, bucket in model_turns(usage):
+          input_tokens, output_tokens, cache_read, cache_write = turn_usage(bucket)
+          if not (input_tokens or output_tokens or cache_read or cache_write):
+            continue
+          turns.append({
+            "id": prompt_id,
+            "day": day,
+            "model": model,
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "cacheReadInputTokens": cache_read,
+            "cacheCreationInputTokens": cache_write,
+          })
+  except OSError as exc:
+    print(f"Ignoring unreadable Grok updates file {path}: {exc}", file=sys.stderr)
+  return turns
+
+
+def scan_sessions(sessions_root: Path) -> dict[str, Any]:
+  today = date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: 0 for day in recent_dates}
+  stats = empty_stats()
+  stats["recentDays"] = [{"date": day, "messageCount": 0} for day in recent_dates]
+  stats["modelUsage"] = {}
+  stats["todayTokensByModel"] = {}
+
+  sessions: set[str] = set()
+  today_sessions: set[str] = set()
+  active_days: set[str] = set()
+  counted: set[tuple[str, str]] = set()
+  prompts = 0
+  today_prompts = 0
+  today_total = 0
+
+  if sessions_root.is_dir():
+    for path in sessions_root.rglob("updates.jsonl"):
+      if not path.is_file():
+        continue
+      session_dir = path.parent
+      if is_subagent(session_kind(session_dir)):
+        continue
+      session_key = session_dir.name
+      for turn in scan_updates(path):
+        prompt_id = str(turn.get("id") or "")
+        dedupe = (session_key, prompt_id)
+        new_prompt = not (prompt_id and dedupe in counted)
+        if prompt_id and new_prompt:
+          counted.add(dedupe)
+        day = str(turn.get("day") or today)
+        model = str(turn.get("model") or "grok")
+        input_tokens = number(turn.get("inputTokens"))
+        output_tokens = number(turn.get("outputTokens"))
+        cache_read = number(turn.get("cacheReadInputTokens"))
+        cache_write = number(turn.get("cacheCreationInputTokens"))
+        total = input_tokens + output_tokens + cache_read + cache_write
+        if total <= 0:
+          continue
+
+        if new_prompt:
+          prompts += 1
+        sessions.add(session_key)
+        active_days.add(day)
+        bucket = stats["modelUsage"].setdefault(model, empty_bucket())
+        bucket["inputTokens"] += input_tokens
+        bucket["outputTokens"] += output_tokens
+        bucket["cacheReadInputTokens"] += cache_read
+        bucket["cacheCreationInputTokens"] += cache_write
+        if day in recent:
+          recent[day] += total
+        if day == today:
+          if new_prompt:
+            today_prompts += 1
+          today_total += total
+          stats["todayTokensByModel"][model] = stats["todayTokensByModel"].get(model, 0) + total
+          today_sessions.add(session_key)
+
+  stats["todayPrompts"] = today_prompts
+  stats["todaySessions"] = len(today_sessions)
+  stats["todayTotalTokens"] = today_total
+  stats["totalPrompts"] = prompts
+  stats["totalSessions"] = len(sessions)
+  stats["activeDays"] = len(active_days)
+  stats["activeDates"] = sorted(active_days)
+  stats["recentDays"] = [{"date": day, "messageCount": recent[day]} for day in recent_dates]
+  return stats
+
+
+def scan_cache_paths(sessions_root: Path) -> tuple[Path, Path]:
+  digest = hashlib.sha1(str(sessions_root).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"grok-scan-{digest}.json", root / f"grok-scan-{digest}.lock"
+
+
+def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None:
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    if time.time() - path.stat().st_mtime <= max_age_seconds:
+      data = json.loads(path.read_text(encoding="utf-8"))
+      return data if isinstance(data, dict) else None
+  except Exception:
+    return None
+  return None
+
+
+def read_fresh_scan(path: Path, max_age_seconds: float) -> dict[str, Any] | None:
+  cached = read_fresh_json(path, max_age_seconds)
+  if not cached or cached.get("schemaVersion") != CACHE_SCHEMA:
+    return None
+  stats = cached.get("stats")
+  return stats if isinstance(stats, dict) else None
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    tmp.chmod(0o644)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def cached_scan(sessions_root: Path, max_age_seconds: float) -> dict[str, Any]:
+  cache_file, lock_file = scan_cache_paths(sessions_root)
+  cached = read_fresh_scan(cache_file, max_age_seconds)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_fresh_scan(cache_file, max_age_seconds)
+    if cached is not None:
+      return cached
+    summary = scan_sessions(sessions_root)
+    write_json(cache_file, {"schemaVersion": CACHE_SCHEMA, "stats": summary})
+    return summary
+
+
+# ------------------------------------------------------------------- limits
+
+
+def runtime_env() -> dict[str, str]:
+  home = str(Path.home())
+  grok_bin = str(grok_home() / "bin")
+  path_parts = [
+    os.environ.get("PATH", ""),
+    grok_bin,
+    f"{home}/.grok/bin",
+    f"{home}/.local/bin",
+    f"{home}/.local/share/mise/shims",
+  ]
+  env = os.environ.copy()
+  env["PATH"] = os.pathsep.join(part for part in path_parts if part)
+  env["GROK_HOME"] = str(grok_home())
+  return env
+
+
+def grok_command() -> str | None:
+  env = runtime_env()
+  found = shutil.which("grok", path=env.get("PATH"))
+  if found:
+    return found
+  for candidate in (grok_home() / "bin" / "grok", Path.home() / ".grok" / "bin" / "grok"):
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+      return str(candidate)
+  return None
+
+
+def money(value: Any) -> float:
+  if isinstance(value, dict):
+    value = value.get("val", value.get("value", 0))
+  try:
+    amount = float(value or 0)
+  except (TypeError, ValueError):
+    return 0.0
+  if amount != amount:
+    return 0.0
+  return max(0.0, amount)
+
+
+def usage_percent(value: Any) -> float:
+  try:
+    n = float(value)
+  except (TypeError, ValueError):
+    return -1.0
+  if n != n or n < 0:
+    return -1.0
+  # creditUsagePercent is 0-100, like the productUsage percentages beside it.
+  return min(1.0, n / 100.0)
+
+
+def period_label(period_type: str) -> str:
+  text = str(period_type or "").upper()
+  if "MONTH" in text:
+    return "Monthly"
+  return "Weekly"
+
+
+def display_label(value: Any) -> str:
+  if not isinstance(value, str):
+    return ""
+  text = " ".join(value.split())
+  if not text or any(ord(ch) < 32 for ch in text) or len(text) > 128:
+    return ""
+  return text
+
+
+def plan_label(tier: str) -> str:
+  raw = str(tier or "").strip().replace("_", " ")
+  if not raw:
+    return ""
+  # SuperGrokPro / SuperGrokHeavy keep the brand together.
+  rest = raw[len("SuperGrok"):] if raw.startswith("SuperGrok") else ""
+  if raw.startswith("SuperGrok") and raw != "SuperGrok" and rest and " " not in rest:
+    return "SuperGrok " + rest
+  return raw
+
+
+def rpc_request(proc: subprocess.Popen, request_id: int, method: str, params: dict[str, Any] | None = None, timeout: float = 12) -> dict[str, Any]:
+  payload = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}}
+  if proc.stdin is None:
+    raise RuntimeError("Grok ACP stdin is closed")
+  proc.stdin.write(json.dumps(payload) + "\n")
+  proc.stdin.flush()
+  deadline = time.time() + timeout
+  while time.time() < deadline:
+    ready, _, _ = select.select([proc.stdout], [], [], 0.25)
+    if not ready:
+      continue
+    line = proc.stdout.readline()
+    if not line:
+      break
+    try:
+      message = json.loads(line)
+    except Exception:
+      continue
+    if not isinstance(message, dict):
+      continue
+    if message.get("id") == request_id:
+      return message
+  raise TimeoutError(method)
+
+
+def rpc_notify(proc: subprocess.Popen, method: str, params: dict[str, Any] | None = None) -> None:
+  if proc.stdin is None:
+    raise RuntimeError("Grok ACP stdin is closed")
+  proc.stdin.write(json.dumps({"jsonrpc": "2.0", "method": method, "params": params or {}}) + "\n")
+  proc.stdin.flush()
+
+
+def parse_billing(payload: dict[str, Any]) -> dict[str, Any]:
+  result: dict[str, Any] = {
+    "limits": [],
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "balance": None,
+  }
+  if not isinstance(payload, dict):
+    return result
+  config = payload.get("config") if isinstance(payload.get("config"), dict) else payload
+  if not isinstance(config, dict):
+    config = {}
+
+  percent = usage_percent(config.get("creditUsagePercent"))
+  period = config.get("currentPeriod") if isinstance(config.get("currentPeriod"), dict) else {}
+  if percent >= 0:
+    reset = str((period or {}).get("end") or config.get("billingPeriodEnd") or "")
+    result["limits"].append({
+      "label": period_label(str((period or {}).get("type") or "")),
+      "percent": percent,
+      "resetsAt": reset,
+    })
+
+  prepaid = money(config.get("prepaidBalance"))
+  cap = money(config.get("onDemandCap"))
+  spent = money(config.get("onDemandUsed"))
+  remaining = prepaid + max(0.0, cap - spent)
+  funded = prepaid + cap
+  # A SuperGrok weekly pool with a zero prepaid ledger is a limit meter, not
+  # a $0.00 remaining fuel gauge.
+  if remaining > 0 or funded > 0:
+    result["balance"] = {
+      "remaining": remaining,
+      "funded": funded,
+      "spent": spent,
+      "currency": "USD",
+    }
+
+  result["tierLabel"] = display_label(
+    payload.get("subscription_tier")
+    or payload.get("subscription_tier_display")
+    or config.get("subscription_tier_display")
+  ) or plan_label(str(payload.get("subscriptionTier") or config.get("subscriptionTier") or ""))
+  return result
+
+
+def collect_limits() -> dict[str, Any]:
+  result: dict[str, Any] = {
+    "limits": [],
+    "tierLabel": "",
+    "usageStatusText": "",
+    "authHelpText": AUTH_HELP,
+    "balance": None,
+  }
+  grok = grok_command()
+  if not grok:
+    result["usageStatusText"] = "Grok unavailable"
+    return result
+
+  env = runtime_env()
+  try:
+    proc = subprocess.Popen(
+      [grok, "agent", "--no-leader", "stdio"],
+      stdin=subprocess.PIPE,
+      stdout=subprocess.PIPE,
+      stderr=subprocess.DEVNULL,
+      text=True,
+      env=env,
+    )
+  except Exception as exc:
+    result["usageStatusText"] = "Grok unavailable"
+    result["authHelpText"] = str(exc)
+    result["retryAdvised"] = True
+    return result
+
+  try:
+    rpc_request(
+      proc,
+      1,
+      "initialize",
+      {
+        "protocolVersion": "0.1.0",
+        "clientInfo": {"name": "omarchy-agent-usage-grok", "version": "1"},
+        "capabilities": {},
+      },
+    )
+    rpc_notify(proc, "initialized")
+    message = rpc_request(proc, 2, "_x.ai/billing")
+    if message.get("error"):
+      error = message.get("error") or {}
+      code = error.get("code") if isinstance(error, dict) else None
+      text = str((error.get("message") if isinstance(error, dict) else error) or "Grok billing failed")
+      lowered = text.lower()
+      if code in (401, 403) or any(word in lowered for word in ("auth", "login", "unauthor", "expired", "sign-in", "sign in")):
+        result["usageStatusText"] = "Sign-in expired"
+        result["authHelpText"] = AUTH_HELP
+        return result
+      result["usageStatusText"] = "Grok limits unavailable"
+      result["authHelpText"] = text
+      if code != -32601:
+        result["retryAdvised"] = True
+      return result
+    payload = message.get("result")
+    if not isinstance(payload, dict):
+      result["usageStatusText"] = "Grok limits unavailable"
+      result["retryAdvised"] = True
+      return result
+    parsed = parse_billing(payload)
+    result.update(parsed)
+    result["authHelpText"] = ""
+    return result
+  except TimeoutError as exc:
+    result["usageStatusText"] = "Grok limits unavailable"
+    result["authHelpText"] = f"Grok billing timed out ({exc}). Local Grok stats are still shown."
+    result["retryAdvised"] = True
+    return result
+  except Exception as exc:
+    result["usageStatusText"] = "Grok limits unavailable"
+    result["authHelpText"] = str(exc)
+    result["retryAdvised"] = True
+    return result
+  finally:
+    try:
+      if proc.stdin:
+        proc.stdin.close()
+      proc.terminate()
+      proc.wait(timeout=1)
+    except Exception:
+      try:
+        proc.kill()
+      except Exception:
+        pass
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true", help="rescan sessions, ignoring caches")
+  parser.add_argument("--limits-only", action="store_true", help="reuse any recent session scan; only the limits probe must be fresh")
+  parser.add_argument("--cache-seconds", type=float, default=SCAN_REUSE_SECONDS)
+  args = parser.parse_args()
+
+  home = grok_home()
+  scan_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else args.cache_seconds)
+  stats = cached_scan(home / "sessions", scan_age)
+  has_data = number(stats.get("totalPrompts")) > 0 or number(stats.get("totalSessions")) > 0
+  limits = collect_limits()
+  has_limits = len(limits["limits"]) > 0 or limits.get("balance") is not None
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": has_data or signed_in(home) or has_limits,
+    "hasLocalStats": True,
+    "hasPromptStats": True,
+    "tierLabel": limits["tierLabel"],
+    "usageStatusText": limits["usageStatusText"],
+    "authHelpText": limits["authHelpText"],
+    "limits": limits["limits"],
+  }
+  if limits.get("retryAdvised"):
+    record["retryAdvised"] = True
+  if limits.get("balance") is not None:
+    record["balance"] = limits["balance"]
+  record.update(stats)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

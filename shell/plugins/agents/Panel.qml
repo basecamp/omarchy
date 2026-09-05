@@ -459,15 +459,13 @@ Panel {
           }
 
           // ---------- Provider switch ----------
-          Row {
+          // Size pills to their labels. Equal-width cells overflow
+          // "Claude Code" once Grok and OMP join the strip.
+          Flow {
             id: providerSwitch
             visible: root.providers.length > 1
             width: parent.width
             spacing: Style.spacing.md
-
-            readonly property real cellWidth: root.providers.length > 0
-              ? (width - spacing * (root.providers.length - 1)) / root.providers.length
-              : 0
 
             Repeater {
               model: root.providers
@@ -476,7 +474,6 @@ Panel {
                 required property var modelData
                 required property int index
 
-                width: providerSwitch.cellWidth
                 text: modelData.providerName
                 selected: index === root.providerIndex
                 hasCursor: root.cursorActive && index === root.providerIndex

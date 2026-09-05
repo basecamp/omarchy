@@ -55,6 +55,8 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `grok` | SuperGrok weekly (or monthly) pool from Grok ACP `_x.ai/billing`, plus leftover prepaid credits when the ledger is non-zero | `$GROK_HOME/sessions` `updates.jsonl` `turn_completed` rows (default `~/.grok/sessions`) |
+| `omp` | None; OMP is a local cross-provider runtime view | `~/.omp/stats.db` (or `$OMP_HOME/stats.db`), refreshed from OMP session files and grouped by day and model across every provider |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -62,7 +64,12 @@ falls back to local stats only. A non-default Claude directory is honored via
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
-signed in there.
+signed in there. Grok limits need a signed-in CLI (`grok login`); without
+credentials the panel says so and still shows local session stats. A
+non-default Grok directory is honored via `GROK_HOME`. SuperGrok Heavy's
+billing payload often omits `creditUsagePercent`, so the weekly meter stays
+blank rather than inventing 0%. OMP has no subscription to probe; it
+appears once `stats.db` has messages.
 
 ### Fireworks balance
 
@@ -128,7 +135,9 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
-  "fireworks": { "enabled": true }
+  "fireworks": { "enabled": true },
+  "grok": { "enabled": true },
+  "omp": { "enabled": true }
 }' --json
 ```
 

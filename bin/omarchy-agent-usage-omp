@@ -1,0 +1,236 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the OMP usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Oh My Pi (OMP) usage into one display-ready JSON record.
+
+Local stats come from ~/.omp/stats.db (or $OMP_HOME/stats.db), the same
+index `omp stats` maintains. OMP is a local cross-provider runtime, so
+the record has no subscription limits. The agents panel only ever reads
+the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import sqlite3
+import subprocess
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "omp"
+AGENT_NAME = "OMP"
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def omp_home() -> Path:
+  return expand_path(os.environ.get("OMP_HOME") or "~/.omp")
+
+
+def number(value: Any) -> int:
+  try:
+    n = float(value or 0)
+    return round(n) if n == n else 0
+  except Exception:
+    return 0
+
+
+def date_string(value: datetime | None = None) -> str:
+  return (value or datetime.now()).strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = datetime.now().date()
+  return [(today - timedelta(days=offset)).strftime("%Y-%m-%d") for offset in range(6, -1, -1)]
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def empty_stats() -> dict[str, Any]:
+  recent_dates = recent_date_strings()
+  return {
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [{"date": day, "messageCount": 0} for day in recent_dates],
+    "modelUsage": {},
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+  }
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record: dict[str, Any] = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    "hasPromptStats": False,
+    "scope": "device",
+    "tierLabel": "local",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "limits": [],
+  }
+  record.update(empty_stats())
+  record.update(overrides)
+  return record
+
+
+def refresh_stats(home: Path) -> None:
+  omp = shutil.which("omp")
+  if not omp:
+    return
+  env = os.environ.copy()
+  env["HOME"] = str(Path.home())
+  env["OMP_HOME"] = str(home)
+  try:
+    subprocess.run(
+      [omp, "stats", "--json"],
+      check=False,
+      stdout=subprocess.DEVNULL,
+      stderr=subprocess.DEVNULL,
+      timeout=20,
+      env=env,
+    )
+  except Exception:
+    return
+
+
+def scan_db(db_path: Path) -> dict[str, Any] | None:
+  if not db_path.is_file():
+    return None
+  try:
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+  except sqlite3.Error:
+    return None
+  conn.row_factory = sqlite3.Row
+  try:
+    try:
+      conn.execute("SELECT 1 FROM messages LIMIT 1")
+    except sqlite3.Error:
+      return None
+
+    today = date_string()
+    recent_dates = recent_date_strings()
+    recent = {day: 0 for day in recent_dates}
+    stats = empty_stats()
+    model_usage: dict[str, dict[str, int]] = {}
+    today_by_model: dict[str, int] = {}
+    active_dates: set[str] = set()
+    sessions: set[str] = set()
+    today_sessions: set[str] = set()
+    prompts = 0
+    today_prompts = 0
+    today_total = 0
+
+    rows = conn.execute(
+      """
+      SELECT session_file, model, timestamp, input_tokens, output_tokens,
+             cache_read_tokens, cache_write_tokens, total_tokens
+      FROM messages
+      """
+    )
+    for row in rows:
+      ts = number(row["timestamp"])
+      if ts > 10_000_000_000:
+        ts = ts / 1000
+      try:
+        day = datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+      except Exception:
+        day = today
+      model = str(row["model"] or "").strip() or "omp"
+      session = str(row["session_file"] or "")
+      input_tokens = number(row["input_tokens"])
+      output_tokens = number(row["output_tokens"])
+      cache_read = number(row["cache_read_tokens"])
+      cache_write = number(row["cache_write_tokens"])
+      total = number(row["total_tokens"])
+      if total <= 0:
+        total = input_tokens + output_tokens + cache_read + cache_write
+      if total <= 0:
+        continue
+
+      prompts += 1
+      if session:
+        sessions.add(session)
+      active_dates.add(day)
+      bucket = model_usage.setdefault(model, empty_bucket())
+      bucket["inputTokens"] += input_tokens
+      bucket["outputTokens"] += output_tokens
+      bucket["cacheReadInputTokens"] += cache_read
+      bucket["cacheCreationInputTokens"] += cache_write
+      if day in recent:
+        recent[day] += total
+      if day == today:
+        today_prompts += 1
+        today_total += total
+        today_by_model[model] = today_by_model.get(model, 0) + total
+        if session:
+          today_sessions.add(session)
+
+    stats["todayPrompts"] = today_prompts
+    stats["todaySessions"] = len(today_sessions)
+    stats["todayTotalTokens"] = today_total
+    stats["todayTokensByModel"] = today_by_model
+    stats["recentDays"] = [{"date": day, "messageCount": recent[day]} for day in recent_dates]
+    stats["modelUsage"] = model_usage
+    stats["totalPrompts"] = prompts
+    stats["totalSessions"] = len(sessions)
+    stats["activeDays"] = len(active_dates)
+    stats["activeDates"] = sorted(active_dates)
+    return stats
+  finally:
+    conn.close()
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true", help="ignored; sqlite is always rescanned")
+  parser.add_argument("--limits-only", action="store_true", help="OMP has no limits; still rescans local stats")
+  args = parser.parse_args()
+
+  home = omp_home()
+  if not args.limits_only:
+    refresh_stats(home)
+  stats = scan_db(home / "stats.db")
+  if stats is None:
+    record = base_record(
+      usageStatusText="OMP unavailable" if not shutil.which("omp") else "",
+      authHelpText="" if shutil.which("omp") else "Install OMP (`omp`) to collect local usage.",
+    )
+    print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+    return 0
+
+  has_data = number(stats.get("totalPrompts")) > 0 or number(stats.get("totalSessions")) > 0
+  record = base_record(
+    ready=has_data,
+    hasLocalStats=True,
+    hasPromptStats=True,
+  )
+  record.update(stats)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
