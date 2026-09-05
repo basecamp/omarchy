@@ -85,6 +85,9 @@ Item {
     quotaKnown = parsed.quotaKnown === true
     files = parsed.files || []
     lastError = ""
+    // While a login attempt is pending, the poll doubles as the URL source:
+    // dropbox-cli status prints the same account-link URL start should have.
+    if (loginRetry.running) openAuthUrlFrom(statusText)
   }
 
   function elideStatus(text) {
@@ -93,11 +96,18 @@ Item {
   }
 
   function login() {
-    if (!installed || loginProcess.running) return
+    // Middle-click reaches here even on a linked account; there is no link
+    // URL to wait for then, so don't start a retry that can only end in a
+    // spurious error.
+    if (!installed || authenticated || loginProcess.running) return
     _loginOutput = ""
     _loginError = ""
     _loginUrlOpened = false
     actionStatus = "Starting Dropbox login…"
+    // A single start invocation often misses the link URL (see loginRetry),
+    // so the status poll keeps looking for it after the process exits.
+    loginRetry.ticks = 0
+    loginRetry.restart()
     loginProcess.command = ["dropbox-cli", "start"]
     loginProcess.running = true
   }
@@ -142,6 +152,7 @@ Item {
     var match = String(text || "").match(/https?:\/\/\S+/)
     if (match && match[0]) {
       _loginUrlOpened = true
+      loginRetry.stop()
       Qt.openUrlExternally(match[0])
       actionStatus = "Opened Dropbox login"
       actionStatusTimer.restart()
@@ -217,6 +228,33 @@ Item {
     }
   }
 
+  Timer {
+    // dropbox-cli start waits on the daemon's pidfile, not its command
+    // socket, so on a cold start it asks for the account-link URL before the
+    // daemon can answer and prints Done! without it. The same URL comes back
+    // from dropbox-cli status once the socket is up, so keep polling for a
+    // while instead of trusting the one-shot output — and if it never shows,
+    // say so instead of leaving "Starting Dropbox login…" up forever.
+    id: loginRetry
+    property int ticks: 0
+    interval: 2000
+    repeat: true
+    running: false
+    onTriggered: {
+      ticks += 1
+      if (ticks >= 15) {
+        loginRetry.stop()
+        // Set actionStatus too, the way controlProcess reports failures: a
+        // poll can still be in flight when this fires, and applyStatus
+        // clears lastError, which would wipe the advice within seconds.
+        root.lastError = "Dropbox offered no login link. Pause and resume Dropbox, then try again."
+        root.actionStatus = root.lastError
+        return
+      }
+      root.refresh()
+    }
+  }
+
   Process {
     id: statusProcess
     running: false
@@ -242,11 +280,9 @@ Item {
       var combined = String(root._loginOutput || "") + "\n" + String(root._loginError || "")
       var opened = root.openAuthUrlFrom(combined)
       if (exitCode !== 0 && !opened) {
+        loginRetry.stop()
         root.lastError = root.elideStatus(combined || "Dropbox login failed")
         root.actionStatus = root.lastError
-      } else if (!opened) {
-        root.actionStatus = ""
-        root.lastError = ""
       }
       delayedRefresh.restart()
     }

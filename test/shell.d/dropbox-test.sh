@@ -32,3 +32,50 @@ assertEqual(
   'dropbox file metadata includes relative time and folder'
 )
 JS
+
+run_node_test "dropbox login retry wiring" <<'JS'
+const fs = require('fs')
+const service = fs.readFileSync(root + '/shell/plugins/panels/dropbox/Service.qml', 'utf8')
+
+assert(/function login\(\)[^}]*loginRetry\.restart\(\)/s.test(service), 'login starts the status-poll retry for the link URL')
+assert(/if \(loginRetry\.running\) openAuthUrlFrom\(statusText\)/.test(service), 'status poll feeds the pending login the link URL')
+assert(/Dropbox offered no login link[\s\S]{0,200}root\.actionStatus = root\.lastError/.test(service), 'an exhausted login retry surfaces an error that survives the next status poll')
+JS
+
+# The account block in info.json marks a linked account; the sync folder only
+# appears once the first sync starts. A freshly linked account must not read as
+# unauthenticated in that window.
+require_command python3
+require_command jq
+
+DROPBOX_HOME=$(mktemp -d)
+trap 'rm -rf "$DROPBOX_HOME"' EXIT
+
+STUB_BIN="$DROPBOX_HOME/bin"
+mkdir -p "$STUB_BIN" "$DROPBOX_HOME/.dropbox"
+cat >"$STUB_BIN/dropbox-cli" <<'EOF'
+#!/bin/bash
+echo "Starting..."
+EOF
+chmod +x "$STUB_BIN/dropbox-cli"
+
+cat >"$DROPBOX_HOME/.dropbox/info.json" <<EOF
+{"personal": {"path": "$DROPBOX_HOME/Dropbox", "subscription_type": "basic"}}
+EOF
+
+result=$(HOME="$DROPBOX_HOME" PATH="$STUB_BIN:$PATH" python3 "$ROOT/shell/plugins/panels/dropbox/status.py" 5)
+
+[[ $(jq -r '.authenticated' <<<"$result") == "true" ]] ||
+  fail "dropbox status reports a linked account before its folder exists" "$result"
+pass "dropbox status reports a linked account before its folder exists"
+
+[[ $(jq -r '.usedBytes' <<<"$result") == "0" ]] ||
+  fail "dropbox status survives scanning a folder that is not there yet" "$result"
+pass "dropbox status survives scanning a folder that is not there yet"
+
+rm "$DROPBOX_HOME/.dropbox/info.json"
+result=$(HOME="$DROPBOX_HOME" PATH="$STUB_BIN:$PATH" python3 "$ROOT/shell/plugins/panels/dropbox/status.py" 5)
+
+[[ $(jq -r '.authenticated' <<<"$result") == "false" ]] ||
+  fail "dropbox status keeps an unlinked install on the login screen" "$result"
+pass "dropbox status keeps an unlinked install on the login screen"

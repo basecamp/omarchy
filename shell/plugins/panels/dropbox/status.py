@@ -94,7 +94,10 @@ def main():
   account_path = account.get("path") if isinstance(account.get("path"), str) else ""
   plan = account.get("subscription_type") if isinstance(account.get("subscription_type"), str) else ""
   quota = PLAN_QUOTAS.get(plan.lower(), 0)
-  authenticated = account_path != "" and Path(account_path).exists()
+  # The account block in info.json appears the moment linking completes; the
+  # sync folder only appears once the first sync starts. Gating on the folder
+  # kept a freshly linked account on the login screen.
+  authenticated = bool(account)
 
   running = False
   status_text = "Not installed"
