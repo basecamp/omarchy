@@ -4,7 +4,24 @@
 
 mapfile -t themes < <(omarchy-theme-extras)
 
+max_parallel=4
+active=0
+rc=0
+
 for theme in "${themes[@]}"; do
+  if (( active == max_parallel )); then
+    wait -n || rc=1
+    active=$((active - 1))
+  fi
+
   echo "Updating: $(basename "$theme")"
-  git -C "$theme" pull
+  git -C "$theme" pull &
+  active=$((active + 1))
 done
+
+while (( active > 0 )); do
+  wait -n || rc=1
+  active=$((active - 1))
+done
+
+exit "$rc"
