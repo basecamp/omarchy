@@ -75,7 +75,7 @@ const fs = require('fs')
 const vm = require('vm')
 const Model = requireFromRoot('shell/plugins/panels/lab/Model.js')
 const panel = fs.readFileSync(path.join(root, 'shell/plugins/panels/lab/Panel.qml'), 'utf8')
-const names = ['openInstaller', 'runCommand', 'actionFailedToStart', 'armOrRun', 'terminalButtonText']
+const names = ['openInstaller', 'openLab', 'runViewer', 'runCommand', 'actionFailedToStart', 'armOrRun', 'terminalButtonText']
 const context = {
   Model, busy: false, actionProc: {running: false}, armedAction: '', confirmTimer: {stop() {}, restart() {}},
   errorText: '', actionOutput: '', stderrText: '', actionLabel: '', closeAfterAction: false,
@@ -104,6 +104,31 @@ assert(panel.includes('root.installerOpening ? "Opening installer…" : "Install
 assert(panel.includes('visible: root.inlineInstallError'), 'launch error shown beside button')
 assert(panel.includes('visible: root.errorText !== "" && !root.inlineInstallError'), 'launch error is not duplicated in global banner')
 assert(panel.includes('else if (root.closeAfterAction) root.dismiss()'), 'only successful exit dismisses')
+
+context.busy = false
+context.actionProc.running = false
+context.status = {installed: false}
+context.viewerCommand = 'omarchy-lab-viewer'
+context.actionProc.command = ['sentinel']
+context.openLab()
+assertEqual(context.actionProc.command[0], 'sentinel', 'Open Lab cannot launch an uninstalled guest')
+for (const viewerActive of [false, true]) {
+  context.busy = false
+  context.actionProc.running = false
+  context.status = {installed: true, viewerActive}
+  context.openLab()
+  assertDeepEqual(Array.from(context.actionProc.command), ['/plugin/bin/omarchy-lab-viewer', 'launch'], 'Open Lab uses the start-or-focus viewer controller')
+  assert(context.busy && context.closeAfterAction, 'Open Lab locks repeat clicks and dismisses on success')
+  assertEqual(context.actionLabel, 'Opening Lab', 'Open Lab has a visible launch state')
+  context.actionProc.command = ['sentinel']
+  context.openLab()
+  assertEqual(context.actionProc.command[0], 'sentinel', 'Open Lab ignores repeated clicks')
+  context.actionProc.running = false
+  context.actionFailedToStart()
+  assert(!context.busy && !context.closeAfterAction && context.errorText, 'Open Lab spawn failure stays open for retry')
+}
+assert(panel.includes('visible: root.status.installed\n                  text: root.busy && root.actionLabel === "Opening Lab" ? "Opening Lab…" : "Open Lab"'), 'installed guests have an Open Lab button with opening feedback')
+assert(panel.includes('onClicked: root.openLab()'), 'Open Lab button is wired to the tested action')
 
 for (const [command, args] of [
   ['/plugin/bin/omarchy-lab-viewer', ['reset']],

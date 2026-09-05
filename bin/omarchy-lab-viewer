@@ -280,26 +280,33 @@ enqueue_launch_service() {
 
 launch_viewer() {
   if ! enqueue_launch_service 2>/dev/null; then
+    ensure_lab_running || return 1
     wake_lab_display
     focus_viewer || viewer_service_active || fail "the Lab viewer could not be launched"
   fi
 }
 
-launch_viewer_service() {
+ensure_lab_running() {
   local state
+  state=$(domain_state || true)
+  if [[ -z $state ]]; then
+    fail "Omarchy Lab is not installed. Run: omarchy lab vm install"
+    return 1
+  fi
+  if [[ $state != "running" ]]; then
+    run_virsh start "$NAME" >/dev/null || return 1
+  fi
+}
+
+launch_viewer_service() {
+  ensure_lab_running || return 1
   if viewer_client >/dev/null; then
+    wake_lab_display
     focus_viewer || true
     return 0
   fi
-  state=$(domain_state || true)
-  [[ -n $state ]] || fail "Omarchy Lab is not installed. Run: omarchy lab vm install"
-  if [[ $state != "running" ]]; then
-    run_virsh start "$NAME" >/dev/null
-  else
-    # Wake a Lab that Hyprland has powered down while it was idle. Without
-    # input, virt-viewer opens to "Display output is not active."
-    wake_lab_display
-  fi
+  # Wake an idle guest, including a stopped VM whose console stayed open.
+  wake_lab_display
   unset OMARCHY_LAB_VIEWER_SKIP_RESTORE
   run_viewer
 }

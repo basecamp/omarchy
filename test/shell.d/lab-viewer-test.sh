@@ -44,12 +44,32 @@ pass "launcher detaches the graphical console from the app scope"
 (
   source "$viewer"
   enqueue_launch_service() { return 1; }
+  domain_state() { echo running; }
   wake_lab_display() { printf '%s\n' wake >>"$tmpdir/relaunch-calls"; }
   focus_viewer() { printf '%s\n' focus >>"$tmpdir/relaunch-calls"; }
   launch_viewer
 )
 [[ $(paste -sd ' ' "$tmpdir/relaunch-calls") == 'wake focus' ]] || fail "launch wakes and focuses an already-open Lab viewer"
 pass "relaunch wakes and focuses the existing graphical console"
+
+for launcher in launch_viewer launch_viewer_service; do
+  (
+    source "$viewer"
+    enqueue_launch_service() { return 1; }
+    viewer_client() { echo '{}'; }
+    domain_state() { echo 'shut off'; }
+    run_virsh() { printf '%s\n' "$*" >>"$tmpdir/$launcher-stopped"; }
+    focus_viewer() { echo focus >>"$tmpdir/$launcher-stopped"; }
+    run_viewer() { fail "existing console must not be duplicated"; }
+    "$launcher"
+    [[ $(head -1 "$tmpdir/$launcher-stopped") == 'start omarchy-lab' ]] || fail "existing console did not start stopped guest"
+    [[ $(tail -1 "$tmpdir/$launcher-stopped") == focus ]] || fail "existing console was not focused"
+    run_virsh() { return 8; }
+    focus_viewer() { fail "failed start must not focus"; }
+    if "$launcher"; then fail "failed domain start reported success"; fi
+  )
+done
+pass "opening an existing viewer starts its stopped guest and propagates start failures"
 
 (
   source "$viewer"
@@ -61,7 +81,7 @@ pass "relaunch wakes and focuses the existing graphical console"
 )
 rg -q $'^virsh\tstart omarchy-lab$' "$tmpdir/launch-service-calls" ||
   fail "the launch service starts a stopped Lab domain"
-[[ $(tail -n 2 "$tmpdir/launch-service-calls" | paste -sd ' ' -) == $'virsh\tstart omarchy-lab viewer' ]] ||
+[[ $(head -n 1 "$tmpdir/launch-service-calls") == $'virsh\tstart omarchy-lab' && $(tail -n 1 "$tmpdir/launch-service-calls") == viewer ]] ||
   fail "the launch service starts the domain before virt-viewer"
 pass "the launch service owns domain startup and the graphical console"
 

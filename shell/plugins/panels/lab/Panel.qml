@@ -132,6 +132,11 @@ Item {
     runCommand("omarchy-lab-install-launch", [], "Opening installer", true)
   }
 
+  function openLab() {
+    if (!status.installed) return
+    runViewer(["launch"], "Opening Lab", true)
+  }
+
   function terminalButtonText(action, text) {
     return busy && openingTerminalAction === action ? "Opening terminal…" : text
   }
@@ -444,6 +449,12 @@ Item {
                 visible: root.currentPage === 0
                 Layout.fillWidth: true
                 spacing: Style.space(12)
+
+                ActionButton {
+                  visible: root.status.installed
+                  text: root.busy && root.actionLabel === "Opening Lab" ? "Opening Lab…" : "Open Lab"
+                  onClicked: root.openLab()
+                }
 
                 WorkbenchSection {
                   visible: !root.status.installed

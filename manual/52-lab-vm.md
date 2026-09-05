@@ -24,6 +24,8 @@ While the console is open, a Lab icon appears in the Omarchy bar. Open it for th
 
 The aspect choices are 16:9, 16:10, 3:2, 4:3, 21:9, and 32:9. Omarchy accounts for the selected zoom while keeping the viewer as large as its current monitor allows. Viewer preferences persist between Lab sessions.
 
+Select _Open Lab_ at the top of Console to start a stopped guest, reopen a closed viewer, or focus the existing console. The button shows _Opening Lab…_ while launching and the controls close after the launch request succeeds. If launching fails, the controls stay open so you can retry.
+
 Reset and aspect changes restore missing display tools in guests made from older gold images and start the SPICE and resize services without requiring a reboot. This repairs only the active guest, leaving gold and checkpoints unchanged. The first repair needs internet access; if the guest has no package databases, it runs the normal full Omarchy update inside the guest before installing the tools.
 
 The rest of the controls are on the same command:
