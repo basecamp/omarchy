@@ -13,6 +13,7 @@ From the terminal, the same switches are `omarchy toggle <thing>`. Run `omarchy 
 | Night light | `Super + Ctrl + N` | `omarchy toggle nightlight` |
 | Silence notifications | `Super + Ctrl + ,` | `omarchy toggle notification silencing` |
 | Stay awake (no idle lock) | `Super + Ctrl + I` | `omarchy toggle idle` |
+| Presentation | — | `omarchy toggle presentation` |
 | Crash capture | — | `omarchy toggle crash-capture` |
 | Screensaver | — | `omarchy toggle screensaver` |
 | Menu bar | `Super + Shift + Space` | `omarchy toggle bar` |
