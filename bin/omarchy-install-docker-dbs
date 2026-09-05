@@ -1,28 +1,460 @@
-#!/bin/bash
+#!/bin/bash -p
 
-# omarchy:summary=Install one of the supported databases in a Docker container with the suitable development options.
+# omarchy:summary=Install one supported development database with private generated credentials
+# omarchy:args=[MySQL|PostgreSQL|Redis|MongoDB|MariaDB|MSSQL]
 # omarchy:requires-sudo=true
 
-options=("MySQL" "PostgreSQL" "Redis" "MongoDB" "MariaDB" "MSSQL")
-
-if (( $# == 0 )); then
-  choices=$(printf "%s\n" "${options[@]}" | gum choose --header "Select database (return to install, esc to cancel)") || main_menu
-else
-  choices="$@"
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for database installation." >&2
+  exit 126
 fi
 
-if [[ -n $choices ]]; then
-  for db in $choices; do
-    echo "Installing $db..."
-    case $db in
-    MySQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mysql8 -e MYSQL_ROOT_PASSWORD= -e MYSQL_ALLOW_EMPTY_PASSWORD=true mysql:8.4 ;;
-    PostgreSQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:5432:5432" --name=postgres18 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:18 ;;
-    MariaDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:3306:3306" --name=mariadb11 -e MARIADB_ROOT_PASSWORD= -e MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=true mariadb:11.8 ;;
-    Redis) sudo docker run -d --restart unless-stopped -p "127.0.0.1:6379:6379" --name=redis redis:7 ;;
-    MongoDB) sudo docker run -d --restart unless-stopped -p "127.0.0.1:27017:27017" --name mongodb -e MONGO_INITDB_ROOT_USERNAME=admin -e MONGO_INITDB_ROOT_PASSWORD=admin123 mongo:noble ;;
-    MSSQL) sudo docker run -d --restart unless-stopped -p "127.0.0.1:1433:1433" --name mssql -e MSSQL_PID=Developer -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=@dmin123" mcr.microsoft.com/mssql/server:2022-CU12-ubuntu-22.04 ;;
-    esac
+require_privileged_bash_startup() {
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+require_privileged_bash_startup || {
+  echo "Refusing an unsafe Bash startup for database installation." >&2
+  exit 126
+}
+unset -f require_privileged_bash_startup
+unset BASH_ENV ENV
+
+# OMARCHY_DOCKER_DBS_IMPLEMENTATION
+set -euo pipefail
+
+readonly -a DATABASE_OPTIONS=(MySQL PostgreSQL Redis MongoDB MariaDB MSSQL)
+
+usage() {
+  echo "Usage: omarchy-install-docker-dbs [MySQL|PostgreSQL|Redis|MongoDB|MariaDB|MSSQL]" >&2
+}
+
+valid_database() {
+  case "$1" in
+    MySQL|PostgreSQL|Redis|MongoDB|MariaDB|MSSQL) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+resolve_caller_identity() {
+  local entry owner parent mode
+  CALLER_UID=$(/usr/bin/id -u)
+  [[ $CALLER_UID =~ ^[0-9]+$ ]] && ((10#$CALLER_UID > 0)) || {
+    echo "Run this installer as the desktop user, not as root." >&2
+    return 1
+  }
+  entry=$(/usr/bin/getent passwd "$CALLER_UID") || return 1
+  IFS=: read -r CALLER_NAME _ entry_uid _ _ ACCOUNT_HOME _ <<<"$entry"
+  [[ $entry_uid == "$CALLER_UID" ]] || return 1
+  account_home_is_private "$ACCOUNT_HOME" "$CALLER_UID" || return 1
+  parent=$(/usr/bin/dirname -- "$ACCOUNT_HOME")
+  while :; do
+    owner=$(/usr/bin/stat -Lc '%u' -- "$parent") || return 1
+    mode=$(/usr/bin/stat -Lc '%a' -- "$parent") || return 1
+    [[ $owner == 0 ]] && ! ((8#$mode & 022)) || {
+      echo "Refusing a home directory below unsafe parent: $parent" >&2
+      return 1
+    }
+    [[ $parent == / ]] && break
+    parent=$(/usr/bin/dirname -- "$parent")
   done
-else
-  echo "No databases selected for installation."
+  CREDENTIAL_DIR="$ACCOUNT_HOME/.config/omarchy/docker-dbs"
+}
+
+account_home_is_private() {
+  local home="$1" uid="$2" canonical owner mode
+  [[ $home == /* && -d $home && ! -L $home ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$home") || return 1
+  [[ $canonical == "$home" ]] || return 1
+  owner=$(/usr/bin/stat -Lc '%u' -- "$home") || return 1
+  mode=$(/usr/bin/stat -Lc '%a' -- "$home") || return 1
+  [[ $owner == "$uid" ]] && ! ((8#$mode & 022))
+}
+
+assert_private_component() {
+  local path="$1" exact_mode="${2:-}" owner mode
+  [[ -d $path && ! -L $path ]] || return 1
+  owner=$(/usr/bin/stat -Lc '%u' -- "$path") || return 1
+  mode=$(/usr/bin/stat -Lc '%a' -- "$path") || return 1
+  [[ $owner == "$CALLER_UID" ]] || return 1
+  if [[ -n $exact_mode ]]; then
+    [[ $mode == "$exact_mode" ]]
+  else
+    ! ((8#$mode & 022))
+  fi
+}
+
+prepare_credential_dir() {
+  local component
+  for component in "$ACCOUNT_HOME/.config" "$ACCOUNT_HOME/.config/omarchy"; do
+    if [[ ! -e $component && ! -L $component ]]; then
+      /usr/bin/mkdir -- "$component" 2>/dev/null ||
+        [[ -d $component && ! -L $component ]] || return 1
+      /usr/bin/chmod 0700 "$component" || return 1
+    fi
+    assert_private_component "$component" || {
+      echo "Refusing unsafe credential parent: $component" >&2
+      return 1
+    }
+  done
+
+  if [[ ! -e $CREDENTIAL_DIR && ! -L $CREDENTIAL_DIR ]]; then
+    /usr/bin/mkdir -- "$CREDENTIAL_DIR" 2>/dev/null ||
+      [[ -d $CREDENTIAL_DIR && ! -L $CREDENTIAL_DIR ]] || return 1
+    /usr/bin/chmod 0700 "$CREDENTIAL_DIR" || return 1
+  fi
+  assert_private_component "$CREDENTIAL_DIR" 700 || {
+    echo "Refusing unsafe database credential directory: $CREDENTIAL_DIR" >&2
+    return 1
+  }
+}
+
+with_credential_lock() {
+  local fd rc=0
+  exec {fd}<"$CREDENTIAL_DIR/." || return 1
+  /usr/bin/flock -x "$fd" || { exec {fd}<&-; return 1; }
+  "$@" || rc=$?
+  /usr/bin/flock -u "$fd" || rc=1
+  exec {fd}<&-
+  return "$rc"
+}
+
+generate_password() {
+  local random
+  random=$(/usr/bin/od -An -N24 -tx1 /dev/urandom) || return 1
+  random=${random//[[:space:]]/}
+  [[ $random =~ ^[0-9a-f]{48}$ ]] || return 1
+  # 192 random bits plus a fixed compatibility prefix. The prefix supplies all
+  # four SQL Server complexity classes; the hex suffix is accepted by every
+  # other supported image and by Redis configuration without escaping.
+  printf 'Om4!%s' "$random"
+}
+
+credential_file_safe() {
+  local file="$1" owner mode
+  [[ -f $file && ! -L $file ]] || return 1
+  owner=$(/usr/bin/stat -Lc '%u' -- "$file") || return 1
+  mode=$(/usr/bin/stat -Lc '%a' -- "$file") || return 1
+  [[ $owner == "$CALLER_UID" && $mode == 600 ]]
+}
+
+credential_lines_match_exactly() {
+  local file="$1"
+  shift
+  # Reconstruct the already-validated ASCII lines and compare every byte. Bash
+  # mapfile discards NUL bytes, so line/count checks alone are not exact.
+  printf '%s\n' "$@" | /usr/bin/cmp -s - "$file"
+}
+
+write_credential_file() {
+  local file="$1" contents="$2" tmp
+  [[ ! -e $file && ! -L $file ]] || return 1
+  tmp=$(/usr/bin/mktemp "$CREDENTIAL_DIR/.credential.XXXXXXXX") || return 1
+  # Keep the secret inside the shell and the destination file. An external
+  # printf would briefly publish the whole credential in its process argv.
+  if ! printf '%s' "$contents" >"$tmp" ||
+    ! /usr/bin/chmod 0600 "$tmp" || ! /usr/bin/mv -T -- "$tmp" "$file"; then
+    /usr/bin/rm -f -- "$tmp"
+    return 1
+  fi
+}
+
+env_credentials_valid() {
+  local file="$1" db="$2"
+  local -a lines=()
+  credential_file_safe "$file" || return 1
+  mapfile -t lines <"$file" || return 1
+  case "$db" in
+    MySQL)
+      ((${#lines[@]} == 1)) && [[ ${lines[0]} =~ ^MYSQL_ROOT_PASSWORD=Om4\![0-9a-f]{48}$ ]]
+      ;;
+    PostgreSQL)
+      ((${#lines[@]} == 2)) && [[ ${lines[0]} == "POSTGRES_USER=postgres" ]] &&
+        [[ ${lines[1]} =~ ^POSTGRES_PASSWORD=Om4\![0-9a-f]{48}$ ]]
+      ;;
+    MongoDB)
+      ((${#lines[@]} == 2)) && [[ ${lines[0]} == "MONGO_INITDB_ROOT_USERNAME=omarchy_admin" ]] &&
+        [[ ${lines[1]} =~ ^MONGO_INITDB_ROOT_PASSWORD=Om4\![0-9a-f]{48}$ ]]
+      ;;
+    MariaDB)
+      ((${#lines[@]} == 1)) && [[ ${lines[0]} =~ ^MARIADB_ROOT_PASSWORD=Om4\![0-9a-f]{48}$ ]]
+      ;;
+    MSSQL)
+      ((${#lines[@]} == 3)) && [[ ${lines[0]} == "ACCEPT_EULA=Y" ]] &&
+        [[ ${lines[1]} == "MSSQL_PID=Developer" ]] &&
+        [[ ${lines[2]} =~ ^MSSQL_SA_PASSWORD=Om4\![0-9a-f]{48}$ ]]
+      ;;
+    *) return 1 ;;
+  esac || return 1
+  credential_lines_match_exactly "$file" "${lines[@]}"
+}
+
+redis_credentials_valid() {
+  local file="$1"
+  local -a lines=()
+  credential_file_safe "$file" || return 1
+  mapfile -t lines <"$file" || return 1
+  ((${#lines[@]} == 3)) && [[ ${lines[0]} == "protected-mode yes" ]] &&
+    [[ ${lines[1]} == "bind 0.0.0.0" ]] &&
+    [[ ${lines[2]} =~ ^requirepass\ Om4\![0-9a-f]{48}$ ]] &&
+    credential_lines_match_exactly "$file" "${lines[@]}"
+}
+
+container_name_for() {
+  case "$1" in
+    MySQL) echo mysql8 ;;
+    PostgreSQL) echo postgres18 ;;
+    Redis) echo redis ;;
+    MongoDB) echo mongodb ;;
+    MariaDB) echo mariadb11 ;;
+    MSSQL) echo mssql ;;
+  esac
+}
+
+credential_path_for() {
+  case "$1" in
+    MySQL) echo "$CREDENTIAL_DIR/mysql.env" ;;
+    PostgreSQL) echo "$CREDENTIAL_DIR/postgresql.env" ;;
+    Redis) echo "$CREDENTIAL_DIR/redis.conf" ;;
+    MongoDB) echo "$CREDENTIAL_DIR/mongodb.env" ;;
+    MariaDB) echo "$CREDENTIAL_DIR/mariadb.env" ;;
+    MSSQL) echo "$CREDENTIAL_DIR/mssql.env" ;;
+  esac
+}
+
+existing_containers() {
+  run_docker container ls -a --format '{{.Names}}'
+}
+
+run_docker() {
+  /usr/bin/sudo -- /usr/bin/docker "$@"
+}
+
+# Docker runs with root authority, so it must never reopen a path owned by the
+# desktop user. The caller reads the already-validated credential into shell
+# memory and Docker consumes only its inherited stdin descriptor.
+run_with_env_credentials() {
+  local credential="$1"
+  shift
+  local payload
+  payload=$(<"$credential") || return 1
+  printf '%s\n' "$payload" | run_docker run --env-file /dev/stdin "$@"
+}
+
+run_redis_with_credentials() {
+  local credential="$1"
+  shift
+  local line password=""
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line == "requirepass "* ]]; then
+      password=${line#requirepass }
+    fi
+  done <"$credential"
+  [[ $password =~ ^Om4\![0-9a-f]{48}$ ]] || return 1
+
+  # The fixed shell program builds a private config inside the container, then
+  # drops the secret from Redis's environment before exec. Neither Docker nor
+  # the daemon receives a caller-controlled host bind path.
+  printf 'REDIS_PASSWORD=%s\n' "$password" |
+    run_docker run --env-file /dev/stdin "$@" redis:7 /bin/sh -euc '
+      umask 077
+      printf "protected-mode yes\nbind 0.0.0.0\nrequirepass %s\n" "$REDIS_PASSWORD" >/tmp/omarchy-redis.conf
+      unset REDIS_PASSWORD
+      exec redis-server /tmp/omarchy-redis.conf
+    '
+}
+
+refuse_existing_container() {
+  local db="$1" container="$2" containers
+  containers=$(existing_containers) || {
+    echo "Could not inspect Docker containers; no credentials were generated." >&2
+    return 1
+  }
+  if /usr/bin/grep -qxF "$container" <<<"$containers"; then
+    /usr/bin/cat >&2 <<EOF
+Container '$container' already exists; it was not changed or recreated.
+It may retain legacy empty, trust, absent, or public administrator credentials.
+Back up its data and use the ${db} administration tools to set a private password, or explicitly remove and reinstall it after deciding how to preserve the data.
+EOF
+    return 1
+  fi
+}
+
+ensure_env_credentials() {
+  local file="$1" db="$2" password contents
+  if [[ -e $file || -L $file ]]; then
+    env_credentials_valid "$file" "$db" || {
+      echo "Refusing unsafe or invalid credential file: $file" >&2
+      return 1
+    }
+    return 0
+  fi
+  password=$(generate_password) || return 1
+  case "$db" in
+    MySQL) contents="MYSQL_ROOT_PASSWORD=${password}"$'\n' ;;
+    PostgreSQL) contents=$'POSTGRES_USER=postgres\n'"POSTGRES_PASSWORD=${password}"$'\n' ;;
+    MongoDB) contents=$'MONGO_INITDB_ROOT_USERNAME=omarchy_admin\n'"MONGO_INITDB_ROOT_PASSWORD=${password}"$'\n' ;;
+    MariaDB) contents="MARIADB_ROOT_PASSWORD=${password}"$'\n' ;;
+    MSSQL) contents=$'ACCEPT_EULA=Y\nMSSQL_PID=Developer\n'"MSSQL_SA_PASSWORD=${password}"$'\n' ;;
+    *) return 1 ;;
+  esac
+  write_credential_file "$file" "$contents"
+}
+
+ensure_redis_credentials() {
+  local file="$1" password contents
+  if [[ -e $file || -L $file ]]; then
+    redis_credentials_valid "$file" || {
+      echo "Refusing unsafe or invalid Redis credential config: $file" >&2
+      return 1
+    }
+    return 0
+  fi
+  password=$(generate_password) || return 1
+  contents=$'protected-mode yes\nbind 0.0.0.0\nrequirepass '"$password"$'\n'
+  write_credential_file "$file" "$contents"
+}
+
+validate_existing_credentials() {
+  local db="$1" file="$2"
+  [[ -e $file || -L $file ]] || return 0
+  if [[ $db == Redis ]]; then
+    redis_credentials_valid "$file" || {
+      echo "Refusing unsafe or invalid Redis credential config: $file" >&2
+      return 1
+    }
+  else
+    env_credentials_valid "$file" "$db" || {
+      echo "Refusing unsafe or invalid credential file: $file" >&2
+      return 1
+    }
+  fi
+}
+
+install_database_locked() {
+  local db="$1" container credential
+  container=$(container_name_for "$db")
+  credential=$(credential_path_for "$db")
+  # Reject planted or stale credential state without involving Docker. Missing
+  # credentials are generated only after container discovery below.
+  validate_existing_credentials "$db" "$credential" || return 1
+  refuse_existing_container "$db" "$container" || return 1
+
+  case "$db" in
+    MySQL)
+      ensure_env_credentials "$credential" MySQL || return 1
+      CREDENTIAL_READY=true
+      run_with_env_credentials "$credential" \
+        -d --restart unless-stopped -p 127.0.0.1:3306:3306 --name mysql8 mysql:8.4
+      ;;
+    PostgreSQL)
+      ensure_env_credentials "$credential" PostgreSQL || return 1
+      CREDENTIAL_READY=true
+      run_with_env_credentials "$credential" \
+        -d --restart unless-stopped -p 127.0.0.1:5432:5432 --name postgres18 postgres:18
+      ;;
+    Redis)
+      ensure_redis_credentials "$credential" || return 1
+      CREDENTIAL_READY=true
+      run_redis_with_credentials "$credential" \
+        -d --restart unless-stopped -p 127.0.0.1:6379:6379 --name redis
+      ;;
+    MongoDB)
+      ensure_env_credentials "$credential" MongoDB || return 1
+      CREDENTIAL_READY=true
+      run_with_env_credentials "$credential" \
+        -d --restart unless-stopped -p 127.0.0.1:27017:27017 --name mongodb mongo:noble
+      ;;
+    MariaDB)
+      ensure_env_credentials "$credential" MariaDB || return 1
+      CREDENTIAL_READY=true
+      run_with_env_credentials "$credential" \
+        -d --restart unless-stopped -p 127.0.0.1:3306:3306 --name mariadb11 mariadb:11.8
+      ;;
+    MSSQL)
+      ensure_env_credentials "$credential" MSSQL || return 1
+      CREDENTIAL_READY=true
+      run_with_env_credentials "$credential" \
+        -d --restart unless-stopped -p 127.0.0.1:1433:1433 --name mssql \
+        mcr.microsoft.com/mssql/server:2022-CU12-ubuntu-22.04
+      ;;
+  esac
+}
+
+install_database() {
+  local db="$1" credential
+  resolve_caller_identity || {
+    echo "Could not establish the exact desktop-user credential location." >&2
+    return 1
+  }
+  prepare_credential_dir || return 1
+  credential=$(credential_path_for "$db")
+  CREDENTIAL_READY=false
+  echo "Installing $db with mandatory private authentication..."
+  if with_credential_lock install_database_locked "$db"; then
+    echo "Installed $db on loopback. Credentials are stored privately in $credential."
+  else
+    if [[ $CREDENTIAL_READY == "true" ]] && credential_file_safe "$credential"; then
+      echo "The container was not confirmed started. Its private credentials remain in $credential for a safe retry." >&2
+    fi
+    return 1
+  fi
+}
+
+main() {
+  local choice
+  if (($# > 1)); then
+    usage
+    return 2
+  elif (($# == 1)); then
+    choice=$1
+  else
+    choice=$(printf '%s\n' "${DATABASE_OPTIONS[@]}" |
+      /usr/bin/gum choose --header "Select database (return to install, esc to cancel)") || return 0
+  fi
+
+  if [[ -z $choice ]]; then
+    echo "No database selected for installation."
+    return 0
+  fi
+  valid_database "$choice" || {
+    echo "Unknown database choice: $choice" >&2
+    usage
+    return 2
+  }
+
+  local old_umask
+  old_umask=$(umask)
+  umask 077
+  local status=0
+  install_database "$choice" || status=$?
+  umask "$old_umask"
+  return "$status"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  cleanup_sudo_timestamp() {
+    local status=$?
+    trap - EXIT HUP INT TERM
+    if ! /usr/bin/sudo -k >/dev/null 2>&1; then
+      echo "Could not invalidate cached sudo authorization." >&2
+      ((status != 0)) || status=1
+    fi
+    exit "$status"
+  }
+  trap cleanup_sudo_timestamp EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  /usr/bin/sudo -k >/dev/null 2>&1 || {
+    echo "Could not invalidate cached sudo authorization; refusing database installation." >&2
+    exit 1
+  }
+  main "$@"
 fi
