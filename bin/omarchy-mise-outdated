@@ -1,0 +1,20 @@
+#!/bin/bash
+
+# omarchy:summary=List mise-managed tools with a newer version available
+
+set -euo pipefail
+
+if ! omarchy-cmd-present mise; then
+  exit 1
+fi
+
+# A transient failure (offline, registry hiccup) should read as "nothing to
+# report" rather than crash a caller that runs this unattended, mirroring how
+# omarchy-update-available treats a failed checkupdates.
+outdated=$(mise outdated --json 2>/dev/null) || exit 1
+
+if [[ -z $outdated || $outdated == "{}" ]]; then
+  exit 1
+fi
+
+jq -r 'to_entries[] | "\(.key) \(.value.current) -> \(.value.latest)"' <<<"$outdated"

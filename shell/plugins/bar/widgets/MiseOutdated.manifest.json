@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.mise-outdated",
+  "name": "Mise tool updates",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Indicates outdated mise-managed tools",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "MiseOutdated.qml"
+  },
+  "barWidget": {
+    "displayName": "Mise tool updates",
+    "description": "Indicates outdated mise-managed tools",
+    "category": "System",
+    "allowMultiple": false
+  }
+}
