@@ -1,0 +1,86 @@
+#!/bin/bash
+
+# omarchy:summary=Sync the current Omarchy theme into herdr's config.toml
+# omarchy:hidden=true
+
+CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
+HERDR_CONFIG="$HOME/.config/herdr/config.toml"
+HERDR_THEME="$CURRENT_THEME_PATH/herdr-theme.toml"
+
+[[ -f $HERDR_THEME ]] || exit 0
+[[ -f $HERDR_CONFIG ]] || exit 0
+
+patch_section() {
+  local section="$1"
+  local theme_file="$2"
+  local config_file="$3"
+  local tmp
+
+  tmp=$(mktemp)
+
+  awk -v section="$section" -v theme="$theme_file" '
+    BEGIN { in_section = 0; emitted = 0 }
+
+    /^[[:space:]]*\[[^]]+\][[:space:]]*($|#)/ {
+      if (in_section) {
+        while ((getline line < theme) > 0) print line
+        close(theme)
+        emitted = 1
+        in_section = 0
+      }
+      if ($0 ~ "^[[:space:]]*\\[" section "\\][[:space:]]*($|#)") {
+        in_section = 1
+        print
+        next
+      }
+    }
+
+    !in_section { print }
+
+    END {
+      if (in_section) {
+        # Section exists but is the last one. The header was already
+        # printed when it was matched, so just emit the content.
+        while ((getline line < theme) > 0) print line
+        close(theme)
+      } else if (!emitted) {
+        # Section was not found in the file. Add header plus content.
+        if (NR > 0) print ""
+        print "[" section "]"
+        while ((getline line < theme) > 0) print line
+        close(theme)
+      }
+    }
+  ' "$config_file" >"$tmp"
+
+  mv "$tmp" "$config_file"
+}
+
+# Extract [theme] section body (excluding header) from herdr-theme.toml
+theme_section=$(mktemp)
+awk 'BEGIN { found=0 }
+/^\[/ { if (found) exit; if ($0 ~ /^\[theme\]/) { found=1; next } }
+found { print }' "$HERDR_THEME" >"$theme_section"
+
+# Extract [theme.custom] section body (excluding header) from herdr-theme.toml
+custom_section=$(mktemp)
+awk 'BEGIN { found=0 }
+/^\[/ { if (found) exit; if ($0 ~ /^\[theme\.custom\]/) { found=1; next } }
+found { print }' "$HERDR_THEME" >"$custom_section"
+
+# Patch [theme] section
+if [[ -s $theme_section ]]; then
+  patch_section "theme" "$theme_section" "$HERDR_CONFIG"
+fi
+
+# Patch [theme.custom] section
+if [[ -s $custom_section ]]; then
+  patch_section "theme.custom" "$custom_section" "$HERDR_CONFIG"
+fi
+
+rm -f "$theme_section" "$custom_section"
+
+# Reload herdr if running
+if [[ $(herdr status server --json 2>/dev/null | jq -r '.running') == "true" ]]; then
+  herdr server reload-config >/dev/null 2>&1 || true
+fi

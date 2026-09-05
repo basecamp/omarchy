@@ -1,0 +1,235 @@
+#!/bin/bash
+
+# omarchy:summary=Serialize a theme's colors-neovim.toml into a data-only neovim.lua
+# omarchy:args=--file <colors-neovim.toml> --out <neovim.lua>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: omarchy-theme-colors-neovim --file <colors-neovim.toml> --out <neovim.lua>"
+}
+
+INPUT=""
+OUTPUT=""
+
+while (( $# > 0 )); do
+  case "$1" in
+    --file)
+      [[ -n ${2:-} ]] || { usage >&2; exit 1; }
+      INPUT="$2"
+      shift 2
+      ;;
+    --out)
+      [[ -n ${2:-} ]] || { usage >&2; exit 1; }
+      OUTPUT="$2"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ -z $INPUT || -z $OUTPUT || -n ${1:-} ]]; then
+  usage >&2
+  exit 1
+fi
+
+if [[ ! -f $INPUT ]]; then
+  echo "omarchy-theme-colors-neovim: no such file: $INPUT" >&2
+  exit 1
+fi
+
+if ! omarchy-cmd-present python3; then
+  echo "omarchy-theme-colors-neovim: python3 is required to read colors-neovim.toml" >&2
+  exit 1
+fi
+
+python3 - "$INPUT" "$OUTPUT" <<'PY'
+import math
+import os
+import re
+import sys
+import tempfile
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    print("omarchy-theme-colors-neovim: python3 is too old for tomllib (3.11+ needed)", file=sys.stderr)
+    sys.exit(1)
+
+from datetime import date as _date
+from datetime import datetime as _datetime
+from datetime import time as _time
+
+BARE_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def fail(message):
+    print(f"omarchy-theme-colors-neovim: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def lua_string(value):
+    # A Lua double-quoted literal. Every byte that could end the string or be
+    # read as an escape goes through an escape, so any input stays one inert
+    # string value.
+    out = []
+    for ch in value:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ord(ch) < 32 or ord(ch) == 127:
+            out.append(f"\\{ord(ch)}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def lua_literal(value, indent):
+    pad = "  " * indent
+
+    if isinstance(value, bool):
+        return "true" if value else "false"
+
+    if isinstance(value, str):
+        return lua_string(value)
+
+    if isinstance(value, int):
+        return str(value)
+
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            fail("colors-neovim.toml numbers must be finite")
+        return repr(value)
+
+    if isinstance(value, list):
+        if not value:
+            return "{}"
+        items = ",\n".join(pad + "  " + lua_literal(item, indent + 1) for item in value)
+        return "{\n" + items + ",\n" + pad + "}"
+
+    if isinstance(value, dict):
+        if not value:
+            return "{}"
+        items = []
+        for key, item in value.items():
+            name = key if BARE_KEY.fullmatch(key) else "[" + lua_string(key) + "]"
+            items.append(pad + "  " + name + " = " + lua_literal(item, indent + 1))
+        return "{\n" + ",\n".join(items) + ",\n" + pad + "}"
+
+    fail("colors-neovim.toml values may only be strings, numbers, booleans, arrays, and tables")
+
+
+def check_value(value):
+    # Walk before emitting so a rejected document never leaves a half-written
+    # output behind, and so datetime values get a clear message.
+    if isinstance(value, bool) or isinstance(value, str) or isinstance(value, int) or isinstance(value, float):
+        if isinstance(value, float) and not math.isfinite(value):
+            fail("colors-neovim.toml numbers must be finite")
+        return
+    if isinstance(value, (_date, _time, _datetime)):
+        fail("colors-neovim.toml values may not be dates or times")
+    if isinstance(value, list):
+        for item in value:
+            check_value(item)
+        return
+    if isinstance(value, dict):
+        for item in value.values():
+            check_value(item)
+        return
+    fail("colors-neovim.toml values may only be strings, numbers, booleans, arrays, and tables")
+
+
+input_path, output_path = sys.argv[1], sys.argv[2]
+
+try:
+    with open(input_path, "rb") as handle:
+        data = tomllib.load(handle)
+except tomllib.TOMLDecodeError as error:
+    fail(f"invalid TOML in {os.path.basename(input_path)}: {error}")
+except UnicodeDecodeError:
+    fail(f"{os.path.basename(input_path)} is not valid UTF-8")
+
+for key in data:
+    if key not in ("schema", "plugins"):
+        fail(f"colors-neovim.toml does not support the top-level key '{key}'")
+
+schema = data.get("schema", 1)
+# bool is an int subclass in Python, so True would otherwise pass the == 1
+# check; require a plain integer 1.
+if not isinstance(schema, int) or isinstance(schema, bool) or schema != 1:
+    fail(f"unsupported schema version: {schema!r}")
+
+plugins = data.get("plugins")
+if not isinstance(plugins, list) or not plugins:
+    fail("colors-neovim.toml defines no [[plugins]] entries")
+
+for index, plugin in enumerate(plugins):
+    if not isinstance(plugin, dict):
+        fail(f"[[plugins]] entry #{index + 1} must be a table")
+    spec = plugin.get("spec")
+    if not isinstance(spec, str) or not spec.strip():
+        fail(f"[[plugins]] entry #{index + 1} needs a non-empty spec = \"...\"")
+    check_value(plugin)
+
+pad = "  "
+lines = [
+    "-- Neovim integration generated by Omarchy from this theme's colors-neovim.toml.",
+    "-- Everything below is data serialized from that TOML; edit the theme's TOML,",
+    "-- not this file.",
+    "",
+    "return {",
+]
+
+for plugin in plugins:
+    lines.append(pad + "{")
+    lines.append(pad * 2 + lua_string(plugin["spec"]) + ",")
+    for key, value in plugin.items():
+        if key == "spec":
+            continue
+        name = key if BARE_KEY.fullmatch(key) else "[" + lua_string(key) + "]"
+        lines.append(pad * 2 + name + " = " + lua_literal(value, 2) + ",")
+    lines.append(pad + "},")
+
+lines.append("}")
+rendered = "\n".join(lines) + "\n"
+
+directory = os.path.dirname(os.path.abspath(output_path))
+try:
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", dir=directory, prefix=".neovim.lua.", delete=False
+    )
+except OSError as error:
+    fail(f"cannot write next to {output_path}: {error}")
+
+try:
+    try:
+        handle.write(rendered)
+        handle.flush()
+        os.fsync(handle.fileno())
+    except OSError as error:
+        handle.close()
+        os.unlink(handle.name)
+        fail(f"cannot write {output_path}: {error}")
+    handle.close()
+    os.chmod(handle.name, 0o644)
+    os.replace(handle.name, output_path)
+except OSError as error:
+    if os.path.exists(handle.name):
+        os.unlink(handle.name)
+    fail(f"cannot replace {output_path}: {error}")
+PY
