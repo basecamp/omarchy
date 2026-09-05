@@ -2,20 +2,63 @@
 
 # omarchy:summary=Toggle the layout on the current active workspace between dwindle and scrolling
 
-ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
-[[ $ACTIVE_WORKSPACE =~ ^-?[0-9]+$ ]] || exit 1
-CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
-LAYOUTS_DIR="$HOME/.local/state/omarchy/workspace-layouts"
-LAYOUT_FILE="$LAYOUTS_DIR/$ACTIVE_WORKSPACE.lua"
+# One query: id, name and layout have to describe the same workspace, and a
+# second call can land after the user has already switched away.
+ACTIVE_WORKSPACE_JSON=$(hyprctl activeworkspace -j)
+ACTIVE_WORKSPACE_ID=$(jq -r '.id // empty' <<<"$ACTIVE_WORKSPACE_JSON")
+ACTIVE_WORKSPACE_NAME=$(jq -r '.name // empty' <<<"$ACTIVE_WORKSPACE_JSON")
+[[ $ACTIVE_WORKSPACE_ID =~ ^-?[0-9]+$ ]] || exit 1
+CURRENT_LAYOUT=$(jq -r '.tiledLayout // empty' <<<"$ACTIVE_WORKSPACE_JSON")
+
+# Hyprland gives named workspaces a negative id and reassigns it every session,
+# so a rule keyed by that id matches nothing — and `hyprctl eval` still answers
+# "ok", so the failure is silent. Address those by name instead, which is what
+# the user chose and what survives a reboot.
+if (( ACTIVE_WORKSPACE_ID < 0 )); then
+  [[ -n $ACTIVE_WORKSPACE_NAME ]] || exit 1
+  WORKSPACE_SELECTOR="name:$ACTIVE_WORKSPACE_NAME"
+  # The state filename becomes a Lua module name, so keep it to characters a
+  # module path can hold. Names collide only if they differ solely by the
+  # characters being replaced.
+  STATE_KEY="name-$(printf '%s' "$ACTIVE_WORKSPACE_NAME" | tr -c 'A-Za-z0-9_-' '_')"
+else
+  WORKSPACE_SELECTOR="$ACTIVE_WORKSPACE_ID"
+  STATE_KEY="$ACTIVE_WORKSPACE_ID"
+fi
 
 case "$CURRENT_LAYOUT" in
   dwindle) NEW_LAYOUT=scrolling ;;
   *) NEW_LAYOUT=dwindle ;;
 esac
 
-mkdir -p "$LAYOUTS_DIR"
-printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ACTIVE_WORKSPACE" "$NEW_LAYOUT" >"$LAYOUT_FILE"
+# The selector is interpolated into a double-quoted Lua string.
+ESCAPED_SELECTOR=${WORKSPACE_SELECTOR//\\/\\\\}
+ESCAPED_SELECTOR=${ESCAPED_SELECTOR//\"/\\\"}
 
-hyprctl eval "hl.workspace_rule({ workspace = \"$ACTIVE_WORKSPACE\", layout = \"$NEW_LAYOUT\" })" >/dev/null 2>&1 || \
-  hyprctl keyword workspace "$ACTIVE_WORKSPACE, layout:$NEW_LAYOUT"
+LAYOUTS_DIR="$HOME/.local/state/omarchy/workspace-layouts"
+LAYOUT_FILE="$LAYOUTS_DIR/$STATE_KEY.lua"
+
+mkdir -p "$LAYOUTS_DIR"
+printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ESCAPED_SELECTOR" "$NEW_LAYOUT" >"$LAYOUT_FILE"
+
+# Named workspaces used to persist as <id>.lua. require_all.files globs every
+# *.lua at -maxdepth 1. Ids are reassigned each session, so a leftover is not
+# necessarily named after the id this workspace has now. Under the new scheme a
+# negative id always persists as name-<...>, so every bare negative filename
+# left in here is from the old scheme and safe to drop.
+rm -f "$LAYOUTS_DIR"/-[0-9]*.lua
+
+hyprctl eval "hl.workspace_rule({ workspace = \"$ESCAPED_SELECTOR\", layout = \"$NEW_LAYOUT\" })" >/dev/null 2>&1 ||
+  hyprctl keyword workspace "$WORKSPACE_SELECTOR, layout:$NEW_LAYOUT"
+
+# `hyprctl eval` reports ok for a rule that matched no workspace, so the only
+# honest confirmation is reading the layout back — from the workspace we
+# applied to, not whatever is active now. The user can switch away between
+# apply and this query.
+APPLIED_LAYOUT=$(hyprctl workspaces -j | jq -r --arg n "$ACTIVE_WORKSPACE_NAME" '.[] | select(.name==$n) | .tiledLayout // empty')
+if [[ $APPLIED_LAYOUT != "$NEW_LAYOUT" ]]; then
+  omarchy-notification-send -u critical -g 󱂬 "Could not set workspace layout to $NEW_LAYOUT"
+  exit 1
+fi
+
 omarchy-notification-send -g 󱂬 "Workspace layout set to $NEW_LAYOUT"
