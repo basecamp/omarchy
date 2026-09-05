@@ -5,7 +5,13 @@
 echo
 
 confirm_reboot() {
-  gum confirm "$1" && { omarchy-system-reboot; exit 0; }
+  # script(1) gives unattended updates a pseudo-terminal, so the flag wins.
+  if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 || ! -t 0 || ! -t 1 ]]; then
+    echo "$1"
+  elif gum confirm "$1"; then
+    omarchy-system-reboot
+    exit 0
+  fi
 }
 
 running_kernel=$(uname -r)
