@@ -30,4 +30,26 @@ assert(
   !/onAuthenticatingChanged:/.test(serviceQml),
   'the combined authenticating state no longer drives the blank timer'
 )
+
+assert(
+  /function runWake\(force\) \{\s*if \(!force && locked && \(Date\.now\(\) - lastBlankedAt\) < 1500\) return/.test(serviceQml),
+  'runWake ignores unforced wake events during the 1.5s post-blanking debounce window'
+)
+
+const lockViewQml = fs.readFileSync(path.join(root, 'shell/plugins/lock/LockView.qml'), 'utf8')
+
+assert(
+  /signal wakeRequested\(bool force\)/.test(lockViewQml),
+  'LockView wakeRequested signal takes a force parameter'
+)
+
+assert(
+  /onPositionChanged: root\.wakeRequested\(false\)/.test(lockViewQml),
+  'LockView passes false for pointer motion wake requests'
+)
+
+assert(
+  /onClicked: \{ root\.wakeRequested\(true\);/.test(lockViewQml),
+  'LockView passes true for deliberate mouse click wake requests'
+)
 JS

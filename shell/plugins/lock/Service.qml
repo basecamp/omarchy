@@ -164,12 +164,16 @@ Item {
     idleBlankTimer.restart()
   }
 
-  function runWake() {
+  property double lastBlankedAt: 0
+
+  function runWake(force) {
+    if (!force && locked && (Date.now() - lastBlankedAt) < 1500) return
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    lastBlankedAt = Date.now()
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -280,7 +284,7 @@ Item {
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
-        onWakeRequested: root.runWake()
+        onWakeRequested: function(force) { root.runWake(force) }
       }
 
     }

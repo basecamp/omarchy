@@ -41,7 +41,7 @@ Item {
   signal submitPassword(string password)
   signal passwordTextEdited(string password)
   signal clearFailureRequested()
-  signal wakeRequested()
+  signal wakeRequested(bool force)
 
   // Cache-busts the lock background by appending `?v=`. Adding a query
   // string keeps Image's loader happy while forcing it to reload when the
@@ -115,8 +115,8 @@ Item {
     MouseArea {
       anchors.fill: parent
       hoverEnabled: true
-      onClicked: { root.wakeRequested(); root.forcePasswordFocus() }
-      onPositionChanged: root.wakeRequested()
+      onClicked: { root.wakeRequested(true); root.forcePasswordFocus() }
+      onPositionChanged: root.wakeRequested(false)
     }
 
     BorderSurface {
@@ -163,7 +163,7 @@ Item {
         onTextChanged: {
           if (!root.syncingPasswordText) root.passwordTextEdited(text)
           if (text.length > 0) {
-            root.wakeRequested()
+            root.wakeRequested(true)
           }
           if (text.length > 0 && root.failureMessage.length > 0) root.clearFailureRequested()
         }
@@ -175,7 +175,7 @@ Item {
         }
 
         Keys.onPressed: function(event) {
-          root.wakeRequested()
+          root.wakeRequested(true)
           if (event.key === Qt.Key_Escape || (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_U)) {
             root.passwordTextEdited("")
             event.accepted = true
