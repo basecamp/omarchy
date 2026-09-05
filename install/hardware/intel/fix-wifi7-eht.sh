@@ -13,4 +13,7 @@ if lspci -nn | grep -qE '\[8086:(e440|272b)\]'; then
 # Remove this file when fixes land in the iwlwifi EHT data path
 options iwlwifi disable_11be=Y
 EOF
+
+  mkdir -p /usr/lib/systemd/system-sleep
+  cp -p "$OMARCHY_PATH/default/systemd/system-sleep/iwlwifi-reset" /usr/lib/systemd/system-sleep/
 fi
