@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# omarchy:summary=Cycle to the next installed theme
+# omarchy:examples=omarchy theme next
+
+# Display name mapping matches omarchy-theme-list / omarchy-theme-current:
+# tokyo-night → Tokyo Night. omarchy-theme-set accepts either form.
+theme_display_name() {
+  local slug=$1
+  local IFS=-
+  local parts=($slug)
+  local i name=""
+
+  for i in "${!parts[@]}"; do
+    if (( i > 0 )); then
+      name+=" "
+    fi
+    name+=${parts[$i]^}
+  done
+
+  printf '%s\n' "$name"
+}
+
+# Same union as omarchy-theme-list: user dirs/links plus stock dirs.
+mapfile -t slugs < <(
+  {
+    find "$HOME/.config/omarchy/themes/" -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -print 2>/dev/null
+    find "$OMARCHY_PATH/themes/" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null
+  } | sed 's|.*/||' | sort -u
+)
+total=${#slugs[@]}
+
+if (( total > 0 )); then
+  current=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null || true)
+  index=-1
+  for i in "${!slugs[@]}"; do
+    if [[ ${slugs[$i]} == "$current" ]]; then
+      index=$i
+      break
+    fi
+  done
+
+  if (( index == -1 )); then
+    next_slug="${slugs[0]}"
+  else
+    next_slug="${slugs[$(((index + 1) % total))]}"
+  fi
+
+  next=$(theme_display_name "$next_slug")
+
+  if [[ $next_slug != "$current" ]]; then
+    omarchy-theme-set "$next"
+  fi
+
+  omarchy-notification-send "$next" -t 2000
+fi
