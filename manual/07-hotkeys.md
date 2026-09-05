@@ -13,7 +13,7 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + W` or `Super + Q` | Close window             |
 | `Ctrl + Alt + Del` | Close all windows |
 | `Super + T`               | Toggle window between tiling/floating             |
-| `Super + J` | Toggle window position (horizontal/vertical) |
+| `Super + J` | Toggle window position in dwindle / consume or expel in scrolling |
 | `Super + O`               | Toggle popping window into sticky'n'floating |
 | `Super + L`               | Toggle between dwindle and scrolling layout |
 | `Super + P`               | Toggle pseudo window style (natural v stretch) |

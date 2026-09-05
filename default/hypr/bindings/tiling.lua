@@ -2,7 +2,21 @@ o.bind("SUPER + W", "Close window", hl.dsp.window.close())
 o.bind("SUPER + Q", "Close window", hl.dsp.window.close())
 o.bind("CTRL + ALT + DELETE", "Close all windows", "omarchy-hyprland-window-close-all")
 
-o.bind("SUPER + J", "Toggle window split", hl.dsp.layout("togglesplit"))
+local window_layout_dispatchers = {
+  dwindle = hl.dsp.layout("togglesplit"),
+  scrolling = hl.dsp.layout("consume_or_expel prev"),
+}
+
+local function toggle_window_layout()
+  local workspace = hl.get_active_special_workspace() or hl.get_active_workspace()
+  local dispatcher = workspace and window_layout_dispatchers[workspace.tiled_layout]
+
+  if dispatcher then
+    hl.dispatch(dispatcher)
+  end
+end
+
+o.bind("SUPER + J", "Toggle window split / consume or expel", toggle_window_layout)
 o.bind("SUPER + P", "Pseudo window", hl.dsp.window.pseudo())
 o.bind("SUPER + T", "Toggle window floating/tiling", hl.dsp.window.float({ action = "toggle" }))
 o.bind("SUPER + F", "Full screen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
