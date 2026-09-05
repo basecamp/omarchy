@@ -69,7 +69,17 @@ Panel {
   readonly property var networkDevices: Networking.devices ? Networking.devices.values : []
   readonly property var wifiDevice: findDevice(DeviceType.Wifi)
   readonly property var wifiNetworkObjects: wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
-  readonly property var connectedWifiNetwork: findConnectedWifiNetwork()
+  // Rebind nudge: Quickshell's network list can lag the live route during
+  // activation or scan churn -- the poller reports an up interface while no
+  // network object is marked connected yet. Incrementing this counter re-runs
+  // the connected-network lookup without waiting for the list itself to emit
+  // a change signal. The nudge rides the existing omarchy-network-status
+  // poller's cadence, so there is no second poller here.
+  property int wifiRebind: 0
+  readonly property var connectedWifiNetwork: {
+    wifiRebind
+    return findConnectedWifiNetwork()
+  }
   property var wifiNetworks: []
   property bool scanning: false
   property bool wifiStationAvailable: false
@@ -392,6 +402,14 @@ Panel {
 
   onWifiNetworkObjectsChanged: syncWifiNetworks()
 
+  // Rebind when the poller and Quickshell disagree: the route is up but no
+  // network object is marked connected yet. Each status sample nudges the
+  // lookup once; when Quickshell's list catches up the mismatch clears by
+  // itself (onWifiNetworkObjectsChanged fires and the binding re-runs).
+  onInfoChanged: {
+    if (info.iface && info.type === "wifi" && !connectedWifiNetwork) wifiRebind++
+  }
+
   function selectByDelta(delta) {
     if (wifiNetworks.length === 0) { selectedIndex = -1; return }
     if (selectedIndex < 0) selectedIndex = delta > 0 ? 0 : wifiNetworks.length - 1
@@ -441,6 +459,12 @@ Panel {
   readonly property string kind: {
     if (wiredDevice && wiredDevice.connected) return "ethernet"
     if (connectedWifiNetwork) return "wifi"
+    // Trust the omarchy-network-status poller: an up wifi interface means
+    // the link is associated even while Quickshell's network list has not
+    // rebound a connected network object yet. Only wifi is inferred from the
+    // poller -- the default route can be a VPN tunnel, and a tun must never
+    // be reported as ethernet.
+    if (info.iface && info.type === "wifi") return "wifi"
     return "disconnected"
   }
   readonly property int signalStrength: connectedWifiNetwork
@@ -1273,11 +1297,11 @@ Panel {
               if (root.restricted) return "LIMITED INTERNET ACCESS"
               if (root.info.type === "wifi") {
                 if (root.canDisconnect) return root.connectionPhrase.toUpperCase()
-                if (root.kind === "disconnected") return "NOT CONNECTED"
+                if (root.kind === "disconnected" && !root.info.iface) return "NOT CONNECTED"
                 return ""
               }
               if (root.info.type === "ethernet") return root.connectionPhrase.toUpperCase()
-              if (root.kind === "disconnected") return "NOT CONNECTED"
+              if (root.kind === "disconnected" && !root.info.iface) return "NOT CONNECTED"
               return ""
             }
             visible: text !== ""
