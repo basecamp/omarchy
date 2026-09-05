@@ -34,7 +34,10 @@ Panel {
       Charging: UPowerDeviceState.Charging,
       Discharging: UPowerDeviceState.Discharging,
       FullyCharged: UPowerDeviceState.FullyCharged,
-      PendingCharge: UPowerDeviceState.PendingCharge
+      PendingCharge: UPowerDeviceState.PendingCharge,
+      // Some firmware reports a charge limit as PendingDischarge rather than
+      // PendingCharge while the laptop is connected to AC.
+      PendingDischarge: UPowerDeviceState.PendingDischarge
     }
   }
 

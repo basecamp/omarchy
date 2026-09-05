@@ -56,11 +56,22 @@ function chargeThresholdActive(device, onBattery, states) {
 
   var fraction = batteryFraction(d)
   if (d.state === s.Discharging) return false
-  if (d.state === s.PendingCharge) return true
+  // Firmware and UPower do not agree on one state for a charge-limit hold:
+  // both pending states have been observed while connected to AC.
+  if (d.state === s.PendingCharge || d.state === s.PendingDischarge) return true
   if (d.state === s.FullyCharged && fraction < 0.99) return true
-  if (d.state !== s.Charging || fraction >= 0.99) return false
+  if (fraction >= 0.99) return false
 
-  return Number(d.changeRate || 0) <= 0.2 || Number(d.timeToFull || 0) >= 8 * 60 * 60
+  // An AC-connected battery in a non-charging, non-discharging state is
+  // holding its level even when the driver reports it as Unknown.
+  if (d.state !== s.Charging) return true
+
+  // Only use measurements that the driver actually supplied. Treating a
+  // missing rate as zero caused state detection to depend on firmware quirks.
+  var rate = Number(d.changeRate)
+  var timeToFull = Number(d.timeToFull)
+  return (isFinite(rate) && rate <= 0.2) ||
+    (isFinite(timeToFull) && timeToFull >= 8 * 60 * 60)
 }
 
 function batteryIcon(device, onBattery, states) {
@@ -72,7 +83,10 @@ function batteryIcon(device, onBattery, states) {
   var index = Math.max(0, Math.min(9, Math.floor(d.percentage * 10)))
   var threshold = chargeThresholdActive(d, onBattery, states)
 
-  if (threshold) return defaultIcons[index]
+  // battery-plus-variant keeps the plus inside the battery body. The regular
+  // battery-plus glyph places it at the lower-right edge, where it vanishes
+  // at the compact size used by the top bar.
+  if (threshold) return "󱟦"
   if (d.state === states.FullyCharged) return "󰂅"
   if (!onBattery) return chargingIcons[index]
   return defaultIcons[index]

@@ -8,7 +8,7 @@ run_node_test <<'JS'
 const fs = require('fs')
 const power = requireFromRoot('shell/plugins/panels/power/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/power/Panel.qml', 'utf8')
-const states = { Charging: 1, Discharging: 2, FullyCharged: 3, PendingCharge: 4 }
+const states = { Charging: 1, Discharging: 2, FullyCharged: 3, PendingCharge: 4, PendingDischarge: 5 }
 
 assertEqual(power.selectProfileIndex(0, 1, ['balanced', 'performance']), 1, 'power advances profile selection')
 assertEqual(power.selectProfileIndex(1, 1, ['balanced', 'performance']), 1, 'power clamps profile selection')
@@ -24,13 +24,17 @@ assert(power.profileIcon('performance').length > 0, 'power maps profile icons')
 assertEqual(power.batteryFraction({ isPresent: true, percentage: 1.5 }), 1, 'power clamps battery fraction')
 
 assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states), 'power detects threshold by pending charge state')
+assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.PendingDischarge }, false, states), 'power detects threshold by pending discharge state on AC')
+assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: 0 }, false, states), 'power detects threshold by non-charging state on AC')
 assert(power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 0.1, timeToFull: 120 }, false, states), 'power detects threshold by stalled charging')
+assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, timeToFull: 120 }, false, states), 'power does not treat missing rate as stalled charge threshold')
 assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.8, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states), 'power does not flag active charging as threshold')
 assert(!power.chargeThresholdActive({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'power does not flag discharging as threshold')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 1, state: states.FullyCharged }, false, states), 'Fully charged', 'power labels full battery')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, true, states), 'On battery', 'power labels battery mode')
 assertEqual(power.modeLabel({ isPresent: true, percentage: 0.5, state: states.Discharging }, false, states), 'Charging', 'power treats external power as newer than stale discharging state')
 assert(power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Charging }, false, states).length > 0, 'power maps battery icons')
+assertEqual(power.batteryIcon({ isPresent: true, percentage: 0.8, state: states.PendingCharge }, false, states), '󱟦', 'power returns battery-plus-variant icon at threshold')
 assertEqual(
   power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Discharging }, false, states),
   power.batteryIcon({ isPresent: true, percentage: 0.4, state: states.Charging, changeRate: 1.0, timeToFull: 120 }, false, states),
@@ -48,4 +52,5 @@ assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon
 assert(/openPanelIndicatorWidth:.*showPercentage.*button\.glyphPaintedWidth : 0/.test(panelSource), 'power spans the open-panel mark across the painted percentage block')
 assert(/IpcHandler[\s\S]*?function togglePercentage\(\) \{ root\.togglePercentage\(\) \}/.test(panelSource), 'power exposes togglePercentage over IPC')
 assert(/manageIpc: false/.test(panelSource), 'power owns its IPC handler so it can extend the target methods')
+assert(/PendingDischarge: UPowerDeviceState\.PendingDischarge/.test(panelSource), 'power maps PendingDischarge UPower state')
 JS
