@@ -18,10 +18,17 @@ case "${1:-}" in
     ;;
 esac
 
-battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
-[[ -z $battery ]] && exit 0
+# Read the aggregate battery, not an individual one: hardware with more than
+# one battery (e.g. ThinkPads with a Power Bridge bay) enumerates several BAT*
+# devices, and an idle/empty one sorts first alphabetically just as often as
+# the real one does. UPower's DisplayDevice already merges every battery into
+# one correct reading, the same source the rest of the shell (bar icon, panel
+# meter) uses — so this stays consistent with what's on screen.
+display_device_path="/org/freedesktop/UPower/devices/DisplayDevice"
+battery_info=$(upower -i "$display_device_path" 2>/dev/null)
 
-battery_info=$(upower -i "$battery")
+present=$(awk '/present:/ { print $2; exit }' <<<"$battery_info")
+[[ $present != "yes" ]] && exit 0
 
 percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
 capacity=$(awk '/energy-full:/ { printf "%d", $2; exit }' <<<"$battery_info")
@@ -42,28 +49,47 @@ time_remaining=$(awk '/time to (empty|full)/ {
   exit
 }' <<<"$battery_info")
 power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
-native_path=$(awk '/native-path/ { print $2; exit }' <<<"$battery_info")
-battery_path="$power_supply_path/$native_path"
+state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
 
 # UPower's energy-rate can lag the kernel telemetry by tens of seconds. Use
 # the instantaneous sysfs reading when available so the open panel stays live.
-if [[ -r $battery_path/power_now ]]; then
-  power_rate_raw=$(awk -v microwatts="$(<"$battery_path/power_now")" 'BEGIN { print microwatts / 1000000 }')
-elif [[ -r $battery_path/current_now && -r $battery_path/voltage_now ]]; then
-  power_rate_raw=$(awk \
-    -v microamps="$(<"$battery_path/current_now")" \
-    -v microvolts="$(<"$battery_path/voltage_now")" \
-    'BEGIN { print microamps * microvolts / 1000000000000 }')
-fi
+# DisplayDevice has no native-path of its own, so sum every real battery's
+# live reading instead of one device's; an idle/empty battery reads 0 and
+# does not affect the total, so this is a no-op on single-battery hardware.
+have_live_rate=false
+live_rate_total=0
+for supply in "$power_supply_path"/BAT*; do
+  [[ -d $supply ]] || continue
+
+  reading=""
+  if [[ -r $supply/power_now ]]; then
+    reading=$(awk -v microwatts="$(<"$supply/power_now")" 'BEGIN { print microwatts / 1000000 }')
+  elif [[ -r $supply/current_now && -r $supply/voltage_now ]]; then
+    reading=$(awk \
+      -v microamps="$(<"$supply/current_now")" \
+      -v microvolts="$(<"$supply/voltage_now")" \
+      'BEGIN { print microamps * microvolts / 1000000000000 }')
+  fi
+
+  if [[ -n $reading ]]; then
+    have_live_rate=true
+    live_rate_total=$(awk -v total="$live_rate_total" -v reading="$reading" 'BEGIN { print total + reading }')
+  fi
+done
+[[ $have_live_rate == "true" ]] && power_rate_raw=$live_rate_total
 
 power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
   rounded = sprintf("%.1f", rate)
   sub(/\.0$/, "", rounded)
   print rounded
 }')
-state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
-threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
-threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
+
+# Charge thresholds are ACPI-level policy, not a per-battery reading, so
+# UPower reports the same values on every battery device it exposes; reading
+# just the first one is fine here, unlike the aggregate fields above.
+threshold_info=$(upower -i "$(upower -e 2>/dev/null | grep BAT | head -n 1)" 2>/dev/null)
+threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$threshold_info")
+threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$threshold_info")
 
 [[ -z $threshold_end ]] && threshold_end=$(cat "$power_supply_path"/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
 [[ -z $threshold_start ]] && threshold_start=$(cat "$power_supply_path"/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
@@ -107,7 +133,10 @@ if [[ $shell_output == "true" ]]; then
   printf 'size\t%s\n' "${capacity}Wh"
   printf 'time\t%s\n' "$time_remaining"
 
-  cycles=$(cat "$power_supply_path"/BAT*/cycle_count 2>/dev/null | head -1)
+  # Same reasoning as the live wattage above: take the highest reading rather
+  # than the first, so an idle/empty battery reporting 0 cycles doesn't hide
+  # a real battery's actual count.
+  cycles=$(cat "$power_supply_path"/BAT*/cycle_count 2>/dev/null | sort -rn | head -1)
 
   [[ -n $cycles ]] && printf 'cycles\t%s\n' "$cycles"
 

@@ -22,6 +22,7 @@ fi
 if [[ $1 == "-i" ]]; then
   cat <<'INFO'
   native-path:          BAT0
+  present:              yes
   state:                discharging
   energy:               28.3 Wh
   energy-full:          56.7 Wh
