@@ -106,25 +106,24 @@ pkgs_candidates = [
 # Checkouts differ per machine, so allow an explicit pointer at the sibling repo.
 # Accepts either the omarchy-pkgs checkout or its pkgbuilds/ directory.
 override = os.environ.get("OMARCHY_PKGS_PATH")
-if override:
-  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] + pkgs_candidates
+if override is not None:
+  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] if override else []
 pkgs_root = next((path for path in pkgs_candidates if path.exists()), None)
 if pkgs_root is None:
-  print("not ok - omarchy-pkgs checkout found for PKGBUILD coverage", file=sys.stderr)
-  print(
-    "looked in:\n  " + "\n  ".join(str(path) for path in pkgs_candidates) +
-    "\nset OMARCHY_PKGS_PATH to the omarchy-pkgs checkout",
-    file=sys.stderr,
-  )
-  sys.exit(1)
-settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
-omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
-if not settings_pkgbuild_path.exists():
-  settings_pkgbuild_path = pkgs_root / "omarchy-settings-dev/PKGBUILD"
-if not omarchy_pkgbuild_path.exists():
-  omarchy_pkgbuild_path = pkgs_root / "omarchy-dev/PKGBUILD"
-pkgbuild = settings_pkgbuild_path.read_text()
-omarchy_pkgbuild = omarchy_pkgbuild_path.read_text()
+  if override is not None:
+    print("not ok - OMARCHY_PKGS_PATH resolves to an omarchy-pkgs checkout", file=sys.stderr)
+    sys.exit(1)
+  pkgbuild = None
+  omarchy_pkgbuild = None
+else:
+  settings_pkgbuild_path = pkgs_root / "omarchy-settings/PKGBUILD"
+  omarchy_pkgbuild_path = pkgs_root / "omarchy/PKGBUILD"
+  if not settings_pkgbuild_path.exists():
+    settings_pkgbuild_path = pkgs_root / "omarchy-settings-dev/PKGBUILD"
+  if not omarchy_pkgbuild_path.exists():
+    omarchy_pkgbuild_path = pkgs_root / "omarchy-dev/PKGBUILD"
+  pkgbuild = settings_pkgbuild_path.read_text()
+  omarchy_pkgbuild = omarchy_pkgbuild_path.read_text()
 errors = []
 package_defaults = [
   ("default/uwsm/env.d/10-omarchy", "/usr/share/uwsm/env.d/10-omarchy", "uwsm/env"),
@@ -151,14 +150,14 @@ for source, destination, legacy in package_defaults:
     errors.append(f"missing package default source: {source}")
   if (root / "config" / legacy).exists():
     errors.append(f"legacy path still in config/: {legacy}")
-  if destination and (source not in pkgbuild or destination not in pkgbuild):
+  if pkgbuild is not None and destination and (source not in pkgbuild or destination not in pkgbuild):
     errors.append(f"PKGBUILD does not explicitly install {source} -> {destination}")
 
 # Existing users have an absolute wants symlink to the old unit path, and the
 # migration that repoints it only runs for users who run an update -- the
 # opposite of who the notifier is for. Dropping this alias strands them.
 notify_alias = 'ln -sfn omarchy-migrate-notify.service "$pkgdir/usr/lib/systemd/user/omarchy-update-user-notify.service"'
-if notify_alias not in pkgbuild:
+if pkgbuild is not None and notify_alias not in pkgbuild:
   errors.append(
     "PKGBUILD does not ship the omarchy-update-user-notify.service compatibility "
     "alias, so users who have not run migration 1785095882 lose the login notifier"
@@ -174,14 +173,16 @@ for hook in alpm_hooks:
   destination = f"/usr/share/libalpm/hooks/{hook}"
   if not (root / source).exists():
     errors.append(f"missing package default source: {source}")
-  if source not in omarchy_pkgbuild or destination not in omarchy_pkgbuild:
+  if omarchy_pkgbuild is not None and (source not in omarchy_pkgbuild or destination not in omarchy_pkgbuild):
     errors.append(f"omarchy PKGBUILD does not install {source} -> {destination}")
 
 if errors:
   print("\n".join(errors), file=sys.stderr)
   sys.exit(1)
+print("ok - package-owned defaults live outside config")
+if pkgs_root is None:
+  print("ok - no omarchy-pkgs checkout; skipping PKGBUILD coverage")
 PY
-pass "package-owned defaults live outside config"
 
 grep -F 'dofile((os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/default/hypr/bootstrap.lua")' "$ROOT/config/hypr/hyprland.lua" >/dev/null
 grep -F 'require("default.hypr.omarchy")' "$ROOT/config/hypr/hyprland.lua" >/dev/null

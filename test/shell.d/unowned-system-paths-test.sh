@@ -53,12 +53,15 @@ pkgs_candidates = [
   Path.home() / "Work/omacom/omarchy-pkgs/pkgbuilds",
 ]
 override = os.environ.get("OMARCHY_PKGS_PATH")
-if override:
-  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] + pkgs_candidates
+if override is not None:
+  pkgs_candidates = [Path(override) / "pkgbuilds", Path(override)] if override else []
 pkgs_root = next((p for p in pkgs_candidates if p.exists()), None)
 if pkgs_root is None:
-  print("not ok - omarchy-pkgs checkout found for package ownership check", file=sys.stderr)
-  sys.exit(1)
+  if override is not None:
+    print("not ok - OMARCHY_PKGS_PATH resolves to an omarchy-pkgs checkout", file=sys.stderr)
+    sys.exit(1)
+  print("ok - no omarchy-pkgs checkout; skipping package ownership check")
+  sys.exit(0)
 
 packaged = "\n".join(p.read_text() for p in pkgs_root.glob("*/PKGBUILD"))
 
@@ -129,6 +132,5 @@ if problems:
     file=sys.stderr,
   )
   sys.exit(1)
+print("ok - no Omarchy script writes a path under /usr that no package owns")
 PYTHON
-
-pass "no Omarchy script writes a path under /usr that no package owns"

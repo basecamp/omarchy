@@ -33,6 +33,18 @@ A new shell test only needs the right name: drop `<area>-test.sh` into
 `test/shell.d/` and `./test/shell` picks it up automatically. Shared fixtures
 live under `test/shell.d/fixtures/`.
 
+## Cross-repository coverage
+
+Some shell tests also verify packaging and installer contracts in the separate `omarchy-pkgs` and `omarchy-iso` repositories. They look for conventional sibling checkouts automatically. When a checkout is unavailable, only its cross-repository assertions are reported as skipped; the rest of the test file still runs.
+
+Set `OMARCHY_PKGS_PATH` to the `omarchy-pkgs` checkout or its `pkgbuilds/` directory, and set `OMARCHY_ISO_PATH` to the `omarchy-iso` checkout, to run that coverage from repositories stored elsewhere:
+
+```bash
+OMARCHY_PKGS_PATH=../omarchy-pkgs OMARCHY_ISO_PATH=../omarchy-iso ./test/all
+```
+
+An explicit path that cannot be resolved fails the dependent test instead of skipping it.
+
 ## The base-test.sh contract
 
 Every shell test starts the same way:
