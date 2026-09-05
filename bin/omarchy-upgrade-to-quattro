@@ -455,6 +455,25 @@ install_keyrings() {
   }
 }
 
+# install_keyrings can only run while the [omarchy] stanza accepts unsigned
+# packages: the keyring package that provides trust arrives through the very
+# repository it is meant to authenticate. Once it is installed the override
+# has served its purpose, so drop it before anything else is fetched -- every
+# later transaction in this upgrade then verifies signatures like a normal
+# post-#8072 machine instead of trusting the wire.
+require_signed_omarchy_repo() {
+  if ! as_root pacman -Q omarchy-keyring >/dev/null 2>&1; then
+    warn "omarchy-keyring did not install; leaving the unsigned-package override in place."
+    return
+  fi
+
+  local tmp
+  tmp=$(mktemp)
+  sed '/^\[omarchy\]/,/^\[/{/^SigLevel = Optional TrustAll$/d}' /etc/pacman.conf >"$tmp"
+  as_root install -m 0644 "$tmp" /etc/pacman.conf
+  rm -f "$tmp"
+}
+
 remove_legacy_installer_package() {
   if pacman -Q omarchy-installer >/dev/null 2>&1; then
     log "Removing legacy omarchy-installer package"
@@ -2353,6 +2372,7 @@ suppress_hyprland_config_reload
 create_pre_upgrade_snapshot
 configure_pacman_channel
 install_keyrings
+require_signed_omarchy_repo
 remove_legacy_installer_package
 remove_legacy_limine_configs
 remove_conflicting_legacy_packages
