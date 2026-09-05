@@ -59,6 +59,8 @@ disable_hyprland_autostart() {
   fi
 }
 
+# Alias=sunshine.service only exists after the canonical unit has been enabled.
+systemctl --user disable --now app-dev.lizardbyte.app.Sunshine.service 2>/dev/null || true
 systemctl --user disable --now sunshine 2>/dev/null || true
 omarchy-pkg-drop sunshine
 omarchy-webapp-remove "$SUNSHINE_ADMIN_APP" 2>/dev/null || true
