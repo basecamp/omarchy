@@ -22,6 +22,12 @@ QtObject {
   property color urgent: "#a55555"
   property color muted: "#707880"
 
+  // A shell.toml role may name another role instead of a colour. Chains are
+  // short in practice, so bound the walk rather than trusting the file: a
+  // theme ships shell.toml verbatim, and two roles naming each other would
+  // otherwise recurse until the shell process dies.
+  readonly property int maxAliasDepth: 8
+
   // Flat dictionary of "section.key" -> raw string from shell.toml.
   // Reassigning this whole property is what makes surface bindings below
   // re-evaluate when the theme swaps; mutating it in place would not.
@@ -48,10 +54,17 @@ QtObject {
     return value
   }
 
-  function flatColor(value, fallback) {
+  function flatColor(value, fallback, depth) {
+    var level = depth || 0
     var token = firstColorToken(value)
     var role = String(token || "").replace(/^\s+|\s+$/g, "").toLowerCase()
-    if (root.shellValues[role] && root.shellValues[role] !== token) return flatColor(root.shellValues[role], fallback)
+    if (root.shellValues[role] && root.shellValues[role] !== token) {
+      // The !== above only catches a role naming itself. A cycle of two or more
+      // needs the depth bound; an exhausted chain resolves to the fallback, the
+      // same answer an unresolvable token gets below.
+      if (level >= root.maxAliasDepth) return fallback
+      return flatColor(root.shellValues[role], fallback, level + 1)
+    }
     if (role === "foreground" || role === "text") return root.foreground
     if (role === "accent") return root.accent
     if (role === "urgent") return root.urgent
