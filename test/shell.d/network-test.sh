@@ -10,7 +10,101 @@ const network = requireFromRoot('shell/plugins/panels/network/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/network/Panel.qml', 'utf8')
 
 assert(/IpcHandler[\s\S]*?function toggleNetwork\(\) \{ root\.toggleNetwork\(\) \}/.test(panelSource), 'network exposes the Wi-Fi radio toggle over IPC')
+assert(/IpcHandler[\s\S]*?function toggleWired\(\) \{ root\.toggleWired\(\) \}/.test(panelSource), 'network exposes the wired toggle over IPC')
 assert(/manageIpc: false/.test(panelSource), 'network owns its IPC handler so it can extend the target methods')
+
+// The wired toggle is a header action alongside the Wi-Fi radio toggle, QR
+// share, and speed test, and must be independent of canToggleWifi so both
+// switches can show together when Wi-Fi and Ethernet are both live.
+assert(/readonly property bool canToggleWired: networkManagerAvailable && !!linkedWiredDevice/.test(panelSource), 'network shows the wired toggle whenever a wired device exists, independent of Wi-Fi state')
+assert(/readonly property int wiredHeaderIndex: canToggleWired/.test(panelSource), 'network gives the wired toggle its own header index')
+
+// A wired device with no cable plugged in (e.g. an onboard NIC with no
+// exposed jack) must never offer a toggle for a connection it can't carry.
+assert(/function findLinkedWiredDevice\(\)[\s\S]*?\n {2}\}/.test(panelSource), 'network has a link-gated wired device lookup')
+const findLinkedFn = panelSource.match(/function findLinkedWiredDevice\(\)[\s\S]*?\n {2}\}/)
+assert(findLinkedFn && /device\.hasLink/.test(findLinkedFn[0]), 'the wired toggle target is gated on hasLink, not just device existence')
+assert(/else if \(headerIndex === wiredHeaderIndex\) toggleWired\(\)/.test(panelSource), 'activateHeader() dispatches to the wired toggle')
+assert(/else if \(t === "e" \|\| t === "E"\) root\.toggleWired\(\)/.test(panelSource), 'network has an e/E keyboard shortcut for the wired toggle')
+
+// Turning wired off must persist (connection.autoconnect=no + disconnect),
+// not just disconnect for the session, matching how the Wi-Fi radio toggle
+// stays off across reboots rather than silently reconnecting.
+// WiredDevice.autoconnect (Quickshell.Networking) is NetworkManager's
+// device-level Autoconnect flag, which is runtime-only and resets on
+// reboot/replug -- only the connection profile's own autoconnect persists,
+// so the toggle shells out to omarchy-network-wired for that instead of
+// writing device.autoconnect.
+const toggleWiredFn = panelSource.match(/function toggleWired\(\)[\s\S]*?\n {2}\}/)
+assert(toggleWiredFn, 'network has a toggleWired() function')
+assert(!/device\.autoconnect/.test(toggleWiredFn[0]), 'toggleWired() does not write the non-persistent device-level autoconnect flag')
+assert(/!networkManagerAvailable \|\| !linkedWiredDevice/.test(toggleWiredFn[0]), 'toggleWired() only acts on the link-gated device')
+
+// The actual command dispatch lives in startWiredToggle(), which
+// toggleWired() defers to once it is safe to start (see the preemption
+// tests below) -- it is the one that must shell out to omarchy-network-wired
+// rather than writing device.autoconnect, and flip based on the queried
+// connection-profile autoconnect state.
+const startWiredToggleFn = panelSource.match(/function startWiredToggle\(\)[\s\S]*?\n {2}\}/)
+assert(startWiredToggleFn, 'network has a startWiredToggle() function')
+assert(!/device\.autoconnect/.test(startWiredToggleFn[0]), 'startWiredToggle() does not write the non-persistent device-level autoconnect flag')
+assert(/omarchy-network-wired/.test(startWiredToggleFn[0]), 'startWiredToggle() shells out to omarchy-network-wired for persisted connection-profile autoconnect')
+assert(/wiredAutoconnect \? "off" : "on"/.test(startWiredToggleFn[0]), 'startWiredToggle() flips based on the queried connection-profile autoconnect state')
+assert(/toggleWired\(\)[\s\S]*?startWiredToggle\(\)/.test(panelSource), 'toggleWired() defers the actual command to startWiredToggle()')
+
+// A background status query (queryWiredAutoconnect, run from every refresh())
+// shares wiredProc with the toggle action. A click arriving mid-query must
+// not be silently dropped -- it would look identical to a click that landed,
+// since wiredBusy only reflects an in-flight *toggle*, not a query. Nor can
+// it just restart wiredProc in the same tick: killing a process and its
+// stream-finished signal firing have no guaranteed order (mirrors
+// wifiqr/Panel.qml's qrProc expectedStop handling), so the killed query's
+// output could land after mode has already moved to "toggle" and be
+// misread as that toggle's result -- it must be queued for onExited instead.
+assert(/if \(wiredProc\.mode === "toggle"\) return/.test(toggleWiredFn[0]), 'toggleWired() lets an in-flight toggle keep running rather than restarting it')
+assert(/wiredExpectedStop = true/.test(toggleWiredFn[0]), 'toggleWired() marks a preempted query so its output is ignored on arrival')
+assert(/wiredTogglePending = true/.test(toggleWiredFn[0]), 'toggleWired() queues the toggle rather than starting it in the same tick as the kill')
+assert(/wiredProc\.running = false/.test(toggleWiredFn[0]), 'toggleWired() preempts an in-flight status query rather than silently dropping the click')
+
+const wiredProcBlock = panelSource.match(/Process \{\s*id: wiredProc[\s\S]*?\n {2}\}/)
+assert(wiredProcBlock, 'network has the wiredProc process')
+assert(/if \(root\.wiredExpectedStop\) return/.test(wiredProcBlock[0]), 'wiredProc drops output from a query it was told to expect a kill from')
+assert(/onExited: \{[\s\S]*?wiredTogglePending[\s\S]*?startWiredToggle\(\)/.test(wiredProcBlock[0]), 'wiredProc starts the queued toggle only once the killed query process has actually exited')
+assert(/if \(!root\.wiredTogglePending\) return/.test(wiredProcBlock[0]), 'wiredProc.onExited does nothing when no toggle was queued behind a kill')
+
+// queryWiredAutoconnect() must not race a toggle queued behind a kill it
+// just issued -- a fresh query starting in that same now-idle window would
+// contend with the queued toggle for wiredProc.
+const queryWiredFnForRace = panelSource.match(/function queryWiredAutoconnect\(\)[\s\S]*?\n {2}\}/)
+assert(queryWiredFnForRace && /wiredProc\.running \|\| wiredTogglePending/.test(queryWiredFnForRace[0]), 'queryWiredAutoconnect() will not start into a window a queued toggle is waiting for')
+
+// The switch's on/off state and hint must reflect the persisted
+// connection-profile autoconnect (wiredAutoconnect), not the device-level
+// WiredDevice.autoconnect that caused the original bug.
+assert(/property bool wiredAutoconnect: false/.test(panelSource), 'network tracks the queried connection-profile autoconnect separately from the device')
+assert(/checked: root\.wiredAutoconnect/.test(panelSource), 'the wired switch reflects the queried connection-profile autoconnect')
+assert(/readonly property string toggleWiredHint: wiredAutoconnect/.test(panelSource), 'the wired hint reflects the queried connection-profile autoconnect')
+
+// The wired switch must ignore clicks only while its own toggle action is in
+// flight, matching the bandAutoSwitch/Tailscale busy convention elsewhere in
+// this file -- not while the far more frequent background status query
+// (queried on every refresh()) happens to be running.
+assert(/readonly property bool wiredBusy: wiredTogglePending \|\| \(wiredProc\.running && wiredProc\.mode === "toggle"\)/.test(panelSource), 'network scopes wiredBusy to the toggle action (including a toggle queued behind a preempted query), not the status query')
+assert(/id: wiredSwitch[\s\S]*?busy: root\.wiredBusy/.test(panelSource), 'the wired switch surfaces wiredBusy the same way bandAutoSwitch surfaces bandBusy')
+
+// A Column positioner leaves a child's x alone unless the child anchors
+// itself, so a bare ToggleSwitch under a wider caption would sit at the
+// column's left edge instead of centered beneath the label.
+const wiredColumn = panelSource.match(/Column \{\s*visible: root\.canToggleWired[\s\S]*?\n {10}\}\n {8}\}/)
+assert(wiredColumn, 'network has a labeled wired-toggle column')
+assert(/id: wiredSwitch[\s\S]*?anchors\.horizontalCenter: parent\.horizontalCenter/.test(wiredColumn[0]), 'the wired switch is centered under its caption, not left-aligned by the column default')
+
+// The status query and the toggle both drive through the same process, keyed
+// off the physically linked device's interface name.
+const queryWiredFn = panelSource.match(/function queryWiredAutoconnect\(\)[\s\S]*?\n {2}\}/)
+assert(queryWiredFn, 'network has a queryWiredAutoconnect() function')
+assert(/omarchy-network-wired", linkedWiredDevice\.name\]/.test(queryWiredFn[0]), 'queryWiredAutoconnect() reads status for the linked device by interface name')
+assert(/onLinkedWiredDeviceChanged: queryWiredAutoconnect\(\)/.test(panelSource), 'network re-queries autoconnect as soon as the linked device changes, e.g. on plug/unplug')
 
 // Opening from the bar must call open() and nothing else. open() runs
 // refresh(true), which defers the PHY scan; a second bare refresh() defaults
