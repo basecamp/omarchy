@@ -11,7 +11,7 @@ o.bind("SUPER + ALT + F", "Full width", hl.dsp.window.fullscreen({ mode = "maxim
 o.bind("SUPER + O", "Pop window out (float & pin)", "omarchy-hyprland-window-pop")
 o.bind("SUPER + ALT + Home", "Save window width", "omarchy-hyprland-window-width save")
 o.bind("SUPER + Home", "Restore window width", "omarchy-hyprland-window-width restore")
-o.bind("SUPER + L", "Toggle workspace layout", "omarchy-hyprland-workspace-layout-toggle")
+o.bind("SUPER + L", "Cycle workspace layout", "omarchy-hyprland-workspace-layout-toggle")
 
 o.bind("SUPER + LEFT", "Focus on left window", hl.dsp.focus({ direction = "l" }))
 o.bind("SUPER + RIGHT", "Focus on right window", hl.dsp.focus({ direction = "r" }))

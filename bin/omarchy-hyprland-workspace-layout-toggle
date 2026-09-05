@@ -1,21 +1,39 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle the layout on the current active workspace between dwindle and scrolling
+# omarchy:summary=Cycle the current active workspace through the dwindle, scrolling, and floating layouts
 
 ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
-[[ $ACTIVE_WORKSPACE =~ ^-?[0-9]+$ ]] || exit 1
-CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
-LAYOUTS_DIR="$HOME/.local/state/omarchy/workspace-layouts"
-LAYOUT_FILE="$LAYOUTS_DIR/$ACTIVE_WORKSPACE.lua"
+# Named workspaces report a negative id, and Hyprland reads a leading "-" as a
+# selector relative to the current workspace: targeting one lands on workspace 1
+# and reconfigures that instead.
+[[ $ACTIVE_WORKSPACE =~ ^[0-9]+$ ]] || exit 1
+MODES_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/workspace-layouts"
+MODE_FILE="$MODES_DIR/$ACTIVE_WORKSPACE.lua"
 
-case "$CURRENT_LAYOUT" in
-  dwindle) NEW_LAYOUT=scrolling ;;
-  *) NEW_LAYOUT=dwindle ;;
+# Hyprland only reports the tiled layout, and floating is not one, so the mode is
+# read back from the file this script wrote. Files saved before floating existed
+# name no mode and fall through to what Hyprland reports.
+CURRENT_MODE=$(sed -n 's/.*mode = "\([a-z]*\)".*/\1/p' "$MODE_FILE" 2>/dev/null)
+if [[ -z $CURRENT_MODE ]]; then
+  CURRENT_MODE=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
+fi
+
+case "$CURRENT_MODE" in
+  dwindle) NEW_MODE=scrolling ;;
+  scrolling) NEW_MODE=floating ;;
+  *) NEW_MODE=dwindle ;;
 esac
 
-mkdir -p "$LAYOUTS_DIR"
-printf 'hl.workspace_rule({ workspace = "%s", layout = "%s" })\n' "$ACTIVE_WORKSPACE" "$NEW_LAYOUT" >"$LAYOUT_FILE"
+APPLY="o.workspace_mode({ workspace = \"$ACTIVE_WORKSPACE\", mode = \"$NEW_MODE\" })"
 
-hyprctl eval "hl.workspace_rule({ workspace = \"$ACTIVE_WORKSPACE\", layout = \"$NEW_LAYOUT\" })" >/dev/null 2>&1 || \
-  hyprctl keyword workspace "$ACTIVE_WORKSPACE, layout:$NEW_LAYOUT"
-omarchy-notification-send -g 󱂬 "Workspace layout set to $NEW_LAYOUT"
+# Saving a mode that did not apply would leave the file naming one layout while
+# the screen shows another, and restore it at the next login.
+if ! hyprctl eval "$APPLY" >/dev/null 2>&1; then
+  omarchy-notification-send -g 󱂬 "Workspace layout needs a Hyprland reload"
+elif mkdir -p "$MODES_DIR" && printf '%s\n' "$APPLY" >"$MODE_FILE"; then
+  omarchy-notification-send -g 󱂬 "Workspace layout set to $NEW_MODE"
+else
+  # The mode is on screen but nothing will bring it back, and the next press
+  # reads the mode from this file, so say so rather than counting it as set.
+  omarchy-notification-send -g 󱂬 "Workspace layout set to $NEW_MODE but could not be saved"
+fi
