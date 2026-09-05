@@ -35,7 +35,7 @@ run_parallel() {
   local pids=()
 
   for command in "$@"; do
-    bash -lc "$command" &
+    bash --noprofile --norc -c "$command" &
     pids+=("$!")
   done
 
