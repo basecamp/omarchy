@@ -1,0 +1,5 @@
+# Packages installed on top of omarchy-base.packages on a child install, the
+# kids-mode profile picked by the installer's "Who is this computer for?"
+# question. The ISO builder also reads this file when constructing the offline
+# mirror. Empty until the child app set lands; the plumbing on both sides is
+# wired, so filling this in is the whole job.

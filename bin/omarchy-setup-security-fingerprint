@@ -104,7 +104,14 @@ if sudo fprintd-enroll "$USER"; then
     setup_pam_config
     setup_lock_fingerprint_pam
     echo -e "\e[32m\nPerfect! Fingerprint authentication is now configured.\e[0m"
-    echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
+    if omarchy-profile-child; then
+      # sudo and polkit authenticate root here, and root has no prints, so
+      # those keep asking for the parent password.
+      echo "You can use your fingerprint to unlock the lock screen (Super + Ctrl + L)."
+      echo "sudo and system prompts keep asking for the parent password."
+    else
+      echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
+    fi
   else
     echo -e "\e[31m\nVerification failed. You may want to try enrolling again.\e[0m"
   fi

@@ -3,15 +3,15 @@
 # omarchy:summary=Apply Omarchy system setup in the installed target
 # omarchy:group=apply
 # omarchy:requires-sudo=true
-# omarchy:examples=omarchy apply system --install-user dhh --first-install
+# omarchy:examples=omarchy apply system --install-user dhh --first-install | omarchy apply system --install-user kid --first-install --profile child
 # omarchy:hidden=true
 
 set -euo pipefail
 
 usage() {
   cat <<USAGE
-Usage: omarchy apply system --install-user USER [--first-install|--upgrade]
-       omarchy apply system --defer-provisioning --first-install
+Usage: omarchy apply system --install-user USER [--first-install|--upgrade] [--profile PROFILE]
+       omarchy apply system --defer-provisioning --first-install [--profile PROFILE]
 
 Runs root-owned Omarchy system setup. The ISO calls this in the target chroot
 after packages are installed and the target user exists. It also calls
@@ -20,10 +20,16 @@ omarchy-apply-hardware, so hardware setup cannot be accidentally skipped.
 --defer-provisioning runs without an install user: deferred-provisioning installs create the user at
 first boot, so scripts that grant group memberships record them in
 /var/lib/omarchy/provisioning/groups instead of calling usermod.
+
+--profile records the install profile, default or child, as one word in
+/etc/omarchy/profile, which omarchy-profile-child reads at runtime, and exports
+it as OMARCHY_INSTALL_PROFILE for the setup leaves. Child is Omarchy's kids
+mode, picked by the installer's "Who is this computer for?" question.
 USAGE
 }
 
 install_user="${OMARCHY_INSTALL_USER:-}"
+profile="${OMARCHY_INSTALL_PROFILE:-default}"
 first_install=0
 upgrade=0
 defer_provisioning=0
@@ -37,6 +43,10 @@ while (($#)); do
     --defer-provisioning)
       defer_provisioning=1
       shift
+      ;;
+    --profile)
+      profile="${2:-}"
+      shift 2
       ;;
     --first-install)
       first_install=1
@@ -58,6 +68,14 @@ while (($#)); do
   esac
 done
 
+case $profile in
+  default|child) ;;
+  *)
+    echo "Error: --profile must be default or child" >&2
+    exit 1
+    ;;
+esac
+
 if (( EUID != 0 )); then
   echo "Error: omarchy-apply-system must run as root" >&2
   exit 1
@@ -78,8 +96,19 @@ else
 fi
 
 export OMARCHY_INSTALL_USER="$install_user"
+export OMARCHY_INSTALL_PROFILE="$profile"
 export OMARCHY_FIRST_INSTALL="$first_install"
 export OMARCHY_UPGRADE="$upgrade"
+
+# The marker outlives this run: omarchy-profile-child reads it whenever a menu
+# guard, a script, or first-boot provisioning needs to know, and it sits in
+# /etc, so a factory reset's @factory clone keeps a child machine a child
+# machine. Written even for the default profile, so "no marker" only ever
+# means an install that predates profiles.
+profile_file="${OMARCHY_PROFILE_FILE:-/etc/omarchy/profile}"
+install -Dm644 /dev/null "$profile_file"
+printf '%s\n' "$profile" >"$profile_file"
+
 export OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 export OMARCHY_INSTALL="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}"
 export OMARCHY_INSTALL_LOG_FILE="${OMARCHY_INSTALL_LOG_FILE:-/var/log/omarchy-install.log}"

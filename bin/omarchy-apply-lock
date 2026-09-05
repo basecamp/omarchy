@@ -22,17 +22,87 @@ as_root() {
 
 echo "Configuring lock screen password authentication..."
 
-as_root tee /etc/pam.d/omarchy-lock-password >/dev/null <<'EOF'
-#%PAM-1.0
-auth       required                    pam_faillock.so preauth silent deny=10 unlock_time=120
--auth      [success=2 default=ignore]  pam_systemd_home.so
-auth       [success=1 default=bad]     pam_unix.so try_first_pass nullok
+# On a child install the parent password opens the lock screen too, after the
+# kid's own has been refused: omarchy-parent-unlock checks the typed password
+# against root's through sudo. The jumps skip the failure line on either
+# success; a wrong password falls through to it as before. The kid's password
+# is tried first so a normal unlock never touches sudo or root's faillock
+# tally. Decided here, inside the writer, so every rerun keeps it.
+lock_password_stack() {
+  echo '#%PAM-1.0'
+  echo 'auth       required                    pam_faillock.so preauth silent deny=10 unlock_time=120'
+  if omarchy-profile-child; then
+    echo '-auth      [success=3 default=ignore]  pam_systemd_home.so'
+    echo 'auth       [success=2 default=ignore]  pam_unix.so try_first_pass nullok'
+    echo 'auth       [success=1 default=ignore]  pam_exec.so quiet seteuid expose_authtok /usr/bin/omarchy-parent-unlock'
+  else
+    echo '-auth      [success=2 default=ignore]  pam_systemd_home.so'
+    echo 'auth       [success=1 default=bad]     pam_unix.so try_first_pass nullok'
+  fi
+  cat <<'EOF'
 auth       [default=die]               pam_faillock.so authfail deny=10 unlock_time=120
 auth       optional                    pam_permit.so
 auth       required                    pam_env.so
 auth       required                    pam_faillock.so authsucc
 account    include                     system-local-login
 EOF
+}
+
+lock_password_stack | as_root tee /etc/pam.d/omarchy-lock-password >/dev/null
+
+# The login screen too, on a child install: SDDM's stack pulls its auth
+# from system-login, which pulls pam_unix from system-auth; the child version
+# spells that out with the parent helper after pam_unix, keeps the shells
+# and nologin checks that system-login adds, and leaves every other line of
+# the packaged file as it is (install/login/sddm.sh has already trimmed the
+# keyring there). The packaged file is kept beside it as sddm.omarchy-orig,
+# and a run outside the child profile puts it back.
+sddm_child_auth() {
+  cat <<'EOF'
+auth       required                    pam_shells.so
+auth       requisite                   pam_nologin.so
+auth       required                    pam_faillock.so preauth silent deny=10 unlock_time=120
+-auth      [success=3 default=ignore]  pam_systemd_home.so
+auth       [success=2 default=ignore]  pam_unix.so try_first_pass nullok
+auth       [success=1 default=ignore]  pam_exec.so quiet seteuid expose_authtok /usr/bin/omarchy-parent-unlock
+auth       [default=die]               pam_faillock.so authfail deny=10 unlock_time=120
+auth       optional                    pam_permit.so
+auth       required                    pam_env.so
+auth       required                    pam_faillock.so authsucc
+EOF
+}
+
+sddm_child_stack() {
+  local line
+  echo "#%PAM-1.0"
+  echo "# Omarchy kids mode: the parent password logs in as the kid too."
+  echo "# Written by omarchy-apply-lock from sddm.omarchy-orig; edit that file."
+  grep -v '^#%PAM-1.0' "$1" | while IFS= read -r line; do
+    if [[ $line =~ ^auth[[:space:]]+include[[:space:]]+system-login ]]; then
+      sddm_child_auth
+    else
+      printf '%s\n' "$line"
+    fi
+  done
+}
+
+# OMARCHY_PAM_DIR points the shell test at a scratch directory; the lock
+# stacks above reach /etc/pam.d through as_root alone, these are also read.
+sddm_pam="${OMARCHY_PAM_DIR:-/etc/pam.d}/sddm"
+sddm_orig="${OMARCHY_PAM_DIR:-/etc/pam.d}/sddm.omarchy-orig"
+if omarchy-profile-child; then
+  if [[ -f $sddm_pam ]]; then
+    echo "Configuring the login screen for the parent password..."
+    if [[ ! -f $sddm_orig ]]; then
+      as_root cp -p "$sddm_pam" "$sddm_orig"
+    fi
+    sddm_child_stack "$sddm_orig" | as_root tee "$sddm_pam" >/dev/null
+  fi
+elif [[ -f $sddm_orig ]]; then
+  echo "Restoring the packaged login screen stack..."
+  as_root cp -p "$sddm_orig" "$sddm_pam"
+  as_root rm -f "$sddm_orig"
+fi
 
 if omarchy-cmd-present fprintd-list && fprintd-list "$target_user" 2>/dev/null | grep -qi finger; then
   echo "Configuring lock screen fingerprint authentication..."

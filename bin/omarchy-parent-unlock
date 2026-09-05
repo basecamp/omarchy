@@ -1,0 +1,39 @@
+#!/bin/bash
+
+# omarchy:summary=Accept the parent password at the lock screen (PAM helper)
+# omarchy:hidden=true
+
+# Run by pam_exec (expose_authtok) from the password stacks of a child
+# install, the lock screen's and the login screen's, after the kid's own
+# password has been refused, with the typed password on stdin. It succeeds
+# when that is the parent password: under Defaults rootpw, sudo checks a
+# password against root's, and -k makes it neither use nor write the
+# credential cache, so a parent's unlock leaves the kid's session with no
+# passwordless sudo behind. faillock's limit on root applies to guesses, the
+# same as for sudo itself.
+#
+# sudo must run as the kid: root asks itself nothing, so a helper that ran
+# sudo as root would accept any password. The lock screen runs this as the
+# kid already; SDDM's greeter runs it as root, so it drops to the account
+# PAM names first, and any other identity is refused outright.
+
+set -euo pipefail
+
+user="${PAM_USER:-}"
+[[ -n $user && $user != "root" ]] || exit 1
+[[ ${PAM_TYPE:-auth} == "auth" ]] || exit 1
+
+password=$(cat)
+[[ -n $password ]] || exit 1
+
+me=$(id -u)
+target=$(id -u "$user" 2>/dev/null) || exit 1
+[[ $target != 0 ]] || exit 1
+
+if (( me == 0 )); then
+  printf '%s\n' "$password" | /usr/bin/runuser -u "$user" -- /usr/bin/sudo -k -S -u root -- /usr/bin/true >/dev/null 2>&1
+elif (( me == target )); then
+  printf '%s\n' "$password" | /usr/bin/sudo -k -S -u root -- /usr/bin/true >/dev/null 2>&1
+else
+  exit 1
+fi

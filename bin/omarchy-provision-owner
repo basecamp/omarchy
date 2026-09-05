@@ -9,7 +9,10 @@
 # behind. Asks for the user (the configurator's Step 2), creates it with the
 # groups system setup recorded, finalizes it offline from the stashed Node
 # tarball, re-keys LUKS from the throwaway install passphrase to the user's
-# password, and hands off to SDDM.
+# password, and hands off to SDDM. On a child install (kids mode, recorded by
+# the profile marker) it asks for a kid password and a parent password, keys
+# the disk to both, keeps root for the parent, and applies the parental posture
+# through omarchy-parent.
 
 set -euo pipefail
 
@@ -32,6 +35,12 @@ if [[ -f $PROVISIONING_DIR/wipe-pending ]]; then
 fi
 
 export PATH="$OMARCHY_PATH/bin:$PATH"
+
+# A child install asks for both passwords and keeps root for the parent. The
+# profile marker sits in /etc and survives a factory reset, so a reset child
+# machine stays one.
+CHILD_INSTALL=false
+omarchy-profile-child && CHILD_INSTALL=true
 
 # The shared setup form — the same questions, prompts, and validation the ISO
 # configurator's user step asks. The ISO vendors this very file out of the
@@ -627,7 +636,8 @@ apply_keyboard() {
   fi
 }
 
-# The same username/password/name/email form as the ISO configurator's Step 2.
+# The same username/password/name/email form as the ISO configurator's Step 2,
+# minus the name and email on a child install.
 user_form() {
   step "Let's setup your user account..."
 
@@ -641,8 +651,30 @@ user_form() {
     omarchy_prompt_username || return $?
   fi
 
-  omarchy_prompt_password || return $?
-  omarchy_prompt_identity || return $?
+  if $CHILD_INSTALL; then
+    omarchy_prompt_password kid || return $?
+
+    step "Let's set the parent password..."
+    say "sudo, updates, installs, and system prompts ask for this one; keep it from the kid."
+    $REKEY_PENDING && say "It also unlocks the disk, so a parent can always get in."
+    echo
+    omarchy_prompt_parent_password || return $?
+    # The parent-password header would otherwise sit over the screens that
+    # follow, which are about the account again.
+    step "Let's finish your user account..."
+  else
+    omarchy_prompt_password || return $?
+  fi
+
+  # Full name and email only feed git identity and the compose shortcuts, and
+  # it is a parent at the keyboard on a child install, so an answer would be
+  # theirs: a child install asks for neither.
+  if $CHILD_INSTALL; then
+    full_name=""
+    email_address=""
+  else
+    omarchy_prompt_identity || return $?
+  fi
 
   # Hostname and timezone are deferred to first boot with the rest of the user
   # step: the deferred install seeds neutral placeholders (omarchy/UTC) and the
@@ -654,15 +686,23 @@ user_form() {
 }
 
 confirm_form() {
+  # Fixed-width masks: one asterisk per character would put both passwords'
+  # lengths on the screen.
+  local mask="********" password_label="Password" parent_row="" identity_rows
+  identity_rows="Full name,${full_name:-[Skipped]}"$'\n'"Email address,${email_address:-[Skipped]}"$'\n'
+  if $CHILD_INSTALL; then
+    password_label="Kid password"
+    parent_row="Parent password,$mask"$'\n'
+    identity_rows="" # never asked
+  fi
+
   clear_logo
   echo
   echo -e "Field,Value
 Keyboard,${keyboard_label:-English (US)}
 Username,$username
-Password,$(printf "%${#password}s" | tr ' ' '*')
-Full name,${full_name:-[Skipped]}
-Email address,${email_address:-[Skipped]}
-Hostname,${hostname:-omarchy}
+$password_label,$mask
+${parent_row}${identity_rows}Hostname,${hostname:-omarchy}
 Timezone,${timezone:-UTC}" |
     gum table -s "," -p | sed "s/^/${PADDING_LEFT_SPACES}/"
 
@@ -673,10 +713,17 @@ Timezone,${timezone:-UTC}" |
 # Groups recorded by omarchy-apply-system's scripts at install time
 # (/var/lib/omarchy/provisioning/groups), filtered to groups that exist on this system.
 user_groups() {
-  local groups="wheel" group
+  # A parent's account sits in wheel. A child install's kid account does not:
+  # it gets an explicit sudo grant from omarchy-parent apply instead, so
+  # nothing keyed on wheel membership reaches it.
+  local groups="" group
+  omarchy-profile-child || groups="wheel"
   if [[ -f $PROVISIONING_DIR/groups ]]; then
     while IFS= read -r group; do
       [[ -n $group ]] || continue
+      # wheel is seeded above for a parent's account and never replayed from
+      # the record: on a child install nothing may put the kid account in it.
+      [[ $group == "wheel" ]] && continue
       # Never replay old privileged group defaults. Docker is always opt-in.
       # Input is only retained when the factory image has one of the features
       # whose installer deliberately grants access to raw input devices.
@@ -687,7 +734,7 @@ user_groups() {
         continue
       fi
       getent group "$group" >/dev/null || continue
-      [[ ",$groups," == *",$group,"* ]] || groups+=",$group"
+      [[ ",$groups," == *",$group,"* ]] || groups+="${groups:+,}$group"
     done <"$PROVISIONING_DIR/groups"
   fi
   echo "$groups"
@@ -728,17 +775,28 @@ create_user() {
   # account rather than creating a second privileged one.
   echo "$username" >"$PROVISIONING_DIR/setup-user"
 
+  # The kid account on a child install may have no supplementary groups at
+  # all, so the group option is only passed when there is a list to pass.
+  local groups
+  groups=$(user_groups)
   if getent passwd "$username" >/dev/null; then
     # Resuming a partially-completed earlier attempt: refresh what the form
     # collected this time around.
-    usermod -aG "$(user_groups)" ${full_name:+-c "$full_name"} "$username"
+    if [[ -n $groups || -n ${full_name:-} ]]; then
+      usermod ${groups:+-aG "$groups"} ${full_name:+-c "$full_name"} "$username"
+    fi
   else
-    useradd -m -G "$(user_groups)" -s /bin/bash \
+    useradd -m ${groups:+-G "$groups"} -s /bin/bash \
       ${full_name:+-c "$full_name"} "$username"
   fi
 
   printf '%s:%s\n' "$username" "$password" | chpasswd
-  printf '%s:%s\n' root "$password" | chpasswd
+  # Root is the parent on a child install; otherwise the one password is both.
+  if $CHILD_INSTALL; then
+    printf '%s:%s\n' root "$parent_password" | chpasswd
+  else
+    printf '%s:%s\n' root "$password" | chpasswd
+  fi
 
   # deferred-provisioning installs skip archinstall's create_users, which is what normally
   # uncomments %wheel in /etc/sudoers. Always write the drop-in: detecting an
@@ -752,6 +810,12 @@ create_user() {
     [[ -d $dir || -L $dir ]] || continue
     browser_policy_setup_dir "$dir"
   done
+
+  # sudo and polkit ask for the parent password, and the kid account holds an
+  # explicit grant instead of wheel. Idempotent, so a retry is safe.
+  if $CHILD_INSTALL; then
+    omarchy-parent apply --user "$username"
+  fi
 }
 
 install_authorized_keys() {
@@ -851,10 +915,10 @@ finalize_user() {
     "$OMARCHY_PATH/bin/omarchy-provision-user" --force --first-install
 }
 
-# Move the LUKS volume from the throwaway install passphrase to the user's
-# password: add the user's key, kill every other slot (throwaway + any seller
-# keys a reset left behind), then rebuild the UKI without the embedded
-# auto-unlock keyfile.
+# Move the LUKS volume from the throwaway install passphrase to the owner's
+# password, or on a child install to the kid's and the parent's: add those
+# keys, kill every other slot (throwaway + any seller keys a reset left
+# behind), then rebuild the UKI without the embedded auto-unlock keyfile.
 #
 # Failing here must be LOUD (abort the attempt, offer retry): silently keeping
 # the staged auto-unlock keyfile would leave the disk effectively unencrypted
@@ -878,6 +942,11 @@ rekey_luks() {
   # Add the user's key (a retry with a different password just adds another
   # slot; all but the current one are killed once the rebuild succeeds).
   cryptsetup luksAddKey --key-file "$PROVISIONING_DIR/luks-key" "$device" <(printf '%s' "$password")
+  # The parent's slot is what lets a parent boot a child machine whose kid has
+  # forgotten their password, and reset it from inside.
+  if $CHILD_INSTALL; then
+    cryptsetup luksAddKey --key-file "$PROVISIONING_DIR/luks-key" "$device" <(printf '%s' "$parent_password")
+  fi
 
   # Rebuild the no-auto-unlock UKI FIRST, keeping the throwaway key and slot as
   # a fallback. Only once that succeeds do we kill the other slots and destroy
@@ -898,24 +967,30 @@ rekey_luks() {
     return 1
   fi
 
-  local new_slot slot other_slots
-  new_slot=$(cryptsetup open --test-passphrase --verbose --key-file <(printf '%s' "$password") "$device" 2>&1 |
-    grep -o 'Key slot [0-9]* unlocked' | grep -o '[0-9]*' | head -1)
+  local -a passphrases=("$password")
+  $CHILD_INSTALL && passphrases+=("$parent_password")
+
+  local keep_slots="" slot other_slots passphrase
   # Retiring the throwaway/seller slots must be all-or-nothing: if we can't
-  # identify the user's slot or a kill fails, keep the staged key and retry —
-  # never shred it while a slot the seller knows still unlocks the disk.
-  if [[ -z $new_slot ]]; then
-    log_step "could not identify the user's LUKS slot after re-key; keeping the staged key for retry"
-    say --foreground 1 "Could not confirm the LUKS re-key; will retry."
-    return 1
-  fi
+  # identify every slot to keep or a kill fails, keep the staged key and retry
+  # — never shred it while a slot the seller knows still unlocks the disk.
+  for passphrase in "${passphrases[@]}"; do
+    slot=$(cryptsetup open --test-passphrase --verbose --key-file <(printf '%s' "$passphrase") "$device" 2>&1 |
+      grep -o 'Key slot [0-9]* unlocked' | grep -o '[0-9]*' | head -1)
+    if [[ -z $slot ]]; then
+      log_step "could not identify a LUKS slot to keep after re-key; keeping the staged key for retry"
+      say --foreground 1 "Could not confirm the LUKS re-key; will retry."
+      return 1
+    fi
+    keep_slots+=" $slot "
+  done
   if ! other_slots=$(cryptsetup luksDump "$device" | awk '/^ +[0-9]+: luks2/ { sub(":", "", $1); print $1 }'); then
     log_step "luksDump failed while retiring slots; keeping the staged key for retry"
     say --foreground 1 "Could not enumerate LUKS slots; will retry."
     return 1
   fi
   for slot in $other_slots; do
-    [[ $slot == "$new_slot" ]] && continue
+    [[ $keep_slots == *" $slot "* ]] && continue
     if ! cryptsetup luksKillSlot -q --key-file <(printf '%s' "$password") "$device" "$slot"; then
       log_step "failed to kill LUKS slot $slot; keeping the staged key for retry"
       say --foreground 1 "Could not remove the throwaway LUKS key; will retry."
@@ -1018,7 +1093,11 @@ run_provisioning() {
   fi
 
   if [[ -f $PROVISIONING_DIR/luks-key ]]; then
-    log_step "re-keying LUKS to the user's password"
+    if $CHILD_INSTALL; then
+      log_step "re-keying LUKS to the kid and parent passwords"
+    else
+      log_step "re-keying LUKS to the user's password"
+    fi
     echo rekey >"$STATE_FILE"
     rekey_luks
     log_step "LUKS re-key complete"

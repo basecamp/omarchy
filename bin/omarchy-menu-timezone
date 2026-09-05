@@ -7,6 +7,16 @@
 set -e
 
 timezone=$(timedatectl list-timezones | omarchy-menu-select "Set timezone" -- --width 520 --maxheight 520) || exit 1
-sudo timedatectl set-timezone "$timezone"
+
+# The %wheel grant in etc/sudoers.d/omarchy-tzupdate makes this one click.
+# Where it does not reach -- a child install, whose kid account is outside
+# wheel, or an older omarchy-settings -- sudo has no terminal to ask on and
+# would fail silently, so let timedated's own polkit action carry the prompt
+# instead: on a child install that is the parent password.
+if [[ -t 0 ]] || sudo -n -l -l /usr/bin/timedatectl set-timezone "$timezone" 2>/dev/null | grep -q '!authenticate'; then
+  sudo timedatectl set-timezone "$timezone"
+else
+  timedatectl set-timezone "$timezone"
+fi
 omarchy-shell -q omarchy.clock refresh
 omarchy-notification-send "Timezone is now set to $timezone"

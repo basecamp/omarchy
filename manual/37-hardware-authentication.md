@@ -10,8 +10,12 @@ When your laptop lid is closed, the fingerprint prompt is automatically skipped,
 
 You can remove the fingerprint authentication under _Remove > Security > Fingerprint_ in the Omarchy menu.
 
+On a [child install](48-security.md), the fingerprint unlocks the lock screen only: `sudo` and system prompts keep asking for the parent password.
+
 ### Fido2 authentication
 
 If you're using a Fido2 device, you can set it up for `sudo` authentication using _Setup > Security > Fido2_ in the Omarchy menu (`Super + Space`). It covers `sudo` and system authorization prompts, though, not unlocking your computer.
 
 You can remove the fido2 authentication under _Remove > Security > Fido2_ in the Omarchy menu.
+
+A [child install](48-security.md) does not offer FIDO2 setup: `sudo` and system prompts ask for the parent password there, so a key registered for the kid's account would never be used.

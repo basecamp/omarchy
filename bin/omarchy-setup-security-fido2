@@ -42,6 +42,14 @@ EOF
 
 echo -e "\e[32mSetting up FIDO2 device for authentication.\n\e[0m"
 
+# FIDO2 covers sudo and polkit, and both authenticate root on a child install,
+# whose password is the parent password. A key registered for the kid account
+# would never be consulted, so say so instead of setting one up.
+if omarchy-profile-child; then
+  echo -e "\e[31mThis is a child install: sudo and system prompts ask for the parent password, so a FIDO2 key would never be used.\e[0m"
+  exit 1
+fi
+
 # Install required packages
 echo "Installing required packages..."
 omarchy-pkg-add libfido2 pam-u2f

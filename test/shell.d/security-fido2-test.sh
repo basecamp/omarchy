@@ -263,6 +263,7 @@ invoke_setup() {
     TEST_CREDENTIAL="$credential" TEST_FAIL_CHMOD="$fail_chmod" TEST_FAIL_MV="$fail_mv" \
     TEST_LOG="$calls" TEST_MKTEMP_MODE="$mktemp_mode" TEST_PAMU_MODE="$pamu_mode" \
     TEST_PAMU_TARGETS="$pamu_targets" TEST_STAGES="$stages" TEST_TMP="$test_tmp" \
+    OMARCHY_PROFILE_FILE="${OMARCHY_PROFILE_FILE:-$test_tmp/no-profile}" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
     bash "$setup_copy" </dev/null >/dev/null
 }
@@ -478,3 +479,16 @@ invoke_setup success 0 0 nonregular >/dev/null 2>&1 &&
   fail "a nonregular stage is never published" "$(cat "$calls")"
 [[ ! -e $authfile ]] || fail "a nonregular stage publishes no authfile"
 pass "FIDO2 setup rejects nonregular mktemp output before any privileged write"
+
+# A child install keeps sudo and polkit on the parent password, so a FIDO2 key
+# registered for the kid account would never be consulted: the setup refuses
+# before it installs a package or touches a stage.
+reset_run
+printf 'child\n' >"$test_tmp/child-profile"
+if OMARCHY_PROFILE_FILE="$test_tmp/child-profile" invoke_setup >/dev/null 2>&1; then
+  fail "FIDO2 setup refuses on a child install"
+fi
+[[ ! -s $calls && ! -s $stages ]] ||
+  fail "FIDO2 setup on a child install touches nothing" "sudo calls:
+$(cat "$calls")"
+pass "FIDO2 setup refuses on a child install before touching anything"
