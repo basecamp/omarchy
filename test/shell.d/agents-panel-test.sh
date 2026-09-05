@@ -14,4 +14,7 @@ assert(/if \(buttonCode === Qt\.RightButton\) root\.launchAgent\(\)/.test(panelS
 assert(/else if \(buttonCode === Qt\.MiddleButton\) root\.selectProvider\(root\.providerIndex \+ 1\)/.test(panelSource), 'agents middle click still advances the subscription')
 assert(/else root\.toggle\(\)/.test(panelSource), 'agents left click still toggles the panel')
 assert(!/if \(buttonCode === Qt\.RightButton\) root\.refreshNow\(\)/.test(panelSource), 'agents right click no longer refreshes')
+assert(/Grid \{\s*id: providerSwitch/.test(panelSource), 'agents provider switch wraps across rows')
+assert(/columns: Math\.min\(3, Math\.max\(1, root\.providers\.length\)\)/.test(panelSource), 'agents provider switch caps each row at three columns')
+assert(/visible: heroMark\.candidateIndex >= heroMark\.candidates\.length/.test(panelSource), 'agents hero fallback waits for every icon candidate to fail')
 JS

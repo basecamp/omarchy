@@ -436,7 +436,9 @@ Panel {
                 Text {
                   textFormat: Text.PlainText
                   anchors.centerIn: parent
-                  visible: heroMarkImage.status !== Image.Ready
+                  // Loading is transient; show the fallback only after every
+                  // artwork candidate has actually failed.
+                  visible: heroMark.candidateIndex >= heroMark.candidates.length
                   text: button.text
                   color: root.foreground
                   font.family: root.fontFamily
@@ -459,14 +461,15 @@ Panel {
           }
 
           // ---------- Provider switch ----------
-          Row {
+          Grid {
             id: providerSwitch
             visible: root.providers.length > 1
             width: parent.width
+            columns: Math.min(3, Math.max(1, root.providers.length))
             spacing: Style.spacing.md
 
-            readonly property real cellWidth: root.providers.length > 0
-              ? (width - spacing * (root.providers.length - 1)) / root.providers.length
+            readonly property real cellWidth: columns > 0
+              ? (width - spacing * (columns - 1)) / columns
               : 0
 
             Repeater {
