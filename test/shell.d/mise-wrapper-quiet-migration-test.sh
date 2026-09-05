@@ -65,33 +65,33 @@ chmod +x "$bin_dir/mise-exec-era" "$bin_dir/bare-exec-era"
 
 run_migration
 
-grep -qF 'mise use -g --quiet "claude" || exit 1' "$bin_dir/claude" ||
+grep -qF 'mise use -g --quiet "claude@latest" || exit 1' "$bin_dir/claude" ||
   fail "migration adds --quiet to a stale wrapper"
 pass "migration adds --quiet to a stale wrapper"
 
-grep -qF 'mise use -g --quiet "github:can1357/oh-my-pi" || exit 1' "$bin_dir/omp" ||
+grep -qF 'mise use -g --quiet "github:can1357/oh-my-pi@latest" || exit 1' "$bin_dir/omp" ||
   fail "migration keeps a wrapper's package when the command name differs"
-grep -qF 'exec mise x "github:can1357/oh-my-pi" -- "omp" "$@"' "$bin_dir/omp" ||
+grep -qF 'exec mise x "github:can1357/oh-my-pi@latest" -- "omp" "$@"' "$bin_dir/omp" ||
   fail "migration keeps a wrapper's bin name when the command name differs"
 pass "migration preserves package and bin names"
 
-grep -qF 'exec mise x "npm:@kitlangton/ghui" -- "ghui" "$@"' "$bin_dir/ghui" ||
+grep -qF 'exec mise x "npm:@kitlangton/ghui@latest" -- "ghui" "$@"' "$bin_dir/ghui" ||
   fail "migration preserves a scoped npm package name"
 pass "migration preserves a scoped npm package name"
 
-grep -qF 'mise use -g --quiet "github:someone/custom-tool" || exit 1' "$bin_dir/custom-tool" ||
+grep -qF 'mise use -g --quiet "github:someone/custom-tool@latest" || exit 1' "$bin_dir/custom-tool" ||
   fail "migration rewrites a wrapper on the pre-export template"
 grep -qF 'export MISE_MINIMUM_RELEASE_AGE=0' "$bin_dir/custom-tool" ||
   fail "migration brings a pre-export wrapper up to the current template"
 pass "migration rewrites wrappers on the pre-export template"
 
-grep -qF 'mise use -g --quiet "npm:some/tool" || exit 1' "$bin_dir/mise-exec-era" ||
+grep -qF 'mise use -g --quiet "npm:some/tool@latest" || exit 1' "$bin_dir/mise-exec-era" ||
   fail "migration rewrites a wrapper on the mise-exec template"
-grep -qF 'exec mise x "npm:some/tool" -- "tool-bin" "$@"' "$bin_dir/mise-exec-era" ||
+grep -qF 'exec mise x "npm:some/tool@latest" -- "tool-bin" "$@"' "$bin_dir/mise-exec-era" ||
   fail "migration keeps the bin name from a mise-exec wrapper"
-grep -qF 'mise use -g --quiet "aqua:some/other" || exit 1' "$bin_dir/bare-exec-era" ||
+grep -qF 'mise use -g --quiet "aqua:some/other@latest" || exit 1' "$bin_dir/bare-exec-era" ||
   fail "migration rewrites a wrapper on the bare-exec template"
-grep -qF 'exec mise x "aqua:some/other" -- "other-bin" "$@"' "$bin_dir/bare-exec-era" ||
+grep -qF 'exec mise x "aqua:some/other@latest" -- "other-bin" "$@"' "$bin_dir/bare-exec-era" ||
   fail "migration keeps the bin name from a bare-exec wrapper"
 pass "migration rewrites every generated form that predates --quiet"
 

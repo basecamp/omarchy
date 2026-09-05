@@ -27,7 +27,7 @@ fi
 # Remove Preinstalls no longer lists gemini, so Omarchy's own wrapper would
 # linger with nothing left to clean it up. Anchored to the line the installer
 # writes, so a hand-written wrapper that merely mentions it is left alone.
-if [[ -f $HOME/.local/bin/gemini ]] && grep -Eq '^mise use -g .*"gemini"' "$HOME/.local/bin/gemini"; then
+if [[ -f $HOME/.local/bin/gemini ]] && grep -Eq '^mise use -g .*"gemini(@latest)?"' "$HOME/.local/bin/gemini"; then
   rm -f "$HOME/.local/bin/gemini"
 fi
 
