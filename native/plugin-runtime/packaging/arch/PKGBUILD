@@ -1,0 +1,42 @@
+pkgname=omarchy-plugin-security
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Sandboxed native runtime for Omarchy plugins"
+arch=(x86_64)
+url="https://github.com/basecamp/omarchy"
+license=(MIT)
+makedepends=(cmake ninja)
+options=(!debug)
+
+if [[ -z ${OMARCHY_PLUGIN_SOURCE_SHA256:-} ||
+      -z ${OMARCHY_PLUGIN_DEPENDENCIES_SHA256:-} ]]; then
+  error "build-package.sh must provide the source checksums"
+  return 1
+fi
+
+source=(
+  "plugin-runtime-${pkgver}.tar.gz"
+  runtime-dependencies-v1.txt
+)
+sha256sums=(
+  "$OMARCHY_PLUGIN_SOURCE_SHA256"
+  "$OMARCHY_PLUGIN_DEPENDENCIES_SHA256"
+)
+
+mapfile -t depends < "$startdir/runtime-dependencies-v1.txt"
+
+build() {
+  cmake -S "plugin-runtime-${pkgver}" -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CXX_FLAGS="-ffile-prefix-map=${srcdir}=/usr/src/debug/${pkgname}" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=OFF
+  cmake --build build
+}
+
+package() {
+  # Provider profiles pin the exact installed executables. Strip during the
+  # CMake install so its later profile-install scripts hash the final bytes;
+  # makepkg's normal tidy pass can then only repeat the idempotent strip.
+  DESTDIR="$pkgdir" cmake --install build --strip
+}

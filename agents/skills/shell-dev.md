@@ -11,6 +11,8 @@ Run `omarchy-restart-shell` after making changes to QML files.
 
 ## Plugin contract
 
+This contract is schema v1: pre-security, unsandboxed, trusted-by-default QML loaded in `omarchy-shell`. Schema-v2 manifests are handled only by the separately gated secure runtime and never fall back to schema v1.
+
 - First-party plugins live directly under `shell/plugins/` or one category
   level deeper, such as `shell/plugins/panels/weather/`. First-party bar-only
   widgets may use adjacent `*.manifest.json` files. Third-party plugins live

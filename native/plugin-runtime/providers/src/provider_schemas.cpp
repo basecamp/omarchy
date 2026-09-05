@@ -1,7 +1,6 @@
 #include "omarchy/plugin_runtime/providers/provider_schemas.hpp"
 
 #include <algorithm>
-#include <limits>
 
 namespace omarchy::plugin_runtime::providers {
 namespace {
@@ -17,12 +16,6 @@ std::uint32_t get32(std::span<const std::byte> bytes, std::size_t offset) {
     value =
         (value << 8U) | std::to_integer<std::uint32_t>(bytes[offset + index]);
   return value;
-}
-
-void put16(std::span<std::byte> bytes, std::size_t offset,
-           std::uint16_t value) {
-  bytes[offset] = static_cast<std::byte>(value >> 8U);
-  bytes[offset + 1] = static_cast<std::byte>(value);
 }
 
 void put32(std::span<std::byte> bytes, std::size_t offset,
@@ -156,14 +149,6 @@ bool decode_notification(std::span<const std::byte> input,
   return true;
 }
 
-bool decode_fake_acknowledge(std::span<const std::byte> input,
-                             FakeAcknowledgeRequest &output) noexcept {
-  if (input.size() != 4)
-    return false;
-  output.status = get32(input, 0);
-  return output.status != 0;
-}
-
 bool encode_storage_read_result(bool found, std::span<const std::byte> value,
                                 std::span<std::byte> output,
                                 std::size_t &bytes_written) noexcept {
@@ -176,43 +161,6 @@ bool encode_storage_read_result(bool found, std::span<const std::byte> value,
   put32(output, 4, static_cast<std::uint32_t>(value.size()));
   std::copy(value.begin(), value.end(), output.begin() + 8);
   bytes_written = 8 + value.size();
-  return true;
-}
-
-bool encode_fake_status_result(std::span<const FakeStatusView> statuses,
-                               std::span<std::byte> output,
-                               std::size_t &bytes_written) noexcept {
-  bytes_written = 0;
-  if (statuses.size() > kMaximumFakeStatuses || output.size() < 4)
-    return false;
-  std::size_t required = 4;
-  for (const auto &status : statuses) {
-    if (status.id == 0 || status.text.size() > kMaximumFakeStatusTextBytes ||
-        !valid_utf8_text(status.text, false) ||
-        status.text.size() > std::numeric_limits<std::uint16_t>::max() ||
-        required >
-            std::numeric_limits<std::size_t>::max() - 10 - status.text.size())
-      return false;
-    required += 10 + status.text.size();
-  }
-  if (output.size() < required)
-    return false;
-  put16(output, 0, static_cast<std::uint16_t>(statuses.size()));
-  put16(output, 2, 0);
-  std::size_t offset = 4;
-  for (const auto &status : statuses) {
-    put32(output, offset, status.id);
-    output[offset + 4] = status.acknowledged ? std::byte{1} : std::byte{0};
-    output[offset + 5] = std::byte{0};
-    put16(output, offset + 6, static_cast<std::uint16_t>(status.text.size()));
-    put16(output, offset + 8, 0);
-    std::copy(reinterpret_cast<const std::byte *>(status.text.data()),
-              reinterpret_cast<const std::byte *>(status.text.data() +
-                                                  status.text.size()),
-              output.begin() + static_cast<std::ptrdiff_t>(offset + 10));
-    offset += 10 + status.text.size();
-  }
-  bytes_written = required;
   return true;
 }
 

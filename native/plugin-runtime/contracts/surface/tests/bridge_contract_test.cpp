@@ -22,6 +22,7 @@ public:
     bytes.assign(trusted_pixels.begin(), trusted_pixels.end());
     return true;
   }
+  bool updateInputRegions(const InputRegionUpdate &) override { return false; }
   void clear(SurfaceKey surface) override { cleared = surface; }
   void disconnect() override { disconnected = true; }
   bool submit(const InputEvent &event) override {
@@ -57,14 +58,7 @@ int main() {
 
   const InputEvent input{.surface = allocation->surface,
                          .sequence = 1,
-                         .kind = InputKind::pointer_motion,
-                         .x_q16 = 0,
-                         .y_q16 = 0,
-                         .delta_x_q16 = 0,
-                         .delta_y_q16 = 0,
-                         .code = 0,
-                         .state = 0,
-                         .active_touch_points = 0};
+                         .payload = PointerMotion{}};
   require(bridge.submit(input) && bridge.input.sequence == 1,
           "host input mock failed");
 }

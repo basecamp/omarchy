@@ -40,7 +40,10 @@ std::vector<std::byte> packet(wire::EndpointRole role,
                               .message_type = 0x1100,
                               .role_protocol_version = 1,
                               .launch_generation = kGeneration,
-                              .correlation_id = correlation};
+                              .correlation_id = correlation,
+                              .lane_sequence =
+                                  (1ULL << 2U) |
+                                  static_cast<std::uint16_t>(role)};
   std::vector<std::byte> output(wire::kHeaderSize + payload.size());
   const auto result = wire::encode_packet(header, payload, output);
   if (!result || result.bytes_written != output.size()) {

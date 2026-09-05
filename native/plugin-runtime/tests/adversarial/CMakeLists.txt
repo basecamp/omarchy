@@ -28,10 +28,11 @@ if(NOT TARGET omarchy-plugin-launcher)
 endif()
 
 if(PLUGIN_SECURITY_ENABLE_SANITIZERS)
-  # Instrument every trusted dependency in the C11 path. The B5 sandbox probe
-  # itself remains uninstrumented because its exact environment intentionally
-  # cannot carry ASAN_OPTIONS and its seccomp policy denies LeakSanitizer's
-  # helper process; the C11 malicious worker is instrumented separately below.
+  # Instrument every trusted dependency in the adversarial harness path. The
+  # sandbox probe itself remains uninstrumented because its exact environment
+  # intentionally cannot carry ASAN_OPTIONS and its seccomp policy denies
+  # LeakSanitizer's helper process; the malicious worker is instrumented
+  # separately below.
   foreach(dependency_target IN ITEMS
       omarchy-plugin-wire
       omarchy-plugin-wire-contract-test
@@ -52,6 +53,9 @@ if(PLUGIN_SECURITY_ENABLE_SANITIZERS)
 endif()
 
 add_executable(omarchy-plugin-malicious-worker malicious_worker.cpp)
+target_link_libraries(omarchy-plugin-malicious-worker PRIVATE
+  omarchy-plugin-wire
+)
 target_compile_features(omarchy-plugin-malicious-worker PRIVATE cxx_std_20)
 target_compile_options(omarchy-plugin-malicious-worker PRIVATE
   -Wall -Wextra -Wpedantic -Werror
@@ -87,7 +91,7 @@ target_compile_definitions(omarchy-plugin-adversarial-harness-test PRIVATE
 )
 target_link_libraries(omarchy-plugin-adversarial-harness-test PRIVATE
   omarchy-plugin-wire
-  Omarchy::PluginLauncher
+  Omarchy::PluginLauncherTestSupport
 )
 add_dependencies(omarchy-plugin-adversarial-harness-test
   omarchy-plugin-malicious-worker
@@ -97,6 +101,6 @@ add_test(NAME plugin-adversarial-harness
   COMMAND omarchy-plugin-adversarial-harness-test
 )
 set_tests_properties(plugin-adversarial-harness PROPERTIES
-  LABELS "unit;integration;adversarial;fixtures;linux"
+  LABELS "unit;integration;adversarial;fixtures;linux;security"
   TIMEOUT 15
 )

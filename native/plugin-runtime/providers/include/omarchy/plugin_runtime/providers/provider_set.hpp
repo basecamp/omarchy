@@ -8,51 +8,69 @@
 #include <cstdint>
 #include <span>
 #include <string_view>
+#include <type_traits>
 
 namespace omarchy::plugin_runtime::providers {
 
 namespace broker = omarchy::plugin_runtime::broker;
 namespace permissions = omarchy::plugins::permissions;
 
+using StorageRead = bool (*)(std::string_view, std::span<std::byte>,
+                             std::size_t &, bool &, void *) noexcept;
+using StorageWrite = bool (*)(std::string_view, std::span<const std::byte>,
+                              void *) noexcept;
+using StorageRemove = bool (*)(std::string_view, void *) noexcept;
+using NotificationSend = bool (*)(std::string_view, std::string_view,
+                                  std::string_view, std::string_view,
+                                  void *) noexcept;
+using AudioPlay = bool (*)(std::string_view, void *) noexcept;
+
+static_assert(std::is_nothrow_invocable_r_v<bool, StorageRead, std::string_view,
+                                            std::span<std::byte>, std::size_t &,
+                                            bool &, void *>);
+static_assert(
+    std::is_nothrow_invocable_r_v<bool, StorageWrite, std::string_view,
+                                  std::span<const std::byte>, void *>);
+static_assert(std::is_nothrow_invocable_r_v<bool, StorageRemove,
+                                            std::string_view, void *>);
+static_assert(
+    std::is_nothrow_invocable_r_v<bool, NotificationSend, std::string_view,
+                                  std::string_view, std::string_view,
+                                  std::string_view, void *>);
+static_assert(
+    std::is_nothrow_invocable_r_v<bool, AudioPlay, std::string_view, void *>);
+
 struct StorageBackend {
-  bool (*read)(std::string_view key, std::span<std::byte> output,
-               std::size_t &bytes_written, bool &found,
-               void *context) noexcept = nullptr;
-  bool (*write)(std::string_view key, std::span<const std::byte> value,
-                void *context) noexcept = nullptr;
-  bool (*remove)(std::string_view key, void *context) noexcept = nullptr;
+  StorageRead read = nullptr;
+  StorageWrite write = nullptr;
+  StorageRemove remove = nullptr;
   void *context = nullptr;
   std::uint64_t maximum_total_bytes = 0;
   std::uint64_t maximum_item_bytes = 0;
 };
 
 struct NotificationBackend {
-  bool (*send)(std::string_view category, std::string_view title,
-               std::string_view body, void *context) noexcept = nullptr;
+  NotificationSend send = nullptr;
   void *context = nullptr;
 };
 
 struct AudioBackend {
-  bool (*play)(std::string_view cue, void *context) noexcept = nullptr;
+  AudioPlay play = nullptr;
   void *context = nullptr;
 };
 
 struct ProviderConfiguration {
-  permissions::ActivationBinding binding;
+  // The runtime replaces these authority fields from its verified snapshot;
+  // backend callers cannot supply or extend provider authority.
+  permissions::ActivationBinding binding{};
+  permissions::RequestSet requests{};
+  permissions::GrantSet grants{};
   std::uint64_t storage_epoch = 0;
   std::uint64_t notification_epoch = 0;
   std::uint64_t audio_epoch = 0;
-  std::uint64_t fake_service_epoch = 0;
   StorageBackend storage;
   NotificationBackend notification;
   AudioBackend audio;
-};
-
-enum class CompletionResult : std::uint8_t {
-  completed,
-  unknown,
-  cancelled,
-  output_too_small,
 };
 
 class ProviderSet {
@@ -61,34 +79,11 @@ public:
   ProviderSet(const ProviderSet &) = delete;
   ProviderSet &operator=(const ProviderSet &) = delete;
 
-  [[nodiscard]] broker::ProviderRegistry<7> registry() noexcept;
-
-  [[nodiscard]] bool add_fake_status(std::uint32_t resource,
-                                     std::uint32_t status,
-                                     std::string_view text) noexcept;
-  [[nodiscard]] CompletionResult
-  complete_fake_list(std::uint64_t correlation, std::span<std::byte> output,
-                     std::size_t &bytes_written) noexcept;
-  [[nodiscard]] std::size_t revoke(const permissions::CapabilityKey &capability,
-                                   std::uint64_t new_epoch) noexcept;
+  [[nodiscard]] broker::ProviderRegistry<5> registry() noexcept;
+  [[nodiscard]] bool revoke(const permissions::CapabilityKey &capability,
+                            std::uint64_t new_epoch) noexcept;
 
 private:
-  struct FakeStatus {
-    std::uint32_t resource = 0;
-    std::uint32_t id = 0;
-    bool acknowledged = false;
-    std::array<char, kMaximumFakeStatusTextBytes> text{};
-    std::size_t text_size = 0;
-  };
-
-  struct PendingList {
-    std::uint64_t correlation = 0;
-    std::uint64_t grant_epoch = 0;
-    std::uint32_t resource = 0;
-    bool cancelled = false;
-    bool occupied = false;
-  };
-
   static broker::ProviderResult
   dispatch_storage_read(const broker::AuthorizedRequest &, std::span<std::byte>,
                         void *) noexcept;
@@ -104,26 +99,14 @@ private:
   static broker::ProviderResult
   dispatch_audio(const broker::AuthorizedRequest &, std::span<std::byte>,
                  void *) noexcept;
-  static broker::ProviderResult
-  dispatch_fake_list(const broker::AuthorizedRequest &, std::span<std::byte>,
-                     void *) noexcept;
-  static broker::ProviderResult
-  dispatch_fake_acknowledge(const broker::AuthorizedRequest &,
-                            std::span<std::byte>, void *) noexcept;
-  static bool cancel(std::uint64_t correlation, void *context) noexcept;
+  static bool cancel_synchronous(std::uint64_t, void *) noexcept;
 
-  [[nodiscard]] bool authorized(const broker::AuthorizedRequest &request,
-                                std::uint64_t expected_epoch) const noexcept;
+  [[nodiscard]] bool
+  authorized(const broker::AuthorizedRequest &request) const noexcept;
   [[nodiscard]] static std::string_view
   exact_token(const permissions::Scope &scope) noexcept;
-  [[nodiscard]] static bool exact_resource(const permissions::Scope &scope,
-                                           permissions::OperationId operation,
-                                           std::uint32_t &resource) noexcept;
-
   ProviderConfiguration configuration_;
-  std::array<FakeStatus, kMaximumFakeStatuses> statuses_{};
-  std::size_t status_count_ = 0;
-  std::array<PendingList, 16> pending_{};
+  permissions::PermissionAuthority effect_authority_;
 };
 
 } // namespace omarchy::plugin_runtime::providers

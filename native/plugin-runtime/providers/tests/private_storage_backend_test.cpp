@@ -34,11 +34,11 @@ int main() {
   require(storage.valid(), "backend did not duplicate directory fd");
   auto backend = storage.configuration();
   const std::array value{std::byte{1}, std::byte{2}, std::byte{3}};
-  require(backend.write("pet-state", value, backend.context), "write failed");
+  require(backend.write("widget-state", value, backend.context), "write failed");
   std::array<std::byte, 8> output{};
   std::size_t written = 0;
   bool found = false;
-  require(backend.read("pet-state", output, written, found, backend.context) &&
+  require(backend.read("widget-state", output, written, found, backend.context) &&
               found && written == value.size() && output[2] == value[2],
           "read failed");
   const std::array second{std::byte{4}, std::byte{5}, std::byte{6},
@@ -55,8 +55,8 @@ int main() {
           "symlink escaped private storage");
   require(!backend.write("../escape", value, backend.context),
           "path-like key escaped private storage");
-  require(backend.remove("pet-state", backend.context), "remove failed");
-  require(backend.read("pet-state", output, written, found, backend.context) &&
+  require(backend.remove("widget-state", backend.context), "remove failed");
+  require(backend.read("widget-state", output, written, found, backend.context) &&
               !found,
           "missing read failed");
 }

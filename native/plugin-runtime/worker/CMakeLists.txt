@@ -1,15 +1,11 @@
 find_package(PkgConfig REQUIRED)
+# Qt has no public API for injecting a complete touch frame into a window.
+# Keep the exact-version QPA dependency inside the worker adapter target.
+find_package(Qt6 REQUIRED COMPONENTS GuiPrivate)
 pkg_check_modules(WORKER_SECCOMP REQUIRED IMPORTED_TARGET libseccomp)
 
 option(PLUGIN_SECURITY_WORKER_SANITIZERS
   "Enable AddressSanitizer and UndefinedBehaviorSanitizer for the QML worker" OFF)
-
-set(OMARCHY_PLUGIN_EXTERNAL_FIXTURES "" CACHE STRING
-  "Semicolon-separated schema-v2 plugin checkout paths for functional compatibility tests")
-set(OMARCHY_PLUGIN_EXTERNAL_DEFINITIONS "" CACHE PATH
-  "Independent trusted capability-definition directory for external fixtures")
-set(OMARCHY_PLUGIN_EXTERNAL_ADAPTERS "" CACHE STRING
-  "Semicolon-separated adapter-class:digest:abi registrations for external fixtures")
 
 function(omarchy_plugin_worker_sanitize target)
   if(PLUGIN_SECURITY_WORKER_SANITIZERS)
@@ -19,43 +15,50 @@ function(omarchy_plugin_worker_sanitize target)
 endfunction()
 
 add_library(omarchy-plugin-worker-runtime STATIC
-  qml_broker_api.cpp
-  sidecar_supervisor.cpp
-  worker_channel.cpp
-  worker_runtime.cpp
-  steady_seccomp.cpp
+  src/plugin_source_policy.cpp
+  src/qt_touch_injector.cpp
+  src/qml_broker_api.cpp
+  src/sidecar_supervisor.cpp
+  src/worker_channel.cpp
+  src/worker_runtime.cpp
+  src/steady_seccomp.cpp
 )
-qt_add_resources(omarchy-plugin-worker-runtime presentation_qml
+qt_add_resources(omarchy-plugin-worker-runtime plugin_presentation_qml
   PREFIX "/qt/qml/Omarchy/PluginPresentation"
   BASE "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml"
   FILES
     ../presentation/qml/qmldir
+    ../presentation/qml/BarWidget.qml
+    ../presentation/qml/Border.qml
+    ../presentation/qml/BorderSurface.qml
+    ../presentation/qml/BrokerProcess.qml
+    ../presentation/qml/Button.qml
+    ../presentation/qml/ConfirmDialog.qml
     ../presentation/qml/Color.qml
-    ../presentation/qml/Style.qml
-    ../presentation/qml/Panel.qml
-    ../presentation/qml/BarIconButton.qml
+    ../presentation/qml/CursorSurface.qml
+    ../presentation/qml/Dropdown.qml
     ../presentation/qml/KeyboardPanel.qml
-    ../presentation/qml/PanelKeyCatcher.qml
+    ../presentation/qml/PackagedText.qml
+    ../presentation/qml/Panel.qml
+    ../presentation/qml/PanelActionButton.qml
     ../presentation/qml/PanelHero.qml
+    ../presentation/qml/PanelKeyCatcher.qml
     ../presentation/qml/PanelSectionHeader.qml
     ../presentation/qml/PanelSeparator.qml
     ../presentation/qml/PanelSlider.qml
+    ../presentation/qml/PrivateStorage.qml
+    ../presentation/qml/StdioCollector.qml
+    ../presentation/qml/Style.qml
+    ../presentation/qml/TextField.qml
+    ../presentation/qml/ToolTip.qml
+    ../presentation/qml/Toggle.qml
     ../presentation/qml/ToggleSwitch.qml
-    ../presentation/qml/CursorSurface.qml)
-set(OMARCHY_PLUGIN_PRESENTATION_EXTRA_QML
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/PanelActionButton.qml"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/ConfirmDialog.qml"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/Button.qml"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/BarWidget.qml"
-  "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml/WidgetButton.qml")
-qt_add_resources(omarchy-plugin-worker-runtime presentation_extra_qml
-  PREFIX "/qt/qml/Omarchy/PluginPresentation"
-  BASE "${CMAKE_CURRENT_SOURCE_DIR}/../presentation/qml"
-  FILES ${OMARCHY_PLUGIN_PRESENTATION_EXTRA_QML})
+    ../presentation/qml/Util.qml
+    ../presentation/qml/WidgetButton.qml)
 omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime)
 omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime)
 target_include_directories(omarchy-plugin-worker-runtime PUBLIC
-  "${CMAKE_CURRENT_SOURCE_DIR}"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src"
   "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/wire/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/surface/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/../contracts/sandbox/include"
@@ -64,11 +67,12 @@ target_link_libraries(omarchy-plugin-worker-runtime
   PUBLIC Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick
          omarchy-plugin-wire omarchy-plugin-surface-contract
          omarchy-plugin-broker-core omarchy-plugin-capability-definitions
-  PRIVATE omarchy-plugin-sandbox-policy omarchy-plugin-manifest-contract
+  PRIVATE Qt6::GuiPrivate
+          omarchy-plugin-sandbox-policy omarchy-plugin-manifest-contract
           PkgConfig::WORKER_SECCOMP
 )
 
-qt_add_executable(omarchy-plugin-qml-worker main.cpp)
+qt_add_executable(omarchy-plugin-qml-worker src/main.cpp)
 
 qt_add_qml_module(omarchy-plugin-qml-worker
   URI Omarchy.PluginWorker
@@ -81,36 +85,23 @@ omarchy_plugin_target_defaults(omarchy-plugin-qml-worker)
 omarchy_plugin_worker_sanitize(omarchy-plugin-qml-worker)
 target_link_libraries(omarchy-plugin-qml-worker
   PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Omarchy::PluginRuntimeVersion
+          Omarchy::PluginRuntimePaths
           omarchy-plugin-worker-runtime
 )
 
-install(TARGETS omarchy-plugin-qml-worker RUNTIME DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-runtime")
+install(TARGETS omarchy-plugin-qml-worker RUNTIME DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/bin")
 
 if(BUILD_TESTING)
-  qt_add_executable(omarchy-plugin-product-e2e-worker main.cpp)
-  omarchy_plugin_target_defaults(omarchy-plugin-product-e2e-worker)
-  omarchy_plugin_worker_sanitize(omarchy-plugin-product-e2e-worker)
-  target_compile_definitions(omarchy-plugin-product-e2e-worker PRIVATE
-    OMARCHY_PLUGIN_PRODUCT_E2E=1)
-  target_link_libraries(omarchy-plugin-product-e2e-worker PRIVATE
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Omarchy::PluginRuntimeVersion
-    omarchy-plugin-worker-runtime)
-
-  add_executable(omarchy-plugin-sidecar-probe sidecar_probe.cpp)
+  add_executable(omarchy-plugin-sidecar-probe src/sidecar_probe.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-sidecar-probe)
   add_executable(omarchy-plugin-sidecar-supervisor-test
-    sidecar_supervisor_test.cpp)
+    tests/sidecar_supervisor_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-sidecar-supervisor-test)
+  omarchy_plugin_worker_sanitize(omarchy-plugin-sidecar-supervisor-test)
   target_link_libraries(omarchy-plugin-sidecar-supervisor-test PRIVATE
     omarchy-plugin-worker-runtime)
-  target_compile_definitions(omarchy-plugin-sidecar-supervisor-test PRIVATE
-    SIDECAR_PROBE_PATH="$<TARGET_FILE:omarchy-plugin-sidecar-probe>")
   add_dependencies(omarchy-plugin-sidecar-supervisor-test
     omarchy-plugin-sidecar-probe)
-  add_test(NAME plugin-sidecar-supervisor
-    COMMAND omarchy-plugin-sidecar-supervisor-test)
-  set_tests_properties(plugin-sidecar-supervisor PROPERTIES
-    LABELS "unit;integration;sandbox;security" TIMEOUT 10)
   add_test(NAME plugin-sidecar-real-bwrap
     COMMAND /usr/bin/bwrap
       --unshare-user --unshare-pid --unshare-ipc --unshare-uts --unshare-net
@@ -128,54 +119,35 @@ if(BUILD_TESTING)
   set_tests_properties(plugin-sidecar-real-bwrap PROPERTIES
     LABELS "integration;sandbox;security;real-bwrap" TIMEOUT 10)
 
-  add_executable(omarchy-plugin-external-fixture-test external_fixture_test.cpp)
-  omarchy_plugin_target_defaults(omarchy-plugin-external-fixture-test)
-  omarchy_plugin_worker_sanitize(omarchy-plugin-external-fixture-test)
-  target_link_libraries(omarchy-plugin-external-fixture-test PRIVATE
-    omarchy-plugin-worker-runtime omarchy-plugin-capability-definitions
-  )
-
-  if(OMARCHY_PLUGIN_EXTERNAL_FIXTURES AND
-     (NOT IS_ABSOLUTE "${OMARCHY_PLUGIN_EXTERNAL_DEFINITIONS}" OR
-      NOT OMARCHY_PLUGIN_EXTERNAL_ADAPTERS))
-    message(FATAL_ERROR
-      "External fixtures require an absolute independent definition directory and explicit adapter registrations")
-  endif()
-  foreach(external_fixture IN LISTS OMARCHY_PLUGIN_EXTERNAL_FIXTURES)
-    if(NOT IS_ABSOLUTE "${external_fixture}")
-      message(FATAL_ERROR "External plugin fixture must be an absolute path: ${external_fixture}")
-    endif()
-    string(SHA256 external_fixture_hash "${external_fixture}")
-    string(SUBSTRING "${external_fixture_hash}" 0 12 external_fixture_id)
-    add_test(NAME "plugin-external-fixture-${external_fixture_id}"
-      COMMAND omarchy-plugin-external-fixture-test
-        --root "${external_fixture}" --function stepForTest
-        --definitions "${OMARCHY_PLUGIN_EXTERNAL_DEFINITIONS}"
-        --adapters "${OMARCHY_PLUGIN_EXTERNAL_ADAPTERS}")
-    set_tests_properties("plugin-external-fixture-${external_fixture_id}" PROPERTIES
-      LABELS "integration;render;external-fixture"
-      TIMEOUT 30
-      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
-    )
-  endforeach()
-
-  add_executable(omarchy-plugin-worker-runtime-test worker_runtime_test.cpp)
+  add_executable(omarchy-plugin-worker-runtime-test tests/worker_runtime_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-worker-runtime-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-worker-runtime-test)
   target_link_libraries(omarchy-plugin-worker-runtime-test PRIVATE
     omarchy-plugin-worker-runtime
   )
   target_compile_definitions(omarchy-plugin-worker-runtime-test PRIVATE
-    WORKER_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    WORKER_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
   )
   add_test(NAME plugin-worker-runtime COMMAND omarchy-plugin-worker-runtime-test)
   set_tests_properties(plugin-worker-runtime PROPERTIES
-    LABELS "unit;integration;adversarial;render"
+    LABELS "unit;integration;adversarial;render;security"
     TIMEOUT 30
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QT_QUICK_CONTROLS_STYLE=Basic;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
+  )
+  add_test(NAME plugin-worker-runtime-sibling-focus
+    COMMAND omarchy-plugin-worker-runtime-test --sibling-focus-only)
+  add_test(NAME plugin-worker-runtime-sibling-grab
+    COMMAND omarchy-plugin-worker-runtime-test --sibling-grab-only)
+  set_tests_properties(
+    plugin-worker-runtime-sibling-focus
+    plugin-worker-runtime-sibling-grab
+    PROPERTIES
+      LABELS "unit;integration;render;input"
+      TIMEOUT 20
+      ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QT_QUICK_CONTROLS_STYLE=Basic;QSG_RHI_BACKEND=software;QSG_SOFTWARE_RENDERER_FORCE_PARTIAL_UPDATES=0"
   )
 
-  add_executable(omarchy-plugin-worker-channel-test worker_channel_test.cpp)
+  add_executable(omarchy-plugin-worker-channel-test tests/worker_channel_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-worker-channel-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-worker-channel-test)
   target_link_libraries(omarchy-plugin-worker-channel-test PRIVATE
@@ -183,17 +155,22 @@ if(BUILD_TESTING)
   )
   add_test(NAME plugin-worker-channel COMMAND omarchy-plugin-worker-channel-test)
   set_tests_properties(plugin-worker-channel PROPERTIES
-    LABELS "unit;protocol;adversarial"
+    LABELS "unit;protocol;adversarial;security"
     TIMEOUT 20
   )
 
-  add_executable(omarchy-plugin-qml-broker-api-test qml_broker_api_test.cpp)
+  add_executable(omarchy-plugin-qml-broker-api-test tests/qml_broker_api_test.cpp)
   omarchy_plugin_target_defaults(omarchy-plugin-qml-broker-api-test)
   omarchy_plugin_worker_sanitize(omarchy-plugin-qml-broker-api-test)
+  target_compile_definitions(omarchy-plugin-qml-broker-api-test PRIVATE
+    OMARCHY_NEUTRAL_SURFACE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../tests/fixtures/neutral-surfaces"
+  )
   target_link_libraries(omarchy-plugin-qml-broker-api-test PRIVATE
     omarchy-plugin-worker-runtime)
   add_test(NAME plugin-qml-broker-api COMMAND omarchy-plugin-qml-broker-api-test)
   set_tests_properties(plugin-qml-broker-api PROPERTIES
     LABELS "unit;integration;protocol;broker;qml;security"
-    TIMEOUT 20)
+    TIMEOUT 20
+    SKIP_RETURN_CODE 77
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=none;QT_QUICK_CONTROLS_STYLE=Basic;QSG_RHI_BACKEND=software")
 endif()

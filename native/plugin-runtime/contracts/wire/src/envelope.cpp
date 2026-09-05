@@ -6,6 +6,22 @@
 namespace omarchy::plugin::wire {
 namespace {
 
+bool negotiation_message(std::uint16_t message_type) {
+  return message_type == static_cast<std::uint16_t>(CommonMessageType::hello) ||
+         message_type ==
+             static_cast<std::uint16_t>(CommonMessageType::welcome) ||
+         message_type == static_cast<std::uint16_t>(
+                             CommonMessageType::negotiation_failed);
+}
+
+bool valid_sequence(const EnvelopeHeader &header) {
+  if (negotiation_message(header.message_type))
+    return header.lane_sequence == 0;
+  const auto tag = static_cast<std::uint16_t>(header.endpoint_role);
+  return tag >= 1 && tag <= 3 && (header.lane_sequence >> 2U) != 0 &&
+         (header.lane_sequence & 0x3U) == tag;
+}
+
 void put16(std::span<std::byte> output, std::size_t offset,
            std::uint16_t value) {
   output[offset] = static_cast<std::byte>(value >> 8U);
@@ -53,6 +69,8 @@ EncodeResult encode_packet(const EnvelopeHeader &header,
   if (header.header_size != kHeaderSize) {
     return {0, FatalReason::invalid_header_size};
   }
+  if (!valid_sequence(header))
+    return {0, FatalReason::invalid_lane_sequence};
   if (header.flags != 0) {
     return {0, FatalReason::nonzero_flags};
   }
@@ -80,6 +98,7 @@ EncodeResult encode_packet(const EnvelopeHeader &header,
   put32(output, 20, header.reserved);
   put64(output, 24, header.launch_generation);
   put64(output, 32, header.correlation_id);
+  put64(output, 40, header.lane_sequence);
   if (!payload.empty()) {
     std::memcpy(output.data() + kHeaderSize, payload.data(), payload.size());
   }
@@ -88,13 +107,23 @@ EncodeResult encode_packet(const EnvelopeHeader &header,
 
 DecodeResult decode_packet(std::span<const std::byte> packet,
                            EndpointRole trusted_role) {
-  if (packet.size() < kHeaderSize) {
+  if (packet.size() < 8) {
     return {{}, FatalReason::packet_too_short};
   }
 
+  if (get32(packet, 0) != kMagic)
+    return {{}, FatalReason::invalid_magic};
+  const auto envelope_version = get16(packet, 4);
+  if (envelope_version != kEnvelopeVersion)
+    return {{}, FatalReason::unsupported_envelope_version};
+  if (get16(packet, 6) != kHeaderSize)
+    return {{}, FatalReason::invalid_header_size};
+  if (packet.size() < kHeaderSize)
+    return {{}, FatalReason::packet_too_short};
+
   EnvelopeHeader header{
       .magic = get32(packet, 0),
-      .envelope_version = get16(packet, 4),
+      .envelope_version = envelope_version,
       .header_size = get16(packet, 6),
       .endpoint_role = static_cast<EndpointRole>(get16(packet, 8)),
       .message_type = get16(packet, 10),
@@ -104,17 +133,11 @@ DecodeResult decode_packet(std::span<const std::byte> packet,
       .reserved = get32(packet, 20),
       .launch_generation = get64(packet, 24),
       .correlation_id = get64(packet, 32),
+      .lane_sequence = get64(packet, 40),
   };
 
-  if (header.magic != kMagic) {
-    return {{}, FatalReason::invalid_magic};
-  }
-  if (header.envelope_version != kEnvelopeVersion) {
-    return {{}, FatalReason::unsupported_envelope_version};
-  }
-  if (header.header_size != kHeaderSize) {
-    return {{}, FatalReason::invalid_header_size};
-  }
+  if (!valid_sequence(header))
+    return {{}, FatalReason::invalid_lane_sequence};
   if (header.flags != 0) {
     return {{}, FatalReason::nonzero_flags};
   }
@@ -132,7 +155,8 @@ DecodeResult decode_packet(std::span<const std::byte> packet,
     return {{}, FatalReason::packet_length_mismatch};
   }
 
-  return {PacketView{header, packet.subspan(kHeaderSize)}, FatalReason::none};
+  return {PacketView{header, packet.subspan(kHeaderSize)},
+          FatalReason::none};
 }
 
 } // namespace omarchy::plugin::wire

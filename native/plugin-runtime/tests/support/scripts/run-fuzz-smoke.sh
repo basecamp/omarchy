@@ -35,11 +35,11 @@ cmake -S "$runtime_dir" -B "$build_dir" -G Ninja \
 cmake --build "$build_dir" --target plugin-security-fuzzers
 
 mkdir -p "$corpus_dir/envelope" "$corpus_dir/manifest" "$corpus_dir/render"
-hex_to_binary "$support_dir/../fixtures/wire/v1/hello-control.hex" \
+hex_to_binary "$support_dir/../fixtures/wire/current/hello-control.hex" \
   "$corpus_dir/envelope/hello-control"
-cp "$runtime_dir/contracts/manifest/fixtures/valid-minimal/manifest.json" \
+cp "$runtime_dir/contracts/manifest/tests/fixtures/valid-minimal/manifest.json" \
   "$corpus_dir/manifest/valid-minimal.json"
-hex_to_binary "$support_dir/../fixtures/wire/v1/welcome-control.hex" \
+hex_to_binary "$support_dir/../fixtures/wire/current/welcome-control.hex" \
   "$corpus_dir/render/arbitrary-seed"
 
 export ASAN_OPTIONS=${ASAN_OPTIONS:-detect_leaks=1:halt_on_error=1}

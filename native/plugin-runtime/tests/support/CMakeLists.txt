@@ -7,7 +7,7 @@ add_executable(omarchy-plugin-support-test tests/support_test.cpp)
 omarchy_plugin_target_defaults(omarchy-plugin-support-test)
 target_link_libraries(omarchy-plugin-support-test PRIVATE Omarchy::PluginTestSupport)
 target_compile_definitions(omarchy-plugin-support-test PRIVATE
-  WIRE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/wire/v1"
+  WIRE_FIXTURE_ROOT="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/wire/current"
 )
 
 if(TARGET omarchy-plugin-wire)
@@ -34,7 +34,7 @@ if(TARGET omarchy-plugin-wire)
     omarchy-plugin-wire
   )
   add_test(NAME plugin-malicious-peer COMMAND omarchy-plugin-malicious-peer-test)
-  set_tests_properties(plugin-malicious-peer PROPERTIES LABELS "integration;adversarial;linux" TIMEOUT 10)
+  set_tests_properties(plugin-malicious-peer PROPERTIES LABELS "integration;adversarial;linux;security" TIMEOUT 10)
 endif()
 
 option(PLUGIN_SECURITY_BUILD_FUZZERS "Build bounded libFuzzer targets" OFF)

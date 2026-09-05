@@ -5,17 +5,18 @@ target_link_libraries(omarchy-plugin-runtime-contract-test PRIVATE Qt6::Core Qt6
 add_test(NAME plugin-runtime-protocol-version COMMAND omarchy-plugin-runtime-contract-test protocol)
 set_tests_properties(plugin-runtime-protocol-version PROPERTIES LABELS "unit;protocol" TIMEOUT 10)
 
-add_test(NAME plugin-runtime-version-reporting
-  COMMAND omarchy-plugin-runtime-contract-test versions
-    "$<TARGET_FILE:omarchy-plugin-host>"
-    "$<TARGET_FILE:omarchy-plugin-qml-worker>"
-)
-set_tests_properties(plugin-runtime-version-reporting PROPERTIES LABELS "integration" TIMEOUT 10)
+if(TARGET omarchy-plugin-qml-worker)
+  add_test(NAME plugin-runtime-version-reporting
+    COMMAND omarchy-plugin-runtime-contract-test version
+      "$<TARGET_FILE:omarchy-plugin-qml-worker>"
+  )
+  set_tests_properties(plugin-runtime-version-reporting PROPERTIES LABELS "integration" TIMEOUT 10)
 
-add_test(NAME plugin-runtime-direct-worker-denial
-  COMMAND omarchy-plugin-runtime-contract-test worker-denial "$<TARGET_FILE:omarchy-plugin-qml-worker>"
-)
-set_tests_properties(plugin-runtime-direct-worker-denial PROPERTIES LABELS "adversarial" TIMEOUT 10)
+  add_test(NAME plugin-runtime-direct-worker-denial
+    COMMAND omarchy-plugin-runtime-contract-test worker-denial "$<TARGET_FILE:omarchy-plugin-qml-worker>"
+  )
+  set_tests_properties(plugin-runtime-direct-worker-denial PROPERTIES LABELS "adversarial" TIMEOUT 10)
+endif()
 
 add_test(NAME plugin-runtime-bridge-import
   COMMAND omarchy-plugin-runtime-contract-test bridge "${QT_QML_OUTPUT_DIRECTORY}"

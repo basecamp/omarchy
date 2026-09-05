@@ -1,6 +1,7 @@
 #include "omarchy/plugin/wire/envelope.hpp"
 #include "omarchy/plugin/wire/state.hpp"
 #include "omarchy/plugin_runtime/launcher/launcher.h"
+#include "omarchy/plugin_runtime/launcher/test_supervisor.h"
 #include "omarchy/plugin_runtime/sandbox/policy.h"
 
 #include <dirent.h>
@@ -284,6 +285,18 @@ int finish(Worker &worker, int timeout_ms = 2000) {
 
 void test_protocol_attacks() {
   {
+    auto worker = spawn("unsupported-envelope-version");
+    auto received = receive(worker);
+    const auto decoded =
+        wire::decode_packet(received.payload, wire::EndpointRole::control);
+    require(!decoded &&
+                decoded.error ==
+                    wire::FatalReason::unsupported_envelope_version,
+            "literal unsupported envelope version was accepted");
+    require(WIFEXITED(finish(worker)),
+            "unsupported-version worker did not exit cleanly");
+  }
+  {
     auto worker = spawn("role-swap");
     auto received = receive(worker);
     require(received.has_credentials && received.credentials.pid == worker.pid,
@@ -390,38 +403,35 @@ void test_identity_and_descriptor_attacks() {
 
 class FakeScope final : public launcher::ResourceScopeController {
 public:
-  bool probe(std::string &) override { return true; }
+  bool probe(launcher::Deadline, std::string &) override { return true; }
+  bool prepare_cleanup(launcher::Deadline, std::string &) override {
+    return true;
+  }
 
-  bool attach(std::string_view unit, pid_t monitor_pid, pid_t worker_pid,
-              const sandbox::SandboxPlan &plan,
-              std::chrono::milliseconds timeout,
-              std::string &) override {
+  AttachResult attach(std::string_view unit, pid_t monitor_pid,
+                      pid_t worker_pid, const sandbox::SandboxPlan &plan,
+                      launcher::Deadline deadline, std::string &) override {
     require(unit.starts_with("app-omarchy-plugin-worker-") &&
                 monitor_pid > 0 && worker_pid > 0 &&
                 plan.worker_descriptors == std::vector<int>({3, 4, 5}) &&
                 plan.process.descendants_permitted &&
-                timeout == std::chrono::seconds(5),
-            "sandbox launch did not consume the frozen B5 plan");
+                deadline > std::chrono::steady_clock::now(),
+            "sandbox launch did not consume the frozen sandbox plan");
     unit_ = unit;
     attached = true;
+    return {.attached = true, .cleanup_required = true};
+  }
+
+  bool terminate_scope_validated(std::string_view unit, launcher::Deadline,
+                                  std::string &) noexcept override {
+    if (unit == unit_) {
+      ++terminations;
+    }
     return true;
   }
 
-  void kill(std::string_view unit) noexcept override {
-    if (unit == unit_) {
-      ++kills;
-    }
-  }
-
-  void remove(std::string_view unit) noexcept override {
-    if (unit == unit_) {
-      ++removes;
-    }
-  }
-
   bool attached = false;
-  unsigned kills = 0;
-  unsigned removes = 0;
+  unsigned terminations = 0;
 
 private:
   std::string unit_;
@@ -431,7 +441,7 @@ class SandboxTree {
 public:
   SandboxTree() {
     std::array<char, 64> pattern{};
-    std::strcpy(pattern.data(), "/tmp/omarchy-c11-sandbox.XXXXXX");
+    std::strcpy(pattern.data(), "/tmp/omarchy-adversarial-sandbox.XXXXXX");
     const char *created = mkdtemp(pattern.data());
     require(created != nullptr, "sandbox fixture root creation failed");
     root_ = created;
@@ -442,7 +452,8 @@ public:
     const char *wayland = std::getenv("WAYLAND_DISPLAY");
     require(home != nullptr && *home != '\0' && runtime != nullptr &&
                 *runtime != '\0' && wayland != nullptr && *wayland != '\0',
-            "C11 sandbox proof requires HOME, XDG_RUNTIME_DIR, and WAYLAND_DISPLAY");
+            "standalone sandbox harness requires HOME, XDG_RUNTIME_DIR, and "
+            "WAYLAND_DISPLAY");
     host_home_ = home;
     bus_socket_path_ = std::filesystem::path(runtime) / "bus";
     wayland_socket_path_ = std::filesystem::path(runtime) / wayland;
@@ -527,7 +538,7 @@ struct SandboxProbe {
 
 void test_standalone_sandbox() {
   require(access("/usr/bin/bwrap", X_OK) == 0,
-          "Bubblewrap is required for the C11 standalone sandbox harness");
+          "Bubblewrap is required for the standalone sandbox harness");
   SandboxTree tree;
   UniqueFd revision(
       open(tree.revision().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC));
@@ -535,7 +546,7 @@ void test_standalone_sandbox() {
   require(revision.get() >= 0 && state.get() >= 0,
           "sandbox fixture directories could not be opened");
   auto scope = std::make_shared<FakeScope>();
-  auto supervisor = launcher::Supervisor::forTestOnly(
+  auto supervisor = launcher::test_support::make_supervisor(
       "/usr/bin/bwrap", MALICIOUS_WORKER_PATH, scope);
   const launcher::TrustedLaunchRequest request{
       .plugin_id = "org.omarchy.fixture",
@@ -544,15 +555,17 @@ void test_standalone_sandbox() {
       .revision_directory_fd = revision.get(),
       .private_state_directory_fd = state.get(),
   };
-  auto launched = supervisor.launch(request);
+  auto launched = supervisor.launch(
+      request, std::chrono::steady_clock::now() + std::chrono::seconds(4));
   if (!launched) {
     throw std::runtime_error("standalone sandbox launch failed: " +
                              launched.detail);
   }
   require(scope->attached, "worker was released before fake scope attachment");
   const auto message = launched.worker->receive(
-      launcher::EndpointRole::control, sizeof(SandboxProbe),
-      std::chrono::seconds(2));
+      launcher::EndpointRole::control,
+      launcher::PacketSizeLimit{sizeof(SandboxProbe)},
+      std::chrono::steady_clock::now() + std::chrono::seconds(2));
   require(static_cast<bool>(message) && message.payload.size() == sizeof(SandboxProbe),
           "sandbox denial certificate was not received from the bound worker");
   SandboxProbe probe{};
@@ -568,15 +581,16 @@ void test_standalone_sandbox() {
               probe.revision_write_denied == 1,
           "standalone sandbox did not deny an ambient authority");
   const std::array acknowledgement{std::byte{1}};
-  require(launched.worker->send(launcher::EndpointRole::control,
-                                acknowledgement),
+  require(launched.worker->try_send(
+              launcher::EndpointRole::control, acknowledgement,
+              launcher::PacketSizeLimit{acknowledgement.size()}) ==
+              launcher::SendStatus::complete,
           "standalone sandbox acknowledgement send failed");
-  require(launched.worker->terminate(),
+  require(launched.worker->terminate(std::chrono::steady_clock::now() +
+                                     std::chrono::seconds(4)),
           "standalone sandbox supervisor teardown failed");
-  require(scope->removes == 1,
+  require(scope->terminations == 1,
           "standalone sandbox scope was not removed exactly once");
-  require(scope->kills == 0,
-          "normally exited standalone sandbox required a scope kill");
 }
 
 void test_failure_bounds() {

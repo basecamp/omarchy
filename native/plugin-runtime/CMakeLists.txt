@@ -6,19 +6,58 @@ include(CTest)
 include(GNUInstallDirs)
 
 set(OMARCHY_PLUGIN_QT_MIN_VERSION "" CACHE STRING "Optional minimum Qt 6 version required by the package build")
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+  set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install path prefix" FORCE)
+endif()
+if(NOT CMAKE_INSTALL_PREFIX STREQUAL "/usr")
+  message(FATAL_ERROR
+    "The secure plugin runtime must be built for the canonical /usr prefix; use DESTDIR to stage it")
+endif()
+if(NOT CMAKE_INSTALL_LIBDIR STREQUAL "lib")
+  message(FATAL_ERROR
+    "The secure plugin runtime must use the canonical /usr/lib package root")
+endif()
+
+set(OMARCHY_PLUGIN_INSTALL_ROOT
+  "lib/omarchy/plugin-security/${PROJECT_VERSION}")
+
+set(OMARCHY_PLUGIN_PACKAGED_WORKER
+  "/usr/${OMARCHY_PLUGIN_INSTALL_ROOT}/bin/omarchy-plugin-qml-worker")
+install(CODE [[
+  if(NOT CMAKE_INSTALL_PREFIX STREQUAL "/usr")
+    message(FATAL_ERROR
+      "The secure plugin runtime must be installed with its canonical /usr prefix; use DESTDIR to stage it")
+  endif()
+]])
+configure_file(cmake/runtime_paths.hpp.in
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/omarchy/plugin_runtime/runtime_paths.hpp"
+  @ONLY)
+configure_file(packaging/runtime-paths-v1.txt.in
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/runtime-paths-v1.txt"
+  @ONLY)
+add_library(omarchy-plugin-runtime-paths INTERFACE)
+add_library(Omarchy::PluginRuntimePaths ALIAS omarchy-plugin-runtime-paths)
+target_include_directories(omarchy-plugin-runtime-paths INTERFACE
+  "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
 if(OMARCHY_PLUGIN_QT_MIN_VERSION)
-  find_package(Qt6 ${OMARCHY_PLUGIN_QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml Quick)
+  find_package(Qt6 ${OMARCHY_PLUGIN_QT_MIN_VERSION} REQUIRED COMPONENTS Core DBus Gui Qml Quick)
   qt_standard_project_setup(REQUIRES ${OMARCHY_PLUGIN_QT_MIN_VERSION})
 else()
-  find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick)
+  find_package(Qt6 REQUIRED COMPONENTS Core DBus Gui Qml Quick)
   qt_standard_project_setup()
 endif()
+
+install(FILES
+  packaging/runtime-dependencies-v1.txt
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/runtime-paths-v1.txt"
+  DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/metadata")
 
 qt_policy(SET QTP0001 NEW)
 qt_policy(SET QTP0004 NEW)
 
 set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
+
 add_subdirectory(presentation)
 
 function(omarchy_plugin_target_defaults target)
@@ -26,9 +65,14 @@ function(omarchy_plugin_target_defaults target)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endfunction()
 
-configure_file(cmake/PluginRuntimeVersion.h.in generated/omarchy/plugin_runtime/PluginRuntimeVersion.h @ONLY)
-
-add_subdirectory(protocol-version)
+install(FILES
+  shell/SecurePluginHost.qml
+  shell/SecureSurfacePolicy.js
+  shell/SecureBarSurface.qml
+  shell/SecurePanelSurface.qml
+  shell/SecureOverlaySurface.qml
+  shell/TrustedSurfaceInputMask.qml
+  DESTINATION "${OMARCHY_PLUGIN_INSTALL_ROOT}/shell")
 
 # Contract owners add their directory without changing this shared root. A missing
 # directory means that security subsystem has not landed yet, not that it is optional
@@ -40,6 +84,8 @@ foreach(contract IN ITEMS manifest wire surface permissions sandbox)
     add_subdirectory("contracts/${contract}")
   endif()
 endforeach()
+
+add_subdirectory(policy)
 
 if(TARGET omarchy-plugin-permission-contract
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/contracts/capability-definitions/CMakeLists.txt")
@@ -61,14 +107,6 @@ endif()
 if(TARGET omarchy-plugin-wire
     AND TARGET omarchy-plugin-surface-contract)
   add_subdirectory(trusted-bridge)
-  add_subdirectory(render-session)
-  add_subdirectory(bridge)
-endif()
-
-if(TARGET omarchy-plugin-manifest-contract
-    AND TARGET omarchy-plugin-permission-contract
-    AND TARGET omarchy-plugin-render-session
-    AND TARGET omarchy-plugin-trusted-bridge)
   add_subdirectory(surface-host)
 endif()
 
@@ -77,37 +115,29 @@ if(TARGET omarchy-plugin-sandbox-policy
   add_subdirectory(launcher)
 endif()
 
+if(TARGET omarchy-plugin-capability-definitions
+    AND TARGET omarchy-plugin-launcher
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/provider-host/CMakeLists.txt")
+  add_subdirectory(provider-host)
+endif()
+
 if(TARGET omarchy-plugin-broker-core
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/providers/CMakeLists.txt")
   add_subdirectory(providers)
 endif()
 
 add_subdirectory(discovery)
-add_subdirectory(revision-store)
-add_subdirectory(grants)
-add_subdirectory(audit)
-if(TARGET omarchy-plugin-capability-definitions
-    AND TARGET omarchy-plugin-audit-store
-    AND TARGET omarchy-plugin-launcher)
-  add_subdirectory(external-provider)
-endif()
-add_subdirectory(lifecycle)
-add_subdirectory(update-hardening)
-add_subdirectory(migration-report)
-
-if(TARGET omarchy-plugin-launcher
-    AND TARGET omarchy-plugin-audit-store
-    AND TARGET omarchy-plugin-surface-contract
-    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/supervisor-health/CMakeLists.txt")
-  add_subdirectory(supervisor-health)
-endif()
 
 if(TARGET omarchy-plugin-broker-core
     AND TARGET omarchy-plugin-providers
-    AND TARGET omarchy-plugin-grant-store
-    AND TARGET omarchy-plugin-audit-store
     AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/broker-runtime/CMakeLists.txt")
   add_subdirectory(broker-runtime)
+endif()
+
+if(TARGET omarchy-plugin-broker-runtime
+    AND TARGET omarchy-plugin-surface-contract
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/host-session/CMakeLists.txt")
+  add_subdirectory(host-session)
 endif()
 
 if(TARGET omarchy-plugin-launcher
@@ -117,50 +147,43 @@ if(TARGET omarchy-plugin-launcher
   add_subdirectory(channel-integration)
 endif()
 
-if(TARGET omarchy-plugin-channel-integration
-    AND TARGET omarchy-plugin-lifecycle
-    AND TARGET omarchy-plugin-broker-runtime
-    AND TARGET omarchy-plugin-supervisor-health
-    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/update-transition/CMakeLists.txt")
-  add_subdirectory(update-transition)
+if(TARGET omarchy-plugin-host-session
+    AND TARGET omarchy-plugin-trusted-bridge
+    AND TARGET omarchy-plugin-authenticated-session
+    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bridge/CMakeLists.txt")
+  add_subdirectory(bridge)
 endif()
 
-if(TARGET omarchy-plugin-channel-integration
-    AND TARGET omarchy-plugin-supervisor-health)
-  add_subdirectory(headless-slice)
-endif()
-
-if(TARGET omarchy-plugin-headless-slice
-    AND TARGET omarchy-plugin-discovery
-    AND TARGET omarchy-plugin-grant-store
-    AND TARGET omarchy-plugin-surface-host)
-  add_subdirectory(product-host)
-endif()
-
-if(TARGET omarchy-plugin-product-host)
-  add_subdirectory(host)
-
-  install(FILES
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/network-fetch.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/media-play-stream.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/device-observe.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/device-control.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/remote-account-read.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/remote-account-write.capability"
-    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/winners/definitions/external-open-uri.capability"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/omarchy/plugin-capabilities.d")
-endif()
-
-if(TARGET omarchy-plugin-surface-host)
-  add_subdirectory(expressive-surface)
-endif()
+# The Quickshell host is a shared QML module which embeds the native runtime.
+# Keep that linkage requirement owned here, where the complete runtime
+# target graph is visible, instead of relying on a global compiler setting.
+set(plugin_host_embedded_targets
+  omarchy-plugin-manifest-contract
+  omarchy-plugin-wire
+  omarchy-plugin-surface-contract
+  omarchy-plugin-permission-contract
+  omarchy-plugin-sandbox-policy
+  omarchy-plugin-capability-definitions
+  omarchy-plugin-provider-host
+  omarchy-plugin-broker-core
+  omarchy-plugin-trusted-bridge
+  omarchy-plugin-surface-host
+  omarchy-plugin-launcher
+  omarchy-plugin-providers
+  omarchy-plugin-discovery
+  omarchy-plugin-broker-runtime
+  omarchy-plugin-activation-snapshot
+  omarchy-plugin-host-session
+  omarchy-plugin-channel-integration
+  omarchy-plugin-authenticated-session
+)
+foreach(target IN LISTS plugin_host_embedded_targets)
+  if(TARGET "${target}")
+    set_target_properties("${target}" PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  endif()
+endforeach()
 
 if(BUILD_TESTING)
-  add_subdirectory(fixtures/product)
   add_subdirectory(tests/adversarial)
-  add_subdirectory(brokered-action)
-  add_subdirectory(vertical-slices/embedded-bar)
-  add_subdirectory(render-proof)
   add_subdirectory(tests)
-  add_subdirectory(proof-exhaustion)
 endif()

@@ -9,8 +9,8 @@
 namespace omarchy::plugin::wire {
 
 inline constexpr std::uint32_t kMagic = 0x4f4d504c;
-inline constexpr std::uint16_t kEnvelopeVersion = 1;
-inline constexpr std::size_t kHeaderSize = 40;
+inline constexpr std::uint16_t kEnvelopeVersion = 2;
+inline constexpr std::size_t kHeaderSize = 48;
 
 enum class EndpointRole : std::uint16_t {
   control = 1,
@@ -43,6 +43,7 @@ struct EnvelopeHeader {
   std::uint32_t reserved = 0;
   std::uint64_t launch_generation = 0;
   std::uint64_t correlation_id = 0;
+  std::uint64_t lane_sequence = 0;
 };
 
 struct PacketView {

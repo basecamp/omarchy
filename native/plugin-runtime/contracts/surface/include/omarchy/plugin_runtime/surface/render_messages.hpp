@@ -1,6 +1,7 @@
 #pragma once
 
 #include "omarchy/plugin/wire/role_registry.hpp"
+#include "omarchy/plugin/wire/surface_name.hpp"
 #include "omarchy/plugin_runtime/surface/input.hpp"
 #include "omarchy/plugin_runtime/surface/profile.hpp"
 
@@ -9,10 +10,15 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
+#include <vector>
 
 namespace omarchy::plugin_runtime::surface {
 
-inline constexpr std::uint16_t kRenderRoleVersion = 1;
+using omarchy::plugin::wire::kMaximumSurfaceNameBytes;
+using omarchy::plugin::wire::valid_surface_name;
+
+inline constexpr std::uint16_t kRenderRoleVersion = 2;
 
 enum class RenderMessageType : std::uint16_t {
   profile_offer = 0x2000,
@@ -25,8 +31,20 @@ enum class RenderMessageType : std::uint16_t {
   frame_ready = 0x2020,
   input_regions = 0x2021,
   input = 0x2030,
-  focus = 0x2031,
+  surface_intent = 0x2040,
 };
+
+// One collision-free correlation pair is fixed by the trusted surface key.
+// Both the session router and HostRenderSession use this single derivation.
+[[nodiscard]] inline constexpr std::uint64_t
+render_correlation_base(SurfaceKey surface) noexcept {
+  return surface.id * 4;
+}
+[[nodiscard]] inline constexpr std::array<std::uint64_t, 2>
+render_correlations(SurfaceKey surface) noexcept {
+  return {render_correlation_base(surface) + 1,
+          render_correlation_base(surface) + 2};
+}
 
 enum class RenderErrorReason : std::uint16_t {
   unsupported_profile = 1,
@@ -60,6 +78,22 @@ struct InputRegionUpdate {
   std::uint64_t generation = 0;
   std::array<TransportedInputRegion, kMaximumTransportedInputRegions> regions{};
   std::uint32_t count = 0;
+};
+
+enum class SurfaceIntentAction : std::uint32_t {
+  open = 1,
+  toggle = 2,
+  dismiss = 3,
+};
+
+struct SurfaceIntentRequest {
+  SurfaceKey source;
+  SurfaceKey target;
+  std::uint64_t input_sequence = 0;
+  SurfaceIntentAction action = SurfaceIntentAction::open;
+  std::string requested_output;
+
+  constexpr bool operator==(const SurfaceIntentRequest &) const = default;
 };
 
 struct RenderTypedError {
@@ -100,14 +134,14 @@ encode_frame_ready(const FrameReady &payload);
 encode_input_region_update(const InputRegionUpdate &payload);
 [[nodiscard]] bool decode_input_region_update(std::span<const std::byte> bytes,
                                               InputRegionUpdate &output);
-[[nodiscard]] std::array<std::byte, 56>
+[[nodiscard]] std::optional<std::vector<std::byte>>
 encode_input_event(const InputEvent &payload);
 [[nodiscard]] bool decode_input_event(std::span<const std::byte> bytes,
                                       InputEvent &output);
-[[nodiscard]] std::array<std::byte, 32>
-encode_focus_event(const FocusEvent &payload);
-[[nodiscard]] bool decode_focus_event(std::span<const std::byte> bytes,
-                                      FocusEvent &output);
+[[nodiscard]] std::array<std::byte, 176>
+encode_surface_intent(const SurfaceIntentRequest &payload);
+[[nodiscard]] bool decode_surface_intent(std::span<const std::byte> bytes,
+                                         SurfaceIntentRequest &output);
 [[nodiscard]] std::array<std::byte, 24>
 encode_render_error(const RenderTypedError &payload);
 [[nodiscard]] bool decode_render_error(std::span<const std::byte> bytes,

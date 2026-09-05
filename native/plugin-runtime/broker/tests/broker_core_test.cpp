@@ -35,14 +35,6 @@ permissions::TokenScope token_scope(std::string_view token) {
   return scope;
 }
 
-permissions::ResourceScope resource_scope(std::uint32_t resource,
-                                          permissions::OperationId operation) {
-  permissions::ResourceScope scope;
-  require(scope.resources.insert(resource), "resource fixture duplicated");
-  require(scope.operations.insert(operation), "operation fixture duplicated");
-  return scope;
-}
-
 struct AuthorityFixture {
   permissions::RequestSet requests;
   permissions::GrantSet grants;
@@ -55,10 +47,6 @@ struct AuthorityFixture {
     requests.push_back({.capability = key("notifications.send"),
                         .scope = token_scope("timer"),
                         .required = false});
-    requests.push_back(
-        {.capability = key("service.fake-status"),
-         .scope = resource_scope(1, permissions::OperationId::fake_status_list),
-         .required = false});
     grants.push_back({.capability = key("storage.private"),
                       .scope = permissions::QuotaScope{2048, 512},
                       .state = permissions::GrantState::granted,
@@ -67,11 +55,6 @@ struct AuthorityFixture {
                       .scope = token_scope("timer"),
                       .state = permissions::GrantState::denied,
                       .epoch = 2});
-    grants.push_back(
-        {.capability = key("service.fake-status"),
-         .scope = resource_scope(1, permissions::OperationId::fake_status_list),
-         .state = permissions::GrantState::granted,
-         .epoch = 6});
     binding = {.plugin = permissions::PluginId("org.example.timer"),
                .revision = digest('a'),
                .policy_fingerprint = permissions::Digest(
@@ -125,18 +108,6 @@ std::vector<std::byte> token_request(permissions::OperationId operation,
   for (std::size_t index = 0; index < token.size(); ++index) {
     bytes[10 + index] = static_cast<std::byte>(token[index]);
   }
-  return bytes;
-}
-
-std::vector<std::byte> resource_request(permissions::OperationId operation,
-                                        std::uint32_t resource) {
-  std::vector<std::byte> bytes(16);
-  put16(bytes, 0, static_cast<std::uint16_t>(operation));
-  put16(bytes, 2, 8);
-  put32(bytes, 4, 0);
-  put32(bytes, 8, resource);
-  put16(bytes, 12, static_cast<std::uint16_t>(operation));
-  put16(bytes, 14, 0);
   return bytes;
 }
 
@@ -438,7 +409,8 @@ int main() {
               core.accept_terminal(result_packet(16)) ==
                   broker::TerminalResult::protocol_fatal &&
               core.failed() && core.revoke(key("storage.private")).core_failed,
-          "duplicate terminal escaped B3 during cancellation race");
+          "duplicate terminal escaped the broker terminal gate during "
+          "cancellation race");
 
   auto crossed_fixture = std::make_unique<AuthorityFixture>();
   auto crossed_authority = std::make_unique<permissions::PermissionAuthority>(
@@ -611,142 +583,6 @@ int main() {
               uncancellable_probe.calls == 0,
           "uncancellable provider was registered or invoked");
 
-  auto gesture_fixture = std::make_unique<AuthorityFixture>();
-  auto gesture_authority = std::make_unique<permissions::PermissionAuthority>(
-      gesture_fixture->binding, gesture_fixture->requests,
-      gesture_fixture->grants);
-  ProviderProbe gesture_probe;
-  broker::ProviderRegistry<1> gesture_providers;
-  require(gesture_providers.add({.operation = OperationId::fake_status_list,
-                                 .dispatch = ProviderProbe::dispatch,
-                                 .cancel = ProviderProbe::cancel,
-                                 .context = &gesture_probe}),
-          "gesture provider registration failed");
-  auto gesture_core = std::make_unique<broker::BrokerCore<8, 1>>(
-      gesture_fixture->binding, *gesture_authority, gesture_providers, 8);
-  const auto fake = resource_request(OperationId::fake_status_list, 1);
-  auto finish_gesture_denial = [&](std::uint64_t correlation,
-                                   permissions::GrantDecisionCode decision) {
-    const auto bytes = broker::encode_broker_error(
-        {.failed_operation = OperationId::fake_status_list,
-         .reason = broker::BrokerErrorReason::denied,
-         .decision = decision});
-    require(gesture_core->accept_terminal(error_packet(correlation, bytes)) ==
-                broker::TerminalResult::accepted,
-            "gesture denial did not retire exact request");
-  };
-  const auto missing = gesture_core->dispatch(
-      request_packet(OperationId::fake_status_list, 91, fake), 100);
-  require(missing.outcome == broker::DispatchOutcome::denied &&
-              missing.decision.code ==
-                  permissions::GrantDecisionCode::gesture_missing &&
-              gesture_probe.calls == 0,
-          "missing gesture reached provider");
-  finish_gesture_denial(91, missing.decision.code);
-
-  permissions::GestureProof gesture{
-      .id = {},
-      .plugin = permissions::PluginId("org.example.timer"),
-      .generation = 9,
-      .surface = 1,
-      .operation = OperationId::fake_status_list,
-      .expires_monotonic_ns = 200,
-      .consumed = false};
-  gesture.id.bytes[0] = std::byte{1};
-  auto expired = gesture;
-  expired.expires_monotonic_ns = 100;
-  const auto expired_result = gesture_core->dispatch(
-      request_packet(OperationId::fake_status_list, 92, fake), 100, {},
-      &expired);
-  require(expired_result.decision.code ==
-                  permissions::GrantDecisionCode::gesture_expired &&
-              !expired.consumed && gesture_probe.calls == 0,
-          "expired gesture was consumed or dispatched");
-  finish_gesture_denial(92, expired_result.decision.code);
-
-  auto wrong_generation = gesture;
-  wrong_generation.generation = 10;
-  const auto wrong_generation_result = gesture_core->dispatch(
-      request_packet(OperationId::fake_status_list, 93, fake), 100, {},
-      &wrong_generation);
-  require(wrong_generation_result.decision.code ==
-                  permissions::GrantDecisionCode::gesture_wrong_binding &&
-              !wrong_generation.consumed,
-          "wrong-generation gesture was consumed");
-  finish_gesture_denial(93, wrong_generation_result.decision.code);
-
-  auto wrong_operation = gesture;
-  wrong_operation.operation = OperationId::fake_status_acknowledge;
-  const auto wrong_operation_result = gesture_core->dispatch(
-      request_packet(OperationId::fake_status_list, 94, fake), 100, {},
-      &wrong_operation);
-  require(wrong_operation_result.decision.code ==
-                  permissions::GrantDecisionCode::gesture_wrong_binding &&
-              !wrong_operation.consumed,
-          "wrong-operation gesture was consumed");
-  finish_gesture_denial(94, wrong_operation_result.decision.code);
-
-  auto used = gesture;
-  used.consumed = true;
-  const auto used_result = gesture_core->dispatch(
-      request_packet(OperationId::fake_status_list, 95, fake), 100, {}, &used);
-  require(used_result.decision.code ==
-                  permissions::GrantDecisionCode::gesture_used &&
-              gesture_probe.calls == 0,
-          "used gesture reached provider");
-  finish_gesture_denial(95, used_result.decision.code);
-
-  const auto allowed_gesture = gesture_core->dispatch(
-      request_packet(OperationId::fake_status_list, 96, fake), 100, {},
-      &gesture);
-  require(allowed_gesture.outcome == broker::DispatchOutcome::dispatched &&
-              allowed_gesture.decision.allowed() && gesture.consumed &&
-              gesture_probe.calls == 1 &&
-              gesture_core->accept_terminal(result_packet(96)) ==
-                  broker::TerminalResult::accepted,
-          "valid single-use gesture did not dispatch exactly once");
-  const auto replayed_gesture = gesture_core->dispatch(
-      request_packet(OperationId::fake_status_list, 97, fake), 100, {},
-      &gesture);
-  require(replayed_gesture.decision.code ==
-                  permissions::GrantDecisionCode::gesture_used &&
-              gesture_probe.calls == 1,
-          "gesture replay reached provider");
-  finish_gesture_denial(97, replayed_gesture.decision.code);
-
-  auto duplicate_fixture = std::make_unique<AuthorityFixture>();
-  auto duplicate_authority = std::make_unique<permissions::PermissionAuthority>(
-      duplicate_fixture->binding, duplicate_fixture->requests,
-      duplicate_fixture->grants);
-  ProviderProbe duplicate_probe;
-  broker::ProviderRegistry<2> duplicate_providers;
-  require(
-      duplicate_providers.add({.operation = OperationId::storage_read,
-                               .dispatch = ProviderProbe::dispatch,
-                               .cancel = ProviderProbe::cancel,
-                               .context = &duplicate_probe}) &&
-          duplicate_providers.add({.operation = OperationId::fake_status_list,
-                                   .dispatch = ProviderProbe::dispatch,
-                                   .cancel = ProviderProbe::cancel,
-                                   .context = &duplicate_probe}),
-      "duplicate-correlation providers failed");
-  auto duplicate_core = std::make_unique<broker::BrokerCore<2, 2>>(
-      duplicate_fixture->binding, *duplicate_authority, duplicate_providers, 2);
-  require(duplicate_core
-                  ->dispatch(
-                      request_packet(OperationId::storage_read, 98, read), 100)
-                  .outcome == broker::DispatchOutcome::dispatched,
-          "duplicate-correlation setup failed");
-  auto untouched_gesture = gesture;
-  untouched_gesture.consumed = false;
-  require(duplicate_core
-                      ->dispatch(request_packet(OperationId::fake_status_list,
-                                                98, fake),
-                                 100, {}, &untouched_gesture)
-                      .outcome == broker::DispatchOutcome::protocol_fatal &&
-              !untouched_gesture.consumed && duplicate_probe.calls == 1,
-          "duplicate correlation consumed gesture or reached provider");
-
   auto temporary_fixture = std::make_unique<AuthorityFixture>();
   auto temporary_authority = std::make_unique<permissions::PermissionAuthority>(
       temporary_fixture->binding, temporary_fixture->requests,
@@ -781,7 +617,7 @@ int main() {
   require(stale_core->accept_terminal(stale_terminal) ==
                   broker::TerminalResult::protocol_fatal &&
               stale_core->failed(),
-          "stale-generation terminal bypassed B3");
+          "stale-generation terminal bypassed the broker terminal gate");
 
   auto wrong_role_fixture = std::make_unique<AuthorityFixture>();
   auto wrong_role_authority =
@@ -801,5 +637,5 @@ int main() {
   require(wrong_role_core->accept_terminal(wrong_role_terminal) ==
                   broker::TerminalResult::protocol_fatal &&
               wrong_role_core->failed(),
-          "wrong-role terminal bypassed B3");
+          "wrong-role terminal bypassed the broker terminal gate");
 }

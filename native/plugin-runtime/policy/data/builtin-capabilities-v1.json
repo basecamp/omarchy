@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "authority": "org.omarchy.plugin-security",
+  "capabilities": [
+    {
+      "id": "storage.private",
+      "kind": "builtin",
+      "version": 1,
+      "scope": "quota",
+      "operations": ["read", "write", "remove"],
+      "gesture": "none",
+      "revocation": "cancel-inflight",
+      "provider": "private-storage"
+    },
+    {
+      "id": "notifications.send",
+      "kind": "builtin",
+      "version": 1,
+      "scope": "registered-category",
+      "operations": ["send"],
+      "gesture": "none",
+      "revocation": "deny-new",
+      "provider": "desktop-notification"
+    },
+    {
+      "id": "audio.play-cue",
+      "kind": "builtin",
+      "version": 1,
+      "scope": "packaged-cue",
+      "operations": ["play"],
+      "gesture": "none",
+      "revocation": "deny-new",
+      "provider": "packaged-audio"
+    }
+  ]
+}

@@ -1,5 +1,8 @@
 #include "omarchy/plugin_runtime/sandbox/policy.h"
+#include "omarchy/plugin_runtime/runtime_paths.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cerrno>
 #include <filesystem>
 #include <stdexcept>
@@ -8,6 +11,111 @@
 
 namespace omarchy::plugin_runtime::sandbox {
 namespace {
+using namespace std::literals;
+
+constexpr std::string_view qt_qml_source_root = "/usr/lib/qt6/qml";
+constexpr std::string_view qt_qml_import_root = "/runtime/qml";
+
+constexpr std::array qml_files{"libqmlplugin.so"sv, "plugins.qmltypes"sv,
+                               "qmldir"sv};
+constexpr std::array models_files{"libmodelsplugin.so"sv,
+                                  "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array worker_script_files{"libworkerscriptplugin.so"sv,
+                                         "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array quick_files{"libqtquick2plugin.so"sv,
+                                 "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array shapes_files{"libqmlshapesplugin.so"sv,
+                                  "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array layouts_files{"libqquicklayoutsplugin.so"sv,
+                                   "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array effects_files{"libeffectsplugin.so"sv,
+                                   "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array controls_files{"libqtquickcontrols2plugin.so"sv,
+                                    "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array templates_files{"libqtquicktemplates2plugin.so"sv,
+                                     "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array controls_impl_files{"libqtquickcontrols2implplugin.so"sv,
+                                         "plugins.qmltypes"sv, "qmldir"sv};
+constexpr std::array basic_files{
+    "libqtquickcontrols2basicstyleplugin.so"sv, "plugins.qmltypes"sv,
+    "qmldir"sv};
+constexpr std::array basic_impl_files{
+    "libqtquickcontrols2basicstyleimplplugin.so"sv, "plugins.qmltypes"sv,
+    "qmldir"sv};
+
+constexpr std::array qml_trees{
+    TrustedQmlResourceTree{"QtQml", qml_files, false},
+    TrustedQmlResourceTree{"QtQml/Models", models_files, true},
+    TrustedQmlResourceTree{"QtQml/WorkerScript", worker_script_files, true},
+};
+constexpr std::array quick_trees{
+    TrustedQmlResourceTree{"QtQuick", quick_files, false}};
+constexpr std::array shapes_trees{
+    TrustedQmlResourceTree{"QtQuick/Shapes", shapes_files, true}};
+constexpr std::array layouts_trees{
+    TrustedQmlResourceTree{"QtQuick/Layouts", layouts_files, false}};
+constexpr std::array effects_trees{
+    TrustedQmlResourceTree{"QtQuick/Effects", effects_files, false}};
+constexpr std::array controls_trees{
+    TrustedQmlResourceTree{"QtQuick/Controls", controls_files, false},
+    TrustedQmlResourceTree{"QtQuick/Templates", templates_files, false},
+    TrustedQmlResourceTree{"QtQuick/Controls/impl", controls_impl_files, false},
+    TrustedQmlResourceTree{"QtQuick/Controls/Basic", basic_files, false},
+    TrustedQmlResourceTree{"QtQuick/Controls/Basic/impl", basic_impl_files,
+                           false}};
+
+constexpr std::array qt_qml_modules{
+    TrustedQmlModule{"QtQml", R"(
+      import QtQml
+      QtObject {}
+    )",
+                     qml_trees},
+    TrustedQmlModule{"QtQuick", R"(
+      import QtQuick
+      Item {}
+    )",
+                     quick_trees},
+    TrustedQmlModule{"QtQuick.Shapes", R"(
+      import QtQuick
+      import QtQuick.Shapes
+      Shape { ShapePath { PathSvg { path: "M 0 0 L 1 1" } } }
+    )",
+                     shapes_trees},
+    TrustedQmlModule{"QtQuick.Layouts", R"(
+      import QtQuick
+      import QtQuick.Layouts
+      RowLayout { Rectangle { Layout.preferredWidth: 1 } }
+    )",
+                     layouts_trees},
+    TrustedQmlModule{"QtQuick.Effects", R"(
+      import QtQuick
+      import QtQuick.Effects
+      MultiEffect { source: Rectangle { width: 1; height: 1 } }
+    )",
+                     effects_trees},
+    TrustedQmlModule{"QtQuick.Controls", R"(
+      import QtQuick
+      import QtQuick.Controls
+      Item {
+        Button { text: "probe" }
+        TextField { text: "probe" }
+        Slider { value: 0.5 }
+        ScrollView { width: 1; height: 1 }
+      }
+    )",
+                     controls_trees},
+};
+
+const std::vector<std::string> qt_qml_files = [] {
+  std::vector<std::string> result;
+  for (const auto &module : qt_qml_modules) {
+    for (const auto &tree : module.trees) {
+      for (const auto file : tree.files)
+        result.emplace_back(std::string(tree.path) + "/" + std::string(file));
+    }
+  }
+  return result;
+}();
 
 void append(std::vector<std::string> &arguments, std::string option,
             std::string value) {
@@ -161,9 +269,7 @@ SeccompPolicy seccomp_policy() {
                            .forbidden_flags = forbidden}};
 }
 
-} // namespace
-
-SandboxPlan build_test_plan_for_worker(std::string worker_path) {
+SandboxPlan build_plan_for_worker(std::string worker_path) {
   validate_worker_path(worker_path);
   SandboxPlan plan;
   const auto &fd = plan.descriptors;
@@ -175,6 +281,7 @@ SandboxPlan build_test_plan_for_worker(std::string worker_path) {
       "PATH=/runtime",
       "PWD=/plugin",
       "QT_QPA_PLATFORM=offscreen",
+      "QT_QUICK_CONTROLS_STYLE=Basic",
       "QSG_RHI_BACKEND=software",
       "XDG_CACHE_HOME=/tmp/cache",
       "XDG_CONFIG_HOME=/state/config",
@@ -242,6 +349,19 @@ SandboxPlan build_test_plan_for_worker(std::string worker_path) {
   plan.argv.push_back("/lib");
   append(plan.argv, "--symlink", "usr/lib");
   plan.argv.push_back("/lib64");
+  append(plan.argv, "--dir", "/runtime");
+  append(plan.argv, "--dir", std::string(qt_qml_import_root));
+  for (const auto &module : qt_qml_modules) {
+    for (const auto &tree : module.trees)
+      append(plan.argv, "--dir",
+             std::string(qt_qml_import_root) + "/" + std::string(tree.path));
+  }
+  for (const auto &relative : qt_qml_files) {
+    append(plan.argv, "--ro-bind",
+           std::string(qt_qml_source_root) + "/" + relative);
+    plan.argv.push_back(std::string(qt_qml_import_root) + "/" + relative);
+  }
+  append(plan.argv, "--tmpfs", std::string(qt_qml_source_root));
   append(plan.argv, "--ro-bind-try", "/usr/share/fonts");
   plan.argv.push_back("/usr/share/fonts");
   append(plan.argv, "--ro-bind-try", "/usr/share/fontconfig");
@@ -252,7 +372,6 @@ SandboxPlan build_test_plan_for_worker(std::string worker_path) {
   plan.argv.push_back("/etc/ld.so.cache");
   append(plan.argv, "--ro-bind-try", "/etc/localtime");
   plan.argv.push_back("/etc/localtime");
-  append(plan.argv, "--dir", "/runtime");
   append(plan.argv, "--ro-bind", std::move(worker_path));
   plan.argv.push_back("/runtime/worker");
   append(plan.argv, "--ro-bind-fd", fd_string(fd.revision));
@@ -261,6 +380,7 @@ SandboxPlan build_test_plan_for_worker(std::string worker_path) {
   plan.argv.push_back("/state");
   append(plan.argv, "--size", std::to_string(resources.scratch_max_bytes));
   append(plan.argv, "--tmpfs", "/tmp");
+  append(plan.argv, "--dir", "/tmp/cache");
   append(plan.argv, "--size", std::to_string(resources.runtime_max_bytes));
   append(plan.argv, "--tmpfs", "/run");
   append(plan.argv, "--dir", "/run/plugin");
@@ -276,104 +396,38 @@ SandboxPlan build_test_plan_for_worker(std::string worker_path) {
   return plan;
 }
 
+} // namespace
+
 SandboxPlan build_plan() {
-  return build_test_plan_for_worker(
-      "/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker");
+  return build_plan_for_worker(std::string(kPackagedWorkerPath));
 }
 
-SandboxPlan build_provider_plan(std::string trusted_executable_path) {
-  validate_worker_path(trusted_executable_path);
-  SandboxPlan plan;
-  const ProviderDescriptorPolicy fd;
-  plan.pre_bwrap_environment = {"PATH=/usr/bin", "PWD=/"};
-  plan.worker_environment = {"HOME=/home/provider",
-                             "LANG=C.UTF-8",
-                             "LC_ALL=C.UTF-8",
-                             "PATH=/runtime",
-                             "PWD=/",
-                             "XDG_CACHE_HOME=/tmp/cache",
-                             "XDG_CONFIG_HOME=/tmp/config",
-                             "XDG_DATA_HOME=/tmp/data",
-                             "XDG_RUNTIME_DIR=/run/provider"};
-  plan.worker_descriptors = {fd.protocol};
-  plan.launcher_descriptors = {fd.protocol, fd.status, fd.barrier, fd.seccomp,
-                               fd.executable};
-  plan.seccomp = seccomp_policy();
-  plan.process.transient_scope_prefix = "app-omarchy-plugin-provider-";
-  plan.process.descendants_permitted = false;
-  plan.resources.tasks_max = 4;
-  const auto &resources = plan.resources;
-  plan.transient_scope_properties = {
-      "MemoryHigh=" + std::to_string(resources.memory_high_bytes),
-      "MemoryMax=" + std::to_string(resources.memory_max_bytes),
-      "TasksMax=" + std::to_string(resources.tasks_max),
-      "CPUQuota=" + std::to_string(resources.cpu_quota_percent) + "%",
-      "CPUWeight=" + std::to_string(resources.cpu_weight),
-      "IOWeight=" + std::to_string(resources.io_weight),
-      "LimitNOFILE=" + std::to_string(resources.open_files_max),
-      "LimitFSIZE=" + std::to_string(resources.file_size_max_bytes),
-      "LimitCORE=0",
-      "OOMPolicy=kill",
-      "KillMode=control-group"};
-  plan.argv = {"/usr/bin/bwrap",
-               "--unshare-user",
-               "--unshare-pid",
-               "--unshare-ipc",
-               "--unshare-uts",
-               "--unshare-net",
-               "--unshare-cgroup",
-               "--disable-userns",
-               "--assert-userns-disabled",
-               "--uid",
-               "0",
-               "--gid",
-               "0",
-               "--new-session",
-               "--die-with-parent",
-               "--as-pid-1",
-               "--cap-drop",
-               "ALL",
-               "--hostname",
-               "omarchy-provider",
-               "--clearenv"};
-  for (const auto &entry : plan.worker_environment) {
-    const auto separator = entry.find('=');
-    append(plan.argv, "--setenv", entry.substr(0, separator));
-    plan.argv.push_back(entry.substr(separator + 1));
+std::string_view trusted_qml_import_root() { return qt_qml_import_root; }
+
+const std::vector<std::string> &trusted_qml_files() { return qt_qml_files; }
+
+std::span<const TrustedQmlModule> trusted_qml_modules() {
+  return qt_qml_modules;
+}
+
+bool trusted_qml_public_module(std::string_view module) {
+  return std::ranges::find(qt_qml_modules, module, &TrustedQmlModule::uri) !=
+         qt_qml_modules.end();
+}
+
+bool trusted_qml_resource(std::string_view relative) {
+  if (std::ranges::find(qt_qml_files, relative) != qt_qml_files.end())
+    return true;
+  for (const auto &module : qt_qml_modules) {
+    for (const auto &tree : module.trees) {
+      if (relative.starts_with(tree.path) && relative.size() > tree.path.size() &&
+          relative[tree.path.size()] == '/' &&
+          (tree.recursive_resources ||
+           relative.find('/', tree.path.size() + 1) == relative.npos))
+        return true;
+    }
   }
-  append(plan.argv, "--json-status-fd", fd_string(fd.status));
-  append(plan.argv, "--block-fd", fd_string(fd.barrier));
-  append(plan.argv, "--seccomp", fd_string(fd.seccomp));
-  append(plan.argv, "--proc", "/proc");
-  append(plan.argv, "--dev", "/dev");
-  append(plan.argv, "--dir", "/usr");
-  append(plan.argv, "--ro-bind", "/usr/lib");
-  plan.argv.push_back("/usr/lib");
-  append(plan.argv, "--symlink", "usr/lib");
-  plan.argv.push_back("/lib");
-  append(plan.argv, "--symlink", "usr/lib");
-  plan.argv.push_back("/lib64");
-  append(plan.argv, "--ro-bind-try", "/etc/ld.so.cache");
-  plan.argv.push_back("/etc/ld.so.cache");
-  append(plan.argv, "--dir", "/runtime");
-  append(plan.argv, "--ro-bind", "/proc/self/fd/7");
-  plan.argv.push_back("/runtime/provider");
-  append(plan.argv, "--size", std::to_string(resources.scratch_max_bytes));
-  append(plan.argv, "--tmpfs", "/tmp");
-  append(plan.argv, "--size", std::to_string(resources.runtime_max_bytes));
-  append(plan.argv, "--tmpfs", "/run");
-  append(plan.argv, "--dir", "/run/provider");
-  append(plan.argv, "--chmod", "0700");
-  plan.argv.push_back("/run/provider");
-  append(plan.argv, "--tmpfs", "/home");
-  append(plan.argv, "--dir", "/home/provider");
-  append(plan.argv, "--chmod", "0700");
-  plan.argv.push_back("/home/provider");
-  append(plan.argv, "--chdir", "/");
-  plan.argv.push_back("--");
-  plan.argv.push_back("/runtime/provider");
-  plan.argv.push_back("--omarchy-provider-fd=3");
-  return plan;
+  return false;
 }
 
 bool contains_argument_pair(const SandboxPlan &plan, std::string_view option,

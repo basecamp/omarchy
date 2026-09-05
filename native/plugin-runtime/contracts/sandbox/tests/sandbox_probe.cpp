@@ -39,6 +39,7 @@ void verify_environment() {
       "PATH=/runtime",
       "PWD=/plugin",
       "QT_QPA_PLATFORM=offscreen",
+      "QT_QUICK_CONTROLS_STYLE=Basic",
       "QSG_RHI_BACKEND=software",
       "XDG_CACHE_HOME=/tmp/cache",
       "XDG_CONFIG_HOME=/state/config",

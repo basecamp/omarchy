@@ -44,14 +44,6 @@ permissions::TokenScope token(std::string_view value) {
   return scope;
 }
 
-permissions::ResourceScope resource(std::uint32_t value,
-                                    permissions::OperationId operation) {
-  permissions::ResourceScope scope;
-  require(scope.resources.insert(value), "duplicate resource fixture");
-  require(scope.operations.insert(operation), "duplicate operation fixture");
-  return scope;
-}
-
 void put16(std::vector<std::byte> &bytes, std::size_t offset,
            std::uint16_t value) {
   bytes[offset] = static_cast<std::byte>(value >> 8U);
@@ -132,9 +124,12 @@ struct BackendProbe {
     return true;
   }
 
-  static bool notify(std::string_view category, std::string_view title,
-                     std::string_view body, void *context) noexcept {
+  static bool notify(std::string_view plugin, std::string_view category,
+                     std::string_view title, std::string_view body,
+                     void *context) noexcept {
     auto &self = *static_cast<BackendProbe *>(context);
+    if (plugin != "org.example.timer")
+      return false;
     ++self.notifications;
     self.last = std::string(category) + ":" + std::string(title) + ":" +
                 std::string(body);
@@ -160,7 +155,7 @@ struct BackendProbe {
 };
 
 broker::ProviderResult
-dispatch(const broker::ProviderRegistry<7> &registry,
+dispatch(const broker::ProviderRegistry<5> &registry,
          permissions::OperationId operation,
          const permissions::ActivationBinding &activation,
          const permissions::Scope &demand, std::span<const std::byte> payload,
@@ -188,12 +183,47 @@ int main() {
   using permissions::OperationId;
   BackendProbe backend;
   const auto activation = binding();
-  providers::ProviderSet set({
+  permissions::RequestSet requests;
+  requests.push_back({.capability = {
+                          permissions::CapabilityId("storage.private"), 1},
+                      .scope = quota(),
+                      .required = true});
+  permissions::TokenScope notification_scope;
+  require(notification_scope.tokens.insert(permissions::ScopeToken("timer")) &&
+              notification_scope.tokens.insert(permissions::ScopeToken("other")),
+          "notification request fixture");
+  requests.push_back(
+      {.capability = {permissions::CapabilityId("notifications.send"), 1},
+       .scope = notification_scope,
+       .required = false});
+  permissions::TokenScope audio_scope;
+  require(audio_scope.tokens.insert(permissions::ScopeToken("complete")) &&
+              audio_scope.tokens.insert(permissions::ScopeToken("evolve")),
+          "audio request fixture");
+  requests.push_back(
+      {.capability = {permissions::CapabilityId("audio.play-cue"), 1},
+       .scope = audio_scope,
+       .required = true});
+  permissions::GrantSet grants;
+  grants.push_back({.capability = requests[0].capability,
+                    .scope = requests[0].scope,
+                    .state = permissions::GrantState::granted,
+                    .epoch = 4});
+  grants.push_back({.capability = requests[1].capability,
+                    .scope = requests[1].scope,
+                    .state = permissions::GrantState::granted,
+                    .epoch = 5});
+  grants.push_back({.capability = requests[2].capability,
+                    .scope = requests[2].scope,
+                    .state = permissions::GrantState::granted,
+                    .epoch = 6});
+  const providers::ProviderConfiguration configuration{
       .binding = activation,
+      .requests = requests,
+      .grants = grants,
       .storage_epoch = 4,
       .notification_epoch = 5,
       .audio_epoch = 6,
-      .fake_service_epoch = 7,
       .storage = {.read = BackendProbe::read,
                   .write = BackendProbe::write,
                   .remove = BackendProbe::remove,
@@ -202,13 +232,13 @@ int main() {
                   .maximum_item_bytes = 1024},
       .notification = {.send = BackendProbe::notify, .context = &backend},
       .audio = {.play = BackendProbe::audio, .context = &backend},
-  });
+  };
+  providers::ProviderSet set(configuration);
   const auto registry = set.registry();
   for (const auto operation :
        {OperationId::storage_read, OperationId::storage_write,
         OperationId::storage_remove, OperationId::notification_send,
-        OperationId::audio_play_cue, OperationId::fake_status_list,
-        OperationId::fake_status_acknowledge})
+        OperationId::audio_play_cue})
     require(registry.find(operation) != nullptr,
             "closed provider set incomplete");
 
@@ -248,6 +278,19 @@ int main() {
                       .status == broker::ProviderStatus::failed &&
               backend.writes == 1,
           "foreign activation reached storage");
+  auto wrong_revision = activation;
+  wrong_revision.revision = digest('c');
+  auto wrong_policy = activation;
+  wrong_policy.policy_fingerprint = digest('d');
+  auto wrong_generation = activation;
+  ++wrong_generation.generation;
+  for (const auto &stale : {wrong_revision, wrong_policy, wrong_generation})
+    require(dispatch(registry, OperationId::storage_write, stale, quota(), write,
+                     4, 60 + stale.generation)
+                    .status == broker::ProviderStatus::failed,
+            "stale activation identity reached storage");
+  require(backend.writes == 1,
+          "stale activation identity performed a provider effect");
   const auto *write_provider = registry.find(OperationId::storage_write);
   require(write_provider != nullptr, "storage write provider missing");
   const broker::ProviderAuthorizationContext substituted_capability{
@@ -301,6 +344,11 @@ int main() {
               backend.notifications == 2 &&
               backend.last == "other:Timer:Done\nNow",
           "grant-authorized notification category was not forwarded");
+  require(dispatch(registry, OperationId::notification_send, activation,
+                   token("plugin-chosen"), notification, 5, 120)
+                      .status == broker::ProviderStatus::failed &&
+              backend.notifications == 2,
+          "plugin-chosen scope widened authoritative notification grant");
 
   require(dispatch(registry, OperationId::audio_play_cue, activation,
                    token("complete"), {}, 6, 13)
@@ -318,78 +366,107 @@ int main() {
               backend.audio_plays == 2 && backend.last == "evolve",
           "grant-authorized packaged cue was not forwarded");
 
-  require(set.add_fake_status(17, 100, "Deploy waiting"),
-          "fake status setup failed");
-  require(!set.add_fake_status(17, 100, "duplicate"),
-          "duplicate fake status was accepted");
-  const auto list_scope = resource(17, OperationId::fake_status_list);
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 20)
-                  .status == broker::ProviderStatus::pending,
-          "fake list did not become cancellable work");
-  std::size_t completed_bytes = 0;
-  require(set.complete_fake_list(20, response, completed_bytes) ==
-                  providers::CompletionResult::completed &&
-              completed_bytes == 28 && response[1] == std::byte{1},
-          "fake list result was not bounded and encoded");
-  require(set.complete_fake_list(20, response, completed_bytes) ==
-              providers::CompletionResult::unknown,
-          "fake completion was reusable");
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 30)
-                  .status == broker::ProviderStatus::pending,
-          "fake output retry fixture did not start");
-  require(set.complete_fake_list(30, std::span<std::byte>(response).first(4),
-                                 completed_bytes) ==
-                  providers::CompletionResult::output_too_small &&
-              set.complete_fake_list(30, response, completed_bytes) ==
-                  providers::CompletionResult::completed,
-          "bounded output retry lost or duplicated provider state");
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 21)
-                  .status == broker::ProviderStatus::pending,
-          "second fake list did not start");
-  const auto *list_provider = registry.find(OperationId::fake_status_list);
-  require(list_provider != nullptr &&
-              list_provider->cancel(21, list_provider->context) &&
-              set.complete_fake_list(21, response, completed_bytes) ==
-                  providers::CompletionResult::cancelled,
-          "explicit cancellation did not suppress completion");
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 22)
-                  .status == broker::ProviderStatus::pending,
-          "revocation fixture did not start");
-  require(set.revoke({permissions::CapabilityId("service.fake-status"), 1},
-                     8) == 1 &&
-              set.complete_fake_list(22, response, completed_bytes) ==
-                  providers::CompletionResult::cancelled,
-          "revocation did not invalidate pending fake result");
-  require(dispatch(registry, OperationId::fake_status_list, activation,
-                   list_scope, {}, 7, 23)
-                  .status == broker::ProviderStatus::failed,
-          "revoked epoch started provider work");
-
-  std::vector<std::byte> ack(4);
-  put32(ack, 0, 100);
-  const auto ack_scope = resource(17, OperationId::fake_status_acknowledge);
-  require(dispatch(registry, OperationId::fake_status_acknowledge, activation,
-                   ack_scope, ack, 8, 24)
-                  .status == broker::ProviderStatus::completed,
-          "fake acknowledgement failed after trusted epoch advance");
-  put32(ack, 0, 999);
-  require(dispatch(registry, OperationId::fake_status_acknowledge, activation,
-                   ack_scope, ack, 8, 25)
-                  .status == broker::ProviderStatus::failed,
-          "unknown fake status was acknowledged");
-
-  require(set.revoke({permissions::CapabilityId("storage.private"), 1}, 5) == 0,
-          "synchronous storage invented cancellation");
-  require(set.revoke({permissions::CapabilityId("storage.private"), 1}, 4) == 0,
-          "non-monotonic revocation reported work");
+  require(set.revoke({permissions::CapabilityId("storage.private"), 1}, 5),
+          "exact next storage revocation was rejected");
+  require(!set.revoke({permissions::CapabilityId("storage.private"), 1}, 4),
+          "non-monotonic revocation was accepted");
   require(dispatch(registry, OperationId::storage_read, activation, quota(),
                    read, 4, 26, response)
                   .status == broker::ProviderStatus::failed,
           "revoked storage epoch was reused");
+
+  const broker::ProviderAuthorizationContext queued_authorization{
+      .binding = activation,
+      .capability = requests[1].capability,
+      .grant_epoch = 5};
+  const broker::AuthorizedRequest queued_notification{
+      .authorization = queued_authorization,
+      .correlation = 127,
+      .operation = OperationId::notification_send,
+      .demand = requests[1].scope,
+      .payload = notification};
+  require(set.revoke(requests[1].capability, 6),
+          "exact next notification revocation was rejected");
+  const auto *notification_provider =
+      registry.find(OperationId::notification_send);
+  require(notification_provider != nullptr &&
+              notification_provider
+                      ->dispatch(queued_notification, {},
+                                 notification_provider->context)
+                      .status == broker::ProviderStatus::failed &&
+              backend.notifications == 2,
+          "queued pre-revocation authority performed an effect");
+
+  auto optional_denied = configuration;
+  optional_denied.grants[1].state = permissions::GrantState::denied;
+  providers::ProviderSet denied_set(optional_denied);
+  require(dispatch(denied_set.registry(), OperationId::notification_send,
+                   activation, token("timer"), notification, 5, 128)
+                      .status == broker::ProviderStatus::failed &&
+              backend.notifications == 2,
+          "optional declaration was mistaken for provider authority");
+
+  auto missing_backend = configuration;
+  missing_backend.notification.send = nullptr;
+  providers::ProviderSet missing_backend_set(missing_backend);
+  require(dispatch(missing_backend_set.registry(),
+                   OperationId::notification_send, activation, token("timer"),
+                   notification, 5, 1281)
+                      .status == broker::ProviderStatus::failed &&
+              backend.notifications == 2,
+          "missing provider implementation performed an effect");
+
+  auto undeclared = configuration;
+  undeclared.grants = {};
+  providers::ProviderSet declaration_only(undeclared);
+  require(dispatch(declaration_only.registry(), OperationId::storage_write,
+                   activation, quota(), write, 4, 129)
+                      .status == broker::ProviderStatus::failed &&
+              backend.writes == 1,
+          "required declaration was mistaken for provider authority");
+
+  bool rejected_plugin_capability = false;
+  try {
+    auto spoofed = configuration;
+    spoofed.requests = {};
+    spoofed.grants = {};
+    spoofed.requests.push_back(
+        {.capability = {permissions::CapabilityId("plugin.chosen"), 1},
+         .scope = permissions::NoScope{},
+         .required = false});
+    providers::ProviderSet invalid(std::move(spoofed));
+    (void)invalid;
+  } catch (...) {
+    rejected_plugin_capability = true;
+  }
+  require(rejected_plugin_capability,
+          "plugin-created capability name entered provider authority");
+
+  bool rejected_definition_substitution = false;
+  try {
+    auto spoofed = configuration;
+    spoofed.requests[0].capability.version = 2;
+    spoofed.grants[0].capability.version = 2;
+    providers::ProviderSet invalid(std::move(spoofed));
+    (void)invalid;
+  } catch (...) {
+    rejected_definition_substitution = true;
+  }
+  require(rejected_definition_substitution,
+          "same capability name with a foreign definition identity was accepted");
+
+  broker::ProviderRegistry<2> unique;
+  const auto *storage_provider = registry.find(OperationId::storage_write);
+  require(storage_provider != nullptr && unique.add(*storage_provider) &&
+              !unique.add(*storage_provider),
+          "duplicate exact provider route was accepted");
+  broker::ProviderRegistry<1> missing;
+  require(missing.find(OperationId::storage_write) == nullptr &&
+              !missing.add({.operation = static_cast<OperationId>(0xffff),
+                            .dispatch = storage_provider->dispatch,
+                            .cancel = storage_provider->cancel,
+                            .context = storage_provider->context}),
+          "missing or unknown provider definition gained authority");
 
   return 0;
 }

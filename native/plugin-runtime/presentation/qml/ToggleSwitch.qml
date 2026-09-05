@@ -1,8 +1,33 @@
 import QtQuick
+
 Rectangle {
-  property bool checked: false; property bool busy: false; property bool hasCursor: false; property color foreground: Color.foreground
+  id: root
+
+  property bool checked: false
+  property bool busy: false
+  property color foreground: Color.foreground
+  property color checkedColor: "#65d7a1"
+  property color uncheckedColor: "#354052"
   signal toggled()
-  implicitWidth: 34; implicitHeight: 18; radius: 9; color: checked ? "#65d7a1" : "#354052"
-  Rectangle { width: 14; height: 14; radius: 7; y: 2; x: parent.checked ? 18 : 2; color: "white" }
-  MouseArea { anchors.fill: parent; enabled: !parent.busy; onClicked: parent.toggled() }
+
+  implicitWidth: 34
+  implicitHeight: 18
+  radius: height / 2
+  color: checked ? checkedColor : uncheckedColor
+
+  Rectangle {
+    width: 14
+    height: 14
+    radius: width / 2
+    y: (parent.height - height) / 2
+    x: root.checked ? root.width - width - 2 : 2
+    color: "white"
+  }
+
+  MouseArea {
+    anchors.fill: parent
+    enabled: !root.busy
+    cursorShape: Qt.PointingHandCursor
+    onClicked: root.toggled()
+  }
 }

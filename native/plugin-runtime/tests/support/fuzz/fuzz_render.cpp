@@ -14,7 +14,6 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t *data,
   surface::SurfaceKey key{};
   surface::FrameReady frame{};
   surface::InputEvent input{};
-  surface::FocusEvent focus{};
   surface::RenderTypedError error{};
   static_cast<void>(surface::decode_profile_offer(bytes, offer));
   static_cast<void>(surface::decode_profile_selection(bytes, selection));
@@ -23,7 +22,6 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t *data,
   static_cast<void>(surface::decode_surface_key(bytes, key));
   static_cast<void>(surface::decode_frame_ready(bytes, frame));
   static_cast<void>(surface::decode_input_event(bytes, input));
-  static_cast<void>(surface::decode_focus_event(bytes, focus));
   static_cast<void>(surface::decode_render_error(bytes, error));
   return 0;
 }

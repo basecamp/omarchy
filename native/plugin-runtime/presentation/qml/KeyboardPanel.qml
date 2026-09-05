@@ -1,17 +1,34 @@
 import QtQuick
+
 Rectangle {
-  property Item anchorItem
-  property Item owner
+  property var anchorItem: null
+  property var owner: null
   property var bar: null
-  property bool open: false
-  property Item focusTarget
-  property real contentWidth: 0
-  property real contentHeight: 0
+  property bool open: true
+  property var focusTarget: null
+  property real contentWidth: 430
+  property real contentHeight: 680
   property real padding: 0
+
   visible: open
   width: contentWidth
   height: contentHeight
-  color: "#151820"
-  function fittedContentWidth(value) { return value }
-  function fittedContentHeight(value, maximum) { return Math.min(value, maximum) }
+  anchors.top: Style.bar.position !== "bottom"
+  anchors.bottom: Style.bar.position === "bottom"
+  anchors.left: Style.bar.position === "left"
+  anchors.right: Style.bar.position !== "left"
+  color: Color.popups.background
+
+  function fittedContentWidth(value) {
+    return Math.min(parent ? parent.width : value, value)
+  }
+
+  function fittedContentHeight(value, maximum) {
+    var limit = maximum === undefined ? value : maximum
+    return Math.min(parent ? parent.height : limit, Math.min(value, limit))
+  }
+
+  onVisibleChanged: {
+    if (visible && focusTarget) Qt.callLater(function() { focusTarget.forceActiveFocus() })
+  }
 }

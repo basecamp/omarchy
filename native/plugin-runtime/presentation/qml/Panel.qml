@@ -1,15 +1,31 @@
 import QtQuick
+
 Item {
   property string moduleName: ""
-  property string ipcTarget: ""
-  property bool manageIpc: false
-  property var settings: ({})
+  property string surfaceTarget: ""
   property var bar: null
-  property color barForeground: "#e7e9ee"
-  property bool opened: false
-  function setting(name, fallback) { var value = settings[name]; return value === undefined ? fallback : value }
-  function open() { opened = true }
-  function close() { opened = false }
-  function toggle() { opened = !opened }
-  function switchPanel(direction) {}
+  property var settings: runtime.settings
+  property bool opened: true
+
+  visible: opened
+  width: 720
+  height: 720
+
+  function open() {
+    opened = true
+  }
+
+  function close() {
+    opened = false
+    if (surfaceTarget !== "") runtime.requestSurfaceIntent(surfaceTarget, "dismiss")
+  }
+
+  function toggle() {
+    if (surfaceTarget !== "") runtime.requestSurfaceIntent(surfaceTarget, "toggle")
+  }
+
+  function setting(name, fallback) {
+    var value = settings ? settings[name] : undefined
+    return value === undefined || value === null ? fallback : value
+  }
 }

@@ -44,10 +44,10 @@ constexpr std::array<wire::MessageRule, 11> kWireRules{{
      wire::MessageSemantic::event, 288, 288},
     {static_cast<std::uint16_t>(RenderMessageType::input),
      wire::DirectionMask::host_to_worker, wire::CorrelationRule::zero,
-     wire::MessageSemantic::one_way, 56, 56},
-    {static_cast<std::uint16_t>(RenderMessageType::focus),
-     wire::DirectionMask::host_to_worker, wire::CorrelationRule::zero,
-     wire::MessageSemantic::one_way, 32, 32},
+     wire::MessageSemantic::one_way, 32, 204},
+    {static_cast<std::uint16_t>(RenderMessageType::surface_intent),
+     wire::DirectionMask::worker_to_host, wire::CorrelationRule::zero,
+     wire::MessageSemantic::event, 176, 176},
 }};
 
 constexpr std::array<DescriptorRule, 11> kDescriptorRules{{
@@ -61,7 +61,7 @@ constexpr std::array<DescriptorRule, 11> kDescriptorRules{{
     {static_cast<std::uint16_t>(RenderMessageType::frame_ready), 0},
     {static_cast<std::uint16_t>(RenderMessageType::input_regions), 0},
     {static_cast<std::uint16_t>(RenderMessageType::input), 0},
-    {static_cast<std::uint16_t>(RenderMessageType::focus), 0},
+    {static_cast<std::uint16_t>(RenderMessageType::surface_intent), 0},
 }};
 
 constexpr std::uint32_t swap32(std::uint32_t value) {
@@ -337,70 +337,259 @@ bool decode_input_region_update(std::span<const std::byte> bytes,
   return true;
 }
 
-std::array<std::byte, 56> encode_input_event(const InputEvent &payload) {
-  std::array<std::byte, 56> output{};
+namespace {
+enum class EncodedInputKind : std::uint32_t {
+  pointer_motion = 1,
+  pointer_button = 2,
+  wheel = 3,
+  key = 4,
+  text_commit = 5,
+  touch_frame = 6,
+  focus_changed = 7,
+  cancel = 8,
+};
+
+template <typename T>
+void append(std::vector<std::byte> &output, T value) {
+  const auto offset = output.size();
+  output.resize(offset + sizeof(T));
+  put<T>(output, offset, value);
+}
+
+void append_point(std::vector<std::byte> &output, InputPoint point) {
+  append(output, point.x_q16);
+  append(output, point.y_q16);
+}
+} // namespace
+
+std::optional<std::vector<std::byte>>
+encode_input_event(const InputEvent &payload) {
+  if (payload.surface.id == 0 || payload.surface.generation == 0 ||
+      payload.sequence == 0 ||
+      validate_input_shape(payload.payload) != InputValidation::accepted)
+    return std::nullopt;
+  std::vector<std::byte> output(32);
   put<std::uint64_t>(output, 0, payload.surface.id);
   put<std::uint64_t>(output, 8, payload.surface.generation);
   put<std::uint64_t>(output, 16, payload.sequence);
-  put<std::uint32_t>(output, 24, static_cast<std::uint32_t>(payload.kind));
-  put<std::uint32_t>(output, 28, payload.x_q16);
-  put<std::uint32_t>(output, 32, payload.y_q16);
-  put<std::uint32_t>(output, 36,
-                     std::bit_cast<std::uint32_t>(payload.delta_x_q16));
-  put<std::uint32_t>(output, 40,
-                     std::bit_cast<std::uint32_t>(payload.delta_y_q16));
-  put<std::uint32_t>(output, 44, payload.code);
-  put<std::uint32_t>(output, 48, payload.state);
-  put<std::uint32_t>(output, 52, payload.active_touch_points);
+  std::visit(
+      [&](const auto &event) {
+        using Event = std::decay_t<decltype(event)>;
+        EncodedInputKind kind;
+        if constexpr (std::is_same_v<Event, PointerMotion>) {
+          kind = EncodedInputKind::pointer_motion;
+          append_point(output, event.position);
+          append(output, event.buttons);
+          append(output, event.modifiers);
+        } else if constexpr (std::is_same_v<Event, PointerButton>) {
+          kind = EncodedInputKind::pointer_button;
+          append_point(output, event.position);
+          append(output, event.button);
+          append(output, static_cast<std::uint32_t>(event.state));
+          append(output, event.buttons);
+          append(output, event.modifiers);
+        } else if constexpr (std::is_same_v<Event, Wheel>) {
+          kind = EncodedInputKind::wheel;
+          append_point(output, event.position);
+          append(output, std::bit_cast<std::uint32_t>(event.pixel_delta_x_q16));
+          append(output, std::bit_cast<std::uint32_t>(event.pixel_delta_y_q16));
+          append(output, std::bit_cast<std::uint32_t>(event.angle_delta_x));
+          append(output, std::bit_cast<std::uint32_t>(event.angle_delta_y));
+          append(output, static_cast<std::uint32_t>(event.phase));
+          append(output, event.buttons);
+          append(output, event.modifiers);
+          append(output, static_cast<std::uint32_t>(event.inverted));
+        } else if constexpr (std::is_same_v<Event, Key>) {
+          kind = EncodedInputKind::key;
+          append(output, event.key);
+          append(output, event.native_scan_code);
+          append(output, event.modifiers);
+          append(output, static_cast<std::uint32_t>(event.state));
+          append(output, static_cast<std::uint32_t>(event.auto_repeat));
+          append(output, static_cast<std::uint32_t>(event.text.size()));
+          output.insert(output.end(),
+                        reinterpret_cast<const std::byte *>(event.text.data()),
+                        reinterpret_cast<const std::byte *>(event.text.data() +
+                                                            event.text.size()));
+        } else if constexpr (std::is_same_v<Event, TextCommit>) {
+          kind = EncodedInputKind::text_commit;
+          append(output, std::bit_cast<std::uint32_t>(event.replacement_start));
+          append(output, event.replacement_length);
+          append(output, static_cast<std::uint32_t>(event.text.size()));
+          output.insert(output.end(),
+                        reinterpret_cast<const std::byte *>(event.text.data()),
+                        reinterpret_cast<const std::byte *>(event.text.data() +
+                                                            event.text.size()));
+        } else if constexpr (std::is_same_v<Event, TouchFrame>) {
+          kind = EncodedInputKind::touch_frame;
+          append(output, static_cast<std::uint32_t>(event.phase));
+          append(output, event.count);
+          append(output, event.modifiers);
+          for (std::size_t index = 0; index < event.count; ++index) {
+            append(output, event.points[index].id);
+            append(output,
+                   static_cast<std::uint32_t>(event.points[index].state));
+            append_point(output, event.points[index].position);
+          }
+        } else if constexpr (std::is_same_v<Event, FocusChanged>) {
+          kind = EncodedInputKind::focus_changed;
+          append(output, static_cast<std::uint32_t>(event.focused));
+        } else {
+          kind = EncodedInputKind::cancel;
+        }
+        put<std::uint32_t>(output, 24, static_cast<std::uint32_t>(kind));
+      },
+      payload.payload);
   return output;
 }
 
 bool decode_input_event(std::span<const std::byte> bytes, InputEvent &output) {
-  if (bytes.size() != 56) {
+  if (bytes.size() < 32 || bytes.size() > 204 ||
+      get<std::uint32_t>(bytes, 28) != 0)
     return false;
-  }
-  const auto kind = get<std::uint32_t>(bytes, 24);
-  if (kind > static_cast<std::uint32_t>(InputKind::touch)) {
+  InputEvent decoded{.surface = {.id = get<std::uint64_t>(bytes, 0),
+                                 .generation = get<std::uint64_t>(bytes, 8)},
+                     .sequence = get<std::uint64_t>(bytes, 16),
+                     .payload = Cancel{}};
+  if (decoded.surface.id == 0 || decoded.surface.generation == 0 ||
+      decoded.sequence == 0)
     return false;
-  }
-  output = {
-      .surface = {.id = get<std::uint64_t>(bytes, 0),
-                  .generation = get<std::uint64_t>(bytes, 8)},
-      .sequence = get<std::uint64_t>(bytes, 16),
-      .kind = static_cast<InputKind>(kind),
-      .x_q16 = get<std::uint32_t>(bytes, 28),
-      .y_q16 = get<std::uint32_t>(bytes, 32),
-      .delta_x_q16 = std::bit_cast<std::int32_t>(get<std::uint32_t>(bytes, 36)),
-      .delta_y_q16 = std::bit_cast<std::int32_t>(get<std::uint32_t>(bytes, 40)),
-      .code = get<std::uint32_t>(bytes, 44),
-      .state = get<std::uint32_t>(bytes, 48),
-      .active_touch_points = get<std::uint32_t>(bytes, 52),
+  const auto kind = static_cast<EncodedInputKind>(get<std::uint32_t>(bytes, 24));
+  const auto u32 = [&](std::size_t offset) {
+    return get<std::uint32_t>(bytes, offset);
   };
-  return output.surface.id != 0 && output.surface.generation != 0 &&
-         output.sequence != 0;
+  const auto point = [&](std::size_t offset) {
+    return InputPoint{.x_q16 = u32(offset), .y_q16 = u32(offset + 4)};
+  };
+  if (kind == EncodedInputKind::pointer_motion && bytes.size() == 48) {
+    decoded.payload = PointerMotion{.position = point(32),
+                                    .buttons = u32(40),
+                                    .modifiers = u32(44)};
+  } else if (kind == EncodedInputKind::pointer_button && bytes.size() == 56) {
+    decoded.payload = PointerButton{
+        .position = point(32),
+        .button = u32(40),
+        .state = static_cast<ButtonState>(u32(44)),
+        .buttons = u32(48),
+        .modifiers = u32(52)};
+  } else if (kind == EncodedInputKind::wheel && bytes.size() == 72) {
+    decoded.payload = Wheel{
+        .position = point(32),
+        .pixel_delta_x_q16 = std::bit_cast<std::int32_t>(u32(40)),
+        .pixel_delta_y_q16 = std::bit_cast<std::int32_t>(u32(44)),
+        .angle_delta_x = std::bit_cast<std::int32_t>(u32(48)),
+        .angle_delta_y = std::bit_cast<std::int32_t>(u32(52)),
+        .phase = static_cast<WheelPhase>(u32(56)),
+        .buttons = u32(60),
+        .modifiers = u32(64),
+        .inverted = u32(68) == 1};
+    if (u32(68) > 1)
+      return false;
+  } else if (kind == EncodedInputKind::key && bytes.size() >= 56 &&
+             bytes.size() == 56 + u32(52) && u32(52) <= kMaximumInputTextBytes &&
+             u32(48) <= 1) {
+    decoded.payload = Key{
+        .key = u32(32),
+        .native_scan_code = u32(36),
+        .modifiers = u32(40),
+        .state = static_cast<ButtonState>(u32(44)),
+        .auto_repeat = u32(48) == 1,
+        .text = std::string(reinterpret_cast<const char *>(bytes.data() + 56),
+                            u32(52))};
+  } else if (kind == EncodedInputKind::text_commit && bytes.size() >= 44 &&
+             bytes.size() == 44 + u32(40) && u32(40) <= kMaximumInputTextBytes) {
+    decoded.payload = TextCommit{
+        .text = std::string(reinterpret_cast<const char *>(bytes.data() + 44),
+                            u32(40)),
+        .replacement_start = std::bit_cast<std::int32_t>(u32(32)),
+        .replacement_length = u32(36)};
+  } else if (kind == EncodedInputKind::touch_frame && bytes.size() >= 44 &&
+             u32(36) <= kMaximumTouchPoints &&
+             bytes.size() == 44 + static_cast<std::size_t>(u32(36)) * 16) {
+    TouchFrame frame{.phase = static_cast<TouchFramePhase>(u32(32)),
+                     .count = u32(36),
+                     .modifiers = u32(40)};
+    for (std::size_t index = 0; index < frame.count; ++index) {
+      const auto offset = 44 + index * 16;
+      frame.points[index] = {
+          .id = u32(offset),
+          .state = static_cast<TouchPointState>(u32(offset + 4)),
+          .position = point(offset + 8)};
+    }
+    decoded.payload = frame;
+  } else if (kind == EncodedInputKind::focus_changed && bytes.size() == 36 &&
+             u32(32) <= 1) {
+    decoded.payload = FocusChanged{.focused = u32(32) == 1};
+  } else if (kind == EncodedInputKind::cancel && bytes.size() == 32) {
+    decoded.payload = Cancel{};
+  } else {
+    return false;
+  }
+  if (validate_input_shape(decoded.payload) != InputValidation::accepted)
+    return false;
+  output = std::move(decoded);
+  return true;
 }
 
-std::array<std::byte, 32> encode_focus_event(const FocusEvent &payload) {
-  std::array<std::byte, 32> output{};
-  put<std::uint64_t>(output, 0, payload.surface.id);
-  put<std::uint64_t>(output, 8, payload.surface.generation);
-  put<std::uint64_t>(output, 16, payload.sequence);
-  output[24] = payload.focused ? std::byte{1} : std::byte{0};
+std::array<std::byte, 176>
+encode_surface_intent(const SurfaceIntentRequest &payload) {
+  std::array<std::byte, 176> output{};
+  if (payload.requested_output.size() > 128 ||
+      std::ranges::any_of(payload.requested_output, [](const char value) {
+        const auto byte = static_cast<unsigned char>(value);
+        return byte < 0x21 || byte > 0x7e;
+      }))
+    return output;
+  put<std::uint64_t>(output, 0, payload.source.id);
+  put<std::uint64_t>(output, 8, payload.source.generation);
+  put<std::uint64_t>(output, 16, payload.target.id);
+  put<std::uint64_t>(output, 24, payload.target.generation);
+  put<std::uint64_t>(output, 32, payload.input_sequence);
+  put<std::uint32_t>(output, 40, static_cast<std::uint32_t>(payload.action));
+  put<std::uint16_t>(output, 44,
+                     static_cast<std::uint16_t>(payload.requested_output.size()));
+  std::ranges::transform(payload.requested_output, output.begin() + 48,
+                         [](const char value) {
+                           return static_cast<std::byte>(value);
+                         });
   return output;
 }
 
-bool decode_focus_event(std::span<const std::byte> bytes, FocusEvent &output) {
-  if (bytes.size() != 32 ||
-      (bytes[24] != std::byte{0} && bytes[24] != std::byte{1}) ||
-      !exact_zero_tail<32>(bytes, 25)) {
+bool decode_surface_intent(std::span<const std::byte> bytes,
+                           SurfaceIntentRequest &output) {
+  if (bytes.size() != 176 || get<std::uint16_t>(bytes, 46) != 0)
     return false;
-  }
-  output = {.surface = {.id = get<std::uint64_t>(bytes, 0),
-                        .generation = get<std::uint64_t>(bytes, 8)},
-            .sequence = get<std::uint64_t>(bytes, 16),
-            .focused = bytes[24] == std::byte{1}};
-  return output.surface.id != 0 && output.surface.generation != 0 &&
-         output.sequence != 0;
+  const auto output_size = get<std::uint16_t>(bytes, 44);
+  if (output_size > 128 ||
+      std::ranges::any_of(bytes.subspan(48, output_size), [](std::byte value) {
+        const auto byte = std::to_integer<unsigned char>(value);
+        return byte < 0x21 || byte > 0x7e;
+      }) ||
+      std::ranges::any_of(bytes.subspan(48 + output_size),
+                          [](std::byte value) { return value != std::byte{0}; }))
+    return false;
+  const auto action =
+      static_cast<SurfaceIntentAction>(get<std::uint32_t>(bytes, 40));
+  if (action != SurfaceIntentAction::open &&
+      action != SurfaceIntentAction::toggle &&
+      action != SurfaceIntentAction::dismiss)
+    return false;
+  output = {
+      .source = {.id = get<std::uint64_t>(bytes, 0),
+                 .generation = get<std::uint64_t>(bytes, 8)},
+      .target = {.id = get<std::uint64_t>(bytes, 16),
+                 .generation = get<std::uint64_t>(bytes, 24)},
+      .input_sequence = get<std::uint64_t>(bytes, 32),
+      .action = action,
+      .requested_output = std::string(
+          reinterpret_cast<const char *>(bytes.data() + 48), output_size)};
+  if (output.source.id == 0 || output.source.generation == 0 ||
+      output.target.id == 0 || output.target.generation == 0)
+    return false;
+  if (action == SurfaceIntentAction::dismiss)
+    return output.source == output.target && output.input_sequence == 0 &&
+           output.requested_output.empty();
+  return output.input_sequence != 0;
 }
 
 std::array<std::byte, 24> encode_render_error(const RenderTypedError &payload) {

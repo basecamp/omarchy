@@ -1,0 +1,23 @@
+set(runtime_root "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@OMARCHY_PLUGIN_INSTALL_ROOT@")
+set(observer_path "${runtime_root}/bin/omarchy-plugin-system-observer")
+set(profile_root "${runtime_root}/providers.d")
+if(NOT EXISTS "${observer_path}")
+  message(FATAL_ERROR "system observer was not installed before its provider profile")
+endif()
+file(SHA256 "${observer_path}" observer_digest)
+file(MAKE_DIRECTORY "${profile_root}")
+file(CHMOD "${profile_root}"
+  PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+file(WRITE "${profile_root}/system-observe.profile"
+  "schema=1\n"
+  "adapter-class=sanitized-system-observe\n"
+  "contract-digest=@OMARCHY_SYSTEM_OBSERVE_CONTRACT_DIGEST@\n"
+  "abi-version=1\n"
+  "group=system.observe\n"
+  "executable=/usr/@OMARCHY_PLUGIN_INSTALL_ROOT@/bin/omarchy-plugin-system-observer\n"
+  "executable-sha256=${observer_digest}\n"
+  "inherit-environment=HYPRLAND_INSTANCE_SIGNATURE\n"
+  "inherit-environment=XDG_RUNTIME_DIR\n"
+  "invocation-timeout-ms=30000\n")
+file(CHMOD "${profile_root}/system-observe.profile"
+  PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ)

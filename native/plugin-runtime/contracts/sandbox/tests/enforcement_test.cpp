@@ -1,4 +1,5 @@
 #include "omarchy/plugin_runtime/sandbox/policy.h"
+#include "omarchy/plugin_runtime/sandbox/test_plan.h"
 
 #include <fcntl.h>
 #include <linux/memfd.h>
@@ -206,7 +207,7 @@ int bounded_wait(pid_t child) {
     close(pidfd);
   } else {
     // This is a direct-child test fixture, so the unreaped PID cannot have been
-    // recycled. Production launch requires pidfd acquisition before release.
+    // recycled. Host launch requires pidfd acquisition before release.
     static_cast<void>(kill(child, SIGKILL));
   }
 
@@ -245,7 +246,7 @@ int main() {
   try {
     ScratchTree scratch;
     const sandbox::SandboxPlan plan =
-        sandbox::build_test_plan_for_worker(SANDBOX_PROBE_PATH);
+        sandbox::test_support::build_plan_for_worker(SANDBOX_PROBE_PATH);
     Channel control;
     Channel broker;
     Channel render;

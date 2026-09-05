@@ -3,15 +3,22 @@
 #include "omarchy/plugin/wire/state.hpp"
 #include "omarchy/plugin_runtime/surface/profile.hpp"
 #include "omarchy/plugin_runtime/surface/render_messages.hpp"
-#include "omarchy/plugin_runtime/surface/render_request_table.hpp"
 
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 using namespace omarchy::plugin_runtime::surface;
 
 int main() {
+  require(valid_surface_name("barWidget") &&
+              valid_surface_name(std::string(64, 'X')) &&
+              !valid_surface_name("") &&
+              !valid_surface_name("Panel.Widget") &&
+              !valid_surface_name(std::string("bad\0name", 8)) &&
+              !valid_surface_name(std::string(65, 'a')),
+          "wire-safe surface-name contract changed");
   const auto offer = software_profile_offer();
   require(offer.full_frame_only && !offer.shader_effects && !offer.particles,
           "software limitations were silently broadened");
@@ -29,7 +36,7 @@ int main() {
   const std::array schemas{schema};
   const wire::RoleSchemaRegistryView registry(schemas);
   require(registry.validate() == wire::FatalReason::none,
-          "render schema rejected by B3");
+          "render schema rejected by bridge profile");
   const auto *allocation_rule = wire::find_message(
       schema, static_cast<std::uint16_t>(RenderMessageType::surface_allocate));
   require(allocation_rule &&
@@ -43,6 +50,14 @@ int main() {
               frame_rule->correlation == wire::CorrelationRule::zero &&
               render_descriptor_count(frame_rule->message_type) == 0,
           "frame-ready authority contract changed");
+  const auto *intent_rule = wire::find_message(
+      schema, static_cast<std::uint16_t>(RenderMessageType::surface_intent));
+  require(intent_rule &&
+              intent_rule->directions == wire::DirectionMask::worker_to_host &&
+              intent_rule->semantic == wire::MessageSemantic::event &&
+              intent_rule->correlation == wire::CorrelationRule::zero &&
+              render_descriptor_count(intent_rule->message_type) == 0,
+          "surface intent authority contract changed");
 
   const auto offer_bytes = encode_profile_offer(offer);
   require(offer_bytes[0] == std::byte{0} && offer_bytes[3] == std::byte{1} &&
@@ -108,36 +123,127 @@ int main() {
 
   const InputEvent input{.surface = allocation->surface,
                          .sequence = 10,
-                         .kind = InputKind::pointer_motion,
-                         .x_q16 = 1U << 16,
-                         .y_q16 = 2U << 16,
-                         .delta_x_q16 = -(1 << 16),
-                         .delta_y_q16 = 1 << 16,
-                         .code = 0,
-                         .state = 0,
-                         .active_touch_points = 0};
+                         .payload = PointerMotion{
+                             .position = {.x_q16 = 1U << 16,
+                                          .y_q16 = 2U << 16}}};
   const auto input_bytes = encode_input_event(input);
   InputEvent decoded_input{};
-  require(decode_input_event(input_bytes, decoded_input) &&
-              decoded_input.delta_x_q16 == input.delta_x_q16 &&
-              decoded_input.kind == input.kind,
+  require(input_bytes && decode_input_event(*input_bytes, decoded_input) &&
+              decoded_input == input,
           "input event round trip failed");
   auto bad_input = input_bytes;
-  bad_input[27] = std::byte{99};
-  require(!decode_input_event(bad_input, decoded_input),
+  (*bad_input)[27] = std::byte{99};
+  require(!decode_input_event(*bad_input, decoded_input),
           "unknown wire input kind accepted");
 
-  const FocusEvent focus{
-      .surface = allocation->surface, .sequence = 11, .focused = true};
-  const auto focus_bytes = encode_focus_event(focus);
-  FocusEvent decoded_focus{};
-  require(decode_focus_event(focus_bytes, decoded_focus) &&
-              decoded_focus.focused,
+  const InputEvent focus{.surface = allocation->surface,
+                         .sequence = 11,
+                         .payload = FocusChanged{.focused = true}};
+  const auto focus_bytes = encode_input_event(focus);
+  InputEvent decoded_focus{};
+  require(focus_bytes && decode_input_event(*focus_bytes, decoded_focus) &&
+              decoded_focus == focus,
           "focus event round trip failed");
   auto bad_focus = focus_bytes;
-  bad_focus[31] = std::byte{1};
-  require(!decode_focus_event(bad_focus, decoded_focus),
+  (*bad_focus)[35] = std::byte{2};
+  require(!decode_input_event(*bad_focus, decoded_focus),
           "focus reserved byte accepted");
+
+  InputEvent key{.surface = allocation->surface,
+                 .sequence = 12,
+                 .payload = Key{.key = 65,
+                                .native_scan_code = 30,
+                                .state = ButtonState::pressed,
+                                .text = "a"}};
+  auto key_bytes = encode_input_event(key);
+  require(key_bytes && decode_input_event(*key_bytes, decoded_input) &&
+              decoded_input == key,
+          "key/text event round trip failed");
+  key_bytes->back() = std::byte{0xc0};
+  require(!decode_input_event(*key_bytes, decoded_input),
+          "malformed UTF-8 became a typed key event");
+  std::get<Key>(key.payload).text = std::string("\xed\xa0\x80", 3);
+  require(!encode_input_event(key),
+          "surrogate UTF-8 was serialized");
+
+  InputEvent invalid_mask{
+      .surface = allocation->surface,
+      .sequence = 13,
+      .payload = PointerMotion{.position = {}, .buttons = 0x20}};
+  require(!encode_input_event(invalid_mask),
+          "unsupported pointer mask was serialized");
+  auto malformed_mask = input_bytes;
+  (*malformed_mask)[43] = std::byte{0x20};
+  require(!decode_input_event(*malformed_mask, decoded_input),
+          "unsupported pointer mask became a typed event");
+
+  TouchFrame maximum{.phase = TouchFramePhase::begin,
+                     .count = kMaximumTouchPoints};
+  for (std::uint32_t index = 0; index < maximum.count; ++index)
+    maximum.points[index] = {.id = index,
+                             .state = TouchPointState::pressed,
+                             .position = {index << 16, index << 16}};
+  const InputEvent maximum_touch{.surface = allocation->surface,
+                                 .sequence = 14,
+                                 .payload = maximum};
+  const auto maximum_bytes = encode_input_event(maximum_touch);
+  require(maximum_bytes && maximum_bytes->size() == 204 &&
+              decode_input_event(*maximum_bytes, decoded_input) &&
+              decoded_input == maximum_touch,
+          "maximum atomic touch frame was not representable");
+  maximum.points[1].id = maximum.points[0].id;
+  require(!encode_input_event({.surface = allocation->surface,
+                               .sequence = 15,
+                               .payload = maximum}),
+          "duplicate touch IDs were serialized");
+
+  const InputEvent invalid_replacement{
+      .surface = allocation->surface,
+      .sequence = 16,
+      .payload = TextCommit{
+          .text = "x",
+          .replacement_start = kMaximumTextReplacementOffset + 1}};
+  require(!encode_input_event(invalid_replacement),
+          "oversized text replacement was serialized");
+
+  const SurfaceIntentRequest intent{
+      .source = allocation->surface,
+      .target = {.id = 23, .generation = allocation->surface.generation},
+      .input_sequence = 12,
+      .action = SurfaceIntentAction::toggle,
+      .requested_output = "DP-1"};
+  const auto intent_bytes = encode_surface_intent(intent);
+  SurfaceIntentRequest decoded_intent{};
+  require(decode_surface_intent(intent_bytes, decoded_intent) &&
+              decoded_intent == intent,
+          "surface intent round trip failed");
+  auto bad_intent = intent_bytes;
+  bad_intent[47] = std::byte{1};
+  require(!decode_surface_intent(bad_intent, decoded_intent),
+          "surface intent reserved field accepted");
+  bad_intent = intent_bytes;
+  bad_intent[43] = std::byte{9};
+  require(!decode_surface_intent(bad_intent, decoded_intent),
+          "unknown surface intent action accepted");
+  auto invalid_output_intent = intent;
+  invalid_output_intent.requested_output = std::string(129, 'x');
+  require(!decode_surface_intent(encode_surface_intent(invalid_output_intent),
+                                 decoded_intent),
+          "oversized surface output hint was serialized");
+  const SurfaceIntentRequest dismiss_intent{
+      .source = allocation->surface,
+      .target = allocation->surface,
+      .input_sequence = 0,
+      .action = SurfaceIntentAction::dismiss,
+      .requested_output = {}};
+  const auto dismiss_bytes = encode_surface_intent(dismiss_intent);
+  require(decode_surface_intent(dismiss_bytes, decoded_intent) &&
+              decoded_intent == dismiss_intent,
+          "gesture-free self-dismiss did not round trip");
+  auto forged_dismiss = dismiss_bytes;
+  forged_dismiss[32] = std::byte{1};
+  require(!decode_surface_intent(forged_dismiss, decoded_intent),
+          "self-dismiss accepted a forged gesture sequence");
 
   const RenderTypedError error{
       .reason = RenderErrorReason::invalid_allocation,
@@ -155,55 +261,6 @@ int main() {
   require(!decode_render_error(nonrequest_error, decoded_error),
           "typed error named a non-request message");
 
-  RenderRequestTable<2> pending;
-  require(pending.begin(RenderMessageType::profile_offer, 55) ==
-                  RenderPairResult::accepted &&
-              pending.begin(RenderMessageType::surface_allocate, 56,
-                            allocation->surface) == RenderPairResult::accepted,
-          "valid render requests were not recorded");
-  require(pending.begin(RenderMessageType::profile_offer, 55) ==
-                  RenderPairResult::duplicate_correlation &&
-              pending.begin(RenderMessageType::profile_offer, 57) ==
-                  RenderPairResult::capacity_exhausted &&
-              pending.begin(RenderMessageType::profile_offer, 0) ==
-                  RenderPairResult::zero_correlation &&
-              pending.begin(RenderMessageType::surface_allocated, 57,
-                            allocation->surface) ==
-                  RenderPairResult::invalid_request &&
-              pending.size() == 2,
-          "render pending-table bounds changed");
-  require(
-      pending.validate_terminal(RenderMessageType::surface_allocated, 55) ==
-              RenderPairResult::mismatched_terminal &&
-          pending.validate_terminal(RenderMessageType::profile_select, 56) ==
-              RenderPairResult::mismatched_terminal &&
-          pending.size() == 2,
-      "crossed render terminals consumed pending requests");
-  require(pending.validate_terminal(
-              RenderMessageType::surface_allocated, 56,
-              {.id = allocation->surface.id, .generation = 99}) ==
-                  RenderPairResult::mismatched_surface &&
-              pending.size() == 2,
-          "wrong-surface terminal consumed a pending request");
-  const RenderTypedError wrong_error{
-      .reason = RenderErrorReason::unsupported_profile,
-      .failed_message_type =
-          static_cast<std::uint16_t>(RenderMessageType::profile_offer),
-      .surface = {}};
-  require(pending.validate_error(wrong_error, 56) ==
-                  RenderPairResult::mismatched_terminal &&
-              pending.size() == 2,
-          "error for another request consumed a pending request");
-  require(pending.validate_terminal(RenderMessageType::profile_select, 55) ==
-                  RenderPairResult::accepted &&
-              pending.complete(55) == RenderPairResult::accepted &&
-              pending.validate_error(error, 56) == RenderPairResult::accepted &&
-              pending.complete(56) == RenderPairResult::accepted &&
-              pending.size() == 0,
-          "exact render terminal pairing failed");
-  require(pending.complete(56) == RenderPairResult::unknown_correlation,
-          "completed render request was retired twice");
-
   wire::SelectedEndpointState<4> endpoint(
       wire::EndpointRole::render, kRenderRoleVersion, 7,
       wire::payload_cap(wire::EndpointRole::render), 4, registry);
@@ -219,11 +276,7 @@ int main() {
   require(
       endpoint.accept(offer_packet, wire::Direction::host_to_worker).action ==
           wire::SessionAction::request_admitted,
-      "B3 rejected B4 profile request");
-  RenderRequestTable<4> endpoint_pending;
-  require(endpoint_pending.begin(RenderMessageType::profile_offer, 55) ==
-              RenderPairResult::accepted,
-          "render pairing adapter rejected B3 request");
+      "bridge rejected render profile request");
   const auto selection_bytes = encode_profile_selection(*selection);
   wire::PacketView selection_packet{
       .header = {.endpoint_role = wire::EndpointRole::render,
@@ -234,12 +287,7 @@ int main() {
                  .launch_generation = 7,
                  .correlation_id = 55},
       .payload = selection_bytes};
-  require(endpoint_pending.validate_terminal(RenderMessageType::profile_select,
-                                             55) == RenderPairResult::accepted,
-          "render pairing adapter rejected exact terminal before B3");
   require(endpoint.accept(selection_packet, wire::Direction::worker_to_host)
                   .action == wire::SessionAction::terminal_received,
-          "B3 rejected B4 profile terminal");
-  require(endpoint_pending.complete(55) == RenderPairResult::accepted,
-          "render pairing adapter did not retire accepted B3 terminal");
+          "bridge rejected render profile terminal");
 }

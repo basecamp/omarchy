@@ -62,18 +62,6 @@ int main() {
                                           notification_request),
           "notification control character was accepted");
 
-  const std::array acknowledge{std::byte{0x00}, std::byte{0x00},
-                               std::byte{0x00}, std::byte{0x2a}};
-  providers::FakeAcknowledgeRequest acknowledge_request{};
-  require(
-      providers::decode_fake_acknowledge(acknowledge, acknowledge_request) &&
-          acknowledge_request.status == 42,
-      "literal fake acknowledgement vector changed");
-  const std::array zero_ack{std::byte{0}, std::byte{0}, std::byte{0},
-                            std::byte{0}};
-  require(!providers::decode_fake_acknowledge(zero_ack, acknowledge_request),
-          "zero fake status id was accepted");
-
   const std::array value{std::byte{0xaa}, std::byte{0xbb}};
   std::array<std::byte, 32> encoded{};
   std::size_t written = 0;
@@ -86,19 +74,6 @@ int main() {
   require(
       !providers::encode_storage_read_result(false, value, encoded, written),
       "not-found storage result carried bytes");
-
-  const std::array statuses{
-      providers::FakeStatusView{.id = 42, .acknowledged = true, .text = "OK"},
-  };
-  require(providers::encode_fake_status_result(statuses, encoded, written) &&
-              written == 16 && encoded[0] == std::byte{0} &&
-              encoded[1] == std::byte{1} && encoded[4] == std::byte{0} &&
-              encoded[7] == std::byte{42} && encoded[8] == std::byte{1} &&
-              encoded[14] == std::byte{'O'} && encoded[15] == std::byte{'K'},
-          "literal fake-status result vector changed");
-  require(!providers::encode_fake_status_result(
-              statuses, std::span<std::byte>(encoded).first(15), written),
-          "truncated fake-status output was accepted");
 
   require(providers::valid_utf8_text("caf\xc3\xa9", false),
           "valid UTF-8 was rejected");

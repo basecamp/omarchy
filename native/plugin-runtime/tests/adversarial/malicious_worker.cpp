@@ -21,12 +21,14 @@
 #include <string_view>
 #include <vector>
 
+#include "omarchy/plugin/wire/envelope.hpp"
+
 extern char **environ;
 
 namespace {
 
 constexpr std::uint64_t kGeneration = 0x1020304050607080ULL;
-constexpr std::size_t kHeaderSize = 40;
+namespace wire = omarchy::plugin::wire;
 
 void put16(std::span<std::byte> output, std::size_t offset,
            std::uint16_t value) {
@@ -46,19 +48,26 @@ void put64(std::span<std::byte> output, std::size_t offset,
   put32(output, offset + 4, static_cast<std::uint32_t>(value));
 }
 
-std::array<std::byte, kHeaderSize>
+std::array<std::byte, wire::kHeaderSize>
 request(std::uint16_t role, std::uint64_t generation,
         std::uint32_t claimed_payload = 0) {
-  std::array<std::byte, kHeaderSize> bytes{};
-  put32(bytes, 0, 0x4f4d504c);
-  put16(bytes, 4, 1);
-  put16(bytes, 6, kHeaderSize);
+  std::array<std::byte, wire::kHeaderSize> bytes{};
+  put32(bytes, 0, wire::kMagic);
+  put16(bytes, 4, wire::kEnvelopeVersion);
+  put16(bytes, 6, wire::kHeaderSize);
   put16(bytes, 8, role);
   put16(bytes, 10, 0x1100);
   put16(bytes, 12, 1);
   put32(bytes, 16, claimed_payload);
   put64(bytes, 24, generation);
   put64(bytes, 32, 1);
+  put64(bytes, 40, (1ULL << 2U) | role);
+  return bytes;
+}
+
+std::array<std::byte, wire::kHeaderSize> unsupported_version_request() {
+  auto bytes = request(1, kGeneration);
+  put16(bytes, 4, 1);
   return bytes;
 }
 
@@ -123,6 +132,7 @@ int sandbox_probe() {
       "HOME=/home/plugin",       "LANG=C.UTF-8",
       "LC_ALL=C.UTF-8",         "PATH=/runtime",
       "PWD=/plugin",            "QT_QPA_PLATFORM=offscreen",
+      "QT_QUICK_CONTROLS_STYLE=Basic",
       "QSG_RHI_BACKEND=software", "XDG_CACHE_HOME=/tmp/cache",
       "XDG_CONFIG_HOME=/state/config", "XDG_DATA_HOME=/state/data",
       "XDG_RUNTIME_DIR=/run/plugin",
@@ -207,6 +217,9 @@ int main(int argc, char **argv) {
     return 64;
   }
   const std::string_view attack(argv[1]);
+  if (attack == "unsupported-envelope-version") {
+    return send_attack(unsupported_version_request()) ? 0 : 84;
+  }
   if (attack == "role-swap") {
     return send_attack(request(2, kGeneration)) ? 0 : 65;
   }

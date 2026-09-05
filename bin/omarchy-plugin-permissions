@@ -1,0 +1,480 @@
+#!/bin/bash
+
+# omarchy:summary=Review and change secure plugin permissions
+# omarchy:group=plugin
+# omarchy:args=[list] <id> [--json] | review <id> [--operation <handle>] | revoke <id>
+# omarchy:examples=omarchy plugin permissions org.example.weather | omarchy plugin permissions review org.example.weather | omarchy plugin permissions revoke org.example.weather
+
+set -euo pipefail
+
+readonly IPC_TARGET="plugin-permissions"
+readonly MAX_RESPONSE_BYTES=8388608
+readonly MAX_CHOICES_BYTES=262176
+readonly CHOICE_CHUNK_BYTES=90000
+readonly MAX_POLL_ATTEMPTS=100
+readonly POLL_DELAY=0.1
+readonly POLL_DEADLINE_SECONDS=12
+
+ipc_output=""
+operation_json=""
+choice_chunk_0=""
+choice_chunk_1=""
+choice_chunk_2=""
+
+fail() {
+  echo "omarchy-plugin-permissions: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  omarchy plugin permissions [list] <id> [--json]
+  omarchy plugin permissions review <id> [--operation <handle>]
+  omarchy plugin permissions revoke <id>
+
+List is read-only. Review asks about every requested permission and, for an
+extensible permission, every requested operation. Revoke displays granted
+permissions, asks for one number, and changes only that permission after a
+second confirmation. TTY prompts are an ergonomic confirmation flow, not an
+authentication boundary.
+USAGE
+}
+
+require_plugin_id() {
+  local plugin_id="$1"
+
+  if (( ${#plugin_id} <= 128 )) && [[ $plugin_id =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+    return 0
+  else
+    fail "plugin id is invalid"
+  fi
+}
+
+require_opaque_id() {
+  local value="$1"
+  local prefix="$2"
+
+  [[ $value =~ ^${prefix}-[0-9a-f]{32}$ ]] || fail "the shell returned an invalid operation handle"
+}
+
+call_ipc() {
+  if ! ipc_output=$(OMARCHY_SHELL_IPC_TIMEOUT=1s omarchy-shell "$IPC_TARGET" "$@" 2>&1); then
+    return 1
+  fi
+  (( ${#ipc_output} <= MAX_RESPONSE_BYTES )) || return 1
+  return 0
+}
+
+sanitize_json_string() {
+  local json="$1"
+  local filter="$2"
+
+  jq -r "($filter // \"\" | tostring)
+    | gsub(\"\\u001b\\\\[[0-?]*[ -/]*[@-~]\"; \"\")
+    | gsub(\"[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u200e-\\u200f\\u202a-\\u202e\\u2066-\\u2069]\"; \" \")
+    | .[0:160]" <<<"$json"
+}
+
+wait_for_operation() {
+  local operation_id="$1"
+  local expected_kind="$2"
+  local mutation="$3"
+  local attempt state error mutation_json
+  local deadline=$(( SECONDS + POLL_DEADLINE_SECONDS ))
+
+  if (( mutation )); then
+    mutation_json=true
+  else
+    mutation_json=false
+  fi
+
+  require_opaque_id "$operation_id" "permission"
+  for (( attempt = 0; attempt < MAX_POLL_ATTEMPTS; attempt++ )); do
+    (( SECONDS < deadline )) || break
+    if ! call_ipc poll "$operation_id"; then
+      if (( mutation )); then
+        fail "permission change outcome is unknown; inspect the permission list before trying again"
+      fi
+      fail "could not read permissions from the running secure plugin host"
+    fi
+    operation_json="$ipc_output"
+    jq -e --arg id "$operation_id" --arg kind "$expected_kind" --argjson mutation "$mutation_json" '
+      def exact_keys($expected): (keys | sort) == ($expected | sort);
+      type == "object"
+      and .operationId == $id
+      and .kind == $kind
+      and (
+        if .state == "pending" then
+          exact_keys(["operationId", "kind", "state"])
+        elif .state == "failed" then
+          exact_keys(["operationId", "kind", "state", "error"])
+          and (.error | type == "string")
+        elif .state == "succeeded" and $mutation then
+          exact_keys(["operationId", "kind", "state", "result"])
+          and (.result | type == "object" and keys == ["applied"] and .applied == true)
+        elif .state == "succeeded" then
+          exact_keys(["operationId", "kind", "state", "result"])
+          and (.result | type == "object")
+        else false end
+      )
+    ' <<<"$operation_json" >/dev/null || {
+      if (( mutation )); then
+        fail "permission change outcome is unknown; the shell returned an invalid response"
+      fi
+      fail "the shell returned an invalid permission response"
+    }
+    state=$(jq -r '.state' <<<"$operation_json")
+    if [[ $state == "succeeded" ]]; then
+      if (( !mutation )); then
+        validate_permission_result "$expected_kind" || fail "the shell returned an invalid permission result"
+      fi
+      return 0
+    elif [[ $state == "failed" ]]; then
+      error=$(sanitize_json_string "$operation_json" '.error')
+      fail "permission operation failed${error:+: $error}"
+    fi
+    sleep "$POLL_DELAY"
+  done
+
+  if (( mutation )); then
+    fail "permission change outcome is unknown; inspect the permission list before trying again"
+  fi
+  fail "timed out while reading permissions"
+}
+
+validate_permission_result() {
+  local kind="$1"
+
+  jq -e --arg expectedKind "$kind" '
+    def only_keys($allowed): (keys - $allowed | length) == 0;
+    def opaque($prefix):
+      type == "string" and test("^" + $prefix + "-[0-9a-f]{32}$");
+    def common_row:
+      type == "object"
+      and has("rowId") and (.rowId | opaque("row"))
+      and has("kind") and (.kind == "builtin" or .kind == "dynamic")
+      and has("name") and (.name | type == "string")
+      and has("required") and (.required | type == "boolean")
+      and has("available") and (.available | type == "boolean")
+      and has("state") and (.state == "granted" or .state == "denied" or .state == "revoked" or .state == "undecided")
+      and has("scope") and (.scope | type == "string")
+      and has("operations") and (.operations | type == "array" and length <= 16)
+      and ((has("title") | not) or (.title | type == "string"))
+      and ((has("category") | not) or (.category | type == "string"));
+    def string_operations: all(.operations[]; type == "string");
+    def review_operations:
+      all(.operations[];
+        type == "object"
+        and only_keys(["operationId", "name", "label"])
+        and has("operationId") and (.operationId | opaque("operation"))
+        and has("name") and (.name | type == "string")
+        and has("label") and (.label | type == "string"));
+    def valid_row:
+      common_row
+      and only_keys(
+        ["rowId", "kind", "name", "required", "available", "state", "scope", "operations"]
+        + (if .kind == "dynamic" then ["title", "category"] else [] end)
+        + (if $expectedKind == "review" then ["delta", "reason"] else [] end))
+      and (if $expectedKind == "review" then
+        has("delta")
+        and (.delta == "unchanged" or .delta == "narrowed" or .delta == "expanded"
+          or .delta == "incomparable" or .delta == "added" or .delta == "removed"
+          or .delta == "requirement-changed" or .delta == "definition-changed"
+          or .delta == "operations-changed")
+        and has("reason") and (.reason | type == "string")
+      else true end)
+      and (if .kind == "dynamic" and $expectedKind == "review"
+        then review_operations else string_operations end);
+    .result
+    | type == "object"
+    and only_keys(["plugin", "permissions"])
+    and has("plugin") and (.plugin | type == "string")
+    and has("permissions")
+    and (.permissions | type == "array" and length <= 256 and all(.[]; valid_row))
+  ' <<<"$operation_json" >/dev/null
+}
+
+begin_read() {
+  local method="$1"
+  local plugin_id="$2"
+  local kind="$3"
+
+  call_ipc "$method" "$plugin_id" || fail "the secure plugin permission service is unavailable"
+  [[ -n $ipc_output ]] || fail "plugin '$plugin_id' is not available to the secure plugin host"
+  wait_for_operation "$ipc_output" "$kind" 0
+}
+
+print_permission_row() {
+  local row="$1"
+  local ordinal="$2"
+  local name title kind state scope required available delta reason operations
+
+  name=$(sanitize_json_string "$row" '.name')
+  title=$(sanitize_json_string "$row" '.title')
+  kind=$(sanitize_json_string "$row" '.kind')
+  state=$(sanitize_json_string "$row" '.state')
+  scope=$(sanitize_json_string "$row" '.scope')
+  delta=$(sanitize_json_string "$row" '.delta')
+  reason=$(sanitize_json_string "$row" '.reason')
+  required=$(jq -r 'if .required == true then "required" else "optional" end' <<<"$row")
+  available=$(jq -r 'if .available == true then "available" else "unavailable" end' <<<"$row")
+  operations=$(jq -r '
+    [.operations[]? | if type == "object" then (.label // .name // "") else . end
+      | tostring
+      | gsub("\u001b\\[[0-?]*[ -/]*[@-~]"; "")
+      | gsub("[\u0000-\u001f\u007f-\u009f\u061c\u200e-\u200f\u202a-\u202e\u2066-\u2069]"; " ")
+      | .[0:80]]
+    | join(", ")
+    | .[0:320]
+  ' <<<"$row")
+
+  printf '%d. %s%s\n' "$ordinal" "${title:-$name}" "${title:+ ($name)}"
+  printf '   %s, %s, %s, %s' "$kind" "$required" "$available" "$state"
+  [[ -n $scope ]] && printf ', scope: %s' "$scope"
+  [[ -n $delta ]] && printf ', change: %s' "$delta"
+  printf '\n'
+  [[ -n $operations ]] && printf '   operations: %s\n' "$operations"
+  [[ -n $reason ]] && printf '   reason: %s\n' "$reason"
+  return 0
+}
+
+print_human_list() {
+  local result="$1"
+  local plugin count row index
+
+  plugin=$(sanitize_json_string "$result" '.plugin')
+  count=$(jq -r '.permissions | length' <<<"$result")
+  printf 'Permissions for %s\n' "$plugin"
+  if (( count == 0 )); then
+    echo "  No permissions declared."
+    return
+  fi
+  for (( index = 0; index < count; index++ )); do
+    row=$(jq -c ".permissions[$index]" <<<"$result")
+    print_permission_row "$row" "$(( index + 1 ))"
+  done
+}
+
+prompt_yes_no() {
+  local prompt="$1"
+  local answer
+
+  while true; do
+    printf '%s [y/N] ' "$prompt" >&2
+    IFS= read -r answer || fail "permission change cancelled"
+    case ${answer,,} in
+      y | yes) return 0 ;;
+      "" | n | no) return 1 ;;
+      *) echo "Please answer yes or no." >&2 ;;
+    esac
+  done
+}
+
+require_interactive_mutation() {
+  [[ -t 0 && -t 1 ]] || fail "permission changes require an interactive terminal"
+}
+
+split_permission_choices() {
+  local choices_json="$1"
+
+  (( ${#choices_json} <= MAX_CHOICES_BYTES )) || return 1
+  choice_chunk_0=${choices_json:0:CHOICE_CHUNK_BYTES}
+  choice_chunk_1=${choices_json:CHOICE_CHUNK_BYTES:CHOICE_CHUNK_BYTES}
+  choice_chunk_2=${choices_json:$(( CHOICE_CHUNK_BYTES * 2 )):CHOICE_CHUNK_BYTES}
+  return 0
+}
+
+list_permissions() {
+  local plugin_id="$1"
+  local json_output="$2"
+  local result
+
+  require_plugin_id "$plugin_id"
+  begin_read list "$plugin_id" list
+  result=$(jq -c '.result' <<<"$operation_json")
+  if (( json_output )); then
+    jq '
+      .permissions |= map(
+        del(.rowId)
+        | if (.operations | type) == "array" then
+            .operations |= map(if type == "object" then del(.operationId) else . end)
+          else . end
+      )
+    ' <<<"$result"
+  else
+    print_human_list "$result"
+  fi
+}
+
+review_permissions() {
+  local plugin_id="$1"
+  local supplied_operation="${2:-}"
+  local review_id result count row row_id kind required available decision
+  local operation_count operation operation_id operation_label index operation_index
+  local choices='[]' selected choices_json
+
+  require_plugin_id "$plugin_id"
+  require_interactive_mutation
+  if [[ -n $supplied_operation ]]; then
+    require_opaque_id "$supplied_operation" permission
+    wait_for_operation "$supplied_operation" review 0
+    [[ $(jq -r '.result.plugin' <<<"$operation_json") == "$plugin_id" ]] ||
+      fail "the review handle does not belong to plugin '$plugin_id'"
+  else
+    begin_read review "$plugin_id" review
+  fi
+  review_id=$(jq -r '.operationId' <<<"$operation_json")
+  result=$(jq -c '.result' <<<"$operation_json")
+  count=$(jq -r '.permissions | length' <<<"$result")
+
+  printf 'Reviewing permissions for %s\n' "$(sanitize_json_string "$result" '.plugin')"
+  if (( count == 0 )); then
+    echo "  No permissions requested."
+  fi
+  for (( index = 0; index < count; index++ )); do
+    row=$(jq -c ".permissions[$index]" <<<"$result")
+    print_permission_row "$row" "$(( index + 1 ))"
+    row_id=$(jq -r '.rowId' <<<"$row")
+    require_opaque_id "$row_id" row
+    kind=$(jq -r '.kind' <<<"$row")
+    required=$(jq -r '.required == true' <<<"$row")
+    available=$(jq -r '.available == true' <<<"$row")
+
+    if [[ $available != "true" && $required == "true" ]]; then
+      fail "required permission $(( index + 1 )) has no installed provider"
+    elif [[ $available != "true" ]]; then
+      prompt_yes_no "Permission $(( index + 1 )) is unavailable. Deny it?" || fail "permission review cancelled"
+      decision="deny"
+    elif [[ $required == "true" ]]; then
+      prompt_yes_no "Grant required permission $(( index + 1 ))?" || fail "required permissions cannot be denied"
+      decision="grant"
+    elif prompt_yes_no "Grant optional permission $(( index + 1 ))?"; then
+      decision="grant"
+    else
+      decision="deny"
+    fi
+
+    if [[ $kind == "dynamic" && $decision == "grant" ]]; then
+      operation_count=$(jq -r '.operations | length' <<<"$row")
+      selected='[]'
+      for (( operation_index = 0; operation_index < operation_count; operation_index++ )); do
+        operation=$(jq -c ".operations[$operation_index]" <<<"$row")
+        operation_id=$(jq -r '.operationId' <<<"$operation")
+        require_opaque_id "$operation_id" operation
+        operation_label=$(sanitize_json_string "$operation" '(.label // .name)')
+        if prompt_yes_no "Allow operation '$operation_label'?"; then
+          selected=$(jq -cn --argjson current "$selected" --arg id "$operation_id" '$current + [$id]')
+        fi
+      done
+      (( $(jq -r 'length' <<<"$selected") > 0 )) || fail "a granted extensible permission needs at least one operation"
+      row=$(jq -cn --arg id "$row_id" --arg decision "$decision" --argjson operations "$selected" \
+        '{rowId: $id, decision: $decision, operations: $operations}')
+    else
+      row=$(jq -cn --arg id "$row_id" --arg decision "$decision" \
+        '{rowId: $id, decision: $decision}')
+    fi
+    choices=$(jq -cn --argjson current "$choices" --argjson choice "$row" '$current + [$choice]')
+  done
+
+  choices_json=$(jq -cn --argjson choices "$choices" '{choices: $choices}')
+  split_permission_choices "$choices_json" ||
+    fail "this review is too large for one shell IPC call; no permission change was attempted"
+  if ! call_ipc apply "$review_id" "$choice_chunk_0" "$choice_chunk_1" "$choice_chunk_2"; then
+    fail "permission change outcome is unknown; inspect the permission list before trying again"
+  fi
+  [[ -n $ipc_output ]] || fail "the permission review was rejected before any change was scheduled"
+  wait_for_operation "$ipc_output" apply 1
+  jq -e '.result.applied == true' <<<"$operation_json" >/dev/null ||
+    fail "permission change outcome is unknown; inspect the permission list before trying again"
+  echo "Permissions updated for $plugin_id"
+}
+
+revoke_permission() {
+  local plugin_id="$1"
+  local source_id result granted count row row_id required ordinal
+
+  require_plugin_id "$plugin_id"
+  require_interactive_mutation
+  begin_read list "$plugin_id" list
+  source_id=$(jq -r '.operationId' <<<"$operation_json")
+  result=$(jq -c '.result' <<<"$operation_json")
+  granted=$(jq -c '{plugin: .plugin, permissions: [.permissions[] | select(.state == "granted")]}' <<<"$result")
+  count=$(jq -r '.permissions | length' <<<"$granted")
+  (( count > 0 )) || fail "plugin '$plugin_id' has no granted permissions to revoke"
+  print_human_list "$granted"
+  printf 'Permission to revoke: ' >&2
+  IFS= read -r ordinal || fail "permission revoke cancelled"
+  [[ $ordinal =~ ^[1-9][0-9]*$ ]] || fail "permission number must be a positive integer"
+  (( ordinal <= count )) || fail "permission number $ordinal is out of range"
+  row=$(jq -c ".permissions[$(( ordinal - 1 ))]" <<<"$granted")
+  row_id=$(jq -r '.rowId' <<<"$row")
+  require_opaque_id "$row_id" row
+  required=$(jq -r '.required == true' <<<"$row")
+
+  if [[ $required == "true" ]]; then
+    echo "Warning: revoking this required permission will disable the plugin until the permission is restored." >&2
+  fi
+  prompt_yes_no "Revoke only permission $ordinal?" || fail "permission revoke cancelled"
+  if ! call_ipc revoke "$source_id" "$row_id"; then
+    fail "permission change outcome is unknown; inspect the permission list before trying again"
+  fi
+  [[ -n $ipc_output ]] || fail "the permission revoke was rejected before any change was scheduled"
+  wait_for_operation "$ipc_output" revoke 1
+  jq -e '.result.applied == true' <<<"$operation_json" >/dev/null ||
+    fail "permission change outcome is unknown; inspect the permission list before trying again"
+  echo "Revoked permission $ordinal for $plugin_id"
+}
+
+main() {
+  local argument command
+
+  for argument in "$@"; do
+    case $argument in
+      --yes | -y | --grant-all | grant-all)
+        fail "bulk or non-interactive permission approval is not supported"
+        ;;
+    esac
+  done
+
+  if (( $# == 0 )) || [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+    usage
+    return 0
+  fi
+
+  command="$1"
+  case $command in
+    review)
+      if (( $# == 2 )); then
+        review_permissions "$2"
+      elif (( $# == 4 )) && [[ $3 == "--operation" ]]; then
+        review_permissions "$2" "$4"
+      else
+        fail "Usage: omarchy plugin permissions review <id> [--operation <handle>]"
+      fi
+      ;;
+    revoke)
+      (( $# == 2 )) || fail "Usage: omarchy plugin permissions revoke <id>"
+      revoke_permission "$2"
+      ;;
+    list)
+      shift
+      (( $# >= 1 && $# <= 2 )) || fail "Usage: omarchy plugin permissions list <id> [--json]"
+      if (( $# == 2 )) && [[ $2 != "--json" ]]; then
+        fail "unknown option: $2"
+      fi
+      list_permissions "$1" "$(( $# == 2 ))"
+      ;;
+    *)
+      (( $# <= 2 )) || fail "Usage: omarchy plugin permissions <id> [--json]"
+      if (( $# == 2 )) && [[ $2 != "--json" ]]; then
+        fail "unknown option: $2"
+      fi
+      list_permissions "$1" "$(( $# == 2 ))"
+      ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

@@ -18,6 +18,7 @@ ShellRoot {
   property PluginRegistry pluginRegistry: PluginRegistry { }
   property BarWidgetRegistry barWidgetRegistry: BarWidgetRegistry { }
   property AppLibrary appLibrary: AppLibrary { }
+  property var securePluginHost: securePluginHostLoader.item
 
   property string home: Quickshell.env("HOME")
 
@@ -29,6 +30,8 @@ ShellRoot {
   readonly property string firstPartyPluginsDir: shellPath + "/plugins"
   readonly property string defaultsPath: omarchyPath + "/config/omarchy/shell.json"
   readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
+  readonly property bool securePluginV2Enabled: Quickshell.env("OMARCHY_PLUGIN_V2_ENABLED") === "1"
+  readonly property string securePluginV2ShellEntry: Quickshell.env("OMARCHY_PLUGIN_V2_SHELL_ENTRY")
 
   // Bundled fallback so the shell can start even when the default shell.json is
   // missing or unreadable. The bar config here mirrors the on-disk defaults
@@ -213,13 +216,39 @@ ShellRoot {
 
   function configureBar(target, manifest) {
     if (!target) return
+    var configuredBarId = shell.activeBarId
+    if (shell.securePluginHost !== null
+        && configuredBarId !== shell.defaultBarId
+        && !("securePluginHost" in target)) {
+      console.warn("bar option " + configuredBarId
+        + " does not support sandboxed schema-v2 plugins; using "
+        + shell.defaultBarId + " for this session")
+      shell.failedBarId = configuredBarId
+      return
+    }
     if ("omarchyPath" in target) target.omarchyPath = shell.omarchyPath
     if ("shell" in target) target.shell = shell
     if ("manifest" in target) target.manifest = manifest
     if ("barWidgetRegistry" in target) target.barWidgetRegistry = shell.barWidgetRegistry
     if ("pluginRegistry" in target) target.pluginRegistry = shell.pluginRegistry
     if ("barConfig" in target) target.barConfig = shell.barConfig
+    if ("securePluginHost" in target)
+      target.securePluginHost = Qt.binding(function() { return shell.securePluginHost })
     shell.bar = target
+  }
+
+  Loader {
+    id: securePluginHostLoader
+
+    active: shell.securePluginV2Enabled && shell.securePluginV2ShellEntry !== ""
+    source: active ? Util.fileUrl(shell.securePluginV2ShellEntry) : ""
+    asynchronous: false
+    onLoaded: {
+      if ("shell" in item) item.shell = shell
+      if ("barWidgetRegistry" in item) item.barWidgetRegistry = shell.barWidgetRegistry
+    }
+    onStatusChanged: if (status === Loader.Error)
+      console.warn("secure schema-v2 plugin host failed closed:", errorString())
   }
 
   Component {
@@ -401,6 +430,64 @@ ShellRoot {
     }
     if (!dirty) return false
     persistShellConfig(copy)
+    return true
+  }
+
+  // Trusted schema-v2 host callback. A secure worker can replace only the
+  // already-configured entry for its authenticated plugin id; it cannot add a
+  // plugin, move a widget, or write arbitrary shell configuration.
+  function readSecurePluginSettings(pluginId) {
+    var id = String(pluginId || "")
+    if (id === "") return undefined
+    var config = shellConfig || builtinShellConfig
+    var selected = undefined
+    var selectedJson = ""
+    function consider(entry) {
+      if (!entry || Util.canonicalWidgetId(entry.id) !== id) return true
+      var keys = Object.keys(entry).filter(function(key) { return key !== "id" }).sort()
+      var settings = {}
+      for (var k = 0; k < keys.length; k++) settings[keys[k]] = entry[keys[k]]
+      var encoded = JSON.stringify(settings)
+      if (selected === undefined) {
+        selected = settings
+        selectedJson = encoded
+        return true
+      }
+      return selectedJson === encoded
+    }
+    var sections = ["left", "center", "right"]
+    var layout = config.bar && config.bar.layout ? config.bar.layout : ({})
+    for (var s = 0; s < sections.length; s++) {
+      var entries = layout[sections[s]] || []
+      for (var i = 0; i < entries.length; i++)
+        if (!consider(entries[i])) return undefined
+    }
+    var plugins = Array.isArray(config.plugins) ? config.plugins : []
+    for (var p = 0; p < plugins.length; p++)
+      if (!consider(plugins[p])) return undefined
+    return selected
+  }
+
+  function updateSecurePluginSettings(pluginId, settings) {
+    var id = String(pluginId || "")
+    if (id === "" || !Util.isPlainObject(settings)) return false
+    var config = shellConfig || builtinShellConfig
+    var found = false
+    var sections = ["left", "center", "right"]
+    var layout = config.bar && config.bar.layout ? config.bar.layout : ({})
+    for (var s = 0; s < sections.length; s++) {
+      var entries = layout[sections[s]] || []
+      for (var i = 0; i < entries.length; i++)
+        if (entries[i] && Util.canonicalWidgetId(entries[i].id) === id)
+          found = true
+    }
+    var plugins = Array.isArray(config.plugins) ? config.plugins : []
+    for (var p = 0; p < plugins.length; p++)
+      if (plugins[p] && plugins[p].id === id) found = true
+    if (!found) return false
+    var entry = { id: id }
+    for (var key in settings) entry[key] = settings[key]
+    updateEntryInline(id, entry)
     return true
   }
 
@@ -974,7 +1061,8 @@ ShellRoot {
           // work it out again.
           canDisable: !isBarOption,
           firstParty: !!plugins[id].__isFirstParty,
-          clonedFrom: clonedFrom
+          clonedFrom: clonedFrom,
+          security: shell.pluginRegistry.securityStatusFor(id)
         })
       }
       // Consumers should not each invent their own presentation order.

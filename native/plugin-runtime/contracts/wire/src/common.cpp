@@ -127,12 +127,14 @@ NegotiationResult TrustedNegotiator::accept_hello(const PacketView &packet) {
     return {.error = FatalReason::duplicate_hello};
   }
   hello_seen_ = true;
-  if (packet.header.endpoint_role != role_ ||
+  if (packet.header.envelope_version != kEnvelopeVersion ||
+      packet.header.endpoint_role != role_ ||
       packet.header.message_type !=
           static_cast<std::uint16_t>(CommonMessageType::hello) ||
       packet.header.role_protocol_version != 0 ||
       packet.header.launch_generation != 0 ||
-      packet.header.correlation_id != 0 || supported_.minimum == 0 ||
+      packet.header.correlation_id != 0 ||
+      packet.header.lane_sequence != 0 || supported_.minimum == 0 ||
       supported_.minimum > supported_.maximum || generation_ == 0 ||
       maximum_payload_ == 0 || maximum_payload_ > payload_cap(role_) ||
       maximum_in_flight_ == 0) {
@@ -193,8 +195,10 @@ FatalReason WorkerNegotiator::accept_reply(const PacketView &packet) {
     failed_ = true;
     return FatalReason::invalid_message_order;
   }
-  if (packet.header.endpoint_role != role_ ||
-      packet.header.correlation_id != 0) {
+  if (packet.header.envelope_version != kEnvelopeVersion ||
+      packet.header.endpoint_role != role_ ||
+      packet.header.correlation_id != 0 ||
+      packet.header.lane_sequence != 0) {
     failed_ = true;
     return FatalReason::invalid_welcome;
   }

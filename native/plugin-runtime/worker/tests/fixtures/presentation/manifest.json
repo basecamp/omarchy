@@ -1,0 +1,1 @@
+{"schemaVersion":2,"id":"example.presentation","name":"Presentation fixture","version":"1","runtime":{"apiVersion":1,"qml":"Main.qml"},"surfaces":{"main":{"role":"panel"}},"permissions":{"required":[],"optional":[]}}

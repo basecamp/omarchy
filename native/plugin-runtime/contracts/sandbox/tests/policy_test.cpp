@@ -1,4 +1,6 @@
 #include "omarchy/plugin_runtime/sandbox/policy.h"
+#include "omarchy/plugin_runtime/sandbox/test_plan.h"
+#include "omarchy/plugin_runtime/runtime_paths.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -11,10 +13,9 @@
 #include <linux/sched.h>
 
 using omarchy::plugin_runtime::sandbox::build_plan;
-using omarchy::plugin_runtime::sandbox::build_provider_plan;
-using omarchy::plugin_runtime::sandbox::build_test_plan_for_worker;
 using omarchy::plugin_runtime::sandbox::contains_argument_pair;
 using omarchy::plugin_runtime::sandbox::SandboxPlan;
+using omarchy::plugin_runtime::sandbox::test_support::build_plan_for_worker;
 
 namespace {
 [[noreturn]] void fail(std::string_view message) {
@@ -54,6 +55,8 @@ void verify_environment(const SandboxPlan &plan) {
           "worker inherits the manager environment");
   require(contains(plan.worker_environment, "QT_QPA_PLATFORM=offscreen"),
           "offscreen Qt platform is not pinned");
+  require(contains(plan.worker_environment, "QT_QUICK_CONTROLS_STYLE=Basic"),
+          "Qt Quick Controls style is not pinned to Basic");
   require(contains(plan.worker_environment, "QSG_RHI_BACKEND=software"),
           "software renderer is not pinned");
   require(contains(plan.worker_environment, "HOME=/home/plugin"),
@@ -82,6 +85,8 @@ void verify_mounts(const SandboxPlan &plan, std::string_view worker) {
           "private state is not mounted from a trusted fd");
   require(contains_argument_pair(plan, "--tmpfs", "/tmp"),
           "scratch is not private tmpfs");
+  require(contains_argument_pair(plan, "--dir", "/tmp/cache"),
+          "private cache directory is absent");
   require(contains_argument_pair(plan, "--tmpfs", "/run"),
           "runtime directory is not private tmpfs");
   require(contains_argument_pair(plan, "--tmpfs", "/home"),
@@ -90,6 +95,45 @@ void verify_mounts(const SandboxPlan &plan, std::string_view worker) {
           "the complete host /usr tree is exposed");
   require(!contains_argument_pair(plan, "--bind", "/"),
           "the host root is exposed");
+  require(contains_argument_pair(plan, "--tmpfs", "/usr/lib/qt6/qml"),
+          "the host QML module tree is not masked");
+  std::size_t qml_bind_count = 0;
+  for (std::size_t index = 0; index + 2 < plan.argv.size(); ++index) {
+    if (plan.argv[index] != "--ro-bind" ||
+        !plan.argv[index + 1].starts_with("/usr/lib/qt6/qml/"))
+      continue;
+    ++qml_bind_count;
+    const auto relative = plan.argv[index + 1].substr(
+        std::string_view("/usr/lib/qt6/qml/").size());
+    require(plan.argv[index + 2] == "/runtime/qml/" + relative,
+            "certified QML bind destination drifted");
+    require(omarchy::plugin_runtime::sandbox::trusted_qml_resource(relative),
+            "mounted QML resource is outside the registry closure");
+  }
+  require(qml_bind_count ==
+              omarchy::plugin_runtime::sandbox::trusted_qml_files().size(),
+          "certified QML bind set is incomplete or contains extras");
+  require(omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+              "QtQuick.Layouts") &&
+              omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+                  "QtQuick.Effects") &&
+              omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+                  "QtQuick.Controls") &&
+              !omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+                  "QtQuick.Dialogs") &&
+              !omarchy::plugin_runtime::sandbox::trusted_qml_public_module(
+                  "Quickshell"),
+          "authority-free Qt module or ambient Quickshell classification drifted");
+  require(omarchy::plugin_runtime::sandbox::trusted_qml_files().size() == 36 &&
+              omarchy::plugin_runtime::sandbox::trusted_qml_resource(
+                  "QtQuick/Controls/Basic/Button.qml") &&
+              omarchy::plugin_runtime::sandbox::trusted_qml_resource(
+                  "QtQuick/Controls/Basic/impl/TextEditingContextMenu.qml") &&
+              !omarchy::plugin_runtime::sandbox::trusted_qml_resource(
+                  "QtQuick/Dialogs/qmldir") &&
+              !omarchy::plugin_runtime::sandbox::trusted_qml_resource(
+                  "QtQuick/Controls/Fusion/qmldir"),
+          "Basic Controls closure or excluded Qt modules drifted");
   for (std::string_view forbidden :
        {"/run/user", "/home", "/sys", "/dev/dri", "/dev/input", "/etc/ssh"}) {
     require(std::ranges::none_of(plan.argv,
@@ -211,7 +255,7 @@ void verify_seccomp(const SandboxPlan &plan) {
 
 int main() {
   constexpr std::string_view worker =
-      "/usr/lib/omarchy/plugin-runtime/omarchy-plugin-qml-worker";
+      omarchy::plugin_runtime::kPackagedWorkerPath;
   const SandboxPlan plan = build_plan();
   require(plan.argv.front() == "/usr/bin/bwrap" &&
               plan.argv.back() == "/runtime/worker",
@@ -224,40 +268,23 @@ int main() {
   verify_lifecycle(plan);
   verify_seccomp(plan);
 
-  constexpr std::string_view provider = "/usr/lib/omarchy/providers/status";
-  const SandboxPlan provider_plan = build_provider_plan(std::string(provider));
-  require(provider_plan.argv.back() == "--omarchy-provider-fd=3" &&
-              provider_plan.argv.at(provider_plan.argv.size() - 2) ==
-                  "/runtime/provider",
-          "provider executable or fixed protocol descriptor changed");
-  require(provider_plan.worker_descriptors == std::vector<int>{3} &&
-              provider_plan.launcher_descriptors ==
-                  std::vector<int>({3, 4, 5, 6}),
-          "provider inherited an ambient descriptor");
-  require(contains_argument_pair(provider_plan, "--ro-bind", provider) &&
-              contains_argument_pair(provider_plan, "--tmpfs", "/home") &&
-              contains_argument_pair(provider_plan, "--tmpfs", "/tmp") &&
-              contains_argument_pair(provider_plan, "--tmpfs", "/run"),
-          "provider mounts or executable binding changed");
-  require(contains(provider_plan.argv, "--unshare-net") &&
-              contains(provider_plan.argv, "--clearenv") &&
-              !contains(provider_plan.argv, "/home/jacob") &&
-              !contains(provider_plan.argv, "WAYLAND_DISPLAY") &&
-              !contains(provider_plan.argv, "DBUS_SESSION_BUS_ADDRESS"),
-          "provider retained host network, home, Wayland, or session bus "
-          "authority");
-  require(contains_argument_pair(
-              provider_plan, "--size",
-              std::to_string(provider_plan.resources.scratch_max_bytes)) &&
-              provider_plan.resources.tasks_max == 4 &&
-              !provider_plan.process.descendants_permitted &&
-              provider_plan.process.kill_complete_generation_cgroup,
-          "provider scratch or process-tree limits changed");
-  verify_seccomp(provider_plan);
+  constexpr std::string_view test_worker = "/tmp/omarchy-test-worker";
+  const SandboxPlan test_plan = build_plan_for_worker(std::string(test_worker));
+  require(test_plan.argv.size() == plan.argv.size(),
+          "test worker substitution changed the argument count");
+  std::size_t changed_arguments = 0;
+  for (std::size_t index = 0; index < plan.argv.size(); ++index) {
+    changed_arguments += plan.argv.at(index) != test_plan.argv.at(index);
+  }
+  require(contains_argument_pair(test_plan, "--ro-bind", test_worker) &&
+              !contains_argument_pair(test_plan, "--ro-bind", worker) &&
+              test_plan.argv.back() == "/runtime/worker" &&
+              changed_arguments == 1,
+          "test worker substitution changed more than its bind source");
 
   bool rejected_relative = false;
   try {
-    static_cast<void>(build_test_plan_for_worker("relative-worker"));
+    static_cast<void>(build_plan_for_worker("relative-worker"));
   } catch (const std::invalid_argument &) {
     rejected_relative = true;
   }
@@ -265,7 +292,7 @@ int main() {
 
   bool rejected_noncanonical = false;
   try {
-    static_cast<void>(build_test_plan_for_worker("/tmp/../worker"));
+    static_cast<void>(build_plan_for_worker("/tmp/../worker"));
   } catch (const std::invalid_argument &) {
     rejected_noncanonical = true;
   }

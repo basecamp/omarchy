@@ -1,71 +1,51 @@
 import QtQuick
 
 Rectangle {
-    property string title: ""
-    property string message: ""
-    property string confirmText: "Confirm"
-    property bool opened: false
+  id: root
 
-    signal confirmed()
-    signal canceled()
+  property bool opened: false
+  property string message: ""
+  property string confirmText: "Confirm"
+  signal confirmed()
+  signal canceled()
 
-    visible: opened
-    color: "#e0151820"
+  visible: opened
+  z: 1000
+  color: Color.alpha(Color.background, 0.9)
 
-    MouseArea {
-        anchors.fill: parent
-        onClicked: parent.canceled()
+  Rectangle {
+    anchors.centerIn: parent
+    width: Math.min(parent.width - 32, 340)
+    height: content.implicitHeight + 28
+    radius: Style.cornerRadius
+    color: Color.popups.background
+    border.width: 1
+    border.color: Color.alpha(Color.foreground, 0.18)
+
+    Column {
+      id: content
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.margins: 14
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: 12
+
+      Text {
+        width: parent.width
+        text: root.message
+        color: Color.foreground
+        font.family: Style.font.menuFamily
+        font.pixelSize: Style.font.body
+        wrapMode: Text.WordWrap
+        textFormat: Text.PlainText
+      }
+
+      Row {
+        anchors.right: parent.right
+        spacing: 8
+        Button { text: "Cancel"; onClicked: root.canceled() }
+        Button { text: root.confirmText; onClicked: root.confirmed() }
+      }
     }
-
-    Rectangle {
-        anchors.centerIn: parent
-        width: Math.min(parent.width - Style.space(32), Style.space(360))
-        implicitHeight: content.implicitHeight + Style.space(32)
-        height: implicitHeight
-        radius: Style.space(10)
-        color: "#202530"
-
-        Column {
-            id: content
-
-            anchors.fill: parent
-            anchors.margins: Style.space(16)
-            spacing: Style.space(12)
-
-            Text {
-                width: parent.width
-                visible: text !== ""
-                text: title
-                color: Color.foreground
-                font.bold: true
-                wrapMode: Text.Wrap
-            }
-
-            Text {
-                width: parent.width
-                text: message
-                color: Color.foreground
-                wrapMode: Text.Wrap
-            }
-
-            Row {
-                anchors.right: parent.right
-                spacing: Style.space(8)
-
-                Button {
-                    text: "Cancel"
-                    onClicked: canceled()
-                }
-
-                Button {
-                    text: confirmText
-                    onClicked: confirmed()
-                }
-
-            }
-
-        }
-
-    }
-
+  }
 }

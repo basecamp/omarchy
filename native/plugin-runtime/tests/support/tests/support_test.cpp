@@ -208,7 +208,10 @@ void wire_corpus_test() {
                                       .message_type = 0x1100,
                                       .role_protocol_version = 1,
                                       .launch_generation = 1,
-                                      .correlation_id = 1};
+                                      .correlation_id = 1,
+                                      .lane_sequence =
+                                          (1ULL << 2U) |
+                                          static_cast<std::uint16_t>(role)};
     require(static_cast<bool>(wire::encode_packet(header, payload, output)),
             "endpoint cap fixture was rejected");
     payload.push_back(std::byte{0});
@@ -217,25 +220,6 @@ void wire_corpus_test() {
                 wire::FatalReason::payload_cap_exceeded,
             "one-byte-over endpoint fixture was accepted");
   }
-}
-#endif
-
-#if OMARCHY_TEST_HAS_MANIFEST
-void manifest_fake_test() {
-  namespace manifest = omarchy::plugins::manifest;
-  support::DeterministicIdSource ids(0x2000);
-  manifest::Lifecycle lifecycle;
-  lifecycle.stage(manifest::sha256_hex(std::to_string(ids.next())));
-  lifecycle.validation_succeeded(true);
-  lifecycle.candidate_health_succeeded();
-  require(lifecycle.active().has_value() && !lifecycle.pending().has_value(),
-          "deterministic lifecycle fake did not activate");
-  lifecycle.stage(manifest::sha256_hex(std::to_string(ids.next())));
-  lifecycle.validation_succeeded(false);
-  require(lifecycle.pending().has_value() &&
-              lifecycle.pending()->state ==
-                  manifest::RevisionState::awaiting_grants,
-          "deterministic lifecycle fake did not wait for grants");
 }
 #endif
 
@@ -257,7 +241,7 @@ void render_fake_test() {
               decoded.surface == frame.surface && decoded.slot == frame.slot &&
               decoded.slot_sequence == frame.slot_sequence &&
               decoded.frame_sequence == frame.frame_sequence,
-          "render fake does not use the B4 public codec");
+          "render fake does not use the public render codec");
   for (const auto &mutation : support::bounded_mutations(bytes, 64)) {
     static_cast<void>(surface::decode_frame_ready(mutation.bytes, decoded));
   }
@@ -271,9 +255,6 @@ int main() {
   descriptor_support_test();
 #if OMARCHY_TEST_HAS_WIRE
   wire_corpus_test();
-#endif
-#if OMARCHY_TEST_HAS_MANIFEST
-  manifest_fake_test();
 #endif
 #if OMARCHY_TEST_HAS_SURFACE
   render_fake_test();

@@ -1,0 +1,10 @@
+#pragma once
+
+#include <string_view>
+
+namespace omarchy::plugin_runtime::command_executor {
+
+inline constexpr std::string_view kContractDigest =
+    "@OMARCHY_COMMAND_CONTRACT_DIGEST@";
+
+} // namespace omarchy::plugin_runtime::command_executor

@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "profile": "github-api-v1",
+  "command": "gh",
+  "executable": "/usr/bin/gh",
+  "timeoutMs": 20000,
+  "stdoutBytes": 49152,
+  "stderrBytes": 4096,
+  "accountHome": true,
+  "environment": {
+    "GH_HOST": "github.com",
+    "GH_PAGER": "cat",
+    "GH_PROMPT_DISABLED": "1",
+    "GOMAXPROCS": "2",
+    "NO_COLOR": "1",
+    "PAGER": "cat"
+  },
+  "rules": [
+    [
+      {"exact": "auth"},
+      {"exact": "status"},
+      {"exact": "--hostname"},
+      {"exact": "github.com"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "-H"},
+      {"exact": "Accept: application/vnd.github+json"},
+      {"regex": "/notifications\\?all=false&participating=false&per_page=10&page=[1-9][0-9]{0,2}"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "-H"},
+      {"exact": "Accept: application/vnd.github+json"},
+      {"regex": "/search/issues\\?q=is%3Aopen\\+is%3Apr\\+review-requested%3A%40me(?:\\+draft%3Afalse)?(?:\\+archived%3Afalse)?&per_page=10&page=[1-9][0-9]{0,2}"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "-H"},
+      {"exact": "Accept: application/vnd.github+json"},
+      {"regex": "/search/issues\\?q=is%3Aopen\\+is%3Aissue\\+assignee%3A%40me(?:\\+archived%3Afalse)?&per_page=10&page=[1-9][0-9]{0,2}"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "-H"},
+      {"exact": "Accept: application/vnd.github+json"},
+      {"regex": "/repos/[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}/actions/runs\\?status=(?:in_progress|queued|waiting|requested|pending)&per_page=10&page=[1-9][0-9]{0,2}"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "-H"},
+      {"exact": "Accept: application/vnd.github+json"},
+      {"regex": "/repos/[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}/actions/runs\\?status=completed&created=%3E%3D[0-9]{4}-[0-9]{2}-[0-9]{2}&per_page=10&page=[1-9][0-9]{0,2}"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "--method"},
+      {"exact": "PATCH"},
+      {"regex": "/notifications/threads/[0-9]{1,32}"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "--method"},
+      {"exact": "PUT"},
+      {"exact": "/notifications"},
+      {"exact": "-f"},
+      {"regex": "last_read_at=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "graphql"},
+      {"exact": "-f"},
+      {"exact": "query=query($search:String!) { search(query:$search,type:ISSUE,first:50) { issueCount nodes { ... on PullRequest { number title url updatedAt isDraft repository { nameWithOwner } commits(last:1) { nodes { commit { statusCheckRollup { state } } } } } } } } }"},
+      {"exact": "-F"},
+      {"regex": "search=is:open is:pr author:@me sort:updated-desc(?: archived:false)?"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "graphql"},
+      {"exact": "-f"},
+      {"regex": "query=query\\(\\$cursor:String\\) \\{ viewer \\{ login repositories\\(first:100,after:\\$cursor,ownerAffiliations:(?:OWNER|\\[OWNER,ORGANIZATION_MEMBER\\]),orderBy:\\{field:UPDATED_AT,direction:DESC\\}\\) \\{ nodes \\{ name nameWithOwner url isArchived isFork stargazerCount updatedAt issues\\(states:OPEN\\)\\{totalCount\\} pullRequests\\(states:OPEN\\)\\{totalCount\\} \\} pageInfo \\{ hasNextPage endCursor \\} \\} \\} rateLimit \\{ remaining resetAt cost \\} \\}"}
+    ],
+    [
+      {"exact": "api"},
+      {"exact": "graphql"},
+      {"exact": "-f"},
+      {"regex": "query=query\\(\\$cursor:String\\) \\{ viewer \\{ login repositories\\(first:100,after:\\$cursor,ownerAffiliations:(?:OWNER|\\[OWNER,ORGANIZATION_MEMBER\\]),orderBy:\\{field:UPDATED_AT,direction:DESC\\}\\) \\{ nodes \\{ name nameWithOwner url isArchived isFork stargazerCount updatedAt issues\\(states:OPEN\\)\\{totalCount\\} pullRequests\\(states:OPEN\\)\\{totalCount\\} \\} pageInfo \\{ hasNextPage endCursor \\} \\} \\} rateLimit \\{ remaining resetAt cost \\} \\}"},
+      {"exact": "-F"},
+      {"regex": "cursor=[A-Za-z0-9_-]{1,256}"}
+    ]
+  ]
+}
