@@ -126,6 +126,8 @@
   "setup.monitors": {"icon":"󰍹","label":"Monitors","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/monitors.lua\""},
   "setup.keybindings": {"icon":"","label":"Keybindings","when":"[[ -f ~/.config/hypr/bindings.lua ]]","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/bindings.lua\""},
   "setup.input": {"icon":"","label":"Input","when":"[[ -f ~/.config/hypr/input.lua ]]","action":"omarchy-launch-config-editor \"$HOME/.config/hypr/input.lua\""},
+  "setup.input-method": {"icon":"󰗊","label":"Input Method"},
+  "setup.input-method.mozc": {"icon":"󰗊","label":"Mozc (Japanese)","action":"omarchy-launch-floating-terminal-with-presentation omarchy-setup-input-mozc"},
   "setup.network": {"icon":"󰛳","label":"Network","aliases":["network"]},
   "setup.network.dns": {"icon":"󰇖","label":"DNS","aliases":["dns"]},
   "setup.network.dns.dhcp": {"icon":"󰩟","label":"DHCP","checked":"[[ \"$(omarchy-dns)\" == \"DHCP\" ]]","action":"omarchy-dns DHCP"},
