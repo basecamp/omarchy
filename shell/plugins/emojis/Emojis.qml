@@ -13,6 +13,12 @@ Item {
   property var shell: null
   property var manifest: null
 
+  // Address of the window that had focus when the picker opened. The insert
+  // helper refocuses it before typing, so the emoji lands in the app the user
+  // was in — not whichever window sits under the clicked cell when the card
+  // spans two windows (split layouts, multi-monitor).
+  property string focusAddress: ""
+
   property bool opened: false
   property string filterText: ""
   property int selectedIndex: 0
@@ -43,12 +49,23 @@ Item {
   property int columns: Math.floor((cardWidth - contentMargin * 2) / cellWidth)
 
   function open(payloadJson) {
+    // Capture focus before the overlay maps: the layer grabs keyboard focus
+    // exclusively once visible, so the probe must run first to deterministically
+    // read the window the user was in.
+    root.captureFocus()
     root.opened = true
     root.filterText = ""
     root.selectedIndex = 0
     root.cursorActive = true
     root.rebuildDisplay()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function captureFocus() {
+    // hyprctl is a runtime invariant invoked via PATH, like the rest of the
+    // shell (e.g. Workspaces.qml).
+    focusProbe.command = ["hyprctl", "-j", "activewindow"]
+    focusProbe.running = true
   }
 
   function close() {
@@ -148,10 +165,34 @@ Item {
   function applySelected(emoji) {
     if (!emoji) return
     root.dismiss()
-    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji])
+    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji, root.focusAddress])
   }
 
   ListModel { id: displayModel }
+
+  // One-shot probe: reads `hyprctl -j activewindow` when the picker opens so
+  // the emoji can be typed back into the window the user was actually using.
+  Process {
+    id: focusProbe
+    stdout: StdioCollector {
+      id: focusStdout
+      waitForEnd: true
+    }
+    onExited: function(code) {
+      var text = String(focusStdout.text || "").trim()
+      var address = ""
+      if (text) {
+        try {
+          var data = JSON.parse(text)
+          if (data && data.address && data.address !== "0x0")
+            address = String(data.address)
+        } catch (e) {
+          address = ""
+        }
+      }
+      root.focusAddress = address
+    }
+  }
 
   FileView {
     path: root.omarchyPath + "/shell/plugins/emojis/emojis.json"
