@@ -7,9 +7,9 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 tmp_dir=$(mktemp -d)
 trap 'rm -r "$tmp_dir"' EXIT
 
-cat >"$tmp_dir/blkid" <<'EOF'
+cat >"$tmp_dir/lsblk" <<'EOF'
 #!/bin/bash
-echo /dev/test-luks
+echo "/dev/test-luks crypto_LUKS"
 EOF
 
 cat >"$tmp_dir/gum" <<'EOF'
@@ -24,7 +24,7 @@ printf '%s\n' "$@" >"$TEST_ARGS"
 cat >"$TEST_STDIN"
 EOF
 
-chmod +x "$tmp_dir/blkid" "$tmp_dir/gum" "$tmp_dir/sudo"
+chmod +x "$tmp_dir/lsblk" "$tmp_dir/gum" "$tmp_dir/sudo"
 export PATH="$tmp_dir:$ROOT/bin:$PATH"
 export TEST_ARGS="$tmp_dir/args" TEST_INPUTS="$tmp_dir/inputs" TEST_STDIN="$tmp_dir/stdin"
 
