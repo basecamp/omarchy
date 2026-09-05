@@ -35,3 +35,19 @@ hl.config({
   },
 })
 ```
+
+### Caps Lock as Control
+
+Caps Lock sits on the home row, right under your left pinky, and most people only ever hit it by accident. Control sits down in the corner, which turns every `Ctrl + W`, `Ctrl + R`, or tmux prefix into a stretch. If you spend your day in Neovim, tmux, or a shell, putting Control on the home row saves your pinky a lot of travel.
+
+Omarchy uses Caps Lock as the compose key, so `ctrl:nocaps` on its own would leave you without one. Give compose another home in the same option string to keep the [quick emojis](07-hotkeys.md#quick-emojis) and [completions](07-hotkeys.md#quick-completions) working. Right Alt is the usual spot:
+
+```lua
+hl.config({
+  input = {
+    kb_options = "ctrl:nocaps,compose:ralt,shift:both_capslock_cancel",
+  },
+})
+```
+
+On many Mac-style keyboards, the physical key in that position is the right Command key, which Linux often maps as the right Super/Windows key. In that case, use `compose:rwin` instead. If your keyboard is mapped differently, pick the compose option that matches the physical key you want to use.
