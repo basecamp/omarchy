@@ -49,3 +49,8 @@ done
 echo -e "\e[32m\nRestarting shell\e[0m"
 echo "All plugins have been reloaded"
 omarchy-restart-shell || true
+
+# bash holds a running crash-watch on the unlinked inode after pacman
+# replaces the script, so the next toast calls the new notification
+# helper with the old argv. try-restart is a no-op if it isn't running.
+systemctl --user try-restart omarchy-crash-watch.service >/dev/null 2>&1 || true
