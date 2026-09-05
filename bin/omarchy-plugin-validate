@@ -100,6 +100,7 @@ for kind_entry_point in \
   "menu:menu" \
   "overlay:overlay" \
   "panel:panel" \
+  "screensaver:screensaver" \
   "service:service"; do
   kind="${kind_entry_point%%:*}"
   entry_point="${kind_entry_point##*:}"
@@ -107,6 +108,17 @@ for kind_entry_point in \
   jq -e --arg ep "$entry_point" '.entryPoints | has($ep)' "$MANIFEST" >/dev/null 2>&1 \
     || fail "kind '$kind' requires an 'entryPoints.$entry_point' to load"
 done
+
+# The screensaver entry point is executed as a program, not loaded as QML. One
+# without the executable bit installs a screensaver that silently falls back to
+# the built-in terminal one, so refuse it here like a missing entry point. Git
+# checkouts preserve the bit, so a properly shipped launcher passes.
+if jq -e '(.kinds | index("screensaver")) != null' "$MANIFEST" >/dev/null 2>&1; then
+  ep=$(jq -r '.entryPoints.screensaver // empty' "$MANIFEST")
+  if [[ -n $ep && ! -x "$PLUGIN_DIR/$ep" ]]; then
+    fail "kind 'screensaver' requires its entry point to be executable: '$ep'"
+  fi
+fi
 
 # Refuse any symlink anywhere inside the plugin folder. Symlinks could point a
 # copied plugin back at arbitrary files on disk after it lands in the trusted

@@ -14,6 +14,7 @@ const kindEntryPoints = {
   'menu': 'menu',
   'overlay': 'overlay',
   'panel': 'panel',
+  'screensaver': 'screensaver',
   'service': 'service'
 }
 

@@ -94,6 +94,8 @@ You can start it on demand from _System > Screensaver_ (`Super + Esc`), which fo
 
 The logo it draws is yours to change, under _Style > Screensaver_. Upload a png or svg and Omarchy converts it to ASCII. See [branding](41-branding.md).
 
+If you'd rather run a different screensaver entirely, install a plugin that declares the `screensaver` kind — `omarchy plugin add` and `omarchy plugin enable` work the same as for any other plugin — and the idle service will run it instead of the built-in one. The selection lives in `shell.json` as `idle.screensaverId`, exactly one screensaver plugin is active at a time, and removing the key (or the plugin) puts the built-in screensaver back. The idle-to-lock behavior is unchanged either way: the lock still fires at `idle.lock` no matter what the screensaver is doing, and dismissing a screensaver window with the class `org.omarchy.screensaver` still cancels the pending lock. `omarchy toggle screensaver` turns a plugin screensaver off the same way it does the built-in one; _System > Screensaver_ (the forced launch) keeps starting the built-in screensaver.
+
 ### The lock screen
 
 `Super + Ctrl + L` locks the machine. That runs the lock screen from the Omarchy shell, blanks the display, resets your keyboard layout to the first one so you're not typing your password in the wrong alphabet, and — if you have it running — locks 1Password on the way out.

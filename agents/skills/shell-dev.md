@@ -22,7 +22,9 @@ Run `omarchy-restart-shell` after making changes to QML files.
   `activation` are optional.
 - Entry-point QML files are `Item`s (not `ShellRoot`), and accept the
   shell-injected properties `omarchyPath`, `shell`, `manifest`, and
-  `pluginRegistry` / `barWidgetRegistry` as appropriate.
+  `pluginRegistry` / `barWidgetRegistry` as appropriate. The exception is the
+  `screensaver` kind, whose entry point is an executable launcher the idle
+  service runs in place of `omarchy-launch-screensaver`.
 - Panel / overlay / menu plugins must expose `open(payloadJson)` and
   `close()` lifecycle methods for `shell summon` and `shell hide`.
 

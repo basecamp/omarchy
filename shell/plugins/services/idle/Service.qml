@@ -25,6 +25,19 @@ Item {
   readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
+  // A screensaver-kind plugin selected by idle.screensaverId replaces the
+  // built-in terminal screensaver, the way bar.id selects a full bar option.
+  // A missing or invalid selection resolves to "" and the launch script falls
+  // back to omarchy-launch-screensaver, so users always have a safe path home.
+  readonly property string selectedScreensaverId: IdleModel.screensaverIdFromConfig(idleConfig.screensaverId)
+  readonly property string screensaverLauncherPath: {
+    if (!selectedScreensaverId || !shell || !shell.pluginRegistry) return ""
+    var revision = shell.pluginRegistry.registryRevision
+    var manifest = shell.pluginRegistry.installedPlugins[selectedScreensaverId] || null
+    if (!manifest || !Array.isArray(manifest.kinds) || manifest.kinds.indexOf("screensaver") === -1) return ""
+    return shell.pluginRegistry.entryPointPath(manifest, "screensaver")
+  }
+
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
   property bool hasPendingStayAwakePersist: false
@@ -51,13 +64,14 @@ Item {
     console.log("omarchy idle " + root.lastEventAt + " " + root.lastEvent)
   }
 
-  function runProcess(process, label, command) {
+  function runProcess(process, label, command, args) {
     if (process.running) {
       logEvent("process-skip", label + " already running")
       return false
     }
-    logEvent("process-start", label + " " + command)
-    process.command = ["bash", "-lc", command]
+    var argv = args || []
+    logEvent("process-start", label + " " + command + (argv.length > 1 ? " [" + argv.slice(1).join(", ") + "]" : ""))
+    process.command = ["bash", "-lc", command].concat(argv)
     process.running = true
     return true
   }
@@ -65,7 +79,8 @@ Item {
   function launchScreensaver() {
     root.screensaverStartedThisCycle = true
     screensaverLaunchGraceTimer.restart()
-    runProcess(screensaverProcess, "screensaver", "[[ $(omarchy-shell lock isLocked 2>/dev/null) == \"true\" ]] || omarchy-launch-screensaver")
+    var launch = IdleModel.screensaverLaunch(root.screensaverLauncherPath)
+    runProcess(screensaverProcess, "screensaver", launch.command, launch.args)
   }
 
   function lockSystem(reason) {
@@ -188,6 +203,8 @@ Item {
       screensaverStarted: root.screensaverStartedThisCycle,
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,
+      screensaverId: root.selectedScreensaverId,
+      screensaverLauncher: root.screensaverLauncherPath,
       screensaverDelay: root.screensaverDelaySeconds,
       lockDelay: root.lockDelaySeconds,
       screensaverWindows: root.screensaverWindowCount,
