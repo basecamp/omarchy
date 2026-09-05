@@ -61,7 +61,7 @@
         "textPreformat.background": "{{ background }}",
         "textSeparator.foreground": "{{ muted }}",
 
-        "toolbar.hoverBackground": "{{ background }}",
+        "toolbar.hoverBackground": "{{ muted }}60",
         "toolbar.activeBackground": "{{ muted }}",
 
         "button.background": "{{ accent }}",
@@ -69,7 +69,7 @@
         "button.hoverBackground": "{{ blue }}",
         "button.secondaryForeground": "{{ foreground }}",
         "button.secondaryBackground": "{{ muted }}",
-        "button.secondaryHoverBackground": "{{ background }}",
+        "button.secondaryHoverBackground": "{{ muted }}80",
         "button.border": "{{ accent }}20",
         "checkbox.background": "{{ background }}",
         "checkbox.foreground": "{{ foreground }}",
@@ -135,7 +135,7 @@
         "tree.indentGuidesStroke": "{{ muted }}",
         "tree.inactiveIndentGuidesStroke": "{{ muted }}60",
         "tree.tableColumnsBorder": "{{ muted }}",
-        "tree.tableOddRowsBackground": "{{ background }}40",
+        "tree.tableOddRowsBackground": "{{ muted }}20",
 
         "activityBar.background": "{{ background }}",
         "activityBar.dropBorder": "{{ accent }}",
@@ -145,7 +145,7 @@
         "activityBarBadge.background": "{{ accent }}",
         "activityBarBadge.foreground": "{{ background }}",
         "activityBar.activeBorder": "{{ accent }}",
-        "activityBar.activeBackground": "{{ background }}40",
+        "activityBar.activeBackground": "{{ muted }}80",
 
         "sideBar.background": "{{ background }}",
         "sideBar.foreground": "{{ foreground }}",
@@ -526,7 +526,7 @@
         "keybindingLabel.border": "{{ muted }}",
         "keybindingLabel.bottomBorder": "{{ muted }}",
         "keybindingTable.headerBackground": "{{ background }}",
-        "keybindingTable.rowsBackground": "{{ background }}40",
+        "keybindingTable.rowsBackground": "{{ muted }}20",
 
         "terminal.background": "{{ background }}",
         "terminal.foreground": "{{ foreground }}",
@@ -623,7 +623,7 @@
         "settings.checkboxBackground": "{{ background }}",
         "settings.checkboxForeground": "{{ foreground }}",
         "settings.checkboxBorder": "{{ muted }}",
-        "settings.rowHoverBackground": "{{ background }}",
+        "settings.rowHoverBackground": "{{ muted }}60",
         "settings.textInputBackground": "{{ background }}",
         "settings.textInputForeground": "{{ foreground }}",
         "settings.textInputBorder": "{{ muted }}",
@@ -704,12 +704,12 @@
 
         "notebook.editorBackground": "{{ background }}",
         "notebook.cellBorderColor": "{{ muted }}40",
-        "notebook.cellHoverBackground": "{{ background }}40",
+        "notebook.cellHoverBackground": "{{ muted }}40",
         "notebook.cellInsertionIndicator": "{{ accent }}",
         "notebook.cellStatusBarItemHoverBackground": "{{ muted }}",
         "notebook.cellToolbarSeparator": "{{ muted }}",
         "notebook.cellEditorBackground": "{{ background }}",
-        "notebook.focusedCellBackground": "{{ background }}60",
+        "notebook.focusedCellBackground": "{{ muted }}80",
         "notebook.focusedCellBorder": "{{ accent }}",
         "notebook.focusedEditorBorder": "{{ accent }}",
         "notebook.inactiveFocusedCellBorder": "{{ muted }}",
