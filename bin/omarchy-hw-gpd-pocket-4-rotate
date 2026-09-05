@@ -1,0 +1,139 @@
+#!/usr/bin/python3
+# omarchy:summary=Rotate the screen with the GPD Pocket 4 accelerometer (iio-sensor-proxy)
+# omarchy:hidden=true
+
+"""Automatic screen rotation for the GPD Pocket 4 on Hyprland.
+
+Watches AccelerometerOrientation on iio-sensor-proxy (system bus) and applies
+matching monitor + touchscreen transforms via `hyprctl eval`. The touch device
+transform is set explicitly alongside the monitor transform; inheriting the
+monitor transform is not reliable (hyprwm/Hyprland#3538).
+
+The panel is natively portrait and sits at transform 3 in laptop pose.
+Empirically calibrated on a GPD Pocket 4 (2026-08-30): laptop pose reports
+"right-up", giving the default mapping normal=0, left-up=1, bottom-up=2,
+right-up=3. Units whose accelerometer anchors differently can shift the whole
+table with an offset: write 0-3 into ~/.config/omarchy/gpd-pocket-4-orientation.
+"""
+
+import json
+import os
+import subprocess
+import sys
+
+from gi.repository import Gio, GLib
+
+DEFAULT_TOUCH_DEVICE = "nvtk0603:00-0603:f001"
+DEFAULT_MONITOR = "eDP-1"
+ORIENTATION_TO_TRANSFORM = {
+    "normal": 0,
+    "left-up": 1,
+    "bottom-up": 2,
+    "right-up": 3,  # laptop pose on a stock GPD Pocket 4
+}
+
+
+def load_offset():
+    path = os.path.expanduser("~/.config/omarchy/gpd-pocket-4-orientation")
+    try:
+        return int(open(path).read().strip()) % 4
+    except (OSError, ValueError):
+        return 0
+
+
+def detect_monitor():
+    try:
+        monitors = json.loads(subprocess.run(
+            ["hyprctl", "monitors", "-j"], capture_output=True, text=True, check=True
+        ).stdout)
+        internal = [m["name"] for m in monitors if m.get("name", "").startswith(("eDP", "DSI"))]
+        if internal:
+            return internal[0]
+    except (subprocess.SubprocessError, ValueError, KeyError):
+        pass
+    return DEFAULT_MONITOR
+
+
+def detect_touch_device():
+    try:
+        devices = json.loads(subprocess.run(
+            ["hyprctl", "devices", "-j"], capture_output=True, text=True, check=True
+        ).stdout)
+        names = [d["name"] for d in devices.get("touch", []) + devices.get("tablets", [])]
+        if names:
+            return names[0]
+    except (subprocess.SubprocessError, ValueError, KeyError):
+        pass
+    return DEFAULT_TOUCH_DEVICE
+
+
+def ensure_hyprland_env():
+    if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return
+    hypr_dir = f"/tmp/hypr/{os.getuid()}"
+    candidates = sorted(
+        (d, os.path.getmtime(os.path.join(hypr_dir, d)))
+        for d in os.listdir(hypr_dir)
+        if os.path.isdir(os.path.join(hypr_dir, d))
+    )
+    if candidates:
+        os.environ["HYPRLAND_INSTANCE_SIGNATURE"] = candidates[-1][0]
+
+
+def apply_transform(monitor, touch_device, transform):
+    exprs = [f'hl.monitor({{ output = "{monitor}", transform = {transform} }})']
+    if touch_device:
+        exprs.append(f'hl.device({{ name = "{touch_device}", transform = {transform} }})')
+    for expr in exprs:
+        result = subprocess.run(["hyprctl", "eval", expr], capture_output=True, text=True)
+        if "ok" not in result.stdout.lower():
+            print(f"hyprctl eval failed: {expr!r}: {result.stdout}{result.stderr}", file=sys.stderr, flush=True)
+    print(f"applied transform {transform}", flush=True)
+
+
+def main():
+    ensure_hyprland_env()
+    monitor = detect_monitor()
+    touch_device = detect_touch_device()
+    offset = load_offset()
+
+    def on_properties_changed(proxy, changed, invalidated):
+        props = changed.unpack()
+        orientation = props.get("AccelerometerOrientation")
+        if orientation is None:
+            return
+        base = ORIENTATION_TO_TRANSFORM.get(orientation.unpack())
+        if base is not None:
+            apply_transform(monitor, touch_device, (base + offset) % 4)
+
+    try:
+        proxy = Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SYSTEM,
+            Gio.DBusProxyFlags.NONE,
+            None,
+            "net.hadess.SensorProxy",
+            "/net/hadess/SensorProxy",
+            "net.hadess.SensorProxy",
+        )
+    except GLib.Error as error:
+        print(f"iio-sensor-proxy not reachable: {error.message}", file=sys.stderr, flush=True)
+        return 0
+
+    has_accelerometer = proxy.get_cached_property("HasAccelerometer")
+    if not has_accelerometer or not has_accelerometer.unpack():
+        print("no accelerometer exposed by iio-sensor-proxy", file=sys.stderr, flush=True)
+        return 0
+
+    proxy.connect("g-properties-changed", on_properties_changed)
+    proxy.call_sync("ClaimAccelerometer", None, Gio.DBusCallFlags.NONE, -1)
+    initial = proxy.get_cached_property("AccelerometerOrientation")
+    if initial is not None:
+        base = ORIENTATION_TO_TRANSFORM.get(initial.unpack())
+        if base is not None:
+            apply_transform(monitor, touch_device, (base + offset) % 4)
+    print("watching accelerometer orientation...", flush=True)
+    GLib.MainLoop().run()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

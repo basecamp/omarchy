@@ -2,6 +2,7 @@ run_logged "$OMARCHY_INSTALL/hardware/asus-rog.sh"
 run_logged "$OMARCHY_INSTALL/hardware/framework16.sh"
 run_logged "$OMARCHY_INSTALL/hardware/dell-xps-touchpad-haptics.sh"
 run_logged "$OMARCHY_INSTALL/hardware/surface.sh"
+run_logged "$OMARCHY_INSTALL/hardware/gpd-pocket-4.sh"
 
 run_logged "$OMARCHY_INSTALL/hardware/network.sh"
 run_logged "$OMARCHY_INSTALL/hardware/set-wireless-regdom.sh"
