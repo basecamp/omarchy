@@ -2,8 +2,12 @@
 
 # omarchy:summary=Launch the Omarchy screensaver in the default terminal on the system with the correct font configuration.
 
-# Exit early if screensaver is already running
-pgrep -f '[o]rg.omarchy.screensaver' && exit 0
+# Exit early if a real screensaver client is already running.
+# Match on process name (omarchy-screensaver) rather than pgrep -f against the
+# app-id string: -f scans every process command line, so an unrelated process
+# whose argv happens to contain "org.omarchy.screensaver" would make this
+# launcher exit 0 with no screensaver started (see #10197).
+pgrep -x omarchy-screensaver >/dev/null && exit 0
 
 # Allow screensaver to be turned off but also force started
 if omarchy-toggle-enabled screensaver-off && [[ $1 != "force" ]]; then
