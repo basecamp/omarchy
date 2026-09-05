@@ -160,6 +160,15 @@ Item {
           visible: passwordInput.cursorVisible
         }
 
+        // Suspending drops keyboard focus from this field while the lock is
+        // still up, and nothing puts it back: focus is only taken in
+        // Component.onCompleted and when inputEnabled changes, and inputEnabled
+        // is already true by then. Take it back so the machine wakes ready to
+        // type instead of needing a click first.
+        onActiveFocusChanged: {
+          if (!activeFocus && root.inputEnabled) Qt.callLater(root.forcePasswordFocus)
+        }
+
         onTextChanged: {
           if (!root.syncingPasswordText) root.passwordTextEdited(text)
           if (text.length > 0) {
