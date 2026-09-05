@@ -22,7 +22,7 @@ else
   pkgs="unknown"
 fi
 
-if [[ $mirror == $pkgs ]]; then
+if [[ $mirror == "$pkgs" ]]; then
   echo $mirror
 else
   echo "$mirror / $pkgs"

@@ -121,7 +121,7 @@ settle_grid() {
 
   for _ in {1..20}; do
     current=$(stty size)
-    if [[ $current == $previous ]]; then
+    if [[ $current == "$previous" ]]; then
       (( ++held == 3 )) && break
     else
       held=0
@@ -353,7 +353,7 @@ if [[ ${1:-} == "--render" ]]; then
     build_sheen
     while play_sheen && rest_sheen; do :; done
     # A rebranded logo changes the content dimensions, so measure again.
-    if [[ $(stat -c %Y "$LOGO_FILE" 2>/dev/null) != $logo_stamp ]]; then
+    if [[ $(stat -c %Y "$LOGO_FILE" 2>/dev/null) != "$logo_stamp" ]]; then
       fitted=false
       passes=0
     fi

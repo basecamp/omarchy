@@ -112,7 +112,7 @@ if [[ $shell_output == "true" ]]; then
   [[ -n $cycles ]] && printf 'cycles\t%s\n' "$cycles"
 
   if [[ -n $threshold_end ]]; then
-    if [[ -n $threshold_start && $threshold_start != $threshold_end ]]; then
+    if [[ -n $threshold_start && $threshold_start != "$threshold_end" ]]; then
       printf 'threshold\t%s-%s%%\n' "$threshold_start" "$threshold_end"
     else
       printf 'threshold\t%s%%\n' "$threshold_end"
@@ -123,7 +123,7 @@ if [[ $shell_output == "true" ]]; then
 fi
 
 if [[ $charge_holding == "true" ]]; then
-  if [[ -n $threshold_start && $threshold_start != $threshold_end ]]; then
+  if [[ -n $threshold_start && $threshold_start != "$threshold_end" ]]; then
     threshold_label="${threshold_start}-${threshold_end}%"
   else
     threshold_label="${threshold_end}%"

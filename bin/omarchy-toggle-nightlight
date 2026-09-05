@@ -42,7 +42,7 @@ fi
 # Query the current temperature
 CURRENT_TEMP=$(current_temp)
 
-if [[ -z $CURRENT_TEMP || $CURRENT_TEMP == $OFF_TEMP ]]; then
+if [[ -z $CURRENT_TEMP || $CURRENT_TEMP == "$OFF_TEMP" ]]; then
   TARGET_TEMP=$ON_TEMP
 else
   TARGET_TEMP=$OFF_TEMP

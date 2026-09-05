@@ -236,7 +236,7 @@ disable_internal() {
   local config
   config=$(printf 'hl.monitor({ output = "%s", disabled = true })' "$INTERNAL")
 
-  if [[ ! -f $CLAMSHELL_FLAG ]] || [[ $(< "$CLAMSHELL_FLAG") != $config ]]; then
+  if [[ ! -f $CLAMSHELL_FLAG ]] || [[ $(< "$CLAMSHELL_FLAG") != "$config" ]]; then
     printf '%s\n' "$config" >"$CLAMSHELL_FLAG"
     hyprctl reload >/dev/null 2>&1 || true
   fi
