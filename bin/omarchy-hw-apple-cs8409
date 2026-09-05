@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the computer is a pre-T2 Mac with CS8409 audio
+# omarchy:hidden=true
+
+# Cirrus CS8409 + MAX98706/SSM3515/TAS5764L (or CS42L83 on iMac). In-tree
+# snd_hda_codec_cs8409 does not program those amps. Covers:
+# - 2016–2017 MacBook Pros (MacBookPro13,x / 14,x), including two-port 13"
+# - 2017–2019 iMacs (iMac18,x / iMac19,x) with the same CS8409 bridge
+# T2 and later use a different codec and must not get this driver.
+product_name=$(cat "${OMARCHY_DMI_PRODUCT_NAME:-/sys/class/dmi/id/product_name}" 2>/dev/null)
+[[ $product_name =~ MacBookPro13,[123]|MacBookPro14,[123]|iMac18,[123]|iMac19,[12] ]]
