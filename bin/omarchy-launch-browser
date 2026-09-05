@@ -8,10 +8,11 @@ if [[ -z $default_browser ]]; then
   default_browser=$(xdg-mime query default x-scheme-handler/https)
 fi
 browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$default_browser 2>/dev/null | head -1)
+browser_name=$(basename "$browser_exec")
 
-if $browser_exec --help 2>/dev/null | grep -q MOZ_LOG; then
+if [[ $browser_name == firefox* || $browser_name == zen* || $browser_name == librewolf* || $browser_name == waterfox* ]]; then
   private_flag="--private-window"
-elif [[ $browser_exec =~ edge ]]; then
+elif [[ $browser_name == *edge* ]]; then
   private_flag="--inprivate"
 else
   private_flag="--incognito"
