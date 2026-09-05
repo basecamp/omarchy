@@ -23,9 +23,14 @@ fi
 # A healthy CUPS server with no configured printers reports this condition on
 # stderr and exits 1. Treat that as an empty queue list; every other failure
 # keeps the migration pending so it can be retried.
-if queue_report=$(LC_ALL=C lpstat -v 2>&1); then
+# LANGUAGE overrides LC_ALL for gettext, so pin LANGUAGE/LC_MESSAGES too.
+# Otherwise a non-English locale still prints a translated empty-queue
+# message and this migration fails with no printers configured.
+if queue_report=$(LC_ALL=C LANGUAGE=C LC_MESSAGES=C lpstat -v 2>&1); then
   :
-elif [[ $queue_report == "lpstat: No destinations added." ]]; then
+elif [[ $queue_report == "lpstat: No destinations added." ||
+  $queue_report == "lpstat: Scheduler is not running." ]]; then
+  # Empty or CUPS-down: nothing to scrub; still drop cups-browsed below.
   queue_report=""
 else
   printf '%s\n' "$queue_report" >&2
@@ -39,7 +44,7 @@ while IFS= read -r queue; do
   [[ -n $queue ]] || continue
 
   if ! reject_error=$(sudo cupsreject -r "Printer discovery has been removed from Omarchy" "$queue" 2>&1); then
-    if LC_ALL=C lpstat -p "$queue" >/dev/null 2>&1; then
+    if LC_ALL=C LANGUAGE=C LC_MESSAGES=C lpstat -p "$queue" >/dev/null 2>&1; then
       printf '%s\n' "$reject_error" >&2
       exit 1
     else
@@ -47,9 +52,9 @@ while IFS= read -r queue; do
     fi
   fi
 
-  if job_report=$(LC_ALL=C lpstat -o "$queue" 2>&1); then
+  if job_report=$(LC_ALL=C LANGUAGE=C LC_MESSAGES=C lpstat -o "$queue" 2>&1); then
     [[ -z $job_report ]] || continue
-  elif LC_ALL=C lpstat -p "$queue" >/dev/null 2>&1; then
+  elif LC_ALL=C LANGUAGE=C LC_MESSAGES=C lpstat -p "$queue" >/dev/null 2>&1; then
     printf '%s\n' "$job_report" >&2
     exit 1
   else
@@ -61,7 +66,7 @@ while IFS= read -r queue; do
   if ! delete_error=$(sudo lpadmin -x "$queue" 2>&1); then
     # Treat a concurrent disappearance as success. A queue that still exists
     # means CUPS did not complete the deletion, so retry the migration later.
-    if LC_ALL=C lpstat -p "$queue" >/dev/null 2>&1; then
+    if LC_ALL=C LANGUAGE=C LC_MESSAGES=C lpstat -p "$queue" >/dev/null 2>&1; then
       printf '%s\n' "$delete_error" >&2
       exit 1
     fi
