@@ -17,9 +17,12 @@ Item {
   property var desktopHiddenEntryIds: ({})
 
   // Maps an icon name to a file on disk (e.g. "omacut" -> ".../apps/omacut.svg").
-  // Used as a fallback for icons that Qt's themed lookup misses because they were
-  // installed after this process started (its icon cache never re-scans). Refreshed
-  // whenever the app list changes, so newly installed apps get their icon live.
+  // Built by walking the icon theme's inheritance chain and limited to
+  // app/device icons, so a name resolves without the ambiguity an
+  // unconstrained themed lookup carries, and so icons installed after this
+  // process started are found at all (Qt's icon cache never re-scans).
+  // Refreshed whenever the app list changes, so newly installed apps get their
+  // icon live.
   property var iconIndex: ({})
   property var pendingIconIndex: ({})
 
@@ -120,19 +123,52 @@ Item {
   }
 
   function iconIndexScanCommand() {
-    // List app/device icons across the XDG icon dirs and /usr/share/pixmaps as
-    // "<path>" lines. Some desktop entries, such as Print Settings, use device
-    // icons like "printer" instead of app icons. SVGs are emitted before PNGs
-    // so the parser, which keeps the first hit per name, prefers scalable icons.
+    // List app/device icons as "<path>" lines, in icon-theme search order: the
+    // active theme, each theme it inherits depth-first in declared order, then
+    // hicolor, then /usr/share/pixmaps. Some desktop entries, such as Print
+    // Settings, use device icons like "printer" instead of app icons.
+    //
+    // The parser keeps the first hit per name, so this order is what picks the
+    // icon; walking every theme on disk instead let whichever one `find`
+    // reached first decide it. Depth-first is what the icon theme spec defines:
+    // a parent's own inheritance is searched before the next declared parent.
+    // A theme's icons may be spread across base directories, but only the first
+    // index.theme found defines it, so the walk takes that one and stops.
+    // hicolor is appended rather than followed through Inherits because it is
+    // the fallback of last resort and themes do list it early
+    // (Tela-circle-dark: "Inherits=hicolor,Adwaita,breeze").
+    //
+    // A theme is exhausted before the next is consulted, SVGs first and then
+    // PNGs within it, so a scalable icon further down the search order cannot
+    // outrank the configured theme's raster one. Each pass is reverse-sorted so
+    // "scalable" beats the numeric size directories; symbolic icons are dropped
+    // because that order would otherwise prefer a monochrome glyph.
     return [
+      'theme=$(gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null | tr -d "\'");',
+      ': "${theme:=hicolor}";',
       'dirs="$HOME/.icons $HOME/.local/share/icons";',
       'IFS=":"; for d in ${XDG_DATA_DIRS:-/usr/local/share:/usr/share}; do dirs="$dirs $d/icons"; done; unset IFS;',
-      'for ext in svg png; do',
+      'declare -A seen; order=();',
+      'visit() {',
+      '  local base parent;',
+      '  if [[ -z $1 || $1 == "hicolor" || -n ${seen[$1]+set} ]]; then return; fi;',
+      '  seen[$1]=1; order+=("$1");',
       '  for base in $dirs; do',
-      '    [[ -d $base ]] && find "$base" \\( -path "*/apps/*" -o -path "*/devices/*" \\) -name "*.$ext" 2>/dev/null;',
+      '    [[ -f $base/$1/index.theme ]] || continue;',
+      '    while IFS= read -r parent; do visit "$parent"; done < <(sed -n "s/^Inherits=//p" "$base/$1/index.theme" | head -1 | tr "," "\\n");',
+      '    break;',
       '  done;',
-      '  find /usr/share/pixmaps -maxdepth 1 -name "*.$ext" 2>/dev/null;',
-      'done'
+      '};',
+      'visit "$theme"; order+=(hicolor);',
+      'for name in "${order[@]}"; do',
+      '  for base in $dirs; do',
+      '    [[ -d $base/$name ]] || continue;',
+      '    for ext in svg png; do',
+      '      find "$base/$name" \\( -path "*/apps/*" -o -path "*/devices/*" \\) ! -path "*/symbolic/*" -name "*.$ext" 2>/dev/null | sort -r;',
+      '    done;',
+      '  done;',
+      'done;',
+      'for ext in svg png; do find /usr/share/pixmaps -maxdepth 1 -name "*.$ext" 2>/dev/null | sort -r; done'
     ].join(' ')
   }
 
