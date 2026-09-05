@@ -11,7 +11,9 @@ backlight_path="${OMARCHY_BACKLIGHT_PATH:-/sys/class/backlight}"
 device="$(ls -1 "$backlight_path" 2>/dev/null | grep -vx appletb_backlight | head -n1)"
 # gmux comes first: apple-gmux only registers when the kernel has already picked it, and on
 # dual-GPU Macs the GPU's own PWM stops driving the panel once that GPU suspends.
-for candidate in "$backlight_path"/gmux_backlight "$backlight_path"/amdgpu_bl* "$backlight_path"/intel_backlight "$backlight_path"/acpi_video*; do
+# apple-panel-bl is Asahi's real panel backlight; without it here the alphabetical fallback
+# picks a DSI decoy (e.g. 228600000.dsi.0) that accepts writes with no visible effect.
+for candidate in "$backlight_path"/gmux_backlight "$backlight_path"/apple-panel-bl "$backlight_path"/amdgpu_bl* "$backlight_path"/intel_backlight "$backlight_path"/acpi_video*; do
   if [[ -e $candidate ]]; then
     device="${candidate##*/}"
     break
