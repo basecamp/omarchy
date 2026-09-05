@@ -5,8 +5,11 @@
 # omarchy:hidden=true
 
 LOG_TYPE="${1:-install}"
-TEMP_LOG="/tmp/upload-log.txt"
-SYSTEM_INFO="/tmp/system-info.txt"
+UPLOAD_TMP_DIR=$(mktemp -d "${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/omarchy-upload-log.XXXXXX")
+chmod 700 "$UPLOAD_TMP_DIR"
+TEMP_LOG="$UPLOAD_TMP_DIR/upload-log.txt"
+SYSTEM_INFO="$UPLOAD_TMP_DIR/system-info.txt"
+trap 'rm -rf -- "$UPLOAD_TMP_DIR"' EXIT
 
 # Get system information if fastfetch is available
 if omarchy-cmd-present fastfetch; then
