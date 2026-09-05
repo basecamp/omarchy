@@ -212,8 +212,14 @@ pass "Omarchy 4 upgrade removes stale nofile drop-ins"
 
 cmdline_line=$(grep -n '^preserve_kernel_cmdline_root$' "$upgrade_to_quattro" | cut -d: -f1)
 packages_line=$(grep -n '^install_omarchy_quattro_packages$' "$upgrade_to_quattro" | cut -d: -f1)
-[[ -n $cmdline_line && -n $packages_line ]] || fail "kernel cmdline preservation and package install calls exist"
-(( packages_line < cmdline_line )) || fail "kernel cmdline preservation runs once limine-mkinitcpio is installed"
+verify_line=$(grep -n '^verify_kernel_cmdline_root$' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $cmdline_line && -n $packages_line && -n $verify_line ]] ||
+  fail "kernel cmdline preservation, verification and package install calls exist"
+# The package transaction installs the += drop-in that drops root=, so the pin
+# has to be on disk before it runs or the UKI it bakes is unbootable.
+(( cmdline_line < packages_line )) || fail "kernel cmdline is pinned before the packages that can drop root="
+# The UKIs are rebuilt by the transaction, so they can only be checked after it.
+(( verify_line > packages_line )) || fail "kernel cmdline is verified after the packages are installed"
 grep -F '/etc/default/limine' "$upgrade_to_quattro" >/dev/null
 grep -F 'KERNEL_CMDLINE[default]+=" ${boot_params[*]}"' "$upgrade_to_quattro" >/dev/null
 grep -F 'cat /proc/cmdline' "$upgrade_to_quattro" >/dev/null
@@ -222,13 +228,15 @@ grep -F 'rootflags=subvol=' "$upgrade_to_quattro" >/dev/null
 grep -F 'cryptdevice' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade preserves the kernel cmdline root parameters"
 
-# The += drop-ins make limine-entry-tool ignore /etc/kernel/cmdline and
-# /proc/cmdline, so only the tool's own merge can say whether root= survives.
-# Queried for the default key, so a kernel-specific pin cannot cover for the
-# entries this repairs.
-grep -F 'limine-entry-tool --get-cmdline default' "$upgrade_to_quattro" >/dev/null
-grep -F "grep -qE '(^|[[:space:]])root='" "$upgrade_to_quattro" >/dev/null
-pass "Omarchy 4 upgrade asks limine-entry-tool whether root= survives"
+# The tool's effective cmdline still resolves root= from /proc/cmdline until the
+# first += drop-in lands, so it reads healthy on exactly the machines about to
+# break. Ask the config layers whether root= is stated instead, for the default
+# key alone so a fallback or kernel-specific pin cannot cover for it.
+grep -F 'kernel_cmdline_root_pinned' "$upgrade_to_quattro" >/dev/null
+grep -F 'KERNEL_CMDLINE\[default\]' "$upgrade_to_quattro" >/dev/null
+! grep -F 'limine-entry-tool --get-cmdline' "$upgrade_to_quattro" >/dev/null ||
+  fail "the pin check does not depend on the fallback it is about to lose"
+pass "Omarchy 4 upgrade checks whether root= is pinned in the limine config"
 
 # The crypt layer hides in the parents on LVM-on-LUKS, and a partial cmdline
 # for an encrypted root must not be written at all.
