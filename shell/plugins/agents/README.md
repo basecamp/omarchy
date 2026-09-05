@@ -46,9 +46,12 @@ record that lands in the directory regardless of who wrote it.
 
 Adding an agent therefore never touches this plugin: ship a collector that
 prints the record contract (see the `claude` and `codex` collectors in
-`bin/`), and the panel gains a tab. An `assets/<id>.svg` mark is optional —
-with an `assets/<id>-light.svg` twin if the mark needs a dark variant for
-light surfaces — and the bar glyph stands in when there is none.
+`bin/`), and the panel gains a tab. Packaged collectors live in `$OMARCHY_PATH/bin`.
+User collectors go in `~/.config/omarchy/agents/collectors/` as
+`omarchy-agent-usage-<id>` (or under `$XDG_CONFIG_HOME` if that is set). A user
+file with the same id replaces the packaged collector. An `assets/<id>.svg` mark
+is optional — with an `assets/<id>-light.svg` twin if the mark needs a dark
+variant for light surfaces — and the bar glyph stands in when there is none.
 
 | Collector | Limits | Local stats |
 |---|---|---|

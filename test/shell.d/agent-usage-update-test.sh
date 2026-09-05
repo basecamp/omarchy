@@ -63,3 +63,39 @@ pass "update succeeds when the requested collectors all pass"
 [[ -e $usage_dir/skipped.json && ! -e $usage_dir/noisy.json ]] ||
   fail "update with agent arguments only runs the named collectors"
 pass "update with agent arguments only runs the named collectors"
+
+# User collectors are not package-owned; they live next to custom themes/hooks.
+user_collectors="$TEST_HOME/.config/omarchy/agents/collectors"
+mkdir -p "$user_collectors"
+
+cat >"$user_collectors/omarchy-agent-usage-custom" <<'COLLECTOR'
+#!/bin/bash
+echo '{"schemaVersion":1,"id":"custom","name":"User Agent","totalPrompts":1}'
+COLLECTOR
+chmod +x "$user_collectors/omarchy-agent-usage-custom"
+
+cat >"$user_collectors/omarchy-agent-usage-good" <<'COLLECTOR'
+#!/bin/bash
+echo '{"schemaVersion":1,"id":"good","name":"User Good","totalPrompts":9}'
+COLLECTOR
+chmod +x "$user_collectors/omarchy-agent-usage-good"
+
+rm -f "$usage_dir"/*.json
+
+HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" XDG_CONFIG_HOME="" \
+  "$ROOT/bin/omarchy-agent-usage-update" custom 2>/dev/null ||
+  fail "update runs a collector from ~/.config/omarchy/agents/collectors"
+pass "update runs a collector from ~/.config/omarchy/agents/collectors"
+
+[[ $(jq -r '.name' "$usage_dir/custom.json") == "User Agent" ]] ||
+  fail "update writes the user collector record"
+pass "update writes the user collector record"
+
+HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" XDG_CONFIG_HOME="" \
+  "$ROOT/bin/omarchy-agent-usage-update" good 2>/dev/null ||
+  fail "update prefers a user collector over a packaged one with the same id"
+pass "update prefers a user collector over a packaged one with the same id"
+
+[[ $(jq -r '.name' "$usage_dir/good.json") == "User Good" ]] ||
+  fail "user collector overrides the packaged record"
+pass "user collector overrides the packaged record"
