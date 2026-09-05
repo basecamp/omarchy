@@ -42,6 +42,10 @@ Item {
   signal passwordTextEdited(string password)
   signal clearFailureRequested()
   signal wakeRequested()
+  // Pointer motion gets its own signal so the service can tell motion
+  // synthesized by a lock-surface rebuild (an output leaving and returning)
+  // apart from deliberate input. Clicks and keys stay on wakeRequested.
+  signal motionWakeRequested()
 
   // Cache-busts the lock background by appending `?v=`. Adding a query
   // string keeps Image's loader happy while forcing it to reload when the
@@ -116,7 +120,7 @@ Item {
       anchors.fill: parent
       hoverEnabled: true
       onClicked: { root.wakeRequested(); root.forcePasswordFocus() }
-      onPositionChanged: root.wakeRequested()
+      onPositionChanged: root.motionWakeRequested()
     }
 
     BorderSurface {

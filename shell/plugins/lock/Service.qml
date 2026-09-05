@@ -281,6 +281,20 @@ Item {
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
         onWakeRequested: root.runWake()
+        // Motion within 10s of an output change is surface-rebuild noise, not
+        // a person: waking on it turns a monitor that drops its link on blank
+        // into an all-night wake/blank loop (and every hotplug re-sends dmabuf
+        // feedback, which is a crash roll for GTK4 apps under gtk4 4.22.x).
+        // Keep the display asleep and re-arm the blank instead, so a returning
+        // monitor that comes back lit goes dark again. Clicks and keys are
+        // deliberate and still wake immediately.
+        onMotionWakeRequested: {
+          if (Date.now() - root.lastScreensChangeAt < 10000) {
+            if (root.lockRequested) root.armBlankTimer()
+          } else {
+            root.runWake()
+          }
+        }
       }
 
     }
@@ -464,9 +478,17 @@ Item {
     }
   }
 
+  // A monitor that drops its link after the blank (deep-sleeping panels
+  // de-assert HPD) comes back as a fresh output; rebuilding the lock surface
+  // for it can deliver synthetic pointer motion to LockView's MouseArea.
+  // Remember when the screens last changed so that motion arriving right
+  // after is not mistaken for someone at the desk.
+  property double lastScreensChangeAt: 0
+
   Connections {
     target: Quickshell
     function onScreensChanged() {
+      root.lastScreensChangeAt = Date.now()
       root.requestSessionLock()
 
       // A monitor still coming up has no workspace, so cannot answer yet.
