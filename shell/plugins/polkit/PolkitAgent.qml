@@ -364,9 +364,18 @@ Item {
       }
     }
 
+    // Justification chip sits above the card so the user can verify what they
+    // are authorizing. Long pkexec argv must wrap (not middle-elide); width is
+    // capped to a readable column rather than the full panel.
     Rectangle {
-      width: Math.min(justificationText.implicitWidth + Style.space(24), panel.width - Style.gapsOut * 2)
-      height: Style.space(28)
+      id: justificationBox
+      // Readable column (card-width range up to 480); never full monitor width.
+      readonly property int maxTextWidth: Math.min(
+        Style.space(480),
+        Math.max(1, panel.width - Style.gapsOut * 2 - Style.space(24))
+      )
+      width: justificationText.width + Style.space(24)
+      height: Math.max(Style.space(28), justificationText.height + Style.space(12))
       anchors.horizontalCenter: card.horizontalCenter
       anchors.bottom: card.top
       anchors.bottomMargin: Style.space(10)
@@ -376,16 +385,20 @@ Item {
       Text {
         id: justificationText
         textFormat: Text.PlainText
-        anchors.fill: parent
-        anchors.leftMargin: Style.space(12)
-        anchors.rightMargin: Style.space(12)
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        // Shrink-wrap short labels; wrap long ones inside the readable cap.
+        width: Math.min(implicitWidth, justificationBox.maxTextWidth)
         text: root.authorizationLabel(root.currentMessage)
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.bodySmall
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideMiddle
+        wrapMode: Text.Wrap
+        // Cap pathological input so the chip cannot grow page-tall.
+        maximumLineCount: 4
+        elide: Text.ElideRight
       }
     }
   }
