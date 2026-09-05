@@ -15,8 +15,24 @@ fi
 
 HOOK_TYPE=$1
 HOOK_FILE=$2
+
+# Refuse path traversal / absolute segments in the hook type and installed name.
+# Without this, values like "../foo" or "a/b" write outside hooks/<type>.d/.
+valid_hook_token() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $1 != *..* ]]
+}
+
+valid_hook_token "$HOOK_TYPE" || {
+  echo "invalid hook type: $HOOK_TYPE"
+  exit 1
+}
+
 HOOK_DIR="$HOME/.config/omarchy/hooks/$HOOK_TYPE.d"
-HOOK_NAME=$(basename "$HOOK_FILE")
+HOOK_NAME=$(basename -- "$HOOK_FILE")
+valid_hook_token "$HOOK_NAME" || {
+  echo "invalid hook file name: $HOOK_NAME"
+  exit 1
+}
 HOOK_PATH="$HOOK_DIR/$HOOK_NAME"
 
 if [[ ! -f $HOOK_FILE ]]; then
