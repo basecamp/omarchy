@@ -4,9 +4,20 @@
 # omarchy:requires-sudo=true
 
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
+RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
+RTC_ALARM_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
 
-# Check if hibernation is configured
-if [[ ! -f $MKINITCPIO_CONF ]] || ! grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+hook_present=false
+if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+  hook_present=true
+fi
+
+dropins_present=false
+if [[ -f $RESUME_DROP_IN || -f $RTC_ALARM_DROP_IN ]]; then
+  dropins_present=true
+fi
+
+if ! $hook_present && ! $dropins_present; then
   echo "Hibernation is not set up"
   exit 0
 fi
@@ -45,8 +56,18 @@ if grep -Fq "$SWAP_FILE" /etc/fstab; then
 fi
 
 # Remove mkinitcpio resume hook
-echo "Removing resume hook"
-sudo rm "$MKINITCPIO_CONF"
+if [[ -f $MKINITCPIO_CONF ]]; then
+  echo "Removing resume hook"
+  sudo rm -f "$MKINITCPIO_CONF"
+fi
+
+# Setup writes these Limine cmdline drop-ins; factory-reset already deletes
+# resume.conf when the swapfile is gone because a leftover offset is baked
+# into the next UKI. Remove must do the same, and must do it before
+# limine-mkinitcpio. rtc-alarm.conf is only written by this wizard.
+# Leave /usr/lib/systemd/system-sleep/keyboard-backlight (used for suspend).
+echo "Removing resume kernel parameters"
+sudo rm -f "$RESUME_DROP_IN" "$RTC_ALARM_DROP_IN"
 
 echo "Regenerating initramfs..."
 sudo limine-mkinitcpio
