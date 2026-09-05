@@ -65,6 +65,7 @@ menu:menu
 overlay:overlay
 panel:panel
 service:service
+hyprland:hyprland
 KINDS
 
 # A plugin that is both a bar and a widget owes an entry point for each.

@@ -129,5 +129,7 @@ done
 
 if (( UPDATED_ANY )); then
   omarchy-shell shell rescanPlugins >/dev/null
+  omarchy-plugin-hyprland-sync >/dev/null ||
+    echo "omarchy-plugin-update: warning: Hyprland plugins were not synchronized" >&2
 fi
 exit $rc

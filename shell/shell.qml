@@ -29,6 +29,7 @@ ShellRoot {
   readonly property string firstPartyPluginsDir: shellPath + "/plugins"
   readonly property string defaultsPath: omarchyPath + "/config/omarchy/shell.json"
   readonly property string userConfigPath: home + "/.config/omarchy/shell.json"
+  readonly property string hyprlandPluginStatePath: home + "/.config/omarchy/hypr-plugins.json"
 
   // Bundled fallback so the shell can start even when the default shell.json is
   // missing or unreadable. The bar config here mirrors the on-disk defaults
@@ -54,6 +55,7 @@ ShellRoot {
 
   property var defaultsConfig: builtinShellConfig
   property var shellConfig: builtinShellConfig
+  property var hyprlandPluginState: ({ enabled: [] })
   property bool pluginReloading: false
   property bool pluginReloadPending: false
 
@@ -112,6 +114,91 @@ ShellRoot {
     userConfigFile.setText(JSON.stringify(payload, null, 2) + "\n")
   }
 
+  function loadHyprlandPluginState(raw) {
+    try {
+      var parsed = JSON.parse(String(raw || ""))
+      if (Util.isPlainObject(parsed) && Array.isArray(parsed.enabled)) {
+        hyprlandPluginState = parsed
+        return
+      }
+    } catch (e) { }
+    hyprlandPluginState = ({ enabled: [] })
+  }
+
+  function isHyprlandPlugin(id) {
+    var manifest = shell.pluginRegistry.installedPlugins[String(id)]
+    return manifest && Array.isArray(manifest.kinds) && manifest.kinds.indexOf("hyprland") !== -1
+  }
+
+  function hasShellPluginKind(id) {
+    var manifest = shell.pluginRegistry.installedPlugins[String(id)]
+    if (!manifest || !Array.isArray(manifest.kinds)) return false
+    return manifest.kinds.some(function(kind) { return kind !== "hyprland" })
+  }
+
+  function isPluginEnabled(id) {
+    if (shell.isHyprlandPlugin(id) && shell.hasShellPluginKind(id)) {
+      return shell.isHyprlandPluginEnabled(id) && shell.pluginRegistry.isEnabled(id)
+    }
+    if (shell.isHyprlandPlugin(id)) return shell.isHyprlandPluginEnabled(id)
+    return shell.pluginRegistry.isEnabled(id)
+  }
+
+  function pluginMenuItems() {
+    var out = []
+    var plugins = shell.pluginRegistry.installedPlugins || ({})
+    for (var id in plugins) {
+      var manifest = plugins[id]
+      if (!shell.isPluginEnabled(id)
+          || !Array.isArray(manifest.kinds)) continue
+
+      if (manifest.kinds.indexOf("menu-entry") !== -1 && Array.isArray(manifest.menuEntries)) {
+        for (var i = 0; i < manifest.menuEntries.length; i++) {
+          var entry = manifest.menuEntries[i]
+          if (!entry || !entry.id || !entry.action) continue
+          var item = Util.cloneJson(entry)
+          item.pluginId = id
+          out.push(item)
+        }
+      }
+
+      if (manifest.kinds.indexOf("toggle") !== -1 && Array.isArray(manifest.toggles)) {
+        for (var j = 0; j < manifest.toggles.length; j++) {
+          var toggle = manifest.toggles[j]
+          if (!toggle || !toggle.id || !toggle.action) continue
+          var toggleItem = Util.cloneJson(toggle)
+          if (!toggleItem.parent) toggleItem.parent = "trigger.toggle"
+          toggleItem.pluginId = id
+          out.push(toggleItem)
+        }
+      }
+    }
+    return out
+  }
+
+  function isHyprlandPluginEnabled(id) {
+    return hyprlandPluginState.enabled.indexOf(String(id)) !== -1
+  }
+
+  function removeLegacyHyprlandPluginEntry(id) {
+    shell.mutateShellConfig(function(config) {
+      if (!Array.isArray(config.plugins)) return
+      config.plugins = config.plugins.filter(function(entry) {
+        return String(Util.isPlainObject(entry) ? entry.id : entry) !== String(id)
+      })
+      if (config.plugins.length === 0) delete config.plugins
+    })
+  }
+
+  function setHyprlandPluginEnabled(id, enabled) {
+    shell.removeLegacyHyprlandPluginEntry(id)
+    Quickshell.execDetached([
+      shell.omarchyPath + "/bin/omarchy-plugin-hyprland-set-enabled",
+      String(id), enabled ? "true" : "false"
+    ])
+    return true
+  }
+
   readonly property var barConfig: shellConfig && Util.isPlainObject(shellConfig.bar) ? shellConfig.bar : builtinShellConfig.bar
   onBarConfigChanged: if (bar && "barConfig" in bar) bar.barConfig = shell.barConfig
   FileView {
@@ -135,6 +222,16 @@ ShellRoot {
     printErrors: false
     onLoaded: shell.applyShellConfig()
     onLoadFailed: function(error) { shell.applyShellConfig() }
+    onFileChanged: reload()
+  }
+
+  FileView {
+    id: hyprlandPluginStateFile
+    path: shell.hyprlandPluginStatePath
+    watchChanges: true
+    printErrors: false
+    onLoaded: shell.loadHyprlandPluginState(text())
+    onLoadFailed: shell.loadHyprlandPluginState("")
     onFileChanged: reload()
   }
 
@@ -928,13 +1025,34 @@ ShellRoot {
     }
 
     function setPluginEnabled(id: string, enabled: string): string {
-      return shell.pluginRegistry.setEnabled(id, enabled === "true") ? "ok" : "unknown"
+      if (shell.isHyprlandPlugin(id)) {
+        shell.setHyprlandPluginEnabled(id, enabled === "true")
+        if (shell.hasShellPluginKind(id)) {
+          var shellEnabled = shell.pluginRegistry.setEnabled(id, enabled === "true")
+          if (!shellEnabled) return shell.pluginRegistry.lastEnableError || "unknown"
+        }
+        return "ok"
+      }
+      var ok = shell.pluginRegistry.setEnabled(id, enabled === "true")
+      return ok ? "ok" : "unknown"
     }
 
     function enablePlugin(id: string, placementJson: string): string {
       try {
         var placement = JSON.parse(placementJson || "{}")
-        if (shell.pluginRegistry.setEnabled(id, true, placement)) return "ok"
+        if (shell.isHyprlandPlugin(id)) {
+          shell.setHyprlandPluginEnabled(id, true)
+          if (!shell.hasShellPluginKind(id) && Object.keys(placement).length)
+            return "Hyprland plugins do not support placement"
+          if (shell.hasShellPluginKind(id)
+              && !shell.pluginRegistry.setEnabled(id, true, placement)) {
+            return shell.pluginRegistry.lastEnableError || "unknown"
+          }
+          return "ok"
+        }
+        if (shell.pluginRegistry.setEnabled(id, true, placement)) {
+          return "ok"
+        }
         return shell.pluginRegistry.lastEnableError || "unknown"
       } catch (e) {
         return "invalid placement: " + e
@@ -979,6 +1097,7 @@ ShellRoot {
         var kinds = plugins[id].kinds || []
         var isBarOption = Array.isArray(kinds) && kinds.indexOf("bar") !== -1
         var isBarWidget = Array.isArray(kinds) && kinds.indexOf("bar-widget") !== -1
+        var isHyprland = Array.isArray(kinds) && kinds.indexOf("hyprland") !== -1
         var active = isBarOption && shell.isActiveBarOption(id)
         var metadata = plugins[id].omarchy
         var clonedFrom = Util.isPlainObject(metadata) ? String(metadata.clonedFrom || "") : ""
@@ -988,8 +1107,7 @@ ShellRoot {
           kinds: kinds,
           // What `omarchy plugin enable/disable` toggles: for a widget that is
           // its place in the bar, not whether its component is loadable.
-          enabled: isBarOption ? active
-            : (isBarWidget ? shell.pluginRegistry.inBar(id) : shell.pluginRegistry.isEnabled(id)),
+          enabled: shell.isPluginEnabled(id),
           active: active,
           // A bar has no off, only a successor: you leave one by enabling
           // another, so there is nothing for disable to do to it. Said here so

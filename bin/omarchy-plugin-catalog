@@ -45,6 +45,8 @@ jq -n '
         manifestPath: $manifestPath,
         sourceDir: $sourceDir,
         entryPoints: ($manifest.entryPoints // {}),
+        priority: ($manifest.priority // 50),
+        dependencies: ($manifest.dependencies // []),
         barWidget: ($manifest.barWidget // null),
         bar: ($manifest.bar // null)
       }

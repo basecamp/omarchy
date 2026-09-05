@@ -33,7 +33,10 @@ wait).
 | `panel`      | Floating window (e.g. OSD)                     |
 | `overlay`    | Fullscreen overlay (e.g. background picker)    |
 | `menu`       | Summoned menu surface                          |
+| `menu-entry` | Entry contributed to the main Omarchy menu      |
 | `service`    | Headless singleton, no UI                      |
+| `hyprland`   | Lua entry point loaded by the Hyprland config  |
+| `toggle`     | On/off action contributed under Trigger > Toggle |
 
 Only one full bar option is active at a time. The built-in `omarchy.bar` is
 used when `bar.id` is omitted or when a selected third-party bar cannot load.
@@ -43,6 +46,42 @@ Entry points are QML `Item`s. Panel, overlay, and menu entry points expose
 `open(payloadJson)` and `close()` for summon/hide; on load the host injects
 `omarchyPath`, `shell`, `manifest`, and the registries (`pluginRegistry` /
 `barWidgetRegistry`) as properties.
+
+`menu-entry` plugins declare `menuEntries` instead of an entry point. Each
+entry supplies a menu id, label, and shell action; entries are merged into the
+main menu only while their plugin is enabled.
+
+`toggle` plugins declare `toggles` instead of an entry point. Each toggle uses
+the menu row fields `id`, `label`, `icon`, `when`, `checked`, and `action`; it
+defaults to `Trigger > Toggle` and is merged there only while its plugin is
+enabled.
+
+Hyprland plugins use `entryPoints.hyprland` and may declare numeric `priority`
+(default `50`) plus plugin-id `dependencies`. A plugin may also declare
+`panel`, `overlay`, `menu`, `service`, or another shell kind: enabling it then
+updates both its Hyprland activation state and its shell configuration entry.
+The Hyprland loader is generated under `~/.local/state/omarchy/hypr/plugins.lua`;
+dependencies load first, then enabled plugins by priority and ID. Hyprland
+activation is stored separately in `~/.config/omarchy/hypr-plugins.json`, while
+shell activation remains in `shell.json`.
+
+For example, a raw Lua Hyprland plugin can use this manifest:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "my.org.vim-bindings",
+  "name": "Vim-style bindings",
+  "version": "1.0.0",
+  "kinds": ["hyprland"],
+  "entryPoints": { "hyprland": "bindings.lua" },
+  "priority": 100,
+  "dependencies": []
+}
+```
+
+The Lua entry point runs in Hyprland's configuration environment, after
+Omarchy's defaults and before the user's `~/.config/hypr/*.lua` modules.
 
 Full schema: [`shell/services/PluginRegistry.qml`](../shell/services/PluginRegistry.qml).
 

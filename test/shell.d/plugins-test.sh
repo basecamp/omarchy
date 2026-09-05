@@ -14,7 +14,9 @@ const kindEntryPoints = {
   'menu': 'menu',
   'overlay': 'overlay',
   'panel': 'panel',
-  'service': 'service'
+  'service': 'service',
+  'menu-entry': null,
+  'toggle': null
 }
 
 function isPlainObject(value) {
@@ -124,7 +126,7 @@ for (const manifestPath of manifests) {
   for (const kind of manifest.kinds || []) {
     check(kindEntryPoints[kind], `${manifest.id} must use supported plugin kind ${kind}`)
     const entryPointKey = kindEntryPoints[kind]
-    check(manifest.entryPoints && manifest.entryPoints[entryPointKey], `${manifest.id} must declare ${entryPointKey} entry point`)
+    if (entryPointKey) check(manifest.entryPoints && manifest.entryPoints[entryPointKey], `${manifest.id} must declare ${entryPointKey} entry point`)
   }
 
   for (const key of Object.keys(manifest.entryPoints || {})) {
@@ -149,6 +151,25 @@ for (const manifestPath of manifests) {
       check(
         ['left', 'center', 'right'].includes(manifest.barWidget.defaultSection),
         `${manifest.id} barWidget defaultSection must be left, center, or right`
+      )
+    }
+  }
+
+  if ((manifest.kinds || []).includes('menu-entry')) {
+    check(Array.isArray(manifest.menuEntries) && manifest.menuEntries.length > 0, `${manifest.id} menu-entry plugins must declare menuEntries`)
+    for (const entry of manifest.menuEntries || []) {
+      check(isPlainObject(entry) && typeof entry.id === 'string' && entry.id.length > 0 && typeof entry.action === 'string' && entry.action.length > 0, `${manifest.id} menu entries must have id and action`)
+    }
+  }
+
+  if ((manifest.kinds || []).includes('toggle')) {
+    check(Array.isArray(manifest.toggles) && manifest.toggles.length > 0, `${manifest.id} toggle plugins must declare toggles`)
+    for (const toggle of manifest.toggles || []) {
+      check(
+        isPlainObject(toggle)
+          && typeof toggle.id === 'string' && toggle.id.length > 0
+          && typeof toggle.action === 'string' && toggle.action.length > 0,
+        `${manifest.id} toggles must have id and action`
       )
     }
   }

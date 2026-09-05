@@ -100,13 +100,41 @@ for kind_entry_point in \
   "menu:menu" \
   "overlay:overlay" \
   "panel:panel" \
-  "service:service"; do
+  "service:service" \
+  "menu-entry:" \
+  "toggle:" \
+  "hyprland:hyprland"; do
   kind="${kind_entry_point%%:*}"
   entry_point="${kind_entry_point##*:}"
   jq -e --arg kind "$kind" '(.kinds | index($kind)) != null' "$MANIFEST" >/dev/null 2>&1 || continue
+  [[ -n $entry_point ]] || continue
   jq -e --arg ep "$entry_point" '.entryPoints | has($ep)' "$MANIFEST" >/dev/null 2>&1 \
     || fail "kind '$kind' requires an 'entryPoints.$entry_point' to load"
 done
+
+if jq -e '(.kinds | index("menu-entry")) != null' "$MANIFEST" >/dev/null 2>&1; then
+  jq -e '
+    (.menuEntries | type) == "array" and (.menuEntries | length) > 0
+    and (.menuEntries | all(.[];
+      type == "object"
+      and (.id | type) == "string" and (.id | length) > 0
+      and (.action | type) == "string" and (.action | length) > 0
+    ))
+  ' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "kind 'menu-entry' requires non-empty menuEntries with id and action"
+fi
+
+if jq -e '(.kinds | index("toggle")) != null' "$MANIFEST" >/dev/null 2>&1; then
+  jq -e '
+    (.toggles | type) == "array" and (.toggles | length) > 0
+    and (.toggles | all(.[ ];
+      type == "object"
+      and (.id | type) == "string" and (.id | length) > 0
+      and (.action | type) == "string" and (.action | length) > 0
+    ))
+  ' "$MANIFEST" >/dev/null 2>&1 \
+    || fail "kind 'toggle' requires non-empty toggles with id and action"
+fi
 
 # Refuse any symlink anywhere inside the plugin folder. Symlinks could point a
 # copied plugin back at arbitrary files on disk after it lands in the trusted
