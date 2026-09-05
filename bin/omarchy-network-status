@@ -19,18 +19,100 @@ case "${1:-}" in
     ;;
 esac
 
+# Real NIC / Wi-Fi adapters expose a backing `device` symlink (PCI/USB/virtio).
+# Tunnel and VPN interfaces (CloudflareWARP, tailscale0, wg0, tun*) do not, and
+# also lack /sys/class/net/<if>/wireless — so the old "not wireless ⇒ ethernet"
+# branch labelled them as Ethernet with a fake multi-gbit speed (#10107).
+is_wireless_device() {
+  local device=$1
+  [[ -n $device && -d /sys/class/net/$device/wireless ]]
+}
+
+is_hardware_net_device() {
+  local device=$1
+  [[ -n $device && -e /sys/class/net/$device/device ]]
+}
+
+# Prefer the internet route's interface when it is real hardware. Otherwise pick
+# the first NetworkManager-connected wifi, then ethernet, so a VPN default route
+# does not hide the underlying link from the panel.
+route_device() {
+  ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }'
+}
+
+nm_connected_device_of_type() {
+  local want=$1
+  local device type state
+
+  while IFS=: read -r device type state; do
+    [[ -n $device ]] || continue
+    [[ $type == "$want" ]] || continue
+    [[ $state == connected* ]] || continue
+    printf '%s\n' "$device"
+    return 0
+  done < <(nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null)
+  return 1
+}
+
+resolve_primary_device() {
+  local device
+
+  device=$(route_device)
+  if [[ -n $device ]] && { is_wireless_device "$device" || is_hardware_net_device "$device"; }; then
+    printf '%s\n' "$device"
+    return 0
+  fi
+
+  if device=$(nm_connected_device_of_type wifi); then
+    printf '%s\n' "$device"
+    return 0
+  fi
+  if device=$(nm_connected_device_of_type ethernet); then
+    printf '%s\n' "$device"
+    return 0
+  fi
+
+  # Last resort: keep the route device even if virtual (better than empty when
+  # something is clearly online through a tunnel alone).
+  if [[ -n ${device:=$(route_device)} ]]; then
+    printf '%s\n' "$device"
+    return 0
+  fi
+  return 1
+}
+
+# Classify a resolved interface. Virtual/tunnel devices are never ethernet.
+classify_device_type() {
+  local device=$1
+
+  if is_wireless_device "$device"; then
+    echo wifi
+  elif is_hardware_net_device "$device"; then
+    echo ethernet
+  else
+    echo tunnel
+  fi
+}
+
 print_status() {
-  local device nm state ssid signal freq
+  local device nm state ssid signal freq type
 
-  device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
-
-  if [[ -z $device ]]; then
+  if ! device=$(resolve_primary_device); then
     printf 'disconnected\t\t\t\n'
     return
   fi
 
-  if [[ ! -d /sys/class/net/$device/wireless ]]; then
+  type=$(classify_device_type "$device")
+
+  if [[ $type == ethernet ]]; then
     printf 'ethernet\t%s\t\t\n' "$device"
+    return
+  fi
+
+  if [[ $type != wifi ]]; then
+    # Tunnel-only connectivity: no wifi/ethernet under the VPN. Report
+    # disconnected for the compact bar status rather than inventing Ethernet.
+    printf 'disconnected\t\t\t\n'
     return
   fi
 
@@ -83,16 +165,26 @@ print_ping_samples() {
 }
 
 print_verbose() {
-  local route_json iface gw src prefix link
+  local route_json iface gw src prefix link type route_iface
 
   route_json=$(ip -j route get "$internet_probe" 2>/dev/null)
-  [[ -z $route_json ]] && return
 
-  iface=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
+  # Prefer a real NIC for the panel hero even when a tunnel owns the default
+  # route. Keep the route's gateway/src when they belong to the same iface;
+  # otherwise re-read addressing from the resolved primary device.
+  route_iface=$(jq -r '.[0].dev // ""' <<<"$route_json" 2>/dev/null)
   gw=$(jq -r '.[0].gateway // ""' <<<"$route_json" 2>/dev/null)
   src=$(jq -r '.[0].prefsrc // ""' <<<"$route_json" 2>/dev/null)
 
-  [[ -z $iface ]] && return
+  iface=$(resolve_primary_device) || true
+  [[ -n $iface ]] || return
+
+  if [[ $iface != "$route_iface" ]]; then
+    # Primary is the underlay (wifi/ethernet), not the tunnel. Address/prefix
+    # from the underlay; keep internet ping via the original probe.
+    src=$(ip -j addr show "$iface" 2>/dev/null | jq -r '.[0].addr_info[]? | select(.family == "inet" and .scope == "global") | .local // empty' 2>/dev/null | head -n 1)
+    gw=$(ip -j route show dev "$iface" 2>/dev/null | jq -r 'map(select(.dst == "default")) | .[0].gateway // empty' 2>/dev/null)
+  fi
 
   prefix=$(ip -j addr show "$iface" 2>/dev/null | jq -r '.[0].addr_info[]? | select(.family == "inet") | .prefixlen // ""' 2>/dev/null | head -n 1)
 
@@ -108,9 +200,10 @@ print_verbose() {
     printf 'tx_bytes\t%s\n' "$(cat /sys/class/net/$iface/statistics/tx_bytes)"
   fi
 
-  if [[ -d /sys/class/net/$iface/wireless ]]; then
-    printf 'type\twifi\n'
+  type=$(classify_device_type "$iface")
+  printf 'type\t%s\n' "$type"
 
+  if [[ $type == wifi ]]; then
     if omarchy-cmd-present iw; then
       link=$(iw dev "$iface" link 2>/dev/null)
 
@@ -121,8 +214,7 @@ print_verbose() {
         printf 'bitrate\t%s %s\n' "$(awk '/tx bitrate:/ { print $3; exit }' <<<"$link")" "$(awk '/tx bitrate:/ { print $4; exit }' <<<"$link")"
       fi
     fi
-  else
-    printf 'type\tethernet\n'
+  elif [[ $type == ethernet ]]; then
     [[ -r /sys/class/net/$iface/speed ]] && printf 'speed\t%s\n' "$(cat /sys/class/net/$iface/speed)"
     [[ -r /sys/class/net/$iface/duplex ]] && printf 'duplex\t%s\n' "$(cat /sys/class/net/$iface/duplex)"
   fi
