@@ -967,8 +967,24 @@ Item {
     path: root.defaultMenuPath
     watchChanges: true
     printErrors: false
-    onLoaded: { root.defaultMenuItems = root.parseMenuJsonc(text()); root.rebuildItemsFromSources() }
+    onLoaded: {
+      // Git replaces the file by inode swap, so a reload can catch the gap
+      // and read nothing. The shipped menu is never empty: keep the current
+      // rows and retry instead of blanking the menu until a shell restart.
+      var items = root.parseMenuJsonc(text())
+      if (items.length === 0) { defaultMenuRetry.restart(); return }
+      root.defaultMenuItems = items
+      root.rebuildItemsFromSources()
+    }
+    onLoadFailed: defaultMenuRetry.restart()
     onFileChanged: reload()
+  }
+
+  Timer {
+    id: defaultMenuRetry
+    interval: 500
+    repeat: false
+    onTriggered: defaultMenuFile.reload()
   }
 
   FileView {
