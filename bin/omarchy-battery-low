@@ -1,17 +1,29 @@
 #!/bin/bash
 
-# omarchy:summary=Send the low battery warning notification and run battery-low hooks.
-# omarchy:args=<percentage>
+# omarchy:summary=Send or clear the low battery warning notification and run battery-low hooks.
+# omarchy:args=<percentage>|--clear
 # omarchy:hidden=true
 
 set -euo pipefail
 
+summary="Time to recharge!"
+
 if (($# != 1)); then
-  echo "Usage: omarchy-battery-low <percentage>" >&2
+  echo "Usage: omarchy-battery-low <percentage>|--clear" >&2
   exit 1
 fi
 
-level=$1
+# There is only ever one battery to warn about, so there is only ever one
+# warning on screen. Taking down the standing one first makes a repeat warning
+# an update rather than a second toast, whatever the caller's idea of state is:
+# the shell's warned-once latch resets on a shell restart and on a momentary
+# blip out of the discharging state, and neither should stack a duplicate.
+omarchy-notification-dismiss "$summary"
 
-omarchy-notification-send -g 󱐋 -u critical "Time to recharge!" "Battery is down to ${level}%" -i battery-caution -t 30000
-omarchy-hook battery-low "$level"
+if [[ $1 != "--clear" ]]; then
+  level=$1
+  # Critical urgency, so the toast stays put until it is answered: the charger
+  # goes in and --clear takes it down, or the user dismisses it by hand.
+  omarchy-notification-send -g 󱐋 -u critical "$summary" "Battery is down to ${level}%" -i battery-caution
+  omarchy-hook battery-low "$level"
+fi
