@@ -36,6 +36,40 @@ const bar = requireFromRoot('shell/plugins/bar/BarModel.js')
 const barSource = fs.readFileSync(root + '/shell/plugins/bar/Bar.qml', 'utf8')
 const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
 
+const helper = shellSource.match(/function barInitialProperties\(manifest\) \{[\s\S]*?\n  \}/)
+assert(helper, 'shell has a shared barInitialProperties helper')
+for (const key of ['omarchyPath', 'barWidgetRegistry', 'barConfig']) {
+  assert(
+    new RegExp(key + '\\s*:').test(helper[0]),
+    `barInitialProperties injects ${key} at construction`
+  )
+}
+assert(
+  /function loadBar\(loader, url, manifest\) \{[\s\S]*?loader\.setSource\(url, barInitialProperties\(manifest\)\)/.test(shellSource),
+  'loadBar passes required properties through setSource initialProperties'
+)
+
+const defaultLoader = shellSource.slice(
+  shellSource.indexOf('id: defaultBarLoader'),
+  shellSource.indexOf('id: pluginBarLoader')
+)
+const pluginLoader = shellSource.slice(
+  shellSource.indexOf('id: pluginBarLoader'),
+  shellSource.indexOf('// ------------------------------------------------------------- services')
+)
+assert(/shell\.loadBar\(defaultBarLoader/.test(defaultLoader), 'built-in bar loads through the shared inject helper')
+assert(/shell\.loadBar\(pluginBarLoader/.test(pluginLoader), 'cloned and third-party bars load through the shared inject helper')
+assert(
+  !/source:\s*shell\.activeBarSourceUrl/.test(pluginLoader),
+  'plugin bars are not loaded via Loader.source without initial properties'
+)
+assert(
+  /required property string omarchyPath/.test(barSource)
+    && /required property var barWidgetRegistry/.test(barSource)
+    && /required property var barConfig/.test(barSource),
+  'bar keeps omarchyPath, barWidgetRegistry, and barConfig required'
+)
+
 assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
 
 // put tolerates a placement target the bar does not carry, so the IPC call

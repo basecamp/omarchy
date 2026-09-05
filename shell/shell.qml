@@ -5,7 +5,6 @@ import Quickshell.Io
 
 import qs.Commons
 
-import "plugins/bar"
 import "services"
 
 ShellRoot {
@@ -183,6 +182,7 @@ ShellRoot {
     return shell.barManifestFor(shell.activeBarId)
   }
   readonly property string activeBarSourceUrl: activeBarId === defaultBarId ? "" : shell.pluginRegistry.entryPointUrl(activeBarManifest, "bar")
+  readonly property string defaultBarSourceUrl: Qt.resolvedUrl("plugins/bar/Bar.qml")
   property var bar: null
 
   onSelectedBarIdChanged: if (failedBarId !== "") failedBarId = ""
@@ -211,6 +211,27 @@ ShellRoot {
     return String(pluginId || "") === shell.activeBarId
   }
 
+  // QML required properties must be set at construction. Loader.source and
+  // configureBar()'s later `"in"` assignments are too late for a cloned bar.
+  function barInitialProperties(manifest) {
+    return {
+      omarchyPath: shell.omarchyPath,
+      barWidgetRegistry: shell.barWidgetRegistry,
+      barConfig: shell.barConfig,
+      shell: shell,
+      manifest: manifest || null
+    }
+  }
+
+  function loadBar(loader, url, manifest) {
+    if (!loader) return
+    if (!loader.active || !url) {
+      loader.setSource("")
+      return
+    }
+    loader.setSource(url, barInitialProperties(manifest))
+  }
+
   function configureBar(target, manifest) {
     if (!target) return
     if ("omarchyPath" in target) target.omarchyPath = shell.omarchyPath
@@ -222,35 +243,31 @@ ShellRoot {
     shell.bar = target
   }
 
-  Component {
-    id: defaultBarComponent
-
-    Bar {
-      omarchyPath: shell.omarchyPath
-      barWidgetRegistry: shell.barWidgetRegistry
-      barConfig: shell.barConfig
-      shell: shell
-      manifest: shell.barManifestFor(shell.defaultBarId)
-    }
-  }
-
   Loader {
     id: defaultBarLoader
 
     active: shell.activeBarId === shell.defaultBarId
-    sourceComponent: defaultBarComponent
     onLoaded: shell.configureBar(item, shell.barManifestFor(shell.defaultBarId))
-    onActiveChanged: if (!active && shell.activeBarId !== shell.defaultBarId) shell.bar = null
+    onActiveChanged: {
+      shell.loadBar(defaultBarLoader, shell.defaultBarSourceUrl, shell.barManifestFor(shell.defaultBarId))
+      if (!active && shell.activeBarId !== shell.defaultBarId) shell.bar = null
+    }
+    Component.onCompleted: shell.loadBar(defaultBarLoader, shell.defaultBarSourceUrl, shell.barManifestFor(shell.defaultBarId))
   }
 
   Loader {
     id: pluginBarLoader
 
     active: !shell.pluginReloading && shell.activeBarId !== shell.defaultBarId && shell.activeBarSourceUrl !== ""
-    source: shell.activeBarId !== shell.defaultBarId ? shell.activeBarSourceUrl : ""
     asynchronous: true
+    readonly property string pluginBarUrl: shell.activeBarSourceUrl
+    onPluginBarUrlChanged: shell.loadBar(pluginBarLoader, pluginBarUrl, shell.activeBarManifest)
     onLoaded: shell.configureBar(item, shell.activeBarManifest)
-    onActiveChanged: if (!active) shell.bar = null
+    onActiveChanged: {
+      shell.loadBar(pluginBarLoader, shell.activeBarSourceUrl, shell.activeBarManifest)
+      if (!active) shell.bar = null
+    }
+    Component.onCompleted: shell.loadBar(pluginBarLoader, shell.activeBarSourceUrl, shell.activeBarManifest)
     onStatusChanged: {
       if (status === Loader.Error) {
         var detail = errorString && errorString() ? errorString() : ""
