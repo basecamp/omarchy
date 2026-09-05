@@ -3,9 +3,27 @@
 # omarchy:summary=Show a fuzzy-finder TUI for picking packages installed on the system to be removed.
 # omarchy:requires-sudo=true
 
+source "${BASH_SOURCE[0]%/*}/omarchy-security-functions" || exit 126
+
+set -euo pipefail
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
+unset BASH_ENV ENV CDPATH GLOBIGNORE
+
+omarchy_security_install_sudo_cleanup_traps   "Failed to invalidate sudo credentials after the package remover."
+
+if ! omarchy_security_revoke_sudo_timestamp; then
+  echo "Unable to start package discovery with a cold sudo credential state." >&2
+  exit 1
+fi
+if ! omarchy_security_sudo_supports_no_update; then
+  echo "This sudo does not support --no-update; refusing to run the package remover." >&2
+  exit 1
+fi
+
 fzf_args=(
   --multi
-  --preview 'yay -Qi {1}'
+  --preview '/usr/bin/yay -Qi -- {1}'
   --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
   --preview-label-pos='bottom'
   --preview-window 'down:65%:wrap'
@@ -15,10 +33,16 @@ fzf_args=(
   --color 'pointer:red,marker:red'
 )
 
-pkg_names=$(yay -Qqe | fzf "${fzf_args[@]}")
+pkg_names=$(/usr/bin/yay -Qqe | /usr/bin/fzf "${fzf_args[@]}")
 
 if [[ -n $pkg_names ]]; then
-  # Convert newline-separated selections to space-separated for yay
-  echo "$pkg_names" | tr '\n' ' ' | xargs sudo pacman -Rns --noconfirm
-  omarchy-show-done
+  mapfile -t packages <<<"$pkg_names"
+  for package in "${packages[@]}"; do
+    [[ $package =~ ^[a-z0-9][a-z0-9@._+:-]*$ ]] || {
+      echo "Invalid package selection: $package" >&2
+      exit 2
+    }
+  done
+  /usr/bin/sudo -N -- /usr/bin/pacman -Rns --noconfirm -- "${packages[@]}"
+  /usr/bin/omarchy-show-done
 fi
