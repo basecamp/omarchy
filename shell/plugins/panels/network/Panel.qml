@@ -31,6 +31,17 @@ Panel {
   // Live connection details from `ip` / /sys / iw.
   property var info: ({})  // { iface, type, ip, prefix, gateway, speed, duplex, ssid, signal, freq, bitrate, rx_bytes, tx_bytes, router_ping_ms, internet_ping_ms }
 
+  // Public/WAN address, fetched on open and whenever the local IP
+  // changes (new network => probably new external IP). Cached across opens.
+  property string externalIp: ""
+  property string externalIpFor: ""
+  function refreshExternalIp() {
+    if (externalIpProc.running) return
+    externalIpFor = info.ip || ""
+    externalIpProc.running = true
+  }
+  onInfoChanged: if (opened && (info.ip || "") !== externalIpFor) refreshExternalIp()
+
   // Throughput tracking. Rates are computed as deltas between successive
   // `omarchy-network-status --verbose` samples (~1.5s apart via detailsPoll).
   // We hold "prev" alongside a timestamp so the first sample after open or
@@ -322,6 +333,7 @@ Panel {
   onOpenedChanged: {
     if (opened) {
       refresh(true)
+      refreshExternalIp()
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       wifiActionFocused = false
       focusSection = hasCaptivePortal ? "portal" : (wifiNetworks.length > 0 ? "wifi" : "dns")
@@ -890,6 +902,16 @@ Panel {
     onTriggered: root.syncWifiNetworks()
   }
 
+  // External IP probe: Cloudflare trace endpoint, IPv4, 4s cap. Fails to "--" offline.
+  Process {
+    id: externalIpProc
+    command: ["sh", "-c", "curl -4 -s --max-time 4 https://1.1.1.1/cdn-cgi/trace | sed -n 's/^ip=//p'"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.externalIp = text.trim()
+    }
+  }
+
   Process {
     id: dnsProc
     stdout: StdioCollector {
@@ -1377,6 +1399,13 @@ Panel {
             text: root.info.gateway || "--"
             copyable: !!root.info.gateway
             tooltipText: "Copy gateway"
+          }
+
+          InfoLabel { text: "External IP" }
+          DetailValue {
+            text: root.externalIp || "--"
+            copyable: !!root.externalIp
+            tooltipText: "Copy external IP"
           }
         }
       }
