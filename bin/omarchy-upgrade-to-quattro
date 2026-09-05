@@ -2020,11 +2020,18 @@ if [[ -n ${OMARCHY_USER_EMAIL//[[:space:]]/} ]]; then
   git config --global user.email "$OMARCHY_USER_EMAIL" || true
 fi
 if [[ ! -f $HOME/.XCompose ]]; then
+  # Home-local copy so sandboxed apps that see $HOME but not /usr still parse
+  # the compose table (Steam pressure-vessel, Flatpaks). Absolute
+  # /usr/share/omarchy includes abort the whole file inside those containers.
+  if [[ -f $OMARCHY_PATH/default/xcompose ]]; then
+    cp "$OMARCHY_PATH/default/xcompose" "$HOME/.XCompose.omarchy"
+    chmod 644 "$HOME/.XCompose.omarchy"
+  fi
   cat >"$HOME/.XCompose" <<EOF
 # Run omarchy-restart-xcompose to apply changes
 
 # Include fast emoji access
-include "/usr/share/omarchy/default/xcompose"
+include "%H/.XCompose.omarchy"
 
 # Identification
 <Multi_key> <space> <n> : "$OMARCHY_USER_NAME"

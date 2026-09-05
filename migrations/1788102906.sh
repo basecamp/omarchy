@@ -2,17 +2,24 @@ echo "Repair legacy XCompose and remove vulnerable Omarchy 3 power udev rules"
 
 xcompose="$HOME/.XCompose"
 packaged_xcompose="$OMARCHY_PATH/default/xcompose"
+home_xcompose="$HOME/.XCompose.omarchy"
 legacy_xcompose_pattern='^[[:space:]]*include[[:space:]]+"[^"]*/\.local/share/omarchy/default/xcompose"[[:space:]]*$'
 
 # Omarchy 3 pointed the user's compose file through the checkout compatibility
-# link. Preserve their own sequences while moving that include to the packaged
-# tree. A failed live restart is harmless: the next graphical login reads the
-# repaired file.
+# link. Preserve their own sequences while moving that include onto a home-local
+# copy of the packaged table (%H/.XCompose.omarchy). An absolute /usr path would
+# parse on the host but fail inside sandboxes that only bind-mount $HOME
+# (Steam pressure-vessel). A failed live restart is harmless: the next
+# graphical login reads the repaired file.
+if [[ -f $packaged_xcompose ]]; then
+  cp "$packaged_xcompose" "$home_xcompose"
+  chmod 644 "$home_xcompose"
+fi
+
 if [[ -f $xcompose ]] && grep -Eq "$legacy_xcompose_pattern" "$xcompose"; then
-  xcompose_replacement=${packaged_xcompose//\\/\\\\}
-  xcompose_replacement=${xcompose_replacement//&/\\&}
-  xcompose_replacement=${xcompose_replacement//|/\\|}
-  sed -i -E "s|^([[:space:]]*include[[:space:]]+\")[^\"]*/\\.local/share/omarchy/default/xcompose\"[[:space:]]*$|\\1$xcompose_replacement\"|" "$xcompose"
+  sed -i -E \
+    's|^([[:space:]]*include[[:space:]]+")[^\"]*/\.local/share/omarchy/default/xcompose("[[:space:]]*)$|\1%H/.XCompose.omarchy\2|' \
+    "$xcompose"
   omarchy-restart-xcompose >/dev/null 2>&1 || true
 fi
 
