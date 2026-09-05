@@ -50,7 +50,12 @@ Panel {
     return Model.hasHumanName(device)
   }
 
-  readonly property var deviceGroups: Model.deviceLists(devices)
+  // Row order held while the pointer is on the scroll list, empty otherwise.
+  // A click acts on whatever row is under the pointer, so a device found
+  // mid-scan must not sort in above the row being aimed at and take it.
+  property var pinnedOrder: []
+
+  readonly property var deviceGroups: Model.deviceLists(devices, pinnedOrder)
   readonly property var connectedDevices: deviceGroups.connected || []
   readonly property var knownDevices: deviceGroups.known || []
   readonly property var discoveredDevices: deviceGroups.discovered || []
@@ -417,6 +422,10 @@ Panel {
       else { focusSection = "header" }
       actionFocused = false
       cursorActive = false
+    } else {
+      // Hiding the list leaves HoverHandler.hovered set, so the pointer never
+      // reports leaving and the order would stay pinned into the next open.
+      pinnedOrder = []
     }
   }
 
@@ -824,6 +833,12 @@ Panel {
           onCurrentIndexChanged: if (currentIndex >= 0) Qt.callLater(keepCurrentVisible)
           function keepCurrentVisible() {
             if (currentIndex >= 0) positionViewAtIndex(currentIndex, ListView.Contain)
+          }
+
+          HoverHandler {
+            onHoveredChanged: root.pinnedOrder = hovered
+              ? root.scrollRows.map(function(row) { return row.dev.address })
+              : []
           }
 
           delegate: Item {
