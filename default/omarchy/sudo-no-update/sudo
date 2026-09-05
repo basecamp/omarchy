@@ -1,0 +1,27 @@
+#!/bin/bash -p
+
+# Internal update/migration sudo boundary. Authentication may authorize this
+# command, but -N prevents it from publishing a timestamp that detached user
+# code can silently reuse.
+
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for the sudo boundary." >&2
+  exit 126
+fi
+
+require_privileged_bash_startup() {
+  [[ $- == *p* ]] || return 1
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+if ! require_privileged_bash_startup; then
+  echo "Refusing an unsafe Bash startup for the sudo boundary." >&2
+  exit 126
+fi
+exec /usr/bin/sudo -N -- "$@"

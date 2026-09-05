@@ -4,13 +4,34 @@ set -euo pipefail
 
 source "$(dirname "$0")/base-test.sh"
 
-test_tmp=$(mktemp -d)
-trap 'rm -rf "$test_tmp"' EXIT
+if [[ ${OMARCHY_MIGRATE_WRAPPER_NS:-0} != 1 ]]; then
+  exec unshare --user --map-root-user --mount \
+    env OMARCHY_MIGRATE_WRAPPER_NS=1 bash "$0"
+fi
+
+mount -t tmpfs -o mode=0755 tmpfs /run
+test_tmp=$(mktemp -d -p /run omarchy-migrate-wrapper.XXXXXXXX)
+cat >"$test_tmp/sudo" <<'STUB'
+#!/bin/bash
+if [[ ${1:-} == "-h" ]]; then
+  echo 'usage: sudo [-ABbEHkNnPS] command'
+  exit 0
+fi
+[[ ${1:-} == "-N" ]] && shift
+[[ ${1:-} == "-k" ]] && exit 0
+exec "$@"
+STUB
+chmod 0755 "$test_tmp/sudo"
+mount --bind "$test_tmp/sudo" /usr/bin/sudo
+trap 'umount /usr/bin/sudo; rm -rf "$test_tmp"; umount /run' EXIT
 
 test_root="$test_tmp/omarchy"
 test_home="$test_tmp/home"
-stub_bin="$test_tmp/bin"
+stub_bin="$test_root/bin"
 mkdir -p "$test_root/migrations" "$test_home" "$stub_bin"
+mkdir -p "$test_root/default/omarchy/sudo-no-update"
+cp "$ROOT/default/omarchy/sudo-no-update/sudo" "$test_root/default/omarchy/sudo-no-update/sudo"
+chmod 0755 "$test_root/default/omarchy/sudo-no-update/sudo"
 
 cat >"$stub_bin/omarchy-notification-dismiss" <<'SH'
 #!/bin/bash

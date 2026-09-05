@@ -1,0 +1,87 @@
+#!/bin/bash
+
+# omarchy:hidden=true
+# omarchy:summary=Provide internal fail-closed helpers for security-sensitive commands
+
+# Shared fail-closed primitives for security-sensitive Omarchy commands. This
+# file is sourced from the same package-owned bin directory as its consumers.
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  echo "omarchy-security-functions is an internal function library." >&2
+  exit 64
+fi
+
+omarchy_security_require_privileged_bash_startup() {
+  local pid=${1:-$$}
+
+  [[ $- == *p* && $pid =~ ^[1-9][0-9]*$ ]] || return 1
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$pid"
+}
+
+omarchy_security_sudo_supports_no_update() {
+  LC_ALL=C /usr/bin/sudo -h 2>&1 |
+    /usr/bin/grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]'
+}
+
+omarchy_security_revoke_sudo_timestamp() {
+  /usr/bin/sudo -k >/dev/null 2>&1
+}
+
+omarchy_security_exit_with_revoked_sudo() {
+  local status=$1
+  local message=${2:-Could not invalidate cached sudo authorization.}
+
+  trap - EXIT HUP INT TERM
+  if ! omarchy_security_revoke_sudo_timestamp; then
+    echo "$message" >&2
+    (( status != 0 )) || status=1
+  fi
+  exit "$status"
+}
+
+omarchy_security_install_signal_exit_traps() {
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+
+omarchy_security_run_sudo_cleanup_trap() {
+  local status=$?
+
+  omarchy_security_exit_with_revoked_sudo "$status" \
+    "${OMARCHY_SECURITY_SUDO_CLEANUP_MESSAGE:-Could not invalidate cached sudo authorization.}"
+}
+
+omarchy_security_install_sudo_cleanup_traps() {
+  OMARCHY_SECURITY_SUDO_CLEANUP_MESSAGE=${1:-Could not invalidate cached sudo authorization.}
+  trap omarchy_security_run_sudo_cleanup_trap EXIT
+  omarchy_security_install_signal_exit_traps
+}
+
+omarchy_security_assert_root_directory() {
+  local path=$1 expected_mode=$2 canonical owner actual_mode
+
+  [[ $path == /* && -d $path && ! -L $path ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$path") || return 1
+  [[ $canonical == "$path" ]] || return 1
+  read -r owner actual_mode < <(/usr/bin/stat -Lc '%u %a' -- "$path") || return 1
+  [[ $owner == "0" && $actual_mode == "$expected_mode" ]]
+}
+
+omarchy_security_prepare_private_root_directory() {
+  local path=$1 parent=$2
+
+  omarchy_security_assert_root_directory "$parent" 755 || return 1
+  if [[ -e $path || -L $path ]]; then
+    omarchy_security_assert_root_directory "$path" 700
+  else
+    /usr/bin/install -d -o root -g root -m 0700 -- "$path" || return 1
+    omarchy_security_assert_root_directory "$path" 700
+  fi
+}
