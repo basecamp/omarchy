@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# omarchy:summary=Re-float and center Omarchy presentation terminals
+# omarchy:hidden=true
+
+# Menu actions launch `xdg-terminal-exec --app-id=org.omarchy.terminal` as a
+# floating 875x600 window (tag floating-window in default/hypr/apps/system.lua).
+# Those size/center rules are map-time only. Restarting the shell tears down
+# the bar's exclusive zone and can leave the still-open terminal 0-size,
+# off-screen, or on monitor -1: present in overviews, invisible on the desktop.
+# Re-apply the float treatment after the new shell is up.
+
+hypr_dispatch() {
+  local lua="$1"
+  shift
+  hyprctl dispatch "$lua" >/dev/null 2>&1 || hyprctl dispatch "$@" >/dev/null 2>&1 || true
+}
+
+width=875
+height=600
+
+hyprctl clients -j 2>/dev/null |
+  jq -r '.[] | select((.class // "") == "org.omarchy.terminal" or (.initialClass // "") == "org.omarchy.terminal") | .address // empty' |
+  while read -r addr; do
+    [[ -n $addr ]] || continue
+    window="address:$addr"
+    hypr_dispatch "hl.dsp.window.float({ window = \"$window\", action = \"on\" })" setfloating on "$window"
+    hypr_dispatch "hl.dsp.window.resize({ window = \"$window\", x = $width, y = $height })" resizeactive exact "$width" "$height" "$window"
+    hypr_dispatch "hl.dsp.window.center({ window = \"$window\" })" centerwindow "$window"
+    hypr_dispatch "hl.dsp.focus({ window = \"$window\" })" focuswindow "$window"
+  done

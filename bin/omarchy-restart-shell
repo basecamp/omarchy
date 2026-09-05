@@ -84,6 +84,11 @@ for (( attempt = 0; attempt < 20; attempt++ )); do
     # reappears on the new shell. Answered invitations have already exited
     # and been collected, so the glob no longer matches them.
     systemctl --user try-restart 'omarchy-*-invitation.service' 2>/dev/null || true
+
+    # Menu Update keeps a presentation terminal open across this restart.
+    # Re-apply float/size/center after exclusive zones return. Best-effort:
+    # no such window, or hyprctl unavailable over SSH, is not a failure.
+    omarchy-hyprland-window-restore-presentation >/dev/null 2>&1 || true
     exit 0
   fi
   sleep 0.1
