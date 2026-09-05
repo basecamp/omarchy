@@ -23,6 +23,154 @@ Panel {
 
   readonly property var adapter: Bluetooth.defaultAdapter
 
+  // A soft-blocked radio disappears from BlueZ entirely, so a missing adapter
+  // is ambiguous: it can mean "turned off" or "no hardware". The kernel's
+  // rfkill switch (e.g. tpacpi_bluetooth_sw) outlives the block, so probe it
+  // to tell the two apart. Everything UI-facing keys off this instead of
+  // adapter === null, which is what keeps the icon and its toggle reachable
+  // after Bluetooth is switched off.
+  //
+  // Hardware presence is assumed (true) until a probe proves otherwise. Only
+  // a definitive probe — clean exit, empty stdout, no live adapter — may
+  // conclude "no hardware"; an inconclusive probe (failed spawn or non-zero
+  // exit) keeps the previous value, so probe uncertainty can never hide the
+  // panel or strand a deferred power-on. An adapter that appears at any
+  // point is authoritative and clears a stale "no hardware" answer.
+  property bool hardwarePresent: true
+  property bool probePending: false
+  // False until the first probe (or an adapter) settles the question; the
+  // widget falls back to the plain adapter gate while unknown, which avoids
+  // a brief phantom panel on machines without Bluetooth hardware.
+  property bool hardwarePresenceKnown: false
+  // Set when the user asks to power on while the first probe's answer is
+  // still unknown; acted on once that probe confirms the radio exists.
+  property bool deferredPowerOn: false
+  // Sentinel finishProbe receives when the watchdog gives up on a probe that
+  // never signalled completion (missing executable or a hung process).
+  readonly property int probeSpawnFailedExitCode: -1
+  // Sentinel finishProbe receives as exitStatus from the watchdog. The probe
+  // never completed, so it is never a clean exit (QProcess reports abnormal
+  // termination as exitStatus 1 / CrashExit); a non-zero status keeps the
+  // "clean exit only" gate closed regardless of the sentinel exit code.
+  readonly property int probeSpawnFailedExitStatus: 1
+  // How long a probe may run before the watchdog gives up on it. rfkill
+  // answers in milliseconds; the timeout exists only to unstick a probe that
+  // never completed, so a hung process cannot strand probePending.
+  readonly property int probeWatchdogMs: 2000
+  property string lastProbeStdout: ""
+
+  Process {
+    id: rfkillProbe
+    // Direct call, no shell: `rfkill list bluetooth` prints one or more
+    // radio entries whenever Bluetooth hardware exists (blocked or not) and
+    // nothing on machines without it. The exit code tells a clean empty
+    // listing (no hardware) apart from a failed run (tool unusable).
+    command: ["rfkill", "list", "bluetooth"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.lastProbeStdout = String(text || "")
+    }
+    // exited is the process-completion signal and carries the exit code and
+    // exit status. It fires after stdout has been fully collected, so
+    // lastProbeStdout is complete here. A failed spawn never reaches it — the
+    // watchdog handles that case.
+    onExited: function(exitCode, exitStatus) {
+      probeWatchdog.stop()
+      root.finishProbe(exitCode, exitStatus)
+    }
+  }
+
+  // rfkill completes in milliseconds; if no exited signal arrives by now the
+  // probe never ran (missing executable), which would otherwise strand
+  // probePending with no signal to clear it.
+  Timer {
+    id: probeWatchdog
+    interval: root.probeWatchdogMs
+    onTriggered: root.finishProbe(root.probeSpawnFailedExitCode, root.probeSpawnFailedExitStatus)
+  }
+
+  function probeHardware() {
+    if (root.probePending) return
+    root.probePending = true
+    root.lastProbeStdout = ""
+    probeWatchdog.start()
+    rfkillProbe.running = true
+  }
+
+  // Single completion path for every probe; the probePending gate drops any
+  // late signal from a superseded run. A live adapter is authoritative (a
+  // probe started before a dongle appeared may report a stale empty
+  // listing). An inconclusive probe — non-zero exit, abnormal termination,
+  // or the watchdog's sentinel — changes nothing: presence stays unknown,
+  // hardwarePresent keeps
+  // its previous value and a deferred power-on survives for a later definitive
+  // probe, so probe uncertainty can never hide the panel or drop the user's
+  // intent. Leaving it unknown matters: hardwarePresent defaults to true, so
+  // marking an inconclusive probe "known" would promote that optimistic guess
+  // into the answer and show the panel on a machine with no Bluetooth at all
+  // (`rfkill list` exits non-zero when /dev/rfkill is absent, as on a VM with
+  // no radios). Unknown falls back to the plain adapter gate, which hides it.
+  function finishProbe(exitCode, exitStatus) {
+    probeWatchdog.stop()
+    if (!root.probePending) return
+    // A watchdog timeout means the process never completed: stop it so the
+    // next probe starts from a clean slate instead of stacking on a hung
+    // run. A real exit leaves no process behind to stop.
+    if (exitCode === root.probeSpawnFailedExitCode) rfkillProbe.running = false
+    root.probePending = false
+    // Definitive only on a clean run. The exitStatus check is belt-and-
+    // suspenders: a signal-killed process already reports the signal number
+    // as its exit code (SIGKILL -> 9, SIGTERM -> 15), so exitCode === 0 alone
+    // would never admit a crash — the explicit check just states the
+    // "clean exit only" invariant.
+    if (exitCode === 0 && exitStatus === 0) {
+      root.hardwarePresenceKnown = true
+      root.hardwarePresent = root.adapter !== null || String(root.lastProbeStdout).trim().length > 0
+      // Definitive answer: act on the deferred intent now, or drop it.
+      root.applyDeferredPowerOnIfNeeded()
+    }
+  }
+
+  // Consume a deferred power-on once the probe (or an adapter) confirms the
+  // radio exists. Shared by finishProbe and onDefaultAdapterChanged so the
+  // two consumption paths cannot drift apart; in the adapter-changed path
+  // adapter is non-null, so the null half of the condition is inert there.
+  function applyDeferredPowerOnIfNeeded() {
+    if (!root.deferredPowerOn) return
+    root.deferredPowerOn = false
+    if (root.hardwarePresent && (root.adapter === null || !root.adapter.enabled))
+      Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+  }
+
+  // Hardware presence is already known while an adapter exists; only probe
+  // when there is none to disambiguate. An adapter present at startup also
+  // settles the question, so the flags leave their initial 'unknown' state
+  // instead of staying unset until the first probe or a later change.
+  Component.onCompleted: {
+    if (root.adapter === null) root.probeHardware()
+    else {
+      root.hardwarePresenceKnown = true
+      root.hardwarePresent = true
+    }
+  }
+
+  Connections {
+    target: Bluetooth
+    function onDefaultAdapterChanged() {
+      if (Bluetooth.defaultAdapter === null) {
+        root.probeHardware()
+      } else {
+        // Adapter presence is definitive proof of hardware; an in-flight
+        // probe is left to finish (it reads live rfkill state and reaches
+        // the same conclusion). Honor a deferred power-on instead of
+        // dropping it when the adapter is back but still powered off.
+        root.hardwarePresenceKnown = true
+        root.hardwarePresent = true
+        root.applyDeferredPowerOnIfNeeded()
+      }
+    }
+  }
+
   // True while this instance owes BlueZ a StopDiscovery: set when it starts
   // discovery (or opens onto a session already running) and cleared once
   // discovery is confirmed down after close. Ownership, not state — BlueZ's
@@ -56,7 +204,7 @@ Panel {
   readonly property var discoveredDevices: deviceGroups.discovered || []
 
   readonly property string icon: {
-    if (!adapter) return ""
+    if (!adapter) return hardwarePresenceKnown && hardwarePresent ? "󰂲" : ""
     if (!adapter.enabled) return "󰂲"
     if (connectedDevices.length > 0) return "󰂱"
     return "󰂯"
@@ -75,7 +223,7 @@ Panel {
   ]
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
-    if (!adapter) return "No adapter"
+    if (!adapter) return hardwarePresenceKnown ? (hardwarePresent ? "Turned Off" : "No Bluetooth adapter") : ""
     if (!adapter.enabled) return "Turned Off"
     return activePhrases[phraseIndex % activePhrases.length]
   }
@@ -497,7 +645,7 @@ Panel {
     if (selectedIndex < 0) selectedIndex = 0
   }
 
-  visible: adapter !== null
+  visible: hardwarePresenceKnown ? hardwarePresent : adapter !== null
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -633,7 +781,20 @@ Panel {
   // switch only moves once BlueZ catches up, so a second click inside that window
   // would re-read the old state and undo the first.
   function toggleBluetooth() {
-    if (!adapter) return
+    if (!adapter) {
+      // The block removed the adapter from BlueZ; only an unblock brings it
+      // back. Bailing here left a toggled-off radio with no way back on from
+      // the UI.
+      if (hardwarePresent && !probePending) {
+        Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+      } else if (probePending) {
+        // The first probe hasn't answered yet; record the intent instead of
+        // acting on the unverified default (finishProbe runs the command).
+        // Each click toggles it, so a change of mind can cancel the request.
+        deferredPowerOn = !deferredPowerOn
+      }
+      return
+    }
     Quickshell.execDetached(["omarchy-bluetooth-power", adapter.enabled ? "off" : "on"])
   }
 
@@ -709,10 +870,12 @@ Panel {
           }
 
           // Compact on/off switch on the trailing edge of the hero, and the
-          // header's only cursor target.
+          // header's only cursor target. Same known/unknown gate as the panel
+          // root and the icon: while presence is unknown, the switch follows
+          // the adapter instead of the optimistic hardwarePresent default.
           ToggleSwitch {
             id: powerSwitch
-            visible: !!root.adapter
+            visible: root.hardwarePresenceKnown ? root.hardwarePresent : root.adapter !== null
             checked: !!root.adapter && root.adapter.enabled
             hasCursor: root.headerHasCursor
             foreground: root.bar.foreground
@@ -867,8 +1030,8 @@ Panel {
         Text {
           textFormat: Text.PlainText
           visible: root.connectedDevices.length === 0 && root.scrollRows.length === 0
-          text: !root.adapter ? "No Bluetooth adapter"
-              : !root.adapter.enabled ? "Turn Bluetooth on to scan"
+          text: !root.hardwarePresent ? "No Bluetooth adapter"
+              : !root.adapter || !root.adapter.enabled ? "Turn Bluetooth on to scan"
               : "Scanning for devices…"
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
