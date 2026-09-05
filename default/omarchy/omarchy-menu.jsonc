@@ -290,7 +290,7 @@
   "remove.windows": {"icon":"󰍲","label":"Windows","when":"[[ -f $HOME/.local/share/applications/windows-vm.desktop ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-windows-vm remove'"},
   "remove.preinstalls": {"icon":"󰏓","label":"Preinstalls","when":"[[ ! -f $HOME/.local/state/omarchy/preinstalls-removed ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-preinstalls"},
   "remove.security": {"icon":"","label":"Security","title":"Remove"},
-  "remove.security.fingerprint": {"icon":"󰈷","label":"Fingerprint","when":"omarchy-pkg-present fprintd","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-security-fingerprint"},
+  "remove.security.fingerprint": {"icon":"󰈷","label":"Fingerprint","when":"omarchy-pkg-present fprintd || grep -q pam_fprintd.so /etc/pam.d/sudo","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-security-fingerprint"},
   "remove.security.fido2": {"icon":"","label":"Fido2","when":"omarchy-pkg-present pam-u2f","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-security-fido2"},
   "remove.security.sshd": {"icon":"󰣀","label":"SSHD","when":"systemctl is-enabled --quiet sshd","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-security-sshd"},
   "remove.security.sudoless-docker": {"icon":"󰡨","label":"Sudoless Docker","when":"! omarchy-sudo-docker --configured","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-security-sudoless-docker"},

@@ -6,6 +6,73 @@
 set -e
 
 
+# The stack Omarchy installs itself. Anything else providing the same
+# interfaces is somebody else's stack, and is left alone.
+fingerprint_packages=(libfprint fprintd usbutils)
+
+# Some backends reinitialise the reader across suspend with sleep hooks rather
+# than in the daemon. Without them the sensor can come back from a resume dead
+# and every later authentication falls silently through to password -- the
+# same class of failure the clamshell gate exists to avoid, minus the lid.
+# Stock fprintd ships none of these, so the loop below is a no-op there.
+fingerprint_sleep_units=(
+  open-fprintd-suspend.service
+  open-fprintd-resume.service
+  python3-validity-suspend-hotfix.service
+)
+
+# pam_fprintd.so isn't on $PATH like the client tools are, and libpam has no
+# "is this module loadable" query -- the file's presence is the only check
+# available. Glob a few known prefixes rather than hardcoding one, since a
+# stack built against a different prefix puts it somewhere else.
+pam_fprintd_present() {
+  local dir
+  for dir in /usr/lib/security /usr/lib64/security /lib/security; do
+    [[ -e "$dir/pam_fprintd.so" ]] && return 0
+  done
+  return 1
+}
+
+# Everything downstream of installing packages talks to exactly four things:
+# the three fprintd client tools, and pam_fprintd.so in the PAM stacks. A
+# backend that answers all four is a working fprintd as far as this script
+# cares, whatever is actually driving the sensor behind it -- open-fprintd +
+# python-validity, for instance, drives Synaptics/Goodix readers stock
+# libfprint has no driver for, and satisfies every one of these checks.
+#
+# The bus name's activation file is what makes pam_fprintd and the clients
+# able to reach a daemon at all; whether that daemon actually starts is its
+# own error to report during enroll/verify, not a reason to guess wrong here.
+fingerprint_stack_present() {
+  omarchy-cmd-present fprintd-enroll fprintd-verify fprintd-list &&
+    pam_fprintd_present &&
+    [[ -f /usr/share/dbus-1/system-services/net.reactivated.Fprint.service ]]
+}
+
+# Same probe the lock screen and omarchy-apply-lock use, so all three agree on
+# what counts as "enrolled". A backend that can't answer -- daemon down,
+# sensor unplugged mid-run -- prints nothing that greps as a finger and falls
+# through to enrollment below, which is where its own error message belongs.
+fingerprint_enrolled() {
+  fprintd-list "$USER" 2>/dev/null | grep -qi finger
+}
+
+enable_fingerprint_sleep_units() {
+  local unit
+
+  for unit in "${fingerprint_sleep_units[@]}"; do
+    # Only touch a unit the machine actually has. is-enabled first keeps a
+    # rerun quiet in the overwhelmingly common case.
+    systemctl list-unit-files "$unit" &>/dev/null || continue
+    if systemctl is-enabled --quiet "$unit" 2>/dev/null; then
+      continue
+    fi
+
+    echo "Enabling $unit for suspend/resume..."
+    sudo systemctl enable "$unit"
+  done
+}
+
 setup_pam_config() {
   # A clamshell gate runs before pam_fprintd in every stack: when the lid is
   # shut the reader is unreachable, so it skips fingerprint (success=1) and PAM
@@ -22,6 +89,12 @@ setup_pam_config() {
   if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then
     echo "Configuring sudo for fingerprint authentication..."
     sudo sed -i '1i auth      sufficient pam_fprintd.so' /etc/pam.d/sudo
+  elif ! grep -qF 'auth      sufficient pam_fprintd.so' /etc/pam.d/sudo; then
+    # A pam_fprintd line is already there but isn't the one we'd write --
+    # hand-tuned with timeout=, most likely. That's the admin's call, not
+    # ours to rewrite: this script's idempotence rests on "if pam_fprintd.so
+    # is anywhere in this file, leave it alone."
+    echo "Leaving your existing pam_fprintd line in /etc/pam.d/sudo as-is."
   fi
   if ! grep -q 'omarchy-hw-laptop-closed' /etc/pam.d/sudo; then
     echo "Adding clamshell gate to sudo..."
@@ -30,6 +103,16 @@ setup_pam_config() {
   fi
 
   # Configure polkit
+  if [[ ! -f /etc/pam.d/polkit-1 && -f /usr/lib/pam.d/polkit-1 ]]; then
+    # polkit ships its stack under /usr/lib, and any file in /etc shadows it
+    # whole -- there's no way to prepend to the vendor copy in place. Start
+    # from an exact copy so the machine keeps faillock, the keyring, and
+    # everything else system-auth pulls in; building a stack from pam_unix by
+    # hand instead (the fallback below) loses all of it.
+    echo "Seeding polkit configuration from the vendor default..."
+    sudo cp /usr/lib/pam.d/polkit-1 /etc/pam.d/polkit-1
+  fi
+
   if [[ -f /etc/pam.d/polkit-1 ]]; then
     if ! grep -q 'pam_fprintd.so' /etc/pam.d/polkit-1; then
       echo "Configuring polkit for fingerprint authentication..."
@@ -40,6 +123,9 @@ setup_pam_config() {
       sudo sed -i "/pam_fprintd\.so/i $fprintd_gate" /etc/pam.d/polkit-1
     fi
   else
+    # No vendor file to seed from -- fall back to a minimal stack that still
+    # routes through system-auth rather than pam_unix directly, so faillock
+    # and the rest of the system's auth policy still apply.
     echo "Creating polkit configuration with fingerprint authentication..."
     # omarchy:heredoc-expands paths=none -- $fprintd_gate is the literal PAM
     # line defined above, shared with the two sed insertions so the gate cannot
@@ -47,11 +133,11 @@ setup_pam_config() {
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<EOF
 $fprintd_gate
 auth      sufficient pam_fprintd.so
-auth      required pam_unix.so
+auth      include    system-auth
 
-account   required pam_unix.so
-password  required pam_unix.so
-session   required pam_unix.so
+account   include    system-auth
+password  include    system-auth
+session   include    system-auth
 EOF
   fi
 }
@@ -74,41 +160,58 @@ if ! omarchy-hw-fingerprint; then
   exit 1
 fi
 
-# Install required packages
-echo "Installing required packages..."
+if fingerprint_stack_present && omarchy-pkg-missing fprintd; then
+  # A drop-in fprintd is already installed. Its client package conflicts with
+  # the repo fprintd, so omarchy-pkg-add would hand pacman a conflict prompt
+  # that --noconfirm answers N, aborting the transaction and taking this whole
+  # script down with it under set -e -- before any PAM stack got configured.
+  # Nothing below needs the repo packages, so install nothing and carry on.
+  echo "Found an fprintd-compatible stack already installed. Skipping package installation."
+else
+  echo "Installing required packages..."
 
-# libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
-# defaults the conflict prompt to N and aborts. Pre-remove it (deps-only,
-# so an installed fprintd stays put) so stock libfprint installs cleanly.
-if pacman -Q libfprint-git &>/dev/null; then
-  sudo pacman -Rdd --noconfirm libfprint-git
+  # libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
+  # defaults the conflict prompt to N and aborts. Pre-remove it (deps-only,
+  # so an installed fprintd stays put) so stock libfprint installs cleanly.
+  if pacman -Q libfprint-git &>/dev/null; then
+    sudo pacman -Rdd --noconfirm libfprint-git
+  fi
+
+  omarchy-pkg-add "${fingerprint_packages[@]}"
 fi
 
-omarchy-pkg-add libfprint fprintd usbutils
+enable_fingerprint_sleep_units
 
 # Enroll first fingerprint
-echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\e[0m"
-echo -e "Keep moving the finger around on sensor until the process completes.\n"
-
-if sudo fprintd-enroll "$USER"; then
-  echo -e "\e[32m\nFingerprint enrolled successfully!\e[0m"
-
-  # Verify
-  echo -e "\nNow let's verify that it's working correctly.\n"
-  if fprintd-verify; then
-    # PAM comes last, once a print is enrolled and verified. Detection only
-    # proves a reader is there, not that libfprint can drive it — an Elan MOC
-    # sensor outside the elanmoc table gets this far and then fails to enroll.
-    # Editing the stacks up front would leave those machines pointing at
-    # pam_fprintd with nothing to match.
-    setup_pam_config
-    setup_lock_fingerprint_pam
-    echo -e "\e[32m\nPerfect! Fingerprint authentication is now configured.\e[0m"
-    echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
-  else
-    echo -e "\e[31m\nVerification failed. You may want to try enrolling again.\e[0m"
-  fi
+if fingerprint_enrolled; then
+  # Re-enrolling would add a second copy of a finger that already works, and
+  # on a match-on-chip sensor the templates live in the reader's own flash,
+  # where they survive reinstalls entirely. Verify what's there instead.
+  echo -e "\e[32m\nYou already have a fingerprint enrolled.\e[0m"
 else
-  echo -e "\e[31m\nEnrollment failed. Please try again.\e[0m"
-  exit 1
+  echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\e[0m"
+  echo -e "Keep moving the finger around on sensor until the process completes.\n"
+
+  if sudo fprintd-enroll "$USER"; then
+    echo -e "\e[32m\nFingerprint enrolled successfully!\e[0m"
+  else
+    echo -e "\e[31m\nEnrollment failed. Please try again.\e[0m"
+    exit 1
+  fi
+fi
+
+# Verify
+echo -e "\nNow let's verify that it's working correctly.\n"
+if fprintd-verify; then
+  # PAM comes last, once a print is enrolled and verified. Detection only
+  # proves a reader is there, not that libfprint can drive it — an Elan MOC
+  # sensor outside the elanmoc table gets this far and then fails to enroll.
+  # Editing the stacks up front would leave those machines pointing at
+  # pam_fprintd with nothing to match.
+  setup_pam_config
+  setup_lock_fingerprint_pam
+  echo -e "\e[32m\nPerfect! Fingerprint authentication is now configured.\e[0m"
+  echo "You can use your fingerprint for sudo, polkit, and lock screen (Super + Ctrl + L)."
+else
+  echo -e "\e[31m\nVerification failed. You may want to try enrolling again.\e[0m"
 fi
