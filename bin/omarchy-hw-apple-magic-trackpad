@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# omarchy:summary=Detect an Apple Magic Trackpad on USB or Bluetooth.
+
+hid_dir="${OMARCHY_HID_DEVICES_DIR:-/sys/bus/hid/devices}"
+shopt -s nullglob
+for uevent in "$hid_dir"/*/uevent; do
+  # USB 0003 / Bluetooth 0005. Apple 05AC and the later Bluetooth vendor 004C.
+  # Trackpad v1 030E, v2 0265, USB-C 2024 0324.
+  if grep -qiE 'HID_ID=000[35]:0000(05AC|004C):0000(0265|0324|030E)' "$uevent"; then
+    exit 0
+  fi
+done
+exit 1

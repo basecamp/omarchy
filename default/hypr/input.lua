@@ -79,3 +79,28 @@ o.window("(Alacritty|kitty)", { scroll_touchpad = 1.5 })
 -- foot only applies its scrollback multiplier to wheel clicks, not precise touchpad scrolling.
 o.window("foot", { scroll_touchpad = 2.0 })
 o.window("com.mitchellh.ghostty", { scroll_touchpad = 0.2 })
+
+-- Apple Magic Trackpad. Keep adaptive accel and the default sensitivity even
+-- if the user raises the global pointer speed; a high global sensitivity makes
+-- small moves jumpy on this large pad. Unknown names are ignored.
+-- Device blocks take input / input.touchpad keys flattened.
+local magic_trackpad = {
+  sensitivity = 0.0,
+  accel_profile = "adaptive",
+  clickfinger_behavior = true,
+}
+
+for _, name in ipairs({
+  "apple-inc.-magic-trackpad",
+  "apple-inc.-magic-trackpad-1",
+  "apple-inc.-magic-trackpad-2",
+  "apple-inc.-magic-trackpad-2-1",
+  "apple-inc.-magic-trackpad-usb-c",
+  "apple-inc.-magic-trackpad-usb-c-1",
+}) do
+  local cfg = { name = name }
+  for key, value in pairs(magic_trackpad) do
+    cfg[key] = value
+  end
+  hl.device(cfg)
+end
