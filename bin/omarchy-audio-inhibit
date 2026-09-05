@@ -1,0 +1,157 @@
+#!/bin/bash
+
+# omarchy:summary=Prevent system idle while audio is playing
+# omarchy:args=[--once|--status]
+# omarchy:hidden=true
+
+set -u
+export LC_ALL=C
+
+RUNTIME_STATE_DIR="${XDG_RUNTIME_DIR:-/tmp/omarchy-$UID}/omarchy-audio-inhibit"
+OWNER_FILE="$RUNTIME_STATE_DIR/owner"
+SUPPRESSED_FILE="$RUNTIME_STATE_DIR/suppressed"
+IDLE_STATE_DIR="$HOME/.local/state/omarchy/indicators"
+IDLE_STATE_FILE="$IDLE_STATE_DIR/stay-awake"
+
+audio_is_playing() {
+  local streams=""
+  streams=$(pactl --format=json list sink-inputs 2>/dev/null) || return 1
+  # Filter out corked/muted streams, notification/event sounds, and background daemons (like Voxtype dictation)
+  jq -e '
+    any(.[];
+      (.corked == false) and
+      (.mute == false) and
+      ((.properties["media.role"] // "") != "event") and
+      ((.properties["media.role"] // "") != "notification") and
+      ((.properties["application.name"] // "") | test("voxtype|speech-dispatcher"; "i") | not) and
+      ((.properties["node.name"] // "") | test("voxtype|speech-dispatcher"; "i") | not)
+    )
+  ' <<<"$streams" >/dev/null 2>&1
+}
+
+session_is_locked() {
+  omarchy-cmd-present omarchy-hyprland-session-locked && omarchy-hyprland-session-locked
+}
+
+owns_idle_state() {
+  local state_owner=""
+  [[ -f $IDLE_STATE_FILE ]] || return 1
+  state_owner=$(<"$IDLE_STATE_FILE")
+
+  # Current daemon run owns the state
+  if [[ -s $OWNER_FILE ]]; then
+    local owner
+    owner=$(<"$OWNER_FILE")
+    if [[ -n $owner && $state_owner == "$owner" ]]; then
+      return 0
+    fi
+  fi
+
+  # Stranded token from a prior daemon instance or previous boot
+  if [[ $state_owner == omarchy-audio-inhibit:* ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+detect_user_dismissal() {
+  # If we previously claimed stay-awake but the indicator file was removed
+  # or modified to something else, the user explicitly dismissed it.
+  if [[ -f $OWNER_FILE ]] && ! owns_idle_state; then
+    mkdir -p "$RUNTIME_STATE_DIR"
+    touch "$SUPPRESSED_FILE"
+    rm -f "$OWNER_FILE"
+  fi
+}
+
+claim_stay_awake() {
+  local owner=""
+
+  detect_user_dismissal
+
+  # Do not re-claim if user suppressed stay-awake for this playback session,
+  # or if the session is currently locked.
+  if [[ -f $SUPPRESSED_FILE ]] || session_is_locked; then
+    if owns_idle_state; then
+      rm -f "$IDLE_STATE_FILE"
+    fi
+    return 0
+  fi
+
+  if owns_idle_state && [[ -s $OWNER_FILE ]]; then
+    return 0
+  fi
+
+  rm -f "$OWNER_FILE"
+  # If a user-owned stay-awake exists (not matching omarchy-audio-inhibit:*), leave it alone
+  if [[ -e $IDLE_STATE_FILE ]] && ! owns_idle_state; then
+    return 0
+  fi
+
+  mkdir -p "$RUNTIME_STATE_DIR" "$IDLE_STATE_DIR"
+  owner="omarchy-audio-inhibit:$$:$RANDOM:$RANDOM"
+  printf '%s\n' "$owner" >"$OWNER_FILE"
+
+  if (set -o noclobber; printf '%s\n' "$owner" >"$IDLE_STATE_FILE") 2>/dev/null; then
+    return 0
+  else
+    rm -f "$OWNER_FILE"
+  fi
+}
+
+release_stay_awake() {
+  if owns_idle_state; then
+    rm -f "$IDLE_STATE_FILE"
+  fi
+
+  rm -f "$OWNER_FILE"
+  # Reset suppression once playback has ended so the next media session
+  # automatically gets sleep protection again.
+  rm -f "$SUPPRESSED_FILE"
+  rmdir "$RUNTIME_STATE_DIR" 2>/dev/null || true
+}
+
+reconcile_audio_state() {
+  if audio_is_playing; then
+    claim_stay_awake
+  else
+    release_stay_awake
+  fi
+}
+
+case "${1:-}" in
+  --status)
+    if audio_is_playing; then
+      if [[ -f $SUPPRESSED_FILE ]]; then
+        echo "playing (suppressed by user)"
+      else
+        echo "playing"
+      fi
+    else
+      echo "idle"
+    fi
+    exit 0
+    ;;
+  --once)
+    reconcile_audio_state
+    exit 0
+    ;;
+esac
+
+trap 'exit 0' INT TERM
+trap release_stay_awake EXIT
+
+reconcile_audio_state
+while true; do
+  while IFS= read -r event; do
+    case "$event" in
+      *" on sink-input #"*)
+        reconcile_audio_state
+        ;;
+    esac
+  done < <(pactl subscribe 2>/dev/null)
+
+  sleep 2
+  reconcile_audio_state
+done
