@@ -9,6 +9,7 @@ trap 'rm -rf "$tmp_dir"' EXIT
 
 mkdir -p "$tmp_dir/bin"
 mkdir -p "$tmp_dir/power/BAT0"
+printf 'Battery\n' >"$tmp_dir/power/BAT0/type"
 printf '900000\n' >"$tmp_dir/power/BAT0/current_now"
 printf '12000000\n' >"$tmp_dir/power/BAT0/voltage_now"
 cat >"$tmp_dir/bin/upower" <<'STUB'

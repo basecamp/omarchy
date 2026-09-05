@@ -21,7 +21,12 @@ esac
 battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
 [[ -z $battery ]] && exit 0
 
-battery_info=$(upower -i "$battery")
+# Headline figures come from UPower's aggregate DisplayDevice rather than the
+# first battery UPower enumerates: on a multi-battery machine (dual-battery
+# ThinkPads and the like) the first device can be a dead or empty pack, which
+# pins the panel at 0% forever while the other battery charges fine.
+battery_info=$(upower -i /org/freedesktop/UPower/devices/DisplayDevice)
+[[ -z $battery_info ]] && exit 0
 
 percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
 capacity=$(awk '/energy-full:/ { printf "%d", $2; exit }' <<<"$battery_info")
@@ -42,18 +47,76 @@ time_remaining=$(awk '/time to (empty|full)/ {
   exit
 }' <<<"$battery_info")
 power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
-native_path=$(awk '/native-path/ { print $2; exit }' <<<"$battery_info")
-battery_path="$power_supply_path/$native_path"
 
-# UPower's energy-rate can lag the kernel telemetry by tens of seconds. Use
-# the instantaneous sysfs reading when available so the open panel stays live.
-if [[ -r $battery_path/power_now ]]; then
-  power_rate_raw=$(awk -v microwatts="$(<"$battery_path/power_now")" 'BEGIN { print microwatts / 1000000 }')
-elif [[ -r $battery_path/current_now && -r $battery_path/voltage_now ]]; then
-  power_rate_raw=$(awk \
-    -v microamps="$(<"$battery_path/current_now")" \
-    -v microvolts="$(<"$battery_path/voltage_now")" \
-    'BEGIN { print microamps * microvolts / 1000000000000 }')
+# Per-pack readings (live wattage, cycle counts) cover every system battery.
+# Peripheral batteries (mice, keyboards) also report type Battery, but carry
+# scope Device and are not part of the machine's power budget. A pack showing
+# no voltage, stored energy, or current flow is electrically dead — a healthy
+# empty cell still reports voltage. energy_full is no sign of life: a dead
+# pack keeps advertising the capacity it once had (#7916).
+batteries=()
+dead_packs=()
+for supply in "$power_supply_path"/*; do
+  [[ -r $supply/type && $(<"$supply/type") == "Battery" ]] || continue
+  [[ -r $supply/scope && $(<"$supply/scope") == "Device" ]] && continue
+  if [[ -r $supply/present ]]; then
+    [[ $(<"$supply/present") == "1" ]] || continue
+  fi
+
+  live=false
+  for attr in voltage_now energy_now charge_now current_now power_now; do
+    value=$(cat "$supply/$attr" 2>/dev/null) || continue
+    [[ $value =~ ^-?[0-9]+$ ]] || continue
+    if (( value != 0 )); then
+      live=true
+      break
+    fi
+  done
+
+  if [[ $live == "true" ]]; then
+    batteries+=("$supply")
+  else
+    dead_packs+=("$supply")
+  fi
+done
+
+# No telemetry at all is not proof of death: if every pack reads dead, keep
+# them all rather than reporting nothing.
+if (( ${#batteries[@]} == 0 )); then
+  batteries=("${dead_packs[@]}")
+  dead_packs=()
+fi
+
+# UPower's energy-rate can lag the kernel telemetry by tens of seconds. Sum
+# the instantaneous sysfs readings so the open panel stays live and a
+# multi-battery machine shows its combined draw — but only when every pack
+# reports, since a partial sum would understate the total.
+total_microwatts=0
+metered_packs=0
+for supply in "${batteries[@]}"; do
+  if [[ -r $supply/power_now ]]; then
+    microwatts=$(<"$supply/power_now")
+  elif [[ -r $supply/current_now && -r $supply/voltage_now ]]; then
+    # A failed read() (ENODEV) can leave a readable attribute empty; validate
+    # before awk, which would silently coerce that to 0.
+    microamps=$(<"$supply/current_now")
+    microvolts=$(<"$supply/voltage_now")
+    [[ $microamps =~ ^-?[0-9]+$ && $microvolts =~ ^-?[0-9]+$ ]] || continue
+    microwatts=$(awk \
+      -v microamps="$microamps" \
+      -v microvolts="$microvolts" \
+      'BEGIN { printf "%d", microamps * microvolts / 1000000 }')
+  else
+    continue
+  fi
+
+  [[ $microwatts =~ ^-?[0-9]+$ ]] || continue
+  total_microwatts=$((total_microwatts + microwatts))
+  ((metered_packs += 1))
+done
+
+if (( metered_packs > 0 && metered_packs == ${#batteries[@]} )); then
+  power_rate_raw=$(awk -v microwatts="$total_microwatts" 'BEGIN { print microwatts / 1000000 }')
 fi
 
 power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
@@ -62,8 +125,53 @@ power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
   print rounded
 }')
 state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
-threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
-threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
+
+# UPower's composite DisplayDevice still counts a dead pack's advertised
+# energy-full, sagging the percentage and stretching time-to-full toward a
+# pack that holds nothing (#7916). When a dead pack was excluded, rebuild the
+# headline figures from the live packs' own energy readings; firmware that
+# only exposes charge counters keeps the aggregate values.
+if (( ${#dead_packs[@]} > 0 )); then
+  live_energy=0
+  live_energy_full=0
+  for supply in "${batteries[@]}"; do
+    energy=$(cat "$supply/energy_now" 2>/dev/null)
+    full=$(cat "$supply/energy_full" 2>/dev/null)
+    if [[ ! $energy =~ ^[0-9]+$ || ! $full =~ ^[0-9]+$ ]]; then
+      live_energy_full=0
+      break
+    fi
+    live_energy=$((live_energy + energy))
+    live_energy_full=$((live_energy_full + full))
+  done
+
+  if (( live_energy_full > 0 )); then
+    percentage=$((100 * live_energy / live_energy_full))
+    capacity=$((live_energy_full / 1000000))
+    time_remaining=$(awk -v energy="$live_energy" -v full="$live_energy_full" \
+      -v rate="${power_rate_raw:-0}" -v state="$state" 'BEGIN {
+      if (rate <= 0) exit
+      if (state == "charging") hours = (full - energy) / 1000000 / rate
+      else if (state == "discharging") hours = energy / 1000000 / rate
+      else exit
+      whole = int(hours)
+      minutes = int((hours - whole) * 60)
+      if (whole == 0) {
+        printf "%dm", minutes
+      } else if (minutes > 0) {
+        printf "%dh %dm", whole, minutes
+      } else {
+        printf "%dh", whole
+      }
+    }')
+  fi
+fi
+
+# Charge thresholds are per-device values the aggregate does not carry, so
+# they still come from the first battery's own UPower info.
+threshold_info=$(upower -i "$battery")
+threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$threshold_info")
+threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$threshold_info")
 
 [[ -z $threshold_end ]] && threshold_end=$(cat "$power_supply_path"/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
 [[ -z $threshold_start ]] && threshold_start=$(cat "$power_supply_path"/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
@@ -107,7 +215,15 @@ if [[ $shell_output == "true" ]]; then
   printf 'size\t%s\n' "${capacity}Wh"
   printf 'time\t%s\n' "$time_remaining"
 
-  cycles=$(cat "$power_supply_path"/BAT*/cycle_count 2>/dev/null | head -1)
+  # One cycle count per pack, so a multi-battery machine reports both rather
+  # than silently showing whichever sorts first. A dead pack's -1 falls to
+  # the digit check.
+  cycles=""
+  for supply in "${batteries[@]}"; do
+    count=$(cat "$supply/cycle_count" 2>/dev/null) || continue
+    [[ $count =~ ^[0-9]+$ ]] || continue
+    cycles+="${cycles:+ / }$count"
+  done
 
   [[ -n $cycles ]] && printf 'cycles\t%s\n' "$cycles"
 
