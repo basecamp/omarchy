@@ -61,6 +61,8 @@ On Dell XPS laptops with a haptic touchpad, you can also set the click strength 
 
 Omarchy runs the [fcitx5](https://fcitx-im.org/) input method framework as part of every session — it's what powers the CapsLock compose sequences. That means the plumbing for non-Latin input is already in place: install an input engine like `fcitx5-mozc` (Japanese) or `fcitx5-chinese-addons` (Chinese) with `omarchy pkg add`, plus `fcitx5-configtool` to add the engine to your input methods and set the key that switches between them.
 
+For Chinese there's a shortcut: flip _Setup > Region_ to China and Omarchy installs and configures the [Rime Ice](https://github.com/iDvel/rime-ice) input method for you, using [Andy Stewart's installer](https://github.com/manateelazycat/rime-ice-installer), and switches the system language to Chinese from the next login. Rime comes up active by default, `Ctrl+Space` toggles back to plain English input, and the Omarchy menu itself puts on Chinese labels.
+
 ### Use ALT as SUPER
 
 On some keyboards, it's not convenient to use the primary meta key (Windows/cmd key) as SUPER. You can change this to be ALT instead using this change:

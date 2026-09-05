@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# omarchy:summary=Show or set the region the machine is set up for
+# omarchy:args=[world|china]
+# omarchy:examples=omarchy region | omarchy region china
+
+set -euo pipefail
+
+region_file="$HOME/.config/omarchy/region"
+
+if (($# == 0)); then
+  region="World"
+  if [[ -f $region_file ]] && read -r stored <"$region_file"; then
+    region=$stored
+  fi
+  echo "$region"
+  exit 0
+fi
+
+if (($# > 1)); then
+  echo "Usage: omarchy-region <world|china>"
+  exit 1
+fi
+
+case "$1" in
+world | World) region="World" ;;
+china | China) region="China" ;;
+*)
+  echo "Usage: omarchy-region <world|china>"
+  exit 1
+  ;;
+esac
+
+menu_overlay="$HOME/.config/omarchy/extensions/omarchy-menu.jsonc"
+menu_sample="$OMARCHY_PATH/config/omarchy/extensions/omarchy-menu.jsonc"
+overlay_marker="// Omarchy region managed"
+
+if [[ $region == "China" ]]; then
+  # The stock machine carries the commented sample extension; a menu extension
+  # someone wrote by hand refuses the switch instead of being overwritten.
+  if [[ -s $menu_overlay ]] && ! grep -qFx "$overlay_marker" "$menu_overlay" &&
+    ! cmp -s "$menu_overlay" "$menu_sample"; then
+    echo "menu: $menu_overlay has content Omarchy does not manage" >&2
+    echo "Resolve it by hand, then rerun: omarchy region china" >&2
+    exit 1
+  fi
+
+  mkdir -p "${menu_overlay%/*}"
+  cp "$OMARCHY_PATH/default/omarchy/omarchy-menu.zh-cn.jsonc" "$menu_overlay"
+  echo "menu -> Chinese labels"
+
+  # localectl writes /etc/locale.conf; the session picks it up at next login.
+  if ! grep -qsFx 'LANG=zh_CN.UTF-8' /etc/locale.conf; then
+    sudo sed -i 's/^#\(zh_CN\.UTF-8 UTF-8\)/\1/' /etc/locale.gen
+    sudo locale-gen
+    sudo localectl set-locale LANG=zh_CN.UTF-8
+  fi
+  echo "language -> zh_CN.UTF-8 (from the next login)"
+else
+  if [[ -f $menu_overlay ]] && grep -qFx "$overlay_marker" "$menu_overlay"; then
+    cp "$menu_sample" "$menu_overlay"
+    echo "menu -> stock labels"
+  fi
+
+  if grep -qsFx 'LANG=zh_CN.UTF-8' /etc/locale.conf; then
+    sudo localectl set-locale LANG=en_US.UTF-8
+    echo "language -> en_US.UTF-8 (from the next login)"
+  fi
+fi
+
+# Rime Ice's TUI drives its own sudo and fcitx5 restart; the schema file is
+# what a finished install leaves behind. A fresh install has no repo databases
+# until its first sync, and both pkg-add and the installer's pacman need them.
+if [[ $region == "China" && ! -f $HOME/.local/share/fcitx5/rime/rime_ice.schema.yaml ]]; then
+  sudo pacman -Sy
+  omarchy-pkg-add rime-ice-installer
+  rime-ice-installer
+fi
+
+# Rime first makes Chinese the active default; keyboard-us stays one
+# Ctrl+Space away, pinned explicitly rather than left to fcitx5's default.
+if [[ $region == "China" ]]; then
+  fcitx_dir="$HOME/.config/fcitx5"
+  mkdir -p "$fcitx_dir"
+  cat >"$fcitx_dir/profile" <<EOF
+[Groups/0]
+Name=Default
+Default Layout=us
+DefaultIM=rime
+
+[Groups/0/Items/0]
+Name=rime
+Layout=
+
+[Groups/0/Items/1]
+Name=keyboard-us
+Layout=
+
+[GroupOrder]
+0=Default
+EOF
+
+  touch "$fcitx_dir/config"
+  awk '
+    /^\[Hotkey\/TriggerKeys\]$/ { skip = 1; next }
+    /^\[/ { skip = 0 }
+    !skip { print }
+  ' "$fcitx_dir/config" >"$fcitx_dir/config.tmp"
+  printf '[Hotkey/TriggerKeys]\n0=Control+space\n' >>"$fcitx_dir/config.tmp"
+  mv "$fcitx_dir/config.tmp" "$fcitx_dir/config"
+  echo "input method -> Rime Ice by default, Ctrl+Space toggles"
+
+  if systemctl --user is-active omarchy-fcitx5.service >/dev/null 2>&1; then
+    systemctl --user restart omarchy-fcitx5.service
+  fi
+fi
+
+mkdir -p "${region_file%/*}"
+printf '%s\n' "$region" >"$region_file"
+echo "Region set to $region"

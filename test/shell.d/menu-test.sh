@@ -44,9 +44,10 @@ assertDeepEqual(
     aliases: ['theme'],
     when: '',
     checked: '',
-    disabled: ''
+    disabled: '',
+    declared: ['label', 'aliases', 'description', 'action']
   },
-  'menu normalizes parsed items'
+  'menu normalizes parsed items and records what the file declared'
 )
 
 const user = [
@@ -57,6 +58,16 @@ const merged = menu.mergeMenuSources(parsed, user)
 assertEqual(merged.items['style.theme'].label, 'Theme picker', 'menu user entries override default entries')
 assertEqual(merged.items['style.theme'].order, 2, 'menu preserves original order on override')
 assert(merged.items.root, 'menu injects root when merging sources')
+
+const retitled = menu.mergeMenuSources(
+  menu.parseMenuJsonc('{"apps": {"icon":"A","label":"Apps","provider":"apps"}, "apps.go": {"label":"Go","action":"run-go"}}'),
+  menu.parseMenuJsonc('{"apps": {"label":"应用"}, "apps.go": {"label":"出发"}}')
+)
+assertEqual(retitled.items['apps'].provider, 'apps', 'menu keeps the provider when a user entry only retitles')
+assertEqual(retitled.items['apps'].icon, 'A', 'menu keeps the icon when a user entry only retitles')
+assertEqual(retitled.items['apps.go'].action, 'run-go', 'menu keeps the action when a user entry only retitles')
+assertEqual(retitled.items['apps.go'].kind, 'action', 'menu keeps the kind when a user entry only retitles')
+assertEqual(retitled.items['apps.go'].label, '出发', 'menu applies the user retitle')
 
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')
@@ -263,6 +274,22 @@ assert(
   'menu always exposes every supported browser, terminal, and editor under Defaults'
 )
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
+const regionEntries = defaultItems.filter(item => item.parent === 'setup.region')
+assert(
+  regionEntries.map(item => item.label).join('\0') === 'World\0China'
+    && regionEntries.every(item => item.checked.includes(`== \"${item.label}\"`) && !item.when)
+    && defaultById['setup.region.world'].action.includes('omarchy-region world')
+    && defaultById['setup.region.china'].action.includes('omarchy-region china'),
+  'menu offers World and China under Setup > Region'
+)
+const zhOverlay = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.zh-cn.jsonc'), 'utf8')
+const zhItems = menu.parseMenuJsonc(zhOverlay)
+assert(zhItems.length > 100, 'Chinese menu overlay parses')
+assert(zhItems.every(item => defaultById[item.id]), 'Chinese menu overlay only retitles shipped entries')
+assert(
+  !/"(action|target|icon|when|checked|disabled|provider|aliases)"/.test(zhOverlay),
+  'Chinese menu overlay declares labels and titles only'
+)
 // Software you already have keeps its place in Install, dimmed rather than
 // dropped, so the list reads as a catalog of what Omarchy can install.
 // Chromium Account is the sole Install row with anything left to hide for, so
