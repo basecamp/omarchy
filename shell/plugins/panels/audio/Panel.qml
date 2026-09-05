@@ -36,6 +36,8 @@ Panel {
       if (n && !n.isSink && !n.isStream && isAudioSource(n)) {
         var name = n.name || ""
         if (name === "quickshell") continue
+        // Sink monitors mirror outputs; they are not real input devices.
+        if (isMonitorSource(n)) continue
         list.push(n)
       }
     }
@@ -77,17 +79,21 @@ Panel {
   property var cachedAudioSources: []
 
   readonly property var rawAudioSinks: {
+    // Prefers the default sink (unshifted first) when PipeWire also lists it
+    // under another object identity or label-equivalent node.
     var list = []
+    if (sink) list.push(sink)
     for (var i = 0; i < candidateSinks.length; i++)
       if (sinkAvailable(candidateSinks[i])) list.push(candidateSinks[i])
-    if (sink && list.indexOf(sink) < 0) list.unshift(sink)
-    return list
+    return dedupeAudioNodes(list)
   }
 
   readonly property var rawAudioSources: {
-    var list = candidateSources.slice()
-    if (source && list.indexOf(source) < 0) list.unshift(source)
-    return list
+    var list = []
+    if (source) list.push(source)
+    for (var i = 0; i < candidateSources.length; i++)
+      list.push(candidateSources[i])
+    return dedupeAudioNodes(list)
   }
 
   readonly property var audioSinks: rawAudioSinks.length > 0 ? rawAudioSinks : cachedAudioSinks
@@ -501,6 +507,14 @@ Panel {
 
   function nodeLabel(node) {
     return Model.nodeLabel(node)
+  }
+
+  function dedupeAudioNodes(list) {
+    return Model.dedupeAudioNodes(list)
+  }
+
+  function isMonitorSource(node) {
+    return Model.isMonitorSource(node)
   }
 
   function nodeProps(node) {
