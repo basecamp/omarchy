@@ -59,9 +59,10 @@ disable_hyprland_autostart() {
   fi
 }
 
+# Prefer the real unit; also clear the alias name if only that remains.
+systemctl --user disable --now app-dev.lizardbyte.app.Sunshine.service 2>/dev/null || true
 systemctl --user disable --now sunshine 2>/dev/null || true
-omarchy-pkg-drop sunshine
-omarchy-webapp-remove "$SUNSHINE_ADMIN_APP" 2>/dev/null || true
+omarchy-pkg-drop sunshineomarchy-webapp-remove "$SUNSHINE_ADMIN_APP" 2>/dev/null || true
 disable_hyprland_autostart
 close_ufw_ports
 
