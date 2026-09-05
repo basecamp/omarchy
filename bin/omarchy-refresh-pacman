@@ -13,14 +13,51 @@ if [[ $channel != "stable" && $channel != "rc" && $channel != "edge" ]]; then
   exit 1
 fi
 
+if rollback_dir=$(sudo mktemp -d); then
+  trap 'sudo rm -rf "$rollback_dir"' EXIT
+else
+  echo "Unable to create a secure pacman rollback directory. Aborting refresh." >&2
+  exit 1
+fi
+
+if sudo cp -f /etc/pacman.conf "$rollback_dir/pacman.conf" &&
+  sudo cp -f /etc/pacman.d/mirrorlist "$rollback_dir/mirrorlist"; then
+  :
+else
+  echo "Unable to preserve the current pacman configuration. Aborting refresh." >&2
+  exit 1
+fi
+
 echo "Setting channel to $channel"
 echo
 
-sudo cp -f "$OMARCHY_PATH/default/pacman/pacman-$channel.conf" /etc/pacman.conf
-sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist
+apply_pacman_channel() {
+  sudo cp -f "$OMARCHY_PATH/default/pacman/pacman-$channel.conf" /etc/pacman.conf &&
+    sudo cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-$channel" /etc/pacman.d/mirrorlist &&
+    omarchy-hook pre-refresh-pacman &&
+    sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syyuu --noconfirm
+}
 
-# Allow user customization of /etc/pacman.conf before the upgrade runs
-omarchy-hook pre-refresh-pacman
+restore_pacman_config() {
+  local restore_status=0
 
-# Reset all package DBs and then update
-sudo env OMARCHY_UPDATE_PACMAN=1 pacman -Syyuu --noconfirm
+  sudo cp -f "$rollback_dir/pacman.conf" /etc/pacman.conf || restore_status=$?
+  sudo cp -f "$rollback_dir/mirrorlist" /etc/pacman.d/mirrorlist || restore_status=$?
+
+  return "$restore_status"
+}
+
+if apply_pacman_channel; then
+  exit 0
+else
+  refresh_status=$?
+  echo "Package refresh failed. Restoring the previous pacman configuration." >&2
+
+  if restore_pacman_config; then
+    echo "Previous pacman configuration restored." >&2
+  else
+    echo "Failed to restore the previous pacman configuration." >&2
+  fi
+
+  exit "$refresh_status"
+fi
