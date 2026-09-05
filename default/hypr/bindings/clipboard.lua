@@ -46,3 +46,25 @@ o.bind("SUPER + C", "Universal copy", universal_clipboard_shortcut("CTRL", "C", 
 o.bind("SUPER + V", "Universal paste", universal_clipboard_shortcut("CTRL", "V", "SHIFT", "Insert"))
 o.bind("SUPER + X", "Universal cut", send_shortcut_once("CTRL", "X"))
 o.bind("SUPER + CTRL + V", "Clipboard manager", "omarchy-shell shell toggle omarchy.clipboard")
+
+-- Of Omarchy's terminal options, only Ghostty has a select-all action to
+-- forward to (`ghostty +list-keybinds --default` ships CTRL+SHIFT+A as
+-- select_all). foot, kitty, and Alacritty expose no keyboard-triggerable
+-- select-all at all, so forwarding CTRL+A there would just fall through to
+-- readline's "move to start of line" instead - a no-op is more honest than
+-- a shortcut that silently moves the cursor.
+local function active_window_is_ghostty()
+  local window = hl.get_active_window()
+  return window ~= nil and window.class == "com.mitchellh.ghostty"
+end
+
+o.bind("SUPER + A", "Universal select all", function()
+  if active_window_is_terminal() then
+    if active_window_is_ghostty() then
+      send_shortcut_once("CTRL SHIFT", "A")()
+    end
+    return
+  end
+
+  send_shortcut_once("CTRL", "A")()
+end)
