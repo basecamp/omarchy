@@ -51,10 +51,17 @@ ln -s "$ROOT/config" "$test_root/config"
 ln -s "$ROOT/bin" "$test_root/bin"
 
 # Every plugin under ~/.config/omarchy/plugins hot-reloads, whoever wrote it.
+# Built in a staging directory and moved into place as a single rename so the
+# plugin watcher sees one atomic directory creation instead of a mkdir plus
+# two separate file writes — the multi-step version fires onLocalPluginChanged
+# more than once right after startup, each triggering its own full
+# reloadPlugins() pass and inflating the IPC-handler-collision count below
+# with duplicates unrelated to the number of screens.
 hot_reload_id="acme.hot-reload"
+hot_reload_staging="$TMPDIR/.hot-reload-staging"
 hot_reload_dir="$test_home/.config/omarchy/plugins/$hot_reload_id"
-mkdir -p "$hot_reload_dir"
-cat >"$hot_reload_dir/manifest.json" <<JSON
+mkdir -p "$hot_reload_staging" "$test_home/.config/omarchy/plugins"
+cat >"$hot_reload_staging/manifest.json" <<JSON
 {
   "schemaVersion": 1,
   "id": "$hot_reload_id",
@@ -65,7 +72,7 @@ cat >"$hot_reload_dir/manifest.json" <<JSON
   "omarchy": {"clonedFrom": "omarchy.emojis"}
 }
 JSON
-cat >"$hot_reload_dir/Overlay.qml" <<'QML'
+cat >"$hot_reload_staging/Overlay.qml" <<'QML'
 import QtQuick
 
 Item {
@@ -73,6 +80,7 @@ Item {
   function close() {}
 }
 QML
+mv "$hot_reload_staging" "$hot_reload_dir"
 
 # A keepLoaded service must keep its instance (and in-memory state) across a
 # plugin rescan. The marker below can only survive if the object does.
@@ -177,6 +185,12 @@ jq -e '
   fail_with_log "shell IPC lists plugin metadata"
 }
 pass "shell IPC lists plugin metadata"
+
+# Snapshot the log right after the initial widget registration burst lands,
+# so the collision check below (which runs after several deliberate reloads —
+# the hot-reload rename, plugin enable/disable, and an explicit rescan) only
+# looks at the one registration pass it's actually meant to validate.
+startup_log_lines=$(wc -l < "$log")
 
 jq '.name = "After Hot Reload"' "$hot_reload_dir/manifest.json" >"$hot_reload_dir/manifest.json.tmp"
 mv "$hot_reload_dir/manifest.json.tmp" "$hot_reload_dir/manifest.json"
@@ -357,15 +371,21 @@ pass "direct panel IPC opens and closes default panels"
 # past the first. Anything beyond that is two instances on the same screen —
 # the shape duplicate component loads produced, where a sync pass that ran
 # while a widget's asynchronous load was still in flight started a second one.
-# Checked before the reload below, which rebuilds widgets by design.
+# Restricted to the startup portion of the log captured above: everything
+# after it is one or more deliberate reloads (hot-reload rename, plugin
+# enable/disable, rescanPlugins), each of which legitimately reproduces the
+# same one-collision-per-screen pattern and would otherwise inflate the count
+# with duplicates unrelated to this check.
 screens=$(hyprctl -j monitors 2>/dev/null | jq 'length' 2>/dev/null || true)
 [[ $screens =~ ^[0-9]+$ ]] && (( screens > 0 )) || screens=1
 # No matches is the good case, and pipefail would otherwise abort the run.
-worst=$(grep -oE "another handler is registered for target [a-z.-]+" "$log" |
+worst=$(head -n "$startup_log_lines" "$log" |
+  grep -oE "another handler is registered for target [a-z.-]+" |
   sort | uniq -c | sort -rn | head -1 | awk '{print $1}' || true)
 worst=${worst:-0}
 if (( worst > screens - 1 )); then
-  grep "another handler is registered for target" "$log" | sed 's/^/  /' | head -20 >&2
+  head -n "$startup_log_lines" "$log" |
+    grep "another handler is registered for target" | sed 's/^/  /' | head -20 >&2
   fail_with_log "each widget registers its IPC handler once per screen (saw $worst for $screens screen(s))"
 fi
 pass "each widget registers its IPC handler once per screen"
