@@ -1,0 +1,1213 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Antigravity usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Google Antigravity (agy) usage into one display-ready JSON record.
+
+Local stats come from Antigravity session transcripts in ~/.gemini/antigravity-cli/brain
+(and ~/.gemini/antigravity/brain), history in history.jsonl, pi/omp sessions that ran
+on Google Gemini models, and OpenCode sessions that ran on a Google provider.
+The agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "agy"
+AGENT_NAME = "Antigravity"
+AUTH_HELP = "Run `agy` to authenticate."
+
+PROBE_MIN_INTERVAL_SECONDS = 15
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+
+
+def gemini_dir() -> Path:
+  return expand_path(os.environ.get("GEMINI_DIR") or os.environ.get("ANTIGRAVITY_DIR") or "~/.gemini")
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def cache_root() -> Path:
+  root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_string() -> str:
+  return date_string(dt.datetime.now().date())
+
+
+def local_date_from_timestamp(value: Any) -> str:
+  if value is None:
+    return local_date_string()
+
+  if isinstance(value, (int, float)):
+    try:
+      seconds = float(value) / 1000.0 if float(value) > 10_000_000_000 else float(value)
+      return date_string(dt.datetime.fromtimestamp(seconds).date())
+    except Exception:
+      return local_date_string()
+
+  raw = str(value).strip()
+  if not raw:
+    return local_date_string()
+
+  try:
+    parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+      parsed = parsed.astimezone()
+    return date_string(parsed.date())
+  except Exception:
+    return local_date_string()
+
+
+def number(value: Any) -> int:
+  try:
+    n = float(value or 0)
+    return round(n) if n == n else 0
+  except Exception:
+    return 0
+
+
+def usage_token(usage: dict[str, Any], snake_key: str, camel_key: str) -> int:
+  value = usage.get(snake_key, usage.get(camel_key, 0))
+  try:
+    return round(float(value or 0))
+  except Exception:
+    return 0
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def normalize_model_name(raw: Any) -> str:
+  text = str(raw or "").strip().lower()
+  if not text:
+    return "gemini-3.7-flash"
+  if "/" in text:
+    text = text.split("/")[-1]
+  if text.startswith("models/"):
+    text = text[7:]
+
+  # Remove XML/HTML tags if any leaked in
+  text = re.sub(r"<[^>]+>", "", text)
+  # Remove parenthesized annotations like "(High)", "(preview)", "(thinking)"
+  text = re.sub(r"\s*\(.*?\)", "", text).strip()
+  # Remove punctuation like quotes, brackets, braces, angle brackets
+  text = re.sub(r'[<>"\'\{\}\[\]\(\)]', "", text).strip()
+  # Replace spaces and underscores with dashes
+  text = re.sub(r"[\s_]+", "-", text).strip("-")
+
+  if not text:
+    return "gemini-3.7-flash"
+
+  # If it refers to flash/pro/ultra/lite without gemini prefix, prefix it
+  if not text.startswith("gemini-") and not text.startswith("claude-") and not text.startswith("gpt-") and any(k in text for k in ("flash", "pro", "ultra", "lite")):
+    text = f"gemini-{text}"
+
+  return text
+
+
+
+# ---------------------------------------------------------------- local scan
+
+
+def scan_antigravity_transcripts(gemini_path: Path) -> dict[str, Any]:
+  today = local_date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+
+  seen_events: set[str] = set()
+  sessions: set[str] = set()
+  active_days: set[str] = set()
+  today_sessions: set[str] = set()
+  today_tokens: dict[str, int] = {}
+  usage_by_model: dict[str, dict[str, int]] = {}
+  prompts = 0
+  today_prompt_count = 0
+  today_token_total = 0
+
+  # Search brain directories under antigravity-cli, antigravity, or root
+  candidate_dirs = [
+    gemini_path / "antigravity-cli" / "brain",
+    gemini_path / "antigravity" / "brain",
+    gemini_path / "brain",
+  ]
+
+  transcript_files: list[Path] = []
+  for b_dir in candidate_dirs:
+    if b_dir.is_dir():
+      for path in b_dir.rglob("transcript.jsonl"):
+        transcript_files.append(path)
+
+  for path in transcript_files:
+    session_id = path.parent.parent.name
+    current_model = "gemini-3.7-flash"
+    try:
+      with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line_number, line in enumerate(handle, 1):
+          line = line.strip()
+          if not line:
+            continue
+          try:
+            entry = json.loads(line)
+          except Exception:
+            continue
+
+          if not isinstance(entry, dict):
+            continue
+
+          step_type = entry.get("type")
+          created_at = entry.get("created_at") or entry.get("timestamp")
+          day = local_date_from_timestamp(created_at)
+
+          # Check explicit model property
+          if entry.get("model"):
+            current_model = normalize_model_name(entry.get("model"))
+          elif entry.get("modelName"):
+            current_model = normalize_model_name(entry.get("modelName"))
+          elif entry.get("model_name"):
+            current_model = normalize_model_name(entry.get("model_name"))
+
+          # Check for model settings changes in user prompt content
+          content = str(entry.get("content") or "")
+          if "Model Selection" in content:
+            match = re.search(
+              r"Model Selection`?\s+(?:from\s+\S+\s+)?(?:to|set to|:)\s+([A-Za-z0-9_.-]+(?:\s+[A-Za-z0-9_.-]+)*)",
+              content,
+              re.IGNORECASE,
+            )
+            if match:
+              extracted = match.group(1).strip()
+              if extracted:
+                current_model = normalize_model_name(extracted)
+
+
+
+          if step_type == "USER_INPUT":
+            prompts += 1
+            sessions.add(session_id)
+            active_days.add(day)
+            if day == today:
+              today_prompt_count += 1
+              today_sessions.add(session_id)
+
+          elif step_type in ("PLANNER_RESPONSE", "MODEL"):
+            sessions.add(session_id)
+            active_days.add(day)
+
+            # Check explicit usage if reported
+            usage = entry.get("usage") or {}
+            input_tokens = usage_token(usage, "input_tokens", "inputTokens")
+            output_tokens = usage_token(usage, "output_tokens", "outputTokens")
+            cache_read = usage_token(usage, "cached_content_token_count", "cacheReadInputTokens")
+            cache_write = usage_token(usage, "cache_creation_input_tokens", "cacheCreationInputTokens")
+
+            if (input_tokens + output_tokens + cache_read + cache_write) <= 0:
+              # Estimate tokens from text length: ~4 chars/token
+              text_len = len(content) + len(str(entry.get("thinking") or ""))
+              tool_calls = entry.get("tool_calls") or []
+              if isinstance(tool_calls, list):
+                text_len += sum(len(json.dumps(tc)) for tc in tool_calls if isinstance(tc, dict))
+
+              output_tokens = max(1, text_len // 4)
+              input_tokens = max(1, output_tokens // 2)
+
+            total = input_tokens + output_tokens + cache_read + cache_write
+            if total <= 0:
+              continue
+
+            bucket = usage_by_model.setdefault(current_model, empty_bucket())
+            bucket["inputTokens"] += input_tokens
+            bucket["outputTokens"] += output_tokens
+            bucket["cacheReadInputTokens"] += cache_read
+            bucket["cacheCreationInputTokens"] += cache_write
+
+            if day in recent:
+              recent[day]["messageCount"] += total
+
+            if day == today:
+              today_token_total += total
+              today_tokens[current_model] = today_tokens.get(current_model, 0) + total
+
+    except Exception as exc:
+      print(f"Ignoring unreadable Antigravity transcript {path}: {exc}", file=sys.stderr)
+
+  return {
+    "todayPrompts": today_prompt_count,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_token_total,
+    "todayTokensByModel": today_tokens,
+    "recentDays": [recent[day] for day in recent_dates],
+    "modelUsage": usage_by_model,
+    "totalPrompts": prompts,
+    "totalSessions": len(sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+  }
+
+
+def scan_antigravity_history(gemini_path: Path) -> tuple[int, int]:
+  """Fallback to count user prompt history from history.jsonl if transcripts were missing."""
+  prompts = 0
+  today_prompts = 0
+  today = local_date_string()
+
+  history_files = [
+    gemini_path / "antigravity-cli" / "history.jsonl",
+    gemini_path / "antigravity" / "history.jsonl",
+    gemini_path / "history.jsonl",
+  ]
+
+  for h_path in history_files:
+    if not h_path.is_file():
+      continue
+    try:
+      with h_path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+          line = line.strip()
+          if not line:
+            continue
+          try:
+            entry = json.loads(line)
+          except Exception:
+            continue
+          if not isinstance(entry, dict):
+            continue
+          prompts += 1
+          day = local_date_from_timestamp(entry.get("timestamp"))
+          if day == today:
+            today_prompts += 1
+    except Exception:
+      pass
+
+  return prompts, today_prompts
+
+
+def scan_pi_usage(max_age_seconds: float) -> dict[str, Any] | None:
+  """Scan Pi and OMP session logs for Gemini/Google models."""
+  today = local_date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  usage_by_model: dict[str, dict[str, int]] = {}
+  active_days: set[str] = set()
+  sessions: set[str] = set()
+  today_sessions: set[str] = set()
+  today_tokens: dict[str, int] = {}
+  prompts = 0
+  today_prompt_count = 0
+  today_token_total = 0
+
+  pi_roots = [
+    Path.home() / ".pi" / "agent" / "sessions",
+    Path.home() / ".omp" / "agent" / "sessions",
+  ]
+
+  found_any = False
+  for root in pi_roots:
+    if not root.is_dir():
+      continue
+    for path in root.rglob("*.json"):
+      try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+      except Exception:
+        continue
+      if not isinstance(data, dict):
+        continue
+
+      messages = data.get("messages") or []
+      session_id = str(data.get("id") or path.stem)
+      for msg in messages:
+        if not isinstance(msg, dict):
+          continue
+        provider = str(msg.get("provider") or "").lower()
+        model = normalize_model_name(msg.get("model") or "")
+        if "google" not in provider and "gemini" not in provider and "antigravity" not in provider and not model.startswith("gemini"):
+          continue
+
+        found_any = True
+        day = local_date_from_timestamp(msg.get("timestamp") or msg.get("time"))
+        sessions.add(session_id)
+        active_days.add(day)
+
+        if msg.get("role") == "user":
+          prompts += 1
+          if day == today:
+            today_prompt_count += 1
+            today_sessions.add(session_id)
+
+        usage = msg.get("usage") or {}
+        input_tokens = usage_token(usage, "input_tokens", "inputTokens") or usage_token(usage, "prompt_tokens", "promptTokens")
+        output_tokens = usage_token(usage, "output_tokens", "outputTokens") or usage_token(usage, "completion_tokens", "completionTokens")
+        cache_read = usage_token(usage, "cache_read_input_tokens", "cacheReadInputTokens")
+        cache_write = usage_token(usage, "cache_creation_input_tokens", "cacheCreationInputTokens")
+
+        total = input_tokens + output_tokens + cache_read + cache_write
+        if total <= 0:
+          continue
+
+        bucket = usage_by_model.setdefault(model, empty_bucket())
+        bucket["inputTokens"] += input_tokens
+        bucket["outputTokens"] += output_tokens
+        bucket["cacheReadInputTokens"] += cache_read
+        bucket["cacheCreationInputTokens"] += cache_write
+
+        if day in recent:
+          recent[day]["messageCount"] += total
+
+        if day == today:
+          today_token_total += total
+          today_tokens[model] = today_tokens.get(model, 0) + total
+
+  if not found_any:
+    return None
+
+  return {
+    "todayPrompts": today_prompt_count,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_token_total,
+    "todayTokensByModel": today_tokens,
+    "recentDays": [recent[day] for day in recent_dates],
+    "modelUsage": usage_by_model,
+    "totalPrompts": prompts,
+    "totalSessions": len(sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+  }
+
+
+def scan_opencode_usage(max_age_seconds: float) -> dict[str, Any] | None:
+  """Scan OpenCode SQLite database for Google/Gemini providers."""
+  db_path = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+  if not db_path.is_file():
+    return None
+
+  today = local_date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  usage_by_model: dict[str, dict[str, int]] = {}
+  active_days: set[str] = set()
+  sessions: set[str] = set()
+  today_sessions: set[str] = set()
+  today_tokens: dict[str, int] = {}
+  prompts = 0
+  today_prompt_count = 0
+  today_token_total = 0
+
+  found_any = False
+  try:
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'")
+    if not cursor.fetchone():
+      conn.close()
+      return None
+
+    cursor.execute("SELECT session_id, data FROM messages")
+    for row in cursor:
+      try:
+        data = json.loads(row["data"])
+      except Exception:
+        continue
+      if not isinstance(data, dict):
+        continue
+
+      provider = str(data.get("provider") or "").lower()
+      model = normalize_model_name(data.get("model") or "")
+      if "google" not in provider and "gemini" not in provider and "antigravity" not in provider and not model.startswith("gemini"):
+        continue
+
+      found_any = True
+      session_id = str(row["session_id"] or "")
+      day = local_date_from_timestamp(data.get("timestamp") or data.get("createdAt"))
+      sessions.add(session_id)
+      active_days.add(day)
+
+      if data.get("role") == "user":
+        prompts += 1
+        if day == today:
+          today_prompt_count += 1
+          today_sessions.add(session_id)
+
+      usage = data.get("usage") or {}
+      input_tokens = usage_token(usage, "input_tokens", "inputTokens")
+      output_tokens = usage_token(usage, "output_tokens", "outputTokens")
+      cache_read = usage_token(usage, "cache_read_input_tokens", "cacheReadInputTokens")
+      cache_write = usage_token(usage, "cache_creation_input_tokens", "cacheCreationInputTokens")
+
+      total = input_tokens + output_tokens + cache_read + cache_write
+      if total <= 0:
+        continue
+
+      bucket = usage_by_model.setdefault(model, empty_bucket())
+      bucket["inputTokens"] += input_tokens
+      bucket["outputTokens"] += output_tokens
+      bucket["cacheReadInputTokens"] += cache_read
+      bucket["cacheCreationInputTokens"] += cache_write
+
+      if day in recent:
+        recent[day]["messageCount"] += total
+
+      if day == today:
+        today_token_total += total
+        today_tokens[model] = today_tokens.get(model, 0) + total
+
+    conn.close()
+  except Exception:
+    return None
+
+  if not found_any:
+    return None
+
+  return {
+    "todayPrompts": today_prompt_count,
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_token_total,
+    "todayTokensByModel": today_tokens,
+    "recentDays": [recent[day] for day in recent_dates],
+    "modelUsage": usage_by_model,
+    "totalPrompts": prompts,
+    "totalSessions": len(sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+  }
+
+
+def merge_stats(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+  recent_map = {item["date"]: item["messageCount"] for item in base.get("recentDays", [])}
+  for item in extra.get("recentDays", []):
+    d = item["date"]
+    recent_map[d] = recent_map.get(d, 0) + item.get("messageCount", 0)
+
+  recent_dates = recent_date_strings()
+  merged_recent = [{"date": d, "messageCount": recent_map.get(d, 0)} for d in recent_dates]
+
+  model_usage: dict[str, dict[str, int]] = {}
+  for source in (base.get("modelUsage", {}), extra.get("modelUsage", {})):
+    for model, bucket in source.items():
+      dest = model_usage.setdefault(model, empty_bucket())
+      dest["inputTokens"] += bucket.get("inputTokens", 0)
+      dest["outputTokens"] += bucket.get("outputTokens", 0)
+      dest["cacheReadInputTokens"] += bucket.get("cacheReadInputTokens", 0)
+      dest["cacheCreationInputTokens"] += bucket.get("cacheCreationInputTokens", 0)
+
+  today_tokens: dict[str, int] = dict(base.get("todayTokensByModel", {}))
+  for model, count in extra.get("todayTokensByModel", {}).items():
+    today_tokens[model] = today_tokens.get(model, 0) + count
+
+  active_dates = sorted(set(base.get("activeDates", [])) | set(extra.get("activeDates", [])))
+
+  return {
+    "todayPrompts": base.get("todayPrompts", 0) + extra.get("todayPrompts", 0),
+    "todaySessions": base.get("todaySessions", 0) + extra.get("todaySessions", 0),
+    "todayTotalTokens": base.get("todayTotalTokens", 0) + extra.get("todayTotalTokens", 0),
+    "todayTokensByModel": today_tokens,
+    "recentDays": merged_recent,
+    "modelUsage": model_usage,
+    "totalPrompts": base.get("totalPrompts", 0) + extra.get("totalPrompts", 0),
+    "totalSessions": base.get("totalSessions", 0) + extra.get("totalSessions", 0),
+    "activeDays": len(active_dates),
+    "activeDates": active_dates,
+  }
+
+
+# -------------------------------------------------------------------- caching
+
+
+def scan_cache_paths(gemini_path: Path) -> tuple[Path, Path]:
+  digest = hashlib.sha1(str(gemini_path).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"agy-scan-{digest}.json", root / f"agy-scan-{digest}.lock"
+
+
+def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None:
+  if max_age_seconds <= 0 or not path.exists():
+    return None
+  try:
+    if time.time() - path.stat().st_mtime <= max_age_seconds:
+      return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def write_json(path: Path, payload: Any) -> None:
+  try:
+    tmp = tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False, encoding="utf-8")
+    json.dump(payload, tmp, separators=(",", ":"), sort_keys=True)
+    tmp.close()
+    os.replace(tmp.name, path)
+  except Exception:
+    try:
+      if "tmp" in locals() and os.path.exists(tmp.name):
+        os.unlink(tmp.name)
+    except Exception:
+      pass
+
+
+def cached_scan(gemini_path: Path, max_age_seconds: float) -> dict[str, Any]:
+  cache_file, lock_file = scan_cache_paths(gemini_path)
+  cached = read_fresh_json(cache_file, max_age_seconds)
+  if cached is not None:
+    return cached
+
+  lock_fd = None
+  try:
+    lock_fd = os.open(lock_file, os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+    cached = read_fresh_json(cache_file, max_age_seconds)
+    if cached is not None:
+      return cached
+
+    stats = scan_antigravity_transcripts(gemini_path)
+    write_json(cache_file, stats)
+    return stats
+  except Exception:
+    return scan_antigravity_transcripts(gemini_path)
+  finally:
+    if lock_fd is not None:
+      try:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+      except Exception:
+        pass
+
+
+# -------------------------------------------------------------------- limits
+
+
+def read_antigravity_token() -> dict[str, Any] | None:
+  keyring_dir = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "keyrings"
+  for keyring_file in [keyring_dir / "Default_keyring.keyring", keyring_dir / "login.keyring", keyring_dir / "default.keyring"]:
+    if keyring_file.is_file():
+      try:
+        content = keyring_file.read_text(encoding="utf-8", errors="replace")
+        for block in re.split(r"\n\[\d+\]\n", content):
+          if "gemini" in block and "antigravity" in block and "secret=" in block:
+            match = re.search(r"secret=(\{.*\})", block)
+            if match:
+              data = json.loads(match.group(1))
+              if "token" in data and isinstance(data["token"], dict):
+                return data["token"]
+              if "access_token" in data:
+                return data
+      except Exception:
+        pass
+
+  try:
+    proc = subprocess.run(
+      ["secret-tool", "lookup", "service", "gemini", "username", "antigravity"],
+      capture_output=True,
+      text=True,
+      timeout=2,
+    )
+    if proc.returncode == 0 and proc.stdout.strip():
+      data = json.loads(proc.stdout.strip())
+      if "token" in data and isinstance(data["token"], dict):
+        return data["token"]
+      if "access_token" in data:
+        return data
+  except Exception:
+    pass
+
+  return None
+
+
+def normalize_reset_time(raw: Any) -> str:
+  if not raw:
+    return ""
+  if isinstance(raw, (int, float)):
+    val = float(raw)
+    if val > 10_000_000_000:
+      val = val / 1000.0
+    if val < 365 * 24 * 3600:
+      return (dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=val)).isoformat()
+    return dt.datetime.fromtimestamp(val, dt.timezone.utc).isoformat()
+
+  text = str(raw).strip()
+  match_dur = re.match(r"^(?:(\d+)\s*d(?:ays?)?)?\s*(?:(\d+)\s*h(?:ours?)?)?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?$", text, re.IGNORECASE)
+  if match_dur and (match_dur.group(1) or match_dur.group(2) or match_dur.group(3)):
+    days = int(match_dur.group(1) or 0)
+    hours = int(match_dur.group(2) or 0)
+    minutes = int(match_dur.group(3) or 0)
+    delta_sec = days * 86400 + hours * 3600 + minutes * 60
+    return (dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=delta_sec)).isoformat()
+
+  try:
+    parsed = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return parsed.astimezone(dt.timezone.utc).isoformat()
+  except Exception:
+    return ""
+
+
+def sort_limits(limits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+  def sort_key(item: dict[str, Any]) -> int:
+    t = item.get("title", "")
+    if "Gemini" in t and "(5h)" in t:
+      return 0
+    if "Gemini" in t and "Weekly" in t:
+      return 1
+    if "Claude" in t and "(5h)" in t:
+      return 2
+    if "Claude" in t and "Weekly" in t:
+      return 3
+    return 4
+  return sorted(limits, key=sort_key)
+
+
+def merge_limits(existing: list[dict[str, Any]], new_limits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+  deduped: dict[tuple[str, str], dict[str, Any]] = {}
+  for lim in existing + new_limits:
+    key = (lim.get("label", ""), lim.get("title", ""))
+    if key not in deduped:
+      deduped[key] = lim
+    else:
+      curr = deduped[key]
+      if not curr.get("resetsAt") and lim.get("resetsAt"):
+        deduped[key] = lim
+      elif lim.get("percent", 0) > curr.get("percent", 0):
+        deduped[key] = lim
+  return sort_limits(list(deduped.values()))
+
+
+
+def parse_code_assist_response(data: dict[str, Any]) -> dict[str, Any]:
+  tier_label = "Google AI Pro"
+  raw_tier = (
+    data.get("userTier")
+    or data.get("tier")
+    or (data.get("planInfo", {}).get("tier") if isinstance(data.get("planInfo"), dict) else None)
+    or (data.get("planInfo", {}).get("userTier") if isinstance(data.get("planInfo"), dict) else None)
+    or (data.get("planInfo", {}).get("planName") if isinstance(data.get("planInfo"), dict) else None)
+    or data.get("accountTier")
+    or ""
+  )
+  raw_tier_str = str(raw_tier).upper()
+  if "PRO" in raw_tier_str:
+    tier_label = "Google AI Pro"
+  elif "ULTRA" in raw_tier_str or "ADVANCED" in raw_tier_str:
+    tier_label = "Google AI Ultra"
+  elif "STUDIO" in raw_tier_str or "FREE" in raw_tier_str:
+    tier_label = "Google AI Studio"
+  elif "ENTERPRISE" in raw_tier_str or "WORKSPACE" in raw_tier_str:
+    tier_label = "Google Workspace"
+  elif raw_tier:
+    tier_label = str(raw_tier).title()
+
+  limits: list[dict[str, Any]] = []
+
+  # Case 0: groups with buckets from retrieveUserQuotaSummary
+  groups_list = data.get("groups")
+  if isinstance(groups_list, list):
+    for group_item in groups_list:
+      if not isinstance(group_item, dict):
+        continue
+      group_display = str(group_item.get("displayName") or group_item.get("name") or "").lower()
+      title_prefix = "Claude & GPT" if any(k in group_display for k in ("claude", "gpt", "3p")) else "Gemini"
+
+      buckets = group_item.get("buckets") or []
+      if isinstance(buckets, list):
+        for bucket in buckets:
+          if not isinstance(bucket, dict):
+            continue
+          rem_frac = bucket.get("remainingFraction")
+          if rem_frac is None:
+            rem_frac = bucket.get("remainingPercent")
+            if rem_frac is not None:
+              try:
+                val = float(rem_frac)
+                rem_frac = val / 100.0 if val > 1.0 else val
+              except Exception:
+                rem_frac = None
+
+          if rem_frac is not None:
+            try:
+              used_percent = max(0.0, min(1.0, 1.0 - float(rem_frac)))
+              resets_at = normalize_reset_time(bucket.get("resetTime") or bucket.get("resetsAt"))
+              window_type = str(bucket.get("window") or bucket.get("bucketId") or bucket.get("displayName") or "").lower()
+              is_weekly = "week" in window_type or "7d" in window_type
+
+              label = "Weekly (7-day)" if is_weekly else "Session (5-hour)"
+              title = f"{title_prefix} (Weekly)" if is_weekly else f"{title_prefix} (5h)"
+
+              limits.append({
+                "label": label,
+                "title": title,
+                "percent": round(used_percent, 4),
+                "resetsAt": resets_at,
+              })
+            except Exception:
+              pass
+
+  # Case 1: models map from fetchAvailableModels
+  models_map = data.get("models")
+  if isinstance(models_map, dict):
+    for model_id, model_info in models_map.items():
+      if not isinstance(model_info, dict):
+        continue
+      quota_info = model_info.get("quotaInfo") or model_info.get("quota") or {}
+      display_name = str(model_info.get("displayName") or model_id).lower()
+      group_name = "Claude & GPT" if any(k in display_name for k in ("claude", "gpt", "opus", "sonnet")) else "Gemini"
+
+      # 1a: Primary remaining fraction
+      rem_frac = quota_info.get("remainingFraction")
+      if rem_frac is None:
+        rem_frac = quota_info.get("remainingPercent")
+        if rem_frac is not None:
+          try:
+            val = float(rem_frac)
+            rem_frac = val / 100.0 if val > 1.0 else val
+          except Exception:
+            rem_frac = None
+
+      if rem_frac is not None:
+        try:
+          used_percent = max(0.0, min(1.0, 1.0 - float(rem_frac)))
+          resets_at = normalize_reset_time(quota_info.get("resetTime") or quota_info.get("resetsAt"))
+
+          is_weekly = False
+          if resets_at:
+            try:
+              res_dt = dt.datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+              now_dt = dt.datetime.now(dt.timezone.utc)
+              if (res_dt - now_dt).total_seconds() > 24 * 3600:
+                is_weekly = True
+            except Exception:
+              pass
+
+          label = "Weekly (7-day)" if is_weekly else "Session (5-hour)"
+          title = f"{group_name} (Weekly)" if is_weekly else f"{group_name} (5h)"
+
+          limits.append({
+            "label": label,
+            "title": title,
+            "percent": round(used_percent, 4),
+            "resetsAt": resets_at,
+          })
+        except Exception:
+          pass
+
+      # 1b: Check sub-quotas inside quota_info (e.g. weeklyQuota, sevenDayQuota)
+      for sub_key in ("weeklyQuota", "weeklyQuotaInfo", "weekly", "sevenDayQuota"):
+        sub_quota = quota_info.get(sub_key) or model_info.get(sub_key)
+        if isinstance(sub_quota, dict):
+          sub_rem = sub_quota.get("remainingFraction") or sub_quota.get("remainingPercent")
+          if sub_rem is not None:
+            try:
+              val = float(sub_rem)
+              frac = val / 100.0 if val > 1.0 else val
+              sub_used = max(0.0, min(1.0, 1.0 - frac))
+              sub_resets = normalize_reset_time(sub_quota.get("resetTime") or sub_quota.get("resetsAt") or sub_quota.get("refreshesIn"))
+              limits.append({
+                "label": "Weekly (7-day)",
+                "title": f"{group_name} (Weekly)",
+                "percent": round(sub_used, 4),
+                "resetsAt": sub_resets,
+              })
+            except Exception:
+              pass
+
+      # 1c: Check explicit weekly fields on quota_info
+      for w_rem_key in ("weeklyRemainingFraction", "weeklyLimitRemaining", "weeklyRemainingPercent"):
+        if w_rem_key in quota_info and quota_info[w_rem_key] is not None:
+          try:
+            val = float(quota_info[w_rem_key])
+            frac = val / 100.0 if val > 1.0 else val
+            sub_used = max(0.0, min(1.0, 1.0 - frac))
+            sub_resets = normalize_reset_time(quota_info.get("weeklyResetTime") or quota_info.get("weeklyResetsAt") or quota_info.get("weeklyRefreshesIn"))
+            limits.append({
+              "label": "Weekly (7-day)",
+              "title": f"{group_name} (Weekly)",
+              "percent": round(sub_used, 4),
+              "resetsAt": sub_resets,
+            })
+          except Exception:
+            pass
+
+  # Case 2: General quota structures
+  def extract_entry(entry: dict[str, Any], default_group: str = "") -> dict[str, Any] | None:
+    name = str(entry.get("name") or entry.get("label") or entry.get("window") or entry.get("type") or "").lower()
+    group = str(entry.get("group") or entry.get("modelGroup") or default_group).lower()
+
+    percent = -1.0
+    for key in ("usedPercent", "percentUsed", "percent", "usedFraction", "percentage"):
+      if key in entry and entry[key] is not None:
+        try:
+          val = float(entry[key])
+          percent = val / 100.0 if val > 1.0 else val
+          break
+        except Exception:
+          pass
+
+    if percent < 0:
+      for key in ("remainingPercent", "percentRemaining", "remainingPercentage", "remainingFraction"):
+        if key in entry and entry[key] is not None:
+          try:
+            val = float(entry[key])
+            frac = val / 100.0 if val > 1.0 else val
+            percent = max(0.0, min(1.0, 1.0 - frac))
+            break
+          except Exception:
+            pass
+
+    if percent < 0 and "remaining" in entry and "limit" in entry:
+      try:
+        limit_val = float(entry["limit"] or 0)
+        if limit_val > 0:
+          frac = float(entry["remaining"] or 0) / limit_val
+          percent = max(0.0, min(1.0, 1.0 - frac))
+      except Exception:
+        pass
+
+    if percent < 0:
+      return None
+
+    resets_at = normalize_reset_time(
+      entry.get("resetsAt")
+      or entry.get("resetTime")
+      or entry.get("refreshesIn")
+      or entry.get("refreshDuration")
+      or entry.get("resetTimestamp")
+    )
+
+    is_weekly = any(k in name for k in ("week", "7-day", "weekly", "7d"))
+    if not is_weekly and resets_at:
+      try:
+        res_dt = dt.datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+        now_dt = dt.datetime.now(dt.timezone.utc)
+        if (res_dt - now_dt).total_seconds() > 24 * 3600:
+          is_weekly = True
+      except Exception:
+        pass
+
+    title_prefix = "Claude & GPT" if any(k in group for k in ("claude", "gpt")) else "Gemini"
+    if is_weekly:
+      label = "Weekly (7-day)"
+      title = f"{title_prefix} (Weekly)"
+    else:
+      label = "Session (5-hour)"
+      title = f"{title_prefix} (5h)"
+
+    return {
+      "label": label,
+      "title": title,
+      "percent": round(percent, 4),
+      "resetsAt": resets_at,
+    }
+
+  containers = [
+    data.get("quotas"),
+    data.get("quotaInfo"),
+    data.get("modelsAndQuota"),
+    data.get("quotaLimits"),
+    data.get("planInfo", {}).get("quotas") if isinstance(data.get("planInfo"), dict) else None,
+    data.get("quotaGroups"),
+    data.get("groups"),
+    data,
+  ]
+
+  for c in containers:
+    if isinstance(c, list):
+      for item in c:
+        if isinstance(item, dict):
+          lim = extract_entry(item)
+          if lim:
+            limits.append(lim)
+    elif isinstance(c, dict):
+      for k, v in c.items():
+        if isinstance(v, list):
+          for item in v:
+            if isinstance(item, dict):
+              lim = extract_entry(item, default_group=k)
+              if lim:
+                limits.append(lim)
+        elif isinstance(v, dict):
+          lim = extract_entry(v, default_group=k)
+          if lim:
+            limits.append(lim)
+
+  # Deduplicate limits by (label, title) with priority ordering
+  deduped: dict[tuple[str, str], dict[str, Any]] = {}
+  for lim in limits:
+    key = (lim["label"], lim["title"])
+    if key not in deduped:
+      deduped[key] = lim
+    else:
+      existing = deduped[key]
+      if not existing.get("resetsAt") and lim.get("resetsAt"):
+        deduped[key] = lim
+      elif lim.get("percent", 0) > existing.get("percent", 0):
+        deduped[key] = lim
+
+  # Sort so Gemini (5h), Gemini (Weekly), Claude & GPT (5h), Claude & GPT (Weekly)
+  def sort_key(item: dict[str, Any]) -> int:
+    t = item.get("title", "")
+    if "Gemini" in t and "(5h)" in t:
+      return 0
+    if "Gemini" in t and "Weekly" in t:
+      return 1
+    if "Claude" in t and "(5h)" in t:
+      return 2
+    if "Claude" in t and "Weekly" in t:
+      return 3
+    return 4
+
+  ordered = sorted(deduped.values(), key=sort_key)
+
+
+  return {
+    "ok": True,
+    "tierLabel": tier_label,
+    "limits": ordered,
+  }
+
+
+def probe_limits(access_token: str) -> dict[str, Any]:
+  if not access_token:
+    return {"ok": False, "limits": [], "tierLabel": "Google AI Pro", "helpText": "Not authenticated"}
+
+  headers = {
+    "Authorization": f"Bearer {access_token}",
+    "Content-Type": "application/json",
+    "User-Agent": "Antigravity-CLI/1.1.22",
+  }
+
+  cloudaicompanion_project = "aicode-consumers"
+  best_tier = "Google AI Pro"
+
+  # 1. Probe loadCodeAssist first to discover dynamic tier & project
+  for lca_url in (
+    "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+  ):
+    for body in (b"{}", json.dumps({"metadata": {"ideType": "CLI"}}).encode("utf-8")):
+      try:
+        req = urllib.request.Request(lca_url, data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=4) as response:
+          if response.status == 200:
+            raw_bytes = response.read()
+            data = json.loads(raw_bytes.decode("utf-8"))
+            if data.get("cloudaicompanionProject"):
+              cloudaicompanion_project = data["cloudaicompanionProject"]
+            paid = data.get("paidTier") or {}
+            if paid.get("name"):
+              best_tier = paid["name"]
+            elif data.get("currentTier", {}).get("name"):
+              best_tier = data["currentTier"]["name"]
+      except Exception:
+        pass
+
+  # 2. Probe model quotas using discovered project
+  project_candidates = [
+    cloudaicompanion_project,
+    "default-cli-project",
+    "",
+  ]
+
+  model_endpoints = [
+    "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+    "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+  ]
+
+  all_limits: list[dict[str, Any]] = []
+
+  for url in model_endpoints:
+    for proj in project_candidates:
+      body = json.dumps({"project": proj}).encode("utf-8") if proj else b"{}"
+      try:
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=4) as response:
+          if response.status == 200:
+            raw_bytes = response.read()
+            data = json.loads(raw_bytes.decode("utf-8"))
+            parsed = parse_code_assist_response(data)
+            if parsed.get("limits"):
+              all_limits = merge_limits(all_limits, parsed["limits"])
+      except Exception:
+        pass
+
+  if all_limits:
+    return {"ok": True, "limits": all_limits, "tierLabel": best_tier}
+
+  return {"ok": False, "limits": [], "tierLabel": best_tier, "transport": True}
+
+
+
+
+
+
+
+def usable_cached_limits(cached: dict[str, Any]) -> list[dict[str, Any]]:
+  entries = cached.get("limits")
+  if not isinstance(entries, list):
+    return []
+  now = dt.datetime.now(dt.timezone.utc)
+  valid = []
+  for entry in entries:
+    if not isinstance(entry, dict):
+      continue
+    resets_at_str = entry.get("resetsAt")
+    if not resets_at_str:
+      valid.append(entry)
+      continue
+    try:
+      resets_at = dt.datetime.fromisoformat(resets_at_str.replace("Z", "+00:00"))
+      if resets_at.tzinfo is None:
+        resets_at = resets_at.replace(tzinfo=dt.timezone.utc)
+      if resets_at > now:
+        valid.append(entry)
+    except Exception:
+      valid.append(entry)
+  return valid
+
+
+def collect_limits(force: bool) -> dict[str, Any]:
+  token_data = read_antigravity_token()
+  is_logged_in = bool(token_data and token_data.get("access_token"))
+
+  result = {
+    "limits": [],
+    "tierLabel": "Google AI Pro" if is_logged_in else "OAuth Personal",
+    "usageStatusText": "" if is_logged_in else "Waiting for auth",
+    "authHelpText": AUTH_HELP,
+  }
+
+  probe_cache = cache_root() / "agy-limits.json"
+  cached = read_fresh_json(probe_cache, float("inf")) or {}
+  fallback_limits = usable_cached_limits(cached)
+  fallback_tier = cached.get("tierLabel") or result["tierLabel"]
+
+  if not is_logged_in:
+    if fallback_limits:
+      result["limits"] = fallback_limits
+      result["tierLabel"] = fallback_tier
+      result["usageStatusText"] = ""
+    return result
+
+  access_token = token_data["access_token"]
+  fetched_at = number(cached.get("fetchedAtMs")) / 1000.0
+
+  if fallback_limits and not force and (time.time() - fetched_at < PROBE_MIN_INTERVAL_SECONDS):
+    result["limits"] = fallback_limits
+    result["tierLabel"] = fallback_tier
+    result["usageStatusText"] = ""
+    return result
+
+  probe = probe_limits(access_token)
+  if probe.get("ok"):
+    result["limits"] = probe["limits"]
+    result["tierLabel"] = probe.get("tierLabel") or "Google AI Pro"
+    result["usageStatusText"] = ""
+    write_json(probe_cache, {
+      "fetchedAtMs": round(time.time() * 1000),
+      "tierLabel": result["tierLabel"],
+      "limits": result["limits"],
+    })
+    return result
+
+  if fallback_limits:
+    result["limits"] = fallback_limits
+    result["tierLabel"] = fallback_tier
+    result["usageStatusText"] = ""
+  else:
+    result["tierLabel"] = fallback_tier
+    result["usageStatusText"] = ""
+
+  return result
+
+
+
+# -------------------------------------------------------------------- main
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true", help="rescan transcripts and re-probe limits, ignoring caches")
+  parser.add_argument("--limits-only", action="store_true", help="reuse any recent transcript scan; only limits must be fresh")
+  parser.add_argument("--cache-seconds", type=float, default=20)
+  args = parser.parse_args()
+
+  g_dir = gemini_dir()
+  scan_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else args.cache_seconds)
+  stats = cached_scan(g_dir, scan_age)
+
+  if number(stats.get("totalPrompts")) <= 0:
+    history_prompts, today_prompts = scan_antigravity_history(g_dir)
+    if history_prompts > 0:
+      stats["totalPrompts"] = max(stats.get("totalPrompts", 0), history_prompts)
+      stats["todayPrompts"] = max(stats.get("todayPrompts", 0), today_prompts)
+
+  pi_usage = scan_pi_usage(scan_age)
+  if pi_usage is not None:
+    stats = merge_stats(stats, pi_usage)
+
+  opencode = scan_opencode_usage(scan_age)
+  if opencode is not None:
+    stats = merge_stats(stats, opencode)
+
+  total_prompts = number(stats.get("totalPrompts"))
+  today_tokens = number(stats.get("todayTotalTokens"))
+
+  limits_info = collect_limits(args.force)
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": total_prompts > 0 or today_tokens > 0 or len(limits_info["limits"]) > 0,
+    "hasLocalStats": True,
+    "tierLabel": limits_info["tierLabel"],
+    "usageStatusText": limits_info["usageStatusText"],
+    "authHelpText": limits_info["authHelpText"],
+    "limits": limits_info["limits"],
+  }
+  if limits_info.get("retryAdvised"):
+    record["retryAdvised"] = True
+
+  record.update(stats)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
+
