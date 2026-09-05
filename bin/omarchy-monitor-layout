@@ -1,0 +1,223 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Read or apply the visual monitor layout
+# omarchy:group=monitor
+# omarchy:hidden=true
+
+"""Safe layout backend for the Display shell panel."""
+
+import json
+import math
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+
+
+CONFIG = pathlib.Path(os.environ.get("XDG_CONFIG_HOME", pathlib.Path.home() / ".config")) / "hypr" / "monitors.lua"
+BEGIN = "-- BEGIN omarchy.monitor (managed layout)"
+END = "-- END omarchy.monitor (managed layout)"
+LEGACY_BEGIN = "-- BEGIN anders.display-layout (managed)"
+LEGACY_END = "-- END anders.display-layout (managed)"
+OUTPUT_RE = re.compile(r"^[A-Za-z0-9_.:-]+$")
+MODE_RE = re.compile(r"^(preferred|[0-9]+x[0-9]+@[0-9]+(?:\.[0-9]+)?)$")
+
+
+def hypr_json(*args):
+    result = subprocess.run(["hyprctl", "-j", *args], check=True, text=True, capture_output=True)
+    return json.loads(result.stdout)
+
+
+def closest_mode(monitor, modes):
+    target_width = int(monitor.get("width", 0))
+    target_height = int(monitor.get("height", 0))
+    target_rate = float(monitor.get("refreshRate", 0))
+    best = None
+    best_score = math.inf
+    for mode in modes:
+        match = re.match(r"^(\d+)x(\d+)@(\d+(?:\.\d+)?)Hz?$", mode)
+        if not match:
+            continue
+        width, height, rate = int(match[1]), int(match[2]), float(match[3])
+        score = abs(width - target_width) * 1000 + abs(height - target_height) * 1000 + abs(rate - target_rate)
+        if score < best_score:
+            best, best_score = mode.removesuffix("Hz"), score
+    return best or "preferred"
+
+
+def monitors():
+    values = []
+    for monitor in hypr_json("monitors", "all"):
+        if monitor.get("disabled"):
+            continue
+        modes = monitor.get("availableModes") or []
+        values.append({
+            "name": monitor["name"],
+            "description": monitor.get("description") or monitor["name"],
+            "x": int(monitor.get("x", 0)),
+            "y": int(monitor.get("y", 0)),
+            "width": int(monitor.get("width", 0)),
+            "height": int(monitor.get("height", 0)),
+            "refreshRate": round(float(monitor.get("refreshRate", 60)), 3),
+            "scale": float(monitor.get("scale", 1)),
+            "transform": int(monitor.get("transform", 0)),
+            "mirror": "" if monitor.get("mirrorOf") in (None, "", "none") else str(monitor.get("mirrorOf")),
+            "focused": bool(monitor.get("focused")),
+            "modes": modes,
+            "mode": closest_mode(monitor, modes),
+        })
+    return values
+
+
+def logical_rect(item, connected):
+    x_text, y_text = item["position"].split("x", 1)
+    match = re.match(r"^(\d+)x(\d+)@", item["mode"])
+    if match:
+        width, height = int(match[1]), int(match[2])
+    else:
+        live = connected[item["name"]]
+        width, height = int(live["width"]), int(live["height"])
+    width = round(width / item["scale"])
+    height = round(height / item["scale"])
+    if item["transform"] % 2:
+        width, height = height, width
+    x, y = int(x_text), int(y_text)
+    return x, y, x + width, y + height
+
+
+def reject_invalid_geometry(layout, connected):
+    rectangles = [(item["name"], logical_rect(item, connected)) for item in layout if not item["mirror"]]
+    for index, (name, first) in enumerate(rectangles):
+        for other_name, second in rectangles[index + 1:]:
+            overlap = first[0] < second[2] and first[2] > second[0] and first[1] < second[3] and first[3] > second[1]
+            if overlap:
+                raise ValueError(f"displays overlap: {name} and {other_name}")
+    if len(rectangles) < 2:
+        return
+    visited = {0}
+    pending = [0]
+    while pending:
+        first = rectangles[pending.pop()][1]
+        for index, (_, second) in enumerate(rectangles):
+            if index in visited:
+                continue
+            vertical_overlap = min(first[3], second[3]) - max(first[1], second[1])
+            horizontal_overlap = min(first[2], second[2]) - max(first[0], second[0])
+            vertical_edge = first[2] == second[0] or second[2] == first[0]
+            horizontal_edge = first[3] == second[1] or second[3] == first[1]
+            if (vertical_edge and vertical_overlap > 0) or (horizontal_edge and horizontal_overlap > 0):
+                visited.add(index)
+                pending.append(index)
+    if len(visited) != len(rectangles):
+        raise ValueError("all displays must be connected edge-to-edge")
+
+
+def validate_layout(raw):
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("layout must contain at least one display")
+    connected = {monitor["name"]: monitor for monitor in monitors()}
+    seen = set()
+    clean = []
+    for item in raw:
+        name = str(item.get("name", ""))
+        mode = str(item.get("mode", ""))
+        x, y = int(item.get("x", 0)), int(item.get("y", 0))
+        scale = float(item.get("scale", 1))
+        transform = int(item.get("transform", 0))
+        mirror = str(item.get("mirror", "") or "")
+        if name not in connected or not OUTPUT_RE.fullmatch(name) or name in seen:
+            raise ValueError(f"invalid or duplicate output: {name}")
+        if not MODE_RE.fullmatch(mode):
+            raise ValueError(f"invalid mode for {name}: {mode}")
+        available = [str(value).removesuffix("Hz") for value in connected[name].get("modes", [])]
+        if mode != "preferred" and mode not in available:
+            raise ValueError(f"mode is not advertised by {name}: {mode}")
+        if not 0.5 <= scale <= 4 or transform not in range(8):
+            raise ValueError(f"invalid geometry for {name}")
+        if mirror and (mirror not in connected or mirror == name or not OUTPUT_RE.fullmatch(mirror)):
+            raise ValueError(f"invalid mirror source for {name}: {mirror}")
+        seen.add(name)
+        clean.append({"name": name, "mode": mode, "position": f"{x}x{y}", "scale": scale, "transform": transform, "mirror": mirror})
+    by_name = {item["name"]: item for item in clean}
+    for item in clean:
+        if item["mirror"] and item["mirror"] not in by_name:
+            raise ValueError(f'mirror source is not part of the layout: {item["mirror"]}')
+        if item["mirror"] and by_name[item["mirror"]]["mirror"]:
+            raise ValueError(f'mirror chains are not supported: {item["name"]}')
+    reject_invalid_geometry(clean, connected)
+    return clean
+
+
+def lua_quote(value):
+    return json.dumps(value, ensure_ascii=False)
+
+
+def managed_block(layout):
+    lines = [BEGIN, "-- Generated by the Omarchy Display panel."]
+    for item in layout:
+        scale = f'{item["scale"]:.3f}'.rstrip("0").rstrip(".")
+        fields = "output = %s, mode = %s, position = %s, scale = %s, transform = %d" % (
+            lua_quote(item["name"]), lua_quote(item["mode"]), lua_quote(item["position"]), scale, item["transform"])
+        if item["mirror"]:
+            fields += ", mirror = %s" % lua_quote(item["mirror"])
+        lines.append("hl.monitor({ " + fields + " })")
+    lines.append(END)
+    return "\n".join(lines)
+
+
+def replace_block(source, block):
+    current = re.compile(re.escape(BEGIN) + r".*?" + re.escape(END), re.DOTALL)
+    legacy = re.compile(re.escape(LEGACY_BEGIN) + r".*?" + re.escape(LEGACY_END), re.DOTALL)
+    if current.search(source):
+        return current.sub(block, source)
+    if legacy.search(source):
+        return legacy.sub(block, source)
+    return source.rstrip() + "\n\n" + block + "\n"
+
+
+def atomic_write(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing_mode = path.stat().st_mode if path.exists() else None
+    descriptor, temporary_name = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w") as handle:
+            handle.write(content)
+        if existing_mode is not None:
+            os.chmod(temporary_name, existing_mode)
+        os.replace(temporary_name, path)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+
+
+def apply_layout(payload):
+    layout = validate_layout(json.loads(payload))
+    source = CONFIG.read_text()
+    atomic_write(CONFIG, replace_block(source, managed_block(layout)))
+    subprocess.run(["hyprctl", "reload"], check=True, capture_output=True, text=True)
+    errors = subprocess.run(["hyprctl", "configerrors"], check=True, capture_output=True, text=True).stdout.strip()
+    if errors:
+        atomic_write(CONFIG, source)
+        subprocess.run(["hyprctl", "reload"], check=False, capture_output=True)
+        raise RuntimeError(errors)
+
+
+def main():
+    command = sys.argv[1] if len(sys.argv) > 1 else "state"
+    if command == "state":
+        print(json.dumps({"monitors": monitors()}))
+    elif command == "apply" and len(sys.argv) == 3:
+        apply_layout(sys.argv[2])
+        print(json.dumps({"ok": True}))
+    else:
+        raise SystemExit("usage: omarchy-monitor-layout state|apply JSON")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:
+        print(json.dumps({"ok": False, "error": str(error)}))
+        raise SystemExit(1)

@@ -26,6 +26,7 @@ Panel {
   property string monitorScale: ""
   property var displays: []
   property int enabledDisplayCount: 0
+  property bool layoutEditorOpen: false
 
   // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
@@ -227,6 +228,10 @@ Panel {
     function toggle() { root.toggle() }
     function show() { root.open() }
     function hide() { root.close() }
+    function arrange() {
+      root.open()
+      root.layoutEditorOpen = true
+    }
   }
 
   function refresh() {
@@ -365,6 +370,8 @@ Panel {
         selectedIndex = 0
       }
       cursorActive = false
+    } else {
+      layoutEditorOpen = false
     }
   }
 
@@ -488,8 +495,11 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(panelColumn.implicitHeight, Style.space(560))
+    contentWidth: panel.fittedContentWidth(Style.space(root.layoutEditorOpen ? 620 : 380))
+    contentHeight: panel.fittedContentHeight(
+      root.layoutEditorOpen && layoutLoader.item ? layoutLoader.item.implicitHeight : panelColumn.implicitHeight,
+      Style.space(root.layoutEditorOpen ? 700 : 560)
+    )
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -504,12 +514,16 @@ Panel {
         }
       }
       onActivateRequested: if (root.cursorActive) root.activateCursor()
-      onCloseRequested: root.close()
+      onCloseRequested: {
+        if (root.layoutEditorOpen) root.layoutEditorOpen = false
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
       ScrollView {
         id: scrollArea
         anchors.fill: parent
+        visible: !root.layoutEditorOpen
         clip: true
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
         ScrollBar.vertical.policy: panelColumn.implicitHeight > height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
@@ -788,6 +802,18 @@ Panel {
                 }
               }
             }
+
+            Button {
+              width: parent.width
+              text: "Advanced"
+              fontSize: Style.font.caption
+              foreground: root.bar.foreground
+              fontFamily: root.bar.fontFamily
+              horizontalPadding: Style.spacing.sm
+              verticalPadding: Style.spacing.controlPaddingY
+              bordered: true
+              onClicked: root.layoutEditorOpen = true
+            }
           }
 
           // ---------- Monitors ----------
@@ -824,6 +850,19 @@ Panel {
           Item {
             width: parent.width
             height: Style.space(4)
+          }
+        }
+      }
+
+      Loader {
+        id: layoutLoader
+        anchors.fill: parent
+        active: root.layoutEditorOpen
+        sourceComponent: Component {
+          LayoutView {
+            bar: root.bar
+            onBackRequested: root.layoutEditorOpen = false
+            onApplied: root.refresh()
           }
         }
       }
