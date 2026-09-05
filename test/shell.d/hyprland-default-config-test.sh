@@ -8,7 +8,7 @@ run_application_bindings() {
   local home="$1"
   local prelude="${2:-}"
 
-  HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" OMARCHY_PATH="$ROOT" OMARCHY_BINDING_PRELUDE="$prelude" lua <<'LUA'
+  HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" OMARCHY_PATH="$ROOT" OMARCHY_BINDING_PRELUDE="$prelude" lua_script <<'LUA'
 package.path = os.getenv("HOME") .. "/.config/?.lua;" .. os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
 
 local prelude = os.getenv("OMARCHY_BINDING_PRELUDE") or ""
@@ -39,7 +39,7 @@ run_omarchy_bindings() {
   local home="$1"
   local prelude="${2:-}"
 
-  HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" OMARCHY_PATH="$ROOT" OMARCHY_BINDING_PRELUDE="$prelude" lua <<'LUA'
+  HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" OMARCHY_PATH="$ROOT" OMARCHY_BINDING_PRELUDE="$prelude" lua_script <<'LUA'
 package.path = os.getenv("HOME") .. "/.config/?.lua;" .. os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
 
 local function proxy()
@@ -100,7 +100,8 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 fresh_home="$tmpdir/fresh-home"
 mkdir -p "$fresh_home"
-fresh_output=$(run_application_bindings "$fresh_home")
+fresh_output=$(run_application_bindings "$fresh_home") ||
+  fail "default application bindings load from package defaults"
 grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default application bindings include essentials"
 grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
 pass "default application bindings load from package defaults"
@@ -122,7 +123,8 @@ pass "universal clipboard shortcuts avoid virtual keyboard modifier merging"
 removed_home="$tmpdir/removed-home"
 mkdir -p "$removed_home/.local/state/omarchy"
 touch "$removed_home/.local/state/omarchy/preinstalls-removed"
-removed_output=$(run_application_bindings "$removed_home")
+removed_output=$(run_application_bindings "$removed_home") ||
+  fail "preinstall removal flag skips optional application bindings"
 grep -Fq $'SUPER + RETURN	Terminal' <<<"$removed_output" || fail "preinstall removal keeps essential bindings"
 if grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$removed_output"; then
   fail "preinstall removal skips preinstalled web app bindings"
@@ -131,7 +133,8 @@ pass "preinstall removal flag skips optional application bindings"
 
 variable_home="$tmpdir/variable-home"
 mkdir -p "$variable_home"
-variable_output=$(run_application_bindings "$variable_home" 'omarchy_preinstalled_bindings = false')
+variable_output=$(run_application_bindings "$variable_home" 'omarchy_preinstalled_bindings = false') ||
+  fail "preinstalled binding variable skips optional application bindings"
 grep -Fq $'SUPER + RETURN	Terminal' <<<"$variable_output" || fail "preinstalled binding variable keeps essential bindings"
 if grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$variable_output"; then
   fail "preinstalled binding variable skips optional application bindings"
@@ -140,7 +143,8 @@ pass "preinstalled binding variable skips optional application bindings"
 
 no_bindings_home="$tmpdir/no-bindings-home"
 mkdir -p "$no_bindings_home"
-no_bindings_output=$(run_omarchy_bindings "$no_bindings_home" 'omarchy_default_bindings = false')
+no_bindings_output=$(run_omarchy_bindings "$no_bindings_home" 'omarchy_default_bindings = false') ||
+  fail "default binding variable disables all Omarchy bindings"
 [[ -z $no_bindings_output ]] || fail "default binding variable disables all Omarchy bindings" "$no_bindings_output"
 pass "default binding variable disables all Omarchy bindings"
 
@@ -149,7 +153,8 @@ voxtype_bin="$tmpdir/voxtype-bin"
 mkdir -p "$voxtype_home" "$voxtype_bin"
 touch "$voxtype_bin/voxtype"
 chmod +x "$voxtype_bin/voxtype"
-voxtype_output=$(PATH="$voxtype_bin:$PATH" run_omarchy_bindings "$voxtype_home")
+voxtype_output=$(PATH="$voxtype_bin:$PATH" run_omarchy_bindings "$voxtype_home") ||
+  fail "installed Voxtype conditionally enables dictation bindings"
 grep -Fq $'SUPER + CTRL + X	Toggle dictation' <<<"$voxtype_output" ||
   fail "installed Voxtype enables its toggle binding"
 grep -Fq $'F9	Start dictation (push-to-talk)' <<<"$voxtype_output" ||
@@ -159,7 +164,8 @@ grep -Fq $'F9	Stop dictation (push-to-talk)' <<<"$voxtype_output" ||
 pass "installed Voxtype conditionally enables dictation bindings"
 
 voxtype_without_execute_output=$(PATH="$voxtype_bin:$PATH" run_omarchy_bindings \
-  "$voxtype_home" 'os.execute = function() return nil, "No child processes", 10 end')
+  "$voxtype_home" 'os.execute = function() return nil, "No child processes", 10 end') ||
+  fail "installed Voxtype detection works without os.execute"
 grep -Fq $'SUPER + CTRL + X	Toggle dictation' <<<"$voxtype_without_execute_output" ||
   fail "Voxtype detection does not require spawning a subprocess"
 pass "installed Voxtype detection works without os.execute"
@@ -169,7 +175,8 @@ mkdir -p "$missing_bin"
 ln -s "$(command -v lua)" "$missing_bin/lua"
 ln -s "$(command -v lspci)" "$missing_bin/lspci"
 ln -s "$(command -v sort)" "$missing_bin/sort"
-missing_voxtype_output=$(PATH="$missing_bin" run_omarchy_bindings "$voxtype_home")
+missing_voxtype_output=$(PATH="$missing_bin" run_omarchy_bindings "$voxtype_home") ||
+  fail "missing Voxtype skips dictation bindings"
 if grep -Fq $'SUPER + CTRL + X	Toggle dictation' <<<"$missing_voxtype_output"; then
   fail "missing Voxtype skips its bindings"
 fi
@@ -179,7 +186,8 @@ pass "missing Voxtype skips dictation bindings"
 # working alongside them.
 scratchpad_home="$tmpdir/scratchpad-home"
 mkdir -p "$scratchpad_home"
-scratchpad_output=$(run_omarchy_bindings "$scratchpad_home")
+scratchpad_output=$(run_omarchy_bindings "$scratchpad_home") ||
+  fail "scratchpad retains existing bindings and adds Grave shortcuts"
 grep -Fqx $'SUPER + S	Toggle scratchpad' <<<"$scratchpad_output" ||
   fail "scratchpad keeps its existing toggle binding"
 grep -Fqx $'SUPER + grave	Toggle scratchpad' <<<"$scratchpad_output" ||
@@ -195,7 +203,8 @@ pass "scratchpad retains existing bindings and adds Grave shortcuts"
 # claim on SUPER + CTRL + a number is a collision with one of these.
 panels_home="$tmpdir/panels-home"
 mkdir -p "$panels_home"
-panels_output=$(run_omarchy_bindings "$panels_home")
+panels_output=$(run_omarchy_bindings "$panels_home") ||
+  fail "bar panel hotkeys count the right section"
 for panel in 1 2 3 4 5 6 7 8 9; do
   grep -Fqx "SUPER + CTRL + code:$((panel + 9))"$'\t'"Bar panel $panel" <<<"$panels_output" ||
     fail "bar panel hotkeys count the right section" "$panel"

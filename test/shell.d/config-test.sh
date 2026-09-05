@@ -189,7 +189,7 @@ grep -F 'package.path = home' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
 grep -F '/.local/state/?.lua;' "$ROOT/default/hypr/bootstrap.lua" >/dev/null
 pass "Hyprland user entrypoint keeps package and state path bootstrap in defaults"
 
-OMARCHY_PATH="$ROOT" lua <<'LUA'
+OMARCHY_PATH="$ROOT" run_lua_test "Hyprland bootstrap reloads cached Omarchy config modules" <<'LUA'
 package.loaded["default.hypr.omarchy"] = true
 package.loaded["default.hypr.require_optional"] = true
 package.loaded["hypr.looknfeel"] = true
@@ -204,7 +204,6 @@ assert(package.loaded["hypr.looknfeel"] == nil)
 assert(package.loaded["omarchy.current.theme.hyprland"] == nil)
 assert(package.loaded["unrelated.module"] == true)
 LUA
-pass "Hyprland bootstrap reloads cached Omarchy config modules"
 
 TMPDIR=$(mktemp -d)
 mkdir -p "$TMPDIR/home/.config/omarchy"

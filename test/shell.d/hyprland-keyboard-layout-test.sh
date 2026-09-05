@@ -5,7 +5,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 require_command lua
 
 resolved_input() {
-  OMARCHY_PATH="$ROOT" OMARCHY_VCONSOLE="${1-}" lua <<'LUA'
+  OMARCHY_PATH="$ROOT" OMARCHY_VCONSOLE="${1-}" lua_script <<'LUA'
 package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
 
 local vconsole = os.getenv("OMARCHY_VCONSOLE")
@@ -45,9 +45,9 @@ assert_input() {
   local actual
 
   if (( $# > 2 )); then
-    actual=$(resolved_input "$3")
+    actual=$(resolved_input "$3") || fail "$description" "the Lua script failed"
   else
-    actual=$(resolved_input)
+    actual=$(resolved_input) || fail "$description" "the Lua script failed"
   fi
 
   [[ $actual == "$expected" ]] ||

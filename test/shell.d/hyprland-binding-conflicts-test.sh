@@ -12,7 +12,7 @@ list_bindings() {
   local home="$1"
   local epilogue="${2:-}"
 
-  HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" OMARCHY_PATH="$ROOT" OMARCHY_BINDING_EPILOGUE="$epilogue" lua <<'LUA'
+  HOME="$home" XDG_CONFIG_HOME="$home/.config" XDG_STATE_HOME="$home/.local/state" OMARCHY_PATH="$ROOT" OMARCHY_BINDING_EPILOGUE="$epilogue" lua_script <<'LUA'
 package.path = os.getenv("HOME") .. "/.config/?.lua;" .. os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
 
 local function proxy()
@@ -143,7 +143,8 @@ mkdir -p "$home" "$stub_bin"
 touch "$stub_bin/voxtype"
 chmod +x "$stub_bin/voxtype"
 
-bindings=$(PATH="$stub_bin:$PATH" list_bindings "$home")
+bindings=$(PATH="$stub_bin:$PATH" list_bindings "$home") ||
+  fail "default bindings load for the conflict check"
 [[ -n $bindings ]] || fail "default bindings load for the conflict check"
 
 grep -Fq $'SUPER + RETURN\tTerminal' <<<"$bindings" || fail "conflict check sees the essential bindings"
@@ -177,14 +178,18 @@ pass "press and release bindings on one key do not read as a conflict"
 
 # Guard the guard: a keysym that lands on an already bound keycode has to be
 # caught, or the check above passes by simply not looking.
-probe=$(PATH="$stub_bin:$PATH" list_bindings "$home" \
-  'o.bind("SUPER + 1", "Conflict probe", "true")' | duplicate_signatures)
+probe_bindings=$(PATH="$stub_bin:$PATH" list_bindings "$home" \
+  'o.bind("SUPER + 1", "Conflict probe", "true")') ||
+  fail "the conflict check catches a keysym colliding with a bound keycode"
+probe=$(duplicate_signatures <<<"$probe_bindings")
 grep -Fqx "SUPER+1" <<<"$probe" ||
   fail "the conflict check catches a keysym colliding with a bound keycode"
 
 # Modifier order is cosmetic; Hyprland binds the same chord either way.
-probe=$(PATH="$stub_bin:$PATH" list_bindings "$home" \
-  'o.bind("SUPER + ALT + SHIFT + RIGHT", "Conflict probe", "true")' | duplicate_signatures)
+probe_bindings=$(PATH="$stub_bin:$PATH" list_bindings "$home" \
+  'o.bind("SUPER + ALT + SHIFT + RIGHT", "Conflict probe", "true")') ||
+  fail "the conflict check ignores modifier order"
+probe=$(duplicate_signatures <<<"$probe_bindings")
 grep -Fqx "ALT+SHIFT+SUPER+RIGHT" <<<"$probe" ||
   fail "the conflict check ignores modifier order"
 pass "the conflict check catches collisions across keycodes and modifier order"

@@ -76,6 +76,29 @@ require_compositor() {
   exit 0
 }
 
+# Run a Lua script supplied on stdin, passing its stdout through.
+#
+# `lua` with no script argument reads stdin but discards the chunk's status, so
+# `lua <<'LUA'` silently swallows every failure: a failed assert leaves the
+# following pass() reporting success, and a script that dies half way returns
+# partial output that the caller compares against as if it were complete.
+# Naming stdin explicitly as the script -- `lua -` -- runs the same chunk down
+# the path that does report the error.
+lua_script() {
+  lua -
+}
+
+# Run a Lua script supplied on stdin and report it as a single assertion.
+run_lua_test() {
+  local description="$1"
+
+  if lua_script; then
+    pass "$description"
+  else
+    fail "$description"
+  fi
+}
+
 run_node_test() {
   require_command node
 
