@@ -723,4 +723,74 @@ assert(
   !/pendingModel|pastModel/.test(serviceQml),
   'notifications service keeps no in-memory history models'
 )
+
+// ---- action buttons -------------------------------------------------------
+// The server advertises the freedesktop "actions" capability, so senders send
+// labelled actions; these keep them reaching the card.
+
+assertEqual(
+  notifications.actionsJson({ actions: [
+    { identifier: 'default', text: 'Activate' },
+    { identifier: '0', text: 'Delete' },
+    { identifier: '1', text: 'Mark as read' }
+  ] }),
+  '[{"id":"0","text":"Delete"},{"id":"1","text":"Mark as read"}]',
+  'notifications keep labelled actions and drop the default one'
+)
+
+assertEqual(
+  notifications.actionsJson({ actions: [{ identifier: '0', text: '' }] }),
+  '[]',
+  'notifications drop actions with no label to draw'
+)
+
+assertEqual(
+  notifications.actionsJson({}),
+  '[]',
+  'notifications treat a sender with no actions as no buttons'
+)
+
+assertDeepEqual(
+  notifications.parseActions(notifications.actionsJson({ actions: [{ identifier: 'read', text: 'Mark as read' }] })),
+  [{ id: 'read', text: 'Mark as read' }],
+  'notifications round-trip actions through the model role'
+)
+
+assertDeepEqual(
+  notifications.parseActions('not json'),
+  [],
+  'notifications treat an unreadable actions role as no buttons'
+)
+
+assertDeepEqual(
+  notifications.parseActions(''),
+  [],
+  'notifications treat an empty actions role as no buttons'
+)
+
+assert(
+  notifications.popupRoles().indexOf('actions') !== -1,
+  'notifications carry actions as a popup role so in-place updates write through'
+)
+
+assert(
+  /function invokePopupAction\(index, identifier\)/.test(serviceQml),
+  'notifications service can invoke a named action'
+)
+
+assert(
+  /rows\[i\]\.actions = ""/.test(serviceQml) && /restored\.actions = ""/.test(serviceQml),
+  'notifications service clears actions on restored rows, whose sender is gone'
+)
+
+
+assert(
+  /Repeater\s*\{[\s\S]{0,120}?model: root\.actionList/.test(cardQml),
+  'notification card draws a button per action'
+)
+
+assert(
+  /onClicked: root\.actionInvoked\(modelData\.id\)/.test(cardQml),
+  'notification card reports the clicked action by identifier'
+)
 JS

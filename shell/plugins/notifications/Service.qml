@@ -396,6 +396,35 @@ Item {
     dismissPopup(index)
   }
 
+  // Invoke one of the notification's named actions (the buttons on the card)
+  // and dismiss, which is what a click on an action button means everywhere
+  // else that renders them.
+  //
+  // Only live rows can do this: a restored row's sender died with the previous
+  // server generation, and its originalId may since have been handed to an
+  // unrelated notification — invoking through it would fire the wrong action.
+  // Restored rows carry no actions at all, so this is belt-and-braces.
+  function invokePopupAction(index, identifier) {
+    if (index < 0 || index >= popupModel.count) return
+    var entry = popupModel.get(index)
+    var ref = entry && !isRestoredRow(entry) ? liveRefs[entry.originalId] : null
+    try {
+      if (ref && ref.actions) {
+        for (var i = 0; i < ref.actions.length; i++) {
+          var action = ref.actions[i]
+          if (action && String(action.identifier) === String(identifier)) {
+            action.invoke()
+            break
+          }
+        }
+      }
+    } catch (e) {
+      // Already torn down by the server — the row is stale either way.
+      console.warn("invoke action failed:", e)
+    }
+    dismissPopup(index)
+  }
+
   // Try to focus an existing Hyprland window matching the notification's
   // sender. The helper handles case-insensitive class matching.
   function focusApp(entry) {
@@ -691,6 +720,7 @@ Item {
         image: "",
         glyph: "󰂚",
         execArgv: "",
+        actions: "",
         urgency: NotificationUrgency.Low,
         expireTimeout: 0,
         timestamp: Date.now()
@@ -705,6 +735,8 @@ Item {
       // sender long ago, so they must never resolve to a live server object
       // that has since been handed their old id.
       service.restoredPopups[NotificationLogic.popupFileName(rows[i])] = true
+      // Buttons need a live sender to invoke against, and this one is gone.
+      rows[i].actions = ""
       popupModel.append(rows[i])
     }
   }
@@ -771,6 +803,7 @@ Item {
         // popups have no liveRefs entry — the server object died with the
         // old shell — so dismissal and action fallbacks degrade gracefully.
         service.restoredPopups[NotificationLogic.popupFileName(restored)] = true
+        restored.actions = ""
         popupModel.append(restored)
       }
     })
@@ -1000,6 +1033,7 @@ Item {
             required property string body
             required property string image
             required property string glyph
+            required property string actions
             required property int urgency
             required property double expireTimeout
             required property double timestamp
@@ -1051,9 +1085,13 @@ Item {
               cornerRadius: service.cornerRadius
               fontFamily: service.shell && service.shell.bar ? service.shell.bar.fontFamily : ""
               glyph: cardSlot.glyph
+              actionsJson: cardSlot.actions
 
               onCloseRequested: service.dismissPopup(cardSlot.index)
               onCardClicked: service.invokePopupDefault(cardSlot.index)
+              onActionInvoked: function(identifier) {
+                service.invokePopupAction(cardSlot.index, identifier)
+              }
             }
           }
         }

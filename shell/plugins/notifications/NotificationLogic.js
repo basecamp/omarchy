@@ -180,6 +180,46 @@ function shouldRenderCompactGlyph(glyph, iconSource, singleLineToast) {
   return String(glyph || "").length > 0 && String(iconSource || "").length === 0 && !!singleLineToast
 }
 
+// The freedesktop "default" action is the whole-card click (see
+// invokePopupDefault in Service.qml); every other action is a labelled button
+// the sender wants drawn. The server advertises the "actions" capability, so
+// senders send these whether or not anything renders them.
+//
+// Serialized to JSON: ListModel roles hold plain values, and the popup files
+// round-trip through JSON anyway.
+function actionsJson(notification) {
+  var n = notification || {}
+  var out = []
+  try {
+    var list = n.actions || []
+    for (var i = 0; i < list.length; i++) {
+      var action = list[i]
+      if (!action) continue
+      var identifier = String(action.identifier === undefined ? "" : action.identifier)
+      var label = String(action.text === undefined ? "" : action.text)
+      // A label-less action has nothing to draw, and "default" is already the
+      // card click.
+      if (identifier === "default" || identifier.length === 0 || label.length === 0) continue
+      out.push({ id: identifier, text: label })
+    }
+  } catch (e) {
+    // Object torn down by the server mid-read — no buttons is the safe answer.
+    return "[]"
+  }
+  return JSON.stringify(out)
+}
+
+function parseActions(json) {
+  var value = String(json || "")
+  if (value.length === 0) return []
+  try {
+    var parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : []
+  } catch (e) {
+    return []
+  }
+}
+
 function snapshotOf(notification, timestamp) {
   var n = notification || {}
   var id = n.id || 0
@@ -195,6 +235,7 @@ function snapshotOf(notification, timestamp) {
     image: n.image || "",
     glyph: glyphFromHints(n.hints),
     execArgv: execArgvFromHints(n.hints),
+    actions: actionsJson(n),
     urgency: n.urgency,
     expireTimeout: expireTimeout,
     timestamp: timestamp === undefined ? Date.now() : timestamp
@@ -203,7 +244,7 @@ function snapshotOf(notification, timestamp) {
 
 // Everything the popup card draws, and therefore everything an in-place
 // update has to write through to the row and its file.
-var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "execArgv", "urgency", "expireTimeout"]
+var POPUP_ROLES = ["app", "appIcon", "summary", "body", "image", "glyph", "execArgv", "actions", "urgency", "expireTimeout"]
 
 function popupRoles() {
   return POPUP_ROLES
@@ -460,6 +501,8 @@ if (typeof module !== "undefined") {
     parseExecArgv: parseExecArgv,
     shouldRenderCompactGlyph: shouldRenderCompactGlyph,
     snapshotOf: snapshotOf,
+    actionsJson: actionsJson,
+    parseActions: parseActions,
     popupRoles: popupRoles,
     popupRowChanged: popupRowChanged,
     replacementSnapshot: replacementSnapshot,
