@@ -1,0 +1,513 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Antigravity usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Antigravity usage into one display-ready JSON record.
+
+Everything the agents panel shows for Antigravity comes from this one
+command: local transcript stats from ~/.gemini/antigravity-cli/brain, history.jsonl,
+and the live rate limits from the Antigravity CLI (/usage command). The panel
+itself only ever reads the JSON this prints; it never talks to disk formats or endpoints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "antigravity"
+AGENT_NAME = "Antigravity"
+AUTH_HELP = "Run `agy` in your terminal to authenticate."
+CACHE_TTL_SECONDS = 300.0
+LIMITS_CACHE_TTL_SECONDS = 90.0
+PROBE_TIMEOUT_SECONDS = 60.0
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def get_gemini_dir() -> Path:
+  if "GEMINI_CLI_HOME" in os.environ:
+    return expand_path(os.environ["GEMINI_CLI_HOME"])
+  return expand_path("~/.gemini/antigravity-cli")
+
+
+def get_state_file() -> Path:
+  state_home = os.environ.get("XDG_STATE_HOME")
+  if state_home:
+    return (expand_path(state_home) / "omarchy" / "agents" / "usage" / "antigravity.json").resolve()
+  return expand_path("~/.local/state/omarchy/agents/usage/antigravity.json")
+
+
+def cache_root() -> Path:
+  root = expand_path(os.environ.get("XDG_CACHE_HOME", "~/.cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def local_date_string() -> str:
+  return date_string(dt.datetime.now().date())
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def scan_transcripts(brain_path: Path, history_file: Path) -> dict[str, Any]:
+  today = local_date_string()
+  recent_dates = recent_date_strings()
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+
+  sessions: set[str] = set()
+  active_days: set[str] = set()
+  today_sessions: set[str] = set()
+  today_tokens_by_model: dict[str, int] = {}
+  usage_by_model: dict[str, dict[str, int]] = {}
+
+  total_prompts = 0
+  today_prompts = 0
+  today_token_total = 0
+
+  # 1. Parse prompts and sessions from history.jsonl
+  if history_file.is_file():
+    try:
+      with history_file.open("r", encoding="utf-8", errors="replace") as f:
+        for line in f:
+          line = line.strip()
+          if not line or '"timestamp":' not in line:
+            continue
+          try:
+            record = json.loads(line)
+            total_prompts += 1
+            ts_ms = record.get("timestamp")
+            d_str = today
+            if ts_ms:
+              ts_sec = float(ts_ms) / 1000.0
+              d_str = date_string(dt.datetime.fromtimestamp(ts_sec).date())
+              active_days.add(d_str)
+              if d_str == today:
+                today_prompts += 1
+            conv_id = record.get("conversationId")
+            if conv_id:
+              sessions.add(conv_id)
+              if d_str == today:
+                today_sessions.add(conv_id)
+          except Exception:
+            continue
+    except Exception:
+      pass
+
+  # 2. Fast transcript parser
+  transcript_files = list(brain_path.glob("*/.system_generated/logs/transcript.jsonl")) if brain_path.is_dir() else []
+
+  for t_file in transcript_files:
+    conv_dir = t_file.parent.parent.parent.name
+    sessions.add(conv_dir)
+    try:
+      with t_file.open("r", encoding="utf-8", errors="replace") as handle:
+        current_model = "gemini-3.7-flash"
+        for line in handle:
+          if '"type":' not in line:
+            continue
+          try:
+            entry = json.loads(line)
+          except Exception:
+            continue
+
+          source = entry.get("source", "")
+          step_type = entry.get("type", "")
+          content = entry.get("content", "") or ""
+          thinking = entry.get("thinking", "") or ""
+          tool_calls = entry.get("tool_calls", [])
+          tool_calls_str = json.dumps(tool_calls) if tool_calls else ""
+          created_at = entry.get("created_at", "")
+
+          day = today
+          if created_at:
+            try:
+              iso_str = created_at.replace("Z", "+00:00")
+              parsed_dt = dt.datetime.fromisoformat(iso_str)
+              day = date_string(parsed_dt.astimezone().date())
+            except Exception:
+              day = created_at[:10]
+
+          content_lower = content.lower()
+          if "gemini 3.7 pro" in content_lower or "gemini-3.7-pro" in content_lower:
+            current_model = "gemini-3.7-pro"
+          elif "gemini 3.7 flash" in content_lower or "gemini-3.7-flash" in content_lower:
+            current_model = "gemini-3.7-flash"
+          elif "gemini 3.6 flash" in content_lower or "gemini-3.6-flash" in content_lower:
+            current_model = "gemini-3.6-flash"
+          elif "gemini 3.5 flash" in content_lower or "gemini-3.5-flash" in content_lower:
+            current_model = "gemini-3.5-flash"
+          elif "gemini 3.1 pro" in content_lower or "gemini-3.1-pro" in content_lower:
+            current_model = "gemini-3.1-pro"
+          elif "claude sonnet" in content_lower or "claude-sonnet" in content_lower:
+            current_model = "claude-sonnet-4-6"
+          elif "claude opus" in content_lower or "claude-opus" in content_lower:
+            current_model = "claude-opus-4-6"
+          elif "gpt-oss" in content_lower or "gpt_oss" in content_lower:
+            current_model = "gpt-oss-120b"
+
+          in_tokens = 0
+          out_tokens = 0
+          cache_read = 0
+          cache_create = 0
+
+          if step_type == "USER_INPUT":
+            in_tokens += (len(content) // 4) + 4000
+          elif step_type in ("VIEW_FILE", "GENERIC", "TOOL_CALL"):
+            in_tokens += len(content) // 4
+            cache_read += in_tokens // 2
+          elif source == "MODEL" and step_type == "PLANNER_RESPONSE":
+            out_tokens += (len(thinking) + len(content) + len(tool_calls_str)) // 4
+
+          total_step_tokens = in_tokens + out_tokens
+
+          if total_step_tokens > 0:
+            active_days.add(day)
+            bucket = usage_by_model.setdefault(current_model, empty_bucket())
+            bucket["inputTokens"] += in_tokens
+            bucket["outputTokens"] += out_tokens
+            bucket["cacheReadInputTokens"] += cache_read
+            bucket["cacheCreationInputTokens"] += cache_create
+
+            if day in recent:
+              recent[day]["messageCount"] += total_step_tokens
+
+            if day == today:
+              today_token_total += total_step_tokens
+              today_sessions.add(conv_dir)
+              today_tokens_by_model[current_model] = (
+                today_tokens_by_model.get(current_model, 0) + total_step_tokens
+              )
+
+    except Exception as exc:
+      print(f"omarchy-agent-usage-antigravity: skipping {t_file}: {exc}", file=sys.stderr)
+
+  return {
+    "todayPrompts": max(today_prompts, len(today_sessions)),
+    "todaySessions": len(today_sessions),
+    "todayTotalTokens": today_token_total,
+    "todayTokensByModel": today_tokens_by_model,
+    "recentDays": [recent[d] for d in recent_dates],
+    "modelUsage": usage_by_model,
+    "totalPrompts": max(total_prompts, len(sessions)),
+    "totalSessions": len(sessions),
+    "activeDays": len(active_days),
+    "activeDates": sorted(active_days),
+    "tierLabel": "Google AI Ultra · Gemini 3.7",
+  }
+
+
+def find_agy_binary() -> str | None:
+  in_path = shutil.which("agy")
+  if in_path:
+    return in_path
+  home = Path(os.environ.get("HOME", "~")).expanduser()
+  for candidate in [
+    home / ".local" / "bin" / "agy",
+    home / ".gemini" / "antigravity-cli" / "bin" / "agy",
+    Path("/usr/local/bin/agy"),
+    Path("/usr/bin/agy"),
+  ]:
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+      return str(candidate)
+  return None
+
+
+def probe_live_limits() -> list[dict[str, Any]] | None:
+  agy_cmd = find_agy_binary()
+  if not agy_cmd:
+    return None
+  try:
+    local_bin = str(expand_path("~/.local/bin"))
+    current_path = os.environ.get("PATH", "")
+    run_env = dict(os.environ)
+    if local_bin not in current_path.split(":"):
+      run_env["PATH"] = f"{local_bin}:{current_path}" if current_path else local_bin
+
+    res = subprocess.run(
+      [agy_cmd, "-p", "/usage", "--output-format", "json"],
+      capture_output=True,
+      text=True,
+      timeout=PROBE_TIMEOUT_SECONDS,
+      check=False,
+      env=run_env,
+    )
+    if res.returncode != 0 or not res.stdout.strip():
+      return None
+
+    payload = json.loads(res.stdout)
+    groups = None
+    if isinstance(payload, dict):
+      if "groups" in payload and isinstance(payload["groups"], list):
+        groups = payload["groups"]
+      elif "data" in payload and isinstance(payload["data"], dict) and isinstance(payload["data"].get("groups"), list):
+        groups = payload["data"]["groups"]
+      elif "command" in payload and isinstance(payload["command"], dict):
+        cmd_data = payload["command"].get("data", {})
+        if isinstance(cmd_data, dict) and isinstance(cmd_data.get("groups"), list):
+          groups = cmd_data["groups"]
+
+    if not groups:
+      return None
+
+    limits: list[dict[str, Any]] = []
+    for grp in groups:
+      grp_name = grp.get("name", "")
+      grp_lower = grp_name.lower()
+      if "gemini" in grp_lower:
+        prefix = "Gemini"
+      elif "claude" in grp_lower or "gpt" in grp_lower:
+        prefix = "Claude & GPT"
+      else:
+        prefix = grp_name
+
+      raw_buckets = grp.get("buckets", [])
+
+      def bucket_sort_key(bucket_item: dict[str, Any]) -> int:
+        w = bucket_item.get("window", "").lower()
+        n = bucket_item.get("name", "").lower()
+        if "5h" in w or "5-hour" in n or "five" in n or "session" in n:
+          return 0
+        if "week" in w or "week" in n:
+          return 1
+        return 2
+
+      sorted_buckets = sorted(raw_buckets, key=bucket_sort_key)
+
+      for b in sorted_buckets:
+        window = b.get("window", "")
+        b_name_lower = b.get("name", "").lower()
+
+        if window == "5h" or "5-hour" in b_name_lower or "five" in b_name_lower:
+          w_name = "Session"
+          label_suffix = "5-hour"
+        elif window == "weekly" or "weekly" in b_name_lower:
+          w_name = "Weekly"
+          label_suffix = "7-day"
+        else:
+          w_name = b.get("name", "Limit")
+          label_suffix = window
+
+        title = f"{prefix} {w_name}"
+        label = f"{prefix} ({label_suffix})"
+
+        remaining = float(b.get("remaining_fraction", 1.0))
+        used_percent = round(max(0.0, min(1.0, 1.0 - remaining)), 4)
+        reset_time = b.get("reset_time", "")
+
+        limits.append({
+          "label": label,
+          "title": title,
+          "percent": used_percent,
+          "resetsAt": reset_time,
+        })
+
+    return limits if limits else None
+  except Exception as exc:
+    print(f"omarchy-agent-usage-antigravity: probe failed: {exc}", file=sys.stderr)
+    return None
+
+
+def collect_limits(force: bool = False) -> list[dict[str, Any]]:
+  cache_dir = cache_root()
+  cache_file = cache_dir / "antigravity-limits.json"
+  lock_file = cache_dir / "antigravity-limits.lock"
+
+  cached = None if force else read_cached_data(cache_file, LIMITS_CACHE_TTL_SECONDS)
+  if cached and isinstance(cached, list) and len(cached) > 0:
+    return cached
+
+  acquired = False
+  try:
+    with lock_file.open("w") as lf:
+      for _ in range(25):
+        try:
+          fcntl.flock(lf.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+          acquired = True
+          break
+        except (BlockingIOError, OSError):
+          time.sleep(0.1)
+
+      if acquired:
+        try:
+          if not force:
+            cached_inside = read_cached_data(cache_file, LIMITS_CACHE_TTL_SECONDS)
+            if cached_inside and isinstance(cached_inside, list) and len(cached_inside) > 0:
+              return cached_inside
+
+          live = probe_live_limits()
+          if live:
+            write_cached_data(cache_file, live)
+            return live
+        finally:
+          fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+  except Exception:
+    pass
+
+  fallback_cached = read_cached_data(cache_file, 86400.0 * 7)
+  if fallback_cached and isinstance(fallback_cached, list) and len(fallback_cached) > 0:
+    return fallback_cached
+
+  state_file = get_state_file()
+  if state_file.exists():
+    try:
+      data = json.loads(state_file.read_text(encoding="utf-8"))
+      last_limits = data.get("limits")
+      if last_limits and isinstance(last_limits, list) and len(last_limits) > 0:
+        return last_limits
+    except Exception:
+      pass
+
+  now_dt = dt.datetime.now(dt.timezone.utc)
+  return [
+    {
+      "label": "Gemini (5-hour)",
+      "title": "Gemini Session",
+      "percent": 0.0,
+      "resetsAt": (now_dt + dt.timedelta(hours=5)).isoformat(),
+    },
+    {
+      "label": "Gemini (7-day)",
+      "title": "Gemini Weekly",
+      "percent": 0.0,
+      "resetsAt": (now_dt + dt.timedelta(days=7)).isoformat(),
+    },
+    {
+      "label": "Claude & GPT (5-hour)",
+      "title": "Claude & GPT Session",
+      "percent": 0.0,
+      "resetsAt": (now_dt + dt.timedelta(hours=5)).isoformat(),
+    },
+    {
+      "label": "Claude & GPT (7-day)",
+      "title": "Claude & GPT Weekly",
+      "percent": 0.0,
+      "resetsAt": (now_dt + dt.timedelta(days=7)).isoformat(),
+    },
+  ]
+
+
+def read_cached_data(cache_file: Path, max_age: float) -> Any | None:
+  if max_age <= 0 or not cache_file.exists():
+    return None
+  try:
+    if time.time() - cache_file.stat().st_mtime <= max_age:
+      return json.loads(cache_file.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  return None
+
+
+def write_cached_data(cache_file: Path, payload: Any) -> None:
+  tmp_fd, tmp_path = tempfile.mkstemp(dir=cache_file.parent, prefix=cache_file.name + ".", suffix=".tmp")
+  tmp = Path(tmp_path)
+  try:
+    with os.fdopen(tmp_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    tmp.chmod(0o644)
+    tmp.replace(cache_file)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def collect(force: bool = False, limits_only: bool = False) -> dict[str, Any]:
+  gemini_dir = get_gemini_dir()
+  brain_path = gemini_dir / "brain"
+  history_file = gemini_dir / "history.jsonl"
+
+  cache_dir = cache_root()
+  cache_file = cache_dir / "antigravity-scan.json"
+  lock_file = cache_dir / "antigravity-scan.lock"
+
+  limits = collect_limits(force=force)
+
+  cached_stats = None
+  if limits_only:
+    cached_stats = read_cached_data(cache_file, 86400.0)
+
+  if cached_stats is None and not force:
+    cached_stats = read_cached_data(cache_file, CACHE_TTL_SECONDS)
+
+  if cached_stats is None:
+    try:
+      with lock_file.open("w") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+          stats = scan_transcripts(brain_path, history_file)
+          write_cached_data(cache_file, stats)
+          cached_stats = stats
+        finally:
+          fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+    except (BlockingIOError, OSError):
+      cached_stats = read_cached_data(cache_file, 3600.0)
+      if cached_stats is None:
+        cached_stats = scan_transcripts(brain_path, history_file)
+
+  now_iso = dt.datetime.now(dt.timezone.utc).isoformat()
+
+  return {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": now_iso,
+    "ready": True,
+    "hasLocalStats": True,
+    "tierLabel": cached_stats.get("tierLabel", "Google AI Ultra · Gemini 3.7"),
+    "todayPrompts": cached_stats.get("todayPrompts", 0),
+    "todaySessions": cached_stats.get("todaySessions", 0),
+    "todayTotalTokens": cached_stats.get("todayTotalTokens", 0),
+    "todayTokensByModel": cached_stats.get("todayTokensByModel", {}),
+    "recentDays": cached_stats.get("recentDays", []),
+    "totalPrompts": cached_stats.get("totalPrompts", 0),
+    "totalSessions": cached_stats.get("totalSessions", 0),
+    "activeDays": cached_stats.get("activeDays", 0),
+    "activeDates": cached_stats.get("activeDates", []),
+    "modelUsage": cached_stats.get("modelUsage", {}),
+    "limits": limits,
+    "usageStatusText": "",
+    "authHelpText": AUTH_HELP,
+  }
+
+
+def main():
+  parser = argparse.ArgumentParser(description="Antigravity usage collector for Omarchy")
+  parser.add_argument("--force", action="store_true", help="Force rescan and refresh")
+  parser.add_argument("--limits-only", action="store_true", help="Limits only refresh")
+  args = parser.parse_args()
+
+  record = collect(force=args.force, limits_only=args.limits_only)
+  print(json.dumps(record))
+
+
+if __name__ == "__main__":
+  main()
