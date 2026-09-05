@@ -807,3 +807,59 @@ assert_output_contains "a --help behind -- belongs to the command and still forw
 
 output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
 assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"
+
+# A theme that ships no [colors.selection] must not end up with selection ==
+# foreground, since that makes selections/highlights invisible downstream.
+make_tmpdir ALACRITTY_THEME_TMPDIR
+
+cat >"$ALACRITTY_THEME_TMPDIR/alacritty.toml" <<'EOF'
+[colors.primary]
+background = "#101010"
+foreground = "#f0f0f0"
+
+[colors.normal]
+black = "#111111"
+red = "#ff0000"
+green = "#00ff00"
+yellow = "#ffff00"
+blue = "#0000ff"
+magenta = "#ff00ff"
+cyan = "#00ffff"
+white = "#f0f0f0"
+
+[colors.bright]
+black = "#222222"
+red = "#ff1111"
+green = "#11ff11"
+yellow = "#ffff11"
+blue = "#1111ff"
+magenta = "#ff11ff"
+cyan = "#11ffff"
+white = "#ffffff"
+EOF
+
+"$ROOT/bin/omarchy-theme-colors-from-alacritty" "$ALACRITTY_THEME_TMPDIR"
+grep -Fqx 'selection = "#222222"' "$ALACRITTY_THEME_TMPDIR/colors.toml" || fail "theme without [colors.selection] falls back to bright black instead of foreground"
+pass "theme without [colors.selection] falls back to bright black instead of foreground"
+
+make_tmpdir ALACRITTY_NO_BRIGHT_TMPDIR
+
+cat >"$ALACRITTY_NO_BRIGHT_TMPDIR/alacritty.toml" <<'EOF'
+[colors.primary]
+background = "#101010"
+foreground = "#f0f0f0"
+
+[colors.normal]
+black = "#111111"
+red = "#ff0000"
+green = "#00ff00"
+yellow = "#ffff00"
+blue = "#0000ff"
+magenta = "#ff00ff"
+cyan = "#00ffff"
+white = "#f0f0f0"
+EOF
+
+"$ROOT/bin/omarchy-theme-colors-from-alacritty" "$ALACRITTY_NO_BRIGHT_TMPDIR"
+grep -Fqx 'selection = "#111111"' "$ALACRITTY_NO_BRIGHT_TMPDIR/colors.toml" || fail "theme without [colors.selection] or [colors.bright] falls back to normal black instead of foreground"
+pass "theme without [colors.selection] or [colors.bright] falls back to normal black instead of foreground"

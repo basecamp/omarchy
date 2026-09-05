@@ -120,7 +120,7 @@ background=${background:-$color0}
 foreground=${foreground:-$color7}
 color0=$background
 color7=$foreground
-selection_background=${selection_background:-$foreground}
+selection_background=${selection_background:-$color8}
 accent=$color4
 
 mkdir -p "$THEME_SOURCE"
