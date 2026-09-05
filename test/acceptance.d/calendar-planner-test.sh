@@ -184,6 +184,7 @@ screenshot "success-calendar-planner-08-dependent-tasks"
 
 # Ask Omarchy to plan explicitly after the final input change. It must avoid
 # the manual event and leave the calendar untouched until Apply schedule.
+wait_until "planner is ready for an explicit solve" 30 screen_contains "Plan tasks"
 press_tabs 1
 wtype -k Return
 wait_until "explicit suggested schedule is ready" 30 jq -e '.proposal.status == "ready" and (.proposal.baseInputRevision == .inputRevision)' "$STATE_FILE"
