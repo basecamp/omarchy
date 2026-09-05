@@ -23,7 +23,7 @@ omarchy plugin enable omarchy.tailscale
 omarchy plugin disable omarchy.weather
 ```
 
-Or use the menu: _Setup > Plugins_ has Enable, Disable, Add, Clone, and Remove, each with a picker that only offers the plugins that make sense for that action.
+Or use the menu: _Setup > Plugins > Update Plugin_ lists the git-managed plugins with changes available — fetching fresh from git as it opens — and picking one opens a floating terminal where you can review the diff before it's applied.
 
 Enabled state is stored in `~/.config/omarchy/shell.json`, and the rule differs slightly for the two kinds of plugin. A third-party plugin is enabled exactly when its id appears somewhere in that file — as a bar layout entry, as an entry in `plugins[]`, or as `bar.id`. First-party plugins that aren't bar widgets are the other way around: they're on by default and only turn off by being listed in `disabledPlugins[]`.
 
