@@ -3,17 +3,25 @@
 # omarchy:summary=Sync Omarchy theme to all Obsidian vaults
 # omarchy:hidden=true
 
+set -euo pipefail
+
 CURRENT_THEME_DIR="$HOME/.local/state/omarchy/current/theme"
+OBSIDIAN_CONFIG="$HOME/.config/obsidian/obsidian.json"
 
+! omarchy-toggle-enabled skip-obsidian-theme-changes || exit 0
 [[ -f $CURRENT_THEME_DIR/obsidian.css ]] || exit 0
+[[ -f $OBSIDIAN_CONFIG ]] || exit 0
 
-jq -r '.vaults | values[].path' ~/.config/obsidian/obsidian.json 2>/dev/null | while read -r vault_path; do
-  [[ -d $vault_path/.obsidian ]] || continue
+jq -r '.vaults | values[].path' "$OBSIDIAN_CONFIG" 2>/dev/null | while IFS= read -r vault_path; do
+  [[ -n "$vault_path" && -d "$vault_path/.obsidian" ]] || continue
 
-  theme_dir="$vault_path/.obsidian/themes/Omarchy"
+  obsidian_dir="$vault_path/.obsidian"
+
+  # 1. Install or update Omarchy theme
+  theme_dir="$obsidian_dir/themes/Omarchy"
   mkdir -p "$theme_dir"
 
-  [[ -f $theme_dir/manifest.json ]] || cat >"$theme_dir/manifest.json" <<'EOF'
+  [[ -f $theme_dir/manifest.json ]] || cat >"$theme_dir/manifest.json" <<'MANIFEST'
 {
   "name": "Omarchy",
   "version": "1.0.0",
@@ -22,7 +30,30 @@ jq -r '.vaults | values[].path' ~/.config/obsidian/obsidian.json 2>/dev/null | w
   "author": "Omarchy",
   "authorUrl": "https://omarchy.org"
 }
-EOF
+MANIFEST
 
-  cp "$CURRENT_THEME_DIR/obsidian.css" "$theme_dir/theme.css"
+  cp -f "$CURRENT_THEME_DIR/obsidian.css" "$theme_dir/theme.css"
+
+  # 2. Deploy live CSS snippet for real-time hot-reloading while Obsidian is open
+  snippet_dir="$obsidian_dir/snippets"
+  mkdir -p "$snippet_dir"
+  cp -f "$CURRENT_THEME_DIR/obsidian.css" "$snippet_dir/omarchy.css"
+
+  # 3. Ensure appearance.json activates both the theme and the hot-reloading snippet
+  appearance_file="$obsidian_dir/appearance.json"
+  if [[ ! -f "$appearance_file" || ! -s "$appearance_file" ]]; then
+    echo "{}" > "$appearance_file"
+  fi
+
+  if jq empty "$appearance_file" 2>/dev/null; then
+    tmp=$(mktemp "$obsidian_dir/appearance.json.XXXXXX")
+    if jq --arg theme "Omarchy" --arg snippet "omarchy" '
+      .cssTheme = $theme |
+      .enabledCssSnippets = ((.enabledCssSnippets // []) + [$snippet] | unique)
+    ' "$appearance_file" >"$tmp"; then
+      mv "$tmp" "$appearance_file"
+    else
+      rm -f "$tmp"
+    fi
+  fi
 done
