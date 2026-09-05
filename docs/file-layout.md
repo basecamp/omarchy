@@ -110,6 +110,8 @@ default/snapper/root           ──►  omarchy-settings    /etc/snapper/confi
 default/**                     ──►  omarchy-settings    /usr/share/omarchy/default/
   ├─ bash/env-bootstrap                                 /usr/share/omarchy/default/bash/env-bootstrap
   │                                                       (sourced by every shell/session entry point; see "Env bootstrap")
+  ├─ bash/i18n                                          /usr/share/omarchy/default/bash/i18n
+  │                                                       (omarchy_t / omarchy_tn for interactive scripts; see docs/i18n.md)
   ├─ bashrc                                             /usr/share/omarchy/etc-overrides/dot.bashrc
   │                                                       → /etc/skel/.bashrc (post_install cp -f)
   ├─ hypr/toggles/*.lua (flags,

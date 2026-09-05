@@ -9,6 +9,8 @@ IPC is the canonical way for CLIs to talk to a running shell —
 (`-q` makes it quiet best-effort; `OMARCHY_SHELL_IPC_TIMEOUT` bounds the
 wait).
 
+Strings the shell renders can be looked up in another language through `qs.Commons.I18n`; see [`docs/i18n.md`](i18n.md). Nothing calls it yet.
+
 ## Plugin manifest
 
 ```json
