@@ -75,4 +75,85 @@ assertDeepEqual(
 )
 
 assertDeepEqual(monitor.parseDisplays('{'), { displays: [], enabledDisplayCount: 0 }, 'monitor handles invalid display JSON')
+
+assertDeepEqual(
+  monitor.rememberLayouts({}, [
+    { name: 'eDP-1', enabled: true, scale: 2, x: 0, y: 0 },
+    { name: 'DP-1', enabled: true, scale: 1.5, x: 960, y: 0 }
+  ]),
+  {
+    'eDP-1': { scale: 2, position: '0x0' },
+    'DP-1': { scale: 1.5, position: '960x0' }
+  },
+  'monitor remembers the layout of every enabled display'
+)
+
+assertDeepEqual(
+  monitor.rememberLayouts(
+    { 'DP-1': { scale: 1.5, position: '960x0' } },
+    [
+      { name: 'eDP-1', enabled: true, scale: 2, x: 0, y: 0 },
+      { name: 'DP-1', enabled: false, scale: 1, x: 0, y: 0 }
+    ]
+  ),
+  {
+    'DP-1': { scale: 1.5, position: '960x0' },
+    'eDP-1': { scale: 2, position: '0x0' }
+  },
+  'monitor keeps the last known layout of a display that went off'
+)
+
+assertEqual(
+  monitor.monitorRule('DP-1', true, { scale: 1.5, position: '960x0' }),
+  'hl.monitor({ output = "DP-1", disabled = true })',
+  'monitor disables an output through the Lua parser'
+)
+
+assertEqual(
+  monitor.monitorRule('DP-1', false, { scale: 1.5, position: '960x0' }),
+  'hl.monitor({ output = "DP-1", disabled = false, mode = "preferred", position = "960x0", scale = 1.5 })',
+  'monitor restores the remembered scale and position when an output comes back'
+)
+
+assertEqual(
+  monitor.monitorRule('DP-1', false, undefined),
+  'hl.monitor({ output = "DP-1", disabled = false, mode = "preferred", position = "auto", scale = "auto" })',
+  'monitor falls back to auto placement for an output it never saw enabled'
+)
+
+const ultrawide = {
+  width: 5120,
+  height: 1440,
+  refreshRate: 143.979,
+  availableModes: [
+    '5120x1440@143.98Hz',
+    '5120x1440@85.00Hz',
+    '3840x1080@119.97Hz',
+    '5120x1440@100.00Hz',
+    '5120x1440@71.98Hz',
+    '1920x1080@60.00Hz'
+  ]
+}
+
+assertDeepEqual(
+  monitor.availableRates(ultrawide),
+  [144, 100, 85, 72],
+  'monitor lists the rates of the current resolution, highest first'
+)
+
+assertDeepEqual(
+  monitor.availableRates({
+    width: 1920,
+    height: 1080,
+    availableModes: ['1920x1080@60.00Hz', '1920x1080@59.94Hz']
+  }),
+  [60],
+  'monitor collapses modes that round to the same rate'
+)
+
+assertDeepEqual(monitor.availableRates({ width: 1920, height: 1080 }), [], 'monitor handles a display with no mode list')
+assertDeepEqual(monitor.availableRates(undefined), [], 'monitor handles a missing display')
+
+assertEqual(monitor.activeRate(ultrawide), 144, 'monitor rounds the reported rate to the one the mode names')
+assertEqual(monitor.activeRate({ refreshRate: 0 }), 0, 'monitor rejects an unusable rate')
 JS

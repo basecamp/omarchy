@@ -111,6 +111,77 @@ function parseDisplays(raw) {
   }
 }
 
+// An output's scale and position can only be read dependably while it is on,
+// and bringing one back with "auto" for both re-places the display and drops a
+// scaled one to 1. Carry the last values seen while an output was on, so
+// switching it back on restores the layout it had.
+function rememberLayouts(previous, displays) {
+  var layouts = {}
+  for (var name in previous) layouts[name] = previous[name]
+  if (!Array.isArray(displays)) return layouts
+
+  for (var i = 0; i < displays.length; i++) {
+    var display = displays[i]
+    if (!display || !display.name || !display.enabled) continue
+
+    var scale = Number(display.scale)
+    var x = Number(display.x)
+    var y = Number(display.y)
+    if (!isFinite(scale) || scale <= 0 || !isFinite(x) || !isFinite(y)) continue
+
+    layouts[display.name] = { scale: scale, position: x + "x" + y }
+  }
+
+  return layouts
+}
+
+// Omarchy configures Hyprland through the Lua parser, which rejects
+// `hyprctl keyword` outright ("keyword can't work with non-legacy parsers. Use
+// eval.") while still exiting 0 — so a keyword-based toggle fails silently.
+// `disabled = false` has to be spelled out as well: restating a mode alone
+// leaves an already-disabled output off.
+function monitorRule(name, disable, layout) {
+  if (disable) return 'hl.monitor({ output = "' + name + '", disabled = true })'
+
+  var position = layout && layout.position ? layout.position : "auto"
+  var scale = layout && layout.scale ? String(layout.scale) : '"auto"'
+
+  return 'hl.monitor({ output = "' + name + '", disabled = false, mode = "preferred"' +
+    ', position = "' + position + '"' +
+    ', scale = ' + scale + ' })'
+}
+
+// The rates a display offers at the resolution it is running, highest first.
+// Hyprland lists modes as "2560x1440@240.00Hz", and a mode list can hold the
+// same rate twice at different timings.
+function availableRates(display) {
+  if (!display) return []
+
+  var prefix = display.width + "x" + display.height + "@"
+  var modes = display.availableModes || []
+  var rates = []
+
+  for (var i = 0; i < modes.length; i++) {
+    var mode = String(modes[i])
+    if (mode.indexOf(prefix) !== 0) continue
+
+    var rate = Math.round(parseFloat(mode.slice(prefix.length)))
+    if (!isFinite(rate) || rate <= 0) continue
+    if (rates.indexOf(rate) < 0) rates.push(rate)
+  }
+
+  rates.sort(function (a, b) { return b - a })
+  return rates
+}
+
+// Hyprland reports 143.979 where the mode string says 144.
+function activeRate(display) {
+  if (!display) return 0
+
+  var rate = Math.round(Number(display.refreshRate))
+  return isFinite(rate) && rate > 0 ? rate : 0
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampBrightness: clampBrightness,
@@ -119,6 +190,10 @@ if (typeof module !== "undefined") {
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    rememberLayouts: rememberLayouts,
+    monitorRule: monitorRule,
+    availableRates: availableRates,
+    activeRate: activeRate
   }
 }

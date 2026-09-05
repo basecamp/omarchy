@@ -30,6 +30,20 @@ omarchy display text size 14
 
 That takes a pixel size between 9 and 20, and moves the Omarchy shell, GTK applications, and your terminal together, so the whole desktop stays in proportion. Run it without an argument to see where you're at, and `omarchy display text size reset` to go back to the default. Foot is the one straggler: it has no way to reload its config, so running terminals keep their old size until you open a new one.
 
+### Refresh rate
+
+A monitor comes up at whatever rate it reports as preferred, and on plenty of panels that is a modest 60Hz even when the hardware can do far better. The Display panel (`Super + Ctrl + D`) lists every rate the focused monitor offers at its current resolution under REFRESH, right below the scaling presets. Picking one applies it immediately.
+
+There is a command for it too:
+
+```
+omarchy hyprland monitor refresh 120
+```
+
+Run it without an argument to see the current rate, and with `--list` to see what is on offer. Both the panel and the command write the choice into `~/.config/hypr/monitors.lua`, so it lasts past a reboot.
+
+This is worth a look even if smoothness is not what you are after. Low refresh rates make some people motion sick — the same queasiness a shaky camera or a VR headset can bring on. If a screen leaves you nauseous or headachy after a while, raising the rate is the first thing to try.
+
 ### Extending and mirroring laptop displays
 
 When you connect an external screen to your laptop, the display is automatically extended. But you can change that to mirroring instead using _Trigger > Hardware_ in the Omarchy menu or `Super + Ctrl + Alt + Delete`. This is especially helpful if that external screen is a projector, and you want to show something while working.

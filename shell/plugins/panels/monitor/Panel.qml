@@ -26,6 +26,8 @@ Panel {
   property string monitorScale: ""
   property var displays: []
   property int enabledDisplayCount: 0
+  // name -> { scale, position } last seen while that output was on
+  property var displayLayouts: ({})
 
   // Carry sub-notch touchpad deltas between wheel events.
   property real wheelAccumulator: 0
@@ -37,6 +39,8 @@ Panel {
   //   "scale"      - 6 Button scale presets; treated as a single
   //                  horizontal row from j/k's perspective. h/l moves
   //                  between presets, identical to bluetooth's header.
+  //   "refresh"    - refresh rate presets, laid out like "scale"; only
+  //                  present when the focused display offers more than one.
   //   "monitors"   - vertical display row list for enabling/disabling displays;
   //                  j/k walks each row.
   // Mouse hover on a target updates root state via the components' `hovered`
@@ -49,6 +53,16 @@ Panel {
         return Model.availableScales(scalePresets, display.width, display.height)
     }
     return scalePresets
+  }
+  // Rates the focused display offers at its current resolution, mirroring
+  // scaleValues above.
+  readonly property var refreshValues: {
+    for (var i = 0; i < displays.length; i++) {
+      var display = displays[i]
+      if (display && display.focused)
+        return Model.availableRates(display)
+    }
+    return []
   }
   property string focusSection: "scale"
   property int selectedIndex: 0
@@ -77,6 +91,8 @@ Panel {
     if (brightnessAvailable) list.push("brightness")
     list.push("textsize")
     list.push("scale")
+    // A display with a single rate has nothing to pick between.
+    if (refreshValues.length > 1) list.push("refresh")
     if (displays.length > 1) list.push("monitors")
     return list
   }
@@ -85,13 +101,15 @@ Panel {
     if (section === "brightness") return 0  // only the slider sentinel at -1
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
     if (section === "scale") return scaleValues.length
+    if (section === "refresh") return refreshValues.length
     if (section === "monitors") return displays.length
     return 0
   }
 
   function sectionIsSingleRow(section) {
-    // brightness and text size are lone sliders; scale presets sit horizontally.
-    return section === "brightness" || section === "textsize" || section === "scale"
+    // brightness and text size are lone sliders; scale and refresh presets sit
+    // horizontally.
+    return section === "brightness" || section === "textsize" || section === "scale" || section === "refresh"
   }
 
   function sectionFirstIndex(section) {
@@ -129,14 +147,15 @@ Panel {
     }
   }
 
-  // h/l: in scale section, walks the preset row; everywhere else, no-op
-  // because adjustBrightness handles horizontal motion on the brightness
-  // slider.
+  // h/l: in the scale and refresh sections, walks that preset row; everywhere
+  // else, no-op because adjustBrightness handles horizontal motion on the
+  // brightness slider.
   function moveCursorH(delta) {
-    if (focusSection !== "scale") return
+    if (focusSection !== "scale" && focusSection !== "refresh") return
+    var row = focusSection === "scale" ? scaleValues : refreshValues
     var next = selectedIndex + delta
     if (next < 0) next = 0
-    if (next > scaleValues.length - 1) next = scaleValues.length - 1
+    if (next > row.length - 1) next = row.length - 1
     selectedIndex = next
   }
 
@@ -149,6 +168,10 @@ Panel {
   function activateCursor() {
     if (focusSection === "scale" && selectedIndex >= 0 && selectedIndex < scaleValues.length) {
       setScale(scaleValues[selectedIndex])
+      return
+    }
+    if (focusSection === "refresh" && selectedIndex >= 0 && selectedIndex < refreshValues.length) {
+      setRefresh(refreshValues[selectedIndex])
       return
     }
     if (focusSection === "monitors" && selectedIndex >= 0 && selectedIndex < displays.length) {
@@ -274,6 +297,15 @@ Panel {
     return -1
   }
 
+  function activeRefreshIndex() {
+    for (var i = 0; i < displays.length; i++) {
+      var display = displays[i]
+      if (display && display.focused)
+        return refreshValues.indexOf(Model.activeRate(display))
+    }
+    return -1
+  }
+
   function effectiveScale(scale) {
     for (var i = 0; i < displays.length; i++) {
       var display = displays[i]
@@ -294,18 +326,27 @@ Panel {
     var parsed = Model.parseDisplays(displaysJson)
     root.displays = parsed.displays
     root.enabledDisplayCount = parsed.enabledDisplayCount
+    root.displayLayouts = Model.rememberLayouts(root.displayLayouts, parsed.displays)
   }
 
   function toggleDisplay(name, enabled) {
     if (!name) return
     if (enabled && root.enabledDisplayCount <= 1) return
 
-    actionProc.command = ["hyprctl", "keyword", "monitor", name + (enabled ? ",disable" : ",preferred,auto,auto")]
+    actionProc.command = ["hyprctl", "eval", Model.monitorRule(name, enabled, root.displayLayouts[name])]
     if (!actionProc.running) actionProc.running = true
   }
 
   function setScale(scale) {
     actionProc.command = ["bash", "-c", "omarchy-hyprland-monitor-scaling " + scale]
+    if (!actionProc.running) actionProc.running = true
+  }
+
+  // Applying and persisting a rate belongs in the CLI, the way setScale defers
+  // to omarchy-hyprland-monitor-scaling: a rate set only at runtime is undone
+  // by the next config reload.
+  function setRefresh(rate) {
+    actionProc.command = ["omarchy-hyprland-monitor-refresh", String(rate)]
     if (!actionProc.running) actionProc.running = true
   }
 
@@ -790,6 +831,73 @@ Panel {
             }
           }
 
+          // ---------- Refresh rate ----------
+          PanelSeparator {
+            visible: root.refreshValues.length > 1
+            foreground: root.bar.foreground
+          }
+
+          Column {
+            width: parent.width
+            spacing: Style.space(10)
+            visible: root.refreshValues.length > 1
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(refreshHeader.implicitHeight, refreshMonitor.implicitHeight)
+
+              PanelSectionHeader {
+                id: refreshHeader
+                text: "REFRESH"
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              // Like SCALE, this only applies to the focused monitor.
+              Text {
+                id: refreshMonitor
+                textFormat: Text.PlainText
+                text: root.focusedMonitor
+                visible: root.focusedMonitor !== "" && root.enabledDisplayCount > 1
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Grid {
+              id: refreshRow
+              width: parent.width
+              // scaleValues always has entries; refreshValues can be empty, and
+              // a Grid needs at least one column even while it is hidden.
+              columns: Math.max(1, root.refreshValues.length)
+              spacing: Style.spacing.xs
+
+              readonly property real cellWidth: root.refreshValues.length > 0
+                ? (width - spacing * (columns - 1)) / columns
+                : 0
+
+              Repeater {
+                model: root.refreshValues
+
+                RatePill {
+                  required property int modelData
+                  required property int index
+
+                  rateValue: modelData
+                  rateIndex: index
+                  width: refreshRow.cellWidth
+                }
+              }
+            }
+          }
+
           // ---------- Monitors ----------
           PanelSeparator {
             visible: root.displays.length > 1
@@ -852,6 +960,31 @@ Panel {
       root.cursorActive = true
       root.focusSection = "scale"
       root.selectedIndex = pill.scaleIndex
+    }
+  }
+
+  component RatePill: Button {
+    id: ratePill
+    required property int rateValue
+    required property int rateIndex
+
+    text: rateValue + " Hz"
+    fontSize: Style.font.caption
+    foreground: root.bar.foreground
+    fontFamily: root.bar.fontFamily
+    horizontalPadding: Style.spacing.sm
+    verticalPadding: Style.spacing.controlPaddingY
+    bordered: true
+
+    active: root.activeRefreshIndex() === rateIndex
+    hasCursor: root.cursorActive && root.focusSection === "refresh" && root.selectedIndex === rateIndex
+
+    onClicked: root.setRefresh(rateValue)
+    onHovered: function(isHovered) {
+      if (!isHovered || root.reflowingText) return
+      root.cursorActive = true
+      root.focusSection = "refresh"
+      root.selectedIndex = ratePill.rateIndex
     }
   }
 
