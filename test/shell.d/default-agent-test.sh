@@ -98,6 +98,7 @@ omp_package="github:can1357/oh-my-pi"
 crush_package="crush"
 agy_package="antigravity-cli"
 ori_package="github:OpenRouterLabs/ori-releases"
+cursor_agent_package="cursor-agent"
 
 assert_lazy_stub() {
   local package=$1
@@ -121,6 +122,7 @@ pass "custom agent lazy stubs preserve their mise packages"
 source "$ROOT/install/user/mise.sh"
 grep -Fx "$agy_package agy" "$stub_log" >/dev/null || fail "user setup creates the Antigravity lazy stub"
 grep -Fx "$grok_package grok" "$stub_log" >/dev/null || fail "user setup creates the Grok lazy stub"
+grep -Fx "$cursor_agent_package" "$stub_log" >/dev/null || fail "user setup creates the Cursor Agent lazy stub"
 grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "user setup creates the Oh My Pi lazy stub"
 grep -Fx "$crush_package" "$stub_log" >/dev/null || fail "user setup creates the Crush lazy stub"
 grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "user setup creates the Ori lazy stub"
@@ -133,6 +135,10 @@ grep -Fx "$omp_package omp" "$stub_log" >/dev/null || fail "Oh My Pi migration c
 : >"$stub_log"
 source "$ROOT/migrations/1787342993.sh" >/dev/null
 grep -Fx "$ori_package ori" "$stub_log" >/dev/null || fail "Ori migration creates a working lazy stub"
+
+: >"$stub_log"
+source "$ROOT/migrations/1788577553.sh" >/dev/null
+grep -Fx "$cursor_agent_package" "$stub_log" >/dev/null || fail "Cursor Agent migration creates a working lazy stub"
 
 : >"$stub_log"
 source "$ROOT/migrations/1785846769.sh" >/dev/null
@@ -242,7 +248,7 @@ pass "agent migrations install working wrappers without overriding the preinstal
 
 touch "$test_home/.local/bin/agy" "$test_home/.local/bin/ori"
 omarchy-remove-preinstalls >/dev/null
-for command in agy omp ori grok crush; do
+for command in agy omp ori grok crush cursor-agent; do
   [[ ! -e $test_home/.local/bin/$command ]] || fail "Remove Preinstalls deletes the $command lazy stub"
 done
 pass "Remove Preinstalls deletes every optional agent lazy stub"
@@ -307,6 +313,8 @@ declare -A expected_agents=(
   [gemini-cli]="agy"
   [copilot]="copilot"
   [github-copilot]="copilot"
+  [cursor]="cursor-agent"
+  [cursor-agent]="cursor-agent"
 )
 
 declare -A expected_packages=(
@@ -320,6 +328,7 @@ declare -A expected_packages=(
   [grok]="$grok_package"
   [agy]="$agy_package"
   [copilot]="copilot"
+  [cursor-agent]="$cursor_agent_package"
 )
 
 for selection in "${!expected_agents[@]}"; do
@@ -464,6 +473,7 @@ assert_launch claude claude --permission-mode auto -- "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
+assert_launch cursor-agent cursor-agent --yolo -- "Review this project"
 assert_launch hermes env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=Review this project"
 assert_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
 assert_launch copilot copilot --allow-all --interactive "Review this project"
@@ -484,6 +494,7 @@ assert_bypass claude claude --permission-mode auto
 assert_bypass codex codex --approve-for-me
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
+assert_bypass cursor-agent cursor-agent --yolo
 assert_bypass hermes hermes --yolo
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all

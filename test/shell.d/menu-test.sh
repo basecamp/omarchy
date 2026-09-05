@@ -227,6 +227,7 @@ const expectedAgents = {
   hermes: { icon: '\ue90a', iconFont: 'omarchy', label: 'Hermes' },
   copilot: { icon: '', label: 'Copilot' },
   crush: { icon: '󰋑', label: 'Crush' },
+  'cursor-agent': { icon: '\uf245', label: 'Cursor (cli)' },
 }
 assert(
   Object.entries(expectedAgents).every(([agent, expected]) => {
@@ -245,7 +246,7 @@ assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Ori', 'Pi'],
+  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Cursor (cli)', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Ori', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
 const expectedDefaults = {
