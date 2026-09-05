@@ -723,4 +723,20 @@ assert(
   !/pendingModel|pastModel/.test(serviceQml),
   'notifications service keeps no in-memory history models'
 )
+
+// image-path may be a themed icon name (notify-send -i). Routing the raw string
+// into Image.source paints Qt's missing-texture placeholder; iconSource() must
+// resolve both image and appIcon (#9920). cardQml is loaded earlier in this file.
+assert(
+  /smallIconSource:\s*image\.length\s*>\s*0\s*\?\s*iconSource\(image\)\s*:\s*iconSource\(appIcon\)/.test(cardQml),
+  'notifications card resolves image-path through iconSource like appIcon'
+)
+assert(
+  !/smallIconSource:\s*image\.length\s*>\s*0\s*\?\s*image\s*:/.test(cardQml),
+  'notifications card does not feed bare image-path strings to Image.source'
+)
+assert(
+  /function iconSource\(icon\)/.test(cardQml) && /Quickshell\.iconPath\(value,\s*true\)/.test(cardQml),
+  'notifications card iconSource checks themed names before painting'
+)
 JS
