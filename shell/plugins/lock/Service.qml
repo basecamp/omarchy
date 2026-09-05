@@ -37,6 +37,8 @@ Item {
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
+  readonly property var batteryService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.battery") : null
+  readonly property bool powerSaverActive: batteryService ? batteryService.powerSaverOnBattery : false
 
   function realScreenCount() {
     var screens = Quickshell.screens || []
@@ -280,6 +282,7 @@ Item {
         inputEnabled: root.lockRequested
         loadBackground: root.locked
         displaysBlank: root.displaysBlank
+        powerSaverActive: root.powerSaverActive
         passwordText: root.enteredPassword
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
@@ -310,6 +313,7 @@ Item {
       failedAttempts: 0
       inputEnabled: false
       loadBackground: root.previewVisible
+      powerSaverActive: root.powerSaverActive
       passwordText: ""
     }
 

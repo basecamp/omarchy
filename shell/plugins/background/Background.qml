@@ -36,10 +36,12 @@ Item {
   // is told not to — a locked laptop would otherwise decode until it died.
   readonly property var lockService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.lock") : null
   readonly property var idleService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.idle") : null
+  readonly property var batteryService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.battery") : null
   readonly property var activeToplevel: ToplevelManager.activeToplevel
   readonly property bool fullscreenActive: activeToplevel ? activeToplevel.fullscreen : false
   readonly property bool lockActive: lockService ? lockService.locked : false
   readonly property bool screensaverActive: idleService ? idleService.screensaverWindowCount > 0 : false
+  readonly property bool powerSaverActive: batteryService ? batteryService.powerSaverOnBattery : false
   // A lock or a screensaver covers every output, so it is decided once here.
   // Fullscreen is decided per output below, because it only covers its own.
   readonly property bool sessionObscured: lockActive || screensaverActive
@@ -252,7 +254,7 @@ Item {
         id: base
         anchors.fill: parent
         path: root.displayedBackground
-        playbackEnabled: !root.sessionObscured && !panel.fullscreenHere
+        playbackEnabled: !root.sessionObscured && !root.powerSaverActive && !panel.fullscreenHere
         onReadyChanged: {
           if (ready && root.finishingTransition) {
             root.incomingBackground = ""
