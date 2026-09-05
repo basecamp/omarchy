@@ -17,7 +17,8 @@ build() {
     error "Bluetooth unlock bond is missing or unsafe: %s" "$device_dir"
     return 1
   fi
-  if find "$device_dir" -type l -print -quit | grep -q .; then
+  if [[ -L $controller_dir/settings || -L $controller_dir/identity || -L $controller_dir/cache ]] ||
+    find "$device_dir" -type l -print -quit | grep -q .; then
     error "Bluetooth unlock bond contains an unsafe symlink: %s" "$device_dir"
     return 1
   fi
@@ -49,8 +50,10 @@ build() {
   add_file /usr/share/dbus-1/system.conf
   add_file /usr/share/dbus-1/system.d/bluetooth.conf
   add_file /etc/machine-id
-  add_file /etc/bluetooth/main.conf
-  add_file /etc/bluetooth/input.conf
+  # Boot needs only bonded input devices. Do not inherit host pairing or
+  # experimental settings, and power the controller without a desktop client.
+  printf '[General]\nAlwaysPairable=false\n[Policy]\nAutoEnable=true\n' | add_file - /etc/bluetooth/main.conf 0644
+  printf '[General]\nClassicBondedOnly=true\n' | add_file - /etc/bluetooth/input.conf 0644
 
   # dbus-daemon drops privileges by numeric uid/gid. Build a minimal account
   # database rather than copying the host's passwd, group, or shadow database
@@ -69,8 +72,8 @@ build() {
   # mkinitcpio otherwise creates copied directories as 0755.
   add_dir /var/lib/bluetooth 0700
   add_dir "$controller_dir" 0700
-  [[ -f $controller_dir/settings ]] && add_file "$controller_dir/settings"
-  [[ -f $controller_dir/identity ]] && add_file "$controller_dir/identity"
+  [[ -f $controller_dir/settings ]] && add_file "$controller_dir/settings" "$controller_dir/settings" 0600
+  [[ -f $controller_dir/identity ]] && add_file "$controller_dir/identity" "$controller_dir/identity" 0600
   add_full_dir "$device_dir"
   chmod 0700 "$BUILDROOT/var/lib/bluetooth" "$BUILDROOT$controller_dir" "$BUILDROOT$device_dir"
 

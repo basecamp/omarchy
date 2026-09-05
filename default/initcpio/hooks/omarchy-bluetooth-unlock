@@ -4,8 +4,12 @@ run_hook() {
   local waited=0
 
   mkdir -p /run/dbus /run/bluetooth
-  dbus-daemon --system
-/usr/lib/bluetooth/bluetoothd --nodetach >/dev/null 2>&1 &
+  if ! dbus-daemon --system --print-pid > /run/bluetooth/omarchy-dbus.pid; then
+    echo "Bluetooth disk unlock: D-Bus failed; use a wired or 2.4 GHz keyboard." >&2
+    rm -f /run/bluetooth/omarchy-dbus.pid
+    return 0
+  fi
+  /usr/lib/bluetooth/bluetoothd --nodetach >/dev/null 2>&1 &
   echo "$!" >/run/bluetooth/omarchy-bluetoothd.pid
 
   # Give udev and the adapter firmware a short head start. Do not block the
@@ -18,11 +22,32 @@ run_hook() {
   done
 }
 
-run_cleanuphook() {
-  if [ -s /run/bluetooth/omarchy-bluetoothd.pid ]; then
-    kill "$(cat /run/bluetooth/omarchy-bluetoothd.pid)" 2>/dev/null || true
+# /run survives switch_root. Stop our daemons before the real system starts
+# BlueZ and D-Bus, and remove the old bus socket and pid file.
+omarchy_bluetooth_stop() {
+  local pid waited=0
+  [ -s "$1" ] || return 0
+  read -r pid <"$1"
+  case "$pid" in
+    '' | *[!0-9]*) return 0 ;;
+  esac
+  [ "$pid" -gt 1 ] || return 0
+  kill "$pid" 2>/dev/null || true
+  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 30 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
   fi
-  if [ -s /run/dbus/pid ]; then
-    kill "$(cat /run/dbus/pid)" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  rm -f "$1"
+}
+
+run_cleanuphook() {
+  omarchy_bluetooth_stop /run/bluetooth/omarchy-bluetoothd.pid
+  if [ -s /run/bluetooth/omarchy-dbus.pid ]; then
+    omarchy_bluetooth_stop /run/bluetooth/omarchy-dbus.pid
+    rm -f /run/dbus/pid /run/dbus/system_bus_socket
   fi
 }

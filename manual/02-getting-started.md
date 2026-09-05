@@ -22,6 +22,8 @@ The installer cannot use a Bluetooth keyboard until the live system has paired w
 
 After installation, a paired Bluetooth keyboard can be added to the encrypted-disk unlock environment with Setup > Security > Bluetooth Disk Unlock. This is opt-in: the keyboard's Bluetooth bond key is copied to the unencrypted boot image, and radio or battery trouble can still prevent it connecting. Keep a wired or 2.4ghz recovery keyboard available.
 
+Setup rebuilds the boot image before reporting success. If rebuilding fails, setup restores the previous configuration, but a partially written boot image may still need repair: fix the reported error and run `sudo limine-mkinitcpio` before rebooting. The `status` command checks configuration only. The installer's `--no-rebuild` option defers boot-image generation; it does not verify that the keyboard can unlock the disk. Test the next boot with your recovery keyboard available.
+
 ### Installing for another owner
 
 If you're setting up a machine for someone else — a family member, a new employee, a buyer — you shouldn't be answering the personal questions on their behalf. Hit `Ctrl + C` on the very first screen of the installer (the keyboard selection), and Omarchy will offer to prepare the machine for another owner instead. The system installs right away, but all the personal setup — keyboard layout, username, password — is deferred until the machine boots for the first time. The drive is still encrypted by default, and the password the new owner picks on that first boot becomes the encryption password too. (A machine you've already been using can be handed over without a reinstall too — see [resetting the computer](48-security.md).)
