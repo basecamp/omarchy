@@ -23,6 +23,23 @@ announce_network() {
     nm-online -q -t 3600 || return
   fi
 
+  # A captive portal answers DHCP and passes nm-online while still blocking the
+  # mirrors, so prompting for an update here would only hand the user a failed
+  # one. Hold the prompt until sign-in lands rather than dropping it: first run
+  # happens once, so returning here would cost this user the prompt for good.
+  # omarchy-network-portal-watch.service is already asking them to sign in, and
+  # the wait gets the same hour-long budget as the link above.
+  portal_waited=0
+  while omarchy-network-portal --check; do
+    # The portal can sit on one link while another -- a phone tether, say --
+    # carries traffic, and then the update works right now. Machine-wide
+    # connectivity is the maximum across devices, so "full" means a link gets out.
+    if [[ $(LC_ALL=C nmcli networking connectivity) == "full" ]]; then break; fi
+    if ((portal_waited >= 3600)); then return; fi
+    sleep 30
+    ((portal_waited += 30))
+  done
+
   notify_update
 }
 

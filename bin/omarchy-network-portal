@@ -1,0 +1,287 @@
+#!/bin/bash
+
+# omarchy:summary=Detect a captive portal and open its sign-in page
+# omarchy:group=network
+# omarchy:args=[--check|--url|--open|--watch]
+# omarchy:examples=omarchy network portal | omarchy network portal --open
+
+set -uo pipefail
+
+# nf-md-web, escaped so this file reads without a Nerd Font.
+readonly PORTAL_GLYPH=$'\U000f059f'
+
+# Only used when NetworkManager reports no check URI of its own.
+readonly FALLBACK_CHECK_URI="http://ping.archlinux.org/nm-check.txt"
+
+# A portal answers on the first request, so a longer wait only stalls the panel.
+readonly CONNECT_TIMEOUT=2
+readonly PROBE_TIMEOUT=3
+
+# --watch collapses the burst of events one reconnect emits, then ticks slowly so
+# a state the burst raced past is still picked up.
+readonly WATCH_DEBOUNCE=${OMARCHY_PORTAL_DEBOUNCE_SECONDS:-2}
+readonly WATCH_TICK=${OMARCHY_PORTAL_TICK_SECONDS:-5}
+
+# What has already been announced, kept in the runtime dir so a restarted
+# watcher does not toast a portal twice. The toasts are critical, so they sit
+# there until dealt with and a duplicate would stack visibly. Cleared on logout,
+# which is the longest a portal is worth remembering.
+readonly announced_state=${OMARCHY_PORTAL_STATE_FILE:-${XDG_RUNTIME_DIR:-/tmp}/omarchy/network-portal-announced}
+
+portal_device=""
+portal_label=""
+last_checked=0
+
+# Every value read back from nmcli goes through here. LC_ALL=C because nmcli
+# translates state words such as "connected", and `-e no` so an SSID containing
+# ':' or '\' comes back verbatim.
+nm_get() {
+  LC_ALL=C nmcli -e no -g "$@" 2>/dev/null
+}
+
+nm_property() {
+  busctl get-property org.freedesktop.NetworkManager /org/freedesktop/NetworkManager \
+    org.freedesktop.NetworkManager "$1" 2>/dev/null
+}
+
+# NetworkManager's own connectivity check is what spots a portal, so there is
+# nothing to report when it is unavailable or switched off.
+connectivity_check_usable() {
+  [[ $(nm_property ConnectivityCheckAvailable) == "b true" ]] &&
+    [[ $(nm_property ConnectivityCheckEnabled) == "b true" ]]
+}
+
+check_uri() {
+  local uri
+  uri=$(nm_property ConnectivityCheckUri)
+  uri=${uri#s }
+  uri=${uri#\"}
+  uri=${uri%\"}
+
+  printf '%s\n' "${uri:-$FALLBACK_CHECK_URI}"
+}
+
+# Wi-Fi and ethernet only. A portal lives on the local link, while tunnels and
+# bridges routinely sit at "limited" forever -- probing those would stall every
+# poll on a machine running a VPN or docker.
+#
+# Sorted so a device NetworkManager already calls "portal" is settled before any
+# "limited" one costs a probe.
+portal_candidates() {
+  nm_get DEVICE,TYPE,STATE,IP4-CONNECTIVITY device status |
+    awk -F: '($2 == "wifi" || $2 == "ethernet") && $3 == "connected" &&
+             ($4 == "portal" || $4 == "limited") { print $1 "\t" $4 }' |
+    sort -r -t$'\t' -k2,2
+}
+
+connection_name() {
+  nm_get GENERAL.CONNECTION device show "$1"
+}
+
+gateway_for() {
+  nm_get IP4.GATEWAY device show "$1"
+}
+
+# Bound to the device on purpose: a phone tether or VPN can own the default route
+# while the portal sits on another link, so an unbound request sails straight
+# past the portal and calls the network fine.
+probe() {
+  local device=$1 url=$2
+
+  curl --interface "$device" --silent --include \
+    --connect-timeout "$CONNECT_TIMEOUT" --max-time "$PROBE_TIMEOUT" "$url" 2>/dev/null
+}
+
+redirect_from() {
+  awk 'tolower($0) ~ /^location:/ { sub(/^[^:]*: */, ""); sub(/\r$/, ""); print; exit }' <<<"$1"
+}
+
+# WISPr portals advertise a login endpoint in the body. It is a form target
+# rather than a page worth opening, so it only ever serves as proof of an
+# interception, never as the URL handed to the browser.
+has_wispr_payload() {
+  [[ $1 == *"<WISPAccessGatewayParam"* || $1 == *"<LoginURL>"* ]]
+}
+
+# NetworkManager already proved the portal when it says "portal". A "limited"
+# device only counts once a probe sees an actual interception, which stops a
+# merely broken network -- or a router serving its own admin page -- from
+# claiming one.
+portal_confirmed() {
+  local device=$1 state=$2 response gateway
+
+  [[ $state == "portal" ]] && return 0
+
+  response=$(probe "$device" "$(check_uri)")
+  [[ -n $(redirect_from "$response") ]] && return 0
+  has_wispr_payload "$response" && return 0
+
+  gateway=$(gateway_for "$device")
+  [[ -n $gateway ]] || return 1
+
+  response=$(probe "$device" "http://$gateway")
+  [[ -n $(redirect_from "$response") ]]
+}
+
+# Sets portal_device and portal_label for the first intercepted link.
+find_portal() {
+  local device state
+
+  connectivity_check_usable || return 1
+
+  while IFS=$'\t' read -r device state; do
+    [[ -n $device ]] || continue
+    if portal_confirmed "$device" "$state"; then
+      portal_device=$device
+      portal_label=$(connection_name "$device")
+      return 0
+    fi
+  done < <(portal_candidates)
+
+  return 1
+}
+
+# The splash page a redirect points at is what a human signs in on. The gateway
+# is the fallback for a portal that intercepts without redirecting, which is
+# also the only thing left to try once pinned DNS stops the check URI resolving.
+login_url_for() {
+  local device=$1 response url gateway
+
+  response=$(probe "$device" "$(check_uri)")
+  url=$(redirect_from "$response")
+  if [[ -n $url ]]; then
+    printf '%s\n' "$url"
+    return 0
+  fi
+
+  gateway=$(gateway_for "$device")
+  [[ -n $gateway ]] || return 1
+
+  response=$(probe "$device" "http://$gateway")
+  url=$(redirect_from "$response")
+
+  printf '%s\n' "${url:-http://$gateway}"
+}
+
+# NetworkManager only re-checks connectivity every few minutes, so signing in
+# would otherwise leave the panel row and the bar icon stale. Backgrounded
+# because the answer is wanted on the next poll, not this one.
+request_recheck() {
+  nmcli networking connectivity check >/dev/null 2>&1 &
+}
+
+print_status() {
+  if ! find_portal; then
+    printf 'state\tnone\n'
+    return 0
+  fi
+
+  printf 'state\tportal\n'
+  printf 'device\t%s\n' "$portal_device"
+  printf 'label\t%s\n' "$portal_label"
+
+  request_recheck
+}
+
+print_url() {
+  find_portal || return 1
+  login_url_for "$portal_device"
+}
+
+open_portal() {
+  local url
+
+  url=$(print_url) || {
+    echo "Error: no captive portal detected." >&2
+    return 1
+  }
+
+  omarchy-launch-browser "$url"
+  request_recheck
+}
+
+read_announced() {
+  [[ -r $announced_state ]] && cat "$announced_state" 2>/dev/null
+}
+
+write_announced() {
+  mkdir -p "$(dirname "$announced_state")" 2>/dev/null || return 0
+  printf '%s\n' "$1" >"$announced_state" 2>/dev/null || true
+}
+
+announce_portal() {
+  local now=$EPOCHSECONDS
+
+  ((now - last_checked < WATCH_DEBOUNCE)) && return 0
+  last_checked=$now
+
+  if ! find_portal; then
+    # Cleared so rejoining the same network announces itself again.
+    rm -f "$announced_state" 2>/dev/null || true
+    return 0
+  fi
+
+  [[ "$portal_device/$portal_label" == "$(read_announced)" ]] && return 0
+
+  # The shell owns org.freedesktop.Notifications, so a toast sent while it is
+  # restarting is lost. Only a delivered one counts as announced.
+  omarchy-notification-wait || return 1
+
+  omarchy-notification-send \
+    --urgency critical \
+    --glyph "$PORTAL_GLYPH" \
+    --exec "omarchy-network-portal --open" \
+    "Sign in to $portal_label" \
+    "This network requires sign-in. Click to open the login page." &&
+    write_announced "$portal_device/$portal_label"
+}
+
+# nmcli monitor prints a line on every connectivity and device change, so a
+# portal joined mid-session is announced without polling for it.
+watch_portals() {
+  local status
+
+  announce_portal
+
+  nmcli monitor 2>/dev/null | while :; do
+    read -r -t "$WATCH_TICK" _
+    status=$?
+    # Only end-of-input means the monitor is gone; systemd restarts us to
+    # reattach. A read timeout is the slow tick and must keep the loop alive.
+    ((status == 0 || status > 128)) || break
+    announce_portal
+  done
+}
+
+usage() {
+  echo "Usage: omarchy-network-portal [--check|--url|--open|--watch]" >&2
+}
+
+if (($# == 0)); then
+  print_status
+  exit 0
+fi
+
+if (($# > 1)); then
+  usage
+  exit 1
+fi
+
+case "$1" in
+  --check)
+    find_portal
+    ;;
+  --url)
+    print_url
+    ;;
+  --open)
+    open_portal
+    ;;
+  --watch)
+    watch_portals
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
