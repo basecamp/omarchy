@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the CPU supports the x86-64-v3 baseline (AVX2, FMA, BMI1, BMI2, F16C, MOVBE, LZCNT).
+
+machine=${OMARCHY_UNAME_M:-$(uname -m)}
+[[ $machine == "x86_64" ]] || exit 1
+
+cpuinfo=${OMARCHY_CPUINFO_PATH:-/proc/cpuinfo}
+flags=" $(grep -m1 "^flags" "$cpuinfo" 2>/dev/null | cut -d: -f2) "
+
+# LZCNT is reported as "abm" in /proc/cpuinfo on both Intel and AMD.
+for flag in avx2 fma bmi1 bmi2 f16c movbe abm; do
+  [[ $flags == *" $flag "* ]] || exit 1
+done

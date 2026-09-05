@@ -14,8 +14,10 @@ if omarchy-cmd-present voxtype; then
   systemctl --user disable --now voxtype.service 2>/dev/null || true
   systemctl --user daemon-reload
 
-  # Remove packages and configs
-  omarchy-pkg-drop voxtype-bin
+  # Remove packages and configs. voxtype-bin is the prebuilt binary; voxtype
+  # is the cargo-built fallback offered on CPUs without the AVX2/x86-64-v3
+  # instructions voxtype-bin requires. Only one of the two is ever installed.
+  omarchy-pkg-drop voxtype-bin voxtype
   rm -rf ~/.config/voxtype
   rm -rf ~/.local/share/voxtype
   hyprctl reload >/dev/null

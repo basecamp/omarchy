@@ -12,4 +12,6 @@ This is very helpful for grabbing addresses out of image footers or phone number
 
 Omarchy offers AI dictation via [Voxtype](https://voxtype.io/). You install it via _Install > AI > Dictation_ through the Omarchy menu. By default, it'll load a base English model that takes up 150MB. But you can tweak which model you'd like to use by running `voxtype setup model` in the terminal. And you can tweak all the settings via `~/.config/voxtype/config.toml`.
 
+The prebuilt Voxtype binary is x86_64 only and requires the x86-64-v3 instruction baseline (AVX2, FMA, BMI1/2, F16C, MOVBE — Haswell-era or newer, roughly 2013+). On an older x86_64 CPU, or on any non-x86_64 machine (e.g. Apple Silicon), the installer offers to build Voxtype from source via the AUR instead; on an older x86_64 CPU this takes 20+ minutes and may run noticeably slower, while on other architectures it's a native build with no expected slowdown.
+
 Once installed, you dictate by holding down `F9` or by toggling with `Super + Ctrl + X`, and the dictated text will appear in the focused input area.

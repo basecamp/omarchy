@@ -3,24 +3,78 @@
 # omarchy:summary=Install and configure Voxtype dictation
 # omarchy:requires-sudo=true
 
-set -e
-
 # Install voxtype and configure it for use.
 
 if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
-  omarchy-pkg-add wtype voxtype-bin
+  voxtype_pkg=voxtype-bin
+  if ! omarchy-hw-x86-64-v3; then
+    if [[ $(uname -m) == "x86_64" ]]; then
+      gum style --foreground 3 \
+        "Your CPU is missing instructions (AVX2/x86-64-v3) that the prebuilt Voxtype binary requires."
+      build_prompt="Build Voxtype from source instead? This can take 20+ minutes and may result in noticeably slower dictation on this CPU."
+    else
+      gum style --foreground 3 \
+        "There's no prebuilt Voxtype binary for your CPU architecture."
+      build_prompt="Build Voxtype from source instead? This can take 20+ minutes."
+    fi
+
+    if gum confirm "$build_prompt"; then
+      if ! omarchy-pkg-aur-accessible; then
+        gum style --foreground 1 "The AUR is unreachable right now, so Voxtype can't be built from source. Try again later."
+        exit 1
+      fi
+      voxtype_pkg=voxtype
+    else
+      echo "Skipping Voxtype install."
+      exit 0
+    fi
+  fi
+
+  # wtype is only useful once Voxtype is actually going to be installed, so it
+  # waits until after the CPU decision: declining the build now installs nothing.
+  omarchy-pkg-add wtype || exit 1
+
+  if [[ $voxtype_pkg == "voxtype-bin" ]]; then
+    omarchy-pkg-add voxtype-bin || exit 1
+  else
+    # voxtype-bin conflicts with voxtype, and pacman answers no to the conflict
+    # prompt under --noconfirm, so a machine still carrying the prebuilt binary
+    # would build for 20 minutes and then fail to install what it built.
+    if ! omarchy-pkg-drop voxtype-bin; then
+      gum style --foreground 1 \
+        "Couldn't remove the prebuilt Voxtype binary, and the source build can't install over it, so nothing was built. Dictation is unchanged."
+      exit 1
+    fi
+
+    if ! omarchy-pkg-aur-add aur/voxtype; then
+      gum style --foreground 1 \
+        "Building Voxtype from source failed, so dictation isn't installed. Any prebuilt binary that was here has been removed, since it couldn't run on this CPU either. Re-run Install > Dictation to try again."
+      exit 1
+    fi
+  fi
 
   # Setup voxtype
-  mkdir -p ~/.config/voxtype
-  cp "$OMARCHY_PATH/default/voxtype/config.toml" ~/.config/voxtype/
+  install_voxtype() {
+    mkdir -p ~/.config/voxtype
+    cp "$OMARCHY_PATH/default/voxtype/config.toml" ~/.config/voxtype/ || return 1
 
-  voxtype setup --download --no-post-install
-  if omarchy-hw-vulkan; then
-    voxtype setup gpu --enable || true
+    voxtype setup --download --no-post-install || return 1
+    if omarchy-hw-vulkan; then
+      voxtype setup gpu --enable || true
+    fi
+    voxtype setup systemd || return 1
+  }
+
+  # Reloading and restarting the shell only picks up the new bindings; both can
+  # fail for reasons that have nothing to do with Voxtype (a locked session, a
+  # slow shell), so they sit outside the rollback and never undo a good install.
+  if install_voxtype; then
+    hyprctl reload >/dev/null
+    omarchy-restart-shell
+    omarchy-notification-send -g  "Voxtype Dictation Ready" "Hold F9 to dictate (or toggle with Super + Ctrl + X)." -t 10000
+  else
+    gum style --foreground 1 "Voxtype setup failed. Rolling back the install."
+    omarchy-voxtype-remove
+    exit 1
   fi
-  voxtype setup systemd
-
-  hyprctl reload >/dev/null
-  omarchy-restart-shell
-  omarchy-notification-send -g  "Voxtype Dictation Ready" "Hold F9 to dictate (or toggle with Super + Ctrl + X)." -t 10000
 fi
