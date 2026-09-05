@@ -985,15 +985,16 @@ Item {
       // rest of the (invisible) full-screen overlay never eats input.
       mask: Region { item: popupColumn }
 
-      ColumnLayout {
+      GridLayout {
         id: popupColumn
+        columns: 1
         x: popupWindow.popupPlacement.anchors.left
           ? popupWindow.popupPlacement.margins.left
           : parent.width - width - popupWindow.popupPlacement.margins.right
         y: popupWindow.popupPlacement.anchors.top
           ? popupWindow.popupPlacement.margins.top
           : parent.height - height - popupWindow.popupPlacement.margins.bottom
-        spacing: Style.space(8)
+        rowSpacing: Style.space(8)
 
         Repeater {
           model: popupModel
@@ -1017,6 +1018,10 @@ Item {
             // Each card sizes itself based on mode (text vs media); the slot
             // tracks the card so the column auto-fits to whichever is widest.
             Layout.preferredWidth: card.implicitWidth
+            // The model stays newest-first for notification actions. Visually,
+            // new toasts extend the stack away from the configured screen edge.
+            Layout.row: popupWindow.popupPlacement.anchors.bottom ? index : popupModel.count - 1 - index
+            Layout.column: 0
             Layout.alignment: popupWindow.popupPlacement.anchors.left ? Qt.AlignLeft : Qt.AlignRight
             implicitHeight: card.implicitHeight
 

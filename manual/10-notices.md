@@ -12,6 +12,8 @@ Notifications appear in the top-right corner by default. To move them, add an en
 
 Supported positions are `top-left`, `top-right`, `bottom-left`, and `bottom-right`. Changes apply on save. Missing or invalid positions use `top-right`.
 
+New notifications appear below the stack at the top of the screen, or above it at the bottom.
+
 ### Date & Time
 
 `Super + Ctrl + Alt + T`
