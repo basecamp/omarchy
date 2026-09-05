@@ -1,0 +1,113 @@
+#!/bin/bash
+
+# omarchy:summary=Disable MacBook10,1 Wi-Fi wakeup so S3 does not keep the radio powered
+# omarchy:args=[status]
+# omarchy:hidden=true
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+WIFI_VENDOR=0x14e4
+WIFI_DEVICE=0x43a3
+
+sysfs_root=${OMARCHY_SYSFS_ROOT:-}
+acpi_wakeup=${OMARCHY_ACPI_WAKEUP:-/proc/acpi/wakeup}
+
+sysfs() {
+  printf '%s%s' "$sysfs_root" "$1"
+}
+
+product_name() {
+  cat "$(sysfs /sys/class/dmi/id/product_name)" 2>/dev/null || true
+}
+
+wifi_pci_dirs() {
+  local vendor_file dir
+
+  shopt -s nullglob
+  for vendor_file in "$(sysfs /sys/bus/pci/devices)"/*/vendor; do
+    dir=$(dirname "$vendor_file")
+    [[ $(<"$vendor_file") == "$WIFI_VENDOR" ]] || continue
+    [[ -f $dir/device && $(<"$dir/device") == "$WIFI_DEVICE" ]] || continue
+    printf '%s\n' "$dir"
+  done
+  shopt -u nullglob
+}
+
+acpi_arpt_state() {
+  local line
+
+  [[ -f $acpi_wakeup ]] || {
+    echo missing
+    return 0
+  }
+
+  line=$(grep -E '^ARPT[[:space:]]' "$acpi_wakeup" || true)
+  [[ -n $line ]] || {
+    echo missing
+    return 0
+  }
+
+  if [[ $line == *'*enabled'* ]]; then
+    echo enabled
+  else
+    echo disabled
+  fi
+}
+
+print_status() {
+  local dir wakeup
+
+  printf 'product=%s\n' "$(product_name)"
+  printf 'acpi_arpt=%s\n' "$(acpi_arpt_state)"
+
+  wakeup=missing
+  while IFS= read -r dir; do
+    [[ -n $dir ]] || continue
+    wakeup=$(cat "$dir/power/wakeup" 2>/dev/null || echo missing)
+    printf 'pci=%s wakeup=%s\n' "$(basename "$dir")" "$wakeup"
+  done < <(wifi_pci_dirs)
+
+  if [[ $wakeup == missing ]]; then
+    printf 'pci=missing wakeup=missing\n'
+  fi
+}
+
+disable_acpi_arpt() {
+  [[ -f $acpi_wakeup ]] || return 0
+  [[ $(acpi_arpt_state) == enabled ]] || return 0
+  printf 'ARPT\n' >"$acpi_wakeup"
+}
+
+apply_drain() {
+  local dir
+
+  if [[ $(product_name) != "MacBook10,1" ]]; then
+    return 0
+  fi
+
+  if [[ -z $sysfs_root ]] && ((EUID != 0)); then
+    echo "omarchy-hw-macbook10-sleep-drain must run as root" >&2
+    exit 1
+  fi
+
+  while IFS= read -r dir; do
+    [[ -n $dir && -f $dir/power/wakeup ]] || continue
+    printf 'disabled\n' >"$dir/power/wakeup"
+  done < <(wifi_pci_dirs)
+
+  disable_acpi_arpt
+}
+
+case "${1:-apply}" in
+  status)
+    print_status
+    ;;
+  apply | "")
+    apply_drain
+    ;;
+  *)
+    echo "Usage: omarchy-hw-macbook10-sleep-drain [status]" >&2
+    exit 1
+    ;;
+esac
