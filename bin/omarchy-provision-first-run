@@ -77,6 +77,8 @@ run_first_run_step "install agent setup post-update hook" \
 
 run_first_run_step "enable user systemd units" \
   bash "$OMARCHY_PATH/install/user/first-run/enable-user-units.sh"
+run_first_run_step "enable SPICE Wayland clipboard" \
+  bash "$OMARCHY_PATH/install/user/first-run/spice-vdagent.sh"
 run_first_run_step "set GNOME theme" \
   bash "$OMARCHY_PATH/install/user/first-run/gnome-theme.sh"
 run_first_run_step "set GTK primary paste" \
