@@ -15,6 +15,15 @@
     "displayName": "Workspaces",
     "description": "Workspace number indicators",
     "category": "Compositor",
-    "allowMultiple": false
+    "allowMultiple": false,
+    "schema": [
+      {
+        "key": "hideEmptyWorkspaces",
+        "type": "boolean",
+        "label": "Hide empty workspaces",
+        "description": "Show only workspaces that have windows, plus the focused one.",
+        "defaultValue": false
+      }
+    ]
   }
 }

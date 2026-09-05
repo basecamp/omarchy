@@ -8,6 +8,8 @@ BarWidget {
   id: root
   moduleName: "omarchy.workspaces"
 
+  readonly property bool hideEmptyWorkspaces: setting("hideEmptyWorkspaces", false) === true
+
   function workspaceById(id) {
     var values = Hyprland.workspaces.values
     for (var i = 0; i < values.length; i++) {
@@ -17,13 +19,25 @@ BarWidget {
     return null
   }
 
+  function workspaceOccupied(workspace) {
+    return workspace !== null && workspace.toplevels.values.length > 0
+  }
+
   function workspaceIds() {
-    var ids = [1, 2, 3, 4, 5]
+    var ids = root.hideEmptyWorkspaces ? [] : [1, 2, 3, 4, 5]
     var values = Hyprland.workspaces.values
+    var focusedId = Hyprland.focusedWorkspace !== null ? Hyprland.focusedWorkspace.id : 0
 
     for (var i = 0; i < values.length; i++) {
-      var id = values[i].id
-      if (id > 0 && id <= 10 && ids.indexOf(id) === -1) ids.push(id)
+      var workspace = values[i]
+      var id = workspace.id
+
+      if (id < 1 || id > 10 || ids.indexOf(id) !== -1) continue
+      // The focused workspace survives the filter even when empty: hiding it
+      // would leave nothing on the bar saying where you are.
+      if (root.hideEmptyWorkspaces && id !== focusedId && !root.workspaceOccupied(workspace)) continue
+
+      ids.push(id)
     }
 
     ids.sort(function(left, right) { return left - right })
@@ -55,7 +69,7 @@ BarWidget {
         required property int modelData
 
         readonly property var workspace: root.workspaceById(modelData)
-        readonly property bool occupied: workspace !== null && workspace.toplevels.values.length > 0
+        readonly property bool occupied: root.workspaceOccupied(workspace)
         readonly property bool focused: Hyprland.focusedWorkspace !== null && Hyprland.focusedWorkspace.id === modelData
 
         bar: root.bar
