@@ -136,6 +136,10 @@ string on a miss.
     "screensaver": 150,
     "lock": 300
   },
+  "refreshRate": {
+    "enabled": true,
+    "threshold": 50
+  },
   "bar": {
     "id": "omarchy.bar",
     "position": "top",
@@ -167,7 +171,12 @@ Rules:
    First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
 6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
 7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
-8. `version: 1` is required.
+8. `refreshRate` runs the built-in panel at the fastest rate it advertises for
+   its current resolution while on mains, and the slowest one otherwise. It is
+   off unless `enabled` is `true`, and `threshold` is the battery percent below
+   which the slow rate applies even on mains (default 50). External displays
+   are never touched, and neither is a panel that offers only one rate.
+9. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no
 user `shell.json` exists, defaults are used verbatim. Once the user
