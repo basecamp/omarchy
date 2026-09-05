@@ -8,6 +8,9 @@ Item {
   property string message: ""
   property string cancelText: "Cancel"
   property string confirmText: "Confirm"
+  property int countdownSeconds: 0
+  property int remainingSeconds: 0
+  readonly property string effectiveConfirmText: remainingSeconds > 0 ? confirmText + " (" + remainingSeconds + ")" : confirmText
   property int selectedIndex: 1
   property color background: Color.background
   property color foreground: Color.foreground
@@ -19,6 +22,21 @@ Item {
 
   signal canceled()
   signal confirmed()
+
+  onOpenedChanged: {
+    if (opened) remainingSeconds = Math.max(0, countdownSeconds)
+    else remainingSeconds = 0
+  }
+
+  Timer {
+    interval: 1000
+    repeat: true
+    running: root.opened && root.remainingSeconds > 0
+    onTriggered: {
+      root.remainingSeconds -= 1
+      if (root.remainingSeconds === 0) root.confirmed()
+    }
+  }
 
   function handleKey(event) {
     if (!root.opened) return false
@@ -86,7 +104,7 @@ Item {
           spacing: Style.space(10)
 
           Repeater {
-            model: [root.cancelText, root.confirmText]
+            model: [root.cancelText, root.effectiveConfirmText]
 
             BorderSurface {
               required property int index

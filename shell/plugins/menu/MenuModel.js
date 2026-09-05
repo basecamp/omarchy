@@ -31,6 +31,7 @@ function normalizeItem(id, raw) {
     target: value.target || "",
     description: value.description || "",
     action: value.action || "",
+    confirmation: value.confirmation || null,
     provider: value.provider || "",
     aliases: aliases,
     when: value.when || "",
@@ -84,7 +85,7 @@ function mergeMenuSources(defaultItems, userItems) {
   }
 
   if (!nextItems.root) {
-    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", description: "", aliases: [], when: "", checked: "", disabled: "", action: "", provider: "" }
+    nextItems.root = { id: "root", parent: "", kind: "menu", icon: "", iconFont: "", label: "Go", title: "", target: "", description: "", aliases: [], when: "", checked: "", disabled: "", action: "", confirmation: null, provider: "" }
     nextOrder.unshift("root")
   }
   for (var k3 = 0; k3 < nextOrder.length; k3++) nextItems[nextOrder[k3]].order = k3
@@ -378,6 +379,7 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
     path: pathFor(items, entry.id),
     childCount: (entry.kind === "menu" || entry.kind === "link") ? childCount(items, itemOrder, target) : 0,
     action: entry.action || "",
+    confirmation: entry.confirmation || null,
     provider: entry.provider || "",
     score: score || 0,
     section: section || ""

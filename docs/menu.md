@@ -37,6 +37,7 @@ submenu. The fields:
 | `label` | Visible row title; defaults to the id |
 | `title` | Header text when the submenu is open; defaults to `label`. Lets a row read "Browser" under Defaults while the open menu says "Default Browser" |
 | `action` | Shell command to run, detached, when selected |
+| `confirmation` | Optional confirmation dialog before an action runs. Accepts `message`, `cancelText`, `confirmText`, and `seconds`; a positive `seconds` value counts down and runs the action when it reaches zero |
 | `target` | Existing submenu id to open; makes the row a link |
 | `provider` | Runtime row source for this submenu (see Providers) |
 | `aliases` | Alternate `omarchy menu summon <name>` routes; also searchable |
