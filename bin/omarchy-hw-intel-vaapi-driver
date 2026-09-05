@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# omarchy:summary=Print the VAAPI package for each needed Intel GPU driver, if any
+# omarchy:hidden=true
+
+# intel-media-driver (iHD) supports Broadwell (Gen 8) and newer, except
+# CherryView/Braswell. libva-intel-driver (i965) supports GM45 through
+# Haswell, plus CherryView. Intel PCI device IDs are not generation-ordered
+# — GM45 is 0x2a42, Braswell is 0x22b1, 945GM is 0x27a2 — so a bare
+# >= 0x1600 cutoff would install iHD on parts that cannot initialize it.
+#
+# Pre-GM45 chipset graphics (945, G965, Pineview, Poulsbo, Atom E6xx) are
+# in neither package; skip them rather than install a driver that will
+# never vaInitialize.
+#
+# Read the cached sysfs IDs rather than lspci, which reads PCI config space
+# and resumes runtime-suspended GPUs. A missing or non-hex device file is
+# a skip, not a silent i965 default. Two Intel GPUs that need different
+# packages (Haswell iGPU + Arc) print both, one per line: gpu-screen-recorder
+# binds VAAPI to the display node, which on that machine is still i965.
+
+pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
+
+shopt -s nullglob
+
+# Map one Intel display device ID to a package name. Prints nothing and
+# returns 1 when neither driver supports the part.
+# Ranges are from intel-vaapi-driver src/i965_pciids.h and the iHD README
+# platform list; do not treat the ID space as generation-ordered.
+intel_vaapi_package() {
+  local id=$1
+
+  [[ $id =~ ^0x[0-9a-fA-F]+$ ]] || return 1
+
+  local n=$((id))
+
+  # CherryView / Braswell (Gen 8 Atom): i965 only, not iHD.
+  if (( n >= 0x22b0 && n <= 0x22b3 )); then
+    echo libva-intel-driver
+    return 0
+  fi
+
+  # GM45 and 4 Series (G45/G43/G41/Q45/B43): first gens in i965's table.
+  if (( (n >= 0x2a40 && n <= 0x2a4f) || (n >= 0x2e00 && n <= 0x2e9f) )); then
+    echo libva-intel-driver
+    return 0
+  fi
+
+  # Ironlake, Sandy Bridge, Ivy Bridge, Bay Trail.
+  if (( (n >= 0x0040 && n <= 0x004f) || (n >= 0x0100 && n <= 0x016f) || (n >= 0x0f30 && n <= 0x0f3f) )); then
+    echo libva-intel-driver
+    return 0
+  fi
+
+  # Haswell (0x04xx / 0x0axx / 0x0cxx / 0x0dxx). Tops out at 0x0d2e.
+  # Broxton 0x0a84 is not Haswell — do not widen 0x0axx past 0x0a2f.
+  if (( (n >= 0x0400 && n <= 0x042f) || (n >= 0x0a00 && n <= 0x0a2f) || (n >= 0x0c00 && n <= 0x0c2f) || (n >= 0x0d00 && n <= 0x0d2f) )); then
+    echo libva-intel-driver
+    return 0
+  fi
+
+  # Broadwell: first iHD generation.
+  if (( n >= 0x1600 && n <= 0x16ff )); then
+    echo intel-media-driver
+    return 0
+  fi
+
+  # Broxton 0x0a84 (siblings 0x1a84 / 0x5a84 sit at 0x1900+).
+  if (( n == 0x0a84 )); then
+    echo intel-media-driver
+    return 0
+  fi
+
+  # Pre-Broadwell leftovers whose IDs sit above 0x1600. Neither package.
+  # 915/945/946/G965/G33 0x25xx-0x29xx; GM965 0x2a0x-0x2a1x;
+  # 852/855GM 0x3582; Atom E6xx 0x4108; Poulsbo 0x8108; Pineview 0xa001/0xa011.
+  if (( (n >= 0x2500 && n <= 0x29ff) || (n >= 0x2a00 && n <= 0x2a1f) || (n >= 0x3500 && n <= 0x35ff) || (n >= 0x4100 && n <= 0x41ff) || (n >= 0x8100 && n <= 0x81ff) || (n >= 0xa000 && n <= 0xa0ff) )); then
+    return 1
+  fi
+
+  # Skylake and later. New gens keep landing at 0x1900+.
+  if (( n >= 0x1900 )); then
+    echo intel-media-driver
+    return 0
+  fi
+
+  return 1
+}
+
+need_ihd=0
+need_i965=0
+
+for device in "$pci_devices_path"/*; do
+  [[ -r $device/vendor && -r $device/class && -r $device/device ]] || continue
+
+  vendor=$(< "$device/vendor")
+  class=$(< "$device/class")
+  devid=$(< "$device/device")
+
+  [[ $vendor == "0x8086" ]] || continue
+  [[ $class == 0x03* ]] || continue
+
+  package=$(intel_vaapi_package "$devid") || continue
+
+  if [[ $package == "intel-media-driver" ]]; then
+    need_ihd=1
+  else
+    need_i965=1
+  fi
+done
+
+if (( need_ihd )); then
+  echo intel-media-driver
+fi
+if (( need_i965 )); then
+  echo libva-intel-driver
+fi
+if (( !need_ihd && !need_i965 )); then
+  exit 1
+fi
