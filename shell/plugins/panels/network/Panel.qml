@@ -1366,17 +1366,36 @@ Panel {
           InfoLabel { text: "Uploaded" }
           DetailValue { text: root.hasTransferStats ? root.formatBytes(parseFloat(root.info.tx_bytes || "0")) : "--" }
 
-          InfoLabel { text: "IP Address" }
+          InfoLabel { text: "IPv4 Address" }
           DetailValue {
             text: root.info.ip || "--"
             copyable: !!root.info.ip
-            tooltipText: "Copy IP"
+            tooltipText: "Copy IPv4"
           }
-          InfoLabel { text: "Gateway" }
+          InfoLabel { text: "IPv4 Gateway" }
           DetailValue {
             text: root.info.gateway || "--"
             copyable: !!root.info.gateway
-            tooltipText: "Copy gateway"
+            tooltipText: "Copy IPv4 gateway"
+          }
+
+          InfoLabel { text: "IPv6 Address" }
+          DetailValue {
+            Layout.columnSpan: 3
+            Layout.fillWidth: true
+            elide: Text.ElideMiddle
+            text: root.info.ip6 || "--"
+            copyable: !!root.info.ip6
+            tooltipText: "Copy IPv6"
+          }
+          InfoLabel { text: "IPv6 Gateway" }
+          DetailValue {
+            Layout.columnSpan: 3
+            Layout.fillWidth: true
+            elide: Text.ElideMiddle
+            text: root.info.gateway6 || "--"
+            copyable: !!root.info.gateway6
+            tooltipText: "Copy IPv6 gateway"
           }
         }
       }

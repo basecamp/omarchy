@@ -6,6 +6,7 @@
 
 verbose=false
 internet_probe=1.1.1.1
+internet_probe6=2606:4700:4700::1111
 
 case "${1:-}" in
   "")
@@ -84,6 +85,7 @@ print_ping_samples() {
 
 print_verbose() {
   local route_json iface gw src prefix link
+  local route6_json iface6 gw6 ip6
 
   route_json=$(ip -j route get "$internet_probe" 2>/dev/null)
   [[ -z $route_json ]] && return
@@ -100,6 +102,22 @@ print_verbose() {
   printf 'ip\t%s\n' "$src"
   printf 'prefix\t%s\n' "$prefix"
   printf 'gateway\t%s\n' "$gw"
+
+  # A dual-stack link routes its IPv6 traffic over the same physical
+  # interface, but not necessarily with a route in the main table -- look it
+  # up independently instead of assuming it matches $iface.
+  route6_json=$(ip -j -6 route get "$internet_probe6" 2>/dev/null)
+  if [[ -n $route6_json ]]; then
+    iface6=$(jq -r '.[0].dev // ""' <<<"$route6_json" 2>/dev/null)
+    gw6=$(jq -r '.[0].gateway // ""' <<<"$route6_json" 2>/dev/null)
+
+    if [[ -n $iface6 ]]; then
+      ip6=$(ip -j addr show "$iface6" 2>/dev/null | jq -r '.[0].addr_info[]? | select(.family == "inet6" and .scope == "global") | .local' 2>/dev/null | head -n 1)
+
+      [[ -n $ip6 ]] && printf 'ip6\t%s\n' "$ip6"
+      [[ -n $gw6 ]] && printf 'gateway6\t%s\n' "$gw6"
+    fi
+  fi
 
   if [[ -r /sys/class/net/$iface/statistics/rx_bytes ]]; then
     printf 'rx_bytes\t%s\n' "$(cat /sys/class/net/$iface/statistics/rx_bytes)"
