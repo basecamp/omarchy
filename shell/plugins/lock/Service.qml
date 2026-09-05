@@ -268,6 +268,7 @@ Item {
       LockView {
         id: lockView
         anchors.fill: parent
+        viewScreen: lockSurface.screen
         backgroundPath: root.backgroundPath
         backgroundVersion: root.backgroundVersion
         fingerprintConfigured: root.fingerprintConfigured
@@ -298,6 +299,7 @@ Item {
 
     LockView {
       anchors.fill: parent
+      viewScreen: previewWindow.screen
       backgroundPath: root.backgroundPath
       backgroundVersion: root.backgroundVersion
       fingerprintConfigured: root.fingerprintConfigured

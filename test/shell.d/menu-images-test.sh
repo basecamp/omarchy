@@ -42,6 +42,12 @@ for name in one two three; do
   printf 'image-%s' "$name" >"$images/$name.png"
 done
 
+# SVG backgrounds are rows of their own; aspect-ratio variants never are.
+cat >"$images/art.svg" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="#00ff00"/></svg>
+SVG
+printf 'image-one-ultrawide' >"$images/one@ultrawide.png"
+
 cache_dir="$cache_home/omarchy/image-selector"
 mkdir -p "$cache_dir"
 
@@ -65,14 +71,18 @@ printf 'v1\n%s:%s\n' "$images" "$(stat -Lc '%Y' "$images")" >"$cache_dir/$cache_
 PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
   "$ROOT/bin/omarchy-menu-images" --cache-only "$images"
 
-(( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 3 )) ||
+(( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 4 )) ||
   fail "image menu recovers thumbnails from stranded locks"
-(( $(awk 'END { print NR }' "$cache_dir/$cache_key.rows") == 3 )) ||
+(( $(awk 'END { print NR }' "$cache_dir/$cache_key.rows") == 4 )) ||
   fail "image menu rebuilds every row after cache invalidation"
-[[ $(head -n 1 "$cache_dir/$cache_key.signature") == "v3" ]] ||
+[[ $(head -n 1 "$cache_dir/$cache_key.signature") == "v4" ]] ||
   fail "image menu invalidates stale row caches"
 [[ ! -e $stale_tmp ]] ||
   fail "image menu clears partial thumbnails left by killed generators"
+grep -q 'art\.svg' "$cache_dir/$cache_key.rows" ||
+  fail "image menu rows include SVG images"
+! grep -q '@ultrawide' "$cache_dir/$cache_key.rows" ||
+  fail "image menu rows exclude aspect-ratio variants"
 pass "image menu recovers stranded locks and stale rows"
 
 rm -rf "$cache_home"
@@ -82,7 +92,7 @@ mkdir "$live_lock"
 PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
   "$ROOT/bin/omarchy-menu-images" --cache-only "$images"
 
-(( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 2 )) ||
+(( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 3 )) ||
   fail "image menu skips a thumbnail whose fresh legacy lock may still be owned"
 [[ -d $live_lock ]] ||
   fail "image menu leaves a fresh legacy lock directory alone"
@@ -107,9 +117,9 @@ rm "$tmp/failures"
 PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
   "$ROOT/bin/omarchy-menu-images" --cache-only "$images"
 
-(( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 3 )) ||
+(( $(find "$cache_dir" -maxdepth 1 -name '*.jpg' -type f | wc -l) == 4 )) ||
   fail "image menu retries a previously failed thumbnail"
-(( $(awk 'END { print NR }' "$cache_dir/$cache_key.rows") == 3 )) ||
+(( $(awk 'END { print NR }' "$cache_dir/$cache_key.rows") == 4 )) ||
   fail "image menu caches every row after retry"
 pass "image menu completes and caches a later retry"
 
@@ -130,12 +140,12 @@ for pid in "${pids[@]}"; do
   wait "$pid" || fail "concurrent image menu runs exit cleanly"
 done
 
-(( $(wc -l <"$tmp/calls") == 3 )) || fail "image menu serializes concurrent thumbnail generators"
+(( $(wc -l <"$tmp/calls") == 4 )) || fail "image menu serializes concurrent thumbnail generators"
 
 rm -f "$cache_dir"/*.jpg
 rm -f "$cache_dir/$cache_key.rows" "$cache_dir/$cache_key.signature" "$cache_dir/$cache_key.fast-signature"
 PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" VIPSTHUMBNAIL_CALLS_FILE="$tmp/calls" \
   "$ROOT/bin/omarchy-menu-images" --cache-only "$images"
 
-(( $(wc -l <"$tmp/calls") == 6 )) || fail "image menu releases thumbnail locks after generation"
+(( $(wc -l <"$tmp/calls") == 8 )) || fail "image menu releases thumbnail locks after generation"
 pass "image menu owns locks for exactly one generator lifetime"
