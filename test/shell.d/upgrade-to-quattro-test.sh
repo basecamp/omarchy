@@ -6,6 +6,10 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 upgrade_to_quattro="$ROOT/bin/omarchy-upgrade-to-quattro"
 
+function_body() {
+  awk -v name="$1" '$0 == name "() {" { inside = 1; next } inside && $0 == "}" { exit } inside' "$upgrade_to_quattro"
+}
+
 snapshot_line=$(grep -n '^create_pre_upgrade_snapshot$' "$upgrade_to_quattro" | cut -d: -f1)
 pacman_line=$(grep -n '^configure_pacman_channel$' "$upgrade_to_quattro" | cut -d: -f1)
 [[ -n $snapshot_line && -n $pacman_line ]] || fail "upgrade snapshot and first mutation calls exist"
@@ -73,6 +77,44 @@ grep -F 'OMARCHY_INSTALL_USER="$target_user"' "$upgrade_to_quattro" >/dev/null
 grep -F '"$apply_lock"' "$upgrade_to_quattro" >/dev/null
 pass "Omarchy 4 upgrade configures lock screen authentication for the target user"
 
+root_path_count=$(awk '/^root_path=/{ count++ } END { print count + 0 }' "$upgrade_to_quattro")
+(( root_path_count == 1 )) || fail "Omarchy 4 upgrade defines exactly one root command path"
+grep -Fx 'root_path=/usr/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade limits root command lookup to trusted system directories"
+if grep -E '^root_path=.*(target_home|\.local/bin)' "$upgrade_to_quattro" >/dev/null; then
+  fail "Omarchy 4 upgrade does not put the target user's bin directory on the root command path"
+fi
+grep -Fx 'package_path="$root_path:$target_home/.local/bin"' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade retains the target user's bin directory for user commands"
+
+lock_authentication_body=$(function_body configure_lock_authentication)
+lock_path_assignment_count=$(awk '{ count += gsub(/(^|[[:space:]])PATH=/, "") } END { print count + 0 }' <<<"$lock_authentication_body")
+(( lock_path_assignment_count == 1 )) ||
+  fail "Omarchy 4 upgrade gives the privileged lock helper exactly one command path"
+grep -Fx '    PATH="$root_path" \' <<<"$lock_authentication_body" >/dev/null ||
+  fail "Omarchy 4 upgrade gives the privileged lock helper the trusted root path"
+if grep -E '(package_path|target_home|\.local/bin)' <<<"$lock_authentication_body" >/dev/null; then
+  fail "Omarchy 4 upgrade does not give the privileged lock helper the target user's path"
+fi
+
+firewall_body=$(function_body apply_firewall_defaults)
+firewall_path_assignment_count=$(awk '{ count += gsub(/(^|[[:space:]])PATH=/, "") } END { print count + 0 }' <<<"$firewall_body")
+(( firewall_path_assignment_count == 1 )) ||
+  fail "Omarchy 4 upgrade gives the privileged firewall helper exactly one command path"
+grep -Fx '  as_root env OMARCHY_PATH=/usr/share/omarchy PATH="$root_path" \' <<<"$firewall_body" >/dev/null ||
+  fail "Omarchy 4 upgrade gives the privileged firewall helper the trusted root path"
+if grep -E '(package_path|target_home|\.local/bin)' <<<"$firewall_body" >/dev/null; then
+  fail "Omarchy 4 upgrade does not give the privileged firewall helper the target user's path"
+fi
+
+user_omarchy_body=$(function_body run_as_user_omarchy)
+grep -F 'PATH="$package_path"' <<<"$user_omarchy_body" >/dev/null ||
+  fail "Omarchy 4 upgrade retains the package and user path for target-user commands"
+if grep -F 'PATH="$root_path"' <<<"$user_omarchy_body" >/dev/null; then
+  fail "Omarchy 4 upgrade does not narrow target-user commands to the root-only path"
+fi
+pass "Omarchy 4 upgrade separates privileged and target-user command paths"
+
 grep -F 'install/helpers/browser-policy.sh' "$upgrade_to_quattro" >/dev/null ||
   fail "Omarchy 4 upgrade uses the shared browser-policy helper"
 grep -F 'as_root test -f "$browser_policy_helper"' "$upgrade_to_quattro" >/dev/null ||
@@ -100,10 +142,6 @@ pass "Omarchy 4 upgrade retires systemd-networkd for NetworkManager"
 # Booting with both managers enabled leaves them fighting over the Wi-Fi
 # adapter, so enabling NetworkManager and disabling iwd cannot be separated by
 # any step that might abort in between.
-function_body() {
-  awk -v name="$1" '$0 == name "() {" { inside = 1; next } inside && $0 == "}" { exit } inside' "$upgrade_to_quattro"
-}
-
 migrations_body=$(function_body run_post_upgrade_migrations)
 grep -F 'fail "Omarchy migrations did not complete.' <<<"$migrations_body" >/dev/null ||
   fail "Omarchy 4 upgrade fails when a migration cannot complete"

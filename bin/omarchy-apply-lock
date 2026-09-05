@@ -6,6 +6,12 @@
 
 set -e
 
+# Install and upgrade callers can start this helper as root. Ignore their PATH
+# so optional commands never fall through to a user-writable directory.
+if (( EUID == 0 )); then
+  export PATH=/usr/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin
+fi
+
 target_user=${OMARCHY_INSTALL_USER:-${SUDO_USER:-}}
 if [[ -z $target_user && -n ${PKEXEC_UID:-} ]]; then
   target_user=$(getent passwd "$PKEXEC_UID" | cut -d: -f1)
@@ -34,7 +40,8 @@ auth       required                    pam_faillock.so authsucc
 account    include                     system-local-login
 EOF
 
-if omarchy-cmd-present fprintd-list && fprintd-list "$target_user" 2>/dev/null | grep -qi finger; then
+if [[ -x /usr/bin/fprintd-list ]] &&
+  /usr/bin/fprintd-list "$target_user" 2>/dev/null | grep -qi finger; then
   echo "Configuring lock screen fingerprint authentication..."
   as_root tee /etc/pam.d/omarchy-lock-fingerprint >/dev/null <<'EOF'
 #%PAM-1.0
