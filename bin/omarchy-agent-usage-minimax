@@ -1,0 +1,196 @@
+#!/usr/bin/python3
+# omarchy:summary=Print MiniMax/opencode usage record as JSON
+# omarchy:hidden=true
+
+from __future__ import annotations
+
+import datetime as dt
+import hashlib
+import json
+import os
+import sqlite3
+import sys
+from pathlib import Path
+
+AGENT_ID = "minimax"
+AGENT_NAME = "MiniMax"
+PROVIDER_FILTER = "minimax"
+
+def cache_root() -> Path:
+    root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "omarchy" / "agent-usage"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+def date_string(value: dt.date) -> str:
+    return value.strftime("%Y-%m-%d")
+
+def recent_date_strings() -> list[str]:
+    today = dt.datetime.now().date()
+    return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+def local_date_from_timestamp(ms: int) -> str:
+    if ms <= 0:
+        return date_string(dt.datetime.now().date())
+    seconds = ms / 1000.0
+    return date_string(dt.datetime.fromtimestamp(seconds).date())
+
+def number(value: any) -> int:
+    try:
+        n = float(value or 0)
+        return round(n)
+    except Exception:
+        return 0
+
+def empty_bucket() -> dict:
+    return {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+    }
+
+def scan(db: Path, max_age_seconds: float) -> dict | None:
+    cache_file = cache_root() / f"minimax-opencode-{hashlib.sha1(str(db).encode()).hexdigest()[:16]}.json"
+
+    if cache_file.exists() and max_age_seconds > 0:
+        age = dt.datetime.now().timestamp() - cache_file.stat().st_mtime
+        if age < max_age_seconds:
+            try:
+                return json.loads(cache_file.read_text())
+            except Exception:
+                pass
+
+    if not db.is_file():
+        return None
+
+    try:
+        conn = sqlite3.connect(db.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+    except sqlite3.Error:
+        return None
+
+    today = date_string(dt.datetime.now().date())
+    recent_dates = recent_date_strings()
+    recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+
+    sessions: set = set()
+    active_days: set = set()
+    today_sessions: set = set()
+    today_tokens: dict = {}
+    usage_by_model: dict = {}
+    prompts = 0
+    today_prompt_count = 0
+    today_token_total = 0
+
+    try:
+        conn.execute("PRAGMA query_only = ON")
+        for row in conn.execute(
+            "SELECT agent, model, tokens_input, tokens_output, tokens_reasoning, "
+            "tokens_cache_read, tokens_cache_write, time_created FROM session "
+            "WHERE agent IS NOT NULL"
+        ):
+            try:
+                model_json = json.loads(row[1]) if isinstance(row[1], str) else {}
+                provider_id = str(model_json.get("providerID") or "")
+                if PROVIDER_FILTER not in provider_id.lower():
+                    continue
+
+                model = str(model_json.get("id") or "minimax")
+                input_tokens = number(row[2])
+                output_tokens = number(row[3])
+                reasoning = number(row[4])
+                cache_read = number(row[5])
+                cache_write = number(row[6])
+                created = number(row[7])
+
+                total = input_tokens + output_tokens + reasoning + cache_read + cache_write
+                if total <= 0:
+                    continue
+
+                day = local_date_from_timestamp(created)
+                session_key = str(row)
+                sessions.add(session_key)
+                active_days.add(day)
+                prompts += 1
+
+                bucket = usage_by_model.setdefault(model, empty_bucket())
+                bucket["inputTokens"] += input_tokens
+                bucket["outputTokens"] += output_tokens + reasoning
+                bucket["cacheReadInputTokens"] += cache_read
+                bucket["cacheCreationInputTokens"] += cache_write
+
+                if day in recent:
+                    recent[day]["messageCount"] += total
+                if day == today:
+                    today_prompt_count += 1
+                    today_sessions.add(session_key)
+                    today_token_total += total
+                    today_tokens[model] = today_tokens.get(model, 0) + total
+            except Exception:
+                continue
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+
+    if prompts <= 0:
+        return None
+
+    result = {
+        "todayPrompts": today_prompt_count,
+        "todaySessions": len(today_sessions),
+        "todayTotalTokens": today_token_total,
+        "todayTokensByModel": today_tokens,
+        "recentDays": [recent[day] for day in recent_dates],
+        "modelUsage": usage_by_model,
+        "totalPrompts": prompts,
+        "totalSessions": len(sessions),
+        "activeDays": len(active_days),
+        "activeDates": sorted(active_days),
+    }
+
+    try:
+        cache_file.write_text(json.dumps(result, separators=(",", ":")))
+    except Exception:
+        pass
+
+    return result
+
+def main() -> int:
+    force = "--force" in sys.argv
+    max_age = 0 if force else 900
+
+    db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
+    stats = scan(db, max_age)
+
+    if stats is None:
+        stats = {
+            "todayPrompts": 0,
+            "todaySessions": 0,
+            "todayTotalTokens": 0,
+            "todayTokensByModel": {},
+            "recentDays": [{"date": d, "messageCount": 0} for d in recent_date_strings()],
+            "modelUsage": {},
+            "totalPrompts": 0,
+            "totalSessions": 0,
+            "activeDays": 0,
+            "activeDates": [],
+        }
+
+    record = {
+        "schemaVersion": 1,
+        "id": AGENT_ID,
+        "name": AGENT_NAME,
+        "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "ready": number(stats.get("totalPrompts")) > 0,
+        "hasLocalStats": True,
+        "tierLabel": "M3",
+        "usageStatusText": "",
+        "authHelpText": "",
+        "limits": [],
+    }
+    record.update(stats)
+    print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())
