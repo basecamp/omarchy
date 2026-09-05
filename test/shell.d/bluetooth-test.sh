@@ -29,6 +29,17 @@ const retryTimer = panelSource.match(/id: discoveryRetry[\s\S]*?onTriggered: \{[
 assert(retryTimer, 'bluetooth has the discovery retry timer')
 assert(/owesDiscoveryStop = true/.test(retryTimer[0]), 'bluetooth takes on the stop it owes when it starts discovery')
 
+// A controller can accept StartDiscovery and never confirm the scan, which
+// leaves the retry's guard armed forever. A panel visit, a confirmed scan and
+// the user asking for the radio back refill the budget; nothing the adapter
+// does on its own does, so one that keeps resetting itself off the bus is not
+// met with a fresh round of starts each time it comes back.
+assert(/attempts \+= 1/.test(retryTimer[0]), 'bluetooth counts its discovery start attempts')
+assert(/running:[^\n]*attempts < 3/.test(retryTimer[0]), 'bluetooth stops starting discovery once its attempts run out')
+assert(/\n {4}\} else \{[\s\S]{0,300}discoveryRetry\.attempts = 0/.test(panelSource), 'bluetooth gives each panel visit a fresh budget of discovery starts')
+assert(/onDiscoveringChanged[\s\S]{0,120}discovering\) discoveryRetry\.attempts = 0/.test(panelSource), 'bluetooth refills the budget when BlueZ confirms the scan')
+assert(/function toggleBluetooth\(\)[\s\S]{0,200}if \(!adapter\.enabled\) discoveryRetry\.attempts = 0/.test(panelSource), 'bluetooth refills the budget when the user asks for the radio back')
+
 // Quickshell only forwards a discovering write that differs from BlueZ's last
 // confirmed state, so a stop written in the same instant as an in-flight
 // StartDiscovery would be swallowed. Binding the stop timer to the confirmed
