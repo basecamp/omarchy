@@ -97,8 +97,16 @@ assertDeepEqual(
   { address: '1', name: 'Deadbeef', deviceName: '', connected: false, state: -1, batteryAvailable: false, battery: 0, pairing: false },
   'bluetooth projects device rows with primitives only'
 )
+// BlueZ Alias is the user-facing rename and arrives as Quickshell's writable
+// `name`; the read-only `deviceName` is the hardware-advertised Name, which is
+// only what to show when nothing renamed the device.
 assertEqual(
-  bluetooth.deviceLabel(bluetooth.deviceRow({ name: 'Generic', deviceName: 'MX Master 3S', address: '2', connected: true })),
+  bluetooth.deviceLabel(bluetooth.deviceRow({ name: 'My Custom Name', deviceName: 'MX Master 3S', address: '2', connected: true })),
+  'My Custom Name',
+  'bluetooth shows the alias ahead of the hardware name'
+)
+assertEqual(
+  bluetooth.deviceLabel(bluetooth.deviceRow({ deviceName: 'MX Master 3S', address: '2', connected: true })),
   'MX Master 3S',
   'bluetooth keeps deviceName in row projections so labels survive QObject-free rows'
 )
