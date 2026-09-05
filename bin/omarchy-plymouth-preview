@@ -56,6 +56,10 @@ logo_x=$(( (canvas_w - logo_w) / 2 ))
 logo_y=$(( (canvas_h - logo_h) / 2 ))
 entry_x=$(( (canvas_w - entry_w) / 2 ))
 entry_y=$(( logo_y + logo_h + 40 ))
+entry_max_y=$(( canvas_h - entry_h - 40 ))
+if (( entry_y > entry_max_y )); then
+  entry_y=$entry_max_y
+fi
 lock_x=$(( entry_x - lock_w - 15 ))
 lock_y=$(( entry_y + entry_h/2 - lock_h/2 ))
 bullet_y=$(( entry_y + entry_h/2 - 4 ))
