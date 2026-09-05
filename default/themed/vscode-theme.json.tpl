@@ -118,7 +118,7 @@
         "list.focusForeground": "{{ foreground }}",
         "list.focusOutline": "{{ accent }}60",
         "list.highlightForeground": "{{ accent }}",
-        "list.hoverBackground": "{{ background }}",
+        "list.hoverBackground": "{{ accent }}20",
         "list.hoverForeground": "{{ foreground }}",
         "list.inactiveSelectionBackground": "{{ muted }}40",
         "list.inactiveSelectionForeground": "{{ foreground }}",
