@@ -33,9 +33,9 @@ end
 -- read. It still has to leave a rule behind, or the console would open unseeded.
 assert(#rules > 0, "console is ruled even before a monitor can be read")
 assert(current().on_created_empty:find("omarchy%-agent"), "console is seeded with the default agent")
-assert(current().on_created_empty:find("^%[workspace special:scratchpad silent%]"),
+assert(current().on_created_empty:find("^%[workspace special:qconsole silent%]"),
   "the seed is pinned to the console rather than trusting the spawn to inherit it")
-assert(current().workspace == "special:scratchpad")
+assert(current().workspace == "special:qconsole")
 
 local function rescale(height, scale, bar)
   monitor = { height = height, scale = scale, reserved = { top = bar, bottom = 0, left = 0, right = 0 } }
