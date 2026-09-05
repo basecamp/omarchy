@@ -79,12 +79,31 @@ echo "Installing required packages..."
 
 # libfprint-git provides+conflicts libfprint; pacman -S --noconfirm
 # defaults the conflict prompt to N and aborts. Pre-remove it (deps-only,
-# so an installed fprintd stays put) so stock libfprint installs cleanly.
+# so an installed fprintd stays put) so another libfprint installs cleanly.
 if pacman -Q libfprint-git &>/dev/null; then
   sudo pacman -Rdd --noconfirm libfprint-git
 fi
 
-omarchy-pkg-add libfprint fprintd usbutils
+# Pick the library by hardware: most readers work with stock libfprint, but a
+# few exact USB IDs need a replacement provider (see omarchy-hw-fingerprint-
+# lib-package). The replacement conflicts+provides libfprint the same way
+# libfprint-git does, so pre-remove stock the same deps-only way first.
+read -r lib_source lib_package < <(omarchy-hw-fingerprint-lib-package)
+
+if [[ $lib_package != "libfprint" ]] && pacman -Q libfprint &>/dev/null; then
+  sudo pacman -Rdd --noconfirm libfprint
+fi
+
+# The library goes in before fprintd: fprintd depends on libfprint, and
+# installing fprintd first would pull stock libfprint back in over a
+# replacement provider.
+if [[ $lib_source == "aur" ]]; then
+  omarchy-pkg-aur-add "$lib_package"
+else
+  omarchy-pkg-add "$lib_package"
+fi
+
+omarchy-pkg-add fprintd usbutils
 
 # Enroll first fingerprint
 echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\e[0m"
