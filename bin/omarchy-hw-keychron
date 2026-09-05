@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether a Keychron keyboard or receiver is connected over USB.
+
+grep -q "^3434$" /sys/bus/usb/devices/*/idVendor 2>/dev/null

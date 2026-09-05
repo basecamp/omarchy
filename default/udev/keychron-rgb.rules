@@ -1,0 +1,2 @@
+# Keychron keyboards - allow the active user to talk to the raw config channel (RGB / Keychron Launcher).
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3434", MODE="0660", TAG+="uaccess"
