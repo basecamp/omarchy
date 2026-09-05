@@ -24,6 +24,7 @@
         "fireworks": { "enabled": true }
       },
       "refreshIntervalSec": 900,
+      "layout": "Tabs",
       "syncMode": "Off",
       "syncDir": "",
       "syncFileName": "",
@@ -31,6 +32,7 @@
     },
     "schema": [
       { "key": "refreshIntervalSec", "type": "integer", "label": "Refresh interval (seconds)", "min": 30, "max": 3600, "step": 30, "defaultValue": 900 },
+      { "key": "layout", "type": "enum", "label": "Panel layout", "options": ["Tabs", "Columns"], "defaultValue": "Tabs", "description": "Tabs shows one subscription at a time behind a switch row. Columns lays every subscription out side by side." },
       { "key": "syncMode", "type": "enum", "label": "Synced aggregation", "options": ["Off", "On"], "defaultValue": "Off", "description": "When On, write this machine's local usage snapshot and merge snapshots from other machines." },
       { "key": "syncDir", "type": "path", "label": "Sync folder", "defaultValue": "", "description": "A folder synced by Syncthing, Dropbox, rsync, etc." },
       { "key": "syncFileName", "type": "string", "label": "Snapshot file name", "defaultValue": "", "description": "Optional. Defaults to <hostname>.json. Use a different file name on each machine, such as laptop.json or desktop.json." },

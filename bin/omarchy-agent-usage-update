@@ -8,6 +8,11 @@
 # record; this writes them to ~/.local/state/omarchy/agents/usage/ where the
 # agents panel watches them. Adding an agent is adding a collector — the
 # panel picks up any record that appears here.
+#
+# A collector signed in to several accounts nests the others under
+# `accounts`, one full record each with an id under its own namespace
+# (`claude-work`). Those land as their own files, and a namespaced file the
+# collector no longer reports is removed, so a sign-out clears its tab.
 
 USAGE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
 mkdir -p "$USAGE_DIR"
@@ -39,16 +44,44 @@ wanted() {
   return 1
 }
 
+write_record() {
+  local id="$1" record="$2"
+  local tmp
+  tmp=$(mktemp "$USAGE_DIR/.$id.XXXXXX")
+  printf '%s\n' "$record" >"$tmp"
+  mv "$tmp" "$USAGE_DIR/$id.json"
+}
+
 collect() {
   local collector="$1" agent="$2"
-  local record tmp
+  local record id
+  local -A kept
   if ! record=$("$collector" "${flags[@]}") || [[ -z $record ]] || ! jq -e . >/dev/null 2>&1 <<<"$record"; then
     echo "omarchy-agent-usage-update: $agent collector failed" >&2
     return 1
   fi
-  tmp=$(mktemp "$USAGE_DIR/.$agent.XXXXXX")
-  printf '%s\n' "$record" >"$tmp"
-  mv "$tmp" "$USAGE_DIR/$agent.json"
+
+  while IFS= read -r id; do
+    if [[ $id != "$agent-"?* || $id =~ [^A-Za-z0-9_.-] ]]; then
+      echo "omarchy-agent-usage-update: $agent collector nested a record outside its namespace: $id" >&2
+      continue
+    fi
+    write_record "$id" "$(jq -c --arg id "$id" '.accounts[] | select(.id == $id)' <<<"$record")"
+    kept[$id]=1
+  done < <(jq -r '(.accounts // [])[] | .id // empty' <<<"$record")
+
+  if jq -e 'has("accounts")' >/dev/null <<<"$record"; then
+    record=$(jq -c 'del(.accounts)' <<<"$record")
+  fi
+  write_record "$agent" "$record"
+
+  local stale name
+  for stale in "$USAGE_DIR/$agent-"*.json; do
+    [[ -e $stale ]] || continue
+    name=${stale##*/}
+    name=${name%.json}
+    [[ -n ${kept[$name]} ]] || rm -f "$stale"
+  done
 }
 
 pids=()
