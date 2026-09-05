@@ -1,0 +1,254 @@
+#!/bin/bash
+
+# omarchy:summary=Replay a keybindings-menu row into the focused window as key events.
+# omarchy:hidden=true
+# omarchy:args=<row>
+
+# The stock Hyprland menu runs the binding you pick, so app menus should too.
+# There is nothing to "run" for an app's own shortcut, though, so the row's keys
+# are replayed into the window as key events instead, the same way Omarchy's
+# web-app entries (Copy URL, Download Video) are dispatched. Every menu that
+# replays keys goes through here, so the key vocabulary lives in one place.
+#
+# Reads OMARCHY_FOCUSED_WINDOW ("address:0x..." or "activewindow") for the
+# target, which omarchy-menu-focused-keybindings exports before opening a menu.
+# Exit 0 when sent, 1 when the row is not something a single replay can press
+# (after saying so), 2 when the compositor refused it.
+
+set -uo pipefail
+
+: "${OMARCHY_FOCUSED_WINDOW:=activewindow}"
+
+# The stock Hyprland menu runs the binding you pick, so these lists should too.
+# There is nothing to "run" for an app's own shortcut, though, so the binding is
+# replayed into the window as a key event instead, the same way Omarchy's own
+# web-app entries (Copy URL, Download Video) are dispatched.
+
+# Display name -> the keysym Hyprland sends. Letters, digits and F-keys are
+# handled by the fallthrough.
+send_keysym() {
+  local key="${1^^}"
+
+  case "$key" in
+    ESC|ESCAPE)     printf 'escape' ;;
+    ENTER|RETURN)   printf 'return' ;;
+    "PAGE UP")      printf 'prior' ;;
+    "PAGE DOWN")    printf 'next' ;;
+    # "+" is a shifted key: apps that want a literal plus need SHIFT, and the
+    # ones that document Ctrl+Plus for zoom accept the shifted form too.
+    "+"|PLUS)       printf 'equal SHIFT' ;;
+    EQUAL|"=")      printf 'equal' ;;
+    MINUS)          printf 'minus' ;;
+    # Shifted punctuation resolves only through its unshifted key: the
+    # compositor looks up level-1 symbols, so "?" is SHIFT + slash, not
+    # "question". Each of these returns its base key plus the implied SHIFT.
+    "?"|QUESTION)     printf 'slash SHIFT' ;;
+    ":"|COLON)        printf 'semicolon SHIFT' ;;
+    '"'|QUOTEDBL)     printf 'apostrophe SHIFT' ;;
+    "<"|LESS)         printf 'comma SHIFT' ;;
+    ">"|GREATER)      printf 'period SHIFT' ;;
+    "~"|ASCIITILDE)   printf 'grave SHIFT' ;;
+    "_"|UNDERSCORE)   printf 'minus SHIFT' ;;
+    "|"|BAR)          printf 'backslash SHIFT' ;;
+    "{"|BRACELEFT)    printf 'bracketleft SHIFT' ;;
+    "}"|BRACERIGHT)   printf 'bracketright SHIFT' ;;
+    "!"|EXCLAM)       printf '1 SHIFT' ;;
+    "@"|AT)           printf '2 SHIFT' ;;
+    "#"|NUMBERSIGN)   printf '3 SHIFT' ;;
+    "$"|DOLLAR)       printf '4 SHIFT' ;;
+    "%"|PERCENT)      printf '5 SHIFT' ;;
+    "^"|ASCIICIRCUM)  printf '6 SHIFT' ;;
+    "&"|AMPERSAND)    printf '7 SHIFT' ;;
+    "*"|ASTERISK)     printf '8 SHIFT' ;;
+    "("|PARENLEFT)    printf '9 SHIFT' ;;
+    ")"|PARENRIGHT)   printf '0 SHIFT' ;;
+    # Unshifted punctuation, by symbol as well as by name, so a list can be
+    # written the way the app documents it.
+    ","|COMMA)        printf 'comma' ;;
+    "."|PERIOD)       printf 'period' ;;
+    "/"|SLASH)        printf 'slash' ;;
+    ";"|SEMICOLON)    printf 'semicolon' ;;
+    "'"|APOSTROPHE)   printf 'apostrophe' ;;
+    "["|BRACKETLEFT)  printf 'bracketleft' ;;
+    "]"|BRACKETRIGHT) printf 'bracketright' ;;
+    "\\"|BACKSLASH)   printf 'backslash' ;;
+    "-"|MINUS)        printf 'minus' ;;
+    "\`"|GRAVE)        printf 'grave' ;;
+    SPACE|TAB|HOME|END|DELETE|BACKSPACE|INSERT|UP|DOWN|LEFT|RIGHT)
+                    printf '%s' "${key,,}" ;;
+    [A-Z])          printf '%s' "${key,,}" ;;
+    [0-9])          printf '%s' "$key" ;;
+    F[0-9]|F[12][0-9]) printf '%s' "$key" ;;
+    *)              return 1 ;;
+  esac
+}
+
+trim() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  printf '%s' "${value%"${value##*[![:space:]]}"}"
+}
+
+lua_string() {
+  jq -Rnr --arg value "$1" '$value | @json'
+}
+
+# hyprctl reports Lua dispatch failures on stdout with a zero exit, so a run
+# only counts as successful when it says nothing or "ok".
+send_key_state() {
+  local output status
+
+  output=$(hyprctl dispatch "hl.dsp.send_key_state({ mods = $(lua_string "$1"), key = $(lua_string "$2"), state = $(lua_string "$3"), window = $(lua_string "$OMARCHY_FOCUSED_WINDOW") })" 2>&1)
+  status=$?
+
+  (( status == 0 )) && [[ -z $output || $output == "ok" ]]
+}
+
+# Replays a row's keys into the target window. A row may name more than one
+# chord ("CTRL + X CTRL + K", "ESC ESC"); those are sent in order, the same way
+# a prefix binding is. Every chord is resolved before any is sent, so a row that
+# is only partly understood sends nothing rather than half of itself.
+send_binding() {
+  local row="$1" combo normalised tok
+  local mods="" key="" keysym
+  local -a chord_mods=() chord_keys=()
+
+  REFUSAL=""
+  combo=$(trim "${row%%→*}")
+  # A row may list alternates ("ENTER / CTRL + O"); the first is the one sent.
+  combo=${combo%% / *}
+  [[ -n $combo ]] || return 1
+
+  # A range names a family of keys, not a key.
+  if [[ $combo == *..* ]]; then
+    REFUSAL="range"
+    return 1
+  fi
+
+  # "+" joins one chord and whitespace separates chords, so the two multi-word
+  # key names have to be pinned together before tokenising.
+  normalised=${combo//PAGE UP/PAGE_UP}
+  normalised=${normalised//PAGE DOWN/PAGE_DOWN}
+  # "+" both joins a chord and is a key in its own right (imv zooms with it), so
+  # only a plus with something on each side is a joiner.
+  normalised=${normalised// + / }
+  normalised=$(sed 's/\([^[:space:]]\)+\([^[:space:]]\)/\1 \2/g' <<<"$normalised")
+
+  for tok in $normalised; do
+    case "${tok^^}" in
+      CTRL | CONTROL | SHIFT | ALT | SUPER)
+        # A modifier following a key opens the next chord.
+        if [[ -n $key ]]; then
+          chord_mods+=("$mods")
+          chord_keys+=("$key")
+          mods=""
+          key=""
+        fi
+
+        case "${tok^^}" in
+          CTRL | CONTROL) mods+="${mods:+ }CTRL" ;;
+          SHIFT) mods+="${mods:+ }SHIFT" ;;
+          ALT) mods+="${mods:+ }ALT" ;;
+          SUPER) mods+="${mods:+ }SUPER" ;;
+        esac
+        ;;
+      *)
+        if [[ -n $key ]]; then
+          chord_mods+=("$mods")
+          chord_keys+=("$key")
+          mods=""
+        fi
+
+        key="$tok"
+        ;;
+    esac
+  done
+
+  if [[ -n $key ]]; then
+    chord_mods+=("$mods")
+    chord_keys+=("$key")
+  fi
+
+  (( ${#chord_keys[@]} > 0 )) || return 1
+
+  # Resolve every chord first: a row half-understood must send nothing.
+  local -a send_mods=() send_keys=()
+  local i m k
+
+  for i in "${!chord_keys[@]}"; do
+    k=${chord_keys[i]}
+    k=${k//PAGE_UP/PAGE UP}
+    k=${k//PAGE_DOWN/PAGE DOWN}
+    m=${chord_mods[i]}
+
+    if ! keysym=$(send_keysym "$k"); then
+      if [[ $k == *[[:space:]]* ]]; then
+        REFUSAL="sequence"
+      else
+        REFUSAL="unknown-key"
+      fi
+
+      return 1
+    fi
+
+    # A bare uppercase letter is a shifted key: "G" and "g" are different binds
+    # in imv, Neovim and cliamp. Alongside a modifier, though, uppercase is just
+    # how these lists spell letters -- "CTRL + S" is ctrl+s, not ctrl+shift+s.
+    if [[ -z $m && $k =~ ^[A-Z]$ ]]; then
+      m="SHIFT"
+    fi
+
+    if [[ $keysym == *" SHIFT" ]]; then
+      keysym="${keysym% SHIFT}"
+      [[ $m == *SHIFT* ]] || m="${m:+$m }SHIFT"
+    fi
+
+    send_mods+=("$m")
+    send_keys+=("$keysym")
+  done
+
+  # Let focus settle back on the window after the menu dismisses.
+  sleep 0.2
+
+  for i in "${!send_keys[@]}"; do
+    # A prefix mode (tmux, Herdr) needs a beat to arm before the next chord.
+    (( i > 0 )) && sleep 0.3
+
+    if ! send_key_state "${send_mods[i]}" "${send_keys[i]}" down; then
+      hyprctl dispatch sendshortcut "${send_mods[i]}, ${send_keys[i]}, $OMARCHY_FOCUSED_WINDOW" >/dev/null 2>&1 || return 2
+      continue
+    fi
+
+    sleep 0.05
+    send_key_state "${send_mods[i]}" "${send_keys[i]}" up
+  done
+
+  return 0
+}
+
+
+row="${1:-}"
+[[ -n $row ]] || exit 1
+
+send_binding "$row"
+status=$?
+combo=$(trim "${row%%→*}")
+
+if ((status == 1)); then
+  case "$REFUSAL" in
+    sequence)
+      omarchy-notification-send "Not a single keypress" \
+        "$combo is a sequence. Type it in the app -- the menu sends one chord." ;;
+    range)
+      omarchy-notification-send "Not a single keypress" \
+        "$combo stands for a range of keys, so there is no one key to send." ;;
+    *)
+      omarchy-notification-send "Nothing to send" \
+        "$combo is not a key this menu can press." ;;
+  esac
+elif ((status == 2)); then
+  omarchy-notification-send "Could not send binding" \
+    "$combo was not accepted by the compositor."
+fi
+
+exit $status

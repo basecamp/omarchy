@@ -1,0 +1,41 @@
+CTRL + T                         → New tab
+CTRL + N                         → New window
+CTRL + SHIFT + N                 → New incognito window
+CTRL + W                         → Close tab
+CTRL + SHIFT + W                 → Close window
+CTRL + SHIFT + T                 → Reopen last closed tab
+CTRL + TAB                       → Next tab
+CTRL + SHIFT + TAB               → Previous tab
+CTRL + 1..8                      → Jump to tab by position
+CTRL + 9                         → Jump to last tab
+ALT + LEFT                       → Back
+ALT + RIGHT                      → Forward
+CTRL + L                         → Focus address bar
+CTRL + R                         → Reload
+CTRL + SHIFT + R                 → Hard reload (bypass cache)
+CTRL + F                         → Find in page
+CTRL + G                         → Find next
+CTRL + SHIFT + G                 → Find previous
+CTRL + D                         → Bookmark this page
+CTRL + SHIFT + O                 → Bookmark manager
+CTRL + SHIFT + B                 → Toggle bookmarks bar
+CTRL + H                         → History
+CTRL + J                         → Downloads
+CTRL + SHIFT + J                 → DevTools
+CTRL + SHIFT + C                 → DevTools element inspector
+CTRL + U                         → View page source
+CTRL + P                         → Print
+CTRL + S                         → Save page
+CTRL + PLUS                      → Zoom in
+CTRL + MINUS                     → Zoom out
+CTRL + 0                         → Reset zoom
+F11                              → Full screen
+SHIFT + ESC                      → Task manager
+CTRL + SHIFT + DELETE            → Clear browsing data
+CTRL + SHIFT + A                 → Search tabs
+SPACE                            → Scroll down a screen
+SHIFT + SPACE                    → Scroll up a screen
+HOME                             → Top of page
+END                              → Bottom of page
+SHIFT + ALT + L                  → Copy URL from Web App (Omarchy)
+SHIFT + ALT + D                  → Download Video from Web App (Omarchy)

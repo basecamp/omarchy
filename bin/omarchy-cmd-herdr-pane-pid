@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Print the pid of the foreground process in Herdr's focused pane.
+# omarchy:hidden=true
+
+# Herdr's panes are owned by its server rather than by the client in the focused
+# window, so the window's process tree stops at the client. Ask Herdr instead.
+
+set -uo pipefail
+
+timeout 5 herdr pane process-info 2>/dev/null |
+  jq -r '.result.process_info.foreground_processes[0].pid // empty'

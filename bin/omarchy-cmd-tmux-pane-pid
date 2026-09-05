@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Print the pid of the process running in a tmux client's active pane.
+# omarchy:hidden=true
+# omarchy:args=<client-pid>
+
+# A tmux pane's processes are children of the tmux server, not of the client in
+# the focused window, so they cannot be reached by walking the window's process
+# tree. Ask tmux instead.
+
+set -uo pipefail
+
+client_pid="${1:-}"
+socket="/tmp/tmux-$UID/default"
+
+if [[ $client_pid =~ ^[0-9]+$ && -r /proc/$client_pid/cmdline ]]; then
+  mapfile -d '' -t cmdline </proc/"$client_pid"/cmdline
+
+  for ((i = 0; i < ${#cmdline[@]}; i++)); do
+    if [[ ${cmdline[i]} == "-S" ]]; then
+      socket="${cmdline[i + 1]:-$socket}"
+    elif [[ ${cmdline[i]} == "-L" ]]; then
+      socket="/tmp/tmux-$UID/${cmdline[i + 1]:-default}"
+    fi
+  done
+fi
+
+session=$(tmux -S "$socket" list-clients -F '#{client_pid} #{session_name}' 2>/dev/null |
+  awk -v pid="$client_pid" '$1 == pid { print $2; exit }')
+
+if [[ -z $session ]]; then
+  session=$(tmux -S "$socket" list-sessions -F '#{session_activity} #{session_name}' 2>/dev/null |
+    sort -rn | awk 'NR == 1 { print $2 }')
+fi
+
+[[ -n $session ]] || exit 1
+tmux -S "$socket" display-message -p -t "$session" '#{pane_pid}' 2>/dev/null

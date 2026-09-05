@@ -1,0 +1,129 @@
+#!/bin/bash
+
+# omarchy:summary=Display Nautilus keybindings using an interactive search menu.
+# omarchy:args=[--print|-p]
+
+# Display Nautilus's keybindings using an interactive search menu, and run the
+# one that is picked.
+#
+# Nautilus has no config file and no API, but GTK apps carry their shortcuts
+# window as an embedded resource, and Nautilus's is a plain AdwShortcutsDialog
+# XML sitting in the binary. Reading it there means the list is always the
+# installed version's own, with nothing transcribed and nothing to update.
+#
+# Items that declare only an action-name are skipped: their accelerator is bound
+# at runtime and is not recoverable from the binary. The accelerator strings do
+# exist there, but not paired with their actions in any dependable order, and a
+# wrong key here would silently do the wrong thing rather than merely misinform.
+
+set -uo pipefail
+
+print_only=false
+[[ ${1:-} == "--print" || ${1:-} == "-p" ]] && print_only=true
+
+# Nautilus is in the default package set; type -P is resolving its path here,
+# not guarding against its absence.
+binary=$(type -P nautilus)
+
+# "Open Current Directory in Console" hands off to GNOME Console, which Omarchy
+# does not ship -- the shortcut is inert here, by the key as much as by the menu.
+# Nautilus gates the action on finding the app's desktop entry, not on the bus
+# name being claimable, so that is what gets checked: a D-Bus service alone is
+# not enough to make the key work, as testing this the other way around showed.
+console_available() {
+  local dir
+
+  for dir in "${XDG_DATA_HOME:-$HOME/.local/share}" ${XDG_DATA_DIRS//:/ } /usr/share; do
+    [[ -f "$dir/applications/org.gnome.Console.desktop" ]] && return 0
+  done
+
+  return 1
+}
+
+records=$(strings "$binary" 2>/dev/null | grep -m1 'AdwShortcutsDialog' | python3 -c '
+import re, sys, xml.etree.ElementTree as ET
+
+raw = sys.stdin.read().strip()
+start = raw.find("<interface>")
+if start < 0:
+    sys.exit(1)
+root = ET.fromstring(raw[start:])
+
+# GTK spells modifiers in tags and keys as X keysyms, which is most of the way
+# to what the compositor wants back.
+MOD_DISPLAY = [("primary", "CTRL"), ("control", "CTRL"), ("alt", "ALT"), ("shift", "SHIFT")]
+KEY_DISPLAY = {
+    "Return": "ENTER", "Page_Up": "PAGE UP", "Page_Down": "PAGE DOWN",
+    "plus": "PLUS", "minus": "MINUS", "slash": "SLASH", "period": "PERIOD",
+    "asciitilde": "~", "Delete": "DELETE", "Home": "HOME", "End": "END",
+    "Left": "LEFT", "Right": "RIGHT", "Up": "UP", "Down": "DOWN",
+}
+
+def parse(accel):
+    """One GTK accelerator -> (display, mods, keysym); None if not a single key."""
+    mods, seen = [], set()
+    for tag in re.findall(r"<([A-Za-z]+)>", accel):
+        for name, label in MOD_DISPLAY:
+            if tag.lower() == name and label not in seen:
+                seen.add(label)
+                mods.append(label)
+    key = re.sub(r"<[A-Za-z]+>", "", accel).strip()
+    if not key or "..." in key or ".." in key:
+        return None
+    # Order modifiers the way the other menus render them.
+    order = {"CTRL": 0, "ALT": 1, "SHIFT": 2}
+    mods.sort(key=lambda m: order[m])
+    display = " + ".join(mods + [KEY_DISPLAY.get(key, key.upper() if len(key) > 1 else key.upper())])
+    return display, " ".join(mods), key
+
+for section in root.iter("object"):
+    if section.get("class") != "AdwShortcutsSection":
+        continue
+    for item in section.iter("object"):
+        if item.get("class") != "AdwShortcutsItem":
+            continue
+        props = {p.get("name"): (p.text or "") for p in item.findall("property")}
+        # direction 2 is the right-to-left variant of the same shortcut.
+        if props.get("direction") == "2":
+            continue
+        accel, title = props.get("accelerator", "").strip(), props.get("title", "").strip()
+        if not accel or not title:
+            continue
+
+        # Several items offer alternates, space-separated.
+        parsed = [p for p in (parse(a) for a in accel.split()) if p]
+        if not parsed:
+            continue
+        display = " / ".join(p[0] for p in parsed)
+        print("%-32s → %s\t%s\t%s" % (display, title, parsed[0][1], parsed[0][2]))
+')
+
+console_available || records=$(grep -vi 'in console' <<<"$records")
+
+if [[ -z $records ]]; then
+  echo "No Nautilus keybindings found." >&2
+  exit 1
+fi
+
+if [[ $print_only == true ]]; then
+  cut -f1 <<<"$records"
+  exit 0
+fi
+
+monitor_height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .height' 2>/dev/null)
+[[ $monitor_height =~ ^[0-9]+$ ]] && ((monitor_height > 0)) || monitor_height=900
+
+# Rows out to the layers above: whatever hosts this app, then Omarchy's
+# own list -- so neither is ever more than one hop away.
+up_rows=$(omarchy-cmd-keybindings-up)
+
+selection=$( { [[ -n $up_rows ]] && printf '%s\n' "$up_rows"
+  cut -f1 <<<"$records"; } |
+  omarchy-menu-select 'Nautilus keybindings' -- --width 800 --height $((monitor_height * 40 / 100))) || exit 0
+[[ -n $selection ]] || exit 0
+
+if [[ -n $up_rows ]] && grep -Fqx -- "$selection" <<<"$up_rows"; then
+  exec omarchy-cmd-keybindings-up --go "$selection"
+fi
+
+exec omarchy-cmd-keybinding-send "$selection"

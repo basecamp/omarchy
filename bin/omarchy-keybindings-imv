@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# omarchy:summary=Print imv's keybindings, its own defaults overlaid with Omarchy's.
+# omarchy:hidden=true
+
+# imv cannot report its bindings, but both halves are readable locally: the
+# defaults are documented in imv(1), and the binds Omarchy adds -- print, trash,
+# rotate, edit in Tensaku -- live in the config it ships. Reading both keeps the
+# list right if either changes, and those Omarchy binds exist nowhere else, so
+# nothing but Omarchy can document them.
+#
+# Rows are printed for omarchy-menu-focused-keybindings to present and replay,
+# so the sending stays in one place.
+
+set -uo pipefail
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}/imv/config"
+
+{
+  # Defaults, from the man page's DEFAULT BINDS section.
+  man imv 2>/dev/null |
+    sed -n '/^DEFAULT BINDS/,/^[A-Z][A-Z]/p' |
+    awk '
+      # A key sits at five spaces, its description at nine.
+      /^ {5}[^ ]/ { key = $0; sub(/^ +/, "", key); sub(/,$/, "", key); next }
+      /^ {9}[^ ]/ && key != "" {
+        action = $0
+        sub(/^ +/, "", action)
+        print key "\t" action
+        key = ""
+      }
+    '
+
+  # Whatever the config binds wins over that. Each bind in Omarchy's config is
+  # preceded by a comment saying what it does, which is a better label than the
+  # shell command it runs.
+  [[ -f $config ]] && awk '
+    /^\[binds\]/ { in_binds = 1; next }
+    /^\[/        { in_binds = 0; next }
+    !in_binds    { next }
+    /^#/         { comment = $0; sub(/^#[[:space:]]*/, "", comment); next }
+    /^</ {
+      key = $0
+      sub(/^</, "", key)
+      sub(/>.*/, "", key)
+
+      action = comment
+      if (action == "") {
+        action = $0
+        sub(/^[^=]*=[[:space:]]*/, "", action)
+        sub(/^exec[[:space:]]+/, "", action)
+      }
+
+      print key "\t" action
+      comment = ""
+      next
+    }
+    { comment = "" }
+  ' "$config"
+} | awk -F '\t' '
+  # imv distinguishes "g" from "G", so a literal key keeps its case; only named
+  # keys (Left, Up) are spelled out in capitals.
+  function render(key,   n, parts, i, out, p) {
+    sub(/[[:space:]]*arrow$/, "", key)
+
+    # "+" is itself a bind (zoom in), so only treat a plus as a joiner when it
+    # actually sits between two things.
+    if (length(key) > 1 && key ~ /\+/) {
+      n = split(key, parts, "+")
+      out = ""
+
+      for (i = 1; i <= n; i++) {
+        p = parts[i]
+        if (i < n || length(p) > 1) p = toupper(p)
+        out = out (out == "" ? "" : " + ") p
+      }
+
+      return out
+    }
+
+    # A doubled letter is two presses ("gg"), so space it out: that is both what
+    # happens and what lets the menu replay it.
+    if (key ~ /^[a-z][a-z]$/ && substr(key, 1, 1) == substr(key, 2, 1)) {
+      return substr(key, 1, 1) " " substr(key, 2, 1)
+    }
+
+    if (length(key) > 1) return toupper(key)
+
+    return key
+  }
+
+  # A later definition replaces an earlier one, so the config overrides the
+  # defaults for any key it names.
+  { action[$1] = $2; if (!($1 in seen)) { seen[$1] = 1; order[++n] = $1 } }
+
+  END {
+    for (i = 1; i <= n; i++) printf "%-32s → %s\n", render(order[i]), action[order[i]]
+  }
+'

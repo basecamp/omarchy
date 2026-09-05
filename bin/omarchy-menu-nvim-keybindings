@@ -1,0 +1,254 @@
+#!/bin/bash
+
+# omarchy:summary=Display Neovim keybindings for the current mode using an interactive search menu.
+# omarchy:args=[--print|-p]
+
+# Display Neovim's keybindings using an interactive search menu.
+#
+# Read from the running editor over its own RPC socket, so the list reflects
+# what is actually mapped right now — remaps, plugin changes and lazy-loaded
+# mappings included — with nothing to keep up to date. Only mappings carrying a
+# description are shown; the rest are Neovim's internal defaults, which would
+# bury the useful rows.
+#
+# Picking a row runs it. A Neovim mapping is usually a multi-key sequence, so it
+# cannot be replayed as a single shortcut the way a browser accelerator can; it
+# is fed back over the same socket instead, which resolves it exactly as if
+# typed.
+#
+# The menu is scoped to the mode the editor is actually in, so every row shown
+# can be run: opening it over a visual selection lists the mappings that act on
+# that selection. The editor keeps its mode and selection while the menu is up,
+# since the menu is a compositor layer and never touches the editor.
+
+set -uo pipefail
+
+print_only=false
+[[ ${1:-} == "--print" || ${1:-} == "-p" ]] && print_only=true
+
+lua_source=$(mktemp) || exit 1
+trap 'rm -f "$lua_source"' EXIT
+
+cat >"$lua_source" <<'LUA'
+local leader = vim.g.mapleader
+if leader == nil then leader = " " end
+
+local special = {
+  CR = "ENTER", Tab = "TAB", Esc = "ESC", Space = "SPACE", BS = "BACKSPACE",
+  Up = "UP", Down = "DOWN", Left = "LEFT", Right = "RIGHT",
+  Home = "HOME", End = "END", PageUp = "PAGE UP", PageDown = "PAGE DOWN",
+}
+
+-- Renders one <...> chunk of a mapping in the same vocabulary the rest of the
+-- menus use, so CTRL reads as CTRL and not as <C-.
+local function chunk(token)
+  local mods, rest = token:match("^([CMAScmas]%-)(.+)$")
+  if mods then
+    local name = ({ C = "CTRL", M = "ALT", A = "ALT", S = "SHIFT" })[mods:sub(1, 1):upper()]
+    return name .. " + " .. (special[rest] or rest:upper())
+  end
+  if token:lower() == "leader" then return "LEADER" end
+  -- A named key ("Tab") is spelled out; a bare literal keeps its case, which in
+  -- Vim distinguishes one mapping from another.
+  return special[token] or token
+end
+
+local function pretty(lhs)
+  if leader ~= "" and lhs:sub(1, #leader) == leader then
+    lhs = "<leader>" .. lhs:sub(#leader + 1)
+  end
+
+  local out, i = {}, 1
+  while i <= #lhs do
+    local open_bracket = lhs:find("<", i, true)
+    if not open_bracket then out[#out + 1] = lhs:sub(i) break end
+
+    local close_bracket = lhs:find(">", open_bracket, true)
+    if not close_bracket then out[#out + 1] = lhs:sub(i) break end
+
+    if open_bracket > i then out[#out + 1] = lhs:sub(i, open_bracket - 1) end
+    out[#out + 1] = chunk(lhs:sub(open_bracket + 1, close_bracket - 1))
+    i = close_bracket + 1
+  end
+
+  return table.concat(out, " ")
+end
+
+-- Buffer-local mappings first, then globals. LSP attaches its bindings to the
+-- buffer, so nvim_get_keymap alone misses code actions, symbols, hovers -- some
+-- of the most reached-for keys in the editor. A buffer-local mapping also
+-- shadows a global one on the same key, so it is the one to report.
+local function keymaps_for(mode)
+  local maps, local_lhs = {}, {}
+
+  for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, mode)) do
+    maps[#maps + 1] = map
+    local_lhs[map.lhs] = true
+  end
+
+  for _, map in ipairs(vim.api.nvim_get_keymap(mode)) do
+    if not local_lhs[map.lhs] then maps[#maps + 1] = map end
+  end
+
+  return maps
+end
+
+local rows, seen = {}, {}
+for _, mode in ipairs({ "n", "i", "v", "x", "o", "t" }) do
+  for _, map in ipairs(keymaps_for(mode)) do
+    -- Neovim's built-in maps do carry descriptions, but they are either a
+    -- ":help x-default" pointer or a bare ex command; neither is what someone
+    -- opening this menu is looking for.
+    local desc = map.desc
+    local is_builtin = desc and (desc:match("^:help ") or desc:match("%-default$") or desc:match("^:"))
+
+    if desc and desc ~= "" and not is_builtin then
+      local combo = pretty(map.lhs)
+
+      -- The menu is filtered to one mode, so the mode no longer belongs in the
+      -- row text -- but it must stay part of identity here, or a visual mapping
+      -- would be deduplicated away by its normal-mode namesake.
+      local key = mode .. "\0" .. combo .. "\0" .. desc
+      if not seen[key] then
+        seen[key] = true
+        rows[#rows + 1] = { combo = combo, desc = desc, mode = mode, lhs = map.lhs }
+      end
+    end
+  end
+end
+
+table.sort(rows, function(a, b)
+  if a.desc == b.desc then return a.combo < b.combo end
+  return a.desc < b.desc
+end)
+
+local out = {}
+for _, row in ipairs(rows) do
+  out[#out + 1] = string.format("%-32s → %s\t%s\t%s", row.combo, row.desc, row.mode, row.lhs)
+end
+
+return table.concat(out, "\n")
+LUA
+
+# Every Neovim listens on $XDG_RUNTIME_DIR/nvim.<pid>.<n> unless told otherwise,
+# so the process the dispatcher resolved names its own socket. A socket file can
+# outlive a crashed editor, so candidates are probed rather than trusted.
+socket_responds() {
+  timeout 3 nvim --server "$1" --remote-expr '1' >/dev/null 2>&1
+}
+
+nvim_socket() {
+  local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}" socket pid candidates=()
+
+  # Neovim forks, so the process that owns the socket can be a child of the one
+  # resolved from the window -- a terminal multiplexer reports the parent.
+  if [[ ${OMARCHY_FOCUSED_PID:-} =~ ^[0-9]+$ ]]; then
+    for pid in "$OMARCHY_FOCUSED_PID" $(pgrep -P "$OMARCHY_FOCUSED_PID" 2>/dev/null); do
+      for socket in "$runtime_dir"/nvim."$pid".*; do
+        [[ -S $socket ]] && socket_responds "$socket" && { printf '%s' "$socket"; return 0; }
+      done
+    done
+  fi
+
+  # No match for that process: a single live instance is still unambiguous, but
+  # several are not, and guessing would send keys to the wrong editor.
+  for socket in "$runtime_dir"/nvim.*.*; do
+    [[ -S $socket ]] && socket_responds "$socket" && candidates+=("$socket")
+  done
+
+  (( ${#candidates[@]} == 1 )) && { printf '%s' "${candidates[0]}"; return 0; }
+  return 1
+}
+
+# Reading from the live editor keeps the list honest about lazy-loaded mappings;
+# a cold instance is only a fallback for when no socket can be reached.
+output_keybindings() {
+  local socket="$1"
+
+  if [[ -n $socket ]]; then
+    timeout 15 nvim --server "$socket" --remote-expr "luaeval('dofile(\"$lua_source\")')" 2>/dev/null
+  else
+    timeout 30 nvim --headless -c "lua io.stdout:write(dofile('$lua_source'))" -c q 2>/dev/null
+  fi
+}
+
+socket=$(nvim_socket) || socket=""
+
+# Which keymap modes are worth showing depends on where the cursor actually is.
+# Without a socket there is no mode to ask for and nothing could be run anyway,
+# so the normal-mode listing is the useful fallback.
+editor_mode() {
+  [[ -n $socket ]] || return 1
+  timeout 5 nvim --server "$socket" --remote-expr 'mode()' 2>/dev/null
+}
+
+mode_label=""
+keymap_modes="n"
+current_mode=$(editor_mode) || current_mode="n"
+
+case "$current_mode" in
+  no*)            keymap_modes="o"; mode_label=" (operator-pending)" ;;
+  n*)             keymap_modes="n" ;;
+  v*|V*|$'\x16'*) keymap_modes="v x"; mode_label=" (visual)" ;;
+  s*|S*|$'\x13'*) keymap_modes="v"; mode_label=" (select)" ;;
+  i*|R*)          keymap_modes="i"; mode_label=" (insert)" ;;
+  t*)             keymap_modes="t"; mode_label=" (terminal)" ;;
+  *)              keymap_modes="n" ;;
+esac
+
+records=$(output_keybindings "$socket")
+
+if [[ -n $records ]]; then
+  # Visual mode draws on both the "v" and "x" keymaps, which overlap; collapse
+  # the duplicates now that the rows no longer carry a mode marker.
+  records=$(awk -F '\t' -v modes="$keymap_modes" '
+    BEGIN { split(modes, wanted, " "); for (i in wanted) keep[wanted[i]] = 1 }
+    keep[$2] && !seen[$1]++
+  ' <<<"$records")
+fi
+
+if [[ -z $records ]]; then
+  echo "No described Neovim keybindings found for mode: $current_mode" >&2
+  exit 1
+fi
+
+if [[ $print_only == true ]]; then
+  cut -f1 <<<"$records"
+  exit 0
+fi
+
+monitor_height=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true) | .height' 2>/dev/null)
+[[ $monitor_height =~ ^[0-9]+$ ]] && ((monitor_height > 0)) || monitor_height=900
+
+# Rows out to the layers above: whatever hosts this app, then Omarchy's
+# own list -- so neither is ever more than one hop away.
+up_rows=$(omarchy-cmd-keybindings-up)
+
+selection=$( { [[ -n $up_rows ]] && printf '%s\n' "$up_rows"
+  cut -f1 <<<"$records"; } |
+  omarchy-menu-select "Neovim keybindings$mode_label" -- --width 800 --height $((monitor_height * 40 / 100))) || exit 0
+[[ -n $selection ]] || exit 0
+
+if [[ -n $up_rows ]] && grep -Fqx -- "$selection" <<<"$up_rows"; then
+  exec omarchy-cmd-keybindings-up --go "$selection"
+fi
+
+record=$(awk -F '\t' -v selection="$selection" '$1 == selection { print; exit }' <<<"$records")
+lhs=$(cut -f3- <<<"$record")
+
+if [[ -z $socket ]]; then
+  omarchy-notification-send "Could not reach Neovim" \
+    "No RPC socket answered for the focused editor."
+  exit 1
+fi
+
+# Normal mode is normalised with a leading <Esc>, which is harmless there. Every
+# other mode carries the context the mapping needs — a visual selection, an
+# insertion point, a pending operator — so the keys go in untouched.
+prefix=""
+[[ $keymap_modes == "n" ]] && prefix="<Esc>"
+
+nvim --server "$socket" --remote-send "${prefix}${lhs}" >/dev/null 2>&1 || {
+  omarchy-notification-send "Could not run mapping" "$selection"
+  exit 1
+}

@@ -1,0 +1,44 @@
+# Tensaku shortcuts, from the project README:
+# https://github.com/jondkinney/tensaku
+#
+# Tool keys sit on the left half of the keyboard by design, so a tool can be
+# switched without leaving the mouse. They are rebindable in the [keybinds]
+# section of config.toml or via Preferences (Ctrl+,), which is what the watch
+# below tracks.
+#
+# watch: ~/.config/tensaku/config.toml
+
+v                                → Pointer tool
+a                                → Arrow tool
+r                                → Rectangle tool
+t                                → Text tool
+w                                → Highlighter tool
+b                                → Blur tool
+c                                → Numbered marker tool
+e                                → Ellipse tool
+s                                → Line tool
+z                                → Brush tool
+g                                → Spotlight tool
+x                                → Crop tool
+CTRL + C                         → Save to clipboard
+CTRL + S                         → Save to the output file
+CTRL + SHIFT + S                 → Save using a file dialog
+CTRL + ALT + C                   → Copy last saved filepath
+CTRL + Z                         → Undo
+CTRL + Y                         → Redo
+CTRL + D                         → Delete selected annotations
+ALT + D                          → Duplicate selected annotations
+DELETE                           → Reset the canvas
+CTRL + A                         → Select all annotations
+CTRL + T                         → Toggle toolbars
+CTRL + L                         → Toggle the layers panel
+CTRL + ,                         → Open preferences
+CTRL + 0                         → Reset zoom to 100%
+CTRL + 1                         → Fit to window
+CTRL + 9                         → Zoom to 50%
+CTRL + 2..5                      → Zoom to 200-500%
+1..9                             → Select the nth palette colour
+ALT + LEFT                       → Pan left
+ALT + RIGHT                      → Pan right
+ALT + UP                         → Pan up
+ALT + DOWN                       → Pan down
