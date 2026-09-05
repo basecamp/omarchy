@@ -105,6 +105,46 @@ grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default applicat
 grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
 pass "default application bindings load from package defaults"
 
+HOME="$fresh_home" OMARCHY_PATH="$ROOT" lua <<'LUA' || fail "web app bindings forward browser flags safely"
+package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
+
+local command
+hl = {
+  dsp = {
+    exec_cmd = function(value)
+      return { arg = value }
+    end,
+  },
+  bind = function(_, dispatcher)
+    command = dispatcher.arg
+  end,
+}
+
+require("default.hypr.helpers")
+
+o.bind("SUPER + M", "Music", { webapp = "https://music.youtube.com" })
+assert(command == "omarchy-launch-webapp 'https://music.youtube.com'")
+
+o.bind("SUPER + M", "Music", {
+  webapp = "https://music.youtube.com",
+  flags = { "--profile-directory=Profile 1", "--user-agent=$(touch /tmp/not-run)" },
+})
+assert(command == "omarchy-launch-webapp 'https://music.youtube.com' '--profile-directory=Profile 1' '--user-agent=$(touch /tmp/not-run)'")
+
+o.bind("SUPER + M", "Music", {
+  webapp = "https://music.youtube.com",
+  flags = { "--profile-directory=Profile 1" },
+  focus = true,
+})
+assert(command == "omarchy-launch-or-focus-webapp 'Music' 'https://music.youtube.com' '--profile-directory=Profile 1'")
+
+local ok, error_message = pcall(function()
+  o.bind("SUPER + M", "Music", { webapp = "https://music.youtube.com", flags = "--start-maximized" })
+end)
+assert(not ok and error_message:find("webapp flags must be a list", 1, true))
+LUA
+pass "web app bindings forward browser flags safely"
+
 grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
   fail "universal clipboard shortcuts send explicit mods to the focused surface"
 pass "universal clipboard shortcuts send explicit mods to the focused surface"
