@@ -22,6 +22,22 @@ assertEqual(
   'polkit preserves custom authorization messages'
 )
 
+assertEqual(
+  polkit.authorizationLabel("Authentication is needed to run `/usr/bin/true' as the super user", 'Codex'),
+  "Codex wants: '/usr/bin/true'",
+  'polkit attributes a pkexec message to the agent'
+)
+assertEqual(
+  polkit.authorizationLabel('Authentication is required to change system settings', 'Codex'),
+  'Authentication is required to change system settings',
+  'polkit leaves non-pkexec messages stock even with an agent'
+)
+assertEqual(polkit.displayNameForAgent('codex'), 'Codex', 'polkit maps codex slug')
+assertEqual(polkit.displayNameForAgent('claude'), 'Claude Code', 'polkit maps claude slug')
+assertEqual(polkit.displayNameForAgent('omp'), 'Oh My Pi', 'polkit maps omp slug')
+assertEqual(polkit.displayNameForAgent('nope'), '', 'polkit unknown slug stays empty')
+assertEqual(polkit.displayNameForAgent(''), '', 'polkit empty slug stays empty')
+
 assert(
   polkit.fingerprintConfiguredFromPamConfig(`
 # comment

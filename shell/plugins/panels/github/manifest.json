@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.github",
+  "name": "GitHub",
+  "version": "0.1.0",
+  "author": "Omarchy",
+  "license": "MIT",
+  "description": "A native maintainer desk for GitHub notifications, issues, pull requests, discussions, and CI.",
+  "kinds": [
+    "panel",
+    "service"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Panel.qml",
+    "service": "Service.qml"
+  }
+}
