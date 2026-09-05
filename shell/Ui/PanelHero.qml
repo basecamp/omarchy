@@ -50,7 +50,7 @@ Item {
       Text {
         textFormat: Text.PlainText
         visible: root.title !== ""
-        text: root.title
+        text: root.title !== "" ? I18n.tr(root.title) : ""
         width: Math.min(implicitWidth, Math.max(0, parent.width - (detailPill.visible ? detailPill.implicitWidth + Style.space(8) : 0)))
         color: root.foreground
         font.family: root.fontFamily
@@ -78,7 +78,7 @@ Item {
           id: detailText
           textFormat: Text.PlainText
           anchors.centerIn: parent
-          text: root.detail
+          text: root.detail !== "" ? I18n.tr(root.detail) : ""
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.body

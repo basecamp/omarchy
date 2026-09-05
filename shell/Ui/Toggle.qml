@@ -70,7 +70,7 @@ BorderSurface {
 
       Text {
         textFormat: Text.PlainText
-        text: root.label
+        text: root.label !== "" ? I18n.tr(root.label) : ""
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: root.titleSize
@@ -82,7 +82,7 @@ BorderSurface {
       Text {
         textFormat: Text.PlainText
         visible: root.description !== ""
-        text: root.description
+        text: root.description !== "" ? I18n.tr(root.description) : ""
         color: Qt.darker(root.foreground, 1.5)
         font.family: root.fontFamily
         font.pixelSize: root.descriptionSize
