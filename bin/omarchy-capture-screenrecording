@@ -59,6 +59,39 @@ small | medium | large) ;;
   ;;
 esac
 
+webcam_mjpeg_supports_framerate() {
+  local resolution=$1
+  local target_fps=$2
+
+  awk -v resolution="$resolution" -v target_fps="$target_fps" '
+    /^[[:space:]]*\[[0-9]+\]:/ {
+      mjpeg_format = ($2 == "\047MJPG\047")
+      matching_resolution = 0
+      next
+    }
+
+    mjpeg_format && $1 == "Size:" {
+      matching_resolution = ($2 == "Discrete" && $3 == resolution)
+      next
+    }
+
+    mjpeg_format && matching_resolution && $1 == "Interval:" && $2 == "Discrete" {
+      fps = $0
+      sub(/^.*\(/, "", fps)
+      sub(/[[:space:]]+fps\).*$/, "", fps)
+
+      difference = (fps + 0) - target_fps
+      if (difference < 0) difference = -difference
+      if (difference < 0.05) {
+        found = 1
+        exit
+      }
+    }
+
+    END { exit !found }
+  '
+}
+
 start_webcam_overlay() {
   cleanup_webcam
 
@@ -73,12 +106,16 @@ start_webcam_overlay() {
 
   # Try preferred 16:9 resolutions in order, use first available
   local preferred_resolutions=("640x360" "1280x720" "1920x1080")
-  local capture_options="framerate=30"
+  local target_fps=30
+  local capture_options="framerate=$target_fps"
   local available_formats=$(v4l2-ctl --list-formats-ext -d "$WEBCAM_DEVICE" 2>/dev/null)
 
   for resolution in "${preferred_resolutions[@]}"; do
     if echo "$available_formats" | grep -q "$resolution"; then
       capture_options="video_size=$resolution,$capture_options"
+      if webcam_mjpeg_supports_framerate "$resolution" "$target_fps" <<<"$available_formats"; then
+        capture_options+=",input_format=mjpeg"
+      fi
       break
     fi
   done
