@@ -81,7 +81,9 @@ build_lua_bind_cache() {
     LUA_BIND_DISPATCHER_MAP["$cache_key"]="$dispatcher"
     LUA_BIND_ARG_MAP["$cache_key"]="$arg"
   done < <(
-    lua <<'LUA'
+    # A config that the stub cannot satisfy must not leave a runaway lua
+    # behind after the menu closes, so the scan is time-boxed.
+    timeout 10 lua <<'LUA'
 local modifiers = { SHIFT = 1, CTRL = 4, CONTROL = 4, ALT = 8, SUPER = 64 }
 
 local function split_keys(keys)
@@ -184,13 +186,66 @@ local function dsp_proxy(path)
   })
 end
 
+-- Stand-in for every Hyprland value the config reads while we only want its
+-- binds. It has to be safe for the loops and comparisons user configs run at
+-- load time: a numeric index answers nil so `ipairs(hl.get_monitors())`
+-- terminates instead of spinning a 100% CPU `lua` forever, and comparisons,
+-- arithmetic, and concatenation degrade to harmless values instead of raising
+-- and aborting the scan halfway through the config.
 local noop
 noop = setmetatable({}, {
-  __index = function()
+  __index = function(_, key)
+    if type(key) == "number" then
+      return nil
+    end
+
     return noop
   end,
   __call = function()
     return noop
+  end,
+  __len = function()
+    return 0
+  end,
+  __lt = function()
+    return false
+  end,
+  __le = function()
+    return false
+  end,
+  __unm = function()
+    return 0
+  end,
+  __add = function()
+    return 0
+  end,
+  __sub = function()
+    return 0
+  end,
+  __mul = function()
+    return 0
+  end,
+  __div = function()
+    return 0
+  end,
+  __mod = function()
+    return 0
+  end,
+  __idiv = function()
+    return 0
+  end,
+  __pow = function()
+    return 0
+  end,
+  __concat = function(left, right)
+    if rawequal(left, noop) then
+      return tostring(right)
+    end
+
+    return tostring(left)
+  end,
+  __tostring = function()
+    return ""
   end,
 })
 
