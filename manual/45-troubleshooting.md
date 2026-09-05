@@ -1,5 +1,19 @@
 # Troubleshooting
 
+### The installer USB boots to a black screen (NVIDIA and some other GPUs)
+
+If the Omarchy USB starts but the screen goes black before the installer appears — especially with a discrete NVIDIA card still connected — the live kernel is usually running and the display stack has failed modesetting. A useful check: if Caps Lock still toggles the keyboard LED on that black screen, the machine is alive and this is almost certainly a graphics handoff problem, not a dead stick.
+
+Stock live images currently hide the boot menu (`timeout=0`), so there is often no chance to press `e` and add kernel parameters by hand. Do not put those parameters in another OS's bootloader (for example Ubuntu's GRUB on disk); that only affects that OS, not the USB.
+
+Workarounds until a labelled fallback ships in the ISO:
+
+1. In firmware, turn off Secure Boot (required anyway) and disable Fast Boot if the board has it, then boot the USB from the one-shot boot menu (often F11 / F12).
+2. Remaster or edit the stick's `/boot/grub/grub.cfg` (and the matching loopback / syslinux entries if present) so the live `linux` line includes `nomodeset`. On many NVIDIA setups that is enough to keep the firmware framebuffer and reach the configurator.
+3. If you briefly get a GRUB menu, highlight the Omarchy entry, press `e`, append `nomodeset` to the `linux` line, then boot with Ctrl+X (or F10).
+
+A proper discoverable **safe graphics** boot entry for the ISO is tracked in [omacom-io/omarchy-iso#110](https://github.com/omacom-io/omarchy-iso/pull/110), with reports in [basecamp/omarchy#7045](https://github.com/basecamp/omarchy/issues/7045) and [basecamp/omarchy#7061](https://github.com/basecamp/omarchy/issues/7061).
+
 ### I broke my system with an update!
 
 First try to [rollback your system](47-system-snapshots.md) the version before your recent update. If that doesn't work, use `omarchy-debug` to share with your problem on #omarchy-help in the Discord. And if all that fails, you can reinstall the defaults configs and packages using `omarchy-reinstall`.
