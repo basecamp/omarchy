@@ -10,6 +10,10 @@
     flex: 0 0 90px !important;
     min-width: 90px !important;
     max-width: 90px !important;
+    /* Keep the divider that the full-width list shows, so the rail reads as a
+     * distinct column. Uses WhatsApp's pane-border var when present and falls
+     * back to a neutral that works in both light and dark themes. */
+    border-right: 1px solid var(--pane-border, rgba(127, 127, 127, 0.3)) !important;
   }
 
   /* Chat-list title bar, search, filter chips, and banner don't fit.
