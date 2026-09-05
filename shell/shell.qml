@@ -347,6 +347,19 @@ ShellRoot {
       var stillEnabled = stillThere && pluginRegistry.isEnabled(existingId)
       if (stillService && stillEnabled) continue
       var inst = _services[existingId]
+      // unloadPluginServices() spares a keepLoaded service, but this loop
+      // destroys one the moment the registry stops listing it as installed,
+      // enabled and service-declaring -- reached from pluginsChanged, so
+      // `omarchy plugin disable omarchy.lock` gets here without a reload, as
+      // does a local lock clone whose manifest is unreadable during the write
+      // that triggered the rescan. Destroying the service that holds the live
+      // ext-session-lock abandons the compositor-side lock and drops Hyprland
+      // into its lockscreen-died failsafe, so keep it until the lock is gone.
+      // Retention is indefinite: nothing re-runs this on unlock, and the
+      // instance is collected by whichever pluginsChanged lands next.
+      // Duck-typed rather than keyed on "omarchy.lock" so a cloned lock plugin
+      // is covered too.
+      if (inst && inst.sessionLockOwned === true) continue
       if (inst && typeof inst.destroy === "function") inst.destroy()
       var next = ({})
       for (var k in _services) if (k !== existingId) next[k] = _services[k]
