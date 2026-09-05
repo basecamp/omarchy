@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# omarchy:summary=Set the default directory for coding agent launches
+# omarchy:args=[path]
+# omarchy:examples=omarchy default agent-directory ~/Projects
+
+directory_file="$HOME/.config/omarchy/defaults/agent-directory"
+
+if (($# == 0)); then
+  if [[ -f $directory_file ]]; then
+    read -r directory <"$directory_file"
+    [[ -n $directory ]] && echo "$directory"
+  else
+    echo "$HOME/Work"
+  fi
+  exit 0
+fi
+
+if (($# != 1)); then
+  echo "Usage: omarchy-default-agent-directory [path]" >&2
+  exit 1
+fi
+
+directory=$1
+if [[ $directory == "~" ]]; then
+  directory=$HOME
+elif [[ $directory == "~/"* ]]; then
+  directory="$HOME/${directory#\~/}"
+elif [[ $directory != /* ]]; then
+  directory="$PWD/$directory"
+fi
+
+mkdir -p "$directory" || exit 1
+directory=$(realpath -- "$directory") || exit 1
+
+mkdir -p "$(dirname "$directory_file")" || exit 1
+printf '%s\n' "$directory" >"$directory_file" || exit 1
+echo "$directory"

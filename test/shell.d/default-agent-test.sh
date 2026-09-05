@@ -10,9 +10,11 @@ trap 'rm -rf "$test_tmp"' EXIT
 mock_bin="$test_tmp/bin"
 test_home="$test_tmp/home"
 agent_file="$test_home/.config/omarchy/defaults/agent"
+agent_directory_file="$test_home/.config/omarchy/defaults/agent-directory"
 notification_history="$test_tmp/notification-history"
 agent_open_log="$test_tmp/agent-open"
 launch_log="$test_tmp/launch"
+launch_directory_log="$test_tmp/launch-directory"
 inline_log="$test_tmp/inline"
 mise_log="$test_tmp/mise"
 mise_history="$test_tmp/mise-history"
@@ -34,6 +36,7 @@ SH
 cat >"$mock_bin/omarchy-launch-tui" <<'SH'
 #!/bin/bash
 printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_LAUNCH_LOG"
+pwd >"$OMARCHY_TEST_AGENT_LAUNCH_DIRECTORY_LOG"
 SH
 
 cat >"$mock_bin/omarchy-launch-floating-terminal-with-presentation" <<'SH'
@@ -85,6 +88,7 @@ export PATH="$mock_bin:$ROOT/bin:$PATH"
 export OMARCHY_TEST_NOTIFICATION_HISTORY="$notification_history"
 export OMARCHY_TEST_AGENT_OPEN_LOG="$agent_open_log"
 export OMARCHY_TEST_AGENT_LAUNCH_LOG="$launch_log"
+export OMARCHY_TEST_AGENT_LAUNCH_DIRECTORY_LOG="$launch_directory_log"
 export OMARCHY_TEST_AGENT_INLINE_LOG="$inline_log"
 export OMARCHY_TEST_MISE_LOG="$mise_log"
 export OMARCHY_TEST_MISE_HISTORY="$mise_history"
@@ -488,6 +492,30 @@ assert_bypass hermes hermes --yolo
 assert_bypass agy agy --dangerously-skip-permissions
 assert_bypass copilot copilot --allow-all
 pass "agent launcher skips permission prompts for every supported agent"
+
+mkdir -p "$test_home/Work"
+(cd "$test_home" && omarchy-agent)
+[[ $(<"$launch_directory_log") == "$test_home/Work" ]] ||
+  fail "agent launcher defaults to the work directory"
+
+custom_agent_directory="$test_home/Projects with spaces"
+[[ $(omarchy-default-agent-directory "$custom_agent_directory") == "$custom_agent_directory" ]] ||
+  fail "agent directory setter prints the selected directory"
+[[ -d $custom_agent_directory && $(<"$agent_directory_file") == "$custom_agent_directory" ]] ||
+  fail "agent directory setter creates and persists the selected directory"
+[[ $(omarchy-default-agent-directory) == "$custom_agent_directory" ]] ||
+  fail "agent directory getter prints the configured directory"
+
+(cd "$test_home" && omarchy-agent)
+[[ $(<"$launch_directory_log") == "$custom_agent_directory" ]] ||
+  fail "agent launcher starts in the configured directory from home"
+
+elsewhere="$test_tmp/elsewhere"
+mkdir -p "$elsewhere"
+(cd "$elsewhere" && omarchy-agent)
+[[ $(<"$launch_directory_log") == "$elsewhere" ]] ||
+  fail "agent launcher preserves a non-home working directory"
+pass "agent launch directory is configurable"
 
 printf '%s\n' "opencode" >"$agent_file"
 omarchy-agent
