@@ -582,6 +582,7 @@ Item {
 
           Column {
             anchors.centerIn: parent
+            width: parent.width
             spacing: Style.space(8)
             visible: displayModel.count === 0
 
@@ -604,6 +605,7 @@ Item {
               font.pixelSize: Style.font.title
               horizontalAlignment: Text.AlignHCenter
               width: parent.width
+              elide: Text.ElideRight
             }
           }
         }
