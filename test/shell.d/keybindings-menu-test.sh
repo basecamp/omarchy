@@ -224,27 +224,40 @@ pass "every action named as having an alternative is bound twice"
 # The menu parses real user configs under a stubbed `hl`. A config that calls a
 # list accessor and walks the result (such as a border-fx style file doing
 # ipairs(hl.get_loaded_plugins())) must leave the scan, not hang on a noop
-# that answers a value for every numeric index.
-spin_home="$tmpdir/spin-home"
-mkdir -p "$spin_home/.config"
-cp -r "$ROOT/config/hypr" "$spin_home/.config/hypr"
+# that answers a value for every numeric index. Hyprland reports the bind below
+# without its key, so a rendered "SUPER + P" is the scan reaching past the loop
+# rather than terminating with nothing left to say.
+stub_hyprctl <<BINDS
+$(lua_bind 64 "" "Spin probe")
+BINDS
 
-cat >"$spin_home/.config/hypr/spin.lua" <<'LUA'
-local function loaded()
-  for _, p in ipairs(hl.get_loaded_plugins()) do
-    if p.name == "hypr-shiny-border" then
+spin_home="$tmpdir/spin-home"
+mkdir -p "$spin_home/.config/hypr"
+
+cat >"$spin_home/.config/hypr/hyprland.lua" <<'LUA'
+local function border_fx_loaded()
+  for _, plugin in ipairs(hl.get_loaded_plugins()) do
+    if plugin.name == "hypr-shiny-border" then
       return true
     end
   end
+
   return false
 end
-loaded()
-LUA
-printf '\npcall(require, "hypr.spin")\n' >>"$spin_home/.config/hypr/hyprland.lua"
 
+border_fx_loaded()
+
+hl.bind("SUPER + P", hl.dsp.exec_cmd("true"), { description = "Spin probe" })
+LUA
+
+# A cache of its own: the records cache is keyed on the stubbed hyprctl alone,
+# so sharing one with an earlier block answers from the cache and never reads
+# the config this is about.
 spin_rendered=$(env -i PATH="$stub_bin:$ROOT/bin:$PATH" HOME="$spin_home" \
-  XDG_CACHE_HOME="$tmpdir/cache" OMARCHY_PATH="$ROOT" \
+  XDG_CACHE_HOME="$tmpdir/spin-cache" OMARCHY_PATH="$ROOT" \
   timeout 20 bash "$ROOT/bin/omarchy-menu-keybindings" --print)
 [[ $? == 0 ]] ||
+  fail "a config iterating a stubbed hl accessor completes the scan" "$spin_rendered"
+grep -q 'SUPER + P  *→ Spin probe' <<<"$spin_rendered" ||
   fail "a config iterating a stubbed hl accessor completes the scan" "$spin_rendered"
 pass "a config iterating a stubbed hl accessor completes the scan"
