@@ -28,7 +28,15 @@ elif pacman -Qq omarchy >/dev/null 2>&1; then
 fi
 
 if [[ -n $package ]]; then
-  update=$(checkupdates --nocolor 2>/dev/null | awk -v package="$package" '$1 == package { print; exit }' || true)
+  checkupdates_exit=0
+  checkupdates_output=$(checkupdates --nocolor 2>/dev/null) || checkupdates_exit=$?
+  # checkupdates exits 2 on error; 0 or 1 otherwise (0=updates, 1=none).
+  # Pass through the failure so the widget doesn't hide a pending update
+  # as "up to date" (#9798).
+  if (( checkupdates_exit == 2 )); then
+    exit 2
+  fi
+  update=$(awk -v package="$package" '$1 == package { print; exit }' <<<"$checkupdates_output" || true)
 fi
 
 if [[ -n ${update:-} ]]; then
