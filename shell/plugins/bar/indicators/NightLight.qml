@@ -6,7 +6,7 @@ BarIndicator {
 
   readonly property var nightlightService: bar?.shell?.firstPartyServiceFor("omarchy.nightlight")
 
-  active: nightlightService ? nightlightService.enabled : false
+  active: nightlightService ? nightlightService.nightlightOn : false
   activeText: "󰔎"
   inactiveText: "󰔎"
   activeTooltipText: "Day Light"
