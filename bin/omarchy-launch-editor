@@ -1,16 +1,29 @@
 #!/bin/bash
 
 # omarchy:summary=Launch the default editor selected via Omarchy defaults.
-# omarchy:args=[--inline] <path>
+# omarchy:args=[--inline|--sudo] <path>
 
 default_editor="$HOME/.local/state/omarchy/defaults/editor"
 
-if [[ ${1:-} == "--inline" ]]; then
-  inline=true
+# --inline runs a terminal editor in the caller's terminal rather than opening
+# one for it. --sudo is what SUDO_EDITOR points at: sudo hands the editor a
+# temporary copy and keeps whatever is on disk once the editor exits, so an
+# editor that detaches reads as "closed without changing anything" and the edit
+# is discarded with no error. That mode stays on a terminal editor, which also
+# keeps a graphical editor from being run as root.
+case "${1:-}" in
+--inline)
+  mode="inline"
   shift
-else
-  inline=false
-fi
+  ;;
+--sudo)
+  mode="sudo"
+  shift
+  ;;
+*)
+  mode="windowed"
+  ;;
+esac
 
 if [[ -f $default_editor ]]; then
   read -r editor <"$default_editor"
@@ -22,13 +35,17 @@ omarchy-cmd-present "$editor" || editor="nvim"
 
 case "${editor##*/}" in
 nvim | vim | nano | micro | hx | helix | fresh)
-  if [[ $inline == "true" ]]; then
-    exec "$editor" "$@"
-  else
+  if [[ $mode == "windowed" ]]; then
     exec omarchy-launch-tui "$editor" "$@"
+  else
+    exec "$editor" "$@"
   fi
   ;;
 *)
-  exec setsid uwsm-app -- "$editor" "$@"
+  if [[ $mode == "sudo" ]]; then
+    exec nvim "$@"
+  else
+    exec setsid uwsm-app -- "$editor" "$@"
+  fi
   ;;
 esac
