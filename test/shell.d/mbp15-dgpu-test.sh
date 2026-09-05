@@ -164,7 +164,24 @@ cat >"$test_tmp/dpms" <<SH
 #!/bin/bash
 echo "dpms \$1" >>"$test_tmp/dpms.log"
 SH
-chmod +x "$test_tmp/stub/"* "$test_tmp/bl-get" "$test_tmp/bl-set" "$test_tmp/dpms"
+printf 'true\ttrue\n' >"$test_tmp/wake"
+: >"$test_tmp/wake.log"
+cat >"$test_tmp/dpms-wake" <<SH
+#!/bin/bash
+case \$1 in
+  get)
+    cat "$test_tmp/wake"
+    ;;
+  set)
+    printf '%s\t%s\n' "\$2" "\$3" >"$test_tmp/wake"
+    echo "wake \$2 \$3" >>"$test_tmp/wake.log"
+    ;;
+  *)
+    exit 2
+    ;;
+esac
+SH
+chmod +x "$test_tmp/stub/"* "$test_tmp/bl-get" "$test_tmp/bl-set" "$test_tmp/dpms" "$test_tmp/dpms-wake"
 
 PATH="$test_tmp/stub:$ROOT/bin:$PATH" \
   OMARCHY_DMI_PRODUCT_NAME="$dmi" \
@@ -172,6 +189,7 @@ PATH="$test_tmp/stub:$ROOT/bin:$PATH" \
   OMARCHY_MBP15_BRIGHTNESS_GET="$test_tmp/bl-get" \
   OMARCHY_MBP15_BRIGHTNESS_SET="$test_tmp/bl-set" \
   OMARCHY_MBP15_DPMS="$test_tmp/dpms" \
+  OMARCHY_MBP15_DPMS_WAKE="$test_tmp/dpms-wake" \
   "$lid" close
 
 [[ $(cat "$test_tmp/bl") == 0 ]] || fail "lid close dims the backlight" "bl=$(cat "$test_tmp/bl")"
@@ -179,7 +197,23 @@ PATH="$test_tmp/stub:$ROOT/bin:$PATH" \
 grep -Fq 'pp set power-saver' "$test_tmp/pp.log" || fail "lid close overlays power-saver"
 grep -Fxq 'dpms disable' "$test_tmp/dpms.log" || fail "lid close DPMS-offs the panel" "$(cat "$test_tmp/dpms.log")"
 ! grep -q omarchy-powerprofiles-set "$test_tmp/pp.log" || fail "lid close must not persist via omarchy-powerprofiles-set"
+[[ $(cat "$test_tmp/wake") == $'false\tfalse' ]] ||
+  fail "lid close disables DPMS wake on key/mouse" "wake=$(cat "$test_tmp/wake")"
+[[ $(cat "$lid_state/dpms-wake") == $'true\ttrue' ]] ||
+  fail "lid close remembers previous DPMS wake flags" "saved=$(cat "$lid_state/dpms-wake" 2>/dev/null || true)"
 pass "lid close stops the panel and overlays power-saver without persisting the profile"
+
+PATH="$test_tmp/stub:$ROOT/bin:$PATH" \
+  OMARCHY_DMI_PRODUCT_NAME="$dmi" \
+  OMARCHY_MBP15_LID_STATE="$lid_state" \
+  OMARCHY_MBP15_BRIGHTNESS_GET="$test_tmp/bl-get" \
+  OMARCHY_MBP15_BRIGHTNESS_SET="$test_tmp/bl-set" \
+  OMARCHY_MBP15_DPMS="$test_tmp/dpms" \
+  OMARCHY_MBP15_DPMS_WAKE="$test_tmp/dpms-wake" \
+  "$lid" close
+[[ $(cat "$lid_state/dpms-wake") == $'true\ttrue' ]] ||
+  fail "lid close must not overwrite saved DPMS wake flags" "saved=$(cat "$lid_state/dpms-wake" 2>/dev/null || true)"
+pass "lid close keeps the pre-close DPMS wake flags across a second close"
 
 : >"$test_tmp/pp.log"
 : >"$test_tmp/dpms.log"
@@ -199,9 +233,13 @@ PATH="$test_tmp/stub:$ROOT/bin:$PATH" \
   OMARCHY_MBP15_BRIGHTNESS_GET="$test_tmp/bl-get" \
   OMARCHY_MBP15_BRIGHTNESS_SET="$test_tmp/bl-set" \
   OMARCHY_MBP15_DPMS="$test_tmp/dpms" \
+  OMARCHY_MBP15_DPMS_WAKE="$test_tmp/dpms-wake" \
   "$lid" open
 
 grep -Fxq 'dpms enable' "$test_tmp/dpms.log" || fail "lid open DPMS-ons the panel" "$(cat "$test_tmp/dpms.log")"
 [[ $(cat "$test_tmp/bl") == 675 ]] || fail "lid open restores brightness" "bl=$(cat "$test_tmp/bl")"
 grep -Fq 'pps autodetect' "$test_tmp/pp.log" || fail "lid open restores the AC/battery profile"
+[[ $(cat "$test_tmp/wake") == $'true\ttrue' ]] ||
+  fail "lid open restores previous DPMS wake flags" "wake=$(cat "$test_tmp/wake")"
+[[ ! -e $lid_state/dpms-wake ]] || fail "lid open clears saved DPMS wake flags"
 pass "lid open brings the panel back and restores the remembered profile"
