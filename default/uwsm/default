@@ -13,5 +13,8 @@ export EDITOR="omarchy-launch-editor --inline"
 # Use a custom directory for screenshots (remember to make the directory!)
 # export OMARCHY_SCREENSHOT_DIR="$HOME/Pictures/Screenshots"
 
+# Use live content for screenshot, OCR, and QR selection if Hyprpicker screen freezing is unstable
+# export OMARCHY_CAPTURE_FREEZE=false
+
 # Use a custom directory for screenrecordings (remember to make the directory!)
 # export OMARCHY_SCREENRECORD_DIR="$HOME/Videos/Screencasts"

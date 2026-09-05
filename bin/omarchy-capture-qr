@@ -2,19 +2,19 @@
 
 # omarchy:summary=Decode a QR code from a screenshot region
 # omarchy:group=capture
-# omarchy:examples=omarchy capture qr
+# omarchy:args=[--no-freeze]
+# omarchy:examples=omarchy capture qr --no-freeze
 
 # Keep hyprpicker alive until after grim captures so the screenshot sees the
 # frozen overlay rather than live content shifting during teardown.
 cleanup_freeze() {
-  [[ -n $PID ]] && kill $PID 2>/dev/null
+  [[ -n $FREEZE_PID ]] && kill $FREEZE_PID 2>/dev/null
 }
 trap cleanup_freeze EXIT
 
-hyprpicker -r -z >/dev/null 2>&1 &
-PID=$!
-sleep .1
-SELECTION=$(slurp 2>/dev/null)
+REGION_ARGS=(region --keep-freeze)
+[[ ${1:-} == "--no-freeze" ]] && REGION_ARGS+=(--no-freeze)
+{ read -r FREEZE_PID; read -r SELECTION; } < <(omarchy-capture-region "${REGION_ARGS[@]}")
 
 [[ -z $SELECTION ]] && exit 0
 

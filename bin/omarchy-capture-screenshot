@@ -2,8 +2,8 @@
 
 # omarchy:summary=Take a screenshot
 # omarchy:group=capture
-# omarchy:args=[smart|region|windows|fullscreen] [slurp|copy|save] [--editor=<name>]
-# omarchy:examples=omarchy screenshot | omarchy capture screenshot region
+# omarchy:args=[smart|region|windows|fullscreen] [slurp|copy|save] [--editor=<name>] [--no-freeze]
+# omarchy:examples=omarchy screenshot | omarchy capture screenshot region | omarchy capture screenshot region --no-freeze
 # omarchy:aliases=omarchy screenshot
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
@@ -17,11 +17,18 @@ fi
 pkill slurp && exit 0
 
 SCREENSHOT_EDITOR="${OMARCHY_SCREENSHOT_EDITOR:-tensaku-edit}"
+USE_FREEZE=true
 
-# Parse --editor flag from any position
+case ${OMARCHY_CAPTURE_FREEZE:-true} in
+0 | false | no | off) USE_FREEZE=false ;;
+esac
+
+# Parse capture options from any position.
 ARGS=()
 for arg in "$@"; do
-  if [[ $arg == --editor=* ]]; then
+  if [[ $arg == "--no-freeze" ]]; then
+    USE_FREEZE=false
+  elif [[ $arg == --editor=* ]]; then
     SCREENSHOT_EDITOR="${arg#--editor=}"
   else
     ARGS+=("$arg")
@@ -39,7 +46,8 @@ PROCESSING="${2:-slurp}"
 # Software-composited cursors (Hyprland's fallback on GPUs without working
 # hardware cursors) are baked into the frames grim captures, so force
 # hardware cursors until after grim runs and restore the setting on exit.
-NO_HW_CURSORS=$(hyprctl getoption cursor:no_hardware_cursors -j | jq '.int')
+NO_HW_CURSORS=""
+CURSOR_SETTING_CHANGED=false
 
 set_no_hw_cursors() {
   hyprctl eval "hl.config({ cursor = { no_hardware_cursors = $1 } })" &>/dev/null ||
@@ -48,12 +56,19 @@ set_no_hw_cursors() {
 
 cleanup() {
   [[ -n $FREEZE_PID ]] && kill $FREEZE_PID 2>/dev/null
-  set_no_hw_cursors "$NO_HW_CURSORS"
+  [[ $CURSOR_SETTING_CHANGED == true ]] && set_no_hw_cursors "$NO_HW_CURSORS"
 }
 trap cleanup EXIT
 
-set_no_hw_cursors 0
-{ read -r FREEZE_PID; read -r SELECTION; } < <(omarchy-capture-region "$MODE" --keep-freeze)
+if [[ $USE_FREEZE == true ]]; then
+  NO_HW_CURSORS=$(hyprctl getoption cursor:no_hardware_cursors -j | jq '.int')
+  set_no_hw_cursors 0
+  CURSOR_SETTING_CHANGED=true
+fi
+
+REGION_ARGS=("$MODE" --keep-freeze)
+[[ $USE_FREEZE == false ]] && REGION_ARGS+=(--no-freeze)
+{ read -r FREEZE_PID; read -r SELECTION; } < <(omarchy-capture-region "${REGION_ARGS[@]}")
 
 [[ -z $SELECTION ]] && exit 0
 

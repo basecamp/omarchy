@@ -10,12 +10,15 @@ omarchy screenshot                            # Interactive smart-region flow
 omarchy capture screenshot region             # Select a region
 omarchy capture screenshot windows            # Pick a window
 omarchy capture screenshot fullscreen save    # Full screen, straight to disk (no editor)
+omarchy capture screenshot region --no-freeze # Live picker for systems where screen freezing is unstable
 ```
 
 The first argument picks the mode (`smart|region|windows|fullscreen`), the
 second what happens with it (`slurp|copy|save`). `save` skips the annotation
 editor and prints the saved path. Screenshots land in the configured Pictures
 directory (override with `OMARCHY_SCREENSHOT_DIR`).
+
+Interactive captures freeze the screen with Hyprpicker by default. Pass `--no-freeze` to screenshot, text, or QR capture to select live content instead. Set `OMARCHY_CAPTURE_FREEZE=false` in the UWSM environment to make live capture the default when the frozen overlay is unstable with a GPU or compositor.
 
 ## Screen Recording
 
