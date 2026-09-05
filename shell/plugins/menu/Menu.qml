@@ -51,6 +51,13 @@ Item {
   property string userMenuPath: Quickshell.env("HOME") + "/.config/omarchy/extensions/omarchy-menu.jsonc"
   property var defaultMenuItems: []
   property var userMenuItems: []
+  // Navigation keys are declared in the same two files as the rows. The
+  // constant in MenuModel is only reached when the default file is missing or
+  // unparseable, so the menu is never left without a keyboard — the job
+  // builtinShellConfig does for shell.json in shell.qml.
+  property var defaultKeyBindings: root.fallbackKeyBindings()
+  property var userKeyBindings: null
+  readonly property var keyBindings: MenuModel.mergeKeybindings(root.defaultKeyBindings, root.userKeyBindings)
   property bool opened: false
   property string mode: "menu"
   readonly property bool dmenuActive: mode === "select" || mode === "input"
@@ -238,6 +245,14 @@ Item {
 
   function parseMenuJsonc(raw) {
     return MenuModel.parseMenuJsonc(raw)
+  }
+
+  function parseMenuKeybindings(raw) {
+    return MenuModel.parseMenuKeybindings(raw)
+  }
+
+  function fallbackKeyBindings() {
+    return MenuModel.normalizeKeybindings(MenuModel.DEFAULT_KEYBINDINGS)
   }
 
   // Merge defaults + user extension. Later entries override earlier ones
@@ -703,6 +718,10 @@ Item {
     }
   }
 
+  function checkKeyBinding(action, event) {
+    return MenuModel.bindingMatches(action, root.keyBindings[action], event, root.filterText.length > 0)
+  }
+
   function select(delta) {
     if (displayModel.count === 0) return
 
@@ -967,7 +986,12 @@ Item {
     path: root.defaultMenuPath
     watchChanges: true
     printErrors: false
-    onLoaded: { root.defaultMenuItems = root.parseMenuJsonc(text()); root.rebuildItemsFromSources() }
+    onLoaded: {
+      var raw = text()
+      root.defaultMenuItems = root.parseMenuJsonc(raw)
+      root.defaultKeyBindings = root.parseMenuKeybindings(raw) || root.fallbackKeyBindings()
+      root.rebuildItemsFromSources()
+    }
     onFileChanged: reload()
   }
 
@@ -976,8 +1000,13 @@ Item {
     path: root.userMenuPath
     watchChanges: true
     printErrors: false
-    onLoaded: { root.userMenuItems = root.parseMenuJsonc(text()); root.rebuildItemsFromSources() }
-    onLoadFailed: { root.userMenuItems = []; root.rebuildItemsFromSources() }
+    onLoaded: {
+      var raw = text()
+      root.userMenuItems = root.parseMenuJsonc(raw)
+      root.userKeyBindings = root.parseMenuKeybindings(raw)
+      root.rebuildItemsFromSources()
+    }
+    onLoadFailed: { root.userMenuItems = []; root.userKeyBindings = null; root.rebuildItemsFromSources() }
     onFileChanged: reload()
   }
 
@@ -1126,6 +1155,13 @@ Item {
             return
           }
 
+          // Delete, Escape and the filter-editing keys are consulted before any
+          // binding, so a binding on Backspace or Ctrl+U cannot be reached while
+          // the filter has text (see Util.editsFilter). Bindings are then tried
+          // in a fixed order and the first match wins, which is what decides the
+          // outcome when one key is bound to two actions. An unmodified back
+          // binding is the one that yields to a filter being typed; see
+          // MenuModel.bindingMatches.
           if (event.key === Qt.Key_Delete) {
             root.requestDeleteSelected()
             event.accepted = true
@@ -1136,27 +1172,27 @@ Item {
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
-          } else if ((event.key === Qt.Key_Backspace || event.key === Qt.Key_Left) && !root.filterText) {
-            root.goBack()
-            event.accepted = true
-          } else if (event.key === Qt.Key_Up) {
-            root.select(-1)
-            event.accepted = true
-          } else if (event.key === Qt.Key_Down) {
+          } else if (root.checkKeyBinding("next", event)) {
             root.select(1)
             event.accepted = true
-          } else if (event.key === Qt.Key_PageUp) {
-            root.select(-6)
+          } else if (root.checkKeyBinding("prev", event)) {
+            root.select(-1)
             event.accepted = true
-          } else if (event.key === Qt.Key_PageDown) {
+          } else if (root.checkKeyBinding("pageNext", event)) {
             root.select(6)
             event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
+          } else if (root.checkKeyBinding("pagePrev", event)) {
+            root.select(-6)
+            event.accepted = true
+          } else if (root.checkKeyBinding("activate", event)) {
             if (root.dmenuActive) {
               if (root.mode === "input") root.applyDmenuSelection(root.filterText)
               else if (displayModel.count > 0) root.activateIndex(root.cursorActive ? root.selectedIndex : 0)
             } else if (root.cursorActive) root.activateIndex(root.selectedIndex)
             else root.settleCursor()
+            event.accepted = true
+          } else if (root.checkKeyBinding("back", event)) {
+            root.goBack()
             event.accepted = true
           } else if (event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
             root.setFilter(root.filterText + event.text)

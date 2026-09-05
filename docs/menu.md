@@ -18,6 +18,10 @@ removed, so an inline trailing comment breaks the parse. A file that fails to
 parse contributes no entries — a broken user extension silently drops every
 user entry while the shipped menu keeps working.
 
+## File shape
+
+Almost every top-level key is an entry id, and `keybindings` is the exception: it configures the menu rather than declaring a row, and `parseMenuJsonc` skips it for that reason. Entries may also be nested under an explicit `items` key, in which case the carve-out does not apply and a row may be called `keybindings` like anything else. Nothing shipped uses the wrapper.
+
 ## Entry schema
 
 Entries are object keys. The dotted id is the tree: `trigger.share.file` is a
@@ -59,6 +63,35 @@ injected if neither file declares one.
 The sample extension at `config/omarchy/extensions/omarchy-menu.jsonc`
 (refreshed into `~/.config/`) documents the format in its header and ships
 only comments, so the default state adds nothing.
+
+## Keybindings
+
+The keys that drive the menu are data in the same two files as the rows, under the top-level `keybindings` key, mapping an action to the list of keys that trigger it:
+
+```jsonc
+"keybindings": {
+  "next":     ["DOWN", "CTRL + J"],
+  "back":     ["LEFT", "CTRL + H"],
+}
+```
+
+The actions are `next`, `prev`, `pageNext`, `pagePrev` (six rows at a time), `activate` and `back`. A binding is one string in the Hyprland DSL `config/hypr/bindings.lua` already writes: modifiers and key joined by `+`, surrounding whitespace tolerated, parsed case-insensitively, so `CTRL + J`, `Ctrl+J` and `ctrl + j` are the same binding. The modifiers are `SUPER`, `CTRL`, `ALT` and `SHIFT`; the key is one of the names `KEY_NAME_MAP` carries — the arrows, the page and editing keys, `F1`–`F12`, `PRINT`, and the punctuation Omarchy's own Hyprland bindings name (`COMMA`, `SLASH`, `PERIOD`, `GRAVE`) — or any single character, which resolves to itself. Qt names outside that table, such as `QUOTELEFT` or `CAPSLOCK`, are not accepted; write the character instead. Shipped defaults and documentation emit the canonical uppercase.
+
+Modifiers match exactly in two of the three cases. A binding that names modifiers requires them exactly, so `CTRL + SHIFT + J` never fires a `CTRL + J` binding; a binding on a plain character does too, so `CTRL + J` never fires a `J` binding and the letter stays typeable. The exception is an unmodified binding on a named key — `DOWN`, `RETURN` — which fires whatever is held. That is deliberate: the hardcoded dispatch this replaced tested `event.key === Qt.Key_Down` with no modifier check, so `SHIFT + DOWN` moved the selection and `CTRL + RETURN` activated, and the shipped defaults have to keep behaving that way.
+
+`parseBinding` resolves the whole string or none of it. An unknown modifier drops the binding with a warning rather than falling back to the bare key, which is what keeps `CTL + J` from quietly binding plain `J` and taking the letter away from search — the dispatch consults bindings before it treats a keystroke as typing. Key names refuse the same way. Because `normalizeKeybindings` leaves out an action whose bindings all failed, a whole block of typos keeps the shipped keys instead of unbinding the action.
+
+Binding an unmodified character key costs you that character in search: bound to `back` you lose it only as the first character, since the hold-back rule below returns it once there is text; bound to any other action you lose it entirely, because the dispatch consults bindings before it treats a keystroke as typing. Modified bindings cost nothing.
+
+One rule involves the filter, and it belongs to `back` alone: an unmodified `back` binding does not fire while the search box has text. That is why `LEFT` navigates out of a submenu but moves through a search being typed, and why the same action can carry `CTRL + H`, which stays live mid-search because nobody types it into a search box. Every other action keeps working while filtering — navigating and activating a filtered list is the point of filtering it.
+
+The rule replaced a per-binding `whenFilterEmpty` flag. On `LEFT` the flag did this job; on the shipped `BACKSPACE` binding it was already unreachable, since `Util.editsFilter` answers ahead of the binding table and claims Backspace whenever the filter has text.
+
+`mergeKeybindings` combines the user's block with the defaults per action, but additively rather than the way `mergeMenuSources` replaces per entry: the keys a user lists for an action are appended to the shipped ones, so binding `CTRL + N` to `next` adds it alongside `DOWN` instead of costing you the arrow key. An action left out keeps what the defaults bound. Unbinding is the explicit case — an action written as `[]` drops its keys entirely — and it is why `normalizeKeybindings` leaves out an action whose keys all failed to resolve rather than emitting it empty: a typo should cost you the key you misspelled, not the shipped ones it was joining. Shipped keys come first in the merged list, which only decides which binding `bindingMatches` reports when two of them would both fire. Resolution happens once per load, not per keystroke.
+
+Three things are handled ahead of every binding and cannot be rebound: `Escape` (clear the filter, then close), `Delete` (uninstall the selected app), and the filter-editing keys `Backspace` and `Ctrl+U` that `Util.editsFilter` owns. Because `editsFilter` answers first but only when the filter has text, a binding on `Backspace` still works on an empty filter — which is how the shipped `back` reaches it. Bindings are then tried in the fixed order above and the first match wins, so binding one key to two actions resolves by that order.
+
+`DEFAULT_KEYBINDINGS` in `MenuModel.js` is not the source of truth; the shipped bindings are the block in `default/omarchy/omarchy-menu.jsonc`. It exists so a default file that is missing or unparseable cannot leave the menu without a keyboard, the same job `builtinShellConfig` does for `shell.json` in `shell.qml`. It is written in the same string form a user writes and resolved through the same `parseBinding`, so a spelling that works there works here.
 
 ## Guards
 

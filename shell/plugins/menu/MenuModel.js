@@ -4,6 +4,27 @@ function stripJsonc(raw) {
     .replace(/,(\s*[}\]])/g, "$1")
 }
 
+// Menu entries and keybindings come out of the same file, so both read it
+// through here rather than each stripping and parsing it their own way.
+// Anything that is not a JSON object — including a file that fails to parse —
+// comes back null, and the caller falls back to contributing nothing.
+function parseJsoncObject(raw) {
+  var stripped = stripJsonc(raw)
+  if (!stripped.trim()) return null
+
+  var parsed
+  try {
+    parsed = JSON.parse(stripped)
+  } catch (e) {
+    return null
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null
+  return parsed
+}
+
+// Top-level keys that configure the menu rather than declare a row.
+var RESERVED_TOP_LEVEL_KEYS = { keybindings: true }
+
 function normalizeAliases(value) {
   if (Array.isArray(value)) return value.filter(function(v) { return v })
   if (typeof value === "string" && value) return [value]
@@ -40,22 +61,19 @@ function normalizeItem(id, raw) {
 }
 
 function parseMenuJsonc(raw) {
-  var stripped = stripJsonc(raw)
-  if (!stripped.trim()) return []
+  var parsed = parseJsoncObject(raw)
+  if (!parsed) return []
 
-  var parsed
-  try {
-    parsed = JSON.parse(stripped)
-  } catch (e) {
-    return []
-  }
-  if (typeof parsed !== "object" || parsed === null) return []
-
-  var source = (parsed.items && typeof parsed.items === "object" && !Array.isArray(parsed.items))
-    ? parsed.items
-    : parsed
+  var wrapped = parsed.items && typeof parsed.items === "object" && !Array.isArray(parsed.items)
+  var source = wrapped ? parsed.items : parsed
   var out = []
   for (var id in source) {
+    // Only the flat form needs the carve-out: an explicit items wrapper already
+    // scopes the entries, so a row genuinely called "keybindings" still works
+    // there. Without this, a keybindings block becomes an empty submenu on the
+    // root menu, searchable and routable.
+    if (!wrapped && RESERVED_TOP_LEVEL_KEYS.hasOwnProperty(id)) continue
+
     var entry = source[id]
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue
     out.push(normalizeItem(id, entry))
@@ -490,11 +508,196 @@ function guardScript(items) {
   return guards ? guardPrelude(guards) + guards : ""
 }
 
+// --- keybindings -------------------------------------------------------
+
+// The shipped bindings are the block in default/omarchy/omarchy-menu.jsonc.
+// This is only the fallback for one that is missing or unparseable -- the same
+// job builtinShellConfig does for shell.json in shell.qml.
+var DEFAULT_KEYBINDINGS = {
+  next: ["DOWN"],
+  prev: ["UP"],
+  pageNext: ["PAGEDOWN"],
+  pagePrev: ["PAGEUP"],
+  activate: ["RETURN", "ENTER", "RIGHT"],
+  back: ["BACKSPACE", "LEFT"]
+}
+
+// Qt.Key_* values, spelled out because Node loads this file too and has no Qt.
+// Names are the Qt.Key_ constants without the prefix, keyed lower-case so the
+// lookup is case-insensitive. Letters, digits and punctuation typed as a single
+// character resolve to themselves, so only the named keys need to be listed.
+var KEY_NAME_MAP = {
+  // navigation
+  "up": 0x01000013, "down": 0x01000015, "left": 0x01000012, "right": 0x01000014,
+  "pageup": 0x01000016, "pagedown": 0x01000017, "home": 0x01000010, "end": 0x01000011,
+  // editing and activation
+  "return": 0x01000004, "enter": 0x01000005, "escape": 0x01000000, "space": 0x20,
+  "tab": 0x01000001, "backtab": 0x01000002, "backspace": 0x01000003, "delete": 0x01000007,
+  "insert": 0x01000006, "print": 0x01000009,
+  // function keys
+  "f1": 0x01000030, "f2": 0x01000031, "f3": 0x01000032, "f4": 0x01000033,
+  "f5": 0x01000034, "f6": 0x01000035, "f7": 0x01000036, "f8": 0x01000037,
+  "f9": 0x01000038, "f10": 0x01000039, "f11": 0x0100003a, "f12": 0x0100003b,
+  // every punctuation key Omarchy's own Hyprland bindings name: comma in five
+  // bindings, SLASH in three, grave in two, PERIOD in one (plus the commented
+  // example in config/hypr/bindings.lua); PRINT's four sit on the editing row
+  "comma": 0x2c, "slash": 0x2f, "period": 0x2e, "grave": 0x60
+}
+
+// The Hyprland DSL's modifier words, the vocabulary config/hypr/bindings.lua and
+// default/hypr/bindings/*.lua already write ("SUPER + SHIFT + R"), mapped onto
+// Qt.KeyboardModifier flags. Keyed lower-case; the lookup folds case.
+var MODIFIER_MAP = {
+  "super": 0x10000000,
+  "ctrl": 0x04000000,
+  "alt": 0x08000000,
+  "shift": 0x02000000
+}
+
+// One binding is one string in the Hyprland DSL: "CTRL + J". See docs/menu.md.
+// Nothing half-resolved gets through: an unknown modifier fails the whole
+// binding rather than dropping to the bare key, or "CTL + J" would leave a live
+// binding on plain J -- taking the letter away from menu search, since the
+// dispatch consults bindings before it treats a keystroke as typing.
+function parseBinding(spec, action) {
+  var text = String(spec === undefined || spec === null ? "" : spec).trim()
+  if (!text) return null
+
+  // The action is what a reader needs to find the offending line; the binding
+  // alone does not say which entry it was under. Optional, so parseBinding
+  // stays callable on its own.
+  var where = action ? " for " + action : ""
+
+  var parts = text.split("+")
+  var key = resolveKeyName(parts.pop().trim())
+  if (!key) {
+    console.warn("menu keybindings: unknown key in " + JSON.stringify(spec) + where)
+    return null
+  }
+
+  var modifiers = 0
+  for (var i = 0; i < parts.length; i++) {
+    var name = parts[i].trim().toLowerCase()
+    if (!MODIFIER_MAP.hasOwnProperty(name)) {
+      console.warn("menu keybindings: unknown modifier in " + JSON.stringify(spec) + where)
+      return null
+    }
+    modifiers |= MODIFIER_MAP[name]
+  }
+  return { key: key, modifiers: modifiers }
+}
+
+// Key names are Qt's, folded to lower case for the lookup. A single character
+// stands for itself, so only the named keys need a table entry.
+function resolveKeyName(name) {
+  var text = String(name === undefined || name === null ? "" : name)
+  if (!text) return 0
+
+  var lower = text.toLowerCase()
+  if (KEY_NAME_MAP.hasOwnProperty(lower)) return KEY_NAME_MAP[lower]
+  if (text.length === 1) return text.toUpperCase().charCodeAt(0)
+  return 0
+}
+
+// Resolve a keybindings block into the {action: [{key, modifiers}]} form the
+// dispatch matches against. An action listed with an empty array unbinds it, so
+// a default can be dropped without replacing it; an action not listed at all
+// keeps whatever the defaults bound.
+//
+// An action whose keys all fail to resolve is left out rather than emitted
+// empty, so only a list written as [] reaches mergeKeybindings as an unbind. A
+// typo costs you the key you misspelled, not the shipped ones it was joining.
+function normalizeKeybindings(source) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return null
+
+  var out = {}
+  for (var action in source) {
+    var specs = source[action]
+    if (!Array.isArray(specs)) continue
+
+    var combos = []
+    for (var i = 0; i < specs.length; i++) {
+      var combo = parseBinding(specs[i], action)
+      if (combo) combos.push(combo)
+    }
+    if (specs.length > 0 && combos.length === 0) continue
+    out[action] = combos
+  }
+  return out
+}
+
+function parseMenuKeybindings(raw) {
+  var parsed = parseJsoncObject(raw)
+  if (!parsed) return null
+  return normalizeKeybindings(parsed.keybindings)
+}
+
+// User keys are added to the shipped ones rather than replacing them, so
+// binding CTRL + N to next does not cost you DOWN. Unbinding is therefore an
+// explicit act: an action written as [] drops its keys entirely. Shipped keys
+// come first, which only matters for the order bindingMatches reports a hit in.
+function mergeKeybindings(defaults, user) {
+  var out = {}
+  var base = defaults || {}
+  for (var action in base) out[action] = base[action]
+  if (user) {
+    for (var override in user) {
+      var added = user[override]
+      if (!added.length) out[override] = []
+      else out[override] = (out[override] || []).concat(added)
+    }
+  }
+  return out
+}
+
+// Qt.KeypadModifier, which Qt sets on every key the numeric keypad sends --
+// Key_Enter is by definition the keypad's Return, so the shipped
+// "ENTER" binding carries the bit on arrival and nothing else. It says
+// where a key sits on the keyboard, not what the user held down, so it is
+// cleared before comparing; leaving it in is what stopped keypad Enter and the
+// keypad arrows from reaching the menu.
+var IGNORED_MODIFIERS = 0x20000000
+
+// Qt numbers every non-character key at or above this; below it a key value is
+// the character's own code, which is why a single character resolves to itself.
+var FIRST_NON_CHARACTER_KEY = 0x01000000
+
+// An unmodified binding on a non-character key ignores what was held, because
+// the hardcoded chain this replaced tested `event.key === Qt.Key_Down` with no
+// modifier check at all: SHIFT + DOWN moved the selection, CTRL + RETURN
+// activated. Keeping that is what makes the shipped defaults behave as they did.
+//
+// It is safe only there. A character key stays exact or CTRL + J would fire a
+// bare J binding and take the letter from search, and a binding that names its
+// own modifiers stays exact so CTRL + SHIFT + J never fires CTRL + J.
+//
+// One rule about the filter, and it belongs to back alone: an unmodified back
+// binding steps aside while the search box has text, so LEFT moves through what
+// you are typing instead of leaving the submenu, and a bare H bound to back
+// types an h. Hold something -- CTRL + H -- and the binding stays live, because
+// nobody types that into a search. The other actions keep working mid-search;
+// navigating and activating a filtered list is the point of filtering it.
+function bindingMatches(action, combos, event, filterHasText) {
+  if (!combos || !event) return false
+
+  var modifiers = event.modifiers & ~IGNORED_MODIFIERS
+  for (var i = 0; i < combos.length; i++) {
+    var combo = combos[i]
+    if (action === "back" && filterHasText && combo.modifiers === 0) continue
+    if (event.key !== combo.key) continue
+    if (combo.modifiers === 0 && combo.key >= FIRST_NON_CHARACTER_KEY) return true
+    if (modifiers === combo.modifiers) return true
+  }
+  return false
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     guardReaders: GUARD_READERS,
     guardScript: guardScript,
     stripJsonc: stripJsonc,
+    parseBinding: parseBinding,
+    parseJsoncObject: parseJsoncObject,
     normalizeAliases: normalizeAliases,
     normalizeItem: normalizeItem,
     parseMenuJsonc: parseMenuJsonc,
@@ -519,6 +722,11 @@ if (typeof module !== "undefined") {
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
-    displayRow: displayRow
+    displayRow: displayRow,
+    defaultKeybindings: DEFAULT_KEYBINDINGS,
+    normalizeKeybindings: normalizeKeybindings,
+    parseMenuKeybindings: parseMenuKeybindings,
+    mergeKeybindings: mergeKeybindings,
+    bindingMatches: bindingMatches
   }
 }
