@@ -5,7 +5,11 @@
 echo
 
 confirm_reboot() {
-  gum confirm "$1" && { omarchy-system-reboot; exit 0; }
+  if [[ ${OMARCHY_UPDATE_UNATTENDED:-} == 1 ]]; then
+    echo "$1 Reboot when convenient."
+  else
+    gum confirm "$1" && { omarchy-system-reboot; exit 0; }
+  fi
 }
 
 running_kernel=$(uname -r)

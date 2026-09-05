@@ -8,6 +8,12 @@ When new releases are made, a circle arrow icon will appear to the right of your
 
 ![update-available](images/update-available.webp)
 
+### Non-interactive updates
+
+Run `omarchy update --yes` (or `omarchy update -y`) to update from a script or a shell without a TTY. This skips interactive prompts but still runs the complete update pipeline, including the transcript, snapshot, migrations, hooks, and restart checks. Optional actions that require an answer, such as removing orphaned packages, are reported and skipped.
+
+The command may still need non-interactive sudo authorization for system package updates.
+
 ### Four channels
 
 Omarchy is updated along four channels: stable, RC, edge, and dev. New installations start on the stable channel, which tracks the [official releases](https://github.com/basecamp/omarchy/releases/), as well as the [stable Omarchy Arch mirror](https://github.com/omacom-io/omarchy-mirror) that's running one month behind the latest, so we can catch any new incompatibilities that require config changes before they cause problems for people.
