@@ -4,6 +4,11 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+status_owner=$(rg -l 'omarchy-voxtype-status' "$ROOT/shell" --glob '*.qml')
+[[ $status_owner == "$ROOT/shell/plugins/services/dictation/Service.qml" ]] ||
+  fail "Voxtype status has exactly one owner in the shared dictation service"
+pass "Voxtype status has exactly one owner in the shared dictation service"
+
 TMPDIR=""
 QS_PID=""
 

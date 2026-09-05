@@ -42,11 +42,17 @@ ShellRoot {
   }
 
   QtObject {
+    id: dictationService
+    property string dictationState: "idle"
+  }
+
+  QtObject {
     id: mockShell
     function firstPartyServiceFor(id) {
       if (id === "omarchy.notifications") return notificationService
       if (id === "omarchy.idle") return idleService
       if (id === "omarchy.nightlight") return nightlightService
+      if (id === "omarchy.dictation") return dictationService
       return null
     }
   }
@@ -202,6 +208,13 @@ ShellRoot {
       if (dictation) {
         dictation.moduleName = "Dictation"
         root.injectBar(dictation)
+        root.assertTrue(dictation.state === "idle" && !dictation.active, "Dictation reads idle state from the shared service")
+        dictationService.dictationState = "recording"
+        root.assertTrue(dictation.state === "recording" && dictation.active, "Dictation reads recording state from the shared service")
+        root.assertTrue(dictation.activeText === "󰍬", "Dictation shows the recording icon")
+        dictationService.dictationState = "transcribing"
+        root.assertTrue(dictation.state === "transcribing" && !dictation.active, "Dictation reads transcribing state from the shared service")
+        root.assertTrue(dictation.icon === "󰔟", "Dictation tracks the transcribing icon")
         dictation.triggerPress(Qt.LeftButton)
         dictation.triggerPress(Qt.RightButton)
         root.assertTrue(root.commandCount("omarchy-voxtype-config") === 2, "Dictation clicks run config command")

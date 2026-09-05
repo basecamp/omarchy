@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.dictation",
+  "name": "Dictation",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Shares Voxtype dictation status with every bar surface.",
+  "kinds": [
+    "service"
+  ],
+  "entryPoints": {
+    "service": "Service.qml"
+  }
+}
