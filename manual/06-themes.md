@@ -4,7 +4,7 @@ Omarchy comes with twenty-two beautiful themes. You can select between them via 
 
 Each theme styles the desktop, terminal, neovim, activity screen (btop), Chromium, and the entire Omarchy shell: top bar, menu, notifications, OSD, and the lock screen. (For Obsidian, you must manually select the Omarchy theme via _Appearance > Themes_ inside the app).
 
-Themes have a set of background images that you can pick between using `Super + Ctrl + Space`.
+Themes have a set of background images that you can pick between using `Super + Ctrl + Space`. You can also see them from the theme selector itself: left and right move between themes, and up and down cycle through the backgrounds that theme ships, so you can see exactly what you're picking before you pick it. The background you stop on is the one you get.
 
 You can find even more themes on [the extra themes page](https://omarchy.org/themes/) or even [make your own theme](43-making-your-own-theme.md).
 

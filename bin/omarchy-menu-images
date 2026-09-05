@@ -1,12 +1,15 @@
 #!/bin/bash
 
 # omarchy:summary=Open a generic image selector menu
-# omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>...
+# omarchy:args=[--selected <image>] [--print-name] [--show-labels] [--filterable] [--group-by-dir] [--item-label <name>] [--variant-label <name>] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>...
 
 selected_image=""
 print_name=false
 show_labels=false
 filterable=false
+group_by_dir=false
+item_label=""
+variant_label=""
 lazy_thumbnails=false
 prepare_only=false
 preload=false
@@ -14,7 +17,7 @@ cache_only=false
 image_dirs=()
 
 usage() {
-  echo "Usage: omarchy-menu-images [--selected <image>] [--print-name] [--show-labels] [--filterable] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>..."
+  echo "Usage: omarchy-menu-images [--selected <image>] [--print-name] [--show-labels] [--filterable] [--group-by-dir] [--item-label <name>] [--variant-label <name>] [--lazy-thumbnails] [--preload] [--cache-only] <image-dir>..."
 }
 
 while (( $# > 0 )); do
@@ -39,6 +42,24 @@ while (( $# > 0 )); do
     --filterable)
       filterable=true
       shift
+      ;;
+    --group-by-dir)
+      group_by_dir=true
+      shift
+      ;;
+    --item-label | --variant-label)
+      if (( $# < 2 )); then
+        usage >&2
+        exit 1
+      fi
+
+      if [[ $1 == "--item-label" ]]; then
+        item_label="$2"
+      else
+        variant_label="$2"
+      fi
+
+      shift 2
       ;;
     --lazy-thumbnails)
       lazy_thumbnails=true
@@ -75,8 +96,9 @@ fi
 selection_file=$(mktemp)
 done_file=$(mktemp)
 pending_file=$(mktemp)
+lazy_file=$(mktemp)
 rm -f "$done_file"
-trap 'rm -f "$selection_file" "$done_file" "$pending_file"' EXIT
+trap 'rm -f "$selection_file" "$done_file" "$pending_file" "$lazy_file"' EXIT
 
 image_dirs_env=""
 for dir in "${image_dirs[@]}"; do
@@ -111,11 +133,12 @@ cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
 rows_cache_file="$cache_dir/$cache_key.rows"
 rows_signature_file="$cache_dir/$cache_key.signature"
 rows_fast_signature_file="$cache_dir/$cache_key.fast-signature"
-rows_signature="v3"$'\n'
-rows_fast_signature="v2"$'\n'
+rows_signature="v3"$'\n'"group-by-dir:$group_by_dir"$'\n'
+rows_fast_signature="v2"$'\n'"group-by-dir:$group_by_dir"$'\n'
 rows_cacheable=true
 rows_cache_hit=false
 image_files=()
+image_groups=()
 
 for dir in "${image_dirs[@]}"; do
   [[ -d $dir ]] && rows_fast_signature+="$dir:$(stat -Lc '%Y' "$dir")"$'\n'
@@ -129,8 +152,12 @@ else
     if [[ -d $dir ]]; then
       rows_signature+="$dir:$(stat -Lc '%Y' "$dir")"$'\n'
 
+      group=${dir%/}
+      group=${group##*/}
+
       while IFS= read -r -d '' image; do
         image_files+=("$image")
+        image_groups+=("$group")
         image_signature=$(stat -Lc '%s:%Y' "$image") || continue
         rows_signature+="$image:$image_signature"$'\n'
       done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print0 2>/dev/null | sort -z)
@@ -190,7 +217,7 @@ thumbnail_for() {
       rows_cacheable=false
 
       if [[ $prepare_only != true ]]; then
-        generate_thumbnail "$image" "$thumbnail" >/dev/null 2>&1 &
+        printf '%s\0%s\0' "$image" "$thumbnail" >>"$lazy_file"
       fi
 
       printf '%s' "$image"
@@ -204,46 +231,75 @@ thumbnail_for() {
 }
 
 # Generate every queued thumbnail at once; each vips run is single-threaded.
-drain_pending_thumbnails() {
-  [[ -s $pending_file ]] || return 0
+drain_thumbnails() {
+  local queue="$1"
+
+  [[ -s $queue ]] || return 0
 
   export -f generate_thumbnail
-  xargs -a "$pending_file" -0 -n 2 -P "$(nproc)" \
+  xargs -a "$queue" -0 -n 2 -P "$(nproc)" \
     bash -c 'generate_thumbnail "$1" "$2"' _ >/dev/null 2>&1 || true
+}
+
+# Rows already point at the original images, so these only need to land before
+# the next open. One bounded batch keeps a picker carrying every theme's
+# backgrounds from forking a generator per image the moment it opens.
+drain_lazy_thumbnails() {
+  local queue
+
+  [[ -s $lazy_file ]] || return 0
+
+  queue=$(mktemp)
+  mv "$lazy_file" "$queue"
+
+  # Detached from stdout: a caller reading our selection back over a pipe must
+  # not wait on the generators.
+  (
+    trap 'rm -f "$queue"' EXIT
+    drain_thumbnails "$queue"
+  ) >/dev/null 2>&1 &
 }
 
 if [[ $rows_cache_hit != true && -f $rows_cache_file && -f $rows_signature_file ]] && cmp -s "$rows_signature_file" <(printf '%s' "$rows_signature"); then
   rows=$(<"$rows_cache_file")
   printf '%s' "$rows_fast_signature" >"$rows_fast_signature_file"
 elif [[ $rows_cache_hit != true ]]; then
-  for image in "${image_files[@]}"; do
+  for index in "${!image_files[@]}"; do
+    image="${image_files[$index]}"
     thumbnail=$(thumbnail_for "$image")
     [[ -n $thumbnail ]] || continue
     if [[ $lazy_thumbnails == true && $cache_only != true && $thumbnail == $image ]]; then
       rows_cacheable=false
     fi
 
+    row="$image"$'\t'"$thumbnail"
+    [[ $group_by_dir == true ]] && row+=$'\t'"${image_groups[$index]}"
+
     if [[ -z $rows ]]; then
-      rows="$image"$'\t'"$thumbnail"
+      rows="$row"
     else
-      rows+=$'\n'"$image"$'\t'"$thumbnail"
+      rows+=$'\n'"$row"
     fi
   done
 
-  drain_pending_thumbnails
+  drain_thumbnails "$pending_file"
+  drain_lazy_thumbnails
 
   if [[ -s $pending_file ]]; then
     pruned=""
-    while IFS=$'\t' read -r row_image row_thumbnail; do
+    while IFS=$'\t' read -r row_image row_thumbnail row_group; do
       if [[ ! -e $row_thumbnail ]]; then
         rows_cacheable=false
         continue
       fi
 
+      row="$row_image"$'\t'"$row_thumbnail"
+      [[ -n $row_group ]] && row+=$'\t'"$row_group"
+
       if [[ -z $pruned ]]; then
-        pruned="$row_image"$'\t'"$row_thumbnail"
+        pruned="$row"
       else
-        pruned+=$'\n'"$row_image"$'\t'"$row_thumbnail"
+        pruned+=$'\n'"$row"
       fi
     done <<<"$rows"
     rows="$pruned"
@@ -288,7 +344,9 @@ if ! open_result=$(omarchy-shell image-selector open \
      "$selection_file" \
      "$done_file" \
      "$show_labels" \
-     "$filterable"); then
+     "$filterable" \
+     "$item_label" \
+     "$variant_label"); then
   echo "Image selector failed to accept request" >&2
   exit 1
 fi
@@ -305,8 +363,14 @@ done
 if [[ -s $selection_file ]]; then
   if [[ $print_name == true ]]; then
     selection=$(<"$selection_file")
-    selection=${selection##*/}
-    printf '%s\n' "${selection%.*}"
+
+    if [[ $group_by_dir == true ]]; then
+      selection=${selection%/*}
+      printf '%s\n' "${selection##*/}"
+    else
+      selection=${selection##*/}
+      printf '%s\n' "${selection%.*}"
+    fi
   else
     cat "$selection_file"
   fi

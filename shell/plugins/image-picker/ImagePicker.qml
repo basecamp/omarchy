@@ -19,10 +19,14 @@ Item {
   property string selectionFile: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTION_FILE") || Quickshell.env("OMARCHY_BACKGROUND_SELECTION_FILE")
   property string selectedImage: Quickshell.env("OMARCHY_IMAGE_SELECTOR_SELECTED")
   property int selectedIndex: 0
+  property int selectedVariant: 0
   property bool imagesLoaded: false
   property bool opened: false
   property bool showLabels: false
   property bool filterable: false
+  // Only the caller knows whether left and right walk themes or wallpapers.
+  property string itemLabel: ""
+  property string variantLabel: ""
   property bool layoutSettled: false
   property bool requestActive: false
   property int requestSerial: 0
@@ -44,7 +48,21 @@ Item {
   property int sliceHeight: 432
   property int sliceSpacing: -30
   property int skewOffset: 28
-  property int bottomChromeHeight: showLabels ? (filterable ? 104 : 74) : (filterable ? 60 : 30)
+  // The vertical peek is a slice turned on its side, so both axes expose the
+  // same fraction of a neighbour and retuning one carries the other.
+  readonly property real peekScale: expandedHeight / expandedWidth
+  readonly property int variantPeekHeight: Math.round(sliceWidth * peekScale)
+  readonly property int variantPeekOverlap: Math.round(-sliceSpacing * peekScale)
+  // Reserved from the whole model: a theme shipping one background would
+  // otherwise shift the preview whenever selection landed on it.
+  readonly property bool hasVariants: ImagePickerModel.maxVariantCount(imageArray) > 1
+  readonly property int variantPeekInset: hasVariants ? variantPeekHeight - variantPeekOverlap : 0
+  readonly property int columnHeight: expandedHeight + 2 * variantPeekInset
+  // Leaning the taller column at the preview's old rate keeps its edges put.
+  readonly property real columnSkew: skewOffset * (columnHeight / expandedHeight)
+  readonly property bool showsNavigationHint: imageArray.length > 1 || hasVariants
+  readonly property int navigationHintHeight: showsNavigationHint ? Style.space(20) : 0
+  property int bottomChromeHeight: (showLabels ? (filterable ? 104 : 74) : (filterable ? 60 : 30)) + navigationHintHeight
 
   onOpenedChanged: if (!opened) layoutSettled = false
 
@@ -68,22 +86,47 @@ Item {
 
   function currentPath() {
     if (imageArray.length === 0 || !itemMatches(selectedIndex)) return ""
-    return imageArray[selectedIndex].filePath
+    var variant = ImagePickerModel.variantAt(imageArray, selectedIndex, selectedVariant)
+    return variant ? variant.filePath : ""
   }
 
-  function nameForPath(path) {
-    return ImagePickerModel.nameForPath(path)
+  function variantCount(index) {
+    return ImagePickerModel.variantCount(imageArray, index)
   }
 
-  function labelForPath(path) {
-    return ImagePickerModel.labelForPath(path)
+  function variantThumbnail(index, variant) {
+    var value = ImagePickerModel.variantAt(imageArray, index, variant)
+    return value ? value.thumbnailPath : ""
+  }
+
+  function variantPeek(offset) {
+    if (variantCount(selectedIndex) <= 1) return ""
+    return variantThumbnail(selectedIndex, selectedVariant + offset)
+  }
+
+  function cycleVariant(direction) {
+    var count = variantCount(selectedIndex)
+    if (count <= 1) return
+
+    selectedVariant = (selectedVariant + direction + count) % count
+  }
+
+  function navigationHintText() {
+    var hints = []
+
+    if (imageArray.length > 1)
+      hints.push("\u2190 \u2192" + (itemLabel ? "  " + itemLabel : ""))
+
+    if (variantCount(selectedIndex) > 1)
+      hints.push("\u2191 \u2193" + (variantLabel ? "  " + variantLabel : ""))
+
+    return hints.join("\u2003\u2003")
   }
 
   function currentLabel() {
-    var path = currentPath()
-    if (!path) return filterText ? "No matches" : ""
+    if (!currentPath()) return filterText ? "No matches" : ""
 
-    return labelForPath(path)
+    return ImagePickerModel.labelForItem(imageArray, selectedIndex)
   }
 
   function itemMatches(index) {
@@ -110,6 +153,7 @@ Item {
     if (index === selectedIndex && immediate !== true) return
 
     selectedIndex = index
+    selectedVariant = 0
   }
 
   function selectAdjacent(direction) {
@@ -131,7 +175,10 @@ Item {
 
     if (!itemMatches(selectedIndex)) {
       var first = ImagePickerModel.nextSelectedIndexForFilter(imageArray, selectedIndex, filterText)
-      if (first >= 0) selectedIndex = first
+      if (first >= 0) {
+        selectedIndex = first
+        selectedVariant = 0
+      }
     }
   }
 
@@ -195,10 +242,12 @@ Item {
 
   function loadRows(rows, reveal) {
     var newImages = ImagePickerModel.loadRows(rows)
+    var location = root.locateSelectedImage(newImages)
 
     root.loadedImageRows = rows
-    root.selectedIndex = root.indexForSelectedImage(newImages)
+    root.selectedIndex = location.index
     root.imageArray = newImages
+    root.selectedVariant = location.variant
     root.imagesLoaded = true
 
     if (reveal !== false) {
@@ -207,7 +256,7 @@ Item {
     }
   }
 
-  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable) {
+  function openSelector(nextImageDirs, nextImageRows, nextSelectedImage, nextSelectionFile, nextDoneFile, nextShowLabels, nextFilterable, nextItemLabel, nextVariantLabel) {
     if (requestActive && doneFile && doneFile !== nextDoneFile)
       finishDoneFile(doneFile)
 
@@ -221,11 +270,15 @@ Item {
     requestActive = !!doneFile
     showLabels = nextShowLabels === true || nextShowLabels === "true"
     filterable = nextFilterable === true || nextFilterable === "true"
+    itemLabel = nextItemLabel || ""
+    variantLabel = nextVariantLabel || ""
     filterText = ""
     layoutSettled = false
 
     if (imageRows && imageRows === loadedImageRows && imageArray.length > 0) {
-      root.select(root.selectedImageIndex(), true)
+      var location = root.locateSelectedImage(imageArray)
+      root.select(location.index, true)
+      root.selectedVariant = location.variant
       imagesLoaded = true
       opened = true
       root.revealWhenSettled(requestSerial)
@@ -237,6 +290,7 @@ Item {
       var rowsSerial = requestSerial
       imageArray = []
       selectedIndex = 0
+      selectedVariant = 0
       imagesLoaded = true
       opened = true
       Qt.callLater(function() {
@@ -248,6 +302,7 @@ Item {
 
     imageArray = []
     selectedIndex = 0
+    selectedVariant = 0
     imagesLoaded = false
     opened = false
     startImageScan(requestSerial, imageDirs)
@@ -269,12 +324,8 @@ Item {
     loadImagesProc.running = true
   }
 
-  function indexForSelectedImage(images) {
-    return ImagePickerModel.indexForSelectedImage(images, selectedImage)
-  }
-
-  function selectedImageIndex() {
-    return indexForSelectedImage(imageArray)
+  function locateSelectedImage(images) {
+    return ImagePickerModel.locateImage(images, selectedImage)
   }
 
   Process {
@@ -316,7 +367,8 @@ Item {
     var doneF = String(args.doneFile || "")
     var labels = args.showLabels === true || args.showLabels === "true"
     var filter = args.filterable === true || args.filterable === "true"
-    openSelector(dirs, rows, sel, selFile, doneF, labels, filter)
+    openSelector(dirs, rows, sel, selFile, doneF, labels, filter,
+                 String(args.itemLabel || ""), String(args.variantLabel || ""))
   }
 
   function close() {
@@ -339,7 +391,9 @@ Item {
     layoutSettled = false
 
     if (imageRows && imageRows === loadedImageRows && imageArray.length > 0) {
-      selectedIndex = selectedImageIndex()
+      var location = root.locateSelectedImage(imageArray)
+      selectedIndex = location.index
+      selectedVariant = location.variant
       imagesLoaded = true
     } else if (imageRows) {
       loadRows(imageRows, false)
@@ -386,7 +440,7 @@ Item {
       id: card
       visible: root.opened && root.imagesLoaded && root.layoutSettled && root.imageArray.length > 0
       width: Math.min(parent.width - 80, root.expandedWidth + 13 * (root.sliceWidth + root.sliceSpacing) + 40)
-      height: root.expandedHeight + Style.space(30) + root.bottomChromeHeight
+      height: root.columnHeight + Style.space(30) + root.bottomChromeHeight
       anchors.centerIn: parent
 
         MouseArea { anchors.fill: parent; onClicked: {} }
@@ -426,6 +480,12 @@ Item {
             } else if (event.key === Qt.Key_Right || event.key === Qt.Key_Tab) {
               root.selectAdjacent(1)
               event.accepted = true
+            } else if (event.key === Qt.Key_Up) {
+              root.cycleVariant(-1)
+              event.accepted = true
+            } else if (event.key === Qt.Key_Down) {
+              root.cycleVariant(1)
+              event.accepted = true
             } else if (root.filterable && event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)) {
               root.updateFilter(root.filterText + event.text)
               event.accepted = true
@@ -444,7 +504,7 @@ Item {
               readonly property var imageData: root.imageArray[index]
               readonly property string filePath: imageData ? imageData.filePath : ""
               readonly property string fileName: imageData ? imageData.fileName : ""
-              readonly property string thumbnailPath: imageData ? imageData.thumbnailPath : ""
+              readonly property string thumbnailPath: selected ? root.variantThumbnail(index, root.selectedVariant) : (imageData ? imageData.thumbnailPath : "")
 
               readonly property bool matched: root.itemMatches(index)
               readonly property int relativeIndex: root.filteredPosition(index) - root.selectedFilteredPosition()
@@ -457,81 +517,24 @@ Item {
               x: selected ? carousel.previewX : (relativeIndex < 0 ? carousel.previewX + relativeIndex * carousel.itemStep : carousel.previewX + root.expandedWidth + root.sliceSpacing + (relativeIndex - 1) * carousel.itemStep)
               width: selected ? root.expandedWidth : root.sliceWidth
               height: selected ? root.expandedHeight : root.sliceHeight
-              y: selected ? 0 : (root.expandedHeight - root.sliceHeight) / 2
+              y: root.variantPeekInset + (selected ? 0 : (root.expandedHeight - root.sliceHeight) / 2)
               z: selected ? 100 : 50 - Math.min(Math.abs(relativeIndex), 40)
 
-              readonly property real skAbs: Math.abs(root.skewOffset)
-              readonly property real topLeft: root.skewOffset >= 0 ? skAbs : 0
-              readonly property real topRight: root.skewOffset >= 0 ? width : width - skAbs
-              readonly property real bottomRight: root.skewOffset >= 0 ? width - skAbs : width
-              readonly property real bottomLeft: root.skewOffset >= 0 ? 0 : skAbs
-
-              Item {
-                id: maskShape
+              // The selected item leans as part of the column it shares with
+              // its bands; every other slice is its own column.
+              SkewedImage {
                 anchors.fill: parent
-                visible: false
-                layer.enabled: true
-
-                Shape {
-                  anchors.fill: parent
-                  antialiasing: true
-                  preferredRendererType: Shape.CurveRenderer
-                  ShapePath {
-                    fillColor: "white"
-                    strokeColor: "transparent"
-                    startX: item.topLeft; startY: 0
-                    PathLine { x: item.topRight; y: 0 }
-                    PathLine { x: item.bottomRight; y: item.height }
-                    PathLine { x: item.bottomLeft; y: item.height }
-                    PathLine { x: item.topLeft; y: 0 }
-                  }
-                }
-              }
-
-              Item {
-                anchors.fill: parent
-                layer.enabled: true
-                layer.smooth: true
-                layer.effect: MultiEffect {
-                  maskEnabled: true
-                  maskSource: maskShape
-                  maskThresholdMin: 0.3
-                  maskSpreadAtMin: 0.3
-                }
-
-                Image {
-                  id: image
-                  anchors.fill: parent
-                  // Load only the initial/visited nearby images, but keep the
-                  // source once activated so Qt does not tear textures down as
-                  // selection moves through the carousel.
-                  source: item.sourceActivated && item.thumbnailPath ? Util.fileUrl(item.thumbnailPath) : ""
-                  fillMode: Image.PreserveAspectCrop
-                  asynchronous: false
-                  cache: true
-                  smooth: true
-                }
-
-                Rectangle {
-                  anchors.fill: parent
-                  color: Util.alpha(root.dimColor, item.selected ? 0 : 0.42)
-                }
-              }
-
-              Shape {
-                anchors.fill: parent
-                antialiasing: true
-                preferredRendererType: Shape.CurveRenderer
-                ShapePath {
-                  fillColor: "transparent"
-                  strokeColor: item.selected ? root.selectedBorder : root.unselectedBorder
-                  strokeWidth: item.selected ? 3 : 1
-                  startX: item.topLeft; startY: 0
-                  PathLine { x: item.topRight; y: 0 }
-                  PathLine { x: item.bottomRight; y: item.height }
-                  PathLine { x: item.bottomLeft; y: item.height }
-                  PathLine { x: item.topLeft; y: 0 }
-                }
+                // Load only the initial/visited nearby images, but keep the
+                // source once activated so Qt does not tear textures down as
+                // selection moves through the carousel.
+                source: item.sourceActivated ? item.thumbnailPath : ""
+                skewOffset: item.selected ? root.columnSkew : root.skewOffset
+                columnHeight: item.selected ? root.columnHeight : item.height
+                columnTop: item.selected ? root.variantPeekInset : 0
+                dimColor: root.dimColor
+                dimOpacity: item.selected ? 0 : 0.42
+                borderColor: item.selected ? root.selectedBorder : root.unselectedBorder
+                borderWidth: item.selected ? 3 : 1
               }
 
               MouseArea {
@@ -540,6 +543,41 @@ Item {
                 onClicked: item.selected ? root.applySelected() : root.select(index)
               }
             }
+          }
+
+          // The vertical answer to the slices fanned out either side.
+          SkewedImage {
+            visible: root.variantCount(root.selectedIndex) > 1
+            x: carousel.previewX
+            y: 0
+            z: 90
+            width: root.expandedWidth
+            height: root.variantPeekHeight
+            source: root.variantPeek(-1)
+            skewOffset: root.columnSkew
+            columnHeight: root.columnHeight
+            columnTop: 0
+            dimColor: root.dimColor
+            dimOpacity: 0.42
+            borderColor: root.unselectedBorder
+            borderWidth: 1
+          }
+
+          SkewedImage {
+            visible: root.variantCount(root.selectedIndex) > 1
+            x: carousel.previewX
+            y: root.columnHeight - root.variantPeekHeight
+            z: 90
+            width: root.expandedWidth
+            height: root.variantPeekHeight
+            source: root.variantPeek(1)
+            skewOffset: root.columnSkew
+            columnHeight: root.columnHeight
+            columnTop: root.columnHeight - root.variantPeekHeight
+            dimColor: root.dimColor
+            dimOpacity: 0.42
+            borderColor: root.unselectedBorder
+            borderWidth: 1
           }
         }
 
@@ -563,9 +601,25 @@ Item {
 
         Text {
           textFormat: Text.PlainText
+          id: navigationHint
+          visible: root.showsNavigationHint
+          // A hidden label still holds its slot, which the chrome has no room for.
+          anchors.top: root.showLabels ? selectedLabel.bottom : carousel.bottom
+          anchors.topMargin: Style.space(root.showLabels ? 10 : 16)
+          anchors.horizontalCenter: carousel.horizontalCenter
+          text: root.navigationHintText()
+          color: root.foreground
+          opacity: 0.5
+          style: Text.Outline
+          styleColor: Util.alpha(root.dimColor, 0.7)
+          font.pixelSize: Style.font.subtitle
+        }
+
+        Text {
+          textFormat: Text.PlainText
           visible: root.filterable && root.filterText
-          anchors.top: selectedLabel.bottom
-          anchors.topMargin: Style.space(8)
+          anchors.top: navigationHint.bottom
+          anchors.topMargin: Style.space(6)
           anchors.horizontalCenter: carousel.horizontalCenter
           width: root.expandedWidth
           text: root.filterText

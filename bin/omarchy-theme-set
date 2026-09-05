@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # omarchy:summary=Apply an Omarchy theme
-# omarchy:args=<theme-name>
-# omarchy:examples=omarchy theme list | omarchy theme set "Tokyo Night"
+# omarchy:args=<theme-name> [background]
+# omarchy:examples=omarchy theme list | omarchy theme set "Tokyo Night" | omarchy theme set nord 1-city-view.webp
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-theme-set <theme-name>"
+  echo "Usage: omarchy-theme-set <theme-name> [background]"
   exit 1
 fi
 
@@ -81,6 +81,18 @@ choose_theme_background() {
   )
 
   (( ${#backgrounds[@]} > 0 )) || return 1
+
+  # Matched by name: the picker points at a theme's own directory, while what is
+  # applied here is the staged copy. Anything the theme does not carry falls
+  # through to the rotation.
+  if [[ -n $REQUESTED_BACKGROUND ]]; then
+    for i in "${!backgrounds[@]}"; do
+      if [[ ${backgrounds[$i]##*/} == "${REQUESTED_BACKGROUND##*/}" ]]; then
+        CHOSEN_THEME_BACKGROUND="${backgrounds[$i]}"
+        return 0
+      fi
+    done
+  fi
 
   current_background=$(readlink "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
   index=-1
@@ -240,6 +252,7 @@ report_ignored_theme_files() {
 }
 
 THEME_NAME=$(echo "$1" | sed -E 's/<[^>]+>//g' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+REQUESTED_BACKGROUND="${2:-}"
 THEME_HEADLESS=0
 if [[ ${OMARCHY_THEME_HEADLESS:-} == "1" || ${OMARCHY_THEME_OFFLINE:-} == "1" ]]; then
   THEME_HEADLESS=1

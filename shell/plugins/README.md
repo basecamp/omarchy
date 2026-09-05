@@ -59,19 +59,30 @@ Two ways to drive it:
 
 - Shell-level summon: `omarchy-shell shell summon omarchy.image-picker '<jsonPayload>'`.
   The payload can carry `imageDirs`, `imageRows`, `selectedImage`,
-  `selectionFile`, `doneFile`, `showLabels`, `filterable`. Best for
-  in-shell callers that already speak JSON.
-- Direct IPC target: `omarchy-shell image-selector open <imageDirs> <imageRowsB64> <selectedImage> <selectionFile> <doneFile> <showLabels> <filterable>`.
+  `selectionFile`, `doneFile`, `showLabels`, `filterable`, `itemLabel`,
+  `variantLabel`. The last two name what each axis moves between ("theme",
+  "background") for the arrow-key hint; only the caller knows those. Best
+  for in-shell callers that already speak JSON.
+- Direct IPC target: `omarchy-shell image-selector open <imageDirs> <imageRowsB64> <selectedImage> <selectionFile> <doneFile> <showLabels> <filterable> <itemLabel> <variantLabel>`.
   Positional args; `imageRowsB64` is base64-encoded so embedded newlines /
   tabs survive the bash argv handoff. This is what `omarchy-menu-images`
   uses. Colors come from the central shell theme singleton; there is no
   per-call override surface.
 
+A row is `filePath \t thumbnailPath \t group`, where the group is
+optional. Rows sharing a group collapse into one carousel item: the first
+is what the carousel shows, the rest are variants the picker cycles
+through with up/down while left/right still walks the items. That is how
+the theme picker offers a theme's backgrounds — `omarchy-menu-images
+--group-by-dir` groups each image directory under its own name, and
+`omarchy-theme-switcher` hands it one directory per theme.
+
 The selection round-trip remains file-based: callers create a
 `selection_file` and `done_file` (both `mktemp`), pass the paths, and
-poll `done_file` for existence. The plugin writes the chosen path into
-`selection_file` and touches `done_file` when it's done. `cancel` IPC
-clears it without writing a selection.
+poll `done_file` for existence. The plugin writes the chosen path — the
+variant the user stopped on, for a grouped item — into `selection_file`
+and touches `done_file` when it's done. `cancel` IPC clears it without
+writing a selection.
 
 The plugin has `keepLoaded: true` so the layer-shell window survives
 between summons within a single shell session.
