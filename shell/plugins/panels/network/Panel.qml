@@ -70,6 +70,8 @@ Panel {
   readonly property var wifiDevice: findDevice(DeviceType.Wifi)
   readonly property var wifiNetworkObjects: wifiDevice && wifiDevice.networks ? wifiDevice.networks.values : []
   readonly property var connectedWifiNetwork: findConnectedWifiNetwork()
+  readonly property bool showAdapter: Model.shouldShowAdapter(
+    networkDevices, info.type, DeviceType.Wifi, DeviceType.Wired)
   property var wifiNetworks: []
   property bool scanning: false
   property bool wifiStationAvailable: false
@@ -1377,6 +1379,15 @@ Panel {
             text: root.info.gateway || "--"
             copyable: !!root.info.gateway
             tooltipText: "Copy gateway"
+          }
+
+          InfoLabel {
+            text: "Adapter"
+            visible: root.showAdapter
+          }
+          DetailValue {
+            text: root.info.iface || "--"
+            visible: root.showAdapter
           }
         }
       }

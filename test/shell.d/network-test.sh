@@ -177,6 +177,40 @@ assertDeepEqual(rows.map(row => row.ssid), ['Connected', 'Known', 'Open'], 'netw
 assertEqual(network.wifiSectionTitle(rows, 0), 'KNOWN NETWORKS', 'network labels known wifi section')
 assertEqual(network.wifiSectionTitle(rows, 2), 'OTHER NETWORKS', 'network labels other wifi section')
 
+const wifiType = 2
+const wiredType = 1
+assertEqual(network.shouldShowAdapter([], 'wifi', wifiType, wiredType), false, 'network hides the adapter for no Wi-Fi devices')
+assertEqual(network.shouldShowAdapter([{ type: wifiType }], 'wifi', wifiType, wiredType), false, 'network hides the adapter for one Wi-Fi device')
+assertEqual(
+  network.shouldShowAdapter([{ type: wifiType }, { type: wifiType }], 'wifi', wifiType, wiredType),
+  true,
+  'network shows the adapter for multiple Wi-Fi devices'
+)
+assertEqual(
+  network.shouldShowAdapter([{ type: wifiType }, { type: wiredType }], 'wifi', wifiType, wiredType),
+  false,
+  'network ignores wired devices when deciding whether Wi-Fi is ambiguous'
+)
+assertEqual(
+  network.shouldShowAdapter([{ type: wiredType }, { type: wiredType }], 'ethernet', wifiType, wiredType),
+  true,
+  'network shows the adapter for multiple wired devices'
+)
+assertEqual(
+  network.shouldShowAdapter([{ type: wifiType }, { type: wifiType }], 'ethernet', wifiType, wiredType),
+  false,
+  'network ignores Wi-Fi devices when deciding whether Ethernet is ambiguous'
+)
+assertEqual(
+  network.shouldShowAdapter([{ type: wifiType }, { type: wiredType }], 'disconnected', wifiType, wiredType),
+  false,
+  'network hides adapter detail when disconnected'
+)
+assert(
+  /showAdapter: Model\.shouldShowAdapter\(\s*networkDevices, info\.type, DeviceType\.Wifi, DeviceType\.Wired\)/.test(panelSource),
+  'network wires adapter visibility to the tested model helper'
+)
+
 const wifiRow = network.wifiRow({ connected: true, known: true, name: 'Home', signalStrength: 0.8, security: 1 })
 assertDeepEqual(
   wifiRow,
