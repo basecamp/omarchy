@@ -12,6 +12,8 @@ Item {
 
   readonly property int batteryThreshold: 10
   property string pendingPowerSource: ""
+  property string activePowerProfile: ""
+  readonly property bool powerSaverOnBattery: UPower.onBattery && activePowerProfile === "power-saver"
 
   PersistentProperties {
     id: persisted
@@ -53,11 +55,38 @@ Item {
     powerProfileProcess.running = true
   }
 
+  function refreshPowerProfile() {
+    if (!powerProfileReadProcess.running) powerProfileReadProcess.running = true
+  }
+
   Process { id: warningProcess }
 
   Process {
     id: powerProfileProcess
-    onExited: if (root.pendingPowerSource !== "") root.runPendingPowerProfile()
+    onExited: {
+      if (root.pendingPowerSource !== "") root.runPendingPowerProfile()
+      root.refreshPowerProfile()
+    }
+  }
+
+  Process {
+    id: powerProfileReadProcess
+    command: ["powerprofilesctl", "get"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.activePowerProfile = String(text || "").trim()
+    }
+  }
+
+  Timer {
+    // powerprofilesctl has no portable monitor subcommand; keep profile changes
+    // visible to consumers such as the wallpaper service without requiring the
+    // power panel to be open.
+    interval: 2000
+    running: true
+    repeat: true
+    triggeredOnStart: true
+    onTriggered: root.refreshPowerProfile()
   }
 
   Timer {
@@ -73,6 +102,9 @@ Item {
     function onOnBatteryChanged() {
       root.checkBattery()
       root.applyPowerProfile()
+      root.refreshPowerProfile()
     }
   }
+
+  Component.onCompleted: root.refreshPowerProfile()
 }

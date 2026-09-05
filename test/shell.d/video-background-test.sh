@@ -22,6 +22,7 @@ const lockService = fs.readFileSync(path.join(root, 'shell/plugins/lock/Service.
 const bootIntro = fs.readFileSync(path.join(root, 'bin/omarchy-theme-bg-boot-intro'), 'utf8')
 const themeSet = fs.readFileSync(path.join(root, 'bin/omarchy-theme-set'), 'utf8')
 const directImageList = fs.readFileSync(path.join(root, 'shell/plugins/image-picker/list.sh'), 'utf8')
+const batteryService = fs.readFileSync(path.join(root, 'shell/plugins/services/battery/Service.qml'), 'utf8')
 
 assert(
   /function isVideoPath\(path\)[\s\S]*\.test\(String\(path \|\| ""\)\)/.test(utilQml) &&
@@ -83,10 +84,15 @@ assert(
 )
 assert(
   /sessionObscured:\s*lockActive \|\| screensaverActive/.test(backgroundQml) &&
-    backgroundQml.includes('playbackEnabled: !root.sessionObscured && !panel.fullscreenHere') &&
+    backgroundQml.includes('playbackEnabled: !root.sessionObscured && !root.powerSaverActive && !panel.fullscreenHere') &&
     backgroundQml.includes('omarchy.lock') &&
-    backgroundQml.includes('omarchy.idle'),
-  'desktop playback stops while locked or screensaved, not only while fullscreen'
+    backgroundQml.includes('omarchy.idle') &&
+    backgroundQml.includes('omarchy.battery'),
+  'desktop playback stops while covered or on battery power-saver'
+)
+assert(
+  /path: root\.bootIntroActive \? root\.bootIntroPath : ""[\s\S]*?playbackEnabled: root\.bootIntroActive && !root\.sessionObscured && !panel\.fullscreenHere[\s\S]*?loop: false/.test(backgroundQml),
+  'one-shot boot intros keep playing in battery power-saver'
 )
 assert(
   /fullscreenHere:[\s\S]*?Hyprland\.focusedMonitor\.name \|\| ""\) === String\(modelData\.name/.test(backgroundQml),
@@ -132,10 +138,19 @@ assert(
 )
 assert(
   lockView.includes('playbackEnabled: root.loadBackground && !root.displaysBlank') &&
+    lockView.includes('&& !root.powerSaverActive') &&
     /displaysBlank: root\.displaysBlank/.test(lockService) &&
+    /powerSaverActive: root\.powerSaverActive/.test(lockService) &&
     /function runBlank\(\) \{\s*\n\s*root\.displaysBlank = true/.test(lockService) &&
     /function runWake\(\) \{\s*\n\s*root\.displaysBlank = false/.test(lockService),
-  'the lock screen stops its own playback once the displays go dark'
+  'the lock screen stops playback once displays go dark or power-saver is active'
+)
+assert(
+  batteryService.includes('property string activePowerProfile') &&
+    batteryService.includes('UPower.onBattery && activePowerProfile === "power-saver"') &&
+    batteryService.includes('["powerprofilesctl", "get"]') &&
+    batteryService.includes('interval: 2000'),
+  'the battery service tracks the active power-saver profile'
 )
 assert(
   themeSwitcher.includes("-iname '*.mp4'") &&

@@ -18,6 +18,7 @@ Item {
   // visible from then until the user wakes it, so a video must not keep
   // decoding through what is usually the longest part of a lock.
   property bool displaysBlank: false
+  property bool powerSaverActive: false
   property string passwordText: ""
   property bool syncingPasswordText: false
 
@@ -90,7 +91,7 @@ Item {
       anchors.fill: parent
       path: root.loadBackground ? root.backgroundPath : ""
       version: root.backgroundVersion
-      playbackEnabled: root.loadBackground && !root.displaysBlank
+      playbackEnabled: root.loadBackground && !root.displaysBlank && !root.powerSaverActive
     }
 
     MultiEffect {
