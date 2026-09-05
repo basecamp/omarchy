@@ -1394,6 +1394,7 @@ EOF
   log "Normalizing SDDM login configuration"
   # The omarchy package already installed 10-theme.conf and 10-wayland.conf.
   as_root install -d -m 0755 /etc/sddm.conf.d
+  as_root rm -f /etc/sddm.conf.d/10-wayland.conf.pacsave /usr/share/sddm/hyprland.conf
   cat <<'EOF' | as_root tee /etc/sddm.conf.d/99-omarchy-login.conf >/dev/null
 [Users]
 RememberLastUser=true
