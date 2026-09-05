@@ -19,6 +19,7 @@ if (( EUID == 0 )); then
 fi
 
 NM_DNS_CONF=/etc/NetworkManager/conf.d/20-omarchy-dns.conf
+RESOLVED_DNS_CONF=/etc/systemd/resolved.conf.d/20-omarchy-dns.conf
 
 provider_from_arg() {
   case "${1:-}" in
@@ -86,15 +87,25 @@ networkmanager_global_dns() {
 }
 
 resolved_dns() {
+  # Read our own drop-in where there is one, the way networkmanager_global_dns
+  # reads its own file. The main file is only consulted on a machine still
+  # carrying settings an older Omarchy wrote directly into it.
+  local file=/etc/systemd/resolved.conf
+  if [[ -f $RESOLVED_DNS_CONF ]]; then
+    file=$RESOLVED_DNS_CONF
+  fi
+
+  # An empty DNS= clears the servers before it, so the effective value is the
+  # last non-empty assignment rather than the first one seen.
   awk -F= '
     /^[[:space:]]*#/ { next }
     /^[[:space:]]*DNS[[:space:]]*=/ {
       value=$0
       sub(/^[^=]*=/, "", value)
-      print value
-      exit
+      if (value ~ /[^[:space:]]/) last = value
     }
-  ' /etc/systemd/resolved.conf 2>/dev/null || true
+    END { if (last != "") print last }
+  ' "$file" 2>/dev/null || true
 }
 
 current_dns_provider() {
@@ -143,6 +154,23 @@ split_dns_servers() {
       ipv4_dns+="${ipv4_dns:+ }$clean"
     fi
   done
+}
+
+# Own a drop-in, never /etc/systemd/resolved.conf itself, so DNSSEC=, Domains=
+# and anything else an administrator put there survives a provider change.
+# resolved collects DNS= and FallbackDNS= across the main file and its drop-ins
+# instead of letting the last one win, so each list is cleared with an empty
+# assignment before the new values. That is also what makes a DNS= line an older
+# Omarchy left in resolved.conf inert, without having to work out whether that
+# file was ours to delete.
+#
+# Every drop-in names DNSOverTLS= too. It decides how the servers selected here
+# are reached, so it belongs to the provider rather than to the administrator,
+# and inheriting a DNSOverTLS=yes from the main file would stop a custom
+# resolver that does not speak DoT from answering at all.
+write_resolved_dns() {
+  install -d -m 0755 "$(dirname "$RESOLVED_DNS_CONF")"
+  tee "$RESOLVED_DNS_CONF" >/dev/null
 }
 
 write_networkmanager_dns() {
@@ -262,9 +290,11 @@ case "$provider" in
 Cloudflare)
   write_networkmanager_dns "1.1.1.1,1.0.0.1,2606:4700:4700::1111,2606:4700:4700::1001"
   set_connection_dns "1.1.1.1 1.0.0.1" "2606:4700:4700::1111 2606:4700:4700::1001"
-  tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
+  write_resolved_dns <<'EOF'
 [Resolve]
+DNS=
 DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com 2606:4700:4700::1111#cloudflare-dns.com 2606:4700:4700::1001#cloudflare-dns.com
+FallbackDNS=
 FallbackDNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
 DNSOverTLS=opportunistic
 EOF
@@ -273,9 +303,11 @@ EOF
 Google)
   write_networkmanager_dns "8.8.8.8,8.8.4.4,2001:4860:4860::8888,2001:4860:4860::8844"
   set_connection_dns "8.8.8.8 8.8.4.4" "2001:4860:4860::8888 2001:4860:4860::8844"
-  tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
+  write_resolved_dns <<'EOF'
 [Resolve]
+DNS=
 DNS=8.8.8.8#dns.google 8.8.4.4#dns.google 2001:4860:4860::8888#dns.google 2001:4860:4860::8844#dns.google
+FallbackDNS=
 FallbackDNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
 DNSOverTLS=opportunistic
 EOF
@@ -284,8 +316,15 @@ EOF
 DHCP)
   clear_networkmanager_dns
   clear_connection_dns
-  tee /etc/systemd/resolved.conf >/dev/null <<'EOF'
+  # Clearing both lists is what neutralises servers an older Omarchy wrote
+  # straight into resolved.conf. Empty FallbackDNS= also turns off resolved's
+  # compiled-in fallback servers, which is the intent here: in DHCP mode DNS
+  # comes from the link, rather than quietly from a public resolver when the
+  # link supplies none.
+  write_resolved_dns <<'EOF'
 [Resolve]
+DNS=
+FallbackDNS=
 DNSOverTLS=no
 EOF
   ;;
@@ -308,10 +347,13 @@ Custom)
   # omarchy:heredoc-expands paths=none -- $dns_servers is a normalized,
   # single-line DNS server list; the //,/ turns its comma separators into the
   # spaces resolved.conf wants. It is written as data, not a path or command.
-  tee /etc/systemd/resolved.conf >/dev/null <<EOF
+  write_resolved_dns <<EOF
 [Resolve]
+DNS=
 DNS=${dns_servers//,/ }
+FallbackDNS=
 FallbackDNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net 2620:fe::fe#dns.quad9.net 2620:fe::9#dns.quad9.net
+DNSOverTLS=no
 EOF
   ;;
 esac
