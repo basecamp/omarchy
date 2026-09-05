@@ -324,8 +324,11 @@ function requiresCredentials(security, openSecurity, oweSecurity) {
   return security !== openSecurity && security !== oweSecurity
 }
 
+// Connected networks stay forgettable: deleting the active profile makes
+// NetworkManager drop the connection itself, so no separate disconnect step
+// is needed (mirrors the Bluetooth panel, which forgets connected devices).
 function canForgetNetwork(network) {
-  return !!(network && network.known && !network.connected)
+  return !!(network && network.known)
 }
 
 // The password arrives on stdin and reaches nmcli through the scriptable

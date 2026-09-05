@@ -260,7 +260,8 @@ assertEqual(network.networkFailureReason(99, true, reasons), 'Failed to connect'
 assertEqual(network.canForgetNetwork({ known: true, connected: false, security: security.Owe }), true, 'network can forget known disconnected OWE networks')
 assertEqual(network.canForgetNetwork({ known: true, connected: false, security: security.Open }), true, 'network can forget known disconnected open networks')
 assertEqual(network.canForgetNetwork({ known: false, connected: false, security: security.Owe }), false, 'network cannot forget unknown networks')
-assertEqual(network.canForgetNetwork({ known: true, connected: true, security: security.Owe }), false, 'network cannot forget the connected network')
+assertEqual(network.canForgetNetwork({ known: true, connected: true, security: security.Owe }), true, 'network can forget the connected network')
+assertEqual(network.canForgetNetwork({ known: true, connected: true, security: security.Sae }), true, 'network can forget the connected credentialed network')
 
 assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, true, reasons), true, 'network reprompts when required credentials are missing')
 assertEqual(network.shouldRepromptPassphrase(reasons.NoSecrets, false, reasons), false, 'network does not ask a passwordless network for missing secrets')
