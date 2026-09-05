@@ -14,6 +14,7 @@ Item {
   property int failedAttempts: 0
   property bool inputEnabled: true
   property bool loadBackground: true
+  property bool secure: false
   property string passwordText: ""
   property bool syncingPasswordText: false
 
@@ -70,6 +71,9 @@ Item {
   onPasswordTextChanged: syncPasswordText()
   onInputEnabledChanged: {
     if (inputEnabled) Qt.callLater(forcePasswordFocus)
+  }
+  onSecureChanged: {
+    if (secure) Qt.callLater(forcePasswordFocus)
   }
   Component.onCompleted: {
     syncPasswordText()
