@@ -35,6 +35,32 @@ assertDeepEqual(
 )
 JS
 
+run_node_test <<'JS'
+const fs = require('fs')
+const serviceSource = fs.readFileSync(root + '/shell/plugins/services/idle/Service.qml', 'utf8')
+const requestShellLock = serviceSource.slice(serviceSource.indexOf('  function requestShellLock()'))
+  .split('\n  }', 1)[0]
+assert(
+  /firstPartyServiceFor\("omarchy\.lock"\)/.test(requestShellLock),
+  'idle resolves the in-process lock service instead of relying on self-IPC'
+)
+assert(
+  /return lockService\.beginLock\(\)/.test(requestShellLock),
+  'idle directly requests a session lock from the lock service'
+)
+
+const lockSystem = serviceSource.slice(serviceSource.indexOf('  function lockSystem(reason)'))
+  .split('\n  }', 1)[0]
+assert(
+  /var requestedDirectly = requestShellLock\(\)/.test(lockSystem),
+  'idle requests the session lock before launching its cleanup helper'
+)
+assert(
+  /requestedDirectly[\s\S]*?omarchy-system-lock --skip-shell-request[\s\S]*?: "omarchy-system-lock"/.test(lockSystem),
+  'idle skips redundant self-IPC after a direct request and retains an IPC fallback'
+)
+JS
+
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
