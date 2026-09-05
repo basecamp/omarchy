@@ -1,0 +1,143 @@
+#!/usr/bin/python3
+
+# omarchy:summary=Look up a ROM's canonical name in a libretro RDB database
+# omarchy:args=[rdb-path rom-filename]
+# omarchy:examples=omarchy-games-retro-rdb-name "/usr/share/libretro/database/rdb/FBNeo - Arcade Games.rdb" ffight.zip
+# omarchy:hidden=true
+
+# RetroArch's RDB files are a thin custom format (an 8-byte "RARCHDB\0"
+# magic, an 8-byte big-endian offset to a trailing index, then records
+# packed back-to-back) around plain msgpack maps. python-msgpack isn't part
+# of the default install, so this decodes just enough of the msgpack subset
+# RDB actually uses rather than adding a dependency for one lookup.
+
+import sys
+
+
+def read_obj(buf, pos):
+    b = buf[pos]
+    if b <= 0x7F:
+        return b, pos + 1
+    if b >= 0xE0:
+        return b - 256, pos + 1
+    if 0x80 <= b <= 0x8F:
+        return read_map(buf, pos + 1, b & 0x0F)
+    if 0x90 <= b <= 0x9F:
+        return read_array(buf, pos + 1, b & 0x0F)
+    if 0xA0 <= b <= 0xBF:
+        n = b & 0x1F
+        return buf[pos + 1 : pos + 1 + n].decode("utf-8", "replace"), pos + 1 + n
+    if b == 0xC0:
+        return None, pos + 1
+    if b == 0xC2:
+        return False, pos + 1
+    if b == 0xC3:
+        return True, pos + 1
+    if b == 0xC4:
+        n = buf[pos + 1]
+        return buf[pos + 2 : pos + 2 + n], pos + 2 + n
+    if b == 0xC5:
+        n = int.from_bytes(buf[pos + 1 : pos + 3], "big")
+        return buf[pos + 3 : pos + 3 + n], pos + 3 + n
+    if b == 0xC6:
+        n = int.from_bytes(buf[pos + 1 : pos + 5], "big")
+        return buf[pos + 5 : pos + 5 + n], pos + 5 + n
+    if b == 0xCA:
+        import struct
+
+        return struct.unpack(">f", buf[pos + 1 : pos + 5])[0], pos + 5
+    if b == 0xCB:
+        import struct
+
+        return struct.unpack(">d", buf[pos + 1 : pos + 9])[0], pos + 9
+    if b == 0xCC:
+        return buf[pos + 1], pos + 2
+    if b == 0xCD:
+        return int.from_bytes(buf[pos + 1 : pos + 3], "big"), pos + 3
+    if b == 0xCE:
+        return int.from_bytes(buf[pos + 1 : pos + 5], "big"), pos + 5
+    if b == 0xCF:
+        return int.from_bytes(buf[pos + 1 : pos + 9], "big"), pos + 9
+    if b == 0xD0:
+        return int.from_bytes(buf[pos + 1 : pos + 2], "big", signed=True), pos + 2
+    if b == 0xD1:
+        return int.from_bytes(buf[pos + 1 : pos + 3], "big", signed=True), pos + 3
+    if b == 0xD2:
+        return int.from_bytes(buf[pos + 1 : pos + 5], "big", signed=True), pos + 5
+    if b == 0xD3:
+        return int.from_bytes(buf[pos + 1 : pos + 9], "big", signed=True), pos + 9
+    if b == 0xD9:
+        n = buf[pos + 1]
+        return buf[pos + 2 : pos + 2 + n].decode("utf-8", "replace"), pos + 2 + n
+    if b == 0xDA:
+        n = int.from_bytes(buf[pos + 1 : pos + 3], "big")
+        return buf[pos + 3 : pos + 3 + n].decode("utf-8", "replace"), pos + 3 + n
+    if b == 0xDB:
+        n = int.from_bytes(buf[pos + 1 : pos + 5], "big")
+        return buf[pos + 5 : pos + 5 + n].decode("utf-8", "replace"), pos + 5 + n
+    if b == 0xDC:
+        n = int.from_bytes(buf[pos + 1 : pos + 3], "big")
+        return read_array(buf, pos + 3, n)
+    if b == 0xDD:
+        n = int.from_bytes(buf[pos + 1 : pos + 5], "big")
+        return read_array(buf, pos + 5, n)
+    if b == 0xDE:
+        n = int.from_bytes(buf[pos + 1 : pos + 3], "big")
+        return read_map(buf, pos + 3, n)
+    if b == 0xDF:
+        n = int.from_bytes(buf[pos + 1 : pos + 5], "big")
+        return read_map(buf, pos + 5, n)
+    raise ValueError(f"unknown msgpack type byte {b:#x} at offset {pos}")
+
+
+def read_map(buf, pos, n):
+    d = {}
+    for _ in range(n):
+        k, pos = read_obj(buf, pos)
+        v, pos = read_obj(buf, pos)
+        d[k] = v
+    return d, pos
+
+
+def read_array(buf, pos, n):
+    arr = []
+    for _ in range(n):
+        v, pos = read_obj(buf, pos)
+        arr.append(v)
+    return arr, pos
+
+
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: omarchy-games-retro-rdb-name <rdb-file> <rom-filename>", file=sys.stderr)
+        return 2
+
+    rdb_path, target = sys.argv[1], sys.argv[2]
+
+    try:
+        with open(rdb_path, "rb") as f:
+            buf = f.read()
+    except OSError:
+        return 1
+
+    if buf[:7] != b"RARCHDB":
+        return 1
+
+    meta_offset = int.from_bytes(buf[8:16], "big")
+    pos = 16
+    while pos < meta_offset:
+        try:
+            rec, pos = read_obj(buf, pos)
+        except Exception:
+            return 1
+        if isinstance(rec, dict) and rec.get("rom_name") == target:
+            name = rec.get("name")
+            if name:
+                print(name)
+                return 0
+
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
