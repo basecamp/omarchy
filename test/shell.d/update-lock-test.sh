@@ -199,6 +199,43 @@ run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
   fail "stale update ownership does not remove a newer Stay Awake choice"
 pass "stale update ownership preserves a newer Stay Awake choice"
 
+# A timer must not expire underneath a running update, and finishing the update
+# must not extend the timer or overwrite a choice made while the update ran.
+rm -f "$stay_awake_state"
+deadline=$(( $(date +%s%3N) + 60000 ))
+printf '%s' "$deadline" > "$stay_awake_state"
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" start
+[[ $(<"$stay_awake_state") =~ ^[0-9]+:[0-9]+:[0-9]+$ ]] || fail "Update temporarily owns a timed stay-awake session"
+flock -n "$stay_awake_state.lock" true || fail "The sleep inhibitor must not inherit the idle state lock"
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
+[[ $(<"$stay_awake_state") == "$deadline" ]] || fail "Update restores the original deadline without extending it"
+
+printf '1' > "$stay_awake_state"
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" start
+[[ $(<"$stay_awake_state") =~ ^[0-9]+:[0-9]+:[0-9]+$ ]] || fail "Expired state must not prevent update inhibition"
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
+[[ $(<"$stay_awake_state") == "1" ]] || fail "Update restores an expired deadline as expired"
+
+printf '%s' "$deadline" > "$stay_awake_state"
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" start
+printf '%s' "$((deadline + 1000))" > "$stay_awake_state"
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
+[[ $(<"$stay_awake_state") == "$((deadline + 1000))" ]] || fail "Update cleanup preserves a newer timed choice"
+pass "updates hold timed sessions safely and restore only their own changes"
+
+printf '%s' "$deadline" > "$stay_awake_state"
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" start
+write_stub mv 'exit 1'
+if run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop 2>/dev/null; then
+  fail "Failed deadline restoration must report failure"
+fi
+[[ ! -e $stay_awake_helper_state/inhibit-pid ]] || fail "Failed restoration must still release the sleep inhibitor"
+[[ -e $stay_awake_helper_state/idle-previous ]] || fail "Failed restoration retains the deadline for retry"
+write_stub mv 'exec /usr/bin/mv "$@"'
+run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
+[[ $(<"$stay_awake_state") == "$deadline" ]] || fail "Deadline restoration can be retried"
+pass "failed restoration releases sleep inhibition and can be retried"
+
 # A stale PID is safe even if it has been reused by another process.
 sleep 30 &
 unrelated_pid=$!

@@ -8,8 +8,21 @@ set -e
 
 state_dir="${XDG_RUNTIME_DIR:-/tmp/omarchy-$UID}/omarchy-update-stay-awake"
 idle_owner_file="$state_dir/idle-owner"
+idle_previous_file="$state_dir/idle-previous"
 inhibit_pid_file="$state_dir/inhibit-pid"
 stay_awake_state="$HOME/.local/state/omarchy/indicators/stay-awake"
+
+# Publish ownership and restored deadlines without exposing a partial state.
+write_idle_state() {
+  local temporary
+  mkdir -p "${stay_awake_state%/*}" || return
+  temporary=$(mktemp "${stay_awake_state%/*}/.stay-awake.XXXXXX") || return
+  if printf '%s' "$1" > "$temporary" && mv -fT -- "$temporary" "$stay_awake_state"; then
+    return 0
+  fi
+  rm -f -- "$temporary"
+  return 1
+}
 
 process_start_time() {
   local process_pid="$1"
@@ -34,22 +47,40 @@ process_state() {
   printf '%s\n' "${process_stat%% *}"
 }
 
-stop() {
-  local inhibit_pid=""
-  local recorded_start_time=""
-  local current_start_time=""
-  local idle_owner=""
-  local current_idle_owner=""
-
+# Share the writers' lock across ownership checks and restoration. Keep it out
+# of the long-lived sleep inhibitor and avoid re-entering the locking CLI.
+restore_idle_state() (
+  local idle_owner="" current_idle_owner=""
+  mkdir -p "${stay_awake_state%/*}" || return
+  exec 9>>"$stay_awake_state.lock" || return
+  flock 9 || return
   if [[ -s $idle_owner_file ]]; then
     idle_owner=$(<"$idle_owner_file")
     if [[ -f $stay_awake_state ]]; then
       current_idle_owner=$(<"$stay_awake_state")
     fi
     if [[ -n $idle_owner && $current_idle_owner == "$idle_owner" ]]; then
-      omarchy-toggle-idle allow-idle >/dev/null 2>&1 || true
+      if [[ -f $idle_previous_file ]]; then
+        if ! write_idle_state "$(<"$idle_previous_file")"; then
+          echo "Failed to restore the previous Stay Awake deadline." >&2
+          return 1
+        fi
+      else
+        rm -f -- "$stay_awake_state" || return
+      fi
     fi
-    rm -f "$idle_owner_file"
+    rm -f "$idle_owner_file" "$idle_previous_file"
+  fi
+)
+
+stop() {
+  local inhibit_pid=""
+  local recorded_start_time=""
+  local current_start_time=""
+  local restore_failed=0
+
+  if ! restore_idle_state; then
+    restore_failed=1
   fi
 
   if [[ -s $inhibit_pid_file ]]; then
@@ -78,6 +109,7 @@ stop() {
   fi
 
   rmdir "$state_dir" 2>/dev/null || true
+  (( restore_failed == 0 ))
 }
 
 start() {
@@ -121,14 +153,24 @@ start() {
     fi
   fi
 
-  if [[ ! -f $stay_awake_state ]]; then
-    printf '%s\n' "$idle_owner" >"$idle_owner_file"
-    mkdir -p "$(dirname "$stay_awake_state")"
-    if omarchy-toggle-idle stay-awake >/dev/null 2>&1; then
-      printf '%s\n' "$idle_owner" >"$stay_awake_state"
-    else
-      rm -f "$idle_owner_file"
-    fi
+  # A timed choice may expire before the update finishes. Hold our own marker,
+  # then restore that same deadline only if the user has not replaced our choice.
+  local previous=""
+  mkdir -p "${stay_awake_state%/*}"
+  exec {idle_lock}>>"$stay_awake_state.lock"
+  flock "$idle_lock"
+  if [[ -f $stay_awake_state && ! -L $stay_awake_state ]]; then
+    [[ -s $stay_awake_state ]] || return 0
+    previous=$(head -c 64 -- "$stay_awake_state")
+    [[ $previous =~ ^[0-9]{1,10}:[0-9]{1,5}:[0-9]{1,5}$ ]] && return 0
+  fi
+  if [[ $previous =~ ^[0-9]{1,16}$ ]]; then
+    printf '%s' "$previous" > "$idle_previous_file"
+  fi
+  printf '%s' "$idle_owner" > "$idle_owner_file"
+  if ! write_idle_state "$idle_owner"; then
+    rm -f "$idle_owner_file" "$idle_previous_file"
+    return 1
   fi
 }
 

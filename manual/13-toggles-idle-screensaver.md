@@ -82,6 +82,8 @@ If you dismiss the screensaver before the lock deadline, that counts as activity
 
 To stop locking on idle entirely, `Super + Ctrl + I` — or `omarchy toggle idle` — flips stay awake on, and the coffee cup indicator appears in the bar. That's the one to hit before a long presentation or a build you want to watch. Hit it again to go back to normal. `omarchy toggle idle status` prints the current state as JSON if you need it from a script.
 
+Right-click the coffee cup to keep awake for 30 minutes, 1 hour, 3 hours, or 8 hours. You can also choose **Indefinitely** or **Turn off**. Hover near the clock to reveal the coffee cup when stay awake is off. Timed sessions return to normal idle behavior when the time is up, even if the shell has restarted in between; hover the active cup to see the end time.
+
 This is about locking and the screensaver, not power. Suspend and hibernation have their own setup in [system sleep](36-system-sleep.md).
 
 ### The screensaver
