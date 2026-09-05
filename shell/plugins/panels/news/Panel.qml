@@ -21,9 +21,9 @@ Item {
 
   readonly property var news: service
   readonly property var articles: news ? news.itemsForSource(selectedSourceId) : []
-  readonly property var sourceFilters: news && news.sources.length + news.collectionFilters.length > 1
-    ? [{ "id": "all", "name": "All", "category": "all" }].concat(news.collectionFilters).concat(news.sources)
-    : (news ? news.sources : [])
+  readonly property var sourceFilters: news
+    ? [{ "id": "all", "name": "All", "category": "all" }].concat(news.collectionFilters).concat(news.visibleSources)
+    : []
   readonly property color foreground: Color.foreground
   readonly property color background: Color.background
   readonly property color accent: Color.accent

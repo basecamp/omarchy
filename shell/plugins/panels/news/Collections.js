@@ -19,6 +19,7 @@ function parse(value) {
     var id = String(candidate.id || "").replace(/[^a-zA-Z0-9_-]/g, "").substring(0, 48)
     var name = String(candidate.name || "").replace(/\s+/g, " ").trim().substring(0, 32)
     if (id === "" || name === "" || seen[id] || !Array.isArray(candidate.sourceUrls)) continue
+    if (id === "omarchy" || id === "chefs-choice") continue
     var urls = []
     for (var sourceIndex = 0; sourceIndex < candidate.sourceUrls.length && urls.length < 21; sourceIndex++) {
       var url = String(candidate.sourceUrls[sourceIndex] || "").trim().substring(0, 2048)
@@ -28,6 +29,34 @@ function parse(value) {
     result.push({ id: id, name: name, sourceUrls: urls })
   }
   return result
+}
+
+function withBuiltIn(groups) {
+  return [{
+    id: "omarchy",
+    name: "Omarchy",
+    sourceUrls: ["https://omarchy.org/news/rss.xml"]
+  }].concat(groups || [])
+}
+
+function containsSource(groups, url) {
+  return (groups || []).some(function(group) {
+    return (group.sourceUrls || []).indexOf(url) >= 0
+  })
+}
+
+function subscribedIds(catalog, standaloneIds, groups) {
+  return ["omarchy"].concat((catalog || []).filter(function(source) {
+    return standaloneIds.indexOf(source.id) >= 0 || containsSource(groups, source.url)
+  }).map(function(source) { return source.id }))
+}
+
+function visibleSources(sources, standaloneIds, hiddenUrls) {
+  return (sources || []).filter(function(source) {
+    if (source.id === "omarchy") return false
+    if (source.category === "custom") return hiddenUrls.indexOf(source.url) < 0
+    return standaloneIds.indexOf(source.id) >= 0
+  })
 }
 
 function replaceSource(groups, oldUrl, newUrl) {
@@ -78,6 +107,10 @@ function buildItemIndex(items, collections, itemLimit) {
 if (typeof module !== "undefined") {
   module.exports = {
     parse: parse,
+    containsSource: containsSource,
+    subscribedIds: subscribedIds,
+    visibleSources: visibleSources,
+    withBuiltIn: withBuiltIn,
     replaceSource: replaceSource,
     buildItemIndex: buildItemIndex
   }

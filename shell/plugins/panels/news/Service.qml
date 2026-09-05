@@ -45,11 +45,14 @@ Item {
     { "id": "mit-ai", "name": "MIT News: AI", "description": "Academic AI research and developments", "category": "ai", "url": "https://news.mit.edu/rss/topic/artificial-intelligence2" }
   ]
   readonly property var enabledFeedIds: listSetting("enabledFeeds")
-  readonly property var enabledSourceIds: ["omarchy"].concat(enabledFeedIds)
+  readonly property var enabledSourceIds: Collections.subscribedIds(feedCatalog, enabledFeedIds, collections)
   readonly property string customFeeds: String(setting("customFeeds", "")).substring(0, 4096)
   readonly property var customFeedEntries: parseCustomFeedEntries(customFeeds)
   readonly property string collectionsSetting: String(setting("feedCollections", ""))
-  readonly property var collections: Collections.parse(collectionsSetting)
+  readonly property var userCollections: Collections.parse(collectionsSetting)
+  readonly property var collections: Collections.withBuiltIn(userCollections)
+  readonly property var hiddenFeedUrls: Array.isArray(setting("hiddenFeedUrls", [])) ? setting("hiddenFeedUrls", []) : []
+  readonly property var visibleSources: Collections.visibleSources(sources, enabledFeedIds, hiddenFeedUrls)
   readonly property var selectableSources: buildSelectableSources()
   readonly property var collectionFilters: buildCollectionFilters()
   readonly property string sourceConfigSignature: enabledSourceIds.join(",") + "|" + customFeeds
@@ -106,7 +109,7 @@ Item {
       "url": "https://omarchy.org/news/rss.xml"
     }]
     for (var i = 0; i < feedCatalog.length; i++) {
-      if (enabledFeedIds.indexOf(String(feedCatalog[i].id || "")) >= 0) result.push(feedCatalog[i])
+      result.push(feedCatalog[i])
     }
     for (var customIndex = 0; customIndex < customFeedEntries.length; customIndex++) {
       var entry = customFeedEntries[customIndex]

@@ -61,6 +61,20 @@ Item {
     persistSettings({ "enabledFeeds": ordered })
   }
 
+  function toggleFeedTab(url) {
+    var hidden = news.hiddenFeedUrls.slice()
+    var index = hidden.indexOf(url)
+    if (index >= 0) hidden.splice(index, 1)
+    else hidden.push(url)
+    persistSettings({ "hiddenFeedUrls": hidden })
+  }
+
+  function hiddenAfterSourceChange(oldUrl, newUrl) {
+    return news.hiddenFeedUrls.map(function(url) {
+      return url === oldUrl ? newUrl : url
+    }).filter(function(url) { return url !== "" })
+  }
+
   function copiedEntries() {
     var result = []
     for (var i = 0; i < customEntries.length; i++) {
@@ -96,7 +110,7 @@ Item {
   }
 
   function collectionsAfterSourceChange(oldUrl, newUrl) {
-    return Collections.replaceSource(news ? news.collections : [], oldUrl, newUrl)
+    return Collections.replaceSource(news ? news.userCollections : [], oldUrl, newUrl)
   }
 
   function editCustom(index) {
@@ -122,6 +136,7 @@ Item {
     entries.splice(index, 1)
     persistSettings({
       "customFeeds": serialiseEntries(entries),
+      "hiddenFeedUrls": hiddenAfterSourceChange(removedUrl, ""),
       "feedCollections": JSON.stringify(collectionsAfterSourceChange(removedUrl, ""))
     })
     if (editingIndex === index) cancelEdit()
@@ -173,6 +188,7 @@ Item {
       entries[editingIndex] = entry
       persistSettings({
         "customFeeds": serialiseEntries(entries),
+        "hiddenFeedUrls": hiddenAfterSourceChange(previousUrl, canonicalUrl),
         "feedCollections": JSON.stringify(collectionsAfterSourceChange(previousUrl, canonicalUrl))
       })
     } else {
@@ -322,6 +338,7 @@ Item {
             Layout.fillWidth: true
 
             ColumnLayout {
+              Layout.fillWidth: true
               spacing: Style.space(1)
               Text {
                 text: "CURATED SOURCES"
@@ -332,7 +349,9 @@ Item {
                 font.letterSpacing: 1.0
               }
               Text {
-                text: "Choose what belongs in your news stream."
+                Layout.fillWidth: true
+                text: "Show tabs; collections stay subscribed."
+                wrapMode: Text.WordWrap
                 color: root.dim
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -342,7 +361,7 @@ Item {
             Item { Layout.fillWidth: true }
 
             Text {
-              text: root.enabledFeedIds.length + " ON"
+              text: root.enabledFeedIds.length + " TABS"
               textFormat: Text.PlainText
               color: root.accent
               font.family: root.fontFamily
@@ -403,7 +422,9 @@ Item {
                   }
                   Text {
                     Layout.fillWidth: true
-                    text: String(catalogRow.modelData.description || "")
+                    text: !catalogRow.current && Collections.containsSource(root.news.collections, catalogRow.modelData.url)
+                      ? "In collection · individual tab hidden"
+                      : String(catalogRow.modelData.description || "")
                     textFormat: Text.PlainText
                     color: root.dim
                     font.family: root.fontFamily
@@ -554,6 +575,15 @@ Item {
                     font.pixelSize: Style.font.caption
                     elide: Text.ElideMiddle
                   }
+                }
+
+                Button {
+                  text: root.news.hiddenFeedUrls.indexOf(customRow.modelData.url) >= 0 ? "Show tab" : "Hide tab"
+                  foreground: root.foreground
+                  accent: root.accent
+                  fontFamily: root.fontFamily
+                  focusable: true
+                  onClicked: root.toggleFeedTab(customRow.modelData.url)
                 }
 
                 PanelActionButton {

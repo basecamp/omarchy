@@ -16,7 +16,7 @@ Item {
   property var selectedUrls: ({})
   property string formError: ""
 
-  readonly property var collections: news ? news.collections : []
+  readonly property var collections: news ? news.userCollections : []
   readonly property var sources: news ? news.selectableSources : []
   readonly property bool limitReached: collections.length >= 8 && editingIndex === -1
 
@@ -171,10 +171,20 @@ Item {
         }
 
         Text {
+          Layout.fillWidth: true
+          text: "OMARCHY · CURATED\nOfficial Omarchy news.\nThis collection is managed by Omarchy."
+          textFormat: Text.PlainText
+          color: root.accent
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
+        Text {
           visible: root.collections.length === 0
           Layout.fillWidth: true
           Layout.fillHeight: true
-          text: "No collections yet.\nCreate one to combine sources by topic."
+          text: "No custom collections yet.\nCreate one to combine sources by topic."
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall

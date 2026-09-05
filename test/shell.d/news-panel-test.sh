@@ -344,7 +344,7 @@ grep -qF 'id: collectionManager' "$ROOT/shell/plugins/panels/news/FeedManager.qm
   fail "feed manager exposes an in-panel collection editor"
 grep -qF 'Collections.buildItemIndex(items, collections, itemLimit)' "$ROOT/shell/plugins/panels/news/Service.qml" ||
   fail "reader indexes collection streams without another fetch"
-grep -qF '.concat(news.collectionFilters).concat(news.sources)' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
+grep -qF '.concat(news.collectionFilters).concat(news.visibleSources)' "$ROOT/shell/plugins/panels/news/Panel.qml" ||
   fail "reader source rail places collections beside individual feeds"
 grep -qF 'property var itemIndex: ({})' "$ROOT/shell/plugins/panels/news/Service.qml" ||
   fail "reader indexes bounded articles by source"
