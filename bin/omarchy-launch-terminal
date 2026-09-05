@@ -3,4 +3,133 @@
 # omarchy:summary=Launch a terminal in the active terminal's current directory
 # omarchy:args=[command...]
 
-exec setsid uwsm-app -- xdg-terminal-exec --dir="$(omarchy-cmd-terminal-cwd)" "$@"
+# Fast path: skip uwsm-app + xdg-terminal-exec for known terminals. Those wrappers
+# add tens to hundreds of milliseconds before the emulator starts, which is very
+# noticeable on Super+Return. Fall back to the old path for unknown terminals.
+
+default_terminal() {
+  local line desktop
+
+  if [[ -f ${XDG_CONFIG_HOME:-$HOME/.config}/xdg-terminals.list ]]; then
+    while IFS= read -r line || [[ -n $line ]]; do
+      [[ -z $line || $line == \#* ]] && continue
+      desktop=${line%%:*}
+      case $desktop in
+      Alacritty.desktop)
+        echo alacritty
+        return
+        ;;
+      foot.desktop)
+        echo foot
+        return
+        ;;
+      com.mitchellh.ghostty.desktop)
+        echo ghostty
+        return
+        ;;
+      kitty.desktop)
+        echo kitty
+        return
+        ;;
+      esac
+    done <"${XDG_CONFIG_HOME:-$HOME/.config}/xdg-terminals.list"
+  fi
+
+  omarchy-default-terminal
+}
+
+ghostty_on_bus() {
+  gdbus call --session \
+    --dest com.mitchellh.ghostty \
+    --object-path /com/mitchellh/ghostty \
+    --method org.freedesktop.DBus.Peer.Ping \
+    >/dev/null 2>&1
+}
+
+launch_ghostty() {
+  local cwd=$1
+  shift
+
+  if ghostty_on_bus; then
+    if (($# == 0)) && [[ $cwd == "$HOME" ]]; then
+      gdbus call --session \
+        --dest com.mitchellh.ghostty \
+        --object-path /com/mitchellh/ghostty \
+        --method org.gtk.Actions.Activate \
+        new-window "[]" "{}" >/dev/null
+      return
+    fi
+
+    if (($#)); then
+      local cmd
+      cmd=$(printf '%q ' "$@")
+      exec setsid ghostty +new-window --working-directory="$cwd" --command="$cmd"
+    else
+      exec setsid ghostty +new-window --working-directory="$cwd"
+    fi
+  fi
+
+  if (($#)); then
+    exec setsid ghostty --gtk-single-instance=true --working-directory="$cwd" -e "$@"
+  else
+    exec setsid ghostty --gtk-single-instance=true --working-directory="$cwd"
+  fi
+}
+
+launch_foot() {
+  local cwd=$1
+  shift
+
+  if (($#)); then
+    exec setsid foot --working-directory="$cwd" -e "$@"
+  else
+    exec setsid foot --working-directory="$cwd"
+  fi
+}
+
+launch_kitty() {
+  local cwd=$1
+  shift
+
+  if (($#)); then
+    exec setsid kitty --working-directory="$cwd" "$@"
+  else
+    exec setsid kitty --working-directory="$cwd"
+  fi
+}
+
+launch_alacritty() {
+  local cwd=$1
+  shift
+
+  if (($#)); then
+    exec setsid alacritty --working-directory="$cwd" -e "$@"
+  else
+    exec setsid alacritty --working-directory="$cwd"
+  fi
+}
+
+launch_fallback() {
+  exec setsid uwsm-app -- xdg-terminal-exec --dir="$(omarchy-cmd-terminal-cwd)" "$@"
+}
+
+cwd=$(omarchy-cmd-terminal-cwd)
+term=$(default_terminal)
+
+case $term in
+ghostty)
+  launch_ghostty "$cwd" "$@"
+  ;;
+foot)
+  launch_foot "$cwd" "$@"
+  ;;
+kitty)
+  launch_kitty "$cwd" "$@"
+  ;;
+alacritty)
+  launch_alacritty "$cwd" "$@"
+  ;;
+*)
+  launch_fallback "$@"
+  ;;
+esac

@@ -3,20 +3,34 @@
 # omarchy:summary=Print the current working directory of the active terminal window
 # omarchy:hidden=true
 
-terminal_pid=$(hyprctl activewindow | awk '/pid:/ {print $2}')
-kitty_socket="$XDG_RUNTIME_DIR/omarchy-kitty-$terminal_pid"
+# Prefer /proc children over pgrep -P: pgrep can take 50-150ms on slower machines.
+
 cwd=""
+meta=$(hyprctl activewindow -j 2>/dev/null || true)
+class=$(jq -r '.class // empty' <<<"$meta")
+terminal_pid=$(jq -r '.pid // empty' <<<"$meta")
 
-if [[ -S $kitty_socket ]]; then
-  cwd=$(kitten @ --to "unix:$kitty_socket" ls --match "state:focused" 2>/dev/null |
-    jq -r '.[].tabs[].windows[].cwd // empty')
-else
-  shell_pid=$(pgrep -P "$terminal_pid" | tail -n1)
+if [[ -n $terminal_pid && $terminal_pid != "null" ]]; then
+  kitty_socket="$XDG_RUNTIME_DIR/omarchy-kitty-$terminal_pid"
 
-  if [[ -n $shell_pid ]]; then
-    cwd=$(readlink -f "/proc/$shell_pid/cwd" 2>/dev/null)
-    shell=$(readlink -f "/proc/$shell_pid/exe" 2>/dev/null)
-    grep -Fqsx "$shell" /etc/shells || cwd=""
+  if [[ -S $kitty_socket ]]; then
+    cwd=$(kitten @ --to "unix:$kitty_socket" ls --match "state:focused" 2>/dev/null |
+      jq -r '.[].tabs[].windows[].cwd // empty' | head -n1)
+  else
+    case $class in
+    foot | footclient | com.mitchellh.ghostty | org.codeberg.dnkl.foot | Alacritty | kitty | org.omarchy.terminal | org.omarchy.bash | org.omarchy.btop | TUI.float)
+      children=$(cat "/proc/$terminal_pid/task/$terminal_pid/children" 2>/dev/null || true)
+      for shell_pid in $children; do
+        shell=$(readlink -f "/proc/$shell_pid/exe" 2>/dev/null || true)
+        if [[ -n $shell ]] && grep -Fqsx "$shell" /etc/shells; then
+          candidate=$(readlink -f "/proc/$shell_pid/cwd" 2>/dev/null || true)
+          if [[ -d $candidate ]]; then
+            cwd=$candidate
+          fi
+        fi
+      done
+      ;;
+    esac
   fi
 fi
 
