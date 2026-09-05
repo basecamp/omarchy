@@ -193,6 +193,7 @@
   "install.ai": {"icon":"󱚤","label":"AI"},
   "install.service": {"icon":"","label":"Service"},
   "install.development": {"icon":"󰵮","label":"Development"},
+  "install.development.mise": {"icon":"󰒔","label":"All Tools","description":"Search and install any tool from the mise registry","action":"xdg-terminal-exec --app-id=org.omarchy.terminal omarchy-mise-browse"},
   "install.editor": {"icon":"","label":"Editor"},
   "install.style": {"icon":"","label":"Style"},
   "install.style.theme": {"icon":"󰸌","label":"Theme","action":"omarchy-launch-floating-terminal-with-presentation omarchy-theme-install"},

@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Show a fuzzy-finder TUI for picking new mise tools to install.
+
+fzf_args=(
+  --multi
+  --preview 'mise ls-remote {1} 2>/dev/null | tail -n 15'
+  --preview-label='alt-p: toggle available versions, alt-j/k: scroll, tab: multi-select'
+  --preview-label-pos='bottom'
+  --preview-window 'down:65%:wrap'
+  --bind 'alt-p:toggle-preview'
+  --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
+  --bind 'alt-k:preview-up,alt-j:preview-down'
+  --color 'pointer:green,marker:green'
+)
+
+tool_names=$(mise registry | awk '{print $1}' | fzf "${fzf_args[@]}")
+
+if [[ -n $tool_names ]]; then
+  # Install eagerly with visible progress, then layer the standard lazy wrapper
+  # from omarchy-mise-install on top so future runs keep self-upgrading.
+  export MISE_MINIMUM_RELEASE_AGE=0
+  failed=()
+  while IFS= read -r tool; do
+    [[ -n $tool ]] || continue
+    echo "==> Installing mise tool: $tool"
+    if mise use -g "$tool" && omarchy-mise-install "$tool"; then
+      echo "==> Installed $tool ✓"
+    else
+      echo "==> Failed to install $tool ✗" >&2
+      failed+=("$tool")
+    fi
+  done <<<"$tool_names"
+
+  if ((${#failed[@]} > 0)); then
+    echo
+    echo "These tools failed to install: ${failed[*]}" >&2
+    exit 1
+  fi
+
+  omarchy-show-done
+fi
