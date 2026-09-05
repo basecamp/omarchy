@@ -2,10 +2,12 @@ import QtQuick
 import qs.Commons
 
 // Shared visual chrome for keyboard-and-mouse-navigable items inside a panel.
-// Contract: items must NOT read `containsMouse` for color/border. Mouse
-// hover updates the panel's cursor state at the root; visuals derive from
-// `hasCursor` / `current`. That's what guarantees a single highlight on
-// screen at any time across both keyboard and mouse interaction.
+// Contract: items must NOT read `containsMouse` for color/border. Pointer
+// enter claims the panel cursor at the root; pointer leave releases it
+// (including a keyboard selection) when this item still owns the cursor.
+// Visuals derive from `hasCursor` / `current`. That keeps a single
+// highlight, and leaving a row clears it. Use Cursor.applyHover from
+// `hovered(bool)` or a row MouseArea's containsMouse.
 //
 // Cursor paint is always the shared hover-cursor fill plus optional
 // hover-cursor border. `outline` remains as a compatibility flag for
@@ -16,6 +18,9 @@ BorderSurface {
 
   property bool hasCursor: false
   property bool current: false
+  readonly property alias containsMouse: pointer.containsMouse
+
+  signal hovered(bool isHovered)
   property bool outline: false
   property bool bordered: false
 
@@ -37,5 +42,16 @@ BorderSurface {
 
   Behavior on color {
     ColorAnimation { duration: 60 }
+  }
+
+  // acceptedButtons: NoButton so nested click MouseAreas still receive
+  // presses. containsMouse still tracks pointer enter/leave on this row.
+  MouseArea {
+    id: pointer
+    anchors.fill: parent
+    z: -1
+    hoverEnabled: true
+    acceptedButtons: Qt.NoButton
+    onContainsMouseChanged: root.hovered(containsMouse)
   }
 }

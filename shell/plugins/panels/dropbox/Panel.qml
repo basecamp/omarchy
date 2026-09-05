@@ -267,7 +267,9 @@ Panel {
                   busy: dropbox.busy
                   hasCursor: header.ringVisible
                   foreground: hero.foreground
-                  onHovered: function(on) { if (on) header.focusHero() }
+                  onHovered: function(on) {
+                    Cursor.applyHover(on, header.ringVisible, function() { header.focusHero() }, function() { root.cursorActive = false })
+                  }
                   onToggled: root.toggleRunning()
 
                   PanelToolTip {
@@ -393,10 +395,15 @@ Panel {
       hoverEnabled: true
       cursorShape: dropbox.installed && !dropbox.busy ? Qt.PointingHandCursor : Qt.ArrowCursor
       enabled: dropbox.installed && !dropbox.busy
-      onEntered: {
-        root.cursorActive = true
-        root.focusSection = "login"
-      }
+      onContainsMouseChanged: Cursor.applyHover(
+        containsMouse,
+        root.cursorActive && root.focusSection === "login",
+        function() {
+          root.cursorActive = true
+          root.focusSection = "login"
+        },
+        function() { root.cursorActive = false }
+      )
       onClicked: dropbox.login()
     }
 
@@ -468,7 +475,12 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onEntered: root.setFileCursor(fileRow.rowIndex)
+      onContainsMouseChanged: Cursor.applyHover(
+        containsMouse,
+        root.cursorActive && root.focusSection === "files" && root.fileIndex === fileRow.rowIndex,
+        function() { root.setFileCursor(fileRow.rowIndex) },
+        function() { root.cursorActive = false }
+      )
       onClicked: dropbox.openFile(fileRow.file)
     }
 

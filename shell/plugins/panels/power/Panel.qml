@@ -494,10 +494,15 @@ Panel {
                 hasCursor: root.cursorActive && root.profileIndex === index
                 onClicked: root.setProfile(modelData)
                 onHovered: function(h) {
-                  if (h) {
-                    root.cursorActive = true
-                    root.profileIndex = index
-                  }
+                  Cursor.applyHover(
+                    h,
+                    root.cursorActive && root.profileIndex === index,
+                    function() {
+                      root.cursorActive = true
+                      root.profileIndex = index
+                    },
+                    function() { root.cursorActive = false }
+                  )
                 }
               }
             }

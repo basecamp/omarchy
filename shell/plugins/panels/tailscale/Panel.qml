@@ -484,7 +484,9 @@ Panel {
                   busy: tailscale.busy
                   hasCursor: header.ringVisible
                   foreground: hero.foreground
-                  onHovered: function(on) { if (on) header.focusHero() }
+                  onHovered: function(on) {
+                    Cursor.applyHover(on, root.headerHasCursor, function() { header.focusHero() }, function() { root.cursorActive = false })
+                  }
                   onToggled: tailscale.toggleTailscale()
 
                   PanelToolTip {
@@ -750,7 +752,12 @@ Panel {
       hoverEnabled: true
       cursorShape: tailscale.busy ? Qt.ArrowCursor : Qt.PointingHandCursor
       enabled: !tailscale.busy
-      onEntered: root.setAuthCursor()
+      onContainsMouseChanged: Cursor.applyHover(
+        containsMouse,
+        root.cursorActive && root.focusSection === "auth",
+        function() { root.setAuthCursor() },
+        function() { root.cursorActive = false }
+      )
       onClicked: tailscale.authorizeTailscaleOperator()
     }
 
@@ -858,7 +865,12 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onEntered: root.setAccountCursor(accountRow.rowIndex)
+      onContainsMouseChanged: Cursor.applyHover(
+        containsMouse,
+        root.cursorActive && root.focusSection === "accounts" && root.accountIndex === accountRow.rowIndex,
+        function() { root.setAccountCursor(accountRow.rowIndex) },
+        function() { root.cursorActive = false }
+      )
       onClicked: if (accountRow.account) tailscale.switchAccount(accountRow.account.id)
     }
   }
@@ -923,7 +935,12 @@ Panel {
       acceptedButtons: Qt.LeftButton
       hoverEnabled: true
       cursorShape: Qt.ArrowCursor
-      onContainsMouseChanged: if (containsMouse) root.setPeerCursor(peerRow.rowIndex)
+      onContainsMouseChanged: Cursor.applyHover(
+        containsMouse,
+        root.cursorActive && root.focusSection === "peers" && root.peerIndex === peerRow.rowIndex,
+        function() { root.setPeerCursor(peerRow.rowIndex) },
+        function() { root.cursorActive = false }
+      )
     }
 
     RowLayout {
@@ -1055,7 +1072,7 @@ Panel {
               width: parent.width
               label: String(modelData.label || "")
               selected: peerRow.copyIndex === index
-              onHovered: peerRow.copyIndex = index
+              onHovered: function(on) { if (on) peerRow.copyIndex = index }
               onChosen: peerRow.copyOption(String(modelData.kind || ""))
             }
           }
@@ -1067,7 +1084,6 @@ Panel {
   component CopyChoice: CursorSurface {
     id: copyChoice
     signal chosen()
-    signal hovered()
     property string label: ""
     property bool selected: false
 
@@ -1081,7 +1097,6 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onEntered: copyChoice.hovered()
       onClicked: copyChoice.chosen()
     }
 
@@ -1178,7 +1193,12 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onEntered: root.setExitNodeCursor(exitNodeRow.rowIndex)
+      onContainsMouseChanged: Cursor.applyHover(
+        containsMouse,
+        root.cursorActive && root.focusSection === "exitNodes" && root.exitNodeIndex === exitNodeRow.rowIndex,
+        function() { root.setExitNodeCursor(exitNodeRow.rowIndex) },
+        function() { root.cursorActive = false }
+      )
       onClicked: root.chooseExitNode(exitNodeRow.peer)
     }
 
@@ -1260,7 +1280,12 @@ Panel {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onEntered: root.mullvadRegionIndex = regionRow.rowIndex
+      onContainsMouseChanged: Cursor.applyHover(
+        containsMouse,
+        root.mullvadPickerOpen && root.mullvadRegionIndex === regionRow.rowIndex,
+        function() { root.mullvadRegionIndex = regionRow.rowIndex },
+        function() { root.mullvadRegionIndex = -1 }
+      )
       onClicked: root.chooseExitNode(regionRow.peer)
     }
 
