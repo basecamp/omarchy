@@ -48,6 +48,24 @@ Example `shell.json` (bar subtree only shown):
 
 `centerAnchor` pins one center module to the exact horizontal/vertical center and flanks others around it. Set to an empty string to disable anchoring (the center list is centered as a group).
 
+### Naming workspaces
+
+A workspace can carry a name in place of its number. Right-click its tile in the bar and type one (leave it empty to go back to the number), or use the command:
+
+```bash
+omarchy hyprland workspace name 2 web
+omarchy hyprland workspace name --clear 2
+omarchy hyprland workspace name --list
+```
+
+Names are stored on the widget's own entry in `shell.json`, so they travel with the rest of the bar:
+
+```json
+{ "id": "omarchy.workspaces", "names": { "1": "term", "2": "web" } }
+```
+
+A name is at most 16 characters. Hovering a named tile shows its workspace number; existing workspace shortcuts remain unchanged. A vertical bar is too narrow for words and keeps the numbers.
+
 ## Module catalogue
 
 ### First-party interactive widgets
@@ -55,7 +73,7 @@ Example `shell.json` (bar subtree only shown):
 | Name | What it does | Interactions |
 |---|---|---|
 | `omarchy.menu` | Omarchy menu launcher | left = menu · right = terminal |
-| `omarchy.workspaces` | Hyprland workspace switcher | left = focus workspace |
+| `omarchy.workspaces` | Hyprland workspace switcher, with optional names | left = show workspace on this bar's monitor · right = name it · middle = clear the name |
 | `omarchy.clock` | Date/time label + popup with a month grid, ISO week numbers, and month stepping | left = popup · right = cycle label format · middle = timezone selector |
 | `omarchy.media` | MPRIS now-playing — scrolling track + artist, cover-art popup | left = play/pause · middle = next · scroll = prev/next · right = popup |
 | `omarchy.indicators` | Manual state indicators | left = indicator action |
@@ -132,6 +150,7 @@ Item {
   property var bar
   property string moduleName
   property var settings
+  property string screenName
 
   implicitWidth: 28
   implicitHeight: bar ? bar.barSize : 26
@@ -153,7 +172,7 @@ Item {
 
 ## Bar properties available to widgets
 
-Widgets receive `bar` (the shell root), `moduleName` (string), and `settings` (object) injected at load time. The bar exposes:
+Widgets receive `bar` (the shell root), `moduleName` (string), `settings` (object), and `screenName` (the output that owns this widget copy) injected at load time. The bar exposes:
 
 - `bar.foreground`, `bar.background`, `bar.urgent` — theme colors (live-updated)
 - `bar.fontFamily` — current monospace family

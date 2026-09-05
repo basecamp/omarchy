@@ -10,6 +10,7 @@ ShellRoot {
   property var failures: []
   property var createdIds: []
   property var createdObjects: []
+  property var runCommands: []
 
   function fail(message) {
     failures.push(String(message))
@@ -91,8 +92,21 @@ ShellRoot {
       item.settings = {}
       root.assertTrue(item.settings !== null && item.settings !== undefined, entry.id + " accepts settings injection")
     }
+    if ("screenName" in item) {
+      item.screenName = "DP-1"
+      root.assertEqual(item.screenName, "DP-1", entry.id + " accepts screenName injection")
+    }
     if (typeof item.setting === "function") {
       root.assertEqual(item.setting("missing", "fallback"), "fallback", entry.id + " exposes setting fallback")
+    }
+    if (entry.id === "omarchy.workspaces") {
+      runCommands = []
+      item.focusWorkspace(2)
+      root.assertEqual(
+        runCommands[0],
+        "hyprctl dispatch 'hl.dsp.focus({ monitor = \"DP-1\" })' && hyprctl dispatch 'hl.dsp.focus({ workspace = \"2\", on_current_monitor = true })'",
+        entry.id + " targets the monitor that owns its bar"
+      )
     }
     if (entry.id === "omarchy.agents") {
       root.assertTrue(typeof item.iconCandidatesForProvider === "function", entry.id + " resolves provider marks by convention")
@@ -134,7 +148,7 @@ ShellRoot {
     property color background: "black"
     property color urgent: "red"
     property var shell: mockShell
-    function run(command) {}
+    function run(command) { root.runCommands.push(String(command)) }
     function showTooltip(target, text) {}
     function hideTooltip(target) {}
     function requestPopout(owner) {}

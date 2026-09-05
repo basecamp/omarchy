@@ -17,7 +17,7 @@ Nearly every widget does something on left, right, and middle click, and several
 | Widget | Left | Right | Middle / scroll |
 | --- | --- | --- | --- |
 | Menu | Omarchy menu | New terminal | — |
-| Workspaces | Focus that workspace | — | — |
+| Workspaces | Show that workspace on this bar's monitor | Name it | Middle: clear the name |
 | Clock | Calendar popup | Cycle the label format | Middle: timezone picker |
 | Weather | Forecast popup | Full weather as a notification | Middle: refresh |
 | Audio | Audio panel | Mute | Middle: panel · scroll: volume |
@@ -32,6 +32,8 @@ Nearly every widget does something on left, right, and middle click, and several
 | Omarchy update | Run the update | — | — |
 
 Not everything in that table is on your bar out of the box. The media widget (MPRIS now-playing, with a scrolling track and artist) and the microphone widget are both built in but off by default — add them if you want them, as described below.
+
+With multiple monitors, every workspace currently visible on a screen is highlighted. The focused one uses the active color; visible workspaces on the other screens use the accent color. Clicking a workspace switches to it on the monitor whose bar you clicked, moving it from another monitor when necessary.
 
 ## The panels
 
