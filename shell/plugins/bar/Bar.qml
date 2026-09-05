@@ -1578,6 +1578,17 @@ Item {
       if (hint !== undefined && hint !== null && hint > 0) return Math.round(hint)
       return Math.max(Style.space(10), Math.round((root.vertical ? slot.height : slot.width) * 0.55))
     }
+    // Optional companion to panelIndicatorExtent: a module whose real
+    // content isn't centered under its own slot (e.g. Tray, where the app
+    // icon side needs a different margin than the chevron side) can shift
+    // the mark off dead-center by this many pixels without giving up the
+    // measured-extent centering above. Defaults to 0 for every module that
+    // doesn't define it, so this is fully backward compatible.
+    readonly property real panelIndicatorOffset: {
+      var key = root.vertical ? "openPanelIndicatorOffsetY" : "openPanelIndicatorOffsetX"
+      var hint = activeItem && key in activeItem ? activeItem[key] : undefined
+      return (hint !== undefined && hint !== null) ? hint : 0
+    }
     implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
     width: implicitWidth
@@ -1655,9 +1666,9 @@ Item {
       // panel that opens on that side.
       x: root.vertical
         ? (root.position === "left" ? parent.width - width - inset : inset)
-        : Math.round((parent.width - width) / 2)
+        : Math.round((parent.width - width) / 2) + slot.panelIndicatorOffset
       y: root.vertical
-        ? Math.round((parent.height - height) / 2)
+        ? Math.round((parent.height - height) / 2) + slot.panelIndicatorOffset
         : (root.position === "top" ? parent.height - height - inset : inset)
       z: 50
 

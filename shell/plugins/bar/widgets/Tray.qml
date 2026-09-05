@@ -12,6 +12,19 @@ BarWidget {
   moduleName: "omarchy.tray"
 
   property bool expanded: false
+  // Raw pointer-hover state of the drawer area, tracked separately from
+  // `expanded` itself. Opening trayMenuPopup/managePopup creates a new
+  // popup surface that grabs the pointer, which delivers a hover-leave to
+  // the bar surface underneath even though the cursor never actually left
+  // the drawer on screen. Reacting to that leave by collapsing immediately
+  // used to slide the drawer's icons out from under an anchored popup
+  // (moving the very item the popup was anchored to), which is what made
+  // the popup — and the drawer holding it open — appear to close on
+  // right-click. Keeping `expanded` true while either popup is open, and
+  // only re-deriving it from real hover once both are closed, keeps the
+  // drawer (and its geometry) stable while a context menu owned by one of
+  // its icons is on screen.
+  property bool drawerHovered: false
   property bool managePopupOpen: false
   property bool trayMenuOpen: false
   property var activeTrayItem: null
@@ -32,6 +45,43 @@ BarWidget {
   readonly property int animationDuration: 600
   property real revealProgress: expanded ? 1 : 0
   readonly property real revealExtent: drawerExtent * revealProgress
+
+  // Bar.qml's ModuleSlot draws an "open panel" indicator under whichever
+  // module owns the currently-open popup, sized either from these hints or,
+  // absent a hint, from an arbitrary 55% of the module's slot. That fallback
+  // fraction has no relationship to the Tray's actual content — it drifts
+  // out of alignment as the pinned/drawer icon count, bar size, or DPI
+  // changes the Tray's real footprint. Reporting the Tray's own measured
+  // width/height (already computed exactly from its icon layout above)
+  // instead of a guessed fraction is what keeps the indicator pixel-aligned
+  // with the Tray's true edge in every configuration.
+  // implicitWidth/implicitHeight (not width/height) on purpose: they're the
+  // Tray's own measured footprint straight from trayContent below, so this
+  // stays correct even if whatever loads this widget resizes the instance
+  // itself for layout purposes.
+  //
+  // The two ends of the Tray aren't visually symmetric: the chevron end
+  // (drawerArea, at x: 0) wants more breathing room than the pinned-icon
+  // end (pinnedRow, at the widget's right edge), so a single symmetric
+  // inset can't line up both at once. Two named insets plus a derived
+  // offset let Bar.qml keep centering the mark from (width, offset) while
+  // the actual left/right margins end up unequal on purpose. Tune each
+  // side independently here — both stay on the project's Style.space scale
+  // rather than raw pixel guesses.
+  readonly property real openPanelIndicatorLeftInset: Style.space(12)
+  readonly property real openPanelIndicatorRightInset: Style.space(4)
+  readonly property real openPanelIndicatorWidth: root.vertical
+    ? 0
+    : Math.max(0, root.implicitWidth - openPanelIndicatorLeftInset - openPanelIndicatorRightInset)
+  readonly property real openPanelIndicatorHeight: root.vertical
+    ? Math.max(0, root.implicitHeight - openPanelIndicatorLeftInset - openPanelIndicatorRightInset)
+    : 0
+  // Bar.qml positions the mark at center-of-slot + this offset. Re-deriving
+  // it from the two insets is what keeps the left margin at exactly
+  // openPanelIndicatorLeftInset and the right margin at exactly
+  // openPanelIndicatorRightInset instead of forcing them equal.
+  readonly property real openPanelIndicatorOffsetX: (openPanelIndicatorLeftInset - openPanelIndicatorRightInset) / 2
+  readonly property real openPanelIndicatorOffsetY: (openPanelIndicatorLeftInset - openPanelIndicatorRightInset) / 2
 
   // Submenu drill-down state. QsMenuEntry.display() renders a *platform* menu,
   // which Quickshell refuses unless the shell root sets `//@ pragma
@@ -113,6 +163,18 @@ BarWidget {
     managePopupOpen = false
     trayMenuOpen = false
   }
+
+  // Single source of truth for `expanded`: real hover OR either popup this
+  // widget owns being open. Called whenever any of those three inputs
+  // change, instead of letting the drawer's HoverHandler write `expanded`
+  // directly, so a hover-leave caused by a popup grabbing the pointer can't
+  // collapse the drawer out from under its own still-open popup.
+  function syncExpanded() {
+    expanded = drawerHovered || trayMenuOpen || managePopupOpen
+  }
+
+  onTrayMenuOpenChanged: syncExpanded()
+  onManagePopupOpenChanged: syncExpanded()
 
   function openTrayMenu(item, anchorItem, mouse) {
     if (!item || !item.menu) {
@@ -260,7 +322,10 @@ BarWidget {
         visible: root.allItems.length > 0
 
         HoverHandler {
-          onHoveredChanged: root.expanded = hovered
+          onHoveredChanged: {
+            root.drawerHovered = hovered
+            root.syncExpanded()
+          }
         }
 
         BarIconButton {
@@ -342,7 +407,10 @@ BarWidget {
         visible: root.allItems.length > 0
 
         HoverHandler {
-          onHoveredChanged: root.expanded = hovered
+          onHoveredChanged: {
+            root.drawerHovered = hovered
+            root.syncExpanded()
+          }
         }
 
         BarIconButton {
