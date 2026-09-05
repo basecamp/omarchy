@@ -1,0 +1,280 @@
+#!/bin/bash
+
+# omarchy:summary=Install the Hermes CLI as a mise-backed wrapper in ~/.local/bin
+# omarchy:args=[--check|--now|--owns|--remove]
+# omarchy:examples=omarchy install hermes cli | omarchy install hermes cli --now
+
+# Hermes pins every one of its dependencies exactly and declares
+# Requires-Python >=3.11,<3.14, so it can neither be built against Arch's
+# Python nor share the python-* packages. mise builds it a private environment
+# instead.
+#
+# It gets its own installer rather than a line in omarchy-mise-install because
+# of the interpreter pin. Given no compatible interpreter to hand, uv builds
+# the venv against the system Python in violation of Hermes' own bound,
+# reports success, and leaves the breakage to surface later inside a
+# dependency -- and omarchy-mise-install writes a fixed stub with nowhere to
+# say otherwise.
+#
+# There is only ever one Hermes on a machine. hermes-desktop cannot run against
+# this one -- it needs a runtime built from its own commit, and the version gap
+# fails its readiness probe -- so it installs its own under ~/.hermes and puts
+# that on PATH. When the package is present it therefore owns Hermes outright:
+# this installer stands aside and removes its own copy, so the terminal, the
+# default agent and the app are all the same installation.
+
+set -euo pipefail
+
+mode=${1:-}
+
+tool='pipx:hermes-agent[extras=all]'
+python='3.13'
+
+# The line that identifies the stub as this installer's; matched whole, so a
+# wrapper that merely mentions the command is not mistaken for ours.
+marker='# Written by omarchy-install-hermes-cli.'
+
+# The package, not the runtime directory: it is installed before the app has
+# ever run, and that is exactly when we must not start building a second copy.
+desktop_owns_hermes() {
+  omarchy-pkg-present hermes-desktop
+}
+
+# The venv appears at the python-deps stage, several stages before the one that
+# installs the command, so its presence says nothing about being usable. The
+# marker is written last, and the command is what the agent actually runs.
+desktop_hermes_ready() {
+  [[ -f $HOME/.hermes/hermes-agent/.hermes-bootstrap-complete ]] || return 1
+
+  # An executable of that name proves nothing about whose it is; the app's own
+  # points into ~/.hermes, and anything else is not the install we are asking
+  # about. Matched as a plain string, because the path carries a dot and an
+  # unanchored pattern would also claim a wrapper pointing at ~/xhermes.
+  [[ -f $HOME/.local/bin/hermes ]] || return 1
+  grep -qF "$HOME/.hermes" "$HOME/.local/bin/hermes" || return 1
+
+  # And a marker left behind by an install whose venv has since gone answers
+  # for nothing, so the command has to run, exactly as a foreign one must.
+  hermes_prompt_ready
+}
+
+# Whether Hermes is really installed, not merely whether the stub exists. A
+# stub on its own is cold: running it installs Hermes, which takes minutes.
+installed() {
+  [[ -d "$(mise where "$tool" 2>/dev/null)/hermes-agent/lib/python$python" ]]
+}
+
+# The stub is the only thing this installer owns. Anything else at that path
+# -- Hermes' official installer, a hand-rolled wrapper, even a dangling link
+# -- was put there by the user and is never deleted or overwritten here.
+# Symlinks count as foreign even when they resolve to a marked file: the stub
+# is written as a regular file, so a link is someone else's arrangement.
+ours() {
+  [[ -f $HOME/.local/bin/hermes && ! -L $HOME/.local/bin/hermes ]] &&
+    grep -qxF "$marker" "$HOME/.local/bin/hermes"
+}
+
+foreign_hermes() {
+  [[ -e $HOME/.local/bin/hermes || -L $HOME/.local/bin/hermes ]] && ! ours
+}
+
+# A hermes at that path is usable when it is a command that runs: a regular
+# executable whose --version answers. The executable bit alone proves little -- a directory
+# passes -x on search permission, and a wrapper whose interpreter or target is
+# gone passes it too. The desktop app applies the same probe with the same 15
+# second budget, so what passes here is what it will use.
+hermes_runs() {
+  [[ -f $HOME/.local/bin/hermes && -x $HOME/.local/bin/hermes ]] &&
+    timeout 15 "$HOME/.local/bin/hermes" --version >/dev/null 2>&1
+}
+
+# A flag counts only when the help defines it, not whenever it is mentioned:
+# what follows must be a shape argparse prints after a definition -- the usage
+# line's closing bracket, the gap before same-line help text, an uppercase
+# metavar, or the end of the line. Prose like "With --tui: run ..." stays
+# prose, and --tui-theme or --tui_mode never answers for --tui. Not probed by
+# parsing an actual invocation on purpose: a release that ignores unknown
+# arguments would turn the probe into a live session.
+help_defines_flag() {
+  grep -qE -- "$1(]|[[:space:]][[:upper:]]|[[:space:]]{2}|$)" <<<"$2"
+}
+
+# Probed for the flags omarchy-agent actually passes -- --query to seed the
+# session and --tui to keep it interactive -- rather than a marker standing in
+# for them: the old probe keyed on chat carrying --oneshot, which no released
+# Hermes did (it lived at the top level until v0.21 added chat's own), so
+# every release read as "not ready".
+hermes_prompt_ready() {
+  local help
+  hermes_runs &&
+    help=$(timeout 15 "$HOME/.local/bin/hermes" chat --help 2>/dev/null) &&
+    help_defines_flag '--tui' "$help" &&
+    help_defines_flag '--query' "$help"
+}
+
+# --owns answers whether the wrapper on PATH is the one this command wrote, so
+# the migration and Remove Preinstalls do not each carry their own copy of the
+# marker and drift from it.
+if [[ $mode == "--owns" ]]; then
+  if ours; then exit 0; else exit 1; fi
+fi
+
+# --remove tears down a Hermes CLI this installer put in place -- the mise tool
+# it installed and the stub it marked -- so Remove Hermes clears a CLI the app
+# never superseded (an interrupted install, or the terminal CLI from before the
+# app existed) rather than leaving it stranded on PATH. The whole teardown
+# turns on the marked stub, exactly as replacement does further down: without
+# it nothing proves the mise environment is Omarchy's rather than one the user
+# built against the same spec, and a user's stays theirs. The desktop takeover
+# removes the environment without asking, but that is its own bargain -- a
+# second Hermes has to go whoever built it, and the app still provides the
+# command afterwards; here nothing would. Idempotent: nothing owned, nothing
+# to do.
+if [[ $mode == "--remove" ]]; then
+  if ours; then
+    mise rm -g "$tool" >/dev/null 2>&1 || true
+    mise uninstall --all "$tool" >/dev/null 2>&1 || true
+    rm -f "$HOME/.local/bin/hermes" 2>/dev/null || true
+
+    # Every step is attempted before any is judged, and judged by what is left
+    # rather than by what the commands claimed: the marked stub still answering
+    # hermes, or mise still resolving the tool, is a CLI still installed no
+    # matter how the removal exited.
+    # Not "run --remove again": once the stub is gone nothing marks the mise
+    # environment as ours, so a rerun would find nothing it owns and succeed
+    # without touching what was left. Only the full commands finish the job.
+    if ours || mise where "$tool" >/dev/null 2>&1; then
+      echo "Could not remove the Hermes CLI Omarchy installed. Finish by hand:" >&2
+      echo "  rm -f ~/.local/bin/hermes" >&2
+      echo "  mise rm -g '$tool'" >&2
+      echo "  mise uninstall --all '$tool'" >&2
+      exit 1
+    fi
+  fi
+
+  exit 0
+fi
+
+# --check lets callers tell a cold stub from a working one before they commit
+# to a path that assumes Hermes is ready.
+if [[ $mode == "--check" ]]; then
+  if desktop_owns_hermes; then
+    if desktop_hermes_ready; then exit 0; else exit 1; fi
+  fi
+  # A foreign command is ready only when it also supports prompted sessions;
+  # since it is not ours to replace, nothing this installer does will update it.
+  if foreign_hermes; then
+    if hermes_prompt_ready; then exit 0; else exit 1; fi
+  fi
+  if installed && hermes_prompt_ready; then exit 0; else exit 1; fi
+fi
+
+# Hand Hermes over to the app rather than keeping a second copy beside it.
+if desktop_owns_hermes; then
+  # Not gated on that copy being healthy: `mise up` can rebuild it against the
+  # wrong interpreter and a half-finished install answers to neither test, and
+  # either way it is still a second Hermes. Removing nothing is harmless.
+  if mise where "$tool" >/dev/null 2>&1; then
+    echo "Hermes Desktop provides Hermes; removing the separate CLI install..." >&2
+  fi
+
+  mise rm -g "$tool" >/dev/null 2>&1 || true
+  mise uninstall --all "$tool" >/dev/null 2>&1 || true
+
+  # Our own stub has to go with it. Left in place it still answers `hermes`
+  # until the app's bootstrap overwrites it, and answering means building the
+  # second Hermes this whole arrangement exists to avoid.
+  if ours; then
+    rm -f "$HOME/.local/bin/hermes"
+  fi
+
+  if desktop_hermes_ready; then
+    exit 0
+  fi
+
+  echo "Hermes Desktop is installed but has not set Hermes up yet." >&2
+  echo "Launch Hermes Desktop once to finish installing it." >&2
+  exit 1
+fi
+
+# The user already has a hermes of their own. Leave it be: a working one is
+# what the default agent will run, and a broken one is theirs to fix.
+if foreign_hermes; then
+  if hermes_prompt_ready; then
+    exit 0
+  fi
+
+  if hermes_runs; then
+    echo "~/.local/bin/hermes does not support the interactive seeded sessions Omarchy needs." >&2
+    echo "Update it to a Hermes Agent release with interactive chat queries, then run omarchy-install-hermes-cli again." >&2
+    exit 1
+  fi
+
+  echo "~/.local/bin/hermes exists but is not runnable, and it was not installed by Omarchy." >&2
+  echo "Fix or remove it, then run omarchy-install-hermes-cli again." >&2
+  exit 1
+fi
+
+# Only the marked wrapper proves the matching mise environment is ours to replace.
+if installed && ! hermes_prompt_ready; then
+  if ours; then
+    echo "Updating Hermes for prompted sessions..." >&2
+    mise rm -g "$tool" >/dev/null 2>&1 || true
+    mise uninstall --all "$tool" >/dev/null 2>&1 || true
+  else
+    echo "A Hermes mise environment exists without an Omarchy-owned wrapper." >&2
+    echo "Update or remove it explicitly, then run omarchy-install-hermes-cli again." >&2
+    exit 1
+  fi
+fi
+
+mkdir -p "$HOME/.local/bin"
+rm -f "$HOME/.local/bin/hermes"
+
+cat >"$HOME/.local/bin/hermes" <<EOF
+#!/bin/bash
+
+$marker
+
+export UV_PYTHON="$python"
+
+# Exported rather than set on the install line alone, so the version resolved
+# to run agrees with the one just installed. Hermes ships several times a week
+# and mise's cooldown would otherwise hold a new release back for days.
+export MISE_MINIMUM_RELEASE_AGE=0
+
+# mise up -- which omarchy update runs -- reinstalls without that pin, so this
+# asks which interpreter is actually there rather than whether anything is.
+if ! [[ -d "\$(mise where '$tool' 2>/dev/null)/hermes-agent/lib/python$python" ]]; then
+  echo "Installing Hermes on Python $python (this takes a minute)..." >&2
+
+  # mise's pipx backend shells out to uv, which a stock Omarchy does not have.
+  # It is fetched here rather than when this stub was written, so setting up a
+  # machine that never runs Hermes costs nothing.
+  if omarchy-cmd-missing uv && ! mise where uv >/dev/null 2>&1; then
+    mise use -g --quiet uv@latest || exit 1
+  fi
+
+  mise use -g --quiet --force '$tool' || exit 1
+fi
+
+# The pin belongs to building Hermes, not to everything Hermes then runs.
+# Exported it would reach the agent and every command it shells out to, so a
+# uv in the user's own project would resolve 3.13 there too -- uv only warns
+# when that contradicts the project's requires-python, and builds it anyway.
+exec env -u UV_PYTHON mise x '$tool' -- hermes "\$@"
+EOF
+
+chmod +x "$HOME/.local/bin/hermes"
+
+# The desktop app resolves a hermes on PATH by running `hermes --version` with
+# a 15 second budget, then falls back to cloning its own copy when that times
+# out. A first-run mise install does not fit in 15 seconds, so anything that
+# hands Hermes to the GUI has to install it here rather than leave it stubbed.
+if [[ $mode == "--now" ]]; then
+  "$HOME/.local/bin/hermes" --version
+  if ! hermes_prompt_ready; then
+    echo "Hermes installed without the interactive seeded sessions Omarchy needs." >&2
+    exit 1
+  fi
+fi

@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# omarchy:summary=Open the OpenClaw Control UI (or its terminal UI with --tui), onboarding or starting the gateway first when needed.
+# omarchy:args=[--tui [--message <text>]]
+
+set -euo pipefail
+
+tui=false
+message=()
+if [[ ${1:-} == "--tui" ]]; then
+  tui=true
+  shift
+  if [[ ${1:-} == "--message" ]]; then
+    message=(--message "${2:?--message needs a value}")
+    shift 2
+  fi
+fi
+
+# Onboarding is OpenClaw's own interactive wizard, run through
+# omarchy-openclaw-onboard so it stays in the terminal, installs the gateway
+# as a user service, and returns (see that script for why bare `openclaw
+# onboard` does none of those as of 2026.9.1). The config check gates what
+# follows because the wizard's "Skip for now" also exits 0: only inference
+# that passed writes the config, and skipping must not loop back into the
+# wizard.
+if [[ ! -f $HOME/.openclaw/openclaw.json ]]; then
+  if [[ $tui == "true" ]]; then
+    # Already in a terminal, so the wizard runs right here.
+    omarchy-openclaw-onboard
+    [[ -f $HOME/.openclaw/openclaw.json ]] || exit 1
+  else
+    # The wizard needs a real terminal, and chaining the relaunch means
+    # finishing it lands the user in the app. Single quotes so $HOME expands
+    # in the spawned terminal.
+    # shellcheck disable=SC2016
+    exec omarchy-launch-floating-terminal-with-presentation \
+      'omarchy-openclaw-onboard && [[ -f $HOME/.openclaw/openclaw.json ]] && omarchy-launch-openclaw'
+  fi
+fi
+
+dashboard_url() {
+  # browserUrl carries a single-use browser handoff; url is the shared-auth
+  # fallback for gateways predating the handoff flow. The timeout keeps a
+  # wedged CLI from hanging an app-grid launch that has no terminal to ^C.
+  timeout 10 openclaw dashboard --json 2>/dev/null | jq -re '.browserUrl // .url // empty'
+}
+
+# --json never starts the gateway, so an empty answer means it is not running.
+# Recovery goes through the gateway's own service commands. `dashboard --yes`
+# used to be the start/install-without-prompting path, but as of 2026.9.1 it
+# defers to "the owning supervisor" for both a missing and a stopped unit,
+# and once the gateway is up it copies a one-time pairing URL into the
+# clipboard, which nothing here needs. Enablement, not the unit file, decides:
+# a unit that was written but never enabled (an install that died halfway)
+# would otherwise be "started" once and stay off at every following login,
+# where --force rewrites and enables it.
+if ! url=$(dashboard_url); then
+  if systemctl --user is-enabled --quiet openclaw-gateway.service 2>/dev/null; then
+    timeout 60 openclaw gateway start >&2 || true
+  else
+    timeout 120 openclaw gateway install --force >&2 || true
+  fi
+
+  # A first-ever service install (unit write, daemon-reload, first boot)
+  # takes materially longer than starting an installed unit, so the budget
+  # is sized for the slow case.
+  for _ in {1..30}; do
+    url=$(dashboard_url) && break
+    sleep 1
+  done
+fi
+
+if [[ -z ${url:-} ]]; then
+  echo "OpenClaw's gateway did not come up. Check it with: openclaw gateway status" >&2
+  echo "If onboarding never finished, rerun it with: omarchy-openclaw-onboard" >&2
+  exit 1
+fi
+
+if [[ $tui == "true" ]]; then
+  # Attach to the gateway rather than `openclaw chat`: chat is the embedded
+  # local runtime, which refuses to start while the gateway owns ~/.openclaw's
+  # state directory -- and on any machine set up through Install > AI, the
+  # gateway service is running whenever the desktop session is.
+  exec openclaw tui "${message[@]}"
+fi
+
+# The handoff URL rides in the browser's argv, which uwsm's app daemon echoes
+# into the user journal. Accepted: the token is single-use with a ten-minute
+# expiry against a loopback-only gateway, and journal access already implies
+# access to ~/.openclaw itself.
+exec omarchy-launch-webapp "$url"

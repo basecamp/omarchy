@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# omarchy:summary=Remove the OpenClaw agent platform along with its gateway service and web app.
+# omarchy:requires-sudo=true
+
+# -u so an unset HOME is an error rather than a set of rm -rf paths rooted at /.
+set -euo pipefail
+
+unit_dir="$HOME/.config/systemd/user"
+
+# Only systemd's own word counts as "stopped": a non-zero exit from is-active
+# also covers an unreachable user manager, which says nothing about whether
+# the process is alive.
+unit_stopped() {
+  local state
+  state=$(systemctl --user is-active "$1" 2>/dev/null) || true
+  [[ $state == inactive || $state == failed ]]
+}
+
+# The user services OpenClaw installs for itself: the gateway through
+# onboarding, and the node host if the user ever paired this machine to
+# another gateway. OpenClaw writes them to $HOME/.config regardless of
+# XDG_CONFIG_HOME, so look exactly there; no unit means nothing registered.
+# Upstream's own teardown knows every piece its install wrote (unit file, the
+# default.target.wants enablement symlink, the reload), so prefer it while the
+# binary is still installed and fall back to doing the same by hand. A service
+# that will not stop aborts the removal: dropping the package would strand the
+# live process on deleted code with no way to restart it cleanly.
+for unit_file in "$unit_dir"/openclaw-gateway.service "$unit_dir"/openclaw-node.service; do
+  [[ -f $unit_file ]] || continue
+  unit=${unit_file##*/}
+  role=${unit#openclaw-}
+  role=${role%.service}
+  if openclaw "$role" uninstall >/dev/null 2>&1 ||
+    systemctl --user disable --now "$unit" 2>/dev/null ||
+    unit_stopped "$unit"; then
+    # .bak is what `gateway install --force` leaves behind when it rewrites a
+    # unit, so it goes with the unit.
+    rm -f "$unit_file" "$unit_file.bak" "$unit_dir/default.target.wants/$unit"
+    systemctl --user daemon-reload 2>/dev/null || true
+    # A unit that had been failing stays listed as "not-found failed" after
+    # its file is gone until its failed state is reset.
+    systemctl --user reset-failed "$unit" 2>/dev/null || true
+  else
+    echo "Could not stop $unit; OpenClaw was not removed." >&2
+    exit 1
+  fi
+done
+
+omarchy-pkg-drop openclaw
+
+# The web app launcher and icon omarchy-install-ai-openclaw created.
+rm -f "$HOME/.local/share/applications/OpenClaw.desktop"
+rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/openclaw.png"
+gtk-update-icon-cache "$HOME/.local/share/icons/hicolor" &>/dev/null || true
+
+# ~/.openclaw stays unless asked: the chats, memories, and credentials in
+# there are the user's agent, and finding them intact after a reinstall is the
+# better surprise. But it also holds the plugin runtimes and caches OpenClaw
+# downloads for itself, easily hundreds of megabytes, so the choice is put in
+# front of the user with the size rather than left silent. Without a terminal
+# to ask in, keeping it is the answer.
+state_removed=false
+if [[ -d $HOME/.openclaw && -t 0 ]] && command -v gum >/dev/null; then
+  size=$(du -sh "$HOME/.openclaw" 2>/dev/null | cut -f1)
+  if gum confirm --default=false "Also delete ~/.openclaw ($size: chats, memories, credentials, and downloaded plugins)?"; then
+    rm -rf "$HOME/.openclaw"
+    state_removed=true
+  fi
+fi
+
+echo ""
+echo "OpenClaw has been removed."
+if [[ $state_removed == true ]]; then
+  echo "Its chats, memories, and settings in ~/.openclaw are gone too."
+elif [[ -d $HOME/.openclaw ]]; then
+  echo "Your agent's chats, memories, and settings are still in ~/.openclaw."
+fi

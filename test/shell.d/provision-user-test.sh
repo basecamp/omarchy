@@ -8,7 +8,7 @@ test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
 
 mock_bin="$test_tmp/bin"
-mkdir -p "$mock_bin" "$test_tmp/home"
+mkdir -p "$mock_bin" "$test_tmp/home" "$test_tmp/home/.hermes/profiles/james"
 
 for command in xdg-user-dirs-update xdg-settings xdg-mime; do
   printf '#!/bin/bash\nexit 0\n' >"$mock_bin/$command"
@@ -30,6 +30,14 @@ for skill in omarchy diagnose-crash; do
   link="$test_tmp/home/.gemini/config/skills/$skill"
   [[ -L $link && $(readlink "$link") == "$ROOT/default/agents/skills/$skill" ]] ||
     fail "omarchy-provision-user provisions the $skill skill for Antigravity"
+
+  link="$test_tmp/home/.hermes/skills/$skill"
+  [[ -L $link && $(readlink "$link") == "$ROOT/default/agents/skills/$skill" ]] ||
+    fail "omarchy-provision-user provisions the $skill skill for Hermes"
+
+  link="$test_tmp/home/.hermes/profiles/james/skills/$skill"
+  [[ -L $link && $(readlink "$link") == "$ROOT/default/agents/skills/$skill" ]] ||
+    fail "omarchy-provision-user provisions the $skill skill for a Hermes profile"
 done
 
-pass "omarchy-provision-user provisions Antigravity skills"
+pass "omarchy-provision-user provisions Antigravity and Hermes skills"
