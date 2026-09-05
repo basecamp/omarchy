@@ -19,6 +19,7 @@ o.bind("SUPER + SHIFT + CTRL + SPACE", "Theme menu", "omarchy-menu toggle theme"
 o.bind("SUPER + BACKSPACE", "Toggle window transparency", "omarchy-hyprland-window-transparency-toggle")
 o.bind("SUPER + SHIFT + BACKSPACE", "Toggle window gaps", "omarchy-hyprland-window-gaps-toggle")
 o.bind("SUPER + CTRL + BACKSPACE", "Toggle single-window square aspect", "omarchy-hyprland-window-single-square-aspect-toggle")
+o.bind("SUPER + ALT + BACKSPACE", "Fix stuck window layout", "omarchy-hyprland-window-relayout")
 
 -- xkbcommon names the comma keysym "comma"; the upper-case "COMMA" does not match.
 o.bind("SUPER + comma", "Dismiss last notification", "omarchy-shell notifications dismissOne")
