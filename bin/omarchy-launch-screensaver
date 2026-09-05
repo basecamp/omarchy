@@ -1,6 +1,13 @@
 #!/bin/bash
 
-# omarchy:summary=Launch the Omarchy screensaver in the default terminal on the system with the correct font configuration.
+# omarchy:summary=Launch the native Omarchy screensaver, with a terminal fallback.
+# omarchy:args=[force] [options]
+
+native_screensaver=/usr/lib/omarchy-screensaver/omarchy-screensaver
+
+if [[ -x $native_screensaver ]]; then
+  exec "$native_screensaver" "$@"
+fi
 
 # Exit early if screensaver is already running
 pgrep -f '[o]rg.omarchy.screensaver' && exit 0
