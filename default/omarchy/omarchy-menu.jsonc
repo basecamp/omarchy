@@ -103,6 +103,11 @@
   // Style
   "style.theme": {"icon":"󰸌","label":"Theme","aliases":["theme","themes"],"action":"theme=$(omarchy-theme-switcher); [[ -n $theme ]] && omarchy-theme-set \"$theme\""},
   "style.background": {"icon":"","label":"Background","aliases":["background","wallpaper"],"action":"background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""},
+  "style.background-intro": {"icon":"󰕧","label":"Boot Intro"},
+  "style.background-intro.set": {"icon":"󰐊","label":"Set Intro","when":"omarchy-theme-bg-intro available >/dev/null 2>&1","action":"omarchy-theme-bg-intro set"},
+  "style.background-intro.remove": {"icon":"󰆴","label":"Remove Intro","when":"omarchy-theme-bg-intro available >/dev/null 2>&1","action":"omarchy-theme-bg-intro remove"},
+  "style.background-intro.reset": {"icon":"","label":"Restore Default","when":"omarchy-theme-bg-intro available >/dev/null 2>&1","action":"omarchy-theme-bg-intro reset"},
+  "style.background-intro.enabled": {"icon":"󰔡","label":"Enabled","checked":"omarchy-theme-bg-intro status >/dev/null","action":"omarchy-theme-bg-intro toggle"},
   "style.unlock": {"icon":"󰟵","label":"Unlock","aliases":["unlock"],"action":"unlock=$(omarchy-plymouth-switcher); if [[ $unlock == default ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-plymouth-reset; elif [[ -n $unlock ]]; then omarchy-launch-floating-terminal-with-presentation \"omarchy-plymouth-set-by-theme $(printf %q \"$unlock\")\"; fi"},
   "style.font": {"icon":"","label":"Font","provider":"fonts"},
   "style.bar": {"icon":"󰍜","label":"Menu Bar"},

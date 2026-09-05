@@ -69,7 +69,7 @@ PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
   fail "image menu recovers thumbnails from stranded locks"
 (( $(awk 'END { print NR }' "$cache_dir/$cache_key.rows") == 3 )) ||
   fail "image menu rebuilds every row after cache invalidation"
-[[ $(head -n 1 "$cache_dir/$cache_key.signature") == "v3" ]] ||
+[[ $(head -n 1 "$cache_dir/$cache_key.signature") == "v4" ]] ||
   fail "image menu invalidates stale row caches"
 [[ ! -e $stale_tmp ]] ||
   fail "image menu clears partial thumbnails left by killed generators"

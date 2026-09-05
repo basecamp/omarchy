@@ -22,7 +22,7 @@ find_preview() {
   local theme_path="$1"
   local preview preview_name
 
-  for preview_name in preview.png preview.jpg preview.jpeg preview.webp preview.gif preview.bmp; do
+  for preview_name in preview.png preview.jpg preview.jpeg preview.webp preview.gif preview.bmp preview.mp4 preview.m4v preview.mov preview.webm preview.mkv preview.avi; do
     preview=$(find -L "$theme_path" -maxdepth 1 -type f -iname "$preview_name" -print -quit 2>/dev/null)
 
     if [[ -n $preview ]]; then
@@ -32,7 +32,10 @@ find_preview() {
   done
 
   if [[ -d $theme_path/backgrounds ]]; then
-    find -L "$theme_path/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print 2>/dev/null | sort | head -n 1
+    find -L "$theme_path/backgrounds" -maxdepth 1 -type f \
+      \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \
+         -o -iname '*.mp4' -o -iname '*.m4v' -o -iname '*.mov' -o -iname '*.webm' -o -iname '*.mkv' -o -iname '*.avi' \) \
+      -print 2>/dev/null | sort | head -n 1
   fi
 }
 
@@ -48,7 +51,7 @@ add_theme_preview() {
   ln -s "$preview" "$preview_dir/$theme_name.$extension"
 }
 
-fast_signature="v1"$'\n'
+fast_signature="v2"$'\n'
 for theme_dir in "$USER_THEMES_PATH" "$OMARCHY_THEMES_PATH"; do
   if [[ -d $theme_dir ]]; then
     fast_signature+="$theme_dir:$(stat -Lc '%Y' "$theme_dir")"$'\n'
@@ -104,7 +107,7 @@ fi
 
 current_theme=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)
 selected_preview=""
-for extension in png jpg jpeg webp gif bmp; do
+for extension in png jpg jpeg webp gif bmp mp4 m4v mov webm mkv avi; do
   if [[ -e $preview_dir/$current_theme.$extension ]]; then
     selected_preview="$preview_dir/$current_theme.$extension"
     break

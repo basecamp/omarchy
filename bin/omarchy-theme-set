@@ -48,12 +48,17 @@ shell_ipc() {
   timeout 2 omarchy-shell "$@" >/dev/null 2>&1
 }
 
+is_video_path() {
+  [[ ${1,,} =~ \.(mp4|m4v|mov|webm|mkv|avi)$ ]]
+}
+
 snapshot_background_path() {
   local background="$1"
   local name="$2"
   local snapshot extension
 
   [[ -f $background ]] || return
+  is_video_path "$background" && return
 
   mkdir -p "$BACKGROUND_TRANSITION_CACHE"
   extension=${background##*.}
@@ -69,20 +74,35 @@ snapshot_current_background() {
   snapshot_background_path "$current_background" "previous"
 }
 
+background_transition_uses_snapshots() {
+  local next_background="$1"
+  local current_background
+
+  current_background=$(readlink -f "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
+  ! is_video_path "$current_background" && ! is_video_path "$next_background"
+}
+
 choose_theme_background() {
+  local theme_path="${1:-$CURRENT_THEME_PATH}"
+  local current_theme_backgrounds="$CURRENT_THEME_PATH/backgrounds"
   local backgrounds=()
   local current_background index next_index i
 
   CHOSEN_THEME_BACKGROUND=""
   mapfile -d '' -t backgrounds < <(
-    find -L "$HOME/.config/omarchy/backgrounds/$THEME_NAME/" "$CURRENT_THEME_PATH/backgrounds/" -maxdepth 1 -type f \
-      \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) \
+    find -L "$HOME/.config/omarchy/backgrounds/$THEME_NAME/" "$theme_path/backgrounds/" -maxdepth 1 -type f \
+      \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \
+         -o -iname '*.mp4' -o -iname '*.m4v' -o -iname '*.mov' -o -iname '*.webm' -o -iname '*.mkv' -o -iname '*.avi' \) \
       -print0 2>/dev/null | sort -z
   )
 
   (( ${#backgrounds[@]} > 0 )) || return 1
 
   current_background=$(readlink "$CURRENT_BACKGROUND_LINK" 2>/dev/null || true)
+  if [[ $theme_path != $CURRENT_THEME_PATH && ${current_background%/*} == $current_theme_backgrounds ]]; then
+    current_background="$theme_path/backgrounds/${current_background##*/}"
+  fi
+
   index=-1
   for i in "${!backgrounds[@]}"; do
     if [[ ${backgrounds[$i]} == $current_background ]]; then
@@ -99,6 +119,16 @@ choose_theme_background() {
   fi
 }
 
+choose_staged_theme_background() {
+  local next_theme_backgrounds="$NEXT_THEME_PATH/backgrounds"
+
+  choose_theme_background "$NEXT_THEME_PATH" || return 1
+
+  if [[ ${CHOSEN_THEME_BACKGROUND%/*} == $next_theme_backgrounds ]]; then
+    CHOSEN_THEME_BACKGROUND="$CURRENT_THEME_PATH/backgrounds/${CHOSEN_THEME_BACKGROUND##*/}"
+  fi
+}
+
 set_theme_background_link() {
   choose_theme_background || return 1
   ln -nsf "$CHOSEN_THEME_BACKGROUND" "$CURRENT_BACKGROUND_LINK"
@@ -107,14 +137,19 @@ set_theme_background_link() {
 set_theme_background() {
   local new_background new_background_snapshot
 
-  if ! choose_theme_background; then
-    omarchy-notification-send "No background was found for theme" -t 2000
-    shell_ipc shell applyTheme "$colors_payload" "$shell_payload" || true
-    return
+  if [[ -z $CHOSEN_THEME_BACKGROUND || ! -f $CHOSEN_THEME_BACKGROUND ]]; then
+    if ! choose_theme_background; then
+      omarchy-notification-send "No background was found for theme" -t 2000
+      shell_ipc shell applyTheme "$colors_payload" "$shell_payload" || true
+      return
+    fi
   fi
 
   new_background="$CHOSEN_THEME_BACKGROUND"
-  new_background_snapshot=$(snapshot_background_path "$new_background" "next")
+  new_background_snapshot=""
+  if [[ $BACKGROUND_TRANSITION_SNAPSHOTS == "true" ]]; then
+    new_background_snapshot=$(snapshot_background_path "$new_background" "next")
+  fi
 
   if [[ -f $OLD_BACKGROUND_SNAPSHOT && -f $new_background_snapshot ]]; then
     shell_ipc background themeTransition "$OLD_BACKGROUND_SNAPSHOT" "$new_background_snapshot" "$new_background" "$colors_payload" "$shell_payload" || \
@@ -283,9 +318,19 @@ fi
 # Generate dynamic configs
 omarchy-theme-set-templates
 
+CHOSEN_THEME_BACKGROUND=""
 OLD_BACKGROUND_SNAPSHOT=""
+BACKGROUND_TRANSITION_SNAPSHOTS=true
 if [[ $THEME_HEADLESS != "1" && $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
-  OLD_BACKGROUND_SNAPSHOT=$(snapshot_current_background)
+  # Resolve the staged choice while the old theme still exists. Video changes
+  # switch directly to the durable path in QML, so neither side needs a copy.
+  if choose_staged_theme_background; then
+    if background_transition_uses_snapshots "$CHOSEN_THEME_BACKGROUND"; then
+      OLD_BACKGROUND_SNAPSHOT=$(snapshot_current_background)
+    else
+      BACKGROUND_TRANSITION_SNAPSHOTS=false
+    fi
+  fi
 fi
 
 # Swap next theme in as current

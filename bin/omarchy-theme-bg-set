@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# omarchy:summary=Set the current background image
-# omarchy:args=<path-to-image>
+# omarchy:summary=Set the current background image or video
+# omarchy:args=<path-to-media>
 # omarchy:examples=omarchy theme bg set ~/Pictures/background.png
 
 if [[ -z $1 ]]; then
-  echo "Usage: omarchy-theme-bg-set <path-to-image>" >&2
+  echo "Usage: omarchy-theme-bg-set <path-to-media>" >&2
   exit 1
 fi
 
@@ -17,7 +17,7 @@ if [[ ! -f $BACKGROUND ]]; then
   exit 1
 fi
 
-# Create symlink to the new background
+# Create symlink to the new background media
 ln -nsf "$BACKGROUND" "$CURRENT_BACKGROUND_LINK"
 
 # Update the live shell background immediately when it is running. The

@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# omarchy:summary=Resolve the current background's one-shot boot intro
+# omarchy:hidden=true
+
+set -euo pipefail
+
+state_home="$HOME/.local/state"
+current_dir="$state_home/omarchy/current"
+current_theme="$current_dir/theme"
+current_background_link="$current_dir/background"
+theme_name_path="$current_dir/theme.name"
+marker="$state_home/omarchy/background-intro.boot-id"
+toggle="$state_home/omarchy/toggles/background-intros-off"
+video_extensions=(mp4 m4v mov webm mkv avi)
+
+hash_matches() {
+  local hash_path="$1"
+  local expected_hash="$2"
+  local stored_hash
+
+  [[ -f $hash_path ]] || return 1
+  read -r stored_hash _ <"$hash_path"
+  [[ $stored_hash == "$expected_hash" ]]
+}
+
+find_video() {
+  local intro_dir="$1"
+  local background_stem="$2"
+  local extension
+  local intro
+
+  for extension in "${video_extensions[@]}"; do
+    intro="$intro_dir/$background_stem.$extension"
+    if [[ -f $intro ]]; then
+      printf '%s\n' "$intro"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+find_intro() {
+  local intro_dir="$1"
+  local background_stem="$2"
+  local background_hash="$3"
+
+  hash_matches "$intro_dir/$background_stem.sha256" "$background_hash" || return 1
+  find_video "$intro_dir" "$background_stem"
+}
+
+resolve_intro() {
+  local current_background
+  local theme_name
+  local background_name
+  local background_stem
+  local background_hash
+  local user_intro_dir
+  local theme_intro_dir
+
+  current_background=$(readlink -f "$current_background_link" 2>/dev/null) || return 1
+  [[ -f $current_background ]] || return 1
+
+  case ${current_background,,} in
+  *.jpg | *.jpeg | *.png | *.gif | *.bmp | *.webp) ;;
+  *) return 1 ;;
+  esac
+
+  [[ -s $theme_name_path ]] || return 1
+  theme_name=$(<"$theme_name_path")
+  [[ -n $theme_name && $theme_name != */* && $theme_name != .* ]] || return 1
+
+  background_name=$(basename "$current_background")
+  background_stem=${background_name%.*}
+  background_hash=$(sha256sum "$current_background")
+  background_hash=${background_hash%% *}
+  user_intro_dir="$HOME/.config/omarchy/backgrounds/$theme_name/intros/$background_hash"
+  theme_intro_dir="$current_theme/intros"
+
+  if [[ -f $user_intro_dir/$background_stem.disabled ]]; then
+    return 0
+  fi
+
+  find_video "$user_intro_dir" "$background_stem" && return 0
+  find_intro "$theme_intro_dir" "$background_stem" "$background_hash" && return 0
+
+  return 1
+}
+
+case ${1:-} in
+  "") ;;
+  --resolve-only)
+    resolve_intro || true
+    exit 0
+    ;;
+  *)
+    echo "Usage: omarchy-theme-bg-boot-intro [--resolve-only]" >&2
+    exit 1
+    ;;
+esac
+
+mkdir -p "$(dirname "$marker")"
+lock="$state_home/omarchy/background-intro.lock"
+exec 9>"$lock"
+flock 9
+
+boot_id=${OMARCHY_BOOT_ID:-$(< /proc/sys/kernel/random/boot_id)}
+if [[ -f $marker && $(<"$marker") == "$boot_id" ]]; then
+  exit 0
+fi
+
+marker_staged=$(mktemp "$state_home/omarchy/.background-intro.boot-id.XXXXXX")
+trap 'rm -f "$marker_staged"' EXIT
+printf '%s\n' "$boot_id" >"$marker_staged"
+mv -f "$marker_staged" "$marker"
+trap - EXIT
+
+[[ ! -f $toggle ]] || exit 0
+resolve_intro || true

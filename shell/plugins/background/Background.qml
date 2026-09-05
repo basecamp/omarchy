@@ -1,4 +1,5 @@
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import QtQuick
@@ -16,15 +17,51 @@ Item {
 
   property string currentBackground: ""
   property string displayedBackground: ""
+  property string bootIntroPath: ""
+  property bool bootIntroActive: false
+  property bool bootIntroChecked: false
   property string incomingBackground: ""
   property string oldBackground: ""
   property bool finishingTransition: false
   property int backgroundVersion: 0
+  property int bootIntroRequestVersion: -1
+  property int bootIntroFinishedScreens: 0
   property int revealStartedVersion: -1
   property int pendingThemeVersion: -1
   property string pendingColorsRaw: ""
   property string pendingShellRaw: ""
   property real revealProgress: 1
+
+  // Injected by the first-party service loader; used to reach the lock and idle
+  // services so playback can stop whenever nothing can see the wallpaper.
+  property var shell: null
+
+  // Stop a video wallpaper's decoding whenever it is covered. Qt's FFmpeg
+  // engine drives its own clock, so an unseen player keeps decoding until it
+  // is told not to — a locked laptop would otherwise decode until it died.
+  readonly property var lockService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.lock") : null
+  readonly property var idleService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.idle") : null
+  readonly property var batteryService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.battery") : null
+  readonly property var activeToplevel: ToplevelManager.activeToplevel
+  readonly property bool fullscreenActive: activeToplevel ? activeToplevel.fullscreen : false
+  readonly property bool lockActive: lockService ? lockService.locked : false
+  readonly property bool screensaverActive: idleService ? idleService.screensaverWindowCount > 0 : false
+  readonly property bool powerSaverActive: batteryService ? batteryService.powerSaverOnBattery : false
+  // A lock or a screensaver covers every output, so it is decided once here.
+  // Fullscreen is decided per output below, because it only covers its own.
+  readonly property bool sessionObscured: lockActive || screensaverActive
+
+  onSessionObscuredChanged: {
+    if (sessionObscured) cancelBootIntro()
+  }
+
+  onFullscreenActiveChanged: {
+    if (fullscreenActive) cancelBootIntro()
+  }
+
+  function isVideo(path) {
+    return Util.isVideoPath(path)
+  }
 
   function imageUrl(path) {
     return Util.fileUrl(path)
@@ -38,7 +75,32 @@ Item {
     transitionBackground("", path, path, instant, false)
   }
 
+  function checkBootIntro() {
+    if (bootIntroChecked || bootIntroProc.running) return
+    bootIntroChecked = true
+    bootIntroRequestVersion = backgroundVersion
+    bootIntroProc.running = true
+  }
+
+  function finishBootIntro() {
+    bootIntroRequestVersion = -1
+    bootIntroFinishedScreens = 0
+    bootIntroActive = false
+    bootIntroPath = ""
+  }
+
+  function cancelBootIntro() {
+    finishBootIntro()
+  }
+
+  function markBootIntroFinished() {
+    if (!bootIntroActive) return
+    bootIntroFinishedScreens += 1
+    if (bootIntroFinishedScreens >= Quickshell.screens.length) finishBootIntro()
+  }
+
   function transitionBackground(fromPath, path, finalPath, instant, force) {
+    finishBootIntro()
     path = String(path || "").trim()
     finalPath = String(finalPath || path).trim()
     fromPath = String(fromPath || "").trim()
@@ -50,10 +112,12 @@ Item {
     revealAnimation.stop()
     finishingTransition = false
 
-    if (instant || !displayedBackground) {
+    // Video frames are not fed through the image-only reveal stack. Switching
+    // instantly also avoids decoding two full videos during a transition.
+    if (instant || !displayedBackground || isVideo(path) || isVideo(displayedBackground)) {
       oldBackground = ""
       incomingBackground = ""
-      displayedBackground = path
+      displayedBackground = finalPath
       revealProgress = 1
       return
     }
@@ -124,7 +188,29 @@ Item {
     id: readlinkProc
     command: ["readlink", "-f", root.currentBackgroundLink]
     stdout: StdioCollector {
-      onStreamFinished: root.setBackground(String(text || "").trim(), false)
+      onStreamFinished: {
+        root.setBackground(String(text || "").trim(), false)
+        root.checkBootIntro()
+      }
+    }
+  }
+
+  Process {
+    id: bootIntroProc
+    command: ["omarchy-theme-bg-boot-intro"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        const path = String(text || "").trim()
+        if (root.bootIntroRequestVersion !== root.backgroundVersion || root.sessionObscured || root.fullscreenActive) {
+          root.finishBootIntro()
+          return
+        }
+        root.bootIntroRequestVersion = -1
+        if (!path) return
+        root.bootIntroFinishedScreens = 0
+        root.bootIntroPath = path
+        root.bootIntroActive = true
+      }
     }
   }
 
@@ -149,6 +235,17 @@ Item {
 
     function themeTransition(fromPath: string, path: string, finalPath: string, colorsB64: string, shellB64: string): void {
       root.transitionBackgroundWithTheme(fromPath, path, finalPath, colorsB64, shellB64)
+    }
+
+    function cancelBootIntro(): void {
+      root.cancelBootIntro()
+    }
+  }
+
+  Connections {
+    target: Quickshell
+    function onScreensChanged() {
+      if (root.bootIntroActive && root.bootIntroFinishedScreens >= Quickshell.screens.length) root.finishBootIntro()
     }
   }
 
@@ -196,12 +293,29 @@ Item {
       color: "transparent"
       // Keep render updates enabled. The background layer has been observed to
       // lose its committed buffer while parked with updatesEnabled=false,
-      // leaving a black desktop until omarchy-shell is restarted. The wallpaper
-      // itself is static, so this favors correctness over a small render-loop
-      // optimization.
+      // leaving a black desktop until omarchy-shell is restarted. A still
+      // wallpaper costs nothing to keep enabled, and a video one is throttled
+      // by pausing playback rather than by parking the layer.
       updatesEnabled: true
 
+      // Pausing every wallpaper for one fullscreen window would freeze the one
+      // still on show next to it, which costs a viewer more than it saves.
+      readonly property bool fullscreenHere: root.fullscreenActive
+        && !!Hyprland.focusedMonitor
+        && String(Hyprland.focusedMonitor.name || "") === String(modelData.name || "")
+
       property bool maskReady: false
+      property bool bootIntroFinished: false
+
+      Component.onDestruction: {
+        if (bootIntroFinished && root.bootIntroActive) root.bootIntroFinishedScreens = Math.max(0, root.bootIntroFinishedScreens - 1)
+      }
+
+      function handleBootIntroFinished() {
+        if (bootIntroFinished || !root.bootIntroActive) return
+        bootIntroFinished = true
+        root.markBootIntroFinished()
+      }
 
       function maybeStartReveal() {
         if (!root.incomingBackground || root.revealProgress !== 0 || maskReady) return
@@ -218,20 +332,33 @@ Item {
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
       exclusionMode: ExclusionMode.Ignore
 
-      Image {
+      BackgroundMedia {
         id: base
         anchors.fill: parent
-        source: root.imageUrl(root.displayedBackground)
-        fillMode: Image.PreserveAspectCrop
-        asynchronous: true
-        cache: true
-        onStatusChanged: {
-          if (status === Image.Ready && root.finishingTransition) {
+        path: root.displayedBackground
+        playbackEnabled: !root.sessionObscured && !root.powerSaverActive && !panel.fullscreenHere
+        onReadyChanged: {
+          if (ready && root.finishingTransition) {
             root.incomingBackground = ""
             root.oldBackground = ""
             root.finishingTransition = false
           }
         }
+      }
+
+      // The still background remains decoded underneath this one-shot layer,
+      // so a matching final frame can disappear without a reload or flash.
+      // Unlike a looping wallpaper, let this short startup effect finish in
+      // battery power-saver rather than suspending it over the still.
+      BackgroundMedia {
+        anchors.fill: parent
+        path: root.bootIntroActive ? root.bootIntroPath : ""
+        playbackEnabled: root.bootIntroActive && !root.sessionObscured && !panel.fullscreenHere
+        loop: false
+        fadeOutDuration: 750
+        opacity: 1 - fadeOutProgress
+        visible: root.bootIntroActive && opacity > 0
+        onFinished: panel.handleBootIntroFinished()
       }
 
       Image {
@@ -306,6 +433,9 @@ Item {
         function onIncomingBackgroundChanged() {
           panel.maskReady = false
           panel.maybeStartReveal()
+        }
+        function onBootIntroActiveChanged() {
+          if (root.bootIntroActive) panel.bootIntroFinished = false
         }
       }
 
