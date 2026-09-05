@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the computer has Bluetooth hardware.
+
+# Read rfkill, do not ask BlueZ. On hardware where a platform switch gates the
+# radio, a soft block removes the hci device, and BlueZ then reports no adapter.
+# The rfkill entry survives the block. Only rfkill shows the difference between
+# blocked hardware and missing hardware.
+rfkill_path="${OMARCHY_RFKILL_PATH:-/sys/class/rfkill}"
+
+shopt -s nullglob
+
+for device in "$rfkill_path"/*; do
+  [[ $(< "$device/type") == "bluetooth" ]] && exit 0
+done
+
+exit 1

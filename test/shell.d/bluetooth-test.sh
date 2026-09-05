@@ -17,8 +17,25 @@ assert(/IpcHandler[\s\S]*?function toggleBluetooth\(\) \{ root\.toggleBluetooth\
 assert(/manageIpc: false/.test(panelSource), 'bluetooth owns its IPC handler so it can extend the target methods')
 
 // Writing adapter.enabled sets BlueZ Powered, which does not survive a reboot.
-assert(/function toggleBluetooth\(\)[\s\S]*?execDetached\(\["omarchy-bluetooth-power", adapter\.enabled \? "off" : "on"\]\)/.test(panelSource), 'bluetooth toggles the radio through the rfkill soft block')
+assert(/function toggleBluetooth\(\)[\s\S]*?execDetached\(\["omarchy-bluetooth-power", adapter && adapter\.enabled \? "off" : "on"\]\)/.test(panelSource), 'bluetooth toggles the radio through the rfkill soft block')
 assert(!/adapter\.enabled = /.test(panelSource), 'bluetooth never writes the adapter power state directly')
+
+// A soft block can remove the adapter from BlueZ. The shell must remove the block
+// in exactly this case, with no adapter to read. A guard on the adapter made the
+// block permanent. rfkill is the only layer that still knows the hardware is
+// present, so the probe reports the hardware, and BlueZ does not.
+assert(/function toggleBluetooth\(\)\s*\{\s*if \(!hasBluetooth\) return\b/.test(panelSource), 'bluetooth does not try to unblock hardware that does not exist')
+assert(/command: \["omarchy-hw-bluetooth"\]/.test(panelSource), 'bluetooth probes for hardware the adapter cannot report')
+assert(/onExited: function\(exitCode\)[\s\S]*?bluetoothPresent = exitCode === 0/.test(panelSource), 'bluetooth takes hardware presence from the probe exit code')
+assert(/readonly property bool hasBluetooth: adapter !== null \|\| bluetoothPresent/.test(panelSource), 'bluetooth treats the rfkill probe as hardware presence when BlueZ has no adapter')
+assert(/visible: hasBluetooth\b/.test(panelSource), 'bluetooth stays in the bar while the radio is blocked')
+assert(/visible: root\.hasBluetooth\b/.test(panelSource), 'bluetooth offers the power switch while the radio is blocked')
+
+// BarIconButton has no visual content at an empty string. A visible widget with no
+// glyph is then a blank slot in the bar. A blocked radio reuses the off glyph.
+assert(/if \(!adapter \|\| !adapter\.enabled\) return hasBluetooth \? "\u{f00b2}" : ""/u.test(panelSource), 'bluetooth draws the off glyph while blocked instead of a blank bar entry')
+assert(/if \(!adapter\) return hasBluetooth \? "Blocked" : "No adapter"/.test(panelSource), 'bluetooth names the blocked state instead of reporting no adapter')
+assert(/!root\.hasBluetooth \? "No Bluetooth adapter"/.test(panelSource), 'bluetooth only reports a missing adapter when the machine has no radio at all')
 
 // Discovery is a BlueZ session that nothing ends at panel close: it persists
 // until StopDiscovery or until quickshell's D-Bus connection drops with the
@@ -180,7 +197,16 @@ printf 'rfkill %s\n' "$*" >>"$BLUETOOTHCTL_LOG"
 exit 0
 SH
 
-chmod +x "$mock_bin/bluetoothctl" "$mock_bin/rfkill"
+# Stands in for the user manager that power-on asks to revive bt-agent, and
+# keeps the real systemctl out of the test run.
+cat >"$mock_bin/systemctl" <<'SH'
+#!/bin/bash
+
+printf 'systemctl %s\n' "$*" >>"$BLUETOOTHCTL_LOG"
+exit 0
+SH
+
+chmod +x "$mock_bin/bluetoothctl" "$mock_bin/rfkill" "$mock_bin/systemctl"
 
 # $ROOT/bin so omarchy-bluetooth-device resolves the real omarchy-bluetooth-power.
 bluetooth_run() {
@@ -210,6 +236,10 @@ grep -q "power off" "$off_log" &&
   fail "bluetooth does not also power the adapter down" "$(cat "$off_log")"
 pass "bluetooth does not also power the adapter down"
 
+grep -q "bt-agent" "$off_log" &&
+  fail "bluetooth leaves the pairing agent alone when turning off" "$(cat "$off_log")"
+pass "bluetooth leaves the pairing agent alone when turning off"
+
 # Unblocking is enough on its own, so there is nothing left to ask bluetoothctl.
 on_log=$(bluetooth_power no on)
 grep -qx "rfkill unblock bluetooth" "$on_log" ||
@@ -220,11 +250,22 @@ grep -q "power on" "$on_log" &&
   fail "bluetooth leaves the power-on to bluetoothd when the block is lifted" "$(cat "$on_log")"
 pass "bluetooth leaves the power-on to bluetoothd when the block is lifted"
 
+# A login-time block on switch-gated hardware removes the adapter from sysfs, so
+# the enabled bt-agent.service was skipped on its ConditionPathIsDirectory and
+# systemd never rechecks it. Power-on is the moment both of its gates hold again.
+grep -qx "systemctl --user start bt-agent.service" "$on_log" ||
+  fail "bluetooth revives the skipped pairing agent after power-on" "$(cat "$on_log")"
+pass "bluetooth revives the skipped pairing agent after power-on"
+
 # An adapter powered down without a block is one bluetoothd will not pick up.
 inert_log=$(RFKILL_INERT=1 bluetooth_power no on)
 grep -qx "power on" "$inert_log" ||
   fail "bluetooth powers the adapter on when unblocking does not" "$(cat "$inert_log")"
 pass "bluetooth powers the adapter on when unblocking does not"
+
+grep -qx "systemctl --user start bt-agent.service" "$inert_log" ||
+  fail "bluetooth revives the pairing agent after the fallback power-on too" "$(cat "$inert_log")"
+pass "bluetooth revives the pairing agent after the fallback power-on too"
 
 # The panel switch reads Powered, so that is what toggle has to invert.
 toggle_on_log=$(bluetooth_power yes toggle)

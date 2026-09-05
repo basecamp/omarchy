@@ -23,6 +23,14 @@ Panel {
 
   readonly property var adapter: Bluetooth.defaultAdapter
 
+  // A null adapter cannot show the difference between blocked hardware and missing
+  // hardware: on hardware where a platform switch gates the radio, a soft block
+  // removes the hci device from the kernel, and BlueZ then reports no adapter. The
+  // rfkill entry survives, and omarchy-hw-bluetooth reads that. Thus the widget
+  // stands for the radio, not for the view that BlueZ has of it.
+  property bool bluetoothPresent: false
+  readonly property bool hasBluetooth: adapter !== null || bluetoothPresent
+
   // True while this instance owes BlueZ a StopDiscovery: set when it starts
   // discovery (or opens onto a session already running) and cleared once
   // discovery is confirmed down after close. Ownership, not state — BlueZ's
@@ -56,8 +64,10 @@ Panel {
   readonly property var discoveredDevices: deviceGroups.discovered || []
 
   readonly property string icon: {
-    if (!adapter) return ""
-    if (!adapter.enabled) return "󰂲"
+    // A blocked radio shows the off glyph, not a blank slot. Only a machine with no
+    // Bluetooth radio draws nothing: BarIconButton has no visual content at an empty
+    // string, and the widget then holds a blank slot.
+    if (!adapter || !adapter.enabled) return hasBluetooth ? "󰂲" : ""
     if (connectedDevices.length > 0) return "󰂱"
     return "󰂯"
   }
@@ -75,7 +85,7 @@ Panel {
   ]
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
-    if (!adapter) return "No adapter"
+    if (!adapter) return hasBluetooth ? "Blocked" : "No adapter"
     if (!adapter.enabled) return "Turned Off"
     return activePhrases[phraseIndex % activePhrases.length]
   }
@@ -497,9 +507,20 @@ Panel {
     if (selectedIndex < 0) selectedIndex = 0
   }
 
-  visible: adapter !== null
+  visible: hasBluetooth
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
+
+  Process {
+    id: hardwareProbe
+    command: ["omarchy-hw-bluetooth"]
+    running: true
+    onExited: function(exitCode) { root.bluetoothPresent = exitCode === 0 }
+  }
+
+  // An adapter that disappears no longer proves that the hardware is present. On
+  // switch-gated hardware, the block removes the radio at exactly this moment.
+  onAdapterChanged: if (!adapter) hardwareProbe.running = true
 
   // BlueZ rejects StartDiscovery while the adapter is still powering up, and
   // discovery can also time out on its own. While the panel is open, keep
@@ -627,14 +648,17 @@ Panel {
   // Not adapter.enabled: that writes BlueZ's Powered, which nothing persists, so
   // the adapter came back on at the next boot. omarchy-bluetooth-power moves the
   // rfkill soft block instead, which systemd-rfkill restores across reboots.
-  // Powered still follows the block, so the switch and icon read it as before.
+  //
+  // The guard reads hasBluetooth, not the adapter: a switch-gated block removes the
+  // adapter with the radio (see bluetoothPresent), and an rfkill unblock does not
+  // need BlueZ. A guard on the adapter made the block permanent on that hardware.
   //
   // Asking for a direction rather than a toggle: the helper runs detached and the
   // switch only moves once BlueZ catches up, so a second click inside that window
   // would re-read the old state and undo the first.
   function toggleBluetooth() {
-    if (!adapter) return
-    Quickshell.execDetached(["omarchy-bluetooth-power", adapter.enabled ? "off" : "on"])
+    if (!hasBluetooth) return
+    Quickshell.execDetached(["omarchy-bluetooth-power", adapter && adapter.enabled ? "off" : "on"])
   }
 
   IpcHandler {
@@ -712,7 +736,7 @@ Panel {
           // header's only cursor target.
           ToggleSwitch {
             id: powerSwitch
-            visible: !!root.adapter
+            visible: root.hasBluetooth
             checked: !!root.adapter && root.adapter.enabled
             hasCursor: root.headerHasCursor
             foreground: root.bar.foreground
@@ -867,8 +891,8 @@ Panel {
         Text {
           textFormat: Text.PlainText
           visible: root.connectedDevices.length === 0 && root.scrollRows.length === 0
-          text: !root.adapter ? "No Bluetooth adapter"
-              : !root.adapter.enabled ? "Turn Bluetooth on to scan"
+          text: !root.hasBluetooth ? "No Bluetooth adapter"
+              : !root.adapter || !root.adapter.enabled ? "Turn Bluetooth on to scan"
               : "Scanning for devices…"
           color: Qt.darker(root.bar.foreground, 1.5)
           font.family: root.bar.fontFamily
