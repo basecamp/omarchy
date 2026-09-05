@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# omarchy:summary=Remove Simple Scan, AirScan, and any Canon PIXMA scanner configuration
+# omarchy:requires-sudo=true
+
+if grep -qE '^bjnp://' /etc/sane.d/pixma.conf 2>/dev/null; then
+  echo -e "\nRemoving PIXMA scanner configuration..."
+  sudo sed -i '/^bjnp:\/\//d' /etc/sane.d/pixma.conf
+fi
+
+echo -e "\nRemoving scanning packages..."
+omarchy-pkg-drop simple-scan sane-airscan sane
+
+echo ""
+echo "Scanning support has been removed."
