@@ -35,6 +35,43 @@ if [[ -n ${update:-} ]]; then
   updates+=("$update")
 fi
 
+# Git-managed plugins. Nothing else checks these, so a plugin can sit years
+# behind with nothing saying so.
+#
+# Read-only on purpose: ls-remote asks the remote for its HEAD without writing
+# an object or moving a ref in the user's checkout. Fetching belongs to
+# `omarchy plugin update`, which shows the diff before it pulls anything.
+plugins_dir="$HOME/.config/omarchy/plugins"
+
+if [[ -d $plugins_dir ]]; then
+  for dir in "$plugins_dir"/*/; do
+    [[ -d $dir/.git ]] || continue
+
+    plugin=$(basename "$dir")
+    remote=$(GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -oBatchMode=yes}" \
+      timeout 5 git -C "$dir" ls-remote --quiet origin HEAD 2>/dev/null |
+      awk 'NR == 1 { print $1 }' || true)
+    [[ -n $remote ]] || continue
+
+    head=$(git -C "$dir" rev-parse HEAD 2>/dev/null || true)
+    [[ -n $head && $head != "$remote" ]] || continue
+
+    # Counting the commits needs the remote one locally, which we have
+    # whenever the user has looked at an update and not taken it: `omarchy
+    # plugin update` fetches before it shows its diff. Without the object we
+    # still know the remote moved somewhere this checkout has never seen.
+    behind=$(git -C "$dir" rev-list --count "HEAD..$remote" 2>/dev/null || true)
+
+    if [[ -z $behind ]]; then
+      updates+=("plugin $plugin has an update")
+    elif (( behind > 0 )); then
+      commit_label=commits
+      (( behind == 1 )) && commit_label=commit
+      updates+=("plugin $plugin $behind new $commit_label")
+    fi
+  done
+fi
+
 if (( ${#updates[@]} > 0 )); then
   printf '%s\n' "${updates[@]}"
   exit 0
