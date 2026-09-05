@@ -258,8 +258,7 @@ Item {
         iconName: iconName,
         player: player,
         playerKey: playerKey(player),
-        before: beforeTrackSignature,
-        attempts: 0
+        before: beforeTrackSignature
       }
       trackOsdTimer.restart()
     } else {
@@ -267,21 +266,36 @@ Item {
     }
   }
 
+  function showPendingTrackOsd(player) {
+    var pending = pendingTrackOsd
+    pendingTrackOsd = null
+    trackOsdTimer.stop()
+    root.showOsd(pending.actionLabel, pending.iconName, player)
+  }
+
   function flushPendingTrackOsd(force) {
     var pending = pendingTrackOsd
     if (!pending) return
 
     var player = playerForKey(pending.playerKey) || pending.player
-    if (force || MediaModel.trackChanged(pending.before, player) || pending.attempts >= 10) {
-      pendingTrackOsd = null
-      trackOsdTimer.stop()
-      root.showOsd(pending.actionLabel, pending.iconName, player)
+    // Players like Chromium blank the track metadata for a moment while
+    // switching tracks, so a track change only counts once the new title has
+    // arrived. The timer force-flushes for players that never deliver one.
+    if (!force && !(MediaModel.trackChanged(pending.before, player) && MediaModel.hasTrackTitle(player)))
       return
-    }
 
-    pending.attempts = pending.attempts + 1
-    pendingTrackOsd = pending
-    trackOsdTimer.restart()
+    showPendingTrackOsd(player)
+  }
+
+  function seekedDuringPendingTrackOsd(player) {
+    var pending = pendingTrackOsd
+    if (!pending || playerKey(player) !== pending.playerKey) return
+
+    // A seek that arrives with the metadata untouched means the command
+    // restarted the current track (previous on a track that has played a
+    // while): no track change will follow, so show the OSD as-is.
+    if (!MediaModel.trackChanged(pending.before, player) && MediaModel.hasTrackTitle(player))
+      showPendingTrackOsd(player)
   }
 
   function selectPlayer(key) {
@@ -443,14 +457,16 @@ Item {
       required property var modelData
       target: modelData
       function onIsPlayingChanged() { root.syncPlayingOrder() }
+      function onPostTrackChanged() { root.flushPendingTrackOsd(false) }
+      function onPositionChanged() { root.seekedDuringPendingTrackOsd(modelData) }
     }
   }
 
   Timer {
     id: trackOsdTimer
-    interval: 120
+    interval: 2000
     repeat: false
-    onTriggered: root.flushPendingTrackOsd(false)
+    onTriggered: root.flushPendingTrackOsd(true)
   }
 
   PwObjectTracker { objects: root.playbackStreams }
