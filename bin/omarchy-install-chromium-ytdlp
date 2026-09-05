@@ -17,6 +17,9 @@ browser_dirs=(
   "$HOME/.config/BraveSoftware/Brave-Browser"
   "$HOME/.config/BraveSoftware/Brave-Browser-Beta"
   "$HOME/.config/BraveSoftware/Brave-Browser-Nightly"
+  "$HOME/.config/BraveSoftware/Brave-Origin"
+  "$HOME/.config/BraveSoftware/Brave-Origin-Beta"
+  "$HOME/.config/BraveSoftware/Brave-Origin-Nightly"
   "$HOME/.config/microsoft-edge"
   "$HOME/.config/microsoft-edge-dev"
 )
