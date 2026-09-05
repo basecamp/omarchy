@@ -133,6 +133,22 @@ assert_status 0 "keyboard prompt succeeds"
 grep -qF -- '--selected English (US)' "$GUM_ARGS" || fail "keyboard prompt preselects English (US)"
 pass "keyboard prompt maps the chosen label to its keymap"
 
+run_prompt omarchy_prompt_keyboard "0:Thai (Kedmanee)"
+assert_status 0 "keyboard prompt accepts Thai (Kedmanee)"
+[[ $(field keyboard) == "th" ]] ||
+  fail "Thai (Kedmanee) resolves to th, the XKB marker apply_keyboard persists in place of a console keymap kbd does not ship"
+[[ $(field keyboard_label) == "Thai (Kedmanee)" ]] || fail "keyboard prompt keeps the Thai label for the summary"
+grep -qx 'Thai (Kedmanee)' "$tmp_dir/stdin.1" || fail "keyboard prompt offers Thai (Kedmanee)"
+pass "keyboard prompt maps Thai (Kedmanee) to the th marker"
+
+omarchy_xkb_only_layout th || fail "th is an xkb-only layout"
+if omarchy_xkb_only_layout us; then
+  fail "us is a console keymap, not xkb-only"
+fi
+[[ $(omarchy_console_keymap_for th) == "us" ]] || fail "xkb-only layouts load the US console map"
+[[ $(omarchy_console_keymap_for de) == "de" ]] || fail "console keymaps load themselves"
+pass "xkb-only layouts keep a Latin console"
+
 run_prompt omarchy_prompt_keyboard "1:"
 assert_status "$OMARCHY_FORM_BACK" "keyboard prompt reports Esc as back"
 assert_returned "keyboard prompt survives Esc under set -e"

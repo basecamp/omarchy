@@ -612,10 +612,20 @@ confirm_reboot() {
 # Load the layout on the live VT and persist it for the installed system.
 # systemd-firstboot writes both the console KEYMAP and the XKB layout Hyprland
 # reads, matching what the ISO's configure_keyboard does at install time. A
-# keymap localectl doesn't know keeps the default rather than failing (defensive;
-# the picker no longer offers any such layout).
+# keymap localectl doesn't know keeps the default rather than failing (defensive).
+#
+# XKB-only picker values (OMARCHY_XKB_ONLY_LAYOUTS) are the exception: kbd
+# ships no console map, so persist us (Latin passwords/LUKS) and then point
+# XKBLAYOUT at the chosen layout for Hyprland.
 apply_keyboard() {
   local keymap="$1"
+
+  if omarchy_xkb_only_layout "$keymap"; then
+    apply_keyboard us
+    omarchy_write_xkblayout "$keymap"
+    return 0
+  fi
+
   [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$keymap" 2>/dev/null || true
 
   if localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$keymap"; then

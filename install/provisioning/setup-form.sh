@@ -75,8 +75,40 @@ Spanish|es
 Spanish (Latin American)|la-latin1
 Swedish|sv-latin1
 Tajik|tj_alt-UTF8
+Thai (Kedmanee)|th
 Turkish|trq
 Ukrainian|ua'
+
+# Picker values that are XKB layouts, not kbd console keymaps. The live
+# console and LUKS prompt stay on us so Latin passwords remain typeable;
+# XKBLAYOUT carries the choice into Hyprland. The ISO configurator parses
+# this assignment the same way it reads OMARCHY_KEYBOARD_LAYOUTS.
+OMARCHY_XKB_ONLY_LAYOUTS="th"
+
+omarchy_xkb_only_layout() {
+  [[ " $OMARCHY_XKB_ONLY_LAYOUTS " == *" $1 "* ]]
+}
+
+omarchy_console_keymap_for() {
+  if omarchy_xkb_only_layout "$1"; then
+    printf '%s\n' us
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+# After a Latin console keymap is persisted, point XKBLAYOUT at an XKB-only
+# picker value (no matching kbd map). Optional second arg is the vconsole file.
+omarchy_write_xkblayout() {
+  local keymap=$1
+  local vconsole=${2:-/etc/vconsole.conf}
+
+  if grep -q '^XKBLAYOUT=' "$vconsole" 2>/dev/null; then
+    sed -i "s/^XKBLAYOUT=.*/XKBLAYOUT=$keymap/" "$vconsole"
+  else
+    echo "XKBLAYOUT=$keymap" >>"$vconsole"
+  fi
+}
 
 OMARCHY_USERNAME_PATTERN='^[a-z_][a-z0-9_-]*[$]?$'
 OMARCHY_RESERVED_USERNAMES='^(root|bin|daemon|mail|ftp|http|nobody|dbus|systemd-coredump|systemd-network|systemd-oom|systemd-journal-remote|systemd-resolve|systemd-timesync|tss|uuidd|alpm|git|avahi|cups|cups-browsed|lp|_talkd|polkitd|rtkit|qemu|brltty|gluster|rpc|libvirt-qemu|pcscd|nvidia-persistenced|sddm)$'
