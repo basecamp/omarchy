@@ -1,11 +1,216 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Update Omarchy and system packages
 # omarchy:args=[-y]
 # omarchy:examples=omarchy update | omarchy update -y
 # omarchy:requires-sudo=true
 
+if [[ $- != *p* ]]; then
+  echo "Refusing an unsafe Bash startup for the Omarchy update." >&2
+  exit 126
+fi
+
+require_privileged_bash_startup() {
+  [[ $- == *p* ]] || return 1
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+if ! require_privileged_bash_startup; then
+  echo "Refusing an unsafe Bash startup for the Omarchy update." >&2
+  exit 126
+fi
+unset -f require_privileged_bash_startup
+
 set -e
+
+# Privileged mode prevents BASH_ENV and exported functions from running before
+# this boundary. Re-exec once without their raw environment records so ordinary
+# Bash helpers cannot import them again and bypass the trusted command paths.
+sanitize_bash_startup_environment() {
+  local environment_entry environment_name
+  local needs_reexec=0
+  local -a environment_unsets=(-u BASH_ENV -u ENV)
+
+  [[ -z ${BASH_ENV+x} && -z ${ENV+x} ]] || needs_reexec=1
+  while IFS= read -r -d '' environment_entry; do
+    environment_name="${environment_entry%%=*}"
+    if [[ $environment_name == BASH_FUNC_*%% ]]; then
+      environment_unsets+=(-u "$environment_name")
+      needs_reexec=1
+    fi
+  done < <(/usr/bin/env -0)
+
+  if (( needs_reexec )); then
+    exec /usr/bin/env "${environment_unsets[@]}" /usr/bin/bash -p "$0" "$@"
+  fi
+}
+sanitize_bash_startup_environment "$@"
+unset -f sanitize_bash_startup_environment
+
+trusted_directory_chain() {
+  local current="$1" allow_current_user="$2" canonical owner mode current_uid
+  current_uid=$(/usr/bin/id -u) || return 1
+
+  while :; do
+    [[ -d $current && ! -L $current ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$current") || return 1
+    [[ $canonical == "$current" ]] || return 1
+    [[ $current == / ]] && break
+    read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$current") || return 1
+    if [[ $owner != 0 ]] && ! { [[ $allow_current_user == "true" && $owner == "$current_uid" ]]; }; then
+      return 1
+    fi
+    (( (8#$mode & 0022) == 0 )) || return 1
+    current=${current%/*}
+    [[ -n $current ]] || current=/
+  done
+}
+
+trusted_omarchy_source_root() {
+  local config=/etc/omarchy.conf
+  local default_root=/usr/share/omarchy
+  local configured_root=""
+  local canonical=""
+  local owner=""
+  local mode=""
+  local links=""
+  local size=""
+  local line=""
+  local encoded=""
+  local decoded=""
+  local character=""
+  local index=0
+  local escaped=0
+  local lines=()
+
+  if [[ ! -e $config && ! -L $config ]]; then
+    configured_root="$default_root"
+  else
+    [[ -f $config && ! -L $config ]] || return 1
+    canonical=$(/usr/bin/realpath -e -- "$config") || return 1
+    [[ $canonical == "$config" ]] || return 1
+    read -r owner mode links size < <(/usr/bin/stat -Lc '%u %a %h %s' -- "$config") || return 1
+    [[ $owner == "0" && $links == "1" ]] || return 1
+    (( (8#$mode & 0022) == 0 && size > 0 && size <= 4096 )) || return 1
+    trusted_directory_chain /etc false || return 1
+
+    mapfile -t lines <"$config" || return 1
+    (( ${#lines[@]} == 1 )) || return 1
+    line="${lines[0]}"
+    [[ $line == 'export OMARCHY_PATH="'*'"' ]] || return 1
+    encoded="${line#'export OMARCHY_PATH="'}"
+    encoded="${encoded%'"'}"
+
+    for (( index = 0; index < ${#encoded}; index++ )); do
+      character="${encoded:index:1}"
+      if (( escaped )); then
+        case "$character" in
+          '\' | '"' | '$' | '`') decoded+="$character" ;;
+          *) return 1 ;;
+        esac
+        escaped=0
+      elif [[ $character == '\' ]]; then
+        escaped=1
+      elif [[ $character == '"' ]]; then
+        return 1
+      else
+        decoded+="$character"
+      fi
+    done
+    (( escaped == 0 )) || return 1
+    configured_root="$decoded"
+  fi
+
+  [[ -d $configured_root && ! -L $configured_root ]] || return 1
+  canonical=$(/usr/bin/realpath -e -- "$configured_root") || return 1
+  [[ $canonical == "$configured_root" ]] || return 1
+
+  if [[ $configured_root == "$default_root" ]]; then
+    trusted_directory_chain "$configured_root" false || return 1
+  else
+    trusted_directory_chain "$configured_root" true || return 1
+  fi
+
+  printf '%s\n' "$configured_root"
+}
+
+sudo_supports_no_update() {
+  LC_ALL=C /usr/bin/sudo -h 2>&1 | /usr/bin/grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]'
+}
+
+validate_non_reusable_sudo() {
+  local wrapper_dir="$OMARCHY_PATH/default/omarchy/sudo-no-update"
+  local wrapper="$wrapper_dir/sudo" canonical="" current="" owner="" mode=""
+
+  sudo_supports_no_update || {
+    echo "This sudo does not support --no-update; refusing to run a mixed-trust update." >&2
+    return 1
+  }
+  [[ -f $wrapper && -x $wrapper && ! -L $wrapper ]] || {
+    echo "Trusted no-update sudo wrapper is missing; refusing to run a mixed-trust update." >&2
+    return 1
+  }
+  canonical=$(/usr/bin/realpath -e -- "$wrapper") || return 1
+  [[ $canonical == "$wrapper" ]] || return 1
+  if [[ $OMARCHY_PATH == "/usr/share/omarchy" ]]; then
+    current="$wrapper"
+    while :; do
+      [[ ! -L $current ]] || return 1
+      read -r owner mode < <(/usr/bin/stat -Lc '%u %a' -- "$current") || return 1
+      [[ $owner == "0" ]] || return 1
+      (( (8#$mode & 0022) == 0 )) || return 1
+      [[ $current == "$OMARCHY_PATH" ]] && break
+      current=${current%/*}
+    done
+  fi
+}
+
+enable_non_reusable_sudo() {
+  local wrapper_dir="$OMARCHY_PATH/default/omarchy/sudo-no-update"
+
+  validate_non_reusable_sudo
+  PATH="$wrapper_dir:$PATH"
+  export PATH
+}
+
+if ! OMARCHY_PATH=$(trusted_omarchy_source_root); then
+  echo "Refusing to update from an untrusted Omarchy source root." >&2
+  exit 1
+fi
+export OMARCHY_PATH
+user_path="${PATH:-/usr/bin:/bin}"
+PATH="$OMARCHY_PATH/bin:/usr/bin:/usr/sbin:/bin:/sbin"
+export PATH
+update_stay_awake_stopped=0
+
+# Verify and enable the security primitive before any update-owned privileged
+# work. Every authorization in this workflow is command-scoped (`sudo -N`): it
+# may prompt for the command being run, but it never publishes a reusable
+# timestamp to a dev hook, migration tool, AUR build, or detached child.
+validate_non_reusable_sudo || exit 1
+if [[ ${OMARCHY_SUDO_NO_UPDATE:-0} == 1 ]]; then
+  enable_non_reusable_sudo
+fi
+/usr/bin/sudo -k || exit 1
+enable_non_reusable_sudo
+export OMARCHY_SUDO_NO_UPDATE=1
+
+cleanup_update() {
+  local status=$?
+
+  trap - EXIT
+  if (( update_stay_awake_stopped == 0 )); then
+    omarchy-update-stay-awake stop || true
+  fi
+  /usr/bin/sudo -k || true
+  exit "$status"
+}
 
 if [[ -z ${OMARCHY_UPDATE_LOGGED:-} ]]; then
   script_command=$(printf '%q ' "$0" "$@")
@@ -17,7 +222,7 @@ if ! omarchy-update-lock held; then
 fi
 
 trap 'echo ""; echo -e "\033[0;31mSomething went wrong during the update!\n\nPlease review the output above carefully, correct the error, and retry the update.\n\nIf you need assistance, get help from the community at https://omarchy.org/discord\033[0m"' ERR
-trap 'omarchy-update-stay-awake stop' EXIT
+trap cleanup_update EXIT
 
 omarchy-update-requires-free-space
 
@@ -38,6 +243,9 @@ if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
 
   omarchy-update-stay-awake start
 
+  # A dev link explicitly authorizes its checkout through root-owned system
+  # configuration (including sudo's secure_path), so preserve the established
+  # pull-before-packages/migrations ordering for that trusted mode.
   omarchy-update-dev
   omarchy-update-keyring
 
@@ -45,20 +253,41 @@ if [[ ${1:-} == "-y" ]] || omarchy-update-confirm; then
   # them, so everything below waits on this finishing. An upgrade that stopped
   # takes the update with it rather than migrating against what is still on disk.
   omarchy-update-system-pkgs
+
+  # Historical migrations are strictly ordered and mix user hooks/downloaded
+  # tooling with privileged repairs. The no-update sudo wrapper has covered the
+  # whole update, so neither the package transaction nor a later repair can
+  # publish a timestamp to a detached migration child.
+  /usr/bin/sudo -k
   omarchy-migrate
-  omarchy-hook post-update
-  omarchy-update-aur-pkgs
-  omarchy-update-mise
   omarchy-update-orphan-pkgs
 
   omarchy-update-analyze-logs
   omarchy-update-status
 
+  # Service restart helpers can need sudo. Run them before any user-controlled
+  # update tooling; the reboot-only phase below performs no privileged work.
+  omarchy-update-restart --services-only
+
   # Release update-owned inhibitors before offering a reboot. A confirmed
   # reboot can terminate this process before its EXIT trap gets a chance to
   # remove the persistent Stay Awake marker.
   omarchy-update-stay-awake stop
-  trap - EXIT
+  update_stay_awake_stopped=1
 
-  omarchy-update-restart
+  # AUR installation can refresh sudo after running package build code. No
+  # privileged update stage may follow it: user-controlled code can outlive
+  # its parent and wait for a later timestamp even if we invalidate in between.
+  omarchy-update-aur-pkgs
+  /usr/bin/sudo -k
+
+  # Hooks and mise execute user-controlled code. Give each a cold credential
+  # boundary and run mise last so it cannot wait for a legitimate hook sudo.
+  # Only the unprivileged reboot prompt follows them.
+  PATH="$user_path" "$OMARCHY_PATH/bin/omarchy-hook" post-update
+  /usr/bin/sudo -k
+  PATH="$user_path" "$OMARCHY_PATH/bin/omarchy-update-mise"
+  /usr/bin/sudo -k
+
+  "$OMARCHY_PATH/bin/omarchy-update-restart" --reboot-only
 fi
