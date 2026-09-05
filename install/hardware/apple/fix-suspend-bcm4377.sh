@@ -15,18 +15,20 @@ if omarchy-hw-t2-bcm4377; then
 
   unit="${OMARCHY_T2_BCM4377_UNIT:-/etc/systemd/system/omarchy-t2-bcm4377-sleep.service}"
   src="${OMARCHY_INSTALL:-$OMARCHY_PATH/install}/hardware/apple/omarchy-t2-bcm4377-sleep.service"
+  legacy_unit="${OMARCHY_T2_BCM4377_LEGACY_UNIT:-/etc/systemd/system/t2-bcm4377-sleep.service}"
+
   install -Dm644 "$src" "$unit"
   systemctl daemon-reload
-  systemctl enable omarchy-t2-bcm4377-sleep.service
 
-  # Replace a hand-installed t2-bcm4377-sleep.service if one is still present.
-  legacy_unit="${OMARCHY_T2_BCM4377_LEGACY_UNIT:-/etc/systemd/system/t2-bcm4377-sleep.service}"
-  legacy_script="${OMARCHY_T2_BCM4377_LEGACY_SCRIPT:-/usr/local/sbin/t2-bcm4377-sleep.sh}"
-  legacy_fan_lib="${OMARCHY_T2_BCM4377_LEGACY_FAN_LIB:-/usr/lib/systemd/system-sleep/t2-fan.sh}"
-  legacy_fan_etc="${OMARCHY_T2_BCM4377_LEGACY_FAN_ETC:-/etc/systemd/system-sleep/t2-fan.sh}"
-  if [[ -f $legacy_unit ]]; then
-    systemctl disable t2-bcm4377-sleep.service 2>/dev/null || true
-    rm -f "$legacy_unit" "$legacy_script" "$legacy_fan_lib" "$legacy_fan_etc"
-    systemctl daemon-reload
+  # Avoid running the known standalone Wi-Fi workaround alongside Omarchy's
+  # service. Preserve its administrator-owned unit, helper, and any independent
+  # fan hook so this installer never deletes local policy.
+  if [[ -f $legacy_unit ]] &&
+    grep -Fqx 'ExecStart=/usr/local/sbin/t2-bcm4377-sleep.sh pre' "$legacy_unit" &&
+    grep -Fqx 'ExecStop=/usr/local/sbin/t2-bcm4377-sleep.sh post' "$legacy_unit"; then
+    systemctl disable t2-bcm4377-sleep.service
+    echo "Disabled the superseded t2-bcm4377-sleep.service; its files were preserved."
   fi
+
+  systemctl enable omarchy-t2-bcm4377-sleep.service
 fi
