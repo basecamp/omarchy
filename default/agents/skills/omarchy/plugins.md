@@ -43,7 +43,10 @@ which is yours to edit and survives updates.
 
 Saving a file anywhere under `~/.config/omarchy/plugins/` reloads plugin code
 automatically. If a change somehow fails to apply, force a reload with
-`omarchy-shell shell rescanPlugins`.
+`omarchy-shell shell rescanPlugins`. Service plugins keep their `readonly
+property` values from construction, so constant changes in a service (popup
+durations, timeouts) need `omarchy restart shell`; a rescan reports the plugin
+as active while the old values stay live.
 
 ## Idle and Lock
 
