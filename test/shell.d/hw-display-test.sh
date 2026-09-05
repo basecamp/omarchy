@@ -41,6 +41,26 @@ device=$(hw_display)
 [[ $device == "nvidia_wmi_ec_backlight" ]] || fail "an unknown backlight falls back to the first device" "actual: $device"
 pass "an unknown backlight falls back to the first device"
 
+write_backlights nvidia_0 nvidia_wmi_ec_backlight
+device=$(hw_display)
+[[ $device == "nvidia_wmi_ec_backlight" ]] || fail "nvidia_wmi beats cosmetic nvidia_0" "actual: $device"
+pass "nvidia_wmi beats cosmetic nvidia_0"
+
+write_backlights nvidia_0
+device=$(hw_display)
+[[ $device == "nvidia_0" ]] || fail "nvidia_0 alone remains usable" "actual: $device"
+pass "nvidia_0 alone remains usable"
+
+write_backlights amdgpu_bl0 nvidia_0 nvidia_wmi_ec_backlight
+device=$(hw_display)
+[[ $device == "amdgpu_bl0" ]] || fail "amdgpu still outranks nvidia_wmi" "actual: $device"
+pass "amdgpu still outranks nvidia_wmi"
+
+write_backlights intel_backlight nvidia_0 nvidia_wmi_ec_backlight
+device=$(hw_display)
+[[ $device == "intel_backlight" ]] || fail "intel still outranks nvidia_wmi" "actual: $device"
+pass "intel still outranks nvidia_wmi"
+
 write_backlights appletb_backlight gmux_backlight
 device=$(hw_display)
 [[ $device == "gmux_backlight" ]] || fail "a T2 Mac uses gmux instead of the Touch Bar" "actual: $device"

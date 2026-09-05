@@ -18,6 +18,15 @@ for candidate in "$backlight_path"/gmux_backlight "$backlight_path"/amdgpu_bl* "
   fi
 done
 
+# On some NVIDIA Optimus / discrete-mux laptops (e.g. ASUS TUF), both nvidia_0 and
+# nvidia_wmi_ec_backlight appear. nvidia_0 is often a no-op cosmetic node; the WMI EC
+# backlight drives the panel. Prefer WMI only when the chosen device is still nvidia_0,
+# so amdgpu_bl*/intel_backlight/gmux keep their higher priority (AMD+NVIDIA hybrids can
+# expose a fake WMI node alongside a real amdgpu_bl*).
+if [[ $device == "nvidia_0" && -e $backlight_path/nvidia_wmi_ec_backlight ]]; then
+  device=nvidia_wmi_ec_backlight
+fi
+
 if [[ -n $device ]]; then
   printf '%s\n' "$device"
 else
