@@ -367,6 +367,18 @@ apply_shell_section_overrides() {
   done
 }
 
+apply_neovim_declaration() {
+  [[ -f $NEXT_THEME_DIR/neovim.toml ]] || return
+  [[ ${OMARCHY_THEME_KEEP_NEOVIM_LUA:-0} != "1" ]] || return
+
+  if ! omarchy-theme-neovim \
+    --file "$NEXT_THEME_DIR/neovim.toml" \
+    --colors "$COLORS_FILE" \
+    --out "$NEXT_THEME_DIR/neovim.lua"; then
+    echo "omarchy-theme-set-templates: keeping the existing neovim.lua" >&2
+  fi
+}
+
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
   sed_script=$(mktemp)
@@ -401,4 +413,5 @@ if [[ -f $COLORS_FILE ]]; then
   rm "$sed_script"
 fi
 
+apply_neovim_declaration
 apply_shell_section_overrides

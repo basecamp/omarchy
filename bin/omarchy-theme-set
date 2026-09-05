@@ -265,14 +265,22 @@ flock 9
 rm -rf "$NEXT_THEME_PATH"
 mkdir -p "$NEXT_THEME_PATH"
 
-# Copy official theme first, then overlay the user's theme on top
+# Copy official theme first, then overlay the user's theme on top. Remember
+# whether neovim.lua came from the user before both sources share one staging
+# directory: trusted local Lua wins over neovim.toml, repository Lua never does.
+USER_THEME_PATH="$USER_THEMES_PATH/$THEME_NAME"
+KEEP_TRUSTED_NEOVIM_LUA=0
+if ! theme_came_from_a_repo "$USER_THEME_PATH" && [[ -f $USER_THEME_PATH/neovim.lua ]]; then
+  KEEP_TRUSTED_NEOVIM_LUA=1
+fi
+
 cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 
-if theme_came_from_a_repo "$USER_THEMES_PATH/$THEME_NAME"; then
-  stage_installed_theme "$USER_THEMES_PATH/$THEME_NAME"
+if theme_came_from_a_repo "$USER_THEME_PATH"; then
+  stage_installed_theme "$USER_THEME_PATH"
   report_ignored_theme_files
 else
-  cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
+  cp -r "$USER_THEME_PATH/"* "$NEXT_THEME_PATH/" 2>/dev/null
 fi
 
 # Generate colors.toml from alacritty.toml if theme is missing colors.toml
@@ -281,7 +289,7 @@ if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]
 fi
 
 # Generate dynamic configs
-omarchy-theme-set-templates
+OMARCHY_THEME_KEEP_NEOVIM_LUA=$KEEP_TRUSTED_NEOVIM_LUA omarchy-theme-set-templates
 
 OLD_BACKGROUND_SNAPSHOT=""
 if [[ $THEME_HEADLESS != "1" && $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
