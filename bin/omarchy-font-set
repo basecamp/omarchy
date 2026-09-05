@@ -48,6 +48,16 @@ fi
 # and anything resolving "monospace" all read from here. This file is loaded
 # after the package-owned default, and prepend_first puts the chosen family at
 # the head of the list so it wins over the family that default prefers.
+xml_escape() {
+  local value=$1
+  value=${value//&/&amp;}
+  value=${value//</&lt;}
+  value=${value//>/&gt;}
+  value=${value//"/&quot;}
+  value=${value//'/&apos;}
+  printf '%s' "$value"
+}
+
 fontconfig_file="$HOME/.config/fontconfig/fonts.conf"
 mkdir -p "$(dirname "$fontconfig_file")"
 cat >"$fontconfig_file" <<XML
@@ -59,7 +69,7 @@ cat >"$fontconfig_file" <<XML
       <string>monospace</string>
     </test>
     <edit name="family" mode="prepend_first" binding="strong">
-      <string>$font_name</string>
+      <string>$(xml_escape "$font_name")</string>
     </edit>
   </match>
 </fontconfig>
