@@ -2,7 +2,7 @@
 
 You can add your own themes to `~/.config/omarchy/themes`. Just copy one of the existing ones as a base (look in `/usr/share/omarchy/themes`), then tweak to your delight. As long as your theme is inside that folder, it'll be included in the theme selection menu.
 
-The main file you have to tweak is `colors.toml`. That defines the color set that's then used to generate configurations for the terminal (Foot/Alacritty/Ghostty/Kitty), btop, Chromium, Hyprland, Neovim, Helix, VSCode, Obsidian, and the entire Omarchy shell (top bar, menu, notifications, OSD, and lock screen).
+The main file you have to tweak is `colors.toml`. That defines the color set that's then used to generate configurations for the terminal (Foot/Alacritty/Ghostty/Kitty), btop, Chromium, Files (Nautilus) and other GTK apps, Hyprland, Neovim, Helix, VSCode, Obsidian, and the entire Omarchy shell (top bar, menu, notifications, OSD, and lock screen).
 
 You can also use the included Aether application to create a new theme using a lovely GUI interface to play with colors and search for backgrounds. Just start it via the apps menu on `Super + Alt + Space`.
 
@@ -23,6 +23,8 @@ If you're making a light mode theme, set `mode = "light"` at the top of your `co
 ### Icon colors
 
 If you'd like to color-match the file manager icons to your theme, add a file called `icons.theme` with the name of the icon set you want to use. By default, the options are: `Yaru Yaru-blue Yaru-dark Yaru-magenta Yaru-olive Yaru-prussiangreen Yaru-purple Yaru-red Yaru-sage Yaru-wartybrown Yaru-yellow`.
+
+Window chrome for Files is generated from `colors.toml` into `gtk.css`. If you ship your own `gtk.css` in the theme folder, that file is used instead of the generated one.
 
 ### Unlock image
 
