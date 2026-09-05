@@ -50,6 +50,56 @@ if [[ -n $downstream ]]; then
   fi
 fi
 
+# Newer EasyEffects releases connect their filters as native PipeWire nodes,
+# so no sink-input exists for pactl to expose. Walk outgoing port links until
+# the chain reaches a physical ALSA sink.
+name="$(pw-link -l 2>/dev/null |
+  awk -v start="$sink" '
+    function node(port) {
+      sub(/:.*/, "", port)
+      return port
+    }
+
+    /^[^[:space:]|].*:/ {
+      source = node($0)
+      next
+    }
+
+    /^[[:space:]]*\|->/ && source != "" {
+      target = $0
+      sub(/^[[:space:]]*\|->[[:space:]]*/, "", target)
+      from[++edge_count] = source
+      to[edge_count] = node(target)
+    }
+
+    END {
+      queue[1] = start
+      seen[start] = 1
+      head = 1
+      tail = 1
+
+      while (head <= tail) {
+        current = queue[head++]
+
+        for (i = 1; i <= edge_count; i++) {
+          if (from[i] != current || seen[to[i]]) continue
+          if (to[i] ~ /^alsa_output\./) {
+            print to[i]
+            exit
+          }
+
+          seen[to[i]] = 1
+          queue[++tail] = to[i]
+        }
+      }
+    }
+  ')"
+
+if [[ -n $name ]]; then
+  printf '%s\n' "$name"
+  exit 0
+fi
+
 # Nothing resolvable downstream -- the DSP sink may simply be idle and unlinked.
 # Fall back to the sink itself so callers still have something to act on.
 printf '%s\n' "$sink"
