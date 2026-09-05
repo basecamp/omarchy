@@ -137,6 +137,12 @@ Change/add bindings in `~/.config/hypr/bindings.lua`.
 
 Usually on Linux, you need `Ctrl + Shift + C/V` to copy'n'paste in the terminal and `Ctrl + C/V` to do it everywhere else. These Omarchy unified clipboard hotkeys work everywhere.
 
+## Browser tabs
+
+| Hotkey | Function |
+| ------- | -------- |
+| `Super + Z` | Reopen last closed browser tab |
+
 ## Capture
 
 | Hotkey              | Function                       |

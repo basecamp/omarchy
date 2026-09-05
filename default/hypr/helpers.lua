@@ -53,6 +53,38 @@ function o.cmd_missing(command)
   return not o.cmd_present(command)
 end
 
+-- Send with explicit mods to the focused surface by omitting the window target,
+-- so shortcuts reach both normal windows and focused layer-shell surfaces. A
+-- virtual keyboard (wtype) cannot do this because the physically held SUPER
+-- merges into the injected chord at the seat. The down/up split also avoids
+-- send_shortcut sometimes leaving synthetic key state stuck or repeating.
+-- https://github.com/hyprwm/Hyprland/discussions/14099
+function o.send_shortcut_once(mods, key)
+  return function()
+    hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "down" }))
+
+    hl.timer(function()
+      hl.dispatch(hl.dsp.send_key_state({ mods = mods, key = key, state = "up" }))
+    end, { timeout = 50, type = "oneshot" })
+  end
+end
+
+-- App rules assign dynamic tags, which Hyprland reports with a trailing "*".
+function o.active_window_has_tag(expected_tag)
+  local window = hl.get_active_window()
+  if not window then
+    return false
+  end
+
+  for _, tag in ipairs(window.tags or {}) do
+    if tag:gsub("%*$", "") == expected_tag then
+      return true
+    end
+  end
+
+  return false
+end
+
 local function command_from(value, description)
   if type(value) ~= "table" then
     return value

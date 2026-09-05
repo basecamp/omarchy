@@ -105,19 +105,69 @@ grep -Fq $'SUPER + RETURN	Terminal' <<<"$fresh_output" || fail "default applicat
 grep -Fq $'SUPER + SHIFT + A	ChatGPT' <<<"$fresh_output" || fail "default application bindings include preinstalled web apps"
 pass "default application bindings load from package defaults"
 
-grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null ||
+grep -F 'hl.dsp.send_key_state({ mods = mods, key = key, state = "down" })' "$ROOT/default/hypr/helpers.lua" >/dev/null ||
   fail "universal clipboard shortcuts send explicit mods to the focused surface"
 pass "universal clipboard shortcuts send explicit mods to the focused surface"
 
-if grep -E 'send_key_state\(\{[^}]*window' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null; then
+if grep -E 'send_key_state\(\{[^}]*window' "$ROOT/default/hypr/helpers.lua" >/dev/null; then
   fail "universal clipboard shortcuts do not target only normal windows"
 fi
 pass "universal clipboard shortcuts do not exclude layer-shell fields"
 
-if grep -F 'wtype -M' "$ROOT/default/hypr/bindings/clipboard.lua" >/dev/null; then
+if grep -F 'wtype -M' "$ROOT/default/hypr/helpers.lua" >/dev/null; then
   fail "universal clipboard shortcuts avoid the virtual keyboard so held SUPER cannot merge in"
 fi
 pass "universal clipboard shortcuts avoid virtual keyboard modifier merging"
+
+browser_shortcut_output=$(HOME="$fresh_home" XDG_CONFIG_HOME="$fresh_home/.config" XDG_STATE_HOME="$fresh_home/.local/state" OMARCHY_PATH="$ROOT" lua <<'LUA'
+package.path = os.getenv("OMARCHY_PATH") .. "/?.lua;" .. package.path
+
+local active_window
+local bindings = {}
+local dispatched = {}
+
+hl = {
+  dsp = {
+    exec_cmd = function(command) return command end,
+    send_key_state = function(shortcut) return shortcut end,
+  },
+  bind = function(keys, dispatcher) bindings[keys] = dispatcher end,
+  dispatch = function(shortcut)
+    table.insert(dispatched, shortcut.mods .. "+" .. shortcut.key .. ":" .. shortcut.state)
+  end,
+  timer = function(callback) callback() end,
+  get_active_window = function() return active_window end,
+}
+
+require("default.hypr.helpers")
+require("default.hypr.bindings.browser")
+
+local function exercise(label, window)
+  active_window = window
+  dispatched = {}
+  bindings["SUPER + Z"]()
+  print(label .. "=" .. table.concat(dispatched, ","))
+end
+
+exercise("chromium", { tags = { "chromium-based-browser" } })
+exercise("firefox", { tags = { "firefox-based-browser*" } })
+exercise("other", { tags = { "terminal*" } })
+exercise("untagged", { tags = nil })
+exercise("no-window", nil)
+LUA
+)
+
+grep -Fqx 'chromium=CTRL + SHIFT+T:down,CTRL + SHIFT+T:up' <<<"$browser_shortcut_output" ||
+  fail "browser tab recovery sends Ctrl+Shift+T to Chromium browsers" "$browser_shortcut_output"
+grep -Fqx 'firefox=CTRL + SHIFT+T:down,CTRL + SHIFT+T:up' <<<"$browser_shortcut_output" ||
+  fail "browser tab recovery accepts dynamic Firefox browser tags" "$browser_shortcut_output"
+grep -Fqx 'other=' <<<"$browser_shortcut_output" ||
+  fail "browser tab recovery leaves other applications alone" "$browser_shortcut_output"
+grep -Fqx 'untagged=' <<<"$browser_shortcut_output" ||
+  fail "browser tab recovery ignores untagged windows" "$browser_shortcut_output"
+grep -Fqx 'no-window=' <<<"$browser_shortcut_output" ||
+  fail "browser tab recovery tolerates an absent active window" "$browser_shortcut_output"
+pass "browser tab recovery is limited to recognized browser windows"
 
 removed_home="$tmpdir/removed-home"
 mkdir -p "$removed_home/.local/state/omarchy"

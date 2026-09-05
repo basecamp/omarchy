@@ -8,6 +8,7 @@ require("default.hypr.autostart")
 if _G.omarchy_default_bindings ~= false then
   require("default.hypr.bindings.media")
   require("default.hypr.bindings.clipboard")
+  require("default.hypr.bindings.browser")
   require("default.hypr.bindings.tiling")
   require("default.hypr.bindings.utilities")
   require("default.hypr.bindings.voxtype")
