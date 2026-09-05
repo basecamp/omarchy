@@ -1,26 +1,39 @@
 #!/bin/bash
 
-# omarchy:summary=Run the Omarchy screensaver using random effects from TTE.
+# omarchy:summary=Run the Omarchy screensaver using random ttfx effects
+
+renderer_pid=
+shutdown=0
 
 screensaver_in_focus() {
   hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
 }
 
-exit_screensaver() {
-  hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
-  pkill -x ttfx 2>/dev/null
-  pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null
-  exit 0
+request_shutdown() {
+  (( shutdown )) && return
+
+  shutdown=1
+  trap '' SIGINT SIGTERM SIGHUP SIGQUIT
+
+  # One dismissed monitor dismisses them all. Each supervisor still owns and
+  # reaps only its own renderer, so every terminal keeps its PTY alive through
+  # ttfx's shutdown.
+  pkill -x omarchy-saver 2>/dev/null || true
 }
 
 # Exit the screensaver on signals and input from keyboard and mouse
-trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+trap request_shutdown SIGINT SIGTERM SIGHUP SIGQUIT
+
+# Give the supervisor a stable, unambiguous process name for coordinated exit.
+# This runs after installing traps and before checking the lock state so a lock
+# can never miss a supervisor that is about to start ttfx.
+printf 'omarchy-saver' >/proc/self/comm
+
+[[ $(omarchy-shell lock isLocked 2>/dev/null) == "true" ]] && exit 0
 
 printf '\033]11;rgb:00/00/00\007'  # Set background color to black
 
 hyprctl eval 'hl.config({ cursor = { invisible = true } })' &>/dev/null || hyprctl keyword cursor:invisible true &>/dev/null
-
-tty=$(tty 2>/dev/null)
 
 # Terminals allocate the pty at the default 80x24 and only resize it once the
 # compositor has told the window how big it is. ttfx measures the terminal once,
@@ -28,21 +41,60 @@ tty=$(tty 2>/dev/null)
 # paints it into the corner of a fullscreen window.
 wait_for_terminal_resize() {
   local deadline=$((SECONDS + 2))
-  while ((SECONDS < deadline)) && [[ $(stty size 2>/dev/null) == "24 80" ]]; do
+  while (( ! shutdown && SECONDS < deadline)) && [[ $(stty size 2>/dev/null) == "24 80" ]]; do
     sleep 0.02
   done
 }
 
+renderer_running() {
+  local running_pid
+
+  while read -r running_pid; do
+    [[ $running_pid == $renderer_pid ]] && return 0
+  done <<<"$(jobs -pr)"
+
+  return 1
+}
+
+stop_renderer() {
+  local attempt
+
+  [[ -n $renderer_pid ]] || return
+
+  if renderer_running; then
+    kill -TERM "$renderer_pid" 2>/dev/null || true
+
+    for ((attempt = 0; attempt < 100; attempt++)); do
+      renderer_running || break
+      sleep 0.01
+    done
+
+    renderer_running && kill -KILL "$renderer_pid" 2>/dev/null || true
+  fi
+
+  wait "$renderer_pid" 2>/dev/null || true
+  renderer_pid=
+}
+
 wait_for_terminal_resize
 
-while true; do
+while (( ! shutdown )); do
   ttfx -i ~/.config/omarchy/branding/screensaver.txt \
     --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c\
     --random-effect --no-eol --no-restore-cursor &
+  renderer_pid=$!
 
-  while pgrep -t "${tty#/dev/}" -x ttfx >/dev/null; do
+  while (( ! shutdown )) && renderer_running; do
+    (( shutdown )) && break
+
     if read -n1 -t 1 || ! screensaver_in_focus; then
-      exit_screensaver
+      request_shutdown
     fi
   done
+
+  (( shutdown )) || wait "$renderer_pid" 2>/dev/null || true
+  (( shutdown )) || renderer_pid=
 done
+
+stop_renderer
+hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
