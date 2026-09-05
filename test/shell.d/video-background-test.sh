@@ -34,6 +34,25 @@ assert(
   'background media plays aspect-cropped videos on a loop'
 )
 assert(
+  videoQml.includes('MediaPlayer.LoadedMedia') &&
+    videoQml.includes('primePauseTimer') &&
+    videoQml.includes('mediaGeneration') &&
+    videoQml.includes('videoSink') &&
+    videoQml.includes('onVideoFrameChanged') &&
+    videoQml.includes('MediaPlayer.BufferedMedia') &&
+    videoQml.includes('mediaStatus !== MediaPlayer.BufferedMedia') &&
+    videoQml.includes('interval: 1000') &&
+    videoQml.includes('interval: 50') &&
+    videoQml.includes('frameReceived') &&
+    videoQml.includes('output.clearOutput()') &&
+    !videoQml.includes('KeepLastFrame') &&
+    /onPlaybackEnabledChanged:[\s\S]*?if \(playbackEnabled\) player\.play\(\)[\s\S]*?else player\.pause\(\)/.test(videoQml) &&
+    videoQml.includes('primingGeneration') &&
+    videoQml.includes('player.play()') &&
+    videoQml.includes('player.pause()'),
+  'paused video sources are primed to display their first frame'
+)
+assert(
   !/^\s*import QtMultimedia/m.test(mediaQml) &&
     mediaQml.includes('source: "BackgroundVideo.qml"'),
   'the still-image path never imports QtMultimedia, so image-only sessions do not map it'
