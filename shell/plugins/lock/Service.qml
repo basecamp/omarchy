@@ -227,10 +227,41 @@ Item {
     }
   }
 
+  // Quickshell instantiates `surface` once per output when locked becomes true.
+  // Keep the definition as an explicit Component so each screen gets its own
+  // WlSessionLockSurface / LockView tree. A single live surface instance reused
+  // across outputs triggers Qt's "Cannot use same item on different windows"
+  // path and SIGSEGV on multi-monitor idle lock (issue #8973).
+  Component {
+    id: lockSurfaceComponent
+
+    WlSessionLockSurface {
+      color: Color.background
+
+      LockView {
+        anchors.fill: parent
+        backgroundPath: root.backgroundPath
+        backgroundVersion: root.backgroundVersion
+        fingerprintConfigured: root.fingerprintConfigured
+        authenticatingPassword: root.authenticatingPassword
+        failureMessage: root.failureMessage
+        failedAttempts: root.failedAttempts
+        inputEnabled: root.lockRequested
+        loadBackground: root.locked
+        passwordText: root.enteredPassword
+        onPasswordTextEdited: function(password) { root.enteredPassword = password }
+        onSubmitPassword: function(password) { root.submitPassword(password) }
+        onClearFailureRequested: root.failureMessage = ""
+        onWakeRequested: root.runWake()
+      }
+    }
+  }
+
   WlSessionLock {
     id: sessionLock
 
     locked: false
+    surface: lockSurfaceComponent
 
     onSecureStateChanged: {
       root.logEvent("secure=" + secure)
@@ -259,30 +290,6 @@ Item {
         root.resetAuthenticationState()
         root.runWake()
       }
-    }
-
-    WlSessionLockSurface {
-      id: lockSurface
-      color: Color.background
-
-      LockView {
-        id: lockView
-        anchors.fill: parent
-        backgroundPath: root.backgroundPath
-        backgroundVersion: root.backgroundVersion
-        fingerprintConfigured: root.fingerprintConfigured
-        authenticatingPassword: root.authenticatingPassword
-        failureMessage: root.failureMessage
-        failedAttempts: root.failedAttempts
-        inputEnabled: root.lockRequested
-        loadBackground: root.locked
-        passwordText: root.enteredPassword
-        onPasswordTextEdited: function(password) { root.enteredPassword = password }
-        onSubmitPassword: function(password) { root.submitPassword(password) }
-        onClearFailureRequested: root.failureMessage = ""
-        onWakeRequested: root.runWake()
-      }
-
     }
   }
 
