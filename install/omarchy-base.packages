@@ -109,6 +109,7 @@ qemu-user-static-binfmt
 qrencode
 qt6-imageformats
 quickshell
+realtime-privileges
 ripgrep
 ruby
 tensaku
