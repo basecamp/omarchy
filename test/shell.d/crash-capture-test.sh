@@ -54,6 +54,15 @@ grep -F 'omarchy-crash-watch.service' "$ROOT/install/user/first-run/enable-user-
   fail "crash capture is no longer on by default for new installs"
 pass "crash capture is on by default"
 
+grep -F 'Click to diagnose · ✕ to dismiss' "$ROOT/bin/omarchy-crash-watch" >/dev/null ||
+  fail "crash toast tells the user how to dismiss without diagnosing"
+pass "crash toast tells the user how to dismiss without diagnosing"
+
+card="$ROOT/shell/plugins/notifications/components/NotificationCard.qml"
+grep -F 'root.hovered || root.urgency === 2' "$card" >/dev/null ||
+  fail "critical notification close control stays visible without hover"
+pass "critical notification close control stays visible without hover"
+
 require_command jq
 
 # The per-program mute, driven through the real watcher with a stubbed journal:
