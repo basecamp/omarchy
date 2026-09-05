@@ -16,26 +16,70 @@ Panel {
   property var batteryInfo: ({})
   property var systemInfo: ({})
   property var profiles: []
+  // Physical battery devices on the system, in UPower enumeration order. The
+  // hero and progress bar above aggregate them via the display device; this
+  // list backs the per-battery breakdown shown when more than one exists.
+  readonly property var batteries: collectBatteries()
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
   readonly property bool showPercentage: setting("showPercentage", false) === true
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
-  // icon-sized fraction of the slot the fallback assumes.
-  readonly property real openPanelIndicatorWidth: showPercentage && !button.vertical ? button.glyphPaintedWidth : 0
+  // icon-sized fraction of the slot the fallback assumes. The same applies
+  // whenever multiple batteries widen the button past a single icon.
+  readonly property real openPanelIndicatorWidth: (showPercentage || batteries.length > 1) && !button.vertical ? button.glyphPaintedWidth : 0
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
   }
 
+  // Horizontal bars show every physical battery when the system has more than
+  // one (an icon and percentage each, in UPower order). Vertical bars and
+  // single-battery systems retain the compact aggregate display device.
+  readonly property string buttonText: {
+    if (batteries.length > 1 && !vertical) {
+      var parts = []
+      for (var i = 0; i < batteries.length; i++) {
+        var device = batteries[i]
+        parts.push(Model.batteryIcon(device, root.discharging, upowerStates()) + " " + Model.batteryPercentLabel(device) + "%")
+      }
+      return parts.join(" · ")
+    }
+    if (root.showPercentage && !vertical) return Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
+    return root.batteryIcon()
+  }
+
+  // Bar button slot width, in icon slots. Each percentage block needs the same
+  // doubled slot the single-battery percentage view uses, scaled per battery.
+  readonly property int buttonSlotScale: batteries.length > 1 && !vertical
+    ? batteries.length * 2
+    : (showPercentage && !vertical ? 2 : 1)
+
   function upowerStates() {
     return {
       Charging: UPowerDeviceState.Charging,
       Discharging: UPowerDeviceState.Discharging,
+      Empty: UPowerDeviceState.Empty,
       FullyCharged: UPowerDeviceState.FullyCharged,
-      PendingCharge: UPowerDeviceState.PendingCharge
+      PendingCharge: UPowerDeviceState.PendingCharge,
+      PendingDischarge: UPowerDeviceState.PendingDischarge
     }
+  }
+
+  // Collect the physical batteries (power supplies of type Battery) from the
+  // UPower device list. Requires a nativePath so the aggregated display device
+  // — which carries no path — can never sneak into the per-battery view.
+  function collectBatteries() {
+    var list = []
+    var devices = UPower.devices.values
+    for (var i = 0; i < devices.length; i++) {
+      var device = devices[i]
+      if (!device || device.type !== UPowerDeviceType.Battery) continue
+      if (!device.isPresent || !device.powerSupply || !device.nativePath) continue
+      list.push(device)
+    }
+    return list
   }
 
   function selectProfileByDelta(delta) {
@@ -277,10 +321,8 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.showPercentage && !vertical
-      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
-      : root.batteryIcon()
-    slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
+    text: root.buttonText
+    slotSize: Style.bar.iconSlot * root.buttonSlotScale
     tooltipText: ""
     onPressed: function(b) {
       if (!root.batteryPresent) return
@@ -415,6 +457,65 @@ Panel {
               alwaysRunToEnd: true
               NumberAnimation { from: 1.0; to: 0.55; duration: 950; easing.type: Easing.InOutSine }
               NumberAnimation { from: 0.55; to: 1.0; duration: 950; easing.type: Easing.InOutSine }
+            }
+          }
+        }
+
+        // ---------- Individual batteries ----------
+        // Systems with a single battery show everything in the hero and stats
+        // above. When more than one battery exists, the display device only
+        // aggregates them, so list each one separately here.
+        Column {
+          visible: root.batteries.length > 1
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSectionHeader {
+            text: "BATTERIES"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Row {
+            id: batteryRow
+            width: parent.width
+            spacing: Style.space(20)
+
+            readonly property real cellWidth: root.batteries.length > 0
+              ? (width - spacing * (root.batteries.length - 1)) / root.batteries.length
+              : 0
+
+            Repeater {
+              model: root.batteries
+
+              Column {
+                required property var modelData
+                width: batteryRow.cellWidth
+                spacing: Style.spacing.labelGap
+
+                Text {
+                  textFormat: Text.PlainText
+                  text: Model.batteryName(modelData) + (modelData.model ? " — " + modelData.model : "")
+                  color: root.bar.foreground
+                  opacity: 0.9
+                  font.family: root.bar.fontFamily
+                  font.pixelSize: Style.font.caption
+                  font.bold: true
+                  font.letterSpacing: 0.8
+                  elide: Text.ElideRight
+                  width: parent.width
+                }
+
+                InfoPair {
+                  label: "Charge"
+                  value: Model.batteryChargeLabel(modelData, root.upowerStates())
+                }
+
+                InfoPair {
+                  label: "Size"
+                  value: Model.batteryCapacityLabel(modelData)
+                }
+              }
             }
           }
         }

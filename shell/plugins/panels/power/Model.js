@@ -89,6 +89,44 @@ function modeLabel(device, onBattery, states) {
   return "Charging"
 }
 
+function batteryName(device) {
+  var d = device || {}
+  var native = String(d.nativePath || "").split("/").filter(function (p) { return p.length > 0 }).pop()
+  if (native) return native
+  var model = String(d.model || "").trim()
+  return model || "Battery"
+}
+
+function batteryStateLabel(device, states) {
+  var d = device || {}
+  var s = states || {}
+  if (d.state === s.Charging) return "Charging"
+  if (d.state === s.Discharging) return "Discharging"
+  if (d.state === s.Empty) return "Empty"
+  if (d.state === s.FullyCharged) return "Full"
+  if (d.state === s.PendingCharge) return "Pending charge"
+  if (d.state === s.PendingDischarge) return "Pending discharge"
+  return ""
+}
+
+function batteryPercentLabel(device) {
+  var pct = Number(device && device.percentage)
+  if (!isFinite(pct)) return "—"
+  return String(Math.round(pct * 100))
+}
+
+function batteryChargeLabel(device, states) {
+  var charge = batteryPercentLabel(device) + "%"
+  var state = batteryStateLabel(device, states)
+  return state ? charge + " · " + state : charge
+}
+
+function batteryCapacityLabel(device) {
+  var cap = Number(device && device.energyCapacity)
+  if (!isFinite(cap) || cap <= 0) return "—"
+  return cap.toFixed(1) + " Wh"
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampIndex: clampIndex,
@@ -99,6 +137,11 @@ if (typeof module !== "undefined") {
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
     batteryIcon: batteryIcon,
-    modeLabel: modeLabel
+    modeLabel: modeLabel,
+    batteryName: batteryName,
+    batteryStateLabel: batteryStateLabel,
+    batteryPercentLabel: batteryPercentLabel,
+    batteryChargeLabel: batteryChargeLabel,
+    batteryCapacityLabel: batteryCapacityLabel
   }
 }
