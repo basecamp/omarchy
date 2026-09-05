@@ -60,7 +60,15 @@ function chargeThresholdActive(device, onBattery, states) {
   if (d.state === s.FullyCharged && fraction < 0.99) return true
   if (d.state !== s.Charging || fraction >= 0.99) return false
 
-  return Number(d.changeRate || 0) <= 0.2 || Number(d.timeToFull || 0) >= 8 * 60 * 60
+  // A freshly plugged-in battery reports changeRate 0 and timeToFull 0 until
+  // UPower measures the charge, which can take a minute. That is "not known
+  // yet", not "stalled at a charge limit" -- while the state still says
+  // Charging, trust it rather than flagging a threshold from empty readings.
+  var rate = Number(d.changeRate || 0)
+  var timeToFull = Number(d.timeToFull || 0)
+  if (rate <= 0 && timeToFull <= 0) return false
+
+  return rate <= 0.2 || timeToFull >= 8 * 60 * 60
 }
 
 function batteryIcon(device, onBattery, states) {
