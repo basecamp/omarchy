@@ -40,6 +40,14 @@ That gives you a Tailscale panel in the bar, which connects and disconnects the 
 
 Installing it also adds a web app for the Tailscale admin console.
 
+## Controlling Omarchy from an Android phone
+
+[Ponte](https://github.com/LucasOl1337/ponte/tree/v0.1.0-alpha.1) is an experimental phone remote for Omarchy. It offers a touchpad, keyboard, live screen view, and playback on the computer of voice recordings sent from the phone. Android voice recording is still being verified. It does not stream the computer's audio back to the phone.
+
+Run `omarchy install service ponte` to install the optional package. This does not start a server. Pointer control requires your user to have access to `/dev/uinput`; the package does not change device permissions. Connect the computer and phone to Tailscale, then run `ponte setup` to create this computer's private configuration and `ponte install` to enable its service for your graphical session. Follow the [versioned phone setup instructions](https://github.com/LucasOl1337/ponte/tree/v0.1.0-alpha.1/android) to build the Android client for your installation and pair it. Keep that APK and the pairing token private.
+
+Use `ponte stop` to stop the server, or `omarchy remove service ponte` to disable its services and remove the package. Removal keeps your private configuration and recordings. Installing or removing Ponte does not change your Tailscale configuration.
+
 ## When it stops working
 
 Before rebooting, try restarting the offending piece on its own. _Update > Hardware_ has Wi-Fi, Bluetooth, Audio, and Trackpad, and reloading one of those clears up most "it worked five minutes ago" situations. See [troubleshooting](45-troubleshooting.md).
