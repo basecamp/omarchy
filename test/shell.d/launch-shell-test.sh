@@ -27,6 +27,13 @@ mkdir -p "$fake_bin" "$shell_root/shell"
 cat >"$fake_bin/quickshell" <<'SH'
 #!/bin/bash
 
+# `list` calls come from the launcher's dead-instance reap, not from a
+# launch; answer with no instances and keep them out of the launch count.
+if [[ $1 == "list" ]]; then
+  printf '[]\n'
+  exit 0
+fi
+
 printf '%s\n' "$*" >>"$OMARCHY_TEST_QS_LOG"
 printf 'watcher=%s popup=%s\n' \
   "${QS_DISABLE_FILE_WATCHER:-unset}" "${QS_NO_RELOAD_POPUP:-unset}" >>"$OMARCHY_TEST_QS_ENV_LOG"
@@ -108,7 +115,7 @@ launches() {
 
 launch_shell '0' || fail "a clean launch succeeds"
 [[ $(launches) == 1 ]] || fail "a shell that exits cleanly is not relaunched" "$(<"$qs_log")"
-grep -F -- "-n -p $shell_root/shell" "$qs_log" >/dev/null || fail "the shell launches from OMARCHY_PATH"
+grep -F -- "-n --no-detailed-logs -p $shell_root/shell" "$qs_log" >/dev/null || fail "the shell launches from OMARCHY_PATH"
 pass "a shell that exits cleanly is left alone"
 
 # A misspelled variable would leave Quickshell hot-reloading the tree pacman
