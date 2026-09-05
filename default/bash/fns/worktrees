@@ -9,7 +9,7 @@ ga() {
   local base="$(basename "$PWD")"
   local wt_path="../${base}--${branch}"
 
-  git worktree add -b "$branch" "$wt_path"
+  git worktree add -b "$branch" "$wt_path" || return 1
   mise trust "$wt_path"
   cd "$wt_path"
 }
