@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 source "$(dirname "${BASH_SOURCE[0]}")/base-test.sh"
 
 require_command lua
@@ -13,6 +15,14 @@ home="$tmpdir/home"
 stub_bin="$tmpdir/bin"
 mkdir -p "$home/.config" "$stub_bin"
 cp -r "$ROOT/config/hypr" "$home/.config/hypr"
+
+# User configs may iterate values returned by Hyprland APIs the scanner does
+# not model. The fallback must look like an empty sequence instead of yielding
+# a value forever for every numeric index.
+#
+# It goes at the top because the scan stops at the config's first Lua error and
+# Omarchy's own defaults raise one, so a line appended after them never runs.
+sed -i '1i for _, monitor in ipairs(hl.get_monitors()) do end' "$home/.config/hypr/hyprland.lua"
 
 # The menu reads binds from Hyprland, which is not running here, so stand in for
 # it. A Lua bind reports dispatcher __lua and no arg, and the menu recovers both
@@ -43,7 +53,7 @@ stub_hyprctl() {
 keybindings() {
   env -i PATH="$stub_bin:$ROOT/bin:$PATH" HOME="$home" \
     XDG_CACHE_HOME="$tmpdir/cache" OMARCHY_PATH="$ROOT" \
-    bash "$ROOT/bin/omarchy-menu-keybindings" --print
+    timeout 5 bash "$ROOT/bin/omarchy-menu-keybindings" --print
 }
 
 # Closing a window and toggling the scratchpad are two of the actions Omarchy
