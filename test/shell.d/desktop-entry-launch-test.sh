@@ -36,7 +36,12 @@ SH
 
 cat >"$mock_bin/omarchy-launch-floating-terminal-with-presentation" <<'SH'
 #!/bin/bash
-printf '%s\n' "$1" >"$OMARCHY_TEST_PRESENTATION"
+if [[ $1 == "--after-done" ]]; then
+  printf '%s\n' "$2" >"$OMARCHY_TEST_AFTER_DONE"
+  printf '%s\n' "$3" >"$OMARCHY_TEST_PRESENTATION"
+else
+  printf '%s\n' "$1" >"$OMARCHY_TEST_PRESENTATION"
+fi
 SH
 
 chmod +x "$mock_bin"/*
@@ -44,6 +49,7 @@ chmod +x "$mock_bin"/*
 export HOME="$test_home"
 export OMARCHY_TEST_LOG="$test_tmp/launch.log"
 export OMARCHY_TEST_PRESENTATION="$test_tmp/presentation"
+export OMARCHY_TEST_AFTER_DONE="$test_tmp/after-done"
 export PATH="$mock_bin:$PATH"
 
 wait_for_launch() {
@@ -79,17 +85,26 @@ assert_detached_installer_launch omarchy-install-gaming-steam steam
 
 bash "$ROOT/bin/omarchy-install-and-launch" "Example App" "alpha beta" "Disk Usage"
 presentation_command=$(<"$OMARCHY_TEST_PRESENTATION")
+after_done=$(<"$OMARCHY_TEST_AFTER_DONE")
 
 [[ $presentation_command == *'echo Installing\ Example\ App...;'* ]] ||
   fail "generic installer shell-quotes the display name" "$presentation_command"
-[[ $presentation_command == *'omarchy-pkg-add alpha beta && (setsid uwsm-app -- gtk-launch Disk\ Usage >/dev/null 2>&1 &)'* ]] ||
-  fail "generic installer waits for packages and detaches only the scoped launch" "$presentation_command"
-pass "generic installer waits for packages and detaches only the scoped launch"
+[[ $presentation_command == *'omarchy-pkg-add alpha beta'* ]] ||
+  fail "generic installer installs packages in the presentation command" "$presentation_command"
+[[ $presentation_command != *gtk-launch* && $presentation_command != *uwsm-app* ]] ||
+  fail "generic installer does not launch during the presentation command" "$presentation_command"
+[[ $after_done == *'setsid uwsm-app -- gtk-launch Disk\ Usage >/dev/null 2>&1'* ]] ||
+  fail "generic installer detaches the scoped launch after Done" "$after_done"
+pass "generic installer waits for packages then detaches the scoped launch after Done"
 
 : >"$OMARCHY_TEST_LOG"
 bash -c "$presentation_command"
 grep -Fxq 'pkg:alpha beta' "$OMARCHY_TEST_LOG" ||
   fail "generic installer passes every package to the package helper"
+if grep -q '^launch:' "$OMARCHY_TEST_LOG"; then
+  fail "generic installer does not launch before Done"
+fi
+bash -c "$after_done"
 wait_for_launch 'launch:uwsm-app -- gtk-launch Disk Usage' ||
   fail "generic installer preserves a desktop ID containing spaces"
 pass "generic installer preserves a desktop ID containing spaces"

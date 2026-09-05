@@ -22,6 +22,7 @@ read -r -d '' -a package_list <<<"$packages" || true
 printf -v packages_arg '%q ' "${package_list[@]}"
 packages_arg="${packages_arg% }"
 
-# The subshell keeps & from backgrounding the package installation too.
+# Launch after Done so the new window cannot steal the dismiss keystroke.
 exec omarchy-launch-floating-terminal-with-presentation \
-  "echo ${install_message}; omarchy-pkg-add ${packages_arg} && (setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1 &)"
+  --after-done "setsid uwsm-app -- gtk-launch ${desktop_id_arg} >/dev/null 2>&1" \
+  "echo ${install_message}; omarchy-pkg-add ${packages_arg}"
