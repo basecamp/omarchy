@@ -29,10 +29,24 @@ trust_device() {
   bluetoothctl trust "$address" >/dev/null 2>&1 || true
 }
 
+# Some devices (keyboards in particular) require passkey-entry pairing: BlueZ's
+# default agent prints "[agent] Passkey: NNNNNN" on stdout and waits for the
+# user to type it on the device itself. That line was previously discarded
+# along with the rest of bluetoothctl's noise, so pairing such a device looked
+# like it just hung with no indication a code needed to be entered anywhere.
+notify_passkey() {
+  timeout 20s stdbuf -oL bluetoothctl pair "$address" 2>&1 | while IFS= read -r line; do
+    if [[ $line == *Passkey:* ]]; then
+      passkey=${line##*Passkey: }
+      omarchy-notification-send -u critical -t 20000 "Bluetooth pairing" "Type $passkey on the device, then press Enter"
+    fi
+  done || true
+}
+
 case "$action" in
   pair)
     power_on
-    timeout 20s bluetoothctl pair "$address" >/dev/null 2>&1 || true
+    notify_passkey
     trust_device
     timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
     ;;
