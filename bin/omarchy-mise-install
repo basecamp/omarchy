@@ -23,7 +23,7 @@ cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
 mise use -g --quiet "$package" || exit 1
-exec mise x "$package" -- "$bin" "\$@"
+exec mise x "$package" -- "\$(mise which "$bin")" "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/$command"
