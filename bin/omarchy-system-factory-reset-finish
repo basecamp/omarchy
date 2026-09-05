@@ -6,8 +6,9 @@
 
 # Runs once, early on the first boot after omarchy-system-factory-reset, via
 # omarchy-system-factory-reset-finish.service (armed by /var/lib/omarchy/provisioning/wipe-pending).
-# Ordered before home.mount/var-log.mount so @home and @log can be dropped and
-# recreated as empty subvolumes instead of rm -rf'd file by file.
+# Ordered before home.mount/var-log.mount/var-lib-docker.mount so @home, @log,
+# and @docker can be dropped and recreated as empty subvolumes instead of
+# rm -rf'd file by file.
 #
 # The root is already a fresh clone of @factory (staged by
 # omarchy-system-factory-reset); this deletes the previous root (@omarchy-old-*),
@@ -149,6 +150,12 @@ main() {
   log "recreating @home and @log"
   recreate_subvolume @home || abort "could not recreate @home"
   recreate_subvolume @log || abort "could not recreate @log"
+  # @docker is a top-level data subvolume (install/config/docker.sh). A wipe that
+  # leaves the seller's container layers and volumes behind is incomplete.
+  if [[ -d $TOP_MNT/@docker ]] || grep -Eq '^[^#].*[[:space:]]/var/lib/docker[[:space:]]' /etc/fstab 2>/dev/null; then
+    log "recreating @docker"
+    recreate_subvolume @docker || abort "could not recreate @docker"
+  fi
 
   repair_snapshots_dir
 

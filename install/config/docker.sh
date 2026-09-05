@@ -11,6 +11,13 @@
 #
 #   omarchy-setup-security-sudoless-docker   (Setup > Security > Sudoless Docker)
 #
-# Nothing to do here now that the group is no longer granted, but the file stays
-# as the recorded home of this decision and a hook for future daemon config.
-:
+# Docker packages land via omarchy-base.packages before this runs; the socket is
+# enabled later in enable-services.sh. Carve /var/lib/docker out of the root
+# Snapper subvolume first so the first daemon start never writes layers into @.
+# See bin/omarchy-btrfs-isolate-docker and issue #8953.
+
+if [[ -x ${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-btrfs-isolate-docker ]]; then
+  "$OMARCHY_PATH/bin/omarchy-btrfs-isolate-docker" || true
+elif command -v omarchy-btrfs-isolate-docker >/dev/null; then
+  omarchy-btrfs-isolate-docker || true
+fi

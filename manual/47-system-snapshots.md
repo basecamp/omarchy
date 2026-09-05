@@ -14,6 +14,8 @@ When you arrive inside, a notification will popup notifying you that you're in a
 
 This will restore your root filesystem, but not your `/home`. So it works for reverting a broken system update, but not for recovering lost personal files.
 
+Btrfs snapshots do not recurse into nested or sibling subvolumes. Omarchy already keeps `/home`, `/var/log`, and the pacman package cache on their own subvolumes for that reason. `/var/lib/docker` is the same: image layers and named volumes live on a top-level `@docker` subvolume so a root rollback after a bad package update does not silently rewind or wipe container data. Existing installs that still keep Docker inside `@` can move it with `sudo omarchy-btrfs-isolate-docker --migrate`.
+
 This also means that your `~/.config` directory is kept as-is. So if you're rolling back to an earlier version of a library or application that stores configuration files in a new format, you'll have to sort that out manually.
 
 _Note: This feature is only available on installations using the Limine boot loader, which has been the default since Omarchy 2.0. It's not available if you're on GRUB or systemd-boot._
