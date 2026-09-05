@@ -154,6 +154,17 @@ function sectionDevices(lists, section) {
   return []
 }
 
+// Pairable is not a BlueZ session (unlike Discovering): one write is enough.
+// Returns true/false to write, or null to leave the adapter alone because
+// another monitor's panel is still open. A powered-off adapter is never
+// pairable — every instance shares the default adapter.
+function wantedPairable(opened, adapterEnabled, siblingOpen) {
+  if (!adapterEnabled) return false
+  if (opened) return true
+  if (siblingOpen) return null
+  return false
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     deviceLabel: deviceLabel,
@@ -172,6 +183,7 @@ if (typeof module !== "undefined") {
     pendingAction: pendingAction,
     withPendingAction: withPendingAction,
     visibleSections: visibleSections,
-    sectionDevices: sectionDevices
+    sectionDevices: sectionDevices,
+    wantedPairable: wantedPairable
   }
 }

@@ -50,6 +50,32 @@ assert(/sibling\.owesDiscoveryStop = true/.test(stopTimer[0]), 'bluetooth moves 
 assert(/onDiscoveringChanged[\s\S]{0,120}owesDiscoveryStop = false/.test(panelSource), 'bluetooth settles the stop it owes once discovery is confirmed down')
 assert(/Component\.onDestruction: \{[\s\S]{0,400}owesDiscoveryStop = true[\s\S]{0,200}discovering = false/.test(panelSource), 'bluetooth passes the stop it owes to a sibling when an instance is destroyed')
 
+// Pairable is BlueZ's inbound-pairing gate. The adapter defaults to
+// Pairable: true with PairableTimeout=0, so it stays pairable forever
+// unless the panel writes it false when closed. bt-agent's NoInputNoOutput
+// is only safe inside that window.
+assert(/function setPairable\(want\)[\s\S]*?adapter\.pairable === want[\s\S]*?adapter\.pairable = want/.test(panelSource), 'bluetooth only writes pairable when it differs from the adapter')
+assert(/function applyPairable\(opened\)[\s\S]*?Model\.wantedPairable\(opened/.test(panelSource), 'bluetooth derives pairable from panel open, adapter power, and sibling state')
+assert(/if \(!opened && !bar\) return/.test(panelSource), 'bluetooth does not turn pairable off before bar is injected')
+assert(/onBarChanged: reassertPairable\(\)/.test(panelSource), 'bluetooth re-evaluates pairable once bar is injected')
+assert(/function reassertPairable\(\)[\s\S]*?sibling\.applyPairable\(\)/.test(panelSource), 'bluetooth asks an open sibling to reassert pairable after bar is injected')
+
+assert(/onOpenedChanged: \{[\s\S]*?if \(opened\) \{[\s\S]*?applyPairable\(\)/.test(panelSource), 'bluetooth writes pairable on the open path')
+assert(retryTimer && /applyPairable\(\)/.test(retryTimer[0]), 'bluetooth writes pairable on the discovery start path')
+
+assert(stopTimer && /applyPairable\(\)/.test(stopTimer[0]), 'bluetooth writes pairable false on close when no sibling is open')
+const siblingBranch = stopTimer[0].match(/if \(sibling\) \{[\s\S]*?return/)
+assert(siblingBranch && !/pairable/.test(siblingBranch[0]), 'bluetooth leaves pairable alone when a sibling panel is still open')
+
+assert(/Component\.onDestruction: \{[\s\S]*?applyPairable\(false\)/.test(panelSource), 'bluetooth applies pairable as closed when an instance is destroyed')
+
+assertEqual(bluetooth.wantedPairable(true, true, false), true, 'bluetooth wants pairable while the panel is open and the adapter is on')
+assertEqual(bluetooth.wantedPairable(true, true, true), true, 'bluetooth wants pairable on an open panel even when a sibling is also open')
+assertEqual(bluetooth.wantedPairable(false, true, false), false, 'bluetooth wants pairable off after close when no sibling is open')
+assertEqual(bluetooth.wantedPairable(false, true, true), null, 'bluetooth leaves pairable alone when a sibling panel is still open')
+assertEqual(bluetooth.wantedPairable(true, false, false), false, 'bluetooth wants pairable off when the adapter is powered down')
+assertEqual(bluetooth.wantedPairable(false, false, true), false, 'bluetooth wants pairable off when the adapter is powered down even with a sibling')
+
 assert(bluetooth.isUuidLike('0000110b-0000-1000-8000-00805f9b34fb'), 'bluetooth detects UUID-like names')
 assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-like names')
 assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'bluetooth normalizes BlueZ and PipeWire address formats')
