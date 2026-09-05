@@ -9,7 +9,7 @@ set -uo pipefail
 timeout=${1:-10}
 
 notification_server_ready() {
-  busctl --user call \
+  busctl --user --timeout=1 call \
     org.freedesktop.Notifications \
     /org/freedesktop/Notifications \
     org.freedesktop.Notifications \
@@ -18,13 +18,17 @@ notification_server_ready() {
 
 # The shell has to be up to serve the IPC, and it has to have claimed the
 # notification bus name before notify-send has anywhere to deliver.
-attempts=$((timeout * 10))
-while (( attempts > 0 )); do
+# Bound execution by wall-clock seconds so hanging IPC calls do not extend
+# the wait far beyond the requested timeout.
+deadline=$((SECONDS + timeout))
+export OMARCHY_SHELL_IPC_TIMEOUT=0.5s
+
+while (( SECONDS < deadline )); do
   if omarchy-shell notifications ping >/dev/null 2>&1 && notification_server_ready; then
     exit 0
   fi
-  attempts=$((attempts - 1))
   sleep 0.1
 done
 
 exit 1
+

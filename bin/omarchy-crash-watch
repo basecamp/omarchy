@@ -30,7 +30,10 @@ announce() {
   # notification server down with it and a toast sent into that gap is lost.
   # Wait for the restarted shell to claim the name again: the crash least
   # likely to be delivered is the one most worth reporting.
-  omarchy-notification-wait || return 1
+  if ! omarchy-notification-wait 5; then
+    echo "omarchy-crash-watch: notification server unavailable, dropped crash toast for $comm" >&2
+    return 1
+  fi
 
   # --exec rather than a libnotify action: the shell runs clicks from its own
   # hint and never emits ActionInvoked. Keeps the default "omarchy-action" app
