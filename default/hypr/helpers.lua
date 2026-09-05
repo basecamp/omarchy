@@ -53,28 +53,32 @@ function o.cmd_missing(command)
   return not o.cmd_present(command)
 end
 
+local function spawn(command)
+  return "omarchy-launch-on-workspace " .. shell_quote(command)
+end
+
 local function command_from(value, description)
   if type(value) ~= "table" then
     return value
   end
 
   if value.omarchy then
-    return "omarchy-launch-" .. value.omarchy
+    return spawn("omarchy-launch-" .. value.omarchy)
   elseif value.focus and value.launch then
-    return o.launch_sole(value.focus, value.launch)
+    return spawn(o.launch_sole(value.focus, value.launch))
   elseif value.launch then
-    return o.launch(value.launch)
+    return spawn(o.launch(value.launch))
   elseif value.webapp then
     if value.focus then
-      return o.launch_webapp_sole(description, value.webapp)
+      return spawn(o.launch_webapp_sole(description, value.webapp))
     else
-      return o.launch_webapp(value.webapp)
+      return spawn(o.launch_webapp(value.webapp))
     end
   elseif value.tui then
     if value.focus then
-      return "omarchy-launch-or-focus-tui " .. shell_quote(value.tui)
+      return spawn("omarchy-launch-or-focus-tui " .. shell_quote(value.tui))
     else
-      return "omarchy-launch-tui " .. shell_quote(value.tui)
+      return spawn("omarchy-launch-tui " .. shell_quote(value.tui))
     end
   end
 
