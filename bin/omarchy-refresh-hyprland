@@ -5,6 +5,7 @@
 omarchy-refresh-config hypr/.luarc.json
 omarchy-refresh-config hypr/autostart.lua
 omarchy-refresh-config hypr/bindings.lua
+omarchy-refresh-config hypr/cursor.lua
 omarchy-refresh-config hypr/input.lua
 omarchy-refresh-config hypr/looknfeel.lua
 omarchy-refresh-config hypr/hyprland.lua
