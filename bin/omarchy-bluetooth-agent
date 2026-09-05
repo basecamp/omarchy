@@ -1,0 +1,369 @@
+#!/usr/bin/python
+
+# omarchy:hidden=true
+# omarchy:summary=Bridge BlueZ pairing prompts to the Bluetooth panel
+
+import json
+import os
+import signal
+import socket
+import sys
+
+from gi.repository import Gio, GLib, GLibUnix
+
+
+AGENT_PATH = "/org/omarchy/BluetoothAgent"
+CAPABILITY = "KeyboardDisplay"
+REQUEST_TIMEOUT = 30
+
+AGENT_XML = """
+<node>
+  <interface name="org.bluez.Agent1">
+    <method name="Release"/>
+    <method name="RequestPinCode">
+      <arg name="device" type="o" direction="in"/>
+      <arg name="pincode" type="s" direction="out"/>
+    </method>
+    <method name="DisplayPinCode">
+      <arg name="device" type="o" direction="in"/>
+      <arg name="pincode" type="s" direction="in"/>
+    </method>
+    <method name="RequestPasskey">
+      <arg name="device" type="o" direction="in"/>
+      <arg name="passkey" type="u" direction="out"/>
+    </method>
+    <method name="DisplayPasskey">
+      <arg name="device" type="o" direction="in"/>
+      <arg name="passkey" type="u" direction="in"/>
+      <arg name="entered" type="q" direction="in"/>
+    </method>
+    <method name="RequestConfirmation">
+      <arg name="device" type="o" direction="in"/>
+      <arg name="passkey" type="u" direction="in"/>
+    </method>
+    <method name="RequestAuthorization">
+      <arg name="device" type="o" direction="in"/>
+    </method>
+    <method name="AuthorizeService">
+      <arg name="device" type="o" direction="in"/>
+      <arg name="uuid" type="s" direction="in"/>
+    </method>
+    <method name="Cancel"/>
+  </interface>
+</node>
+"""
+
+
+class BluetoothAgent:
+    def __init__(self):
+        self.loop = GLib.MainLoop()
+        self.connection = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+        self.interface = Gio.DBusNodeInfo.new_for_xml(AGENT_XML).interfaces[0]
+        self.object_id = self.connection.register_object_with_closures2(
+            AGENT_PATH, self.interface, self._method_call, None, None
+        )
+
+        self.pending = {}
+        self.next_request_id = 1
+        self._register_with_bluez()
+
+        self.clients = {}
+        self.server = self._create_server()
+        self.server_watch = GLibUnix.fd_add_full(
+            GLib.PRIORITY_DEFAULT,
+            self.server.fileno(),
+            GLib.IOCondition.IN,
+            self._accept_client,
+        )
+
+    @property
+    def socket_path(self):
+        return self._socket_path
+
+    def _create_server(self):
+        runtime_dir = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+        directory = os.path.join(runtime_dir, "omarchy")
+        os.makedirs(directory, mode=0o700, exist_ok=True)
+        os.chmod(directory, 0o700)
+        self._socket_path = os.path.join(directory, "bluetooth-agent.sock")
+        try:
+            os.unlink(self._socket_path)
+        except FileNotFoundError:
+            pass
+
+        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        server.bind(self._socket_path)
+        os.chmod(self._socket_path, 0o600)
+        server.listen(1)
+        server.setblocking(False)
+        return server
+
+    def _register_with_bluez(self):
+        self.connection.call_sync(
+            "org.bluez",
+            "/org/bluez",
+            "org.bluez.AgentManager1",
+            "RegisterAgent",
+            GLib.Variant("(os)", (AGENT_PATH, CAPABILITY)),
+            None,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None,
+        )
+        self.connection.call_sync(
+            "org.bluez",
+            "/org/bluez",
+            "org.bluez.AgentManager1",
+            "RequestDefaultAgent",
+            GLib.Variant("(o)", (AGENT_PATH,)),
+            None,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None,
+        )
+
+    @staticmethod
+    def _address(device_path):
+        marker = "/dev_"
+        if marker not in device_path:
+            return ""
+        return device_path.rsplit(marker, 1)[1].replace("_", ":")
+
+    def _event(self, event, device="", **values):
+        payload = {
+            "event": event,
+            "device": device,
+            "address": self._address(device),
+        }
+        payload.update(values)
+        self._send(payload)
+
+    def _send(self, payload):
+        if not self.clients:
+            return False
+        delivered = False
+        try:
+            data = (json.dumps(payload, separators=(",", ":")) + "\n").encode()
+            for client in list(self.clients):
+                try:
+                    client.sendall(data)
+                    delivered = True
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    self._drop_client(client)
+        except OSError:
+            return delivered
+        return delivered
+
+    def _accept_client(self, _fd, condition):
+        if condition & (GLib.IOCondition.ERR | GLib.IOCondition.HUP | GLib.IOCondition.NVAL):
+            return GLib.SOURCE_CONTINUE
+        try:
+            client, _ = self.server.accept()
+        except BlockingIOError:
+            return GLib.SOURCE_CONTINUE
+        client.setblocking(False)
+        self.clients[client] = {"buffer": b"", "watch": 0}
+        self.clients[client]["watch"] = GLibUnix.fd_add_full(
+            GLib.PRIORITY_DEFAULT,
+            client.fileno(),
+            GLib.IOCondition.IN | GLib.IOCondition.HUP | GLib.IOCondition.ERR,
+            self._read_client,
+            client,
+        )
+        return GLib.SOURCE_CONTINUE
+
+    def _read_client(self, _fd, condition, client):
+        if client not in self.clients:
+            return GLib.SOURCE_REMOVE
+        if condition & (GLib.IOCondition.HUP | GLib.IOCondition.ERR | GLib.IOCondition.NVAL):
+            self._drop_client(client)
+            return GLib.SOURCE_REMOVE
+        try:
+            data = client.recv(4096)
+        except BlockingIOError:
+            return GLib.SOURCE_CONTINUE
+        except OSError:
+            self._drop_client(client)
+            return GLib.SOURCE_REMOVE
+        if not data:
+            self._drop_client(client)
+            return GLib.SOURCE_REMOVE
+
+        client_buffer = self.clients[client]["buffer"] + data
+        while b"\n" in client_buffer:
+            line, client_buffer = client_buffer.split(b"\n", 1)
+            try:
+                message = json.loads(line.decode())
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            self._handle_response(message)
+        if client in self.clients:
+            self.clients[client]["buffer"] = client_buffer
+        return GLib.SOURCE_CONTINUE
+
+    def _drop_client(self, client):
+        item = self.clients.pop(client, None)
+        if item is None:
+            return
+        if item["watch"]:
+            GLib.source_remove(item["watch"])
+        try:
+            client.close()
+        except OSError:
+            pass
+        if not self.clients:
+            for request_id in list(self.pending):
+                self._finish(request_id, error="org.bluez.Error.Canceled")
+
+    def _new_request(self, kind, device, invocation, **values):
+        if not self.clients:
+            invocation.return_dbus_error("org.bluez.Error.Rejected", "Bluetooth panel is unavailable")
+            return
+        request_id = str(self.next_request_id)
+        self.next_request_id += 1
+        timer = GLib.timeout_add_seconds(REQUEST_TIMEOUT, self._timeout, request_id)
+        self.pending[request_id] = (kind, invocation, timer)
+        self._event(kind, device, id=request_id, **values)
+
+    def _timeout(self, request_id):
+        if request_id in self.pending:
+            self._event("timeout", id=request_id)
+            self._finish(request_id, error="org.bluez.Error.Rejected")
+        return GLib.SOURCE_REMOVE
+
+    def _handle_response(self, message):
+        request_id = str(message.get("id", ""))
+        if request_id not in self.pending:
+            return
+        response = message.get("response")
+        kind, _invocation, _timer = self.pending[request_id]
+        if kind == "request_passkey":
+            try:
+                value = int(str(response))
+            except (TypeError, ValueError):
+                return
+            if value < 0 or value > 999999:
+                return
+            self._finish(request_id, value=value)
+        elif kind == "request_pin_code":
+            if isinstance(response, str) and 1 <= len(response) <= 16:
+                self._finish(request_id, value=response)
+        elif kind in ("request_confirmation", "request_authorization"):
+            if response in ("yes", "accept", "confirm", True):
+                self._finish(request_id)
+            elif response in ("no", "reject", "cancel", False):
+                self._finish(request_id, error="org.bluez.Error.Rejected")
+
+    def _finish(self, request_id, value=None, error=None):
+        item = self.pending.pop(request_id, None)
+        if item is None:
+            return
+        kind, invocation, timer = item
+        GLib.source_remove(timer)
+        if error:
+            invocation.return_dbus_error(error, "Bluetooth pairing request was rejected")
+            return
+        if kind == "request_passkey":
+            invocation.return_value(GLib.Variant("(u)", (int(value),)))
+        elif kind == "request_pin_code":
+            invocation.return_value(GLib.Variant("(s)", (str(value),)))
+        else:
+            invocation.return_value(GLib.Variant("()", ()))
+
+    def _cancel_pending(self):
+        for request_id in list(self.pending):
+            self._finish(request_id, error="org.bluez.Error.Canceled")
+
+    def _method_call(
+        self, _connection, _sender, _object_path, _interface_name, method_name, parameters, invocation
+    ):
+        values = parameters.unpack()
+        if method_name == "Release":
+            invocation.return_value(GLib.Variant("()", ()))
+        elif method_name == "Cancel":
+            self._cancel_pending()
+            self._event("cancel")
+            invocation.return_value(GLib.Variant("()", ()))
+        elif method_name == "DisplayPasskey":
+            device, passkey, entered = values
+            self._event("display_passkey", device, passkey=f"{passkey:06d}", entered=entered)
+            invocation.return_value(GLib.Variant("()", ()))
+        elif method_name == "DisplayPinCode":
+            device, pincode = values
+            self._event("display_pin_code", device, pincode=pincode)
+            invocation.return_value(GLib.Variant("()", ()))
+        elif method_name == "RequestPasskey":
+            self._new_request("request_passkey", values[0], invocation)
+        elif method_name == "RequestPinCode":
+            self._new_request("request_pin_code", values[0], invocation)
+        elif method_name == "RequestConfirmation":
+            self._new_request(
+                "request_confirmation", values[0], invocation, passkey=f"{values[1]:06d}"
+            )
+        elif method_name == "RequestAuthorization":
+            self._new_request("request_authorization", values[0], invocation)
+        elif method_name == "AuthorizeService":
+            # BlueZ asks this after the user-approved pairing. HID and audio
+            # profiles should not require a second, confusing prompt.
+            invocation.return_value(GLib.Variant("()", ()))
+        else:
+            invocation.return_dbus_error("org.bluez.Error.Rejected", "Unsupported pairing request")
+
+    def run(self):
+        self.loop.run()
+
+    def close(self):
+        self._cancel_pending()
+        for client in list(self.clients):
+            self._drop_client(client)
+        try:
+            self.connection.call_sync(
+                "org.bluez",
+                "/org/bluez",
+                "org.bluez.AgentManager1",
+                "UnregisterAgent",
+                GLib.Variant("(o)", (AGENT_PATH,)),
+                None,
+                Gio.DBusCallFlags.NONE,
+                1000,
+                None,
+            )
+        except GLib.Error:
+            pass
+        if self.object_id:
+            self.connection.unregister_object(self.object_id)
+            self.object_id = 0
+        if self.server_watch:
+            GLib.source_remove(self.server_watch)
+            self.server_watch = 0
+        try:
+            self.server.close()
+        except OSError:
+            pass
+        try:
+            os.unlink(self.socket_path)
+        except FileNotFoundError:
+            pass
+
+
+def main():
+    try:
+        agent = BluetoothAgent()
+    except GLib.Error as error:
+        print(f"omarchy-bluetooth-agent: {error}", file=sys.stderr)
+        return 1
+
+    def stop(_signum, _frame):
+        agent.loop.quit()
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    try:
+        agent.run()
+    finally:
+        agent.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

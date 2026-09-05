@@ -12,9 +12,22 @@ run_node_test <<'JS'
 const fs = require('fs')
 const bluetooth = requireFromRoot('shell/plugins/panels/bluetooth/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/bluetooth/Panel.qml', 'utf8')
+const agentSource = fs.readFileSync(root + '/bin/omarchy-bluetooth-agent', 'utf8')
+const agentUnit = fs.readFileSync(root + '/default/systemd/user/bt-agent.service', 'utf8')
+const packages = fs.readFileSync(root + '/install/omarchy-base.packages', 'utf8')
 
 assert(/IpcHandler[\s\S]*?function toggleBluetooth\(\) \{ root\.toggleBluetooth\(\) \}/.test(panelSource), 'bluetooth exposes the radio toggle over IPC')
 assert(/manageIpc: false/.test(panelSource), 'bluetooth owns its IPC handler so it can extend the target methods')
+
+assert(/Socket \{[\s\S]*?path: root\.agentSocketPath[\s\S]*?SplitParser/.test(panelSource), 'bluetooth listens for pairing events from the user agent')
+assert(/display_passkey/.test(panelSource) && /request_confirmation/.test(panelSource), 'bluetooth panel renders passkeys and confirmation requests')
+assert(/JSON\.stringify\(\{ id: String\(authRequest\.id\), response: response \}\)/.test(panelSource), 'bluetooth panel answers interactive pairing requests')
+assert(/authInputValid\(response\)/.test(panelSource) && /timeout/.test(panelSource), 'bluetooth panel keeps invalid input open and clears timed out requests')
+assert(/org\.bluez\.Agent1/.test(agentSource) && /DisplayPasskey/.test(agentSource), 'bluetooth agent implements BlueZ passkey callbacks')
+assert(/CAPABILITY = "KeyboardDisplay"/.test(agentSource), 'bluetooth agent advertises keyboard and display capability')
+assert(/ExecStart=\/usr\/bin\/omarchy-bluetooth-agent/.test(agentUnit), 'bt-agent service starts the panel bridge')
+assert(!/bt-agent -c NoInputNoOutput/.test(agentUnit), 'bt-agent service does not discard pairing prompts')
+assert(!/^bluez-tools$/m.test(packages), 'bluetooth no longer installs the obsolete bt-agent provider')
 
 // Writing adapter.enabled sets BlueZ Powered, which does not survive a reboot.
 assert(/function toggleBluetooth\(\)[\s\S]*?execDetached\(\["omarchy-bluetooth-power", adapter\.enabled \? "off" : "on"\]\)/.test(panelSource), 'bluetooth toggles the radio through the rfkill soft block')
@@ -141,6 +154,52 @@ assert(
   'bluetooth ignores non-sink nodes when matching audio outputs'
 )
 JS
+
+python - "$ROOT/bin/omarchy-bluetooth-agent" <<'PY'
+import importlib.machinery
+import importlib.util
+import sys
+
+from gi.repository import GLib
+
+loader = importlib.machinery.SourceFileLoader("bluetooth_agent", sys.argv[1])
+spec = importlib.util.spec_from_loader(loader.name, loader)
+agent_module = importlib.util.module_from_spec(spec)
+loader.exec_module(agent_module)
+
+
+class Invocation:
+    def __init__(self):
+        self.reply = None
+
+    def return_value(self, value):
+        self.reply = ("value", value.unpack())
+
+    def return_dbus_error(self, name, message):
+        self.reply = ("error", name, message)
+
+
+agent = object.__new__(agent_module.BluetoothAgent)
+agent.pending = {}
+agent.next_request_id = 1
+agent.clients = {object(): {}}
+events = []
+agent._event = lambda event, device="", **values: events.append((event, device, values))
+device = "/org/bluez/hci0/dev_E8_9F_04_5C_DC_03"
+
+display = Invocation()
+agent._method_call(None, "", "", "org.bluez.Agent1", "DisplayPasskey", GLib.Variant("(ouq)", (device, 47462, 0)), display)
+assert display.reply == ("value", ())
+assert events[-1][2]["passkey"] == "047462"
+
+confirmation = Invocation()
+agent._method_call(None, "", "", "org.bluez.Agent1", "RequestConfirmation", GLib.Variant("(ou)", (device, 641084)), confirmation)
+request_id = next(iter(agent.pending))
+assert events[-1][2]["passkey"] == "641084"
+agent._handle_response({"id": request_id, "response": "yes"})
+assert confirmation.reply == ("value", ())
+print("ok - bluetooth agent formats passkeys and resolves confirmation requests")
+PY
 
 # Turning Bluetooth off is an rfkill soft block, not a bluetoothctl power off,
 # because only the block survives a reboot. These mocks stand in for that pair:

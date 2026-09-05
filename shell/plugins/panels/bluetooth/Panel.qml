@@ -21,6 +21,36 @@ Panel {
   // this map only keeps the panel responsive while BlueZ catches up.
   property var pendingActions: ({})
 
+  // The user agent owns BlueZ's interactive pairing methods. The panel talks
+  // to it over a per-user socket so passkeys never have to be scraped from a
+  // detached bluetoothctl process.
+  readonly property string agentSocketPath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + (Quickshell.env("UID") || ""))) + "/omarchy/bluetooth-agent.sock"
+  property var authRequest: null
+  property string authInput: ""
+
+  Socket {
+    id: agentSocket
+    path: root.agentSocketPath
+    connected: true
+    parser: SplitParser {
+      splitMarker: "\n"
+      onRead: function(data) { root.handleAgentMessage(data) }
+    }
+    onConnectionStateChanged: if (!connected) agentReconnect.restart()
+    onError: function(error) { agentReconnect.restart() }
+  }
+
+  Timer {
+    id: agentReconnect
+    interval: 2000
+    repeat: true
+    running: !agentSocket.connected
+    onTriggered: {
+      agentSocket.connected = false
+      agentSocket.connected = true
+    }
+  }
+
   readonly property var adapter: Bluetooth.defaultAdapter
 
   // True while this instance owes BlueZ a StopDiscovery: set when it starts
@@ -265,6 +295,86 @@ Panel {
 
   function deviceCommand(action, address) {
     return ["omarchy-bluetooth-device", action, address]
+  }
+
+  function authDeviceLabel(request) {
+    var address = request && request.address ? request.address : ""
+    for (var i = 0; i < devices.length; i++) {
+      var device = devices[i]
+      if (device && device.address === address) return deviceLabel(device)
+    }
+    return address || "Bluetooth device"
+  }
+
+  function authMessage(request) {
+    if (!request) return ""
+    var label = authDeviceLabel(request)
+    if (request.event === "display_passkey") {
+      return label + "\n\nEnter this code on the device:\n\n" + request.passkey
+    }
+    if (request.event === "display_pin_code") {
+      return label + "\n\nEnter this code on the device:\n\n" + request.pincode
+    }
+    if (request.event === "request_confirmation") {
+      return label + "\n\nConfirm this passkey:\n\n" + request.passkey
+    }
+    if (request.event === "request_passkey") {
+      return label + "\n\nEnter the passkey, then choose Send:\n\n" + (authInput || "_")
+    }
+    if (request.event === "request_pin_code") {
+      return label + "\n\nEnter the PIN, then choose Send:\n\n" + (authInput || "_")
+    }
+    if (request.event === "request_authorization") return "Allow pairing with " + label + "?"
+    return ""
+  }
+
+  function authNeedsResponse() {
+    return authRequest && (authRequest.event === "request_confirmation"
+      || authRequest.event === "request_passkey"
+      || authRequest.event === "request_pin_code"
+      || authRequest.event === "request_authorization")
+  }
+
+  function clearAuthRequest() {
+    authRequest = null
+    authInput = ""
+  }
+
+  function authInputValid(response) {
+    if (!authRequest) return false
+    if (authRequest.event === "request_passkey") return /^\d{6}$/.test(String(response))
+    if (authRequest.event === "request_pin_code") return String(response).length > 0 && String(response).length <= 16
+    return true
+  }
+
+  function respondToAuth(response) {
+    if (!authRequest) return
+    if (!authInputValid(response)) return
+    if (authNeedsResponse() && authRequest.id !== undefined && agentSocket.connected) {
+      agentSocket.write(JSON.stringify({ id: String(authRequest.id), response: response }) + "\n")
+      agentSocket.flush()
+    }
+    clearAuthRequest()
+  }
+
+  function handleAgentMessage(data) {
+    var message
+    try {
+      message = JSON.parse(String(data))
+    } catch (error) {
+      return
+    }
+    if (!message || !message.event) return
+    if (message.event === "cancel" || message.event === "timeout") {
+      clearAuthRequest()
+      return
+    }
+    if (["display_passkey", "display_pin_code", "request_confirmation", "request_passkey", "request_pin_code", "request_authorization"].indexOf(message.event) < 0)
+      return
+    authRequest = message
+    authInput = ""
+    root.open()
+    Qt.callLater(function() { authDialog.forceActiveFocus() })
   }
 
   function runDeviceAction(device, action, pending) {
@@ -672,6 +782,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      blocked: root.authRequest !== null
       onMoveRequested: function(dx, dy) {
         if (!root.cursorActive) { root.cursorActive = true; return }
         if (dy !== 0) root.moveCursor(dy)
@@ -875,6 +986,47 @@ Panel {
           font.pixelSize: Style.font.bodySmall
           wrapMode: Text.WordWrap
           width: parent.width
+        }
+      }
+
+      ConfirmDialog {
+        id: authDialog
+        anchors.fill: parent
+        z: 10
+        opened: root.authRequest !== null
+        focus: opened
+        message: root.authMessage(root.authRequest)
+        cancelText: "Cancel"
+        confirmText: root.authRequest && root.authRequest.event.indexOf("display_") === 0 ? "Done"
+            : root.authRequest && root.authRequest.event.indexOf("request_") === 0 ? "Send" : "Allow"
+        selectedIndex: 1
+        onOpenedChanged: if (opened) forceActiveFocus()
+        onCanceled: {
+          if (root.authNeedsResponse()) root.respondToAuth("cancel")
+          else root.clearAuthRequest()
+        }
+        onConfirmed: {
+          if (root.authRequest && root.authRequest.event === "request_passkey") root.respondToAuth(root.authInput)
+          else if (root.authRequest && root.authRequest.event === "request_pin_code") root.respondToAuth(root.authInput)
+          else if (root.authRequest && root.authRequest.event === "request_confirmation") root.respondToAuth("yes")
+          else if (root.authRequest && root.authRequest.event === "request_authorization") root.respondToAuth("yes")
+          else root.clearAuthRequest()
+        }
+        Keys.onPressed: function(event) {
+          if (!root.authRequest) return
+          if ((root.authRequest.event === "request_passkey" || root.authRequest.event === "request_pin_code")
+              && event.text && event.text.length === 1 && event.text !== "\n") {
+            root.authInput += event.text
+            event.accepted = true
+            return
+          }
+          if ((root.authRequest.event === "request_passkey" || root.authRequest.event === "request_pin_code")
+              && event.key === Qt.Key_Backspace) {
+            root.authInput = root.authInput.slice(0, -1)
+            event.accepted = true
+            return
+          }
+          if (!authDialog.handleKey(event)) event.accepted = true
         }
       }
     }
