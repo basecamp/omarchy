@@ -59,8 +59,11 @@ function osIcon(os) {
 
 function accountLabel(account) {
   if (!account) return "Unknown account"
-  if (account.nickname) return String(account.nickname)
+  // Prefer tailnet: nickname is the Tailscale account identity and is identical
+  // across every profile of the same login, so ranking it first makes multi-
+  // tailnet switchers list indistinguishable rows (issue #9259).
   if (account.tailnet) return String(account.tailnet)
+  if (account.nickname) return String(account.nickname)
   if (account.account) return String(account.account)
   return String(account.id || "Unknown account")
 }
