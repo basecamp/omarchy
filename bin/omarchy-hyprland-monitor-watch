@@ -13,13 +13,19 @@ sync_clamshell() {
   ) 9>"$LOCK"
 }
 
+deduplicate_outputs() {
+  omarchy-hyprland-monitor-deduplicate
+}
+
 sync_clamshell_after_monitor_change() {
   sync_clamshell
+  deduplicate_outputs
 
   (
     for delay in 1 3 7; do
       sleep "$delay"
       sync_clamshell
+      deduplicate_outputs
     done
   ) &
 }
@@ -108,6 +114,7 @@ while read -r event; do
     # to notice, same as at boot. Our own recovery reload lands here too, and is
     # a no-op while its loop still holds the pid.
     configreloaded\>\>*)
+      deduplicate_outputs
       recover_modeless
       ;;
   esac

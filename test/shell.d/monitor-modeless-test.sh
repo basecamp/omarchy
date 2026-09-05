@@ -97,6 +97,12 @@ cat >"$fake_bin/omarchy-hyprland-monitor-clamshell" <<'SH'
 exit 0
 SH
 
+cat >"$fake_bin/omarchy-hyprland-monitor-deduplicate" <<'SH'
+#!/bin/bash
+
+exit 0
+SH
+
 chmod +x "$fake_bin"/*
 ln -s "$ROOT/bin/omarchy-hyprland-monitor-modeless" "$fake_bin/omarchy-hyprland-monitor-modeless"
 

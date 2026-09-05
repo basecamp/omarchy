@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# omarchy:hidden=true
+# omarchy:summary=Disable duplicate Hyprland outputs for the same physical monitor
+
+# A panel connected through more than one video input can be exposed as multiple
+# outputs with the same EDID identity. Keep the focused output (or the first
+# output when none is focused) and disable its duplicates.
+monitors_json=$(hyprctl monitors all -j) || exit 0
+
+duplicate_outputs=$(jq -r '
+  [ .[]
+    | select(.disabled != true)
+    | select((.make // "") != "" and (.model // "") != "" and (.serial // "") != "" and (.serial // "") != "0")
+    | { name, focused: (.focused == true), identity: [ .make, .model, .serial ] }
+  ]
+  | sort_by(.identity, .name)
+  | group_by(.identity)
+  | .[]
+  | select(length > 1)
+  | ((map(select(.focused)) + .) | .[0].name) as $keep
+  | .[]
+  | select(.name != $keep)
+  | .name
+' <<<"$monitors_json") || exit 0
+
+while read -r output; do
+  [[ -n $output ]] || continue
+  hyprctl eval "hl.monitor({ output = $(jq -Rn --arg output "$output" '$output'), disabled = true })" >/dev/null 2>&1 || true
+done <<<"$duplicate_outputs"
