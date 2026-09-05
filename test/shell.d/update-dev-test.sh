@@ -53,10 +53,36 @@ run_dev_update() {
     "$ROOT/bin/omarchy-update-dev"
 }
 
+# sudo env_reset (and similar clean environments) leave OMARCHY_PATH unset.
+# The stock path must still be treated as a no-op so `sudo omarchy update` can
+# continue past this step instead of dying under `set -u`.
+run_dev_update_without_path() {
+  env -u OMARCHY_PATH \
+    TEST_GIT_LOG="$git_log" \
+    PATH="$stub_bin:$PATH" \
+    "$ROOT/bin/omarchy-update-dev"
+}
+
 : >"$git_log"
 run_dev_update /usr/share/omarchy
 [[ ! -s $git_log ]] || fail "package-backed updates do not invoke git" "$(cat "$git_log")"
 pass "package-backed updates skip the dev checkout step"
+
+: >"$git_log"
+run_dev_update_without_path >"$test_tmp/unset.out" 2>"$test_tmp/unset.err" ||
+  fail "unset OMARCHY_PATH must not abort under set -u" "$(cat "$test_tmp/unset.err")"
+[[ ! -s $git_log ]] || fail "unset OMARCHY_PATH is treated as the stock install" "$(cat "$git_log")"
+if grep -q 'unbound variable' "$test_tmp/unset.err"; then
+  fail "unset OMARCHY_PATH must not raise an unbound-variable error" "$(cat "$test_tmp/unset.err")"
+fi
+pass "unset OMARCHY_PATH (sudo env_reset) skips the dev checkout step"
+
+: >"$git_log"
+OMARCHY_PATH= TEST_GIT_LOG="$git_log" PATH="$stub_bin:$PATH" \
+  "$ROOT/bin/omarchy-update-dev" >"$test_tmp/empty.out" 2>"$test_tmp/empty.err" ||
+  fail "empty OMARCHY_PATH must not abort under set -u" "$(cat "$test_tmp/empty.err")"
+[[ ! -s $git_log ]] || fail "empty OMARCHY_PATH is treated as the stock install" "$(cat "$git_log")"
+pass "empty OMARCHY_PATH skips the dev checkout step"
 
 : >"$git_log"
 run_dev_update "$checkout"
