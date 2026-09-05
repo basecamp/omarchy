@@ -626,25 +626,55 @@ QtObject {
     }
   }
 
+  // The watcher argv, shared by the process that runs it and by the pattern
+  // that reaps leftover copies of it.
+  readonly property var watcherCommand: [
+    "inotifywait",
+    "-m",
+    "-r",
+    "-q",
+    "-e",
+    "close_write,create,delete,move",
+    "--format",
+    "%w%f",
+    registry.pluginsDir
+  ]
+
+  // pkill -f matches an extended regex against each process's argv joined by
+  // spaces, so every argument is escaped and the pattern is anchored at the
+  // end. That reaps only this exact command, with or without the setpriv
+  // prefix, and leaves any other inotifywait alone.
+  readonly property string watcherPattern: registry.watcherCommand.map(function(arg) {
+    return arg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  }).join(" ") + "$"
+
+  // Creates the plugins dir, then reaps watchers of it that earlier shells
+  // left behind: shells that predate the pdeathsig, and a shell a crash
+  // handler re-execed in place, which kept its PID so the pdeathsig never
+  // fired. Only once that is done does this shell start its own watcher, so
+  // it is never the one being reaped. The reap does not wait on mkdir
+  // succeeding: a leftover watcher is stale whether or not the directory can
+  // be made. pkill exits 1 when there was nothing to reap, so onExited starts
+  // the watcher whatever the status.
   property Process initProcess: Process {
+    command: [
+      "bash",
+      "-c",
+      "mkdir -p \"$0\"; exec pkill -f \"$1\"",
+      registry.pluginsDir,
+      registry.watcherPattern
+    ]
     onExited: {
       localPluginWatcher.running = true
       registry.rescan()
     }
   }
 
+  // The pdeathsig makes the kernel kill the watcher whenever the shell exits,
+  // however it exits. Qt leaves through _exit() when the Wayland connection
+  // drops, so nothing in QML gets to stop the watcher on the path that matters.
   property Process localPluginWatcher: Process {
-    command: [
-      "inotifywait",
-      "-m",
-      "-r",
-      "-q",
-      "-e",
-      "close_write,create,delete,move",
-      "--format",
-      "%w%f",
-      registry.pluginsDir
-    ]
+    command: ["setpriv", "--pdeathsig", "TERM"].concat(registry.watcherCommand)
     stdout: SplitParser {
       onRead: function(path) {
         var pluginId = registry.localPluginIdForPath(path)
@@ -693,11 +723,6 @@ QtObject {
     scanProcess.running = true
   }
 
-  function ensureUserDir() {
-    initProcess.command = ["bash", "-c", "mkdir -p \"$0\"", registry.pluginsDir]
-    initProcess.running = true
-  }
-
   function localPluginIdForPath(filePath) {
     var base = pluginsDir.replace(/\/$/, "") + "/"
     var path = String(filePath || "").trim()
@@ -712,5 +737,5 @@ QtObject {
     return slash === -1 ? relative : relative.slice(0, slash)
   }
 
-  Component.onCompleted: ensureUserDir()
+  Component.onCompleted: initProcess.running = true
 }
