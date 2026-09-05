@@ -2,7 +2,7 @@
 
 Omarchy ships with [Chromium](https://www.chromium.org/) as the default browser. It's the plain open-source build, themed to match the rest of your system, and it's what `Super + Shift + Return` opens and what every [web app](25-web-apps.md) runs inside.
 
-If Chromium isn't your taste, you're not stuck with it. Under _Install > Browser_ in the Omarchy menu you'll find Chrome, Edge, Brave, Brave Origin, Firefox, and [Zen](https://zen-browser.app/). Pick one and Omarchy installs it, sets up its policy directory, and applies your current theme to it.
+If Chromium isn't your taste, you're not stuck with it. Under _Install > Browser_ in the Omarchy menu you'll find Chrome, Edge, Brave, Brave Origin, Firefox, [Zen](https://zen-browser.app/), and [Vivaldi](https://vivaldi.com/). Pick one and Omarchy installs it, sets up its policy directory, and applies your current theme to it.
 
 ## Making one the default
 
@@ -26,13 +26,19 @@ The Chromium-family browsers (Chromium itself, Chrome, Edge, and Brave) come wit
 
 Both extensions talk to Omarchy through a small native messaging host, which gets installed for you along with the browser. That's the piece that lets a web page's video end up in your home directory and a URL end up in your clipboard manager, which a normal extension can't do on its own.
 
-These are Chromium-family only. Firefox and Zen don't get them.
+These come with Chromium, Chrome, Edge, and Brave. Firefox, Zen, and Vivaldi don't get them.
 
 ## Firefox and Zen
 
 Firefox and Zen are a different family, so they get different treatment: Omarchy installs a policies file for sensible defaults and switches them into native Wayland mode, which you want for fractional scaling and smooth trackpad scrolling.
 
 They don't get the Chromium extensions above, and they're not themed by Omarchy, so those parts of the experience are yours to set up.
+
+## Vivaldi
+
+Vivaldi is Chromium-family, but it paints its own interface instead of using Chromium's, so it ignores the theme policy the others follow. Omarchy builds it a native Vivaldi theme from your current colors instead, which means it does get themed — unlike Firefox and Zen — but the new colors arrive the next time Vivaldi starts rather than the moment you switch themes. If you change themes while it's open, restarting it catches up.
+
+It doesn't get the Copy URL and Download Video extensions.
 
 ## Removing one again
 
