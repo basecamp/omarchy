@@ -11,6 +11,7 @@ Native Omarchy bar widget for Tailscale.
 - Browse machines from `tailscale status --json`
 - Copy a machine's Tailscale IP, host name, or DNS name
 - Send files to a machine with Taildrop, when the tailnet allows file sharing
+- When tailnet DNS is unreachable, offer an explicit choice: accept advertised subnet routes, or keep local DNS. Routes stay off unless you pick them.
 
 ## Keyboard shortcuts
 

@@ -10,6 +10,10 @@ const tailscale = requireFromRoot('shell/plugins/panels/tailscale/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Panel.qml', 'utf8')
 
 assert(/function toggleTailscale\(\): string \{ tailscale\.toggleTailscale\(\); return "ok" \}/.test(panelSource), 'tailscale exposes the connection toggle over IPC')
+assert(panelSource.includes('tailscale.dnsRepairActions'), 'tailscale panel uses the shared DNS repair actions')
+assert(panelSource.includes('tailscale.acceptRoutes()'), 'tailscale panel accepts routes only from the repair action')
+assert(panelSource.includes('tailscale.ignoreTailnetDns()'), 'tailscale panel disables tailnet DNS only from the repair action')
+assert(!/tailscale up --accept-routes/.test(panelSource), 'tailscale panel does not pass --accept-routes to up')
 
 assertDeepEqual(
   tailscale.filterIPv4(['100.64.0.1', 'fd7a:115c:a1e0::1', '192.168.1.2']),
@@ -87,6 +91,8 @@ const status = tailscale.parseStatus(JSON.stringify({
 
 assert(status.ok && status.running, 'tailscale parses running status')
 assertEqual(status.selfIp, '100.74.97.73', 'tailscale parses self IP')
+assert(!status.health.dnsUnreachable && !status.health.routesNotAccepted, 'tailscale treats missing Health as a clean connection')
+assertDeepEqual(status.advertisedRoutes, [], 'tailscale reports no advertised routes when peers have none')
 assertDeepEqual(status.peers.map(peer => peer.HostName), ['alpha', 'zed'], 'tailscale filters offline and Mullvad peers and sorts online peers')
 assertDeepEqual(status.peers[0].TailscaleIPv6, ['fd7a:115c:a1e0::1901:334b'], 'tailscale preserves peer IPv6 addresses for copy menu')
 assert(status.peers[1].ExitNodeOption && status.peers[1].ExitNode, 'tailscale preserves exit node flags')
@@ -207,4 +213,70 @@ assertDeepEqual(
 
 assertDeepEqual(tailscale.parseStatus('{'), { ok: false, unavailable: true, message: 'Status error', error: 'Failed to parse tailscale status' }, 'tailscale reports invalid status JSON')
 assertDeepEqual(tailscale.parseAccounts('{'), { accounts: [], selectedAccountId: '', selectedAccountLabel: '' }, 'tailscale handles invalid account JSON')
+
+const brokenDns = tailscale.parseStatus(JSON.stringify({
+  BackendState: 'Running',
+  Health: [
+    "Tailscale can't reach the configured DNS servers. Internet connectivity may be affected.",
+    'Some peers are advertising routes but --accept-routes is false',
+    'Tailscale is stopped.'
+  ],
+  Self: {
+    HostName: 'laptop',
+    DNSName: 'laptop.tailnet.ts.net.',
+    TailscaleIPs: ['100.68.199.45']
+  },
+  Peer: {
+    vpn: {
+      HostName: 'vpn',
+      DNSName: 'vpn.tailnet.ts.net.',
+      TailscaleIPs: ['100.1.1.9'],
+      Online: true,
+      OS: 'linux',
+      PrimaryRoutes: ['10.2.0.0/16', '10.1.0.0/16', '0.0.0.0/0', '100.64.0.0/10', '100.1.0.0/16']
+    }
+  }
+}))
+
+assert(brokenDns.health.dnsUnreachable, 'tailscale detects unreachable tailnet DNS from Health')
+assert(brokenDns.health.routesNotAccepted, 'tailscale detects unaccepted advertised routes from Health')
+assertDeepEqual(
+  brokenDns.advertisedRoutes,
+  ['10.1.0.0/16', '10.2.0.0/16', '100.1.0.0/16'],
+  'tailscale lists advertised subnet routes and skips default and CGNAT prefixes'
+)
+assert(tailscale.isCgnatIPv4('100.64.0.0/10') && tailscale.isCgnatIPv4('100.127.1.0/24'), 'tailscale treats 100.64.0.0/10 as CGNAT')
+assert(!tailscale.isCgnatIPv4('100.1.0.0/16') && !tailscale.isCgnatIPv4('100.63.0.0/16') && !tailscale.isCgnatIPv4('100.128.0.0/16'), 'tailscale does not treat the rest of 100.0.0.0/8 as CGNAT')
+assert(tailscale.isSubnetRoute('100.1.0.0/16'), 'tailscale keeps advertised 100.x routes outside CGNAT')
+assert(!tailscale.isSubnetRoute('100.100.100.0/24'), 'tailscale skips Tailscale CGNAT prefixes')
+assertEqual(
+  tailscale.formatRouteSummary(brokenDns.advertisedRoutes, 4),
+  '10.1.0.0/16, 10.2.0.0/16, 100.1.0.0/16',
+  'tailscale formats a short advertised-route summary'
+)
+assertEqual(
+  tailscale.formatRouteSummary(['10.1.0.0/16', '10.2.0.0/16', '10.70.0.0/15', '10.72.0.0/15', '10.250.0.0/16'], 4),
+  '10.1.0.0/16, 10.2.0.0/16, 10.70.0.0/15, 10.72.0.0/15, and 1 more',
+  'tailscale elides long advertised-route lists'
+)
+assertDeepEqual(
+  tailscale.dnsRepairActions(true, true).map(action => action.id),
+  ['routes', 'dns'],
+  'tailscale offers both repairs when DNS is unreachable and routes are unaccepted'
+)
+assertDeepEqual(
+  tailscale.dnsRepairActions(true, false).map(action => action.id),
+  ['dns'],
+  'tailscale only offers keeping local DNS when routes are not the cause'
+)
+assertDeepEqual(
+  tailscale.dnsRepairActions(false, true),
+  [],
+  'tailscale does not prompt to accept routes unless DNS is unreachable'
+)
+assertDeepEqual(
+  tailscale.classifyHealth([]),
+  { notices: [], dnsUnreachable: false, routesNotAccepted: false },
+  'tailscale classifies empty Health as clean'
+)
 JS

@@ -220,6 +220,85 @@ function mullvadCountryOptions(nodes) {
   return mullvadRegionOptions(nodes)
 }
 
+function isCgnatIPv4(cidr) {
+  var match = String(cidr || "").match(/^(\d+)\.(\d+)\./)
+  if (!match) return false
+  var first = parseInt(match[1], 10)
+  var second = parseInt(match[2], 10)
+  return first === 100 && second >= 64 && second <= 127
+}
+
+function isSubnetRoute(cidr) {
+  var value = String(cidr || "")
+  if (value === "" || value === "0.0.0.0/0" || value === "::/0") return false
+  if (isCgnatIPv4(value)) return false
+  if (/^fd7a:115c:a1e0:/i.test(value)) return false
+  return true
+}
+
+function advertisedRoutesFromPeers(rawPeers) {
+  var seen = {}
+  var result = []
+  if (!rawPeers || typeof rawPeers !== "object") return result
+  for (var id in rawPeers) {
+    var peer = rawPeers[id] || {}
+    var routes = peer.PrimaryRoutes || []
+    for (var i = 0; i < routes.length; i++) {
+      var route = String(routes[i] || "")
+      if (!isSubnetRoute(route) || seen[route]) continue
+      seen[route] = true
+      result.push(route)
+    }
+  }
+  result.sort()
+  return result
+}
+
+function formatRouteSummary(routes, limit) {
+  var values = Array.isArray(routes) ? routes.slice() : []
+  var cap = typeof limit === "number" && limit > 0 ? limit : 4
+  if (values.length === 0) return ""
+  if (values.length <= cap) return values.join(", ")
+  return values.slice(0, cap).join(", ") + ", and " + (values.length - cap) + " more"
+}
+
+function classifyHealth(health) {
+  var messages = Array.isArray(health) ? health : []
+  var notices = []
+  var dnsUnreachable = false
+  var routesNotAccepted = false
+  for (var i = 0; i < messages.length; i++) {
+    var text = String(messages[i] || "").trim()
+    if (text === "") continue
+    notices.push(text)
+    if (/can'?t reach the configured DNS servers/i.test(text)) dnsUnreachable = true
+    if (/advertising routes but --accept-routes is false/i.test(text)) routesNotAccepted = true
+  }
+  return {
+    notices: notices,
+    dnsUnreachable: dnsUnreachable,
+    routesNotAccepted: routesNotAccepted
+  }
+}
+
+function dnsRepairActions(dnsUnreachable, routesNotAccepted) {
+  var actions = []
+  if (!dnsUnreachable) return actions
+  if (routesNotAccepted) {
+    actions.push({
+      id: "routes",
+      title: "Accept subnet routes",
+      subtitle: "Reach the tailnet's DNS servers via advertised routes"
+    })
+  }
+  actions.push({
+    id: "dns",
+    title: "Don't use tailnet DNS",
+    subtitle: "Keep using this machine's DNS resolvers"
+  })
+  return actions
+}
+
 function parseStatus(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { ok: true, unavailable: true, message: "Disconnected" }
@@ -232,6 +311,8 @@ function parseStatus(raw) {
     var peers = []
     var exitNodes = []
     var rawPeers = data.Peer || {}
+    var health = classifyHealth(data.Health)
+    var advertisedRoutes = advertisedRoutesFromPeers(rawPeers)
 
     for (var id in rawPeers) {
       var peer = rawPeers[id] || {}
@@ -263,7 +344,9 @@ function parseStatus(raw) {
       selfUserId: String(self.UserID || ""),
       fileSharing: hasFileSharing(self),
       peers: peers,
-      exitNodes: exitNodes
+      exitNodes: exitNodes,
+      health: health,
+      advertisedRoutes: advertisedRoutes
     }
   } catch (e) {
     return { ok: false, unavailable: true, message: "Status error", error: "Failed to parse tailscale status" }
@@ -319,6 +402,12 @@ if (typeof module !== "undefined") {
     parseExitNodeList: parseExitNodeList,
     mullvadRegionOptions: mullvadRegionOptions,
     mullvadCountryOptions: mullvadCountryOptions,
+    isCgnatIPv4: isCgnatIPv4,
+    isSubnetRoute: isSubnetRoute,
+    advertisedRoutesFromPeers: advertisedRoutesFromPeers,
+    formatRouteSummary: formatRouteSummary,
+    classifyHealth: classifyHealth,
+    dnsRepairActions: dnsRepairActions,
     parseStatus: parseStatus,
     parseAccounts: parseAccounts
   }

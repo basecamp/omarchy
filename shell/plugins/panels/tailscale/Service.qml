@@ -40,6 +40,11 @@ Item {
   property bool accountsAccessDenied: false
   property string actionStatus: ""
   property string lastError: ""
+  property bool dnsUnreachable: false
+  property bool routesNotAccepted: false
+  property var advertisedRoutes: []
+  readonly property string advertisedRouteSummary: Model.formatRouteSummary(advertisedRoutes, 4)
+  readonly property var dnsRepairActions: Model.dnsRepairActions(dnsUnreachable, routesNotAccepted)
 
   readonly property int refreshIntervalSec: intSetting("refreshIntervalSec", 30, 5, 3600)
   readonly property bool busy: whichProcess.running || statusProcess.running || mullvadExitNodesProcess.running || accountsProcess.running || actionProcess.running || loginProcess.running || switchProcess.running || operatorProcess.running || exitNodeProcess.running
@@ -220,6 +225,9 @@ Item {
     switchingAccountId = ""
     settingExitNodeId = ""
     accountsAccessDenied = false
+    dnsUnreachable = false
+    routesNotAccepted = false
+    advertisedRoutes = []
   }
 
   function parseStatus(raw) {
@@ -250,9 +258,18 @@ Item {
     peers = parsed.running ? parsed.peers : []
     tailnetExitNodes = parsed.running ? parsed.exitNodes : []
     exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
+    dnsUnreachable = parsed.running && parsed.health && parsed.health.dnsUnreachable === true
+    routesNotAccepted = parsed.running && parsed.health && parsed.health.routesNotAccepted === true
+    advertisedRoutes = parsed.running && parsed.advertisedRoutes ? parsed.advertisedRoutes : []
 
     if (needsLogin) statusText = "Needs login"
-    else if (running) {
+    else if (running && dnsUnreachable) {
+      statusText = "DNS unreachable"
+      _loginInProgress = false
+      _loginUrlOpened = false
+      _preLoginAuthUrl = ""
+      loginTimeoutTimer.stop()
+    } else if (running) {
       statusText = "Connected"
       _loginInProgress = false
       _loginUrlOpened = false
@@ -352,6 +369,16 @@ Item {
     actionStatus = "Authorizing Tailscale operator..."
     operatorProcess.command = ["pkexec", "tailscale", "set", "--operator=" + userName]
     operatorProcess.running = true
+  }
+
+  function acceptRoutes() {
+    if (!installed || actionProcess.running) return
+    runAction(["tailscale", "set", "--accept-routes"], "Accepting subnet routes...")
+  }
+
+  function ignoreTailnetDns() {
+    if (!installed || actionProcess.running) return
+    runAction(["tailscale", "set", "--accept-dns=false"], "Keeping local DNS...")
   }
 
   function runAction(command, label) {

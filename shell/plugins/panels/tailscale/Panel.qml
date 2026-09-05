@@ -14,6 +14,7 @@ Panel {
 
   property string focusSection: "header"
   property int headerIndex: 0
+  property int dnsActionIndex: 0
   property int accountIndex: 0
   property int peerIndex: 0
   property int exitNodeIndex: 0
@@ -42,6 +43,8 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
+  readonly property bool showDnsRepair: tailscale.active && tailscale.dnsUnreachable
+  readonly property var dnsActions: showDnsRepair ? tailscale.dnsRepairActions : []
   readonly property bool showPeers: tailscale.active && tailscale.peers.length > 0
   readonly property var recentMullvadRegions: settings.recentMullvadRegions instanceof Array ? settings.recentMullvadRegions : (settings.recentMullvadCountries instanceof Array ? settings.recentMullvadCountries : [])
   readonly property var recentMullvadExitNodes: recentMullvadNodes()
@@ -56,6 +59,17 @@ Panel {
   readonly property color barIconColor: tailscale.active ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
+
+  function selectedDnsAction() {
+    if (dnsActions.length === 0) return null
+    return dnsActions[Math.max(0, Math.min(dnsActionIndex, dnsActions.length - 1))]
+  }
+
+  function activateDnsAction(action) {
+    if (!action) return
+    if (action.id === "routes") tailscale.acceptRoutes()
+    else if (action.id === "dns") tailscale.ignoreTailnetDns()
+  }
 
   function selectedPeer() {
     if (tailscale.peers.length === 0) return null
@@ -177,17 +191,39 @@ Panel {
     return tailscale.accounts[Math.max(0, Math.min(accountIndex, tailscale.accounts.length - 1))]
   }
 
+  function sectionAfterHeader() {
+    if (showDnsRepair) return "dns"
+    if (tailscale.accountsAccessDenied) return "auth"
+    if (tailscale.accounts.length > 1) return "accounts"
+    if (showExitNodes) return "exitNodes"
+    if (showPeers) return "peers"
+    return "header"
+  }
+
+  function sectionBefore(section) {
+    if (section === "auth" || section === "accounts" || section === "exitNodes" || section === "peers") {
+      if (section === "accounts" && tailscale.accountsAccessDenied) return "auth"
+      if ((section === "exitNodes" || section === "peers") && tailscale.accounts.length > 1) return "accounts"
+      if ((section === "exitNodes" || section === "peers") && tailscale.accountsAccessDenied) return "auth"
+      if (section === "peers" && showExitNodes) return "exitNodes"
+      if (showDnsRepair) return "dns"
+    }
+    return "header"
+  }
+
   function ensureCursor() {
     if (headerIndex < 0) headerIndex = 0
     if (headerIndex > 0) headerIndex = 0
+    if (dnsActionIndex >= dnsActions.length) dnsActionIndex = Math.max(0, dnsActions.length - 1)
     if (accountIndex >= tailscale.accounts.length) accountIndex = Math.max(0, tailscale.accounts.length - 1)
     if (peerIndex >= tailscale.peers.length) peerIndex = Math.max(0, tailscale.peers.length - 1)
     if (exitNodeIndex >= exitNodes.length) exitNodeIndex = Math.max(0, exitNodes.length - 1)
     if (mullvadRegionIndex >= filteredMullvadRegions.length) mullvadRegionIndex = Math.max(0, filteredMullvadRegions.length - 1)
-    if (focusSection === "auth" && !tailscale.accountsAccessDenied) focusSection = tailscale.accounts.length > 1 ? "accounts" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
-    if (focusSection === "accounts" && tailscale.accounts.length <= 1) focusSection = tailscale.accountsAccessDenied ? "auth" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : "header"))
-    if (focusSection === "peers" && !showPeers) focusSection = showExitNodes ? "exitNodes" : (tailscale.accountsAccessDenied ? "auth" : (tailscale.accounts.length > 1 ? "accounts" : "header"))
-    if (focusSection === "exitNodes" && !showExitNodes) focusSection = showPeers ? "peers" : (tailscale.accountsAccessDenied ? "auth" : (tailscale.accounts.length > 1 ? "accounts" : "header"))
+    if (focusSection === "dns" && !showDnsRepair) focusSection = sectionAfterHeader()
+    if (focusSection === "auth" && !tailscale.accountsAccessDenied) focusSection = tailscale.accounts.length > 1 ? "accounts" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : (showDnsRepair ? "dns" : "header")))
+    if (focusSection === "accounts" && tailscale.accounts.length <= 1) focusSection = tailscale.accountsAccessDenied ? "auth" : (showExitNodes ? "exitNodes" : (showPeers ? "peers" : (showDnsRepair ? "dns" : "header")))
+    if (focusSection === "peers" && !showPeers) focusSection = showExitNodes ? "exitNodes" : (tailscale.accountsAccessDenied ? "auth" : (tailscale.accounts.length > 1 ? "accounts" : (showDnsRepair ? "dns" : "header")))
+    if (focusSection === "exitNodes" && !showExitNodes) focusSection = showPeers ? "peers" : (tailscale.accountsAccessDenied ? "auth" : (tailscale.accounts.length > 1 ? "accounts" : (showDnsRepair ? "dns" : "header")))
   }
 
   function moveCursor(dx, dy) {
@@ -195,20 +231,26 @@ Panel {
     ensureCursor()
     if (dy !== 0) {
       if (focusSection === "header") {
-        if (dy > 0) {
-          if (tailscale.accountsAccessDenied) focusSection = "auth"
+        if (dy > 0) focusSection = sectionAfterHeader()
+      } else if (focusSection === "dns") {
+        if (dy < 0) {
+          if (dnsActionIndex <= 0) focusSection = "header"
+          else dnsActionIndex--
+        } else {
+          if (dnsActionIndex < dnsActions.length - 1) dnsActionIndex++
+          else if (tailscale.accountsAccessDenied) focusSection = "auth"
           else if (tailscale.accounts.length > 1) focusSection = "accounts"
           else if (showExitNodes) focusSection = "exitNodes"
           else if (showPeers) focusSection = "peers"
         }
       } else if (focusSection === "auth") {
-        if (dy < 0) focusSection = "header"
+        if (dy < 0) focusSection = sectionBefore("auth")
         else if (tailscale.accounts.length > 1) focusSection = "accounts"
         else if (showExitNodes) focusSection = "exitNodes"
         else if (showPeers) focusSection = "peers"
       } else if (focusSection === "accounts") {
         if (dy < 0) {
-          if (accountIndex <= 0) focusSection = tailscale.accountsAccessDenied ? "auth" : "header"
+          if (accountIndex <= 0) focusSection = sectionBefore("accounts")
           else accountIndex--
         } else {
           if (accountIndex < tailscale.accounts.length - 1) accountIndex++
@@ -217,14 +259,14 @@ Panel {
         }
       } else if (focusSection === "peers") {
         if (dy < 0) {
-          if (peerIndex <= 0) focusSection = showExitNodes ? "exitNodes" : (tailscale.accounts.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header"))
+          if (peerIndex <= 0) focusSection = sectionBefore("peers")
           else peerIndex--
         } else if (peerIndex < tailscale.peers.length - 1) {
           peerIndex++
         }
       } else if (focusSection === "exitNodes") {
         if (dy < 0) {
-          if (exitNodeIndex <= 0) focusSection = tailscale.accounts.length > 1 ? "accounts" : (tailscale.accountsAccessDenied ? "auth" : "header")
+          if (exitNodeIndex <= 0) focusSection = sectionBefore("exitNodes")
           else exitNodeIndex--
         } else if (exitNodeIndex < exitNodes.length - 1) {
           exitNodeIndex++
@@ -241,6 +283,8 @@ Panel {
     ensureCursor()
     if (focusSection === "header") {
       tailscale.toggleTailscale()
+    } else if (focusSection === "dns") {
+      activateDnsAction(selectedDnsAction())
     } else if (focusSection === "auth") {
       tailscale.authorizeTailscaleOperator()
     } else if (focusSection === "accounts") {
@@ -328,6 +372,12 @@ Panel {
     focusSection = "auth"
   }
 
+  function setDnsCursor(index) {
+    cursorActive = true
+    focusSection = "dns"
+    dnsActionIndex = index
+  }
+
   function setHeaderCursor() {
     cursorActive = true
     focusSection = "header"
@@ -347,6 +397,7 @@ Panel {
   onExitNodeIndexChanged: scrollCursorIntoView()
   onMullvadRegionIndexChanged: if (mullvadPickerOpen) scrollMullvadRegionCursorIntoView()
   onShowConnectionsChanged: ensureCursor()
+  onShowDnsRepairChanged: ensureCursor()
   onShowPeersChanged: ensureCursor()
   onShowExitNodesChanged: ensureCursor()
   onFilteredMullvadRegionsChanged: ensureCursor()
@@ -361,6 +412,7 @@ Panel {
     function onPeersChanged() { root.ensureCursor() }
     function onAccountsChanged() { root.ensureCursor() }
     function onAccountsAccessDeniedChanged() { root.ensureCursor() }
+    function onDnsUnreachableChanged() { root.ensureCursor() }
   }
 
   IpcHandler {
@@ -389,7 +441,7 @@ Panel {
           color: root.barIconColor
           badgeColor: root.urgent
           crossed: !tailscale.active && !tailscale.needsLogin
-          warning: tailscale.needsLogin
+          warning: tailscale.needsLogin || tailscale.dnsUnreachable
         }
       }
     }
@@ -458,7 +510,7 @@ Panel {
               id: hero
               width: parent.width
               title: tailscale.installed ? (tailscale.selfName || "Tailscale") : "Tailscale"
-              meta: tailscale.active ? root.heroPhraseText : "Tailscale is disconnected"
+              meta: !tailscale.active ? "Tailscale is disconnected" : (tailscale.dnsUnreachable ? "Can't reach tailnet DNS" : root.heroPhraseText)
               foreground: root.foreground
               fontFamily: root.fontFamily
               iconOpacity: tailscale.active ? 1.0 : 0.5
@@ -469,7 +521,7 @@ Panel {
                   color: root.iconColor
                   badgeColor: root.urgent
                   crossed: !tailscale.active && !tailscale.needsLogin
-                  warning: tailscale.needsLogin
+                  warning: tailscale.needsLogin || tailscale.dnsUnreachable
                 }
               }
 
@@ -506,6 +558,55 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
+          }
+
+          PanelSeparator {
+            visible: root.showDnsRepair
+            foreground: root.foreground
+          }
+
+          Column {
+            visible: root.showDnsRepair
+            width: parent.width
+            spacing: Style.space(10)
+
+            PanelSectionHeader {
+              text: "DNS"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            Text {
+              width: parent.width
+              text: tailscale.routesNotAccepted
+                ? "Tailscale can't reach the DNS servers your tailnet specified. Those servers are on advertised routes this machine has not accepted."
+                : "Tailscale can't reach the DNS servers your tailnet specified."
+              color: root.urgent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              visible: tailscale.advertisedRouteSummary !== ""
+              width: parent.width
+              text: tailscale.advertisedRouteSummary
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+
+            Repeater {
+              model: root.dnsActions
+              DnsActionRow {
+                required property var modelData
+                required property int index
+                width: parent.width
+                action: modelData
+                rowIndex: index
+              }
+            }
           }
 
           CursorSurface {
@@ -717,7 +818,7 @@ Panel {
   Timer {
     id: phraseTimer
     interval: 2800
-    running: root.opened && tailscale.active
+    running: root.opened && tailscale.active && !tailscale.dnsUnreachable
     repeat: true
     onTriggered: phraseSwap.restart()
   }
@@ -734,6 +835,67 @@ Panel {
     PropertyAnimation {
       target: hero; property: "metaOpacity"
       to: 1.0; duration: 260; easing.type: Easing.InQuad
+    }
+  }
+
+  component DnsActionRow: CursorSurface {
+    id: dnsRow
+    property var action: null
+    property int rowIndex: 0
+
+    hasCursor: root.cursorActive && root.focusSection === "dns" && root.dnsActionIndex === rowIndex
+    foreground: root.foreground
+
+    implicitHeight: dnsInner.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: tailscale.busy ? Qt.ArrowCursor : Qt.PointingHandCursor
+      enabled: !tailscale.busy
+      onEntered: root.setDnsCursor(dnsRow.rowIndex)
+      onClicked: root.activateDnsAction(dnsRow.action)
+    }
+
+    RowLayout {
+      id: dnsInner
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      spacing: Style.space(8)
+
+      Text {
+        text: dnsRow.action && dnsRow.action.id === "routes" ? "󰩠" : "󰖟"
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.heading
+        Layout.alignment: Qt.AlignVCenter
+      }
+
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(1)
+
+        Text {
+          Layout.fillWidth: true
+          text: dnsRow.action ? dnsRow.action.title : ""
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          elide: Text.ElideRight
+        }
+
+        Text {
+          Layout.fillWidth: true
+          text: dnsRow.action ? dnsRow.action.subtitle : ""
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+      }
     }
   }
 
