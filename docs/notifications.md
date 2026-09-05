@@ -167,12 +167,7 @@ Everything goes through the same sender contract, so the pieces are small:
 
 - **Low battery** — `omarchy-battery-low` sends a critical toast and runs the
   `battery-low` hook.
-- **Crash capture** — `omarchy-crash-watch` follows the systemd-coredump
-  journal stream and announces each crashed program (deduped per minute) as a
-  critical toast whose click runs `omarchy-agent-crash` (via `--exec`, so a
-  hostile process name stays a discrete argument). It waits for the
-  server first: a shell crash takes the notification server down with it, and
-  that crash is the one most worth reporting.
+- **Crash capture** — `omarchy-crash-watch` follows the systemd-coredump journal stream and announces each crashed program (deduped per minute) as a critical toast whose click runs `omarchy-agent-crash` (via `--exec`, so a hostile process name stays a discrete argument). It waits for the server first: a shell crash takes the notification server down with it, and that crash is the one most worth reporting. It skips one kind of death: `COREDUMP_CODE` of `SI_USER` (the code `kill(2)` leaves, and the one a kernel path that names no cause leaves too, as SIGXFSZ does; recorded since systemd 261 on kernel 7.1) together with a `COREDUMP_RLIMIT` of 0 (no core was kept). That is a test suite's stub running `ulimit -c 0; kill -SEGV $$`, with no core to diagnose. Either alone still announces: a re-raised fault, a watchdog's SIGABRT or a kernel-sent SIGXFSZ with cores on, or a program that turned its core off and then faulted directly. What it does hide is any `SI_USER` death under a zero limit, whoever set it: a `kill -ABRT` aimed at a hung ssh-agent or gpg-agent, which zero their own limit; a watchdog abort of a service with `LimitCORE=0`; a fault handler re-delivering its signal under an inherited `ulimit -c 0`.
 - **Pending migrations** — `omarchy-migrate-notify` (from its user service
   after `graphical-session.target`) waits for the server, then sends a
   critical toast whose click opens a terminal running `omarchy-migrate`,

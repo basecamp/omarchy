@@ -95,12 +95,22 @@ reset_entries() {
 
 # One core dump as systemd-coredump journals it. The UID must be this user's, or
 # the watcher discards it as somebody else's crash before anything under test.
+# The optional third argument is the si_code systemd-coredump has recorded as
+# COREDUMP_CODE since v261 on kernel 7.1; left out, the entry is one an older
+# journal would hold, with no code at all. The fourth is RLIMIT_CORE as the
+# journal carries it, "0" for a process that had core dumps off, and the fifth
+# the signal.
+readonly UNLIMITED=18446744073709551615
+
 crash_entry() {
-  local comm="$1" exe="$2"
+  local comm="$1" exe="$2" code="${3:-}" rlimit="${4:-}" signal="${5:-SIGSEGV}"
 
   jq -cn --arg uid "$UID" --arg comm "$comm" --arg exe "$exe" \
+    --arg code "$code" --arg rlimit "$rlimit" --arg signal "$signal" \
     '{_UID: $uid, COREDUMP_COMM: $comm, COREDUMP_PID: "4242",
-      COREDUMP_EXE: $exe, COREDUMP_SIGNAL_NAME: "SIGSEGV"}' >>"$JOURNAL_ENTRIES"
+      COREDUMP_EXE: $exe, COREDUMP_SIGNAL_NAME: $signal}
+     + (if $code == "" then {} else {COREDUMP_CODE: $code} end)
+     + (if $rlimit == "" then {} else {COREDUMP_RLIMIT: $rlimit} end)' >>"$JOURNAL_ENTRIES"
 }
 
 # The stubbed journalctl ends after the entries, so the watcher's loop ends too.
@@ -241,6 +251,85 @@ for dotted_comm in .hidden ...; do
     fail "'$dotted_comm' is an ordinary name, but it lands in the fallback, so muting it would silence unrelated crashes"
 done
 pass "a leading dot is an ordinary name rather than a special component"
+
+# A stub that a test suite kills on purpose has turned its own core dump off
+# first (`ulimit -c 0; kill -SEGV $$`), and the journal shows both: a core
+# limit of 0 and si_code SI_USER, the signal delivered with kill(2) rather than
+# raised by a fault. Nothing crashed and there is no core, and a suite does
+# this hundreds of times a run. The stub is /bin/sh, so the toast this must
+# not send would have said bash.
+reset_entries
+crash_entry sh /usr/bin/bash 0 0
+run_watch
+! announced bash ||
+  fail "a stub that turned its core off and killed itself is announced as a crash, so a test suite fills the screen with toasts about nothing"
+pass "a process with a zero core limit killed with kill(2) is not announced"
+
+# The rule is those two fields and nothing finer. SI_USER is also what the
+# kernel leaves on a SIGXFSZ it sent to enforce a file-size limit, and what a
+# kill -ABRT leaves on a process that had zeroed its own limit; both are
+# skipped, and the test says so rather than letting the prose claim otherwise.
+for signal in SIGXFSZ SIGABRT; do
+  reset_entries
+  crash_entry sh /usr/bin/bash 0 0 "$signal"
+  run_watch
+  ! announced bash ||
+    fail "a $signal with si_code SI_USER under a zero core limit is announced, so the skip is narrower than documented"
+done
+pass "any SI_USER death under a zero core limit is skipped, whatever the signal"
+
+# kill(2) alone is not that. With cores on, si_code SI_USER is also a crash
+# handler re-delivering a real SIGSEGV with kill(getpid()), a watchdog's
+# SIGABRT, a kill -ABRT sent by hand to a hung program -- and the kernel sends
+# SIGXFSZ without siginfo, which lands as SI_USER too. Every one of those has
+# a core worth reading.
+for signal in SIGSEGV SIGABRT SIGXFSZ; do
+  reset_entries
+  crash_entry nautilus /usr/bin/nautilus 0 "$UNLIMITED" "$signal"
+  run_watch
+  announced nautilus ||
+    fail "a $signal sent with kill(2) to a process with cores on is skipped, silencing a re-raised fault, a watchdog or a kernel-sent limit"
+done
+pass "a signal sent with kill(2) to a process with cores on is still announced"
+
+# And cores off alone is not that either. A death with any other code -- a
+# fault's own cause, abort()'s SI_TKILL, the kernel's SI_KERNEL -- is a crash
+# whether or not a core was kept.
+for code in 1 2 -6 128; do
+  reset_entries
+  crash_entry nautilus /usr/bin/nautilus "$code" 0
+  run_watch
+  announced nautilus ||
+    fail "a death with si_code $code in a process with cores off is skipped along with the stubs, silencing a real crash"
+done
+pass "a death with any code but SI_USER is still announced with cores off"
+
+# The code arrived with systemd 261 on kernel 7.1. A journal without it says
+# nothing about how the signal was sent, and a crash it cannot vouch for is
+# still a crash, cores off or not.
+reset_entries
+crash_entry nautilus /usr/bin/nautilus "" 0
+run_watch
+announced nautilus ||
+  fail "a journal entry with no si_code is skipped, so an older kernel announces no crashes at all"
+pass "a crash without a recorded si_code is still announced"
+
+# Nor does a missing limit read as a limit of zero.
+reset_entries
+crash_entry nautilus /usr/bin/nautilus 0
+run_watch
+announced nautilus ||
+  fail "a journal entry with no core limit is skipped as if cores were off"
+pass "a crash without a recorded core limit is still announced"
+
+# And skipping one must not stop the watcher reading the next.
+reset_entries
+crash_entry sh /usr/bin/bash 0 0
+crash_entry nautilus /usr/bin/nautilus 1 "$UNLIMITED"
+run_watch
+announced nautilus ||
+  fail "a skipped stub stops the watcher reading the journal, losing every crash after it"
+pass "a skipped stub does not stop the watcher reading the next crash"
 
 # And the name it settles on is mutable like any other.
 mute unknown on
