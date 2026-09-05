@@ -23,6 +23,7 @@ run_logged "$OMARCHY_INSTALL/hardware/intel/ipu7-camera.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/fred.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/fix-wifi7-eht.sh"
 run_logged "$OMARCHY_INSTALL/hardware/intel/sof-firmware.sh"
+run_logged "$OMARCHY_INSTALL/hardware/intel/fix-hdmi-audio-kabylake.sh"
 
 # Rebuilds the boot image, so it has to follow the Panther Lake kernel swap
 # above rather than sit with the other Dell leaf at the top of this file.
