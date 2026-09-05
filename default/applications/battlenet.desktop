@@ -8,4 +8,4 @@ Icon=battle-net
 Terminal=false
 Categories=Game;
 StartupNotify=true
-StartupWMClass=battle.net.exe
+StartupWMClass=steam_app_battlenet
