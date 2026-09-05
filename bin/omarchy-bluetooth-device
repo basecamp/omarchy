@@ -29,15 +29,40 @@ trust_device() {
   bluetoothctl trust "$address" >/dev/null 2>&1 || true
 }
 
+discover() {
+  # bluetoothctl refuses to touch an address it has never seen: pair and
+  # connect both fail with "Device not available" while the adapter has no
+  # cached record of the device. A short discovery pass fills the cache, so
+  # run one whenever the address is not already known.
+  if [[ $(timeout 2s bluetoothctl devices 2>/dev/null) != *"$address"* ]]; then
+    timeout 8s bluetoothctl --timeout 8 scan on >/dev/null 2>&1 || true
+  fi
+}
+
+pair_with_agent() {
+  # A bare `bluetoothctl pair` dies with AuthenticationCanceled as soon as the
+  # remote asks BlueZ to confirm the pairing: the request is published and
+  # nothing on the bus answers it unless some other client registered an agent
+  # first. Register one in the same invocation that issues the pair so this
+  # helper stays self-contained. Auto-confirming is correct for HID
+  # peripherals, whose pairing is Just Works with both sides generating the
+  # same passkey; no user interaction is needed.
+  discover
+  {
+    printf 'agent on\ndefault-agent\npair %s\nquit\n' "$address"
+  } | timeout 25s bluetoothctl >/dev/null 2>&1 || true
+}
+
 case "$action" in
   pair)
     power_on
-    timeout 20s bluetoothctl pair "$address" >/dev/null 2>&1 || true
+    pair_with_agent
     trust_device
     timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
     ;;
   connect)
     power_on
+    discover
     trust_device
     timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
     ;;
