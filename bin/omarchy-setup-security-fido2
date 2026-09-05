@@ -31,11 +31,11 @@ setup_pam_config() {
     echo "Creating polkit configuration with FIDO2 authentication..."
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<'EOF'
 auth      sufficient pam_u2f.so cue authfile=/etc/fido2/fido2
-auth      required pam_unix.so
+auth      include system-auth
 
-account   required pam_unix.so
-password  required pam_unix.so
-session   required pam_unix.so
+account   include system-auth
+password  include system-auth
+session   include system-auth
 EOF
   fi
 }

@@ -47,11 +47,11 @@ setup_pam_config() {
     sudo tee /etc/pam.d/polkit-1 >/dev/null <<EOF
 $fprintd_gate
 auth      sufficient pam_fprintd.so
-auth      required pam_unix.so
+auth      include system-auth
 
-account   required pam_unix.so
-password  required pam_unix.so
-session   required pam_unix.so
+account   include system-auth
+password  include system-auth
+session   include system-auth
 EOF
   fi
 }
