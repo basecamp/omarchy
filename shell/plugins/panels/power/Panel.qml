@@ -19,11 +19,14 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
+  readonly property var idleService: bar?.shell?.firstPartyServiceFor("omarchy.idle")
+  readonly property bool screensaverActive: idleService ? idleService.screensaverWindowCount > 0 : false
   readonly property bool showPercentage: setting("showPercentage", false) === true
+  readonly property bool percentageVisible: batteryPresent && showPercentage && !button.vertical
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
   // icon-sized fraction of the slot the fallback assumes.
-  readonly property real openPanelIndicatorWidth: showPercentage && !button.vertical ? button.glyphPaintedWidth : 0
+  readonly property real openPanelIndicatorWidth: percentageVisible ? button.glyphPaintedWidth : 0
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
@@ -50,6 +53,10 @@ Panel {
   function batteryIcon() {
     var device = UPower.displayDevice
     return Model.batteryIcon(device, root.discharging, upowerStates())
+  }
+
+  function barIcon() {
+    return batteryPresent ? batteryIcon() : ""
   }
 
   function modeLabel() {
@@ -133,11 +140,14 @@ Panel {
   }
 
   function refresh() {
-    if (!batteryPresent) return
-
-    if (!batteryProc.running) batteryProc.running = true
+    if (batteryPresent && !batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
-    if (!systemProc.running) systemProc.running = true
+    if (batteryPresent && !systemProc.running) systemProc.running = true
+  }
+
+  function open() {
+    if (screensaverActive) return
+    controller.show()
   }
 
   function updateKeyValue(raw, targetName) {
@@ -187,11 +197,6 @@ Panel {
 
   onOpenedChanged: {
     if (opened) {
-      if (!batteryPresent) {
-        close()
-        return
-      }
-
       refresh()
       var idx = profiles.indexOf(activeProfile)
       profileIndex = idx >= 0 ? idx : 0
@@ -199,11 +204,11 @@ Panel {
     }
   }
 
-  onBatteryPresentChanged: if (!batteryPresent) close()
+  onBatteryPresentChanged: if (opened) refresh()
+  onScreensaverActiveChanged: if (screensaverActive && opened) close()
 
-  visible: batteryPresent
-  implicitWidth: batteryPresent ? button.implicitWidth : 0
-  implicitHeight: batteryPresent ? button.implicitHeight : 0
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
 
   Process {
     id: batteryProc
@@ -277,14 +282,15 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.showPercentage && !vertical
-      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
-      : root.batteryIcon()
-    slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
+    text: root.percentageVisible
+      ? Math.round(root.batteryFraction * 100) + "% " + root.barIcon()
+      : root.barIcon()
+    slotSize: Style.bar.iconSlot * (root.percentageVisible ? 2 : 1)
     tooltipText: ""
     onPressed: function(b) {
-      if (!root.batteryPresent) return
-      if (b === Qt.RightButton) root.togglePercentage()
+      if (b === Qt.RightButton) {
+        if (root.batteryPresent) root.togglePercentage()
+      }
       else root.toggle()
     }
   }
@@ -294,7 +300,7 @@ Panel {
     anchorItem: button
     owner: root
     bar: root.bar
-    open: root.opened && root.batteryPresent
+    open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
     contentHeight: panel.fittedContentHeight(column.implicitHeight)
@@ -320,6 +326,7 @@ Panel {
 
         // ---------- Hero: battery icon · title/status · percentage ----------
         Item {
+          visible: root.batteryPresent
           width: parent.width
           implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroPercent.implicitHeight)
 
@@ -386,6 +393,7 @@ Panel {
 
         // ---------- Battery progress bar ----------
         Item {
+          visible: root.batteryPresent
           width: parent.width
           implicitHeight: Style.space(8)
 
@@ -426,7 +434,7 @@ Panel {
         // the battery sits above the charge-control start threshold, and we
         // refuse to flicker the whole panel for that ~1s window.
         Row {
-          visible: root.batteryInfo.percentage !== undefined
+          visible: root.batteryPresent && root.batteryInfo.percentage !== undefined
           width: parent.width
           spacing: Style.space(20)
 
@@ -453,6 +461,7 @@ Panel {
 
         // ---------- Power profile picker ----------
         PanelSeparator {
+          visible: root.batteryPresent
           foreground: root.bar.foreground
         }
 
@@ -461,7 +470,7 @@ Panel {
           spacing: Style.space(10)
 
           PanelSectionHeader {
-            text: "POWER PROFILE"
+            text: "AVAILABLE POWER PROFILES"
             foreground: root.bar.foreground
             fontFamily: root.bar.fontFamily
           }

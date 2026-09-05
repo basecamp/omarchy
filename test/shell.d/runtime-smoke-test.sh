@@ -299,7 +299,8 @@ visible_default_ids='[
   "omarchy.system-update",
   "omarchy.network",
   "omarchy.audio",
-  "omarchy.monitor"
+  "omarchy.monitor",
+  "omarchy.power"
 ]'
 
 geometry=""
@@ -351,6 +352,11 @@ for panel_id in omarchy.audio omarchy.bluetooth omarchy.monitor omarchy.network 
   shell_ipc "$panel_id" close >/dev/null || fail_with_log "direct panel IPC closes $panel_id"
 done
 pass "direct panel IPC opens and closes default panels"
+
+if grep -F 'Binding loop detected for property "opened"' "$log" >/dev/null; then
+  fail_with_log "default panels open without an opened binding loop"
+fi
+pass "default panels open without an opened binding loop"
 
 # Each widget registers its IPC handler once per bar, and the bar is
 # instantiated once per screen, so Quickshell reports one collision per screen
