@@ -2,7 +2,21 @@ o.bind("SUPER + W", "Close window", hl.dsp.window.close())
 o.bind("SUPER + Q", "Close window", hl.dsp.window.close())
 o.bind("CTRL + ALT + DELETE", "Close all windows", "omarchy-hyprland-window-close-all")
 
-o.bind("SUPER + J", "Toggle window split", hl.dsp.layout("togglesplit"))
+-- Only Dwindle answers the togglesplit layoutmsg; Scrolling rejects it at ERROR
+-- level, which pops a "Runtime error in lua" toast on every keypress. Mirror
+-- Hyprland's own targeting (special workspace first, then the active one) so the
+-- guard picks the same workspace the dispatcher would have hit.
+local function layout_dispatch(layout, dispatcher)
+  return function()
+    local workspace = hl.get_active_special_workspace() or hl.get_active_workspace()
+
+    if workspace and workspace.tiled_layout == layout then
+      hl.dispatch(dispatcher)
+    end
+  end
+end
+
+o.bind("SUPER + J", "Toggle window split", layout_dispatch("dwindle", hl.dsp.layout("togglesplit")))
 o.bind("SUPER + P", "Pseudo window", hl.dsp.window.pseudo())
 o.bind("SUPER + T", "Toggle window floating/tiling", hl.dsp.window.float({ action = "toggle" }))
 o.bind("SUPER + F", "Full screen", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
