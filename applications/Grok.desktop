@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=Grok
+Exec=omarchy-launch-webapp https://grok.com
+Terminal=false
+Type=Application
+Icon=grok
+StartupNotify=true

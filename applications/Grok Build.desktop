@@ -1,0 +1,8 @@
+[Desktop Entry]
+Version=1.0
+Name=Grok Build
+Exec=omarchy-launch-tui --app-id=org.omarchy.agent grok --permission-mode bypassPermissions
+Terminal=false
+Type=Application
+Icon=grok
+StartupNotify=true

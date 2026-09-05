@@ -140,7 +140,7 @@
   "setup.default.agent.codex": {"icon":"","iconFont":"omarchy","label":"Codex","checked":"[[ \"$(omarchy-default-agent)\" == \"codex\" ]]","action":"omarchy-default-agent codex"},
   "setup.default.agent.copilot": {"icon":"","label":"Copilot","checked":"[[ \"$(omarchy-default-agent)\" == \"copilot\" ]]","action":"omarchy-default-agent copilot"},
   "setup.default.agent.crush": {"icon":"󰋑","label":"Crush","checked":"[[ \"$(omarchy-default-agent)\" == \"crush\" ]]","action":"omarchy-default-agent crush"},
-  "setup.default.agent.grok": {"icon":"","iconFont":"omarchy","label":"Grok","checked":"[[ \"$(omarchy-default-agent)\" == \"grok\" ]]","action":"omarchy-default-agent grok"},
+  "setup.default.agent.grok": {"icon":"","iconFont":"omarchy","label":"Grok Build","checked":"[[ \"$(omarchy-default-agent)\" == \"grok\" ]]","action":"omarchy-default-agent grok"},
   "setup.default.agent.hermes": {"icon":"","iconFont":"omarchy","label":"Hermes","checked":"[[ \"$(omarchy-default-agent)\" == \"hermes\" ]]","action":"omarchy-default-agent hermes"},
   "setup.default.agent.omp": {"icon":"","iconFont":"omarchy","label":"omp","checked":"[[ \"$(omarchy-default-agent)\" == \"omp\" ]]","action":"omarchy-default-agent omp"},
   "setup.default.agent.opencode": {"icon":"","iconFont":"omarchy","label":"OpenCode","checked":"[[ \"$(omarchy-default-agent)\" == \"opencode\" ]]","action":"omarchy-default-agent opencode"},

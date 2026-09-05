@@ -36,7 +36,7 @@ You can start ChatGPT using `Super + Shift + A`.
 
 [Grok](https://grok.com) is xAI's chat bot.
 
-You can start Grok using `Super + Shift + Alt + A`.
+You can start Grok chat using the application launcher (`Super + Space`) or `Super + Shift + Alt + A`.
 
 ## WhatsApp
 
