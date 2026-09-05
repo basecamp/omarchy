@@ -237,5 +237,5 @@ fi
 chmod +x "$DESKTOP_FILE"
 
 if [[ $INTERACTIVE_MODE == "true" ]]; then
-  echo -e "You can now find $APP_NAME using the app launcher (SUPER + SPACE)\n"
+  echo -e "You can now find $APP_NAME using the Apps menu (SUPER ALT + SPACE)\n"
 fi
