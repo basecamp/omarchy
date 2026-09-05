@@ -3,13 +3,13 @@
 Read this when the user wants to report an Omarchy bug, suggest a feature, or
 contribute a fix upstream.
 
-Omarchy lives at https://github.com/basecamp/omarchy. Route requests to the
+Omarchy lives at https://github.com/omacom/omarchy. Route requests to the
 right place:
 
 - **Verified bugs** -> GitHub issues. Issues are for validated bugs only, not
   support requests.
 - **Feature ideas and suggestions** ->
-  https://github.com/basecamp/omarchy/discussions/categories/suggestions
+  https://github.com/omacom/omarchy/discussions/categories/suggestions
 - **Support and "is this a bug?" questions** -> the Discord community at
   https://omarchy.org/discord. Start here when the problem isn't clearly a bug
   in Omarchy itself.
@@ -43,7 +43,7 @@ For screen-recording failures specifically, rerun with
 File the issue with `gh` when available:
 
 ```bash
-gh issue create --repo basecamp/omarchy --title "..." --body "..."
+gh issue create --repo omacom/omarchy --title "..." --body "..."
 ```
 
 Include: what happened, what was expected, steps to reproduce, system details,
@@ -54,7 +54,7 @@ the debug log URL (or attached log), and the capture.
 Never develop against `/usr/share/omarchy`. Clone a working copy instead:
 
 ```bash
-gh repo fork basecamp/omarchy --clone
+gh repo fork omacom/omarchy --clone
 cd omarchy
 ```
 
