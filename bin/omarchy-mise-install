@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Install a small mise-backed wrapper for a given tool.
+# omarchy:summary=Install a mise-backed symlink for a given tool.
 # omarchy:args=<package> [command-name [bin-name]]
 
 if [[ -z $1 ]]; then
@@ -14,16 +14,17 @@ bin=${3:-$command}
 
 mkdir -p "$HOME/.local/bin"
 
-# These tools install and upgrade on first run, so mise's release cooldown would
-# hold a new version back for days after it ships. Exported rather than set on
-# the install line alone, so resolving the version to execute agrees with the
-# one just installed.
-rm -f "$HOME/.local/bin/$command"
-cat >"$HOME/.local/bin/$command" <<EOF
-#!/bin/bash
+# Shell wrappers cannot preserve argv[0] when a tool is invoked under another
+# name (Claude Code's built-in grep calls its binary as ugrep). Symlink the
+# real binary instead so the kernel passes through the intended invocation name.
 export MISE_MINIMUM_RELEASE_AGE=0
 mise use -g --quiet "$package" || exit 1
-exec mise x "$package" -- "$bin" "\$@"
-EOF
 
-chmod +x "$HOME/.local/bin/$command"
+install_root=$(mise where "$package") || exit 1
+target="$install_root/$bin"
+if [[ ! -x $target ]]; then
+  exit 1
+fi
+
+rm -f "$HOME/.local/bin/$command"
+ln -sf "$target" "$HOME/.local/bin/$command"
