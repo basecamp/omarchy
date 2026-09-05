@@ -38,6 +38,7 @@ SH
 cat >"$mock_bin/ddcutil" <<'SH'
 #!/bin/bash
 printf 'ddcutil %s\n' "$*" >>"$CALL_LOG"
+[[ ${DDC_FAIL_ALWAYS:-0} == "1" ]] && exit 1
 
 if [[ $* == *" detect --brief"* ]]; then
   cat <<EOF
@@ -91,28 +92,32 @@ brightness=$(FOCUSED_MONITOR=DP-1 run_brightness)
 pass "brightness follows the focused external monitor"
 
 detect_count=$(grep -c ' detect --brief' "$call_log")
-if DDC_CONNECTOR=DP-1 run_brightness --monitor DP-2 >/dev/null 2>&1; then
-  fail "unsupported external monitor has no brightness backend"
-fi
-if DDC_CONNECTOR=DP-1 run_brightness --monitor DP-2 >/dev/null 2>&1; then
-  fail "cached unsupported external monitor has no brightness backend"
-fi
+brightness=$(DDC_CONNECTOR=DP-1 run_brightness --monitor DP-2)
+[[ $brightness == "40" ]] || fail "unsupported external monitor falls back to the kernel backlight" "actual: $brightness"
+brightness=$(DDC_CONNECTOR=DP-1 run_brightness --monitor DP-2)
+[[ $brightness == "40" ]] || fail "cached unsupported external monitor falls back to the kernel backlight" "actual: $brightness"
 (( $(grep -c ' detect --brief' "$call_log") == detect_count + 1 )) || \
   fail "unsupported external monitor detection is temporarily cached"
-pass "unsupported external monitor has no brightness backend"
+pass "unsupported external monitor falls back to the kernel backlight"
+
+brightness=$(DDC_FAIL_ALWAYS=1 run_brightness --monitor DP-1)
+[[ $brightness == "40" ]] || fail "failed DDC read falls back to the kernel backlight" "actual: $brightness"
+DDC_FAIL_ALWAYS=1 run_brightness --no-osd --monitor DP-1 35%
+grep -F 'brightnessctl -d mock_backlight set 35%' "$call_log" >/dev/null || \
+  fail "failed DDC write falls back to the kernel backlight"
+pass "failed DDC access falls back to the kernel backlight"
 
 rm -f "$runtime_dir/omarchy-brightness-display-ddc/DP-1.bus"
 detect_count=$(grep -c ' detect --brief' "$call_log")
-if DDC_READ_FAIL=1 run_brightness --monitor DP-1 >/dev/null 2>&1; then
-  fail "transient DDC read failure is reported"
-fi
+brightness=$(DDC_READ_FAIL=1 run_brightness --monitor DP-1)
+[[ $brightness == "40" ]] || fail "transient DDC read failure falls back to the kernel backlight" "actual: $brightness"
 (( $(grep -c ' detect --brief' "$call_log") == detect_count + 1 )) || \
   fail "transient DDC read failure is not retried immediately"
 brightness=$(run_brightness --monitor DP-1)
 [[ $brightness == "50" ]] || fail "transient DDC read failure is retried on the next invocation" "actual: $brightness"
 (( $(grep -c ' detect --brief' "$call_log") == detect_count + 2 )) || \
   fail "transient DDC read failure does not create a negative cache entry"
-pass "transient DDC read failure is retried on the next invocation"
+pass "transient DDC read failure falls back and is retried on the next invocation"
 
 printf '7 80 0\n' >"$runtime_dir/omarchy-brightness-display-ddc/DP-1.bus"
 get_count=$(grep -c ' getvcp 10 ' "$call_log")
