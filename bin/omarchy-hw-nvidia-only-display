@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether NVIDIA owns every display controller (no iGPU or other GPU).
+
+# Read the cached sysfs IDs rather than lspci, which reads PCI config space and
+# resumes runtime-suspended GPUs. Anything unreadable could be another GPU, so
+# it counts as one: callers use a "yes" to early-load nvidia and to drop the
+# kms hook from the initramfs, so the answer must err towards "no".
+pci_devices_path="${OMARCHY_PCI_DEVICES_PATH:-/sys/bus/pci/devices}"
+
+shopt -s nullglob
+
+nvidia=0
+for device in "$pci_devices_path"/*; do
+  [[ -r $device/class && -r $device/vendor ]] || exit 1
+  [[ $(< "$device/class") == 0x03* ]] || continue
+  [[ $(< "$device/vendor") == "0x10de" ]] || exit 1
+  nvidia=1
+done
+
+((nvidia))
