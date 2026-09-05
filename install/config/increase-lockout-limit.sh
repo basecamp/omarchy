@@ -1,4 +1,4 @@
-# /etc/pam.d/{system-auth,sddm-autologin} are upstream-owned and the changes
+# The upstream-owned /etc/pam.d/{system-auth,sddm-autologin} files receive changes
 # are insertions, not full-file overrides, so they stay scripted.
 sed -i 's|^\(auth\s\+required\s\+pam_faillock.so\)\s\+preauth.*$|\1 preauth silent deny=10 unlock_time=120|' \
            /etc/pam.d/system-auth

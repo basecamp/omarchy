@@ -44,7 +44,7 @@ for index in "${!SHEEN_FRAMES[@]}"; do
   frame_lit=0
   while IFS= read -r drawn; do
     [[ -n $drawn ]] || continue
-    [[ $drawn == "$esc[$((top + row));${left}H"* ]] || misplaced=$((misplaced + 1))
+    [[ $drawn == "${esc}[$((top + row));${left}H"* ]] || misplaced=$((misplaced + 1))
 
     rest=${drawn#*H}
     [[ $rest == "$base"* ]] || unbased=$((unbased + 1))
@@ -95,7 +95,7 @@ pass "a glint arrives from off the logo"
 
 settled=""
 for row in "${!expected[@]}"; do
-  settled+="$esc[$((top + row));${left}H$base${expected[row]}$SHEEN_BAND$base"
+  settled+="${esc}[$((top + row));${left}H$base${expected[row]}$SHEEN_BAND$base"
 done
 [[ ${SHEEN_FRAMES[-1]} == "$settled" ]] || fail "a glint settles back to the logo it was given"
 pass "a glint settles back to the logo it was given"

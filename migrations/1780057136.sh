@@ -57,7 +57,7 @@ ensure_kitty_binding() {
 
   key_regex=$(printf '%s\n' "$key" | sed 's/[][\\.^$*+?{}|()\/]/\\&/g')
 
-  if grep -Eq "^map[[:space:]]+$key_regex[[:space:]].*13;[24]u" "$config"; then
+  if grep -Eq "^map[[:space:]]+${key_regex}[[:space:]].*13;[24]u" "$config"; then
     tmp=$(mktemp)
     KEY="$key" BINDING="$binding" awk '
       BEGIN {
@@ -72,7 +72,7 @@ ensure_kitty_binding() {
         print
       }
     ' "$config" >"$tmp" && mv "$tmp" "$config"
-  elif ! grep -Eq "^map[[:space:]]+$key_regex[[:space:]]" "$config"; then
+  elif ! grep -Eq "^map[[:space:]]+${key_regex}[[:space:]]" "$config"; then
     if grep -qxF 'map shift+insert paste_from_clipboard' "$config"; then
       tmp=$(mktemp)
       KEY="$key" BINDING="$binding" COMMENT="$comment" awk '
