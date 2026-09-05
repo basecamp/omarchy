@@ -1,0 +1,90 @@
+#!/bin/bash
+
+# omarchy:summary=List or switch AI coding-agent accounts
+# omarchy:args=<list|use|add|dir|current> [claude] [id]
+# omarchy:examples=omarchy agent account list | omarchy agent account use claude acct-1 | omarchy agent account add claude
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: omarchy agent account <list|use|add|dir|current> [claude] [id]" >&2
+}
+
+fail() {
+  echo "omarchy-agent-account: $*" >&2
+  exit 1
+}
+
+here=$(cd -- "$(dirname -- "$(realpath -- "$0")")" && pwd)
+
+backend_for() {
+  local provider=$1 backend
+  backend="$here/omarchy-agent-account-$provider"
+  if [[ ! -x $backend && -n ${OMARCHY_PATH:-} ]]; then
+    backend="$OMARCHY_PATH/bin/omarchy-agent-account-$provider"
+  fi
+  [[ -x $backend ]] || fail "no account backend for $provider"
+  printf '%s\n' "$backend"
+}
+
+is_provider() {
+  local name=$1
+  [[ -x $here/omarchy-agent-account-$name ]] && return 0
+  [[ -n ${OMARCHY_PATH:-} && -x $OMARCHY_PATH/bin/omarchy-agent-account-$name ]] && return 0
+  return 1
+}
+
+(( $# > 0 )) || { usage; exit 1; }
+
+action=$1
+shift
+
+case $action in
+list | dir | current | add | use) ;;
+-h | --help)
+  usage
+  exit 0
+  ;;
+*)
+  usage
+  exit 1
+  ;;
+esac
+
+provider=claude
+id=""
+json=()
+
+while (( $# > 0 )); do
+  case $1 in
+  --json)
+    json=(--json)
+    shift
+    ;;
+  *)
+    if is_provider "$1"; then
+      provider=$1
+    elif [[ $action == "use" || $action == "add" ]]; then
+      id=$1
+    else
+      fail "no account backend for $1"
+    fi
+    shift
+    ;;
+  esac
+done
+
+backend=$(backend_for "$provider")
+
+case $action in
+list | dir | current)
+  exec "$backend" "$action" "${json[@]}"
+  ;;
+add)
+  exec "$backend" add "${json[@]}"
+  ;;
+use)
+  [[ -n $id ]] || fail "use needs an account id"
+  exec "$backend" use "$id" "${json[@]}"
+  ;;
+esac

@@ -1,0 +1,442 @@
+#!/usr/bin/python3
+# omarchy:summary=Claude Code account snapshots for omarchy agent account
+# omarchy:args=<list|use|add|dir|current> [--json] [id]
+# omarchy:hidden=true
+"""Isolated Claude Code accounts behind a pointer file.
+
+Each extra login gets its own CLAUDE_CONFIG_DIR. Switching writes the active
+id; it does not copy OAuth into ~/.claude. The default ~/.claude directory
+can itself be a registered account so the first login does not move.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
+
+VERSION = 1
+PROVIDER = "claude"
+
+
+def state_dir() -> Path:
+  root = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+  return root / "omarchy" / "agent-accounts" / "claude"
+
+
+def default_config_dir() -> Path:
+  raw = os.environ.get("CLAUDE_CONFIG_DIR") or str(Path.home() / ".claude")
+  return Path(os.path.expanduser(raw)).resolve()
+
+
+def expand_path(value: str) -> Path:
+  return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def index_path() -> Path:
+  return state_dir() / "index.json"
+
+
+def pending_add_path() -> Path:
+  return state_dir() / "pending-add"
+
+
+def isolated_dir(account_id: str) -> Path:
+  return state_dir() / "accounts" / account_id
+
+
+def die(message: str, code: int = 1) -> None:
+  print(f"omarchy-agent-account-claude: {message}", file=sys.stderr)
+  raise SystemExit(code)
+
+
+def read_json(path: Path) -> dict[str, Any]:
+  if not path.is_file():
+    return {}
+  try:
+    data = json.loads(path.read_text())
+  except (OSError, json.JSONDecodeError):
+    return {}
+  return data if isinstance(data, dict) else {}
+
+
+def atomic_write(path: Path, data: Any, mode: int = 0o600) -> None:
+  path.parent.mkdir(parents=True, exist_ok=True)
+  fd, tmp = tempfile_path(path)
+  try:
+    with os.fdopen(fd, "w") as handle:
+      json.dump(data, handle, indent=2)
+      handle.write("\n")
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+  except Exception:
+    try:
+      os.unlink(tmp)
+    except OSError:
+      pass
+    raise
+
+
+def tempfile_path(path: Path) -> tuple[int, str]:
+  fd, tmp = tempfile.mkstemp(prefix="." + path.name + ".", dir=str(path.parent))
+  return fd, tmp
+
+
+def ensure_state() -> None:
+  path = state_dir()
+  path.mkdir(parents=True, exist_ok=True)
+  os.chmod(path, 0o700)
+  (state_dir() / "accounts").mkdir(parents=True, exist_ok=True)
+  os.chmod(state_dir() / "accounts", 0o700)
+
+
+@contextmanager
+def locked():
+  ensure_state()
+  fd = os.open(state_dir() / "lock", os.O_CREAT | os.O_RDWR, 0o600)
+  fcntl.flock(fd, fcntl.LOCK_EX)
+  try:
+    yield
+  finally:
+    fcntl.flock(fd, fcntl.LOCK_UN)
+    os.close(fd)
+
+
+def plan_label(tier: str, subscription: str, org_tier: str = "") -> str:
+  for raw in (org_tier, tier):
+    match = re.search(r"max[_-]?(\d+x)", str(raw or ""), re.IGNORECASE)
+    if match:
+      return "Max " + match.group(1).lower()
+  sub = str(subscription or "").strip().lower()
+  if sub in ("max", "pro", "team"):
+    return sub.capitalize()
+  if sub:
+    return sub
+  return ""
+
+
+def slug_id(email: str, uuid: str) -> str:
+  if uuid:
+    return "acct-" + re.sub(r"[^a-zA-Z0-9]+", "", uuid)[:12].lower()
+  cleaned = re.sub(r"[^a-z0-9]+", "-", email.lower()).strip("-")
+  return cleaned or "account"
+
+
+def identity_in(config_dir: Path) -> dict[str, Any] | None:
+  home = read_json(Path.home() / ".claude.json") if config_dir == (Path.home() / ".claude").resolve() else {}
+  nested = read_json(config_dir / ".claude.json")
+  creds = read_json(config_dir / ".credentials.json")
+  account = nested.get("oauthAccount") if isinstance(nested.get("oauthAccount"), dict) else {}
+  if not account and isinstance(home.get("oauthAccount"), dict):
+    account = home["oauthAccount"]
+  oauth = creds.get("claudeAiOauth") if isinstance(creds.get("claudeAiOauth"), dict) else {}
+  if not account and not oauth:
+    return None
+  email = str(account.get("emailAddress") or "").strip()
+  uuid = str(account.get("accountUuid") or "").strip()
+  if not email and not uuid:
+    return None
+  label = str(account.get("displayName") or "").strip() or email or "Claude"
+  return {
+    "id": slug_id(email, uuid),
+    "email": email,
+    "label": label,
+    "plan": plan_label(
+      str(oauth.get("rateLimitTier") or account.get("userRateLimitTier") or ""),
+      str(oauth.get("subscriptionType") or account.get("organizationType") or ""),
+      str(account.get("organizationRateLimitTier") or ""),
+    ),
+    "organization": str(account.get("organizationName") or "").strip(),
+    "path": str(config_dir),
+  }
+
+
+def load_index() -> dict[str, Any]:
+  data = read_json(index_path())
+  accounts = data.get("accounts") if isinstance(data.get("accounts"), list) else []
+  return {
+    "version": VERSION,
+    "activeId": str(data.get("activeId") or ""),
+    "accounts": [a for a in accounts if isinstance(a, dict) and a.get("id") and a.get("path")],
+  }
+
+
+def write_index(index: dict[str, Any]) -> None:
+  atomic_write(index_path(), {
+    "version": VERSION,
+    "activeId": index.get("activeId") or "",
+    "accounts": index.get("accounts") or [],
+  })
+
+
+def upsert_account(index: dict[str, Any], ident: dict[str, Any], active: bool) -> dict[str, Any]:
+  accounts = [a for a in index["accounts"] if str(a.get("id")) != ident["id"]]
+  accounts.append({
+    "id": ident["id"],
+    "email": ident.get("email") or "",
+    "label": ident.get("label") or ident.get("email") or ident["id"],
+    "plan": ident.get("plan") or "",
+    "organization": ident.get("organization") or "",
+    "path": ident["path"],
+  })
+  accounts.sort(key=lambda row: str(row.get("email") or row.get("id")).lower())
+  index["accounts"] = accounts
+  if active:
+    index["activeId"] = ident["id"]
+  write_index(index)
+  return index
+
+
+def public_index(index: dict[str, Any], live: dict[str, Any] | None) -> dict[str, Any]:
+  active_id = str(index.get("activeId") or "")
+  accounts = []
+  for row in index.get("accounts") or []:
+    item = {
+      "id": str(row.get("id") or ""),
+      "email": str(row.get("email") or ""),
+      "label": str(row.get("email") or row.get("label") or row.get("id") or ""),
+      "plan": str(row.get("plan") or ""),
+      "organization": str(row.get("organization") or ""),
+      "path": str(row.get("path") or ""),
+      "active": str(row.get("id") or "") == active_id,
+    }
+    if item["id"]:
+      accounts.append(item)
+  current = next((a for a in accounts if a["active"]), None)
+  return {
+    "provider": PROVIDER,
+    "activeId": active_id,
+    "current": current,
+    "live": None if live is None else {
+      "id": live["id"],
+      "email": live.get("email") or "",
+      "label": live.get("label") or "",
+      "plan": live.get("plan") or "",
+      "path": live.get("path") or "",
+    },
+    "accounts": accounts,
+  }
+
+
+def active_path(index: dict[str, Any]) -> Path | None:
+  active_id = str(index.get("activeId") or "")
+  for row in index.get("accounts") or []:
+    if str(row.get("id")) == active_id:
+      path = str(row.get("path") or "")
+      if path:
+        return expand_path(path)
+  return None
+
+
+def emit(payload: dict[str, Any], as_json: bool) -> None:
+  if as_json:
+    json.dump(payload, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return
+  accounts = payload.get("accounts") or []
+  if not accounts:
+    print("No saved Claude accounts.")
+    return
+  for row in accounts:
+    mark = "*" if row.get("active") else " "
+    plan = f"  {row['plan']}" if row.get("plan") else ""
+    print(f"{mark} {row['email'] or row['label']}{plan}")
+
+
+def cmd_list(as_json: bool) -> int:
+  with locked():
+    index = load_index()
+    if pending_add_path().exists():
+      payload = public_index(index, None)
+    else:
+      live_dir = active_path(index) or default_config_dir()
+      live = identity_in(live_dir)
+      if live is not None:
+        index = upsert_account(index, live, active=True)
+      payload = public_index(index, live)
+  emit(payload, as_json)
+  return 0
+
+
+def cmd_current(as_json: bool) -> int:
+  with locked():
+    index = load_index()
+    payload = public_index(index, identity_in(active_path(index) or default_config_dir()))
+  current = payload.get("current") or payload.get("live")
+  if as_json:
+    json.dump({"current": current, "live": payload.get("live")}, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0 if current else 1
+  if not current:
+    print("No Claude account is active.", file=sys.stderr)
+    return 1
+  print(current.get("id") or "")
+  return 0
+
+
+def cmd_dir() -> int:
+  with locked():
+    index = load_index()
+    path = active_path(index)
+  if path is None:
+    path = default_config_dir()
+  print(path)
+  return 0
+
+
+def cmd_use(account_id: str, as_json: bool) -> int:
+  with locked():
+    index = load_index()
+    match = next((row for row in index["accounts"] if str(row.get("id")) == account_id), None)
+    if match is None:
+      die(f"no saved Claude account '{account_id}'")
+    index["activeId"] = account_id
+    write_index(index)
+    payload = public_index(index, identity_in(expand_path(str(match["path"]))))
+  notify_switched(payload.get("current") or {})
+  refresh_usage()
+  if as_json:
+    emit(payload, True)
+  else:
+    current = payload.get("current") or {}
+    print(f"Switched to {current.get('email') or account_id}")
+    print("New Claude sessions use this account. Already-open windows keep the previous one.")
+  return 0
+
+
+def cmd_add(as_json: bool) -> int:
+  with locked():
+    index = load_index()
+    live = identity_in(default_config_dir())
+    if live is not None:
+      index = upsert_account(index, live, active=True)
+    pending_add_path().write_text("")
+    os.chmod(pending_add_path(), 0o600)
+
+  new_id = "pending"
+  dest = isolated_dir(new_id)
+  if dest.exists():
+    shutil.rmtree(dest)
+  dest.mkdir(parents=True, exist_ok=True)
+  os.chmod(dest, 0o700)
+
+  source = default_config_dir()
+  settings = source / "settings.json"
+  if settings.is_file():
+    shutil.copy2(settings, dest / "settings.json")
+
+  env = os.environ.copy()
+  env["CLAUDE_CONFIG_DIR"] = str(dest)
+  cmd = ["claude", "auth", "login", "--claudeai"]
+  try:
+    completed = subprocess.run(cmd, env=env, check=False)
+  except OSError as exc:
+    shutil.rmtree(dest, ignore_errors=True)
+    pending_add_path().unlink(missing_ok=True)
+    die(f"failed to launch claude auth login: {exc}")
+
+  if completed.returncode != 0:
+    shutil.rmtree(dest, ignore_errors=True)
+    pending_add_path().unlink(missing_ok=True)
+    die("claude auth login did not finish; previous account is unchanged")
+
+  with locked():
+    ident = identity_in(dest)
+    if ident is None:
+      shutil.rmtree(dest, ignore_errors=True)
+      pending_add_path().unlink(missing_ok=True)
+      die("login finished but no Claude session was found in the new config dir")
+    final = isolated_dir(ident["id"])
+    if final != dest:
+      if final.exists():
+        shutil.rmtree(final)
+      dest.rename(final)
+      ident["path"] = str(final)
+    else:
+      ident["path"] = str(dest)
+    index = load_index()
+    index = upsert_account(index, ident, active=True)
+    pending_add_path().unlink(missing_ok=True)
+    payload = public_index(index, ident)
+  refresh_usage()
+  if as_json:
+    emit(payload, True)
+  else:
+    print(f"Saved {ident.get('email') or ident['id']}")
+    print("New Claude sessions use this account. Already-open windows keep the previous one.")
+  return 0
+
+
+def notify_switched(meta: dict[str, Any]) -> None:
+  email = meta.get("email") or meta.get("label") or "Claude"
+  try:
+    subprocess.run(
+      [
+        "omarchy-notification-send",
+        "-g", "󰛄",
+        "--app-name", "Claude",
+        "Switched Claude account",
+        email,
+      ],
+      check=False,
+      stdout=subprocess.DEVNULL,
+      stderr=subprocess.DEVNULL,
+    )
+  except OSError:
+    pass
+
+
+def refresh_usage() -> None:
+  try:
+    subprocess.run(
+      ["omarchy-agent-usage-update", "--force", "claude"],
+      check=False,
+      stdout=subprocess.DEVNULL,
+      stderr=subprocess.DEVNULL,
+    )
+  except OSError:
+    pass
+
+
+def build_parser() -> argparse.ArgumentParser:
+  parser = argparse.ArgumentParser(prog="omarchy-agent-account-claude")
+  parser.add_argument("--json", action="store_true")
+  sub = parser.add_subparsers(dest="command", required=True)
+  for name in ("list", "dir", "current", "add"):
+    p = sub.add_parser(name)
+    p.add_argument("--json", action="store_true")
+  use = sub.add_parser("use")
+  use.add_argument("id")
+  use.add_argument("--json", action="store_true")
+  return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+  parser = build_parser()
+  args = parser.parse_args(argv)
+  as_json = bool(getattr(args, "json", False))
+  if args.command == "list":
+    return cmd_list(as_json)
+  if args.command == "dir":
+    return cmd_dir()
+  if args.command == "current":
+    return cmd_current(as_json)
+  if args.command == "use":
+    return cmd_use(args.id, as_json)
+  if args.command == "add":
+    return cmd_add(as_json)
+  parser.print_help()
+  return 2
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())

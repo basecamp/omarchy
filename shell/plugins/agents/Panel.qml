@@ -64,6 +64,29 @@ Panel {
     root.close()
   }
 
+  readonly property string activeProviderId: selectedProviderId !== ""
+    ? selectedProviderId
+    : (provider ? String(provider.providerId) : "")
+
+  function accountChipLabel(account) {
+    if (!account) return ""
+    return String(account.email || account.label || account.id || "")
+  }
+
+  function accountChipTooltip(account) {
+    if (!account) return ""
+    var parts = []
+    if (account.plan) parts.push(account.plan)
+    if (account.organization && account.organization !== account.email)
+      parts.push(account.organization)
+    return parts.join(" · ")
+  }
+
+  function addClaudeAccount() {
+    root.close()
+    claudeAccounts.addAccount()
+  }
+
   // ---------------------------------------------------------------- limits
   //
   // Both providers report the same two shapes: a short rolling session window
@@ -307,12 +330,18 @@ Panel {
     nowMs = Date.now()
     if (panelFlick) panelFlick.contentY = 0
     usage.refreshLimits()
+    claudeAccounts.sync()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
 
   Main {
     id: usage
     settings: root.settings
+  }
+
+  Accounts {
+    id: claudeAccounts
+    onSwitched: root.refreshNow()
   }
 
   // Cheap enough to keep running: it only re-evaluates text bindings, and a
@@ -491,6 +520,72 @@ Panel {
                 }
                 onHovered: function(isHovered) { if (isHovered) root.cursorActive = true }
               }
+            }
+          }
+
+          Column {
+            id: accountSection
+            visible: root.activeProviderId === "claude"
+            width: parent.width
+            spacing: Style.space(4)
+
+            Item {
+              width: parent.width
+              implicitHeight: Math.max(accountFlow.implicitHeight, addAccountBtn.implicitHeight)
+              opacity: claudeAccounts.switching ? 0.55 : 1.0
+
+              Flow {
+                id: accountFlow
+                anchors.left: parent.left
+                anchors.right: addAccountBtn.left
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.spacing.sm
+
+                Repeater {
+                  model: claudeAccounts.accounts
+
+                  Button {
+                    required property var modelData
+
+                    text: root.accountChipLabel(modelData)
+                    tooltipText: root.accountChipTooltip(modelData)
+                    selected: modelData.active === true
+                    hasCursor: false
+                    bordered: true
+                    enabled: !claudeAccounts.switching
+                    foreground: root.foreground
+                    fontFamily: root.fontFamily
+                    fontSize: Style.font.caption
+                    verticalPadding: Style.space(4)
+                    horizontalPadding: Style.space(8)
+                    onClicked: claudeAccounts.use(modelData.id)
+                  }
+                }
+              }
+
+              PanelActionButton {
+                id: addAccountBtn
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                iconText: "+"
+                tooltipText: "Add another Claude account"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                enabled: !claudeAccounts.switching
+                onClicked: root.addClaudeAccount()
+              }
+            }
+
+            Text {
+              visible: claudeAccounts.errorText !== ""
+              width: parent.width
+              textFormat: Text.PlainText
+              text: claudeAccounts.errorText
+              color: root.urgent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
             }
           }
 

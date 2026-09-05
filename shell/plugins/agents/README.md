@@ -13,6 +13,9 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
   Auth and endpoint problems replace the plan line and repeat in a card.
 - **Subscription switch** — one chip per enabled agent (`h`/`l` or click).
   It appears only when more than one agent is enabled.
+- **Claude accounts** — on the Claude tab, email chips from
+  `omarchy agent account`. Switching writes a `CLAUDE_CONFIG_DIR` pointer;
+  it does not copy OAuth into `~/.claude`. `+` adds another isolated login.
 - **Limits** — the percentage of each allowance used, a matching meter, and
   the time until the session or weekly window resets.
 - **Balance** — prepaid agents report a credit ledger instead of limits:
