@@ -580,7 +580,9 @@ prepare_caller_mounts() {
   # Privacy is an explicit preflight step for both already-pinned sources, not
   # a side effect halfway through the two-mount transaction. Old umask-022
   # installs are hardened together before either Docker-facing anchor changes.
-  chmod 0700 -- "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
+  # Symbolic, because a numeric mode leaves S_ISGID standing on a directory and
+  # the mode check below then rejects a source we were asked to secure.
+  chmod u=rwx,go=,a-s -- "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
@@ -588,6 +590,7 @@ prepare_caller_mounts() {
   storage_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$storage_fd" 2>/dev/null) || storage_mode=""
   shared_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$shared_fd" 2>/dev/null) || shared_mode=""
   if [[ $storage_mode != 700 || $shared_mode != 700 ]]; then
+    echo "omarchy-windows-vm: could not secure mount sources to mode 700 (storage=$storage_mode shared=$shared_mode)" >&2
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
@@ -1015,7 +1018,7 @@ prepare_user_mount_sources() {
     echo "omarchy-windows-vm: storage and shared must be different directories" >&2
     return 1
   }
-  chmod 0700 -- "$storage" "$shared"
+  chmod u=rwx,go=,a-s -- "$storage" "$shared"
 }
 
 storage_space_path() {
@@ -1058,7 +1061,7 @@ write_credentials() {
   local username="$1" password="$2" old_umask dir tmp
   dir=$(dirname -- "$CREDENTIALS_FILE")
   mkdir -p "$dir" || return 1
-  chmod 0700 "$dir" || return 1
+  chmod u=rwx,go=,a-s -- "$dir" || return 1
   old_umask=$(umask)
   umask 077
   tmp=$(mktemp "$dir/.credentials.XXXXXX") || { umask "$old_umask"; return 1; }
