@@ -1466,6 +1466,7 @@ Item {
               font.pixelSize: Style.font.title
               horizontalAlignment: Text.AlignHCenter
               width: Style.space(320)
+              elide: Text.ElideRight
             }
           }
         }
