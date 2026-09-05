@@ -870,11 +870,47 @@ Item {
     }
   }
 
+  // omarchy-theme-set and omarchy-theme-bg-set repoint the `current/background`
+  // symlink with `ln -nsf`. FileView cannot watch the link itself: inotify
+  // follows it to the old image, and Quickshell's parent-directory fallback
+  // only fires once the watched file has vanished, so a relink never arrives.
+  // Watching the `current` directory does arrive, but a directory path is never
+  // in the watcher's file set, so every event in ~/.local/state/omarchy lands
+  // here too: any atomic write by any plugin in that directory re-sampled the
+  // wallpaper. Resolve the link and only resample when it actually moved.
+  property string transparentBackgroundPath: ""
+
   FileView {
     path: root.stateHome + "/omarchy/current"
     watchChanges: true
     printErrors: false
-    onFileChanged: root.scheduleTransparentForegroundRefresh()
+    onFileChanged: {
+      if (transparentBackgroundProbe.running) transparentBackgroundProbe.rerun = true
+      else transparentBackgroundProbe.running = true
+    }
+  }
+
+  Process {
+    id: transparentBackgroundProbe
+    property bool rerun: false
+    // Resolve once at startup too: FileView reports no change for its initial
+    // load, and without a baseline the first unrelated write would still
+    // compare against "" and sample.
+    running: true
+    command: ["readlink", "-f", root.stateHome + "/omarchy/current/background"]
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var path = String(text || "").trim()
+        if (path === root.transparentBackgroundPath) return
+        root.transparentBackgroundPath = path
+        root.scheduleTransparentForegroundRefresh()
+      }
+    }
+    onExited: {
+      if (!rerun) return
+      rerun = false
+      running = true
+    }
   }
 
   function runProcess(process) {

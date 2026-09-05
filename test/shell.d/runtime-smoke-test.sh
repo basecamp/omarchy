@@ -119,6 +119,22 @@ exit 0
 SH
 chmod +x "$stub_bin/omarchy-update-available"
 
+# The transparent bar samples the wallpaper through this; the test counts the
+# calls to check what does and does not trigger a sample.
+text_color_calls="$TMPDIR/text-color.calls"
+cat >"$stub_bin/omarchy-bar-text-color" <<SH
+#!/bin/bash
+echo "\$*" >>"$text_color_calls"
+echo "#ffffff"
+SH
+chmod +x "$stub_bin/omarchy-bar-text-color"
+
+state_dir="$test_home/.local/state/omarchy"
+mkdir -p "$state_dir/current"
+: >"$state_dir/wallpaper-a.png"
+: >"$state_dir/wallpaper-b.png"
+ln -s "$state_dir/wallpaper-a.png" "$state_dir/current/background"
+
 cat >"$stub_bin/curl" <<'SH'
 #!/bin/bash
 
@@ -434,3 +450,36 @@ jq -e 'all(.bar.layout.right[]; (.id // .) != "omarchy.keyboard-layout")' \
   <<<"$(shell_ipc shell listShellConfig)" >/dev/null ||
   fail_with_log "bar put added a second copy of a widget already on the bar"
 pass "bar put leaves a widget already on the bar alone"
+
+# The bar watches ~/.local/state/omarchy/current for a wallpaper change. That
+# directory watch also fires for every entry created, renamed or removed in the
+# parent directory, so a write by any plugin there must not re-sample the
+# wallpaper, while repointing the background link must.
+text_color_count() {
+  [[ -f $text_color_calls ]] && wc -l <"$text_color_calls" || echo 0
+}
+wait_for_text_color_count() {
+  local want="$1"
+  for _ in {1..50}; do
+    (( $(text_color_count) >= want )) && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
+shell_ipc shell toggleBarTransparency >/dev/null
+wait_for_text_color_count 1 || fail_with_log "transparent bar samples the wallpaper when turned on"
+before=$(text_color_count)
+
+printf '{}' >"$state_dir/unrelated.tmp"
+mv "$state_dir/unrelated.tmp" "$state_dir/unrelated.json"
+rm "$state_dir/unrelated.json"
+sleep 1
+(( $(text_color_count) == before )) ||
+  fail_with_log "unrelated writes to the state directory must not re-sample the wallpaper (was $before, now $(text_color_count))"
+pass "unrelated state writes leave the transparent bar alone"
+
+ln -nsf "$state_dir/wallpaper-b.png" "$state_dir/current/background"
+wait_for_text_color_count $((before + 1)) ||
+  fail_with_log "repointing the background link must re-sample the wallpaper (still $(text_color_count))"
+pass "background link changes re-sample the transparent bar"

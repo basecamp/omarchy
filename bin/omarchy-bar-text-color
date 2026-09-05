@@ -90,28 +90,41 @@ screen_width=${BASH_REMATCH[1]}
 screen_height=${BASH_REMATCH[2]}
 ((screen_width > 0 && screen_height > 0 && bar_size > 0)) || fallback
 
+# Sample at a reduced scale. The bar strip is averaged down to a single pixel,
+# so the wallpaper does not need to be rendered at full screen resolution
+# first: a 5K screen turned a 7 MP JPEG into ~4 core-seconds across every
+# thread per sample. Shrink the whole geometry by an integer factor instead
+# (never upscale) and let the JPEG decoder skip the detail on the way in.
+scale=$(((screen_width + 511) / 512))
+((scale >= 1)) || scale=1
+sample_width=$((screen_width / scale))
+sample_height=$((screen_height / scale))
+sample_bar=$(((bar_size + scale - 1) / scale))
+((sample_width > 0 && sample_height > 0 && sample_bar > 0)) || fallback
+
 case "$position" in
 top)
-  crop="${screen_width}x${bar_size}+0+0"
+  crop="${sample_width}x${sample_bar}+0+0"
   ;;
 bottom)
-  crop_y=$((screen_height - bar_size))
+  crop_y=$((sample_height - sample_bar))
   ((crop_y >= 0)) || fallback
-  crop="${screen_width}x${bar_size}+0+${crop_y}"
+  crop="${sample_width}x${sample_bar}+0+${crop_y}"
   ;;
 left)
-  crop="${bar_size}x${screen_height}+0+0"
+  crop="${sample_bar}x${sample_height}+0+0"
   ;;
 right)
-  crop_x=$((screen_width - bar_size))
+  crop_x=$((sample_width - sample_bar))
   ((crop_x >= 0)) || fallback
-  crop="${bar_size}x${screen_height}+${crop_x}+0"
+  crop="${sample_bar}x${sample_height}+${crop_x}+0"
   ;;
 esac
 
-pixel=$(magick "$background_path" -auto-orient \
-  -resize "${screen_width}x${screen_height}^" \
-  -gravity center -extent "${screen_width}x${screen_height}" \
+pixel=$(MAGICK_THREAD_LIMIT=2 magick -define "jpeg:size=$((sample_width * 2))x$((sample_height * 2))" \
+  "$background_path" -auto-orient \
+  -resize "${sample_width}x${sample_height}^" \
+  -gravity center -extent "${sample_width}x${sample_height}" \
   -gravity NorthWest -crop "$crop" +repage \
   -resize '1x1!' -format '%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]' info:- 2>/dev/null || true)
 [[ $pixel =~ ^([0-9]+),([0-9]+),([0-9]+)$ ]] || fallback
