@@ -34,7 +34,10 @@ WEBCAM_SIZE="medium"
 RESOLUTION=""
 FULLSCREEN="false"
 STOP_RECORDING="false"
-RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
+RECORDING_STATE_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/omarchy-screenrecord"
+mkdir -p "$RECORDING_STATE_DIR"
+chmod 700 "$RECORDING_STATE_DIR" 2>/dev/null || true
+RECORDING_FILE="$RECORDING_STATE_DIR/filename"
 REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
 
