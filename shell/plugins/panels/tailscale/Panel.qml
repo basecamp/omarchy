@@ -53,7 +53,33 @@ Panel {
   readonly property bool headerHasCursor: cursorActive && focusSection === "header" && tailscale.installed
   readonly property color iconColor: tailscale.active ? foreground : dim
   readonly property string toggleHint: tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on")
+  // An active exit node routes every packet through another machine, while the
+  // link itself still looks perfectly healthy. Fills in the mark's faded dots.
+  readonly property bool routedViaExitNode: {
+    // Read both dependencies unconditionally — an early return would leave
+    // QML unaware that this binding depends on exitNodes.
+    var nodes = tailscale.exitNodes || []
+    var routed = false
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i] && nodes[i].ExitNode === true) routed = true
+    }
+    return routed && tailscale.active
+  }
   readonly property color barIconColor: tailscale.active ? barForeground : Qt.darker(barForeground, 1.55)
+
+  // Inline exit-node label, toggled by right-click and persisted per-widget.
+  readonly property bool showNodeName: setting("showNodeName", false) === true
+  readonly property string exitNodeName: {
+    // Same unconditional-read rule as routedViaExitNode above.
+    var nodes = tailscale.exitNodes || []
+    var name = ""
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i]
+      if (n && n.ExitNode === true && name === "") name = String(n.DisplayName || n.HostName || "")
+    }
+    return tailscale.active ? name : ""
+  }
+  readonly property bool nodeNameVisible: showNodeName && exitNodeName !== "" && !button.vertical
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
@@ -363,6 +389,11 @@ Panel {
     function onAccountsAccessDeniedChanged() { root.ensureCursor() }
   }
 
+  function toggleNodeName() {
+    root.settings = Object.assign({}, root.settings, { showNodeName: !root.showNodeName })
+    if (root.bar && root.bar.shell) root.bar.shell.updateEntryInline(root.moduleName, root.settings)
+  }
+
   IpcHandler {
     target: root.ipcTarget
     function open(): void { root.open() }
@@ -374,28 +405,54 @@ Panel {
     function up(): string { tailscale.loginOrUp(); return "ok" }
     function down(): string { tailscale.down(); return "ok" }
     function toggleTailscale(): string { tailscale.toggleTailscale(); return "ok" }
+    function toggleNodeName(): string { root.toggleNodeName(); return "ok" }
     function status(): string { return tailscale.statusText }
+  }
+
+  TextMetrics {
+    id: nodeLabelMetrics
+    font.family: root.fontFamily
+    font.pixelSize: Style.bar.iconFont
+    text: root.exitNodeName
   }
 
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
+    // The icon slot only fits the mark; widen it by the measured label so the
+    // Row stays centred instead of overhanging into the neighbouring widget.
+    slotSize: Style.bar.iconSlot + (root.nodeNameVisible ? nodeLabelMetrics.width + Style.space(5) : 0)
     iconComponent: Component {
       Item {
-        TailscaleIcon {
+        Row {
           anchors.centerIn: parent
-          iconSize: Style.space(11)
-          color: root.barIconColor
-          badgeColor: root.urgent
-          crossed: !tailscale.active && !tailscale.needsLogin
-          warning: tailscale.needsLogin
+          spacing: Style.space(5)
+
+          TailscaleIcon {
+            anchors.verticalCenter: parent.verticalCenter
+            iconSize: Style.space(11)
+            color: root.barIconColor
+            badgeColor: root.urgent
+            crossed: !tailscale.active && !tailscale.needsLogin
+            warning: tailscale.needsLogin
+            routed: root.routedViaExitNode
+          }
+
+          Text {
+            visible: root.nodeNameVisible
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.exitNodeName
+            color: root.barIconColor
+            font.family: root.fontFamily
+            font.pixelSize: Style.bar.iconFont
+          }
         }
       }
     }
     onPressed: function(buttonCode) {
-      if (buttonCode === Qt.RightButton) tailscale.toggleTailscale()
-      else if (buttonCode === Qt.MiddleButton) tailscale.refresh()
+      if (buttonCode === Qt.RightButton) root.toggleNodeName()
+      else if (buttonCode === Qt.MiddleButton) tailscale.toggleTailscale()
       else root.toggle()
     }
   }
