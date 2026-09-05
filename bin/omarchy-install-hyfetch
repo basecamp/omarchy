@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Install Hyfetch (Neofetch with pride flags)
+# omarchy:requires-sudo=true
+
+set -e
+
+echo "Installing Hyfetch..."
+omarchy-pkg-add hyfetch
+
+echo
+echo "Run 'hyfetch' to display your system info."
+hyfetch
