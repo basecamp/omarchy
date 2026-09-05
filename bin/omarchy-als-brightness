@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# omarchy:summary=Drive panel and keyboard backlight from the T1 ambient light sensor
+# omarchy:hidden=true
+
+# macOS uses the T1 ALS for auto-brightness. Omarchy only had keypress
+# brightnessctl. Follow illuminance while the lid is open; lid-close overlays
+# own the panel.
+
+set -euo pipefail
+
+als_path() {
+  if [[ -n ${OMARCHY_ALS:-} ]]; then
+    printf '%s\n' "$OMARCHY_ALS"
+    return 0
+  fi
+  local d
+  for d in /sys/bus/iio/devices/iio:device*; do
+    if [[ -r $d/in_illuminance_input ]]; then
+      printf '%s\n' "$d/in_illuminance_input"
+      return 0
+    fi
+  done
+  return 1
+}
+
+panel_dev() {
+  if [[ -n ${OMARCHY_ALS_PANEL:-} ]]; then
+    printf '%s\n' "$OMARCHY_ALS_PANEL"
+    return 0
+  fi
+  omarchy-hw-display
+}
+
+kbd_dev() {
+  if [[ -n ${OMARCHY_ALS_KBD:-} ]]; then
+    printf '%s\n' "$OMARCHY_ALS_KBD"
+    return 0
+  fi
+  local c
+  for c in /sys/class/leds/*kbd_backlight*; do
+    if [[ -e $c ]]; then
+      printf '%s\n' "${c##*/}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+lid_closed() {
+  local s
+  if [[ -n ${OMARCHY_ALS_LID:-} ]]; then
+    s=$(cat "$OMARCHY_ALS_LID" 2>/dev/null || true)
+  else
+    s=$(cat /proc/acpi/button/lid/*/state 2>/dev/null || true)
+  fi
+  [[ $s == *closed* ]]
+}
+
+als=$(als_path) || exit 0
+panel=$(panel_dev) || exit 0
+kbd=$(kbd_dev) || kbd=""
+
+last_panel=-1
+last_kbd=-1
+
+while true; do
+  if lid_closed; then
+    sleep 1
+    [[ ${OMARCHY_ALS_ONCE:-} == 1 ]] && exit 0
+    continue
+  fi
+
+  lux=$(cat "$als")
+  if [[ ! $lux =~ ^[0-9]+$ ]]; then
+    sleep 1
+    [[ ${OMARCHY_ALS_ONCE:-} == 1 ]] && exit 0
+    continue
+  fi
+
+  (( panel_pct = 8 + 92 * lux / (lux + 280) ))
+  (( panel_pct > 100 )) && panel_pct=100
+  (( panel_pct < 8 )) && panel_pct=8
+
+  if (( lux >= 250 )); then
+    kbd_val=0
+  else
+    (( kbd_val = 255 * (250 - lux) / 250 ))
+  fi
+  (( kbd_val < 0 )) && kbd_val=0
+  (( kbd_val > 255 )) && kbd_val=255
+
+  if (( last_panel < 0 || panel_pct - last_panel >= 2 || last_panel - panel_pct >= 2 )); then
+    brightnessctl -d "$panel" set "$panel_pct%" >/dev/null
+    last_panel=$panel_pct
+  fi
+  if [[ -n $kbd ]]; then
+    if (( last_kbd < 0 || kbd_val - last_kbd >= 8 || last_kbd - kbd_val >= 8 )); then
+      brightnessctl -d "$kbd" set "$kbd_val" >/dev/null
+      last_kbd=$kbd_val
+    fi
+  fi
+
+  [[ ${OMARCHY_ALS_ONCE:-} == 1 ]] && exit 0
+  sleep 1
+done
