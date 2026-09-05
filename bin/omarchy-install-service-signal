@@ -8,6 +8,21 @@ set -e
 echo "Installing Signal..."
 omarchy-pkg-add signal-desktop
 
+# Signal is Electron and uses Chromium's os_crypt machinery. On Hyprland the
+# xdg-desktop-portal Secret backend has no provider, so an unpinned app falls
+# back to the 'basic' store; a profile whose DB key was stored under
+# gnome-libsecret then cannot be decrypted. Pin the store before the first
+# launch the same way the browser defaults do, since a first start with the
+# wrong backend bakes the key choice into the profile.
+mkdir -p "$HOME/.config"
+flags_file="$HOME/.config/signal-desktop-flags.conf"
+if [[ ! -f $flags_file ]] || ! grep -q -- '--password-store=' "$flags_file"; then
+  if [[ -f $flags_file ]] && [[ -n $(tail -c1 "$flags_file") ]]; then
+    echo >>"$flags_file"
+  fi
+  echo '--password-store=gnome-libsecret' >>"$flags_file"
+fi
+
 echo "Opening Signal..."
 setsid uwsm-app -- /usr/bin/signal-desktop >/dev/null 2>&1 &
 
