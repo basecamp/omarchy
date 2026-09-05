@@ -44,11 +44,29 @@ sudo_bin_dir() {
   dirname "$resolved"
 }
 
+session_environment=$(systemctl --user show-environment 2>/dev/null || true)
+session_omarchy_path=$(sed -n 's/^OMARCHY_PATH=//p' <<<"$session_environment" | tail -n 1)
+
+session_state="unknown"
+if [[ -n $session_omarchy_path ]]; then
+  if [[ $session_omarchy_path == "$configured" ]]; then
+    session_state="matching"
+  else
+    session_state="mismatched"
+  fi
+elif (( ! linked )); then
+  session_state="matching"
+fi
+
 if (( linked )); then
   echo "dev-link: configured"
   echo "  /etc/omarchy.conf -> OMARCHY_PATH=$configured"
   echo "  sudo resolves omarchy-* from: $(sudo_bin_dir)"
-  echo "  status: reboot required before all session layers use this checkout"
+  case "$session_state" in
+    matching) echo "  status: active in this session" ;;
+    mismatched) echo "  status: reboot required before all session layers use this checkout" ;;
+    unknown) echo "  status: unknown from this shell" ;;
+  esac
 else
   echo "dev-link: inactive"
   if (( conf_present )); then
@@ -58,7 +76,13 @@ fi
 
 echo "  current shell:       OMARCHY_PATH=${OMARCHY_PATH:-<unset>}"
 
-if [[ ${OMARCHY_PATH:-$default_target} != "$configured" ]]; then
-  echo
-  echo "Note: the running session does not match /etc/omarchy.conf. Reboot to settle it."
-fi
+case "$session_state" in
+  unknown)
+    echo
+    echo "Note: the desktop session OMARCHY_PATH is unavailable. That is normal under sudo or outside the desktop session; check from a session terminal."
+    ;;
+  mismatched)
+    echo
+    echo "Note: the running session does not match /etc/omarchy.conf. Reboot to settle it."
+    ;;
+esac
