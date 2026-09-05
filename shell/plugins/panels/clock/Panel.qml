@@ -239,7 +239,9 @@ Panel {
     owner: root.barIdentity
     bar: root.bar
     open: root.opened
-    centerOnBar: true
+    // Anchor under the widget rather than the middle of the bar, so the
+    // popup follows wherever the widget is placed.
+    centerOnBar: false
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(560))
     contentHeight: panel.fittedContentHeight(calendarColumn.implicitHeight)
