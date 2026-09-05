@@ -21,3 +21,8 @@ export PATH="$tmp_dir:$ROOT/bin:$PATH"
 launch=$(<"$TEST_LOG")
 [[ $launch == *"xdg-terminal-exec --app-id=org.omarchy.terminal"* ]] || fail "floating terminal launches Omarchy terminal" "$launch"
 pass "floating terminal launches Omarchy terminal"
+
+[[ $launch == *"status=\$?"* || $launch == *'status=$?'* ]] || fail "presentation wrapper captures the command status" "$launch"
+[[ $launch == *"omarchy-show-done --failed"* ]] || fail "presentation wrapper shows Failed on non-cancel errors" "$launch"
+[[ $launch == *"status == 0"* ]] || fail "presentation wrapper shows Done only on success" "$launch"
+pass "presentation wrapper distinguishes success, failure, and cancel"

@@ -3,9 +3,17 @@
 # omarchy:summary=Remove Tailscale and its bar plugin.
 # omarchy:requires-sudo=true
 
+set -euo pipefail
+
+# Authenticate before any teardown. Ctrl+C at the password prompt is PAM
+# exit 1, not 130; map it so the presentation wrapper does not show Done.
+if ! sudo -v; then
+  exit 130
+fi
+
 tailscale down 2>/dev/null || true
 systemctl --user disable --now omarchy-tailscale-receive.service 2>/dev/null || true
-sudo systemctl disable --now tailscaled.service 2>/dev/null || true
+sudo systemctl disable --now tailscaled.service
 omarchy-plugin-disable omarchy.tailscale
 omarchy-webapp-remove "Tailscale" 2>/dev/null || true
 omarchy-pkg-drop tailscale
