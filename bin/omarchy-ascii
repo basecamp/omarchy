@@ -1,33 +1,63 @@
 #!/bin/bash
 
 # omarchy:summary=Render text as ASCII art in the font the Omarchy logo is drawn in
-# omarchy:args=[text...]
-# omarchy:examples=omarchy ascii Omarchy | omarchy ascii "Hello there"
+# omarchy:args=[--color|--no-color] [text...]
+# omarchy:examples=omarchy ascii Omarchy | omarchy ascii --color Omarchy | omarchy ascii --no-color "Hello there"
 
 set -o pipefail
 
 usage() {
   cat <<'EOF'
-Usage: omarchy-ascii [text...]
+Usage: omarchy-ascii [--color|--no-color] [text...]
 
 Renders text as ASCII art in Delta Corps Priest 1, the FIGlet font the Omarchy
 logo is drawn in. Reads the text from stdin when given none.
 
+When stdout is a terminal, the art is colored with the current theme's green
+(or accent). Piped output stays uncolored so scripts and branding files stay
+plain. --color and --no-color override that.
+
 Options:
-      --help  Show this help
+      --color     Color the art even when stdout is not a terminal
+      --no-color  Print the art without color, even on a terminal
+      --help      Show this help
 
 Delta Corps Priest 1 draws letters and spaces only. Digits and punctuation have
 no glyph in it, so they are skipped.
 EOF
 }
 
+# Truecolor from the theme's green, then accent; ANSI green if neither is a hex.
+art_sgr() {
+  local hex r g b
+
+  hex=$(omarchy-theme-color green accent 2>/dev/null || true)
+  hex="${hex#\#}"
+
+  if [[ $hex =~ ^[0-9A-Fa-f]{6}$ ]]; then
+    r=$((0x${hex:0:2}))
+    g=$((0x${hex:2:2}))
+    b=$((0x${hex:4:2}))
+    printf '\033[38;2;%d;%d;%dm' "$r" "$g" "$b"
+  else
+    printf '\033[32m'
+  fi
+}
+
 words=()
+color_mode=auto
 
 while (( $# > 0 )); do
   case "$1" in
   --help)
     usage
     exit 0
+    ;;
+  --color)
+    color_mode=always
+    ;;
+  --no-color)
+    color_mode=never
     ;;
   --)
     shift
@@ -60,11 +90,28 @@ if [[ -z ${text//[[:space:]]/} ]]; then
   exit 1
 fi
 
+color_prefix=""
+color_reset=""
+if [[ $color_mode == "always" ]]; then
+  use_color=1
+elif [[ $color_mode == "never" ]]; then
+  use_color=0
+elif [[ -t 1 ]]; then
+  use_color=1
+else
+  use_color=0
+fi
+
+if (( use_color )); then
+  color_prefix=$(art_sgr)
+  color_reset=$'\033[0m'
+fi
+
 # The text arrives as awk's input, one record per line, and the font on a
 # descriptor of its own. Handing the text to awk as a variable instead would
 # read backslash escapes in it as awk's own, and would put a long text through
 # the argument list, which has a size limit that a piped one does not.
-awk '
+awk -v color_prefix="$color_prefix" -v color_reset="$color_reset" '
 function rtrim(s) {
   sub(/ +$/, "", s)
   return s
@@ -222,7 +269,8 @@ function draw(source,   chars, total, i, r, ch, code, piece, glyph_width, out, t
 
     gsub(hardblank_mark, " ", line)
     sub(/ +$/, "", line)
-    print line
+    # Wrap each row so a reset always rides with the art.
+    print color_prefix line color_reset
   }
 }
 

@@ -10,6 +10,33 @@ columns() {
   awk 'NR == 1 { print length($0) }'
 }
 
+strip_sgr() {
+  printf '%s' "$1" | awk -v esc=$'\033' '{ gsub(esc "\\[[0-9;]*m", ""); print }'
+}
+
+run_on_tty() {
+  python3 -c '
+import fcntl, os, pty, struct, subprocess, sys, termios
+
+master, slave = pty.openpty()
+fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 50, 200, 0, 0))
+proc = subprocess.Popen(sys.argv[1:], stdin=slave, stdout=slave, stderr=subprocess.DEVNULL)
+os.close(slave)
+chunks = []
+while True:
+    try:
+        data = os.read(master, 65536)
+    except OSError:
+        break
+    if not data:
+        break
+    chunks.append(data)
+proc.wait()
+os.close(master)
+sys.stdout.buffer.write(b"".join(chunks).replace(b"\r\n", b"\n").replace(b"\r", b""))
+' "$@"
+}
+
 # The wordmark FIGlet itself draws for this font, so a change to the embedded
 # font or to the kerning shows up here rather than in someone's terminal.
 expected=$(
@@ -144,4 +171,73 @@ pass "text after -- is still text"
 
 output=$(omarchy-ascii --help)
 [[ $output == *"Usage: omarchy-ascii"* ]] || fail "help renders"
+[[ $output == *"--color"* && $output == *"--no-color"* ]] || fail "help names the color flags" "got: $output"
+[[ $output == *"terminal"* ]] || fail "help says color follows the terminal" "got: $output"
 pass "help renders"
+
+output=$(omarchy-ascii --no-color Omarchy)
+[[ $output == "$expected" ]] || fail "--no-color is the raw wordmark" "expected:
+$expected
+actual:
+$output"
+pass "--no-color is the raw wordmark"
+
+# Piped and captured runs stay uncolored so branding files and the tests above
+# keep getting the same bytes. --color is how a test (or a script that wants
+# the paint) asks for the theme wrap anyway.
+theme_home=$(mktemp -d)
+empty_home=""
+trap 'rm -rf "$theme_home" "$empty_home"' EXIT
+mkdir -p "$theme_home/.local/state/omarchy/current/theme"
+cat >"$theme_home/.local/state/omarchy/current/theme/colors.toml" <<'TOML'
+green = "#12ab34"
+accent = "#ffffff"
+TOML
+
+output=$(HOME="$theme_home" omarchy-ascii --color Omarchy)
+[[ $output == *$'\033[38;2;18;171;52m'* ]] || fail "--color wraps in the theme green" "got: $output"
+[[ $output == *$'\033[0m'* ]] || fail "--color resets after the art" "got: $output"
+[[ $output != *$'\033[38;2;255;255;255m'* ]] || fail "--color prefers green over accent"
+[[ $(strip_sgr "$output") == "$expected" ]] || fail "--color keeps the same glyphs" "expected:
+$expected
+actual:
+$(strip_sgr "$output")"
+pass "--color wraps in the theme green"
+
+output=$(HOME="$theme_home" omarchy ascii --color Omarchy)
+[[ $output == *$'\033[38;2;18;171;52m'* && $(strip_sgr "$output") == "$expected" ]] ||
+  fail "the omarchy route still colors when asked"
+pass "the omarchy route still colors when asked"
+
+# Accent is the fallback when a theme has no green of its own.
+printf 'accent = "#aabbcc"\n' >"$theme_home/.local/state/omarchy/current/theme/colors.toml"
+output=$(HOME="$theme_home" omarchy-ascii --color Omarchy)
+[[ $output == *$'\033[38;2;170;187;204m'* ]] || fail "--color falls back to accent" "got: $output"
+pass "--color falls back to accent"
+
+# No theme at all: still paint, just in plain ANSI green.
+empty_home=$(mktemp -d)
+output=$(HOME="$empty_home" omarchy-ascii --color Omarchy)
+[[ $output == *$'\033[32m'* && $output == *$'\033[0m'* ]] || fail "no theme still uses ANSI green" "got: $output"
+[[ $(strip_sgr "$output") == "$expected" ]] || fail "ANSI green wrap keeps the glyphs"
+pass "no theme still uses ANSI green"
+
+# Color is only on stdout. Skipped characters still go to stderr, uncolored,
+# named the same way they were before the wrap existed.
+status=0
+warning=$(HOME="$theme_home" omarchy-ascii --color "Omarchy 4.0" 2>&1 >/dev/null) || status=$?
+(( status == 0 )) || fail "skipped characters still draw when colored" "exited $status"
+[[ $warning == *"Skipped"* && $warning == *"4"* && $warning != *$'\033['* ]] ||
+  fail "skipped characters stay on stderr without SGR" "got: $warning"
+pass "skipped characters stay on stderr without SGR"
+
+if command -v python3 >/dev/null; then
+  tty_plain=$(HOME="$theme_home" run_on_tty omarchy-ascii --no-color Omarchy)
+  tty_plain=${tty_plain%"${tty_plain##*[![:space:]]}"}
+  [[ $tty_plain == "$expected" ]] || fail "--no-color stays plain on a tty" "got: $tty_plain"
+  pass "--no-color stays plain on a tty"
+
+  tty_auto=$(HOME="$theme_home" run_on_tty omarchy-ascii Omarchy)
+  [[ $tty_auto == *$'\033[38;2;170;187;204m'* ]] || fail "a tty colors by default" "got: $tty_auto"
+  pass "a tty colors by default"
+fi
