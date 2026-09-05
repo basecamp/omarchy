@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# omarchy:summary=Sync the generated Omarchy theme to opencode
+# omarchy:args=[--activate]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+
+OPENCODE_SOURCE_PATH="$HOME/.local/state/omarchy/current/theme/opencode.json"
+# Mirror how opencode itself finds its config directory.
+OPENCODE_CONFIG_DIR="${OPENCODE_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}"
+OPENCODE_THEMES_DIR="$OPENCODE_CONFIG_DIR/themes"
+OPENCODE_THEME_PATH="$OPENCODE_THEMES_DIR/omarchy.json"
+OPENCODE_TUI_CONFIG="$OPENCODE_CONFIG_DIR/tui.json"
+OPENCODE_TUI_PLUGIN="$OPENCODE_CONFIG_DIR/tui-plugins/omarchy-theme.ts"
+OPENCODE_PLUGIN_SOURCE="$OMARCHY_PATH/config/opencode/tui-plugins/omarchy-theme.ts"
+OPENCODE_ACTIVATE=0
+
+usage() {
+  echo "Usage: omarchy-theme-set-opencode [--activate]"
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --activate)
+      OPENCODE_ACTIVATE=1
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -f $OPENCODE_SOURCE_PATH ]]; then
+  if (( OPENCODE_ACTIVATE == 1 )); then
+    echo "opencode theme source missing: $OPENCODE_SOURCE_PATH" >&2
+    echo "Run omarchy-theme-refresh after selecting an Omarchy theme." >&2
+    exit 1
+  fi
+
+  exit 0
+fi
+
+if (( OPENCODE_ACTIVATE == 0 )) && [[ ! -d $OPENCODE_CONFIG_DIR ]]; then
+  exit 0
+fi
+
+write_tui_config() {
+  local tmp
+
+  mkdir -p "$OPENCODE_CONFIG_DIR"
+
+  if [[ -f $OPENCODE_TUI_CONFIG ]]; then
+    tmp=$(mktemp "$OPENCODE_TUI_CONFIG.XXXXXX")
+    # Append; plugin order affects initialization, so never rewrite the rest.
+    jq --arg plugin "$OPENCODE_TUI_PLUGIN" \
+      '.theme = "omarchy" | .plugin = (if ((.plugin // []) | index($plugin)) then .plugin else ((.plugin // []) + [$plugin]) end)' \
+      "$OPENCODE_TUI_CONFIG" >"$tmp"
+    mv "$tmp" "$OPENCODE_TUI_CONFIG"
+  else
+    cat >"$OPENCODE_TUI_CONFIG" <<EOF
+{
+  "\$schema": "https://opencode.ai/tui.json",
+  "theme": "omarchy",
+  "plugin": ["$OPENCODE_TUI_PLUGIN"]
+}
+EOF
+  fi
+}
+
+install_plugin() {
+  [[ -f $OPENCODE_PLUGIN_SOURCE ]] || return 0
+
+  mkdir -p "$(dirname "$OPENCODE_TUI_PLUGIN")"
+  ln -sfn "$OPENCODE_PLUGIN_SOURCE" "$OPENCODE_TUI_PLUGIN"
+}
+
+# The omarchy-theme TUI plugin watches the theme file and retints running
+# sessions live, so running agents are never interrupted. opencode itself
+# picks the file up at its next start.
+mkdir -p "$OPENCODE_THEMES_DIR"
+tmp=$(mktemp "$OPENCODE_THEME_PATH.XXXXXX")
+cp "$OPENCODE_SOURCE_PATH" "$tmp"
+mv "$tmp" "$OPENCODE_THEME_PATH"
+
+if (( OPENCODE_ACTIVATE == 1 )); then
+  install_plugin
+  write_tui_config
+fi
