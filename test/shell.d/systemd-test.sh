@@ -56,6 +56,8 @@ grep -F 'omarchy-migrate-notify.service' "$first_run_units" >/dev/null ||
   fail "first-run does not enable the login migration notifier"
 grep -F 'omarchy-update-user-notify' "$first_run_units" >/dev/null &&
   fail "first-run still enables the retired notifier units"
+grep -F 'omarchy-cmd-repair-chromium-copy-url' "$ROOT/bin/omarchy-migrate-notify" >/dev/null ||
+  fail "login notifier does not retry the Copy URL repair after install-time stamping"
 pass "first-run enables the login-only migration notifier"
 
 fcitx_service="$ROOT/default/systemd/user/omarchy-fcitx5.service"

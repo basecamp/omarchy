@@ -17,6 +17,11 @@ if update_in_progress; then
   exit 0
 fi
 
+# Copy URL repair is browser-profile state, so install-time migration
+# stamping cannot satisfy it. Retry quietly at login when Preferences exists
+# and no browser is attached; skip (exit 0) if one is running.
+omarchy-cmd-repair-chromium-copy-url || true
+
 pending_migrations=$(omarchy-migrate --pending 2>/dev/null) || exit 0
 pending_count=$(printf '%s\n' "$pending_migrations" | sed '/^[[:space:]]*$/d' | wc -l)
 

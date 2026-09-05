@@ -3,6 +3,13 @@
 # omarchy:summary=Launch a URL as a web app in the default supported browser
 # omarchy:args=<url>
 
+# Same Copy URL repair as omarchy-launch-browser: web apps start Chromium
+# without going through that wrapper, and the migration is stamped complete
+# on fresh installs.
+if [[ -x ${OMARCHY_PATH:-}/bin/omarchy-cmd-repair-chromium-copy-url ]]; then
+  "$OMARCHY_PATH/bin/omarchy-cmd-repair-chromium-copy-url" || true
+fi
+
 browser=$(xdg-settings get default-web-browser)
 
 case $browser in

@@ -77,9 +77,12 @@ pass "copy-url native host installer covers Brave Origin"
 
 # Chromium ships in the base packages, so fresh installs do not go through
 # omarchy-install-browser, and they mark every migration as already applied.
-# The user install still has to register the host itself.
+# The user install still has to register the host itself, and the Copy URL
+# shortcut repair has to run from a hook that is not migration-stamped.
 grep -q 'user/chromium.sh' "$ROOT/install/user/all.sh" ||
   fail "user install runs the Chromium native messaging host setup"
+grep -q 'first-run/chromium-copy-url.sh' "$ROOT/bin/omarchy-provision-first-run" ||
+  fail "first-run repairs Copy URL after install-time migration stamping"
 
 fresh_home="$TMPDIR/fresh-install"
 HOME="$fresh_home" OMARCHY_PATH="$ROOT" PATH="$ROOT/bin:$PATH" \

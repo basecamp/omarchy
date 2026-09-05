@@ -8,6 +8,8 @@ require_command jq
 require_command python3
 
 migration="$ROOT/migrations/1786643346.sh"
+retry_migration=$(grep -l 'Retry the Copy URL shortcut repair after install-time migration stamping' "$ROOT/migrations"/*.sh | head -n 1 || true)
+repair_cmd="$ROOT/bin/omarchy-cmd-repair-chromium-copy-url"
 test_dir=$(mktemp -d)
 trap 'rm -rf "$test_dir"' EXIT
 
@@ -22,7 +24,16 @@ ghost_id="ikkebdkaanlebnifjnbeiaklodhbjcci"
 pinned_id="bgpiichlckmfanooecilcjemknkcpngb"
 
 write_stale_preferences() {
-  jq -n --arg ghost "$ghost_id" --arg pinned "$pinned_id" '{extensions: {commands: {"linux:Alt+Shift+L": {command_name: "copy-url", extension: $ghost, global: false}}, settings: {($ghost): {commands: {"copy-url": {suggested_key: "Alt+Shift+L", was_assigned: true}}}, ($pinned): {commands: {"copy-url": {suggested_key: "Alt+Shift+L"}}}}}}' >"$preferences"
+  jq -n --arg ghost "$ghost_id" --arg pinned "$pinned_id" '{
+    extensions: {
+      commands: {"linux:Alt+Shift+L": {command_name: "copy-url", extension: $ghost, global: false}},
+      settings: {
+        ($ghost): {commands: {"copy-url": {suggested_key: "Alt+Shift+L", was_assigned: true}}},
+        ($pinned): {commands: {"copy-url": {suggested_key: "Alt+Shift+L"}}}
+      }
+    },
+    protection: {macs: {extensions: {commands: "stale-command-mac", settings: {($ghost): "stale-settings-mac"}}}}
+  }' >"$preferences"
 }
 
 stub_bin="$test_dir/bin"
@@ -41,21 +52,65 @@ REAL_PYTHON=$(PATH="$stub_bin:$PATH" command -p -v python3)
 export REAL_PYTHON
 rm -f "$stub_bin/python3"
 
+run_repair() {
+  HOME="$home" PATH="$stub_bin:$ROOT/bin:$PATH" "$repair_cmd" >/dev/null 2>&1
+}
+
 run_migration() {
-  HOME="$home" PATH="$stub_bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>&1
+  HOME="$home" PATH="$stub_bin:$ROOT/bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>&1
 }
 
 # A running Chromium-family browser marks its profile root with a SingletonLock
-# symlink to <hostname>-<pid>, a target that never exists on disk. That lock —
-# not the mere presence of a browser process — is what the migration waits on.
+# symlink to <hostname>-<pid>. Only a live PID counts as attached; a lock left
+# by SIGTERM still points at a dead pid and must not block the repair.
 open_browser() {
   mkdir -p "$profile_root"
-  ln -sfn "test-host-1234" "$profile_root/SingletonLock"
+  ln -sfn "test-host-$$" "$profile_root/SingletonLock"
+}
+stale_browser_lock() {
+  mkdir -p "$profile_root"
+  ln -sfn "test-host-999999999" "$profile_root/SingletonLock"
 }
 close_browser() {
   rm -f "$profile_root/SingletonLock"
 }
 
+assert_repaired() {
+  jq -e --arg ghost "$ghost_id" --arg pinned "$pinned_id" '
+    .extensions.commands["linux:Alt+Shift+L"].extension == $pinned and
+    (.extensions.settings | has($ghost) | not) and
+    .extensions.settings[$pinned].commands["copy-url"].was_assigned == true and
+    (has("protection") | not)
+  ' "$preferences" >/dev/null
+}
+
+assert_no_tmp() {
+  local leftover
+  leftover=$(find "$profile_root/Default" -maxdepth 1 \( -name '.Preferences.*' -o -name 'Preferences.tmp*' \))
+  [[ -z $leftover ]]
+}
+
+grep -F 'omarchy-cmd-repair-chromium-copy-url --prompt' "$migration" >/dev/null ||
+  fail "1786643346 delegates to the shared repair command"
+[[ -n $retry_migration && -f $retry_migration ]] ||
+  fail "a follow-up migration retries the repair for already-stamped installs"
+grep -F 'omarchy-cmd-repair-chromium-copy-url --prompt' "$retry_migration" >/dev/null ||
+  fail "follow-up migration delegates to the shared repair command"
+pass "migrations keep the repair for unstamped upgrades and already-stamped installs"
+
+grep -F 'first-run/chromium-copy-url.sh' "$ROOT/bin/omarchy-provision-first-run" >/dev/null ||
+  fail "first-run does not invoke the Copy URL repair"
+grep -F 'omarchy-cmd-repair-chromium-copy-url' "$ROOT/bin/omarchy-migrate-notify" >/dev/null ||
+  fail "login notifier does not retry the Copy URL repair"
+grep -F 'omarchy-cmd-repair-chromium-copy-url' "$ROOT/bin/omarchy-launch-browser" >/dev/null ||
+  fail "browser launch does not retry the Copy URL repair"
+grep -F 'omarchy-cmd-repair-chromium-copy-url' "$ROOT/bin/omarchy-launch-webapp" >/dev/null ||
+  fail "web app launch does not retry the Copy URL repair"
+pass "Copy URL repair is invoked from non-stamped first-run, login, and launch hooks"
+
+# A running Chromium-family browser marks its profile root with a SingletonLock
+# symlink to <hostname>-<pid>, a target that never exists on disk. That lock —
+# not the mere presence of a browser process — is what the repair waits on.
 # The affected profile being open prompts for the windows to be closed;
 # declining (or having no terminal to ask in) defers the repair so a
 # rewrite-on-exit cannot revert it.
@@ -71,6 +126,23 @@ run_migration && fail "migration defers while the affected profile is open"
   fail "migration leaves preferences alone while the affected profile is open"
 pass "migration defers the repair while the affected profile is open"
 
+# Quiet callers skip without gum and without failing — login and browser launch
+# must not block on a running profile.
+run_repair || fail "quiet repair skips while the affected profile is open"
+[[ $(sha256sum "$preferences" | cut -d' ' -f1) == "$before_hash" ]] ||
+  fail "quiet repair leaves preferences alone while the affected profile is open"
+pass "quiet repair skips while the affected profile is open"
+
+# A dangling SingletonLock whose pid is dead is not an attached browser; SIGTERM
+# leaves that symlink behind and the repair must still persist.
+stale_browser_lock
+run_repair || fail "quiet repair proceeds past a stale SingletonLock"
+assert_repaired || fail "quiet repair rewrites preferences behind a stale lock"
+assert_no_tmp || fail "repair leaves no Preferences temp file behind a stale lock"
+pass "stale SingletonLock does not block the repair"
+rm -f "$preferences.omarchy-copy-url-repair.bak"
+close_browser
+
 # gum paints its prompt on stderr, so that stream has to stay attached:
 # suppressing it leaves gum reading keys behind an unpainted screen, which
 # reads as a hung update.
@@ -79,8 +151,10 @@ cat >"$stub_bin/gum" <<'STUB'
 echo "gum-prompt-painted" >&2
 exit 1
 STUB
+write_stale_preferences
+open_browser
 prompt_stderr="$test_dir/prompt-stderr"
-HOME="$home" PATH="$stub_bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>"$prompt_stderr" &&
+HOME="$home" PATH="$stub_bin:$ROOT/bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>"$prompt_stderr" &&
   fail "migration defers when the browser prompt is declined"
 grep -q "gum-prompt-painted" "$prompt_stderr" || fail "migration keeps the browser prompt visible"
 pass "migration keeps the browser prompt visible"
@@ -90,11 +164,10 @@ pass "migration keeps the browser prompt visible"
 # prompt, which the still-declining gum stub would otherwise fail.
 close_browser
 mkdir -p "$home/.config/google-chrome"
-ln -sfn "test-host-1234" "$home/.config/google-chrome/SingletonLock"
+ln -sfn "test-host-$$" "$home/.config/google-chrome/SingletonLock"
 write_stale_preferences
 run_migration || fail "migration repairs while a different profile root is open"
-jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
-  fail "migration repairs the shortcut while a different profile root is open"
+assert_repaired || fail "migration repairs the shortcut while a different profile root is open"
 pass "migration ignores a browser on a different profile root"
 rm -f "$home/.config/google-chrome/SingletonLock" "$preferences.omarchy-copy-url-repair.bak"
 
@@ -114,11 +187,10 @@ rm -f "$HOME/.config/chromium/SingletonLock"
 STUB
 chmod +x "$stub_bin/gum" "$stub_bin/close-browser"
 GUM_CALLED="$test_dir/gum-called" CLOSE_BROWSER="$stub_bin/close-browser" \
-  HOME="$home" PATH="$stub_bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>&1 ||
+  HOME="$home" PATH="$stub_bin:$ROOT/bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>&1 ||
   fail "migration proceeds once the profile is closed and the prompt confirmed"
 [[ -e $test_dir/gum-called ]] || fail "migration asks before repairing under a running browser"
-jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
-  fail "migration repairs after the browser prompt is confirmed"
+assert_repaired || fail "migration repairs after the browser prompt is confirmed"
 pass "migration asks to close the browser and repairs on confirmation"
 rm -f "$preferences.omarchy-copy-url-repair.bak"
 
@@ -128,18 +200,27 @@ close_browser
 write_stale_preferences
 run_migration || fail "migration repairs the shortcut when no browser is running"
 
-jq -e --arg ghost "$ghost_id" --arg pinned "$pinned_id" '
-  .extensions.commands["linux:Alt+Shift+L"].extension == $pinned and
-  (.extensions.settings | has($ghost) | not) and
-  .extensions.settings[$pinned].commands["copy-url"].was_assigned == true
-' "$preferences" >/dev/null || fail "migration rebinds the Copy URL shortcut to the pinned extension id"
+assert_repaired || fail "migration rebinds the Copy URL shortcut to the pinned extension id"
 [[ -f $preferences.omarchy-copy-url-repair.bak ]] ||
   fail "migration backs up preferences before the repair"
+assert_no_tmp || fail "repair leaves no Preferences temp file after a successful write"
 pass "migration rebinds the Copy URL shortcut to the pinned extension id"
+
+# Install-time stamping must not prevent the command from repairing a profile
+# that arrived later.
+mkdir -p "$home/.local/state/omarchy/migrations"
+touch "$home/.local/state/omarchy/migrations/1786643346.sh"
+touch "$home/.local/state/omarchy/migrations/$(basename "$retry_migration")"
+rm -f "$preferences.omarchy-copy-url-repair.bak"
+write_stale_preferences
+run_repair || fail "repair command runs even when the migrations are stamped complete"
+assert_repaired || fail "stamped migrations still leave the command able to repair"
+pass "repair command is independent of install-time migration stamps"
+rm -f "$preferences.omarchy-copy-url-repair.bak"
+rm -rf "$home/.local/state/omarchy/migrations"
 
 # A repaired profile has no ghost registration left, so nothing is pending —
 # even while that same profile is open.
-rm "$preferences.omarchy-copy-url-repair.bak"
 repaired_hash=$(sha256sum "$preferences" | cut -d' ' -f1)
 open_browser
 run_migration || fail "migration reruns cleanly after the repair"
@@ -177,11 +258,11 @@ cat >"$stub_bin/python3" <<'STUB'
 # the check calls report a surviving ghost through their exit status.
 "${REAL_PYTHON}" "$@"
 status=$?
-[[ ${5:-} == "repair" ]] && ln -sfn "test-host-1234" "$HOME/.config/chromium/SingletonLock"
+[[ ${5:-} == "repair" ]] && ln -sfn "test-host-${LIVE_PID:?}" "$HOME/.config/chromium/SingletonLock"
 exit $status
 STUB
 chmod +x "$stub_bin/python3"
-if HOME="$home" PATH="$stub_bin:$PATH" bash -euo pipefail "$migration" >/dev/null 2>&1; then
+if HOME="$home" PATH="$stub_bin:$ROOT/bin:$PATH" LIVE_PID=$$ bash -euo pipefail "$migration" >/dev/null 2>&1; then
   fail "migration stays pending when a browser starts mid-repair"
 fi
 jq -e --arg pinned "$pinned_id" '.extensions.commands["linux:Alt+Shift+L"].extension == $pinned' "$preferences" >/dev/null ||
@@ -202,7 +283,7 @@ status=$?
 exit $status
 STUB
 chmod +x "$stub_bin/python3"
-if HOME="$home" PATH="$stub_bin:$PATH" STALE_PREFERENCES="$test_dir/stale-preferences" \
+if HOME="$home" PATH="$stub_bin:$ROOT/bin:$PATH" STALE_PREFERENCES="$test_dir/stale-preferences" \
   REPAIRED_PREFERENCES="$preferences" bash -euo pipefail "$migration" >/dev/null 2>&1; then
   fail "migration stays pending when a briefly-lived browser undoes the repair"
 fi
@@ -226,6 +307,15 @@ pass "migration keeps an unverified repair pending while a browser runs"
 close_browser
 run_migration || fail "migration completes once the repair is verified with browsers closed"
 pass "migration verifies an attempted repair on a browser-free rerun"
+rm -f "$preferences.omarchy-copy-url-repair.bak"
+
+# First-run invokes the quiet command, so a profile already present at first
+# login is repaired without going through omarchy-migrate.
+write_stale_preferences
+HOME="$home" PATH="$stub_bin:$ROOT/bin:$PATH" bash "$ROOT/install/user/first-run/chromium-copy-url.sh" ||
+  fail "first-run Copy URL hook repairs a present profile"
+assert_repaired || fail "first-run Copy URL hook rebinds the pinned extension id"
+pass "first-run hook repairs Copy URL when Preferences already exists"
 rm -f "$preferences.omarchy-copy-url-repair.bak"
 
 # An installed third-party extension with a command that happens to be named

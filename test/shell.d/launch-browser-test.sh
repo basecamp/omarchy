@@ -78,4 +78,19 @@ grep -F 'https://example.test/fallback' "$launch_log" >/dev/null ||
 grep -Fx '^chromium.*$' "$focus_log" >/dev/null ||
   fail "browser launcher focuses the browser resolved from the HTTPS handler"
 
+repair_log="$test_tmp/repair"
+fake_omarchy="$test_tmp/omarchy"
+mkdir -p "$fake_omarchy/bin"
+cat >"$fake_omarchy/bin/omarchy-cmd-repair-chromium-copy-url" <<'SH'
+#!/bin/bash
+printf 'repair\n' >>"$OMARCHY_TEST_REPAIR_LOG"
+SH
+chmod +x "$fake_omarchy/bin/omarchy-cmd-repair-chromium-copy-url"
+
+HOME="$test_home" PATH="$mock_bin:$PATH" HYPRLAND_INSTANCE_SIGNATURE=test \
+  OMARCHY_PATH="$fake_omarchy" OMARCHY_TEST_REPAIR_LOG="$repair_log" \
+  OMARCHY_TEST_BROWSER_LAUNCH="$launch_log" OMARCHY_TEST_BROWSER_FOCUS="$focus_log" \
+  bash "$ROOT/bin/omarchy-launch-browser"
+
+grep -Fx 'repair' "$repair_log" >/dev/null || fail "browser launcher repairs Copy URL before Chromium starts"
 pass "browser launcher follows opened links to the browser workspace"
