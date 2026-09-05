@@ -71,6 +71,105 @@ normalize_scale() {
   awk 'NR == 1 { printf "%g\n", $0 }'
 }
 
+persist_gdk_scale() {
+  local gdk_scale="$1"
+  local file="$2"
+
+  sed -i -E \
+    -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${gdk_scale}|" \
+    -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$gdk_scale"'")|' \
+    "$file"
+}
+
+# Rewrite `scale = ...` inside the hl.monitor entry naming this output,
+# whether that entry is one line or the multi-line form nwg-displays writes.
+# Succeeds only when such an entry was found. Commented-out examples and
+# rules for other outputs are left alone.
+update_named_monitor_scale() {
+  local monitor="$1"
+  local scale="$2"
+  local file="$3"
+  local tmp="${file}.omarchy-scale.$$"
+
+  if awk -v monitor="$monitor" -v scale="$scale" '
+    function strip_comment(s) {
+      sub(/--.*/, "", s)
+      return s
+    }
+    function has_named_output(buf, name,    n, i, lines, line, stripped) {
+      n = split(buf, lines, "\n")
+      stripped = ""
+      for (i = 1; i <= n; i++) {
+        line = strip_comment(lines[i])
+        stripped = stripped line "\n"
+      }
+      return (index(stripped, "output = \"" name "\"") || index(stripped, "output=\"" name "\""))
+    }
+    function replace_scale(buf, value,    n, i, lines, line, out, found, last_brace, pos, c, after, end) {
+      n = split(buf, lines, "\n")
+      out = ""
+      found = 0
+      for (i = 1; i <= n; i++) {
+        line = lines[i]
+        if (!found && line !~ /^[[:space:]]*--/ && match(line, /scale[[:space:]]*=[[:space:]]*("[^"]*"|[^,;})[:space:]]+)/)) {
+          after = substr(line, RSTART + RLENGTH)
+          if (after ~ /^[[:space:]]*([,;})]|$)/) {
+            line = substr(line, 1, RSTART - 1) "scale = " value substr(line, RSTART + RLENGTH)
+            found = 1
+          }
+        }
+        if (i == 1)
+          out = line
+        else
+          out = out "\n" line
+      }
+      if (found) {
+        buffer = out
+        return 1
+      }
+      last_brace = 0
+      for (pos = 1; pos <= length(buf); pos++) {
+        c = substr(buf, pos, 1)
+        if (c == "}") last_brace = pos
+      }
+      if (last_brace == 0) return 0
+      end = last_brace - 1
+      while (end > 0 && substr(buf, end, 1) ~ /[[:space:]]/) end--
+      buffer = substr(buf, 1, end) ", scale = " value substr(buf, end + 1)
+      return 1
+    }
+    {
+      if (depth == 0) {
+        if ($0 ~ /^[[:space:]]*--/ || $0 !~ /hl\.monitor\(/) {
+          print
+          next
+        }
+      }
+      buffer = buffer $0 "\n"
+      line = $0
+      depth += gsub(/\{/, "{", line)
+      depth -= gsub(/\}/, "}", line)
+      if (depth < 0) depth = 0
+      if (depth > 0) next
+      if (buffer ~ /hl\.monitor\(/ && has_named_output(buffer, monitor)) {
+        if (replace_scale(buffer, scale)) changed = 1
+      }
+      printf "%s", buffer
+      buffer = ""
+    }
+    END {
+      printf "%s", buffer
+      exit changed ? 0 : 1
+    }
+  ' "$file" >"$tmp"; then
+    mv "$tmp" "$file"
+    return 0
+  else
+    rm -f "$tmp"
+    return 1
+  fi
+}
+
 set_scale() {
   local requested_scale="$1"
   local requested="${2:-$requested_scale}"
@@ -97,18 +196,34 @@ set_scale() {
   hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
   audit_scale_change "$requested" "$active_monitor" "$current_scale" "$new_scale"
 
-  # Persist to monitors.lua if the user still has Omarchy's generic catch-all
-  # defaults, so the scale survives reboots.
-  if [[ -f $monitor_lua ]] && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
+  [[ -f $monitor_lua ]] || return 0
+
+  # A named hl.monitor rule for this output overrides the catch-all, so it
+  # must be updated in place. Writing only the generic default leaves that
+  # rule stale, and omarchy-hyprland-monitor-watch's docked poller re-applies
+  # the stale file scale every ~2s.
+  if update_named_monitor_scale "$active_monitor" "$new_scale" "$monitor_lua"; then
+    persist_gdk_scale "$new_gdk_scale" "$monitor_lua"
+  elif grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
     sed -i -E \
       -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" \
       -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${new_gdk_scale}|" \
       "$monitor_lua"
-  elif [[ -f $monitor_lua ]] && grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$monitor_lua"; then
+  elif grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$monitor_lua"; then
     sed -i -E \
       -e "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${new_scale}\\3|" \
       -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$new_gdk_scale"'")|' \
       "$monitor_lua"
+  else
+    # No named rule and no generic default matched. Appending a named rule is
+    # the safe persist: Hyprland's named output rules override a catch-all
+    # regardless of order, so other monitors keep whatever they already have.
+    # Rewriting a catch-all we failed to recognize would retarget every
+    # unpinned output; leaving the file untouched lets the 2s poller undo the
+    # live eval we just applied.
+    printf '\nhl.monitor({ output = "%s", mode = "preferred", position = "auto", scale = %s })\n' \
+      "$active_monitor" "$new_scale" >>"$monitor_lua"
+    persist_gdk_scale "$new_gdk_scale" "$monitor_lua"
   fi
 }
 
