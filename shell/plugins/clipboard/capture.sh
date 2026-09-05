@@ -18,7 +18,7 @@ fi
 
 emit_image() {
   local mime="$1"
-  local ext tmp hash file
+  local ext tmp hash file file_backed=false
 
   ext=${mime#image/}
   [[ $ext == jpeg ]] && ext=jpg
@@ -38,8 +38,9 @@ emit_image() {
     mv "$tmp" "$file"
   fi
 
-  jq -cn --arg mime "$mime" --arg path "$file" --arg captured_at "$(date +'%A %H:%M')" \
-    '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at}'
+  grep -qx 'application/x-omarchy-file-backed-image' <<<"$types" && file_backed=true
+  jq -cn --arg mime "$mime" --arg path "$file" --arg captured_at "$(date +'%A %H:%M')" --argjson file_backed "$file_backed" \
+    '{type:"image", mime:$mime, path:$path, capturedAt:$captured_at} + if $file_backed then {fileBacked:true} else {} end'
 }
 
 emit_text() {
@@ -90,7 +91,12 @@ emit_text() {
 }
 
 case "${1:-}" in
-text) emit_text; exit 0 ;;
+text)
+  # File-backed screenshots expose their path for terminal paste. The image
+  # watcher records the same selection, so do not add a duplicate text entry.
+  grep -qx 'application/x-omarchy-file-backed-image' <<<"$types" || emit_text
+  exit 0
+  ;;
 image/*) emit_image "$1"; exit 0 ;;
 esac
 

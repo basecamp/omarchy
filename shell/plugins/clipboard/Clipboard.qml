@@ -143,6 +143,7 @@ Item {
         previewImage: row.previewImage ? Util.fileUrl(row.previewImage) : "",
         path: row.path,
         mime: row.mime,
+        fileBacked: row.fileBacked === true,
         historyIndex: row.index
       })
     }
@@ -216,7 +217,7 @@ Item {
     if (!row) return
     root.opened = false
     if (row.entryType === "image") {
-      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-file", row.mime, row.path])
+      root.pasteFile(row, false)
     } else if (row.fullText) {
       Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--shift-insert", "--history-index", String(row.historyIndex)])
     }
@@ -226,10 +227,18 @@ Item {
     if (!row) return
     root.opened = false
     if (row.entryType === "image") {
-      Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-file", "--copy-only", row.mime, row.path])
+      root.pasteFile(row, true)
     } else if (row.fullText) {
       Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-clipboard-paste-text", "--copy-only", "--history-index", String(row.historyIndex)])
     }
+  }
+
+  function pasteFile(row, copyOnly) {
+    var args = [root.omarchyPath + "/bin/omarchy-clipboard-paste-file"]
+    if (copyOnly) args.push("--copy-only")
+    if (row.fileBacked) args.push("--file-backed")
+    args.push(row.mime, row.path)
+    Quickshell.execDetached(args)
   }
 
   function openSelected(row) {

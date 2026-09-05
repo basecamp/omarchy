@@ -60,11 +60,31 @@ set_no_hw_cursors 0
 FILENAME="screenshot-$(date +'%Y-%m-%d_%H-%M-%S').png"
 FILEPATH="$OUTPUT_DIR/$FILENAME"
 
+capture_to_cache() {
+  local tmp hash path
+  local image_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/clipboard-images"
+
+  mkdir -p "$image_dir"
+  tmp=$(mktemp --tmpdir="$image_dir" clipboard.XXXXXX)
+  if ! grim -g "$SELECTION" "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  hash=$(sha256sum "$tmp" | cut -d' ' -f1)
+  path="$image_dir/$hash.png"
+  if [[ -e $path ]]; then
+    rm -f "$tmp"
+  else
+    mv "$tmp" "$path"
+  fi
+  printf '%s\n' "$path"
+}
+
 case "$PROCESSING" in
   slurp)
     grim -g "$SELECTION" "$FILEPATH" || exit 1
     echo "$FILEPATH"
-    wl-copy --type image/png <"$FILEPATH"
+    omarchy-clipboard-publish-image image/png "$FILEPATH" || exit 1
 
     # Best-effort: the screenshot is already saved and on the clipboard, so a
     # notification outage must not report the capture itself as failed.
@@ -73,7 +93,8 @@ case "$PROCESSING" in
       --exec "$SCREENSHOT_EDITOR" "$FILEPATH" || true
     ;;
   copy)
-    grim -g "$SELECTION" - | wl-copy --type image/png
+    FILEPATH=$(capture_to_cache) || exit 1
+    omarchy-clipboard-publish-image image/png "$FILEPATH" || exit 1
     ;;
   save)
     grim -g "$SELECTION" "$FILEPATH" || exit 1

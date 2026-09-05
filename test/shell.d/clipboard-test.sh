@@ -28,6 +28,12 @@ assertDeepEqual(
 )
 
 assertDeepEqual(
+  clipboard.normalizeEntry({ type: 'image', path: '/tmp/a.png', mime: 'image/png', fileBacked: true }),
+  { type: 'image', path: '/tmp/a.png', mime: 'image/png', fileBacked: true },
+  'clipboard keeps file-backed image metadata'
+)
+
+assertDeepEqual(
   clipboard.parseHistory(JSON.stringify(['one', '', { type: 'text', text: 'two' }, { type: 'image', path: '/tmp/a.jpg', mime: 'image/jpeg' }])),
   [
     { type: 'text', text: 'one' },
@@ -89,6 +95,12 @@ assertDeepEqual(
   clipboard.displayRows(history, 'image', 50).map(row => row.index),
   [2],
   'clipboard display rows preserve original history indexes'
+)
+
+assertEqual(
+  clipboard.displayRows([{ type: 'image', path: '/tmp/a.png', mime: 'image/png', fileBacked: true }], '', 50)[0].fileBacked,
+  true,
+  'clipboard display rows preserve file-backed image metadata'
 )
 
 assertDeepEqual(
@@ -161,6 +173,10 @@ assert(
 assert(
   !/onContainsMouseChanged:[\s\S]*root\.selectedIndex/.test(clipboardQml),
   'clipboard does not select rows from containsMouse'
+)
+assert(
+  clipboardQml.includes('if (row.fileBacked) args.push("--file-backed")'),
+  'clipboard restores file-backed image history with multiple representations'
 )
 assert(
   clipboardQml.includes('command: ["setpriv", "--pdeathsig", "TERM", "wl-paste", "--type", "text", "--watch", root.captureScript, "text"]'),
@@ -385,6 +401,10 @@ jq -e '.type == "image" and .mime == "image/png" and (.capturedAt | type == "str
 [[ -s $image_path && $(<"$image_path") == "png-data" ]] || fail "clipboard capture stores watched png image data"
 pass "clipboard capture records watched png images"
 
+capture_output=$(printf 'file-backed-png' | WL_PASTE_TYPES="image/png\napplication/x-omarchy-file-backed-image\ntext/plain\n" XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" image/png)
+jq -e '.type == "image" and .fileBacked == true' <<<"$capture_output" >/dev/null || fail "clipboard capture marks file-backed screenshot images"
+pass "clipboard capture marks file-backed screenshot images"
+
 capture_output=$(printf 'jpg-data' | XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" image/jpeg)
 image_path=$(jq -r '.path' <<<"$capture_output")
 jq -e '.mime == "image/jpeg"' <<<"$capture_output" >/dev/null && [[ $image_path == *.jpg ]] || fail "clipboard capture stores watched jpeg images with jpg extension"
@@ -393,6 +413,10 @@ pass "clipboard capture stores watched jpeg images with jpg extension"
 capture_output=$(printf 'secret' | CLIPBOARD_STATE=sensitive XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
 [[ -z $capture_output ]] || fail "clipboard capture ignores sensitive watched text"
 pass "clipboard capture ignores sensitive watched text"
+
+capture_output=$(printf 'generated screenshot path' | WL_PASTE_TYPES="image/png\napplication/x-omarchy-file-backed-image\ntext/plain\n" XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh" text)
+[[ -z $capture_output ]] || fail "clipboard capture hides file-backed screenshot paths"
+pass "clipboard capture hides file-backed screenshot paths"
 
 capture_output=$(CLIPBOARD_STATE=sensitive XDG_RUNTIME_DIR="$TMPDIR" XDG_STATE_HOME="$TMPDIR/state" PATH="$TMPDIR/bin:$PATH" "$ROOT/shell/plugins/clipboard/capture.sh")
 [[ -z $capture_output ]] || fail "clipboard capture ignores sensitive clipboard events"
@@ -484,6 +508,12 @@ pass "clipboard paste helper copy-only copies history entry text"
 [[ ! -e "$TMPDIR/wtype" ]] || fail "clipboard paste helper copy-only skips typing"
 pass "clipboard paste helper copy-only skips typing"
 
+cat >"$TMPDIR/bin/omarchy-clipboard-publish-image" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >"$PUBLISH_LOG"
+SH
+chmod +x "$TMPDIR/bin/omarchy-clipboard-publish-image"
+
 printf 'image-data' >"$TMPDIR/image.png"
 rm -f "$TMPDIR/wtype"
 WL_COPY_OUT="$TMPDIR/copied" WTYPE_OUT="$TMPDIR/wtype" PATH="$TMPDIR/bin:$PATH" \
@@ -494,6 +524,21 @@ pass "clipboard file paste helper copy-only copies file content"
 
 [[ ! -e "$TMPDIR/wtype" ]] || fail "clipboard file paste helper copy-only skips paste keystroke"
 pass "clipboard file paste helper copy-only skips paste keystroke"
+
+rm -f "$TMPDIR/copied" "$TMPDIR/wtype"
+PUBLISH_LOG="$TMPDIR/publish" WTYPE_OUT="$TMPDIR/wtype" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-paste-file" --file-backed image/png "$TMPDIR/image.png"
+
+[[ $(<"$TMPDIR/publish") == "image/png $TMPDIR/image.png" ]] || fail "clipboard file paste helper restores file-backed images"
+[[ ! -e $TMPDIR/copied ]] || fail "clipboard file paste helper avoids image-only copy for file-backed images"
+[[ $(<"$TMPDIR/wtype") == "-M shift -k Insert -m shift" ]] || fail "clipboard file paste helper pastes restored file-backed image paths"
+pass "clipboard file paste helper restores file-backed image representations"
+
+rm -f "$TMPDIR/wtype"
+PUBLISH_LOG="$TMPDIR/publish" WTYPE_OUT="$TMPDIR/wtype" PATH="$TMPDIR/bin:$PATH" \
+  "$ROOT/bin/omarchy-clipboard-paste-file" --copy-only --file-backed image/png "$TMPDIR/image.png"
+[[ ! -e $TMPDIR/wtype ]] || fail "clipboard file paste helper copy-only skips typing for file-backed images"
+pass "clipboard file paste helper copy-only restores file-backed image representations"
 
 jq -n --arg url 'https://example.com/docs' --arg text "$(printf 'plain text\nsecond line')" --arg image "$TMPDIR/image.png" \
   '[{type:"text", text:$url}, {type:"text", text:$text}, {type:"image", mime:"image/png", path:$image}]' >"$TMPDIR/home/.local/state/omarchy/clipboard-history.json"
