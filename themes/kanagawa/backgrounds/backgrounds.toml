@@ -1,0 +1,6 @@
+[defaults]
+fill = "fit"
+backdrop = "blur"
+
+["omarchy"]
+svg_layout = "responsive"

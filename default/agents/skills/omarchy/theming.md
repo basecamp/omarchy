@@ -70,6 +70,28 @@ cp -r /usr/share/omarchy/themes/catppuccin ~/.config/omarchy/themes/catppuccin-c
 omarchy theme set catppuccin-custom
 ```
 
+## Making Backgrounds Fit Different Screens
+
+Theme backgrounds live in the theme's `backgrounds/` directory (user extras in
+`~/.config/omarchy/backgrounds/<theme-slug>/`). By default an image is cropped to
+cover the screen. Three tools adjust that, per directory:
+
+- **Aspect-ratio variants:** a sibling file named `<stem>@<label>.<ext>`
+  (`forest@ultrawide.png` next to `forest.png`) is shown automatically on
+  whichever monitor its pixel aspect ratio matches best. Variants never appear
+  in choosers and are never set directly — always set the base file.
+- **`backgrounds.toml`** in the same directory as the images: a `[defaults]`
+  section plus optional per-image sections named by the image's filename minus
+  its extension. Keys: `fill = "crop" | "fit" | "center" | "tile"` (default
+  `crop`), `fill_color = "<colors.toml key>"` or `"#rrggbb"` (default
+  `background`; pads `fit`/`center`/`tile`), and `focal = "x y"` in 0..1 — the
+  point kept in view when cropping (default `"0.5 0.5"`).
+- **SVG backgrounds:** `.svg` files work as backgrounds and are rasterized
+  crisply per screen. A theme can also ship `backgrounds/*.svg.tpl` templates
+  using the standard `{{ key }}` placeholders; they render to `.svg` with the
+  theme's palette when the theme is applied, and a same-named `.svg` shipped by
+  the theme wins over the template.
+
 ## Fonts
 
 ```bash

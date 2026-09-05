@@ -336,11 +336,45 @@ placeholder = "#ffffff"
 border = "#ffffff"
 EOF
 
+mkdir -p "$NEXT_THEME/backgrounds"
+cat >"$NEXT_THEME/backgrounds/wave.svg.tpl" <<'EOF'
+<svg xmlns="http://www.w3.org/2000/svg"><rect fill="{{ background }}"/></svg>
+EOF
+printf '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="keep-me"/></svg>\n' >"$NEXT_THEME/backgrounds/shipped.svg"
+cat >"$NEXT_THEME/backgrounds/shipped.svg.tpl" <<'EOF'
+<svg xmlns="http://www.w3.org/2000/svg"><rect fill="{{ background }}"/></svg>
+EOF
+
 OMARCHY_PATH="$ROOT" HOME="$PI_TMPDIR" "$ROOT/bin/omarchy-theme-set-templates"
 grep -qx 'mix=#808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix helper works"
 grep -qx 'strip=808080' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_strip helper works"
 grep -qx 'rgb=128,128,128' "$NEXT_THEME/mix-test.txt" || fail "theme template mix_rgb helper works"
 pass "theme template color mix helpers work"
+
+[[ -f $NEXT_THEME/backgrounds/wave.svg ]] || fail "theme background template renders beside the backgrounds"
+grep -q 'fill="#000000"' "$NEXT_THEME/backgrounds/wave.svg" || fail "theme background template substitutes theme colors"
+[[ ! -e $NEXT_THEME/backgrounds/wave.svg.tpl ]] || fail "theme background template is removed after rendering"
+grep -q 'keep-me' "$NEXT_THEME/backgrounds/shipped.svg" || fail "a theme-shipped background SVG is not overwritten by its template"
+[[ ! -e $NEXT_THEME/backgrounds/shipped.svg.tpl ]] || fail "a skipped theme background template is still removed"
+pass "theme background SVG templates render into the staged theme"
+
+# A hand-written theme may ship backgrounds as a symlink into the author's
+# working tree; rendering must not write through it or delete their sources.
+SYMLINK_THEME_HOME="$PI_TMPDIR/symlink-theme-home"
+SYMLINK_NEXT_THEME="$SYMLINK_THEME_HOME/.local/state/omarchy/current/next-theme"
+AUTHOR_BACKGROUNDS="$PI_TMPDIR/author-backgrounds"
+mkdir -p "$SYMLINK_NEXT_THEME" "$AUTHOR_BACKGROUNDS"
+cp "$NEXT_THEME/colors.toml" "$SYMLINK_NEXT_THEME/colors.toml"
+cat >"$AUTHOR_BACKGROUNDS/wave.svg.tpl" <<'EOF'
+<svg xmlns="http://www.w3.org/2000/svg"><rect fill="{{ background }}"/></svg>
+EOF
+ln -s "$AUTHOR_BACKGROUNDS" "$SYMLINK_NEXT_THEME/backgrounds"
+
+OMARCHY_PATH="$ROOT" HOME="$SYMLINK_THEME_HOME" "$ROOT/bin/omarchy-theme-set-templates"
+
+[[ -f $AUTHOR_BACKGROUNDS/wave.svg.tpl ]] || fail "a symlinked backgrounds dir keeps its template sources"
+[[ ! -e $AUTHOR_BACKGROUNDS/wave.svg ]] || fail "a symlinked backgrounds dir gains no rendered output"
+pass "theme background templates leave a symlinked backgrounds dir alone"
 
 grep -qx 'color=#ff0000' "$NEXT_THEME/alias-test.txt" || fail "theme template semantic aliases expose legacy colorN"
 grep -qx 'strip=ff0000' "$NEXT_THEME/alias-test.txt" || fail "theme template legacy colorN_strip works"
