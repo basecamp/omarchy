@@ -379,8 +379,7 @@ def write_json(path, payload):
       handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
     # mkstemp opens at 0600; nothing in the cache is sensitive, so open it
     # up to the usual 0644.
-    tmp.chmod(0o644)
-    tmp.replace(path)
+        tmp.replace(path)
   except BaseException:
     tmp.unlink(missing_ok=True)
     raise
