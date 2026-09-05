@@ -82,8 +82,33 @@ wait_for_pacman_transaction() {
 
 wait_for_pacman_transaction
 
+# Migrations take the paths they touch from OMARCHY_* overrides so the test
+# suite can point them at a scratch tree, and several of those paths are handed
+# straight to `sudo` -- 1788025225.sh alone reads OMARCHY_SUDOERS_DIR,
+# OMARCHY_SYSTEMD_SYSTEM_DIR and OMARCHY_RETIRED_INSTALLER_ARTIFACTS_MARKER and
+# passes all three to `as_root install`/`rm`. Nothing on a real machine should be
+# able to choose those through whatever environment omarchy-migrate happened to
+# inherit, so clear the namespace before the queue runs.
+#
+# The suite is unaffected: it invokes each migration directly rather than through
+# here. Only the few names that are genuinely passed *to* omarchy-migrate are
+# kept -- OMARCHY_PATH, the state directory, the flag
+# omarchy-upgrade-to-quattro sets, and the documented direct-pacman escape.
+clear_migration_overrides() {
+  local var
+
+  for var in $(compgen -v OMARCHY_ 2>/dev/null); do
+    case "$var" in
+    OMARCHY_PATH | OMARCHY_MIGRATION_STATE | OMARCHY_UPGRADE_TO_QUATTRO_LIVE | OMARCHY_ALLOW_DIRECT_PACMAN) ;;
+    *) unset "$var" ;;
+    esac
+  done
+}
+
 mkdir -p "$STATE_DIR"
 [[ -d $MIGRATIONS_DIR ]] || exit 0
+
+clear_migration_overrides
 
 while IFS=$'\t' read -r name file marker <&3; do
   [[ -n $name ]] || continue

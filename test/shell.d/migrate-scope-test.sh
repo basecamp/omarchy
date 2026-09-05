@@ -103,3 +103,44 @@ grep -q '^after-reader$' "$stdin_calls" ||
   -f $stdin_home/.local/state/omarchy/migrations/200-after.sh ]] ||
   fail "migration runner marks both stdin-isolated migrations complete"
 pass "migration queue uses a private file descriptor instead of migration stdin"
+
+# Migrations read the paths they touch from OMARCHY_* overrides so the suite can
+# point them at a scratch tree, and several hand those paths to sudo. They must
+# not be settable through the environment omarchy-migrate inherited on a real
+# machine. The handful genuinely passed to omarchy-migrate still have to survive.
+scrub_root="$test_tmp/scrub-omarchy"
+scrub_home="$test_tmp/scrub-home"
+scrub_calls="$test_tmp/scrub-calls"
+mkdir -p "$scrub_root/migrations" "$scrub_home"
+
+cat >"$scrub_root/migrations/100-env.sh" <<'SH'
+{
+  printf 'sudoers:%s\n' "${OMARCHY_SUDOERS_DIR-<unset>}"
+  printf 'marker:%s\n' "${OMARCHY_RETIRED_INSTALLER_ARTIFACTS_MARKER-<unset>}"
+  printf 'zram:%s\n' "${OMARCHY_ZRAM_CONF-<unset>}"
+  printf 'omarchy_path:%s\n' "${OMARCHY_PATH-<unset>}"
+  printf 'quattro_live:%s\n' "${OMARCHY_UPGRADE_TO_QUATTRO_LIVE-<unset>}"
+} >>"$TEST_CALLS"
+SH
+
+HOME="$scrub_home" \
+OMARCHY_PATH="$scrub_root" \
+OMARCHY_SUDOERS_DIR="/tmp/attacker-sudoers" \
+OMARCHY_RETIRED_INSTALLER_ARTIFACTS_MARKER="/tmp/attacker-marker" \
+OMARCHY_ZRAM_CONF="/tmp/attacker-zram" \
+OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 \
+TEST_CALLS="$scrub_calls" \
+  "$ROOT/bin/omarchy-migrate" >"$test_tmp/scrub.out"
+
+grep -qx 'sudoers:<unset>' "$scrub_calls" ||
+  fail "an inherited OMARCHY_SUDOERS_DIR does not reach a migration" "$(cat "$scrub_calls")"
+grep -qx 'marker:<unset>' "$scrub_calls" ||
+  fail "an inherited marker override does not reach a migration" "$(cat "$scrub_calls")"
+grep -qx 'zram:<unset>' "$scrub_calls" ||
+  fail "the scrub covers the whole OMARCHY_ override namespace, not a denylist" "$(cat "$scrub_calls")"
+grep -qx "omarchy_path:$scrub_root" "$scrub_calls" ||
+  fail "OMARCHY_PATH still reaches a migration" "$(cat "$scrub_calls")"
+grep -qx 'quattro_live:1' "$scrub_calls" ||
+  fail "the Quattro upgrade flag still reaches a migration" "$(cat "$scrub_calls")"
+
+pass "migration path overrides cannot be inherited from the caller's environment"
