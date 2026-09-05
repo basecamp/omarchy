@@ -2,12 +2,13 @@
 name: omarchy
 description: >
   REQUIRED for end-user customization of Linux desktop, window manager, or system config.
-  Use when editing ~/.config/hypr/, ~/.config/omarchy/,
+  Use when editing ~/.config/hypr/, ~/.config/omarchy/, ~/.config/systemd/user/,
   ~/.config/alacritty/, ~/.config/foot/, ~/.config/kitty/, or ~/.config/ghostty/.
   Triggers: Hyprland, window rules, animations, keybindings, monitors, gaps, borders,
   blur, opacity, omarchy-shell, bar, terminal config, themes, background,
   night light, idle, lock screen, screenshots, reminders, layer rules, workspace
-  settings, display config, and user-facing omarchy commands. Excludes Omarchy
+  settings, display config, user systemd units, linger, timers, autostart,
+  and user-facing omarchy commands. Excludes Omarchy
   source development through `omarchy dev link` workflows.
 ---
 
@@ -31,6 +32,7 @@ It is not for contributing to Omarchy source code.
 - Themes, backgrounds, fonts, appearance changes
 - User-facing `omarchy` commands (`omarchy theme ...`, `omarchy refresh ...`, `omarchy restart ...`, etc.)
 - Screenshots, screen recording, reminders, night light, idle behavior, lock screen
+- Writing or enabling user systemd units, timers, linger, or autostart (`~/.config/systemd/user/`)
 
 **If you're about to edit a config file in ~/.config/ on this system, STOP and use this skill first.**
 
@@ -45,12 +47,19 @@ matching guide before starting:
 - [`plugins.md`](plugins.md) - the Omarchy shell: bar layout, widgets, plugins, idle behavior
 - [`theming.md`](theming.md) - themes, backgrounds, and fonts
 - [`hooks.md`](hooks.md) - automation hooks that run on system events
+- [`user-units.md`](user-units.md) - systemd user units, linger, and graphical-session
 - [`capture.md`](capture.md) - screenshots, screen recordings, OCR text capture, and file sharing
 - [`contributing.md`](contributing.md) - reporting Omarchy bugs and submitting fixes upstream
 
 ## Critical Safety Rules
 
 For privileged commands, follow the Privilege Escalation rules below: `sudo` when a terminal is available for the password prompt, `pkexec` when it is not. Do not wrap commands that already manage privilege elevation themselves.
+
+UWSM owns `graphical-session.target`. Never `Requires=` or `Wants=` it from a
+user unit that can start before Hyprland (linger, Persistent timers,
+`default.target`). That starts an empty session; UWSM refuses to launch
+Hyprland; the screens stay black. Copy Omarchy's shipped units: `WantedBy=`
+the target, do not create it. See [`user-units.md`](user-units.md).
 
 **For end-user customization tasks, NEVER modify anything in `/usr/share/omarchy/`** - but READING is safe and encouraged.
 
@@ -252,7 +261,7 @@ When user requests system changes:
 1. **Is it a stock omarchy command?** Use it directly
 2. **Is it a config edit?** Edit in `~/.config/`, never `/usr/share/omarchy/`
 3. **Is it a theme customization?** Follow [`theming.md`](theming.md); create a NEW custom theme directory
-4. **Is it automation?** Follow [`hooks.md`](hooks.md); use `omarchy hook install` and the hook `.d` directories
+4. **Is it automation?** Follow [`hooks.md`](hooks.md); use `omarchy hook install` and the hook `.d` directories. If it must be a systemd user unit, follow [`user-units.md`](user-units.md) — do not `Requires=` `graphical-session.target`.
 5. **Is it a package install?** Use `omarchy pkg add <pkgs...>` (or `omarchy pkg aur add <pkgs...>` for AUR-only packages)
 6. **Is it built-in shell/plugin code?** Follow [`plugins.md`](plugins.md); clone it with `omarchy plugin clone`, never edit the packaged copy
 7. **Unsure if command exists?** Run `omarchy commands` (or `omarchy <group> --help` for one group)
@@ -287,6 +296,7 @@ This skill intentionally does not cover Omarchy source development. Do not use t
 - "Clear all reminders" -> `omarchy reminder clear`
 - "Customize the catppuccin theme colors" -> Overlay: put an edited `colors.toml` in `~/.config/omarchy/themes/catppuccin/`, then re-apply the theme (see `theming.md`)
 - "Run a script every time I change themes" -> Install it with `omarchy hook install theme-set <script>`
+- "Run a script after the desktop starts" -> `omarchy hook install post-boot <script>` (not a systemd unit that `Requires=` `graphical-session.target`)
 - "Change how workspace labels are rendered" -> Clone `omarchy.workspaces`, which switches the bar to `<username>.workspaces`, then edit the clone
 - "Lock after ten minutes" -> Set `idle.lock` to `600` in `~/.config/omarchy/shell.json`
 - "Reset shell/bar to defaults" -> `omarchy refresh shell`
