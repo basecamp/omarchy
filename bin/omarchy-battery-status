@@ -87,7 +87,13 @@ fi
 
 charge_holding=false
 if [[ $ac_online == "true" && -n $threshold_end ]]; then
-  if [[ $state == "pending-charge" ]]; then
+  # UPower's pending-charge only means the EC is not charging the pack — a
+  # configured limit is one reason, but so are a dead battery, an undersized
+  # adapter, or inhibit-charge. Only call it a hold when a real limit is
+  # configured and the level sits inside its band.
+  if [[ $state == "pending-charge" ]] &&
+    (( threshold_end < 99 )) &&
+    (( percentage >= ${threshold_start:-0} && percentage <= threshold_end )); then
     charge_holding=true
   elif [[ $state == "fully-charged" ]] && (( percentage < 99 )); then
     charge_holding=true
@@ -118,6 +124,10 @@ if [[ $shell_output == "true" ]]; then
       printf 'threshold\t%s%%\n' "$threshold_end"
     fi
   fi
+
+  # Raw limits for the panel's hold logic; empty when the kernel exposes none.
+  [[ -n $threshold_start ]] && printf 'threshold_start\t%s\n' "$threshold_start"
+  [[ -n $threshold_end ]] && printf 'threshold_end\t%s\n' "$threshold_end"
 
   exit 0
 fi

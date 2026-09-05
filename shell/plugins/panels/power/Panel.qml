@@ -47,14 +47,21 @@ Panel {
     setProfile(profiles[profileIndex])
   }
 
+  // Raw charge limits reported by omarchy-battery-status; empty until the
+  // first refresh lands and absent entirely on machines without a limit.
+  readonly property var batteryLimits: ({
+    start: batteryInfo.threshold_start,
+    end: batteryInfo.threshold_end
+  })
+
   function batteryIcon() {
     var device = UPower.displayDevice
-    return Model.batteryIcon(device, root.discharging, upowerStates())
+    return Model.batteryIcon(device, root.discharging, upowerStates(), root.batteryLimits)
   }
 
   function modeLabel() {
     var device = UPower.displayDevice
-    return Model.modeLabel(device, root.discharging, upowerStates())
+    return Model.modeLabel(device, root.discharging, upowerStates(), root.batteryLimits)
   }
 
   function profileIcon(name) {
@@ -71,7 +78,7 @@ Panel {
   }
   readonly property bool chargeThresholdActive: {
     var device = UPower.displayDevice
-    return Model.chargeThresholdActive(device, root.discharging, upowerStates())
+    return Model.chargeThresholdActive(device, root.discharging, upowerStates(), root.batteryLimits)
   }
   readonly property bool batteryFull: fullyCharged || (!root.discharging && batteryFraction >= 1)
   readonly property bool batteryFlowIdle: batteryFull || chargeThresholdActive
