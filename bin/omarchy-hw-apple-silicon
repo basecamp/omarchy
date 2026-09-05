@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the computer is an Apple Silicon Mac.
+
+# Apple Silicon Macs have no DMI, so omarchy-hw-match cannot see them. The
+# device tree Asahi's m1n1 hands the kernel names every board "apple,<model>",
+# which is the one identifier that survives across M1 through M4.
+proc_root="${OMARCHY_PROC_ROOT:-/proc}"
+
+[[ $(uname -m) == "aarch64" ]] &&
+  grep -aq 'apple,' "$proc_root/device-tree/compatible" 2>/dev/null

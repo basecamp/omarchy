@@ -29,6 +29,9 @@
 --       -- Use natural (inverse) scrolling.
 --       natural_scroll = true,
 --
+--       -- Re-enable tap-to-click (one-finger tap = left, two-finger = right).
+--       tap_to_click = true,
+--
 --       -- Use two-finger clicks for right-click instead of lower-right corner.
 --       clickfinger_behavior = true,
 --

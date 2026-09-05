@@ -3,6 +3,13 @@
 # omarchy:summary=Add or remove an EFI boot entry for the Omarchy UKI, allowing the system to boot directly
 # omarchy:requires-sudo=true
 
+# Apple Silicon has no EFI variables to write: m1n1 and U-Boot own the boot
+# chain, so there is no direct-boot entry to add or remove.
+if omarchy-hw-apple-silicon; then
+  echo "Error: Direct boot is not supported on Apple Silicon; use the Apple boot flow provided by Asahi Linux" >&2
+  exit 1
+fi
+
 if [[ ! -d /sys/firmware/efi ]]; then
   echo "Error: System is not booted in UEFI mode" >&2
   exit 1

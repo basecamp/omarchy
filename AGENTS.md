@@ -80,6 +80,8 @@ Use these instead of raw shell commands:
 
 - `omarchy-cmd-missing` / `omarchy-cmd-present` - check for commands
 - `omarchy-pkg-missing` / `omarchy-pkg-present` - check for packages (don't use these if you can just use `omarchy-pkg-add`/`omarchy-pkg-drop`)
+- `omarchy-pkg-available` - check whether packages exist in the configured pacman repositories
+- `omarchy-install-available` - check the complete package transaction for an optional menu install
 - `omarchy-pkg-add` - install packages (handles both pacman and AUR)
 - `omarchy-pkg-drop` - remove packages; use this instead of raw `pacman -R*`
 - `omarchy-notification-send` - send desktop notifications; do not call `notify-send` directly

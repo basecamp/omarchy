@@ -3,20 +3,41 @@
 # omarchy:summary=Ensure the Omarchy and Arch keyring packages are installed and populated
 # omarchy:requires-sudo=true
 
-if omarchy-pkg-missing omarchy-keyring || ! sudo pacman-key --list-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 &>/dev/null; then
-  sudo pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
-  sudo pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
+trusted_key=40DFB630FF42BCFFB047046CF0134EE680CAC571
+
+if omarchy-hw-apple-silicon; then
+  # Apple Silicon images ship omarchy-keyring with the installed system, so the
+  # Omarchy key is already in pacman's keyring. Fetching it from a keyserver
+  # would silently accept whatever the network handed back, so instead verify
+  # the fingerprint that is already trusted and fail loudly when it is not.
+  # Reading the keyring directly avoids another sudo prompt for a check.
+  installed_fingerprint=$(GNUPGHOME=/etc/pacman.d/gnupg gpg --batch --with-colons --fingerprint "$trusted_key" 2>/dev/null |
+    awk -F: '$1 == "fpr" { print $10; exit }')
+  if omarchy-pkg-missing omarchy-keyring || [[ $installed_fingerprint != "$trusted_key" ]]; then
+    echo "The Omarchy signing key ships with the installed system (omarchy-keyring) and is missing or does not match $trusted_key." >&2
+    echo "Reinstall omarchy-keyring from the installed system rather than fetching keys from a keyserver." >&2
+    exit 1
+  fi
+elif omarchy-pkg-missing omarchy-keyring || ! sudo pacman-key --list-keys "$trusted_key" &>/dev/null; then
+  sudo pacman-key --recv-keys "$trusted_key" --keyserver keys.openpgp.org
+  sudo pacman-key --lsign-key "$trusted_key"
 
   # This is generally not a good idea, but this is a special case because we're going to be updating
   # the full set of packages in omarchy-update-system-pkgs right after this (and it needs latest keyring)!
   sudo pacman -Sy
   omarchy-pkg-add omarchy-keyring
 
-  sudo pacman-key --list-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571
+  sudo pacman-key --list-keys "$trusted_key"
 fi
 
-# Ensure we have the latest archlinux-keyring, maintainer keys might have changed
+# Ensure we have the latest platform keyring, maintainer keys might have changed.
 # Always reinstall, as the keyring can be updated without a package version bump.
+# Arch Linux ARM signs its packages with its own keys, so Apple Silicon needs
+# that keyring rather than archlinux-keyring.
+platform_keyring=archlinux-keyring
+if omarchy-hw-apple-silicon; then
+  platform_keyring=archlinuxarm-keyring
+fi
 echo -e "\e[32m\nUpdate Arch signing keys\e[0m"
-sudo pacman -Sy --noconfirm archlinux-keyring >/dev/null 2> >(grep -vE '^warning: archlinux-keyring-[^ ]+ is up to date -- reinstalling$' >&2)
+sudo pacman -Sy --noconfirm "$platform_keyring" >/dev/null 2> >(grep -vE "^warning: ${platform_keyring}-[^ ]+ is up to date -- reinstalling$" >&2)
 echo "Keys are correct"

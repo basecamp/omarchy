@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# omarchy:summary=Check whether an optional install transaction is available
+# omarchy:args=<menu-id>
+# omarchy:hidden=true
+
+menu_id=${1:-}
+packages_file="${OMARCHY_PATH:-/usr/share/omarchy}/install/optional-packages.tsv"
+
+while IFS='|' read -r id packages; do
+  [[ $id == "$menu_id" ]] || continue
+  read -ra package_names <<<"$packages"
+  omarchy-pkg-available "${package_names[@]}"
+  exit
+done <"$packages_file"
+
+echo "Unknown optional install: $menu_id" >&2
+exit 1

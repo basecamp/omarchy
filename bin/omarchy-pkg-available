@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true if all named packages exist in the configured pacman repositories
+# omarchy:args=<packages...>
+
+for pkg in "$@"; do
+  pacman -Si "$pkg" &>/dev/null || exit 1
+done
+
+exit 0

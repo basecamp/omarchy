@@ -2,10 +2,15 @@
 
 # omarchy:summary=Returns true if a battery is present on the system.
 
-for bat in /sys/class/power_supply/BAT*; do
+# Not every battery is called BAT*: Apple Silicon reports macsmc-battery and
+# some Framework and Chromebook firmware CMB0, so decide by type, not by name.
+power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-/sys/class/power_supply}"
+
+for bat in "$power_supply_path"/*; do
   [[ -r $bat/present ]] &&
-  [[ $(cat $bat/present) == "1" ]] &&
-  [[ $(cat $bat/type) == "Battery" ]] &&
+  [[ $(<"$bat/present") == "1" ]] &&
+  [[ -r $bat/type ]] &&
+  [[ $(<"$bat/type") == "Battery" ]] &&
   exit 0
 done
 

@@ -27,6 +27,12 @@ grep -F '20-wlan.network' "$hardware_network" >/dev/null
 grep -F 'omarchy-networkd-retired' "$hardware_network" >/dev/null
 pass "hardware setup retires archinstall networkd state"
 
+# Apple Silicon Wi-Fi only works through iwd, and only as NetworkManager's
+# backend: iwd.service itself stays disabled above.
+grep -F 'omarchy-hw-apple-silicon' "$hardware_network" >/dev/null
+grep -F 'wifi.backend=iwd' "$hardware_network" >/dev/null
+pass "hardware setup keeps NetworkManager on the iwd backend for Apple Silicon"
+
 grep -F 'OMARCHY_UPGRADE_TO_QUATTRO_LIVE' "$migration" >/dev/null
 grep -F 'systemctl disable --now "$unit"' "$migration" >/dev/null
 grep -F 'systemctl stop systemd-networkd.service' "$migration" >/dev/null

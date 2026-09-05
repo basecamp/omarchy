@@ -1,7 +1,11 @@
 # Configure pacman after package installation completes. Offline target package
 # installs use the live ISO's offline pacman.conf until this final restore.
-cp -f "$OMARCHY_PATH/default/pacman/pacman-${OMARCHY_MIRROR:-stable}.conf" /etc/pacman.conf
-cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-${OMARCHY_MIRROR:-stable}" /etc/pacman.d/mirrorlist
+# Apple Silicon keeps the Arch Linux ARM and Asahi repositories that own its
+# kernel and firmware: the Omarchy x86_64 mirrorlist would leave it unbootable.
+if ! omarchy-hw-apple-silicon; then
+  cp -f "$OMARCHY_PATH/default/pacman/pacman-${OMARCHY_MIRROR:-stable}.conf" /etc/pacman.conf
+  cp -f "$OMARCHY_PATH/default/pacman/mirrorlist-${OMARCHY_MIRROR:-stable}" /etc/pacman.d/mirrorlist
+fi
 
 # Wait for CUPS to own the file, the way omarchy-settings does, so pacman does
 # not turn the override into a .pacnew during ISO package installation.

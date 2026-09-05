@@ -1,0 +1,21 @@
+# Optional install transactions expected to remain available on aarch64.
+install.style.font.cascadia
+install.style.font.meslo
+install.style.font.fira
+install.style.font.victor
+install.style.font.bitstream
+install.style.font.iosevka
+install.browser.firefox
+install.service.signal
+install.service.tailscale
+install.editor.helix
+install.editor.vim
+install.terminal.alacritty
+install.terminal.foot
+install.terminal.kitty
+install.gaming.steam
+install.gaming.geforce-now
+install.development.rails
+install.development.clojure
+install.development.php.php
+install.development.php.laravel

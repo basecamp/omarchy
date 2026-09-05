@@ -94,6 +94,21 @@ mapfile -t leftovers < <(
 )
 ((${#leftovers[@]})) || exit 1
 
+# On Apple Silicon the boot chain, initramfs, and pacman configuration are
+# platform-owned: the Asahi image writes them and nothing in Omarchy's packages
+# may take them over. Quarantining one of these would leave the machine
+# unbootable or unable to update, so refuse the whole report instead.
+if omarchy-hw-apple-silicon; then
+  for path in "${leftovers[@]}"; do
+    case "$path" in
+      /boot|/boot/*|/etc/default/grub|/etc/grub|/etc/grub/*|/etc/limine|/etc/limine/*|/etc/mkinitcpio*|/etc/modprobe.d/omarchy-usb-autosuspend.conf|/etc/pacman.conf|/etc/pacman.d|/etc/pacman.d/*|/etc/systemd/oomd.conf.d|/etc/systemd/oomd.conf.d/*|/etc/tmpfiles.d/omarchy-zswap.conf|/usr/lib/initcpio|/usr/lib/initcpio/*|/usr/lib/systemd/user/app.slice.d|/usr/lib/systemd/user/app.slice.d/*|/usr/lib/systemd/zram-generator.conf.d|/usr/lib/systemd/zram-generator.conf.d/*)
+        echo "Refusing to replace Apple Silicon platform path: $path" >&2
+        exit 1
+        ;;
+    esac
+  done
+fi
+
 # All of them or none: moving a subset leaves the retry blocked by the rest, and
 # the moved files inactive for nothing.
 ((${#leftovers[@]} == $(grep -c ' exists in filesystem' "$errors"))) || exit 1
