@@ -807,3 +807,113 @@ assert_output_contains "a --help behind -- belongs to the command and still forw
 
 output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
 assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"
+
+# Sibling packages install their own omarchy-* binaries into /usr/bin without
+# symlinking them into /usr/share/omarchy/bin. On a production install the
+# dispatcher falls back to /usr/bin so those routes still resolve; here we
+# use the OMARCHY_SECONDARY_BIN_DIR env seam to drive that path against a
+# scratch directory instead of touching /usr/bin.
+make_tmpdir PRIMARY_DIR
+make_tmpdir SECONDARY_DIR
+ln -s "$CLI" "$PRIMARY_DIR/omarchy"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf '# omarchy:summary=Secondary-only route\n'
+  printf 'echo "secondary-ok args=[$*]"\n'
+} >"$SECONDARY_DIR/omarchy-secondary-test"
+chmod +x "$SECONDARY_DIR/omarchy-secondary-test"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf '# omarchy:group=sibling\n'
+  printf '# omarchy:name=child\n'
+  printf '# omarchy:summary=Secondary-only child in a shared group\n'
+  printf 'echo secondary-child-ok\n'
+} >"$SECONDARY_DIR/omarchy-sibling-child"
+chmod +x "$SECONDARY_DIR/omarchy-sibling-child"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf '# omarchy:summary=Primary wins on name collision\n'
+  printf 'echo primary-wins\n'
+} >"$PRIMARY_DIR/omarchy-collision"
+chmod +x "$PRIMARY_DIR/omarchy-collision"
+
+{
+  printf '#!/bin/bash\n\n'
+  printf '# omarchy:summary=Would-be shadow in the secondary dir\n'
+  printf 'echo secondary-shadow\n'
+} >"$SECONDARY_DIR/omarchy-collision"
+chmod +x "$SECONDARY_DIR/omarchy-collision"
+
+secondary_env=(env "OMARCHY_SECONDARY_BIN_DIR=$SECONDARY_DIR")
+
+output=$("${secondary_env[@]}" "$PRIMARY_DIR/omarchy" secondary test)
+assert_output_contains "secondary-only route dispatches" "$output" "secondary-ok"
+
+output=$("${secondary_env[@]}" "$PRIMARY_DIR/omarchy" secondary test arg1 arg2)
+assert_output_contains "secondary-only route forwards args" "$output" "secondary-ok args=[arg1 arg2]"
+
+output=$("${secondary_env[@]}" "$PRIMARY_DIR/omarchy" sibling child)
+assert_output_contains "secondary-only child route dispatches" "$output" "secondary-child-ok"
+
+output=$("${secondary_env[@]}" "$PRIMARY_DIR/omarchy" sibling --help)
+assert_output_contains "group help finds secondary-only children" "$output" "omarchy sibling child"
+
+"${secondary_env[@]}" "$PRIMARY_DIR/omarchy" commands --all --json \
+  | jq -e '.commands[] | select(.route == "omarchy secondary test")' >/dev/null
+pass "commands --all lists secondary-dir commands"
+
+"${secondary_env[@]}" "$PRIMARY_DIR/omarchy" commands --check >/dev/null
+pass "commands --check accepts commands living only in the secondary dir"
+
+# A sibling-package binary with no summary metadata should surface as a
+# warning, not fail the check, so foreign hygiene issues do not break users
+# who just installed an unrelated optional package.
+make_tmpdir FOREIGN_DIR
+ln -s "$CLI" "$FOREIGN_DIR/omarchy"
+make_tmpdir FOREIGN_SECONDARY
+{
+  printf '#!/bin/bash\n\n'
+  printf 'echo no-metadata-here\n'
+} >"$FOREIGN_SECONDARY/omarchy-foreign-nometa"
+chmod +x "$FOREIGN_SECONDARY/omarchy-foreign-nometa"
+
+foreign_stderr=$(env "OMARCHY_SECONDARY_BIN_DIR=$FOREIGN_SECONDARY" "$FOREIGN_DIR/omarchy" commands --check 2>&1 >/dev/null)
+assert_output_contains "foreign missing-summary is reported" "$foreign_stderr" "Missing metadata summary (foreign): omarchy-foreign-nometa"
+if [[ $foreign_stderr == *"Command metadata check failed"* ]]; then
+  fail "foreign missing-summary does not fail the check"
+fi
+pass "foreign missing-summary does not fail the check"
+
+# Primary-tree missing-summary must still fail hard (regression guard).
+{
+  printf '#!/bin/bash\n\n'
+  printf 'echo no-primary-metadata\n'
+} >"$FOREIGN_DIR/omarchy-primary-nometa"
+chmod +x "$FOREIGN_DIR/omarchy-primary-nometa"
+
+if env "OMARCHY_SECONDARY_BIN_DIR=$FOREIGN_SECONDARY" "$FOREIGN_DIR/omarchy" commands --check >/dev/null 2>&1; then
+  fail "primary-tree missing-summary still fails commands --check"
+fi
+pass "primary-tree missing-summary still fails commands --check"
+
+output=$("${secondary_env[@]}" "$PRIMARY_DIR/omarchy" collision)
+assert_output_contains "primary wins on collision" "$output" "primary-wins"
+if [[ $output == *"secondary-shadow"* ]]; then
+  fail "primary-dir binary is not shadowed by a same-named secondary"
+fi
+pass "primary-dir binary is not shadowed by a same-named secondary"
+
+collision_json=$("${secondary_env[@]}" "$PRIMARY_DIR/omarchy" commands --all --json)
+if (( $(jq '[.commands[] | select(.binary == "omarchy-collision")] | length' <<<"$collision_json") != 1 )); then
+  fail "colliding binary name is registered only once"
+fi
+pass "colliding binary name is registered only once"
+
+output=$(env OMARCHY_SECONDARY_BIN_DIR= "$PRIMARY_DIR/omarchy" secondary test 2>&1 || true)
+if [[ $output != *"Unknown Omarchy command"* ]]; then
+  fail "empty OMARCHY_SECONDARY_BIN_DIR disables the fallback"
+fi
+pass "empty OMARCHY_SECONDARY_BIN_DIR disables the fallback"

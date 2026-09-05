@@ -3,6 +3,21 @@
 set -o pipefail
 
 OMARCHY_BIN_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+
+# Sibling packages (omarchy-settings, omarchy-nvim, and any future omarchy-*
+# package) install their own omarchy-* binaries into /usr/bin without also
+# symlinking them into /usr/share/omarchy/bin, so their routes are invisible
+# to a dispatcher that only scans its own directory. Fall back to /usr/bin on
+# a production install so those routes still resolve. Dev-link and test
+# invocations set OMARCHY_SECONDARY_BIN_DIR themselves (empty disables it).
+if [[ -z ${OMARCHY_SECONDARY_BIN_DIR+set} ]]; then
+  if [[ $OMARCHY_BIN_DIR == "/usr/share/omarchy/bin" ]]; then
+    OMARCHY_SECONDARY_BIN_DIR="/usr/bin"
+  else
+    OMARCHY_SECONDARY_BIN_DIR=""
+  fi
+fi
+
 METADATA_SCAN_LIMIT=80
 
 COMMAND_KEYS=()
@@ -21,6 +36,7 @@ declare -A COMMAND_HIDDEN
 declare -A COMMAND_ALIASES
 declare -A COMMAND_HAS_SUMMARY
 declare -A COMMAND_METADATA_ERRORS
+declare -A COMMAND_ORIGIN
 declare -A ROUTE_TO_KEY
 declare -A ROUTE_IS_ALIAS
 declare -A BINARY_TO_KEY
@@ -165,6 +181,27 @@ register_route() {
   fi
 }
 
+resolve_binary_path() {
+  RESOLVED_BINARY_PATH=""
+  local binary="$1"
+  local candidate="$OMARCHY_BIN_DIR/$binary"
+
+  if [[ -f $candidate && -x $candidate ]]; then
+    RESOLVED_BINARY_PATH="$candidate"
+    return 0
+  fi
+
+  if [[ -n $OMARCHY_SECONDARY_BIN_DIR ]]; then
+    candidate="$OMARCHY_SECONDARY_BIN_DIR/$binary"
+    if [[ -f $candidate && -x $candidate ]]; then
+      RESOLVED_BINARY_PATH="$candidate"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 register_command() {
   local file="$1"
   local file_binary="${file##*/}"
@@ -279,7 +316,10 @@ register_command() {
   [[ $hidden == "true" ]] || hidden="false"
 
   local key="$file_binary"
+  local origin="primary"
+  [[ $file != "$OMARCHY_BIN_DIR/"* ]] && origin="secondary"
   COMMAND_KEYS+=("$key")
+  COMMAND_ORIGIN["$key"]="$origin"
   COMMAND_ROUTE["$key"]="$route"
   COMMAND_FALLBACK_ROUTE["$key"]="$fallback_route"
   COMMAND_BINARY["$key"]="$file_binary"
@@ -319,14 +359,19 @@ load_commands() {
     register_command "$file"
   done
 
+  [[ -z $OMARCHY_SECONDARY_BIN_DIR ]] && return
+  for file in "$OMARCHY_SECONDARY_BIN_DIR"/omarchy-*; do
+    [[ -f $file && -x $file ]] || continue
+    [[ -n ${BINARY_TO_KEY[${file##*/}]} ]] && continue
+    register_command "$file"
+  done
 }
 
 load_command_by_binary() {
   local binary="$1"
-  local file="$OMARCHY_BIN_DIR/$binary"
 
-  [[ -f $file && -x $file ]] || return 1
-  register_command "$file"
+  resolve_binary_path "$binary" || return 1
+  register_command "$RESOLVED_BINARY_PATH"
 }
 
 load_child_commands_by_binary() {
@@ -335,6 +380,13 @@ load_child_commands_by_binary() {
 
   for file in "$OMARCHY_BIN_DIR/$binary"-*; do
     [[ -f $file && -x $file ]] || continue
+    register_command "$file"
+  done
+
+  [[ -z $OMARCHY_SECONDARY_BIN_DIR ]] && return
+  for file in "$OMARCHY_SECONDARY_BIN_DIR/$binary"-*; do
+    [[ -f $file && -x $file ]] || continue
+    [[ -n ${BINARY_TO_KEY[${file##*/}]} ]] && continue
     register_command "$file"
   done
 }
@@ -347,6 +399,12 @@ group_has_child_commands() {
     [[ -f $file && -x $file ]] && return 0
   done
 
+  if [[ -n $OMARCHY_SECONDARY_BIN_DIR ]]; then
+    for file in "$OMARCHY_SECONDARY_BIN_DIR/omarchy-$group"-*; do
+      [[ -f $file && -x $file ]] && return 0
+    done
+  fi
+
   return 1
 }
 
@@ -354,6 +412,7 @@ group_has_binary_commands() {
   local group="$1"
 
   [[ -x $OMARCHY_BIN_DIR/omarchy-$group ]] && return 0
+  [[ -n $OMARCHY_SECONDARY_BIN_DIR && -x $OMARCHY_SECONDARY_BIN_DIR/omarchy-$group ]] && return 0
   group_has_child_commands "$group"
 }
 
@@ -376,6 +435,8 @@ load_group_commands() {
 
   if [[ -f $OMARCHY_BIN_DIR/omarchy-$group && -x $OMARCHY_BIN_DIR/omarchy-$group ]]; then
     register_command "$OMARCHY_BIN_DIR/omarchy-$group"
+  elif [[ -n $OMARCHY_SECONDARY_BIN_DIR && -f $OMARCHY_SECONDARY_BIN_DIR/omarchy-$group && -x $OMARCHY_SECONDARY_BIN_DIR/omarchy-$group ]]; then
+    register_command "$OMARCHY_SECONDARY_BIN_DIR/omarchy-$group"
   fi
 
   for file in "$OMARCHY_BIN_DIR/omarchy-$group"-*; do
@@ -383,6 +444,12 @@ load_group_commands() {
     register_command "$file"
   done
 
+  [[ -z $OMARCHY_SECONDARY_BIN_DIR ]] && return
+  for file in "$OMARCHY_SECONDARY_BIN_DIR/omarchy-$group"-*; do
+    [[ -f $file && -x $file ]] || continue
+    [[ -n ${BINARY_TO_KEY[${file##*/}]} ]] && continue
+    register_command "$file"
+  done
 }
 
 resolve_direct_route() {
@@ -392,17 +459,16 @@ resolve_direct_route() {
   local prefix_count=0
   local route=""
   local binary=""
-  local candidate=""
 
   for (( prefix_count = argc; prefix_count >= 1; prefix_count-- )); do
     route="omarchy $(join_words " " "${args[@]:0:prefix_count}")"
 
     binary="omarchy-$(join_words "-" "${args[@]:0:prefix_count}")"
-    candidate="$OMARCHY_BIN_DIR/$binary"
-    if [[ -f $candidate && -x $candidate ]]; then
+    if resolve_binary_path "$binary"; then
       DIRECT_RESOLVED_BINARY="$binary"
       DIRECT_RESOLVED_COUNT="$prefix_count"
       DIRECT_RESOLVED_ROUTE="$route"
+      DIRECT_RESOLVED_PATH="$RESOLVED_BINARY_PATH"
       return 0
     fi
   done
@@ -705,20 +771,32 @@ show_commands_check() {
   done
 
   for key in "${COMMAND_KEYS[@]}"; do
+    local origin="${COMMAND_ORIGIN[$key]}"
+    local strict="true"
+    [[ $origin == "secondary" ]] && strict="false"
+
     if [[ ${COMMAND_HAS_SUMMARY[$key]} != "true" ]]; then
-      echo "Missing metadata summary: ${COMMAND_BINARY[$key]}" >&2
-      failures=$((failures + 1))
+      if [[ $strict == "true" ]]; then
+        echo "Missing metadata summary: ${COMMAND_BINARY[$key]}" >&2
+        failures=$((failures + 1))
+      else
+        echo "Missing metadata summary (foreign): ${COMMAND_BINARY[$key]}" >&2
+      fi
     fi
 
     if [[ -n ${COMMAND_METADATA_ERRORS[$key]} ]]; then
       while IFS= read -r error; do
         [[ -n $error ]] || continue
-        echo "Invalid metadata in ${COMMAND_BINARY[$key]}: $error" >&2
-        failures=$((failures + 1))
+        if [[ $strict == "true" ]]; then
+          echo "Invalid metadata in ${COMMAND_BINARY[$key]}: $error" >&2
+          failures=$((failures + 1))
+        else
+          echo "Invalid metadata in ${COMMAND_BINARY[$key]} (foreign): $error" >&2
+        fi
       done < <(pipe_values_as_lines "${COMMAND_METADATA_ERRORS[$key]}")
     fi
 
-    if [[ ! -x $OMARCHY_BIN_DIR/${COMMAND_BINARY[$key]} ]]; then
+    if ! resolve_binary_path "${COMMAND_BINARY[$key]}"; then
       echo "Missing binary: ${COMMAND_BINARY[$key]}" >&2
       failures=$((failures + 1))
     fi
@@ -953,7 +1031,7 @@ dispatch_fast_or_help() {
 
   if resolve_direct_route "$#" "${args[@]}"; then
     remaining=("${args[@]:DIRECT_RESOLVED_COUNT}")
-    binary_path="$OMARCHY_BIN_DIR/$DIRECT_RESOLVED_BINARY"
+    binary_path="$DIRECT_RESOLVED_PATH"
 
     if remaining_has_help_flag "${remaining[@]}"; then
       if ! load_command_by_binary "$DIRECT_RESOLVED_BINARY"; then
@@ -1028,11 +1106,11 @@ dispatch_or_help() {
       return 0
     fi
 
-    binary_path="$OMARCHY_BIN_DIR/${COMMAND_BINARY[$key]}"
-    if [[ ! -x $binary_path ]]; then
+    if ! resolve_binary_path "${COMMAND_BINARY[$key]}"; then
       echo "Binary is missing or not executable: ${COMMAND_BINARY[$key]}" >&2
       return 127
     fi
+    binary_path="$RESOLVED_BINARY_PATH"
 
     if (( ${#remaining[@]} == 0 )) && command_requires_args "$key"; then
       if (( RESOLVED_COUNT == 1 )) && group_exists "$1"; then
