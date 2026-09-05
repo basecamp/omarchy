@@ -1,0 +1,95 @@
+#!/bin/bash
+
+# omarchy:summary=Returns per-battery cycles, capacity, health and charge thresholds
+
+# omarchy-battery-status describes the machine. This describes each cell.
+#
+# Charge cycles, design capacity and health belong to a physical battery and
+# have no aggregate — a machine with a 965-cycle pack and a 156-cycle pack has
+# no meaningful cycle count of its own. So this emits one record per battery
+# and lets the panel render each on its own.
+#
+# UPower drives the live values in the panel; this covers the fields
+# Quickshell's UPower QML API does not expose (charge cycles, thresholds) plus
+# a human name for the cell.
+#
+# Output: <native-path>\t<key>\t<value>, one field per line.
+
+power_supply_path="${OMARCHY_POWER_SUPPLY_PATH:-/sys/class/power_supply}"
+dmi_path="${OMARCHY_DMI_PATH:-/sys/class/dmi/id}"
+
+emit() { printf '%s\t%s\t%s\n' "$1" "$2" "$3"; }
+
+# Peripherals — Bluetooth mice, keyboards, headsets — enumerate under the same
+# battery_ prefix as the machine's own cells, so the prefix alone is not a
+# filter. Only a power supply is a battery of this machine. The panel applies
+# the same test through UPower's powerSupply property, so the two agree on what
+# counts: the numbering below matches the cards that actually get rendered, and
+# a paired mouse cannot turn "Battery" into "Battery 1".
+names=()
+infos=()
+while IFS= read -r device; do
+  info=$(upower -i "$device" 2>/dev/null) || continue
+  grep -q '^[[:space:]]*power supply:[[:space:]]*yes' <<<"$info" || continue
+
+  name=$(awk '/native-path:/ { print $2; exit }' <<<"$info")
+  [[ -n $name ]] || continue
+
+  names+=("$name")
+  infos+=("$info")
+done < <(upower -e 2>/dev/null | grep '/battery_' | sort)
+
+count=${#names[@]}
+(( count )) || exit 0
+
+# Lenovo's Power Bridge pairs a built-in cell with a hot-swappable one, always
+# enumerated BAT0 then BAT1. That is the only two-battery layout we can name
+# with confidence, so every other machine falls back to ordinals.
+power_bridge=false
+if (( count == 2 )); then
+  product="$(cat "$dmi_path/product_version" "$dmi_path/product_name" 2>/dev/null)"
+  [[ $product == *ThinkPad* ]] && power_bridge=true
+fi
+
+for (( i = 0; i < count; i++ )); do
+  name=${names[i]}
+  info=${infos[i]}
+
+  if [[ $power_bridge == "true" ]]; then
+    if (( i == 0 )); then label="Internal"; else label="External"; fi
+  elif (( count > 1 )); then
+    label="Battery $((i + 1))"
+  else
+    label="Battery"
+  fi
+
+  model=$(awk '/^ *model:/ { $1 = ""; sub(/^ +/, ""); print; exit }' <<<"$info")
+  vendor=$(awk '/^ *vendor:/ { $1 = ""; sub(/^ +/, ""); print; exit }' <<<"$info")
+  cycles=$(awk '/charge-cycles:/ { print $2; exit }' <<<"$info")
+  full=$(awk '/energy-full:/ { print $2; exit }' <<<"$info")
+  design=$(awk '/energy-full-design:/ { print $2; exit }' <<<"$info")
+  health=$(awk '/^ *capacity:/ { gsub(/%/, "", $2); print $2; exit }' <<<"$info")
+  start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$info")
+  end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$info")
+
+  # UPower's charge-cycles is absent on some firmware; sysfs usually still has it.
+  [[ -z $cycles || $cycles == "N/A" ]] && cycles=$(cat "$power_supply_path/$name/cycle_count" 2>/dev/null)
+  [[ -z $start ]] && start=$(cat "$power_supply_path/$name/charge_control_start_threshold" 2>/dev/null)
+  [[ -z $end ]] && end=$(cat "$power_supply_path/$name/charge_control_end_threshold" 2>/dev/null)
+
+  emit "$name" label "$label"
+  [[ -n $model ]] && emit "$name" model "$model"
+  [[ -n $vendor ]] && emit "$name" vendor "$vendor"
+  [[ -n $cycles && $cycles != "N/A" ]] && emit "$name" cycles "$cycles"
+  [[ -n $full ]] && emit "$name" size "$(awk -v v="$full" 'BEGIN { printf "%.1fWh", v }')"
+  [[ -n $design ]] && emit "$name" design "$(awk -v v="$design" 'BEGIN { printf "%.1fWh", v }')"
+  [[ -n $health ]] && emit "$name" health "$(awk -v v="$health" 'BEGIN { printf "%d%%", v + 0.5 }')"
+
+  if [[ -n $end ]]; then
+    if [[ -n $start && $start != "$end" ]]; then
+      emit "$name" threshold "${start}-${end}%"
+    else
+      emit "$name" threshold "${end}%"
+    fi
+  fi
+done

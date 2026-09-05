@@ -42,6 +42,39 @@ assertEqual(
   'power shows battery icon when unplugged before battery state refreshes'
 )
 
+// Per-battery cards. The fixture above renumbers the enum, so these use UPower's
+// real ordering: Empty sits at 3, where that fixture has FullyCharged.
+const deviceStates = { Unknown: 0, Charging: 1, Discharging: 2, Empty: 3, FullyCharged: 4, PendingCharge: 5, PendingDischarge: 6 }
+const types = { Battery: 2 }
+const displayDevice = { type: types.Battery, powerSupply: true, nativePath: '' }
+const bat0 = { type: types.Battery, powerSupply: true, nativePath: 'BAT0' }
+const bat1 = { type: types.Battery, powerSupply: true, nativePath: 'BAT1' }
+const mouse = { type: types.Battery, powerSupply: false, nativePath: 'hid-dc:2c:26:1b:14:9f-battery' }
+const headset = { type: 8, powerSupply: false, nativePath: 'hid-headset' }
+
+assert(power.isPhysicalBattery(bat0, displayDevice, types), 'power counts a power supply battery as the machine\'s own')
+assert(!power.isPhysicalBattery(mouse, displayDevice, types), 'power excludes a peripheral battery')
+assert(!power.isPhysicalBattery(headset, displayDevice, types), 'power excludes a device that is not a battery')
+assert(!power.isPhysicalBattery(displayDevice, displayDevice, types), 'power excludes the aggregate display device')
+assert(!power.isPhysicalBattery(bat0, bat0, types), 'power excludes whichever device UPower hands back as the aggregate')
+assertDeepEqual(
+  power.physicalBatteries([bat1, mouse, displayDevice, bat0], displayDevice, types).map(function(d) { return d.nativePath }),
+  ['BAT0', 'BAT1'],
+  'power orders batteries by native path and drops everything else'
+)
+
+assertEqual(power.deviceStateLabel({ isPresent: true, state: deviceStates.Empty }, deviceStates), 'Empty', 'power labels a drained pack as empty')
+assertEqual(power.deviceStateLabel({ isPresent: true, state: deviceStates.Unknown }, deviceStates), 'Idle', 'power labels an unreported state as idle')
+assertEqual(power.deviceStateLabel({ isPresent: false }, deviceStates), 'Absent', 'power labels a missing pack as absent')
+
+// The states object lives in Panel.qml, so a member missing there reads as Idle
+// no matter what Model.js maps. That is how Empty was lost.
+for (const member of ['Charging', 'Discharging', 'Empty', 'FullyCharged', 'PendingCharge', 'PendingDischarge'])
+  assert(
+    new RegExp(member + ': UPowerDeviceState\\.' + member).test(panelSource),
+    `power hands UPower's ${member} state to the per-battery labels`
+  )
+
 assert(/if \(b === Qt\.RightButton\) root\.togglePercentage\(\)/.test(panelSource), 'power right click toggles the bar percentage')
 assert(/Object\.assign\([^\n]+showPercentage: !root\.showPercentage[^\n]+\)[\s\S]*updateEntryInline/.test(panelSource), 'power persists the bar percentage setting')
 assert(/Math\.round\(root\.batteryFraction \* 100\) \+ "% " \+ root\.batteryIcon\(\)/.test(panelSource), 'power places the percentage before the battery icon')

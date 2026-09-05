@@ -29,13 +29,34 @@ Panel {
     return !!(device && device.isPresent)
   }
 
+  // Every physical battery UPower knows about, in native-path order. The hero
+  // above stays on displayDevice — the machine-wide view — while these get a
+  // section each, because cycles and capacity are per-cell facts that cannot
+  // be aggregated.
+  readonly property var batteryDevices: Model.physicalBatteries(
+    UPower.devices ? UPower.devices.values : [], UPower.displayDevice, upowerTypes())
+  readonly property bool multiBattery: batteryDevices.length > 1
+  // { BAT0: { cycles, size, health, ... }, ... } from omarchy-battery-details.
+  property var batteryDetails: ({})
+
+  function detailsFor(device) {
+    var key = device ? String(device.nativePath || "") : ""
+    return (key && batteryDetails[key]) ? batteryDetails[key] : ({})
+  }
+
   function upowerStates() {
     return {
       Charging: UPowerDeviceState.Charging,
       Discharging: UPowerDeviceState.Discharging,
+      Empty: UPowerDeviceState.Empty,
       FullyCharged: UPowerDeviceState.FullyCharged,
-      PendingCharge: UPowerDeviceState.PendingCharge
+      PendingCharge: UPowerDeviceState.PendingCharge,
+      PendingDischarge: UPowerDeviceState.PendingDischarge
     }
+  }
+
+  function upowerTypes() {
+    return { Battery: UPowerDeviceType.Battery }
   }
 
   function selectProfileByDelta(delta) {
@@ -81,6 +102,7 @@ Panel {
     var d = UPower.displayDevice
     return Model.batteryFraction(d)
   }
+
 
   readonly property bool charging: {
     var d = UPower.displayDevice
@@ -138,6 +160,15 @@ Panel {
     if (!batteryProc.running) batteryProc.running = true
     if (!profilesProc.running) profilesProc.running = true
     if (!systemProc.running) systemProc.running = true
+    if (!detailsProc.running) detailsProc.running = true
+  }
+
+  function updateBatteryDetails(raw) {
+    var next = Model.parseBatteryDetails(raw)
+    // Same guard as the other readers: keep the last good payload rather than
+    // blanking every card if a refresh lands mid AC transition.
+    if (Object.keys(next).length === 0) return
+    batteryDetails = next
   }
 
   function updateKeyValue(raw, targetName) {
@@ -221,6 +252,12 @@ Panel {
     id: systemProc
     command: ["omarchy-system-stats"]
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateKeyValue(text, "system") }
+  }
+
+  Process {
+    id: detailsProc
+    command: ["omarchy-battery-details"]
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.updateBatteryDetails(text) }
   }
 
   Process {
@@ -346,7 +383,7 @@ Panel {
             spacing: Style.space(2)
 
             Text {
-              text: "Battery"
+              text: root.multiBattery ? "All batteries" : "Battery"
               color: root.bar.foreground
               font.family: root.bar.fontFamily
               font.pixelSize: Style.font.title
@@ -431,6 +468,10 @@ Panel {
           spacing: Style.space(20)
 
           Column {
+            // Hidden on multi-battery machines. Charge cycles are a fact about
+            // a physical cell with no aggregate to report, and capacity is more
+            // useful per cell than summed. The cards below carry both.
+            visible: !root.multiBattery
             width: (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
             InfoPair { label: "Battery size"; value: root.batteryInfo.size || "" }
@@ -438,7 +479,7 @@ Panel {
           }
 
           Column {
-            width: (parent.width - parent.spacing) / 2
+            width: root.multiBattery ? parent.width : (parent.width - parent.spacing) / 2
             spacing: Style.spacing.labelGap
             InfoPair {
               label: root.chargeThresholdActive ? "Charge limit" : (root.discharging ? "Time left" : "Time to full")
@@ -447,6 +488,36 @@ Panel {
             InfoPair {
               label: root.chargeThresholdActive ? "Battery state" : (root.discharging ? "Discharging" : "Charging")
               value: root.chargeThresholdActive ? "Holding" : (root.batteryFull ? "-" : (root.batteryInfo.rate || ""))
+            }
+          }
+        }
+
+        // ---------- Per-battery breakdown ----------
+        // One section per physical cell. Only shown when there is more than
+        // one — a single-battery machine already has all of this in the hero
+        // and the stats row above.
+        Column {
+          id: batteryList
+          visible: root.multiBattery
+          width: parent.width
+          spacing: Style.space(12)
+
+          PanelSeparator {
+            foreground: root.bar.foreground
+          }
+
+          PanelSectionHeader {
+            text: "BATTERIES"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+          }
+
+          Repeater {
+            model: root.batteryDevices
+            BatteryCard {
+              required property var modelData
+              width: batteryList.width
+              device: modelData
             }
           }
         }
@@ -502,6 +573,114 @@ Panel {
               }
             }
           }
+        }
+      }
+    }
+  }
+
+  // One physical battery: name, model, its own charge level, and the stats
+  // that belong to a cell rather than to the machine.
+  component BatteryCard: Column {
+    property var device: null
+
+    readonly property var details: root.detailsFor(device)
+    readonly property real fraction: Model.batteryFraction(device)
+
+    spacing: Style.space(8)
+
+    Item {
+      width: parent.width
+      implicitHeight: Math.max(cellName.implicitHeight, cellPercent.implicitHeight)
+
+      // Named by omarchy-battery-details: the T480 is a Power Bridge machine, so
+      // BAT0/BAT1 are the internal and hot-swappable cells rather than two
+      // interchangeable slots. Falls back to the kernel name off that hardware.
+      Text {
+        id: cellName
+        text: String(details.label || (device ? device.nativePath : "")).toUpperCase()
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.body
+        font.bold: true
+        font.letterSpacing: 0.8
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+      }
+
+      // The kernel name stays visible but demoted — it is what upower, sysfs
+      // and any bug report will call this cell.
+      Text {
+        id: cellModel
+        text: [String(device ? device.nativePath : ""), details.vendor || "", details.model || ""]
+          .filter(function(part) { return part !== "" }).join(" · ")
+        color: root.bar.foreground
+        opacity: 0.55
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+        anchors.left: cellName.right
+        anchors.leftMargin: Style.space(8)
+        anchors.right: cellPercent.left
+        anchors.rightMargin: Style.space(8)
+        anchors.baseline: cellName.baseline
+      }
+
+      Text {
+        id: cellPercent
+        text: device && device.isPresent ? Math.round(fraction * 100) + "%" : "—"
+        color: root.bar.foreground
+        font.family: root.bar.fontFamily
+        font.pixelSize: Style.font.title
+        font.bold: true
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+      }
+    }
+
+    Item {
+      width: parent.width
+      implicitHeight: Style.space(5)
+
+      Rectangle {
+        id: cellTrack
+        anchors.fill: parent
+        radius: height / 2
+        color: Qt.rgba(root.bar.foreground.r, root.bar.foreground.g, root.bar.foreground.b, 0.12)
+      }
+
+      Rectangle {
+        anchors.left: cellTrack.left
+        anchors.verticalCenter: cellTrack.verticalCenter
+        height: cellTrack.height
+        radius: cellTrack.radius
+        color: root.batteryFillColor
+        width: Math.max(cellTrack.height, cellTrack.width * fraction)
+
+        Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+      }
+    }
+
+    Row {
+      width: parent.width
+      spacing: Style.space(20)
+
+      Column {
+        width: (parent.width - parent.spacing) / 2
+        spacing: Style.spacing.labelGap
+        InfoPair { label: "Charge cycles"; value: details.cycles || "—" }
+        InfoPair { label: "Capacity"; value: details.size || "—" }
+      }
+
+      Column {
+        width: (parent.width - parent.spacing) / 2
+        spacing: Style.spacing.labelGap
+        // Health is energy-full against energy-full-design: how much of the
+        // cell's original capacity survives. Worth showing per battery, since
+        // two cells of different ages wear at different rates.
+        InfoPair { label: "Health"; value: details.health || "—" }
+        InfoPair {
+          label: Model.deviceStateLabel(device, root.upowerStates())
+          value: Model.deviceRateLabel(device, root.upowerStates())
         }
       }
     }
