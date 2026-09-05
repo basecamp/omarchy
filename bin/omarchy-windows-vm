@@ -1457,8 +1457,13 @@ To stop: omarchy-windows-vm stop"
   fi
   # If scale is less than 130%, don't set any scale (use default 100)
 
+  # Default to TLS so the connection negotiates cleanly against Entra ID-
+  # joined Windows VMs. Override with OMARCHY_RDP_SEC (e.g. "nla", "rdp").
+  # See https://github.com/basecamp/omarchy/discussions/3106
+  RDP_SEC="${OMARCHY_RDP_SEC:-tls}"
+
   # Connect with RDP in fullscreen (auto-detects resolution)
-  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /clipboard /cert:ignore /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
+  xfreerdp3 /u:"$WIN_USER" /p:"$WIN_PASS" /v:127.0.0.1:3389 -grab-keyboard /sound /microphone /clipboard /cert:ignore /sec:"${RDP_SEC}" /title:"Windows VM - Omarchy" /dynamic-resolution /gfx:AVC444 /floatbar:sticky:off,default:visible,show:fullscreen $RDP_SCALE
 
   # After RDP closes, stop the container unless --keep-alive was specified
   if [[ $KEEP_ALIVE = "false" ]]; then
