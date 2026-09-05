@@ -1,0 +1,3 @@
+# T2 virtual USB reports the built-in keyboard/trackpad as removable=unknown,
+# so udev marks it external and libinput leaves disable-while-typing off.
+ACTION=="add|change", KERNEL=="event*", ENV{ID_INPUT_TOUCHPAD}=="1", ATTRS{name}=="Apple Inc. Apple Internal Keyboard / Trackpad", ENV{ID_INPUT_TOUCHPAD_INTEGRATION}="internal", ENV{ID_INTEGRATION}="internal"

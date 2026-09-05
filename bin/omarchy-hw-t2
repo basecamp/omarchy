@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Detect an Intel Mac with an Apple T2 coprocessor
+# omarchy:hidden=true
+
+# T2 PCI IDs: 106b:1801 or 106b:1802. The built-in keyboard/trackpad
+# hangs off t2bce_vhci and udev labels that USB pad external.
+# Drain lspci fully; grep -q would SIGPIPE and look like "no such hardware" (#6608).
+pci=$(lspci -nn 2>/dev/null || true)
+
+[[ $pci == *106b:1801* || $pci == *106b:1802* ]]
