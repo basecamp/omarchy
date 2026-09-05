@@ -8,6 +8,7 @@
 set -e
 
 AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
+SSHD_DROPIN="/etc/ssh/sshd_config.d/50-omarchy-key-only.conf"
 KEY=""
 GITHUB_USER=""
 
@@ -57,10 +58,49 @@ if [[ -n $KEY && -n $GITHUB_USER ]]; then
   exit 2
 fi
 
-setup_sshd() {
-  echo "Installing and starting the OpenSSH server..."
+install_sshd() {
+  echo "Installing the OpenSSH server..."
   omarchy-pkg-add openssh
+}
+
+# OpenSSH's own default is PasswordAuthentication yes, and Arch's
+# /etc/ssh/sshd_config.d/99-archlinux.conf does not change it -- it only turns
+# KbdInteractiveAuthentication off. So a server started without this file takes
+# password logins from whatever network the machine is on, which is not what a
+# command that exists to authorize a key should leave behind. Arch prepends
+# `Include /etc/ssh/sshd_config.d/*.conf` to sshd_config, so a drop-in is read.
+write_key_only_config() {
+  echo "Turning off SSH password authentication..."
+  sudo install -d -m 755 "${SSHD_DROPIN%/*}"
+  sudo tee "$SSHD_DROPIN" >/dev/null <<'EOF'
+# Managed by omarchy-setup-security-sshd. `omarchy remove security sshd`
+# removes it; delete it by hand to go back to the distribution defaults.
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+EOF
+}
+
+start_sshd() {
+  echo "Starting the OpenSSH server..."
   sudo systemctl enable --now sshd.service
+  # `enable --now` leaves a daemon from an earlier run alone, and sshd parses
+  # its config once at startup, so without this it keeps taking passwords.
+  sudo systemctl reload sshd.service
+}
+
+# The drop-in's own precedence only holds on a stock system; a user's own
+# lower-numbered file can still set PasswordAuthentication yes and win. Ask
+# the daemon what it actually resolved to rather than trust the file we wrote.
+confirm_key_only() {
+  local resolved
+  resolved=$(sudo sshd -T 2>/dev/null) || return 1
+
+  # Both keywords the drop-in writes: with UsePAM yes, a keyboard-interactive
+  # left on is a password prompt over the network however PasswordAuthentication
+  # resolved. Matched case-insensitively because sshd -T's keyword casing is not
+  # stable across releases -- OpenSSH 10.5 prints `PasswordAuthentication no`.
+  grep -qix 'passwordauthentication no' <<<"$resolved" || return 1
+  grep -qix 'kbdinteractiveauthentication no' <<<"$resolved"
 }
 
 open_firewall() {
@@ -86,15 +126,17 @@ authorize_key() {
     return 1
   fi
 
-  mkdir -p "$HOME/.ssh"
-  chmod 700 "$HOME/.ssh"
-  touch "$AUTHORIZED_KEYS"
-  chmod 600 "$AUTHORIZED_KEYS"
+  # errexit is off inside a function called on the left of `||`, so these have
+  # to refuse for themselves or an unwritable home still reports a key.
+  mkdir -p "$HOME/.ssh" || return 1
+  chmod 700 "$HOME/.ssh" || return 1
+  touch "$AUTHORIZED_KEYS" || return 1
+  chmod 600 "$AUTHORIZED_KEYS" || return 1
 
   if grep -qxF "$key" "$AUTHORIZED_KEYS"; then
     echo "Key already authorized: $(ssh-keygen -lf /dev/stdin <<<"$key")"
   else
-    echo "$key" >>"$AUTHORIZED_KEYS"
+    echo "$key" >>"$AUTHORIZED_KEYS" || return 1
     echo "Authorized key: $(ssh-keygen -lf /dev/stdin <<<"$key")"
   fi
 }
@@ -143,54 +185,13 @@ authorize_pasted_key() {
   authorize_key "$key" || exit 1
 }
 
-# Only called after a key is authorized. Disabling password authentication
-# before then could lock the owner out of the machine.
-disable_password_auth() {
-  local config=/etc/ssh/sshd_config.d/10-omarchy-hardening.conf
-  local effective_config
-
-  if [[ ! -s $AUTHORIZED_KEYS ]]; then
-    echo -e "\e[31mCannot disable SSH password authentication without an authorized key.\e[0m" >&2
-    return 1
-  fi
-
-  echo "Disabling SSH password authentication, now that a key is authorized..."
-  sudo install -Dm644 /dev/stdin "$config" <<'CONF'
-# Written by omarchy-setup-security-sshd once an SSH key was authorized.
-# Delete this file and reload sshd to allow password logins again.
-PasswordAuthentication no
-KbdInteractiveAuthentication no
-CONF
-
-  # Validate before reloading: a config sshd rejects would otherwise take the
-  # service down on its next restart, potentially stranding a remote owner.
-  if ! sudo sshd -t; then
-    echo -e "\e[31msshd rejected the hardening config; removing it and leaving passwords on.\e[0m" >&2
-    sudo rm -f "$config"
-    return 1
-  fi
-
-  # Syntax alone is insufficient because sshd uses the first value it reads for
-  # these settings. An earlier administrator rule could leave passwords enabled.
-  # Match keywords case-insensitively: OpenSSH 9.x dumps them lowercase, 10.x
-  # in CamelCase.
-  if ! effective_config=$(sudo sshd -T) ||
-    ! grep -qixF "passwordauthentication no" <<<"$effective_config" ||
-    ! grep -qixF "kbdinteractiveauthentication no" <<<"$effective_config"; then
-    echo -e "\e[31msshd did not apply the password-authentication restrictions; removing the ineffective config.\e[0m" >&2
-    sudo rm -f "$config"
-    return 1
-  fi
-
-  # Reload rather than restart so an administrator already connected keeps
-  # their session.
-  sudo systemctl reload sshd.service
-}
-
 echo -e "\e[32mSetting up SSH server access with key-based authentication.\n\e[0m"
 
-setup_sshd
-open_firewall
+# The package first, because ssh-keygen validates the key and ships with it.
+# Everything that makes the machine reachable waits until a key is in place: a
+# cancelled prompt or a GitHub fetch that comes back empty exits here, and it
+# must not leave a listening server and an open port behind it.
+install_sshd
 
 echo
 if [[ -n $KEY ]]; then
@@ -205,7 +206,20 @@ else
   esac
 fi
 
-disable_password_auth
+# Configured only once a key is actually in place: a cancelled prompt above
+# has exited already, so nothing here leaves password auth turned off, on
+# disk, unapplied for a server this run never started.
+echo
+write_key_only_config
+start_sshd
+
+if ! confirm_key_only; then
+  echo -e "\e[31mA drop-in with a lower number still allows password authentication; sshd was not confirmed key-only, so the firewall port was left closed.\e[0m" >&2
+  echo "Check: sudo sshd -T | grep -iE 'passwordauthentication|kbdinteractiveauthentication'" >&2
+  exit 1
+fi
+
+open_firewall
 
 echo -e "\e[32m\nPerfect! The SSH server is running and your key is authorized.\e[0m"
 echo "Password logins are off; this machine now accepts authorized keys only."

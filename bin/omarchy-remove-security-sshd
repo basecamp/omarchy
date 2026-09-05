@@ -6,11 +6,23 @@
 set -e
 
 AUTHORIZED_KEYS="$HOME/.ssh/authorized_keys"
+SSHD_DROPIN="/etc/ssh/sshd_config.d/50-omarchy-key-only.conf"
 
 echo -e "\e[32mRemoving SSH server access.\n\e[0m"
 
 echo "Stopping and disabling the OpenSSH server..."
 sudo systemctl disable --now sshd.service 2>/dev/null || true
+
+if sudo test -f "$SSHD_DROPIN"; then
+  echo "Removing the key-only sshd drop-in..."
+  sudo rm -f "$SSHD_DROPIN"
+fi
+
+# Pre-#8365 hardening path from quattro, if present.
+if sudo test -f /etc/ssh/sshd_config.d/10-omarchy-hardening.conf; then
+  echo "Removing the legacy sshd hardening drop-in..."
+  sudo rm -f /etc/ssh/sshd_config.d/10-omarchy-hardening.conf
+fi
 
 if omarchy-cmd-present ufw; then
   echo "Closing the SSH port in the firewall..."
