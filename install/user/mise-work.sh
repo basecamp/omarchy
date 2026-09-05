@@ -19,7 +19,12 @@ case ${OMARCHY_SETUP_CONTEXT:-runtime} in
 esac
 
 if [[ -n $NODE_PACKAGE_DIR ]]; then
-  NODE_TARBALL=$(find "$NODE_PACKAGE_DIR" -name "node-v*-linux-x64.tar.gz" -type f 2>/dev/null | head -n1)
+  # Node names its builds x64/arm64, not by uname
+  case "$(uname -m)" in
+    aarch64) _NODE_ARCH=arm64 ;;
+    *)       _NODE_ARCH=x64   ;;
+  esac
+  NODE_TARBALL=$(find "$NODE_PACKAGE_DIR" -name "node-v*-linux-${_NODE_ARCH}.tar.gz" -type f 2>/dev/null | head -n1)
   if [[ -z $NODE_TARBALL ]]; then
     if [[ ${OMARCHY_SETUP_CONTEXT:-} == "provision-owner" ]]; then
       # A factory snapshot predating the bundled tarball may not have it staged.
@@ -31,7 +36,7 @@ if [[ -n $NODE_PACKAGE_DIR ]]; then
       exit 1
     fi
   else
-    NODE_VERSION=$(basename "$NODE_TARBALL" | sed 's/node-v\(.*\)-linux-x64.tar.gz/\1/')
+    NODE_VERSION=$(basename "$NODE_TARBALL" | sed "s/node-v\\(.*\\)-linux-${_NODE_ARCH}.tar.gz/\\1/")
     NODE_INSTALL_DIR="$HOME/.local/share/mise/installs/node/$NODE_VERSION"
 
     mkdir -p "$NODE_INSTALL_DIR"
