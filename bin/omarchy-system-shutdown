@@ -5,13 +5,14 @@
 # omarchy:aliases=omarchy shutdown
 
 # Schedule the shutdown in the user manager so closing the terminal's systemd
-# scope cannot terminate it before it runs.
-systemd-run --user --collect --quiet --on-active="2s" --timer-property=AccuracySec=100ms systemctl poweroff --no-wall || exit 1
+# scope cannot terminate it before it runs. The timer fires after the
+# close-all wait (default 10s) has run its course, so apps get to flush state
+# before the machine powers off (issue #7085).
+systemd-run --user --collect --quiet --on-active="15s" --timer-property=AccuracySec=100ms systemctl poweroff --no-wall || exit 1
 
 omarchy-osd -i shutdown -m "Shutting down" -d 5000
 
 omarchy-state clear re*-required
 
-# Now close all windows
-omarchy-hyprland-window-close-all
-sleep 1 # Allow apps like Chrome to shutdown correctly
+# Now close all windows and wait for them to exit
+omarchy-hyprland-window-close-all --wait

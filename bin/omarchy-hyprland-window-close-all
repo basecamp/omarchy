@@ -2,11 +2,33 @@
 
 # omarchy:summary=Close all open windows
 
+wait_for_exit=false
+if [[ ${1:-} == "--wait" ]]; then
+  wait_for_exit=true
+fi
+
+# Captured before dispatching so a slow sequence of close requests does not
+# eat into the wait budget.
+deadline=$(( $(date +%s) + ${OMARCHY_CLOSE_ALL_TIMEOUT:-10} ))
+
 hyprctl clients -j | \
   jq -r ".[].address" | \
   while read -r addr; do
     hyprctl dispatch "hl.dsp.window.close({ window = \"address:$addr\" })" >/dev/null
   done
+
+if [[ $wait_for_exit == true ]]; then
+  # Closing is asynchronous: the dispatch returns as soon as closing is
+  # requested, while apps may need seconds to flush state (browsers write
+  # their session on close). Shutdown and reboot call --wait so the scheduled
+  # poweroff does not kill apps mid-write; the wait is bounded, so a window
+  # that refuses to close cannot stall a shutdown (issue #7085).
+  while (( $(date +%s) < deadline )); do
+    remaining=$(hyprctl clients -j 2>/dev/null | jq 'length' 2>/dev/null || echo 1)
+    [[ $remaining == 0 ]] && break
+    sleep 0.2
+  done
+fi
 
 # Move to first workspace
 hyprctl dispatch 'hl.dsp.focus({ workspace = "1" })' >/dev/null 2>&1 || hyprctl dispatch workspace 1
