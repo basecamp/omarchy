@@ -1,0 +1,1 @@
+SUBSYSTEM=="drm", ENV{DEVTYPE}=="drm_minor", KERNEL=="card[0-9]*", ATTR{device/vendor}=="0x1002", ATTR{device/power_dpm_force_performance_level}="low"

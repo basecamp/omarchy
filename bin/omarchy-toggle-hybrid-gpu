@@ -1,7 +1,99 @@
 #!/bin/bash
 
-# omarchy:summary=Toggle dedicated vs integrated GPU mode via supergfxd (for hybrid gpu laptops, like Asus G14).
+# omarchy:summary=Toggle dedicated vs integrated GPU mode on supported hybrid laptops.
 # omarchy:requires-sudo=true
+
+toggle_t2_hybrid_gpu() {
+  local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+  local gmux_conf="${OMARCHY_T2_GMUX_CONF:-/etc/modprobe.d/apple-gmux.conf}"
+  local dpm_rule="${OMARCHY_T2_DGPU_RULE:-/etc/udev/rules.d/30-omarchy-t2-amdgpu-pm.rules}"
+  local dpm_source="$OMARCHY_PATH/default/udev/rules.d/30-omarchy-t2-amdgpu-pm.rules"
+  local renderer_env="${OMARCHY_T2_RENDERER_ENV:-$config_home/uwsm/env-hyprland.d/20-omarchy-t2-gpu}"
+  local renderer_source="$OMARCHY_PATH/default/uwsm/env-hyprland.d/20-omarchy-t2-gpu"
+  local supergfx_conf="${OMARCHY_T2_SUPERGFX_CONF:-/etc/supergfxd.conf}"
+  local force_igpu="${OMARCHY_T2_FORCE_IGPU:-/usr/lib/systemd/system-sleep/force-igpu}"
+  local supergfx_delay="${OMARCHY_T2_SUPERGFX_DELAY:-/etc/systemd/system/supergfxd.service.d/delay-start.conf}"
+  local force_igd prompt
+  local -a rebuild
+
+  if [[ -f $gmux_conf ]] && grep -Eq '^[[:space:]]*options[[:space:]]+apple-gmux[[:space:]].*force_igd=(y|Y|1)([[:space:]]|$)' "$gmux_conf"; then
+    force_igd=n
+    prompt="Enable dedicated GPU and reboot?"
+  else
+    force_igd=y
+    prompt="Use integrated low-power mode and reboot?"
+  fi
+
+  if gum confirm "$prompt"; then
+    if omarchy-cmd-present supergfxctl; then
+      if [[ -f $supergfx_conf ]]; then
+        if ! sudo sed -i -E 's/"mode": "[^"]*"/"mode": "Hybrid"/' "$supergfx_conf" ||
+          ! grep -qF '"mode": "Hybrid"' "$supergfx_conf"; then
+          echo "Could not neutralize $supergfx_conf. Graphics mode unchanged." >&2
+          exit 1
+        fi
+      fi
+
+      if ! sudo systemctl disable --now supergfxd; then
+        echo "Could not disable supergfxd. Graphics mode unchanged." >&2
+        exit 1
+      fi
+    fi
+
+    if ! sudo rm -f "$force_igpu" "$supergfx_delay"; then
+      echo "Could not remove stale supergfxd policies. Graphics mode unchanged." >&2
+      exit 1
+    fi
+
+    sudo mkdir -p "$(dirname "$gmux_conf")" "$(dirname "$dpm_rule")"
+
+    if ! echo "options apple-gmux force_igd=$force_igd" | sudo tee "$gmux_conf" >/dev/null; then
+      echo "Could not write $gmux_conf. Graphics mode unchanged." >&2
+      exit 1
+    fi
+
+    if [[ $force_igd == "y" ]]; then
+      if ! sudo install -Dm644 "$dpm_source" "$dpm_rule"; then
+        echo "Could not write $dpm_rule. Graphics mode change incomplete." >&2
+        exit 1
+      fi
+
+    elif ! sudo rm -f "$dpm_rule"; then
+      echo "Could not remove $dpm_rule. Graphics mode change incomplete." >&2
+      exit 1
+    fi
+
+    if ! rm -f "$renderer_env" || ! install -Dm644 "$renderer_source" "$renderer_env"; then
+      echo "Could not install $renderer_env. Graphics mode change incomplete." >&2
+      exit 1
+    fi
+
+    # apple-gmux binds an ACPI device every T2 Mac has, so autodetect pulls it
+    # into the initramfs and udev loads it there, reading the bundled copy of
+    # /etc/modprobe.d. Without a rebuild the reboot lands in the old mode.
+    if omarchy-cmd-present limine-mkinitcpio; then
+      rebuild=(limine-mkinitcpio)
+    else
+      rebuild=(mkinitcpio -P)
+    fi
+
+    # Rebooting on a half-written boot image is how a machine stops booting.
+    if ! sudo "${rebuild[@]}"; then
+      echo "Boot image rebuild failed. Not rebooting." >&2
+      exit 1
+    fi
+
+    omarchy-system-reboot
+  fi
+}
+
+pci_devices="$(lspci -nn)"
+if grep -q '106b:180[12]' <<<"$pci_devices" &&
+  grep -q 'VGA compatible controller.*\[8086:' <<<"$pci_devices" &&
+  grep -q 'VGA compatible controller.*\[1002:' <<<"$pci_devices"; then
+  toggle_t2_hybrid_gpu
+  exit
+fi
 
 if omarchy-cmd-missing supergfxctl; then
   omarchy-pkg-add supergfxctl

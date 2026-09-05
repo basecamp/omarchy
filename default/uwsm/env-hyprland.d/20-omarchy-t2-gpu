@@ -1,0 +1,51 @@
+t2_igpu=
+t2_dgpu=
+t2_drm_dir="${OMARCHY_T2_DRM_DIR:-/sys/class/drm}"
+t2_gmux_conf="${OMARCHY_T2_GMUX_CONF:-/etc/modprobe.d/apple-gmux.conf}"
+t2_primary_driver=i915
+t2_wait_attempts="${OMARCHY_T2_GPU_WAIT_ATTEMPTS:-150}"
+t2_attempt=0
+
+if [ -f "$t2_gmux_conf" ] &&
+  grep -Eq '^[[:space:]]*options[[:space:]]+apple-gmux[[:space:]].*force_igd=(n|N|0)([[:space:]]|$)' "$t2_gmux_conf"; then
+  t2_primary_driver=amdgpu
+fi
+
+case "$t2_wait_attempts" in
+""|*[!0-9]*) t2_wait_attempts=150 ;;
+esac
+
+# The Radeon can register after UWSM starts on this hardware. Let both DRM
+# devices settle before applying the explicit single-GPU list, otherwise
+# Aquamarine can add the late device as an unrestricted hotplugged backend.
+while [ "$t2_attempt" -lt "$t2_wait_attempts" ]; do
+  t2_igpu=
+  t2_dgpu=
+
+  # DRM card numbers can change between boots, so resolve them from their
+  # drivers each time UWSM prepares the Hyprland environment.
+  for t2_card in "$t2_drm_dir"/card[0-9]*; do
+    [ -e "$t2_card/device/driver" ] || continue
+
+    case "$(basename "$(readlink -f "$t2_card/device/driver")")" in
+    i915) t2_igpu="/dev/dri/${t2_card##*/}" ;;
+    amdgpu) t2_dgpu="/dev/dri/${t2_card##*/}" ;;
+    esac
+  done
+
+  if [ -n "$t2_igpu" ] && [ -n "$t2_dgpu" ]; then
+    break
+  fi
+
+  t2_attempt=$((t2_attempt + 1))
+  [ "$t2_attempt" -lt "$t2_wait_attempts" ] && sleep 0.1
+done
+
+if [ "$t2_primary_driver" = amdgpu ] && [ -n "$t2_dgpu" ]; then
+  export AQ_DRM_DEVICES="$t2_dgpu"
+elif [ -n "$t2_igpu" ]; then
+  export AQ_DRM_DEVICES="$t2_igpu"
+fi
+
+unset t2_igpu t2_dgpu t2_drm_dir t2_gmux_conf t2_primary_driver
+unset t2_wait_attempts t2_attempt t2_card
