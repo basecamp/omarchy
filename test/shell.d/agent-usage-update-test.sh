@@ -9,6 +9,7 @@ FAKE_OMARCHY=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$FAKE_OMARCHY"' EXIT
 
 mkdir -p "$FAKE_OMARCHY/bin"
+mkdir -p "$TEST_HOME/.local/bin"
 
 cat >"$FAKE_OMARCHY/bin/omarchy-agent-usage-good" <<'EOF'
 #!/bin/bash
@@ -33,15 +34,31 @@ EOF
 
 chmod +x "$FAKE_OMARCHY/bin/"omarchy-agent-usage-*
 
+cat >"$TEST_HOME/.local/bin/omarchy-agent-usage-good" <<'EOF'
+#!/bin/bash
+echo '{"schemaVersion":1,"id":"good","name":"User Override","totalPrompts":4}'
+EOF
+
+cat >"$TEST_HOME/.local/bin/omarchy-agent-usage-custom" <<'EOF'
+#!/bin/bash
+echo '{"schemaVersion":1,"id":"custom","name":"Custom Agent","totalPrompts":2}'
+EOF
+
+chmod +x "$TEST_HOME/.local/bin/"omarchy-agent-usage-*
+
 usage_dir="$TEST_HOME/.local/state/omarchy/agents/usage"
 
 HOME="$TEST_HOME" OMARCHY_PATH="$FAKE_OMARCHY" XDG_STATE_HOME="" \
   "$ROOT/bin/omarchy-agent-usage-update" --except skipped 2>/dev/null && fail "update reports a failing collector"
 pass "update reports a failing collector"
 
-[[ $(jq -r '.name' "$usage_dir/good.json") == "Good Agent" ]] ||
-  fail "update writes each collector's record to the usage directory"
-pass "update writes each collector's record to the usage directory"
+[[ $(jq -r '.name' "$usage_dir/good.json") == "User Override" ]] ||
+  fail "update prefers a user collector over the packaged collector"
+pass "update prefers a user collector over the packaged collector"
+
+[[ $(jq -r '.name' "$usage_dir/custom.json") == "Custom Agent" ]] ||
+  fail "update discovers providers supplied only by user collectors"
+pass "update discovers providers supplied only by user collectors"
 
 [[ ! -e $usage_dir/noisy.json ]] ||
   fail "update refuses records that are not valid JSON"
