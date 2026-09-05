@@ -190,7 +190,7 @@ bluetooth_run() {
   echo "$powered" >"$POWERED_FILE"
   : >"$device_tmp/log"
   PATH="$mock_bin:$ROOT/bin:$PATH" BLUETOOTHCTL_LOG="$device_tmp/log" \
-    OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 "$@" ||
+    OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 OMARCHY_BLUETOOTH_POWER_SETTLE_SECONDS=0 "$@" ||
     fail "$* exits cleanly with Powered: $powered"
   printf '%s' "$device_tmp/log"
 }
@@ -280,3 +280,69 @@ pass "bluetooth counts a secondary controller as on"
 grep -q 'AutoEnable=false' "$ROOT/install/hardware/bluetooth.sh" &&
   fail "bluetooth install leaves AutoEnable at its default"
 pass "bluetooth install leaves AutoEnable at its default"
+
+# Two quick clicks on the bar toggle used to put a block on the wire while
+# bluetoothd was still bringing the adapter up, failing the commands still in
+# flight against a controller that had gone away. The second call has to drop
+# instead of landing in that window.
+locked_run() {
+  local status=0
+
+  : >"$device_tmp/log"
+  (
+    exec {held_fd}>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-bluetooth-power.lock"
+    flock "$held_fd"
+    PATH="$mock_bin:$ROOT/bin:$PATH" BLUETOOTHCTL_LOG="$device_tmp/log" \
+      OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 OMARCHY_BLUETOOTH_POWER_SETTLE_SECONDS=0 \
+      "$ROOT/bin/omarchy-bluetooth-power" "$1"
+  ) || status=$?
+
+  printf '%s' "$status"
+}
+
+echo yes >"$POWERED_FILE"
+locked_run off >/dev/null
+grep -q rfkill "$device_tmp/log" &&
+  fail "bluetooth drops an off that lands while another call is still in flight" "$(cat "$device_tmp/log")"
+pass "bluetooth drops an off that lands while another call is still in flight"
+
+echo no >"$POWERED_FILE"
+locked_run on >/dev/null
+grep -q rfkill "$device_tmp/log" &&
+  fail "bluetooth drops an on that lands while another call is still in flight" "$(cat "$device_tmp/log")"
+pass "bluetooth drops an on that lands while another call is still in flight"
+
+# is-on answers through its exit status, so it must never be gated on the lock:
+# a dropped call exiting 0 would report a blocked radio as powered.
+echo no >"$POWERED_FILE"
+[[ $(locked_run is-on) == "1" ]] ||
+  fail "bluetooth still reports the radio off while another call holds the lock"
+pass "bluetooth still reports the radio off while another call holds the lock"
+
+# The settle only covers a power-up this call performed. An adapter that was
+# already on has no setup running, so nothing waits on it.
+echo yes >"$POWERED_FILE"
+: >"$device_tmp/log"
+start=$SECONDS
+PATH="$mock_bin:$ROOT/bin:$PATH" BLUETOOTHCTL_LOG="$device_tmp/log" \
+  OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 OMARCHY_BLUETOOTH_POWER_SETTLE_SECONDS=30 \
+  "$ROOT/bin/omarchy-bluetooth-power" on ||
+  fail "bluetooth turns on cleanly when the adapter is already powered"
+((SECONDS - start < 5)) ||
+  fail "bluetooth does not sit out the settle when the adapter was already on"
+pass "bluetooth does not sit out the settle when the adapter was already on"
+
+# A lock file that cannot be opened at all must not swallow the request. The
+# interlock makes the common path safer; it is not a precondition for moving the
+# block, and failing closed here would leave a toggle that reports success and
+# does nothing.
+echo yes >"$POWERED_FILE"
+: >"$device_tmp/log"
+PATH="$mock_bin:$ROOT/bin:$PATH" BLUETOOTHCTL_LOG="$device_tmp/log" \
+  OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS=0 OMARCHY_BLUETOOTH_POWER_SETTLE_SECONDS=0 \
+  XDG_RUNTIME_DIR="$device_tmp/does-not-exist" \
+  "$ROOT/bin/omarchy-bluetooth-power" off ||
+  fail "bluetooth exits cleanly when the lock file cannot be created"
+grep -qx "rfkill block bluetooth" "$device_tmp/log" ||
+  fail "bluetooth still turns off when the lock file cannot be created" "$(cat "$device_tmp/log")"
+pass "bluetooth still turns off when the lock file cannot be created"
