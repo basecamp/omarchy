@@ -6,9 +6,13 @@ echo "Run the WPA handshake in software on Macs with Broadcom Wi-Fi"
 # install/hardware/apple/fix-brcmfmac-supplicant.sh for the failure it fixes and
 # for where this list of brcmfmac PCI IDs comes from.
 dmi_vendor="${OMARCHY_BRCMFMAC_DMI_VENDOR:-/sys/class/dmi/id/sys_vendor}"
+dmi_product="${OMARCHY_BRCMFMAC_DMI_PRODUCT:-/sys/class/dmi/id/product_name}"
 conf="${OMARCHY_BRCMFMAC_CONF:-/etc/modprobe.d/brcmfmac.conf}"
 
 sys_vendor="$(cat "$dmi_vendor" 2>/dev/null || true)"
+product_name="$(cat "$dmi_product" 2>/dev/null || true)"
+
+[[ $product_name != "MacBookPro16,1" ]] || exit 0
 
 if ! lspci -nn | grep "106b:180[12]" >/dev/null &&
   ! { [[ $sys_vendor == Apple* ]] &&
@@ -31,9 +35,9 @@ sudo mkdir -p "$(dirname "$conf")"
 # feature_disable. The leading newline also covers a file that ends without one.
 sudo tee -a "$conf" >/dev/null <<'EOF'
 
-# Broadcom's firmware supplicant and authenticator fail the WPA four-way
-# handshake on Apple hardware, which surfaces as a rejected password. Disable
-# both so wpa_supplicant performs the handshake instead.
+# Broadcom's firmware WPA handling fails on affected Apple hardware, which
+# surfaces as a rejected password. Disable firmware supplication and SAE so
+# transition-mode networks use the software WPA2 handshake instead.
 options brcmfmac feature_disable=0x82000
 EOF
 
