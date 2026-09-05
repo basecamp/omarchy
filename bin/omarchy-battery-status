@@ -18,31 +18,56 @@ case "${1:-}" in
     ;;
 esac
 
-battery=$(upower -e 2>/dev/null | grep BAT | head -n 1)
+battery=$(upower -e 2>/dev/null | awk '/BAT/ { print; exit }')
 [[ -z $battery ]] && exit 0
 
 battery_info=$(upower -i "$battery")
 
-percentage=$(awk '/percentage/ { print int($2); exit }' <<<"$battery_info")
-capacity=$(awk '/energy-full:/ { printf "%d", $2; exit }' <<<"$battery_info")
-time_remaining=$(awk '/time to (empty|full)/ {
-  value = $4
-  unit = $5
-  if (unit ~ /^minute/) {
-    printf "%dm", int(value)
-  } else {
-    hours = int(value)
-    minutes = int((value - hours) * 60)
-    if (minutes > 0) {
-      printf "%dh %dm", hours, minutes
+# One pass over the report rather than one process per field. This used to be
+# eight awk invocations over the same text, and the power panel re-reads it every
+# five seconds while it is open. Each field still takes the first line that
+# matches it, which is what the separate `exit` in each pass did.
+mapfile -t battery_fields < <(awk '
+  !percentage_seen && /percentage/ { percentage = int($2); percentage_seen = 1 }
+  !capacity_seen && /energy-full:/ { capacity = sprintf("%d", $2); capacity_seen = 1 }
+  !remaining_seen && /time to (empty|full)/ {
+    value = $4
+    unit = $5
+    if (unit ~ /^minute/) {
+      remaining = sprintf("%dm", int(value))
     } else {
-      printf "%dh", hours
+      hours = int(value)
+      minutes = int((value - hours) * 60)
+      if (minutes > 0) {
+        remaining = sprintf("%dh %dm", hours, minutes)
+      } else {
+        remaining = sprintf("%dh", hours)
+      }
     }
+    remaining_seen = 1
   }
-  exit
-}' <<<"$battery_info")
-power_rate_raw=$(awk '/energy-rate/ { print $2; exit }' <<<"$battery_info")
-native_path=$(awk '/native-path/ { print $2; exit }' <<<"$battery_info")
+  !rate_seen && /energy-rate/ { rate = $2; rate_seen = 1 }
+  !native_seen && /native-path/ { native = $2; native_seen = 1 }
+  !state_seen && /state/ { state = $2; state_seen = 1 }
+  !start_seen && /charge-start-threshold:/ { start = $2; gsub(/%/, "", start); start = int(start); start_seen = 1 }
+  !end_seen && /charge-end-threshold:/ { end = $2; gsub(/%/, "", end); end = int(end); end_seen = 1 }
+  END {
+    print percentage
+    print capacity
+    print remaining
+    print rate
+    print native
+    print state
+    print start_seen ? start : ""
+    print end_seen ? end : ""
+  }
+' <<<"$battery_info")
+
+percentage=${battery_fields[0]}
+capacity=${battery_fields[1]}
+time_remaining=${battery_fields[2]}
+power_rate_raw=${battery_fields[3]}
+native_path=${battery_fields[4]}
 battery_path="$power_supply_path/$native_path"
 
 # UPower's energy-rate can lag the kernel telemetry by tens of seconds. Use
@@ -61,9 +86,9 @@ power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
   sub(/\.0$/, "", rounded)
   print rounded
 }')
-state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
-threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
-threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
+state=${battery_fields[5]}
+threshold_start=${battery_fields[6]}
+threshold_end=${battery_fields[7]}
 
 [[ -z $threshold_end ]] && threshold_end=$(cat "$power_supply_path"/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
 [[ -z $threshold_start ]] && threshold_start=$(cat "$power_supply_path"/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
