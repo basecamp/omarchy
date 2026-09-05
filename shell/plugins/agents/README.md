@@ -45,8 +45,8 @@ on its refresh timer and whenever you ask for a refresh, and picks up any
 record that lands in the directory regardless of who wrote it.
 
 Adding an agent therefore never touches this plugin: ship a collector that
-prints the record contract (see the `claude` and `codex` collectors in
-`bin/`), and the panel gains a tab. An `assets/<id>.svg` mark is optional —
+prints the record contract (see the collectors in `bin/`), and the panel
+gains a tab. An `assets/<id>.svg` mark is optional —
 with an `assets/<id>-light.svg` twin if the mark needs a dark variant for
 light surfaces — and the bar glyph stands in when there is none.
 
@@ -55,14 +55,16 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `grok` | SuperGrok weekly pool and extra credits from Grok Build's cli-chat-proxy billing endpoint; plan name from `/v1/settings` `subscription_tier_display` (falls back to `/v1/user` `subscriptionTier`). `--limits-only` reuses any same-day session scan so opening the panel refreshes the weekly percent without walking transcripts. | `$GROK_HOME/sessions` (default `~/.grok/sessions`) `turn_completed` usage (nested or flat); `subagent` and `subagent_fork` sessions are skipped so parent totals are not counted twice; plus pi/omp and opencode sessions on an xAI provider |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
-`CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`. Fireworks reads
-`FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
+`CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`, Grok Build via `GROK_HOME`.
+Fireworks reads `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
-signed in there.
+signed in there. Grok Build reads `~/.grok/auth.json` (or `$GROK_HOME/auth.json`)
+and never writes the token into the usage record.
 
 ### Fireworks balance
 
@@ -128,7 +130,8 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
-  "fireworks": { "enabled": true }
+  "fireworks": { "enabled": true },
+  "grok": { "enabled": true }
 }' --json
 ```
 
@@ -146,5 +149,5 @@ the same account synced from two machines is not counted twice.
 
 One caveat on "all-time": the Codex collector only reads native session files
 touched in the last 30 days, and Fireworks requests the last 30 days from its
-billing API, so their totals and day counts cover that window. Claude's cover
-every transcript still on disk.
+billing API, so their totals and day counts cover that window. Claude and Grok
+Build cover every session still on disk.
