@@ -363,6 +363,8 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      // Let the dropdown's open popup own j/k, not the panel cursor.
+      blocked: header.dropdownOpen
 
       onMoveRequested: function(dx, dy) {
         if (dx !== 0) {
@@ -373,7 +375,7 @@ Panel {
           panelFlick.contentY = root.clamp(panelFlick.contentY + dy * Style.space(56), 0,
                                            Math.max(0, panelFlick.contentHeight - panelFlick.height))
       }
-      onActivateRequested: root.refreshNow()
+      onActivateRequested: if (root.cursorActive && header.providerCount > 1) { header.toggleDropdown() } else { root.refreshNow() }
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) { if (t === "r" || t === "R") root.refreshNow() }
@@ -395,52 +397,125 @@ Panel {
           spacing: Style.space(12)
 
           // ---------- Hero: provider mark · name · plan ----------
-          PanelHero {
-            id: hero
+          // Inside trailingControl's Component `root` is PanelHero, not this
+          // Panel — reach panel state through `header` (see dropbox/Panel.qml).
+          Item {
+            id: header
             visible: !!root.provider
             width: parent.width
-            title: root.provider ? root.provider.providerName : ""
-            meta: root.heroMeta(root.provider)
-            foreground: root.foreground
-            fontFamily: root.fontFamily
+            implicitHeight: hero.implicitHeight
 
-            iconComponent: Component {
-              Item {
-                id: heroMark
-                property var candidates: root.iconCandidatesForProvider(root.provider, root.surface)
-                // Provider objects are rebuilt on every refresh, which churns the
-                // array's identity without changing its content. Restart the fallback
-                // walk only when the URLs change: re-pointing source at a URL whose
-                // load already failed emits no statusChanged, so an identity-only
-                // reset would strand the walker on a missing -light twin.
-                property string candidatesKey: candidates.join("\n")
-                property int candidateIndex: 0
-                onCandidatesKeyChanged: candidateIndex = 0
+            readonly property int providerCount: root.providers.length
+            readonly property string currentProviderId: root.provider ? root.provider.providerId : ""
+            readonly property bool ringVisible: root.cursorActive
+            property bool dropdownOpen: false
+            // The hero's trailing dropdown is activated from the panel cursor
+            // (dropbox/Panel.qml pattern); this handle is wired by the
+            // trailingControl once its Dropdown exists.
+            property var dropdownToggle: null
 
-                width: Style.font.display
-                height: Style.font.display
+            readonly property var providerOptions: {
+              var out = []
+              for (var i = 0; i < root.providers.length; i++)
+                out.push({ value: root.providers[i].providerId, label: root.providers[i].providerName })
+              return out
+            }
 
-                Image {
-                  id: heroMarkImage
-                  anchors.fill: parent
-                  source: heroMark.candidateIndex < heroMark.candidates.length ? heroMark.candidates[heroMark.candidateIndex] : ""
-                  sourceSize.width: Style.font.display * 2
-                  sourceSize.height: Style.font.display * 2
-                  fillMode: Image.PreserveAspectFit
-                  // Advancing source from inside its own status change trips the
-                  // binding-loop detector; defer the step one tick.
-                  onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length)
-                    Qt.callLater(function() { heroMark.candidateIndex++ })
+            function focusHero() { root.cursorActive = true }
+            function toggleDropdown() {
+              if (header.providerCount > 1 && header.dropdownToggle) header.dropdownToggle()
+            }
+            function selectProviderById(id) {
+              for (var i = 0; i < root.providers.length; i++)
+                if (root.providers[i].providerId === id) root.selectProvider(i)
+            }
+
+            PanelHero {
+              id: hero
+              visible: !!root.provider
+              width: parent.width
+              title: root.provider ? root.provider.providerName : ""
+              meta: root.heroMeta(root.provider)
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+
+              iconComponent: Component {
+                Item {
+                  id: heroMark
+                  property var candidates: root.iconCandidatesForProvider(root.provider, root.surface)
+                  // Provider objects are rebuilt on every refresh, which churns the
+                  // array's identity without changing its content. Restart the fallback
+                  // walk only when the URLs change: re-pointing source at a URL whose
+                  // load already failed emits no statusChanged, so an identity-only
+                  // reset would strand the walker on a missing -light twin.
+                  property string candidatesKey: candidates.join("\n")
+                  property int candidateIndex: 0
+                  onCandidatesKeyChanged: candidateIndex = 0
+
+                  width: Style.font.display
+                  height: Style.font.display
+
+                  Image {
+                    id: heroMarkImage
+                    anchors.fill: parent
+                    source: heroMark.candidateIndex < heroMark.candidates.length ? heroMark.candidates[heroMark.candidateIndex] : ""
+                    sourceSize.width: Style.font.display * 2
+                    sourceSize.height: Style.font.display * 2
+                    fillMode: Image.PreserveAspectFit
+                    // Advancing source from inside its own status change trips the
+                    // binding-loop detector; defer the step one tick.
+                    onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length)
+                      Qt.callLater(function() { heroMark.candidateIndex++ })
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    anchors.centerIn: parent
+                    visible: heroMarkImage.status !== Image.Ready
+                    text: button.text
+                    color: root.foreground
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.display
+                  }
                 }
+              }
 
-                Text {
-                  textFormat: Text.PlainText
-                  anchors.centerIn: parent
-                  visible: heroMarkImage.status !== Image.Ready
-                  text: button.text
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.display
+              trailingControl: Component {
+                Item {
+                  visible: header.providerCount > 1
+                  implicitWidth: providerDropdown.implicitWidth
+                  implicitHeight: providerDropdown.implicitHeight
+                  Component.onCompleted: header.dropdownToggle = function() { providerDropdown.toggle() }
+
+                  Dropdown {
+                    id: providerDropdown
+                    visible: header.providerCount > 1
+                    options: header.providerOptions
+                    showLabel: false
+                    implicitWidth: Style.space(160)
+                    foreground: hero.foreground
+                    fontFamily: hero.fontFamily
+                    hasCursor: header.ringVisible
+                    property bool containsMouse: false
+                    onHovered: function(on) {
+                      providerDropdown.containsMouse = on
+                      if (on) header.focusHero()
+                    }
+                    onChanged: function(v) { header.selectProviderById(v) }
+                    onPopupOpenChanged: header.dropdownOpen = providerDropdown.popupOpen
+
+                    PanelToolTip {
+                      visible: providerDropdown.containsMouse
+                      text: "Switch provider"
+                      fontFamily: hero.fontFamily
+                    }
+                  }
+
+                  Binding {
+                    target: providerDropdown
+                    property: "value"
+                    value: header.currentProviderId
+                  }
                 }
               }
             }
@@ -456,42 +531,6 @@ Panel {
             font.pixelSize: Style.font.body
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
-          }
-
-          // ---------- Provider switch ----------
-          Row {
-            id: providerSwitch
-            visible: root.providers.length > 1
-            width: parent.width
-            spacing: Style.spacing.md
-
-            readonly property real cellWidth: root.providers.length > 0
-              ? (width - spacing * (root.providers.length - 1)) / root.providers.length
-              : 0
-
-            Repeater {
-              model: root.providers
-
-              Button {
-                required property var modelData
-                required property int index
-
-                width: providerSwitch.cellWidth
-                text: modelData.providerName
-                selected: index === root.providerIndex
-                hasCursor: root.cursorActive && index === root.providerIndex
-                bordered: true
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                fontSize: Style.font.bodySmall
-                verticalPadding: Style.spacing.controlPaddingY
-                onClicked: {
-                  root.cursorActive = true
-                  root.selectProvider(index)
-                }
-                onHovered: function(isHovered) { if (isHovered) root.cursorActive = true }
-              }
-            }
           }
 
           // ---------- Status ----------
