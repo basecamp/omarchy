@@ -89,6 +89,31 @@ function modeLabel(device, onBattery, states) {
   return "Charging"
 }
 
+function batteryDisplayMode(configured, legacyShowPercentage) {
+  var mode = String(configured || "")
+  if (mode === "icon" || mode === "percentage-before" || mode === "percentage-after") return mode
+  return legacyShowPercentage === true ? "percentage-before" : "icon"
+}
+
+function nextBatteryDisplayMode(mode) {
+  var current = batteryDisplayMode(mode, false)
+  if (current === "icon") return "percentage-before"
+  if (current === "percentage-before") return "percentage-after"
+  return "icon"
+}
+
+function batteryBarText(mode, fraction, icon, vertical) {
+  if (vertical) return icon
+
+  var displayMode = batteryDisplayMode(mode, false)
+  if (displayMode === "icon") return icon
+
+  var percentage = Math.round(Number(fraction) * 100) + "%"
+  return displayMode === "percentage-after"
+    ? icon + " " + percentage
+    : percentage + " " + icon
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     clampIndex: clampIndex,
@@ -99,6 +124,9 @@ if (typeof module !== "undefined") {
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
     batteryIcon: batteryIcon,
-    modeLabel: modeLabel
+    modeLabel: modeLabel,
+    batteryDisplayMode: batteryDisplayMode,
+    nextBatteryDisplayMode: nextBatteryDisplayMode,
+    batteryBarText: batteryBarText
   }
 }

@@ -19,11 +19,16 @@ Panel {
   property string activeProfile: ""
   property int profileIndex: 0
   property bool cursorActive: false
-  readonly property bool showPercentage: setting("showPercentage", false) === true
+  // Keep the old boolean setting as the compatibility fallback. New cycles
+  // persist the richer mode only after the user reaches the new behavior.
+  readonly property string displayMode: Model.batteryDisplayMode(
+    setting("displayMode", null), setting("showPercentage", false)
+  )
+  readonly property bool percentageShown: displayMode !== "icon"
   // With the percentage shown the button paints a text block wider than an
   // icon, so the open-panel mark takes the painted width instead of the
   // icon-sized fraction of the slot the fallback assumes.
-  readonly property real openPanelIndicatorWidth: showPercentage && !button.vertical ? button.glyphPaintedWidth : 0
+  readonly property real openPanelIndicatorWidth: percentageShown && !button.vertical ? button.glyphPaintedWidth : 0
   readonly property bool batteryPresent: {
     var device = UPower.displayDevice
     return !!(device && device.isPresent)
@@ -170,7 +175,11 @@ Panel {
   }
 
   function togglePercentage() {
-    root.settings = Object.assign({}, root.settings, { showPercentage: !root.showPercentage })
+    // Retain this method name for existing IPC callers; right-click now cycles
+    // through the icon-only and the two percentage placements.
+    root.settings = Object.assign({}, root.settings, {
+      displayMode: Model.nextBatteryDisplayMode(root.displayMode)
+    })
     if (root.bar && root.bar.shell) root.bar.shell.updateEntryInline(root.moduleName, root.settings)
   }
 
@@ -277,10 +286,8 @@ Panel {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.showPercentage && !vertical
-      ? Math.round(root.batteryFraction * 100) + "% " + root.batteryIcon()
-      : root.batteryIcon()
-    slotSize: Style.bar.iconSlot * (root.showPercentage && !vertical ? 2 : 1)
+    text: Model.batteryBarText(root.displayMode, root.batteryFraction, root.batteryIcon(), vertical)
+    slotSize: Style.bar.iconSlot * (root.percentageShown && !vertical ? 2 : 1)
     tooltipText: ""
     onPressed: function(b) {
       if (!root.batteryPresent) return
