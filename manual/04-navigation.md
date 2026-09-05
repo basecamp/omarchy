@@ -36,6 +36,8 @@ But you can also choose to turn a workspace into the scrolling layout where wind
 
  ![navigation-scrolling-layout](images/navigation-scrolling-layout.webp)
 
+Windows scroll off to the side by default, but `Super + J` flips the workspace to scroll vertically instead, so windows stack down the screen and off the bottom edge. That axis sticks for as long as the workspace stays on scrolling; send it back to dwindle and return, and it starts over from whichever direction scrolling is configured to use. (On a dwindle workspace, `Super + J` flips whether the focused window and its neighbour sit side by side or stacked.)
+
 The choice is per workspace, and it sticks. So you can keep workspace 1 on dwindle for browsing and workspace 2 on scrolling for code, and they'll come back that way after a restart. (The same toggle is under _Trigger > Toggle > Workspace Layout_ in the Omarchy menu).
 
 If you wish to use the scrolling layout as the default, you can set that in `~/.config/hypr/looknfeel.lua`:
