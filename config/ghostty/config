@@ -22,6 +22,10 @@ cursor-style-blink = false
 # (all shell integration options must be passed together)
 shell-integration-features = no-cursor,ssh-env
 
+# Copy selected text straight to the clipboard, so the copy keybinding stays
+# free for programs that use it as cancel/close.
+copy-on-select = clipboard
+
 # Keyboard bindings
 keybind = shift+insert=paste_from_clipboard
 keybind = control+insert=copy_to_clipboard

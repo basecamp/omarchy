@@ -6,6 +6,11 @@ TERM = "xterm-256color"
 [terminal]
 osc52 = "CopyPaste"
 
+[selection]
+# Copy selected text straight to the clipboard, so Ctrl+Shift+C stays free
+# for programs that use it as cancel/close.
+save_to_clipboard = true
+
 [font]
 normal = { family = "JetBrainsMono Nerd Font", style = "Regular" }
 bold = { family = "JetBrainsMono Nerd Font", style = "Bold" }
