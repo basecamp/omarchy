@@ -75,8 +75,9 @@ fi
 selection_file=$(mktemp)
 done_file=$(mktemp)
 pending_file=$(mktemp)
+pending_video_file=$(mktemp)
 rm -f "$done_file"
-trap 'rm -f "$selection_file" "$done_file" "$pending_file"' EXIT
+trap 'rm -f "$selection_file" "$done_file" "$pending_file" "$pending_video_file"' EXIT
 
 image_dirs_env=""
 for dir in "${image_dirs[@]}"; do
@@ -111,8 +112,8 @@ cache_key=$(printf '%s' "$image_dirs_env" | md5sum | cut -d ' ' -f 1)
 rows_cache_file="$cache_dir/$cache_key.rows"
 rows_signature_file="$cache_dir/$cache_key.signature"
 rows_fast_signature_file="$cache_dir/$cache_key.fast-signature"
-rows_signature="v3"$'\n'
-rows_fast_signature="v2"$'\n'
+rows_signature="v4"$'\n'
+rows_fast_signature="v3"$'\n'
 rows_cacheable=true
 rows_cache_hit=false
 image_files=()
@@ -133,10 +134,17 @@ else
         image_files+=("$image")
         image_signature=$(stat -Lc '%s:%Y' "$image") || continue
         rows_signature+="$image:$image_signature"$'\n'
-      done < <(find -L "$dir" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \) -print0 2>/dev/null | sort -z)
+      done < <(find -L "$dir" -maxdepth 1 -type f \
+        \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.webp' \
+           -o -iname '*.mp4' -o -iname '*.m4v' -o -iname '*.mov' -o -iname '*.webm' -o -iname '*.mkv' -o -iname '*.avi' \) \
+        -print0 2>/dev/null | sort -z)
     fi
   done
 fi
+
+is_video_path() {
+  [[ ${1,,} =~ \.(mp4|m4v|mov|webm|mkv|avi)$ ]]
+}
 
 generate_thumbnail() {
   local image="$1"
@@ -144,6 +152,7 @@ generate_thumbnail() {
   local lock="$thumbnail.lock"
   local lock_fd
   local tmp="$thumbnail.$$.jpg"
+  local thumbnail_command
 
   # Older releases used directories as locks, which could survive a killed
   # generator and block this thumbnail forever. Only reap aged ones, so a
@@ -161,10 +170,19 @@ generate_thumbnail() {
 
   [[ -f $thumbnail ]] && return
 
-  # Callers fan out one generator per image, so keep each vips single-threaded.
-  # Close the lock fd for vips: an orphaned or hung vips must not keep holding
-  # the lock after this shell is killed.
-  if VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]" {lock_fd}>&-; then
+  # Callers fan out one generator per file, so keep each image conversion
+  # single-threaded. ffmpegthumbnailer provides a still preview for videos.
+  if is_video_path "$image"; then
+    # Videos are generated before the picker opens, so one unreadable or
+    # stalled file must not hold it shut. A failed run drops the row.
+    thumbnail_command=(timeout -k 5 10 ffmpegthumbnailer -i "$image" -o "$tmp" -s 1536 -q 8)
+  else
+    thumbnail_command=(env VIPS_CONCURRENCY=1 vipsthumbnail "$image" --size 1536x864 --smartcrop=centre --path "$tmp[Q=82,strip]")
+  fi
+
+  # Close the lock fd for the converter: an orphaned or hung child must not
+  # keep holding the lock after this shell is killed.
+  if "${thumbnail_command[@]}" {lock_fd}>&-; then
     mv -f "$tmp" "$thumbnail"
   else
     rm -f "$tmp" "$thumbnail"
@@ -186,7 +204,10 @@ thumbnail_for() {
   thumbnail="$cache_dir/$hash.jpg"
 
   if [[ ! -f $thumbnail ]]; then
-    if [[ $lazy_thumbnails == true && $cache_only != true ]]; then
+    # A lazy row stands in with the media file itself, which the picker draws
+    # with an Image -- fine for a picture, blank for a video. Videos take the
+    # queue instead, which also keeps them under its narrower fan out.
+    if [[ $lazy_thumbnails == true && $cache_only != true ]] && ! is_video_path "$image"; then
       rows_cacheable=false
 
       if [[ $prepare_only != true ]]; then
@@ -197,19 +218,35 @@ thumbnail_for() {
       return
     fi
 
-    printf '%s\0%s\0' "$image" "$thumbnail" >>"$pending_file"
+    if is_video_path "$image"; then
+      printf '%s\0%s\0' "$image" "$thumbnail" >>"$pending_video_file"
+    else
+      printf '%s\0%s\0' "$image" "$thumbnail" >>"$pending_file"
+    fi
   fi
 
   printf '%s' "$thumbnail"
 }
 
-# Generate every queued thumbnail at once; each vips run is single-threaded.
+# Each vips run is single-threaded, so still images can fill every core.
+# ffmpegthumbnailer leaves FFmpeg's automatic threading on, so a full-width fan
+# out of those would put a codec thread pool on every core at once.
 drain_pending_thumbnails() {
-  [[ -s $pending_file ]] || return 0
+  local video_jobs
 
-  export -f generate_thumbnail
-  xargs -a "$pending_file" -0 -n 2 -P "$(nproc)" \
-    bash -c 'generate_thumbnail "$1" "$2"' _ >/dev/null 2>&1 || true
+  export -f generate_thumbnail is_video_path
+
+  if [[ -s $pending_file ]]; then
+    xargs -a "$pending_file" -0 -n 2 -P "$(nproc)" \
+      bash -c 'generate_thumbnail "$1" "$2"' _ >/dev/null 2>&1 || true
+  fi
+
+  if [[ -s $pending_video_file ]]; then
+    video_jobs=$(( $(nproc) / 4 ))
+    (( video_jobs > 0 )) || video_jobs=1
+    xargs -a "$pending_video_file" -0 -n 2 -P "$video_jobs" \
+      bash -c 'generate_thumbnail "$1" "$2"' _ >/dev/null 2>&1 || true
+  fi
 }
 
 if [[ $rows_cache_hit != true && -f $rows_cache_file && -f $rows_signature_file ]] && cmp -s "$rows_signature_file" <(printf '%s' "$rows_signature"); then
@@ -232,7 +269,7 @@ elif [[ $rows_cache_hit != true ]]; then
 
   drain_pending_thumbnails
 
-  if [[ -s $pending_file ]]; then
+  if [[ -s $pending_file || -s $pending_video_file ]]; then
     pruned=""
     while IFS=$'\t' read -r row_image row_thumbnail; do
       if [[ ! -e $row_thumbnail ]]; then

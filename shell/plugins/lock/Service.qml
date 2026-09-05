@@ -31,11 +31,14 @@ Item {
   property int backgroundVersion: 0
   property string lastEvent: "init"
   property string lastEventAt: ""
+  property bool displaysBlank: false
   property bool strandedLock: false
   property bool strandedLockResolved: false
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
+  readonly property var batteryService: shell && shell.services ? shell.firstPartyServiceFor("omarchy.battery") : null
+  readonly property bool powerSaverActive: batteryService ? batteryService.powerSaverOnBattery : false
 
   function realScreenCount() {
     var screens = Quickshell.screens || []
@@ -165,11 +168,13 @@ Item {
   }
 
   function runWake() {
+    root.displaysBlank = false
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    root.displaysBlank = true
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -276,6 +281,8 @@ Item {
         failedAttempts: root.failedAttempts
         inputEnabled: root.lockRequested
         loadBackground: root.locked
+        displaysBlank: root.displaysBlank
+        powerSaverActive: root.powerSaverActive
         passwordText: root.enteredPassword
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
@@ -306,6 +313,7 @@ Item {
       failedAttempts: 0
       inputEnabled: false
       loadBackground: root.previewVisible
+      powerSaverActive: root.powerSaverActive
       passwordText: ""
     }
 
@@ -467,6 +475,10 @@ Item {
   Connections {
     target: Quickshell
     function onScreensChanged() {
+      // A panel coming back is a display turning on that runWake did not ask
+      // for, so the blank state has to be given up here or a visible lock
+      // wallpaper stays frozen until the next keypress.
+      root.displaysBlank = false
       root.requestSessionLock()
 
       // A monitor still coming up has no workspace, so cannot answer yet.

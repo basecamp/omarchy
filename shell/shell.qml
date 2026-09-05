@@ -272,6 +272,10 @@ ShellRoot {
 
   property var _services: ({})
 
+  // Reassigned as each service registers, so a binding that reads this before
+  // looking a service up by id re-evaluates once that service exists.
+  readonly property var services: _services
+
   function serviceFor(pluginId) {
     return _services[String(pluginId)] || null
   }

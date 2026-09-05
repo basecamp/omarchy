@@ -109,7 +109,10 @@ right)
   ;;
 esac
 
-pixel=$(magick "$background_path" -auto-orient \
+# Sample the first frame only. Without the selector a video background makes
+# ImageMagick decode the whole file and emit one value per frame, and the match
+# below then fails into the fallback colour.
+pixel=$(magick "$background_path[0]" -auto-orient \
   -resize "${screen_width}x${screen_height}^" \
   -gravity center -extent "${screen_width}x${screen_height}" \
   -gravity NorthWest -crop "$crop" +repage \

@@ -2078,7 +2078,10 @@ for file in \
 done
 ln -snf "$HOME/.local/state/omarchy/current/theme/btop.theme" "$HOME/.config/btop/themes/current.theme"
 if [[ ! -e $HOME/.local/state/omarchy/current/background && -d $HOME/.local/state/omarchy/current/theme/backgrounds ]]; then
-  background=$(find "$HOME/.local/state/omarchy/current/theme/backgrounds" -maxdepth 1 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | sort | head -n1)
+  background=$(find "$HOME/.local/state/omarchy/current/theme/backgrounds" -maxdepth 1 -type f \
+    \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \
+       -o -iname '*.mp4' -o -iname '*.m4v' -o -iname '*.mov' -o -iname '*.webm' -o -iname '*.mkv' -o -iname '*.avi' \) \
+    | sort | head -n1)
   [[ -n ${background:-} ]] && ln -snf "$background" "$HOME/.local/state/omarchy/current/background"
 fi
 
