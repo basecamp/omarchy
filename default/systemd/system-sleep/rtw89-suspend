@@ -1,0 +1,147 @@
+#!/bin/bash
+
+# Keep the Realtek RTL8852BE (10ec:b852) alive across suspend.
+#
+# The card's PCIe root port carries an ACPI power resource under _PR3
+# (\_SB.PC00.RPxx.PXP_ on the machines seen so far) that gates power to the
+# slot itself. Left alone the port drops to D3cold during s2idle, that resource
+# goes off, and the card comes back unpowered. The port resumes perfectly and
+# reports an empty bus, so nothing in the resume path ever re-enumerates the
+# Wi-Fi -- there is no error anywhere in dmesg, the interface is simply gone:
+#
+#   pci 0000:00:1c.7: PCI bridge to [bus 05]
+#   pci 0000:00:1c.7: disabling bridge window [mem ...] to [bus 05] (unused)
+#
+# Two halves to the fix:
+#
+#   - d3cold_allowed=0 on both the port and the card, so the port can only
+#     reach D3hot and slot power stays up. This is the part that matters.
+#     It resets to 1 on every boot and on any remove/rescan, so it has to be
+#     re-asserted rather than set once.
+#
+#   - hot-remove the card before sleep and rescan after. Without it the PCI
+#     core spends ~127s ("not ready 65535ms after resume; giving up") trying
+#     to resume a device that never answers, before the driver gets a turn at
+#     all. Taking it off the bus leaves the core nothing to wait for, so this
+#     makes resume faster, not slower.
+#
+# Pairs with /etc/modprobe.d/omarchy-rtw89.conf, which disables ASPM L1/L1SS
+# and CLKREQ# on the same card; both are installed together by
+# install/hardware/fix-rtw89-suspend.sh.
+
+WIFI_VENDOR=0x10ec
+WIFI_DEVICE=0xb852
+STATE=/run/omarchy-rtw89-suspend.state
+PCI_DEVICES=/sys/bus/pci/devices
+
+log() { logger -t omarchy-rtw89-suspend "$*"; }
+
+# Write to a sysfs attribute that may not exist on every machine.
+poke() {
+  [[ -w $2 ]] && echo "$1" >"$2" 2>/dev/null
+}
+
+# The port the card hangs off is simply its parent in sysfs.
+bridge_of() {
+  basename "$(dirname "$(readlink -f "$PCI_DEVICES/$1")")"
+}
+
+module_of() {
+  local driver=$PCI_DEVICES/$1/driver
+  [[ -L $driver ]] && basename "$(readlink -f "$driver")"
+}
+
+find_cards() {
+  local dev vendor device
+  for dev in "$PCI_DEVICES"/*; do
+    read -r vendor <"$dev/vendor" 2>/dev/null || continue
+    read -r device <"$dev/device" 2>/dev/null || continue
+    if [[ $vendor == "$WIFI_VENDOR" && $device == "$WIFI_DEVICE" ]]; then
+      basename "$dev"
+    fi
+  done
+}
+
+# d3cold_allowed on the port is what keeps slot power up; the card's own flag
+# stops the port being taken down while the card is still attached to it.
+keep_powered() {
+  poke 0 "$PCI_DEVICES/$2/d3cold_allowed"
+  poke 0 "$PCI_DEVICES/$1/d3cold_allowed"
+  poke on "$PCI_DEVICES/$2/power/control"
+}
+
+netdev_present() {
+  compgen -G "$PCI_DEVICES/$1/net/*" >/dev/null
+}
+
+suspend_card() {
+  local card=$1 bridge=$2 module=$3
+
+  keep_powered "$card" "$bridge"
+  [[ -n $module ]] && modprobe -r "$module" 2>/dev/null
+  poke 1 "$PCI_DEVICES/$card/remove"
+  log "pre: $card off the bus, $bridge held out of D3cold"
+}
+
+resume_card() {
+  local card=$1 bridge=$2 module=$3 try outcome="never reached the bus"
+
+  poke 0 "$PCI_DEVICES/$bridge/d3cold_allowed"
+  poke on "$PCI_DEVICES/$bridge/power/control"
+
+  for try in 1 2 3; do
+    sleep 2
+    poke 1 "$PCI_DEVICES/$bridge/rescan"
+    [[ -e $PCI_DEVICES/$card ]] || poke 1 /sys/bus/pci/rescan
+    sleep 1
+
+    if [[ -e $PCI_DEVICES/$card ]]; then
+      keep_powered "$card" "$bridge"
+      [[ -n $module ]] && modprobe "$module" 2>/dev/null
+      sleep 2
+
+      if netdev_present "$card"; then
+        poke auto "$PCI_DEVICES/$bridge/power/control"
+        log "post: $card back on attempt $try"
+        return 0
+      fi
+
+      # On the bus but unclaimed: a driver problem, so look for rtw89 errors
+      # in dmesg rather than at power management.
+      outcome="enumerated but was never claimed by ${module:-its driver}"
+      log "post: $card enumerated but no netdev appeared on attempt $try"
+      poke 1 "$PCI_DEVICES/$card/remove"
+    else
+      # Never came back: the slot is still unpowered or the link is down.
+      outcome="never reappeared on the bus"
+      log "post: $card did not reappear on attempt $try"
+    fi
+  done
+
+  poke auto "$PCI_DEVICES/$bridge/power/control"
+  # Name the failure that actually happened: "enumerated but unclaimed" sends
+  # you to rtw89 errors in dmesg, "never reappeared" to slot power and the link.
+  log "post: gave up on $card after 3 attempts, $outcome"
+  return 1
+}
+
+case "$1" in
+  pre)
+    : >"$STATE"
+    for card in $(find_cards); do
+      bridge=$(bridge_of "$card")
+      module=$(module_of "$card")
+      echo "$card $bridge $module" >>"$STATE"
+      suspend_card "$card" "$bridge" "$module"
+    done
+    ;;
+  post)
+    [[ -r $STATE ]] || exit 0
+    while read -r card bridge module; do
+      [[ -n $card ]] && resume_card "$card" "$bridge" "$module"
+    done <"$STATE"
+    rm -f "$STATE"
+    ;;
+esac
+
+exit 0
