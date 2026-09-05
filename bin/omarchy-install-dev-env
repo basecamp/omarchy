@@ -119,7 +119,10 @@ phoenix)
   ;;
 rust)
   echo -e "Installing Rust...\n"
-  bash -c "$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)" -- -y
+  # --no-modify-path: rustup's default .profile line sources ~/.cargo/env unguarded,
+  # which can abort UWSM session start if that file later goes missing. PATH for
+  # cargo is owned by default/bash/env-bootstrap instead.
+  bash -c "$(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)" -- -y --no-modify-path
   ;;
 java)
   echo -e "Installing Java...\n"

@@ -163,10 +163,7 @@ Single source of truth for `OMARCHY_PATH` and dev-link-aware `PATH`. It:
 - Prepends `$OMARCHY_PATH/bin` to `PATH` **only when** `OMARCHY_PATH` is
   not `/usr/share/omarchy`. On a production install the binaries are
   already on `PATH` as `/usr/bin/omarchy-*` via the `omarchy` package.
-- Appends `~/.local/share/mise/shims` and `~/.local/bin` so login shells and
-  the uwsm session find mise-managed tools — kept in sync with the PAM `PATH`
-  line written by `install/config/ssh-command-path.sh`, which covers SSH
-  commands that run no shell setup at all.
+- Appends `~/.local/share/mise/shims`, `~/.local/bin`, and `~/.cargo/bin` so login shells and the uwsm session find mise-managed tools and rustup/cargo — kept in sync with the PAM `PATH` line written by `install/config/ssh-command-path.sh`, which covers SSH commands that run no shell setup at all.
 
 Sourced by every entry point that needs the env set:
 

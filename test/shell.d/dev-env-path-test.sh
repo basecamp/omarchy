@@ -56,6 +56,7 @@ pass "env-bootstrap resolves default OMARCHY_PATH"
 assert_path_present "$default_path" "$tmpdir/unrelated/bin" "env-bootstrap preserves PATH entries in default mode"
 assert_path_present "$default_path" "$home/.local/share/mise/shims" "env-bootstrap appends mise shims"
 assert_path_present "$default_path" "$home/.local/bin" "env-bootstrap appends ~/.local/bin"
+assert_path_present "$default_path" "$home/.cargo/bin" "env-bootstrap appends ~/.cargo/bin"
 assert_path_first "$default_path" "$tmpdir/unrelated/bin" "env-bootstrap appends user-level paths after existing entries"
 
 printf 'export OMARCHY_PATH="%s"\n' "$tmpdir/active" >"$tmpdir/omarchy.conf"
@@ -67,15 +68,15 @@ pass "env-bootstrap resolves linked OMARCHY_PATH"
 assert_path_first "$linked_path" "$tmpdir/active/bin" "env-bootstrap prepends active checkout bin in linked mode"
 assert_path_present "$linked_path" "$tmpdir/unrelated/bin" "env-bootstrap preserves unrelated PATH entries in linked mode"
 
-mapfile -t linked_duplicate_result < <(run_bootstrap bash "$bootstrap" "$home" "$tmpdir/active/bin:/usr/bin:$home/.local/share/mise/shims:$home/.local/bin")
+mapfile -t linked_duplicate_result < <(run_bootstrap bash "$bootstrap" "$home" "$tmpdir/active/bin:/usr/bin:$home/.local/share/mise/shims:$home/.local/bin:$home/.cargo/bin")
 linked_duplicate_path=${linked_duplicate_result[1]}
-[[ $linked_duplicate_path == "$tmpdir/active/bin:/usr/bin:$home/.local/share/mise/shims:$home/.local/bin" ]] || fail "env-bootstrap does not duplicate PATH entries" "actual PATH: $linked_duplicate_path"
+[[ $linked_duplicate_path == "$tmpdir/active/bin:/usr/bin:$home/.local/share/mise/shims:$home/.local/bin:$home/.cargo/bin" ]] || fail "env-bootstrap does not duplicate PATH entries" "actual PATH: $linked_duplicate_path"
 pass "env-bootstrap does not duplicate PATH entries"
 
 # An empty PATH must not produce empty entries (a bare ":" means the cwd)
 mapfile -t empty_path_result < <(run_bootstrap bash "$bootstrap" "$home" "")
 empty_path=${empty_path_result[1]}
-[[ $empty_path == "$tmpdir/active/bin:$home/.local/share/mise/shims:$home/.local/bin" ]] || fail "env-bootstrap builds a clean PATH from an empty one" "actual PATH: $empty_path"
+[[ $empty_path == "$tmpdir/active/bin:$home/.local/share/mise/shims:$home/.local/bin:$home/.cargo/bin" ]] || fail "env-bootstrap builds a clean PATH from an empty one" "actual PATH: $empty_path"
 pass "env-bootstrap builds a clean PATH from an empty one"
 
 if command -v zsh >/dev/null 2>&1; then
