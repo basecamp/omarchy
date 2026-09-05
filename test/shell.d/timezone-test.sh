@@ -34,7 +34,10 @@ grep -F 'sudo timedatectl set-timezone "$timezone"' "$timezone_menu" >/dev/null 
 grep -F 'omarchy-shell -q omarchy.clock refresh' "$timezone_menu" >/dev/null ||
   fail "timezone menu refreshes the namespaced clock IPC target"
 
+grep -F 'omarchy-shell -q nightlight refresh' "$timezone_menu" >/dev/null ||
+  fail "timezone menu refreshes the solar nightlight schedule"
+
 ! grep -F 'omarchy-shell -q Clock refresh' "$timezone_menu" >/dev/null ||
   fail "timezone menu no longer refreshes the retired Clock IPC target"
 
-pass "timezone menu refreshes clock after timezone changes"
+pass "timezone menu refreshes clock and nightlight after timezone changes"

@@ -10,6 +10,8 @@ BarWidget {
 
   readonly property var defaultIndicatorEntries: [ "Dictation", "ScreenRecording", "Reminder", "NightLight", "Dnd", "StayAwake" ]
   readonly property var indicatorEntries: indicatorEntriesFromSettings(settings)
+  readonly property var fixedIndicatorEntries: entriesByFixedPosition(true)
+  readonly property var dynamicIndicatorEntries: entriesByFixedPosition(false)
   property var activeIndicatorIds: []
   property var indicatorActiveStates: ({})
   property bool indicatorAreaHovered: false
@@ -38,6 +40,19 @@ BarWidget {
       copy[key] = entry[key]
     }
     return copy
+  }
+
+  function isFixedIndicatorId(id) {
+    return String(id || "") === "NightLight"
+  }
+
+  function entriesByFixedPosition(fixed) {
+    var result = []
+    for (var i = 0; i < indicatorEntries.length; i++) {
+      var entry = indicatorEntries[i]
+      if (isFixedIndicatorId(entryId(entry)) === fixed) result.push(entry)
+    }
+    return result
   }
 
   function indicatorEntriesFromSettings(settings) {
@@ -76,6 +91,7 @@ BarWidget {
   }
 
   function hasIndicatorId(id) {
+    if (isFixedIndicatorId(id)) return false
     for (var i = 0; i < indicatorEntries.length; i++) {
       if (entryId(indicatorEntries[i]) === id) return true
     }
@@ -159,11 +175,11 @@ BarWidget {
   onIndicatorEntriesChanged: syncActiveIndicatorOrder()
 
   implicitWidth: root.vertical
-    ? Math.max(activeVerticalBlock.implicitWidth, inactiveVerticalArea.implicitWidth)
-    : activeHorizontalBlock.implicitWidth + inactiveHorizontalArea.implicitWidth
+    ? Math.max(activeVerticalBlock.implicitWidth, inactiveVerticalArea.implicitWidth, fixedVerticalBlock.implicitWidth)
+    : activeHorizontalBlock.implicitWidth + inactiveHorizontalArea.implicitWidth + fixedHorizontalBlock.implicitWidth
   implicitHeight: root.vertical
-    ? activeVerticalBlock.implicitHeight + inactiveVerticalArea.implicitHeight
-    : Math.max(activeHorizontalBlock.implicitHeight, inactiveHorizontalArea.implicitHeight)
+    ? activeVerticalBlock.implicitHeight + inactiveVerticalArea.implicitHeight + fixedVerticalBlock.implicitHeight
+    : Math.max(activeHorizontalBlock.implicitHeight, inactiveHorizontalArea.implicitHeight, fixedHorizontalBlock.implicitHeight)
 
   IpcHandler {
     target: "omarchy.indicators"
@@ -171,6 +187,7 @@ BarWidget {
     function refresh(): void {
       root.broadcast("refresh")
     }
+
   }
 
   Timer {
@@ -207,7 +224,7 @@ BarWidget {
         id: inactiveHorizontalBlock
         anchors.verticalCenter: parent.verticalCenter
         indicatorsModule: root
-        indicatorEntries: root.indicatorEntries
+        indicatorEntries: root.dynamicIndicatorEntries
         indicatorBlock: "inactive"
         horizontal: true
         reportActiveState: !root.vertical
@@ -224,6 +241,15 @@ BarWidget {
       indicatorModel: activeIndicatorModel
       horizontal: true
       reportActiveState: !root.vertical
+    }
+
+    IndicatorBlock {
+      id: fixedHorizontalBlock
+      indicatorsModule: root
+      indicatorEntries: root.fixedIndicatorEntries
+      indicatorBlock: "single"
+      horizontal: true
+      reportActiveState: false
     }
   }
 
@@ -250,7 +276,7 @@ BarWidget {
         id: inactiveVerticalBlock
         anchors.horizontalCenter: parent.horizontalCenter
         indicatorsModule: root
-        indicatorEntries: root.indicatorEntries
+        indicatorEntries: root.dynamicIndicatorEntries
         indicatorBlock: "inactive"
         horizontal: false
         reportActiveState: root.vertical
@@ -267,6 +293,15 @@ BarWidget {
       indicatorModel: activeIndicatorModel
       horizontal: false
       reportActiveState: root.vertical
+    }
+
+    IndicatorBlock {
+      id: fixedVerticalBlock
+      indicatorsModule: root
+      indicatorEntries: root.fixedIndicatorEntries
+      indicatorBlock: "single"
+      horizontal: false
+      reportActiveState: false
     }
   }
 

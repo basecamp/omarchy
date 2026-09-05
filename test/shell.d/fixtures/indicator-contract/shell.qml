@@ -36,8 +36,16 @@ ShellRoot {
   QtObject {
     id: nightlightService
     property bool enabled: false
+    property bool scheduled: false
+    property string scheduleTimezone: "America/Los_Angeles"
+    property string nextEvent: "sunrise"
+    property string nextEventAt: "2026-08-31T06:26:10-07:00"
     function setNightlight(value) {
       enabled = !!value
+      scheduled = false
+    }
+    function setScheduleEnabled(value) {
+      scheduled = !!value
     }
   }
 
@@ -59,6 +67,9 @@ ShellRoot {
     property color barForeground: "white"
     property color urgent: "red"
     property bool foregroundAnimationEnabled: false
+    property string position: "top"
+    property var activePopout: null
+    property var clickTargets: []
     property bool centerSectionRevealHeld: false
     property bool centerHoverRevealSuppressed: false
     property var shell: mockShell
@@ -67,8 +78,17 @@ ShellRoot {
     }
     function showTooltip(target, text) {}
     function hideTooltip(target) {}
-    function registerClickTarget(target) {}
-    function unregisterClickTarget(target) {}
+    function registerClickTarget(target) {
+      if (clickTargets.indexOf(target) !== -1) return
+      var next = clickTargets.slice()
+      next.push(target)
+      clickTargets = next
+    }
+    function unregisterClickTarget(target) {
+      clickTargets = clickTargets.filter(function(item) { return item !== target })
+    }
+    function requestPopout(owner) { activePopout = owner }
+    function releasePopout(owner) { if (activePopout === owner) activePopout = null }
   }
 
   QtObject {
@@ -143,6 +163,7 @@ ShellRoot {
     }
 
     Qt.callLater(function() {
+      root.assertTrue(typeof tray.isFixedIndicatorId === "function" && tray.isFixedIndicatorId("NightLight"), "indicator tray reserves a fixed slot for Night Light")
       root.assertTrue(tray.implicitWidth === 0, "inactive indicator tray starts collapsed")
       mockBar.centerSectionRevealHeld = true
 
@@ -183,8 +204,33 @@ ShellRoot {
       if (nightLight) {
         nightLight.moduleName = "NightLight"
         root.injectBar(nightLight)
+        root.assertTrue(nightLight.fixedPosition === true, "Night Light declares a fixed indicator position")
         nightLight.triggerPress(Qt.LeftButton)
         root.assertTrue(nightlightService.enabled === true, "Night Light left click toggles the nightlight service")
+        nightLight.triggerPress(Qt.RightButton)
+        root.assertTrue(nightLight.opened === true, "Night Light right click opens its settings panel")
+        nightLight.close()
+        nightlightService.enabled = false
+        mockBar.activePopout = ({ name: "another panel" })
+        var registeredNightLightTarget = null
+        for (var i = 0; i < mockBar.clickTargets.length; i++) {
+          if (mockBar.clickTargets[i].moduleName === "NightLight") registeredNightLightTarget = mockBar.clickTargets[i]
+        }
+        root.assertTrue(registeredNightLightTarget !== null, "Night Light registers its inner bar click target")
+        if (registeredNightLightTarget) {
+          root.assertTrue(registeredNightLightTarget.opacity !== 0, "inactive Night Light registered target remains visible")
+          root.assertTrue(registeredNightLightTarget.interactive !== false, "inactive Night Light registered target remains interactive")
+          var forwardable = registeredNightLightTarget.triggerPress
+            && registeredNightLightTarget.opacity !== 0
+            && registeredNightLightTarget.interactive !== false
+          root.assertTrue(forwardable, "inactive Night Light remains a forwardable bar click target")
+          if (forwardable) registeredNightLightTarget.triggerPress(Qt.RightButton)
+        }
+        root.assertTrue(nightLight.opened === true, "Night Light opens from a right click forwarded by another panel")
+        root.assertTrue(JSON.stringify(nightLight.modeOptions) === '["daylight","nightlight","sunset"]', "Night Light panel keeps mode controls in a stable order")
+        nightlightService.enabled = false
+        nightlightService.scheduled = true
+        root.assertTrue(JSON.stringify(nightLight.modeOptions) === '["daylight","nightlight","sunset"]', "Night Light mode changes do not reorder panel controls")
       }
 
       var screenRecording = root.createIndicator("ScreenRecording")

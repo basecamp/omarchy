@@ -13,9 +13,10 @@ BarIconButton {
   property string indicatorBlock: "single"
   property var indicatorHost: null
   property var activeOverride: null
+  property bool alwaysRevealInactive: false
   readonly property bool effectiveActive: activeOverride === null || activeOverride === undefined ? active : activeOverride === true
   readonly property bool belongsInBlock: indicatorBlock === "active" ? effectiveActive : (indicatorBlock === "inactive" ? !effectiveActive : true)
-  readonly property bool inactiveRevealed: !effectiveActive && !!indicatorHost && indicatorHost.revealInactiveIndicators
+  readonly property bool inactiveRevealed: !effectiveActive && (alwaysRevealInactive || (!!indicatorHost && indicatorHost.revealInactiveIndicators))
 
   function extractData(raw) {
     return Util.parseModuleJson(raw)

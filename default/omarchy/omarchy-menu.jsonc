@@ -92,6 +92,7 @@
   "trigger.toggle.crash-capture": {"icon":"󱚡","label":"Crash Capture","action":"omarchy-toggle-crash-capture"},
   "trigger.toggle.screensaver": {"icon":"󱄄","label":"Screensaver","action":"omarchy-toggle-screensaver"},
   "trigger.toggle.nightlight": {"icon":"󰔎","label":"Nightlight","action":"omarchy-toggle-nightlight"},
+  "trigger.toggle.automatic-nightlight": {"icon":"󰖨","label":"Sunset Nightlight","checked":"omarchy-nightlight-schedule enabled","action":"omarchy-toggle-nightlight --schedule"},
   "trigger.toggle.top-bar": {"icon":"󰍜","label":"Menu Bar","action":"omarchy-toggle-bar"},
   "trigger.toggle.battery-percentage": {"icon":"󰁹","label":"Battery Percentage","when":"omarchy-hw-laptop","action":"omarchy-shell omarchy.power togglePercentage"},
   "trigger.toggle.workspace-layout": {"icon":"󱂬","label":"Workspace Layout","action":"omarchy-hyprland-workspace-layout-toggle"},
