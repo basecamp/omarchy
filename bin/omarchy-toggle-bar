@@ -4,7 +4,18 @@
 # omarchy:args=[toggle|on|off]
 # omarchy:examples=omarchy toggle bar | omarchy toggle bar off | omarchy toggle bar on
 
-omarchy-toggle bar-off "${1:-toggle}"
+# The underlying flag is bar-off (flag present = bar hidden), so the public
+# on/off arguments are inverted before being forwarded: `bar on` shows the
+# bar by clearing the flag, `bar off` hides it by setting the flag.
+ACTION="${1:-toggle}"
+
+if [[ $ACTION == "on" ]]; then
+  omarchy-toggle bar-off off
+elif [[ $ACTION == "off" ]]; then
+  omarchy-toggle bar-off on
+else
+  omarchy-toggle bar-off "$ACTION"
+fi
 
 # The shell's watch on the toggles directory can miss flag changes that land in
 # quick succession, stranding the bar off screen until the shell restarts.
