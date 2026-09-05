@@ -139,3 +139,26 @@ PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" VIPSTHUMBNAIL_CALLS_FILE="$t
 
 (( $(wc -l <"$tmp/calls") == 6 )) || fail "image menu releases thumbnail locks after generation"
 pass "image menu owns locks for exactly one generator lifetime"
+
+# A lazy run that falls back to the full-size image must leave the rows
+# uncached. `thumbnail_for` runs in a command substitution, so the
+# rows_cacheable=false it sets is discarded with the subshell; the comparison
+# below is the only thing that catches the placeholder in the parent. Filenames
+# are user data and may contain glob metacharacters, so the image has to be
+# compared as a string rather than as a pattern.
+rm -rf "$cache_home"
+mkdir -p "$cache_home"
+
+glob_images="$tmp/glob-images"
+mkdir -p "$glob_images"
+printf 'image-bracket' >"$glob_images/photo[1].png"
+
+glob_cache_key=$(printf '%s' "$glob_images" | md5sum | cut -d ' ' -f 1)
+
+PATH="$stub_bin:$PATH" XDG_CACHE_HOME="$cache_home" \
+  "$ROOT/bin/omarchy-menu-images" --lazy-thumbnails --preload "$glob_images"
+
+cache_dir="$cache_home/omarchy/image-selector"
+[[ ! -e $cache_dir/$glob_cache_key.rows ]] ||
+  fail "image menu does not cache placeholder rows for a globbing filename"
+pass "image menu leaves lazy placeholder rows uncached for globbing filenames"
