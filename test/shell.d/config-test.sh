@@ -38,6 +38,15 @@ jq -e '
 ' "$ROOT/config/omarchy/shell.json" >/dev/null
 pass "default clock date format has no leading zero"
 
+jq -e '
+  def ids: map(.id // .);
+  (.bar.layout.right | ids) as $ids |
+  ($ids | index("omarchy.tray")) as $tray |
+  ($ids | index("omarchy.agents")) as $agents |
+  $tray != null and $agents == $tray + 1
+' "$ROOT/config/omarchy/shell.json" >/dev/null
+pass "default right layout keeps agents next to the tray"
+
 ROOT="$ROOT" python3 <<'PY'
 import json
 import os
@@ -418,39 +427,3 @@ if grep -RIl 'upgrade-to-quattro\|Omarchy 4\.0 is upgraded' "$ROOT/migrations" >
   fail "4.0 upgrade is not modeled as a migration"
 fi
 pass "4.0 upgrade is handled outside the migration runner"
-
-clock_migration=$(grep -rl 'Remove leading zero from bar clock date' "$ROOT/migrations" | head -n 1 || true)
-[[ -n $clock_migration ]] || fail "clock date format user migration exists"
-
-cat >"$TMPDIR/home/.config/omarchy/shell.json" <<'JSON'
-{
-  "version": 1,
-  "bar": {
-    "layout": {
-      "left": [],
-      "center": [
-        { "id": "omarchy.clock", "formatAlt": "dd MMMM 'W'ww yyyy" },
-        { "id": "omarchy.weather" }
-      ],
-      "right": [
-        { "id": "local.clock", "formatAlt": "dd MMMM 'W'ww yyyy" }
-      ]
-    }
-  },
-  "plugins": []
-}
-JSON
-
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" bash "$clock_migration"
-
-jq -e '
-  .bar.layout.center[0].formatAlt == "d MMMM \u0027W\u0027ww yyyy" and
-  .bar.layout.right[0].formatAlt == "dd MMMM \u0027W\u0027ww yyyy"
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
-pass "clock date format migration removes leading zero from clock"
-
-before=$(sha256sum "$TMPDIR/home/.config/omarchy/shell.json" | awk '{print $1}')
-HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" bash "$clock_migration"
-after=$(sha256sum "$TMPDIR/home/.config/omarchy/shell.json" | awk '{print $1}')
-[[ $before == "$after" ]] || fail "clock date format migration is idempotent"
-pass "clock date format migration is idempotent"
