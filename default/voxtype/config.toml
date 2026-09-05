@@ -10,6 +10,12 @@
 # Required for `voxtype record toggle` and `voxtype status` commands.
 state_file = "auto"
 
+[osd]
+# Use Omarchy's native Quickshell desktop stack for a cohesive OSD.
+frontend = "quickshell"
+palette = "omarchy"
+layout = "minimal"
+
 [hotkey]
 # Hotkey is configured in Hyprland. Default is Super + Ctrl + X
 enabled = false
