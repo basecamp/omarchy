@@ -55,10 +55,13 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `grok` | None: the CLI exposes no usage endpoint | native Grok CLI session files, one `turn_completed` update per prompt |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
-falls back to local stats only. A non-default Claude directory is honored via
-`CLAUDE_CONFIG_DIR`, Codex via `CODEX_HOME`. Fireworks reads
+falls back to local stats only. Grok has no endpoint to sign in to for usage,
+so its tab is local stats permanently: no limit meters, no plan line. A
+non-default Claude directory is honored via `CLAUDE_CONFIG_DIR`, Codex via
+`CODEX_HOME`, Grok via `GROK_HOME`. Fireworks reads
 `FIREWORKS_API_KEY` and `FIREWORKS_ACCOUNT_ID` first, then
 `~/.fireworks/auth.ini` (which `firectl set-api-key` creates), then the key
 opencode stores in `~/.local/share/opencode/auth.json` when Fireworks is
@@ -144,7 +147,7 @@ when its stats are account-global rather than machine-local (Fireworks'
 billing API); those merge by taking the widest value instead of summing, so
 the same account synced from two machines is not counted twice.
 
-One caveat on "all-time": the Codex collector only reads native session files
-touched in the last 30 days, and Fireworks requests the last 30 days from its
-billing API, so their totals and day counts cover that window. Claude's cover
-every transcript still on disk.
+One caveat on "all-time": the Codex and Grok collectors only read native
+session files touched in the last 30 days, and Fireworks requests the last 30
+days from its billing API, so their totals and day counts cover that window.
+Claude's cover every transcript still on disk.
