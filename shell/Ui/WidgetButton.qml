@@ -16,6 +16,7 @@ Item {
   property real fixedWidth: -1
   property real fixedHeight: -1
   property real textRotation: 0
+  property real labelVerticalOffset: 0
   property bool keepSpace: false
   property bool dimmed: false
   property bool concealed: false
@@ -77,6 +78,7 @@ Item {
     textFormat: Text.PlainText
     visible: root.labelVisible
     anchors.centerIn: parent
+    anchors.verticalCenterOffset: root.labelVerticalOffset
     text: root.text
     color: root.active && root.useActiveColor ? root.activeColor : root.foreground
     font.family: root.fontFamily

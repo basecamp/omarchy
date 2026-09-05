@@ -5,7 +5,17 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 run_node_test <<'JS'
+const fs = require('fs')
 const model = requireFromRoot('shell/plugins/bar/widgets/KeyboardLayoutModel.js')
+const keyboardSource = fs.readFileSync(root + '/shell/plugins/bar/widgets/KeyboardLayout.qml', 'utf8')
+const widgetButtonSource = fs.readFileSync(root + '/shell/Ui/WidgetButton.qml', 'utf8')
+
+assert(/property real labelVerticalOffset:\s*0/.test(widgetButtonSource), 'bar labels expose a targeted vertical alignment offset')
+assert(/anchors\.verticalCenterOffset:\s*root\.labelVerticalOffset/.test(widgetButtonSource), 'bar labels apply their vertical alignment offset')
+assert(
+  /labelVerticalOffset:\s*root\.vertical\s*\?\s*0\s*:\s*Style\.space\(1\)/.test(keyboardSource),
+  'the horizontal keyboard label corrects its caption-font optical center'
+)
 
 // Trimmed from xkbcli list, keeping the format of every section it prints,
 // including the options nested under an option group: those quote their

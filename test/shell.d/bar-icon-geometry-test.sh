@@ -51,6 +51,14 @@ ShellRoot {
     return true
   }
 
+  function textChild(button) {
+    for (var i = 0; i < button.children.length; i++) {
+      var child = button.children[i]
+      if ("text" in child && child.text === button.text) return child
+    }
+    return null
+  }
+
   Component.onCompleted: Qt.callLater(function() {
     if (!checkIcon(bluetooth, "bluetooth")) return
     if (!checkIcon(network, "network")) return
@@ -95,6 +103,17 @@ ShellRoot {
     if (compactStatusIcon.implicitWidth !== Style.bar.statusSlot
         || compactVerticalStatusIcon.implicitHeight !== Style.bar.statusSlot) {
       fail("compact status icons do not use the shared status slot")
+      return
+    }
+    var keyboardText = textChild(keyboardLabel)
+    if (!keyboardText) {
+      fail("keyboard label text is missing")
+      return
+    }
+    var keyboardInkCenter = keyboardText.y + keyboardText.baselineOffset
+      + keyboardMetrics.tightBoundingRect.y + keyboardMetrics.tightBoundingRect.height / 2
+    if (Math.abs(keyboardInkCenter - keyboardLabel.height / 2) > 0.5) {
+      fail("keyboard label ink is off center by " + (keyboardInkCenter - keyboardLabel.height / 2))
       return
     }
     console.log("RESULT pass")
@@ -142,6 +161,22 @@ ShellRoot {
   BarIconButton { id: verticalIcon; bar: verticalBar; text: "\uf021" }
   BarIconButton { id: compactStatusIcon; bar: testBar; text: "\uf021"; slotSize: Style.bar.statusSlot }
   BarIconButton { id: compactVerticalStatusIcon; bar: verticalBar; text: "\uf021"; slotSize: Style.bar.statusSlot }
+  TextMetrics {
+    id: keyboardMetrics
+    font.family: testBar.fontFamily
+    font.pixelSize: Style.font.caption
+    text: keyboardLabel.text
+  }
+  WidgetButton {
+    id: keyboardLabel
+    bar: testBar
+    text: "EN"
+    fontSize: Style.font.caption
+    horizontalMargin: 6
+    labelVerticalOffset: Style.space(1)
+    width: implicitWidth
+    height: implicitHeight
+  }
   Row {
     id: horizontalIndicatorPair
     BarIndicator { id: horizontalIndicator; bar: testBar; active: true; activeText: "󰅶" }
