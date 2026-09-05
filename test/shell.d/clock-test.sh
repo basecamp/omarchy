@@ -170,6 +170,39 @@ assertEqual(
 )
 assertEqual(calendar.isoWeekLiteral(2026, 0, 5), '02', 'clock zero-pads the ISO week token')
 
+// ---- ordinal token, substituted before Qt formats it: Qt has no ordinal specifier
+assertEqual(calendar.ordinalSuffix(1), 'st', 'clock gives the 1st its st')
+assertEqual(calendar.ordinalSuffix(2), 'nd', 'clock gives the 2nd its nd')
+assertEqual(calendar.ordinalSuffix(3), 'rd', 'clock gives the 3rd its rd')
+assertEqual(calendar.ordinalSuffix(4), 'th', 'clock gives the 4th its th')
+assertEqual(calendar.ordinalSuffix(11), 'th', 'clock gives the 11th th')
+assertEqual(calendar.ordinalSuffix(12), 'th', 'clock gives the 12th th')
+assertEqual(calendar.ordinalSuffix(13), 'th', 'clock gives the 13th th despite its final digit')
+assertEqual(calendar.ordinalSuffix(21), 'st', 'clock gives the 21st st')
+assertEqual(calendar.ordinalSuffix(22), 'nd', 'clock gives the 22nd nd')
+assertEqual(calendar.ordinalSuffix(23), 'rd', 'clock gives the 23rd rd')
+assertEqual(calendar.ordinalSuffix(31), 'st', 'clock gives the 31st st')
+assertEqual(calendar.ordinalLiteral(2), '2nd', 'clock prints the day before its suffix')
+assertEqual(calendar.ordinalLiteral(31), '31st', 'clock prints two-digit days whole')
+
+assert(calendar.clockHasOrdinalToken('dddd, MMMM Do, HH:mm'), 'clock sees the Do token in a hand-written format')
+assert(calendar.clockHasOrdinalToken('Do'), 'clock sees a bare Do token')
+assert(!calendar.clockHasOrdinalToken("'Do'"), 'clock reads a quoted Do as text')
+assert(!calendar.clockHasOrdinalToken("HH:mm 'Do"), 'clock reads an unterminated literal as text to the end')
+assert(calendar.clockHasOrdinalToken("Do''o"), 'clock still reads Do before an escaped apostrophe')
+assert(calendar.clockHasOrdinalToken("'a' Do"), 'clock sees Do after a closed literal')
+assert(!calendar.clockHasOrdinalToken('d MMMM'), 'clock sees no Do token in plain date formats')
+assert(!calendar.clockHasOrdinalToken(''), 'clock sees no Do token in an empty format')
+assert(!calendar.clockHasOrdinalToken(null), 'clock sees no Do token in a missing format')
+
+assertEqual(calendar.applyOrdinalToken('dddd, MMMM Do, HH:mm', 2), 'dddd, MMMM 2nd, HH:mm', 'clock swaps Do for the ordinal literal')
+assertEqual(calendar.applyOrdinalToken('Do', 13), '13th', 'clock swaps a bare Do')
+assertEqual(calendar.applyOrdinalToken("'Do'", 2), "'Do'", 'clock leaves a quoted Do as text')
+assertEqual(calendar.applyOrdinalToken("Do''o", 2), "2nd''o", 'clock honours the escaped apostrophe after a swap')
+assertEqual(calendar.applyOrdinalToken('d MMMM yyyy', 2), 'd MMMM yyyy', 'clock leaves formats without Do untouched')
+assertEqual(calendar.applyOrdinalToken(null, 2), '', 'clock renders a missing format as an empty label')
+assertEqual(calendar.applyOrdinalToken('', 2), '', 'clock renders an empty format as an empty label')
+
 // ---- seconds detection, which decides how often the widget's clock ticks
 assert(calendar.clockNeedsSeconds('dddd HH:mm:ss'), 'clock sees seconds in the live preset')
 assert(calendar.clockNeedsSeconds('h:mm:ss AP'), 'clock sees seconds in an AM/PM format')
@@ -241,6 +274,7 @@ assert(/entry\[vertical \? "verticalFormat" : "format"\] = next/.test(widgetSour
 assert(!/formatIndex/.test(widgetSource), 'clock keeps no session-only format position')
 assert(/else root\.togglePanel\(\)/.test(widgetSource), 'clock left click reveals the calendar')
 assert(/omarchy-menu-timezone/.test(widgetSource), 'clock keeps the timezone picker on middle click')
+assert(/Model\.applyOrdinalToken\(withWeek, date\.getDate\(\)\)/.test(widgetSource), 'clock substitutes the ordinal token before Qt formats the label')
 
 // The bar identifies a panel by the widget in its slot, so the nested panel
 // has to present the host widget rather than itself.

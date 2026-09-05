@@ -84,6 +84,76 @@ function isoWeekLiteral(year, month, day) {
   return pad2(isoWeek(year, month, day))
 }
 
+// English ordinal suffix for a day of month: 1st, 2nd, 3rd, 4th… with the
+// 11th through 13th taking th regardless of their final digit.
+function ordinalSuffix(day) {
+  var n = Number(day)
+  if (!isFinite(n)) return ""
+  n = Math.abs(Math.round(n))
+  if (n % 100 >= 11 && n % 100 <= 13) return "th"
+  switch (n % 10) {
+    case 1: return "st"
+    case 2: return "nd"
+    case 3: return "rd"
+    default: return "th"
+  }
+}
+
+// Day of month followed by its ordinal suffix: 2 -> "2nd".
+function ordinalLiteral(day) {
+  var n = Number(day)
+  return isFinite(n) ? String(Math.abs(Math.round(n))) + ordinalSuffix(n) : ""
+}
+
+// Whether a format's Do token actually prints the ordinal. Quoted literals go
+// first: a 'Do' quoted by the user is text, and an opening quote with no
+// closing one runs to the end of the format the way Qt reads it. The doubled
+// quote is a literal apostrophe, so it does not start a literal span.
+function clockHasOrdinalToken(format) {
+  var text = String(format === undefined || format === null ? "" : format)
+  var quote = false
+  var escapedQuote = false
+  for (var i = 0; i < text.length - 1; i++) {
+    if (text.charAt(i) === "'") {
+      if (escapedQuote) { escapedQuote = false; continue }
+      if (text.charAt(i + 1) === "'") { escapedQuote = true; continue }
+      quote = !quote
+      continue
+    }
+    escapedQuote = false
+    if (!quote && text.charAt(i) === "D" && text.charAt(i + 1) === "o") return true
+  }
+  return false
+}
+
+// A format's Do token swapped for the day's ordinal literal, leaving quoted
+// literals untouched -- the same pre-substitution the widget does for 'ww'.
+// A literal apostrophe ('') starts no span, per clockHasOrdinalToken.
+function applyOrdinalToken(format, day) {
+  var text = String(format === undefined || format === null ? "" : format)
+  var quote = false
+  var escapedQuote = false
+  var out = ""
+  for (var i = 0; i < text.length; i++) {
+    var c = text.charAt(i)
+    if (c === "'") {
+      if (escapedQuote) { escapedQuote = false }
+      else if (text.charAt(i + 1) === "'") { escapedQuote = true }
+      else { quote = !quote }
+      out += c
+      continue
+    }
+    escapedQuote = false
+    if (!quote && c === "D" && text.charAt(i + 1) === "o") {
+      out += ordinalLiteral(day)
+      i++
+      continue
+    }
+    out += c
+  }
+  return out
+}
+
 function pad2(value) {
   var n = Number(value)
   return (n < 10 ? "0" : "") + n
@@ -301,6 +371,10 @@ if (typeof module !== "undefined") {
     stepMonth: stepMonth,
     clockFormats: clockFormats,
     clockNeedsSeconds: clockNeedsSeconds,
+    ordinalSuffix: ordinalSuffix,
+    ordinalLiteral: ordinalLiteral,
+    clockHasOrdinalToken: clockHasOrdinalToken,
+    applyOrdinalToken: applyOrdinalToken,
     clockFormatRing: clockFormatRing,
     nextClockFormat: nextClockFormat,
     isoWeekLiteral: isoWeekLiteral
