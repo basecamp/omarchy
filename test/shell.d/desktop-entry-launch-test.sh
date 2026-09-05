@@ -73,6 +73,10 @@ assert_detached_installer_launch() {
 
 assert_detached_installer_launch omarchy-install-editor-emacs emacsclient
 assert_detached_installer_launch omarchy-install-editor-vscode code
+assert_detached_installer_launch omarchy-install-editor-cursor cursor
+grep -Fq '"password-store":"gnome-libsecret"' "$test_home/.cursor/argv.json" ||
+  fail "Cursor installer pins gnome-libsecret in argv.json"
+pass "Cursor installer pins gnome-libsecret in argv.json"
 assert_detached_installer_launch omarchy-install-editor-zed dev.zed.Zed
 assert_detached_installer_launch omarchy-install-gaming-heroic heroic
 assert_detached_installer_launch omarchy-install-gaming-steam steam

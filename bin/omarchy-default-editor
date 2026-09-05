@@ -42,7 +42,7 @@ if omarchy-cmd-missing "$editor"; then
   else
     case "$selection" in
     code) omarchy-install-editor-vscode ;;
-    cursor) omarchy-pkg-add cursor-bin ;;
+    cursor) omarchy-install-editor-cursor ;;
     zed) omarchy-install-editor-zed ;;
     sublime_text) omarchy-pkg-add sublime-text-4 ;;
     helix) omarchy-install-editor-helix ;;

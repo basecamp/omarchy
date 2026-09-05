@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# omarchy:summary=Install Cursor and configure Omarchy defaults for secrets and theme
+
+echo "Installing Cursor..."
+omarchy-pkg-add cursor-bin
+
+mkdir -p ~/.cursor ~/.config/Cursor/User
+
+# Electron cannot auto-detect GNOME Keyring when XDG_CURRENT_DESKTOP=Hyprland,
+# so GitHub login shows "An OS keyring couldn't be identified". Pin the same
+# gnome-libsecret backend VS Code already uses.
+cat > ~/.cursor/argv.json << 'EOF'
+// This configuration file allows you to pass permanent command line arguments to VS Code.
+// Only a subset of arguments is currently supported to reduce the likelihood of breaking
+// the installation.
+//
+// PLEASE DO NOT CHANGE WITHOUT UNDERSTANDING THE IMPACT
+//
+// NOTE: Changing this file requires a restart of VS Code.
+{
+  "password-store":"gnome-libsecret"
+}
+EOF
+
+omarchy-theme-set-vscode
+
+setsid uwsm-app -- gtk-launch cursor >/dev/null 2>&1 &
