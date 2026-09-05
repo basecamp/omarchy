@@ -595,6 +595,10 @@ schedule_share_privacy_restore() {
   local dir="$HOME/Windows"
   [[ -e $dir ]] || return 0
   (
+    # disown only keeps bash from hupping this on exit. The watcher is in the
+    # install terminal's foreground process group, so closing that terminal
+    # still hangs it up from the kernel side, seconds after install returns.
+    trap '' HUP
     local i mode
     for i in {1..1800}; do
       mode=$(stat -Lc '%a' "$dir" 2>/dev/null) || mode=""

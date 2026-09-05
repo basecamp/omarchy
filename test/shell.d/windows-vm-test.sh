@@ -69,3 +69,28 @@ pass "Windows VM stays fully opaque"
     fail "restore_all_shared_privacy chmodded the caller home share"
 )
 pass "user mount sources with leftover setgid harden to exactly 700"
+
+# install runs in a floating terminal that closes as soon as it returns, while
+# dockur is still ten minutes from the chmod 2777 the watcher exists to undo.
+# script(1) reproduces that shape: a pty whose controlling process exits.
+(
+  test_home=$(mktemp -d)
+  trap 'rm -rf "$test_home"' EXIT
+  mkdir -p "$test_home/Windows"
+  chmod 700 "$test_home/Windows"
+  cat >"$test_home/install.sh" <<EOF
+HOME=$test_home
+set -- help
+source "$windows_vm_command" >/dev/null
+schedule_share_privacy_restore
+EOF
+  script -q -c "bash $test_home/install.sh" /dev/null >/dev/null 2>&1
+  chmod 2777 "$test_home/Windows"
+  for _ in {1..40}; do
+    [[ $(stat -Lc '%a' "$test_home/Windows") == 700 ]] && break
+    sleep 0.25
+  done
+  [[ $(stat -Lc '%a' "$test_home/Windows") == 700 ]] ||
+    fail "the install share watcher left the share at $(stat -Lc '%a' "$test_home/Windows")"
+)
+pass "the install share watcher outlives the terminal install ran in"
