@@ -21,6 +21,7 @@ method=${2:-}
 
 state='{"schemaVersion":1,"inputRevision":4,"settings":{"timezone":"Europe/Rome","availability":{"monday":[{"start":"09:00","end":"17:00"}]},"horizonDays":14,"slotMinutes":15,"solveSeconds":5,"priorityLowWeight":1,"priorityNormalWeight":5,"priorityHighWeight":25,"cognitiveEnabled":false,"lowWindowStart":"00:00","lowWindowEnd":"00:00","lowOutsidePenalty":0,"mediumWindowStart":"00:00","mediumWindowEnd":"00:00","mediumOutsidePenalty":0,"highWindowStart":"00:00","highWindowEnd":"00:00","highOutsidePenalty":0,"highStreakLimit":1,"recoveryMinutes":30,"excessHighPenalty":60},"events":[{"id":"event-1","title":"Busy","description":"","startAt":"2026-09-07T10:00:00+02:00","endAt":"2026-09-07T11:00:00+02:00","timezone":"Europe/Rome","allDay":false,"rrule":null,"origin":"manual","taskId":null,"proposalId":null,"createdAt":"2026-09-04T08:00:00Z","updatedAt":"2026-09-04T08:00:00Z"}],"tasks":[],"dependencies":[],"proposal":null}'
 planning_state=$(jq -c '.tasks=[{id:"task-existing",title:"Existing task",state:"inbox"}] | .proposal={status:"ready",baseInputRevision:4,items:[]}' <<<"$state")
+empty_planning_state=$(jq -c '.tasks=[{id:"task-applied",title:"Applied task",state:"applied"}] | .proposal={status:"applied",baseInputRevision:4,items:[{taskId:"task-applied",scheduled:true}]}' <<<"$state")
 
 if [[ $target == omarchy.clock && $method == openView ]]; then
   [[ ${3:-} == plan ]] || exit 1
@@ -30,7 +31,11 @@ fi
 
 case "$method" in
 status)
-  jq -cn --argjson state "$planning_state" '{state:$state,loaded:true,configured:true,solveState:"idle",error:"",errorOutput:""}'
+  if [[ ${OMARCHY_CLI_TEST_NO_INBOX:-} == 1 ]]; then
+    jq -cn --argjson state "$empty_planning_state" '{state:$state,loaded:true,configured:true,solveState:"idle",error:"",errorOutput:""}'
+  else
+    jq -cn --argjson state "$planning_state" '{state:$state,loaded:true,configured:true,solveState:"idle",error:"",errorOutput:""}'
+  fi
   ;;
 state)
   jq -cn --argjson state "$state" '{ok:true,state:$state}'
@@ -95,3 +100,9 @@ grep -Fqx 'omarchy.calendar addTask {"title":"Task","durationMinutes":45,"priori
 pass "CLI sends native JSON requests through IPC"
 grep -Fqx 'omarchy.calendar plan' "$log" || fail "CLI sends explicit plan request through IPC"
 pass "CLI sends explicit plan requests through IPC"
+
+if OMARCHY_CLI_TEST_NO_INBOX=1 OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-calendar" plan >"$tmp_dir/no-inbox-output" 2>"$tmp_dir/no-inbox-error"; then
+  fail "CLI refuses to plan when the inbox is empty"
+fi
+grep -Fq 'there are no planning tasks in the inbox' "$tmp_dir/no-inbox-error" || fail "CLI explains why an empty inbox cannot be planned"
+pass "CLI explains why an empty inbox cannot be planned"

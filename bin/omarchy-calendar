@@ -298,7 +298,7 @@ def wait_for_proposal(timeout_seconds):
     if not first.get("configured"):
         raise CalendarError("planning is not configured; use `omarchy calendar settings`")
     if not any(task.get("state") == "inbox" for task in first.get("state", {}).get("tasks", [])):
-        return first.get("state", {}).get("proposal")
+        raise CalendarError("there are no planning tasks in the inbox")
 
     call_json("omarchy.calendar", "plan")
     while time.monotonic() < deadline:
