@@ -128,7 +128,10 @@ source_info=$(omarchy-plugin-catalog | jq -r --arg id "$source_id" '
 [[ -n $source_info ]] || fail "unknown built-in plugin: $source_id"
 IFS=$'\t' read -r source_dir source_manifest source_name <<<"$source_info"
 
-new_id="${USER:-$(id -un)}.${source_id#omarchy.}"
+user_part="${USER:-$(id -un)}"
+# USER can be attacker-controlled in odd environments; keep plugin ids path-safe.
+[[ $user_part =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && $user_part != *..* ]] || fail "invalid username for plugin id: $user_part"
+new_id="${user_part}.${source_id#omarchy.}"
 display_name="My $source_name"
 target_dir="$PLUGINS_DIR/$new_id"
 [[ ! -e $target_dir && ! -L $target_dir ]] || fail "$target_dir already exists"
