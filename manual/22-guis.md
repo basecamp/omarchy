@@ -40,14 +40,15 @@ You start Aether via the application launcher (`Super + Space`).
 
 [LocalSend](https://localsend.org/) lets you send files to other devices on the same network running the app, like Apple's AirDrop. It's cross-platform, though, so you can send files to and from Windows, macOS, Android, iOS, and of course Linux.
 
-You can open the Share menu on `Super + Ctrl + S` or under _Trigger > Share_ in the Omarchy menu. It gives you four options:
+You can open the Share menu on `Super + Ctrl + S` or under _Trigger > Share_ in the Omarchy menu. It gives you five options:
 
 - **Clipboard** sends whatever you've copied as a text file. Great for getting a link or a snippet onto your phone without emailing yourself.
+- **QR Code** shows a scannable QR for the text on your clipboard (or for text you pass on the command line). Handy when the other device isn't on LocalSend.
 - **File** opens a file picker where you can select several at once.
 - **Folder** sends an entire directory.
 - **Receive** opens LocalSend proper so another device can send something to you.
 
-The same thing works from the terminal with `omarchy share clipboard`, `omarchy share file [path]`, and `omarchy share folder [path]`. Leave the path off and you get the picker.
+The same thing works from the terminal with `omarchy share clipboard`, `omarchy share qr`, `omarchy share file [path]`, and `omarchy share folder [path]`. Leave the path off and you get the picker.
 
 You can also send straight from the file manager: right-click any selection in Nautilus and pick _Send via LocalSend_.
 
