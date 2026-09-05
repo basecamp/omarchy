@@ -55,6 +55,7 @@ light surfaces — and the bar glyph stands in when there is none.
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+| `grok` | The Grok CLI's own local billing log (weekly SuperGrok allowance + prepaid balance), falling back to xAI's Management API (team pay-as-you-go balance only) | none — see "Grok limits" below |
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -91,6 +92,34 @@ period. `accountId` only matters when one API key can access several
 accounts. Without a configured `fundedAmount` the tab still shows token
 usage, just no balance. With a live ledger, `fundedAmount` is optional and
 only adds the meter and the spent-of-funded line under the real figure.
+
+### Grok limits
+
+The Grok CLI writes a "billing: fetched credits config" line to
+`~/.grok/logs/unified.jsonl` on every run, carrying the SuperGrok weekly
+allowance and prepaid balance — no credentials needed, just a local read of
+whatever the CLI last saw. This is the only source for the weekly
+allowance: xAI's Management API sees team pay-as-you-go billing, a
+different pool of money from a personal SuperGrok subscription.
+
+Before `grok` has ever been run locally, the collector falls back to that
+Management API (`https://management-api.x.ai`). Getting a working key
+takes three non-obvious steps: the Grok CLI's own OAuth token is
+inference-scoped only and 403s here, so a separate **management key** is
+needed from console.x.ai → Settings → Management Keys (not the regular API
+Keys page, which only offers model/endpoint scoping); that key is scoped
+to one team, which need not be the CLI's default team; and the key's ACL
+must explicitly include billing read access. Configure it via
+`XAI_MANAGEMENT_KEY` or `~/.config/omarchy/agents/grok.json`:
+
+```json
+{ "managementKey": "xai-...", "teamId": "<team-id-from-console>" }
+```
+
+That fallback path has no per-model token breakdown available — xAI's
+usage-analytics endpoint only accepts a cost/line-item query, not a
+token-count one — so it populates `balance` only, with local stats left
+empty.
 
 ## Interactions
 
