@@ -29,16 +29,54 @@ trust_device() {
   bluetoothctl trust "$address" >/dev/null 2>&1 || true
 }
 
+# Trust is what lets BlueZ reconnect a device on its own later, and that only
+# works once a bond (keys kept on both sides) exists. A device trusted without
+# one is worse than unknown: BlueZ auto-connects it, the pairing fails the same
+# way every few seconds, and the journal fills until the user forgets it. So
+# trust follows a bond, never precedes it.
+bonded() {
+  [[ $(timeout 5s bluetoothctl info "$address" 2>/dev/null) == *"Bonded: yes"* ]]
+}
+
+# The bond is not necessarily there when `pair` or `connect` return. Some
+# peripherals ignore a host-initiated pair and only bond through their own
+# security request once connected, so `pair` times out and the bond forms during
+# `connect`; and `connect` itself returns at once with InProgress when BlueZ is
+# already connecting a device it knows. Closing the window on either return
+# leaves a session-only pairing (Paired but not Bonded) that is gone at the next
+# disconnect. Waiting on the bond itself is what keeps the window open for as
+# long as the handshake actually takes.
+wait_for_bond() {
+  local deadline=$((SECONDS + ${OMARCHY_BLUETOOTH_BOND_WAIT_SECONDS:-15}))
+  until bonded; do
+    ((SECONDS < deadline)) || return 1
+    sleep 1
+  done
+}
+
+# bt-agent.service auto-accepts JustWorks pairing authorization, so the adapter
+# must not sit pairable outside a pair the user actually asked for. Nothing else
+# in Omarchy touches this property and BlueZ defaults it on, which leaves the
+# adapter permanently open to unsolicited pair attempts. Closing it on EXIT means
+# every invocation of this script converges the adapter to non-pairable, whatever
+# the action and whichever way it ends - normal return, `timeout` expiry, or a
+# signal - and only the pair window below opens it.
+pairable_off() {
+  timeout 5s bluetoothctl pairable off >/dev/null 2>&1 || true
+}
+trap pairable_off EXIT
+
 case "$action" in
   pair)
     power_on
+    timeout 5s bluetoothctl pairable on >/dev/null 2>&1 || true
     timeout 20s bluetoothctl pair "$address" >/dev/null 2>&1 || true
-    trust_device
     timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
+    if wait_for_bond; then trust_device; fi
     ;;
   connect)
     power_on
-    trust_device
+    if bonded; then trust_device; fi
     timeout 20s bluetoothctl connect "$address" >/dev/null 2>&1 || true
     ;;
   disconnect)

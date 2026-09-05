@@ -11,11 +11,27 @@ Type=simple
 # If bluetoothd is unavailable (for example in VMs or machines without a
 # usable adapter), skip cleanly instead of entering a restart loop.
 ExecCondition=/usr/bin/systemctl is-active --quiet bluetooth.service
-# NoInputNoOutput auto-accepts pair requests. Safe because the adapter
-# is only `pairable: true` when the user explicitly opens the omarchy
-# bluetoothPanel and starts scanning; outside that window bluez refuses
-# inbound pair attempts at a lower layer.
-ExecStart=/usr/bin/bt-agent -c NoInputNoOutput
+# The capability alone does NOT auto-accept. For JustWorks pairing bluez calls
+# the agent's RequestAuthorization, and bt-agent answers that by prompting
+# "Authorize this device pairing (yes/no)?" on stdin no matter which -c it was
+# given. Under systemd stdin is /dev/null, so the prompt is never answered and
+# every pairing times out. Piping `yes` is what actually makes it auto-accept.
+#
+# Auto-accepting is only safe while the adapter is not pairable outside a pair
+# the user actually asked for. That guard did NOT previously exist: nothing in
+# the tree ever set `Pairable` and bluez defaults it on, so the adapter sat open
+# permanently (#7889). omarchy-bluetooth-device now opens the window only around
+# `pair` and closes it on every exit path; ExecStartPost clears it once more at
+# login, covering a session where that script has not run yet.
+ExecStart=/bin/sh -c 'yes | /usr/bin/bt-agent -c NoInputNoOutput'
+# The settle delay is load-bearing. ExecStartPost runs as soon as ExecStart is
+# SPAWNED - before bt-agent has registered with bluez - and registering the
+# default agent leaves the adapter pairable, so clearing it at that instant logs
+# "Changing pairable off succeeded" and is then immediately undone. Confirmed
+# from the journal, where that line precedes "Agent registered", and by the
+# adapter reading `Pairable: true` afterwards. Clearing it once registration has
+# settled sticks.
+ExecStartPost=-/bin/sh -c 'sleep 3; exec /usr/bin/timeout 5 /usr/bin/bluetoothctl pairable off'
 Restart=on-failure
 RestartSec=2
 
