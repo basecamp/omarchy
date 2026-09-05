@@ -11,11 +11,16 @@ stub_bin="$test_tmp/bin"
 stages="$test_tmp/stages.log"
 calls="$test_tmp/calls.log"
 pamu_targets="$test_tmp/pamu-targets.log"
+pamu_args="$test_tmp/pamu-args.log"
+output="$test_tmp/output.log"
 bare_mktemp="$test_tmp/bare-mktemp.log"
 credential="tester:credential-handle,public-key,es256,+presence"
 authdir="$test_tmp/etc-fido2"
 authfile="$authdir/fido2"
 setup_copy="$test_tmp/setup.sh"
+default_token_info='options: rk, up, noplat, clientPin, pinUvAuthToken'
+token_info=$default_token_info
+token_info_fails=0
 mkdir -p "$stub_bin"
 
 cleanup() {
@@ -203,10 +208,28 @@ case "${1:-}" in
 esac
 SH
 
+# The setup reads the authenticator's own CTAP options before it registers
+# anything, so -I answers as whichever class of key the case under test stands
+# in for. Pinning the device operand also proves the setup probes the key it
+# discovered rather than a path of its own invention.
 cat >"$stub_bin/fido2-token" <<'SH'
 #!/bin/bash
 
-echo '/dev/hidraw0: vendor=0x1050, product=0x0407 (Yubico YubiKey)'
+set -euo pipefail
+
+case "${1:-}" in
+  -L)
+    printf '%s\n' '/dev/hidraw0: vendor=0x1050, product=0x0407 (Yubico YubiKey)'
+    ;;
+  -I)
+    [[ ${2:-} == "/dev/hidraw0" ]] || exit 94
+    [[ $TEST_TOKEN_INFO_FAILS == "0" ]] || exit 1
+    printf '%s\n' "$TEST_TOKEN_INFO"
+    ;;
+  *)
+    exit 93
+    ;;
+esac
 SH
 
 cat >"$stub_bin/omarchy-pkg-add" <<'SH'
@@ -220,6 +243,15 @@ cat >"$stub_bin/pamu2fcfg" <<'SH'
 #!/bin/bash
 
 set -euo pipefail
+
+# printf runs its format once even with nothing to substitute, so an
+# unconditional '\t%s' would log a phantom empty argument for the no-flag case
+# and the assertion below would be reading the stub rather than the setup.
+printf 'pamu2fcfg' >>"$TEST_PAMU_ARGS"
+if (( $# > 0 )); then
+  printf '\t%s' "$@" >>"$TEST_PAMU_ARGS"
+fi
+printf '\n' >>"$TEST_PAMU_ARGS"
 
 target=$(readlink /proc/self/fd/1)
 printf '%s\n' "$target" >>"$TEST_PAMU_TARGETS"
@@ -249,7 +281,11 @@ reset_run() {
   : >"$calls"
   : >"$stages"
   : >"$pamu_targets"
+  : >"$pamu_args"
   : >"$bare_mktemp"
+  : >"$output"
+  token_info=$default_token_info
+  token_info_fails=0
   rm -rf "$authdir"
 }
 
@@ -262,9 +298,11 @@ invoke_setup() {
   TEST_AUTHDIR="$authdir" TEST_AUTHFILE="$authfile" TEST_BARE_MKTEMP="$bare_mktemp" \
     TEST_CREDENTIAL="$credential" TEST_FAIL_CHMOD="$fail_chmod" TEST_FAIL_MV="$fail_mv" \
     TEST_LOG="$calls" TEST_MKTEMP_MODE="$mktemp_mode" TEST_PAMU_MODE="$pamu_mode" \
-    TEST_PAMU_TARGETS="$pamu_targets" TEST_STAGES="$stages" TEST_TMP="$test_tmp" \
+    TEST_PAMU_ARGS="$pamu_args" TEST_PAMU_TARGETS="$pamu_targets" TEST_STAGES="$stages" \
+    TEST_TMP="$test_tmp" TEST_TOKEN_INFO="$token_info" \
+    TEST_TOKEN_INFO_FAILS="$token_info_fails" \
     PATH="$stub_bin:$ROOT/bin:$PATH" \
-    bash "$setup_copy" </dev/null >/dev/null
+    bash "$setup_copy" </dev/null >"$output"
 }
 
 run_setup() {
@@ -478,3 +516,84 @@ invoke_setup success 0 0 nonregular >/dev/null 2>&1 &&
   fail "a nonregular stage is never published" "$(cat "$calls")"
 [[ ! -e $authfile ]] || fail "a nonregular stage publishes no authfile"
 pass "FIDO2 setup rejects nonregular mktemp output before any privileged write"
+
+# The authenticator decides the credential's flags, not this script. A key that
+# enforces alwaysUv rejects every assertion that does not carry user
+# verification, so a presence-only credential can never authenticate with it and
+# setup reports a success that sudo then falls through. A key that does not
+# enforce it is registered exactly as it was before, PIN or no PIN: what is
+# recorded here is a requirement the key states, never a policy added on top.
+assert_flags_for() {
+  local description=$1 options=$2 expected=$3
+  local logged
+
+  reset_run
+  token_info=$options
+  run_setup
+
+  logged=$(cat "$pamu_args")
+  [[ $logged == "$expected" ]] ||
+    fail "$description" "pamu2fcfg was invoked as: $logged"
+  [[ -f $authfile && $(<"$authfile") == "$credential" ]] ||
+    fail "$description" "no credential was published"
+  pass "$description"
+}
+
+assert_flags_for "a key that always requires verification records its PIN" \
+  'options: rk, up, noplat, alwaysUv, credMgmt, clientPin, pinUvAuthToken' \
+  $'pamu2fcfg\t-N'
+
+assert_flags_for "a key with built-in verification records that rather than its PIN" \
+  'options: rk, up, uv, alwaysUv, clientPin, bioEnroll' \
+  $'pamu2fcfg\t-V'
+
+# nouv is the option present and false: built-in verification the key supports
+# but nobody has configured. Reading it as configured would record -V and leave
+# the credential unusable for the same reason as before.
+assert_flags_for "an alwaysUv key with unconfigured built-in verification falls back to its PIN" \
+  'options: rk, up, nouv, alwaysUv, clientPin' \
+  $'pamu2fcfg\t-N'
+
+assert_flags_for "a PIN-capable key that does not require verification is registered as before" \
+  'options: rk, up, noplat, clientPin, pinUvAuthToken' \
+  'pamu2fcfg'
+
+assert_flags_for "a key with built-in verification but no alwaysUv is registered as before" \
+  'options: rk, up, uv, clientPin, bioEnroll' \
+  'pamu2fcfg'
+
+assert_flags_for "a U2F-only key that reports no options at all is registered as before" \
+  '/dev/hidraw0: vendor=0x1050, product=0x0407 (Yubico YubiKey)' \
+  'pamu2fcfg'
+
+# alwaysUv with neither a PIN nor configured built-in verification cannot
+# produce a credential that authenticates. Say so instead of registering one,
+# and say it before the first sudo: a key that cannot be set up is not worth a
+# password prompt.
+reset_run
+token_info='options: rk, up, alwaysUv, noclientPin'
+invoke_setup >/dev/null 2>&1 &&
+  fail "FIDO2 setup refuses a key requiring verification it cannot perform"
+[[ ! -s $stages && ! -s $pamu_targets && ! -s $pamu_args ]] ||
+  fail "FIDO2 setup stages nothing for a key it cannot register"
+[[ ! -e $authfile ]] ||
+  fail "FIDO2 setup publishes nothing for a key it cannot register"
+[[ ! -s $calls ]] ||
+  fail "FIDO2 setup refuses an unregisterable key before it escalates" "$(cat "$calls")"
+pass "FIDO2 setup refuses an alwaysUv key with no verification configured, before escalating"
+
+# fido2-token -I failing aborted the setup through set -e, printing nothing at
+# all: the terminal closed on a successful-looking run that had registered
+# nothing. Assert the explanation, not just the exit status.
+reset_run
+token_info_fails=1
+invoke_setup >/dev/null 2>&1 &&
+  fail "FIDO2 setup fails when it cannot read the key's capabilities"
+grep -Fq "Couldn't read the FIDO2 key's capabilities" "$output" ||
+  fail "FIDO2 setup says why it gave up on a key it cannot read" "$(cat "$output")"
+[[ ! -s $stages && ! -s $pamu_args ]] ||
+  fail "FIDO2 setup stages nothing for a key it cannot read"
+[[ ! -e $authfile ]] || fail "FIDO2 setup publishes nothing for a key it cannot read"
+[[ ! -s $calls ]] ||
+  fail "FIDO2 setup gives up on an unreadable key before it escalates" "$(cat "$calls")"
+pass "FIDO2 setup reports why it bailed when the key cannot be read"

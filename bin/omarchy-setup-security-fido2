@@ -16,6 +16,44 @@ check_fido2_hardware() {
   return 0
 }
 
+# CTAP options come back as one comma-separated line where a leading "no" means
+# the key supports the option but it is not configured: clientPin means a PIN is
+# set, noclientPin means the key takes one and nobody has. Comparing with a
+# comma on each side is what keeps nouv from reading as uv.
+fido2_option_enabled() {
+  local name=$1 info=$2 options
+
+  options=$(sed -n 's/^options:[[:space:]]*//p' <<<"$info" | tr -d ' ')
+
+  [[ ,$options, == *",$name,"* ]]
+}
+
+# A key enforcing alwaysUv refuses every assertion that does not carry user
+# verification, so a presence-only credential can never authenticate with it:
+# the key never lights up, and sudo falls through to the password. A key that
+# does not enforce it is registered exactly as before, PIN or not. What is
+# recorded here is a requirement the authenticator states, not a policy added
+# on top of one.
+#
+# Recorded per credential rather than as a pinverification= module argument,
+# which pam_u2f ORs with each credential's own flag and would therefore force a
+# PIN onto every key in the mapping file, including one that has none.
+set_registration_flags() {
+  local info=$1
+
+  REGISTRATION_FLAGS=()
+
+  if fido2_option_enabled alwaysUv "$info"; then
+    if fido2_option_enabled uv "$info"; then
+      REGISTRATION_FLAGS=(-V)
+    elif fido2_option_enabled clientPin "$info"; then
+      REGISTRATION_FLAGS=(-N)
+    else
+      return 1
+    fi
+  fi
+}
+
 setup_pam_config() {
   # Configure sudo
   if ! grep -q pam_u2f.so /etc/pam.d/sudo; then
@@ -75,9 +113,32 @@ if [[ -L $authfile || ( -e $authfile && ! -f $authfile ) ]]; then
 fi
 
 if [[ ! -f $authfile ]]; then
+  # check_fido2_hardware already read the device list, whose first field is the
+  # path. Piping it through head again would leave fido2-token writing into a
+  # closed pipe as soon as a second key is attached, and pipefail reports that
+  # SIGPIPE as a failure that set -e acts on.
+  device=${tokens%%:*}
+
+  if ! device_info=$(fido2-token -I "$device"); then
+    echo -e "\e[31m\nCouldn't read the FIDO2 key's capabilities. Replug it and try again.\e[0m"
+    exit 1
+  fi
+
+  # Refuse a key that cannot be registered before asking for a password, not
+  # after.
+  if ! set_registration_flags "$device_info"; then
+    echo -e "\e[31m\nThis key always requires user verification, but has no PIN set.\e[0m"
+    echo "Set one with: fido2-token -S $device"
+    exit 1
+  fi
+
   sudo install -d -m 755 -o root -g root "$authdir"
   echo -e "\e[32m\nLet's setup your device by confirming on the device now.\e[0m"
-  echo -e "Touch your FIDO2 key when it lights up...\n"
+  if [[ ${REGISTRATION_FLAGS[0]-} == "-N" ]]; then
+    echo -e "Enter your key's PIN when asked, then touch the key when it lights up...\n"
+  else
+    echo -e "Touch your FIDO2 key when it lights up...\n"
+  fi
 
   # A unique sibling created by root cannot be replaced by another process
   # running as this user. Stream pamu2fcfg into it instead of asking root to
@@ -119,7 +180,7 @@ if [[ ! -f $authfile ]]; then
     exit 1
   fi
 
-  if pamu2fcfg | sudo tee "$stage" >/dev/null && [[ -s $stage ]]; then
+  if pamu2fcfg "${REGISTRATION_FLAGS[@]}" | sudo tee "$stage" >/dev/null && [[ -s $stage ]]; then
     sudo chmod 644 "$stage"
     sudo mv -Tf "$stage" "$authfile"
     stage=""
