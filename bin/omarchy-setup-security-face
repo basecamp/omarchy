@@ -1,0 +1,102 @@
+#!/bin/bash
+
+# omarchy:summary=Set up face authentication (howdy) for sudo and lock screen
+# omarchy:requires-sudo=true
+
+set -e
+
+
+find_ir_camera() {
+  # IR cameras used for face auth expose a greyscale (GREY) stream. Prefer one
+  # of those; plain RGB webcams work with howdy too, but are easy to fool with
+  # a photo, so they are only offered as an explicit fallback.
+  local dev
+  for dev in /dev/v4l/by-id/*; do
+    [[ -e $dev ]] || continue
+    if v4l2-ctl -d "$dev" --list-formats 2>/dev/null | grep -q "'GREY'"; then
+      echo "$dev"
+      return 0
+    fi
+  done
+  return 1
+}
+
+verify_face() {
+  # compare.py is the exact matcher PAM runs; exit 0 means the camera saw and
+  # matched the enrolled face. Skip the check if the packaging moved it.
+  local compare=/usr/lib/howdy/compare.py
+  [[ -f $compare ]] || return 0
+  sudo python "$compare" "$USER"
+}
+
+setup_pam_config() {
+  # howdy aborts on its own when the lid is closed (abort_if_lid_closed) or in
+  # SSH sessions (abort_if_ssh), so no extra PAM gate is needed here.
+  if ! grep -q pam_howdy.so /etc/pam.d/sudo; then
+    echo "Configuring sudo for face authentication..."
+    sudo sed -i '1i auth      sufficient pam_howdy.so' /etc/pam.d/sudo
+  fi
+}
+
+setup_lock_face_pam() {
+  echo "Configuring lock screen for face authentication..."
+  sudo tee /etc/pam.d/omarchy-lock-face >/dev/null <<'EOF'
+#%PAM-1.0
+auth       required                    pam_howdy.so
+account    include                     system-local-login
+EOF
+}
+
+
+echo -e "\e[32mSetting up face authentication.\n\e[0m"
+
+# Bail before installing anything if there's no camera to talk to.
+if ! compgen -G "/dev/video*" >/dev/null; then
+  echo -e "\e[31mNo camera detected.\e[0m"
+  exit 1
+fi
+
+# Install required packages
+echo "Installing required packages..."
+omarchy-pkg-add v4l-utils
+omarchy-pkg-aur-add howdy-git
+
+# Point howdy at the IR camera; every reboot can renumber the bare
+# /dev/videoN nodes, so use the stable by-id path.
+if camera=$(find_ir_camera); then
+  echo "Using IR camera: $camera"
+else
+  echo -e "\e[33mNo IR (greyscale) camera found.\e[0m"
+  echo "A regular webcam can be used, but it is much easier to fool than an IR camera."
+  read -rp "Continue with the default camera? [y/N] " reply
+  [[ ${reply,,} == y* ]] || exit 1
+  camera=$(compgen -G "/dev/v4l/by-id/*" | head -1 || true)
+  [[ -n $camera ]] || camera=$(compgen -G "/dev/video*" | head -1)
+  echo "Using camera: $camera"
+fi
+
+sudo sed -i "s|^device_path = .*|device_path = $camera|" /etc/howdy/config.ini
+
+# Enroll a face model
+echo -e "\e[32m\nLet's capture your face model. Look straight at the camera.\e[0m\n"
+
+if sudo howdy add; then
+  echo -e "\e[32m\nFace model added successfully!\e[0m"
+
+  # Verify
+  echo -e "\nNow let's verify that it's working correctly. Look at the camera again.\n"
+  if verify_face; then
+    # PAM comes last, once a model is enrolled and verified, so a machine
+    # where the camera can't actually match anything never ends up with
+    # pam_howdy wired into its auth stacks.
+    setup_pam_config
+    setup_lock_face_pam
+    echo -e "\e[32m\nPerfect! Face authentication is now configured.\e[0m"
+    echo "You can use your face for sudo and the lock screen (Super + Ctrl + L)."
+  else
+    echo -e "\e[31m\nVerification failed. You may want to try enrolling again.\e[0m"
+  fi
+else
+  echo -e "\e[31m\nEnrollment failed. Please try again.\e[0m"
+  exit 1
+fi

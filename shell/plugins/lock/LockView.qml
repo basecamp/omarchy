@@ -9,6 +9,7 @@ Item {
   property string backgroundPath: ""
   property int backgroundVersion: 0
   property bool fingerprintConfigured: false
+  property bool faceConfigured: false
   property bool authenticatingPassword: false
   property string failureMessage: ""
   property int failedAttempts: 0
@@ -24,9 +25,11 @@ Item {
   readonly property int fieldFontSize: Math.round(Style.font.heading * 1.125)
   readonly property int passwordDotFontSize: Math.round(Style.font.heading * 1.33)
   readonly property int passwordDotLetterSpacing: Math.round(Style.font.heading * 0.19)
-  // Space to keep clear on each side of the field for the fingerprint icon
-  // (icon width plus a gap) so the centered dots never run under it.
-  readonly property real fingerprintReserve: fingerprintConfigured ? Math.round(fingerprintIcon.implicitWidth + 12) : 0
+  // Space to keep clear on each side of the field for the biometric icons
+  // (icon width plus a gap) so the centered dots never run under them.
+  readonly property real iconReserve: (fingerprintConfigured || faceConfigured)
+    ? Math.round(Math.max(fingerprintIcon.implicitWidth, faceIcon.implicitWidth) + 12)
+    : 0
   // Shrink the dots to fit once the password outgrows the field, so every
   // keystroke stays visible — otherwise long passwords clip with no feedback.
   readonly property real passwordDotScale: dotMetrics.advanceWidth > 0
@@ -133,11 +136,11 @@ Item {
         id: passwordInput
         anchors.fill: parent
         anchors.topMargin: inputField.borderTop
-        // Reserve the fingerprint icon's width on both sides so the centered
-        // dots stay symmetric and never slide under the icon as they grow.
-        anchors.rightMargin: inputField.borderRight + 18 + root.fingerprintReserve
+        // Reserve the icon width on both sides so the centered dots stay
+        // symmetric and never slide under an icon as they grow.
+        anchors.rightMargin: inputField.borderRight + 18 + root.iconReserve
         anchors.bottomMargin: inputField.borderBottom
-        anchors.leftMargin: inputField.borderLeft + 18 + root.fingerprintReserve
+        anchors.leftMargin: inputField.borderLeft + 18 + root.iconReserve
         verticalAlignment: TextInput.AlignVCenter
         horizontalAlignment: TextInput.AlignHCenter
         activeFocusOnPress: true
@@ -208,6 +211,24 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         visible: root.fingerprintConfigured
         text: "󰈷"
+        color: Color.lock.placeholder
+        font.family: Style.font.family
+        font.pixelSize: Math.round(root.fieldFontSize * 1.1)
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+      }
+
+      // Face hint pinned inside the field's left edge when face auth is set
+      // up, so the user knows a look at the camera can unlock instead of
+      // typing.
+      Text {
+        id: faceIcon
+        objectName: "faceIndicator"
+        anchors.left: parent.left
+        anchors.leftMargin: inputField.borderLeft + 18
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.faceConfigured
+        text: "󰱻"
         color: Color.lock.placeholder
         font.family: Style.font.family
         font.pixelSize: Math.round(root.fieldFontSize * 1.1)
