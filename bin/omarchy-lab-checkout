@@ -1,0 +1,336 @@
+#!/bin/bash
+
+# omarchy:summary=Discover, deploy, and synchronize Omarchy worktrees with the Lab
+# omarchy:args=<list|branches|status|deploy|sync> [source] [options]
+# omarchy:examples=omarchy lab checkout branches --json | omarchy lab checkout deploy --branch feature/my-change | omarchy lab checkout deploy ~/Work/omarchy | omarchy lab checkout sync --json
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+default_repository() {
+  if git -C "$HOME/Work/omarchy" rev-parse --git-common-dir >/dev/null 2>&1; then
+    printf '%s\n' "$HOME/Work/omarchy"
+  else
+    printf '%s\n' "$OMARCHY_PATH"
+  fi
+}
+
+worktrees_json() {
+  local repository=${1:-} result='[]' path branch commit dirty=false
+  [[ -n $repository ]] || repository=$(default_repository)
+  repository=$(realpath -e "$repository") || lab_fail "repository does not exist: $repository"
+  git -C "$repository" rev-parse --git-common-dir >/dev/null 2>&1 || lab_fail "not a Git repository: $repository"
+
+  while IFS= read -r path; do
+    [[ -n $path ]] || continue
+    branch=$(git -C "$path" branch --show-current 2>/dev/null || true)
+    commit=$(git -C "$path" rev-parse HEAD 2>/dev/null || true)
+    dirty=false
+    [[ -n $(git -C "$path" status --short 2>/dev/null) ]] && dirty=true
+    result=$(jq -cn \
+      --argjson current "$result" \
+      --arg path "$path" \
+      --arg branch "$branch" \
+      --arg commit "$commit" \
+      --argjson dirty "$dirty" \
+      '$current + [{path:$path, branch:$branch, commit:$commit, dirty:$dirty}]')
+  done < <(git -C "$repository" worktree list --porcelain | sed -n 's/^worktree //p')
+  printf '%s\n' "$result"
+}
+
+branches_json() {
+  local repository=${1:-} result='[]' branch commit updated_at worktree checked_out dirty
+  [[ -n $repository ]] || repository=$(default_repository)
+  repository=$(realpath -e "$repository") || lab_fail "repository does not exist: $repository"
+  git -C "$repository" rev-parse --git-common-dir >/dev/null 2>&1 || lab_fail "not a Git repository: $repository"
+
+  while IFS=$'\t' read -r branch commit updated_at worktree; do
+    [[ -n $branch ]] || continue
+    checked_out=false
+    dirty=false
+    if [[ -n $worktree ]]; then
+      checked_out=true
+      [[ -n $(git -C "$worktree" status --short 2>/dev/null) ]] && dirty=true
+    fi
+    result=$(jq -cn \
+      --argjson current "$result" \
+      --arg branch "$branch" \
+      --arg commit "$commit" \
+      --arg updatedAt "$updated_at" \
+      --arg path "$worktree" \
+      --argjson checkedOut "$checked_out" \
+      --argjson dirty "$dirty" \
+      '$current + [{branch:$branch,commit:$commit,updatedAt:$updatedAt,path:$path,checkedOut:$checkedOut,dirty:$dirty}]')
+  done < <(git -C "$repository" for-each-ref --sort=-committerdate --format='%(refname:short)%09%(objectname)%09%(committerdate:iso8601-strict)%09%(worktreepath)' refs/heads)
+  printf '%s\n' "$result"
+}
+
+list_worktrees() {
+  local json=false repository="" output
+  for arg in "$@"; do
+    if [[ $arg == "--json" ]]; then
+      json=true
+    elif [[ -z $repository ]]; then
+      repository=$arg
+    else
+      lab_fail "usage: omarchy lab checkout list [REPOSITORY] [--json]"
+    fi
+  done
+  output=$(worktrees_json "$repository")
+  if $json; then
+    jq -cn --argjson worktrees "$output" '{worktrees:$worktrees}'
+  else
+    jq -r '.[] | "\(.branch // "detached")\t\(.commit[0:10])\t\(if .dirty then "dirty" else "clean" end)\t\(.path)"' <<<"$output" | column -t -s $'\t'
+  fi
+}
+
+list_branches() {
+  local json=false repository="" output
+  for arg in "$@"; do
+    if [[ $arg == "--json" ]]; then
+      json=true
+    elif [[ -z $repository ]]; then
+      repository=$arg
+    else
+      lab_fail "usage: omarchy lab checkout branches [REPOSITORY] [--json]"
+    fi
+  done
+  output=$(branches_json "$repository")
+  if $json; then
+    jq -cn --argjson branches "$output" '{branches:$branches}'
+  else
+    jq -r '.[] | "\(.branch)\t\(.commit[0:10])\t\(if .checkedOut then (if .dirty then "checked out, dirty" else "checked out" end) else "local branch" end)\t\(.path)"' <<<"$output" | column -t -s $'\t'
+  fi
+}
+
+deployment_status_json() {
+  local host='{}' guest='{}' destination user
+  [[ -f $DEPLOYMENT_FILE ]] && host=$(<"$DEPLOYMENT_FILE")
+  if ! jq -e 'type == "object"' <<<"$host" >/dev/null 2>&1; then
+    host='{}'
+  fi
+  if domain_running; then
+    user=$(guest_user)
+    destination=$(jq -r --arg fallback "/home/$user/omarchy" '.destination // $fallback' <<<"$host")
+    guest=$(lab_ssh "if [[ -f $(printf '%q' "$destination/.omarchy-lab-deployment.json") ]]; then cat $(printf '%q' "$destination/.omarchy-lab-deployment.json"); else printf '{}'; fi" 2>/dev/null || printf '{}')
+    jq -e 'type == "object"' <<<"$guest" >/dev/null 2>&1 || guest='{}'
+  fi
+  jq -cn --argjson host "$host" --argjson guest "$guest" '{host:$host, guest:$guest, synchronized:(($host.commit // "") != "" and ($host.commit == $guest.commit))}'
+}
+
+show_deployment_status() {
+  local output
+  [[ $# == 0 || ($# == 1 && $1 == "--json") ]] || lab_fail "usage: omarchy lab checkout status [--json]"
+  output=$(deployment_status_json)
+  if [[ ${1:-} == "--json" ]]; then
+    printf '%s\n' "$output"
+  else
+    jq -r '
+      if (.host.commit // "") == "" then
+        "No checkout has been deployed."
+      else
+        "Host:  " + (.host.branch // "detached") + " @ " + .host.commit[0:10] + (if .host.dirty then " (dirty)" else "" end),
+        "Path:  " + .host.path,
+        "Guest: " + (if .synchronized then "synchronized" else "different or unavailable" end),
+        "When:  " + (.host.deployedAt // "unknown")
+      end
+    ' <<<"$output"
+  fi
+}
+
+deploy_checkout() {
+  local source="" destination="" reboot=true json=false user branch commit dirty=false deployed_at metadata encoded
+  local source_kind=${OMARCHY_LAB_DEPLOY_SOURCE_KIND:-worktree} source_path repository="" source_label
+  while (($#)); do
+    case $1 in
+    --no-reboot) reboot=false ;;
+    --json) json=true ;;
+    --destination)
+      shift
+      destination=${1:-}
+      [[ -n $destination ]] || { lab_fail "--destination needs a guest path"; return 1; }
+      ;;
+    --*) lab_fail "unknown option: $1"; return 1 ;;
+    *)
+      [[ -z $source ]] || { lab_fail "deploy accepts one checkout path"; return 1; }
+      source=$1
+      ;;
+    esac
+    shift
+  done
+  [[ -n $source ]] || source=$(default_repository)
+  source=$(realpath -e "$source") || { lab_fail "checkout does not exist: $source"; return 1; }
+  if [[ $source_kind == "branch" ]]; then
+    repository=$(realpath -e "${OMARCHY_LAB_DEPLOY_REPOSITORY:-}") || { lab_fail "branch repository does not exist"; return 1; }
+    branch=${OMARCHY_LAB_DEPLOY_BRANCH:-}
+    commit=${OMARCHY_LAB_DEPLOY_COMMIT:-}
+    [[ -n $branch && $commit =~ ^[0-9a-f]{40}$ ]] || { lab_fail "invalid materialized branch metadata"; return 1; }
+    source_path=$repository
+    source_label="$branch from $repository"
+  else
+    [[ $source_kind == "worktree" ]] || { lab_fail "unknown deployment source kind: $source_kind"; return 1; }
+    git -C "$source" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { lab_fail "not a Git worktree: $source"; return 1; }
+    source_path=$source
+    source_label=$source
+    branch=$(git -C "$source" branch --show-current) || return 1
+    commit=$(git -C "$source" rev-parse HEAD) || return 1
+    [[ -n $(git -C "$source" status --short) ]] && dirty=true
+  fi
+  require_running_lab || return 1
+
+  user=$(guest_user) || return 1
+  [[ -n $destination ]] || destination="/home/$user/omarchy"
+  deployed_at=$(iso_timestamp)
+  metadata=$(jq -cn \
+    --arg sourceKind "$source_kind" \
+    --arg path "$source_path" \
+    --arg repository "$repository" \
+    --arg destination "$destination" \
+    --arg branch "$branch" \
+    --arg commit "$commit" \
+    --arg deployedAt "$deployed_at" \
+    --argjson dirty "$dirty" \
+    '{sourceKind:$sourceKind,path:$path,repository:(if $repository == "" then null else $repository end),destination:$destination,branch:$branch,commit:$commit,dirty:$dirty,deployedAt:$deployedAt}') || return 1
+
+  echo "Synchronizing $source_label to $NAME:$destination ..." >&2
+  push_lab "$source" "$destination" >&2 || return 1
+  encoded=$(printf '%s' "$metadata" | base64 -w 0) || return 1
+  lab_ssh "/usr/bin/omarchy-dev-link $(printf '%q' "$destination") --no-reboot" >&2 || return 1
+  lab_ssh "printf '%s' '$encoded' | base64 -d >$(printf '%q' "$destination/.omarchy-lab-deployment.json")" >&2 || return 1
+  write_private_json "$DEPLOYMENT_FILE" "$metadata" || return 1
+
+  if $reboot; then
+    echo "Rebooting the guest into the deployed checkout ..." >&2
+    lab_reboot >&2 || return 1
+    wait_ssh >&2 || return 1
+    wait_hypr >&2 || true
+  fi
+
+  if $json; then
+    jq -cn --argjson deployment "$metadata" --argjson rebooted "$reboot" '$deployment + {rebooted:$rebooted}'
+  else
+    printf 'Deployed %s @ %s%s\n' "${branch:-detached}" "${commit:0:10}" "$($dirty && printf ' (dirty)')"
+  fi
+}
+
+deploy_branch() {
+  local branch=$1 repository=$2 temp_dir source commit output status=0
+  shift 2
+  repository=$(realpath -e "$repository") || { lab_fail "repository does not exist: $repository"; return 1; }
+  git -C "$repository" rev-parse --git-common-dir >/dev/null 2>&1 || { lab_fail "not a Git repository: $repository"; return 1; }
+  git check-ref-format --branch "$branch" >/dev/null 2>&1 || { lab_fail "invalid local branch: $branch"; return 1; }
+  git -C "$repository" show-ref --verify --quiet "refs/heads/$branch" || { lab_fail "local branch does not exist: $branch"; return 1; }
+  commit=$(git -C "$repository" rev-parse "refs/heads/$branch") || return 1
+
+  temp_dir=$(mktemp -d) || return 1
+  source="$temp_dir/checkout"
+  mkdir -p "$source" || return 1
+  if ! git -C "$repository" archive "refs/heads/$branch" | tar -xf - -C "$source"; then
+    rm -rf -- "$temp_dir"
+    lab_fail "could not materialize local branch: $branch"
+    return
+  fi
+
+  if output=$(OMARCHY_LAB_DEPLOY_SOURCE_KIND=branch \
+    OMARCHY_LAB_DEPLOY_REPOSITORY="$repository" \
+    OMARCHY_LAB_DEPLOY_BRANCH="$branch" \
+    OMARCHY_LAB_DEPLOY_COMMIT="$commit" \
+    deploy_checkout "$source" "$@"); then
+    status=0
+  else
+    status=$?
+  fi
+  rm -rf -- "$temp_dir"
+  [[ -n $output ]] && printf '%s\n' "$output"
+  return "$status"
+}
+
+deploy_source() {
+  local branch="" repository=""
+  local -a deploy_args=()
+  while (($#)); do
+    case $1 in
+    --branch)
+      shift
+      branch=${1:-}
+      [[ -n $branch ]] || lab_fail "--branch needs a local branch name"
+      ;;
+    --repository)
+      shift
+      repository=${1:-}
+      [[ -n $repository ]] || lab_fail "--repository needs a Git repository path"
+      ;;
+    *) deploy_args+=("$1") ;;
+    esac
+    shift
+  done
+
+  if [[ -n $branch ]]; then
+    [[ -n $repository ]] || repository=$(default_repository)
+    deploy_branch "$branch" "$repository" "${deploy_args[@]}"
+  else
+    [[ -z $repository ]] || lab_fail "--repository requires --branch"
+    deploy_checkout "${deploy_args[@]}"
+  fi
+}
+
+sync_checkout() {
+  local json=false source_kind path repository branch destination deployment
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then json=true; else lab_fail "unknown option: $1"; fi
+    shift
+  done
+  [[ -f $DEPLOYMENT_FILE ]] || lab_fail "no saved deployment; run omarchy lab checkout deploy PATH"
+  source_kind=$(jq -r '.sourceKind // "worktree"' "$DEPLOYMENT_FILE")
+  destination=$(jq -er '.destination | select(type == "string" and length > 0)' "$DEPLOYMENT_FILE") || lab_fail "saved deployment has no guest destination"
+  if [[ $source_kind == "branch" ]]; then
+    repository=$(jq -er '.repository | select(type == "string" and length > 0)' "$DEPLOYMENT_FILE") || lab_fail "saved branch deployment has no repository"
+    branch=$(jq -er '.branch | select(type == "string" and length > 0)' "$DEPLOYMENT_FILE") || lab_fail "saved branch deployment has no branch"
+    deployment=$(deploy_branch "$branch" "$repository" --destination "$destination" --no-reboot --json) || return 1
+  else
+    path=$(jq -er '.path | select(type == "string" and length > 0)' "$DEPLOYMENT_FILE") || lab_fail "saved deployment has no host path"
+    deployment=$(deploy_checkout "$path" --destination "$destination" --no-reboot --json) || return 1
+  fi
+  session_lab omarchy-restart-shell >/dev/null 2>&1 || true
+  if $json; then
+    jq '. + {mode:"sync"}' <<<"$deployment"
+  else
+    printf 'Synchronized %s @ %s and restarted the guest shell.\n' "$(jq -r '.branch // "detached"' <<<"$deployment")" "$(jq -r '.commit[0:10]' <<<"$deployment")"
+  fi
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab checkout <command>
+
+  list [REPOSITORY] [--json]                 list host Git worktrees
+  branches [REPOSITORY] [--json]             list searchable local branches
+  status [--json]                            compare the saved host and guest deployment
+  deploy [PATH|--branch NAME] [--repository PATH] [--destination PATH] [--no-reboot] [--json]
+                                             copy, dev-link, and normally reboot into a checkout
+  sync [--json]                              recopy the saved checkout and restart the guest shell
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+  case $command in
+  list) list_worktrees "$@" ;;
+  branches) list_branches "$@" ;;
+  status) show_deployment_status "$@" ;;
+  deploy) deploy_source "$@" ;;
+  sync) sync_checkout "$@" ;;
+  help | --help | -h) show_usage ;;
+  *)
+    echo "Unknown command: $command" >&2
+    show_usage >&2
+    return 1
+    ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

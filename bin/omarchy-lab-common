@@ -1,0 +1,170 @@
+#!/bin/bash
+
+# omarchy:summary=Provide internal shared functions for Omarchy Lab commands
+# omarchy:hidden=true
+
+# Shared runtime for the scriptable Lab workbench commands. Source this file;
+# user-facing commands live in the other omarchy-lab-* binaries.
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-vm"
+
+LAB_DATA_DIR=${OMARCHY_LAB_DATA_DIR:-${HOME}/.local/state/omarchy/lab-vm}
+CHECKPOINT_DIR=${OMARCHY_LAB_CHECKPOINT_DIR:-$LAB_DATA_DIR/checkpoints}
+ARTIFACT_DIR=${OMARCHY_LAB_ARTIFACT_DIR:-$LAB_DATA_DIR/artifacts}
+SCENARIO_DIR=${OMARCHY_LAB_SCENARIO_DIR:-${HOME}/.config/omarchy/lab-vm/scenarios}
+DEPLOYMENT_FILE=${OMARCHY_LAB_DEPLOYMENT_FILE:-${HOME}/.config/omarchy/lab-vm/deployment.json}
+NETWORK_FILE=${OMARCHY_LAB_NETWORK_FILE:-${HOME}/.config/omarchy/lab-vm/network.json}
+RESOURCE_FILE=${OMARCHY_LAB_RESOURCE_FILE:-${HOME}/.config/omarchy/lab-vm/resources.json}
+
+lab_fail() {
+  echo "omarchy-lab: $*" >&2
+  return 1
+}
+
+require_lab() {
+  have_domain || lab_fail "Omarchy Lab is not installed. Run: omarchy lab vm install"
+}
+
+require_running_lab() {
+  require_lab || return 1
+  domain_running || lab_fail "Omarchy Lab is not running. Run: omarchy lab vm launch"
+}
+
+json_requested() {
+  local arg
+  for arg in "$@"; do
+    [[ $arg == "--json" ]] && return 0
+  done
+  return 1
+}
+
+without_json_flag() {
+  local arg
+  for arg in "$@"; do
+    [[ $arg == "--json" ]] || printf '%s\0' "$arg"
+  done
+}
+
+confirm_destructive() {
+  local yes=$1 prompt=$2
+  if ((yes)); then
+    return 0
+  fi
+  if is_tty; then
+    gum confirm --default=false "$prompt"
+  else
+    lab_fail "refusing non-interactive destructive action without --yes"
+  fi
+}
+
+write_private_json() {
+  local file=$1 value=$2 tmp
+  mkdir -p "$(dirname "$file")" || return 1
+  tmp=$(mktemp "${file}.XXXXXX") || return 1
+  printf '%s\n' "$value" >"$tmp" || return 1
+  chmod 600 "$tmp" || return 1
+  mv "$tmp" "$file" || return 1
+}
+
+iso_timestamp() {
+  date --iso-8601=seconds
+}
+
+safe_name() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,47}$ ]]
+}
+
+human_bytes() {
+  numfmt --to=iec-i --suffix=B "${1:-0}"
+}
+
+run_as_root() {
+  if ((EUID == 0)); then
+    "$@"
+  elif is_tty; then
+    sudo "$@"
+  else
+    pkexec "$@"
+  fi
+}
+
+# Detach saved overlays while their backing chain still exists. Never replace
+# the original until conversion succeeds, including for legacy checkpoints.
+flatten_checkpoint_image() {
+  local image=$1 next info
+  info=$(qemu-img info --output=json "$image") || return 1
+  if [[ $(jq -r '."backing-filename" // ""' <<<"$info") == "" ]]; then
+    return 0
+  fi
+  next=$(mktemp "${image}.flatten.XXXXXX") || return 1
+  if run_as_root qemu-img convert -O qcow2 "$image" "$next"; then
+    run_as_root chown "$(id -u):$(id -g)" "$next" || return 1
+    chmod 600 "$next" || return 1
+    mv "$next" "$image" || return 1
+  else
+    run_as_root rm -f "$next"
+    return 1
+  fi
+}
+
+preserve_checkpoints() {
+  local image
+  for image in "$CHECKPOINT_DIR"/*.qcow2; do
+    [[ -f $image ]] || continue
+    flatten_checkpoint_image "$image" || return 1
+  done
+}
+
+lab_mac() {
+  local interfaces
+  # virsh can still be writing when awk finds the first NIC. Drain its output
+  # before parsing so pipefail cannot turn success into intermittent SIGPIPE.
+  interfaces=$(run_virsh domiflist "$NAME" 2>/dev/null) || return 1
+  awk '$3 != "Source" && $5 ~ /^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$/ {print $5; exit}' <<<"$interfaces"
+}
+
+lab_reboot() {
+  local previous_boot current_boot n=0
+  require_running_lab || return 1
+  previous_boot=$(lab_ssh 'cat /proc/sys/kernel/random/boot_id') || return 1
+  lab_ssh 'sudo systemctl reboot --no-wall' >/dev/null 2>&1 || true
+  until current_boot=$(lab_ssh 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null) && [[ -n $current_boot && $current_boot != "$previous_boot" ]]; do
+    ((n++ < 90)) || { lab_fail "guest did not complete its reboot"; return 1; }
+    sleep 2
+  done
+}
+
+scp_opts() {
+  printf '%s\n' \
+    -i "$KEY" \
+    -o IdentitiesOnly=yes \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o GlobalKnownHostsFile=/dev/null \
+    -o UpdateHostKeys=no \
+    -o LogLevel=QUIET \
+    -o BatchMode=yes \
+    -o ConnectTimeout=5
+}
+
+lab_scp_to() {
+  local source=$1 destination=$2 ip user
+  wait_ssh
+  ip=$(guest_ip)
+  user=$(guest_user)
+  scp $(scp_opts) -r -- "$source" "${user}@${ip}:$destination"
+}
+
+lab_scp_from() {
+  local source=$1 destination=$2 ip user
+  wait_ssh
+  ip=$(guest_ip)
+  user=$(guest_user)
+  scp $(scp_opts) -r -- "${user}@${ip}:$source" "$destination"
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  lab_fail "this is an internal Lab command library"
+fi

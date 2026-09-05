@@ -1,0 +1,513 @@
+#!/bin/bash
+
+# omarchy:summary=Control the Omarchy Lab graphical console
+# omarchy:args=<run|launch|status|active|aspect|set|fullscreen|screenshot|reboot|stop|reset> [options]
+# omarchy:examples=omarchy lab viewer aspect 16:9 | omarchy lab viewer set zoom 125 | omarchy lab viewer set keep-in-bar true | omarchy lab viewer fullscreen
+
+set -euo pipefail
+
+CONNECT=${OMARCHY_LAB_CONNECT:-qemu:///system}
+NAME=${OMARCHY_LAB_NAME:-omarchy-lab}
+STATE_DIR=${OMARCHY_LAB_STATE_DIR:-${HOME}/.config/omarchy/lab-vm}
+SETTINGS_FILE=${OMARCHY_LAB_VIEWER_SETTINGS:-$STATE_DIR/viewer.json}
+VIEWER_UNIT=app-omarchy-lab-viewer.service
+LAB_VM_BIN=${OMARCHY_LAB_VM_BIN:-$OMARCHY_PATH/bin/omarchy-lab-vm}
+VIEWER_BIN=${OMARCHY_LAB_VIEWER_BIN:-$OMARCHY_PATH/bin/omarchy-lab-viewer}
+
+fail() {
+  echo "omarchy-lab-viewer: $*" >&2
+  return 1
+}
+
+settings_json() {
+  local user_settings='{}'
+  if [[ -f $SETTINGS_FILE ]] && jq -e 'type == "object"' "$SETTINGS_FILE" >/dev/null 2>&1; then
+    user_settings=$(<"$SETTINGS_FILE")
+  fi
+
+  jq -cn --argjson user "$user_settings" '
+    ({
+      zoom: 100,
+      autoResize: true,
+      cursor: "auto",
+      audio: true,
+      usbRedirection: true,
+      keepInBar: false,
+      aspect: ""
+    } * $user)
+    | .zoom = (if (.zoom | type) == "number" and .zoom >= 10 and .zoom <= 400 then (.zoom | floor) else 100 end)
+    | .autoResize = (if (.autoResize | type) == "boolean" then .autoResize else true end)
+    | .cursor = (if .cursor == "auto" or .cursor == "local" then .cursor else "auto" end)
+    | .audio = (if (.audio | type) == "boolean" then .audio else true end)
+    | .usbRedirection = (if (.usbRedirection | type) == "boolean" then .usbRedirection else true end)
+    | .keepInBar = (if (.keepInBar | type) == "boolean" then .keepInBar else false end)
+    | .aspect = (if .aspect == "16:9" or .aspect == "16:10" or .aspect == "3:2" or .aspect == "4:3" or .aspect == "21:9" or .aspect == "32:9" then .aspect else "" end)
+    | {zoom, autoResize, cursor, audio, usbRedirection, keepInBar, aspect}
+  '
+}
+
+write_settings() {
+  local settings=$1 tmp
+  mkdir -p "$STATE_DIR"
+  tmp=$(mktemp "$STATE_DIR/viewer.json.XXXXXX")
+  printf '%s\n' "$settings" >"$tmp"
+  chmod 600 "$tmp"
+  mv "$tmp" "$SETTINGS_FILE"
+}
+
+setting() {
+  settings_json | jq -r --arg key "$1" '.[$key]'
+}
+
+valid_bool() { [[ $1 == "true" || $1 == "false" ]]; }
+
+bool_label() {
+  if [[ $1 == "true" ]]; then
+    printf 'on\n'
+  else
+    printf 'off\n'
+  fi
+}
+
+update_setting() {
+  local key=$1 value=$2 settings
+  settings=$(settings_json)
+
+  case $key in
+  zoom)
+    [[ $value =~ ^[0-9]+$ ]] && ((10#$value >= 10 && 10#$value <= 400)) || fail "zoom must be between 10 and 400"
+    settings=$(jq -c --argjson value "$((10#$value))" '.zoom = $value' <<<"$settings")
+    ;;
+  auto-resize)
+    valid_bool "$value" || fail "auto-resize must be true or false"
+    settings=$(jq -c --argjson value "$value" '.autoResize = $value | if $value then . else .aspect = "" end' <<<"$settings")
+    ;;
+  cursor)
+    [[ $value == "auto" || $value == "local" ]] || fail "cursor must be auto or local"
+    settings=$(jq -c --arg value "$value" '.cursor = $value' <<<"$settings")
+    ;;
+  audio)
+    valid_bool "$value" || fail "audio must be true or false"
+    settings=$(jq -c --argjson value "$value" '.audio = $value' <<<"$settings")
+    ;;
+  usb-redirection)
+    valid_bool "$value" || fail "usb-redirection must be true or false"
+    settings=$(jq -c --argjson value "$value" '.usbRedirection = $value' <<<"$settings")
+    ;;
+  keep-in-bar)
+    valid_bool "$value" || fail "keep-in-bar must be true or false"
+    settings=$(jq -c --argjson value "$value" '.keepInBar = $value' <<<"$settings")
+    ;;
+  *) fail "unknown setting: $key" ;;
+  esac
+
+  write_settings "$settings"
+}
+
+viewer_args() {
+  local settings zoom auto_resize auto_resize_arg cursor audio usb_redirection
+  settings=$(settings_json)
+  zoom=$(jq -r '.zoom' <<<"$settings")
+  auto_resize=$(jq -r '.autoResize' <<<"$settings")
+  cursor=$(jq -r '.cursor' <<<"$settings")
+  audio=$(jq -r '.audio' <<<"$settings")
+  usb_redirection=$(jq -r '.usbRedirection' <<<"$settings")
+
+  if [[ $auto_resize == "true" ]]; then
+    auto_resize_arg=always
+  else
+    auto_resize_arg=never
+  fi
+
+  printf '%s\0' \
+    virt-viewer \
+    --connect "$CONNECT" \
+    --attach \
+    --reconnect \
+    "--auto-resize=$auto_resize_arg" \
+    "--zoom=$zoom" \
+    "--cursor=$cursor" \
+    --hotkeys=toggle-fullscreen=shift+f11,release-cursor=shift+f12
+
+  [[ $audio == "true" ]] || printf '%s\0' --spice-disable-audio
+  [[ $usb_redirection == "true" ]] || printf '%s\0' --spice-disable-usbredir
+  printf '%s\0' "$NAME"
+}
+
+run_viewer() {
+  local command_string
+  local -a args=()
+  while IFS= read -r -d '' arg; do
+    args+=("$arg")
+  done < <(viewer_args)
+
+  schedule_restore_aspect
+
+  if virsh --connect "$CONNECT" uri >/dev/null 2>&1; then
+    exec "${args[@]}"
+  fi
+
+  echo "This session does not have the libvirt group yet; using it for virt-viewer." >&2
+  echo "Log out and back in so the group applies everywhere." >&2
+  printf -v command_string '%q ' "${args[@]}"
+  exec sg libvirt -c "$command_string"
+}
+
+run_virsh() {
+  local arg command_string
+  if virsh --connect "$CONNECT" uri >/dev/null 2>&1; then
+    virsh --connect "$CONNECT" "$@"
+  else
+    printf -v command_string 'virsh --connect %q ' "$CONNECT"
+    for arg in "$@"; do
+      printf -v command_string '%s%q ' "$command_string" "$arg"
+    done
+    sg libvirt -c "$command_string"
+  fi
+}
+
+viewer_service_active() {
+  systemctl --user is-active --quiet "$VIEWER_UNIT" 2>/dev/null
+}
+
+viewer_client_pids() {
+  hyprctl clients -j 2>/dev/null |
+    jq -r --arg name "$NAME" '.[] | select(.class == "virt-viewer" and ((.title // "") | contains($name))) | .pid' 2>/dev/null
+}
+
+viewer_client() {
+  hyprctl clients -j 2>/dev/null |
+    jq -cer --arg name "$NAME" 'first(.[] | select(.class == "virt-viewer" and ((.title // "") | contains($name)))) // empty' 2>/dev/null
+}
+
+domain_state() {
+  run_virsh domstate "$NAME" 2>/dev/null | head -1
+}
+
+domain_running() {
+  [[ $(domain_state) == "running" ]]
+}
+
+viewer_active() {
+  viewer_client >/dev/null
+}
+
+close_viewer_clients() {
+  local pid attempt
+  systemctl --user stop "$VIEWER_UNIT" >/dev/null 2>&1 || true
+  while read -r pid; do
+    [[ $pid =~ ^[0-9]+$ ]] && kill "$pid" 2>/dev/null || true
+  done < <(viewer_client_pids)
+  for attempt in {1..20}; do
+    viewer_client >/dev/null || return 0
+    sleep 0.1
+  done
+  fail "the existing Lab viewer did not close"
+}
+
+start_viewer_service() {
+  local command=${1:-run}
+  close_viewer_clients
+  systemctl --user reset-failed "$VIEWER_UNIT" >/dev/null 2>&1 || true
+  systemd-run --user --quiet --collect --unit="$VIEWER_UNIT" \
+    --working-directory="$HOME" \
+    --setenv=OMARCHY_PATH="$OMARCHY_PATH" \
+    --setenv=OMARCHY_LAB_VIEWER_SKIP_RESTORE=1 \
+    --property=StandardOutput=null \
+    --property=StandardError=null \
+    -- "$VIEWER_BIN" "$command"
+}
+
+wait_for_viewer() {
+  local attempt
+  for attempt in {1..50}; do
+    viewer_client >/dev/null && return 0
+    sleep 0.1
+  done
+  fail "the Lab viewer did not reopen"
+}
+
+restore_aspect() {
+  local aspect auto_resize zoom
+  aspect=$(setting aspect)
+  auto_resize=$(setting autoResize)
+  zoom=$(setting zoom)
+  if [[ $auto_resize == "true" && -n $aspect ]]; then
+    OMARCHY_LAB_VIEWER_ZOOM="$zoom" "$LAB_VM_BIN" aspect "$aspect" >/dev/null
+  fi
+}
+
+schedule_restore_aspect() {
+  [[ ${OMARCHY_LAB_VIEWER_SKIP_RESTORE:-0} == 1 ]] && return 0
+  [[ $(setting autoResize) == "true" && -n $(setting aspect) ]] || return 0
+
+  (
+    wait_for_viewer
+    restore_aspect
+  ) >/dev/null 2>&1 &
+}
+
+restart_viewer() {
+  if ! viewer_service_active && ! viewer_client >/dev/null; then
+    return 0
+  fi
+  start_viewer_service
+  wait_for_viewer
+  restore_aspect
+}
+
+focus_viewer() {
+  local client address
+  client=$(viewer_client) || return 1
+  address=$(jq -r '.address // empty' <<<"$client")
+  [[ -n $address ]] || return 1
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:$address\" })" >/dev/null 2>&1 ||
+    hyprctl dispatch focuswindow "address:$address" >/dev/null
+}
+
+wake_lab_display() {
+  run_virsh send-key "$NAME" KEY_LEFTCTRL >/dev/null 2>&1 || true
+}
+
+enqueue_launch_service() {
+  systemd-run --user --quiet --collect --unit="$VIEWER_UNIT" \
+    --working-directory="$HOME" \
+    --setenv=OMARCHY_PATH="$OMARCHY_PATH" \
+    --property=StandardOutput=null \
+    --property=StandardError=null \
+    -- "$VIEWER_BIN" launch-service
+}
+
+launch_viewer() {
+  if ! enqueue_launch_service 2>/dev/null; then
+    ensure_lab_running || return 1
+    wake_lab_display
+    focus_viewer || viewer_service_active || fail "the Lab viewer could not be launched"
+  fi
+}
+
+ensure_lab_running() {
+  local state
+  state=$(domain_state || true)
+  if [[ -z $state ]]; then
+    fail "Omarchy Lab is not installed. Run: omarchy lab vm install"
+    return 1
+  fi
+  if [[ $state != "running" ]]; then
+    run_virsh start "$NAME" >/dev/null || return 1
+  fi
+}
+
+launch_viewer_service() {
+  ensure_lab_running || return 1
+  if viewer_client >/dev/null; then
+    wake_lab_display
+    focus_viewer || true
+    return 0
+  fi
+  # Wake an idle guest, including a stopped VM whose console stayed open.
+  wake_lab_display
+  unset OMARCHY_LAB_VIEWER_SKIP_RESTORE
+  run_viewer
+}
+
+set_viewer_setting() {
+  local key=${1:-} value=${2:-}
+  [[ -n $key && -n $value ]] || fail "usage: omarchy lab viewer set <zoom|auto-resize|cursor|audio|usb-redirection|keep-in-bar> VALUE"
+  (( $# == 2 )) || fail "set accepts one setting and one value"
+  update_setting "$key" "$value"
+  if [[ $key != "keep-in-bar" ]]; then
+    restart_viewer
+  fi
+  case $key in
+  zoom) printf 'Zoom: %s%%\n' "$value" ;;
+  auto-resize) printf 'Auto resize: %s\n' "$(bool_label "$value")" ;;
+  cursor) printf 'Cursor: %s\n' "$value" ;;
+  audio) printf 'Audio: %s\n' "$(bool_label "$value")" ;;
+  usb-redirection) printf 'USB redirection: %s\n' "$(bool_label "$value")" ;;
+  keep-in-bar) printf 'Keep in bar: %s\n' "$(bool_label "$value")" ;;
+  esac
+}
+
+set_aspect() {
+  local aspect=${1:-} settings previous_auto_resize zoom
+  case $aspect in
+  16:9 | 16:10 | 3:2 | 4:3 | 21:9 | 32:9) ;;
+  *) fail "aspect must be 16:9, 16:10, 3:2, 4:3, 21:9, or 32:9" ;;
+  esac
+
+  previous_auto_resize=$(setting autoResize)
+  zoom=$(setting zoom)
+  settings=$(settings_json | jq -c --arg aspect "$aspect" '.autoResize = true | .aspect = $aspect')
+  write_settings "$settings"
+  if [[ $previous_auto_resize == "false" ]] && (viewer_service_active || viewer_client >/dev/null); then
+    restart_viewer
+  else
+    OMARCHY_LAB_VIEWER_ZOOM="$zoom" "$LAB_VM_BIN" aspect "$aspect"
+  fi
+}
+
+toggle_fullscreen() {
+  local client address window
+  client=$(viewer_client) || fail "the Lab viewer is not open"
+  address=$(jq -r '.address' <<<"$client")
+  [[ -n $address ]] || fail "the Lab viewer has no Hyprland address"
+  window="address:$address"
+  if ! hyprctl dispatch \
+    "hl.dsp.window.fullscreen({ window = \"$window\", action = \"toggle\" })" >/dev/null 2>&1; then
+    focus_viewer
+    hyprctl dispatch fullscreen 0 >/dev/null
+  fi
+}
+
+guest_display() {
+  local display
+  domain_running || return 0
+  display=$(timeout 2 "$LAB_VM_BIN" ssh 'for mode_file in /sys/class/drm/card*-Virtual-*/modes; do if [ -f "$mode_file" ]; then head -n 1 "$mode_file"; break; fi; done' 2>/dev/null || true)
+  [[ $display =~ ^[0-9]+x[0-9]+$ ]] && printf '%s\n' "$display"
+}
+
+status_json() {
+  local settings state client='{}' display=''
+  local installed=false running=false active=false fullscreen=false
+  settings=$(settings_json)
+  state=$(domain_state || true)
+  [[ -n $state ]] && installed=true
+  [[ $state == "running" ]] && running=true
+  if client=$(viewer_client); then
+    active=true
+    [[ $(jq -r '.fullscreen // 0' <<<"$client") != 0 ]] && fullscreen=true
+  else
+    client='{}'
+  fi
+  display=$(guest_display || true)
+
+  jq -cn \
+    --argjson settings "$settings" \
+    --arg state "${state:-not installed}" \
+    --arg display "$display" \
+    --argjson installed "$installed" \
+    --argjson running "$running" \
+    --argjson active "$active" \
+    --argjson fullscreen "$fullscreen" \
+    --argjson client "$client" '
+      $settings + {
+        installed: $installed,
+        domainRunning: $running,
+        viewerActive: $active,
+        fullscreen: $fullscreen,
+        state: $state,
+        display: $display,
+        windowWidth: ($client.size[0] // 0),
+        windowHeight: ($client.size[1] // 0)
+      }
+    '
+}
+
+bar_status_json() {
+  local active=false
+  if viewer_active; then
+    active=true
+  fi
+
+  jq -cn \
+    --argjson active "$active" \
+    --argjson keep_in_bar "$(setting keepInBar)" \
+    '{viewerActive: $active, keepInBar: $keep_in_bar}'
+}
+
+active_viewer() {
+  if (( $# == 0 )); then
+    viewer_active
+  elif (( $# == 1 )) && [[ $1 == "--json" ]]; then
+    bar_status_json
+  else
+    fail "usage: omarchy lab viewer active [--json]"
+  fi
+}
+
+status_viewer() {
+  local output
+  (( $# <= 1 )) || fail "usage: omarchy lab viewer status [--json]"
+  [[ ${1:-} == "" || ${1:-} == "--json" ]] || fail "usage: omarchy lab viewer status [--json]"
+  output=$(status_json)
+
+  if [[ ${1:-} == "--json" ]]; then
+    printf '%s\n' "$output"
+  else
+    jq -r '
+      "VM: " + .state,
+      "Viewer: " + (if .viewerActive then "open" else "closed" end),
+      "Display: " + (if .display == "" then "unknown" else .display end),
+      "Aspect: " + (if .aspect == "" then "window" else .aspect end),
+      "Zoom: " + (.zoom | tostring) + "%",
+      "Bar icon: " + (if .keepInBar then "always visible" else "viewer only" end)
+    ' <<<"$output"
+  fi
+}
+
+screenshot_viewer() {
+  local path
+  path=$("$LAB_VM_BIN" screenshot | tail -1)
+  [[ -n $path ]] || fail "the Lab screenshot did not return a file"
+  omarchy-notification-send "Lab screenshot saved" "$path"
+  printf '%s\n' "$path"
+}
+
+reboot_lab() {
+  domain_running || fail "the Lab VM is not running"
+  "$LAB_VM_BIN" ssh 'sudo systemctl reboot --no-wall'
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab viewer <command>
+
+  run                              run virt-viewer with saved preferences
+  launch                           start the Lab and attach its console
+  status [--json]                  show VM, viewer, display, and preference state
+  active [--json]                  report whether the Lab viewer is open
+  aspect <RATIO>                   set 16:9, 16:10, 3:2, 4:3, 21:9, or 32:9
+  set zoom <10-400>                set viewer zoom percentage
+  set auto-resize <true|false>     follow the viewer window size
+  set cursor <auto|local>          choose remote or local cursor rendering
+  set audio <true|false>           enable SPICE audio
+  set usb-redirection <true|false> enable SPICE USB redirection
+  set keep-in-bar <true|false>     keep Lab controls visible in the bar
+  fullscreen                       toggle fullscreen
+  screenshot                       save the guest display and notify
+  reboot                           reboot the guest
+  stop                             stop the guest
+  reset                            restore the gold image
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+
+  case $command in
+  run) run_viewer ;;
+  launch) launch_viewer ;;
+  launch-service) launch_viewer_service ;;
+  status) status_viewer "$@" ;;
+  active) active_viewer "$@" ;;
+  aspect) set_aspect "$@" ;;
+  set) set_viewer_setting "$@" ;;
+  fullscreen) toggle_fullscreen ;;
+  screenshot) screenshot_viewer ;;
+  reboot) reboot_lab ;;
+  stop) "$LAB_VM_BIN" stop ;;
+  reset) "$LAB_VM_BIN" reset ;;
+  help | --help | -h) show_usage ;;
+  *)
+    echo "Unknown command: $command" >&2
+    show_usage >&2
+    return 1
+    ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

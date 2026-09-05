@@ -1,0 +1,184 @@
+#!/bin/bash
+
+# omarchy:summary=Inspect, promote, or rebuild the Omarchy Lab gold image
+# omarchy:args=<status|promote|rebuild> [--yes] [--json]
+# omarchy:examples=omarchy lab gold status --json | omarchy lab gold promote --yes | omarchy lab gold rebuild --yes
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+volume_info_json() {
+  local pool=$1 volume=$2 path=$3 info capacity=0 allocation=0 modified=0
+  info=$(run_virsh vol-info --pool "$pool" "$volume" --bytes 2>/dev/null || true)
+  capacity=$(awk -F: '/^Capacity/ {gsub(/[^0-9]/, "", $2); print $2; exit}' <<<"$info")
+  allocation=$(awk -F: '/^Allocation/ {gsub(/[^0-9]/, "", $2); print $2; exit}' <<<"$info")
+  [[ -f $path ]] && modified=$(stat -c %Y "$path")
+  jq -cn --arg path "$path" --argjson capacityBytes "${capacity:-0}" --argjson allocatedBytes "${allocation:-0}" --argjson modifiedEpoch "$modified" '{path:$path,capacityBytes:$capacityBytes,allocatedBytes:$allocatedBytes,modifiedEpoch:$modifiedEpoch}'
+}
+
+gold_status_json() {
+  local pool base overlay previous previous_path metadata='{}' current_version="" iso="" checkpoints
+  require_lab
+  pool=$(find_pool) || lab_fail "no libvirt pool owns $IMAGES"
+  base=$(volume_info_json "$pool" "$BASE_VOL" "$IMAGES/$BASE_VOL")
+  overlay=$(volume_info_json "$pool" "$OVERLAY_VOL" "$IMAGES/$OVERLAY_VOL")
+  previous_path="$IMAGES/${BASE_VOL%.qcow2}.previous.qcow2"
+  if [[ -f $previous_path ]]; then
+    previous=$(jq -cn --arg path "$previous_path" --argjson allocatedBytes "$(( $(stat -c %b "$previous_path") * 512 ))" --argjson modifiedEpoch "$(stat -c %Y "$previous_path")" '{path:$path,allocatedBytes:$allocatedBytes,modifiedEpoch:$modifiedEpoch}')
+  else
+    previous=null
+  fi
+  [[ -f $STATE_DIR/gold.json ]] && metadata=$(<"$STATE_DIR/gold.json")
+  if domain_running; then current_version=$(lab_ssh 'omarchy version 2>/dev/null | head -1' || true); fi
+  iso=$(find "$IMAGES" -maxdepth 1 -type f -name 'omarchy-[0-9]*.iso' -printf '%f\n' 2>/dev/null | sort -V | tail -1)
+  checkpoints=$(find "$CHECKPOINT_DIR" -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l)
+  jq -cn \
+    --argjson base "$base" \
+    --argjson overlay "$overlay" \
+    --argjson previous "$previous" \
+    --argjson metadata "$metadata" \
+    --arg currentGuestVersion "$current_version" \
+    --arg newestCachedIso "$iso" \
+    --argjson checkpoints "$checkpoints" \
+    '{base:$base,overlay:$overlay,previous:$previous,metadata:$metadata,currentGuestVersion:$currentGuestVersion,newestCachedIso:$newestCachedIso,checkpointCount:$checkpoints,tpmShared:true}'
+}
+
+show_gold_status() {
+  local output
+  [[ $# == 0 || ($# == 1 && $1 == "--json") ]] || lab_fail "usage: omarchy lab gold status [--json]"
+  output=$(gold_status_json)
+  if [[ ${1:-} == "--json" ]]; then
+    printf '%s\n' "$output"
+  else
+    jq -r '
+      "Gold: " + .base.path,
+      "Gold storage: " + ((.base.allocatedBytes / 1073741824 * 10 | floor) / 10 | tostring) + " GiB",
+      "Overlay storage: " + ((.overlay.allocatedBytes / 1073741824 * 10 | floor) / 10 | tostring) + " GiB",
+      "Guest version: " + (if .currentGuestVersion == "" then "unknown" else .currentGuestVersion end),
+      "Cached ISO: " + (if .newestCachedIso == "" then "none" else .newestCachedIso end),
+      "Checkpoints: " + (.checkpointCount | tostring),
+      "Last promoted: " + (.metadata.promotedAt // "never"),
+      "TPM: shared across resets and checkpoints"
+    ' <<<"$output"
+  fi
+}
+
+promote_gold() {
+  local yes=0 json=false was_running=false pool base overlay next previous metadata version="" network
+  if ! is_tty; then
+    launch_lifecycle_terminal "$OMARCHY_PATH/bin/omarchy-lab-gold" promote "$@"
+    return
+  fi
+  while (($#)); do
+    case $1 in
+    --yes) yes=1 ;;
+    --json) json=true ;;
+    *) lab_fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+  confirm_destructive "$yes" "Promote the current Lab disk to gold and replace the old gold image?" || return 0
+  sudo -v || return 1
+  require_lab
+  pool=$(find_pool) || lab_fail "no libvirt pool owns $IMAGES"
+  base="$IMAGES/$BASE_VOL"
+  overlay="$IMAGES/$OVERLAY_VOL"
+  next="$IMAGES/${BASE_VOL%.qcow2}.next.qcow2"
+  previous="$IMAGES/${BASE_VOL%.qcow2}.previous.qcow2"
+  network=$(run_virsh dumpxml "$NAME" --inactive | sed -n "/<interface type='network'>/,/<\/interface>/s/.*<source network='\([^']*\)'.*/\1/p")
+  [[ -n $network ]] || { lab_fail "could not determine the gold network"; return 1; }
+  preserve_checkpoints || return 1
+  if domain_running; then
+    was_running=true
+    version=$(lab_ssh 'omarchy version 2>/dev/null | head -1' || true)
+    stop_guest
+  fi
+
+  echo "Flattening the current Lab disk into a new gold image ..." >&2
+  run_as_root rm -f "$next"
+  if ! run_as_root qemu-img convert -p -O qcow2 "$overlay" "$next" >&2; then
+    $was_running && run_virsh start "$NAME" >/dev/null 2>&1 || true
+    return 1
+  fi
+  run_as_root rm -f "$previous"
+  run_as_root mv "$base" "$previous"
+  run_as_root mv "$next" "$base"
+  run_as_root chown libvirt-qemu:libvirt-qemu "$base" "$previous"
+  run_as_root chmod 400 "$base" "$previous"
+  run_virsh pool-refresh "$pool" >/dev/null
+  run_virsh vol-delete --pool "$pool" "$OVERLAY_VOL" >/dev/null
+  run_virsh vol-create-as "$pool" "$OVERLAY_VOL" "$(sed -n 's/^DISK=//p' "$CONFIG_FILE" | head -1)" --format qcow2 --backing-vol "$BASE_VOL" --backing-vol-format qcow2 >/dev/null
+  metadata=$(jq -cn --arg promotedAt "$(iso_timestamp)" --arg guestVersion "$version" --arg previous "$previous" --arg network "$network" '{promotedAt:$promotedAt,guestVersion:$guestVersion,previousGold:$previous,networkSource:$network}')
+  write_private_json "$STATE_DIR/gold.json" "$metadata"
+  rm -f "$KNOWN_HOSTS"
+  if $was_running; then
+    run_virsh start "$NAME" >/dev/null
+    wait_ssh >&2
+    wait_hypr >&2 || true
+  fi
+  if $json; then gold_status_json | jq '. + {promoted:true}'; else printf 'Promoted the current Lab to gold. Previous gold: %s\n' "$previous"; fi
+}
+
+rebuild_gold() {
+  local yes=0 json=false user disk cores memory_kib memory_gib
+  if ! is_tty; then
+    launch_lifecycle_terminal "$OMARCHY_PATH/bin/omarchy-lab-gold" rebuild "$@"
+    return
+  fi
+  while (($#)); do
+    case $1 in
+    --yes) yes=1 ;;
+    --json) json=true ;;
+    *) lab_fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+  confirm_destructive "$yes" "Reinstall the entire Lab from the newest Omarchy ISO?" || return 0
+  require_lab
+  sudo -v || return 1
+  preserve_checkpoints || return 1
+  user=$(guest_user)
+  disk=$(sed -n 's/^DISK=//p' "$CONFIG_FILE" | head -1)
+  [[ -n $disk ]] || disk=$DISK_DEFAULT
+  cores=$(run_virsh vcpucount "$NAME" --maximum --config 2>/dev/null | head -1)
+  memory_kib=$(run_virsh dominfo "$NAME" | awk -F: '/^Max memory/ {gsub(/[^0-9]/, "", $2); print $2; exit}')
+  memory_gib=$((memory_kib / 1024 / 1024))
+  export OMARCHY_LAB_USER=$user
+  export OMARCHY_LAB_DISK=$disk
+  export OMARCHY_LAB_CORES=$cores
+  export OMARCHY_LAB_RAM="${memory_gib}G"
+  export OMARCHY_LAB_PASSWORD=${OMARCHY_LAB_PASSWORD:-$PASSWORD_DEFAULT}
+  remove_lab --yes >&2
+  install_lab --yes >&2
+  if $json; then gold_status_json | jq '. + {rebuilt:true}'; else echo "Rebuilt the Lab from the newest ISO."; fi
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab gold <command>
+
+  status [--json]                 show gold, overlay, ISO, version, and checkpoint state
+  promote [--yes] [--json]        flatten the current guest into a new gold image
+  rebuild [--yes] [--json]        reinstall from the newest ISO with current CPU/RAM/disk sizing
+
+Promote keeps one previous gold image for recovery. Rebuild uses OMARCHY_LAB_PASSWORD when set, or the default lab password. The virtual TPM is shared rather than copied.
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+  case $command in
+  status) show_gold_status "$@" ;;
+  promote) promote_gold "$@" ;;
+  rebuild) rebuild_gold "$@" ;;
+  help | --help | -h) show_usage ;;
+  *) echo "Unknown command: $command" >&2; show_usage >&2; return 1 ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

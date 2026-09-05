@@ -1,0 +1,187 @@
+#!/bin/bash
+
+# omarchy:summary=Switch the Omarchy Lab between NAT, isolated, and offline networking
+# omarchy:args=<status|nat|isolated|offline> [--json]
+# omarchy:examples=omarchy lab network status --json | omarchy lab network offline | omarchy lab network isolated
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+ISOLATED_NETWORK=${OMARCHY_LAB_ISOLATED_NETWORK:-omarchy-lab-isolated}
+ISOLATED_BRIDGE=${OMARCHY_LAB_ISOLATED_BRIDGE:-virbr-lab}
+ISOLATED_ADDRESS=${OMARCHY_LAB_ISOLATED_ADDRESS:-192.168.123.1}
+ISOLATED_CIDR=${OMARCHY_LAB_ISOLATED_CIDR:-192.168.123.0/24}
+ISOLATED_GUEST_ADDRESS=${OMARCHY_LAB_ISOLATED_GUEST_ADDRESS:-192.168.123.2/24}
+
+interface_source() {
+  local xml
+  xml=$(run_virsh dumpxml "$NAME" 2>/dev/null)
+  sed -n "/<interface type='network'>/,/<\/interface>/s/.*<source network='\([^']*\)'.*/\1/p" <<<"$xml"
+}
+
+network_status_json() {
+  local mac source link=down mode=offline ip="" link_output
+  require_lab
+  mac=$(lab_mac)
+  [[ -n $mac ]] || lab_fail "Lab has no libvirt network interface"
+  source=$(interface_source)
+  if domain_running; then
+    link_output=$(run_virsh domif-getlink "$NAME" "$mac" 2>/dev/null) || return 1
+    ip=$(guest_ip || true)
+  else
+    link_output=$(run_virsh domif-getlink "$NAME" "$mac" --config 2>/dev/null) || return 1
+  fi
+  link=$(awk 'NR == 1 {print $NF}' <<<"$link_output")
+  if [[ $link == "down" ]]; then
+    mode=offline
+  elif [[ $source == "$ISOLATED_NETWORK" ]]; then
+    mode=isolated
+  else
+    mode=nat
+  fi
+  jq -cn --arg mode "$mode" --arg source "$source" --arg link "$link" --arg mac "$mac" --arg ip "$ip" '{mode:$mode,sourceNetwork:$source,link:$link,mac:$mac,ip:$ip}'
+}
+
+show_network_status() {
+  local output
+  [[ $# == 0 || ($# == 1 && $1 == "--json") ]] || lab_fail "usage: omarchy lab network status [--json]"
+  output=$(network_status_json)
+  if [[ ${1:-} == "--json" ]]; then
+    printf '%s\n' "$output"
+  else
+    jq -r '"Network: " + .mode, "Link: " + .link, "Source: " + .sourceNetwork, "IP: " + (if .ip == "" then "n/a" else .ip end)' <<<"$output"
+  fi
+}
+
+ensure_isolated_network() {
+  local xml="$STATE_DIR/isolated-network.xml"
+  if ! run_virsh net-info "$ISOLATED_NETWORK" >/dev/null 2>&1; then
+    mkdir -p "$STATE_DIR"
+    cat >"$xml" <<EOF
+<network>
+  <name>$ISOLATED_NETWORK</name>
+  <bridge name='$ISOLATED_BRIDGE' stp='on' delay='0'/>
+  <ip address='$ISOLATED_ADDRESS' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='192.168.123.10' end='192.168.123.250'/>
+    </dhcp>
+  </ip>
+</network>
+EOF
+    run_virsh net-define "$xml" >/dev/null
+  fi
+  run_virsh net-start "$ISOLATED_NETWORK" >/dev/null 2>&1 || true
+  run_virsh net-autostart "$ISOLATED_NETWORK" >/dev/null
+}
+
+prepare_guest_network() {
+  local network=$1 command
+  if [[ $network == "$ISOLATED_NETWORK" ]]; then
+    command="sudo nmcli connection modify \"\$uuid\" ipv4.method manual ipv4.addresses '$ISOLATED_GUEST_ADDRESS' ipv4.gateway '' ipv4.dns '' ipv4.never-default yes"
+  else
+    command="sudo nmcli connection modify \"\$uuid\" ipv4.method auto ipv4.addresses '' ipv4.gateway '' ipv4.dns '' ipv4.never-default no"
+  fi
+  lab_ssh "uuid=\$(nmcli -t -f UUID,TYPE connection show --active | sed -n 's/:802-3-ethernet\$//p' | head -1); [[ -n \$uuid ]] || exit 1; $command"
+}
+
+switch_source() {
+  local network=$1 mac was_running=false domain_xml interface_xml replacement_xml
+  mac=$(lab_mac)
+  [[ -n $mac ]] || lab_fail "Lab has no libvirt network interface"
+  domain_running && was_running=true
+  if ! $was_running; then
+    lab_fail "start the Lab on its current network before changing network sources"
+    return 1
+  fi
+  # Offline retains the source profile. Reconnect that source before SSH.
+  run_virsh domif-setlink "$NAME" "$mac" up --config >/dev/null || return 1
+  run_virsh domif-setlink "$NAME" "$mac" up >/dev/null || return 1
+  local attempt
+  for ((attempt = 0; attempt < 10; attempt++)); do
+    if lab_ssh true >/dev/null 2>&1; then break; fi
+    sleep 1
+  done
+  ((attempt < 10)) || { lab_fail "guest is unavailable on its current network"; return 1; }
+  if $was_running; then
+    if [[ $network == "$ISOLATED_NETWORK" ]]; then
+      lab_ssh "sudo ufw allow from $ISOLATED_CIDR to any port 22 proto tcp comment omarchy-lab-isolated >/dev/null" || true
+    fi
+    prepare_guest_network "$network" || { lab_fail "could not prepare the guest network profile"; return 1; }
+    stop_guest || return 1
+  fi
+  domain_xml=$(run_virsh dumpxml "$NAME" --inactive)
+  interface_xml=$(sed -n "/<interface type='network'>/,/<\/interface>/p" <<<"$domain_xml")
+  [[ -n $interface_xml ]] || lab_fail "Lab has no configurable network interface"
+  replacement_xml=$(sed "s/<source network='[^']*'\/>/<source network='$network'\/>/" <<<"$interface_xml")
+  [[ $replacement_xml != "$interface_xml" ]] || lab_fail "could not update the Lab network source"
+  run_virsh update-device "$NAME" /dev/stdin --config <<<"$replacement_xml" >/dev/null
+  if $was_running; then
+    rm -f "$KNOWN_HOSTS"
+    run_virsh start "$NAME" >/dev/null
+    wait_ssh >&2
+  fi
+}
+
+set_network_mode() {
+  local mode=$1 json=false mac source
+  shift || true
+  while (($#)); do
+    if [[ $1 == "--json" ]]; then json=true; else lab_fail "unknown option: $1"; fi
+    shift
+  done
+  require_lab
+  mac=$(lab_mac)
+  [[ -n $mac ]] || lab_fail "Lab has no libvirt network interface"
+  source=$(interface_source)
+
+  case $mode in
+  offline)
+    write_private_json "$NETWORK_FILE" "$(jq -cn --arg previousSource "$source" '{mode:"offline",previousSource:$previousSource}')"
+    domain_running && run_virsh domif-setlink "$NAME" "$mac" down >/dev/null
+    run_virsh domif-setlink "$NAME" "$mac" down --config >/dev/null
+    ;;
+  nat)
+    [[ $source == "default" ]] || switch_source default
+    mac=$(lab_mac)
+    domain_running && run_virsh domif-setlink "$NAME" "$mac" up >/dev/null
+    run_virsh domif-setlink "$NAME" "$mac" up --config >/dev/null
+    ;;
+  isolated)
+    ensure_isolated_network
+    [[ $source == "$ISOLATED_NETWORK" ]] || switch_source "$ISOLATED_NETWORK"
+    mac=$(lab_mac)
+    domain_running && run_virsh domif-setlink "$NAME" "$mac" up >/dev/null
+    run_virsh domif-setlink "$NAME" "$mac" up --config >/dev/null
+    ;;
+  *) lab_fail "network mode must be nat, isolated, or offline" ;;
+  esac
+
+  if $json; then network_status_json; else printf 'Lab network mode: %s\n' "$mode"; fi
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab network <command>
+
+  status [--json]    show mode, link, source network, MAC, and IP
+  nat [--json]       use libvirt's normal NAT network
+  isolated [--json]  use a host-only network with no external forwarding
+  offline [--json]   disconnect the guest network interface
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+  case $command in
+  status) show_network_status "$@" ;;
+  nat | isolated | offline) set_network_mode "$command" "$@" ;;
+  help | --help | -h) show_usage ;;
+  *) echo "Unknown command: $command" >&2; show_usage >&2; return 1 ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

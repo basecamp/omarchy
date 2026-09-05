@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# omarchy:summary=Run common graphical actions inside the Omarchy Lab
+# omarchy:args=<list|terminal|launcher|lock|wake|restart-shell|reload-hyprland|key|run> [args]
+# omarchy:examples=omarchy lab action launcher | omarchy lab action key KEY_LEFTMETA KEY_ENTER | omarchy lab action run hyprctl clients -j
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+action_list_json() {
+  jq -cn '{actions:[
+    {id:"terminal", description:"Open the guest terminal"},
+    {id:"launcher", description:"Open the guest application launcher"},
+    {id:"lock", description:"Lock the guest session"},
+    {id:"wake", description:"Wake the guest display"},
+    {id:"restart-shell", description:"Restart the guest Omarchy shell"},
+    {id:"reload-hyprland", description:"Reload the guest Hyprland configuration"},
+    {id:"key", description:"Send one or more libvirt key names"},
+    {id:"run", description:"Run a command with the guest graphical-session environment"}
+  ]}'
+}
+
+list_actions() {
+  [[ $# == 0 || ($# == 1 && $1 == "--json") ]] || lab_fail "usage: omarchy lab action list [--json]"
+  if [[ ${1:-} == "--json" ]]; then
+    action_list_json
+  else
+    action_list_json | jq -r '.actions[] | "\(.id)\t\(.description)"' | column -t -s $'\t'
+  fi
+}
+
+run_action() {
+  local action=${1:-}
+  shift || true
+
+  case $action in
+  terminal)
+    require_running_lab
+    # Let the guest user manager own the terminal, not the panel's SSH call.
+    # Keep forked launcher children alive after setsid hands off the window.
+    session_lab 'systemd-run --user --quiet --collect --property=Type=exec --property=ExitType=cgroup \
+      --setenv=OMARCHY_PATH="$OMARCHY_PATH" --setenv=PATH="$PATH" \
+      --setenv=XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
+      --setenv=DBUS_SESSION_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS" \
+      --setenv=WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+      --setenv=HYPRLAND_INSTANCE_SIGNATURE="$HYPRLAND_INSTANCE_SIGNATURE" \
+      -- "$OMARCHY_PATH/bin/omarchy-launch-terminal"'
+    ;;
+  launcher)
+    require_running_lab
+    session_lab omarchy-menu toggle root
+    ;;
+  lock)
+    require_running_lab
+    session_lab omarchy-system-lock
+    ;;
+  wake)
+    require_running_lab
+    send_key_lab KEY_LEFTCTRL
+    ;;
+  restart-shell)
+    require_running_lab
+    session_lab omarchy-restart-shell
+    ;;
+  reload-hyprland)
+    require_running_lab
+    session_lab hyprctl reload
+    ;;
+  key)
+    require_running_lab
+    (($# > 0)) || lab_fail "usage: omarchy lab action key KEY_NAME [...]"
+    local key
+    for key in "$@"; do
+      [[ $key =~ ^KEY_[A-Z0-9_]+$ ]] || lab_fail "invalid libvirt key name: $key"
+    done
+    send_key_lab "$@"
+    ;;
+  run)
+    require_running_lab
+    (($# > 0)) || lab_fail "usage: omarchy lab action run COMMAND [ARG ...]"
+    session_lab "$@"
+    ;;
+  *)
+    lab_fail "unknown action: ${action:-none}"
+    ;;
+  esac
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab action <command>
+
+  list [--json]          list stable action names
+  terminal               open the guest terminal
+  launcher               open the guest application launcher
+  lock                   lock the guest session
+  wake                   wake the guest display
+  restart-shell          restart the guest Omarchy shell
+  reload-hyprland        reload guest Hyprland configuration
+  key KEY_NAME [...]     send libvirt key names
+  run COMMAND [ARG ...]  run with the guest graphical-session environment
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+  case $command in
+  list) list_actions "$@" ;;
+  terminal | launcher | lock | wake | restart-shell | reload-hyprland | key | run)
+    run_action "$command" "$@"
+    ;;
+  help | --help | -h) show_usage ;;
+  *)
+    echo "Unknown command: $command" >&2
+    show_usage >&2
+    return 1
+    ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

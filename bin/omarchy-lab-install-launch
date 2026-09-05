@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# omarchy:summary=Open the Lab installer terminal and acknowledge its startup
+# omarchy:hidden=true
+
+set -euo pipefail
+source "$OMARCHY_PATH/bin/omarchy-lab-terminal-launch"
+
+launch_installer() { launch_terminal omarchy-lab-vm install; }
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  launch_installer
+fi

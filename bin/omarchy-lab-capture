@@ -1,0 +1,277 @@
+#!/bin/bash
+
+# omarchy:summary=Capture Omarchy Lab screenshots, recordings, diagnostics, and comparisons
+# omarchy:args=<screenshot|record|bundle|compare|list> [options]
+# omarchy:examples=omarchy lab capture screenshot --json | omarchy lab capture record 10 | omarchy lab capture bundle
+
+set -euo pipefail
+
+source "$OMARCHY_PATH/bin/omarchy-lab-common"
+
+artifact_type() {
+  case $1 in
+  *.png | *.ppm) echo screenshot ;;
+  *.mp4 | *.mkv) echo recording ;;
+  *.tar.gz) echo diagnostics ;;
+  *) echo file ;;
+  esac
+}
+
+artifact_json() {
+  local path=$1 type
+  type=$(artifact_type "$path")
+  jq -cn \
+    --arg path "$path" \
+    --arg type "$type" \
+    --argjson bytes "$(stat -c %s "$path")" \
+    --argjson modifiedEpoch "$(stat -c %Y "$path")" \
+    '{path:$path,type:$type,bytes:$bytes,modifiedEpoch:$modifiedEpoch}'
+}
+
+viewer_region() {
+  local clients client
+  clients=$(hyprctl clients -j 2>/dev/null) || return 1
+  client=$(jq -cer --arg name "$NAME" '
+    [.[] | select(.mapped == true and .hidden == false and (.class | ascii_downcase) == "virt-viewer" and (.title | startswith($name)))]
+    | first // empty
+  ' <<<"$clients") || return 1
+  jq -r '(.size[0] | tostring) + "x" + (.size[1] | tostring) + (if .at[0] >= 0 then "+" else "" end) + (.at[0] | tostring) + (if .at[1] >= 0 then "+" else "" end) + (.at[1] | tostring)' <<<"$client"
+}
+
+require_viewer_region() {
+  local region n=0
+  region=$(viewer_region || true)
+  if [[ -z $region ]]; then
+    "$OMARCHY_PATH/bin/omarchy-lab-viewer" launch
+    until region=$(viewer_region); do
+      ((n++ < 50)) || lab_fail "could not locate the Lab viewer for recording"
+      sleep 0.1
+    done
+  fi
+  printf '%s\n' "$region"
+}
+
+artifact_list_json() {
+  local result='[]' path item
+  mkdir -p "$SCREEN_DIR" "$ARTIFACT_DIR"
+  while IFS= read -r path; do
+    item=$(artifact_json "$path")
+    result=$(jq -cn --argjson current "$result" --argjson item "$item" '$current + [$item]')
+  done < <(find "$SCREEN_DIR" "$ARTIFACT_DIR" -type f \( -name '*.png' -o -name '*.ppm' -o -name '*.mp4' -o -name '*.mkv' -o -name '*.tar.gz' \) -print | sort)
+  jq 'sort_by(.modifiedEpoch) | reverse' <<<"$result"
+}
+
+list_artifacts() {
+  local output
+  [[ $# == 0 || ($# == 1 && $1 == "--json") ]] || lab_fail "usage: omarchy lab capture list [--json]"
+  output=$(artifact_list_json)
+  if [[ ${1:-} == "--json" ]]; then
+    jq -cn --argjson artifacts "$output" '{artifacts:$artifacts}'
+  elif [[ $(jq 'length' <<<"$output") == 0 ]]; then
+    echo "No Lab artifacts."
+  else
+    jq -r '.[] | "\(.type)\t\(.bytes)\t\(.path)"' <<<"$output" |
+      while IFS=$'\t' read -r type bytes path; do
+        printf '%-12s %8s  %s\n' "$type" "$(human_bytes "$bytes")" "$path"
+      done
+  fi
+}
+
+capture_screenshot() {
+  local json=false copy=false path
+  while (($#)); do
+    case $1 in
+    --json) json=true ;;
+    --copy) copy=true ;;
+    *) lab_fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+  require_running_lab
+  path=$(screenshot_lab)
+  if $copy; then
+    printf '%s' "$path" | wl-copy
+  fi
+  if $json; then
+    artifact_json "$path" | jq --argjson copied "$copy" '. + {copiedPath:$copied}'
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
+capture_recording() {
+  local seconds=${1:-10} json=false copy=false timestamp host_dir host_path region recorder_pid n=0
+  if [[ $seconds == "--json" || $seconds == "--copy" ]]; then
+    seconds=10
+  else
+    shift || true
+  fi
+  while (($#)); do
+    case $1 in
+    --json) json=true ;;
+    --copy) copy=true ;;
+    *) lab_fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+  [[ $seconds =~ ^[0-9]+$ ]] && ((10#$seconds >= 1 && 10#$seconds <= 300)) || lab_fail "recording duration must be 1-300 seconds"
+  require_running_lab
+  timestamp=$(date +%Y%m%d-%H%M%S)
+  host_dir="$ARTIFACT_DIR/recordings"
+  host_path="$host_dir/omarchy-lab-$timestamp.mp4"
+  mkdir -p "$host_dir"
+  # This records a composited host region, so remove our overlay and raise
+  # the viewer before measuring it. Allow the shell close animation to finish.
+  omarchy-shell shell hide omarchy.lab
+  "$OMARCHY_PATH/bin/omarchy-lab-viewer" launch >&2
+  until hyprctl activewindow -j | jq -e --arg name "$NAME" '(.class | ascii_downcase) == "virt-viewer" and (.title | startswith($name))' >/dev/null; do
+    ((n++ < 50)) || { lab_fail "the Lab viewer could not be focused for recording"; return 1; }
+    sleep 0.1
+  done
+  n=0
+  sleep 0.5
+  region=$(require_viewer_region)
+  echo "Recording the Lab viewer region for $seconds seconds; keep it unobscured ..." >&2
+  send_key_lab KEY_LEFTCTRL >/dev/null 2>&1 || true
+  gpu-screen-recorder -w "$region" -s 4096x4096 -f 30 -k h264 -q high -cursor no -o "$host_path" >&2 &
+  recorder_pid=$!
+  trap "kill -INT $recorder_pid 2>/dev/null || true" INT TERM EXIT
+  until [[ -s $host_path ]]; do
+    if ! kill -0 "$recorder_pid" 2>/dev/null; then
+      wait "$recorder_pid" || true
+      trap - INT TERM EXIT
+      lab_fail "screen recorder failed to start"
+      return 1
+    fi
+    if ((n++ >= 100)); then
+      kill -INT "$recorder_pid" 2>/dev/null || true
+      wait "$recorder_pid" || true
+      trap - INT TERM EXIT
+      lab_fail "screen recorder did not start"
+      return 1
+    fi
+    sleep 0.05
+  done
+  sleep "$((10#$seconds))"
+  kill -INT "$recorder_pid" 2>/dev/null || true
+  if ! wait "$recorder_pid"; then
+    trap - INT TERM EXIT
+    return 1
+  fi
+  trap - INT TERM EXIT
+  [[ -s $host_path ]] || lab_fail "screen recorder produced no video"
+  if $copy; then printf '%s' "$host_path" | wl-copy; fi
+  if $json; then
+    artifact_json "$host_path" | jq --argjson duration "$((10#$seconds))" --argjson copied "$copy" '. + {durationSeconds:$duration,copiedPath:$copied}'
+  else
+    printf '%s\n' "$host_path"
+  fi
+}
+
+capture_bundle() {
+  local json=false copy=false timestamp path remote_script
+  while (($#)); do
+    case $1 in
+    --json) json=true ;;
+    --copy) copy=true ;;
+    *) lab_fail "unknown option: $1" ;;
+    esac
+    shift
+  done
+  require_running_lab
+  timestamp=$(date +%Y%m%d-%H%M%S)
+  mkdir -p "$ARTIFACT_DIR/diagnostics"
+  path="$ARTIFACT_DIR/diagnostics/omarchy-lab-diagnostics-$timestamp.tar.gz"
+  remote_script='
+    bundle=$(mktemp -d)
+    trap '\''rm -rf "$bundle"'\'' EXIT
+    journalctl -b --no-pager >"$bundle/system-journal.txt" 2>&1 || true
+    journalctl --user -b --no-pager >"$bundle/user-journal.txt" 2>&1 || true
+    systemctl --failed --no-pager --full >"$bundle/system-failed.txt" 2>&1 || true
+    systemctl --user --failed --no-pager --full >"$bundle/user-failed.txt" 2>&1 || true
+    hyprctl monitors -j >"$bundle/hyprland-monitors.json" 2>&1 || true
+    hyprctl clients -j >"$bundle/hyprland-clients.json" 2>&1 || true
+    hyprctl configerrors >"$bundle/hyprland-errors.txt" 2>&1 || true
+    omarchy version >"$bundle/omarchy-version.txt" 2>&1 || true
+    printf "%s\n" "${OMARCHY_PATH:-/usr/share/omarchy}" >"$bundle/omarchy-path.txt"
+    ip addr >"$bundle/ip-addresses.txt" 2>&1 || true
+    lsblk -J -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINTS >"$bundle/block-devices.json" 2>&1 || true
+    tar -C "$bundle" -czf - .
+  '
+  echo "Collecting guest diagnostics ..." >&2
+  session_lab "$remote_script" >"$path"
+  [[ -s $path ]] || lab_fail "guest diagnostic bundle is empty"
+  if $copy; then printf '%s' "$path" | wl-copy; fi
+  if $json; then
+    artifact_json "$path" | jq --argjson copied "$copy" '. + {copiedPath:$copied}'
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
+capture_comparison() {
+  local before="" after="" output="" json=false copy=false arg
+  local -a latest=()
+  while (($#)); do
+    case $1 in
+    --json) json=true ;;
+    --copy) copy=true ;;
+    --*) lab_fail "unknown option: $1" ;;
+    *)
+      if [[ -z $before ]]; then before=$1
+      elif [[ -z $after ]]; then after=$1
+      elif [[ -z $output ]]; then output=$1
+      else lab_fail "compare accepts before, after, and optional output paths"
+      fi
+      ;;
+    esac
+    shift
+  done
+  if [[ -z $before ]]; then
+    mapfile -t latest < <(find "$SCREEN_DIR" -maxdepth 1 -type f -name '*.png' -printf '%T@ %p\n' | sort -n | tail -2 | cut -d ' ' -f2-)
+    ((${#latest[@]} == 2)) || lab_fail "comparison needs two screenshots"
+    before=${latest[0]}
+    after=${latest[1]}
+  fi
+  [[ -f $before ]] || lab_fail "before image does not exist: $before"
+  [[ -f $after ]] || lab_fail "after image does not exist: $after"
+  mkdir -p "$ARTIFACT_DIR/comparisons"
+  [[ -n $output ]] || output="$ARTIFACT_DIR/comparisons/omarchy-lab-compare-$(date +%Y%m%d-%H%M%S).png"
+  magick "$before" "$after" +append "$output"
+  if $copy; then printf '%s' "$output" | wl-copy; fi
+  if $json; then
+    artifact_json "$output" | jq --arg before "$before" --arg after "$after" --argjson copied "$copy" '. + {before:$before,after:$after,copiedPath:$copied}'
+  else
+    printf '%s\n' "$output"
+  fi
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: omarchy lab capture <command>
+
+  screenshot [--copy] [--json]           capture the guest framebuffer
+  record [SECONDS] [--copy] [--json]     record the guest display for 1-300 seconds
+  bundle [--copy] [--json]               collect guest journals and diagnostics
+  compare [BEFORE AFTER [OUTPUT]] [--copy] [--json] place two screenshots side by side
+  list [--json]                          list saved Lab artifacts
+EOF
+}
+
+main() {
+  local command=${1:-help}
+  shift || true
+  case $command in
+  screenshot) capture_screenshot "$@" ;;
+  record) capture_recording "$@" ;;
+  bundle) capture_bundle "$@" ;;
+  compare) capture_comparison "$@" ;;
+  list) list_artifacts "$@" ;;
+  help | --help | -h) show_usage ;;
+  *) echo "Unknown command: $command" >&2; show_usage >&2; return 1 ;;
+  esac
+}
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

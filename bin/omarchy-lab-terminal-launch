@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# omarchy:summary=Open a terminal for a privileged Lab action and acknowledge startup
+# omarchy:hidden=true
+
+set -euo pipefail
+source "$OMARCHY_PATH/bin/omarchy-lab-vm"
+
+launch_terminal() (
+  local command=${1:-} launch_dir launcher attempt
+  shift || return 1
+  # Only panel operations belong here; background polling never opens terminals.
+  case "$command:${1:-}" in
+    omarchy-lab-vm:install|omarchy-lab-vm:reset|omarchy-lab-gold:promote|omarchy-lab-gold:rebuild|omarchy-lab-checkpoint:create|omarchy-lab-checkpoint:restore|omarchy-lab-resource:set|omarchy-lab-network:nat|omarchy-lab-network:isolated|omarchy-lab-network:offline|omarchy-lab-scenario:run) ;;
+    *) echo "Unsupported Lab terminal action: $command ${1:-}" >&2; return 1 ;;
+  esac
+  launch_dir=$(mktemp -d "${XDG_RUNTIME_DIR:?}/omarchy-lab-install.XXXXXX")
+  trap 'rm -f -- "$launch_dir/ready" "$launch_dir/error"; rmdir -- "$launch_dir"' EXIT
+
+  # A successful terminal launcher exit alone does not prove a window opened.
+  # Acknowledge from inside the terminal, before entering authentication/prompts.
+  # Removing the private directory on timeout also prevents a late operation.
+  launch_lifecycle_terminal /bin/bash -c \
+    '[[ -t 0 && -t 1 ]] || exit 1; ready=$1; shift; touch -- "$ready/ready" && exec "$@"' \
+    _ "$launch_dir" "$OMARCHY_PATH/bin/$command" "$@" \
+    >"$launch_dir/error" 2>&1 </dev/null &
+  launcher=$!
+
+  for ((attempt = 0; attempt < 100; attempt++)); do
+    if [[ -f $launch_dir/ready ]]; then
+      echo "Lab action opened in a terminal."
+      return 0
+    fi
+    if ! kill -0 "$launcher" 2>/dev/null; then
+      if ! wait "$launcher"; then
+        cat "$launch_dir/error" >&2
+        echo "Could not open the Lab terminal. Try again or run this action with omarchy lab in a terminal." >&2
+        return 1
+      fi
+    fi
+    sleep 0.1
+  done
+
+  cat "$launch_dir/error" >&2
+  echo "The Lab terminal did not become ready within 10 seconds. Try again or run this action with omarchy lab in a terminal." >&2
+  return 1
+)
+
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  launch_terminal "$@"
+fi

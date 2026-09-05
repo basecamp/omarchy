@@ -2,7 +2,7 @@
 
 The Omarchy ISO can install itself with nobody at the keyboard. If the installer finds a second drive labeled `cidata` carrying its configuration files, it copies them off, skips the setup wizard entirely, and reboots into the finished system on its own. No special ISO build, no extra boot menu entry — with no such drive attached, nothing changes and you get the normal wizard.
 
-This makes Omarchy great as a base image for disposable dev environments: create a VM in Proxmox or with Packer, boot it, walk away, SSH in. `cidata` is the cloud-init `NoCloud` label, so all the common virtualization tooling already knows how to attach such a drive.
+This makes Omarchy great as a base image for disposable dev environments: create a VM in Proxmox or with Packer, boot it, walk away, SSH in. `cidata` is the cloud-init `NoCloud` label, so all the common virtualization tooling already knows how to attach such a drive. On an Omarchy host, _Install > Lab_ builds that kind of guest for you — see [Lab VM](52-lab-vm.md).
 
 ## The configuration files
 
