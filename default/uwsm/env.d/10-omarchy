@@ -15,5 +15,12 @@ fi
 # Optional user overrides kept for compatibility with older installs.
 [ -f "$HOME/.config/uwsm/default" ] && . "$HOME/.config/uwsm/default"
 
-# Activate mise if present on the system
-omarchy-cmd-present mise && eval "$(mise activate bash --shims)"
+# Activate mise if present on the system.
+# env-bootstrap already appends the shims directory so system binaries keep
+# precedence, and `mise activate --shims` prepends unconditionally. Running it
+# on top of the bootstrap adds a second, winning copy ahead of /usr/bin, so only
+# fall back to it when the shims are not on PATH yet.
+case ":$PATH:" in
+  *":$HOME/.local/share/mise/shims:"*) ;;
+  *) omarchy-cmd-present mise && eval "$(mise activate bash --shims)" ;;
+esac
