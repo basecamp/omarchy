@@ -62,11 +62,27 @@ power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
   print rounded
 }')
 state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
-threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
-threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
+
+# Kernel sysfs is the live threshold. UPower's charge-*-threshold fields on
+# ThinkPads are a built-in 75/80 default until ChargeThresholdEnabled is set
+# through UPower itself, so they can disagree with TLP or a manual sysfs write.
+read_sysfs_threshold() {
+  local file="$1"
+  [[ -r $file ]] || return 1
+  local value
+  value=$(<"$file")
+  [[ -n $value ]] || return 1
+  printf '%s' "$value"
+}
+
+threshold_start=$(read_sysfs_threshold "$battery_path/charge_control_start_threshold" || true)
+threshold_end=$(read_sysfs_threshold "$battery_path/charge_control_end_threshold" || true)
 
 [[ -z $threshold_end ]] && threshold_end=$(cat "$power_supply_path"/BAT*/charge_control_end_threshold 2>/dev/null | head -1)
 [[ -z $threshold_start ]] && threshold_start=$(cat "$power_supply_path"/BAT*/charge_control_start_threshold 2>/dev/null | head -1)
+
+[[ -z $threshold_end ]] && threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
+[[ -z $threshold_start ]] && threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 
 ac_online=false
 for supply in "$power_supply_path"/*; do

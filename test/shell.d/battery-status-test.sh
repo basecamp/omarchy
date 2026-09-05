@@ -49,3 +49,54 @@ if matches=$(rg -n 'omarchy-battery-(capacity|remaining|remaining-time)' "$ROOT/
 fi
 
 pass "battery status owns capacity and remaining calculations"
+
+# ThinkPad UPower reports a built-in 75/80 default even when ChargeThresholdEnabled
+# is false. Live sysfs (TLP / a manual write) must win.
+printf '45\n' >"$tmp_dir/power/BAT0/charge_control_start_threshold"
+printf '65\n' >"$tmp_dir/power/BAT0/charge_control_end_threshold"
+mkdir -p "$tmp_dir/power/ADP1"
+printf 'Mains\n' >"$tmp_dir/power/ADP1/type"
+printf '1\n' >"$tmp_dir/power/ADP1/online"
+
+cat >"$tmp_dir/bin/upower" <<'STUB'
+#!/bin/bash
+
+if [[ $1 == "-e" ]]; then
+  echo "/org/freedesktop/UPower/devices/battery_BAT0"
+  exit 0
+fi
+
+if [[ $1 == "-i" ]]; then
+  cat <<'INFO'
+  native-path:          BAT0
+  state:                pending-charge
+  energy:               36.8 Wh
+  energy-full:          56.7 Wh
+  energy-rate:          0.0 W
+  percentage:           64%
+  charge-start-threshold: 75%
+  charge-end-threshold:   80%
+  charge-threshold-enabled: no
+INFO
+  exit 0
+fi
+
+exit 1
+STUB
+chmod +x "$tmp_dir/bin/upower"
+
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+grep -Fx $'threshold\t45-65%' <<<"$shell_output" >/dev/null || fail "battery status prefers sysfs charge thresholds over UPower defaults"
+pass "battery status prefers sysfs charge thresholds over UPower defaults"
+grep -Fx $'state\tholding' <<<"$shell_output" >/dev/null || fail "battery status still reports holding from pending-charge"
+pass "battery status still reports holding from pending-charge"
+
+human_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status")
+grep -F 'Holding at 45-65%' <<<"$human_output" >/dev/null || fail "battery status holding line uses the live sysfs range"
+pass "battery status holding line uses the live sysfs range"
+
+# No sysfs threshold files: still accept UPower when that is all there is.
+rm -f "$tmp_dir/power/BAT0/charge_control_start_threshold" "$tmp_dir/power/BAT0/charge_control_end_threshold"
+shell_output=$(OMARCHY_POWER_SUPPLY_PATH="$tmp_dir/power" PATH="$tmp_dir/bin:$PATH" "$ROOT/bin/omarchy-battery-status" --shell)
+grep -Fx $'threshold\t75-80%' <<<"$shell_output" >/dev/null || fail "battery status falls back to UPower thresholds without sysfs"
+pass "battery status falls back to UPower thresholds without sysfs"
