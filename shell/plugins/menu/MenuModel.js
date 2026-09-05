@@ -320,6 +320,43 @@ function descriptionTextMatches(query, text) {
   return true
 }
 
+// Subsequence fuzzy match: every character of `pattern` must appear in
+// `text`, in order, but not necessarily contiguous ("gimp" matches "GNU
+// Image Manipulation Program", "sstm" matches "System"). Returns -1 when no
+// such subsequence exists; otherwise a penalty where 0 is a perfect match
+// and larger is worse, so callers can keep treating lower scores as better
+// throughout this file. Penalized for: starting late in the text, gaps
+// between matched characters, and matched characters that fall mid-word
+// rather than on a word boundary (start of text, or just after a
+// non-alphanumeric char).
+function fuzzyPenalty(text, pattern) {
+  var haystack = String(text || "").toLowerCase()
+  var needle = String(pattern || "").toLowerCase()
+  if (!needle) return 0
+  if (!haystack) return -1
+
+  var ti = 0, pi = 0
+  var firstMatch = -1
+  var lastMatch = -1
+  var gaps = 0
+  var boundaryHits = 0
+
+  while (ti < haystack.length && pi < needle.length) {
+    if (haystack.charAt(ti) === needle.charAt(pi)) {
+      if (firstMatch < 0) firstMatch = ti
+      if (lastMatch >= 0) gaps += (ti - lastMatch - 1)
+      if (ti === 0 || !/[a-z0-9]/.test(haystack.charAt(ti - 1))) boundaryHits += 1
+      lastMatch = ti
+      pi += 1
+    }
+    ti += 1
+  }
+
+  if (pi < needle.length) return -1
+
+  return firstMatch + gaps * 2 + (needle.length - boundaryHits)
+}
+
 function matchesQuery(entry, query, visible) {
   if (!entry || entry.id === "root") return false
   if (!visible) return false
@@ -330,8 +367,8 @@ function matchesQuery(entry, query, visible) {
 
   for (var i = 0; i < terms.length; i++) {
     if (!terms[i]) continue
-    if (nameText.indexOf(terms[i]) >= 0) continue
-    if (termInSearchWords(terms[i], descriptionText)) continue
+    if (fuzzyPenalty(nameText, terms[i]) >= 0) continue
+    if (fuzzyPenalty(descriptionText, terms[i]) >= 0) continue
     return false
   }
 
@@ -345,14 +382,21 @@ function searchScore(items, entry, query) {
   var descriptionText = String(entry.description || "").toLowerCase()
   var score = 80
 
+  var labelPenalty = fuzzyPenalty(label, needle)
+  var namePenalty = fuzzyPenalty(nameText, needle)
+  var descPenalty = fuzzyPenalty(descriptionText, needle)
+
   if (label === needle) score = entry.parent === "root" ? 2 : 0
   // An installed app whose name contains the query as a whole word ("zen"
   // for Zen Browser) beats exact-labeled menu entries like Install > Zen.
   else if (entry.kind === "app" && label.split(/\s+/).indexOf(needle) >= 0) score = 0
-  else if (label.indexOf(needle) === 0) score = 10
-  else if (label.indexOf(needle) >= 0) score = 30
-  else if (nameText.indexOf(needle) >= 0) score = 40
-  else if (descriptionTextMatches(needle, descriptionText)) score = 60
+  // Bands below stay inside their own [lo, hi) range so a weak match in a
+  // higher-priority field (e.g. label) never loses to a strong match in a
+  // lower-priority one (e.g. description); within a band, fuzzy quality
+  // (fewer gaps, earlier, on word boundaries) breaks the tie.
+  else if (labelPenalty >= 0) score = 10 + Math.min(labelPenalty, 19)
+  else if (namePenalty >= 0) score = 30 + Math.min(namePenalty, 29)
+  else if (descPenalty >= 0) score = 60 + Math.min(descPenalty, 19)
 
   if (entry.kind === "menu" || entry.kind === "link") score -= 2
   // App rows sort after all menu items, so they lose the tiebreak below to an
@@ -517,6 +561,7 @@ if (typeof module !== "undefined") {
     nameSearchText: nameSearchText,
     termInSearchWords: termInSearchWords,
     descriptionTextMatches: descriptionTextMatches,
+    fuzzyPenalty: fuzzyPenalty,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
     displayRow: displayRow

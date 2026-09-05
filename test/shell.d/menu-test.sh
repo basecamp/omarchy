@@ -104,6 +104,13 @@ assert(!menu.matchesQuery(entry, 'missing', true), 'menu rejects missing terms')
 assert(!menu.matchesQuery(entry, 'theme', false), 'menu hides invisible matches')
 assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
 
+// Search is fuzzy: query characters must appear in order but need not be
+// contiguous, so a scattered guess still finds its target.
+assert(menu.fuzzyPenalty('System', 'sstm') >= 0, 'fuzzy match accepts a non-contiguous subsequence')
+assertEqual(menu.fuzzyPenalty('System', 'xyz'), -1, 'fuzzy match rejects characters missing from the text')
+assert(menu.fuzzyPenalty('System', 'sys') < menu.fuzzyPenalty('System', 'sstm'), 'fuzzy match ranks a contiguous match above a scattered one')
+assert(menu.matchesQuery(entry, 'thm', true), 'menu matches a scattered fuzzy query against a label')
+
 assertDeepEqual(
   menu.displayRow(merged.items, merged.itemOrder, {}, {}, entry, 'Style', 12, 'search'),
   {
@@ -129,6 +136,8 @@ assertDeepEqual(
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+
+assert(menu.matchesQuery(defaultById.system, 'sstm', true), 'menu finds System via a scattered fuzzy guess')
 
 // Needs the real menu: app rows sort after all menu items, and only at that
 // item count does the order tiebreak alone bury an installed app.
