@@ -253,7 +253,7 @@ ShellRoot {
     onActiveChanged: if (!active) shell.bar = null
     onStatusChanged: {
       if (status === Loader.Error) {
-        var detail = errorString && errorString() ? errorString() : ""
+        var detail = (typeof errorString !== "undefined" && errorString && errorString()) ? errorString() : ""
         console.warn("bar option " + shell.activeBarId + " failed to load, falling back to " + shell.defaultBarId + ":", detail)
         shell.failedBarId = shell.activeBarId
       }
