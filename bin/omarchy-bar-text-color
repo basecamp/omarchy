@@ -11,6 +11,10 @@ text_color=${3:-}
 background_color=${4:-}
 background_path=""
 screen_size=""
+inset_top=0
+inset_right=0
+inset_bottom=0
+inset_left=0
 
 shift 4 2>/dev/null || true
 while (($# > 0)); do
@@ -21,6 +25,10 @@ while (($# > 0)); do
     ;;
   --screen)
     screen_size=${2:-}
+    shift 2
+    ;;
+  --inset)
+    read -r inset_top inset_right inset_bottom inset_left <<<"${2:-}"
     shift 2
     ;;
   *)
@@ -72,6 +80,9 @@ valid_hex "$text_color" || fallback
 valid_hex "$background_color" || fallback
 [[ $position =~ ^(top|bottom|left|right)$ ]] || fallback
 [[ $bar_size =~ ^[0-9]+$ ]] || fallback
+for inset in "$inset_top" "$inset_right" "$inset_bottom" "$inset_left"; do
+  [[ $inset =~ ^[0-9]+$ ]] || fallback
+done
 omarchy-cmd-present magick || fallback
 
 if [[ -z $background_path ]]; then
@@ -90,22 +101,31 @@ screen_width=${BASH_REMATCH[1]}
 screen_height=${BASH_REMATCH[2]}
 ((screen_width > 0 && screen_height > 0 && bar_size > 0)) || fallback
 
+# A detached bar is inset on every edge it touches, so the strip it actually
+# covers starts that far in on the axes it spans and that far short of the far
+# edge it is anchored to. At all-zero insets this is the flush bar's strip.
 case "$position" in
 top)
-  crop="${screen_width}x${bar_size}+0+0"
+  crop_width=$((screen_width - inset_left - inset_right))
+  ((crop_width > 0)) || fallback
+  crop="${crop_width}x${bar_size}+${inset_left}+${inset_top}"
   ;;
 bottom)
-  crop_y=$((screen_height - bar_size))
-  ((crop_y >= 0)) || fallback
-  crop="${screen_width}x${bar_size}+0+${crop_y}"
+  crop_width=$((screen_width - inset_left - inset_right))
+  crop_y=$((screen_height - bar_size - inset_bottom))
+  ((crop_width > 0 && crop_y >= 0)) || fallback
+  crop="${crop_width}x${bar_size}+${inset_left}+${crop_y}"
   ;;
 left)
-  crop="${bar_size}x${screen_height}+0+0"
+  crop_height=$((screen_height - inset_top - inset_bottom))
+  ((crop_height > 0)) || fallback
+  crop="${bar_size}x${crop_height}+${inset_left}+${inset_top}"
   ;;
 right)
-  crop_x=$((screen_width - bar_size))
-  ((crop_x >= 0)) || fallback
-  crop="${bar_size}x${screen_height}+${crop_x}+0"
+  crop_height=$((screen_height - inset_top - inset_bottom))
+  crop_x=$((screen_width - bar_size - inset_right))
+  ((crop_height > 0 && crop_x >= 0)) || fallback
+  crop="${bar_size}x${crop_height}+${crop_x}+${inset_top}"
   ;;
 esac
 

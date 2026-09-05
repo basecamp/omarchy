@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "BorderGeometry.js" as Geometry
 
 // Shared structural style tokens for the shell. Color is the palette
 // singleton; Style holds everything else themes can influence — corner
@@ -301,6 +302,31 @@ QtObject {
     return Math.max(1, Math.round(base))
   }
 
+  // Bar tokens whose resting value is zero: a bar flush against its edge with
+  // square corners. barToken() floors at 1 and reads 0 as "unset", so margin
+  // and radius need a reader that keeps a deliberate 0.
+  function barInsetToken(key, fallback) {
+    var v = barOverrides[key]
+    var n = Number(v)
+    var base = (isFinite(n) && n >= 0) ? n : fallback
+    if (barScaleWithFont) base *= fontScale
+    return Math.max(0, Math.round(base))
+  }
+
+  // margin takes the same CSS-style list as the border widths — N, "Y X",
+  // "T X B", or "T R B L" — because a bar is usually set further off the edges
+  // it spans than off the one it hangs from.
+  function barMarginToken() {
+    var widths = Geometry.parseWidthSpec(barOverrides["margin"], 0)
+    var scale = barScaleWithFont ? fontScale : 1
+    return {
+      top: Math.max(0, Math.round(widths.top * scale)),
+      right: Math.max(0, Math.round(widths.right * scale)),
+      bottom: Math.max(0, Math.round(widths.bottom * scale)),
+      left: Math.max(0, Math.round(widths.left * scale))
+    }
+  }
+
   function boolToken(value, fallback) {
     if (value === undefined || value === null) return fallback
     var s = String(value).replace(/^\s+|\s+$/g, "").toLowerCase()
@@ -341,6 +367,8 @@ QtObject {
   readonly property QtObject bar: QtObject {
     readonly property int sizeHorizontal: root.barToken("size-horizontal", 26)
     readonly property int sizeVertical:   root.barToken("size-vertical",   28)
+    readonly property var margins:        root.barMarginToken()
+    readonly property int radius:         root.barInsetToken("radius",     0)
     readonly property int iconSlot:       root.barToken("icon-slot",       27)
     readonly property int iconCanvas:     root.barToken("icon-canvas",     16)
     readonly property int iconFont:       root.barToken("icon-font",       13)
@@ -405,7 +433,11 @@ QtObject {
       } else if (section === "bar") {
         if (key === "scale-with-font") {
           nextBarScaleWithFont = boolToken(raw, nextBarScaleWithFont)
-        } else if (key === "size-horizontal" || key === "size-vertical") {
+        } else if (key === "margin") {
+          // Kept verbatim: the width spec is a list as often as a number.
+          barOut[key] = raw
+        } else if (key === "size-horizontal" || key === "size-vertical"
+          || key === "radius") {
           var b = parseInt(raw, 10)
           if (isFinite(b)) barOut[key] = b
         }

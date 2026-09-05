@@ -15,6 +15,10 @@ active           = "{{ red }}"
 scale-with-font  = true
 size-horizontal  = 26
 size-vertical    = 28
+# Gap between the bar and the edge. Takes one CSS-style scalar/list:
+# N, "Y X", "T X B", or "T R B L".
+margin           = 0
+radius           = 0
 
 [hyprland]
 # Shared Hyprland-derived border tokens. Surface sections reference these so

@@ -204,10 +204,17 @@ Item {
     var y = scenePoint ? scenePoint.y : 0
     if (!window || !window.screen) return { x: x, y: y }
 
-    if (root.position === "bottom")
-      y += Math.max(0, window.screen.height - window.height)
-    else if (root.position === "right")
-      x += Math.max(0, window.screen.width - window.width)
+    // A detached bar sits inside every edge it touches, so its origin is the
+    // gap itself on the axes it spans, and the far edge less its own size and
+    // gap on the one it is anchored to. At margin 0 this is the flush bar's
+    // plain screen-corner offset.
+    var margins = root.barMargins
+    x += root.position === "right"
+      ? Math.max(0, window.screen.width - window.width - margins.right)
+      : margins.left
+    y += root.position === "bottom"
+      ? Math.max(0, window.screen.height - window.height - margins.bottom)
+      : margins.top
 
     return { x: x, y: y }
   }
@@ -328,6 +335,12 @@ Item {
 
   readonly property bool vertical: position === "left" || position === "right"
   readonly property int barSize: vertical ? Style.bar.sizeVertical : Style.bar.sizeHorizontal
+  // A detached bar floats barMargins away from every screen edge it touches
+  // and rounds its corners by barRadius. Every side is 0 by default, which
+  // anchors the bar flush against its edge with square corners. The keys are
+  // the position names, so barMargins[position] is the anchored edge's gap.
+  readonly property var barMargins: Style.bar.margins
+  readonly property int barRadius: Style.bar.radius
 
   function normalizePosition(value) {
     return BarModel.normalizePosition(value)
@@ -835,13 +848,20 @@ Item {
       root.position,
       String(root.barSize),
       colorHex(root.themeForeground),
-      colorHex(root.themeContrastForeground)
+      colorHex(root.themeContrastForeground),
+      // A detached bar no longer covers the strip at the screen edge, so the
+      // sample has to move in with it or the contrast is picked against pixels
+      // the bar does not sit on.
+      "--inset",
+      [root.barMargins.top, root.barMargins.right,
+       root.barMargins.bottom, root.barMargins.left].join(" ")
     ]
     transparentForegroundProc.running = true
   }
 
   onRequestedTransparentChanged: scheduleTransparentForegroundRefresh()
   onPositionChanged: scheduleTransparentForegroundRefresh()
+  onBarMarginsChanged: scheduleTransparentForegroundRefresh()
   onThemeForegroundChanged: scheduleTransparentForegroundRefresh()
   onThemeContrastForegroundChanged: scheduleTransparentForegroundRefresh()
 
@@ -1017,11 +1037,20 @@ Item {
       window: barWindow
     }
 
+    // Parking a detached bar has to clear its margin as well as its own size,
+    // or the gap leaves a sliver of it on screen.
+    readonly property int anchoredMargin: root.barMargins[root.position]
+    readonly property int parkedMargin: -(root.barSize + anchoredMargin)
+    readonly property int edgeMargin: root.barHidden ? parkedMargin : anchoredMargin
+
+    // Only the edges the bar actually touches take a gap: the one it is
+    // anchored to, and the two it spans. The remaining side is the bar's own
+    // far face, which no margin applies to.
     margins {
-      top: root.barHidden && root.position === "top" ? -root.barSize : 0
-      bottom: root.barHidden && root.position === "bottom" ? -root.barSize : 0
-      left: root.barHidden && root.position === "left" ? -root.barSize : 0
-      right: root.barHidden && root.position === "right" ? -root.barSize : 0
+      top: root.position === "top" ? edgeMargin : (root.vertical ? root.barMargins.top : 0)
+      bottom: root.position === "bottom" ? edgeMargin : (root.vertical ? root.barMargins.bottom : 0)
+      left: root.position === "left" ? edgeMargin : (root.vertical ? 0 : root.barMargins.left)
+      right: root.position === "right" ? edgeMargin : (root.vertical ? 0 : root.barMargins.right)
     }
 
     anchors {
@@ -1033,10 +1062,21 @@ Item {
 
     implicitWidth: root.vertical ? root.barSize : 0
     implicitHeight: root.vertical ? 0 : root.barSize
-    color: root.transparent ? "transparent" : root.background
+    // The surface itself stays transparent so the rounded background below can
+    // paint the corners; a window color would square them off again.
+    color: "transparent"
     surfaceFormat.opaque: false
     WlrLayershell.namespace: "omarchy-bar"
     WlrLayershell.layer: WlrLayer.Top
+
+    // Declared before the loader so it paints behind the widgets. Carries the
+    // bar's background instead of the window, which is what lets barRadius
+    // round the corners.
+    Rectangle {
+      anchors.fill: parent
+      color: root.transparent ? "transparent" : root.background
+      radius: root.barRadius
+    }
 
     Loader {
       anchors.fill: parent
