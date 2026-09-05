@@ -1793,7 +1793,7 @@ repair_chromium_copy_url_extension_flags() {
     "$HOME/.config/microsoft-edge-flags.conf"
     "$HOME/.config/microsoft-edge-stable-flags.conf"
     "$HOME/.config/opera-flags.conf"
-    "$HOME/.config/vivaldi-flags.conf"
+    "$HOME/.config/vivaldi-stable.conf"
     "$HOME/.config/helium-flags.conf"
   )
 

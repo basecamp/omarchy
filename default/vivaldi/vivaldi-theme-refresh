@@ -1,0 +1,149 @@
+#!/bin/bash
+set -eu
+
+omarchy-cmd-present vivaldi-stable || exit 0
+
+JSON=${VIVALDI_OMARCHY_JSON:-/opt/vivaldi/resources/vivaldi/style/omarchy.json}
+[[ -w $JSON ]] || exit 0
+
+bg=$(omarchy-theme-color background)
+fg=$(omarchy-theme-color foreground)
+accent=$(omarchy-theme-color accent)
+lighter_bg=$(omarchy-theme-color lighter_background)
+[[ -n $bg && -n $fg && -n $accent && -n $lighter_bg ]] || exit 0
+
+# Write in place (like the old CSV) instead of a temp+rename: the style
+# directory is root-owned and only the file itself is world-writable, so a
+# non-root refresh cannot create a temp file or rename into it. The loader
+# tolerates a transient partial read and retries on its next poll.
+
+# Capture the effective Hyprland look-and-feel. Hyprland is the source of truth
+# (merge of every sourced config plus runtime keyword changes), so read it
+# directly rather than parsing ~/.config/hypr/*.lua.
+# Vivaldi's corner rounding is disabled at -1 ("Disabled"); a radius of 0 would
+# still round controls (--radiusRounded stays 2px), so Hyprland's "no rounding"
+# (rounding 0, the Omarchy default) maps to -1 rather than 0.
+radius=-1
+dim_blurred=false
+blur=0
+contrast=0
+
+read_appearance() {
+  local rounding dim blur_size blur_contrast
+  rounding=$(hyprctl -j getoption decoration:rounding 2>/dev/null | jq -r '.int // empty' || true)
+  if [[ $rounding =~ ^[0-9]+$ ]]; then
+    if (( rounding == 0 )); then
+      radius=-1
+    else
+      # Vivaldi caps corner rounding at 14.
+      radius=$(( rounding > 14 ? 14 : rounding ))
+    fi
+  fi
+  dim=$(hyprctl -j getoption decoration:dim_inactive 2>/dev/null | jq -r '.bool // empty' || true)
+  if [[ $dim == "true" ]]; then
+    dim_blurred=true
+  fi
+  blur_size=$(hyprctl -j getoption decoration:blur:size 2>/dev/null | jq -r '.int // empty' || true)
+  if [[ $blur_size =~ ^[0-9]+$ ]]; then
+    # Vivaldi's blur intensity runs 0..10.
+    blur=$(( blur_size > 10 ? 10 : blur_size ))
+  fi
+  blur_contrast=$(hyprctl -j getoption decoration:blur:contrast 2>/dev/null | jq -r '.float // empty' || true)
+  if [[ $blur_contrast =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+    # Hyprland contrast is centered on 1.0; Vivaldi's is centered on 0 with a
+    # -10..20 range.
+    contrast=$(awk -v c="$blur_contrast" 'BEGIN { v = (c - 1) * 10; if (v < -10) v = -10; if (v > 20) v = 20; printf "%.0f", v }')
+  fi
+}
+
+read_appearance
+
+jq -n \
+  --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" \
+  --argjson radius "$radius" --argjson dimBlurred "$dim_blurred" \
+  --argjson blur "$blur" --argjson contrast "$contrast" \
+  '{
+    schemaVersion: 1,
+    colors: { bg: $bg, fg: $fg, accent: $accent, lighterBg: $lighter_bg },
+    radius: $radius,
+    dimBlurred: $dimBlurred,
+    blur: $blur,
+    contrast: $contrast
+  }' > "$JSON"
+
+set_vivaldi_native_theme() {
+  local prefs
+  for prefs in "$HOME"/.config/vivaldi/*/Preferences; do
+    [[ -f $prefs ]] || continue
+    jq --arg bg "$bg" --arg fg "$fg" --arg accent "$accent" --arg lighter_bg "$lighter_bg" \
+       --argjson radius "$radius" --argjson dim_blurred "$dim_blurred" \
+       --argjson blur "$blur" --argjson contrast "$contrast" '
+      .vivaldi |= ((. // {}) + {
+        appearance: ((.appearance // {}) + { force_dark_mode_theme: false }),
+        themes: ((.themes // {}) + {
+          current: "Omarchy",
+          user: (
+            ((.themes.user // []) | map(if .id == "Omarchy" then (. + {
+              colorAccentBg: $lighter_bg,
+              colorBg: $bg,
+              colorFg: $fg,
+              colorHighlightBg: $accent,
+              colorWindowBg: $bg,
+              blur: $blur,
+              contrast: $contrast,
+              dimBlurred: $dim_blurred,
+              radius: $radius
+            }) else . end))
+            + (if ((.themes.user // []) | any(.id == "Omarchy")) then [] else [{
+              engineVersion: 1,
+              version: 1,
+              id: "Omarchy",
+              url: "",
+              name: "Omarchy",
+              accentFromPage: false,
+              accentOnWindow: true,
+              accentSaturationLimit: 1,
+              alpha: 0.92,
+              backgroundImage: "",
+              backgroundPosition: "stretch",
+              backgroundSource: "",
+              blur: $blur,
+              colorAccentBg: $lighter_bg,
+              colorBg: $bg,
+              colorFg: $fg,
+              colorHighlightBg: $accent,
+              colorPosition: "frame",
+              colorWindowBg: $bg,
+              contrast: $contrast,
+              dimBlurred: $dim_blurred,
+              preferSystemAccent: false,
+              radius: $radius,
+              simpleScrollbar: true,
+              transparencyTabBar: false,
+              transparencyTabs: true
+            }] end)
+          )
+        }),
+        theme: ((.theme // {}) + {
+          schedule: ((.schedule // {}) + {
+            o_s: ((.o_s // {}) + {
+              dark: "Omarchy",
+              light: "Omarchy"
+            })
+          })
+        })
+      })
+      | .webkit |= ((. // {}) + {
+        webprefs: ((.webprefs // {}) + { force_dark_mode_enabled: false })
+      })
+    ' "$prefs" > "$prefs.omarchy-tmp" &&
+      chmod --reference="$prefs" "$prefs.omarchy-tmp" &&
+      mv "$prefs.omarchy-tmp" "$prefs"
+  done
+}
+
+# A running Vivaldi overwrites Preferences on exit, so only persist the native
+# theme while it is closed. The live loader covers the running session.
+if ! pgrep -x vivaldi >/dev/null 2>&1 && ! pgrep -x vivaldi-bin >/dev/null 2>&1; then
+  set_vivaldi_native_theme
+fi

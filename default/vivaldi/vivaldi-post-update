@@ -1,0 +1,42 @@
+#!/bin/bash
+
+set -eu
+
+VIVALDI_UI=/opt/vivaldi/resources/vivaldi
+
+[[ -d $VIVALDI_UI ]] || exit 0
+[[ -f $VIVALDI_UI/window.html ]] || exit 0
+
+cd "$VIVALDI_UI"
+
+JS="style/omarchy.js"
+
+sudo mkdir -p style
+sudo cp "$OMARCHY_PATH/default/vivaldi/omarchy-theme-loader.js" "$JS"
+sudo sed -i \
+  -e "/script.*omarchy/d" -e "s|</body>|  <script src=\"$JS\"></script>\n&|" \
+  -e "/omarchy-theme/d"   -e "s|</head>|  <style id=\"omarchy-theme\"></style>\n&|" window.html
+
+# Replace the pre-JSON CSV channel left by older installs.
+sudo rm -f style/omarchy.csv
+
+# The channel is consumed by Vivaldi's privileged UI context, so it must not
+# be world- or group-writable. Point style/omarchy.json at a per-user file in
+# the owner's home; the actual channel is written by the owner (no sudo, no
+# group, no 0666) the moment the theme changes.
+ACTUAL_USER="${SUDO_USER:-$USER}"
+ACTUAL_HOME=$(getent passwd "$ACTUAL_USER" | cut -d: -f6)
+CHANNEL="$ACTUAL_HOME/.config/vivaldi/omarchy.json"
+
+# Create the channel as its owner. Running as the target user (instead of
+# root chown/touch) means a symlink planted under the home can only ever do
+# what the owner could already do: no privilege boundary is crossed.
+sudo -u "$ACTUAL_USER" mkdir -p "$(dirname "$CHANNEL")"
+sudo -u "$ACTUAL_USER" touch "$CHANNEL"
+
+# The link itself lives in the root-owned resources tree, so only root can
+# create it and no user-controlled path is involved.
+sudo rm -f style/omarchy.json
+sudo ln -s "$CHANNEL" style/omarchy.json
+
+omarchy-theme-set-browser
