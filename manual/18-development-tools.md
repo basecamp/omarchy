@@ -4,7 +4,7 @@
 
 Omarchy ships with [Neovim](https://neovim.io/) by default, but if you'd like something a bit more mainstream and familiar, you can run the Omarchy Menu (`Super + Space`) and see the options under _Install > Editor_. We have VSCode, Cursor, Zed, Sublime Text, Helix, Vim, and Emacs listed there. If you don't find what you're looking for, checkout _Install > Package_, and see if it isn't in an Arch package (and if not, try _Install > AUR_ to check the AUR).
 
-The `vi` command is also available out of the box through Vim's compatibility mode. Run `vi filename` to edit a file in the terminal.
+The original `vi` editor is also available out of the box. Run `vi filename` to edit a file in the terminal.
 
 Theme matching is offered for `VSCode`, `Cursor`, `VSCodium`, and `Helix`.
 

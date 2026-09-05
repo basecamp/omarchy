@@ -27,7 +27,6 @@ dosfstools
 dotnet-runtime
 dua-cli
 evince
-ex-vi-compat
 exfatprogs
 expac
 eza
@@ -134,6 +133,7 @@ ufw-docker
 unzip
 usage
 uwsm
+vi
 whois
 wireless-regdb
 wireplumber
