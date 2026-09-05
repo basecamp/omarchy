@@ -30,6 +30,11 @@ if ! perl -0ne 'exit(/onPressAndHold:\s*function[^{]*\{[^}]*?\bpressed\b[^}]*?\b
 fi
 pass "bar move ignores a press-and-hold propagated from a widget above"
 
+if ! rg -q 'canReorder:.*!slot\.locked' "$ROOT/shell/plugins/bar/Bar.qml"; then
+  fail "bar reorder gate must refuse a locked slot"
+fi
+pass "bar reorder gate refuses a locked slot"
+
 run_node_test <<'JS'
 const fs = require('fs')
 const bar = requireFromRoot('shell/plugins/bar/BarModel.js')
@@ -289,6 +294,12 @@ assertEqual(bar.normalizePosition('sideways'), 'top', 'bar defaults invalid posi
 assertDeepEqual(bar.entrySettings({ id: 'omarchy.clock', format: 'HH:mm' }), { format: 'HH:mm' }, 'bar extracts entry settings')
 assertEqual(bar.entryId({ id: 'omarchy.clock' }), 'omarchy.clock', 'bar extracts object entry ids')
 assertEqual(bar.entryId('omarchy.clock'), 'omarchy.clock', 'bar extracts string entry ids')
+
+assertDeepEqual(bar.entrySettings({ id: 'omarchy.workspaces', locked: true }), {}, 'bar keeps the lock flag out of widget settings')
+assertEqual(bar.entryLocked({ id: 'omarchy.workspaces', locked: true }), true, 'bar reads a locked entry')
+assertEqual(bar.entryLocked({ id: 'omarchy.workspaces' }), false, 'bar treats an entry with no flag as movable')
+assertEqual(bar.entryLocked({ id: 'omarchy.workspaces', locked: 'yes' }), false, 'bar ignores a lock flag that is not literally true')
+assertEqual(bar.entryLocked('omarchy.workspaces'), false, 'bar treats a bare string entry as movable')
 
 const entries = [{ id: 'a' }, { id: 'omarchy.tray' }, { id: 'b' }]
 assertDeepEqual(bar.pinTrayToInner(entries, 'left').map(bar.entryId), ['a', 'b', 'omarchy.tray'], 'bar pins tray to left inner edge')
