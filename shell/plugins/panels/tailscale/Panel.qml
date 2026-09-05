@@ -42,17 +42,17 @@ Panel {
   readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
-  readonly property bool showPeers: tailscale.active && tailscale.peers.length > 0
+  readonly property bool showPeers: tailscale.running && tailscale.peers.length > 0
   readonly property var recentMullvadRegions: settings.recentMullvadRegions instanceof Array ? settings.recentMullvadRegions : (settings.recentMullvadCountries instanceof Array ? settings.recentMullvadCountries : [])
   readonly property var recentMullvadExitNodes: recentMullvadNodes()
   readonly property var exitNodes: displayExitNodes()
-  readonly property bool showExitNodes: tailscale.active && (exitNodes.length > 0 || tailscale.mullvadRegions.length > 0)
+  readonly property bool showExitNodes: tailscale.running && (exitNodes.length > 0 || tailscale.mullvadRegions.length > 0)
   readonly property var filteredMullvadRegions: filteredMullvadRegionNodes()
   // Only claim the header cursor when the switch is actually on screen —
   // "header" stays navigable, but an absent CLI leaves nothing to highlight.
   readonly property bool headerHasCursor: cursorActive && focusSection === "header" && tailscale.installed
   readonly property color iconColor: tailscale.active ? foreground : dim
-  readonly property string toggleHint: tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on")
+  readonly property string toggleHint: tailscale.connecting ? "Connecting Tailscale" : (tailscale.active ? "Turn Tailscale off" : (tailscale.needsLogin ? "Authorize this device" : "Turn Tailscale on"))
   readonly property color barIconColor: tailscale.active ? barForeground : Qt.darker(barForeground, 1.55)
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
@@ -340,6 +340,8 @@ Panel {
   onOpenedChanged: if (opened) {
     cursorActive = false
     if (panelFlick) panelFlick.contentY = 0
+    // Any open, by hand or by loginCompleted, satisfies a pending reopen.
+    tailscale.requestReopenAfterLogin(false)
     tailscale.refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -361,6 +363,12 @@ Panel {
     function onPeersChanged() { root.ensureCursor() }
     function onAccountsChanged() { root.ensureCursor() }
     function onAccountsAccessDeniedChanged() { root.ensureCursor() }
+    function onAuthUrlOpened() {
+      var wasOpen = root.opened
+      root.close()
+      tailscale.requestReopenAfterLogin(wasOpen)
+    }
+    function onLoginCompleted() { root.open() }
   }
 
   IpcHandler {
@@ -458,10 +466,10 @@ Panel {
               id: hero
               width: parent.width
               title: tailscale.installed ? (tailscale.selfName || "Tailscale") : "Tailscale"
-              meta: tailscale.active ? root.heroPhraseText : "Tailscale is disconnected"
+              meta: tailscale.connecting ? "Connecting…" : (tailscale.active ? root.heroPhraseText : "Tailscale is disconnected")
               foreground: root.foreground
               fontFamily: root.fontFamily
-              iconOpacity: tailscale.active ? 1.0 : 0.5
+              iconOpacity: tailscale.connecting ? 0.65 : (tailscale.active ? 1.0 : 0.5)
               // Status only — the switch owns toggling, mouse and keyboard alike.
               iconComponent: Component {
                 TailscaleIcon {
@@ -481,7 +489,8 @@ Panel {
                   id: powerSwitch
                   visible: tailscale.installed
                   checked: tailscale.active
-                  busy: tailscale.busy
+                  busy: tailscale.busy || tailscale.connecting
+                  opacity: tailscale.connecting ? 0.55 : 1.0
                   hasCursor: header.ringVisible
                   foreground: hero.foreground
                   onHovered: function(on) { if (on) header.focusHero() }

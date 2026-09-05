@@ -8,8 +8,31 @@ run_node_test <<'JS'
 const fs = require('fs')
 const tailscale = requireFromRoot('shell/plugins/panels/tailscale/Model.js')
 const panelSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Panel.qml', 'utf8')
+const serviceSource = fs.readFileSync(root + '/shell/plugins/panels/tailscale/Service.qml', 'utf8')
 
 assert(/function toggleTailscale\(\): string \{ tailscale\.toggleTailscale\(\); return "ok" \}/.test(panelSource), 'tailscale exposes the connection toggle over IPC')
+assert(serviceSource.includes('readonly property bool connecting: _desired === 1 && !running && !needsLogin'), 'tailscale exposes its optimistic connection state')
+assert(/Quickshell\.execDetached\(\["omarchy-launch-browser", url\]\)[\s\S]*?authUrlOpened\(\)\s+_desired = -1/.test(serviceSource), 'tailscale closes the panel before dropping optimistic state after opening the authentication browser')
+assert(/function onAuthUrlOpened\(\) \{\s+var wasOpen = root\.opened\s+root\.close\(\)\s+tailscale\.requestReopenAfterLogin\(wasOpen\)\s+\}/.test(panelSource), 'tailscale closes its panel after opening the authentication browser and reports whether it was open')
+assert(/function requestReopenAfterLogin\(wasOpen\) \{\s+_reopenAfterLogin = wasOpen === true\s+if \(_reopenAfterLogin\) reopenExpiryTimer\.restart\(\)/.test(serviceSource), 'tailscale reopens only a panel that was open when the browser launched')
+assert(/id: reopenExpiryTimer\s+interval: 300000\s+repeat: false\s+onTriggered: root\._reopenAfterLogin = false/.test(serviceSource), 'tailscale forgets an abandoned login instead of reopening the panel later')
+assert(panelSource.includes('showPeers: tailscale.running') && panelSource.includes('showExitNodes: tailscale.running'), 'tailscale reveals connection details only after status confirms it is running')
+assert(panelSource.includes('opacity: tailscale.connecting ? 0.55 : 1.0'), 'tailscale dims the switch while connecting')
+assert(/if \(_reopenAfterLogin\) \{\s+_reopenAfterLogin = false\s+reopenExpiryTimer\.stop\(\)\s+loginCompleted\(\)/.test(serviceSource), 'tailscale announces completed browser authentication after status confirms it is running')
+assert(/function onLoginCompleted\(\) \{ root\.open\(\) \}/.test(panelSource), 'tailscale reopens its panel after browser authentication completes')
+// mask 18 = NotifyInitialState (2) | NotifyNoPrivateKeys (16): the stream must not carry the node's private key.
+assert(serviceSource.includes('stateWatchProcess.command = ["tailscale", "debug", "localapi", "GET", "/localapi/v0/watch-ipn-bus?mask=18"]'), 'tailscale watches the IPN notification bus without private keys')
+assert(/function scheduleStateWatchRestart\(\) \{\s+if \(!installed\) return\s+stateWatchRestartTimer\.interval = _stateWatchBackoffMs\s+_stateWatchBackoffMs = Math\.min\(_stateWatchBackoffMs \* 2, 60000\)\s+stateWatchRestartTimer\.restart\(\)/.test(serviceSource), 'tailscale backs off IPN watcher restarts up to a minute')
+assert(serviceSource.includes('property int _stateWatchBackoffMs: 2000'), 'tailscale starts the IPN watcher backoff at two seconds')
+assert(/var notification = JSON\.parse\(text\)[\s\S]*?if \(!notification \|\| typeof notification !== "object" \|\| Array\.isArray\(notification\)\) return\s+_stateWatchBackoffMs = 2000/.test(serviceSource), 'tailscale resets the IPN watcher backoff only once a notification object parses')
+assert(/id: stateWatchProcess[\s\S]*?onExited: function\(exitCode\) \{\s+root\.scheduleStateWatchRestart\(\)/.test(serviceSource), 'tailscale restarts the IPN watcher after an unexpected exit')
+assert(/id: connectTimeoutTimer\s+interval: 20000\s+repeat: false\s+onTriggered: \{\s+if \(root\._desired !== 1 \|\| root\.running\) return\s+root\._desired = -1[\s\S]*?stateWatchRefreshTimer\.restart\(\)\s+\}/.test(serviceSource), 'tailscale drops the optimistic on state when the backend does not connect in time and re-checks status')
+assert(/onOpenedChanged: if \(opened\) \{[\s\S]*?tailscale\.requestReopenAfterLogin\(false\)/.test(panelSource), 'tailscale cancels a pending reopen when the panel is opened by hand')
+assert(/function down\(\) \{[\s\S]*?requestReopenAfterLogin\(false\)\s+runAction\(\["tailscale", "down"\]\)/.test(serviceSource), 'tailscale cancels a pending reopen when turned off')
+assert(/function handleLoginOutput\(data, isError\) \{[\s\S]*?if \(\/\^\\s\*#\/\.test\(text\)\) return/.test(serviceSource), 'tailscale drops LocalAPI request commentary from login errors')
+assert(serviceSource.includes('root.lastError = elideStatus(combined) || "Could not start Tailscale"'), 'tailscale falls back to a fixed message when the login command prints nothing')
+assert(serviceSource.includes('notification.BrowseToURL') && serviceSource.includes('openAuthUrl(browseUrl)'), 'tailscale opens authorization URLs from IPN BrowseToURL notifications')
+assert(!serviceSource.includes('.match(/https?:\\/\\/'), 'tailscale does not extract arbitrary URLs from command output')
 
 assertDeepEqual(
   tailscale.filterIPv4(['100.64.0.1', 'fd7a:115c:a1e0::1', '192.168.1.2']),
@@ -158,6 +181,21 @@ const stopped = tailscale.parseStatus(JSON.stringify({
 
 assert(stopped.ok && !stopped.running, 'tailscale parses stopped status')
 
+const loginRequired = tailscale.parseStatus(JSON.stringify({
+  BackendState: 'NeedsLogin',
+  AuthURL: 'https://login.tailscale.com/a/explicit',
+  ControlURL: 'https://controlplane.tailscale.com',
+  Peer: {}
+}))
+assertEqual(loginRequired.authUrl, 'https://login.tailscale.com/a/explicit', 'tailscale reads the explicit daemon authorization URL')
+
+const controlUrlOnly = tailscale.parseStatus(JSON.stringify({
+  BackendState: 'NeedsLogin',
+  ControlURL: 'https://controlplane.tailscale.com',
+  Peer: {}
+}))
+assertEqual(controlUrlOnly.authUrl, '', 'tailscale does not treat ControlURL as an authorization URL')
+
 const accounts = tailscale.parseAccounts(JSON.stringify([
   {
     id: 'db1b',
@@ -189,20 +227,33 @@ assertEqual(
   'tailscale labels connections by tailnet when nickname is missing'
 )
 
+const existingAuthPlan = tailscale.loginPlan(true, 'https://login.tailscale.com/a/existing')
+const interactiveLoginPlan = tailscale.loginPlan(true, '')
+const resumePlan = tailscale.loginPlan(false, 'https://login.tailscale.com/a/stale')
+
 assertDeepEqual(
-  tailscale.loginPlan(true, 'https://login.tailscale.com/a/existing'),
+  existingAuthPlan,
   { authUrl: 'https://login.tailscale.com/a/existing', command: [] },
   'tailscale reuses the daemon authorization URL without replacing node identity'
 )
 assertDeepEqual(
-  tailscale.loginPlan(true, ''),
-  { authUrl: '', command: ['tailscale', 'up'] },
-  'tailscale requests a login URL when the daemon has not supplied one'
+  interactiveLoginPlan,
+  { authUrl: '', command: ['tailscale', 'debug', 'localapi', 'POST', '/localapi/v0/login-interactive'] },
+  'tailscale requests interactive login through LocalAPI when the daemon has not supplied a URL'
 )
 assertDeepEqual(
-  tailscale.loginPlan(false, 'https://login.tailscale.com/a/stale'),
-  { authUrl: '', command: ['tailscale', 'up'] },
-  'tailscale ignores stale authorization URLs outside the login state'
+  resumePlan,
+  { authUrl: '', command: ['tailscale', 'debug', 'localapi', 'PATCH', '/localapi/v0/prefs', '{"WantRunning":true,"WantRunningSet":true}'] },
+  'tailscale resumes through LocalAPI while ignoring stale authorization URLs'
+)
+assertDeepEqual(
+  JSON.parse(resumePlan.command[5]),
+  { WantRunning: true, WantRunningSet: true },
+  'tailscale masks and enables the persisted running preference'
+)
+assert(
+  [existingAuthPlan, interactiveLoginPlan, resumePlan].every(plan => plan.command.join(' ') !== 'tailscale up'),
+  'tailscale login plans never invoke tailscale up'
 )
 
 assertDeepEqual(tailscale.parseStatus('{'), { ok: false, unavailable: true, message: 'Status error', error: 'Failed to parse tailscale status' }, 'tailscale reports invalid status JSON')
