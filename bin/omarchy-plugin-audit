@@ -1,0 +1,697 @@
+#!/bin/bash
+
+# omarchy:summary=Report a plugin's capabilities and flag anything outside its declared set
+# omarchy:group=plugin
+# omarchy:args=<plugin-folder|id> [--json] [--strict] | --explain
+# omarchy:examples=omarchy plugin audit ./my-plugin | omarchy plugin audit acme.weather --strict
+
+# Static capability report for a shell plugin. Plugins run unsandboxed inside the
+# long-lived omarchy-shell process, so "install a plugin" means "run its code as
+# you". This does not sandbox anything; it reads the plugin's own QML/JS/shell and
+# lists what it can reach -- every binary it spawns, host it contacts, and file it
+# touches -- then compares that against the plugin's declared `capabilities` in
+# manifest.json. Anything observed but not declared is surfaced as a warning; the
+# headline case is a binary the plugin spawns that it never declared.
+#
+# Detection is best-effort and conservative: it errs toward surfacing a capability
+# rather than hiding one, and it cannot see through fully dynamic (computed at
+# runtime) commands or paths -- those are reported as their own risk instead.
+
+set -euo pipefail
+
+fail() {
+  echo "omarchy-plugin-audit: $*" >&2
+  exit 2
+}
+
+print_levels() {
+  cat <<'LEVELS'
+Overall risk levels
+
+An audit ends with one overall level, derived only from what the scan found. It
+is a triage signal, not a judgement of intent: a higher level can be exactly what
+a plugin is meant to do (a VPN plugin spawns a VPN binary), and a lower level is
+never a guarantee of safety, only "nothing obvious stood out". The one-line
+verdict lists the specific findings that set the level.
+
+  minimal   Spawns no command, contacts no host, writes no file, trips no risk.
+            About as inert as a plugin gets.
+  low       Does real work, but every capability it uses is declared in its
+            manifest and nothing tripped a risk heuristic.
+  moderate  Reaches something it did not declare, tripped a medium risk (an inline
+            or dynamically-assigned command, a bundled helper the scan cannot fully
+            read, base64 decoding, a raw socket), hid one thing from the scan (a
+            concatenated argv[0] or a runtime-built URL), or reaches the network
+            while also reading your files or running an interpreter. That last one
+            holds even when every capability is declared -- declaring a capability
+            explains it, it does not make it safe. Worth a read.
+  high      Tripped a high-severity risk on its own -- privilege escalation
+            (sudo/pkexec), a write to an autostart/systemd/hyprland/crontab
+            location, a read of credential material, spawning a second Quickshell, a
+            git origin Omarchy refuses to clone -- hid what it does on more than one
+            front at once (e.g. both a concatenated binary name and a runtime-built
+            URL), or is a third-party plugin that fails omarchy-plugin-validate. Read
+            the code before enabling.
+  critical  A pattern dangerous almost regardless of intent: piping a download into
+            a shell, constructing and running code at runtime, reading credentials
+            while also reaching the network, or escalating privilege (sudo/pkexec)
+            alongside network access or a credential read. Do not enable without
+            understanding exactly what it does.
+
+Hiding a capability raises the level rather than lowering it: a benign plugin
+rarely needs to assemble a binary name or a host from fragments, so the scan not
+being able to see the real value is itself the signal.
+
+--strict (exit 1) keys off undeclared commands, hosts, and writes and high-severity
+risks, which lines up with the high and critical levels and most moderate ones.
+LEVELS
+}
+
+if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
+  cat <<'USAGE'
+Usage: omarchy plugin audit <plugin-folder|id> [--json] [--strict]
+       omarchy plugin audit --explain
+
+Reads a plugin's code and reports its capabilities: the binaries it spawns, the
+network hosts it contacts, and the files it reads or writes. Each is marked
+against the plugin's declared `capabilities` in manifest.json, so anything the
+plugin reaches without declaring stands out. The report ends with one overall
+risk level (see --explain).
+
+  --json     Emit the report as JSON instead of text.
+  --strict   Exit non-zero when the plugin reaches a high or critical verdict, or
+             has an undeclared command, host, or write. Intended for CI and
+             marketplace baselines.
+  --explain  Describe the overall risk levels and how they are derived, then exit.
+
+Declare capabilities in manifest.json so an audit stays quiet on intended use:
+
+  "capabilities": {
+    "commands": ["notify-send", "dropbox"],
+    "network":  ["api.example.com"],
+    "reads":    ["~/.config/omarchy"],
+    "writes":   ["~/.cache/my-plugin"]
+  }
+USAGE
+  exit 0
+fi
+
+for tool in jq rg find; do
+  command -v "$tool" >/dev/null || fail "required tool not found: $tool"
+done
+
+target=""
+as_json=0
+strict=0
+explain=0
+while (( $# > 0 )); do
+  case "$1" in
+    --json) as_json=1; shift ;;
+    --strict) strict=1; shift ;;
+    --explain) explain=1; shift ;;
+    -*) fail "unknown option: $1" ;;
+    *)
+      [[ -z $target ]] || fail "unexpected argument: $1"
+      target="$1"; shift ;;
+  esac
+done
+
+if (( explain )); then
+  print_levels
+  exit 0
+fi
+
+[[ -n $target ]] || fail "a plugin folder or installed plugin id is required"
+
+# ------------------------------------------------------------------ resolve dir
+
+plugin_dir=""
+if [[ -d $target && -f $target/manifest.json ]]; then
+  plugin_dir=$(cd -- "$target" && pwd)
+elif [[ -d $target ]]; then
+  fail "no manifest.json in $target"
+else
+  plugin_dir=$(omarchy-plugin-catalog 2>/dev/null |
+    jq -r --arg id "$target" 'map(select(.id == $id))[0].sourceDir // empty') ||
+    fail "could not read plugin catalog"
+  [[ -n $plugin_dir ]] || fail "no plugin folder or installed plugin id: $target"
+  [[ -f $plugin_dir/manifest.json ]] || fail "resolved '$target' to $plugin_dir, which has no manifest.json"
+fi
+
+manifest="$plugin_dir/manifest.json"
+plugin_id=$(jq -r '.id // ""' "$manifest" 2>/dev/null || true)
+[[ -n $plugin_id ]] || plugin_id=$(basename "$plugin_dir")
+
+# ------------------------------------------------------------------ structural gate
+
+# omarchy-plugin-validate is the gate for third-party plugins; it deliberately
+# rejects the reserved omarchy.* namespace, so a first-party plugin would always
+# "fail" it. Audit those for capability introspection without treating that
+# expected rejection as invalid.
+first_party=0
+[[ $plugin_id == omarchy.* ]] && first_party=1
+
+valid=true
+validate_output=""
+validate_status="ok"
+if (( first_party )); then
+  validate_status="skipped (first-party plugin)"
+elif ! validate_output=$(omarchy-plugin-validate "$plugin_dir" 2>&1); then
+  valid=false
+  validate_status="FAILED"
+fi
+
+# ------------------------------------------------------------------ declared set
+
+# jq array -> newline list, or empty. Missing/malformed declarations yield nothing
+# declared, which just means everything observed is reported as undeclared.
+declared_list() {
+  jq -r --arg key "$1" '(.capabilities[$key] // []) | .[]? | select(type == "string")' \
+    "$manifest" 2>/dev/null | sort -u || true
+}
+has_capabilities=$(jq -e 'has("capabilities")' "$manifest" >/dev/null 2>&1 && echo 1 || echo 0)
+declared_commands=$(declared_list commands)
+declared_network=$(declared_list network)
+declared_reads=$(declared_list reads)
+declared_writes=$(declared_list writes)
+
+# ------------------------------------------------------------------ scan helpers
+
+QML_GLOBS=(-g '*.qml' -g '*.js' -g '*.mjs')
+# Executable code in any language a plugin might bundle. Used where a scan should
+# look past QML/JS (e.g. URLs) but must still skip docs and data (README links are
+# not network access), so *.md / *.json / images are deliberately excluded.
+CODE_GLOBS=(-g '*.qml' -g '*.js' -g '*.mjs' -g '*.py' -g '*.rb' -g '*.pl' -g '*.php' -g '*.lua' -g '*.sh' -g '*.bash')
+
+# Unit tests and dev specs are never loaded by the shell -- only declared entry
+# points and the code they invoke are -- so they are dev artifacts, not plugin
+# behavior, and are excluded from every content scan. This is safe: a payload
+# hidden in a "test" file only runs if runtime code references it, and that
+# reference lives in loadable code, which is still scanned. EXCLUDE_GLOBS is for
+# rg; FIND_PRUNE / FIND_NOTEST are the find equivalents.
+EXCLUDE_GLOBS=(-g '!**/test/**' -g '!**/tests/**' -g '!**/__tests__/**' -g '!**/spec/**' -g '!*.test.*' -g '!*.spec.*')
+FIND_PRUNE=(\( -name .git -o -name test -o -name tests -o -name __tests__ -o -name spec \) -prune -o)
+FIND_NOTEST=(! -name '*.test.*' ! -name '*.spec.*')
+
+# Files the shell treats as shell scripts: *.sh/*.bash plus extensionless files
+# whose first line is a bash/sh shebang. Redirection and fs-mutation patterns are
+# only scanned in these, so a QML string literal is not misread as a redirect.
+shell_files() {
+  find "$plugin_dir" "${FIND_PRUNE[@]}" -type f \( -name '*.sh' -o -name '*.bash' \) "${FIND_NOTEST[@]}" -print 2>/dev/null || true
+  find "$plugin_dir" "${FIND_PRUNE[@]}" -type f ! -name '*.*' -print 2>/dev/null |
+    while IFS= read -r f; do
+      IFS= read -r first <"$f" 2>/dev/null || continue
+      [[ $first == '#!'*sh* ]] && printf '%s\n' "$f"
+    done || true
+}
+
+rg_qml() { rg --no-messages -oN -I -U "${QML_GLOBS[@]}" "${EXCLUDE_GLOBS[@]}" "$@" "$plugin_dir" 2>/dev/null || true; }
+
+# Extract quoted string tokens (double or single) from stdin, unquoted, one per line.
+quoted_tokens() {
+  grep -oE '"([^"\\]|\\.)*"|'\''([^'\''\\]|\\.)*'\''' | sed -E 's/^.//; s/.$//' || true
+}
+
+basename_of() { local b=${1##*/}; printf '%s\n' "$b"; }
+
+WRAPPERS="env sudo pkexec doas nice nohup setsid stdbuf timeout ionice command xargs"
+INTERPRETERS="bash sh zsh fish dash ash ksh"
+
+# Given a wrapper's tokens (already split, one per line on stdin), print the first
+# token that is the real command: not a flag and not a VAR=value assignment.
+first_real_arg() {
+  local tok
+  while IFS= read -r tok; do
+    [[ -n $tok ]] || continue
+    [[ $tok == -* ]] && continue
+    [[ $tok =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && continue
+    printf '%s\n' "$tok"
+    return
+  done
+}
+
+# From an inline shell script string on stdin, print the leading binary of each
+# command segment (so `curl x | bash` yields curl and bash).
+binaries_from_shell() {
+  tr ';|&\n' '\n' |
+    sed -E 's/^[[:space:]]*//' |
+    sed -E 's/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//' |
+    grep -oE '^[A-Za-z0-9_./-]+' |
+    while IFS= read -r w; do basename_of "$w"; done || true
+}
+
+# From a shell command string on stdin, print the filesystem paths it writes to:
+# redirection targets (>, >>) and the path arguments of fs-mutating commands. Used
+# for both bundled shell files and inline `sh -c` strings, so a redirect hidden in
+# a QML Process command is caught the same as one in a companion script.
+writes_from_shell() {
+  local script
+  script=$(cat)
+  printf '%s\n' "$script" |
+    grep -oE '>>?[[:space:]]*("?)(~/|/|\$HOME/)[^"'"'"'[:space:]]*' 2>/dev/null |
+    grep -oE '(~/|/|\$HOME/)[^"'"'"'[:space:]]*' || true
+  printf '%s\n' "$script" |
+    grep -oE '\b(tee|mkdir|rm|cp|mv|install|dd|truncate|touch|ln)\b.*' 2>/dev/null |
+    grep -oE '(~/|/|\$HOME/)[^"'"'"'[:space:]]*' || true
+}
+
+# ------------------------------------------------------------------ collectors
+
+commands_out=$(mktemp)
+files_read_out=$(mktemp)
+files_write_out=$(mktemp)
+network_out=$(mktemp)
+risks_out=$(mktemp)
+trap 'rm -f "$commands_out" "$files_read_out" "$files_write_out" "$network_out" "$risks_out"' EXIT
+
+add_risk() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"$risks_out"; }  # severity  kind  detail
+
+# --- spawned binaries: Process command arrays, exec/startDetached calls ---------
+while IFS= read -r block; do
+  [[ -n $block ]] || continue
+  mapfile -t toks < <(printf '%s' "$block" | quoted_tokens)
+  (( ${#toks[@]} > 0 )) || continue
+  argv0=$(basename_of "${toks[0]}")
+  printf '%s\n' "$argv0" >>"$commands_out"
+
+  # Unwrap env/sudo/pkexec/timeout... to the command they actually run. The || true
+  # matters: first_real_arg exits non-zero when a wrapper carries only flags, and
+  # under set -e/pipefail a failed command substitution would abort the whole audit.
+  if [[ " $WRAPPERS " == *" $argv0 "* ]]; then
+    inner=$(printf '%s\n' "${toks[@]:1}" | first_real_arg || true)
+    [[ -n $inner ]] && basename_of "$inner" >>"$commands_out"
+    [[ $argv0 == sudo || $argv0 == pkexec || $argv0 == doas ]] &&
+      add_risk high privilege-escalation "spawns via $argv0: ${toks[*]}"
+  fi
+
+  # Interpreters running an inline script hide their real work in a string arg.
+  # The || true is load-bearing for the same reason: when every argument is a flag
+  # (or the script is a non-literal like ["bash","-c",someVar]), grep -v matches
+  # nothing and exits 1, which would otherwise abort the audit with no output.
+  if [[ " $INTERPRETERS " == *" $argv0 "* ]] && printf '%s\n' "${toks[@]}" | grep -qE '^-[a-z]*c$'; then
+    script=$(printf '%s\n' "${toks[@]:1}" | grep -vE '^-' | head -n1 || true)
+    if [[ -n $script ]]; then
+      add_risk medium inline-shell "$argv0 -c runs an inline script"
+      printf '%s' "$script" | binaries_from_shell >>"$commands_out"
+      printf '%s' "$script" | writes_from_shell >>"$files_write_out"
+      printf '%s' "$script" | grep -qE '\|\s*(bash|sh|zsh)\b' &&
+        add_risk high pipe-to-shell "downloads or pipes into a shell interpreter"
+    else
+      # -c present but no literal script: the shell runs a string built at runtime,
+      # whose contents (commands, redirects, downloads) the scan cannot see.
+      add_risk medium dynamic-command "$argv0 -c runs a script assembled at runtime; its contents are not statically visible"
+    fi
+  fi
+# Both the QML binding form (command: [...]) and the JS assignment form
+# (someProcess.command = [...]) name a spawned argv, so match either separator.
+done < <(rg_qml -e 'command\s*[:=]\s*\[[^]]*\]' \
+                -e '(execDetached|startDetached|exec)\s*\(\s*\[[^]]*\]')
+
+# A command set from a variable or expression, not an array literal, cannot be
+# read statically -- note it so the report says the spawned binary may be
+# incomplete rather than implying it captured everything.
+if rg_qml -e 'command\s*[:=]\s*[A-Za-z_$({]' | grep -q .; then
+  add_risk medium dynamic-command "a command is assigned from a variable; some spawned binaries may not be captured statically"
+fi
+
+# Strong evasion signals: assembling a command or a URL from string fragments
+# hides the real binary or destination from the literal scan (e.g. ["cur"+"l"] or
+# "https://" + host). A benign plugin almost never needs to; two of these together
+# read as active concealment, so the verdict escalates on them (see the verdict
+# block). These are distinct from the common, often-benign dynamic-command above.
+# Scoped to argv[0] -- the binary itself being concatenated (["cur"+"l"]) or set
+# from a variable/call as the first element ([atob(...), ...]). A concatenated
+# *argument* (a URL, a flag value) is common and benign, and is covered by
+# computed-url instead, so it must not also count here (that would double-count one
+# act of concealment and wrongly escalate to high).
+if rg_qml -e 'command\s*[:=]\s*\[\s*"[^"]*"\s*\+' -e 'command\s*[:=]\s*\[\s*[A-Za-z_$]' | grep -q .; then
+  add_risk medium obfuscated-command "the spawned binary (argv[0]) is assembled from fragments or a variable, hiding which program runs"
+fi
+if rg_qml -e '"https?://[^"]*"\s*\+' -e '\+\s*"https?://' | grep -q .; then
+  add_risk medium computed-url "a URL is assembled at runtime; the destination host is not statically visible"
+fi
+
+# --- files: FileView paths, path-like literals, command path arguments ----------
+# FileView paths and explicit path: bindings.
+rg_qml -e 'path\s*:\s*("[^"]*"|'\''[^'\'']*'\'')' |
+  sed -E 's/^path[[:space:]]*:[[:space:]]*//' | quoted_tokens >>"$files_read_out"
+
+# String literals that look like filesystem paths anywhere in the code.
+rg_qml -e '"(~/|/|\$HOME/)[^"]*"' -e "'(~/|/|\\\$HOME/)[^']*'" | quoted_tokens |
+  grep -E '^(~/|/|\$HOME/)' >>"$files_read_out" || true
+
+# Home-relative paths built from the env helper, e.g. Quickshell.env("HOME") + "/.config/x".
+rg_qml -e 'env\(\s*"HOME"\s*\)\s*\+\s*"[^"]*"' |
+  grep -oE '"[^"]*"$' | quoted_tokens | sed -E 's|^/|~/|' >>"$files_read_out" || true
+
+# Writes from bundled shell files: redirections and fs-mutating commands.
+while IFS= read -r sf; do
+  [[ -n $sf ]] || continue
+  writes_from_shell <"$sf" >>"$files_write_out"
+done < <(shell_files)
+
+# QML writes: a FileView that also writes (atomicWrite/setText/write/writer) marks
+# its paths as writes. Approximate at file granularity: if a file both names a
+# path and writes, treat its paths as write targets too.
+while IFS= read -r qf; do
+  [[ -n $qf ]] || continue
+  if grep -qE 'atomicWrite|\.setText\(|\.write\(|writer\s*:|blockWrites\s*:\s*false' "$qf" 2>/dev/null; then
+    grep -oE 'path\s*:\s*("[^"]*"|'\''[^'\'']*'\'')' "$qf" 2>/dev/null |
+      sed -E 's/^path[[:space:]]*:[[:space:]]*//' | quoted_tokens >>"$files_write_out" || true
+  fi
+done < <(find "$plugin_dir" "${FIND_PRUNE[@]}" -type f \( -name '*.qml' -o -name '*.js' \) "${FIND_NOTEST[@]}" -print 2>/dev/null)
+
+# --- network: URLs, sockets, and network binaries -------------------------------
+# Scan all code, not just QML/JS, so a URL in a bundled helper script (a Python or
+# shell companion) is caught -- but not docs, where a README link is not a call.
+# Match only the host charset after the scheme (letters, digits, dot, hyphen), so a
+# literal escape or path glued onto the URL inside a string -- e.g.
+# "https://cli.github.com\n\nMake ..." -- does not become part of the host.
+rg --no-messages -oN -I "${CODE_GLOBS[@]}" "${EXCLUDE_GLOBS[@]}" -e 'https?://[A-Za-z0-9.-]+' "$plugin_dir" 2>/dev/null |
+  sed -E 's|^https?://||; s|\.$||' | grep -E '.' >>"$network_out" || true
+
+if rg_qml -e 'XMLHttpRequest' -e 'WebSocket' -e 'Socket\s*\{' -e 'connectToHost' | grep -q .; then
+  echo "(dynamic)" >>"$network_out"
+  add_risk medium network-socket "opens a socket / XHR / WebSocket (host may be computed at runtime)"
+fi
+
+# --- risk heuristics ------------------------------------------------------------
+rg_qml -e 'Qt\.createQmlObject' -e 'Qt\.createComponent\s*\(\s*[A-Za-z_$]' -e '\beval\s*\(' -e '\bnew Function\s*\(' |
+  grep -q . && add_risk high dynamic-code "constructs and runs code at runtime (eval / createQmlObject / dynamic createComponent)"
+
+# curl|bash and remote-build patterns across every file.
+if rg --no-messages -I -U "${EXCLUDE_GLOBS[@]}" -e '(curl|wget)[^\n|]*\|\s*(bash|sh|zsh)' "$plugin_dir" 2>/dev/null | grep -q .; then
+  add_risk high pipe-to-shell "pipes a download straight into a shell"
+fi
+# base64 decoding is a common way to hide a payload.
+rg --no-messages -I "${EXCLUDE_GLOBS[@]}" -e 'base64\s+-d' -e 'base64\s+--decode' -e '\batob\s*\(' "$plugin_dir" 2>/dev/null |
+  grep -q . && add_risk medium base64-decode "decodes base64 at runtime (can conceal a payload)"
+# Spawning a second Quickshell process is called out in the plugin docs.
+grep -qxE 'quickshell|qs' "$commands_out" 2>/dev/null &&
+  add_risk high second-shell "spawns another Quickshell process, which the plugin guidelines forbid"
+
+# Sensitive reads / persistence writes, derived from the paths already collected.
+sensitive_hit() { grep -qE "$1" "$files_read_out" "$files_write_out" 2>/dev/null; }
+sensitive_hit '(^|/)\.(ssh|gnupg|aws)(/|$)' && add_risk high sensitive-read "touches credential/key material (.ssh/.gnupg/.aws)"
+sensitive_hit '\.(netrc|git-credentials|npmrc|pgpass)' && add_risk high sensitive-read "touches a credentials file (.netrc/.git-credentials/...)"
+sensitive_hit '(bash|zsh|fish)_history|/Cookies|/logins\.json|/key4\.db' && add_risk high sensitive-read "touches shell history or browser secrets"
+sensitive_hit '/etc/(shadow|gshadow|sudoers)' && add_risk high sensitive-read "touches a system credential/authorization file (/etc/shadow, sudoers)"
+grep -qE '\.config/(autostart|systemd/user)|\.config/hypr|crontab' "$files_write_out" 2>/dev/null &&
+  add_risk high persistence "writes to an autostart / systemd-user / hypr / crontab location"
+
+# Helper scripts in languages this audit does not deeply parse (Python, Ruby, ...)
+# hide most of their commands and file access from the QML/shell-oriented scan.
+# Name them so the report admits the gap instead of implying full coverage; a
+# plugin that spawns them still shows the interpreter (python3, ruby, ...) in its
+# command list via the command-array scan above.
+while IFS= read -r hs; do
+  [[ -n $hs ]] || continue
+  add_risk medium partial-coverage "ships a helper script only shallowly scanned; review it by hand: ${hs#"$plugin_dir"/}"
+done < <(
+  find "$plugin_dir" "${FIND_PRUNE[@]}" -type f \
+    \( -name '*.py' -o -name '*.rb' -o -name '*.pl' -o -name '*.php' -o -name '*.lua' \) "${FIND_NOTEST[@]}" -print 2>/dev/null
+  find "$plugin_dir" "${FIND_PRUNE[@]}" -type f ! -name '*.*' -print 2>/dev/null |
+    while IFS= read -r f; do
+      IFS= read -r first <"$f" 2>/dev/null || continue
+      [[ $first == '#!'* && $first != *sh* ]] && printf '%s\n' "$f"
+    done
+)
+
+# ------------------------------------------------------------------ provenance
+
+git_provenance='{"git":false}'
+if [[ -d $plugin_dir/.git ]]; then
+  remote=$(git -C "$plugin_dir" remote get-url origin 2>/dev/null || true)
+  commit=$(git -C "$plugin_dir" rev-parse --short HEAD 2>/dev/null || true)
+  remote_ok=true
+  remote_note=""
+  if [[ -n $remote ]]; then
+    if ! remote_note=$(omarchy-git-url-check "$remote" 2>&1); then
+      remote_ok=false
+    else
+      remote_note=""
+    fi
+  fi
+  git_provenance=$(jq -n \
+    --arg remote "$remote" --arg commit "$commit" \
+    --argjson ok "$remote_ok" --arg note "$remote_note" \
+    '{git: true, remote: $remote, commit: $commit, remoteOk: $ok} +
+     (if $note == "" then {} else {remoteNote: $note} end)')
+  [[ $remote_ok == false ]] &&
+    add_risk high git-url "origin URL is one omarchy refuses to clone from: $remote"
+fi
+
+# ------------------------------------------------------------------ compose report
+
+# A literal like "/.config/x" is almost always the tail of env("HOME") + "...",
+# captured separately from its home-relative form. Fold a leading "/." back to
+# "~/." so the two collapse into one entry (a real absolute path like /etc/... is
+# untouched, since it does not start with a dot segment).
+for pf in "$files_read_out" "$files_write_out"; do
+  sed -i -E 's|^/\.|~/.|' "$pf" 2>/dev/null || true
+  # Drop bare root/home prefixes with no path after them (e.g. a "/" or "~/"
+  # string literal), which carry no capability information.
+  { grep -vE '^(/|~|~/|\$HOME|\$HOME/)$' "$pf" || true; } >"$pf.filtered"
+  mv "$pf.filtered" "$pf"
+done
+
+# Turn a newline list on stdin into a unique, sorted JSON array, dropping blanks.
+# Always emits exactly one JSON value (an empty list stays []), so the result is
+# safe to hand to jq --argjson.
+to_json_array() { jq -R . | jq -s 'map(select(. != "")) | unique'; }
+
+obs_commands=$(to_json_array <"$commands_out")
+obs_reads=$(to_json_array <"$files_read_out")
+obs_writes=$(to_json_array <"$files_write_out")
+obs_network=$(to_json_array <"$network_out")
+
+dec_commands=$(printf '%s\n' "$declared_commands" | to_json_array)
+dec_network=$(printf '%s\n' "$declared_network" | to_json_array)
+dec_reads=$(printf '%s\n' "$declared_reads" | to_json_array)
+dec_writes=$(printf '%s\n' "$declared_writes" | to_json_array)
+risks_json=$(jq -R 'split("\t") | {severity: .[0], kind: .[1], detail: .[2]}' "$risks_out" 2>/dev/null |
+  jq -s 'unique_by([.severity, .kind, .detail])' 2>/dev/null || echo '[]')
+
+# The whole report is assembled in jq: a binary is declared if its basename is in
+# the declared commands; a host matches a declared host exactly or as a subdomain;
+# a path is declared if a declared entry equals it or is a parent directory of it
+# (after normalizing ~, $HOME, and Quickshell's HOME to a single "~").
+report=$(jq -n \
+  --arg id "$plugin_id" \
+  --arg dir "$plugin_dir" \
+  --arg validateStatus "$validate_status" \
+  --argjson firstParty "$first_party" \
+  --argjson valid "$valid" \
+  --argjson hasDecl "$has_capabilities" \
+  --argjson provenance "$git_provenance" \
+  --argjson obsCommands "$obs_commands" \
+  --argjson obsReads "$obs_reads" \
+  --argjson obsWrites "$obs_writes" \
+  --argjson obsNetwork "$obs_network" \
+  --argjson decCommands "$dec_commands" \
+  --argjson decNetwork "$dec_network" \
+  --argjson decReads "$dec_reads" \
+  --argjson decWrites "$dec_writes" \
+  --argjson risks "$risks_json" '
+  def norm: sub("^\\$HOME/"; "~/") | sub("^/root/"; "~/") | sub("/+$"; "");
+  def covers($decl): . as $p | ($p | norm) as $n
+    | any($decl[]; (. | norm) as $d | $n == $d or ($n | startswith($d + "/")));
+  def hostmatch($decl): . as $h
+    | any($decl[]; . as $d | $h == $d or ($h | endswith("." + $d)));
+
+  {
+    id: $id,
+    pluginDir: $dir,
+    firstParty: ($firstParty == 1),
+    valid: $valid,
+    validateStatus: $validateStatus,
+    capabilitiesDeclared: ($hasDecl == 1),
+    provenance: $provenance,
+    declared: {commands: $decCommands, network: $decNetwork, reads: $decReads, writes: $decWrites},
+    observed: {
+      commands: [ $obsCommands[] | {name: ., declared: ([.] | inside($decCommands))} ],
+      network:  [ $obsNetwork[]  | {host: ., declared: (. as $h | ($h == "(dynamic)") or ($h | hostmatch($decNetwork)))} ],
+      reads:    [ $obsReads[]    | select(. as $p | ($obsWrites | index($p)) | not)
+                                 | {path: ., declared: (covers($decReads) or covers($decWrites))} ],
+      writes:   [ $obsWrites[]   | {path: ., declared: covers($decWrites)} ]
+    },
+    risks: $risks
+  }
+  | .summary = {
+      undeclaredCommands: ([.observed.commands[] | select(.declared | not)] | length),
+      undeclaredNetwork:  ([.observed.network[]  | select(.declared | not)] | length),
+      undeclaredReads:    ([.observed.reads[]    | select(.declared | not)] | length),
+      undeclaredWrites:   ([.observed.writes[]   | select(.declared | not)] | length),
+      highRisks:          ([.risks[] | select(.severity == "high")] | length),
+      risks:              (.risks | length)
+    }
+
+  # One overall level, highest matching rule wins. Derived purely from findings:
+  # a triage signal, never a statement of intent. See print_levels() / --explain.
+  | ([.risks[].kind]) as $kinds
+  | ([.observed.commands[].name]) as $cmdnames
+  | ([.risks[].severity] | any(. == "high")) as $anyHigh
+  | (.observed.network  | length > 0) as $netDirect
+  | (.observed.commands | length > 0) as $cmd
+  | (.observed.writes   | length > 0) as $wr
+  | (.observed.reads    | length > 0) as $rd
+  | (($kinds | index("pipe-to-shell")) != null) as $pipe
+  | (($kinds | index("dynamic-code")) != null) as $dyncode
+  | (($kinds | index("privilege-escalation")) != null) as $priv
+  | (($kinds | index("sensitive-read")) != null) as $sens
+  | (($kinds | index("computed-url")) != null) as $compUrl
+  | (($kinds | index("network-socket")) != null) as $sock
+  # Strong evasion = actively hiding argv or a host from the scan. Two together
+  # read as deliberate concealment (-> high); one raises the floor to moderate.
+  # dynamic-command / partial-coverage are deliberately NOT counted here: they are
+  # common in honest plugins, so they inform the report without escalating it.
+  | ([ $kinds[] | select(. == "obfuscated-command" or . == "computed-url") ] | length) as $strongEvasion
+  # Network the scan can see, directly or as an evasion signal.
+  | ($netDirect or $compUrl or $sock) as $anyNet
+  # An interpreter that can run whatever it is handed (including a download).
+  | ($cmdnames | any(. as $n | ["bash","sh","zsh","fish","dash","ash","ksh","python","python3","node","nodejs","ruby","perl","php"] | index($n) != null)) as $spawnsInterp
+  # Declaration explains a capability, it does not make it safe: network paired
+  # with reading user files or an interpreter is an exfiltration / remote-exec
+  # shape that holds the floor at moderate even when every capability is declared.
+  | ($anyNet and ($rd or $spawnsInterp)) as $exposedNet
+  | (.summary.undeclaredCommands + .summary.undeclaredNetwork + .summary.undeclaredWrites > 0) as $undecl
+  | (.risks | length > 0) as $anyRisk
+  | (if   ($pipe or $dyncode or ($priv and ($netDirect or $sens)) or ($sens and $netDirect)) then "critical"
+     elif ($anyHigh or (.valid | not)) then "high"
+     elif ($strongEvasion >= 2) then "high"
+     elif ($undecl or $anyRisk or $exposedNet) then "moderate"
+     elif ($cmd or $netDirect or $wr) then "low"
+     else "minimal" end) as $level
+  | .verdict = {
+      level: $level,
+      reasons: (
+        if $level == "critical" then
+          [ (if $pipe then "pipes a download into a shell" else empty end),
+            (if $dyncode then "constructs and runs code at runtime" else empty end),
+            (if ($priv and ($netDirect or $sens)) then "privilege escalation alongside network or credential access" else empty end),
+            (if ($sens and $netDirect) then "reads credential material while also reaching the network (exfiltration shape)" else empty end) ]
+        elif $level == "high" then
+          ((if (.valid | not) then ["fails omarchy-plugin-validate"] else [] end)
+            + [ .risks[] | select(.severity == "high") | .detail ]
+            + (if $strongEvasion >= 2 then ["assembles commands and/or URLs at runtime on multiple fronts, hiding what it runs and where it connects"] else [] end))
+        elif $level == "moderate" then
+          ((if $undecl then
+              [ (.summary.undeclaredCommands|tostring) + " undeclared command(s), "
+                + (.summary.undeclaredNetwork|tostring) + " host(s), "
+                + (.summary.undeclaredWrites|tostring) + " write(s)" ]
+            else [] end)
+            + (if $exposedNet then ["reaches the network and can read your files or run fetched code (a capability declaration does not make this safe)"] else [] end)
+            + ([ .risks[] | select(.severity == "medium") | .kind ] | unique))
+        elif $level == "low" then
+          ["every observed capability is declared; no risks flagged"]
+        else
+          ["no commands, network, or writes observed"]
+        end)
+    }
+')
+
+# ------------------------------------------------------------------ emit
+
+if (( as_json )); then
+  printf '%s\n' "$report"
+else
+  bold=$'\033[1m'; dim=$'\033[2m'; red=$'\033[31m'; yellow=$'\033[33m'; green=$'\033[32m'; reset=$'\033[0m'
+  [[ -t 1 ]] || { bold=""; dim=""; red=""; yellow=""; green=""; reset=""; }
+
+  printf '%sPlugin audit: %s%s\n' "$bold" "$plugin_id" "$reset"
+  printf '  %sfolder%s     %s\n' "$dim" "$reset" "$plugin_dir"
+  if [[ $valid == false ]]; then
+    printf '  %svalidate%s   %sFAILED%s (%s)\n' "$dim" "$reset" "$red" "$reset" "$(head -n1 <<<"$validate_output")"
+  elif [[ $validate_status == ok ]]; then
+    printf '  %svalidate%s   %sok%s\n' "$dim" "$reset" "$green" "$reset"
+  else
+    printf '  %svalidate%s   %s\n' "$dim" "$reset" "$validate_status"
+  fi
+  git_line=$(jq -r 'if .provenance.git then
+      "commit " + (.provenance.commit // "?") + ", origin " +
+      (if (.provenance.remote // "") == "" then "(none)" else .provenance.remote end) +
+      (if .provenance.remoteOk == false then "  [REFUSED URL]" else "" end)
+    else "not a git checkout" end' <<<"$report")
+  printf '  %sprovenance%s %s\n' "$dim" "$reset" "$git_line"
+  if [[ $has_capabilities == 0 ]]; then
+    printf '  %sdeclared%s   %snone -- every capability below is undeclared%s\n' "$dim" "$reset" "$yellow" "$reset"
+  fi
+  echo
+
+  mark() { [[ $1 == true ]] && printf '%s  ok%s' "$green" "$reset" || printf '%swarn%s' "$yellow" "$reset"; }
+
+  section() { # title  jq-path  field
+    local title="$1" path="$2" field="$3" rows
+    rows=$(jq -r "${path}[] | [(.declared|tostring), (.${field})] | @tsv" <<<"$report")
+    printf '%s%s%s\n' "$bold" "$title" "$reset"
+    if [[ -z $rows ]]; then
+      printf '  %s(none observed)%s\n' "$dim" "$reset"
+    else
+      while IFS=$'\t' read -r declared value; do
+        printf '  [%s] %s\n' "$(mark "$declared")" "$value"
+      done <<<"$rows"
+    fi
+    echo
+  }
+
+  section "Commands spawned" ".observed.commands" "name"
+  section "Network hosts" ".observed.network" "host"
+  section "Files written" ".observed.writes" "path"
+  section "Files read / touched" ".observed.reads" "path"
+
+  printf '%sRisks%s\n' "$bold" "$reset"
+  if jq -e '.risks | length == 0' <<<"$report" >/dev/null; then
+    printf '  %snone flagged%s\n' "$dim" "$reset"
+  else
+    while IFS=$'\t' read -r sev kind detail; do
+      col="$yellow"; [[ $sev == high ]] && col="$red"
+      printf '  %s%-4s%s %s: %s\n' "$col" "$sev" "$reset" "$kind" "$detail"
+    done < <(jq -r '.risks[] | [.severity, .kind, .detail] | @tsv' <<<"$report")
+  fi
+  echo
+
+  jq -r '.summary |
+    "Summary: " +
+    (.undeclaredCommands|tostring) + " undeclared command(s), " +
+    (.undeclaredNetwork|tostring) + " host(s), " +
+    (.undeclaredWrites|tostring) + " write(s), " +
+    (.undeclaredReads|tostring) + " read(s); " +
+    (.highRisks|tostring) + " high-severity risk(s)."' <<<"$report"
+
+  level=$(jq -r '.verdict.level' <<<"$report")
+  case "$level" in
+    critical) vcol="$bold$red" ;;
+    high)     vcol="$red" ;;
+    moderate) vcol="$yellow" ;;
+    *)        vcol="$green" ;;
+  esac
+  echo
+  printf '%sVerdict: %s%s\n' "$vcol" "${level^^}" "$reset"
+  while IFS= read -r reason; do
+    [[ -n $reason ]] && printf '  - %s\n' "$reason"
+  done < <(jq -r '.verdict.reasons[]?' <<<"$report")
+  printf "%sWhat these levels mean: omarchy plugin audit --explain%s\n" "$dim" "$reset"
+fi
+
+# ------------------------------------------------------------------ exit status
+
+if [[ $valid == false ]]; then
+  exit 2
+fi
+
+if (( strict )); then
+  # Fail on the two things a CI/marketplace gate should block: a verdict of high
+  # or critical (which already folds in every high-severity risk and the two-front
+  # evasion escalation), and any undeclared command, host, or write. A moderate
+  # verdict -- a single evasion signal or a declared but exposed-network plugin --
+  # is advisory and does not hard-fail on its own; undeclared reads never do.
+  jq -e '
+    .verdict.level == "high"
+    or .verdict.level == "critical"
+    or .summary.undeclaredCommands > 0
+    or .summary.undeclaredNetwork > 0
+    or .summary.undeclaredWrites > 0
+  ' <<<"$report" >/dev/null && exit 1
+fi
+
+exit 0

@@ -58,6 +58,8 @@ omarchy plugin update                # fetches, shows a diff, fast-forwards
 omarchy plugin remove acme.weather
 ```
 
+A plugin runs unsandboxed inside `omarchy-shell` with your privileges, so review one before enabling it. `omarchy plugin audit <folder|id>` reports what a plugin's code can reach — the binaries it spawns, hosts it contacts, and files it touches — against a declared `capabilities` set; see [`plugin-audit.md`](plugin-audit.md).
+
 **Setup › Plugins** offers Enable, Disable, Add, Clone, and Remove. Enable and
 Disable include built-ins as well as installed plugins. Clone is limited to
 built-ins, while Remove is limited to installed plugins since a built-in has
