@@ -242,6 +242,7 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
     "id": "omarchy.bar",
     "position": "top",
     "transparent": false,
+    "transparencyToggle": true,
     "centerAnchor": "omarchy.clock",
     "layout": {
       "left":   [ { "id": "omarchy.menu" }, { "id": "omarchy.workspaces" } ],

@@ -140,6 +140,7 @@ string on a miss.
     "id": "omarchy.bar",
     "position": "top",
     "transparent": false,
+    "transparencyToggle": true,
     "centerAnchor": "omarchy.clock",
     "layout": {
       "left":   [ { "id": "omarchy.menu" } ],
