@@ -105,7 +105,7 @@ assert_not_staged .git "the clone's own git directory is never staged"
 
 # These run code, so the theme's versions must lose to Omarchy's generated ones
 # rather than merely be absent.
-for generated in hyprland.lua neovim.lua gum_env.lua kitty.conf alacritty.toml foot.ini ghostty.conf; do
+for generated in hyprland.lua neovim.lua gum_env.lua kitty.conf alacritty.toml foot.ini ghostty.conf opencode.json; do
   assert_staged "$generated" "$generated is generated from Omarchy's template"
   assert_no_marker "$generated" "an installed theme cannot supply $generated"
 done
@@ -206,7 +206,7 @@ pass "a theme name cannot climb out of the theme directories"
 # A denylist is only correct while someone adding a template classifies what it
 # generates. Every generated theme file is either denied to an installed theme or
 # recorded here as carrying colour, so a new template fails until it is placed.
-denied=(alacritty.toml foot.ini ghostty.conf kitty.conf gum_env.lua hyprland.lua neovim.lua vscode.json)
+denied=(alacritty.toml foot.ini ghostty.conf kitty.conf gum_env.lua hyprland.lua neovim.lua opencode.json vscode.json)
 colour_only=(btop.theme chromium.theme claude.json helix.toml hyprland-preview-share-picker.css keyboard.rgb obsidian.css pi.json shell.toml vscode-theme.json)
 
 for tpl in "$ROOT"/default/themed/*.tpl; do

@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# omarchy:summary=Sync the current Omarchy theme into opencode's theme directory
+# omarchy:hidden=true
+
+CURRENT_THEME_PATH="$HOME/.local/state/omarchy/current/theme"
+OPENCODE_THEMES="$HOME/.config/opencode/themes"
+OPENCODE_THEME="$CURRENT_THEME_PATH/opencode.json"
+OPENCODE_TUI="$HOME/.config/opencode/tui.json"
+CURRENT_THEME_NAME="$HOME/.local/state/omarchy/current/theme.name"
+
+[[ -f $OPENCODE_THEME ]] || exit 0
+
+# Use the omarchy theme name (e.g. "noir-dawn") as the opencode theme name.
+theme_name="omarchy"
+if [[ -f $CURRENT_THEME_NAME ]]; then
+  theme_name=$(cat "$CURRENT_THEME_NAME")
+fi
+
+mkdir -p "$OPENCODE_THEMES"
+cp "$OPENCODE_THEME" "$OPENCODE_THEMES/$theme_name.json"
+
+# Point tui.json at the theme we just wrote so opencode loads it on next launch.
+if [[ -f $OPENCODE_TUI ]]; then
+  if omarchy-cmd-present python3; then
+    python3 -c "
+import json, sys
+try:
+    with open('$OPENCODE_TUI') as f:
+        cfg = json.load(f)
+    if cfg.get('theme') != sys.argv[1]:
+        cfg['theme'] = sys.argv[1]
+        with open('$OPENCODE_TUI', 'w') as f:
+            json.dump(cfg, f, indent=2)
+            f.write('\n')
+except: pass
+" "$theme_name" 2>/dev/null || true
+  fi
+else
+  cat >"$OPENCODE_TUI" <<TOML
+{
+  "\$schema": "https://opencode.ai/tui.json",
+  "theme": "$theme_name"
+}
+TOML
+fi
+
+if pgrep -x opencode >/dev/null; then
+  killall -SIGUSR2 opencode 2>/dev/null || true
+fi
