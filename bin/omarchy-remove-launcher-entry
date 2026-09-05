@@ -77,6 +77,13 @@ if [[ $exec_line =~ (^|[[:space:]])(\$TERMINAL|xdg-terminal-exec)[[:space:]].*-e
   exit 0
 fi
 
+# An AppImage launcher names the image it runs, and deleting the launcher alone
+# would strand a few hundred megabytes under ~/Applications.
+if grep -q '^X-AppImage-Source=' "$desktop_file"; then
+  OMARCHY_REMOVE_NOTIFY=false omarchy-appimage-remove "$desktop_name"
+  exit 0
+fi
+
 if is_user_desktop_file; then
   display_name="${entry_name:-$desktop_name}"
   rm -f "$desktop_file"
