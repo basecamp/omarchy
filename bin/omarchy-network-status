@@ -2,9 +2,10 @@
 
 # omarchy:summary=Print active network status for the shell
 # omarchy:group=network
-# omarchy:args=[--verbose]
+# omarchy:args=[--verbose|--type]
 
 verbose=false
+type_only=false
 internet_probe=1.1.1.1
 
 case "${1:-}" in
@@ -13,39 +14,61 @@ case "${1:-}" in
   --verbose)
     verbose=true
     ;;
+  --type)
+    type_only=true
+    ;;
   *)
-    echo "Usage: omarchy-network-status [--verbose]" >&2
+    echo "Usage: omarchy-network-status [--verbose|--type]" >&2
     exit 2
     ;;
 esac
 
+# --type answers with the first field alone. The menu's QR row asks only whether
+# this is wifi, and filling in SSID, signal and frequency for that costs a second
+# nmcli call and an iw call it never reads. The nmcli call that decides connected
+# from disconnected is still made, so the field it prints is the same field the
+# full line would have started with.
 print_status() {
   local device nm state ssid signal freq
 
   device=$(ip route get "$internet_probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
 
   if [[ -z $device ]]; then
-    printf 'disconnected\t\t\t\n'
+    print_line disconnected "" "" ""
     return
   fi
 
   if [[ ! -d /sys/class/net/$device/wireless ]]; then
-    printf 'ethernet\t%s\t\t\n' "$device"
+    print_line ethernet "$device" "" ""
     return
   fi
 
   nm=$(nmcli -t -f GENERAL.STATE,GENERAL.CONNECTION dev show "$device" 2>/dev/null)
   state=$(awk -F: '$1 == "GENERAL.STATE" { print $2; exit }' <<<"$nm")
+
+  if [[ $state != 100* ]]; then
+    print_line disconnected "" "" ""
+    return
+  fi
+
+  if [[ $type_only == "true" ]]; then
+    print_line wifi "" "" ""
+    return
+  fi
+
   ssid=$(awk -F: '$1 == "GENERAL.CONNECTION" { print $2; exit }' <<<"$nm")
   signal=$(nmcli -t -f IN-USE,SIGNAL dev wifi list ifname "$device" --rescan no 2>/dev/null | awk -F: '$1 == "*" { print $2; exit }')
   freq=$(iw dev "$device" link 2>/dev/null | awk '/freq:/ { print $2; exit }')
 
-  if [[ $state != 100* ]]; then
-    printf 'disconnected\t\t\t\n'
-    return
-  fi
+  print_line wifi "${ssid:-$device}" "$signal" "$freq"
+}
 
-  printf 'wifi\t%s\t%s\t%s\n' "${ssid:-$device}" "$signal" "$freq"
+print_line() {
+  if [[ $type_only == "true" ]]; then
+    printf '%s\n' "$1"
+  else
+    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4"
+  fi
 }
 
 ping_latency_ms() {
