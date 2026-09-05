@@ -110,6 +110,8 @@ bullet.image = Image("bullet.png");
 entry.sprite = Sprite(entry.image);
 entry.x = Window.GetWidth() / 2 - entry.image.GetWidth() / 2;
 entry.y = logo.sprite.GetY() + logo.image.GetHeight() + 40;
+entry_max_y = Window.GetHeight() - entry.image.GetHeight() - 40;
+if (entry.y > entry_max_y) entry.y = entry_max_y;
 entry.sprite.SetPosition(entry.x, entry.y, 10001);
 entry.sprite.SetOpacity(0);
 
