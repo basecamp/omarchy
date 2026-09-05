@@ -53,8 +53,14 @@ assert(
   'bar stays mapped while hidden so revealing it does not rebuild the surface'
 )
 assert(
-  /exclusionMode: root\.barHidden \? ExclusionMode\.Ignore : ExclusionMode\.Auto/.test(barSource),
+  /exclusionMode: root\.barHidden \? ExclusionMode\.Ignore : ExclusionMode\.Normal/.test(barSource),
   'a hidden bar reserves no space for itself'
+)
+// The zone is explicit because the window is not always strip-sized: it
+// grows to the whole screen during a drag, and Auto would reserve all of it.
+assert(
+  /exclusiveZone: root\.barSize/.test(barSource),
+  'the bar reserves exactly its strip regardless of window size'
 )
 for (const edge of ['top', 'bottom', 'left', 'right']) {
   assert(
@@ -251,7 +257,7 @@ assertDeepEqual(
 )
 assertEqual(bar.nearestDropTarget([], { x: 10, y: 10 }, false), null, 'bar reports no insertion edge without targets')
 assert(
-  /contentItem\.mapFromItem\(null, scenePoint\.x, scenePoint\.y\)[\s\S]*?return null/.test(barSource),
+  /if \(moduleRemoveDistance\(windowScreenPoint\(scenePoint, sourceWindow\)\) > 0\) return null/.test(barSource),
   'bar rejects free-space drops after the pointer leaves the bar'
 )
 assert(
@@ -261,6 +267,115 @@ assert(
 assert(
   /component DragGhostPanel:[\s\S]*?readonly property var targetRect: root\.barDragTargetGeometry[\s\S]*?color: Color\.accent/.test(barSource),
   'bar draws the insertion marker above the bar in the drag overlay'
+)
+
+// Dragging a module off the bar removes it. The distance is zero anywhere
+// over the bar, so a drag along it can never arm removal, and Euclidean past
+// the nearest edge, so a corner escape needs the same pull as a straight one.
+assertEqual(bar.dragDistanceOutside({ x: 400, y: 13 }, 1920, 26), 0, 'a drag over the bar is never a removal')
+assertEqual(bar.dragDistanceOutside({ x: 400, y: 86 }, 1920, 26), 60, 'a drag below a top bar measures its pull straight down')
+assertEqual(bar.dragDistanceOutside({ x: -30, y: 66 }, 1920, 26), 50, 'a corner escape measures the diagonal, not one axis')
+assertEqual(bar.dragDistanceOutside({ x: 400, y: -25 }, 1920, 26), 25, 'a drag past the desktop-far edge also counts')
+assertEqual(bar.dragDistanceOutside(null, 1920, 26), 0, 'a missing drag point never arms removal')
+
+// Removal arms only when the pull is past the threshold with no insertion
+// edge under it, so an overshoot next to a drop target still reads as a
+// reorder, and it must reset with the rest of the drag state.
+assert(
+  /barDragRemoveArmed = !drop && root\.moduleRemoveDistance\(screenPoint\) >= root\.barDragRemoveDistance/.test(barSource),
+  'removal arms only past the pull threshold with no drop target in reach'
+)
+
+// The drag must survive leaving the bar on an empty workspace. The
+// compositor re-picks a pointer target on any surface commit while nothing
+// holds keyboard focus, and a pointer that has strayed onto another surface
+// is ripped off the bar mid-drag with a synthesized release. The bar surface
+// therefore spans the whole screen at all times, and a live drag toggles
+// only its input region — never its size: resizing flashes the stale strip
+// buffer stretched across the new geometry, the dark full-screen blink.
+assert(
+  /readonly property bool dragActive: \(root\.barDragSource !== null && root\.sameWindow\(root\.barDragWindow, barWindow\)\)/.test(barSource),
+  'the bar arms drag input for its own drag, matched by window rather than identity'
+)
+assert(
+  /root\.barMoveActive && root\.sameWindow\(root\.barMoveWindow, barWindow\)/.test(barSource),
+  'the bar-move gesture arms drag input too'
+)
+assert(
+  /mask: barWindow\.dragActive \? null : stripInputRegion/.test(barSource),
+  'a drag toggles only the input region, never the surface size'
+)
+assert(
+  !/dragActive[^\n]*\?[^\n]*screen\.(width|height)/.test(barSource) &&
+  /implicitWidth: root\.vertical\s*\n\s*\? \(barWindow\.screen \? barWindow\.screen\.width : root\.barSize\)/.test(barSource) &&
+  /implicitHeight: root\.vertical\s*\n\s*\? 0\s*\n\s*: \(barWindow\.screen \? barWindow\.screen\.height : root\.barSize\)/.test(barSource),
+  'the bar surface spans the screen unconditionally instead of resizing mid-drag'
+)
+// Anchoring all four edges would void the exclusive zone — layer-shell
+// reserves space from an anchored edge — and tiled windows would jump up
+// behind the bar.
+for (const edge of ['top', 'bottom', 'left', 'right']) {
+  assert(
+    !new RegExp(`${edge}:[^\\n]*dragActive`).test(barSource),
+    `a drag never changes the bar's ${edge} anchor`
+  )
+}
+// Idle, only the strip may take input, or the transparent expanse would eat
+// every click meant for the windows and desktop below it.
+assert(
+  /Region \{\s*\n\s*id: stripInputRegion\s*\n\s*x: barStrip\.x\s*\n\s*y: barStrip\.y\s*\n\s*width: barStrip\.width\s*\n\s*height: barStrip\.height/.test(barSource),
+  'the idle input region is exactly the bar strip'
+)
+// The window is not the bar's boundary — it spans the whole screen — so both
+// the free-space drop rejection and the removal arming measure against the
+// strip, through the one function that knows its screen-space geometry.
+assert(
+  /function moduleRemoveDistance\(screenPoint\) \{[\s\S]*?barDragScreen[\s\S]*?dragDistanceOutside/.test(barSource),
+  'removal distance is measured from the strip in screen space'
+)
+const clearBarDrag = barSource.slice(barSource.indexOf('function clearBarDrag'))
+assert(
+  /barDragRemoveArmed = false/.test(clearBarDrag.slice(0, clearBarDrag.indexOf('\n  }'))),
+  'clearing the drag disarms removal'
+)
+
+// An armed release must poof before the drag state clears — the overlay
+// window would unmap between ghost and burst otherwise — and must defer the
+// config write until the poof has played: persisting shell.json rebuilds
+// every widget on every monitor, which stalls rendering long enough to
+// swallow the whole animation.
+assert(
+  /if \(wasDragging && removeArmed && root\.scheduleModuleRemoval\(slot\)\)\s*\n\s*root\.playPoof\(\)\s*\n\s*\n?\s*root\.clearBarDrag\(\)/.test(barSource),
+  'an armed release starts the poof before the drag state clears'
+)
+assert(
+  !/removeModuleFromConfig[\s\S]{0,400}?onReleased/.test(barSource.slice(barSource.indexOf('onReleased'))),
+  'the release handler never writes the config synchronously'
+)
+const poofTimerBody = barSource.slice(barSource.indexOf('id: poofTimer'))
+assert(
+  /root\.commitPendingRemoval\(\)/.test(poofTimerBody.slice(0, poofTimerBody.indexOf('\n  }'))),
+  'the config write lands only after the poof has played'
+)
+
+// The module still vanishes at release, not half a second later: its slot
+// collapses while the removal is pending in the layout.
+assert(
+  /implicitWidth: !removalPending && activeItem && activeItem\.visible/.test(barSource) &&
+  /implicitHeight: !removalPending && activeItem && activeItem\.visible/.test(barSource),
+  'a module pending removal collapses out of the bar immediately'
+)
+
+// The ghost overlay is the poof's canvas, so it must stay mapped for the
+// burst after the drag state clears, while the ghost itself hides with the
+// drag rather than lingering through the animation.
+assert(
+  /visible: \(active && sourceItem !== null\) \|\| poofShown/.test(barSource),
+  'the drag overlay stays mapped while the poof plays'
+)
+assert(
+  /visible: ghostWindow\.active && ghostWindow\.sourceItem !== null/.test(barSource),
+  'the drag ghost hides with the drag instead of lingering through the poof'
 )
 
 // The open-panel mark sits on the module's desktop-facing edge at every
