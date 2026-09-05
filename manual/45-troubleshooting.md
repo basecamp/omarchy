@@ -47,3 +47,10 @@ In order for the rich approval prompt to appear, Settings > Advanced > Use Hardw
  ![troubleshooting-1password](images/troubleshooting-1password.webp)
 
 Or if you haven't launched 1Password since booting up, the prompt will not appear.
+
+### Why does my monitor turn off and on (flash) continuously while locked?
+
+Some monitors (especially HDMI panels with Input Auto-Scan or Auto Source enabled) shut down their signal receiver when DPMS turns the display off, causing the system to detect a Hot Plug Detect (HPD) drop. When the monitor re-scans inputs, Hyprland re-detects the output and powers it back on.
+
+To eliminate this loop, open your monitor's built-in OSD menu and set **Auto Source** or **Input Auto-Scan** to **Off** (pinning the input source directly to HDMI or DisplayPort).
+

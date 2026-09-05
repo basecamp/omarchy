@@ -33,6 +33,7 @@ Item {
   property string lastEventAt: ""
   property bool strandedLock: false
   property bool strandedLockResolved: false
+  property int screenChangeBlankCount: 0
 
   readonly property bool locked: lockRequested || sessionLock.locked || sessionLock.secure
   readonly property bool authenticating: authenticatingPassword || fingerprintAuthenticating
@@ -133,6 +134,7 @@ Item {
 
     resetAuthenticationState()
     lockRequested = true
+    screenChangeBlankCount = 0
     armBlankTimer()
     logEvent("lock-requested")
     queueSessionLock()
@@ -159,17 +161,21 @@ Item {
     runWake()
   }
 
-  function armBlankTimer() {
+  function armBlankTimer(customInterval) {
+    var ms = (typeof customInterval === "number" && customInterval > 0) ? customInterval : 5000
+    idleBlankTimer.interval = ms
     idleBlankTimer.armedAt = Date.now()
     idleBlankTimer.restart()
   }
 
   function runWake() {
+    screenChangeBlankCount = 0
     if (!wakeProcess.running) wakeProcess.running = true
     if (lockRequested) armBlankTimer()
   }
 
   function runBlank() {
+    logEvent("blanking-display")
     if (!blankProcess.running) blankProcess.running = true
   }
 
@@ -472,6 +478,14 @@ Item {
       // A monitor still coming up has no workspace, so cannot answer yet.
       strandedLockRetryTimer.rearm()
       root.checkStrandedLock()
+
+      if ((root.locked || root.lockRequested) && !root.authenticatingPassword) {
+        root.screenChangeBlankCount += 1
+        var delay = 5000
+        if (root.screenChangeBlankCount === 2) delay = 15000
+        else if (root.screenChangeBlankCount >= 3) delay = 30000
+        root.armBlankTimer(delay)
+      }
     }
   }
 
