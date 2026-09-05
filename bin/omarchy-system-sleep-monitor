@@ -14,6 +14,8 @@ consume_sleep_events() {
       return 0
     fi
   done
+
+  return 1
 }
 
 monitor_sleep_events() {
@@ -40,6 +42,95 @@ monitor_sleep_events() {
   return "$status"
 }
 
+preparing_for_sleep() {
+  local state
+  state=$(timeout --kill-after=0.1s 1s busctl get-property \
+    org.freedesktop.login1 /org/freedesktop/login1 \
+    org.freedesktop.login1.Manager PreparingForSleep 2>/dev/null) || return 2
+
+  [[ ${state##* } == "true" ]]
+}
+
+notify_shell_resumed() {
+  local reply
+
+  reply=$(OMARCHY_SHELL_IPC_TIMEOUT=1 \
+    timeout --kill-after=0.1s 1s omarchy-shell lock resumeFromSleep 2>/dev/null) || return 1
+  [[ $reply == "ok" || $reply == "idle" ]]
+}
+
+wait_for_resume() {
+  local attempts=0 state
+
+  # The property remains true from the pre-sleep signal until logind emits its
+  # matching post-resume signal. Querying it also covers a missed D-Bus signal
+  # and a sleep request cancelled after the delay inhibitor was released.
+  while true; do
+    preparing_for_sleep
+    state=$?
+    if (( state == 0 )); then
+      attempts=0
+      sleep 0.1
+    elif (( state == 1 )); then
+      break
+    else
+      # Never report resume from an unknown logind state. Returning lets the
+      # persistent outer loop query the property again rather than guessing.
+      (( ++attempts >= 300 )) && return 1
+      sleep 0.1
+    fi
+  done
+}
+
+notify_shell_resumed_with_retry() {
+  local attempts=0
+
+  # The user shell can be unavailable briefly while the session thaws. The
+  # next delay inhibitor is already armed before this retry loop begins.
+  until notify_shell_resumed; do
+    (( ++attempts >= 120 )) && {
+      printf 'omarchy-system-sleep-monitor: resume notification timed out\n' >&2
+      return 1
+    }
+    sleep 0.25
+  done
+}
+
+start_inhibited_cycle() {
+  local sleep_monitor
+  (( inhibitor_pid == 0 )) || return 0
+  sleep_monitor="$OMARCHY_PATH/bin/omarchy-system-sleep-monitor"
+
+  systemd-inhibit \
+    --what=sleep \
+    --mode=delay \
+    --who=Omarchy \
+    --why="Lock screen before suspend" \
+    "$sleep_monitor" --inhibited &
+  inhibitor_pid=$!
+}
+
+wait_inhibited_cycle() {
+  local status
+  (( inhibitor_pid > 0 )) || return 1
+  wait "$inhibitor_pid"
+  status=$?
+  inhibitor_pid=0
+  return "$status"
+}
+
+inhibitor_pid=0
+
+cleanup_cycle() {
+  (( inhibitor_pid > 0 )) || return 0
+  kill "$inhibitor_pid" 2>/dev/null || true
+  wait "$inhibitor_pid" 2>/dev/null || true
+  inhibitor_pid=0
+}
+
+trap cleanup_cycle EXIT
+trap 'cleanup_cycle; exit 0' TERM INT
+
 case ${1:-} in
   --consume)
     consume_sleep_events
@@ -47,15 +138,53 @@ case ${1:-} in
     ;;
   --inhibited)
     monitor_sleep_events
-    exit 0
+    exit $?
+    ;;
+  --cycle)
+    start_inhibited_cycle
+    wait_inhibited_cycle || exit $?
+    wait_for_resume
+    notify_shell_resumed_with_retry
+    exit $?
     ;;
 esac
 
-sleep_monitor="$OMARCHY_PATH/bin/omarchy-system-sleep-monitor"
+# Keep the service process alive across sleep. The inhibited child exits after
+# securing the session, which releases the delay inhibitor; this outer process
+# remains available to deliver the post-resume event and then arms the next
+# cycle without relying on a systemd restart race.
+while true; do
+  preparing_for_sleep
+  state=$?
+  if (( state == 2 )); then
+    sleep 1
+    continue
+  fi
+  if (( state == 0 )); then
+    until wait_for_resume; do
+      sleep 1
+    done
+  fi
+  break
+done
 
-exec systemd-inhibit \
-  --what=sleep \
-  --mode=delay \
-  --who=Omarchy \
-  --why="Lock screen before suspend" \
-  "$sleep_monitor" --inhibited
+# Arm the next sleep cycle before delivering a startup/recovery notification.
+# The same ordering below prevents a slow shell from leaving rapid successive
+# suspend requests without the lock inhibitor.
+start_inhibited_cycle
+notify_shell_resumed_with_retry || true
+
+while true; do
+  if ! wait_inhibited_cycle; then
+    sleep 1
+    start_inhibited_cycle
+    continue
+  fi
+
+  until wait_for_resume; do
+    sleep 1
+  done
+
+  start_inhibited_cycle
+  notify_shell_resumed_with_retry || true
+done

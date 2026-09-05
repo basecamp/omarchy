@@ -22,7 +22,7 @@ assert(
 )
 
 assert(
-  /onAuthenticatingPasswordChanged: \{\s*if \(!lockRequested\) return\s*if \(authenticatingPassword\) idleBlankTimer\.stop\(\)\s*else armBlankTimer\(\)/.test(serviceQml),
+  /onAuthenticatingPasswordChanged:\s*\{[\s\S]*?if \(authenticatingPassword\) \{[\s\S]*?idleBlankTimer\.stop\(\)[\s\S]*?\} else \{[\s\S]*?armBlankTimer\(\)/.test(serviceQml),
   'the blank timer is held off by password entry and re-armed when it finishes'
 )
 

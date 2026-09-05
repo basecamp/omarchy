@@ -3,8 +3,10 @@ import QtQuick.Effects
 import qs.Commons
 import qs.Ui
 
-Item {
+FocusScope {
   id: root
+
+  focus: true
 
   property string backgroundPath: ""
   property int backgroundVersion: 0
@@ -16,6 +18,7 @@ Item {
   property bool loadBackground: true
   property string passwordText: ""
   property bool syncingPasswordText: false
+  property int focusGeneration: 0
 
   readonly property string placeholderText: "Enter Password"
   readonly property int fieldWidth: 381
@@ -33,6 +36,7 @@ Item {
     ? Math.min(1, (passwordInput.width - 4) / dotMetrics.advanceWidth)
     : 1
   readonly property bool showPasswordCursor: inputEnabled && !authenticatingPassword && failureMessage.length === 0
+  readonly property bool passwordFocused: passwordInput.activeFocus
   readonly property bool errorState: failureMessage.length > 0
   readonly property var inputBorderSpec: errorState
     ? Border.surfaceSpec("lock", "border-error", Color.lock.borderError, root.outlineThickness, "border-alpha")
@@ -42,6 +46,7 @@ Item {
   signal passwordTextEdited(string password)
   signal clearFailureRequested()
   signal wakeRequested()
+  signal passwordFocusAcquired()
 
   // Cache-busts the lock background by appending `?v=`. Adding a query
   // string keeps Image's loader happy while forcing it to reload when the
@@ -69,11 +74,20 @@ Item {
 
   onPasswordTextChanged: syncPasswordText()
   onInputEnabledChanged: {
-    if (inputEnabled) Qt.callLater(forcePasswordFocus)
+    if (inputEnabled && !authenticatingPassword) Qt.callLater(forcePasswordFocus)
+  }
+  onAuthenticatingPasswordChanged: {
+    if (inputEnabled && !authenticatingPassword) Qt.callLater(forcePasswordFocus)
+  }
+  onFocusGenerationChanged: {
+    if (inputEnabled && !authenticatingPassword) Qt.callLater(forcePasswordFocus)
+  }
+  onPasswordFocusedChanged: {
+    if (passwordFocused) root.passwordFocusAcquired()
   }
   Component.onCompleted: {
     syncPasswordText()
-    if (inputEnabled) Qt.callLater(forcePasswordFocus)
+    if (inputEnabled && !authenticatingPassword) Qt.callLater(forcePasswordFocus)
   }
 
   // Measures the masked password at full size; passwordDotScale compares this
@@ -141,6 +155,7 @@ Item {
         verticalAlignment: TextInput.AlignVCenter
         horizontalAlignment: TextInput.AlignHCenter
         activeFocusOnPress: true
+        focus: true
         clip: true
         enabled: root.inputEnabled && !root.authenticatingPassword
         readOnly: root.authenticatingPassword

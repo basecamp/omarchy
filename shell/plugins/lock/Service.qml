@@ -29,6 +29,8 @@ Item {
   property int failedAttempts: 0
   property string backgroundPath: ""
   property int backgroundVersion: 0
+  property int passwordFocusGeneration: 0
+  property bool passwordFocusAcquired: false
   property string lastEvent: "init"
   property string lastEventAt: ""
   property bool strandedLock: false
@@ -51,6 +53,28 @@ Item {
 
   function hasRealScreen() {
     return realScreenCount() > 0
+  }
+
+  function requestPasswordFocus() {
+    if (!root.lockRequested || root.authenticatingPassword) return
+    root.passwordFocusGeneration += 1
+  }
+
+  function beginPasswordFocusRecovery(completeBudget) {
+    if (!root.lockRequested) return
+
+    if (root.authenticatingPassword) {
+      focusRecoveryTimer.stop()
+      focusRecoveryTimer.remaining = 0
+      focusRecoveryTimer.completeBudget = false
+      return
+    }
+
+    root.passwordFocusAcquired = false
+    focusRecoveryTimer.completeBudget = Boolean(completeBudget)
+    focusRecoveryTimer.remaining = focusRecoveryTimer.attemptBudget
+    requestPasswordFocus()
+    focusRecoveryTimer.restart()
   }
 
   function queueSessionLock() {
@@ -154,6 +178,9 @@ Item {
     pendingSessionLockTimer.stop()
     resetAuthenticationState()
     idleBlankTimer.stop()
+    focusRecoveryTimer.stop()
+    focusRecoveryTimer.remaining = 0
+    focusRecoveryTimer.completeBudget = false
     sessionLock.locked = false
     logEvent("unlocked")
     runWake()
@@ -238,6 +265,7 @@ Item {
         root.pendingSessionLock = false
         sessionLockStabilizeTimer.stop()
         pendingSessionLockTimer.stop()
+        root.beginPasswordFocusRecovery()
         root.startFingerprint()
       }
     }
@@ -277,10 +305,12 @@ Item {
         inputEnabled: root.lockRequested
         loadBackground: root.locked
         passwordText: root.enteredPassword
+        focusGeneration: root.passwordFocusGeneration
         onPasswordTextEdited: function(password) { root.enteredPassword = password }
         onSubmitPassword: function(password) { root.submitPassword(password) }
         onClearFailureRequested: root.failureMessage = ""
         onWakeRequested: root.runWake()
+        onPasswordFocusAcquired: root.passwordFocusAcquired = true
       }
 
     }
@@ -432,6 +462,37 @@ Item {
   }
 
   Timer {
+    id: focusRecoveryTimer
+    interval: 500
+    repeat: true
+    // A resume retry lasts twelve seconds, matching the interval over which
+    // input devices and preserved single-output lock surfaces can settle.
+    readonly property int attemptBudget: 24
+    property int remaining: 0
+    property bool completeBudget: false
+    onTriggered: {
+      if (!root.lockRequested || root.authenticatingPassword || remaining <= 0) {
+        completeBudget = false
+        stop()
+        return
+      }
+
+      remaining -= 1
+      root.requestPasswordFocus()
+
+      if (remaining <= 0) {
+        completeBudget = false
+        stop()
+        return
+      }
+
+      // Keep retrying briefly after the first acknowledgement because outputs
+      // can be recreated one after another during multi-monitor resume.
+      if (!completeBudget && root.passwordFocusAcquired && remaining <= attemptBudget - 4) stop()
+    }
+  }
+
+  Timer {
     id: sessionLockStabilizeTimer
     interval: 500
     repeat: false
@@ -468,6 +529,7 @@ Item {
     target: Quickshell
     function onScreensChanged() {
       root.requestSessionLock()
+      root.beginPasswordFocusRecovery()
 
       // A monitor still coming up has no workspace, so cannot answer yet.
       strandedLockRetryTimer.rearm()
@@ -477,8 +539,15 @@ Item {
 
   onAuthenticatingPasswordChanged: {
     if (!lockRequested) return
-    if (authenticatingPassword) idleBlankTimer.stop()
-    else armBlankTimer()
+    if (authenticatingPassword) {
+      idleBlankTimer.stop()
+      focusRecoveryTimer.stop()
+      focusRecoveryTimer.remaining = 0
+      focusRecoveryTimer.completeBudget = false
+    } else {
+      armBlankTimer()
+      beginPasswordFocusRecovery()
+    }
   }
 
   FileView {
@@ -516,6 +585,12 @@ Item {
       return "ok"
     }
 
+    function resumeFromSleep(): string {
+      if (!root.lockRequested) return "idle"
+      root.beginPasswordFocusRecovery(true)
+      return "ok"
+    }
+
     function isLocked(): string {
       return root.locked ? "true" : "false"
     }
@@ -531,6 +606,9 @@ Item {
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
         authenticating: root.authenticating,
+        passwordFocusAcquired: root.passwordFocusAcquired,
+        focusRecoveryRemaining: focusRecoveryTimer.remaining,
+        focusRecoveryCompleteBudget: focusRecoveryTimer.completeBudget,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt
       })
