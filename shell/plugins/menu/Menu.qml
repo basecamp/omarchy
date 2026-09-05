@@ -68,6 +68,7 @@ Item {
   property bool cursorActive: false
   property int requestSerial: 0
   property int applySerial: 0
+  property var doneFilesToRelease: []
   property var items: ({})
   property var itemOrder: []
   property var navStack: []
@@ -132,6 +133,22 @@ Item {
       resultProc.command = ["bash", "-c", "printf '%s\\n' " + Util.shellQuote(selection) + " > " + Util.shellQuote(activeSelectionFile) + "; : > " + Util.shellQuote(activeDoneFile)]
     }
     resultProc.running = true
+  }
+
+  // Releasing a done file uses its own process and queue so it can never race
+  // resultProc, which may still be writing the result of an earlier request.
+  function releaseNextDoneFile() {
+    if (releaseProc.running || doneFilesToRelease.length === 0) return
+
+    var path = doneFilesToRelease.shift()
+    releaseProc.command = ["bash", "-c", ": > " + Util.shellQuote(path)]
+    releaseProc.running = true
+  }
+
+  function finishDoneFile(path) {
+    if (!path) return
+    doneFilesToRelease.push(path)
+    releaseNextDoneFile()
   }
 
   function runAction(action) {
@@ -835,6 +852,13 @@ Item {
   }
 
   function openExistingMenu(initialMenu) {
+    // Turning back into a regular menu drops any request still waiting on an
+    // answer. Setting mode first also clears dmenuActive, so a later cancel()
+    // would not finish it either -- retire it here or its caller waits for
+    // the life of the session.
+    if (requestActive && doneFile)
+      finishDoneFile(doneFile)
+
     requestSerial += 1
     mode = "menu"
     requestActive = false
@@ -859,12 +883,20 @@ Item {
   }
 
   function openDmenu(payload) {
+    // This overwrites the request fields wholesale, so a request still waiting
+    // on an answer loses its slot here. Nothing would ever write its done file
+    // and its caller would wait for the life of the session, so retire it
+    // first -- the same guard ImagePicker.openSelector already makes.
+    var nextDoneFile = String(payload.doneFile || "")
+    if (requestActive && doneFile && doneFile !== nextDoneFile)
+      finishDoneFile(doneFile)
+
     requestSerial += 1
     mode = payload.mode === "input" ? "input" : "select"
     dmenuPrompt = String(payload.prompt || (mode === "input" ? "Input" : "Select"))
     dmenuOptions = Array.isArray(payload.options) ? payload.options : []
     selectionFile = String(payload.selectionFile || "")
-    doneFile = String(payload.doneFile || "")
+    doneFile = nextDoneFile
     requestActive = !!doneFile
     dmenuWidth = Math.max(1, Number(payload.width || 300))
     dmenuMaxHeight = Math.max(0, Number(payload.maxHeight || 0))
@@ -937,6 +969,11 @@ Item {
       }
       root.startNextProvider()
     }
+  }
+
+  Process {
+    id: releaseProc
+    onExited: root.releaseNextDoneFile()
   }
 
   Process {

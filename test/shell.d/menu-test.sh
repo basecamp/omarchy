@@ -403,6 +403,19 @@ assert(
   'menu select mode reads a leading icon and a trailing subtext off an option'
 )
 assert(
+  /function openDmenu\(payload\) \{[\s\S]*?if \(requestActive && doneFile && doneFile !== nextDoneFile\)\s*\n\s*finishDoneFile\(doneFile\)/.test(menuQml),
+  'a dmenu request that displaces another retires it, so the caller it replaced stops waiting on a done file nobody will write'
+)
+assert(
+  /function finishDoneFile\(path\)[\s\S]*?doneFilesToRelease\.push\(path\)/.test(menuQml)
+    && /function releaseNextDoneFile\(\)[\s\S]*?if \(releaseProc\.running \|\| doneFilesToRelease\.length === 0\) return/.test(menuQml),
+  'released done files queue behind their own process so they cannot race a result still being written'
+)
+assert(
+  /function openExistingMenu\(initialMenu\) \{[\s\S]*?if \(requestActive && doneFile\)\s*\n\s*finishDoneFile\(doneFile\)[\s\S]*?mode = "menu"/.test(menuQml),
+  'turning back into a regular menu retires a pending request, which clearing dmenuActive would otherwise strand beyond the reach of cancel()'
+)
+assert(
   /omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove/.test(pluginPicker),
   'plugin picker removes where the confirmation and backup path are visible'
 )

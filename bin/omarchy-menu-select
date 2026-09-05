@@ -14,6 +14,8 @@
 
 set -euo pipefail
 
+source omarchy-menu-handshake
+
 if (( $# < 1 )); then
   echo "Usage: omarchy-menu-select <prompt> [option...] [-- menu args...]" >&2
   exit 1
@@ -86,11 +88,19 @@ payload=$(perl -MEncode=decode -MJSON::PP=encode_json,decode_json -e '
   print encode_json($payload)
 ' "$prompt" "$options_json" "$selection_file" "$done_file" "$menu_width" "$menu_maxheight")
 
-omarchy-shell shell summon omarchy.menu "$payload" >/dev/null
+if ! shell_pid=$(menu_shell_pid); then
+  echo "${0##*/}: no running Omarchy shell to show the menu" >&2
+  exit 1
+fi
 
-while [[ ! -e $done_file ]]; do
-  sleep 0.05
-done
+if ! omarchy-shell shell summon omarchy.menu "$payload" >/dev/null; then
+  echo "${0##*/}: the shell did not accept the menu request" >&2
+  exit 1
+fi
+
+if ! wait_for_menu_done "$done_file" "$shell_pid"; then
+  exit 1
+fi
 
 if [[ -s $selection_file ]]; then
   cat "$selection_file"

@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# omarchy:summary=Shared tempfile handshake for the menu commands (source this, don't run it).
+# omarchy:hidden=true
+
+# The menu commands hand the shell a done file and block until it appears. The
+# shell is the only writer, so when it goes away between the request and the
+# write -- a crash, a theme change, or omarchy-restart-shell -- nothing ever
+# completes the handshake, and a plain `while [[ ! -e $done_file ]]` waits for
+# the life of the session. Left alone these accumulate: each survivor wakes 20
+# to 100 times a second and holds the CPU out of its deeper idle states, so a
+# handful are enough to spin up the fans on an otherwise idle machine.
+#
+# Watching which shell owns the request, rather than only whether some shell is
+# running, also covers the restart case: a fresh instance answers IPC happily
+# but knows nothing about a menu the previous one was asked for, so it will
+# never write that done file either.
+
+# Print the pid of the Quickshell instance serving $OMARCHY_PATH.
+# Matches on the process name so the lookup cannot match its own caller the way
+# a `pgrep -f` over the command line would.
+menu_shell_pid() {
+  local pid
+
+  for pid in $(pgrep -x quickshell); do
+    if tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -q -- "$OMARCHY_PATH/shell"; then
+      echo "$pid"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+# Block until the shell completes the handshake for $done_file.
+# Returns 1 if the shell that owned the request exits first.
+wait_for_menu_done() {
+  local done_file=$1 shell_pid=$2 interval=${3:-0.05}
+  local last_check=$SECONDS
+
+  while [[ ! -e $done_file ]]; do
+    sleep "$interval"
+
+    # Check the owner about once a second rather than every tick, so the file
+    # test stays the fast path for a menu somebody is actively using.
+    if (( SECONDS != last_check )); then
+      last_check=$SECONDS
+
+      if ! kill -0 "$shell_pid" 2>/dev/null; then
+        if [[ -e $done_file ]]; then
+          # It wrote the file and exited between our two checks.
+          break
+        else
+          echo "${0##*/}: the shell exited before answering" >&2
+          return 1
+        fi
+      fi
+    fi
+  done
+
+  return 0
+}
