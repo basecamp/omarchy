@@ -23,14 +23,18 @@
 FULLSCREEN_MARKER="${XDG_RUNTIME_DIR:-/tmp}/omarchy-capture-region-fullscreen"
 WINDOW_MARKER="${XDG_RUNTIME_DIR:-/tmp}/omarchy-capture-region-window"
 
-# accounting for portrait/transformed displays
+# accounting for portrait/transformed displays. Hyprland reports the mode, so a
+# rotated output has its logical width and height the other way round. Every
+# odd transform is a quarter turn -- 5 and 7 are 90 and 270 with a flip, and
+# listing only 1 and 3 left those two measured as landscape. Test the parity,
+# the way omarchy-capture-webcam-resize already does.
 JQ_MONITOR_GEO='
   def format_geo:
     .x as $x | .y as $y |
     (.width / .scale | floor) as $w |
     (.height / .scale | floor) as $h |
-    .transform as $t |
-    if $t == 1 or $t == 3 then
+    (((.transform // 0) % 2) == 1) as $rotated |
+    if $rotated then
       "\($x),\($y) \($h)x\($w)"
     else
       "\($x),\($y) \($w)x\($h)"
