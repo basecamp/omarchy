@@ -24,6 +24,16 @@ cat >"$mock_bin/omarchy-install-hermes-cli" <<'SH'
 printf '%s\0' "$@" >>"$OMARCHY_TEST_INSTALLER_LOG"
 exit "${OMARCHY_TEST_INSTALLER_STATUS:-0}"
 SH
+
+# The remover asks through gum whether the user's data should go too. The stub
+# answers "no" unless a test says otherwise, and logs every call: a real gum
+# would hang a test run, and one that answered "yes" on its own would be the
+# very data loss the default-no exists to prevent.
+cat >"$mock_bin/gum" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >>"$OMARCHY_TEST_GUM_LOG"
+exit "${OMARCHY_TEST_GUM_STATUS:-1}"
+SH
 chmod +x "$mock_bin"/*
 
 seed_install() {
@@ -43,13 +53,30 @@ seed_install() {
   touch "$test_home/.hermes/hermes-agent/.hermes-bootstrap-complete"
 }
 
+# </dev/null pins stdin off a terminal, so these runs exercise the
+# non-interactive path no matter where the suite itself is running.
 remove() {
   : >"$test_tmp/installer-log"
+  : >"$test_tmp/gum-log"
   OMARCHY_TEST_DROP_LOG="$test_tmp/drop-log" \
     OMARCHY_TEST_INSTALLER_LOG="$test_tmp/installer-log" \
     OMARCHY_TEST_INSTALLER_STATUS="${OMARCHY_TEST_INSTALLER_STATUS:-0}" \
+    OMARCHY_TEST_GUM_LOG="$test_tmp/gum-log" \
     HOME="$test_home" PATH="$mock_bin:$PATH" \
-    bash "$ROOT/bin/omarchy-remove-ai-hermes" >/dev/null 2>&1
+    bash "$ROOT/bin/omarchy-remove-ai-hermes" </dev/null >/dev/null 2>&1
+}
+
+# script(1) puts the remover on a pty, which is the only way -t 0 answers true
+# without a person at a real one; the stubbed gum then supplies the answer.
+remove_tty() {
+  : >"$test_tmp/installer-log"
+  : >"$test_tmp/gum-log"
+  OMARCHY_TEST_DROP_LOG="$test_tmp/drop-log" \
+    OMARCHY_TEST_INSTALLER_LOG="$test_tmp/installer-log" \
+    OMARCHY_TEST_GUM_LOG="$test_tmp/gum-log" \
+    OMARCHY_TEST_GUM_STATUS="${OMARCHY_TEST_GUM_STATUS:-1}" \
+    HOME="$test_home" PATH="$mock_bin:$PATH" \
+    script -qec "bash '$ROOT/bin/omarchy-remove-ai-hermes'" /dev/null >/dev/null 2>&1
 }
 
 # The app brings its own uv and its own node; both are runtime, not data.
@@ -76,6 +103,12 @@ pass "removal clears only the managed Node links it stranded"
 [[ -f $test_home/.hermes/memories/one.md ]] || fail "memories survive removal"
 [[ -f $test_home/.hermes/SOUL.md ]] || fail "SOUL.md survives removal"
 pass "removal keeps what belongs to the user"
+
+# Without a terminal there is nobody to ask, so gum must not even be reached:
+# a gum that answered "yes" on its own would be a data loss.
+[[ ! -s $test_tmp/gum-log ]] ||
+  fail "removal does not ask about the user's data without a terminal"
+pass "removal keeps the user's data unasked when there is no terminal"
 
 [[ ! -e $test_home/.local/bin/hermes ]] || fail "the app's own hermes command is removed"
 pass "removal takes the command the app installed"
@@ -133,6 +166,36 @@ remove || fail "remove succeeds with a wrapper pointing at a sibling directory"
 [[ -f $test_home/.local/bin/hermes && $(cat "$test_home/.local/bin/hermes") == "$sibling_body" ]] ||
   fail "a wrapper pointing at ~/xhermes is not mistaken for one pointing into ~/.hermes"
 pass "removal matches the runtime path as a plain string"
+
+# On a terminal the user is asked, default no: declining leaves every piece of
+# data where it was.
+seed_install
+remove_tty || fail "remove succeeds when the data question is declined"
+tr '\0' '\n' <"$test_tmp/gum-log" | grep -qx 'confirm' ||
+  fail "removal asks about the user's data on a terminal"
+[[ -f $test_home/.hermes/sessions/one.json && -d $test_home/.config/Hermes ]] ||
+  fail "declining the question keeps the user's data"
+pass "removal asks on a terminal and declining keeps the data"
+
+# An explicit yes is the one path that takes the data too.
+seed_install
+OMARCHY_TEST_GUM_STATUS=0 remove_tty || fail "remove succeeds when the data goes too"
+[[ ! -e $test_home/.hermes && ! -e $test_home/.config/Hermes ]] ||
+  fail "a yes deletes ~/.hermes and ~/.config/Hermes"
+pass "removal deletes the user's data only on an explicit yes"
+
+# Without the bootstrap marker ~/.hermes is an install the app never owned, so
+# it must not even be offered for deletion -- not to a terminal, not to a user
+# who would say yes.
+seed_install
+rm -f "$test_home/.hermes/hermes-agent/.hermes-bootstrap-complete"
+OMARCHY_TEST_GUM_STATUS=0 remove_tty ||
+  fail "remove succeeds when the app never installed Hermes"
+[[ ! -s $test_tmp/gum-log ]] ||
+  fail "a Hermes the app never installed is not offered for deletion"
+[[ -d $test_home/.hermes/hermes-agent && -d $test_home/.config/Hermes ]] ||
+  fail "a Hermes the app never installed survives a would-be yes"
+pass "removal never offers a Hermes the app did not install"
 
 # A CLI teardown that fails must not stop the runtime handling, and must not be
 # papered over either: the data work still happens, and the failure reaches the

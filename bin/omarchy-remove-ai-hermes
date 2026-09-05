@@ -25,11 +25,8 @@ omarchy-install-hermes-cli --remove || cli_removed=false
 # has whatever was there before, and none of it is ours to delete.
 if [[ -f $HOME/.hermes/hermes-agent/.hermes-bootstrap-complete ]]; then
   # The checkout and venv, its own uv, its own node. None of it is any use once
-  # the app is gone. Not ~/.config/Hermes, which holds the gateway connections
-  # and their encrypted tokens, the active profile and the update settings. Not
-  # the rest of ~/.hermes either: the chats, memories and the skills Hermes
-  # wrote for itself are the user's, they are small, and finding them still
-  # there after a reinstall is the better surprise.
+  # the app is gone, so it goes without asking; what the user made with the app
+  # is a different question, answered below.
   rm -rf \
     "$HOME/.hermes/hermes-agent" \
     "$HOME/.hermes/bootstrap-cache" \
@@ -58,10 +55,35 @@ if [[ -f $HOME/.hermes/hermes-agent/.hermes-bootstrap-complete ]]; then
     fi
   done
 
+  # What is left is the user's: the chats, memories and skills in ~/.hermes,
+  # the connections and their encrypted tokens in ~/.config/Hermes. Keeping
+  # them stays the default -- they are small, and finding them intact after a
+  # reinstall is the better surprise -- but a removal meant to be complete
+  # should not leave credentials behind either, so the choice is put in front
+  # of the user, default no. Only here, behind the bootstrap marker: without
+  # it ~/.hermes is an install the app never owned, and offering to delete it
+  # would put the user's own Hermes on the chopping block. Without a terminal
+  # to ask in, keeping it is the answer.
+  data_removed=false
+  if [[ -t 0 ]] && command -v gum >/dev/null; then
+    # du answers non-zero when either directory is missing (the app makes
+    # ~/.config/Hermes, but nothing says it is still there), and pipefail
+    # would turn that into an aborted removal; the size is worth no such thing.
+    size=$(du -shc "$HOME/.hermes" "$HOME/.config/Hermes" 2>/dev/null | tail -1 | cut -f1 || true)
+    if gum confirm --default=false "Also delete your Hermes data ($size: chats, memories, skills, connections and tokens)?"; then
+      rm -rf "$HOME/.hermes" "$HOME/.config/Hermes"
+      data_removed=true
+    fi
+  fi
+
   echo ""
   echo "Hermes Desktop has been removed."
-  echo "Your chats, memories, and skills are still in ~/.hermes,"
-  echo "and your connections and settings in ~/.config/Hermes."
+  if [[ $data_removed == true ]]; then
+    echo "Its chats, memories, and settings in ~/.hermes and ~/.config/Hermes are gone too."
+  else
+    echo "Your chats, memories, and skills are still in ~/.hermes,"
+    echo "and your connections and settings in ~/.config/Hermes."
+  fi
 else
   echo ""
   echo "Hermes Desktop has been removed."
