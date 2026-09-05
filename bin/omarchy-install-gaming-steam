@@ -5,9 +5,13 @@
 
 set -e
 
+# Resolve lib32-vulkan-driver before Steam so --noconfirm cannot pick
+# lib32-nvidia-utils (and hard-pull nvidia-utils) on non-NVIDIA machines.
+echo "Installing graphics drivers for Steam..."
+omarchy-install-gaming-gpu-lib32
+
 echo "Installing Steam..."
 omarchy-pkg-add steam
-omarchy-install-gaming-gpu-lib32
 
 echo ""
 echo "Steam will start automatically now. This might take a while..."
