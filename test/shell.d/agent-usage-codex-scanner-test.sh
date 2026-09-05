@@ -85,11 +85,11 @@ EOF
 result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" XDG_DATA_HOME="$PI_HOME/.local/share" \
   PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
 
-[[ $(jq -r '.todayTotalTokens' <<<"$result") == "49" ]] ||
-  fail "Codex collector counts usage from pi and omp sessions" "$result"
-[[ $(jq -c '.modelUsage' <<<"$result") == '{"gpt-pi":{"inputTokens":10,"outputTokens":4,"cacheReadInputTokens":3,"cacheCreationInputTokens":2},"gpt-omp":{"inputTokens":20,"outputTokens":5,"cacheReadInputTokens":4,"cacheCreationInputTokens":1}}' ]] ||
-  fail "Codex collector filters pi and omp sessions to Codex providers" "$result"
-pass "Codex collector counts pi and omp subscription usage"
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "0" ]] ||
+  fail "Codex collector no longer counts pi and omp sessions" "$result"
+[[ $(jq -c '.modelUsage' <<<"$result") == '{}' ]] ||
+  fail "Codex collector keeps pi and omp usage in the dedicated pi collector" "$result"
+pass "Codex collector leaves pi and omp sessions to the pi collector"
 
 # A subscription burned entirely through opencode has no native session files;
 # usage must come from opencode's message database, filtered to OpenAI.

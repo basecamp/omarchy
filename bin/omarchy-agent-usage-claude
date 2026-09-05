@@ -871,10 +871,6 @@ def main() -> int:
       if today_prompts or today_sessions:
         stats = dict(stats, todayPrompts=today_prompts, todaySessions=today_sessions)
 
-  pi_usage = scan_pi_usage(scan_age)
-  if pi_usage is not None:
-    stats = merge_stats(stats, pi_usage)
-
   opencode = scan_opencode_usage(scan_age)
   if opencode is not None:
     stats = merge_stats(stats, opencode)

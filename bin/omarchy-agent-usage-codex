@@ -433,7 +433,6 @@ def local_stats():
 
 
 def run_local_scans():
-  scan_pi_sessions()
   scan_native_codex_sessions()
   complete = scan_opencode_sessions()
   return local_stats(), complete
