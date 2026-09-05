@@ -262,6 +262,7 @@ Item {
       todayTotalTokens: synced ? numberValue(stats.todayTotalTokens) : numberValue(record.todayTotalTokens),
       todayTokensByModel: synced ? (stats.todayTokensByModel || ({})) : (record.todayTokensByModel || ({})),
       recentDays: synced ? (stats.recentDays || []) : (record.recentDays || []),
+      usageByHour: synced ? (stats.usageByHour || []) : (record.usageByHour || []),
       totalPrompts: synced ? numberValue(stats.totalPrompts) : numberValue(record.totalPrompts),
       totalSessions: synced ? numberValue(stats.totalSessions) : numberValue(record.totalSessions),
       activeDays: synced ? numberValue(stats.activeDays) : numberValue(record.activeDays),
@@ -567,6 +568,7 @@ Item {
         todayTotalTokens: 0,
         todayTokensByModel: ({}),
         recentByDay: recentByDay,
+        usageByHour: ({}),
         totalPrompts: 0,
         totalSessions: 0,
         activeDays: 0,
@@ -614,6 +616,30 @@ Item {
             acc.recentByDay[date] = combineNumber(additive, acc.recentByDay[date], day.messageCount)
         }
 
+        // The punchcard field merges with the same additive/widest rule,
+        // keyed by weekday-hour cell — an hour's tokens are that device's
+        // own, whatever date they were burned on. Each snapshot is
+        // normalized and deduplicated FIRST (last value wins within one
+        // record, invalid and non-positive cells dropped — mirroring
+        // PunchcardModel.parseUsageByHour), so duplicates inside one
+        // snapshot can neither double-count nor subtract.
+        var hours = Array.isArray(stats.usageByHour) ? stats.usageByHour : []
+        var normalizedHours = {}
+        for (var hc = 0; hc < hours.length; hc++) {
+          var hourCell = hours[hc] || {}
+          if (hourCell.weekday === null || hourCell.hour === null || hourCell.tokens === null) continue
+          var weekday = Number(hourCell.weekday)
+          var hour = Number(hourCell.hour)
+          var tokens = Math.round(Number(hourCell.tokens))
+          if (Math.floor(weekday) !== weekday || weekday < 0 || weekday > 6) continue
+          if (Math.floor(hour) !== hour || hour < 0 || hour > 23) continue
+          if (!isFinite(tokens) || tokens <= 0) continue
+          normalizedHours[weekday + "-" + hour] = tokens
+        }
+        for (var cellKey in normalizedHours) {
+          acc.usageByHour[cellKey] = combineNumber(additive, acc.usageByHour[cellKey], normalizedHours[cellKey])
+        }
+
         var usage = stats.modelUsage || {}
         for (var modelId in usage) {
           var bucket = acc.modelUsage[modelId]
@@ -640,6 +666,12 @@ Item {
         todayTotalTokens: acc.todayTotalTokens,
         todayTokensByModel: acc.todayTokensByModel,
         recentDays: recentDays,
+        usageByHour: Object.keys(acc.usageByHour).map(function(cellKey) {
+          var parts = cellKey.split("-")
+          return { weekday: Number(parts[0]), hour: Number(parts[1]), tokens: acc.usageByHour[cellKey] }
+        }).sort(function(a, b) {
+          return a.weekday - b.weekday || a.hour - b.hour
+        }),
         totalPrompts: acc.totalPrompts,
         totalSessions: acc.totalSessions,
         activeDays: Math.max(acc.activeDays, Object.keys(acc.activeDates).length),
@@ -674,6 +706,7 @@ Item {
       todayTotalTokens: numberValue(record.todayTotalTokens),
       todayTokensByModel: cloneValue(record.todayTokensByModel, ({})),
       recentDays: cloneValue(record.recentDays, []),
+      usageByHour: cloneValue(record.usageByHour, []),
       totalPrompts: numberValue(record.totalPrompts),
       totalSessions: numberValue(record.totalSessions),
       activeDays: numberValue(record.activeDays),

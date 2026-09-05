@@ -1,9 +1,12 @@
 import QtQuick
-import QtQuick.Controls
+// Namespaced so Ui.Button below keeps winning the `Button` name for tooling
+// as it already does at runtime; only this panel's ScrollBar needs Controls.
+import QtQuick.Controls as Controls
 import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "PunchcardModel.js" as Punchcard
 
 Panel {
   id: root
@@ -195,10 +198,13 @@ Panel {
       + "-" + String(now.getDate()).padStart(2, "0")
   }
 
+  // Shared by the day rows' labels and the punchcard's weekday gutter.
+  readonly property var weekdayNames: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
   function dayName(date) {
     var parsed = new Date(String(date || "") + "T00:00:00")
     if (isNaN(parsed.getTime())) return String(date || "")
-    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][parsed.getDay()]
+    return root.weekdayNames[parsed.getDay()]
   }
 
   function dayLabel(date, today) {
@@ -227,6 +233,47 @@ Panel {
     var peak = 0
     for (var i = 0; i < days.length; i++) peak = Math.max(peak, Number(days[i].messageCount || 0))
     return peak
+  }
+
+  // ---------------------------------------------------------------- punchcard
+  //
+  // A record that carries `usageByHour` — sparse all-time tokens bucketed
+  // into local-time weekday-hour cells — also renders a 7×24 activity
+  // punchcard under TOKENS BY DAY. Providers whose collector never writes
+  // the field simply never see the section: a null window hides it. The
+  // data stays all-time; only the reading order follows the clock.
+
+  readonly property var usagePunchcard: Punchcard.punchcardWindow(
+    root.provider ? root.provider.usageByHour : null)
+
+  // Rows render in wrap order around the viewer's weekday, today last, so
+  // the grid reads as a run-up to right now instead of a week that already
+  // ran ahead. Recomputed from nowMs so a panel open across midnight
+  // re-rails itself, the same way the Today row moves.
+  readonly property int punchToday: new Date(root.nowMs).getDay()
+  readonly property var punchOrder: Punchcard.orderRowsForToday(
+    root.usagePunchcard ? root.usagePunchcard.rows : [], root.punchToday)
+
+  // The weekday gutter is sized to its labels; the 24 hour columns share
+  // whatever width is left, so the grid fits the panel at any spacing
+  // scale without a horizontal scrollbar.
+  readonly property real punchGutter: Style.space(30)
+  readonly property real punchPitch: Math.max(Style.space(8),
+    Math.floor((usageSection.width - punchGutter) / 24))
+  // An empty cell keeps a faint track dot, the same ink every track in
+  // this panel uses, so the punchcard reads as a grid even where the
+  // record has never burned a token.
+  readonly property real punchVoidDiameter: Math.max(2,
+    Math.round(punchPitch * Punchcard.VOID_SIZE01))
+
+  // Hour marks every three columns: 24 of them would collide.
+  readonly property var punchHourMarks: [0, 3, 6, 9, 12, 15, 18, 21]
+
+  function punchcardTooltip(cell) {
+    if (!cell) return ""
+    return root.weekdayNames[cell.weekday] + " "
+      + String(cell.hour).padStart(2, "0") + ":00 · "
+      + usage.formatTokenCount(Number(cell.tokens || 0)) + " tokens"
   }
 
   function modelRows(p) {
@@ -387,7 +434,7 @@ Panel {
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
         interactive: contentHeight > height
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AsNeeded }
 
         Column {
           id: column
@@ -646,6 +693,75 @@ Panel {
                 // By date, not by position: the Claude stats-cache fallback can
                 // hand us a window that stops short of today.
                 today: String(modelData.date || "") === root.todayDate()
+              }
+            }
+          }
+
+          // ---------- Activity punchcard ----------
+          PanelSeparator {
+            visible: activitySection.visible
+            foreground: root.foreground
+          }
+
+          Column {
+            id: activitySection
+            visible: !!root.usagePunchcard
+            width: parent.width
+            spacing: Style.spacing.md
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "ACTIVITY (ALL-TIME)"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            // Hour marks every three columns across the top, the weekday
+            // gutter beside the rows, then the dots. Everything is static:
+            // labels never move, and dots step with the data — values
+            // change, diameters do not animate.
+            Item {
+              width: parent.width
+              implicitHeight: hourRow.implicitHeight + Style.space(4) + gridRows.implicitHeight
+
+              Row {
+                id: hourRow
+                x: root.punchGutter
+
+                Repeater {
+                  model: root.punchHourMarks
+
+                  Text {
+                    required property var modelData
+
+                    width: root.punchPitch * 3
+                    text: String(modelData).padStart(2, "0")
+                    textFormat: Text.PlainText
+                    color: root.dim
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    horizontalAlignment: Text.AlignHCenter
+                  }
+                }
+              }
+
+              Column {
+                id: gridRows
+                anchors.top: hourRow.bottom
+                anchors.topMargin: Style.space(4)
+
+                Repeater {
+                  model: root.punchOrder.rows
+
+                  PunchcardRow {
+                    required property var modelData
+                    required property int index
+
+                    cells: modelData.cells
+                    weekday: modelData.weekday
+                    today: index === root.punchOrder.todayIndex
+                  }
+                }
               }
             }
           }
@@ -936,6 +1052,83 @@ Panel {
     PanelToolTip {
       visible: modelHover.containsMouse
       text: root.modelTooltip(modelRow.row)
+      fontFamily: root.fontFamily
+    }
+  }
+
+  // One weekday of the punchcard: its gutter label, then 24 hour cells.
+  // Rows arrive ordered around the viewer's weekday — today renders last —
+  // and each carries its own weekday so the label still speaks the truth.
+  // Today is picked out in full ink, the way the day rows are.
+  component PunchcardRow: Row {
+    id: punchcardRow
+    property var cells: []
+    property int weekday: 0
+    property bool today: false
+
+    Text {
+      width: root.punchGutter
+      height: root.punchPitch
+      text: root.weekdayNames[punchcardRow.weekday]
+      textFormat: Text.PlainText
+      color: punchcardRow.today ? root.foreground : root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      font.bold: punchcardRow.today
+      rightPadding: Style.space(6)
+      horizontalAlignment: Text.AlignRight
+      verticalAlignment: Text.AlignVCenter
+    }
+
+    Repeater {
+      model: punchcardRow.cells
+
+      PunchcardCell {
+        required property var modelData
+
+        cell: modelData
+        today: punchcardRow.today
+      }
+    }
+  }
+
+  // One weekday-hour cell. A lit cell is a foreground dot whose diameter
+  // and alpha carry its share of the busiest cell; an empty one keeps the
+  // faint track dot. Only lit cells answer the hover — an hour the record
+  // has never touched has nothing to say. Today's row keeps its full
+  // legend ink; the other six ride at the 0.55 the day rows' meters dim
+  // to — same foreground ink, no second color.
+  component PunchcardCell: Item {
+    id: punchcardCell
+    property var cell: null
+    property bool today: false
+
+    width: root.punchPitch
+    height: root.punchPitch
+
+    Rectangle {
+      anchors.centerIn: parent
+      width: punchcardCell.cell
+        ? root.punchPitch * punchcardCell.cell.size01
+        : root.punchVoidDiameter
+      height: width
+      radius: width / 2
+      color: punchcardCell.cell
+        ? root.alpha(root.foreground, punchcardCell.cell.alpha
+            * (punchcardCell.today ? 1 : 0.55))
+        : root.track
+    }
+
+    MouseArea {
+      id: cellHover
+      anchors.fill: parent
+      hoverEnabled: punchcardCell.cell !== null
+      acceptedButtons: Qt.NoButton
+    }
+
+    PanelToolTip {
+      visible: cellHover.containsMouse
+      text: root.punchcardTooltip(punchcardCell.cell)
       fontFamily: root.fontFamily
     }
   }
