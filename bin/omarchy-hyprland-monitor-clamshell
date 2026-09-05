@@ -71,11 +71,78 @@ lua_scalar() {
 monitor_rules() {
   [[ -f $MONITOR_LUA ]] || return 0
 
-  sed -E -e 's/--\[\[[^]]*\]\]//g' -e 's/--.*$//' "$MONITOR_LUA"
+  # Comments cut away first, then every hl.monitor({ ... }) call folded onto one
+  # line. A rule split across lines -- what nwg-displays writes, and how anyone
+  # formatting by hand tends to write a long rule -- otherwise matches nothing
+  # here, and the panel silently falls back to the catch-all.
+  sed -E -e 's/--\[\[[^]]*\]\]//g' -e 's/--.*$//' "$MONITOR_LUA" |
+    awk '
+      {
+        counted = $0
+        opened = gsub(/\{/, "{", counted)
+        closed = gsub(/\}/, "}", counted)
+
+        if (depth == 0) {
+          buffer = $0
+        } else {
+          trimmed = $0
+          sub(/^[[:space:]]+/, "", trimmed)
+          buffer = buffer " " trimmed
+        }
+
+        depth += opened - closed
+        if (depth <= 0) {
+          print buffer
+          buffer = ""
+          depth = 0
+        }
+      }
+    '
+}
+
+# A monitor description is free text from the EDID and routinely carries regex
+# metacharacters, so it cannot go into a pattern unquoted.
+regex_escape() {
+  printf '%s' "$1" | sed -E 's/[][(){}.*+?^$|\\/]/\\&/g'
 }
 
 monitor_rule_regex() {
-  printf '^[[:space:]]*hl\\.monitor\\(\\{.*output[[:space:]]*=[[:space:]]*"%s"' "$1"
+  printf '^[[:space:]]*hl\\.monitor\\(\\{.*output[[:space:]]*=[[:space:]]*"%s"' "$(regex_escape "$1")"
+}
+
+# Every rule's output= value, in file order.
+monitor_rule_outputs() {
+  monitor_rules |
+    sed -nE 's/^[[:space:]]*hl\.monitor\(\{.*[{,;[:space:]]output[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p'
+}
+
+internal_monitor_description() {
+  [[ -n $INTERNAL ]] || return 0
+
+  hyprctl monitors all -j | jq -r --arg internal "$INTERNAL" \
+    '.[] | select(.name == $internal) | .description' | head -1
+}
+
+# The rule Hyprland itself would apply to the internal panel: one naming the
+# connector if there is one, otherwise the first desc: rule whose text prefixes
+# the panel's description, which is how Hyprland matches desc:. Empty when no
+# rule names the panel at all, leaving the caller on the catch-all as before.
+internal_rule_key() {
+  local description key
+
+  [[ -n $INTERNAL ]] || return 0
+  if monitor_rule_outputs | grep -qxF "$INTERNAL"; then
+    printf '%s\n' "$INTERNAL"
+    return
+  fi
+
+  description=$(internal_monitor_description)
+  [[ -n $description ]] || return 0
+
+  while IFS= read -r key; do
+    [[ $key == desc:* ]] || continue
+    [[ $description == "${key#desc:}"* ]] && { printf '%s\n' "$key"; return; }
+  done < <(monitor_rule_outputs)
 }
 
 # A key is preceded by a table separator, so a longer key cannot stand in for it,
@@ -89,9 +156,14 @@ configured_monitor_value() {
 }
 
 configured_internal_monitor_value() {
+  local key
+
   [[ -n $INTERNAL ]] || return 0
 
-  configured_monitor_value "$INTERNAL" "$1"
+  key=$(internal_rule_key)
+  [[ -n $key ]] || return 0
+
+  configured_monitor_value "$key" "$1"
 }
 
 configured_monitor_scale() {
