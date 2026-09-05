@@ -7,9 +7,30 @@
 
 set -e
 
+# Transcript must not land on a world-writable predictable path. A local user
+# who pre-creates /tmp/omarchy-update.log as a symlink can redirect script(1)
+# into ~/.bashrc or ~/.ssh/authorized_keys. Prefer the private runtime dir;
+# fall back to a 0700 cache directory under $HOME when XDG_RUNTIME_DIR is unset.
+omarchy_update_log_path() {
+  local dir
+  if [[ -n ${XDG_RUNTIME_DIR:-} && -d $XDG_RUNTIME_DIR && ! -L $XDG_RUNTIME_DIR ]]; then
+    dir="$XDG_RUNTIME_DIR/omarchy-update"
+  else
+    dir="${HOME}/.cache/omarchy/update"
+  fi
+  mkdir -p -m 700 "$dir"
+  printf '%s' "$dir/update.log"
+}
+
 if [[ -z ${OMARCHY_UPDATE_LOGGED:-} ]]; then
   script_command=$(printf '%q ' "$0" "$@")
-  exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "/tmp/omarchy-update.log"
+  update_log=$(omarchy_update_log_path)
+  # Refuse to follow a planted symlink at the log path.
+  if [[ -L $update_log ]]; then
+    rm -f "$update_log"
+  fi
+  exec env OMARCHY_UPDATE_LOGGED=1 OMARCHY_UPDATE_LOG="$update_log" \
+    script -qefc "$script_command" "$update_log"
 fi
 
 if ! omarchy-update-lock held; then
