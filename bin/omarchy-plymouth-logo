@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# omarchy:summary=Print the unlock logo for a theme, generating one when the theme ships none
+# omarchy:args=<theme-name>
+# omarchy:hidden=true
+
+# Most themes want nothing more than the Omarchy logo in their accent color, so
+# that baseline is generated on demand and cached instead of being committed to
+# every theme. A theme only needs to ship unlock.png when it wants different art.
+
+if (( $# != 1 )); then
+  echo "Usage: omarchy-plymouth-logo <theme-name>" >&2
+  exit 1
+fi
+
+theme="$1"
+theme_dir=$(omarchy-theme-dir "$theme")
+
+if [[ -f $theme_dir/unlock.png ]]; then
+  printf '%s\n' "$theme_dir/unlock.png"
+  exit 0
+fi
+
+colors_file="$theme_dir/colors.toml"
+
+if [[ ! -f $colors_file ]]; then
+  echo "No colors.toml for theme: $theme" >&2
+  exit 1
+fi
+
+source_logo="$OMARCHY_PATH/default/plymouth/logo.png"
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/plymouth/$theme"
+
+# The cache file is named after its inputs, so publishing it is a single atomic
+# rename. Concurrent generators can never pair one run's image with another
+# run's signature, and a user theme shadowing a built-in one of the same name
+# gets its own entry because the resolved theme directory is part of the name.
+signature="v2 $theme_dir $(stat -Lc '%s:%Y' "$colors_file") $(stat -Lc '%s:%Y' "$source_logo")"
+logo="$cache_dir/unlock-$(printf '%s' "$signature" | md5sum | cut -d ' ' -f 1).png"
+
+if [[ -f $logo ]]; then
+  printf '%s\n' "$logo"
+  exit 0
+fi
+
+accent=$(omarchy-theme-color --file "$colors_file" accent foreground)
+
+mkdir -p "$cache_dir"
+
+# -strip and png:exclude-chunk=time keep the output byte-identical across
+# regenerations so omarchy-plymouth-current can cmp against the installed logo.
+if ! magick "$source_logo" \
+  -channel RGB +level-colors "$accent","$accent" \
+  -strip -define png:exclude-chunk=time \
+  "$logo.$$.png" || ! mv -f "$logo.$$.png" "$logo"; then
+  rm -f "$logo.$$.png"
+  echo "Failed to generate unlock logo for theme: $theme" >&2
+  exit 1
+fi
+
+printf '%s\n' "$logo"

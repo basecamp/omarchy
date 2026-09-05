@@ -1,6 +1,16 @@
 #!/bin/bash
 
 # omarchy:summary=Open the Plymouth unlock screen switcher
+# omarchy:args=[--cache-only]
+
+# --cache-only renders every theme's unlock preview and warms the selector
+# thumbnails without opening the menu.
+cache_only=false
+
+if [[ $1 == "--cache-only" ]]; then
+  cache_only=true
+  shift
+fi
 
 preview_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/unlock-selector/previews"
 
@@ -9,9 +19,14 @@ mkdir -p "$preview_dir"
 
 ln -s "$OMARCHY_PATH/default/plymouth/preview-unlock.png" "$preview_dir/default.png"
 
-omarchy-plymouth-list | while read -r name; do
-  ln -s "$(omarchy-theme-dir "$name")/preview-unlock.png" "$preview_dir/$name.png" 2>/dev/null
+omarchy-plymouth-list | while IFS= read -r name; do
+  preview=$(omarchy-plymouth-preview-by-theme "$name") || continue
+  ln -s "$preview" "$preview_dir/$name.png" 2>/dev/null
 done
+
+if [[ $cache_only == true ]]; then
+  exec omarchy-menu-images --cache-only "$preview_dir"
+fi
 
 current=$(omarchy-plymouth-current)
 selected=""

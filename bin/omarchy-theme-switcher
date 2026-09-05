@@ -1,13 +1,24 @@
 #!/bin/bash
 
 # omarchy:summary=Open the Omarchy theme switcher
+# omarchy:args=[--preload|--cache-only]
 
+# --preload hands the rows to a running shell so the first open settles
+# instantly; --cache-only just builds the thumbnails and exits, which is what
+# cache warming on a fresh machine needs.
 preload=false
+cache_only=false
 
-if [[ $1 == "--preload" ]]; then
-  preload=true
-  shift
-fi
+case "$1" in
+  --preload)
+    preload=true
+    shift
+    ;;
+  --cache-only)
+    cache_only=true
+    shift
+    ;;
+esac
 
 USER_THEMES_PATH="$HOME/.config/omarchy/themes"
 OMARCHY_THEMES_PATH="$OMARCHY_PATH/themes"
@@ -100,6 +111,10 @@ if [[ ! -f $fast_signature_file ]] || ! cmp -s "$fast_signature_file" <(printf '
 
   printf '%s' "$theme_signature" >"$signature_file"
   printf '%s' "$fast_signature" >"$fast_signature_file"
+fi
+
+if [[ $cache_only == true ]]; then
+  exec omarchy-menu-images --cache-only "$preview_dir"
 fi
 
 current_theme=$(cat "$HOME/.local/state/omarchy/current/theme.name" 2>/dev/null)

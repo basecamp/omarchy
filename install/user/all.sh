@@ -12,3 +12,6 @@ run_logged "$OMARCHY_INSTALL/user/hardware/fix-nouveau-cursor.sh"
 
 run_logged "$OMARCHY_INSTALL/user/default-keyring.sh"
 run_logged "$OMARCHY_INSTALL/user/mise.sh"
+
+# Last: the theme must already be set for the background thumbnails to build.
+run_logged "$OMARCHY_INSTALL/user/warm-caches.sh"

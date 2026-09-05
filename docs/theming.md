@@ -371,6 +371,25 @@ For a gradient it renders:
 local active_border_color = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 }
 ```
 
+## Boot screen
+
+Every theme can style the Plymouth boot screen and the SDDM login screen. Both
+assets are generated from the palette, so a theme normally ships neither:
+
+- `unlock.png` — the Omarchy logo in the theme's `accent` color. Generated from
+  `default/plymouth/logo.png` by `omarchy-plymouth-logo`.
+- `preview-unlock.png` — the 1080p preview shown in `omarchy plymouth switcher`,
+  rendered from the unlock logo plus `background` and `foreground` by
+  `omarchy-plymouth-preview-by-theme`.
+
+Both are cached under `~/.cache/omarchy/plymouth/<theme>/` and regenerated when
+`colors.toml` or the source assets change.
+
+Ship `themes/<name>/unlock.png` only when the theme wants different art than
+the accent-colored logo, and `themes/<name>/preview-unlock.png` only when the
+preview should not show what the boot screen actually draws. A committed file
+always wins over the generated one.
+
 ## Adding or overriding theme files
 
 - Add palette values to `themes/<name>/colors.toml`.

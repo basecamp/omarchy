@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# omarchy:summary=Print the unlock screen preview for a theme, rendering one when the theme ships none
+# omarchy:args=<theme-name>
+# omarchy:hidden=true
+
+# A theme only needs to commit preview-unlock.png when it wants art that differs
+# from what the boot screen actually draws. Otherwise the preview is rendered
+# from the theme's unlock logo and colors, then cached.
+
+if (( $# != 1 )); then
+  echo "Usage: omarchy-plymouth-preview-by-theme <theme-name>" >&2
+  exit 1
+fi
+
+theme="$1"
+theme_dir=$(omarchy-theme-dir "$theme")
+
+if [[ -f $theme_dir/preview-unlock.png ]]; then
+  printf '%s\n' "$theme_dir/preview-unlock.png"
+  exit 0
+fi
+
+colors_file="$theme_dir/colors.toml"
+
+if [[ ! -f $colors_file ]]; then
+  echo "No colors.toml for theme: $theme" >&2
+  exit 1
+fi
+
+logo=$(omarchy-plymouth-logo "$theme") || exit 1
+
+cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/omarchy/plymouth/$theme"
+
+# Named after its inputs for the same reason as the unlock logo: publishing is
+# one atomic rename, so no reader can see a stale image treated as current.
+signature="v2 $theme_dir $(stat -Lc '%s:%Y' "$colors_file") $(stat -Lc '%s:%Y' "$logo")"
+
+for asset in bullet.png entry.png lock.png; do
+  signature+=" $(stat -Lc '%s:%Y' "$OMARCHY_PATH/default/plymouth/$asset")"
+done
+
+preview="$cache_dir/preview-$(printf '%s' "$signature" | md5sum | cut -d ' ' -f 1).png"
+
+if [[ -f $preview ]]; then
+  printf '%s\n' "$preview"
+  exit 0
+fi
+
+background=$(omarchy-theme-color --file "$colors_file" background)
+foreground=$(omarchy-theme-color --file "$colors_file" foreground)
+
+mkdir -p "$cache_dir"
+
+if ! omarchy-plymouth-preview --no-open "$background" "$foreground" "$logo" "$preview.$$.png" ||
+  ! mv -f "$preview.$$.png" "$preview"; then
+  rm -f "$preview.$$.png"
+  echo "Failed to render unlock preview for theme: $theme" >&2
+  exit 1
+fi
+
+printf '%s\n' "$preview"

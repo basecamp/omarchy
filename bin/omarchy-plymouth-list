@@ -3,11 +3,13 @@
 # omarchy:summary=List themes that can style the Plymouth boot screen
 # omarchy:examples=omarchy plymouth list
 
+# Any theme with a palette can style the boot screen: the unlock logo and its
+# preview are generated from colors.toml when the theme doesn't ship its own.
 {
   find ~/.config/omarchy/themes/ -mindepth 1 -maxdepth 1 \( -type d -o -type l \) -printf '%f\n' 2>/dev/null
   find "$OMARCHY_PATH/themes/" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
-} | sort -u | while read -r name; do
-  if [[ -f $(omarchy-theme-dir "$name")/preview-unlock.png ]]; then
+} | sort -u | while IFS= read -r name; do
+  if [[ -f $(omarchy-theme-dir "$name")/colors.toml ]]; then
     echo "$name"
   fi
 done
