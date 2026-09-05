@@ -299,3 +299,109 @@ grep -F 'move = { "(monitor_w-monitor_h*2/9-40)", "(monitor_h-monitor_h/4-40)" }
 grep -F 'move = { "(monitor_w-monitor_h*3/10-40)", "(monitor_h-monitor_h*27/80-40)" }' "$webcam_rules" >/dev/null || \
   fail "large webcam starts at its final corner position"
 pass "webcam size rules place the initial window in its final corner"
+
+# The stop path reads the recording state file back and uses its contents as a
+# path -- ffmpeg writes beside it, `mv` replaces it, `rm -f` deletes its
+# preview -- so it has to live in the per-user runtime directory rather than
+# under a name in world-writable /tmp that another account can create first.
+recording_dir="$tmp_dir/recordings"
+mkdir -p "$recording_dir"
+
+cat >"$stub_bin/pgrep" <<'SH'
+#!/bin/bash
+exit 1
+SH
+
+cat >"$stub_bin/omarchy-hyprland-monitor-focused" <<'SH'
+#!/bin/bash
+printf 'DP-1\n'
+SH
+
+cat >"$stub_bin/gpu-screen-recorder" <<'SH'
+#!/bin/bash
+for i in "$@"; do
+  [[ -n ${take_next:-} ]] && { : >"$i"; break; }
+  [[ $i == "-o" ]] && take_next=1
+done
+sleep 5
+SH
+
+cat >"$stub_bin/omarchy-shell" <<'SH'
+#!/bin/bash
+exit 0
+SH
+
+chmod +x "$stub_bin"/pgrep "$stub_bin"/omarchy-hyprland-monitor-focused \
+  "$stub_bin"/gpu-screen-recorder "$stub_bin"/omarchy-shell
+
+# Compare that name across the run rather than demanding it be absent: the
+# whole point of the finding is that anyone can own it already, and a leftover
+# from a pre-fix recording would red-light the fixed script.
+tmp_state="/tmp/omarchy-screenrecord-filename"
+tmp_state_before=$(stat -c '%y %s' "$tmp_state" 2>/dev/null || true)
+
+OMARCHY_SCREENRECORD_DIR="$recording_dir" \
+  "$ROOT/bin/omarchy-capture-screenrecording" --fullscreen >/dev/null 2>&1
+
+pkill -f "$stub_bin/gpu-screen-recorder" 2>/dev/null || true
+
+[[ $(stat -c '%y %s' "$tmp_state" 2>/dev/null) == "$tmp_state_before" ]] ||
+  fail "screen recording keeps no state under a fixed /tmp name"
+pass "screen recording keeps no state under a fixed /tmp name"
+
+[[ -s $XDG_RUNTIME_DIR/omarchy-screenrecord-filename ]] ||
+  fail "the recording state file lives in the per-user runtime directory" \
+    "$(ls -a "$XDG_RUNTIME_DIR")"
+pass "the recording state file lives in the per-user runtime directory"
+
+[[ $(<"$XDG_RUNTIME_DIR/omarchy-screenrecord-filename") == "$recording_dir"/* ]] ||
+  fail "the recording state file names the recording that was started" \
+    "$(<"$XDG_RUNTIME_DIR/omarchy-screenrecord-filename")"
+pass "the recording state file names the recording that was started"
+
+# The :-/tmp fallback would reopen the hole this PR closes. A recording
+# started without a session runtime dir has to land under the state directory.
+state_home="$tmp_dir/state-home"
+mkdir -p "$state_home" "$tmp_dir/home-fallback"
+tmp_state_before=$(stat -c '%y %s' "$tmp_state" 2>/dev/null || true)
+
+env -u XDG_RUNTIME_DIR \
+  HOME="$tmp_dir/home-fallback" \
+  XDG_STATE_HOME="$state_home" \
+  OMARCHY_SCREENRECORD_DIR="$recording_dir" \
+  "$ROOT/bin/omarchy-capture-screenrecording" --fullscreen >/dev/null 2>&1
+
+pkill -f "$stub_bin/gpu-screen-recorder" 2>/dev/null || true
+
+[[ $(stat -c '%y %s' "$tmp_state" 2>/dev/null) == "$tmp_state_before" ]] ||
+  fail "without a runtime dir, screen recording still keeps no state under a fixed /tmp name"
+pass "without a runtime dir, screen recording still keeps no state under a fixed /tmp name"
+
+fallback_file="$state_home/omarchy/omarchy-screenrecord-filename"
+[[ -s $fallback_file ]] ||
+  fail "without a runtime dir the recording state file lives in the state directory" \
+    "$(ls -la "$state_home/omarchy" 2>/dev/null || true)"
+pass "without a runtime dir the recording state file lives in the state directory"
+
+[[ $(<"$fallback_file") == "$recording_dir"/* ]] ||
+  fail "the fallback state file names the recording that was started" \
+    "$(<"$fallback_file")"
+pass "the fallback state file names the recording that was started"
+
+# The overlay resizer reads the region file the recorder writes, so the two
+# have to resolve the same fallback as well as the same runtime dir.
+: >"$OMARCHY_TEST_HYPRCTL_ARGS"
+echo "800x600+100+100" >"$state_home/omarchy/omarchy-screenrecord-region"
+env -u XDG_RUNTIME_DIR \
+  HOME="$tmp_dir/home-fallback" \
+  XDG_STATE_HOME="$state_home" \
+  "$ROOT/bin/omarchy-capture-webcam-resize" reset
+
+printf '%s\n' \
+  'dispatch hl.dsp.window.resize({ window = "address:0xabc", x = 133, y = 150 })' \
+  'dispatch hl.dsp.window.move({ window = "address:0xabc", x = 727, y = 510 })' >"$expected_hyprctl_args"
+
+if ! cmp -s "$OMARCHY_TEST_HYPRCTL_ARGS" "$expected_hyprctl_args"; then
+  fail "without a runtime dir the webcam anchors to the recorded region" "$(diff -u "$expected_hyprctl_args" "$OMARCHY_TEST_HYPRCTL_ARGS")"
+fi
+pass "without a runtime dir the webcam anchors to the recorded region"
