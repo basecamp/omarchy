@@ -1,0 +1,166 @@
+#!/bin/bash
+
+# omarchy:summary=Revive or pin the built-in Apple USB SD card reader
+# omarchy:args={reset|status}
+# omarchy:requires-sudo=true
+# omarchy:hidden=true
+
+# The 2013–2015 Apple USB Card Reader (05ac:8406) sits on xHCI SuperSpeed and
+# often stays powered off after suspend. USB port reset cannot turn the chip
+# back on. Apple's XHCI ACPI methods SPWR/SRST toggle PCH GPIO 44 (power) and
+# GPIO 24 (reset). See install/hardware/apple/fix-sd-card-reader.sh.
+
+set -euo pipefail
+
+VID="05ac"
+PID="8406"
+ACPI_CALL="${OMARCHY_ACPI_CALL:-/proc/acpi/call}"
+
+die() {
+  echo "omarchy-cmd-apple-sd-reader: $*" >&2
+  exit 1
+}
+
+require_root() {
+  if (( EUID != 0 )); then
+    die "needs root (try: sudo omarchy cmd apple-sd-reader ${1:-reset})"
+  fi
+}
+
+find_reader() {
+  local d
+  for d in /sys/bus/usb/devices/*; do
+    [[ -f $d/idVendor && -f $d/idProduct ]] || continue
+    if [[ $(<"$d/idVendor") == "$VID" && $(<"$d/idProduct") == "$PID" ]]; then
+      printf '%s\n' "$d"
+      return 0
+    fi
+  done
+  return 1
+}
+
+keep_alive() {
+  local dev driver
+  modprobe usb-storage >/dev/null 2>&1 || true
+  modprobe uas >/dev/null 2>&1 || true
+
+  dev=$(find_reader) || return 1
+  echo on >"$dev/power/control" 2>/dev/null || true
+  echo -1 >"$dev/power/autosuspend" 2>/dev/null || true
+  echo 0 >"$dev/power/autosuspend_delay_ms" 2>/dev/null || true
+  echo 0 >"$dev/power/persist" 2>/dev/null || true
+
+  driver=$(basename "$(readlink -f "$dev/driver" 2>/dev/null)" 2>/dev/null || true)
+  if [[ $driver == "apple-mfi-fastcharge" ]]; then
+    basename "$dev" >"$dev/driver/unbind" 2>/dev/null || true
+  fi
+  return 0
+}
+
+acpi_ensure() {
+  [[ -e $ACPI_CALL ]] && return 0
+  modprobe acpi_call >/dev/null 2>&1 || return 1
+  [[ -e $ACPI_CALL ]]
+}
+
+acpi_eval() {
+  local method=$1
+  [[ -w $ACPI_CALL ]] || return 1
+  echo "$method" >"$ACPI_CALL" 2>/dev/null || return 1
+  tr -d '\0' <"$ACPI_CALL" >/dev/null
+}
+
+unmount_reader_disks() {
+  local host disk
+  host=$(find_reader) || return 0
+  for disk in /sys/block/sd*; do
+    [[ -e $disk ]] || continue
+    if [[ $(readlink -f "$disk") == "$host"* ]]; then
+      umount "/dev/$(basename "$disk")"* >/dev/null 2>&1 || true
+    fi
+  done
+}
+
+# Try the ACPI names used on MacBookPro12,1 and the shorter XHC alias.
+apple_gpio_power() {
+  local method
+  acpi_ensure || return 1
+  echo "omarchy-cmd-apple-sd-reader: cycling Apple SD power via ACPI SPWR/SRST"
+  unmount_reader_disks
+  for method in '\_SB.PCI0.XHC1.SPWR' '\_SB.PCI0.XHC.SPWR'; do
+    acpi_eval "$method 0" && break
+  done
+  for method in '\_SB.PCI0.XHC1.SRST' '\_SB.PCI0.XHC.SRST'; do
+    acpi_eval "$method 1" && break
+  done
+  sleep 2
+  for method in '\_SB.PCI0.XHC1.SPWR' '\_SB.PCI0.XHC.SPWR'; do
+    acpi_eval "$method 1" && break
+  done
+  for method in '\_SB.PCI0.XHC1.SPWR' '\_SB.PCI0.XHC.SPWR'; do
+    acpi_eval "$method 3" || true
+  done
+  sleep 0.3
+  for method in '\_SB.PCI0.XHC1.SRST' '\_SB.PCI0.XHC.SRST'; do
+    acpi_eval "$method 0" && break
+  done
+  sleep 1
+  return 0
+}
+
+wait_for_reader() {
+  local i
+  for i in $(seq 1 24); do
+    if find_reader >/dev/null; then
+      keep_alive || true
+      return 0
+    fi
+    sleep 0.25
+  done
+  return 1
+}
+
+status() {
+  local dev
+  if dev=$(find_reader); then
+    echo "reader      $(cat "$dev/product" 2>/dev/null)  $(basename "$dev")  power=$(cat "$dev/power/control" 2>/dev/null)"
+  else
+    echo "reader      not enumerated"
+  fi
+
+  if [[ -e $ACPI_CALL ]]; then
+    echo "acpi_call   loaded"
+  else
+    echo "acpi_call   not loaded"
+  fi
+
+  lsblk -o NAME,SIZE,TYPE,TRAN,VENDOR,MODEL,LABEL,MOUNTPOINT
+}
+
+cmd=${1:-reset}
+case $cmd in
+  status)
+    status
+    ;;
+  reset)
+    require_root "$cmd"
+    if find_reader >/dev/null; then
+      keep_alive || true
+      echo "omarchy-cmd-apple-sd-reader: card reader already on the bus; pinned awake"
+      status
+      exit 0
+    fi
+    if apple_gpio_power && wait_for_reader; then
+      echo "omarchy-cmd-apple-sd-reader: card reader came up"
+      status
+      exit 0
+    fi
+    echo "omarchy-cmd-apple-sd-reader: reader still missing" >&2
+    status
+    exit 1
+    ;;
+  *)
+    echo "usage: omarchy cmd apple-sd-reader {reset|status}" >&2
+    exit 2
+    ;;
+esac
