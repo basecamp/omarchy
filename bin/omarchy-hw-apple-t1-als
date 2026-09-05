@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# omarchy:summary=Detect a T1 Touch Bar Mac with a live ambient light sensor
+# omarchy:hidden=true
+
+# Same DMI set as the T1 Touch Bar. 13,1 / 14,1 have no T1. The IIO node is
+# what apple_ib_als actually exports; without it there is nothing to follow.
+product_name=$(cat "${OMARCHY_DMI_PRODUCT_NAME:-/sys/class/dmi/id/product_name}" 2>/dev/null)
+[[ $product_name =~ MacBookPro13,[23]|MacBookPro14,[23] ]] || exit 1
+
+if [[ -n ${OMARCHY_ALS:-} ]]; then
+  [[ -r $OMARCHY_ALS ]]
+  exit
+fi
+
+for d in /sys/bus/iio/devices/iio:device*; do
+  [[ -r $d/in_illuminance_input ]] && exit 0
+done
+exit 1

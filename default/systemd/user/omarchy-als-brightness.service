@@ -1,0 +1,16 @@
+[Unit]
+Description=Follow the T1 ambient light sensor for panel and keyboard backlight
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+ConditionPathExistsGlob=/sys/bus/iio/devices/iio:device*/in_illuminance_input
+
+[Service]
+Type=simple
+ExecCondition=/usr/bin/omarchy-hw-apple-t1-als
+ExecStart=/usr/bin/omarchy-als-brightness
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target
