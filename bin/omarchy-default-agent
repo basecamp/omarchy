@@ -71,6 +71,11 @@ if ! agent_install; then
   exit 1
 fi
 
+# Agents with a setup script get configured after install.
+if [[ $agent == "opencode" ]] && command -v omarchy-setup-opencode &>/dev/null; then
+  omarchy-setup-opencode 2>/dev/null || true
+fi
+
 mkdir -p "$(dirname "$agent_file")"
 printf '%s\n' "$agent" >"$agent_file"
 
