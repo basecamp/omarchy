@@ -1,0 +1,935 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the GitHub Copilot usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect GitHub Copilot usage into one display-ready JSON record.
+
+GitHub exposes no supported personal-account usage API — the Copilot REST
+endpoints are organization- or enterprise-scoped — but the Copilot CLI keeps
+two local sources this collector reads. The primary one is the session store
+(~/.copilot/session-store.db): its assistant_usage_events table records every
+billed request with day, model, session, token split, and cost in nano AI
+units (1e9 nano units = 1 AI credit at 1 cent). The fallback, for CLI versions
+whose store predates that table, is the session transcript directory
+(~/.copilot/session-state/<id>/events.jsonl). The record prefers whichever
+source produced numbers, never both.
+
+The monthly meter is an allowance of AI credits. GitHub's own account-wide
+figure is authoritative when the internal quota endpoint answers (the same one
+the editor plugins use); otherwise the collector falls back to this machine's
+CLI cost against a plan allowance from configuration, because the included
+amount is not discoverable locally. All remote reads fail soft — an offline
+machine or a missing token degrades to the local estimate instead of erroring.
+
+Configuration lives in ~/.config/omarchy/agents/copilot.json:
+
+    {
+      "plan": "pro",
+      "monthlyCredits": 1500,
+      "remote": true
+    }
+
+plan is one of free, student, pro, pro+, max, business, enterprise and picks
+the default allowance (Pro 1500, Pro+ 7000, Max 20000, Business 1900,
+Enterprise 3900 credits per month; existing seat-based customers may see
+higher promotional amounts through September 2026). monthlyCredits overrides
+the plan table, for AI-credit plans without a published number or for a
+personal budget. remote (default true) turns the account-wide quota probe on
+or off; the probe needs a token from COPILOT_QUOTA_TOKEN, GH_TOKEN,
+GITHUB_TOKEN, or `gh auth token`. The allowance window resets on the 1st of
+each month at 00:00 UTC, GitHub's own boundary.
+
+The agents panel only ever reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import calendar
+import datetime as dt
+import fcntl
+import hashlib
+import json
+import os
+import shutil
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "copilot"
+AGENT_NAME = "GitHub Copilot"
+AUTH_HELP = (
+    "Run `copilot` in a terminal and sign in to GitHub to start recording sessions."
+)
+
+ULTRA_SECONDS = 1_000_000_000
+QUOTA_URL = "https://api.github.com/copilot_internal/user"
+REMOTE_TIMEOUT = 6.0
+
+# Plan identifiers as the quota endpoint spells them.
+API_PLAN_KEYS = {
+    "individual": "pro",
+    "individual_pro": "pro+",
+    "business": "business",
+    "enterprise": "enterprise",
+    "free": "free",
+    "max": "max",
+}
+
+# Monthly AI credit allowances from GitHub's usage-based billing tables.
+# Seat-based plans pool credits at the billing entity, so an individual's
+# practical ceiling is set by their admin rather than this figure —
+# monthlyCredits in the config overrides it.
+PLAN_ALLOWANCES = {
+    "free": 0,
+    "student": 0,
+    "pro": 1_500,
+    "pro+": 7_000,
+    "max": 20_000,
+    "business": 1_900,
+    "enterprise": 3_900,
+}
+
+PLAN_LABELS = {
+    "free": "Free",
+    "student": "Student",
+    "pro": "Pro",
+    "pro+": "Pro+",
+    "max": "Max",
+    "business": "Business",
+    "enterprise": "Enterprise",
+}
+
+# Resource ceilings. The session store is mutable and grows without bound, so
+# every read is capped: a runaway database can never produce a runaway record.
+MAX_DB_BYTES = 512 * 1024 * 1024
+MAX_EVENT_ROWS = 20_000
+
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+
+def number(value: Any) -> int:
+    try:
+        n = float(value or 0)
+        return round(n) if n == n else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def expand_path(value: str) -> Path:
+    return Path(os.path.expandvars(os.path.expanduser(value))).resolve()
+
+
+def config_path() -> Path:
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config"))
+    return config_home / "omarchy" / "agents" / "copilot.json"
+
+
+def read_config() -> dict[str, Any]:
+    try:
+        parsed = json.loads(config_path().read_text(encoding="utf-8"))
+        return parsed if isinstance(parsed, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def cache_root() -> Path:
+    root = (
+        Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache"))
+        / "omarchy"
+        / "agent-usage"
+    )
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def empty_bucket() -> dict[str, int]:
+    return {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 0,
+    }
+
+
+def local_date_string() -> str:
+    return dt.datetime.now().date().isoformat()
+
+
+def recent_date_strings() -> list[str]:
+    today = dt.datetime.now().date()
+    return [
+        (today - dt.timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)
+    ]
+
+
+def month_start(now: dt.datetime) -> dt.datetime:
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def next_month_start(now: dt.datetime) -> dt.datetime:
+    days = calendar.monthrange(now.year, now.month)[1]
+    return month_start(now) + dt.timedelta(days=days)
+
+
+def credits_from_nano(nano: Any) -> float:
+    try:
+        value = float(nano or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return value / ULTRA_SECONDS if value > 0 else 0.0
+
+
+def clean_name(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def parse_event_time(value: Any) -> dt.datetime | None:
+    """Parse a store or transcript timestamp into timezone-aware local time.
+
+    Accepts ISO-8601 (with or without Z) and epoch seconds or milliseconds.
+    Everything else collapses to None; the caller falls back to the local date.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            seconds = (
+                float(value) / 1000.0 if float(value) > 10_000_000_000 else float(value)
+            )
+            return dt.datetime.fromtimestamp(seconds, dt.timezone.utc).astimezone()
+        except (OverflowError, OSError, ValueError):
+            return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        return parse_event_time(int(raw))
+    try:
+        parsed = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone()
+
+
+def local_day(value: Any) -> str:
+    parsed = parse_event_time(value)
+    return parsed.date().isoformat() if parsed else local_date_string()
+
+
+def utc_month_key(value: Any) -> str:
+    parsed = parse_event_time(value)
+    if parsed is None:
+        return ""
+    return parsed.astimezone(dt.timezone.utc).strftime("%Y-%m")
+
+
+# ------------------------------------------------------------------ database
+
+
+def open_store(path: Path) -> tuple[sqlite3.Connection | None, Path | None]:
+    """Open a private snapshot of the session store.
+
+    The CLI writes to this database continuously in WAL mode. Raw-copying the
+    main file and its -wal sibling cannot be made safe: a checkpoint between
+    the two copies pairs an old database with a newer WAL generation. SQLite's
+    online backup API takes the read lock it needs to produce a consistent
+    copy instead, without ever blocking the writer. The caller must remove the
+    returned temp dir once the connection is closed.
+    """
+    if not path.exists():
+        return None, None
+    try:
+        if path.stat().st_size > MAX_DB_BYTES:
+            return None, None
+    except OSError:
+        return None, None
+
+    tmpdir = None
+    source = None
+    try:
+        tmpdir = Path(tempfile.mkdtemp(prefix="omarchy-copilot-"))
+        source = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5.0)
+        target = sqlite3.connect(tmpdir / "snapshot.db")
+        with target:
+            source.backup(target)
+        target.row_factory = sqlite3.Row
+        return target, tmpdir
+    except (OSError, sqlite3.Error):
+        if tmpdir is not None:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        return None, None
+    finally:
+        if source is not None:
+            try:
+                source.close()
+            except sqlite3.Error:
+                pass
+
+
+def has_table(conn: sqlite3.Connection, name: str) -> bool:
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", (name,)
+        ).fetchone()
+        return row is not None
+    except sqlite3.Error:
+        return False
+
+
+def blank_stats() -> dict[str, Any]:
+    return {
+        "todayPrompts": 0,
+        "todaySessions": 0,
+        "todayTotalTokens": 0,
+        "todayTokensByModel": {},
+        "recentDays": [
+            {"date": day, "messageCount": 0} for day in recent_date_strings()
+        ],
+        "modelUsage": {},
+        "totalPrompts": 0,
+        "totalSessions": 0,
+        "activeDays": 0,
+        "activeDates": [],
+        "monthCredits": 0.0,
+    }
+
+
+# ---------------------------------------------------------- store scan
+#
+# The session store's assistant_usage_events table records one row per billed
+# assistant request with day, model, session, the token split, and the cost in
+# total_nano_aiu. Aggregation happens in Python so the timestamp parsing is the
+# same lenient routine everywhere else in the repo uses, and so the LIMIT caps
+# raw rows rather than the answer's shape.
+
+
+def scan_store(conn: sqlite3.Connection) -> dict[str, Any]:
+    today = local_date_string()
+    recent = {day: {"date": day, "messageCount": 0} for day in recent_date_strings()}
+    current_utc_month = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m")
+
+    sessions: set[str] = set()
+    active_dates: set[str] = set()
+    today_sessions: set[str] = set()
+    today_prompts = 0
+    today_total_tokens = 0
+    today_tokens_by_model: dict[str, int] = {}
+    total_prompts = 0
+    model_usage: dict[str, dict[str, int]] = {}
+    month_credits = 0.0
+
+    try:
+        rows = conn.execute(
+            "SELECT session_id, model, created_at, total_nano_aiu,"
+            " input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,"
+            # Newest rows first, so the row cap sacrifices history rather than the
+            # today/recent numbers the panel exists to show.
+            " reasoning_tokens FROM assistant_usage_events ORDER BY rowid DESC LIMIT ?",
+            (MAX_EVENT_ROWS,),
+        ).fetchall()
+    except sqlite3.Error:
+        return blank_stats()
+
+    for row in rows:
+        session_id = clean_name(row["session_id"])
+        session_key = session_id if session_id else "unknown"
+        model = clean_name(row["model"]) or "copilot"
+        day = local_day(row["created_at"])
+        month_key = utc_month_key(row["created_at"])
+
+        total_prompts += 1
+        sessions.add(session_key)
+        active_dates.add(day)
+        # The allowance window is the current UTC month, matching the reset
+        # boundary; older spend belongs to windows that are already over.
+        if month_key == current_utc_month:
+            month_credits += credits_from_nano(row["total_nano_aiu"])
+
+        # Reasoning tokens are generated, so they fold into output the same way
+        # the other collectors count them.
+        input_tokens = number(row["input_tokens"])
+        output_tokens = number(row["output_tokens"]) + number(row["reasoning_tokens"])
+        cache_read = number(row["cache_read_tokens"])
+        cache_write = number(row["cache_write_tokens"])
+        total = input_tokens + output_tokens + cache_read + cache_write
+
+        bucket = model_usage.setdefault(model, empty_bucket())
+        bucket["inputTokens"] += input_tokens
+        bucket["outputTokens"] += output_tokens
+        bucket["cacheReadInputTokens"] += cache_read
+        bucket["cacheCreationInputTokens"] += cache_write
+
+        if day in recent and total > 0:
+            recent[day]["messageCount"] += total
+        if day == today:
+            today_prompts += 1
+            today_sessions.add(session_key)
+            today_total_tokens += total
+            today_tokens_by_model[model] = today_tokens_by_model.get(model, 0) + total
+
+    return {
+        "todayPrompts": today_prompts,
+        "todaySessions": len(today_sessions),
+        "todayTotalTokens": today_total_tokens,
+        "todayTokensByModel": today_tokens_by_model,
+        "recentDays": [recent[day] for day in recent_date_strings()],
+        "modelUsage": model_usage,
+        "totalPrompts": total_prompts,
+        "totalSessions": len(sessions),
+        "activeDays": len(active_dates),
+        "activeDates": sorted(active_dates),
+        "monthCredits": round(month_credits, 6),
+    }
+
+
+# ------------------------------------------------------ transcript fallback
+#
+# A CLI whose store predates the assistant_usage_events table still writes
+# session transcripts. The fallback scans them for prompt and token counts
+# only — no cost, so no monthly credit estimate. It is only consulted when
+# the store is missing its usage table or empty.
+
+
+def is_prompt(entry: dict[str, Any]) -> bool:
+    kind = entry.get("kind")
+    if isinstance(kind, str) and kind == "user_message":
+        return True
+    event_type = entry.get("type")
+    if isinstance(event_type, str):
+        if event_type in ("user_message", "user", "human"):
+            return True
+        if event_type == "message" and str(entry.get("role") or "").lower() in (
+            "user",
+            "human",
+        ):
+            return True
+    return False
+
+
+def token_field(value: Any) -> int:
+    if isinstance(value, dict):
+        return number(value.get("text") or value.get("tokens") or value.get("value"))
+    return number(value)
+
+
+def extract_usage(entry: dict[str, Any]) -> dict[str, int] | None:
+    usage = entry.get("usage")
+    if not isinstance(usage, dict):
+        usage = {}
+
+    tokens = usage.get("tokens")
+    if isinstance(tokens, dict):
+        inp = tokens.get("input") if isinstance(tokens.get("input"), dict) else {}
+        out = tokens.get("output") if isinstance(tokens.get("output"), dict) else {}
+        input_tokens = token_field(inp.get("text"))
+        output_tokens = token_field(out.get("text")) + token_field(out.get("reasoning"))
+        cache_read = token_field(inp.get("cached") or inp.get("cacheRead"))
+        if input_tokens or output_tokens or cache_read:
+            return {
+                "inputTokens": input_tokens,
+                "outputTokens": output_tokens,
+                "cacheReadInputTokens": cache_read,
+                "cacheCreationInputTokens": 0,
+            }
+
+    input_tokens = number(usage.get("inputTokens", usage.get("input")))
+    output_tokens = number(usage.get("outputTokens", usage.get("output")))
+    cache_read = number(usage.get("cacheReadInputTokens", usage.get("cacheRead")))
+    cache_write = number(usage.get("cacheCreationInputTokens", usage.get("cacheWrite")))
+    if not (input_tokens or output_tokens or cache_read or cache_write):
+        input_tokens = number(entry.get("inputTokens", entry.get("promptTokens")))
+        output_tokens = number(entry.get("outputTokens", entry.get("completionTokens")))
+    if input_tokens or output_tokens or cache_read or cache_write:
+        return {
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "cacheReadInputTokens": cache_read,
+            "cacheCreationInputTokens": cache_write,
+        }
+    return None
+
+
+def scan_transcripts(session_root: Path) -> dict[str, Any]:
+    today = local_date_string()
+    recent = {day: {"date": day, "messageCount": 0} for day in recent_date_strings()}
+
+    sessions: set[str] = set()
+    active_dates: set[str] = set()
+    today_sessions: set[str] = set()
+    today_prompts = 0
+    today_total_tokens = 0
+    today_tokens_by_model: dict[str, int] = {}
+    total_prompts = 0
+    model_usage: dict[str, dict[str, int]] = {}
+
+    if not session_root.is_dir():
+        return blank_stats()
+
+    for session_dir in sorted(p for p in session_root.iterdir() if p.is_dir()):
+        event_file = session_dir / "events.jsonl"
+        if not event_file.is_file():
+            continue
+        session_key = session_dir.name
+        try:
+            session_mtime = event_file.stat().st_mtime
+        except OSError:
+            session_mtime = 0.0
+
+        try:
+            with event_file.open("r", encoding="utf-8", errors="replace") as handle:
+                for line_number, raw in enumerate(handle, 1):
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except Exception:
+                        continue
+                    if not isinstance(entry, dict):
+                        continue
+
+                    prompt = is_prompt(entry)
+                    usage = extract_usage(entry)
+                    if not prompt and usage is None:
+                        continue
+
+                    parsed = parse_event_time(
+                        entry.get("timestamp")
+                        or entry.get("time")
+                        or entry.get("createdAt")
+                    )
+                    if parsed is None and session_mtime > 0:
+                        parsed = dt.datetime.fromtimestamp(
+                            session_mtime, dt.timezone.utc
+                        ).astimezone()
+                    day = parsed.date().isoformat() if parsed else today
+                    model = (
+                        clean_name(
+                            entry.get("model")
+                            or entry.get("modelID")
+                            or entry.get("model_id")
+                            or entry.get("model_slug")
+                        )
+                        or "copilot"
+                    )
+
+                    if prompt:
+                        total_prompts += 1
+                        sessions.add(session_key)
+                        active_dates.add(day)
+                        if day == today:
+                            today_prompts += 1
+                            today_sessions.add(session_key)
+
+                    if usage is not None:
+                        input_tokens = usage["inputTokens"]
+                        output_tokens = usage["outputTokens"]
+                        cache_read = usage["cacheReadInputTokens"]
+                        cache_write = usage["cacheCreationInputTokens"]
+                        total = input_tokens + output_tokens + cache_read + cache_write
+                        if total > 0:
+                            bucket = model_usage.setdefault(model, empty_bucket())
+                            bucket["inputTokens"] += input_tokens
+                            bucket["outputTokens"] += output_tokens
+                            bucket["cacheReadInputTokens"] += cache_read
+                            bucket["cacheCreationInputTokens"] += cache_write
+                            if day in recent:
+                                recent[day]["messageCount"] += total
+                            if day == today:
+                                today_total_tokens += total
+                                today_tokens_by_model[model] = (
+                                    today_tokens_by_model.get(model, 0) + total
+                                )
+        except OSError:
+            continue
+
+    return {
+        "todayPrompts": today_prompts,
+        "todaySessions": len(today_sessions),
+        "todayTotalTokens": today_total_tokens,
+        "todayTokensByModel": today_tokens_by_model,
+        "recentDays": [recent[day] for day in recent_date_strings()],
+        "modelUsage": model_usage,
+        "totalPrompts": total_prompts,
+        "totalSessions": len(sessions),
+        "activeDays": len(active_dates),
+        "activeDates": sorted(active_dates),
+        "monthCredits": 0.0,
+    }
+
+
+# ------------------------------------------------------------------- cache
+
+
+def scan_cache_paths(home_dir: Path) -> tuple[Path, Path]:
+    digest = hashlib.sha1(str(home_dir).encode("utf-8")).hexdigest()[:16]
+    root = cache_root()
+    return root / f"copilot-scan-{digest}.json", root / f"copilot-scan-{digest}.lock"
+
+
+def read_fresh_json(path: Path, max_age_seconds: float) -> dict[str, Any] | None:
+    if max_age_seconds <= 0 or not path.exists():
+        return None
+    try:
+        age = time.time() - path.stat().st_mtime
+        if 0 <= age <= max_age_seconds:
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return None
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    # A temp name unique to this writer, not derived from the target: several
+    # collectors can run at once (the update command backgrounds one per agent,
+    # the panel refreshes on its own), and a shared temp path means the second
+    # replace finds the first one's file already moved away.
+    handle_fd, tmp_name = tempfile.mkstemp(
+        dir=path.parent, prefix=path.name + ".", suffix=".tmp"
+    )
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, separators=(",", ":")) + "\n")
+        tmp.chmod(0o644)
+        tmp.replace(path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def read_cached_stats(
+    cache_file: Path, max_age_seconds: float, today: str
+) -> dict[str, Any] | None:
+    cached = read_fresh_json(cache_file, max_age_seconds)
+    if not isinstance(cached, dict) or cached.get("schemaVersion") != 1:
+        return None
+    if cached.get("scanDate") != today:
+        return None
+    stats = cached.get("stats")
+    if not isinstance(stats, dict):
+        return None
+    if not all(
+        key in stats
+        for key in (
+            "todayPrompts",
+            "todayTotalTokens",
+            "recentDays",
+            "activeDates",
+            "modelUsage",
+        )
+    ):
+        return None
+    return stats
+
+
+def write_cached_stats(cache_file: Path, stats: dict[str, Any]) -> None:
+    try:
+        write_json(
+            cache_file,
+            {"schemaVersion": 1, "scanDate": local_date_string(), "stats": stats},
+        )
+    except Exception as exc:
+        print(
+            f"omarchy-agent-usage-copilot: could not write usage cache ({exc})",
+            file=sys.stderr,
+        )
+
+
+def cached_scan(home_dir: Path, max_age_seconds: float) -> dict[str, Any]:
+    try:
+        cache_file, lock_file = scan_cache_paths(home_dir)
+        today = local_date_string()
+        cached = read_cached_stats(cache_file, max_age_seconds, today)
+        if cached is not None:
+            return cached
+        with lock_file.open("w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            cached = read_cached_stats(cache_file, max_age_seconds, today)
+            if cached is not None:
+                return cached
+            stats = direct_scan(home_dir)
+            write_cached_stats(cache_file, stats)
+            return stats
+    except Exception as exc:
+        print(
+            f"omarchy-agent-usage-copilot: cache unavailable ({exc}); scanning directly",
+            file=sys.stderr,
+        )
+        return direct_scan(home_dir)
+
+
+def direct_scan(home_dir: Path) -> dict[str, Any]:
+    conn, tmpdir = open_store(home_dir / "session-store.db")
+    if conn is None:
+        return scan_transcripts(home_dir / "session-state")
+    try:
+        if has_table(conn, "assistant_usage_events"):
+            stats = scan_store(conn)
+            if number(stats.get("totalPrompts")) > 0:
+                return stats
+        # A store without the usage table, or one that is still empty, falls back
+        # to the transcripts exactly like a store-less machine.
+        return scan_transcripts(home_dir / "session-state")
+    finally:
+        conn.close()
+        if tmpdir is not None:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+# ------------------------------------------------------------ remote quota
+
+
+def github_token() -> str:
+    """Find a GitHub token without ever storing or logging one.
+
+    Environment first, so a user can scope exactly what this sees, then the
+    `gh` CLI's own credential store, which is where a machine that has signed
+    in already keeps it.
+    """
+    for var in ("COPILOT_QUOTA_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
+        value = os.environ.get(var)
+        if value and value.strip():
+            return value.strip()
+    exe = shutil.which("gh")
+    if not exe:
+        return ""
+    try:
+        result = subprocess.run(
+            [exe, "auth", "token"],
+            capture_output=True,
+            text=True,
+            timeout=REMOTE_TIMEOUT,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def api_plan(raw: Any) -> tuple[str, str]:
+    key = API_PLAN_KEYS.get(str(raw or "").strip().lower(), "")
+    if not key:
+        return "", ""
+    return key, PLAN_LABELS.get(key, "Copilot")
+
+
+def fetch_remote_quota() -> dict[str, Any]:
+    """Ask GitHub for the account-wide credit balance.
+
+    Every failure is soft: a missing token, an offline machine, or a changed
+    payload leaves the record on its local estimate rather than failing the
+    whole collection.
+    """
+    token = github_token()
+    if not token:
+        return {"available": False, "reason": "no-token"}
+
+    request = urllib.request.Request(
+        QUOTA_URL,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "User-Agent": "omarchy-agent-usage",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=REMOTE_TIMEOUT) as response:
+            payload = json.loads(
+                response.read(2_000_000).decode("utf-8", errors="replace")
+            )
+    except urllib.error.HTTPError as exc:
+        return {"available": False, "reason": f"http-{exc.code}"}
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        return {"available": False, "reason": "unreachable"}
+
+    if not isinstance(payload, dict):
+        return {"available": False, "reason": "bad-payload"}
+
+    snapshots = payload.get("quota_snapshots")
+    snapshot = (
+        snapshots.get("premium_interactions") if isinstance(snapshots, dict) else None
+    )
+    if not isinstance(snapshot, dict):
+        return {"available": False, "reason": "no-quota"}
+
+    plan_key, plan_label = api_plan(payload.get("copilot_plan"))
+    orgs = payload.get("organization_login_list")
+    return {
+        "available": True,
+        "unlimited": bool(snapshot.get("unlimited")),
+        "entitlement": round(credits_from_nano(snapshot.get("entitlement")), 6),
+        "used": round(credits_from_nano(snapshot.get("credits_used")), 6),
+        "resetsAt": str(payload.get("quota_reset_date_utc") or ""),
+        "plan": plan_key,
+        "planLabel": plan_label,
+        "org": str(orgs[0]) if isinstance(orgs, list) and orgs else "",
+        "login": clean_name(payload.get("login")),
+    }
+
+
+# ---------------------------------------------------------------- allowance
+
+
+def resolve_plan(config: dict[str, Any]) -> tuple[str, float]:
+    raw = str(config.get("plan") or "pro").strip().lower()
+    key = raw.replace(" ", "").replace("copilot", "")
+    if key in ("proplus", "pro-plus"):
+        key = "pro+"
+    if not key:
+        key = "pro"
+
+    override = config.get("monthlyCredits")
+    if isinstance(override, (int, float)) and override > 0:
+        return key, float(override)
+    allowance = float(PLAN_ALLOWANCES.get(key, 0))
+    return key, allowance
+
+
+def allowance_limits(
+    month_credits: float,
+    config: dict[str, Any],
+    remote: dict[str, Any] | None,
+    now: dt.datetime,
+    has_stats: bool,
+) -> dict[str, Any]:
+    plan_key, plan_allowance = resolve_plan(config)
+    plan_label = PLAN_LABELS.get(plan_key, "Copilot")
+    estimated = True
+    allow = plan_allowance
+    used = month_credits
+    resets_at = next_month_start(now).isoformat()
+    reason = ""
+
+    live = remote if isinstance(remote, dict) and remote.get("available") else None
+    if live and not live.get("unlimited") and float(live.get("entitlement") or 0) > 0:
+        allow = float(live["entitlement"])
+        used = float(live.get("used") or 0.0)
+        estimated = False
+        if live.get("plan"):
+            plan_key = str(live["plan"])
+            plan_label = str(live["planLabel"] or PLAN_LABELS.get(plan_key, "Copilot"))
+        raw_reset = str(live.get("resetsAt") or "")
+        if raw_reset:
+            parsed = parse_event_time(raw_reset)
+            if parsed is not None and parsed > now:
+                resets_at = parsed.isoformat()
+    elif (
+        remote is not None
+        and remote.get("available") is False
+        and remote.get("reason") != "no-token"
+    ):
+        reason = "Copilot limits unavailable"
+
+    limits = []
+    if allow > 0:
+        # A plan-default allowance must not advertise a meter on a machine the
+        # CLI has never touched — the local estimate needs local numbers to
+        # mean anything. The live account figure stands on its own.
+        if estimated and not has_stats:
+            pass
+        else:
+            percent = min(1.0, used / allow)
+            limits.append(
+                {
+                    "label": "Monthly allowance (est.)"
+                    if estimated
+                    else "Monthly allowance",
+                    "title": "Monthly allowance (est.)"
+                    if estimated
+                    else "Monthly allowance",
+                    "percent": percent,
+                    "resetsAt": resets_at,
+                }
+            )
+
+    return {
+        "limits": limits,
+        "tierLabel": plan_label,
+        "usageStatusText": reason,
+        "authHelpText": AUTH_HELP,
+    }
+
+
+# ------------------------------------------------------------------ record
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    # --force rescans everything and rewrites the cache. --limits-only is kept
+    # for CLI compatibility with the panel's refreshLimits() call: only the
+    # limits probe must be fresh, so it may reuse a scan for far longer than a
+    # normal run, whose short window exists purely to dedup concurrent
+    # collector runs.
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--limits-only", action="store_true")
+    parser.add_argument(
+        "--copilot-home", default=os.environ.get("COPILOT_HOME") or "~/.copilot"
+    )
+    args = parser.parse_args()
+
+    home_dir = expand_path(args.copilot_home)
+    max_age = (
+        0
+        if args.force
+        else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else SCAN_REUSE_SECONDS)
+    )
+    stats = cached_scan(home_dir, max_age)
+
+    config = read_config()
+    now = dt.datetime.now(dt.timezone.utc)
+
+    remote = {"available": False, "reason": "disabled"}
+    if config.get("remote", True) is not False:
+        remote = fetch_remote_quota()
+
+    has_stats = (
+        number(stats.get("totalPrompts")) > 0
+        or float(stats.get("monthCredits") or 0.0) > 0
+    )
+    allowance = allowance_limits(
+        float(stats.get("monthCredits") or 0.0), config, remote, now, has_stats
+    )
+
+    record: dict[str, Any] = {
+        "schemaVersion": 1,
+        "id": AGENT_ID,
+        "name": AGENT_NAME,
+        "updatedAt": now.isoformat(),
+        "ready": number(stats.get("totalPrompts")) > 0 or len(allowance["limits"]) > 0,
+        "hasLocalStats": True,
+        "tierLabel": allowance["tierLabel"],
+        "usageStatusText": allowance["usageStatusText"],
+        "authHelpText": allowance["authHelpText"],
+        "limits": allowance["limits"],
+    }
+    for key in (
+        "todayPrompts",
+        "todaySessions",
+        "todayTotalTokens",
+        "totalPrompts",
+        "totalSessions",
+        "activeDays",
+    ):
+        record[key] = number(stats.get(key))
+    record["todayTokensByModel"] = stats.get("todayTokensByModel") or {}
+    record["recentDays"] = stats.get("recentDays") or []
+    record["modelUsage"] = stats.get("modelUsage") or {}
+    record["activeDates"] = stats.get("activeDates") or []
+    print(json.dumps(record, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
