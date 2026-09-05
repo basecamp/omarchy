@@ -53,6 +53,12 @@ Item {
     return realScreenCount() > 0
   }
 
+  function backgroundFileUrl(path) {
+    if (!path) return ""
+    var encoded = String(path).split("/").map(encodeURIComponent).join("/")
+    return "file://" + encoded + "?v=" + backgroundVersion
+  }
+
   function queueSessionLock() {
     pendingSessionLock = true
     if (!sessionLockStabilizeTimer.running) logEvent("lock-pending: screen-stabilizing")
@@ -372,6 +378,23 @@ Item {
           root.backgroundVersion += 1
         }
       }
+    }
+  }
+
+  // Decode the exact wallpaper size for each active output while unlocked.
+  // A lock surface recreated after system resume can then paint its first
+  // frame from the shared image cache instead of exposing its fallback color.
+  Variants {
+    model: Quickshell.screens
+
+    Image {
+      required property var modelData
+      visible: false
+      asynchronous: true
+      cache: true
+      source: root.backgroundFileUrl(root.backgroundPath)
+      sourceSize.width: Math.max(1, modelData.width)
+      sourceSize.height: Math.max(1, modelData.height)
     }
   }
 

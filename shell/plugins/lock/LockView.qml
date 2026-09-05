@@ -95,8 +95,10 @@ Item {
       anchors.fill: parent
       source: root.loadBackground ? root.fileUrl(root.backgroundPath) : ""
       fillMode: Image.PreserveAspectCrop
-      asynchronous: true
-      cache: false
+      // Service.qml preloads this exact URL and output size while unlocked,
+      // so a recreated lock surface can paint the wallpaper on its first frame.
+      asynchronous: false
+      cache: true
       sourceSize.width: width
       sourceSize.height: height
     }
