@@ -6,12 +6,18 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
 upgrade_to_quattro="$ROOT/bin/omarchy-upgrade-to-quattro"
 
-snapshot_line=$(grep -n '^create_pre_upgrade_snapshot$' "$upgrade_to_quattro" | cut -d: -f1)
+snapshot_line=$(grep -n '^create_pre_upgrade_snapshot ||$' "$upgrade_to_quattro" | cut -d: -f1)
+privilege_line=$(grep -n '^open_privilege_window$' "$upgrade_to_quattro" | cut -d: -f1)
 pacman_line=$(grep -n '^configure_pacman_channel$' "$upgrade_to_quattro" | cut -d: -f1)
-[[ -n $snapshot_line && -n $pacman_line ]] || fail "upgrade snapshot and first mutation calls exist"
+[[ -n $privilege_line && -n $snapshot_line && -n $pacman_line ]] || fail "upgrade privilege, snapshot, and first mutation calls exist"
+(( privilege_line < snapshot_line )) || fail "upgrade snapshot runs after cold sudo invalidation"
 (( snapshot_line < pacman_line )) || fail "upgrade snapshot runs before pacman configuration"
-grep -F 'omarchy-snapshot create || (($? == 127))' "$upgrade_to_quattro" >/dev/null
-pass "Omarchy 4 upgrade snapshots the system before mutation"
+grep -F 'as_root /usr/bin/snapper --csvout list-configs' "$upgrade_to_quattro" >/dev/null
+grep -F 'as_root /usr/bin/snapper -c "$config" create' "$upgrade_to_quattro" >/dev/null
+if grep -F '/usr/bin/omarchy-snapshot' "$upgrade_to_quattro" >/dev/null; then
+  fail "upgrade snapshot does not call a wrapper that may be absent or use ordinary sudo"
+fi
+pass "Omarchy 4 upgrade snapshots through fixed no-update operations before mutation"
 
 # The mirrors are repointed immediately before the keyrings go in, so only a
 # forced refresh replaces the legacy database and its stale checksums.

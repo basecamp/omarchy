@@ -1,11 +1,62 @@
-#!/bin/bash
+#!/bin/bash -p
 
 # omarchy:summary=Upgrade a legacy Omarchy install to the package-backed Omarchy quattro layout.
 # omarchy:args=[--yes] [--reboot] [--dev] [--channel stable|rc|edge] [--user USER]
 # omarchy:examples=omarchy upgrade to quattro | omarchy upgrade to quattro --dev
 # omarchy:requires-sudo=true
 
+# Bash evaluates BASH_ENV and imports exported functions before reading the
+# first script line. Only Bash invoked with -p suppresses both early enough;
+# require it in the interpreter-option position so a hostile BASH_ENV cannot
+# set privileged mode and smuggle an unrelated later "-p" argument through
+# this gate. This bootstrap intentionally remains self-contained: legacy users
+# may stream this upgrader before the shared Omarchy helper library is installed.
+# Never continue or restart from an unsafe interpreter.
+require_privileged_bash_startup() {
+  [[ $- == *p* ]] || return 1
+  /usr/bin/env -i /usr/bin/bash -p -c '
+    [[ $1 =~ ^[1-9][0-9]*$ ]] || exit 1
+    mapfile -d "" -t argv <"/proc/$1/cmdline" || exit 1
+    executable=$(/usr/bin/readlink -e -- "/proc/$1/exe") || exit 1
+    [[ $executable == /usr/bin/bash ]]
+    [[ ${argv[0]:-} == /bin/bash || ${argv[0]:-} == /usr/bin/bash ]]
+    [[ ${argv[1]:-} == -p ]]
+  ' omarchy-bash-startup "$$"
+}
+if ! require_privileged_bash_startup; then
+  /usr/bin/printf '%s\n' 'Error: run this upgrade directly, or invoke it with /usr/bin/bash -p.' >&2
+  /usr/bin/false
+else
+unset -f require_privileged_bash_startup
+# Privileged-shell mode ignores exported functions but leaves their serialized
+# BASH_FUNC_* entries in the environment, where a later packaged #!/bin/bash
+# child would import them. Re-exec only from this already-safe interpreter with
+# those entries removed, preserving every unrelated environment variable.
+if /usr/bin/env -0 | /usr/bin/grep -zq '^BASH_FUNC_.*%%='; then
+  if [[ -z ${BASH_SOURCE[0]:-} || ! -r ${BASH_SOURCE[0]} ]]; then
+    /usr/bin/printf '%s\n' 'Error: exported Bash functions require running this upgrade from its script file.' >&2
+    exit 1
+  fi
+
+  clean_environment=(/usr/bin/env -u BASH_ENV -u ENV)
+  while IFS= read -r -d '' environment_line; do
+    if [[ $environment_line == BASH_FUNC_*%%=* ]]; then
+      clean_environment+=(-u "${environment_line%%=*}")
+    fi
+  done < <(/usr/bin/env -0)
+  exec "${clean_environment[@]}" /usr/bin/bash -p -- "${BASH_SOURCE[0]}" "$@"
+fi
+
+# These startup hooks were ignored by -p; remove them before any child shell.
+unset BASH_ENV ENV
+
 set -euo pipefail
+
+# Caller startup code may execute before this file's first line. Keep command
+# lookup deterministic, and more importantly never publish a reusable sudo
+# timestamp for a pre-existing or newly detached process to consume.
+PATH=/usr/bin:/usr/sbin:/bin:/sbin
+export PATH
 
 usage() {
   cat <<'USAGE'
@@ -13,7 +64,7 @@ Usage: omarchy-upgrade-to-quattro [--yes] [--reboot] [--dev] [--channel stable|r
 
 Upgrade any pre-quattro Omarchy install to the package-backed Omarchy quattro layout.
 This script is intentionally self-contained so it can be shipped as a command
-in Omarchy 3.8.x or run directly with curl | bash on older systems.
+in Omarchy 3.8.x or run with curl | /usr/bin/bash -p on older systems.
 
 Options:
   -y, --yes                 Do not prompt before upgrading
@@ -57,11 +108,11 @@ valid_channel() {
 detect_installed_channel() {
   [[ -f /etc/pacman.d/mirrorlist ]] || return 1
 
-  if grep -q 'https://stable-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+  if /usr/bin/grep -q 'https://stable-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
     echo stable
-  elif grep -q 'https://rc-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+  elif /usr/bin/grep -q 'https://rc-mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
     echo rc
-  elif grep -q 'https://mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
+  elif /usr/bin/grep -q 'https://mirror.omarchy.org/' /etc/pacman.d/mirrorlist; then
     echo edge
   else
     return 1
@@ -147,11 +198,11 @@ if { [[ -n $channel_override ]] || (( channel_override_cli )); } && ! valid_chan
   fail "Invalid channel '$channel_override'. Use stable, rc, or edge."
 fi
 
-if ! command -v pacman >/dev/null 2>&1; then
+if [[ ! -x /usr/bin/pacman ]]; then
   fail "This upgrade is only supported on Arch/Omarchy systems with pacman."
 fi
 
-if ! command -v sudo >/dev/null 2>&1 && (( EUID != 0 )); then
+if [[ ! -x /usr/bin/sudo ]] && (( EUID != 0 )); then
   fail "sudo is required when not running as root."
 fi
 
@@ -159,7 +210,7 @@ if [[ -z $target_user ]]; then
   if (( EUID == 0 )); then
     target_user="${SUDO_USER:-}"
   else
-    target_user="${USER:-$(id -un)}"
+    target_user="${USER:-$(/usr/bin/id -un)}"
   fi
 fi
 
@@ -167,38 +218,42 @@ if [[ -z $target_user || $target_user == root ]]; then
   fail "Could not determine the non-root Omarchy user. Re-run with --user USER."
 fi
 
-if ! getent passwd "$target_user" >/dev/null; then
+if ! /usr/bin/getent passwd "$target_user" >/dev/null; then
   fail "User '$target_user' does not exist."
 fi
 
-target_home=$(getent passwd "$target_user" | cut -d: -f6)
+target_home=$(/usr/bin/getent passwd "$target_user" | /usr/bin/cut -d: -f6)
 [[ -n $target_home && -d $target_home ]] || fail "Home directory for '$target_user' was not found."
-target_uid=$(id -u "$target_user")
+target_uid=$(/usr/bin/id -u "$target_user")
 target_runtime_dir="/run/user/$target_uid"
+trusted_package_path="/usr/share/omarchy/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin"
 package_path="/usr/share/omarchy/bin:/usr/local/bin:/usr/bin:/bin:$target_home/.local/bin"
 
 as_root() {
+  if (( privilege_boundary_crossed )); then
+    fail "Internal error: privileged work was attempted after the user-code boundary."
+  fi
+
   if (( EUID == 0 )); then
     "$@"
   else
-    sudo "$@"
+    # --no-update authorizes this command without publishing a reusable
+    # timestamp to the invoking user or any detached sibling process.
+    /usr/bin/sudo -N -- "$@"
   fi
 }
 
 run_as_user() {
   if (( EUID == 0 )); then
-    if command -v sudo >/dev/null 2>&1; then
-      sudo -u "$target_user" -H "$@"
-    else
-      runuser -u "$target_user" -- "$@"
-    fi
+    /usr/bin/runuser -u "$target_user" -- /usr/bin/env \
+      HOME="$target_home" USER="$target_user" LOGNAME="$target_user" "$@"
   else
     "$@"
   fi
 }
 
 run_as_user_session() {
-  run_as_user env \
+  run_as_user /usr/bin/env \
     HOME="$target_home" \
     USER="$target_user" \
     LOGNAME="$target_user" \
@@ -213,12 +268,15 @@ run_as_user_session() {
 # Run an Omarchy command as the user with the package-backed paths, without
 # assuming a live session. Extra NAME=VALUE args extend the environment.
 run_as_user_omarchy() {
-  run_as_user env \
+  local command_path="$package_path"
+  [[ ${OMARCHY_TRUSTED_COMMAND_PATH:-0} == 1 ]] && command_path="$trusted_package_path"
+
+  run_as_user /usr/bin/env \
     HOME="$target_home" \
     USER="$target_user" \
     LOGNAME="$target_user" \
     OMARCHY_PATH=/usr/share/omarchy \
-    PATH="$package_path" \
+    PATH="$command_path" \
     "$@"
 }
 
@@ -247,14 +305,14 @@ mark_packages_explicit() {
 }
 
 target_hyprland_pid() {
-  pgrep -u "$target_uid" -x Hyprland 2>/dev/null | head -n1 || true
+  /usr/bin/pgrep -u "$target_uid" -x Hyprland 2>/dev/null | /usr/bin/head -n1 || true
 }
 
 target_process_env() {
   local name="$1" pid value
   pid=$(target_hyprland_pid)
   [[ -n $pid && -r /proc/$pid/environ ]] || return 1
-  value=$(tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | awk -v name="$name" '
+  value=$(/usr/bin/tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | /usr/bin/awk -v name="$name" '
     BEGIN { prefix = name "=" }
     index($0, prefix) == 1 { print substr($0, length(prefix) + 1); exit }
   ' || true)
@@ -281,7 +339,7 @@ discover_wayland_display() {
   fi
 
   local candidates=()
-  mapfile -t candidates < <(find "$target_runtime_dir" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' 2>/dev/null || true)
+  mapfile -t candidates < <(/usr/bin/find "$target_runtime_dir" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' 2>/dev/null || true)
   (( ${#candidates[@]} == 1 )) || return 1
   printf '%s\n' "${candidates[0]}"
 }
@@ -306,7 +364,7 @@ discover_hyprland_signature() {
   fi
 
   local candidates=()
-  mapfile -t candidates < <(find "$target_runtime_dir/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null || true)
+  mapfile -t candidates < <(/usr/bin/find "$target_runtime_dir/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null || true)
   (( ${#candidates[@]} == 1 )) || return 1
   printf '%s\n' "${candidates[0]}"
 }
@@ -347,23 +405,60 @@ Make sure you have a backup.
 
 EOF
 
-  gum confirm "Continue with upgrade?" </dev/tty || exit 0
+  /usr/bin/gum confirm "Continue with upgrade?" </dev/tty || exit 0
 fi
 
-sudo_keepalive_pid=""
+privilege_boundary_crossed=0
 hyprland_config_reload_suppressed=0
 upgrade_started=0
 upgrade_completed=0
 
+open_privilege_window() {
+  (( ! privilege_boundary_crossed )) || fail "Internal error: sudo cannot be reopened after the user-code boundary."
+
+  [[ -x /usr/bin/sudo ]] || (( EUID == 0 )) || fail "sudo is required when not running as root."
+  if (( EUID == 0 )); then
+    [[ ! -x /usr/bin/sudo ]] ||
+      /usr/bin/runuser -u "$target_user" -- /usr/bin/sudo -k ||
+      fail "Could not invalidate the target user's existing sudo timestamp."
+    return 0
+  fi
+
+  /usr/bin/sudo -k || fail "Could not invalidate the existing sudo timestamp."
+  LC_ALL=C /usr/bin/sudo -h 2>&1 | /usr/bin/grep -Eq '^usage: sudo .*\[[^]]*N[^]]*\]' ||
+    fail "This sudo does not support --no-update; refusing to publish a reusable credential."
+}
+
+close_privilege_window() {
+  local invalidation_status=0
+
+  (( ! privilege_boundary_crossed )) || return 0
+
+  # Defense in depth: no command above updates a timestamp, but invalidate the
+  # desktop user's ticket again before any user-controlled upgrade step.
+  if [[ -x /usr/bin/sudo ]]; then
+    if (( EUID == 0 )); then
+      /usr/bin/runuser -u "$target_user" -- /usr/bin/sudo -k || invalidation_status=$?
+    else
+      /usr/bin/sudo -k || invalidation_status=$?
+    fi
+  fi
+
+  ((invalidation_status == 0)) || return "$invalidation_status"
+  privilege_boundary_crossed=1
+}
+
 cleanup_on_exit() {
   local exit_status=$?
 
-  if (( hyprland_config_reload_suppressed )); then
-    restore_hyprland_config_reload >/dev/null 2>&1 || true
-  fi
+  # Revoke sudo before any best-effort session/user cleanup. This also covers
+  # failures and signals in the privileged phase, and invalidates a credential
+  # that predated this invocation. If
+  # invalidation itself fails, do not cross into user-controlled cleanup code.
+  close_privilege_window >/dev/null 2>&1 || true
 
-  if [[ -n ${sudo_keepalive_pid:-} ]]; then
-    kill "$sudo_keepalive_pid" 2>/dev/null || true
+  if (( privilege_boundary_crossed && hyprland_config_reload_suppressed )); then
+    restore_hyprland_config_reload >/dev/null 2>&1 || true
   fi
 
   # set -e aborts without a word, and the last thing on screen is a green
@@ -378,13 +473,7 @@ cleanup_on_exit() {
 }
 trap cleanup_on_exit EXIT
 
-if (( EUID != 0 )); then
-  sudo -v
-  while true; do sudo -n true; sleep 60; done 2>/dev/null &
-  sudo_keepalive_pid=$!
-fi
-
-backup_suffix=$(date +%Y%m%d%H%M%S)
+backup_suffix=$(/usr/bin/date +%Y%m%d%H%M%S)
 
 configure_pacman_channel() {
   log "Configuring Omarchy pacman repositories ($channel)"
@@ -658,19 +747,36 @@ configure_lock_authentication() {
   [[ -n $apply_lock ]] || fail "Neither omarchy-apply-lock nor omarchy-setup-lock is available under /usr/share/omarchy/bin; lock screen authentication could not be configured."
 
   log "Configuring lock screen authentication"
-  as_root env \
+  as_root /usr/bin/env \
     OMARCHY_INSTALL_USER="$target_user" \
     OMARCHY_PATH=/usr/share/omarchy \
-    PATH="$package_path" \
+    PATH="$trusted_package_path" \
     "$apply_lock"
 }
 
 create_pre_upgrade_snapshot() {
-  # 127 means Snapper is deliberately absent. Any other failure already said
-  # what went wrong, and a missing snapshot is not worth blocking the upgrade
-  # over, but it must not pass for one either.
-  omarchy-snapshot create || (($? == 127)) ||
-    echo -e "\e[33mContinuing the upgrade without a snapshot.\e[0m" >&2
+  local configs_output config
+  local -a configs=()
+
+  [[ -x /usr/bin/snapper ]] || return 127
+
+  # Do not execute the legacy, user-owned Omarchy tree or the newer
+  # omarchy-snapshot wrapper here. Keep the pre-mutation snapshot entirely in
+  # fixed system paths and authorize each root operation without publishing a
+  # reusable sudo timestamp.
+  configs_output=$(as_root /usr/bin/snapper --csvout list-configs) || return 1
+  mapfile -t configs < <(/usr/bin/printf '%s\n' "$configs_output" | /usr/bin/awk -F, 'NR > 1 { print $1 }')
+
+  if ((${#configs[@]} == 0)); then
+    warn "No Snapper configs found, so no pre-upgrade snapshot was created."
+    return 0
+  fi
+
+  log "Creating pre-upgrade system snapshot"
+  for config in "${configs[@]}"; do
+    as_root /usr/bin/snapper -c "$config" create -c number -d "Omarchy pre-Quattro upgrade" || return 1
+    as_root /usr/bin/snapper -c "$config" cleanup number || return 1
+  done
 }
 
 remove_conflicting_legacy_packages() {
@@ -1092,7 +1198,9 @@ cleanup_retired_services() {
   done
   as_root systemctl disable systemd-networkd-wait-online.service >/dev/null 2>&1 || true
   as_root systemctl mask systemd-networkd-wait-online.service >/dev/null 2>&1 || true
+}
 
+cleanup_retired_user_services() {
   cleanup_retired_user_unit_files
   if [[ -S $target_runtime_dir/bus ]]; then
     run_as_user_session systemctl --user disable "${retired_user_units[@]}" >/dev/null 2>&1 || true
@@ -1123,19 +1231,16 @@ run_as_user_wayland_session() {
 }
 
 run_hyprctl_session() {
-  local hyprctl_bin
-  hyprctl_bin=/usr/bin/hyprctl
-  [[ -x $hyprctl_bin ]] || hyprctl_bin=$(command -v hyprctl || true)
-  [[ -n $hyprctl_bin ]] || return 1
+  [[ -x /usr/bin/hyprctl ]] || return 1
 
-  run_as_user_wayland_session "$hyprctl_bin" "$@"
+  run_as_user_wayland_session /usr/bin/hyprctl "$@"
 }
 
 suppress_hyprland_config_reload() {
   # Say so up front when the session cannot be reached at all. Otherwise this
   # silently does nothing and the only evidence is the config error bar that
   # shows up minutes later.
-  if ! run_as_user_wayland_session true >/dev/null 2>&1; then
+  if ! run_as_user_wayland_session /usr/bin/true >/dev/null 2>&1; then
     warn "Could not reach the live Hyprland session; it will report config errors during the swap, and the Omarchy shell will start after reboot."
     return 0
   fi
@@ -1193,10 +1298,11 @@ run_post_upgrade_migrations() {
   local pending_status
 
   log "Running Omarchy migrations"
-  if ! run_as_user_omarchy OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 omarchy-migrate; then
+  [[ -x /usr/share/omarchy/bin/omarchy-migrate ]] || fail "The packaged Omarchy migration command is unavailable."
+  if ! OMARCHY_TRUSTED_COMMAND_PATH=1 run_as_user_omarchy OMARCHY_UPGRADE_TO_QUATTRO_LIVE=1 omarchy-migrate; then
     fail "Omarchy migrations did not complete. Fix the error above and rerun the upgrade before rebooting."
   fi
-  if run_as_user_omarchy omarchy-migrate --pending >/dev/null; then
+  if OMARCHY_TRUSTED_COMMAND_PATH=1 run_as_user_omarchy omarchy-migrate --pending >/dev/null; then
     fail "Omarchy migrations are still pending. Rerun the upgrade before rebooting."
   else
     pending_status=$?
@@ -1236,30 +1342,61 @@ run_final_system_package_upgrade() {
     --overwrite '/usr/share/sddm/themes/omarchy/*'
 }
 
-run_post_upgrade_update_steps() {
-  local update_output update_status
+run_cold_aur_update() {
+  local aur_update_bin=/usr/share/omarchy/bin/omarchy-update-aur-pkgs
+  local sudo_wrapper_dir=/usr/share/omarchy/default/omarchy/sudo-no-update
 
-  if PATH="$package_path" command -v omarchy-update-aur-pkgs >/dev/null 2>&1; then
-    if ! run_as_user_omarchy omarchy-update-aur-pkgs; then
+  # Build scripts are user-controlled. Yay may still request a visible package
+  # installation authorization, but its fixed sudo wrapper uses --no-update so
+  # neither the build nor a detached child receives a reusable timestamp.
+  if [[ -x $aur_update_bin ]]; then
+    if [[ ! -x $sudo_wrapper_dir/sudo ]]; then
+      warn "Command-scoped sudo support is unavailable; skipping AUR updates until after reboot."
+    elif ! run_as_user_omarchy \
+      PATH="$sudo_wrapper_dir:$package_path" \
+      OMARCHY_SUDO_NO_UPDATE=1 \
+      "$aur_update_bin"; then
       warn "Could not update AUR packages; running omarchy-update after reboot may still update AUR packages."
     fi
   fi
+}
 
-  if PATH="$package_path" command -v omarchy-update-mise >/dev/null 2>&1; then
-    if ! run_as_user_omarchy omarchy-update-mise; then
+run_post_upgrade_update_steps() {
+  local mise_update_bin=/usr/share/omarchy/bin/omarchy-update-mise
+  local update_available_bin=/usr/share/omarchy/bin/omarchy-update-available
+  local update_output update_status
+
+  if [[ -x $mise_update_bin ]]; then
+    if ! run_as_user_omarchy "$mise_update_bin"; then
       warn "Could not update mise tools; running omarchy-update after reboot may still update mise-managed tools."
     fi
   fi
 
-  if PATH="$package_path" command -v omarchy-update-available >/dev/null 2>&1; then
+  if [[ -x $update_available_bin ]]; then
     log "Refreshing update indicator state"
     update_status=0
-    update_output=$(run_as_user_omarchy omarchy-update-available 2>&1) || update_status=$?
+    update_output=$(run_as_user_omarchy "$update_available_bin" 2>&1) || update_status=$?
 
     if (( update_status == 0 )); then
       warn "Updates are still available after the upgrade; run omarchy-update after reboot:"
       printf '%s\n' "$update_output" >&2
     fi
+  fi
+}
+
+request_reboot() {
+  # This is deliberately a direct systemd/logind request, never a new sudo
+  # authentication after running migrations, mise, theme hooks, and other
+  # user-controlled code. An already-root invocation stays root; it has no
+  # target-user credential to publish and remains reliable when headless.
+  /usr/bin/systemctl reboot
+}
+
+confirm_reboot() {
+  if (( EUID == 0 )); then
+    run_as_user /usr/bin/gum confirm "$1"
+  else
+    /usr/bin/gum confirm "$1"
   fi
 }
 
@@ -1287,8 +1424,8 @@ apply_firewall_defaults() {
   fi
 
   log "Applying Omarchy firewall defaults"
-  as_root env OMARCHY_PATH=/usr/share/omarchy PATH="$package_path" \
-    bash -euo pipefail "$firewall_script" ||
+  as_root /usr/bin/env OMARCHY_PATH=/usr/share/omarchy PATH="$trusted_package_path" \
+    /usr/bin/bash -euo pipefail "$firewall_script" ||
     warn "Could not apply firewall defaults; run 'sudo bash $firewall_script' after reboot."
 }
 
@@ -2342,15 +2479,19 @@ refresh_current_theme_after_upgrade() {
     warn "Could not apply browser theme colour. Run 'omarchy theme set \"$theme_name\"' after reboot if Chromium's theme looks stale."
 }
 
-# Everything below mutates the system, so a non-zero exit from here on leaves a
-# half-upgraded machine that must not be rebooted.
+# Everything below begins the upgrade lifecycle. Suppress live Hyprland reloads
+# before anything touches the legacy config
+# trees. This path executes only fixed /usr/bin session plumbing and hyprctl,
+# before any sudo credential exists.
 upgrade_started=1
-
-# Suppress live Hyprland reloads before anything touches the legacy config
-# trees; the swap windows otherwise surface transient "source= globbing error"
-# popups in the running session.
 suppress_hyprland_config_reload
-create_pre_upgrade_snapshot
+
+# Cold-invalidate any older ticket, then authorize each trusted system/package
+# command with sudo --no-update. No reusable credential exists at any point,
+# even if caller startup code already spawned a detached waiter.
+open_privilege_window
+create_pre_upgrade_snapshot ||
+  warn "Continuing the upgrade without a pre-upgrade snapshot."
 configure_pacman_channel
 install_keyrings
 remove_legacy_installer_package
@@ -2363,19 +2504,31 @@ preserve_kernel_cmdline_root
 configure_snapper_policy
 configure_lock_authentication
 migrate_1password_beta_package
-cleanup_legacy_user_paths
 apply_system_transition
+cleanup_retired_services
+remove_retired_default_packages
+run_final_system_package_upgrade
+
+# This is the irreversible trust boundary. The already-cold target user's
+# fixed-path sudo timestamp is invalidated again before user-controlled code.
+# No call below may use as_root or publish a reusable sudo timestamp. Packaged
+# migrations may authenticate only through their fixed sudo --no-update shim.
+close_privilege_window || fail "Could not invalidate sudo before running user upgrade steps."
+
+cleanup_legacy_user_paths
 apply_user_transition
 apply_user_hardware_transition
 run_as_user_omarchy omarchy-refresh-applications ||
   warn "Could not refresh application launchers; run 'omarchy refresh applications' after reboot."
 run_as_user_omarchy omarchy-bar defaults ||
   warn "Could not restore the default bar widgets; run 'omarchy bar defaults' after reboot."
-cleanup_retired_services
+cleanup_retired_user_services
 ensure_sleep_lock_service
-remove_retired_default_packages
-run_final_system_package_upgrade
+# omarchy-migrate starts from another fixed-path sudo -k and routes any
+# migration authentication through sudo --no-update, preserving chronological
+# migration order without publishing a ticket to earlier migrations.
 run_post_upgrade_migrations
+run_cold_aur_update
 run_post_upgrade_update_steps
 refresh_current_theme_after_upgrade
 # Do not force-reload Hyprland in the live upgraded session. The legacy
@@ -2396,9 +2549,10 @@ if (( boot_cmdline_unsafe )); then
   warn "Skipping reboot: root= could not be confirmed in the boot entries. Repair the kernel cmdline (see the warnings above) before rebooting, or the system will drop to an emergency shell."
 elif (( auto_reboot )); then
   log "Rebooting because --reboot was passed"
-  as_root systemctl reboot
-elif gum confirm "Reboot to complete Quattro upgrade now?" </dev/tty; then
-  as_root systemctl reboot
+  request_reboot
+elif confirm_reboot "Reboot to complete Quattro upgrade now?" </dev/tty; then
+  request_reboot
 else
   echo "Not rebooting. Please reboot manually after confirming there were no errors."
+fi
 fi
