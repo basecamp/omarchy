@@ -36,44 +36,171 @@ assert(scanRestart, 'network has the deferred scan restart timer')
 assert(/root\.opened/.test(scanRestart[0]), 'network re-checks the panel before the deferred restart re-enables scanning')
 assert(/scanRestart\.stop\(\)/.test(panelSource), 'network cancels a pending scan restart when the panel closes')
 
-// scannerEnabled lives on a shared WifiDevice with no reference counting, so
-// the panel has to own what it enabled. Run the helper's own JavaScript against
-// stand-in devices: the two invariants it carries are that a closed panel never
-// takes a device, and that adopting a new one releases the previous.
+// scannerEnabled is a plain shared bool on a WifiDevice, and this widget is
+// instantiated once per monitor, so ownership is reference counted in
+// Scanner.js. Load that module the way the QML engine does -- one shared scope
+// for every instance -- and drive it with stand-in panels and devices.
+const scannerSource = fs.readFileSync(root + '/shell/plugins/panels/network/Scanner.js', 'utf8')
+assert(/^\.pragma library/m.test(scannerSource), 'network scanner claims share one engine-wide scope')
+
+function loadScanner() {
+  const body = scannerSource.replace(/^\.pragma library/m, '')
+  return new Function(body + '\nreturn { acquire, release, claimCount, sweep }')()
+}
+
 const scannerHelper = panelSource.match(/function setScannerEnabled\(enabled\) \{[\s\S]*?\n {2}\}/)
 assert(scannerHelper, 'network has a scanner ownership helper')
+assert(/Scanner\.acquire\(root,/.test(scannerHelper[0]), 'network claims the scanner through the reference-counted registry')
 
-var opened = false
-var wifiDevice = { scannerEnabled: false }
-var scannerDevice = null
-eval(scannerHelper[0])
+// Bind the helper's free variables explicitly rather than leaking a `root`
+// into this scope, so the panel under test is the stand-in and not the suite.
+function bindSetScannerEnabled(Scanner, panel, opened, wifiDevice, scanPulsed, scanPulseActive) {
+  // A claim counts only while its owner reports itself open, so the stand-in
+  // has to carry the same state the helper is being handed. scanPulsed defaults
+  // to false, which is the shipped default (scanHoldSec 0) and the behaviour
+  // every case below this one asserts.
+  panel.opened = opened
+  return new Function(
+    'Scanner', 'root', 'opened', 'wifiDevice', 'scanPulsed', 'scanPulseActive',
+    scannerHelper[0] + '\nreturn setScannerEnabled'
+  )(Scanner, panel, opened, wifiDevice, !!scanPulsed, !!scanPulseActive)
+}
 
-setScannerEnabled(true)
+// A closed panel must never claim the scanner, whatever it asks for.
+var Scanner = loadScanner()
+const closedPanel = { name: 'closed' }
+const idleDevice = { scannerEnabled: false }
+bindSetScannerEnabled(Scanner, closedPanel, false, idleDevice)(true)
 assert(
-  scannerDevice === null && wifiDevice.scannerEnabled === false,
+  idleDevice.scannerEnabled === false && Scanner.claimCount(idleDevice) === 0,
   'network does not let a closed panel claim or enable a scanner device'
 )
 
-var previousScannerDevice = { scannerEnabled: true }
-var replacementScannerDevice = { scannerEnabled: false }
-opened = true
-scannerDevice = previousScannerDevice
-wifiDevice = replacementScannerDevice
-setScannerEnabled(true)
+// Adopting a replacement device must release the one left behind.
+Scanner = loadScanner()
+const openPanel = { name: 'open' }
+const previousScannerDevice = { scannerEnabled: false }
+const replacementScannerDevice = { scannerEnabled: false }
+bindSetScannerEnabled(Scanner, openPanel, true, previousScannerDevice)(true)
+bindSetScannerEnabled(Scanner, openPanel, true, replacementScannerDevice)(true)
 assert(
   previousScannerDevice.scannerEnabled === false &&
-    scannerDevice === replacementScannerDevice &&
-    replacementScannerDevice.scannerEnabled === true,
+    replacementScannerDevice.scannerEnabled === true &&
+    Scanner.claimCount(previousScannerDevice) === 0,
   'network releases the previous scanner device before enabling its replacement'
 )
+
+// Closing releases: the same panel asking with opened=false drops its claim.
+bindSetScannerEnabled(Scanner, openPanel, false, replacementScannerDevice)(false)
+assert(
+  replacementScannerDevice.scannerEnabled === false &&
+    Scanner.claimCount(replacementScannerDevice) === 0,
+  'network releases the scanner when its panel closes'
+)
+
+// The bug this reference counting exists for: one panel per monitor sharing a
+// device. Whoever closes first must not stop the scan the other is watching,
+// and the last one out must stop it. Without counting, either the scanner dies
+// under an open panel or it runs on forever behind a closed one.
+Scanner = loadScanner()
+var sharedDevice = { scannerEnabled: false }
+var panelA = { name: 'a', opened: true }
+var panelB = { name: 'b', opened: true }
+Scanner.acquire(panelA, sharedDevice)
+Scanner.acquire(panelB, sharedDevice)
+Scanner.release(panelA)
+assert(sharedDevice.scannerEnabled === true, 'network keeps scanning while another monitor still has the panel open')
+Scanner.release(panelB)
+assert(sharedDevice.scannerEnabled === false, 'network stops scanning once the last open panel lets go')
+
+// Releasing twice must not disturb a claim someone else has since taken.
+Scanner.release(panelB)
+Scanner.acquire(panelA, sharedDevice)
+Scanner.release(panelB)
+assert(sharedDevice.scannerEnabled === true, 'network ignores a repeated release from an instance holding no claim')
+Scanner.release(panelA)
+
+// A device destroyed underneath a live claim throws on property access rather
+// than reading back null; releasing it must not take the shell down with it.
+Scanner = loadScanner()
+var destroyedDevice = {
+  get scannerEnabled() { throw new TypeError('Cannot read property of null') },
+  set scannerEnabled(value) { throw new TypeError('Cannot write property of null') }
+}
+Scanner.acquire(panelA, destroyedDevice)
+Scanner.release(panelA)
+pass('network survives releasing a device that was destroyed underneath it')
 
 // Destruction is the case a guard-only fix misses: the widget dies with the
 // panel still open, as a bar reload does, and nothing else would release it.
 assert(
-  /Component\.onDestruction[\s\S]{0,140}scannerDevice\.scannerEnabled = false/.test(panelSource),
+  /Component\.onDestruction: Scanner\.release\(root\)/.test(panelSource),
   'network releases the scanner it owns when the widget is destroyed'
 )
-assert(!/wifiDevice\.scannerEnabled\s*=/.test(panelSource), 'network writes scanner state through its owned device reference rather than the moving wifiDevice reference')
+assert(!/wifiDevice\.scannerEnabled\s*=/.test(panelSource), 'network writes scanner state through the registry rather than the moving wifiDevice reference')
+
+// A claim is only as good as its owner. An instance that dies without its
+// release running, or one whose release is simply missed, must not be able to
+// pin the scanner on -- that is the exact failure #7896 describes.
+Scanner = loadScanner()
+const abandonedDevice = { scannerEnabled: false }
+const doomedPanel = { opened: true }
+Scanner.acquire(doomedPanel, abandonedDevice)
+assert(abandonedDevice.scannerEnabled === true, 'network scans while an open panel holds the claim')
+
+// Destroyed: property access throws rather than reading back null.
+Object.defineProperty(doomedPanel, 'opened', {
+  get() { throw new TypeError('Cannot read property of null') },
+  configurable: true
+})
+Scanner.sweep(abandonedDevice)
+assert(
+  abandonedDevice.scannerEnabled === false && Scanner.claimCount(abandonedDevice) === 0,
+  'network drops the claim of an owner destroyed without releasing'
+)
+
+// Closed but never released: same outcome, without the destruction.
+Scanner = loadScanner()
+const forgottenDevice = { scannerEnabled: false }
+const forgottenPanel = { opened: true }
+Scanner.acquire(forgottenPanel, forgottenDevice)
+forgottenPanel.opened = false
+Scanner.sweep(forgottenDevice)
+assert(forgottenDevice.scannerEnabled === false, 'network drops a claim whose panel closed without releasing')
+
+// A device enabled out of band with nothing claiming it must still be driven
+// off -- releasing alone never touches a device the registry has no claim for.
+Scanner = loadScanner()
+const strayDevice = { scannerEnabled: true }
+Scanner.sweep(strayDevice)
+assert(strayDevice.scannerEnabled === false, 'network turns off a scanner nothing is claiming')
+
+// The sweep must not be indiscriminate: a live open panel keeps its scan.
+Scanner = loadScanner()
+const sharedLive = { scannerEnabled: false }
+const stillOpen = { opened: true }
+const alsoDead = { opened: true }
+Scanner.acquire(stillOpen, sharedLive)
+Scanner.acquire(alsoDead, sharedLive)
+Object.defineProperty(alsoDead, 'opened', {
+  get() { throw new TypeError('Cannot read property of null') },
+  configurable: true
+})
+Scanner.sweep(sharedLive)
+assert(
+  sharedLive.scannerEnabled === true && Scanner.claimCount(sharedLive) === 1,
+  'network sweeps the dead owner but keeps scanning for the open one'
+)
+
+// The scanner is shared mutable state on a long-lived device, so a missed
+// release must not be able to leave the radio scanning indefinitely.
+const scannerReconcile = panelSource.match(/Timer \{\s*interval: 30000[\s\S]*?\n {2}\}/)
+assert(scannerReconcile, 'network re-asserts scanner state on a timer so a stale claim cannot persist')
+assert(/running: true/.test(scannerReconcile[0]), 'network runs the scanner reconcile whether or not its panel is open')
+assert(/Scanner\.sweep\(root\.wifiDevice\)/.test(scannerReconcile[0]), 'network sweeps dead claims on reconcile rather than only re-asserting its own')
+// Reconciling inside the deferred-restart window would re-enable the scanner
+// early and undo the deferral that keeps panel opening off the AP flood.
+assert(/if \(scanRestart\.running\) return/.test(scannerReconcile[0]), 'network skips reconciling while a deferred scan restart is pending')
 
 // A row is a primitive snapshot that can outlive its WifiNetwork, and
 // disconnect() falls back to the live connection when handed null, so row
@@ -293,4 +420,69 @@ assertDeepEqual(
 
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
+
+// scanHoldSec turns the claim into a pulse. The point of the setting is that a
+// panel can be open without the radio being off-channel, so an open panel with
+// no pulse running must not claim -- the case that is a plain bug when the
+// setting is off.
+Scanner = loadScanner()
+const heldDevice = { scannerEnabled: false }
+const heldPanel = { name: 'held' }
+bindSetScannerEnabled(Scanner, heldPanel, true, heldDevice, true, false)(true)
+assert(
+  heldDevice.scannerEnabled === false && Scanner.claimCount(heldDevice) === 0,
+  'network does not claim the scanner for an open panel once its pulse has expired'
+)
+
+Scanner = loadScanner()
+const pulsingDevice = { scannerEnabled: false }
+const pulsingPanel = { name: 'pulsing' }
+bindSetScannerEnabled(Scanner, pulsingPanel, true, pulsingDevice, true, true)(true)
+assert(
+  pulsingDevice.scannerEnabled === true && Scanner.claimCount(pulsingDevice) === 1,
+  'network claims the scanner while a pulse is live'
+)
+
+// A pulse cannot resurrect a closed panel's claim either.
+Scanner = loadScanner()
+const closedPulseDevice = { scannerEnabled: false }
+bindSetScannerEnabled(Scanner, { name: 'closed-pulse' }, false, closedPulseDevice, true, true)(true)
+assert(
+  closedPulseDevice.scannerEnabled === false && Scanner.claimCount(closedPulseDevice) === 0,
+  'network keeps a closed panel from claiming even with a pulse marked live'
+)
+
+// The defaults have to reproduce the old behaviour exactly, or this setting is
+// a silent regression for everyone who never sets it.
+const networkManifest = JSON.parse(fs.readFileSync(root + '/shell/plugins/panels/network/manifest.json', 'utf8'))
+assertEqual(networkManifest.barWidget.defaults.scanOnOpen, true, 'network still scans on open by default')
+assertEqual(networkManifest.barWidget.defaults.scanHoldSec, 0, 'network still holds the scanner while open by default')
+assert(
+  /settings\.scanOnOpen/.test(panelSource) && /settings\.scanHoldSec/.test(panelSource),
+  'network reads both scan settings from its widget config'
+)
+assert(
+  /refresh\(scanOnOpen\)/.test(panelSource),
+  'network routes the panel-open scan through the scanOnOpen setting'
+)
+
+// A scan the panel no longer starts on its own needs something to press, and
+// the keyboard path alone leaves mouse users with no way to rescan at all.
+assert(/id: rescanAction/.test(panelSource), 'network offers a rescan button in the panel header')
+const rescanButton = panelSource.match(/Button \{\s*\n\s*id: rescanAction[\s\S]*?\n {10}\}/)
+assert(rescanButton, 'network rescan button is a complete header action')
+assert(/onClicked: root\.refresh\(true\)/.test(rescanButton[0]), 'network rescan button starts a real sweep')
+assert(/visible: root\.canRescanWifi/.test(rescanButton[0]), 'network shows the rescan button whenever there is a radio to scan with')
+assert(/tooltipText:[^\n]*\(r\)/.test(rescanButton[0]), 'network rescan button names its keyboard shortcut')
+
+const activateHeaderFn = panelSource.match(/function activateHeader\(\)[\s\S]*?\n {2}\}/)
+assert(activateHeaderFn, 'network has an activateHeader dispatcher')
+assert(
+  /headerIndex === rescanHeaderIndex\) refresh\(true\)/.test(activateHeaderFn[0]),
+  'network keyboard-activates the rescan header action'
+)
+assert(
+  /headerActionCount:[^\n]*canRescanWifi/.test(panelSource),
+  'network counts the rescan action so header navigation can reach it'
+)
 JS

@@ -7,6 +7,7 @@ import Quickshell.Networking
 import qs.Ui
 import qs.Commons
 import "Model.js" as Model
+import "Scanner.js" as Scanner
 
 Panel {
   id: root
@@ -130,10 +131,18 @@ Panel {
   // radio to switch. On a wired box it would otherwise sit there reading
   // "off" beside a perfectly live Ethernet connection.
   readonly property bool canToggleWifi: networkManagerAvailable && wifiStationAvailable
-  readonly property int qrHeaderIndex: canShareWifi ? 0 : -1
-  readonly property int speedHeaderIndex: canRunSpeedTest ? (canShareWifi ? 1 : 0) : -1
-  readonly property int toggleHeaderIndex: canToggleWifi ? (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) : -1
-  readonly property int headerActionCount: (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  // Rescanning has to be reachable without a keyboard, and `r` has to be
+  // discoverable at all: a scan the panel no longer starts on its own is only
+  // useful if there is something to press. The action exists whenever there is
+  // a radio to scan with, independently of the scan settings, so the mouse
+  // path does not disappear on the default configuration.
+  readonly property bool canRescanWifi: networkManagerAvailable && wifiStationAvailable
+  readonly property int rescanHeaderIndex: canRescanWifi ? 0 : -1
+  readonly property int qrHeaderIndex: canShareWifi ? (canRescanWifi ? 1 : 0) : -1
+  readonly property int speedHeaderIndex: canRunSpeedTest ? (canRescanWifi ? 1 : 0) + (canShareWifi ? 1 : 0) : -1
+  readonly property int toggleHeaderIndex: canToggleWifi ? (canRescanWifi ? 1 : 0) + (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) : -1
+  readonly property int headerActionCount: (canRescanWifi ? 1 : 0) + (canShareWifi ? 1 : 0) + (canRunSpeedTest ? 1 : 0) + (canToggleWifi ? 1 : 0)
+  readonly property bool rescanHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === rescanHeaderIndex
   readonly property bool qrHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === qrHeaderIndex
   readonly property bool speedHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === speedHeaderIndex
   readonly property bool toggleHeaderHasCursor: cursorActive && focusSection === "header" && headerIndex === toggleHeaderIndex
@@ -225,7 +234,8 @@ Panel {
   }
 
   function activateHeader() {
-    if (headerIndex === qrHeaderIndex) summonWifiQr()
+    if (headerIndex === rescanHeaderIndex) refresh(true)
+    else if (headerIndex === qrHeaderIndex) summonWifiQr()
     else if (headerIndex === speedHeaderIndex) summonSpeedTest()
     else if (headerIndex === toggleHeaderIndex) toggleNetwork()
   }
@@ -294,34 +304,102 @@ Panel {
   readonly property color hoverFill: bar ? Style.hoverFillFor(bar.foreground, Color.accent) : "transparent"
   readonly property color selectedFill: bar ? Style.selectedFillFor(bar.foreground, Color.accent) : "transparent"
 
-  // scannerEnabled lives on the shared WifiDevice, which has no reference
-  // counting, and a bar widget is instantiated once per monitor. Tracking the
-  // device this instance turned scanning on for keeps the release correct when
-  // the panel closes, the device is replaced, or the widget is destroyed —
-  // without a closed instance ever claiming the scanner.
-  property var scannerDevice: null
+  // scannerEnabled is shared mutable state on the WifiDevice and this widget
+  // outlives no instance alone — one per monitor, plus a transient overlap
+  // across a plugin reload — so claims are reference counted in
+  // Scanner.js rather than tracked per instance. This instance holds a claim
+  // exactly while its own panel is open; the scanner stops when the last
+  // instance lets go, and keeps running for the panels that still want it.
+  // How much airtime an open panel may spend. A full sweep parks the radio off
+  // its operating channel for as long as it runs — seconds on an older card —
+  // and quickshell re-arms the scanner every 10001ms, so a claim held for as
+  // long as the panel is open can leave the radio off-channel almost
+  // continuously. On a fast card that is invisible. On a slow one it stalls
+  // every connection in flight for as long as the panel is up.
+  //
+  // Both settings default to what the panel has always done:
+  //   scanOnOpen  true — opening the panel starts a sweep
+  //   scanHoldSec 0    — the scanner stays claimed while the panel is open
+  // A scanHoldSec above zero turns the claim into a pulse: it is dropped that
+  // many seconds after a sweep starts even though the panel is still open, and
+  // the next sweep waits for the user to ask with `r`.
+  readonly property bool scanOnOpen: settings.scanOnOpen === undefined ? true : !!settings.scanOnOpen
+  readonly property int scanHoldSec: {
+    var value = parseInt(settings.scanHoldSec)
+    return isNaN(value) || value < 0 ? 0 : value
+  }
+  readonly property bool scanPulsed: scanHoldSec > 0
+  property bool scanPulseActive: false
 
+  // With no hold configured this is the original rule verbatim — panel open,
+  // claim held. With one, the pulse owns the claim and an open panel alone is
+  // no longer enough to keep it.
   function setScannerEnabled(enabled) {
-    var nextDevice = opened ? wifiDevice : null
-
-    if (scannerDevice && scannerDevice !== nextDevice)
-      scannerDevice.scannerEnabled = false
-
-    scannerDevice = nextDevice
-
-    if (scannerDevice)
-      scannerDevice.scannerEnabled = enabled
+    var wanted = opened && enabled && (!scanPulsed || scanPulseActive)
+    Scanner.acquire(root, wanted ? wifiDevice : null)
   }
 
-  Component.onDestruction: {
-    if (scannerDevice) scannerDevice.scannerEnabled = false
+  // One sweep, then let go. Restarting a running pulse extends it rather than
+  // stacking claims — Scanner.acquire is keyed by owner.
+  function startScanPulse() {
+    if (!opened || !wifiDevice) return
+    if (!scanPulsed) {
+      setScannerEnabled(true)
+      return
+    }
+    scanPulseActive = true
+    scanPulseTimer.restart()
+    setScannerEnabled(true)
+  }
+
+  // Release mid-open. scanPulseActive drops first so setScannerEnabled resolves
+  // to a release, and the reconcile below keeps driving the device off for as
+  // long as no pulse is running.
+  function endScanPulse() {
+    scanPulseActive = false
+    scanPulseTimer.stop()
+    setScannerEnabled(false)
+    scanning = false
+  }
+
+  Timer {
+    id: scanPulseTimer
+    interval: Math.max(1, root.scanHoldSec) * 1000
+    repeat: false
+    onTriggered: root.endScanPulse()
+  }
+
+  Component.onDestruction: Scanner.release(root)
+
+  // The scanner costs real airtime — a full scan parks the radio off-channel
+  // for seconds on a slow card — so re-assert the invariant periodically
+  // instead of trusting every release path to fire. The sweep is what bounds
+  // a missed release: it drops claims whose owner died or closed and drives
+  // the device from what is left, so no instance can pin the scanner on after
+  // its panel is gone.
+  Timer {
+    interval: 30000
+    repeat: true
+    running: true
+    onTriggered: {
+      // Reconciling inside the 100ms scanRestart window would re-enable the
+      // scanner early and undo the deferral that keeps opening the panel off
+      // NetworkManager's access-point flood.
+      if (scanRestart.running) return
+      // Once a hold is configured an open panel alone no longer counts, so
+      // this is what drives the device off after a pulse expires.
+      root.setScannerEnabled(root.opened && (!root.scanPulsed || root.scanPulseActive))
+      Scanner.sweep(root.wifiDevice)
+    }
   }
 
   // KeyboardPanel primes layer-shell focus whenever the panel opens. That's
   // what makes the SUPER+CTRL+W keybind land here with navigation ready.
   onOpenedChanged: {
     if (opened) {
-      refresh(true)
+      // scanOnOpen false means opening the panel costs no airtime at all: the
+      // list renders from NetworkManager's last results and `r` refreshes it.
+      refresh(scanOnOpen)
       selectedIndex = wifiNetworks.length > 0 ? 0 : -1
       wifiActionFocused = false
       focusSection = hasCaptivePortal ? "portal" : (wifiNetworks.length > 0 ? "wifi" : "dns")
@@ -334,6 +412,7 @@ Panel {
       // the 100ms window reuses the running timer and re-enables the scanner
       // almost immediately, undoing the deferral #6605 restored.
       scanRestart.stop()
+      root.endScanPulse()
       // Reset throughput tracking so the next open doesn't compute a fake
       // rate from a sample taken minutes ago.
       prevSampleTime = 0
@@ -541,9 +620,11 @@ Panel {
         scanning = true
         setScannerEnabled(false)
         scanRestart.start()
-      } else {
+      } else if (!scanPulsed) {
         setScannerEnabled(true)
       }
+      // With a hold configured a bare refresh() never re-claims — the claim
+      // belongs to the pulse and expires with it.
     }
     syncWifiNetworks()
   }
@@ -877,7 +958,7 @@ Panel {
     repeat: false
     onTriggered: {
       if (root.opened && root.wifiDevice) {
-        root.setScannerEnabled(true)
+        root.startScanPulse()
         scanDone.start()
       }
     }
@@ -1019,10 +1100,11 @@ Panel {
 
     onPressed: function(b) {
       if (root.opened) root.close()
-      // open() is enough: onOpenedChanged runs refresh(true), which defers the
-      // PHY scan past the first frame. The bare refresh() that used to follow
-      // took the no-scan branch and set scannerEnabled synchronously, undoing
-      // that deferral and stalling the open on NetworkManager's AP flood.
+      // open() is enough: onOpenedChanged runs refresh(scanOnOpen), which
+      // defers any PHY scan past the first frame. The bare refresh() that used
+      // to follow took the no-scan branch and set scannerEnabled synchronously,
+      // undoing that deferral and stalling the open on NetworkManager's AP
+      // flood.
       else root.open()
     }
   }
@@ -1143,7 +1225,7 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
-        if (t === "r" || t === "R") root.refresh()
+        if (t === "r" || t === "R") root.refresh(true)
         else if (t === "w" || t === "W") root.toggleNetwork()
       }
 
@@ -1179,6 +1261,22 @@ Panel {
           spacing: Style.space(8)
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
+
+          Button {
+            id: rescanAction
+            visible: root.canRescanWifi
+            iconText: "󰑐"
+            tooltipText: root.scanning ? "Scanning…" : "Rescan Wi-Fi (r)"
+            foreground: root.bar.foreground
+            fontFamily: root.bar.fontFamily
+            iconSize: Style.font.subtitle * 1.5
+            horizontalPadding: Style.space(5)
+            verticalPadding: Style.space(2)
+            hasCursor: root.rescanHeaderHasCursor
+            Layout.alignment: Qt.AlignVCenter
+            onHovered: function(on) { if (on) root.setHeaderCursor(root.rescanHeaderIndex) }
+            onClicked: root.refresh(true)
+          }
 
           Button {
             id: qrAction
@@ -1577,8 +1675,19 @@ Panel {
       }
 
       PanelSectionHeader {
-        visible: root.wifiStationAvailable && root.scanning
+        // A sweep outlives the 1.5s repaint that clears `scanning`, so track the
+        // pulse too rather than reading idle mid-sweep.
+        visible: root.wifiStationAvailable && (root.scanning || root.scanPulseActive)
         text: "SCANNING WI-FI…"
+        foreground: root.bar.foreground
+        fontFamily: root.bar.fontFamily
+      }
+
+      // Under a hold the list stops refreshing itself once the pulse ends, so
+      // say so rather than letting stale results read as live ones.
+      PanelSectionHeader {
+        visible: root.wifiStationAvailable && root.scanPulsed && !root.scanning && !root.scanPulseActive
+        text: "NEARBY WI-FI (CACHED) · PRESS R OR 󰑐 TO RESCAN"
         foreground: root.bar.foreground
         fontFamily: root.bar.fontFamily
       }
