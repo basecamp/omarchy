@@ -217,6 +217,7 @@ set -euo pipefail
 
 mkdir -p "$HOME/.local/state/omarchy"
 printf '%s\n' "$*" >>"$HOME/.local/state/omarchy/shell-ipc-calls"
+[[ ${OMARCHY_TEST_SHELL_DOWN:-0} == "1" ]] && exit 1
 printf 'ok\n'
 SH
 chmod +x "$ipc_mock_bin/omarchy-shell"
@@ -287,16 +288,22 @@ jq -e '
 pass "shell config sets bar position"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent true
-jq -e '
-  .bar.transparent == true and
-  .bar.position == "bottom" and
-  .plugins == []
-' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
-pass "shell config sets bar transparency"
+grep -Fqx 'shell setBarTransparency true' \
+  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls"
+pass "bar delegates explicit transparency to the active bar"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar transparent toggle
+grep -Fqx 'shell toggleBarTransparency' \
+  "$TMPDIR/home/.local/state/omarchy/shell-ipc-calls"
+jq -e '.bar.transparent == null and .bar.position == "bottom" and .plugins == []' \
+  "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+pass "bar delegates transparency toggles to the active bar"
+
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" OMARCHY_TEST_SHELL_DOWN=1 omarchy-bar transparent true
+jq -e '.bar.transparent == true' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
+HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" OMARCHY_TEST_SHELL_DOWN=1 omarchy-bar transparent toggle
 jq -e '.bar.transparent == false' "$TMPDIR/home/.config/omarchy/shell.json" >/dev/null
-pass "shell config toggles bar transparency"
+pass "bar transparency falls back to shell config without IPC"
 
 HOME="$TMPDIR/home" OMARCHY_PATH="$ROOT" omarchy-bar set omarchy.bluetooth enabled false --json
 grep -Fqx 'shell setBarWidget omarchy.bluetooth enabled false {}' \

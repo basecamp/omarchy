@@ -614,16 +614,20 @@ Item {
     Util.execDetached(command)
   }
 
-  function toggleTransparency() {
-    var nextTransparent = !(root.requestedTransparent === true)
+  function setTransparency(value) {
+    var transparent = value === true
     if (root.shell && typeof root.shell.mutateShellConfig === "function") {
       root.shell.mutateShellConfig(function(config) {
         if (!Util.isPlainObject(config.bar)) config.bar = {}
-        config.bar.transparent = nextTransparent
+        config.bar.transparent = transparent
       })
     } else {
-      root.setRequestedTransparency(nextTransparent)
+      root.setRequestedTransparency(transparent)
     }
+  }
+
+  function toggleTransparency() {
+    root.setTransparency(!(root.requestedTransparent === true))
   }
 
   function rawLayoutSection(config, region) {

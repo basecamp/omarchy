@@ -36,7 +36,10 @@ const bar = requireFromRoot('shell/plugins/bar/BarModel.js')
 const barSource = fs.readFileSync(root + '/shell/plugins/bar/Bar.qml', 'utf8')
 const shellSource = fs.readFileSync(root + '/shell/shell.qml', 'utf8')
 
-assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell exposes the bar transparency toggle over IPC')
+assert(/function toggleBarTransparency\(\): string \{[\s\S]*?shell\.bar\.toggleTransparency\(\)/.test(shellSource), 'shell delegates the bar transparency toggle over IPC')
+assert(/function setBarTransparency\(value: string\): string \{[\s\S]*?shell\.bar\.setTransparency\(transparent\)/.test(shellSource), 'shell delegates explicit transparency over IPC')
+assert(/function setTransparency\(value\)[\s\S]*?config\.bar\.transparent = transparent/.test(barSource), 'built-in bar accepts explicit transparency')
+assert(/function toggleTransparency\(\)[\s\S]*?root\.setTransparency\(!\(root\.requestedTransparent === true\)\)/.test(barSource), 'built-in bar toggles through its explicit setter')
 
 // put tolerates a placement target the bar does not carry, so the IPC call
 // must reach the registry's put rather than route back through enable.

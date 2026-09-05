@@ -922,9 +922,26 @@ ShellRoot {
     function toggleBarTransparency(): string {
       if (shell.bar && typeof shell.bar.toggleTransparency === "function") {
         shell.bar.toggleTransparency()
-        return "ok"
+      } else {
+        shell.mutateShellConfig(function(config) {
+          if (!Util.isPlainObject(config.bar)) config.bar = {}
+          config.bar.transparent = config.bar.transparent !== true
+        })
       }
-      return "no-bar"
+      return "ok"
+    }
+
+    function setBarTransparency(value: string): string {
+      var transparent = value === "true"
+      if (shell.bar && typeof shell.bar.setTransparency === "function") {
+        shell.bar.setTransparency(transparent)
+      } else {
+        shell.mutateShellConfig(function(config) {
+          if (!Util.isPlainObject(config.bar)) config.bar = {}
+          config.bar.transparent = transparent
+        })
+      }
+      return "ok"
     }
 
     function setPluginEnabled(id: string, enabled: string): string {

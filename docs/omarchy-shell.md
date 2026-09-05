@@ -113,7 +113,8 @@ or `omarchy.power`. There is no `bar` target.
 | `rescanPlugins`                       | re-walk plugin dirs and hot-reload plugin code |
 | `reloadConfig`                        | reload shell.json               |
 | `applyTheme <colorsB64> <shellB64>`   | push theme colors + shell.toml  |
-| `toggleBarTransparency`               | flip the bar background between solid and transparent |
+| `toggleBarTransparency`               | ask the active bar to toggle its transparency mode |
+| `setBarTransparency <"true"\|…>`     | ask the active bar to enter or leave transparent mode |
 | `setPluginEnabled <id> <"true"\|…>`   | flip enabled bit (`ok` / `unknown`) |
 | `enablePlugin <id> <placementJson>`   | enable and place in one mutation |
 | `putBarWidget <id> <placementJson>`   | place a widget only where absent (`omarchy bar put`) |
@@ -123,9 +124,9 @@ or `omarchy.power`. There is no `bar` target.
 | `listShellConfig`                     | effective shell.json as JSON    |
 | `debugBarGeometry`                    | bar geometry dump for debugging |
 
-`setPluginEnabled` takes a string; only literal `"true"` enables. Methods
-answer on stdout with exit 0 — `ok` on success, `unknown` or an error
-string on a miss.
+`setPluginEnabled` takes a string; only literal `"true"` enables. Methods answer on stdout with exit 0 — `ok` on success, `unknown` or an error string on a miss.
+
+Full bar entry points may implement `toggleTransparency()` and `setTransparency(transparent)`. The host delegates the two transparency IPC methods to those hooks on the active bar, allowing custom bars to define their own modes. When a hook is absent, the host falls back to updating the boolean `bar.transparent` setting for compatibility.
 
 ## shell.json
 
