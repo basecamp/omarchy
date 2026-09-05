@@ -45,47 +45,69 @@ function profileIcon(name) {
   return "󰂄"
 }
 
-function batteryFraction(device) {
+function statusPercent(info) {
+  if (!info || info.percentage == null || info.percentage === "") return -1
+  var n = parseInt(String(info.percentage), 10)
+  return isNaN(n) ? -1 : Math.max(0, Math.min(100, n))
+}
+
+function statusState(info) {
+  return info && info.state ? String(info.state) : ""
+}
+
+function batteryFraction(device, info) {
+  var p = statusPercent(info)
+  if (p >= 0) return p / 100
   return device && device.isPresent ? Math.max(0, Math.min(1, device.percentage)) : 0
 }
 
-function chargeThresholdActive(device, onBattery, states) {
+function chargeThresholdActive(device, onBattery, states, info) {
+  var st = statusState(info)
+  if (st === "holding") return true
+  if (st === "fully-charged" || st === "charging" || st === "discharging") return false
+
   var d = device || {}
   var s = states || {}
   if (!(d && d.isPresent && !onBattery)) return false
 
-  var fraction = batteryFraction(d)
+  var fraction = batteryFraction(d, info)
   if (d.state === s.Discharging) return false
   if (d.state === s.PendingCharge) return true
   if (d.state === s.FullyCharged && fraction < 0.99) return true
   if (d.state !== s.Charging || fraction >= 0.99) return false
 
-  return Number(d.changeRate || 0) <= 0.2 || Number(d.timeToFull || 0) >= 8 * 60 * 60
+  // Stalled charging at a hold point is a trickle under 0.2W.
+  // Do not treat a multi-hour UPower "time to full" as a threshold: that is
+  // the stuck energy-full bug, not a charge limit.
+  return Number(d.changeRate || 0) <= 0.2
 }
 
-function batteryIcon(device, onBattery, states) {
+function batteryIcon(device, onBattery, states, info) {
   var d = device || {}
   if (!d.isPresent) return ""
 
   var chargingIcons = ["󰢜", "󰂆", "󰂇", "󰂈", "󰢝", "󰂉", "󰢞", "󰂊", "󰂋", "󰂅"]
   var defaultIcons = ["󰁺", "󰁻", "󰁼", "󰁽", "󰁾", "󰁿", "󰂀", "󰂁", "󰂂", "󰁹"]
-  var index = Math.max(0, Math.min(9, Math.floor(d.percentage * 10)))
-  var threshold = chargeThresholdActive(d, onBattery, states)
+  var fraction = batteryFraction(d, info)
+  var index = Math.max(0, Math.min(9, Math.floor(fraction * 10)))
+  var threshold = chargeThresholdActive(d, onBattery, states, info)
+  var st = statusState(info)
 
   if (threshold) return defaultIcons[index]
-  if (d.state === states.FullyCharged) return "󰂅"
-  if (!onBattery) return chargingIcons[index]
+  if (st === "fully-charged" || d.state === states.FullyCharged) return "󰂅"
+  if (!onBattery && st !== "fully-charged") return chargingIcons[index]
   return defaultIcons[index]
 }
 
-function modeLabel(device, onBattery, states) {
+function modeLabel(device, onBattery, states, info) {
   var d = device || {}
   if (!d.isPresent) return ""
 
-  var percentage = d.isPresent ? d.percentage : 0
-  if (chargeThresholdActive(d, onBattery, states)) return "Threshold"
+  var st = statusState(info)
+  var percentage = batteryFraction(d, info)
+  if (chargeThresholdActive(d, onBattery, states, info)) return "Threshold"
   if (onBattery) return "On battery"
-  if (!onBattery && percentage >= 1) return "Fully charged"
+  if (st === "fully-charged" || (!onBattery && percentage >= 0.99)) return "Fully charged"
   return "Charging"
 }
 
@@ -96,6 +118,8 @@ if (typeof module !== "undefined") {
     parseKeyValue: parseKeyValue,
     parseProfiles: parseProfiles,
     profileIcon: profileIcon,
+    statusPercent: statusPercent,
+    statusState: statusState,
     batteryFraction: batteryFraction,
     chargeThresholdActive: chargeThresholdActive,
     batteryIcon: batteryIcon,

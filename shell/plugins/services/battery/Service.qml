@@ -12,6 +12,7 @@ Item {
 
   readonly property int batteryThreshold: 10
   property string pendingPowerSource: ""
+  property var batteryInfo: ({})
 
   PersistentProperties {
     id: persisted
@@ -20,15 +21,15 @@ Item {
   }
 
   function batteryPercentage() {
-    return BatteryModel.batteryPercentage(UPower.displayDevice)
+    return BatteryModel.batteryPercentage(UPower.displayDevice, root.batteryInfo)
   }
 
   function isDischarging() {
-    return BatteryModel.isDischarging(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging)
+    return BatteryModel.isDischarging(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, root.batteryInfo)
   }
 
   function checkBattery() {
-    var state = BatteryModel.shouldWarnLowBattery(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, batteryThreshold, persisted.notifiedLowBattery)
+    var state = BatteryModel.shouldWarnLowBattery(UPower.displayDevice, UPower.onBattery, UPowerDeviceState.Discharging, batteryThreshold, persisted.notifiedLowBattery, root.batteryInfo)
     persisted.notifiedLowBattery = state.notifiedLowBattery
     if (state.notify) sendLowBatteryWarning(state.level)
   }
@@ -56,6 +57,19 @@ Item {
   Process { id: warningProcess }
 
   Process {
+    id: statusProc
+    command: ["omarchy-battery-status", "--shell"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var next = BatteryModel.parseKeyValue(text)
+        if (Object.keys(next).length > 0) root.batteryInfo = next
+        root.checkBattery()
+      }
+    }
+  }
+
+  Process {
     id: powerProfileProcess
     onExited: if (root.pendingPowerSource !== "") root.runPendingPowerProfile()
   }
@@ -65,7 +79,10 @@ Item {
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: root.checkBattery()
+    onTriggered: {
+      if (!statusProc.running) statusProc.running = true
+      else root.checkBattery()
+    }
   }
 
   Connections {

@@ -62,6 +62,77 @@ power_rate=$(awk -v rate="${power_rate_raw:-0}" 'BEGIN {
   print rounded
 }')
 state=$(awk '/state/ { print $2; exit }' <<<"$battery_info")
+
+# Prefer kernel charge/energy registers. UPower can stick energy-full after a
+# firmware blip (MacBook SBS is the usual case), which then tanks percentage
+# and inflates time-to-full to days. Same idea as the live sysfs rate above.
+if [[ -r $battery_path/charge_now && -r $battery_path/charge_full ]]; then
+  charge_now=$(<"$battery_path/charge_now")
+  charge_full=$(<"$battery_path/charge_full")
+  if [[ -n $charge_now && -n $charge_full ]] && (( charge_full > 0 )); then
+    percentage=$(awk -v n="$charge_now" -v f="$charge_full" 'BEGIN {
+      p = n * 100 / f
+      if (p > 100) p = 100
+      if (p < 0) p = 0
+      printf "%d", p + 0.5
+    }')
+    if [[ -r $battery_path/voltage_min_design ]]; then
+      capacity=$(awk -v f="$charge_full" -v v="$(<"$battery_path/voltage_min_design")" 'BEGIN { printf "%d", f * v / 1e12 }')
+    elif [[ -r $battery_path/voltage_now ]]; then
+      capacity=$(awk -v f="$charge_full" -v v="$(<"$battery_path/voltage_now")" 'BEGIN { printf "%d", f * v / 1e12 }')
+    fi
+    if [[ -r $battery_path/current_now ]]; then
+      current_now=$(<"$battery_path/current_now")
+      if awk -v i="$current_now" 'BEGIN { if (i < 0) i = -i; exit !(i > 10000) }'; then
+        if [[ $state == "charging" || $(<"$battery_path/status" 2>/dev/null) == "Charging" ]]; then
+          time_remaining=$(awk -v n="$charge_now" -v f="$charge_full" -v i="$current_now" 'BEGIN {
+            if (i <= 0) exit
+            hours = (f - n) / i
+            if (hours < 0) hours = 0
+            h = int(hours)
+            m = int((hours - h) * 60)
+            if (h <= 0) printf "%dm", m
+            else if (m > 0) printf "%dh %dm", h, m
+            else printf "%dh", h
+          }')
+        else
+          time_remaining=$(awk -v n="$charge_now" -v i="$current_now" 'BEGIN {
+            if (i < 0) i = -i
+            if (i <= 0) exit
+            hours = n / i
+            h = int(hours)
+            m = int((hours - h) * 60)
+            if (h <= 0) printf "%dm", m
+            else if (m > 0) printf "%dh %dm", h, m
+            else printf "%dh", h
+          }')
+        fi
+      fi
+    fi
+  fi
+elif [[ -r $battery_path/energy_now && -r $battery_path/energy_full ]]; then
+  energy_now=$(<"$battery_path/energy_now")
+  energy_full=$(<"$battery_path/energy_full")
+  if [[ -n $energy_now && -n $energy_full ]] && (( energy_full > 0 )); then
+    percentage=$(awk -v n="$energy_now" -v f="$energy_full" 'BEGIN {
+      p = n * 100 / f
+      if (p > 100) p = 100
+      if (p < 0) p = 0
+      printf "%d", p + 0.5
+    }')
+    capacity=$(awk -v f="$energy_full" 'BEGIN { printf "%d", f / 1000000 }')
+  fi
+fi
+
+if [[ -r $battery_path/status ]]; then
+  case "$(<"$battery_path/status")" in
+    Full) state=fully-charged ;;
+    Charging) state=charging ;;
+    Discharging) state=discharging ;;
+    "Not charging") state=pending-charge ;;
+  esac
+fi
+
 threshold_start=$(awk '/charge-start-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 threshold_end=$(awk '/charge-end-threshold:/ { gsub(/%/, "", $2); print int($2); exit }' <<<"$battery_info")
 

@@ -28,4 +28,14 @@ assertDeepEqual(
   { level: 40, notify: false, notifiedLowBattery: false },
   'battery clears notified state after recovery'
 )
+assertEqual(
+  battery.batteryPercentage({ isPresent: true, percentage: 0.106 }, { percentage: '99%' }),
+  99,
+  'battery prefers status-script percentage over UPower'
+)
+assertDeepEqual(
+  battery.shouldWarnLowBattery({ isPresent: true, percentage: 0.08, state: discharging }, true, discharging, 10, false, { percentage: '99%', state: 'discharging' }),
+  { level: 99, notify: false, notifiedLowBattery: false },
+  'battery does not warn when status script says the pack is full'
+)
 JS
