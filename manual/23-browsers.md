@@ -6,12 +6,20 @@ If Chromium isn't your taste, you're not stuck with it. Under _Install > Browser
 
 ## Making one the default
 
-Installing a browser doesn't promote it. Once it's on the machine, go to _Setup > Defaults > Browser_ and pick it — the menu only lists browsers you actually have installed, and marks the current default with a check.
+Installing a browser doesn't promote it. Once it's on the machine, go to _Setup > Defaults > Browser_ and pick it — the menu marks the current default with a check, and picking a browser you don't have yet installs it first.
+
+Browsers Omarchy doesn't install for you can be the default too. _Other_ at the bottom of that list shows every browser on the machine that handles web links, whether it came from pacman, the AUR, or Flatpak, so a Flatpak Waterfox or LibreWolf is a couple of keystrokes away from being what `Super + Shift + Return` opens.
 
 From the terminal it's:
 
 ```bash
 omarchy default browser firefox
+```
+
+or, for anything outside the built-in list, its desktop entry id:
+
+```bash
+omarchy default browser net.waterfox.waterfox.desktop
 ```
 
 Run it with no argument and it tells you the current default. This sets the XDG handler, so it's not just Omarchy's hotkeys that follow along — anything that opens a link, from a chat app to a terminal command, goes to the browser you picked.

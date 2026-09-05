@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Set the default browser for Omarchy and XDG handlers
-# omarchy:args=[chromium|chrome|brave|brave-origin|edge|firefox|zen]
-# omarchy:examples=omarchy default browser firefox | omarchy default browser brave
+# omarchy:args=[chromium|chrome|brave|brave-origin|edge|firefox|zen|<desktop-id>]
+# omarchy:examples=omarchy default browser firefox | omarchy default browser brave | omarchy default browser net.waterfox.waterfox.desktop
 
 installing=false
 if [[ ${1:-} == "--install" ]]; then
@@ -32,13 +32,25 @@ brave-origin) browser="brave-origin"; command="brave-origin"; desktop_id="brave-
 edge) browser="edge"; command="microsoft-edge-stable"; desktop_id="microsoft-edge.desktop"; name="Edge"; glyph=󰇩 ;;
 firefox) browser="firefox"; command="firefox"; desktop_id="firefox.desktop"; name="Firefox"; glyph=󰈹 ;;
 zen) browser="zen"; command="zen-browser"; desktop_id="zen.desktop"; name="Zen"; glyph=󰖟 ;;
+*.desktop)
+  # Any other installed browser, by desktop id: Flatpaks, AUR builds, and
+  # hand-written entries alike. It has to already exist, there is nothing to
+  # install on its behalf.
+  desktop_id=$1
+  glyph=󰖟
+  if ! name=$(omarchy-cmd-desktop-entry name "$desktop_id"); then
+    echo "omarchy-default-browser: no desktop entry named $desktop_id" >&2
+    exit 1
+  fi
+  [[ -n $name ]] || name=${desktop_id%.desktop}
+  ;;
 *)
-  echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen>"
+  echo "Usage: omarchy-default-browser <chromium|chrome|brave|brave-origin|edge|firefox|zen|desktop-id>"
   exit 1
   ;;
 esac
 
-if omarchy-cmd-missing "$command"; then
+if [[ -n ${command:-} ]] && omarchy-cmd-missing "$command"; then
   if [[ $installing == "false" ]]; then
     exec omarchy-launch-floating-terminal-with-presentation omarchy-default-browser --install "$browser"
   else
