@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# omarchy:summary=Emit the idle inhibit daemon's state as one line, only while its daemon is alive
+# omarchy:hidden=true
+
+# Prints omarchy-idle-inhibit-daemon's state file (normalized to exactly one
+# line) when that state can be trusted, and one empty line when it cannot:
+#
+# - no state file            -> one empty line  (nothing inhibited)
+# - unparseable/torn file    -> one empty line  (garbage never pins idle off)
+# - served by a live daemon  -> the JSON line
+# - serving pid is gone      -> one empty line  (a crashed daemon's last write
+#                                               must not claim inhibits
+#                                               forever; SplitParser only
+#                                               fires onRead for bytes, so
+#                                               silence would pin the last
+#                                               applied inhibit)
+#
+# The liveness half is what makes daemon death self-healing: the pid is part
+# of every snapshot the daemon writes, so a SIGKILL mid-inhibit — where no
+# orderly final publish is possible — still reads as released.
+
+set -euo pipefail
+
+state_file="${1:-}"
+
+[[ -n $state_file && -r $state_file ]] || {
+  printf '\n'
+  exit 0
+}
+
+pid=$(jq -er '.pid // empty' "$state_file" 2>/dev/null) || {
+  printf '\n'
+  exit 0
+}
+
+if [[ ! $pid =~ ^[0-9]+$ ]] || ! kill -0 "$pid" 2>/dev/null; then
+  printf '\n'
+  exit 0
+fi
+
+printf '%s\n' "$(cat "$state_file")"

@@ -10,10 +10,17 @@ Item {
 
   // Injected by omarchy-shell (the first-party service loader).
   property var shell: null
+  property string omarchyPath: Quickshell.env("OMARCHY_PATH")
 
   readonly property string home: Quickshell.env("HOME")
   readonly property string stayAwakeStateDir: home + "/.local/state/omarchy/indicators"
   readonly property string stayAwakeStatePath: stayAwakeStateDir + "/stay-awake"
+  // The D-Bus inhibit daemon publishes here (write-temp-then-rename), so the
+  // watch is on the directory: a rename inside it surfaces as a change event,
+  // while a watch on the file itself can be lost to the swap. Same reason the
+  // stay-awake watcher above watches its directory.
+  readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR")
+  readonly property string externalInhibitStateDir: runtimeDir + "/omarchy/idle-inhibit"
   readonly property int defaultScreensaverSeconds: 150
   readonly property int defaultLockSeconds: 300
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
@@ -22,13 +29,17 @@ Item {
   readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
   readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
-  readonly property bool idleEnabled: stayAwakeStateLoaded && !stayAwake
+  // The gate itself lives in IdleModel.idleEnabledAfter so its terms are
+  // node-tested; an external D-Bus inhibit holds the idle cycle off exactly
+  // like stay-awake does.
+  readonly property bool idleEnabled: IdleModel.idleEnabledAfter(stayAwakeStateLoaded, stayAwake, externalInhibit)
   readonly property string screensaverClass: "org.omarchy.screensaver"
 
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
   property bool hasPendingStayAwakePersist: false
   property bool pendingStayAwakePersist: false
+  property bool externalInhibit: false
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
   property string lastEvent: "starting"
@@ -183,6 +194,8 @@ Item {
       stayAwake: root.stayAwake,
       stayAwakeStateLoaded: root.stayAwakeStateLoaded,
       stayAwakeStatePath: root.stayAwakeStatePath,
+      externalInhibit: root.externalInhibit,
+      externalInhibitStateDir: root.externalInhibitStateDir,
       idle: idleMonitor.isIdle,
       inIdleCycle: root.idledThisCycle,
       screensaverStarted: root.screensaverStartedThisCycle,
@@ -245,6 +258,26 @@ Item {
 
   function setIdleEnabled(value) {
     return applyStayAwake(!value, true, "ipc")
+  }
+
+  // Read the D-Bus inhibit daemon's published state. Absence, garbage, or a
+  // torn file all read as no inhibit — a daemon that is down must never pin
+  // the idle timers off. An inhibit arriving mid-cycle cancels it, exactly
+  // like enabling Stay Awake does: a browser that started playing video owns
+  // the screen, screensaver included.
+  function applyExternalInhibitState(raw) {
+    var next = IdleModel.externalInhibitFromState(raw).inhibited
+    if (next === root.externalInhibit) return
+
+    root.externalInhibit = next
+    logEvent("external-inhibit", next ? "held" : "released")
+
+    if (next && root.idledThisCycle) cancelIdleCycle("external-inhibit")
+    else if (!next) Qt.callLater(root.handleIdleChanged)
+  }
+
+  function refreshExternalInhibitState() {
+    if (!externalInhibitProbe.running) externalInhibitProbe.running = true
   }
 
   IdleMonitor {
@@ -329,9 +362,50 @@ Item {
     onFileChanged: root.refreshStayAwakeState()
   }
 
+  Process {
+    id: externalInhibitProbe
+    // SplitParser.onRead never fires when the probe emits no bytes (a
+    // SIGKILL'd daemon's last write). Track whether this run produced a
+    // line, and apply empty state on exit so a crash cannot pin idle off.
+    property bool sawProbeOutput: false
+    command: [root.omarchyPath + "/bin/omarchy-idle-inhibit-probe", root.externalInhibitStateDir + "/state"]
+    stdout: SplitParser {
+      onRead: function(line) {
+        sawProbeOutput = true
+        root.applyExternalInhibitState(line)
+      }
+    }
+    onRunningChanged: if (running) sawProbeOutput = false
+    onExited: function() {
+      if (!sawProbeOutput) root.applyExternalInhibitState("")
+    }
+  }
+
+  FileView {
+    id: externalInhibitStateDirWatcher
+    path: root.externalInhibitStateDir
+    watchChanges: true
+    printErrors: false
+    onFileChanged: root.refreshExternalInhibitState()
+  }
+
+  // The daemon starts with the graphical session alongside the shell, so its
+  // state directory may not exist when the watcher above arms. A missing-path
+  // watch can stay missing for the whole session, so a slow retry closes the
+  // race; the probe is a single cat and the timer stops mattering once the
+  // directory watch is delivering.
+  Timer {
+    id: externalInhibitRetryTimer
+    interval: 10000
+    repeat: true
+    running: true
+    onTriggered: root.refreshExternalInhibitState()
+  }
+
   Component.onCompleted: {
     logEvent("service-ready")
     refreshStayAwakeState()
+    refreshExternalInhibitState()
   }
 
   IpcHandler {

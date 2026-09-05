@@ -1,0 +1,22 @@
+[Unit]
+Description=Own the freedesktop screensaver inhibit names for the session
+# Browsers and players probe NameHasOwner before Inhibit, which never
+# auto-starts. After=graphical-session.target would start us only once the
+# target is already reached — autostarted browsers would win that race.
+# Keep the target's default ordering (WantedBy= pulls this in before the
+# target is reached) and wait only on the session bus, matching
+# omarchy-sleep-lock.service.
+After=dbus.socket
+Requires=dbus.socket
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-idle-inhibit-daemon
+# on-failure, not always: standing down when the names are owned elsewhere is
+# a clean exit 0, and restarting into the same loss would respawn forever.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
