@@ -106,6 +106,14 @@ function o.bind(keys, description, dispatcher, options)
 end
 
 function o.launch(command)
+  -- Hyprland exec rules (`[workspace N silent]`, `[float]`, …) have to stay
+  -- outside uwsm-app: uwsm parses argv itself and otherwise looks up `[workspace`
+  -- as a binary.
+  local prefix, rest = command:match("^(%b[])%s+(.*)$")
+  if prefix and rest ~= "" then
+    return prefix .. " uwsm-app -- " .. rest
+  end
+
   return "uwsm-app -- " .. command
 end
 
