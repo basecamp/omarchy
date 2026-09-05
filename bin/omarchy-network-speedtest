@@ -10,6 +10,7 @@ direction="${1:-}"
 probe=1.1.1.1
 parallel=8
 url_count=3
+network_devices_path="${OMARCHY_NETWORK_DEVICES_PATH:-/sys/class/net}"
 
 case "$direction" in
   down | up)
@@ -30,7 +31,10 @@ format_mbps() {
 
 iface=$(ip route get "$probe" 2>/dev/null | awk '{ for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit } }')
 
-if [[ -z $iface || ! -r /sys/class/net/$iface/statistics/rx_bytes || ! -r /sys/class/net/$iface/statistics/tx_bytes ]]; then
+rx_path="$network_devices_path/$iface/statistics/rx_bytes"
+tx_path="$network_devices_path/$iface/statistics/tx_bytes"
+
+if [[ -z $iface || ! -r $rx_path || ! -r $tx_path ]]; then
   echo "No active network interface" >&2
   exit 1
 fi
@@ -51,9 +55,14 @@ if [[ -z $fast_urls ]]; then
 fi
 
 traffic_pids=()
+parent_watch_pid=""
 
 cleanup() {
   local pid
+  if [[ -n $parent_watch_pid ]]; then
+    kill "$parent_watch_pid" 2>/dev/null || true
+    wait "$parent_watch_pid" 2>/dev/null || true
+  fi
   for pid in "${traffic_pids[@]}"; do
     [[ -n $pid ]] || continue
     pkill -TERM -P "$pid" 2>/dev/null || true
@@ -65,6 +74,18 @@ cleanup() {
   done
 }
 trap cleanup EXIT
+
+# Quickshell cannot signal this process when it crashes or is killed, so stop
+# the test ourselves when the parent that launched it disappears.
+parent_pid=$PPID
+watch_parent() {
+  while kill -0 "$parent_pid" 2>/dev/null; do
+    sleep 0.5
+  done
+  kill -TERM "$$" 2>/dev/null || true
+}
+watch_parent &
+parent_watch_pid=$!
 
 # Round-robin across the returned URLs so we spread load across Netflix OCA nodes.
 traffic_worker() {
@@ -91,8 +112,8 @@ for (( i = 0; i < parallel; i++ )); do
   traffic_pids+=("$!")
 done
 
-rx_before=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
-tx_before=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+rx_before=$(<"$rx_path")
+tx_before=$(<"$tx_path")
 
 any_alive() {
   local pid
@@ -107,8 +128,8 @@ any_alive() {
 
 while any_alive; do
   sleep 1
-  rx_after=$(cat "/sys/class/net/$iface/statistics/rx_bytes")
-  tx_after=$(cat "/sys/class/net/$iface/statistics/tx_bytes")
+  rx_after=$(<"$rx_path")
+  tx_after=$(<"$tx_path")
 
   if [[ $direction == "down" ]]; then
     rate=$(awk -v before="$rx_before" -v after="$rx_after" 'BEGIN {
