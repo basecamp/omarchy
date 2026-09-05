@@ -43,6 +43,7 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property bool showConnections: tailscale.accounts.length > 1 || tailscale.accountsAccessDenied
   readonly property bool showPeers: tailscale.active && tailscale.peers.length > 0
+  readonly property bool showServiceNodes: tailscale.active && tailscale.serviceNodes.length > 0
   readonly property var recentMullvadRegions: settings.recentMullvadRegions instanceof Array ? settings.recentMullvadRegions : (settings.recentMullvadCountries instanceof Array ? settings.recentMullvadCountries : [])
   readonly property var recentMullvadExitNodes: recentMullvadNodes()
   readonly property var exitNodes: displayExitNodes()
@@ -707,6 +708,35 @@ Panel {
                   rowIndex: index
                 }
               }
+            }
+          }
+
+          PanelSeparator {
+            visible: root.showServiceNodes
+            foreground: root.foreground
+          }
+
+          Column {
+            visible: root.showServiceNodes
+            width: parent.width
+            spacing: Style.space(10)
+
+            PanelSectionHeader {
+              text: "FUNNEL INGRESS"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            // A count, not a row each: ingress relays carry no hostname, no OS
+            // and no address worth copying, so listing them individually only
+            // moves the clutter into its own section.
+            Text {
+              width: parent.width
+              text: tailscale.serviceNodes.length + (tailscale.serviceNodes.length === 1 ? " ingress relay" : " ingress relays")
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              horizontalAlignment: Text.AlignHCenter
             }
           }
         }

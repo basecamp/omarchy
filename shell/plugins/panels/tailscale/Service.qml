@@ -28,6 +28,7 @@ Item {
   property bool fileSharing: false
   property string authUrl: ""
   property var peers: []
+  property var serviceNodes: []
   property var exitNodes: []
   property var tailnetExitNodes: []
   property var mullvadExitNodes: []
@@ -210,6 +211,7 @@ Item {
     fileSharing = false
     authUrl = ""
     peers = []
+    serviceNodes = []
     exitNodes = []
     tailnetExitNodes = []
     mullvadExitNodes = []
@@ -248,6 +250,7 @@ Item {
     selfUserId = parsed.selfUserId
     fileSharing = parsed.fileSharing
     peers = parsed.running ? parsed.peers : []
+    serviceNodes = parsed.running ? (parsed.serviceNodes || []) : []
     tailnetExitNodes = parsed.running ? parsed.exitNodes : []
     exitNodes = parsed.running ? tailnetExitNodes.concat(mullvadRegions) : []
 

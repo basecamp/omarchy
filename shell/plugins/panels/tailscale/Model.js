@@ -41,6 +41,11 @@ function isMullvadHost(name) {
   return value.length > suffix.length && value.indexOf(suffix) === value.length - suffix.length
 }
 
+function isIngressRelay(peer) {
+  var tags = (peer && peer.Tags) || []
+  return tags.indexOf("tag:ingress") !== -1
+}
+
 function isMullvadPeer(peer) {
   var hostName = String((peer && peer.HostName) || "")
   var dnsName = cleanDnsName((peer && peer.DNSName) || "")
@@ -231,12 +236,21 @@ function parseStatus(raw) {
     var selfIps = filterIPv4(self.TailscaleIPs || data.TailscaleIPs || [])
     var peers = []
     var exitNodes = []
+    var serviceNodes = []
     var rawPeers = data.Peer || {}
 
     for (var id in rawPeers) {
       var peer = rawPeers[id] || {}
       var normalized = peerFromStatus(id, peer)
       if (normalized.Mullvad) continue
+      // Funnel adds an ingress relay per region to the netmap, each named
+      // funnel-ingress-node with no DNS name and no OS. They carry ShareeNode,
+      // the flag `tailscale status` uses to leave them out, and so do nodes
+      // owned by a shared-to user — neither belongs among real machines.
+      if (peer.ShareeNode === true) {
+        if (normalized.Online && isIngressRelay(peer)) serviceNodes.push(normalized)
+        continue
+      }
       if (normalized.Online) {
         peers.push(normalized)
         if (normalized.ExitNodeOption) exitNodes.push(normalized)
@@ -263,7 +277,8 @@ function parseStatus(raw) {
       selfUserId: String(self.UserID || ""),
       fileSharing: hasFileSharing(self),
       peers: peers,
-      exitNodes: exitNodes
+      exitNodes: exitNodes,
+      serviceNodes: serviceNodes
     }
   } catch (e) {
     return { ok: false, unavailable: true, message: "Status error", error: "Failed to parse tailscale status" }
@@ -314,6 +329,7 @@ if (typeof module !== "undefined") {
     loginPlan: loginPlan,
     hasFileSharing: hasFileSharing,
     isTaildropTarget: isTaildropTarget,
+    isIngressRelay: isIngressRelay,
     isMullvadPeer: isMullvadPeer,
     peerFromStatus: peerFromStatus,
     parseExitNodeList: parseExitNodeList,
