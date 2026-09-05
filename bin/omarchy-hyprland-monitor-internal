@@ -6,6 +6,7 @@
 TOGGLE="internal-monitor-disable"
 TOGGLE_FLAG="$HOME/.local/state/omarchy/toggles/hypr/$TOGGLE.lua"
 MIRROR_TOGGLE="internal-monitor-mirror"
+BACKLIGHT_STATE="$HOME/.local/state/omarchy/toggles/hypr/internal-monitor-backlight"
 
 INTERNAL=$(omarchy-hyprland-monitor-laptop)
 
@@ -13,9 +14,28 @@ wake() {
   hyprctl dispatch 'hl.dsp.dpms({ action = "enable" })' >/dev/null 2>&1 || true
 }
 
+# `disabled = true` drops the panel's mode but leaves the backlight driver
+# powering it at its last level, so a "disabled" panel still glows. Zero the
+# backlight too, saving the prior level so restore_backlight can put it back.
+dim_backlight() {
+  local device
+  device="$(omarchy-hw-display)" 2>/dev/null || return 0
+  brightnessctl -d "$device" -m 2>/dev/null | awk -F, '{ gsub("%", "", $4); print $4 }' >"$BACKLIGHT_STATE"
+  brightnessctl -d "$device" set 0 >/dev/null 2>&1
+}
+
+restore_backlight() {
+  local device
+  [[ -s $BACKLIGHT_STATE ]] || return 0
+  device="$(omarchy-hw-display)" 2>/dev/null || return 0
+  brightnessctl -d "$device" set "$(<"$BACKLIGHT_STATE")%" >/dev/null 2>&1
+  rm -f "$BACKLIGHT_STATE"
+}
+
 on() {
   if omarchy-hyprland-toggle-enabled $TOGGLE; then
     omarchy-hyprland-toggle $TOGGLE off
+    restore_backlight
     omarchy-notification-send -g 󰍹 "Laptop display enabled"
   fi
 
@@ -44,6 +64,7 @@ off() {
     printf 'hl.monitor({ output = "%s", disabled = true })\n' "$INTERNAL" >"$TOGGLE_FLAG"
     omarchy-notification-send -g 󰍹 "Laptop display disabled"
     hyprctl reload
+    dim_backlight
   fi
 }
 
@@ -55,6 +76,7 @@ recover() {
   omarchy-hyprland-toggle-enabled $TOGGLE || return 0
 
   omarchy-hyprland-toggle $TOGGLE off
+  restore_backlight
   wake
 }
 

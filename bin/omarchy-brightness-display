@@ -59,10 +59,29 @@ fi
 
 step="$1"
 
+state_file="${XDG_RUNTIME_DIR:-/tmp}/omarchy-brightness-display.saved"
+
 if [[ $step == "off" ]]; then
+  # DPMS disable only blanks the signal — the backlight driver keeps the
+  # panel lit at its last level, showing as a dim glow. Zero the backlight
+  # too, saving the prior value so "on" can restore it.
+  if ! use_apple_display && ! use_ddc_display; then
+    device="$(omarchy-hw-display)" || device=""
+    if [[ -n $device ]]; then
+      backlight_brightness "$device" > "$state_file" 2>/dev/null
+      brightnessctl -d "$device" set 0 >/dev/null 2>&1
+    fi
+  fi
   hyprctl dispatch 'hl.dsp.dpms({ action = "disable" })' >/dev/null 2>&1
   exit 0
 elif [[ $step == "on" ]]; then
+  if ! use_apple_display && ! use_ddc_display; then
+    device="$(omarchy-hw-display)" || device=""
+    if [[ -n $device && -s $state_file ]]; then
+      brightnessctl -d "$device" set "$(cat "$state_file")%" >/dev/null 2>&1
+      rm -f "$state_file"
+    fi
+  fi
   # Skip the dispatch when every active display is already lit: a redundant
   # DPMS enable right after system resume forces another modeset, which blanks
   # the panel for a beat (visible flash at the unlock screen).
