@@ -25,6 +25,10 @@ defaults, so overrides go here:
 - If `hyprctl configerrors` reports errors, address them and rerun validation until clean or until a real blocker is identified
 - Use `omarchy refresh hyprland` to reset the Lua config files to defaults
 
+**Automation hook:** `hyprland-config` fires on every successful reload, with the
+changed config files in `$1` (comma-separated, empty when nothing changed),
+named without the `.lua` extension (e.g. `bindings`, `looknfeel`). See `hooks.md`.
+
 The two `.conf` files are read by separate processes, so `hyprctl` neither
 applies nor validates them:
 - `hyprsunset.conf` (night light): apply changes with `omarchy restart hyprsunset`; reset with `omarchy refresh hyprsunset`

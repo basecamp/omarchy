@@ -13,6 +13,7 @@ file first, if one exists.
 ~/.config/omarchy/hooks/
 ├── battery-low.d/          # Low battery (percentage in $1)
 ├── font-set.d/             # After font change (font name in $1)
+├── hyprland-config.d/      # After a successful Hyprland config reload (changed config files in $1)
 ├── post-boot.d/            # After the desktop starts
 ├── post-update.d/          # During `omarchy update`, after system packages and migrations
 ├── pre-refresh-pacman.d/   # Before `omarchy refresh pacman` re-syncs packages
