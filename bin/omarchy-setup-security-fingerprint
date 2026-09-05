@@ -16,7 +16,12 @@ setup_pam_config() {
   # fixed /usr/bin path the omarchy package always provides, so the gate keeps
   # working across package installs and dev-link — the latter overlays
   # $OMARCHY_PATH trees but leaves /usr/bin untouched.
-  local fprintd_gate="auth      [success=1 default=ignore] pam_exec.so quiet /usr/bin/omarchy-hw-laptop-closed"
+  #
+  # quiet_log because the gate is a predicate, not an action: exit 1 just means
+  # "lid is open, carry on to pam_fprintd". Without it pam_exec writes a NOTICE
+  # ("failed: exit code 1") on every open-lid sudo and pkexec. quiet alone only
+  # suppresses the terminal echo.
+  local fprintd_gate="auth      [success=1 default=ignore] pam_exec.so quiet quiet_log /usr/bin/omarchy-hw-laptop-closed"
 
   # Configure sudo
   if ! grep -q pam_fprintd.so /etc/pam.d/sudo; then

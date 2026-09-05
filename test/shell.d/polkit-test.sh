@@ -32,7 +32,7 @@ auth include system-auth
 )
 assert(
   polkit.fingerprintConfiguredFromPamConfig(`
-auth [success=1 default=ignore] pam_exec.so quiet /usr/bin/omarchy-hw-laptop-closed
+auth [success=1 default=ignore] pam_exec.so quiet quiet_log /usr/bin/omarchy-hw-laptop-closed
 auth sufficient pam_fprintd.so
 auth required pam_unix.so
 `),
