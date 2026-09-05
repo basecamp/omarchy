@@ -71,11 +71,11 @@ pass "migration adds --quiet to a stale wrapper"
 
 grep -qF 'mise use -g --quiet "github:can1357/oh-my-pi" || exit 1' "$bin_dir/omp" ||
   fail "migration keeps a wrapper's package when the command name differs"
-grep -qF 'exec mise x "github:can1357/oh-my-pi" -- "omp" "$@"' "$bin_dir/omp" ||
+grep -qF 'if [[ -f "$bin_dir/omp" && -x "$bin_dir/omp" ]]' "$bin_dir/omp" ||
   fail "migration keeps a wrapper's bin name when the command name differs"
 pass "migration preserves package and bin names"
 
-grep -qF 'exec mise x "npm:@kitlangton/ghui" -- "ghui" "$@"' "$bin_dir/ghui" ||
+grep -qF 'bin_paths=$(mise bin-paths "npm:@kitlangton/ghui")' "$bin_dir/ghui" ||
   fail "migration preserves a scoped npm package name"
 pass "migration preserves a scoped npm package name"
 
@@ -87,18 +87,18 @@ pass "migration rewrites wrappers on the pre-export template"
 
 grep -qF 'mise use -g --quiet "npm:some/tool" || exit 1' "$bin_dir/mise-exec-era" ||
   fail "migration rewrites a wrapper on the mise-exec template"
-grep -qF 'exec mise x "npm:some/tool" -- "tool-bin" "$@"' "$bin_dir/mise-exec-era" ||
+grep -qF 'if [[ -f "$bin_dir/tool-bin" && -x "$bin_dir/tool-bin" ]]' "$bin_dir/mise-exec-era" ||
   fail "migration keeps the bin name from a mise-exec wrapper"
 grep -qF 'mise use -g --quiet "aqua:some/other" || exit 1' "$bin_dir/bare-exec-era" ||
   fail "migration rewrites a wrapper on the bare-exec template"
-grep -qF 'exec mise x "aqua:some/other" -- "other-bin" "$@"' "$bin_dir/bare-exec-era" ||
+grep -qF 'if [[ -f "$bin_dir/other-bin" && -x "$bin_dir/other-bin" ]]' "$bin_dir/bare-exec-era" ||
   fail "migration keeps the bin name from a bare-exec wrapper"
 pass "migration rewrites every generated form that predates --quiet"
 
 [[ -x $bin_dir/claude ]] || fail "migration leaves the rewritten wrapper executable"
 pass "migration leaves the rewritten wrapper executable"
 
-# Running twice must not touch an already-quiet wrapper.
+# Running twice must not touch a wrapper already on the current template.
 before=$(cat "$bin_dir/claude")
 run_migration
 [[ $(cat "$bin_dir/claude") == "$before" ]] || fail "migration is idempotent"

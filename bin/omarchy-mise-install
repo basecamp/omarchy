@@ -12,6 +12,15 @@ package=$1
 command=${2:-$1}
 bin=${3:-$command}
 
+if [[ $command == */* || $command == "." || $command == ".." ]]; then
+  echo "omarchy-mise-install: command-name must be a basename" >&2
+  exit 1
+fi
+if [[ $bin == */* || $bin == "." || $bin == ".." ]]; then
+  echo "omarchy-mise-install: bin-name must be a basename" >&2
+  exit 1
+fi
+
 mkdir -p "$HOME/.local/bin"
 
 # These tools install and upgrade on first run, so mise's release cooldown would
@@ -23,7 +32,20 @@ cat >"$HOME/.local/bin/$command" <<EOF
 #!/bin/bash
 export MISE_MINIMUM_RELEASE_AGE=0
 mise use -g --quiet "$package" || exit 1
-exec mise x "$package" -- "$bin" "\$@"
+bin_path=
+bin_paths=\$(mise bin-paths "$package") || exit 1
+while IFS= read -r bin_dir; do
+  [[ -n \$bin_dir ]] || continue
+  if [[ -f "\$bin_dir/$bin" && -x "\$bin_dir/$bin" ]]; then
+    bin_path="\$bin_dir/$bin"
+    break
+  fi
+done <<<"\$bin_paths"
+if [[ -z \$bin_path ]]; then
+  echo "$command: mise package '$package' provides no executable '$bin'" >&2
+  exit 1
+fi
+exec mise x "$package" -- "\$bin_path" "\$@"
 EOF
 
 chmod +x "$HOME/.local/bin/$command"
