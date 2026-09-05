@@ -13,6 +13,12 @@ while read -rsn 1 -t 0.1 _ </dev/tty; do :; done
 
 # Prompt on the terminal rather than stdout, or a caller that redirects us
 # leaves the user waiting on a prompt they were never shown.
-printf '\n\033[32m● \033[0mDone! Press any key to close...' >/dev/tty
+hex=$(omarchy-theme-color green accent 2>/dev/null || true)
+if [[ $hex =~ ^#[0-9A-Fa-f]{6}$ ]]; then
+  hex="${hex#\#}"
+  printf '\n\033[38;2;%d;%d;%dm● \033[0mDone! Press any key to close...' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}" >/dev/tty
+else
+  printf '\n\033[32m● \033[0mDone! Press any key to close...' >/dev/tty
+fi
 read -rsn 1 </dev/tty
 echo >/dev/tty
