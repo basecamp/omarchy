@@ -280,7 +280,12 @@ becomes the authoritative file — we do **not** deep-merge defaults back in.
    entries with their own values.
 7. **Idle timings are top-level.** `idle.screensaver` and `idle.lock`
    are seconds since user idle began, so the default lock fires at 300s
-   even if the 150s screensaver starts first.
+   even if the 150s screensaver starts first. Either one can be turned off
+   on its own with `null`, `false`, or `"off"` (`"never"` also works) —
+   `"lock": false` keeps the screensaver and monitor blanking while never
+   locking. Omitting a key falls back to its default; `0` still means fire
+   the moment the session goes idle. Timings are clamped to 2147483 seconds,
+   the ceiling of the millisecond timer behind them.
 8. **`version: 1` is required** at the top level. The shell will fall back
    to defaults rather than load an unknown version.
 

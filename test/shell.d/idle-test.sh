@@ -8,8 +8,35 @@ run_node_test <<'JS'
 const idle = requireFromRoot('shell/plugins/services/idle/IdleModel.js')
 
 assertEqual(idle.secondsFromConfig('42.9', 10), 42, 'idle floors configured seconds')
-assertEqual(idle.secondsFromConfig('-1', 10), 10, 'idle rejects negative seconds')
+assertEqual(idle.secondsFromConfig(0, 10), 0, 'idle keeps a zero timeout immediate')
+assertEqual(idle.secondsFromConfig(undefined, 10), 10, 'idle defaults an unset timing')
 assertEqual(idle.secondsFromConfig('nope', 10), 10, 'idle rejects invalid seconds')
+assertEqual(idle.secondsFromConfig('', 10), 10, 'idle treats a blank timing as unset')
+assertEqual(idle.secondsFromConfig(true, 10), 10, 'idle treats true as unset')
+
+assertEqual(idle.secondsFromConfig(null, 10), idle.DISABLED_SECONDS, 'idle disables on null')
+assertEqual(idle.secondsFromConfig(false, 10), idle.DISABLED_SECONDS, 'idle disables on false')
+assertEqual(idle.secondsFromConfig('off', 10), idle.DISABLED_SECONDS, 'idle disables on off')
+assertEqual(idle.secondsFromConfig(' Never ', 10), idle.DISABLED_SECONDS, 'idle disables on never')
+assertEqual(idle.secondsFromConfig('-1', 10), idle.DISABLED_SECONDS, 'idle disables on negative seconds')
+
+assertEqual(
+  idle.secondsFromConfig(999999999, 10),
+  idle.MAX_SECONDS,
+  'idle clamps timings to the 32-bit timer ceiling'
+)
+
+assert(idle.isDisabled(idle.DISABLED_SECONDS), 'idle recognises the disabled sentinel')
+assert(!idle.isDisabled(0), 'idle does not treat zero as disabled')
+
+assertEqual(idle.firstIdleTimeout(150, 300), 150, 'idle arms at the earliest timing')
+assertEqual(idle.firstIdleTimeout(150, idle.DISABLED_SECONDS), 150, 'idle ignores a disabled lock')
+assertEqual(idle.firstIdleTimeout(idle.DISABLED_SECONDS, 300), 300, 'idle ignores a disabled screensaver')
+assertEqual(
+  idle.firstIdleTimeout(idle.DISABLED_SECONDS, idle.DISABLED_SECONDS),
+  0,
+  'idle has nothing to arm when both timings are disabled'
+)
 
 assertDeepEqual(idle.eventParts({ data: 'a,b,c' }, 2), ['a', 'b', 'c'], 'idle parses raw event data')
 assertDeepEqual(
