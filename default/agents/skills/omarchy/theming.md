@@ -76,4 +76,7 @@ omarchy theme set catppuccin-custom
 omarchy font list               # Available fonts
 omarchy font current            # Current font
 omarchy font set <name>         # Change font
+omarchy font cjk list           # Available CJK variants
+omarchy font cjk current        # Current CJK variant
+omarchy font cjk set <variant>  # Change CJK variant (jp|kr|sc|tc|hk|auto)
 ```

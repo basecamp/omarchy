@@ -277,6 +277,12 @@ Item {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",
       actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + Util.shellQuote(value) }
+    },
+    "cjk-variants": {
+      script: "current=$(omarchy-font-cjk-current 2>/dev/null); omarchy-font-cjk-list 2>/dev/null | while read -r v; do [[ -z $v ]] && continue; label=$(echo \"$v\" | tr '[:lower:]' '[:upper:]'); printf '%s\\t%s\\t%s\\n' \"$label\" \"$v\" \"$current\"; done",
+      icon: "",
+      volatile: true,
+      actionFor: function(value) { return "omarchy-font-cjk-set " + Util.shellQuote(value) }
     }
   })
 

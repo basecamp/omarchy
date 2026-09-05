@@ -105,6 +105,7 @@
   "style.background": {"icon":"","label":"Background","aliases":["background","wallpaper"],"action":"background=$(omarchy-theme-bg-switcher); [[ -n $background ]] && omarchy-theme-bg-set \"$background\""},
   "style.unlock": {"icon":"󰟵","label":"Unlock","aliases":["unlock"],"action":"unlock=$(omarchy-plymouth-switcher); if [[ $unlock == default ]]; then omarchy-launch-floating-terminal-with-presentation omarchy-plymouth-reset; elif [[ -n $unlock ]]; then omarchy-launch-floating-terminal-with-presentation \"omarchy-plymouth-set-by-theme $(printf %q \"$unlock\")\"; fi"},
   "style.font": {"icon":"","label":"Font","provider":"fonts"},
+  "style.font.cjk": {"icon":"","label":"CJK Variant","provider":"cjk-variants"},
   "style.bar": {"icon":"󰍜","label":"Menu Bar"},
   "style.bar.position": {"icon":"","label":"Position"},
   "style.bar.transparency": {"icon":"󰂵","label":"Transparency","action":"omarchy-bar transparent toggle"},

@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# omarchy:summary=Show current CJK font variant preference
+# omarchy:examples=omarchy font cjk current
+
+# The CJK variant marker lives in fonts.conf (the only per-user fontconfig
+# file this system loads), managed by `omarchy font cjk set`.
+cjk_file="$HOME/.config/fontconfig/fonts.conf"
+
+if [[ ! -f "$cjk_file" ]]; then
+  echo "unset"
+  exit 0
+fi
+
+# The variant marker is written by cjk-set as "<!-- omarchy-cjk-variant: <name> -->".
+current=$(sed -n 's/.*omarchy-cjk-variant: \([a-z]*\).*/\1/p' "$cjk_file" | tail -n1)
+
+if [[ -z "$current" ]]; then
+  echo "unset"
+else
+  echo "$current"
+fi

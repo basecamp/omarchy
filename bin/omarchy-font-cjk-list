@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# omarchy:summary=List available CJK font variants
+# omarchy:examples=omarchy font cjk list
+
+# Each variant is a Noto CJK sub-family installed by noto-fonts-cjk.
+# We check for the sans-serif variant as a proxy — if it is present,
+# the serif and mono siblings are too.
+variants=("jp" "kr" "sc" "tc" "hk")
+
+for v in "${variants[@]}"; do
+  upper=$(echo "$v" | tr '[:lower:]' '[:upper:]')
+  if fc-list | grep -Fqi "Noto Sans CJK $upper"; then
+    echo "$v"
+  fi
+done
