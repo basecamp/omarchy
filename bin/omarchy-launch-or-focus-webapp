@@ -10,6 +10,5 @@ fi
 
 WINDOW_PATTERN="$1"
 shift
-LAUNCH_COMMAND="omarchy-launch-webapp $@"
 
-exec omarchy-launch-or-focus "$WINDOW_PATTERN" "$LAUNCH_COMMAND"
+exec omarchy-launch-or-focus "$WINDOW_PATTERN" omarchy-launch-webapp "$@"

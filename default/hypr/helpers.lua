@@ -128,7 +128,7 @@ function o.launch_webapp_sole(name, url)
 end
 
 function o.launch_sole(match, command)
-  return "omarchy-launch-or-focus " .. shell_quote(match) .. " " .. shell_quote(o.launch(command))
+  return "omarchy-launch-or-focus " .. shell_quote(match) .. " bash -c " .. shell_quote(o.launch(command))
 end
 
 function o.bind_toggle(keys, description, toggle, options)
