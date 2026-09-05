@@ -312,6 +312,10 @@ prepare_runtime_tree() {
 # so a rename or symlink swap after open cannot change which inode is mounted.
 open_mount_source() {
   local path="$1" label="$2" fd record uid identity
+  # Snapshot before any $(...): inside a command substitution BASHPID is the
+  # short-lived subshell, not this function's shell, and /proc/<subshell>/fd/N
+  # points at the wrong descriptor table (#10035).
+  local self_pid=$BASHPID
   [[ -d $path ]] || {
     echo "omarchy-windows-vm: $label source is not a directory: $path" >&2
     return 1
@@ -322,11 +326,11 @@ open_mount_source() {
     echo "omarchy-windows-vm: cannot open $label source: $path" >&2
     return 1
   }
-  [[ -d /proc/$BASHPID/fd/$fd ]] || {
+  [[ -d /proc/$self_pid/fd/$fd ]] || {
     exec {fd}<&-
     return 1
   }
-  record=$(stat -Lc '%u|%d:%i' "/proc/$BASHPID/fd/$fd" 2>/dev/null) || {
+  record=$(stat -Lc '%u|%d:%i' "/proc/$self_pid/fd/$fd" 2>/dev/null) || {
     exec {fd}<&-
     return 1
   }
@@ -346,9 +350,10 @@ open_mount_source() {
 # directory FD; no caller-mutable pathname is re-resolved.
 pinned_dir_contains() {
   local ancestor_id="$1" descendant_fd="$2" walk_fd parent_fd current_id parent_id depth
-  exec {walk_fd}<"/proc/$BASHPID/fd/$descendant_fd/." || return 2
+  local self_pid=$BASHPID
+  exec {walk_fd}<"/proc/$self_pid/fd/$descendant_fd/." || return 2
   for ((depth = 0; depth < 256; depth++)); do
-    current_id=$(stat -Lc '%d:%i' "/proc/$BASHPID/fd/$walk_fd" 2>/dev/null) || {
+    current_id=$(stat -Lc '%d:%i' "/proc/$self_pid/fd/$walk_fd" 2>/dev/null) || {
       exec {walk_fd}<&-
       return 2
     }
@@ -356,11 +361,11 @@ pinned_dir_contains() {
       exec {walk_fd}<&-
       return 0
     fi
-    exec {parent_fd}<"/proc/$BASHPID/fd/$walk_fd/.." || {
+    exec {parent_fd}<"/proc/$self_pid/fd/$walk_fd/.." || {
       exec {walk_fd}<&-
       return 2
     }
-    parent_id=$(stat -Lc '%d:%i' "/proc/$BASHPID/fd/$parent_fd" 2>/dev/null) || {
+    parent_id=$(stat -Lc '%d:%i' "/proc/$self_pid/fd/$parent_fd" 2>/dev/null) || {
       exec {parent_fd}<&-
       exec {walk_fd}<&-
       return 2
@@ -384,12 +389,15 @@ pinned_dir_contains() {
 # when absent, and 2 on timeout, traversal error, or unexpected output.
 pinned_tree_contains() {
   local root_fd="$1" needle_fd="$2" found rc
+  local self_pid=$BASHPID
   # -xdev still evaluates a nested mountpoint itself before pruning its
   # children, so a direct different-filesystem alias of the needle is found too.
   # This matches removal's traversal boundary without skipping mount aliases.
+  # self_pid is required: $(find ...) runs in a subshell where BASHPID is not
+  # the descriptor owner.
   if found=$("$TREE_SCAN_TIMEOUT" --signal=TERM --kill-after="${TREE_SCAN_KILL_AFTER_SECONDS}s" \
-    "${TREE_SCAN_TIMEOUT_SECONDS}s" "$TREE_SCAN_FIND" -P "/proc/$BASHPID/fd/$root_fd/." \
-    -xdev -type d -samefile "/proc/$BASHPID/fd/$needle_fd/." \
+    "${TREE_SCAN_TIMEOUT_SECONDS}s" "$TREE_SCAN_FIND" -P "/proc/$self_pid/fd/$root_fd/." \
+    -xdev -type d -samefile "/proc/$self_pid/fd/$needle_fd/." \
     -printf 'found\n' -quit 2>/dev/null); then
     rc=0
   else
@@ -520,6 +528,7 @@ mounted_leaf_matches() {
 
 bind_mount_leaf() {
   local fd="$1" identity="$2" stable="$3" actual owner
+  local self_pid=$BASHPID
   MOUNT_LEAF_NEW=0
   if mountpoint -q -- "$stable" 2>/dev/null; then
     mounted_leaf_matches "$stable" "$identity" || {
@@ -531,7 +540,7 @@ bind_mount_leaf() {
 
   # util-linux normally canonicalizes a /proc/<pid>/fd link back to a pathname,
   # which would throw away the FD pin. Pass the procfd to mount(2) unchanged.
-  mount --no-canonicalize --bind "/proc/$BASHPID/fd/$fd" "$stable" || return 1
+  mount --no-canonicalize --bind "/proc/$self_pid/fd/$fd" "$stable" || return 1
   MOUNT_LEAF_NEW=1
   actual=$(stat -Lc '%d:%i' "$stable" 2>/dev/null) || actual=""
   owner=$(stat -Lc '%u' "$stable" 2>/dev/null) || owner=""
@@ -556,6 +565,10 @@ bind_mount_leaf() {
 
 prepare_caller_mounts() {
   local storage_fd storage_id shared_fd shared_id storage_mode shared_mode
+  # Capture before $(stat ...): BASHPID inside a command substitution is the
+  # subshell PID, so /proc/$BASHPID/fd would read a different descriptor table
+  # and the 0700 privacy check would fail closed on a false mismatch (#10035).
+  local self_pid=$BASHPID
   CALLER_MOUNTS_NEW_STORAGE=0
   CALLER_MOUNTS_NEW_SHARED=0
   resolve_caller && prepare_runtime_tree || return 1
@@ -580,13 +593,13 @@ prepare_caller_mounts() {
   # Privacy is an explicit preflight step for both already-pinned sources, not
   # a side effect halfway through the two-mount transaction. Old umask-022
   # installs are hardened together before either Docker-facing anchor changes.
-  chmod 0700 -- "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
+  chmod 0700 -- "/proc/$self_pid/fd/$storage_fd" "/proc/$self_pid/fd/$shared_fd" || {
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
   }
-  storage_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$storage_fd" 2>/dev/null) || storage_mode=""
-  shared_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$shared_fd" 2>/dev/null) || shared_mode=""
+  storage_mode=$(stat -Lc '%a' "/proc/$self_pid/fd/$storage_fd" 2>/dev/null) || storage_mode=""
+  shared_mode=$(stat -Lc '%a' "/proc/$self_pid/fd/$shared_fd" 2>/dev/null) || shared_mode=""
   if [[ $storage_mode != 700 || $shared_mode != 700 ]]; then
     exec {storage_fd}<&-
     exec {shared_fd}<&-
