@@ -14,6 +14,8 @@ The end-user view (hotkey notices for time, battery, weather) is in
 
 ## Toast lifecycle
 
+Each output uses a fixed-width, full-height transparent strip sized to the card width plus its right clearance, rather than a full-screen surface. Keeping the dimensions independent of the popup count avoids stale-buffer stretching when cards are added or removed. Only the card column accepts input, and the Hyprland layer rule disables compositor animation for the strip.
+
 A toast lives on screen for at least 5s (low), 8s (normal), or forever
 (critical), stretched up to 30s if the sender asked for a longer
 `expire_timeout`. Hovering pauses the countdown, and a content update restarts
