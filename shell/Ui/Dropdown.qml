@@ -43,6 +43,10 @@ Item {
   // own keyCatcher so j/k inside the popup don't double-drive the panel
   // cursor.
   readonly property bool popupOpen: popup.opened
+  // Exposed for the same reason as popupOpen: a parent panel's BeforeItem
+  // key catcher must stand down while the trigger holds Qt focus (Tab), or
+  // Enter/Space never reach it to open the popup.
+  readonly property bool triggerFocused: trigger.activeFocus
   function open() { popup.open() }
   function close() { popup.close() }
   function toggle() { popup.opened ? popup.close() : popup.open() }

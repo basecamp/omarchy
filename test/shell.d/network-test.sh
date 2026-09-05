@@ -12,6 +12,15 @@ const panelSource = fs.readFileSync(root + '/shell/plugins/panels/network/Panel.
 assert(/IpcHandler[\s\S]*?function toggleNetwork\(\) \{ root\.toggleNetwork\(\) \}/.test(panelSource), 'network exposes the Wi-Fi radio toggle over IPC')
 assert(/manageIpc: false/.test(panelSource), 'network owns its IPC handler so it can extend the target methods')
 
+// The hidden-network form is appended at the bottom of the panel's content,
+// so on a short display it can fall outside the card's capped height with no
+// way to reach it. The main column must live inside a Flickable (not a bare
+// Column) so it has a scroll path -- a future edit flattening it back out
+// must fail here.
+const mainColumn = panelSource.match(/Flickable \{\s*id: panelFlick[\s\S]*?Column \{\s*id: column\b/)
+assert(mainColumn, 'network wraps its main column in a Flickable so overflow content stays reachable')
+assert(/interactive: contentHeight > height/.test(mainColumn[0]), 'network only lets the outer Flickable drag when its content overflows')
+
 // Opening from the bar must call open() and nothing else. open() runs
 // refresh(true), which defers the PHY scan; a second bare refresh() defaults
 // scanWifi to false, sets scannerEnabled synchronously, and stalls the open on
@@ -293,4 +302,117 @@ assertDeepEqual(
 
 assertEqual(network.headerDetail({ type: 'wifi', freq: '5745' }), '', 'network keeps wifi band state out of the hero')
 assertEqual(network.headerDetail({ type: 'ethernet', speed: '100' }), '100mbit', 'network keeps ethernet speed in the hero')
+
+// Hidden-network connect script: SSID must travel as a positional arg --
+// never string-interpolated -- and the profile must be marked hidden so
+// NetworkManager probes for it instead of waiting on a beacon that will
+// never arrive.
+assert(/"\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script maps ssid to the positional $1 arg')
+assert(/802-11-wireless\.hidden yes/.test(network.hiddenPskConnectScript), 'hidden PSK connect script marks the profile hidden')
+assert(/IFS= read -r pw/.test(network.hiddenPskConnectScript), 'hidden PSK connect script reads the passphrase from stdin, not argv')
+assert(/set wifi-sec\.psk %s/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets the psk through the connection editor')
+assert(!/password "\$pw"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never passes the passphrase in argv')
+
+// One script serves both WPA/WPA2 Personal and WPA3 Personal: key-mgmt comes
+// from the caller-supplied $2 ("wpa-psk" or "sae"), and WPA3 additionally
+// requires Protected Management Frames, set only in the sae case.
+assert(/wifi-sec\.key-mgmt "\$2"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets key-mgmt from the $2 arg, not a hardcoded value')
+assert(!/wifi-sec\.key-mgmt wpa-psk/.test(network.hiddenPskConnectScript), 'hidden PSK connect script no longer hardcodes wpa-psk as the key-mgmt')
+assert(/\[\[ \$2 == "sae" \]\] && pmf="wifi-sec\.pmf 3"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script sets PMF required only for the sae (WPA3) case, using a [[ ]] string test per AGENTS.md')
+
+// Dedupe must never delete by con-name (not unique -- could hit an unrelated
+// profile): match prior profiles by UUID over (ssid, hidden), and only once
+// the new one is up. Enumeration is two fixed nmcli calls, never one per
+// connection.
+assert(!/connection delete id "\$1"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never deletes an existing profile by name')
+assert(!network.hiddenPskConnectScript.includes('connection delete id '), 'hidden PSK connect script never deletes any existing profile by name (id), regardless of the argument')
+assert(/nmcli -t -f UUID,TYPE connection show/.test(network.hiddenPskConnectScript), 'hidden PSK connect script lists all connections (UUID + type) in a single nmcli call')
+assert(network.hiddenPskConnectScript.includes('done < <(nmcli -t -f UUID,TYPE connection show)'), 'hidden PSK connect script reads the dedupe queries through process substitution, keeping bash in an interruptible read instead of waiting on a foreground command substitution')
+assert(network.hiddenPskConnectScript.includes('done < <(LC_ALL=C nmcli --escape no -g'), 'hidden PSK connect script reads the dedupe queries through process substitution, keeping bash in an interruptible read instead of waiting on a foreground command substitution')
+assert(network.hiddenPskConnectScript.includes('>/dev/null & wait $!; }'), 'hidden PSK connect script backgrounds connection add under wait so the TERM trap can preempt it')
+assert(network.hiddenPskConnectScript.includes('nmcli connection edit uuid "$u" >/dev/null & wait $!; }'), 'hidden PSK connect script backgrounds connection edit under wait so the TERM trap can preempt it')
+assert(network.hiddenPskConnectScript.includes('trap \'timeout -k 1 5 nmcli connection delete uuid "$u"'), 'hidden PSK connect script bounds the EXIT-trap cleanup delete so a wedged NetworkManager cannot stall the dying process')
+assert(!/for c in \$\(nmcli/.test(network.hiddenPskConnectScript), 'hidden PSK connect script never runs nmcli once per connection (N+1)')
+assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wireless\.hidden,802-11-wireless-security\.key-mgmt,802-11-wireless\.bssid,802-11-wireless\.mac-address,connection\.interface-name,ipv4\.method,ipv6\.method,ipv4\.addresses,ipv4\.dns,ipv4\.routes,ipv6\.addresses,ipv6\.dns,ipv6\.routes connection show \$wifi/.test(network.hiddenPskConnectScript), 'hidden PSK connect script fetches ssid/hidden/identity/IP-customization fields for all wifi profiles in one batched, unescaped query so a colon/backslash SSID still compares equal to the raw $1')
+assert(/\[\[ \$t == "802-11-wireless" \]\] && wifi=/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers 802-11-wireless connections for cleanup')
+assert(/\[\[ \$ssid == "\$1" \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script matches prior profiles by this SSID, not by name')
+assert(/\[\[ \$hidden == "yes" \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only considers hidden profiles for cleanup, never a broadcast network of the same SSID')
+assert(/old="\$old uuid \$c"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script accumulates old profiles as delete-ready "uuid <id>" tokens')
+assert(!/for o in \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script deletes duplicates in one batched nmcli call, not one per profile')
+assert(/connection up uuid "\$u"[\s\S]*nmcli connection delete \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script only deletes old profiles after the new one activates successfully')
+
+// Cleanup is a single EXIT trap: armed before the profile exists, deleting
+// it on any failure or TERM/INT kill, and disarmed (`trap - EXIT`) only
+// after `connection up` proves it. `true` pins the success block's status
+// so a stale old-UUID delete can't flip the chain to failure.
+assert(/trap 'timeout -k 1 5 nmcli connection delete uuid "\$u"[^']*' EXIT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script arms an EXIT trap that removes the unproven profile on any failure or kill')
+assert(/trap 'kill -TERM \$! 2>\/dev\/null; exit 143' TERM INT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script\'s TERM trap kills the in-flight nmcli so a panel kill is never deferred behind a foreground child')
+assert(
+  network.hiddenPskConnectScript.indexOf("' EXIT") < network.hiddenPskConnectScript.indexOf('connection add'),
+  'hidden PSK connect script arms the cleanup trap before the profile is created'
+)
+assert(
+  network.hiddenPskConnectScript.indexOf('connection up uuid "$u"') < network.hiddenPskConnectScript.indexOf('trap - EXIT'),
+  'hidden PSK connect script disarms the cleanup trap only after connection up proves the profile'
+)
+assert(/\[\[ -n \$old \]\] && nmcli connection delete \$old[\s\S]*true; \}/.test(network.hiddenPskConnectScript), 'hidden PSK connect script pins the success block status with `true` so a stale old-UUID delete failure cannot fail the chain')
+
+// The profile starts inert (autoconnect no), is armed only after activation,
+// and old profiles are removed only if that arm succeeded -- a failed arm
+// keeps the old, still-autoconnecting profiles. `-w 25` keeps nmcli under
+// the QML 30s kill.
+assert(/connection\.autoconnect no/.test(network.hiddenPskConnectScript), 'hidden PSK connect script creates the profile inert (autoconnect no) so a killed/failed attempt cannot be retried in the background')
+assert(/nmcli -w 25 connection up uuid "\$u"/.test(network.hiddenPskConnectScript), 'hidden PSK connect script bounds nmcli\'s own wait below the QML 30s kill timeout')
+assert(
+  network.hiddenPskConnectScript.indexOf('connection up uuid "$u"') < network.hiddenPskConnectScript.indexOf('connection.autoconnect yes'),
+  'hidden PSK connect script only sets autoconnect yes after connection up, never before'
+)
+assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*nmcli connection delete \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script deletes old profiles only if the autoconnect arm succeeded')
+
+// IFS= on every field read: a bare `read` trims whitespace and would corrupt
+// a space-padded SSID before the "$1" compare. The batched query blank-lines
+// between profiles, so the uuid read skips blanks to keep each connection's
+// exactly fifteen-field group aligned.
+assert(/IFS= read -r ssid; IFS= read -r hidden;/.test(network.hiddenPskConnectScript), 'hidden PSK connect script parses ssid/hidden with IFS= read -r so a space-padded SSID is not trimmed')
+assert(/\[\[ -n \$c \]\] \|\| continue/.test(network.hiddenPskConnectScript), 'hidden PSK connect script skips the blank separator lines between batched profiles so field groups stay aligned')
+assert(network.hiddenPskConnectScript.includes('[[ $c != "$u" ]] || continue'), 'hidden PSK connect script dedupe skips the profile this attempt just created, so the late snapshot cannot delete it')
+assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*--escape no -g[\s\S]*nmcli connection delete \$old/.test(network.hiddenPskConnectScript), 'hidden PSK connect script snapshots duplicates inside the modify-success block, immediately before the batched delete (TOCTOU guard)')
+assert(/connection modify[\s\S]*trap 'kill -TERM \$! 2>\/dev\/null; exit 143' TERM INT/.test(network.hiddenPskConnectScript), 'hidden PSK connect script re-arms the kill-child TERM trap before the late snapshot so a panel kill still interrupts it')
+
+// An open hidden network has no credentials, but must still avoid `nmcli
+// device wifi connect`, which persists an autoconnecting profile before
+// activation -- a timed-out or killed attempt would stay saved and retry in
+// the background. It shares the PSK script's dedupe/EXIT-trap lifecycle,
+// minus the secret.
+assert(/"\$1"/.test(network.hiddenOpenConnectScript), 'hidden open connect script maps ssid to the positional $1 arg')
+assert(/802-11-wireless\.hidden yes/.test(network.hiddenOpenConnectScript), 'hidden open connect script marks the profile hidden')
+assert(/connection\.autoconnect no/.test(network.hiddenOpenConnectScript), 'hidden open connect script creates the profile inert (autoconnect no) so a killed/failed attempt cannot be retried in the background')
+assert(!/wifi-sec/.test(network.hiddenOpenConnectScript), 'hidden open connect script sets no wifi security properties on an open profile')
+assert(!/IFS= read -r pw/.test(network.hiddenOpenConnectScript), 'hidden open connect script never reads a passphrase, since open networks have none')
+
+assert(/trap 'timeout -k 1 5 nmcli connection delete uuid "\$u"[^']*' EXIT/.test(network.hiddenOpenConnectScript), 'hidden open connect script arms an EXIT trap that removes the unproven profile on any failure or kill')
+assert(/trap 'kill -TERM \$! 2>\/dev\/null; exit 143' TERM INT/.test(network.hiddenOpenConnectScript), 'hidden open connect script\'s TERM trap kills the in-flight nmcli so a panel kill is never deferred behind a foreground child')
+assert(
+  network.hiddenOpenConnectScript.indexOf("' EXIT") < network.hiddenOpenConnectScript.indexOf('connection add'),
+  'hidden open connect script arms the cleanup trap before the profile is created'
+)
+assert(
+  network.hiddenOpenConnectScript.indexOf('connection up uuid "$u"') < network.hiddenOpenConnectScript.indexOf('trap - EXIT'),
+  'hidden open connect script disarms the cleanup trap only after connection up proves the profile'
+)
+assert(/nmcli -w 25 connection up uuid "\$u"/.test(network.hiddenOpenConnectScript), 'hidden open connect script bounds nmcli\'s own wait below the QML 30s kill timeout')
+assert(
+  network.hiddenOpenConnectScript.indexOf('connection up uuid "$u"') < network.hiddenOpenConnectScript.indexOf('connection.autoconnect yes'),
+  'hidden open connect script only sets autoconnect yes after connection up, never before'
+)
+assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*nmcli connection delete \$old/.test(network.hiddenOpenConnectScript), 'hidden open connect script deletes old profiles only if the autoconnect arm succeeded')
+
+assert(/nmcli --escape no -g connection\.uuid,802-11-wireless\.ssid,802-11-wireless\.hidden,802-11-wireless-security\.key-mgmt,802-11-wireless\.bssid,802-11-wireless\.mac-address,connection\.interface-name,ipv4\.method,ipv6\.method,ipv4\.addresses,ipv4\.dns,ipv4\.routes,ipv6\.addresses,ipv6\.dns,ipv6\.routes connection show \$wifi/.test(network.hiddenOpenConnectScript), 'hidden open connect script shares the same batched dedupe query as the PSK script, so it dedupes prior hidden profiles too')
+assert(network.hiddenOpenConnectScript.includes('done < <(nmcli -t -f UUID,TYPE connection show)'), 'hidden open connect script reads the dedupe queries through process substitution, keeping bash in an interruptible read instead of waiting on a foreground command substitution')
+assert(network.hiddenOpenConnectScript.includes('done < <(LC_ALL=C nmcli --escape no -g'), 'hidden open connect script reads the dedupe queries through process substitution, keeping bash in an interruptible read instead of waiting on a foreground command substitution')
+assert(network.hiddenOpenConnectScript.includes('>/dev/null & wait $!; }'), 'hidden open connect script backgrounds connection add under wait so the TERM trap can preempt it')
+assert(network.hiddenOpenConnectScript.includes('trap \'timeout -k 1 5 nmcli connection delete uuid "$u"'), 'hidden open connect script bounds the EXIT-trap cleanup delete so a wedged NetworkManager cannot stall the dying process')
+assert(network.hiddenOpenConnectScript.includes('[[ $c != "$u" ]] || continue'), 'hidden open connect script dedupe skips the profile this attempt just created, so the late snapshot cannot delete it')
+assert(/if nmcli connection modify uuid "\$u" connection\.autoconnect yes[\s\S]*--escape no -g[\s\S]*nmcli connection delete \$old/.test(network.hiddenOpenConnectScript), 'hidden open connect script snapshots duplicates inside the modify-success block, immediately before the batched delete (TOCTOU guard)')
+assert(/connection modify[\s\S]*trap 'kill -TERM \$! 2>\/dev\/null; exit 143' TERM INT/.test(network.hiddenOpenConnectScript), 'hidden open connect script re-arms the kill-child TERM trap before the late snapshot so a panel kill still interrupts it')
 JS

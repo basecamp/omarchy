@@ -341,6 +341,127 @@ var enterpriseConnectScript =
   " && nmcli connection up uuid \"$u\"" +
   " || { nmcli connection delete uuid \"$u\" >/dev/null 2>&1; false; }"
 
+// Join a hidden SSID. Only $1 (ssid) and, for the PSK variant, the stdin
+// passphrase are user input; $2 (key-mgmt "wpa-psk"|"sae") and $pmf are our
+// own literals. The secret reaches nmcli through the `connection edit`
+// editor, not argv (see enterpriseConnectScript).
+//
+// Dedupe is by UUID, not con-name (not unique -- a name match could delete an
+// unrelated profile), in two fixed nmcli calls, never one per connection:
+// list UUID/TYPE, then one batched -g over the wifi UUIDs (--escape no so a
+// ":"/"\\" SSID compares raw). A saved profile is only replaceable if it is
+// indistinguishable from the one about to be created: same SSID, hidden,
+// key-mgmt (comparing against "${2-}" covers both the PSK script's "$2" and
+// the open script's unset $2, since an open profile also reports empty
+// key-mgmt), no BSSID/MAC/interface pin, and ipv4/ipv6 left at the defaults
+// our own `connection add` leaves behind -- method "auto" on both stacks, no
+// manual addresses/dns/routes, confirmed by creating a throwaway profile with
+// this script's exact `connection add` invocation and reading it back. It
+// must stay wifi-only on exactly fifteen fields -- -g prints one line per
+// field (blank when unset) plus a blank line between connections, so a
+// missing or extra field would slip the group alignment.
+//
+// The "auto" literal assumes NetworkManager's stock per-connection default;
+// a site that overrides ipv4.method/ipv6.method in NetworkManager.conf's
+// [connection] section gives both the new profile and prior hidden profiles
+// that other value, so this comparison never matches and dedupe silently
+// stops -- every join then leaves another same-named profile behind instead
+// of deleting one. That is the intended failure direction: this dedupe
+// exists because the old code deleted too much, so failing toward "leave
+// profiles alone" beats failing toward "delete a customized one."
+//
+// Both queries feed their loops through process substitution, never
+// `<<< "$(...)"`: a command substitution is a foreground child, and bash
+// defers a trapped TERM until a foreground child returns, so a hung nmcli
+// would outlive the panel's 30s kill. With < <(...) the shell blocks in the
+// interruptible `read` builtin instead, and the TERM trap kills $! -- the
+// substitution's nmcli -- on its way out. The same trap covers the
+// `connection add`/`connection edit` steps, which run backgrounded under
+// `wait $!`, and the EXIT-trap delete is bounded by `timeout -k 1 5` (KILL a second after an ignored TERM) so a wedged
+// NetworkManager cannot stall the dying process either -- worst case it
+// leaves the unproven, autoconnect-off profile behind, the same residue an
+// untrappable SIGKILL already leaves.
+// Arms the cleanup EXIT trap and the kill-the-in-flight-child TERM trap
+// before anything runs; both connect scripts start with it.
+var hiddenConnectGuard =
+  " trap 'timeout -k 1 5 nmcli connection delete uuid \"$u\" >/dev/null 2>&1' EXIT;" +
+  " trap 'kill -TERM $! 2>/dev/null; exit 143' TERM INT;"
+
+// The snapshot runs INSIDE the activation's modify-success block, immediately
+// before the batched delete, not up front: deciding "this profile is an
+// uncustomized duplicate" ~30 seconds before acting on it invites a TOCTOU
+// where a profile customized mid-join (nm-connection-editor, a config agent)
+// is deleted from a stale list. Adjacent snapshot-and-delete shrinks that
+// window to milliseconds -- the best available, since NetworkManager has no
+// compare-and-delete. By then the new profile exists and matches this very
+// predicate, so the loop skips $u explicitly. The TERM trap is re-armed
+// beforehand so a panel kill still interrupts the late queries; killed there,
+// the connection is already up and armed, and the duplicates simply survive.
+var hiddenConnectDedupe =
+  " old=\"\"; wifi=\"\";" +
+  " while IFS=: read -r c t; do [[ $t == \"802-11-wireless\" ]] && wifi=\"$wifi uuid $c\"; done < <(nmcli -t -f UUID,TYPE connection show);" +
+  " if [[ -n $wifi ]]; then" +
+  "   while IFS= read -r c; do" +
+  "     [[ -n $c ]] || continue;" +
+  "     IFS= read -r ssid; IFS= read -r hidden; IFS= read -r keymgmt;" +
+  "     IFS= read -r bssid; IFS= read -r mac; IFS= read -r iface;" +
+  "     IFS= read -r ip4m; IFS= read -r ip6m;" +
+  "     IFS= read -r ip4addr; IFS= read -r ip4dns; IFS= read -r ip4routes;" +
+  "     IFS= read -r ip6addr; IFS= read -r ip6dns; IFS= read -r ip6routes;" +
+  "     [[ $c != \"$u\" ]] || continue;" +
+  "     [[ $ssid == \"$1\" ]] || continue;" +
+  "     [[ $hidden == \"yes\" ]] || continue;" +
+  "     [[ $keymgmt == \"${2-}\" ]] || continue;" +
+  "     [[ -z $bssid && -z $mac && -z $iface ]] || continue;" +
+  "     [[ $ip4m == \"auto\" && $ip6m == \"auto\" ]] || continue;" +
+  "     [[ -z $ip4addr && -z $ip4dns && -z $ip4routes && -z $ip6addr && -z $ip6dns && -z $ip6routes ]] || continue;" +
+  "     old=\"$old uuid $c\";" +
+  "   done < <(LC_ALL=C nmcli --escape no -g connection.uuid,802-11-wireless.ssid,802-11-wireless.hidden,802-11-wireless-security.key-mgmt,802-11-wireless.bssid,802-11-wireless.mac-address,connection.interface-name,ipv4.method,ipv6.method,ipv4.addresses,ipv4.dns,ipv4.routes,ipv6.addresses,ipv6.dns,ipv6.routes connection show $wifi 2>/dev/null);" +
+  " fi;"
+
+// A lone EXIT trap deletes the unproven profile on any failure or TERM/INT
+// kill, disarmed only after `connection up`. The profile is born
+// autoconnect-off so a leak can't retry; the duplicate snapshot runs, and the
+// old duplicates it finds go in one batched delete, only once it is up and
+// armed. `connection up` runs backgrounded so
+// the panel's 30s kill (Process.running = false -> SIGTERM) reaches it
+// directly: bash defers a trapped signal until a foreground child returns,
+// so a synchronous `nmcli -w 25 connection up` would leave the panel's
+// "Connecting..." state and disabled actions running well past the
+// advertised timeout while nmcli's own -w 25 has yet to elapse.
+var hiddenConnectActivate =
+  " && { nmcli -w 25 connection up uuid \"$u\" & up=$!;" +
+  "     trap 'kill -TERM $up 2>/dev/null; wait $up 2>/dev/null; exit 143' TERM INT;" +
+  "     wait $up; }" +
+  " && { trap - EXIT;" +
+  "     if nmcli connection modify uuid \"$u\" connection.autoconnect yes >/dev/null 2>&1; then" +
+  "       trap 'kill -TERM $! 2>/dev/null; exit 143' TERM INT;" +
+  hiddenConnectDedupe +
+  "       [[ -n $old ]] && nmcli connection delete $old >/dev/null 2>&1;" +
+  "     fi; true; }"
+
+// The passphrase arrives on stdin and reaches nmcli through the scriptable
+// `connection edit` editor, never argv.
+var hiddenPskConnectScript =
+  "u=$(uuidgen); IFS= read -r pw; pmf=\"\"; [[ $2 == \"sae\" ]] && pmf=\"wifi-sec.pmf 3\";" +
+  hiddenConnectGuard +
+  " { nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
+  " connection.autoconnect no 802-11-wireless.hidden yes wifi-sec.key-mgmt \"$2\" $pmf >/dev/null & wait $!; }" +
+  " && { printf 'set wifi-sec.psk %s\\nsave\\nquit\\n' \"$pw\" | nmcli connection edit uuid \"$u\" >/dev/null & wait $!; }" +
+  hiddenConnectActivate
+
+// An open hidden network has no credentials, but still must not use `nmcli
+// device wifi connect`, which persists an autoconnecting profile before
+// activation -- a timed-out or killed attempt would stay saved and retry in
+// the background. It shares the PSK script's dedupe/EXIT-trap lifecycle,
+// minus the secret.
+var hiddenOpenConnectScript =
+  "u=$(uuidgen);" +
+  hiddenConnectGuard +
+  " { nmcli connection add type wifi con-name \"$1\" ssid \"$1\" connection.uuid \"$u\"" +
+  " connection.autoconnect no 802-11-wireless.hidden yes >/dev/null & wait $!; }" +
+  hiddenConnectActivate
+
 function networkFailureReason(reason, needsCredentials, reasons) {
   var r = reasons || {}
   if (needsCredentials && reason === r.NoSecrets) return "Passphrase required"
@@ -392,6 +513,8 @@ if (typeof module !== "undefined") {
     requiresCredentials: requiresCredentials,
     canForgetNetwork: canForgetNetwork,
     enterpriseConnectScript: enterpriseConnectScript,
+    hiddenPskConnectScript: hiddenPskConnectScript,
+    hiddenOpenConnectScript: hiddenOpenConnectScript,
     networkFailureReason: networkFailureReason,
     shouldRepromptPassphrase: shouldRepromptPassphrase
   }
