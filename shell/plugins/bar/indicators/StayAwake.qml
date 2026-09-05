@@ -34,9 +34,10 @@ BarIndicator {
     anchorItem: root
     owner: root
     bar: root.bar
-    focusTarget: choices.itemAt(0)
+    focusTarget: options
     contentWidth: fittedContentWidth(Style.space(232))
     contentHeight: fittedContentHeight(options.implicitHeight)
+    onOpenChanged: if (open) Qt.callLater(function() { options.focusChoice(0) })
 
     Column {
       id: options
