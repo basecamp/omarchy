@@ -38,6 +38,31 @@ Item {
   property bool passwordVisible: false
   property string passwordError: ""
   property bool pwExpectedStop: false
+  property bool copied: false
+
+  function copyPassword() {
+    if (!root.passwordVisible || root.password === "") return
+    // wl-clipboard ships with the base install (the emojis plugin relies on
+    // it). The secret reaches wl-copy as an argv element, never a shell.
+    copyProc.command = ["wl-copy", "--", root.password]
+    copyProc.running = true
+    root.copied = true
+    copiedTimer.restart()
+  }
+
+  Timer {
+    id: copiedTimer
+    interval: 1600
+    onTriggered: root.copied = false
+  }
+
+  Process {
+    id: copyProc
+    onExited: function(exitCode) {
+      if (exitCode !== 0) root.copied = false
+    }
+  }
+
 
   readonly property bool showingQr: qrSize > 0 && !loading && error === ""
 
@@ -237,6 +262,10 @@ Item {
       focus: true
 
       Keys.onEscapePressed: root.dismiss()
+      Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_C && !(event.modifiers & Qt.ControlModifier) && root.passwordVisible)
+          root.copyPassword()
+      }
 
       Item {
         anchors.centerIn: parent
@@ -362,8 +391,25 @@ Item {
               onClicked: root.togglePassword()
             }
           }
+          Text {
+            visible: root.showingQr && root.secured && root.passwordVisible && root.passwordError === ""
+            text: root.copied ? "Copied ✓" : "Copy password"
+            color: root.copied ? "#7ee787" : root.onScrimDim
+            opacity: root.copied ? 1 : 0.85
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            font.underline: !root.copied
+            Layout.alignment: Qt.AlignHCenter
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.copyPassword()
+            }
+          }
         }
       }
     }
   }
 }
+
