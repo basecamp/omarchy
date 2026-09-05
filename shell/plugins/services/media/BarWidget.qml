@@ -52,26 +52,72 @@ BarWidget {
       anchors.verticalCenter: parent.verticalCenter
       visible: !root.bar.vertical && root.title !== ""
 
-      Text {
-        id: labelText
-        textFormat: Text.PlainText
-        text: root.title + (root.artist ? "  ·  " + root.artist : "")
-        color: root.bar.barForeground
-        font.family: root.bar.fontFamily
-        font.pixelSize: Style.font.body
+      // Gap between the two copies of the label, so the loop reads as a
+      // continuous ribbon instead of a hard cut back to the start.
+      readonly property real gap: Style.space(28)
+      readonly property real cycle: labelText.implicitWidth + gap
+      readonly property bool needsScroll: labelText.implicitWidth > width + 0.5
+      readonly property bool scrolling: needsScroll && !root.popupOpen && !root.bar.vertical && visible
+
+      // from/to/duration are only sampled when an animation starts, so a new
+      // track has to stop, rewind and start it again. Without this the marquee
+      // keeps replaying the geometry of whatever track was playing when it
+      // first started and looks frozen.
+      function resyncScroll() {
+        scrollAnim.stop()
+        scrollRow.x = 0
+        if (scrolling && cycle > 0) scrollAnim.start()
+      }
+
+      onScrollingChanged: resyncScroll()
+      onCycleChanged: resyncTimer.restart()
+      onWidthChanged: resyncTimer.restart()
+      Component.onCompleted: resyncScroll()
+
+      Timer {
+        id: resyncTimer
+        interval: 60
+        onTriggered: scrollClip.resyncScroll()
+      }
+
+      Row {
+        id: scrollRow
         anchors.verticalCenter: parent.verticalCenter
+        spacing: scrollClip.gap
 
-        property bool needsScroll: implicitWidth > scrollClip.width
-
-        NumberAnimation on x {
-          id: scrollAnim
-          running: labelText.needsScroll && !root.popupOpen && !root.bar.vertical
-          loops: Animation.Infinite
-          duration: Math.max(6000, labelText.implicitWidth * 25)
-          from: scrollClip.width
-          to: -labelText.implicitWidth
-          easing.type: Easing.Linear
+        Text {
+          id: labelText
+          textFormat: Text.PlainText
+          text: root.title + (root.artist ? "  ·  " + root.artist : "")
+          color: root.bar.barForeground
+          font.family: root.bar.fontFamily
+          font.pixelSize: Style.font.body
+          onTextChanged: resyncTimer.restart()
         }
+
+        Text {
+          textFormat: Text.PlainText
+          text: labelText.text
+          color: labelText.color
+          font.family: labelText.font.family
+          font.pixelSize: labelText.font.pixelSize
+          visible: scrollClip.scrolling
+        }
+      }
+
+      NumberAnimation {
+        id: scrollAnim
+        target: scrollRow
+        property: "x"
+        loops: Animation.Infinite
+        from: 0
+        to: -scrollClip.cycle
+        // Hold the previous scroll rate. The old animation covered
+        // scrollClip.width + implicitWidth in max(6000, implicitWidth * 25) ms,
+        // so scale that pace to the cycle this one travels instead.
+        duration: scrollClip.cycle * Math.max(6000, labelText.implicitWidth * 25)
+          / Math.max(1, scrollClip.width + labelText.implicitWidth)
+        easing.type: Easing.Linear
       }
     }
   }
