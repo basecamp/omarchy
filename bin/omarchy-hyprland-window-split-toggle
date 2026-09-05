@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# omarchy:summary=Toggle the window split in the active workspace layout, using a layout-aware action
+
+CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
+
+if [[ $CURRENT_LAYOUT == "scrolling" ]]; then
+  hyprctl dispatch 'hl.dsp.layout("promote")' >/dev/null 2>&1 || hyprctl dispatch layoutmsg promote >/dev/null
+else
+  hyprctl dispatch 'hl.dsp.layout("togglesplit")' >/dev/null 2>&1 || hyprctl dispatch layoutmsg togglesplit >/dev/null
+fi
