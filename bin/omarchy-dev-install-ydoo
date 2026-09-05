@@ -12,9 +12,10 @@ if ! getent group input >/dev/null; then
   exit 1
 fi
 
-if ! id -nG "$USER" | tr ' ' '\n' | grep -x input >/dev/null; then
-  echo "Adding $USER to the input group. You may need to log out and back in before this applies."
-  pkexec usermod -aG input "$USER"
+user=$(id -un)
+if ! id -nG | tr ' ' '\n' | grep -x input >/dev/null; then
+  echo "Adding $user to the input group. You may need to log out and back in before this applies."
+  pkexec usermod -aG input "$user"
 fi
 
 if omarchy-cmd-missing ydotool || omarchy-pkg-missing ydotool; then

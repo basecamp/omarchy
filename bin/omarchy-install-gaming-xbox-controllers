@@ -17,9 +17,10 @@ echo blacklist xpad | sudo tee /etc/modprobe.d/blacklist-xpad.conf >/dev/null
 echo hid_xpadneo | sudo tee /etc/modules-load.d/xpadneo.conf >/dev/null
 
 # Ensure user is in the input group (controllers need it)
+user=$(id -un)
 needs_reboot=false
-if ! id -nG "$USER" | grep -qw input; then
-  sudo usermod -aG input "$USER"
+if ! id -nG "$user" | grep -qw input; then
+  sudo usermod -aG input "$user"
   needs_reboot=true
 fi
 

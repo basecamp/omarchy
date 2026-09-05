@@ -28,7 +28,7 @@ DOCKER_SOCKET="${OMARCHY_DOCKER_SOCKET:-/var/run/docker.sock}"
 case "${1:-}" in
 --configured)
   # An account in the docker group will not need sudo after the next login.
-  id -nG "$USER" 2>/dev/null | grep -qw docker && exit 1
+  id -nG 2>/dev/null | grep -qw docker && exit 1
   exit 0
   ;;
 "")

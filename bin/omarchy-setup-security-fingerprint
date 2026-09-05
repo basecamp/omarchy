@@ -90,7 +90,7 @@ omarchy-pkg-add libfprint fprintd usbutils
 echo -e "\e[32m\nLet's setup your right index finger as the first fingerprint.\e[0m"
 echo -e "Keep moving the finger around on sensor until the process completes.\n"
 
-if sudo fprintd-enroll "$USER"; then
+if sudo fprintd-enroll "$(id -un)"; then
   echo -e "\e[32m\nFingerprint enrolled successfully!\e[0m"
 
   # Verify
