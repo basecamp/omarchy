@@ -32,6 +32,7 @@ fi
 
 if [[ -f ~/.config/kitty/kitty.conf ]]; then
   sed -i "s/^font_family .*/font_family $font_name/g" ~/.config/kitty/kitty.conf
+  sed -i -E "s/^(bold_font|italic_font|bold_italic_font) .*/\1 auto/g" ~/.config/kitty/kitty.conf
   pkill -USR1 kitty
 fi
 
