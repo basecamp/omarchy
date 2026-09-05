@@ -299,3 +299,47 @@ grep -F 'move = { "(monitor_w-monitor_h*2/9-40)", "(monitor_h-monitor_h/4-40)" }
 grep -F 'move = { "(monitor_w-monitor_h*3/10-40)", "(monitor_h-monitor_h*27/80-40)" }' "$webcam_rules" >/dev/null || \
   fail "large webcam starts at its final corner position"
 pass "webcam size rules place the initial window in its final corner"
+
+cat >"$stub_bin/uname" <<'SH'
+#!/bin/bash
+echo aarch64
+SH
+cat >"$stub_bin/omarchy-pkg-present" <<'SH'
+#!/bin/bash
+[[ ${OMARCHY_TEST_ASAHI_DRIVER:-false} == "true" && $1 == "vulkan-asahi" ]]
+SH
+cat >"$stub_bin/mpv" <<'SH'
+#!/bin/bash
+printf '%s\n' "$@" >"$OMARCHY_TEST_MPV_ARGS"
+SH
+cat >"$stub_bin/omarchy-capture-webcam-resize" <<'SH'
+#!/bin/bash
+exit 0
+SH
+cat >"$stub_bin/sleep" <<'SH'
+#!/bin/bash
+exit 0
+SH
+chmod +x "$stub_bin/uname" "$stub_bin/omarchy-pkg-present" "$stub_bin/mpv" \
+  "$stub_bin/omarchy-capture-webcam-resize" "$stub_bin/sleep"
+
+eval "$(sed -n '/^start_webcam_overlay()/,/^}/p' "$ROOT/bin/omarchy-capture-screenrecording")"
+cleanup_webcam() { :; }
+
+export OMARCHY_TEST_MPV_ARGS="$tmp_dir/mpv-args"
+WEBCAM_DEVICE=/dev/video42
+WEBCAM_SIZE=medium
+REGION_FILE="$tmp_dir/webcam-region"
+
+OMARCHY_TEST_ASAHI_DRIVER=true start_webcam_overlay
+wait
+grep -qFx -- '--vo=gpu' "$OMARCHY_TEST_MPV_ARGS" ||
+  fail "Apple Silicon webcam overlay uses mpv's gpu renderer" "$(cat "$OMARCHY_TEST_MPV_ARGS")"
+pass "Apple Silicon webcam overlay uses mpv's gpu renderer"
+
+OMARCHY_TEST_ASAHI_DRIVER=false start_webcam_overlay
+wait
+if grep -qFx -- '--vo=gpu' "$OMARCHY_TEST_MPV_ARGS"; then
+  fail "other webcam overlays keep mpv's default renderer" "$(cat "$OMARCHY_TEST_MPV_ARGS")"
+fi
+pass "other webcam overlays keep mpv's default renderer"

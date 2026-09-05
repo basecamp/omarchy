@@ -75,6 +75,13 @@ start_webcam_overlay() {
   local preferred_resolutions=("640x360" "1280x720" "1920x1080")
   local capture_options="framerate=30"
   local available_formats=$(v4l2-ctl --list-formats-ext -d "$WEBCAM_DEVICE" 2>/dev/null)
+  local video_output_options=()
+
+  if [[ $(uname -m) == "aarch64" ]] && omarchy-pkg-present vulkan-asahi; then
+    # gpu-next/libplacebo can fault while uploading webcam frames through the
+    # Asahi drivers. mpv's older gpu renderer avoids that upload path.
+    video_output_options=(--vo=gpu)
+  fi
 
   for resolution in "${preferred_resolutions[@]}"; do
     if echo "$available_formats" | grep -q "$resolution"; then
@@ -85,6 +92,7 @@ start_webcam_overlay() {
 
   mpv "av://v4l2:$WEBCAM_DEVICE" \
     --profile=low-latency --untimed --no-cache \
+    "${video_output_options[@]}" \
     --demuxer-lavf-o="$capture_options" \
     '--vf=lavfi=[crop=ih*8/9:ih]' \
     --title="WebcamOverlay" --wayland-app-id="WebcamOverlay-$WEBCAM_SIZE" \
