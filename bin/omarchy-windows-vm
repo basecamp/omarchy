@@ -554,6 +554,81 @@ bind_mount_leaf() {
   }
 }
 
+# Make a directory mode 700, including leftover setuid/setgid. GNU chmod keeps
+# those bits on directories for numeric modes of four digits or fewer, so
+# `chmod 0700` cannot satisfy the exact-700 checks when ~/Windows was created
+# setgid (omacom/omarchy#9698).
+chmod_private_dir() {
+  chmod a-s,u=rwx,go= -- "$@"
+}
+
+# dockur samba.sh chmod 2777s an empty /shared at container start. Re-harden
+# only the protected anchor, which sits in the root-owned boundary tree the
+# caller cannot write: it is a bind of the same inode as $LEGACY_SHARED, so this
+# is what ~/Windows ends up at. Never chmod $LEGACY_SHARED by pathname — the
+# caller can swap it for a symlink between the test and the chmod.
+# Best-effort: a failed chmod must not fail a VM that already started.
+restore_shared_privacy() {
+  [[ -n $EXPECTED_SHARED && -d $EXPECTED_SHARED && ! -L $EXPECTED_SHARED ]] || return 0
+  chmod_private_dir "$EXPECTED_SHARED" || true
+}
+
+# Root-only: the mounts tree is 0711, so an unprivileged caller cannot list it
+# and the glob below would silently match nothing. After `dc down` there is no
+# PKEXEC_UID on a direct `sudo ... stop`, and a second user on the box would
+# resolve a different per-uid anchor, so root walks the tree instead. A
+# sudoless caller restores its own anchor through restore_shared_privacy.
+restore_all_shared_privacy() {
+  local dir canonical prefix
+  ((EUID == 0)) || return 0
+  # Same refusal prepare_runtime_tree applies: a non-standard privileged
+  # runtime is supported only for unprivileged tests/development.
+  [[ $RUNTIME_DIR == /var/lib/omarchy/windows ]] || return 0
+  prefix=$(realpath -e -- "$RUNTIME_DIR/mounts/users" 2>/dev/null) || return 0
+  for dir in "$prefix"/*/shared; do
+    [[ -d $dir && ! -L $dir ]] || continue
+    canonical=$(realpath -e -- "$dir" 2>/dev/null) || continue
+    [[ $canonical == "$dir" ]] || continue
+    [[ $canonical == "$prefix/"*"/shared" ]] || continue
+    chmod_private_dir "$canonical" || true
+  done
+}
+
+# Unprivileged: samba.sh runs only after dockur's ISO download (10-15 minutes
+# on a fresh install). Do not hold a polkit session open for that. Watch the
+# caller's own share and chmod it as the owner once it becomes 2777.
+schedule_share_privacy_restore() {
+  local dir="$HOME/Windows"
+  [[ -e $dir ]] || return 0
+  (
+    # disown only keeps bash from hupping this on exit. The watcher is in the
+    # install terminal's foreground process group, so closing that terminal
+    # still hangs it up from the kernel side, seconds after install returns.
+    trap '' HUP
+    local i mode
+    # 2x the documented 10-15 minute download is a thin margin on a slow link,
+    # so budget an hour; on expiry the final restore below still closes the
+    # 2777 window for anything that happened before it.
+    for i in {1..3600}; do
+      mode=$(stat -Lc '%a' "$dir" 2>/dev/null) || mode=""
+      if [[ $mode == 2777 || $mode == 777 ]]; then
+        chmod_private_dir "$dir" 2>/dev/null || true
+        # Do not exit on a failed chmod: a transient failure (a swapped path,
+        # an unwritable moment) must not end the watcher permanently while the
+        # share is still exposed. Leave only once the mode is really 700.
+        [[ $(stat -Lc '%a' "$dir" 2>/dev/null) == 700 ]] && exit 0
+      fi
+      sleep 1
+    done
+    chmod_private_dir "$dir" 2>/dev/null || true
+    # The subshell output goes to /dev/null, so the only visible trace of an
+    # expiry is this journal entry.
+    logger -t omarchy-windows-vm \
+      "share privacy watcher timed out; applied a final restore to $dir" 2>/dev/null || true
+  ) >/dev/null 2>&1 &
+  disown || true
+}
+
 prepare_caller_mounts() {
   local storage_fd storage_id shared_fd shared_id storage_mode shared_mode
   CALLER_MOUNTS_NEW_STORAGE=0
@@ -580,7 +655,7 @@ prepare_caller_mounts() {
   # Privacy is an explicit preflight step for both already-pinned sources, not
   # a side effect halfway through the two-mount transaction. Old umask-022
   # installs are hardened together before either Docker-facing anchor changes.
-  chmod 0700 -- "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
+  chmod_private_dir "/proc/$BASHPID/fd/$storage_fd" "/proc/$BASHPID/fd/$shared_fd" || {
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
@@ -588,6 +663,7 @@ prepare_caller_mounts() {
   storage_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$storage_fd" 2>/dev/null) || storage_mode=""
   shared_mode=$(stat -Lc '%a' "/proc/$BASHPID/fd/$shared_fd" 2>/dev/null) || shared_mode=""
   if [[ $storage_mode != 700 || $shared_mode != 700 ]]; then
+    echo "omarchy-windows-vm: VM source directories must be mode 700 (storage=$storage_mode shared=$shared_mode)" >&2
     exec {storage_fd}<&-
     exec {shared_fd}<&-
     return 1
@@ -895,7 +971,25 @@ assert_mounts_safe() {
 
 __priv_up() { assert_mounts_safe && dc up -d; }
 
-__priv_down() { dc down; }
+__priv_down() {
+  local rc=0
+  dc down || rc=$?
+  if ((EUID == 0)); then
+    restore_all_shared_privacy
+  else
+    # A sudoless-Docker stop runs unelevated, where the mounts tree is not
+    # listable. restore_shared_privacy still works here: the anchor sits under
+    # the root-owned boundary tree the caller cannot rename, and while the
+    # bind exists it is the caller's own inode, so the owner chmod succeeds.
+    # If the bind is gone (fresh reboot) the chmod fails and the next launch
+    # re-hardens through prepare_user_mount_sources instead. Best-effort: the
+    # container is already down, so a failed restore must not fail the stop.
+    if resolve_caller; then
+      restore_shared_privacy
+    fi
+  fi
+  return "$rc"
+}
 
 # Bring the VM up and wait until the guest reports it is ready, all under a
 # single elevation so the readiness poll does not prompt on every iteration.
@@ -913,11 +1007,15 @@ __priv_up_wait() {
   while true; do
     started_at=$(docker inspect --format='{{.State.StartedAt}}' "$CONTAINER" 2>/dev/null)
     if [[ -n $started_at ]] && docker logs --since "$started_at" "$CONTAINER" 2>&1 | grep -qi "windows started successfully"; then
+      # samba.sh has already run by the time the guest reports ready, so this
+      # chmod lands after the 2777 rather than racing `dc up -d`.
+      restore_shared_privacy
       return 0
     fi
     sleep 2
     ((++count > 60)) && {
       echo "Timeout: Windows VM did not report ready within 2 minutes" >&2
+      restore_shared_privacy
       return 1
     }
   done
@@ -1015,7 +1113,7 @@ prepare_user_mount_sources() {
     echo "omarchy-windows-vm: storage and shared must be different directories" >&2
     return 1
   }
-  chmod 0700 -- "$storage" "$shared"
+  chmod_private_dir "$storage" "$shared" || return 1
 }
 
 storage_space_path() {
@@ -1058,7 +1156,7 @@ write_credentials() {
   local username="$1" password="$2" old_umask dir tmp
   dir=$(dirname -- "$CREDENTIALS_FILE")
   mkdir -p "$dir" || return 1
-  chmod 0700 "$dir" || return 1
+  chmod_private_dir "$dir" || return 1
   old_umask=$(umask)
   umask 077
   tmp=$(mktemp "$dir/.credentials.XXXXXX") || { umask "$old_umask"; return 1; }
@@ -1334,6 +1432,7 @@ EOF
     echo "   - Port already in use: check if another VM is running"
     exit 1
   fi
+  schedule_share_privacy_restore
 
   echo ""
   echo "Windows VM is starting up!"

@@ -123,6 +123,61 @@ if setpriv --reuid=1001 --regid=1001 --clear-groups cat "$EXPECTED_SHARED/shared
 fi
 pass "cross-filesystem symlink sources bind by identity and migrated 0700 leaves deny another account"
 
+# GNU chmod 0700 leaves directory setgid; leftover g+s used to fail the
+# exact-700 check and block every privileged action (omacom/omarchy#9698).
+chmod 2700 /home/storage-target
+chmod 2777 /home/shared-target
+chown 1000:1000 /home/storage-target /home/shared-target
+with_vm_lock prepare_caller_mounts || fail "root could not harden setgid VM source directories"
+[[ $(command stat -Lc '%a' /home/storage-target) == 700 ]] || fail "storage still had special bits after hardening"
+[[ $(command stat -Lc '%a' /home/shared-target) == 700 ]] || fail "shared still had special bits after hardening"
+[[ $(command stat -Lc '%u:%a' "$EXPECTED_STORAGE") == 1000:700 &&
+  $(command stat -Lc '%u:%a' "$EXPECTED_SHARED") == 1000:700 ]] || fail "setgid hardening did not leave caller-owned 0700 anchors"
+pass "setgid VM source directories harden to exactly 700"
+
+# Stop-time restore must cover every caller shape. Root walks the mounts tree
+# for a direct `sudo ... stop`; a sudoless-Docker stop is unelevated, where the
+# 0711 tree is not listable, and must restore the caller's own anchor
+# owner-side instead. A second account's anchor is never another user's to
+# chmod, and nothing runs through a non-standard privileged runtime path.
+mkdir -p "$USERS_DIR/1001/shared" "$test_tmp/mounts/users/1000/shared"
+chmod 2777 "$USERS_DIR/1001/shared" "$EXPECTED_SHARED" "$test_tmp/mounts/users/1000/shared"
+RUNTIME_DIR=$test_tmp restore_all_shared_privacy
+[[ $(command stat -Lc '%a' "$EXPECTED_SHARED") == 2777 &&
+  $(command stat -Lc '%a' "$USERS_DIR/1001/shared") == 2777 &&
+  $(command stat -Lc '%a' "$test_tmp/mounts/users/1000/shared") == 2777 ]] ||
+  fail "root restored anchors through a non-standard runtime path"
+install -d -m 0755 /var/vm-test-bin
+install -m 0644 "$test_tmp/omarchy-windows-vm" /var/vm-test-bin/omarchy-windows-vm
+child_rc=0
+setpriv --reuid=1000 --regid=1000 --clear-groups bash -c '
+  # The namespace has no passwd entry for uid 1000, so mirror the stub above.
+  getent() {
+    if [[ $1 == passwd && $2 == 1000 ]]; then
+      printf "alice:x:1000:1000::/home/alice:/bin/bash\n"
+      return 0
+    fi
+    return 2
+  }
+  set -- help
+  source /var/vm-test-bin/omarchy-windows-vm >/dev/null 2>&1
+  resolve_caller || exit 10
+  restore_all_shared_privacy || exit 11
+  [[ $(command stat -Lc "%a" "$USERS_DIR/1000/shared") == 2777 ]] || exit 12
+  [[ $(command stat -Lc "%a" "$USERS_DIR/1001/shared") == 2777 ]] || exit 13
+  restore_shared_privacy || exit 14
+  [[ $(command stat -Lc "%a" "$USERS_DIR/1000/shared") == 700 ]] || exit 15
+  [[ $(command stat -Lc "%a" "$USERS_DIR/1001/shared") == 2777 ]] || exit 16
+' || child_rc=$?
+[[ $child_rc == 0 ]] || fail "sudoless stop restore misbehaved (rc=$child_rc)"
+chmod 2777 "$EXPECTED_SHARED"
+restore_all_shared_privacy
+[[ $(command stat -Lc '%a' "$EXPECTED_SHARED") == 700 &&
+  $(command stat -Lc '%a' "$USERS_DIR/1001/shared") == 700 ]] ||
+  fail "root walk did not restore every anchor to 700"
+rm -rf /var/vm-test-bin
+pass "stop-time restore walks the tree as root and restores only the caller's anchor unprivileged"
+
 # Existing production boundary components are never repaired in place when
 # their ownership or write permissions are unsafe. Both the preparation path
 # and the final pre-Docker guard must fail closed without disturbing the binds.
