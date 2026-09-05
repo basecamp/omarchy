@@ -74,6 +74,9 @@ hl.config({
   },
 })
 
+-- Swipe between workspaces with three fingers on a touchpad.
+hl.gesture({ fingers = 3, direction = "horizontal", action = "workspace" })
+
 -- Scroll nicely in the terminal.
 o.window("(Alacritty|kitty)", { scroll_touchpad = 1.5 })
 -- foot only applies its scrollback multiplier to wheel clicks, not precise touchpad scrolling.
