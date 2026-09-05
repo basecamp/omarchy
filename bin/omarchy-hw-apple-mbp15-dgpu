@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Detect a 2016–2017 15-inch MacBook Pro with a Radeon
+# omarchy:hidden=true
+
+# 13,3 and 14,3 are the 15" discrete-GPU models. S3 and s2idle do not
+# resume on those machines. 13" T1 boxes (13,1/13,2/14,1/14,2) are Intel
+# only and must not get this policy.
+product_name=$(cat "${OMARCHY_DMI_PRODUCT_NAME:-/sys/class/dmi/id/product_name}" 2>/dev/null)
+[[ $product_name =~ MacBookPro13,3|MacBookPro14,3 ]]

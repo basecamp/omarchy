@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# omarchy:summary=Reconcile displays when the laptop lid opens
+# omarchy:group=system
+# omarchy:hidden=true
+
+omarchy-hyprland-monitor-clamshell
+
+# 15" Radeon: drop the stay-on power-saver overlay. No-op elsewhere.
+omarchy-hw-apple-mbp15-lid open >/dev/null 2>&1 || true

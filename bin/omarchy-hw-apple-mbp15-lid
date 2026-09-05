@@ -1,0 +1,145 @@
+#!/bin/bash
+
+# omarchy:summary=Stop driving the panel while a 15-inch Radeon lid is shut
+# omarchy:hidden=true
+# omarchy:args=<close|open>
+
+# Temporary overlay only. Does not write Omarchy's remembered AC/battery
+# profile. Close: save brightness, hold DPMS-wake keys/mouse off, DPMS off
+# the internal panel. Backlight-off alone still scans out eDP; stock
+# key/mouse DPMS-wake would turn the 560's scanout back on while the lid
+# is shut. Do not set power-saver: that puts BCM43602 into PCI D3 and
+# brcmfmac does not come back. Open: DPMS on, restore brightness and wake
+# flags, autodetect (unsticks a profile a previous close already set).
+
+set -euo pipefail
+
+cmd=${1:-}
+case $cmd in
+  close | open) ;;
+  *)
+    echo "Usage: omarchy-hw-apple-mbp15-lid close|open" >&2
+    exit 2
+    ;;
+esac
+
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+"$here/omarchy-hw-apple-mbp15-dgpu" || exit 0
+
+state_dir=${OMARCHY_MBP15_LID_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/mbp15-lid}
+mkdir -p "$state_dir"
+
+backlight_get() {
+  if [[ -n ${OMARCHY_MBP15_BRIGHTNESS_GET:-} ]]; then
+    "$OMARCHY_MBP15_BRIGHTNESS_GET"
+    return
+  fi
+  command -v brightnessctl >/dev/null || return 1
+  brightnessctl -d gmux_backlight get
+}
+
+backlight_set() {
+  if [[ -n ${OMARCHY_MBP15_BRIGHTNESS_SET:-} ]]; then
+    "$OMARCHY_MBP15_BRIGHTNESS_SET" "$1"
+    return
+  fi
+  command -v brightnessctl >/dev/null || return 0
+  brightnessctl -d gmux_backlight set "$1" >/dev/null
+}
+
+# DPMS the laptop panel so the 560 stops scanning out. Clamshell already
+# returned above; this only runs when the internal display is the one in use.
+panel_dpms() {
+  local action=$1
+  if [[ -n ${OMARCHY_MBP15_DPMS:-} ]]; then
+    "$OMARCHY_MBP15_DPMS" "$action"
+    return
+  fi
+  local internal
+  internal=$(omarchy-hyprland-monitor-laptop 2>/dev/null || true)
+  if [[ -n $internal && $internal =~ ^[A-Za-z0-9._-]+$ ]]; then
+    hyprctl dispatch "hl.dsp.dpms({ action = \"$action\", monitor = \"$internal\" })" >/dev/null 2>&1 || true
+    return
+  fi
+  hyprctl dispatch "hl.dsp.dpms({ action = \"$action\" })" >/dev/null 2>&1 || true
+}
+
+# Stock misc.key_press_enables_dpms / mouse_move_enables_dpms are true, so any
+# key or mouse motion re-enables DPMS after we turn the panel off.
+dpms_wake_get() {
+  if [[ -n ${OMARCHY_MBP15_DPMS_WAKE:-} ]]; then
+    "$OMARCHY_MBP15_DPMS_WAKE" get
+    return
+  fi
+  local key mouse
+  key=$(hyprctl -j getoption misc.key_press_enables_dpms 2>/dev/null | jq -r '.bool' 2>/dev/null) || return 1
+  mouse=$(hyprctl -j getoption misc.mouse_move_enables_dpms 2>/dev/null | jq -r '.bool' 2>/dev/null) || return 1
+  [[ $key == true || $key == false ]] || return 1
+  [[ $mouse == true || $mouse == false ]] || return 1
+  printf '%s\t%s\n' "$key" "$mouse"
+}
+
+dpms_wake_set() {
+  local key=$1 mouse=$2
+  if [[ -n ${OMARCHY_MBP15_DPMS_WAKE:-} ]]; then
+    "$OMARCHY_MBP15_DPMS_WAKE" set "$key" "$mouse"
+    return
+  fi
+  hyprctl eval "hl.config({ misc = { key_press_enables_dpms = $key, mouse_move_enables_dpms = $mouse } })" >/dev/null 2>&1 || true
+}
+
+dpms_wake_save() {
+  local previous
+  [[ -f $state_dir/dpms-wake ]] && return 0
+  previous=$(dpms_wake_get) || return 0
+  [[ $previous == $'true\ttrue' || $previous == $'true\tfalse' || $previous == $'false\ttrue' || $previous == $'false\tfalse' ]] || return 0
+  printf '%s\n' "$previous" >"$state_dir/dpms-wake"
+}
+
+dpms_wake_save_and_disable() {
+  dpms_wake_save
+  [[ -f $state_dir/dpms-wake ]] || return 0
+  dpms_wake_set false false
+}
+
+dpms_wake_restore() {
+  local key mouse
+  [[ -r $state_dir/dpms-wake ]] || return 0
+  IFS=$'\t' read -r key mouse <"$state_dir/dpms-wake" || true
+  if [[ $key != true && $key != false ]] || [[ $mouse != true && $mouse != false ]]; then
+    rm -f "$state_dir/dpms-wake"
+    return 0
+  fi
+  dpms_wake_set "$key" "$mouse"
+  rm -f "$state_dir/dpms-wake"
+}
+
+if [[ $cmd == close ]]; then
+  if command -v omarchy-hw-external-monitors >/dev/null && omarchy-hw-external-monitors; then
+    exit 0
+  fi
+  if command -v omarchy-hw-laptop-closed >/dev/null && ! omarchy-hw-laptop-closed; then
+    exit 0
+  fi
+
+  current=$(backlight_get 2>/dev/null || true)
+  if [[ -n ${current:-} && $current != 0 ]]; then
+    printf '%s\n' "$current" >"$state_dir/backlight"
+  fi
+  # Hold wake-from-DPMS off before blanking, or a key/mouse re-enables scanout.
+  dpms_wake_save_and_disable
+  panel_dpms disable
+  backlight_set 0 || true
+  exit 0
+fi
+
+if command -v omarchy-hw-laptop-closed >/dev/null && omarchy-hw-laptop-closed; then
+  exit 0
+fi
+
+panel_dpms enable
+if [[ -r $state_dir/backlight ]]; then
+  backlight_set "$(cat "$state_dir/backlight")" || true
+fi
+dpms_wake_restore
+omarchy-powerprofiles-set autodetect >/dev/null 2>&1 || true

@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# omarchy:summary=Keep the 15-inch Broadcom Wi-Fi card out of PCI D3
+# omarchy:hidden=true
+
+# power-saver and PCI ASPM put BCM43602 into a state brcmfmac does not
+# recover from. Force runtime PM off. Not a driver reload.
+
+set -euo pipefail
+
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+"$here/omarchy-hw-apple-mbp15-dgpu" || exit 0
+
+wifi_devs() {
+  if [[ -n ${OMARCHY_MBP15_WIFI_DEV:-} ]]; then
+    printf '%s\n' "$OMARCHY_MBP15_WIFI_DEV"
+    return 0
+  fi
+  local d
+  for d in /sys/bus/pci/devices/*; do
+    [[ -r $d/vendor && $(cat "$d/vendor") == 0x14e4 ]] || continue
+    [[ -r $d/device && $(cat "$d/device") == 0x43ba ]] || continue
+    printf '%s\n' "$d"
+  done
+}
+
+while IFS= read -r dev; do
+  [[ -n $dev ]] || continue
+  if [[ -w $dev/power/control ]]; then
+    echo on >"$dev/power/control"
+  fi
+  if [[ -w $dev/d3cold_allowed ]]; then
+    echo 0 >"$dev/d3cold_allowed"
+  fi
+done < <(wifi_devs)

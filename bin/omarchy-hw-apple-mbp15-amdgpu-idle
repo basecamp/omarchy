@@ -1,0 +1,55 @@
+#!/bin/bash
+
+# omarchy:summary=Let the 15-inch Radeon idle without nailing 3D clocks
+# omarchy:hidden=true
+
+# Hyprland keeps amdgpu on 3D_FULL_SCREEN under `auto`. That profile's
+# down-hysteresis holds Polaris on the top sclk rung at 0% busy. Switch
+# to manual + POWER_SAVING so clocks drop when idle and can still climb.
+# Not a GPU power-off.
+
+set -euo pipefail
+
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+"$here/omarchy-hw-apple-mbp15-dgpu" || exit 0
+
+amdgpu_dev() {
+  if [[ -n ${OMARCHY_MBP15_AMDGPU_DEV:-} ]]; then
+    printf '%s\n' "$OMARCHY_MBP15_AMDGPU_DEV"
+    return 0
+  fi
+  local d
+  for d in /sys/bus/pci/devices/*; do
+    [[ -r $d/vendor && $(cat "$d/vendor") == 0x1002 ]] || continue
+    [[ -e $d/power_dpm_force_performance_level ]] || continue
+    printf '%s\n' "$d"
+    return 0
+  done
+  return 1
+}
+
+dev=$(amdgpu_dev) || exit 0
+
+for _ in $(seq 1 50); do
+  [[ -w $dev/power_dpm_force_performance_level ]] && break
+  sleep 0.1
+done
+[[ -w $dev/power_dpm_force_performance_level ]] || exit 0
+
+echo manual >"$dev/power_dpm_force_performance_level"
+
+profile=2
+if [[ -r $dev/pp_power_profile_mode ]]; then
+  profile=$(awk '/POWER_SAVING/ { print $1; exit }' "$dev/pp_power_profile_mode")
+  : "${profile:=2}"
+fi
+echo "$profile" >"$dev/pp_power_profile_mode"
+
+if [[ -w $dev/pp_dpm_sclk ]]; then
+  rungs=$(awk -F: '/^[0-9]/ { printf "%s ", $1 }' "$dev/pp_dpm_sclk")
+  [[ -n $rungs ]] && printf '%s\n' "$rungs" >"$dev/pp_dpm_sclk"
+fi
+if [[ -w $dev/pp_dpm_mclk ]]; then
+  rungs=$(awk -F: '/^[0-9]/ { printf "%s ", $1 }' "$dev/pp_dpm_mclk")
+  [[ -n $rungs ]] && printf '%s\n' "$rungs" >"$dev/pp_dpm_mclk"
+fi
