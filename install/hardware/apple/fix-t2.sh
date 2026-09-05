@@ -19,6 +19,11 @@ if lspci -nn | grep "106b:180[12]" >/dev/null; then
     echo "hci_bcm4377"
   } > /etc/modules-load.d/t2.conf
 
+  # The virtual USB bus makes udev mistake the built-in touchpad for an
+  # external one, preventing libinput from disabling it while typing.
+  install -D -m 0644 "$OMARCHY_PATH/default/udev/apple-t2-touchpad.rules" \
+    /etc/udev/rules.d/99-omarchy-apple-t2-touchpad.rules
+
   # linux-t2 7.1.4 replaced the apple-bce driver with t2bce; t2bce_vhci is the
   # virtual USB host controller the internal keyboard hangs off, and mkinitcpio
   # pulls t2bce_core/t2bce_dma in via module dependencies.

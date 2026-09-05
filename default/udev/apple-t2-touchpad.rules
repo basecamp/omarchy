@@ -1,0 +1,7 @@
+# The T2 BCE driver exposes the built-in MacBook touchpad over a virtual USB
+# bus, causing systemd's input_id helper to classify it as external. Mark only
+# the touchpad interface as internal so libinput can enable disable-while-typing.
+#
+# The product ID varies by model: these are every WELLSPRINGT2 keyboard/trackpad
+# ID hid-apple binds to, which is the device the trackpad hangs off.
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_VENDOR_ID}=="05ac", ENV{ID_MODEL_ID}=="0278|027[a-f]|0280|0340", ENV{ID_INPUT_TOUCHPAD}=="1", ENV{ID_INTEGRATION}="internal", ENV{ID_INPUT_TOUCHPAD_INTEGRATION}="internal"
