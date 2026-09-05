@@ -1,10 +1,10 @@
-# Fix internal mic gain on ASUS ROG laptops with Realtek ALC285.
+# Fix internal mic gain on ASUS ROG laptops with Realtek codecs.
 # The mic boost is way too high by default, causing clipping.
 # Sets levels and stores ALSA state so it persists across reboots.
 
 if omarchy-hw-asus-rog; then
   for card in /proc/asound/card*/codec*; do
-    if grep -q "ALC285" "$card" 2>/dev/null; then
+    if grep -qE "Realtek ALC[0-9]+" "$card" 2>/dev/null; then
       cardnum=$(echo "$card" | grep -oP 'card\K\d+')
       amixer -c "$cardnum" set 'Internal Mic Boost' 0 >/dev/null 2>&1 || true
       amixer -c "$cardnum" set 'Capture' 70% unmute >/dev/null 2>&1 || true
