@@ -4,6 +4,13 @@
 
 set -euo pipefail
 
+# omarchy-update-status calls this from contexts that never sourced Omarchy's
+# shell environment -- a sudo'd update, a non-login SSH session -- where sudo's
+# env_reset has already dropped OMARCHY_PATH. Default it the way default/bash/rc
+# and omarchy-migrate do, so set -u does not turn a package-backed install into
+# a fatal unbound variable on the very check meant to recognize it.
+: "${OMARCHY_PATH:=/usr/share/omarchy}"
+
 updates=()
 
 if [[ $OMARCHY_PATH != "/usr/share/omarchy" ]]; then

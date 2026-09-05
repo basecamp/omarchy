@@ -211,3 +211,25 @@ grep -Fx 'omarchy-dev-checkout 1 new commit on origin/quattro' "$stdout" >/dev/n
   fail "update checker reports cached dev commits after a fetch failure" "$(cat "$stdout")"
 [[ ! -s $stderr ]] || fail "update checker keeps dev fetch failures quiet" "$(cat "$stderr")"
 pass "update checker uses cached dev state when fetching is unavailable"
+
+# omarchy-update-status runs this at the end of every update, and sudo's
+# env_reset drops OMARCHY_PATH before it gets there. Unset must classify the
+# install as package-backed, not abort on set -u.
+: >"$git_log"
+set +e
+(
+  export TEST_CHECKUPDATES=none TEST_INSTALLED_PACKAGE=omarchy
+  unset OMARCHY_PATH
+  TEST_GIT_LOG="$git_log" PATH="$stub_bin:$PATH" "$ROOT/bin/omarchy-update-available"
+) >"$stdout" 2>"$stderr"
+status=$?
+set -e
+[[ $status -eq 1 ]] || fail "update checker exits non-zero with OMARCHY_PATH unset" "$(cat "$stderr")"
+! grep -q 'unbound variable' "$stderr" ||
+  fail "update checker survives an unset OMARCHY_PATH" "$(cat "$stderr")"
+[[ ! -s $stderr ]] || fail "update checker is quiet with OMARCHY_PATH unset" "$(cat "$stderr")"
+grep -q '^Omarchy is up to date$' "$stdout" ||
+  fail "update checker reports up to date with OMARCHY_PATH unset" "$(cat "$stdout")"
+[[ ! -s $git_log ]] ||
+  fail "update checker treats an unset OMARCHY_PATH as package-backed" "$(cat "$git_log")"
+pass "update checker defaults OMARCHY_PATH when the environment does not carry it"
