@@ -73,5 +73,8 @@ linux-t2
 linux-t2-headers
 t2fanrd
 
+# Pre-T2 MacBook audio (Cirrus CS8409 bridge)
+snd-hda-macbookpro-dkms-git
+
 # Framework 16
 qmk-hid
