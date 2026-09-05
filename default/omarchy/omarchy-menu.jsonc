@@ -268,6 +268,7 @@
   "install.development.ocaml": {"icon":"","label":"OCaml","disabled":"[[ -d $HOME/.opam ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env ocaml'"},
   "install.development.clojure": {"icon":"","label":"Clojure","disabled":"[[ -d $HOME/.local/share/mise/installs/clojure ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env clojure'"},
   "install.development.scala": {"icon":"","label":"Scala","disabled":"[[ -d $HOME/.local/share/mise/installs/scala ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env scala'"},
+  "install.development.embedded": {"icon":"","label":"Embedded (ESP32/Arduino)","disabled":"omarchy-pkg-present arduino-cli","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env embedded'"},
   "install.development.javascript.node": {"icon":"","label":"Node.js","disabled":"[[ -d $HOME/.local/share/mise/installs/node ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env node'"},
   "install.development.javascript.bun": {"icon":"","label":"Bun","disabled":"[[ -d $HOME/.local/share/mise/installs/bun ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env bun'"},
   "install.development.javascript.deno": {"icon":"","label":"Deno","disabled":"[[ -d $HOME/.local/share/mise/installs/deno ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env deno'"},
