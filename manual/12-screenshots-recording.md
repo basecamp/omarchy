@@ -1,19 +1,22 @@
 # Screenshots & Recording
 
-Everything you can grab off the screen hangs off the Print Screen key. One key on its own takes a picture, and the modifiers take a recording, a colour, or the text inside a region. If your keyboard doesn't have a Print Screen key at all, `Super + Ctrl + C` opens the same set as a menu.
+Everything you can grab off the screen hangs off the Print Screen key. One key on its own takes a picture, and the modifiers take a recording, a colour, or the text inside a region.
 
 | Hotkey | Function |
 | ------ | -------- |
 | `Print Screen` | Screenshot |
+| `Super + Shift + S` | Screenshot |
 | `Alt + Print Screen` | Screenrecord (or stop the one that's running) |
 | `Super + Print Screen` | Colour picker |
 | `Super + Ctrl + Print Screen` | Extract text from a region |
 | `Super + Ctrl + C` | Capture menu |
 | `Super + Ctrl + .` | Transcode a picture or video |
 
+Plenty of keyboards have no Print Screen key — Apple's don't, and neither do most of Logitech's. `Super + Shift + S` is there for those: it's the chord Windows uses for the same job, and it takes exactly the same shot as `Print Screen`. (It used to open Google Maps. That moved to `Super + Shift + Alt + S`.) `Super + Ctrl + C` opens the whole set as a menu, which is the way in if you'd rather not remember any of this.
+
 ## Screenshots
 
-Hit `Print Screen` and the screen freezes so nothing shifts under you while you aim. Drag a box for a freeform region, or just click once and the shot snaps to whatever rectangle you clicked in — a window if you landed on one, the whole monitor if you landed on the bar or in a gap. Changed your mind? Hit `Print Screen` again to dismiss the picker.
+Hit `Print Screen` (or `Super + Shift + S`) and the screen freezes so nothing shifts under you while you aim. Drag a box for a freeform region, or just click once and the shot snaps to whatever rectangle you clicked in — a window if you landed on one, the whole monitor if you landed on the bar or in a gap. Changed your mind? Hit the same key again to dismiss the picker.
 
 The result goes two places at once: a PNG in your pictures directory, and the clipboard, so you can paste it straight into a chat window with `Super + V`. A notification pops up with a thumbnail. Click it (or hit `Super + Alt + ,` to invoke the last notification) and the shot opens in Tensaku, the annotation editor, where you can draw arrows and boxes on it before you send it.
 

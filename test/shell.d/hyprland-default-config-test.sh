@@ -190,6 +190,25 @@ grep -Fqx $'SUPER + SHIFT + grave	Move window to scratchpad' <<<"$scratchpad_out
   fail "scratchpad supports a Quake-style move binding"
 pass "scratchpad retains existing bindings and adds Grave shortcuts"
 
+# Keyboards without a Print Screen key still need a screenshot key, so the chord
+# Windows uses for the same job takes the same shot.
+capture_home="$tmpdir/capture-home"
+mkdir -p "$capture_home"
+capture_output=$(run_omarchy_bindings "$capture_home")
+grep -Fqx $'PRINT\tScreenshot' <<<"$capture_output" ||
+  fail "Print Screen still takes a screenshot"
+grep -Fqx $'SUPER + SHIFT + S\tScreenshot' <<<"$capture_output" ||
+  fail "keyboards without a Print Screen key get the Windows screenshot chord"
+grep -Fqx $'SUPER + SHIFT + ALT + S\tGoogle Maps' <<<"$capture_output" ||
+  fail "Google Maps moves off the screenshot chord rather than being dropped"
+# The screenshot chord sits one modifier away from the workspace row, which is
+# not Omarchy's to spend: nothing here may cost a tiling key.
+for workspace in 1 2 3 4 5 6 7 8 9 10; do
+  grep -Fqx "SUPER + SHIFT + code:$((workspace + 9))"$'\t'"Move window to workspace $workspace" <<<"$capture_output" ||
+    fail "the screenshot chord leaves the move-to-workspace row alone" "$workspace"
+done
+pass "screenshots bind Print Screen and the Windows chord without costing a tiling key"
+
 # The panel hotkeys claim a row of keys that workspace switching already uses
 # under other modifiers, so the count matters as much as the bindings: a tenth
 # claim on SUPER + CTRL + a number is a collision with one of these.

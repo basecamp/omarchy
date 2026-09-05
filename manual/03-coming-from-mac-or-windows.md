@@ -32,7 +32,7 @@ Windows folks: your Win + V clipboard history lives on `Super + Ctrl + V`, and i
 | ------------- | ---------- |
 | Spotlight / Raycast / Start menu | `Super + Space` — the Omarchy menu |
 | AirDrop | LocalSend, via `Super + Ctrl + S` — see [GUIs](22-guis.md) |
-| Cmd + Shift + 4 / Win + Shift + S | `Print Screen` — see [screenshots & recording](12-screenshots-recording.md) |
+| Cmd + Shift + 4 / Win + Shift + S | `Super + Shift + S` — the same keys you pressed on Windows, since Super is that key. `Print Screen` works too — see [screenshots & recording](12-screenshots-recording.md) |
 | Notification Center | Notification history on `Super + Shift + Alt + ,` |
 | Time Machine (for the system) | Automatic [system snapshots](47-system-snapshots.md) on every update |
 | App Store / downloading an installer | _Install_ in the menu, or `omarchy pkg add` — see [other packages](29-other-packages.md) |

@@ -114,7 +114,7 @@ You can see all the main keyboard bindings with `Super + K` (Tmux bindings with 
 | `Super + Shift + Alt + A`           | AI (Grok)  |
 | `Super + Shift + G`           | Messenger (Signal)  |
 | `Super + Shift + P`           | Google Photos  |
-| `Super + Shift + S`           | Google Maps  |
+| `Super + Shift + Alt + S`           | Google Maps  |
 | `Super + Shift + Alt + G`           | Messenger (WhatsApp)  |
 | `Super + Shift + Ctrl + G`           | Messenger (Google)  |
 | `Super + Shift + D`           | Docker (LazyDocker)  |
@@ -141,8 +141,9 @@ Usually on Linux, you need `Ctrl + Shift + C/V` to copy'n'paste in the terminal 
 
 | Hotkey              | Function                       |
 | ------------------- | ------------------------------ |
-| `Super + Ctrl + C` | Capture menu (for keyboards w/o PrintScr button) |
 | `Print Screen`            | Screenshot                      |
+| `Super + Shift + S`            | Screenshot (the same shot, for keyboards with no Print Screen key) |
+| `Super + Ctrl + C` | Capture menu |
 | `Alt + Print Screen`            | Screenrecord                     |
 | `Super + Print Screen` | Color picker |
 | `Super + Ctrl + Print Screen` | Text extraction to clipboard |
@@ -156,6 +157,8 @@ Usually on Linux, you need `Ctrl + Shift + C/V` to copy'n'paste in the terminal 
 With screenrecordings, the hotkey first asks which audio you want, then starts recording. Hit it again to stop. See [screenshots and recording](12-screenshots-recording.md) for the details.
 
 All capture options are also accessible under _Trigger > Capture_ in the Omarchy menu (`Super + Space`).
+
+Apple and Logitech keyboards have no Print Screen key, so `Super + Shift + S` — the chord Windows uses for the same job — takes the identical shot. It used to open Google Maps, which is now on `Super + Shift + Alt + S`.
 
 ## Notifications
 
