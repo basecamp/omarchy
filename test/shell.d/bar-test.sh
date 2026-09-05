@@ -56,9 +56,19 @@ assert(
   /exclusionMode: root\.barHidden \? ExclusionMode\.Ignore : ExclusionMode\.Auto/.test(barSource),
   'a hidden bar reserves no space for itself'
 )
+// A detached bar sits barMargin off its edge, so parking has to clear the gap
+// as well as the bar or the margin leaves a sliver of it on screen.
+assert(
+  /readonly property int parkedMargin: -\(root\.barSize \+ root\.barMargin\)/.test(barSource),
+  'parking a hidden bar clears its margin as well as its own size'
+)
+assert(
+  /readonly property int edgeMargin: root\.barHidden \? parkedMargin : root\.barMargin/.test(barSource),
+  'the anchored edge parks when hidden and carries the margin when shown'
+)
 for (const edge of ['top', 'bottom', 'left', 'right']) {
   assert(
-    new RegExp(`${edge}: root\\.barHidden && root\\.position === "${edge}" \\? -root\\.barSize : 0`).test(barSource),
+    new RegExp(`${edge}: root\\.position === "${edge}" \\? edgeMargin :`).test(barSource),
     `a hidden bar parks past the ${edge} edge`
   )
 }

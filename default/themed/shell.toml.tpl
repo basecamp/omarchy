@@ -15,6 +15,12 @@ active           = "{{ red }}"
 scale-with-font  = true
 size-horizontal  = 26
 size-vertical    = 28
+# Detach the bar from the screen. margin is the gap left on every edge the bar
+# touches, reserved along with the bar so windows still tile clear of it, and
+# radius rounds the bar's corners. Both are 0 by default — flush against the
+# edge, square corners — and both follow scale-with-font.
+margin           = 0
+radius           = 0
 
 [hyprland]
 # Shared Hyprland-derived border tokens. Surface sections reference these so

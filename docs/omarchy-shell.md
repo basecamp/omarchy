@@ -374,6 +374,18 @@ size-vertical   = 28   # left/right bar width at base-size 12
 
 Set `scale-with-font = false` to keep those bar sizes as fixed pixels.
 
+### Detached bar
+
+`[bar] margin` and `radius` lift the bar off its screen edge. `margin` is the gap left on every edge the bar touches — the one it is anchored to and the two it spans — and `radius` rounds the corners of the bar surface:
+
+```toml
+[bar]
+margin = 10   # gap between the bar and the screen edges; 0 = flush
+radius = 12   # corner rounding of the bar surface; 0 = square
+```
+
+Both default to `0`, a bar sitting flush against its edge with square corners, and both follow `scale-with-font` like the sizes above. The gap is reserved along with the bar itself, so maximized and tiled windows stop clear of it instead of sliding underneath. Auto-hide still parks the bar fully off screen, clearing the margin as well as the bar.
+
 ## Custom bar modules
 
 If a full plugin is overkill, declare a one-off module inline in
