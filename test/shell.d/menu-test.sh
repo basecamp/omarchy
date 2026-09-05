@@ -487,8 +487,32 @@ assert(
   'menu filter changes disarm pointer selection'
 )
 assert(
-  /function setActiveMenu\(id, pushHistory, fromPointer\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
+  /function setActiveMenu\(id, pushHistory, fromPointer, restoreIndex\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
   'menu route changes only accept an initial pointer sample for mouse activation'
+)
+assert(
+  /property var navStack: \[\]\s*\n\s*property var originIndex: \(\{\}\)/.test(menuQml),
+  'menu tracks the row each menu was left from'
+)
+assert(
+  /root\.selectedIndex = \(typeof restoreIndex === "number" && restoreIndex > 0\) \? restoreIndex : 0/.test(menuQml),
+  'menu restores a remembered row instead of restarting at the top'
+)
+assert(
+  /if \(row\.kind === "menu" \|\| row\.kind === "link"\) \{[\s\S]*?if \(!root\.filterText\) root\.originIndex\[root\.activeMenu\] = index[\s\S]*?root\.setActiveMenu\(row\.target \|\| row\.itemId, true, fromPointer\)/.test(menuQml),
+  'menu records the descent row, skipping search results'
+)
+assert(
+  /root\.setActiveMenu\(previous, false, false, root\.originIndex\[previous\]\)/.test(menuQml),
+  'menu Back returns to the remembered parent row via the navigation stack'
+)
+assert(
+  /var parentId = \(active && active\.parent\) \? active\.parent : "root"\s*\n\s*root\.setActiveMenu\(parentId, false, false, root\.originIndex\[parentId\]\)/.test(menuQml),
+  'menu Back restores the parent row even without stack history'
+)
+assert(
+  /navStack = \[\]\s*\n\s*originIndex = \(\{\}\)/.test(menuQml),
+  'menu fresh opens forget stored positions'
 )
 assert(
   /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
