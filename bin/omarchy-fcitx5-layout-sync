@@ -1,0 +1,163 @@
+#!/bin/bash
+
+# omarchy:summary=Keep fcitx5's keyboard engine in sync with Hyprland's active XKB layout.
+
+set -euo pipefail
+
+readonly FCITX_SERVICE=org.fcitx.Fcitx5
+readonly FCITX_PATH=/controller
+readonly FCITX_INTERFACE=org.fcitx.Fcitx.Controller1
+readonly SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+readonly STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy"
+readonly MANAGED_ENGINES_FILE="$STATE_DIR/fcitx5-hyprland-layouts"
+
+declare -a layout_engines=() managed_engines=()
+
+load_layout_engines() {
+  local layouts variants layout variant engine
+  local -a layout_list variant_list
+
+  layouts=$(hyprctl getoption input:kb_layout -j | jq -r '.str')
+  variants=$(hyprctl getoption input:kb_variant -j | jq -r '.str')
+  IFS=',' read -r -a layout_list <<<"$layouts"
+  IFS=',' read -r -a variant_list <<<"$variants"
+
+  layout_engines=()
+  managed_engines=()
+  for index in "${!layout_list[@]}"; do
+    layout=${layout_list[$index]//[[:space:]]/}
+    [[ -n $layout ]] || continue
+
+    variant=${variant_list[$index]:-}
+    variant=${variant//[[:space:]]/}
+    engine="keyboard-$layout"
+    [[ -n $variant ]] && engine+="-$variant"
+
+    # Keep one engine per Hyprland index for event mapping, even if two slots
+    # intentionally use the same layout. The fcitx5 group itself is unique.
+    layout_engines+=("$engine")
+    [[ " ${managed_engines[*]} " == *" $engine "* ]] || managed_engines+=("$engine")
+  done
+}
+
+arrays_equal() {
+  local left_name=$1 right_name=$2
+  local -n left=$left_name right=$right_name
+
+  [[ ${#left[@]} -eq ${#right[@]} ]] || return 1
+  for index in "${!left[@]}"; do
+    [[ ${left[$index]} == "${right[$index]}" ]] || return 1
+  done
+}
+
+configure_managed_group() {
+  local group group_info default_im default_layout current_im marker
+  local previous_group previous_layout
+  local -a current_engines previous_engines command
+
+  ((${#managed_engines[@]})) || return 0
+
+  group=$(fcitx5-remote -q)
+  group_info=$(busctl --user --json=short call \
+    "$FCITX_SERVICE" "$FCITX_PATH" "$FCITX_INTERFACE" \
+    FullInputMethodGroupInfo s "$group")
+
+  default_im=$(jq -r '.data[1]' <<<"$group_info")
+  default_layout=$(jq -r '.data[2]' <<<"$group_info")
+  mapfile -t current_engines < <(jq -r '.data[4][][0]' <<<"$group_info")
+
+  if [[ -f $MANAGED_ENGINES_FILE ]]; then
+    previous_group=$(sed -n '1s/^group=//p' "$MANAGED_ENGINES_FILE")
+    previous_layout=$(sed -n '2s/^layout=//p' "$MANAGED_ENGINES_FILE")
+    mapfile -s 2 -t previous_engines <"$MANAGED_ENGINES_FILE"
+    [[ $group == "$previous_group" && $default_layout == "$previous_layout" ]] || return 0
+    arrays_equal current_engines previous_engines || return 0
+  elif [[ $group != Default || $default_layout != us || $default_im != keyboard-us ]] ||
+    [[ ${#current_engines[@]} -ne 1 || ${current_engines[0]} != keyboard-us ]]; then
+    # A non-default group belongs to the user. It may contain language engines
+    # whose order and default must not be rewritten behind their back.
+    return 0
+  fi
+
+  arrays_equal current_engines managed_engines && return 0
+
+  current_im=$(fcitx5-remote -n)
+  command=(busctl --user call "$FCITX_SERVICE" "$FCITX_PATH" "$FCITX_INTERFACE"
+    SetInputMethodGroupInfo 'ssa(ss)' "$group" "$default_layout" "${#managed_engines[@]}")
+  for engine in "${managed_engines[@]}"; do
+    command+=("$engine" "")
+  done
+  "${command[@]}" >/dev/null
+
+  # SetInputMethodGroupInfo chooses one of the new items as the default. Put the
+  # user's current keyboard back before following Hyprland's active index.
+  [[ -n $current_im ]] && fcitx5-remote -s "$current_im"
+
+  mkdir -p "$STATE_DIR"
+  marker=$(mktemp "$STATE_DIR/.fcitx5-hyprland-layouts.XXXXXX")
+  printf 'group=%s\nlayout=%s\n' "$group" "$default_layout" >"$marker"
+  printf '%s\n' "${managed_engines[@]}" >>"$marker"
+  mv "$marker" "$MANAGED_ENGINES_FILE"
+}
+
+active_layout_index() {
+  local keyboard_name=${1:-}
+
+  hyprctl devices -j | jq -r --arg keyboard "$keyboard_name" '
+    [.keyboards[]
+      | select(.name | test("^(hl-virtual-keyboard|power-button|sleep-button|lid-switch|video-bus)") | not)
+      | select($keyboard == "" or .name == $keyboard)]
+    | if length == 0 then empty
+      elif $keyboard == "" then max_by(.active_layout_index).active_layout_index
+      else .[0].active_layout_index
+      end
+  '
+}
+
+sync_active_layout() {
+  local keyboard_name=${1:-} index target current_im
+
+  [[ $keyboard_name != hl-virtual-keyboard* ]] || return 0
+  index=$(active_layout_index "$keyboard_name")
+  [[ $index =~ ^[0-9]+$ ]] || return 0
+  target=${layout_engines[$index]:-}
+  [[ -n $target ]] || return 0
+
+  current_im=$(fcitx5-remote -n)
+  [[ $current_im == keyboard-* ]] || return 0
+  [[ $current_im == "$target" ]] || fcitx5-remote -s "$target"
+}
+
+wait_for_fcitx5() {
+  for _ in {1..50}; do
+    fcitx5-remote --check >/dev/null 2>&1 && return 0
+    sleep 0.1
+  done
+  return 1
+}
+
+refresh_layouts() {
+  load_layout_engines
+  configure_managed_group
+  sync_active_layout
+}
+
+wait_for_fcitx5
+refresh_layouts
+[[ ${1:-} == --once ]] && exit 0
+
+while read -r event; do
+  case "$event" in
+  activelayout\>\>*)
+    payload=${event#*>>}
+    sync_active_layout "${payload%%,*}"
+    ;;
+  configreloaded\>\>*)
+    refresh_layouts
+    ;;
+  esac
+done < <(socat -U - "UNIX-CONNECT:$SOCKET")
+
+# Let systemd restart us if the compositor's event socket disappeared without
+# graphical-session.target stopping (for example, during a compositor restart).
+exit 1

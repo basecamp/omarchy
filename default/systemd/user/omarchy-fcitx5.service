@@ -9,6 +9,7 @@ After=graphical-session.target
 # The wayland connection dies with the compositor, so follow the session rather
 # than linger against a socket that is gone.
 PartOf=graphical-session.target
+Wants=omarchy-fcitx5-layout-sync.service
 # After= is ordering only -- it does not stop anything from starting this unit
 # while the target is inactive. An `omarchy update` over SSH has a live user
 # manager (pam_systemd) and no graphical session, and a fcitx5 started there
