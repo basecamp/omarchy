@@ -11,12 +11,48 @@ session_omarchy_path=$(systemctl --user show-environment 2>/dev/null | sed -n 's
 CONFIG_DIR="$session_omarchy_path/shell"
 [[ -f $CONFIG_DIR/shell.qml ]] || { echo "Omarchy shell config not found: $CONFIG_DIR" >&2; exit 1; }
 
-# Allow running from outside the session (e.g. over ssh) by deriving the
-# Hyprland instance signature from the newest instance runtime dir.
-if [[ -z ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
-  hypr_dir=$(find "${XDG_RUNTIME_DIR:-/run/user/$UID}/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2-)
-  [[ -n $hypr_dir ]] && export HYPRLAND_INSTANCE_SIGNATURE=${hypr_dir##*/}
+# Hyprland instance signatures go stale when a terminal outlives a compositor
+# restart: the variable stays set, but its socket is dead. Prefer the live
+# value from the user manager (same pattern as OMARCHY_PATH above), then any
+# signature whose socket still exists, then the newest runtime dir.
+runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$UID}"
+
+hyprland_signature_live() {
+  local signature=${1:-}
+  [[ -n $signature ]] || return 1
+  [[ -S $runtime_dir/hypr/$signature/.socket.sock || -S $runtime_dir/hypr/$signature/.socket2.sock ]]
+}
+
+resolve_hyprland_signature() {
+  local candidate hypr_dir
+
+  candidate=$(systemctl --user show-environment 2>/dev/null | sed -n 's/^HYPRLAND_INSTANCE_SIGNATURE=//p' | tail -n 1)
+  if hyprland_signature_live "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  candidate=${HYPRLAND_INSTANCE_SIGNATURE:-}
+  if hyprland_signature_live "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  hypr_dir=$(find "$runtime_dir/hypr" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null | sort -n | tail -n 1 | cut -d' ' -f2-)
+  candidate=${hypr_dir##*/}
+  if hyprland_signature_live "$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  return 1
+}
+
+if ! session_hyprland_signature=$(resolve_hyprland_signature); then
+  echo "Could not find a live Hyprland instance to restart the shell." >&2
+  exit 1
 fi
+export HYPRLAND_INSTANCE_SIGNATURE=$session_hyprland_signature
 
 # Restarting a live lock client would kill the lock screen and strand the
 # session behind Hyprland's failsafe. But a LOCK session without an active
