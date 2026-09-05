@@ -27,7 +27,8 @@ mkdir -p "$staging"
 # directory, so the link always resolves and unlinking the staged name
 # finishes the move. Prints the name it took.
 claim_path() {
-  local staged="$1" name="${staged##*/}" base ext candidate index=0
+  local staged="$1"
+  local name="${staged##*/}" base ext candidate index=0
 
   base="${name%.*}"
   ext="${name#"$base"}"
@@ -76,10 +77,12 @@ announce() {
 }
 
 deliver() {
-  local staged target
+  # Deliberately not named "staged": sharing claim_path's own local name is what
+  # hid the scope leak, and a different name lets the tests catch it coming back.
+  local entry target
 
-  while IFS= read -r staged; do
-    target=$(claim_path "$staged") || continue
+  while IFS= read -r entry; do
+    target=$(claim_path "$entry") || continue
     announce "$target"
   done < <(find "$staging" -mindepth 1 -maxdepth 1)
 }
