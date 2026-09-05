@@ -68,6 +68,10 @@ pass "Codex collector does not double-count cache or reasoning tokens"
   fail "Codex collector identifies itself with an empty limits list" "$result"
 pass "Codex collector identifies itself with an empty limits list"
 
+[[ $(jq -r '.authHelpText' <<<"$result") == "" ]] ||
+  fail "Codex collector clears login guidance after successful account RPCs" "$result"
+pass "Codex collector clears login guidance after successful account RPCs"
+
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included.
 PI_HOME=$(mktemp -d)

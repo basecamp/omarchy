@@ -196,6 +196,8 @@ payload='{"five_hour":{"utilization":44.0}}'
 reused=$(probe_with_cache false "$fresh" "$payload")
 [[ $(jq -r '.probes' <<<"$reused") == "0" && $(jq -c '[.result.limits[].percent]' <<<"$reused") == "[0.11]" ]] ||
   fail "Claude collector reuses a cache younger than the probe interval" "$reused"
+[[ $(jq -r '.result.authHelpText' <<<"$reused") == "" ]] ||
+  fail "Claude collector clears login guidance when reusing authenticated limits" "$reused"
 pass "Claude collector reuses a cache younger than the probe interval"
 
 # --force is someone pressing refresh, and its help text promises the caches are
@@ -205,6 +207,8 @@ forced=$(probe_with_cache true "$fresh" "$payload")
   fail "Claude collector re-probes on --force despite a fresh cache" "$forced"
 [[ $(jq -c '[.result.limits[].percent]' <<<"$forced") == "[0.44]" ]] ||
   fail "Claude collector returns the forced probe's numbers" "$forced"
+[[ $(jq -r '.result.authHelpText' <<<"$forced") == "" ]] ||
+  fail "Claude collector clears login guidance after a successful probe" "$forced"
 pass "Claude collector re-probes on --force despite a fresh cache"
 
 # A probe that lands becomes the next run's fallback.

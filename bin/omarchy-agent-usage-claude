@@ -826,11 +826,13 @@ def collect_limits(access_token: str, expires_at_ms: int, force: bool) -> dict[s
   fetched_at = number(cached.get("fetchedAtMs")) / 1000
   if fallback and not force and time.time() - fetched_at < PROBE_MIN_INTERVAL_SECONDS:
     result["limits"] = fallback
+    result["authHelpText"] = ""
     return result
 
   probe = probe_limits(access_token)
   if probe["ok"]:
     result["limits"] = probe["limits"]
+    result["authHelpText"] = ""
     write_json(probe_cache, {"fetchedAtMs": round(time.time() * 1000), "limits": probe["limits"]})
     return result
 
