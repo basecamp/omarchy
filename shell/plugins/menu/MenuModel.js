@@ -384,12 +384,6 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
   }
 }
 
-// Inline calculator for menu search. The tokenizer and the recursive-descent
-// parser below are written from scratch for the menu: `+ - * /`, `x`/`X` and
-// the multiplication/division glyphs (\u00d7 \u00f7), parentheses, unary signs,
-// decimals with `.` only (`,` invalidates all), juxtaposition (`2(3)`), and
-// postfix `%` (`50%` -> 0.5, `5%200` -> 10).
-
 function calcTokenize(text) {
   var tokens = []
   var i = 0
@@ -448,8 +442,6 @@ function calcParse(tokens) {
     if (value === null) return null
     for (;;) {
       var op = peek()
-      // Juxtaposition multiplies, like phone calculators: 5%200 is 10.
-      // Never number-on-number, so 1.2.3 stays invalid.
       var prev = pos > 0 ? tokens[pos - 1] : null
       var opNum = op !== null && typeof op === "object"
       var prevNum = prev !== null && typeof prev === "object"
@@ -507,10 +499,6 @@ function calcParse(tokens) {
   return value
 }
 
-// Evaluates an arithmetic expression to a finite Number. Returns null for
-// anything that is not a complete calculation: empty input, a lone number
-// with no operator, unknown characters, trailing garbage, unbalanced
-// parentheses, or a non-finite result such as division by zero.
 function calcEvaluate(text) {
   var input = String(text === null || text === undefined ? "" : text)
   if (!input.trim()) return null
@@ -524,9 +512,6 @@ function calcEvaluate(text) {
   }
 }
 
-// Formats a result for display: integers below 1e15 print as themselves,
-// else gets 15 significant digits (all a double can be trusted with), padding
-// zeros stripped: 0.1 + 0.2 reads "0.3" instead of "0.30000000000000004".
 function calcFormat(value) {
   if (typeof value !== "number" || !isFinite(value)) return ""
   if (Math.abs(value) < 1e15 && Math.floor(value) === value) return String(value)
@@ -537,10 +522,6 @@ function calcFormat(value) {
   return parts.length > 1 ? mantissa + "e" + parts[1] : mantissa
 }
 
-// Resolves a menu search query to a calculator result row payload, or null
-// when the query is not a calculation: empty, a lone number, or anything
-// with commas or trailing garbage. Letters other than `x` die in the
-// tokenizer, so "firefox" stays a plain search.
 function calcResultForQuery(query) {
   var text = String(query === null || query === undefined ? "" : query).trim()
   if (!text) return null
