@@ -100,22 +100,22 @@ Item {
   readonly property int maxPopupDuration: 30000
 
   function durationFor(urgency, expireTimeout) {
+    return NotificationLogic.popupDuration(floorDurationFor(urgency), expireTimeout, maxPopupDuration)
+  }
+
+  // 0 keeps the toast up until it is dismissed. Critical gets that by default
+  // because an alert nobody saw is worse than one they have to click away, but
+  // it is the floor the sender's own expire_timeout is measured against, not a
+  // veto on it.
+  function floorDurationFor(urgency) {
     switch (urgency) {
     case NotificationUrgency.Critical:
       return 0
     case NotificationUrgency.Low:
-      return Math.min(maxPopupDuration, Math.max(lowPopupDuration, requestedDuration(expireTimeout)))
+      return lowPopupDuration
     default:
-      return Math.min(maxPopupDuration, Math.max(normalPopupDuration, requestedDuration(expireTimeout)))
+      return normalPopupDuration
     }
-  }
-
-  function requestedDuration(expireTimeout) {
-    // FreeDesktop notification spec (and Quickshell) report expireTimeout in
-    // milliseconds, so pass it through directly.
-    var ms = Number(expireTimeout || 0)
-    if (!isFinite(ms) || ms <= 0) return 0
-    return Math.round(ms)
   }
 
   // DND bypass: only let through notifications we trust to be intentional
