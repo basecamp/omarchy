@@ -8,7 +8,8 @@ if lspci -nn | grep "106b:180[12]" >/dev/null; then
     linux-t2-headers \
     apple-t2-audio-config \
     apple-bcm-firmware \
-    t2fanrd
+    t2fanrd \
+    msr-tools
 
   # Enable T2 fan control
   systemctl enable t2fanrd.service
@@ -25,6 +26,13 @@ if lspci -nn | grep "106b:180[12]" >/dev/null; then
   mkdir -p /etc/mkinitcpio.conf.d
   echo "MODULES+=(t2bce_vhci usbhid hid_apple hid_generic xhci_pci xhci_hcd)" > \
     /etc/mkinitcpio.conf.d/apple-t2.conf
+
+  # The SMC can leave the external PROCHOT line asserted, which pins every core
+  # at its minimum frequency. Clear BD PROCHOT at boot and after each resume so
+  # the CPU ignores it.
+  install -Dm644 "$OMARCHY_PATH/default/systemd/system/omarchy-t2-prochot.service" \
+    /etc/systemd/system/omarchy-t2-prochot.service
+  systemctl enable omarchy-t2-prochot.service
 
   mkdir -p /etc/limine-entry-tool.d
   cat > /etc/limine-entry-tool.d/t2-mac.conf <<'EOF'
