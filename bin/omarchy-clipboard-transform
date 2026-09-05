@@ -1,0 +1,87 @@
+#!/bin/bash
+
+# omarchy:summary=Transform selected text case
+# omarchy:args=[--print] <upper|lower|title|sentence|swapcase>
+# omarchy:examples=omarchy clipboard transform title | omarchy clipboard transform --print upper
+
+set -euo pipefail
+
+print_only=false
+mode=""
+
+while (( $# > 0 )); do
+  case "$1" in
+    --print)
+      print_only=true
+      shift
+      ;;
+    *)
+      mode=$1
+      shift
+      break
+      ;;
+  esac
+done
+
+if [[ -z $mode ]]; then
+  echo "Usage: omarchy-clipboard-transform [--print] <upper|lower|title|sentence|swapcase>" >&2
+  exit 1
+fi
+
+if [[ $print_only == "true" && ! -t 0 ]]; then
+  text=$(cat)
+else
+  text=$(wl-paste -p 2>/dev/null || true)
+fi
+
+if [[ -z $text ]] || [[ ${text,,} == "%mcepastebin%" ]]; then
+  exit 0
+fi
+
+case "$mode" in
+  upper)
+    result=$(printf '%s' "$text" | perl -CSD -e 'print uc(do { local $/; <STDIN> })')
+    ;;
+  lower)
+    result=$(printf '%s' "$text" | perl -CSD -e 'print lc(do { local $/; <STDIN> })')
+    ;;
+  title)
+    result=$(printf '%s' "$text" | perl -CSD -e '
+      $_ = lc(do { local $/; <STDIN> });
+      s/\b(\p{L}+)/\u$1/g;
+      print;
+    ')
+    ;;
+  sentence)
+    result=$(printf '%s' "$text" | perl -CSD -e '
+      $_ = lc(do { local $/; <STDIN> });
+      s/(^|[.!?]\s+)(\p{L})/$1\u$2/g;
+      print;
+    ')
+    ;;
+  swapcase)
+    result=$(printf '%s' "$text" | perl -CSD -e '
+      $_ = do { local $/; <STDIN> };
+      s{(\p{L})}{ $1 eq uc($1) && $1 ne lc($1) ? lc($1) : uc($1) }ge;
+      print;
+    ')
+    ;;
+  *)
+    echo "Unknown mode: $mode (use upper, lower, title, sentence, swapcase)" >&2
+    exit 1
+    ;;
+esac
+
+if [[ $print_only == "true" ]]; then
+  printf '%s' "$result"
+else
+  copy_pid=""
+  printf '%s' "$result" | wl-copy --type text/plain --sensitive --foreground &
+  copy_pid=$!
+
+  sleep 0.15
+  wtype -M shift -k Insert -m shift 2>/dev/null || true
+  sleep 0.2
+
+  kill "$copy_pid" 2>/dev/null || true
+fi

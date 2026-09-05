@@ -6,6 +6,10 @@ Hit `Super + Ctrl + PrtScr` to select a region on the screen for text extraction
 
 This is very helpful for grabbing addresses out of image footers or phone numbers embedded in website headlines.
 
+### Transform
+
+Highlight some text, then open _Trigger > Capture > Transform_ (`Super + Ctrl + C`) and pick a case: UPPERCASE, lowercase, Title Case, Sentence case, or Swap Case. The transformed text is pasted back over the selection. Formatting like bullets, quotes, and hyphens is left alone — only letter case changes.
+
  ![text-extraction](images/text-extraction.webp)
 
 ### Dictation
