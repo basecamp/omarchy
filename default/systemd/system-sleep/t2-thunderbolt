@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# The Titan Ridge Thunderbolt controllers on T2 Macs lose power in deep sleep.
+# Left in place, the kernel resumes them serially and waits about 6 s per
+# controller for its firmware plus about 3 s per NHI, which is most of the 20 s
+# a lid-open takes. Remove them before sleeping so resume has nothing to wait
+# for, then re-enumerate in the background once they have powered back up.
+
+state=/run/omarchy-t2-thunderbolt
+
+titan_ridge_bridges() {
+  local dev
+  for dev in /sys/bus/pci/devices/*; do
+    [[ -r $dev/vendor && $(<"$dev/vendor") == 0x8086 && $(<"$dev/device") == 0x15ea ]] && echo "$dev"
+  done
+}
+
+# Upstream ports sit directly on a CPU/PCH root port.
+tb_upstream_bridges() {
+  local dev parent
+  for dev in $(titan_ridge_bridges); do
+    parent=$(basename "$(readlink -f "$dev/..")")
+    [[ $parent == 0000:00:* ]] && echo "$dev"
+  done
+}
+
+# Downstream ports hang off another Titan Ridge bridge.
+tb_downstream_bridges() {
+  local dev parent
+  for dev in $(titan_ridge_bridges); do
+    parent=$(basename "$(readlink -f "$dev/..")")
+    [[ $parent == 0000:00:* ]] || echo "$dev"
+  done
+}
+
+has_children() {
+  compgen -G "$1/0000:*" >/dev/null
+}
+
+# The integrated xHCI does not answer config cycles after the power cycle until
+# its downstream port is reset (Bridge Control bit 6, secondary bus reset).
+reset_secondary_bus() {
+  local addr=${1##*/} ctl
+  ctl=$(setpci -s "$addr" BRIDGE_CONTROL)
+  setpci -s "$addr" BRIDGE_CONTROL="$(printf '%04x' $(( 0x$ctl | 0x40 )))"
+  sleep 0.01
+  setpci -s "$addr" BRIDGE_CONTROL="$ctl"
+}
+
+case $1 in
+  pre)
+    count=0
+    for dev in $(tb_upstream_bridges); do
+      echo 1 > "$dev/remove" && count=$((count + 1))
+    done
+    # A controller the last resume's rescan has not brought back yet is still
+    # one to bring back. A suspend inside that window must not lower the count
+    # the next resume works from, or the controllers stay off the bus for good.
+    previous=$(cat "$state" 2>/dev/null)
+    [[ $previous =~ ^[0-9]+$ ]] || previous=0
+    (( count < previous )) && count=$previous
+    echo "$count" > "$state"
+    ;;
+  post)
+    expected=$(cat "$state" 2>/dev/null || echo 0)
+    (( expected > 0 )) || exit 0
+    (
+      for _ in $(seq 1 30); do
+        echo 1 > /sys/bus/pci/rescan
+        (( $(tb_upstream_bridges | wc -l) >= expected )) && break
+        sleep 1
+      done
+      sleep 1
+      echo 1 > /sys/bus/pci/rescan
+      for dev in $(tb_downstream_bridges); do
+        has_children "$dev" || reset_secondary_bus "$dev"
+      done
+      sleep 1
+      echo 1 > /sys/bus/pci/rescan
+    ) &
+    ;;
+esac

@@ -7,6 +7,8 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 fix_t2="$ROOT/install/hardware/apple/fix-t2.sh"
 other_packages="$ROOT/install/omarchy-other.packages"
 migration="$ROOT/migrations/1785944594.sh"
+tb_hook="$ROOT/default/systemd/system-sleep/t2-thunderbolt"
+tb_migration="$ROOT/migrations/1788110186.sh"
 
 grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sleep_default=deep"' "$fix_t2" ||
   fail "T2 setup installs the suspend kernel parameters"
@@ -20,6 +22,17 @@ grep -Fq 'KERNEL_CMDLINE[default]+=" intel_iommu=on iommu=pt pm_async=off mem_sl
   fail "T2 setup leaves optional Touch Bar customization uninstalled"
 ! grep -qx 'tiny-dfr' "$other_packages" ||
   fail "the ISO no longer caches tiny-dfr"
+grep -Fq 'install -Dm755 "$OMARCHY_PATH/default/systemd/system-sleep/t2-thunderbolt"' "$fix_t2" ||
+  fail "T2 setup installs the Thunderbolt sleep hook executable"
+[[ -x $tb_hook ]] || fail "the Thunderbolt sleep hook is tracked executable"
+grep -Fq 'echo 1 > "$dev/remove"' "$tb_hook" ||
+  fail "the Thunderbolt sleep hook removes the controllers before sleep"
+grep -Fq 'echo 1 > /sys/bus/pci/rescan' "$tb_hook" ||
+  fail "the Thunderbolt sleep hook re-enumerates the controllers after resume"
+grep -Fq 'BRIDGE_CONTROL' "$tb_hook" ||
+  fail "the Thunderbolt sleep hook resets childless downstream ports for the xHCI"
+grep -Fq '(( count < previous )) && count=$previous' "$tb_hook" ||
+  fail "the Thunderbolt sleep hook keeps the controller count across back-to-back suspends"
 pass "fresh T2 setup uses t2bce-compatible suspend, fan, and Touch Bar defaults"
 
 test_tmp=$(mktemp -d)
@@ -212,3 +225,44 @@ grep -Fxq 'limine-mkinitcpio' "$calls" ||
   fail "T2 rerun migration rebuilds the boot image"
 [[ -f $repair_marker ]] || fail "T2 rerun migration records the machine-wide repair"
 pass "T2 rerun migration repairs installs the broken hardware check skipped"
+
+tb_hook_target="$test_tmp/system-sleep/omarchy-t2-thunderbolt"
+rm -rf "$test_tmp/system-sleep"
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_THUNDERBOLT_HOOK="$tb_hook_target" \
+  bash -euo pipefail "$tb_migration" >/dev/null
+
+cmp -s "$tb_hook" "$tb_hook_target" || fail "T2 Thunderbolt migration installs the shipped sleep hook"
+[[ -x $tb_hook_target ]] || fail "T2 Thunderbolt migration installs the hook executable"
+pass "T2 Thunderbolt migration installs the sleep hook on existing installs"
+
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=1 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_THUNDERBOLT_HOOK="$tb_hook_target" \
+  bash -euo pipefail "$tb_migration" >/dev/null
+
+[[ ! -s $calls ]] || fail "an already repaired T2 install is left unchanged" "$(cat "$calls")"
+pass "T2 Thunderbolt migration is idempotent"
+
+rm -rf "$test_tmp/system-sleep"
+: >"$calls"
+
+PATH="$stub_bin:$PATH" \
+  TEST_LOG="$calls" \
+  T2_HARDWARE=0 \
+  OMARCHY_PATH="$ROOT" \
+  OMARCHY_T2_THUNDERBOLT_HOOK="$tb_hook_target" \
+  bash -euo pipefail "$tb_migration" >/dev/null
+
+[[ ! -e $tb_hook_target ]] || fail "non-T2 systems get no Thunderbolt sleep hook"
+[[ ! -s $calls ]] || fail "non-T2 systems skip the Thunderbolt repair" "$(cat "$calls")"
+pass "T2 Thunderbolt migration skips unrelated hardware"
