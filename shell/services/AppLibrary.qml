@@ -26,6 +26,7 @@ Item {
   property int launchSerial: 0
   property int launchToplevelCount: 0
   property var launchActiveToplevel: null
+  property var launchExistingToplevel: null
   // True while the launch OSD is on screen. It outlives the launch that opened
   // it: the OSD shows with duration 0, so only closeLaunchFeedback() takes it
   // down.
@@ -77,7 +78,7 @@ Item {
   function launch(desktopId, name) {
     var id = String(desktopId || "")
     if (!id) return
-    root.beginLaunchFeedback(name)
+    root.beginLaunchFeedback(id, name)
     // Start gtk-launch inside a scope under app-graphical.slice so apps do not
     // inherit wayland-wm@.service. Keeping gtk-launch as the desktop-entry
     // resolver supports IDs with spaces and entries that UWSM rejects.
@@ -157,17 +158,36 @@ Item {
     try { return ToplevelManager.toplevels.values.length } catch (e) { return 0 }
   }
 
-  function beginLaunchFeedback(name) {
+  function existingToplevelFor(desktopId) {
+    var entry = DesktopEntries.byId(desktopId)
+    var startupClass = String((entry && entry.startupClass) || "")
+    var toplevels = ToplevelManager.toplevels.values || []
+    var active = ToplevelManager.activeToplevel
+
+    if (active && AppSearch.appIdsMatch(desktopId, startupClass, active.appId)) return active
+
+    for (var i = 0; i < toplevels.length; i++) {
+      if (AppSearch.appIdsMatch(desktopId, startupClass, toplevels[i] && toplevels[i].appId)) return toplevels[i]
+    }
+
+    return null
+  }
+
+  function beginLaunchFeedback(desktopId, name) {
     root.launchSerial++
     root.launchToplevelCount = root.toplevelCount()
     root.launchActiveToplevel = ToplevelManager.activeToplevel
+    root.launchExistingToplevel = root.existingToplevelFor(desktopId)
     root.launchOsdMessage = "Launching " + String(name || "application") + "…"
+    if (root.launchExistingToplevel) existingFocusDelay.restart()
+    else existingFocusDelay.stop()
     launchDelay.restart()
     launchTimeout.restart()
   }
 
   function closeLaunchFeedback(serial) {
     if (serial !== root.launchSerial) return
+    existingFocusDelay.stop()
     launchDelay.stop()
     launchTimeout.stop()
     if (root.launchOsdOpen) {
@@ -177,7 +197,7 @@ Item {
   }
 
   function maybeFinishLaunchFeedback() {
-    if (!launchDelay.running && !launchTimeout.running && !root.launchOsdOpen) return
+    if (!existingFocusDelay.running && !launchDelay.running && !launchTimeout.running && !root.launchOsdOpen) return
     if (root.toplevelCount() <= root.launchToplevelCount && ToplevelManager.activeToplevel === root.launchActiveToplevel) return
     root.closeLaunchFeedback(root.launchSerial)
   }
@@ -234,6 +254,18 @@ Item {
   Connections {
     target: ToplevelManager
     function onActiveToplevelChanged() { root.maybeFinishLaunchFeedback() }
+  }
+
+  Timer {
+    id: existingFocusDelay
+    interval: 150
+    onTriggered: {
+      if (root.toplevelCount() > root.launchToplevelCount || ToplevelManager.activeToplevel !== root.launchActiveToplevel) return
+      // Give the app a brief chance to activate itself or map a new window.
+      // If its relaunch is a no-op, focus the window that was already open.
+      root.launchExistingToplevel.activate()
+      root.closeLaunchFeedback(root.launchSerial)
+    }
   }
 
   Timer {

@@ -69,6 +69,13 @@ assertEqual(acronymMatches[0], 'Google Contacts', 'short acronym matching still 
 const directMatches = search.sortedEntries(entries, 'obs').map(row => search.entryName(row.entry))
 assertEqual(directMatches[0], 'OBS Studio', 'direct app-name matching still works')
 
+assert(search.appIdsMatch('aether', '', 'aether'), 'launcher matches Aether by desktop id')
+assert(search.appIdsMatch('org.telegram.desktop', 'TelegramDesktop', 'org.telegram.desktop'), 'launcher preserves a meaningful desktop suffix when matching Telegram')
+assert(search.appIdsMatch('signal', 'Signal', 'signal'), 'launcher matches window app ids case-insensitively')
+assert(search.appIdsMatch('example', 'ExampleWindow', 'ExampleWindow'), 'launcher falls back to StartupWMClass')
+assert(!search.appIdsMatch('foot', '', 'footclient'), 'launcher does not use partial app-id matches')
+assert(!search.appIdsMatch('foo', '', 'foo.desktop'), 'launcher keeps distinct desktop ids distinct')
+
 // The menu's Apps submenu is the launcher now: app rows launch and uninstall
 // through the shared app library instead of running commands themselves.
 const activateMatch = menuQml.match(/function activateIndex\(index, fromPointer\) \{([\s\S]*?)\n  \}/)
@@ -133,11 +140,26 @@ assert(
   'app library prefers indexed app icons over ambiguous themed icons'
 )
 
-const beginLaunchMatch = appLibraryQml.match(/function beginLaunchFeedback\(name\) \{([\s\S]*?)\n  \}/)
+const beginLaunchMatch = appLibraryQml.match(/function beginLaunchFeedback\(desktopId, name\) \{([\s\S]*?)\n  \}/)
 assert(beginLaunchMatch, 'app library beginLaunchFeedback function exists')
 assert(
   !beginLaunchMatch[1].includes('root.launchOsdOpen = false'),
   'app library keeps owning an OSD a previous launch left on screen'
+)
+
+assert(
+  appLibraryQml.includes('root.launchExistingToplevel = root.existingToplevelFor(desktopId)'),
+  'app library remembers an existing window before launching an app'
+)
+
+assert(
+  /var active = ToplevelManager\.activeToplevel[\s\S]*?if \(active && AppSearch\.appIdsMatch\([\s\S]*?return active/.test(appLibraryQml),
+  'app library prefers an active matching window when an app has several windows'
+)
+
+assert(
+  /id: existingFocusDelay[\s\S]*?interval: 150[\s\S]*?root\.launchExistingToplevel\.activate\(\)[\s\S]*?root\.closeLaunchFeedback/.test(appLibraryQml),
+  'launch feedback quickly focuses an existing app window when a second launch has no visible effect'
 )
 
 const openMatch = menuQml.match(/function openExistingMenu\(initialMenu\) \{([\s\S]*?)\n  \}/)

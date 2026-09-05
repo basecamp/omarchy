@@ -6,6 +6,17 @@ function entrySubtext(entry) {
   return String((entry && entry.genericName) || "")
 }
 
+function normalizedAppId(id) {
+  return String(id || "").toLowerCase()
+}
+
+function appIdsMatch(desktopId, startupClass, appId) {
+  var id = normalizedAppId(desktopId)
+  var startup = normalizedAppId(startupClass)
+  var candidate = normalizedAppId(appId)
+  return candidate === id || (startup.length > 0 && candidate === startup)
+}
+
 function entrySortKey(entry) {
   return entryName(entry).toLowerCase()
 }
@@ -125,6 +136,8 @@ if (typeof module !== "undefined") {
   module.exports = {
     entryName: entryName,
     entrySubtext: entrySubtext,
+    normalizedAppId: normalizedAppId,
+    appIdsMatch: appIdsMatch,
     entrySortKey: entrySortKey,
     entrySearchText: entrySearchText,
     entryAcronym: entryAcronym,
