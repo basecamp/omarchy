@@ -242,6 +242,23 @@ pass "Omarchy 4 upgrade repair path refuses a partial dm-crypt cmdline"
 # root= must block the reboot rather than just warn.
 grep -F -- '--only-section=.cmdline' "$upgrade_to_quattro" >/dev/null
 grep -F "as_root find /boot/EFI/Linux -maxdepth 1 -name 'omarchy_linux*.efi'" "$upgrade_to_quattro" >/dev/null
+
+# archinstall's own entry names a UKI this upgrade stops generating, carries no
+# limine-entry-tool marker so no regeneration touches it, and sits above the
+# Omarchy entry where the timeout selects it. Prune it while normalizing, and
+# only from the packaged tree -- an older build has no such command and must not
+# abort the upgrade partway through.
+grep -F 'omarchy-limine-prune-missing-entries' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade prunes Limine entries whose image is gone"
+grep -F 'as_root test -x "$prune"' "$upgrade_to_quattro" >/dev/null ||
+  fail "Omarchy 4 upgrade survives a packaged tree without the prune command"
+prune_line=$(grep -n 'as_root "$prune" /boot/limine.conf /boot' "$upgrade_to_quattro" | cut -d: -f1)
+normalize_line=$(grep -n '^normalize_limine_config() {' "$upgrade_to_quattro" | cut -d: -f1)
+cmdline_line=$(grep -n '^preserve_kernel_cmdline_root() {' "$upgrade_to_quattro" | cut -d: -f1)
+[[ -n $prune_line ]] || fail "Omarchy 4 upgrade prunes stale entries from the packaged command"
+(( normalize_line < prune_line && prune_line < cmdline_line )) ||
+  fail "Omarchy 4 upgrade prunes stale entries while normalizing the Limine config"
+pass "Omarchy 4 upgrade prunes Limine entries whose image left the ESP"
 grep -F 'boot_cmdline_unsafe=1' "$upgrade_to_quattro" >/dev/null
 unsafe_line=$(grep -n 'if (( boot_cmdline_unsafe )); then' "$upgrade_to_quattro" | cut -d: -f1)
 reboot_line=$(grep -n 'Rebooting because --reboot was passed' "$upgrade_to_quattro" | cut -d: -f1)
