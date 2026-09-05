@@ -53,8 +53,27 @@ SH
 
 chmod +x "$mock_bin"/*
 
+# Machine shape, as the kernel presents it. A laptop owns its backlight through
+# an eDP connector; an all-in-one wires its built-in panel to DisplayPort and has
+# no internal-named connector at all. The all-in-one gets both topologies, alone
+# and with a second display attached, so each case runs against the DRM set it
+# actually describes.
+drm_laptop="$test_tmp/drm-laptop"
+drm_aio="$test_tmp/drm-aio"
+drm_aio_docked="$test_tmp/drm-aio-docked"
+mkdir -p "$drm_laptop/card1-eDP-1" "$drm_laptop/card1-DP-2" \
+  "$drm_aio/card1-DP-1" "$drm_aio/card1-DP-2" \
+  "$drm_aio_docked/card1-DP-1" "$drm_aio_docked/card1-DP-2"
+printf 'connected\n' >"$drm_laptop/card1-eDP-1/status"
+printf 'connected\n' >"$drm_laptop/card1-DP-2/status"
+printf 'connected\n' >"$drm_aio/card1-DP-1/status"
+printf 'disconnected\n' >"$drm_aio/card1-DP-2/status"
+printf 'connected\n' >"$drm_aio_docked/card1-DP-1/status"
+printf 'connected\n' >"$drm_aio_docked/card1-DP-2/status"
+
 run_brightness() {
-  CALL_LOG="$call_log" XDG_RUNTIME_DIR="$runtime_dir" PATH="$mock_bin:$ROOT/bin:$PATH" \
+  CALL_LOG="$call_log" XDG_RUNTIME_DIR="$runtime_dir" OMARCHY_DRM_PATH="${DRM_PATH:-$drm_laptop}" \
+    PATH="$mock_bin:$ROOT/bin:$PATH" \
     "$ROOT/bin/omarchy-brightness-display" "$@"
 }
 
@@ -144,3 +163,52 @@ if PATH="$mock_bin:$PATH" "$ROOT/bin/omarchy-hyprland-monitor-focused-apple"; th
   fail "focused non-Apple display is not detected as Apple"
 fi
 pass "named Apple display is detected independently of focus"
+
+# An all-in-one's built-in panel is named DP-1 and answers no DDC display, and
+# the machine has no eDP/LVDS/DSI connector that could own the kernel backlight
+# instead -- so the backlight is the panel behind that connector.
+rm -rf "$runtime_dir/omarchy-brightness-display-ddc"
+brightness=$(DRM_PATH="$drm_aio" DDC_CONNECTOR=DP-9 run_brightness --monitor DP-1) ||
+  fail "all-in-one panel falls back to the kernel backlight" "the command exited nonzero"
+[[ $brightness == "40" ]] || fail "all-in-one panel falls back to the kernel backlight" "actual: $brightness"
+pass "a DisplayPort panel with no DDC display uses the kernel backlight"
+
+rm -rf "$runtime_dir/omarchy-brightness-display-ddc"
+DRM_PATH="$drm_aio" DDC_CONNECTOR=DP-9 run_brightness --no-osd --monitor DP-1 60%
+grep -F 'brightnessctl -d mock_backlight set 60%' "$call_log" >/dev/null ||
+  fail "all-in-one panel sets brightness through the kernel backlight"
+pass "a DisplayPort panel with no DDC display is adjusted through the kernel backlight"
+
+# The same all-in-one with a real external monitor attached and connected: that
+# one answers DDC, so it keeps using it. Only the connector without a DDC display
+# falls back.
+rm -rf "$runtime_dir/omarchy-brightness-display-ddc"
+brightness=$(DRM_PATH="$drm_aio_docked" DDC_CONNECTOR=DP-2 run_brightness --monitor DP-2) ||
+  fail "an external monitor on an all-in-one still uses DDC" "the command exited nonzero"
+[[ $brightness == "50" ]] || fail "an external monitor on an all-in-one still uses DDC" "actual: $brightness"
+pass "an external monitor that answers DDC still uses DDC"
+
+# The built-in panel of that same docked all-in-one still has to reach the
+# backlight. A second connected display is not an internal panel, so it cannot
+# be what the backlight belongs to.
+rm -rf "$runtime_dir/omarchy-brightness-display-ddc"
+brightness=$(DRM_PATH="$drm_aio_docked" DDC_CONNECTOR=DP-2 run_brightness --monitor DP-1) ||
+  fail "a docked all-in-one still drives its own panel" "the command exited nonzero"
+[[ $brightness == "40" ]] || fail "a docked all-in-one still drives its own panel" "actual: $brightness"
+pass "an all-in-one panel keeps the kernel backlight with a second display connected"
+
+# A laptop's DDC-less external monitor must keep failing. Falling back would
+# move the laptop's own panel while the user is asking for the other one.
+rm -rf "$runtime_dir/omarchy-brightness-display-ddc"
+if DRM_PATH="$drm_laptop" DDC_CONNECTOR=DP-9 run_brightness --monitor DP-2 >/dev/null 2>&1; then
+  fail "a laptop's DDC-less external monitor does not move the internal backlight"
+fi
+pass "an external monitor on a machine with an internal panel does not fall back"
+
+# A transient DDC read failure is not "no display on this connector", so it must
+# not fall back either -- the monitor is there and will answer on the next try.
+rm -rf "$runtime_dir/omarchy-brightness-display-ddc"
+if DRM_PATH="$drm_aio" DDC_READ_FAIL=1 run_brightness --monitor DP-1 >/dev/null 2>&1; then
+  fail "a transient DDC read failure does not fall back to the backlight"
+fi
+pass "a transient DDC read failure is not treated as a missing DDC display"
