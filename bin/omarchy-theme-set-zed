@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# omarchy:summary=Sync Omarchy theme to Zed
+# omarchy:hidden=true
+
+CURRENT_THEME_DIR="$HOME/.local/state/omarchy/current/theme"
+THEME_SOURCE="$CURRENT_THEME_DIR/zed-theme.json"
+ZED_CONFIG_DIR="$HOME/.config/zed"
+SETTINGS_PATH="$ZED_CONFIG_DIR/settings.json"
+INSTALLED_THEME="$ZED_CONFIG_DIR/themes/omarchy.json"
+
+omarchy-cmd-present zed || exit 0
+omarchy-toggle-enabled skip-zed-theme-changes && exit 0
+[[ -f $THEME_SOURCE ]] || exit 0
+
+# Every theme has a zed-theme.json here: the theme's own, or one rendered from
+# default/themed/zed-theme.json.tpl. It goes into Zed's user themes directory
+# as the single theme "Omarchy". Zed watches that directory and re-applies the
+# active theme when its file changes, so a theme switch is a file swap and
+# settings.json is only ever touched once, to select "Omarchy".
+mkdir -p "$ZED_CONFIG_DIR/themes"
+jq '.name = "Omarchy" | .themes |= (.[0:1] | map(.name = "Omarchy"))' "$THEME_SOURCE" >"$INSTALLED_THEME.tmp"
+cat "$INSTALLED_THEME.tmp" >"$INSTALLED_THEME"
+rm -f "$INSTALLED_THEME.tmp"
+
+[[ -f $SETTINGS_PATH ]] || printf '{\n}\n' >"$SETTINGS_PATH"
+
+# settings.json is JSONC, so the theme key is edited textually. Zed follows the
+# file through an inotify watch on its inode, which a rename-style rewrite
+# (`sed -i`, `mv`) would leave pointing at a deleted file until Zed restarts,
+# so the result is written back into the same file.
+if grep -qE '"theme"[[:space:]]*:[[:space:]]*\{' "$SETTINGS_PATH"; then
+  # {"mode": ..., "light": ..., "dark": ...}: fill the slot the mode uses and
+  # leave the other alone. "system" can use either, so both are filled.
+  block=$(sed -nE '/"theme"[[:space:]]*:[[:space:]]*\{/,/\}/p' "$SETTINGS_PATH")
+  mode=$(sed -nE 's/.*"mode"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' <<<"$block" | head -1)
+  case "$mode" in
+    light) slots='"light"' ;;
+    dark) slots='"dark"' ;;
+    *) slots='"light"|"dark"' ;;
+  esac
+  updated=$(sed -E "/\"theme\"[[:space:]]*:[[:space:]]*\{/,/\}/ s|(($slots)[[:space:]]*:[[:space:]]*\")[^\"]*(\")|\1Omarchy\3|" "$SETTINGS_PATH")
+elif grep -qE '"theme"[[:space:]]*:[[:space:]]*"' "$SETTINGS_PATH"; then
+  updated=$(sed -E 's|("theme"[[:space:]]*:[[:space:]]*")[^"]*(")|\1Omarchy\2|' "$SETTINGS_PATH")
+else
+  updated=$(sed -E '0,/\{/{s|\{|{\n  "theme": "Omarchy",|}' "$SETTINGS_PATH")
+fi
+
+if [[ -n $updated && $updated != "$(cat "$SETTINGS_PATH")" ]]; then
+  printf '%s\n' "$updated" >"$SETTINGS_PATH"
+fi
