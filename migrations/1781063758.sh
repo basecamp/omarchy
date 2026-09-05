@@ -37,5 +37,6 @@ if [[ -f $hyprland_config ]] && ! grep -Fq '/default/hypr/bootstrap.lua' "$hyprl
     { print }
   ' "$hyprland_config" >"$tmp"
 
-  mv "$tmp" "$hyprland_config"
+  cat "$tmp" >"$hyprland_config"
+  rm -f "$tmp"
 fi

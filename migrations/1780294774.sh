@@ -27,5 +27,6 @@ if [[ -f $config_file ]] && omarchy-cmd-present jq; then
         .
       end
     )
-  ' "$config_file" >"$tmp" && mv "$tmp" "$config_file" || rm -f "$tmp"
+  ' "$config_file" >"$tmp" && cat "$tmp" >"$config_file"
+  rm -f "$tmp"
 fi
