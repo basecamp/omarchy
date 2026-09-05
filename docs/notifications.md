@@ -5,7 +5,7 @@ hosts a Quickshell `NotificationServer` that claims `org.freedesktop.Notificatio
 on the session bus. There is no dunst or mako — anything that speaks the
 freedesktop notification protocol (notify-send, libnotify apps, Chromium web
 apps) lands in the shell, which renders it as a toast card stacked in the
-top-right corner. The pure decision logic lives in `NotificationLogic.js`,
+top-right corner by default. The plugin entry's `position` setting selects any of the four corners; see `manual/10-notices.md`. The pure decision logic lives in `NotificationLogic.js`,
 which is also loadable from Node so `test/shell.d/` can exercise it without
 a compositor.
 

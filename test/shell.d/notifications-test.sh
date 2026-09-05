@@ -259,6 +259,27 @@ assertDeepEqual(
   'notifications ignore a left bar for popup placement'
 )
 
+for (const corner of ['top-left', 'top-right', 'bottom-left', 'bottom-right']) {
+  const edges = corner.split('-')
+  for (const bar of ['top', 'bottom', 'left', 'right']) {
+    const placement = notifications.popupPlacement(bar, 32, 6, corner)
+    assertDeepEqual(
+      Object.keys(placement.anchors).filter(edge => placement.anchors[edge]).sort(),
+      edges.slice().sort(),
+      `${corner} anchors to its two edges with a ${bar} bar`
+    )
+    for (const edge of ['top', 'bottom', 'left', 'right']) {
+      assertEqual(placement.margins[edge], edges.includes(edge) && edge === bar ? 32 : 6,
+        `${corner} only clears a ${bar} bar on an anchored edge`)
+    }
+  }
+}
+for (const invalid of [undefined, null, '', 'bottom', 'center', 'BOTTOM-LEFT']) {
+  assertDeepEqual(notifications.popupPlacement('top', 32, 6, invalid),
+    notifications.popupPlacement('top', 32, 6, 'top-right'),
+    `invalid position ${invalid} preserves the default`)
+}
+
 const notification = {
   id: 12,
   appName: 'Mail',

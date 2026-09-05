@@ -2,6 +2,16 @@
 
 You can quickly access the date and time, battery status, and current weather using the hotkey notices.
 
+### Notification position
+
+Notifications appear in the top-right corner by default. To move them, add an entry to the `plugins` array in `~/.config/omarchy/shell.json`:
+
+```json
+{ "id": "omarchy.notifications", "position": "bottom-right" }
+```
+
+Supported positions are `top-left`, `top-right`, `bottom-left`, and `bottom-right`. Changes apply on save. Missing or invalid positions use `top-right`.
+
 ### Date & Time
 
 `Super + Ctrl + Alt + T`

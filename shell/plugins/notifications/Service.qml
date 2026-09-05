@@ -16,6 +16,16 @@ Item {
 
   // Injected by omarchy-shell (the first-party service loader).
   property var shell: null
+  property var manifest: null
+
+  readonly property string position: {
+    var entries = shell && shell.shellConfig ? shell.shellConfig.plugins || [] : []
+    var id = manifest ? manifest.id : "omarchy.notifications"
+    for (var i = 0; i < entries.length; i++) {
+      if (entries[i].id === id) return String(entries[i].position || "top-right")
+    }
+    return "top-right"
+  }
 
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   readonly property string home: Quickshell.env("HOME")
@@ -40,9 +50,7 @@ Item {
   // Corner radius is shared with the menu and shell panels.
   // It mirrors Hyprland's current decoration:rounding value.
   readonly property int cornerRadius: Style.cornerRadius
-  // Toasts are fixed to the top-right corner. They only clear the omarchy bar
-  // when the bar occupies the top or right edge, so left/bottom bars do not
-  // pull notification popups away from the expected top-right location.
+  // Toasts clear the omarchy bar when it touches their configured corner.
   // Falls back to the bar's default size (26 horizontal / 28 vertical) when
   // shell.bar isn't reachable so the popup never lands on top of the bar.
   readonly property string barPosition: shell && shell.barConfig ? String(shell.barConfig.position || "top") : "top"
@@ -965,7 +973,7 @@ Item {
       color: "transparent"
 
       readonly property var popupPlacement: NotificationLogic.popupPlacement(
-        service.barPosition, service.barClearance, Style.gapsOut)
+        service.barPosition, service.barClearance, Style.gapsOut, service.position)
 
       // Full-screen, fixed-size surface (like the OSD overlay). Adding or
       // removing a toast changes only the content inside; the Wayland surface
@@ -979,10 +987,12 @@ Item {
 
       ColumnLayout {
         id: popupColumn
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.topMargin: popupWindow.popupPlacement.margins.top
-        anchors.rightMargin: popupWindow.popupPlacement.margins.right
+        x: popupWindow.popupPlacement.anchors.left
+          ? popupWindow.popupPlacement.margins.left
+          : parent.width - width - popupWindow.popupPlacement.margins.right
+        y: popupWindow.popupPlacement.anchors.top
+          ? popupWindow.popupPlacement.margins.top
+          : parent.height - height - popupWindow.popupPlacement.margins.bottom
         spacing: Style.space(8)
 
         Repeater {
@@ -1007,7 +1017,7 @@ Item {
             // Each card sizes itself based on mode (text vs media); the slot
             // tracks the card so the column auto-fits to whichever is widest.
             Layout.preferredWidth: card.implicitWidth
-            Layout.alignment: Qt.AlignRight
+            Layout.alignment: popupWindow.popupPlacement.anchors.left ? Qt.AlignLeft : Qt.AlignRight
             implicitHeight: card.implicitHeight
 
             readonly property real lifetime: service.durationFor(cardSlot.urgency, cardSlot.expireTimeout)

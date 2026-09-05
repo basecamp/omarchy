@@ -395,20 +395,22 @@ function popupExpired(entry, duration, now) {
   return (Number(now) - Number((entry || {}).timestamp || 0)) >= lifetime
 }
 
-function popupPlacement(barPosition, barClearance, gapsOut) {
+function popupPlacement(barPosition, barClearance, gapsOut, corner) {
   var position = String(barPosition || "top")
   var clearance = Number(barClearance)
   var gap = Number(gapsOut)
   if (!isFinite(clearance)) clearance = 0
   if (!isFinite(gap)) gap = 0
+  var bottom = corner === "bottom-left" || corner === "bottom-right"
+  var left = corner === "top-left" || corner === "bottom-left"
 
   return {
-    anchors: { top: true, bottom: false, left: false, right: true },
+    anchors: { top: !bottom, bottom: bottom, left: left, right: !left },
     margins: {
-      top: position === "top" ? clearance : gap,
-      bottom: gap,
-      left: gap,
-      right: position === "right" ? clearance : gap
+      top: !bottom && position === "top" ? clearance : gap,
+      bottom: bottom && position === "bottom" ? clearance : gap,
+      left: left && position === "left" ? clearance : gap,
+      right: !left && position === "right" ? clearance : gap
     }
   }
 }
