@@ -1,6 +1,7 @@
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import QtQuick
 import qs.Commons
 import qs.Ui
@@ -19,6 +20,20 @@ Item {
   property bool cursorActive: false
   property var emojis: []
   property var filteredEmojis: []
+
+  // Address of the window that was focused when the picker opened, so the
+  // emoji is typed back into it rather than whatever follow_mouse focuses
+  // once the picker closes.
+  property string targetWindow: ""
+  property string lastToplevelAddress: ""
+
+  Connections {
+    target: Hyprland
+    function onActiveToplevelChanged() {
+      var t = Hyprland.activeToplevel
+      if (t && t.address) root.lastToplevelAddress = t.address
+    }
+  }
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -43,6 +58,8 @@ Item {
   property int columns: Math.floor((cardWidth - contentMargin * 2) / cellWidth)
 
   function open(payloadJson) {
+    var active = Hyprland.activeToplevel
+    root.targetWindow = (active && active.address) ? active.address : root.lastToplevelAddress
     root.opened = true
     root.filterText = ""
     root.selectedIndex = 0
@@ -148,7 +165,9 @@ Item {
   function applySelected(emoji) {
     if (!emoji) return
     root.dismiss()
-    Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji])
+    var args = [root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji]
+    if (root.targetWindow) args.push(root.targetWindow)
+    Quickshell.execDetached(args)
   }
 
   ListModel { id: displayModel }
