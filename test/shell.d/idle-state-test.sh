@@ -160,3 +160,68 @@ await_state '.enabled == true'
 [[ -s $test_home/notifications ]] || fail "Failed writes notify the user"
 rm "$test_home/fail-write"
 pass "failed saves preserve the prior setting and notify the user"
+
+# Pause update publication after its ownership read, then make a newer choice.
+# Only filesystem state is exercised: never acquire a real sleep inhibitor.
+cat > "$test_tmp/bin/omarchy-cmd-present" <<'BASH'
+#!/bin/bash
+exit 1
+BASH
+cat > "$test_tmp/bin/mv" <<'BASH'
+#!/bin/bash
+if [[ -e $HOME/pause-rename ]]; then
+  rm "$HOME/pause-rename"
+  touch "$HOME/rename-ready"
+  for _ in {1..200}; do
+    [[ ! -e $HOME/rename-ready ]] && break
+    sleep 0.02
+  done
+fi
+exec /usr/bin/mv "$@"
+BASH
+chmod +x "$test_tmp/bin/omarchy-cmd-present" "$test_tmp/bin/mv"
+update_idle() {
+  HOME="$test_home" XDG_RUNTIME_DIR="$test_tmp/runtime" PATH="$test_tmp/bin:$ROOT/bin:$PATH" \
+    "$ROOT/bin/omarchy-update-stay-awake" "$@"
+}
+for phase in start stop; do
+  for choice in timed indefinite off cli-on cli-off cli-toggle; do
+    original=$(( $(date +%s%3N) + 60000 ))
+    printf '%s' "$original" > "$state_file"
+    await_state ".stayAwakeUntil == $original"
+    if [[ $phase == "stop" ]]; then update_idle start; fi
+    touch "$test_home/pause-rename"
+    update_idle "$phase" &
+    update_pid=$!
+    for _ in {1..100}; do [[ -e $test_home/rename-ready ]] && break; sleep 0.02; done
+    [[ -e $test_home/rename-ready ]] || fail "Update reaches paused $phase"
+    choice_pid=""
+    case "$choice" in
+      timed) call stayAwakeFor 10800 >/dev/null ;;
+      indefinite) call disable >/dev/null ;;
+      off) call enable >/dev/null ;;
+      cli-*)
+        HOME="$test_home" "$ROOT/bin/omarchy-toggle-idle" "${choice#cli-}" >/dev/null &
+        choice_pid=$!
+        ;;
+    esac
+    sleep 0.3
+    rm "$test_home/rename-ready"
+    wait "$update_pid"
+    if [[ -n $choice_pid ]]; then wait "$choice_pid"; fi
+    sleep 0.3
+    if [[ $phase == "start" ]]; then update_idle stop; fi
+    case "$choice" in
+      timed) await_state '.stayAwakeUntil > (now * 1000 + 10700000)' ;;
+      indefinite|cli-on)
+        await_state '.stayAwake == true and .stayAwakeUntil == 0'
+        [[ -f $state_file && ! -s $state_file ]] || fail "Indefinite choice survives update $phase"
+        ;;
+      off|cli-off|cli-toggle)
+        await_state '.enabled == true'
+        [[ ! -e $state_file ]] || fail "Turn off survives update $phase"
+        ;;
+    esac
+    pass "a newer $choice choice survives overlapping update $phase"
+  done
+done

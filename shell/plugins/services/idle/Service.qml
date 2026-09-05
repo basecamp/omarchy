@@ -217,15 +217,20 @@ Item {
 
     // Rename a complete file into place. Readers must never see a timed write as
     // an empty (indefinite) file, and a symlink must not redirect a truncation.
-    stayAwakeStateWriter.command = value ? ["bash", "-c", `
+    stayAwakeStateWriter.command = ["bash", "-c", `
       set -euo pipefail
       mkdir -p -- "$1"
-      temporary=$(mktemp "$1/.stay-awake.XXXXXX")
-      trap 'rm -f -- "$temporary"' EXIT
-      printf '%s' "$2" > "$temporary"
-      mv -fT -- "$temporary" "$1/stay-awake"
-    `, "--", root.stayAwakeStateDir, until > 0 ? String(until) : ""]
-      : ["rm", "-f", "--", root.stayAwakeStatePath]
+      exec 9>>"$1/stay-awake.lock"
+      flock 9
+      if [[ $2 == "true" ]]; then
+        temporary=$(mktemp "$1/.stay-awake.XXXXXX")
+        trap 'rm -f -- "$temporary"' EXIT
+        printf '%s' "$3" > "$temporary"
+        mv -fT -- "$temporary" "$1/stay-awake"
+      else
+        rm -f -- "$1/stay-awake"
+      fi
+    `, "--", root.stayAwakeStateDir, String(value), until > 0 ? String(until) : ""]
     stayAwakeStateWriter.running = true
   }
 

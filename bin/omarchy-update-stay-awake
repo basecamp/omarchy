@@ -47,14 +47,13 @@ process_state() {
   printf '%s\n' "${process_stat%% *}"
 }
 
-stop() {
-  local inhibit_pid=""
-  local recorded_start_time=""
-  local current_start_time=""
-  local idle_owner=""
-  local current_idle_owner=""
-  local restore_failed=0
-
+# Share the writers' lock across ownership checks and restoration. Keep it out
+# of the long-lived sleep inhibitor and avoid re-entering the locking CLI.
+restore_idle_state() (
+  local idle_owner="" current_idle_owner=""
+  mkdir -p "${stay_awake_state%/*}" || return
+  exec 9>>"$stay_awake_state.lock" || return
+  flock 9 || return
   if [[ -s $idle_owner_file ]]; then
     idle_owner=$(<"$idle_owner_file")
     if [[ -f $stay_awake_state ]]; then
@@ -64,15 +63,24 @@ stop() {
       if [[ -f $idle_previous_file ]]; then
         if ! write_idle_state "$(<"$idle_previous_file")"; then
           echo "Failed to restore the previous Stay Awake deadline." >&2
-          restore_failed=1
+          return 1
         fi
       else
-        omarchy-toggle-idle allow-idle >/dev/null 2>&1 || true
+        rm -f -- "$stay_awake_state" || return
       fi
     fi
-    if (( restore_failed == 0 )); then
-      rm -f "$idle_owner_file" "$idle_previous_file"
-    fi
+    rm -f "$idle_owner_file" "$idle_previous_file"
+  fi
+)
+
+stop() {
+  local inhibit_pid=""
+  local recorded_start_time=""
+  local current_start_time=""
+  local restore_failed=0
+
+  if ! restore_idle_state; then
+    restore_failed=1
   fi
 
   if [[ -s $inhibit_pid_file ]]; then
@@ -148,6 +156,9 @@ start() {
   # A timed choice may expire before the update finishes. Hold our own marker,
   # then restore that same deadline only if the user has not replaced our choice.
   local previous=""
+  mkdir -p "${stay_awake_state%/*}"
+  exec {idle_lock}>>"$stay_awake_state.lock"
+  flock "$idle_lock"
   if [[ -f $stay_awake_state && ! -L $stay_awake_state ]]; then
     [[ -s $stay_awake_state ]] || return 0
     previous=$(head -c 64 -- "$stay_awake_state")

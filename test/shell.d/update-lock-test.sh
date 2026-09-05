@@ -206,6 +206,7 @@ deadline=$(( $(date +%s%3N) + 60000 ))
 printf '%s' "$deadline" > "$stay_awake_state"
 run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" start
 [[ $(<"$stay_awake_state") =~ ^[0-9]+:[0-9]+:[0-9]+$ ]] || fail "Update temporarily owns a timed stay-awake session"
+flock -n "$stay_awake_state.lock" true || fail "The sleep inhibitor must not inherit the idle state lock"
 run_with_lock_env "$ROOT/bin/omarchy-update-stay-awake" stop
 [[ $(<"$stay_awake_state") == "$deadline" ]] || fail "Update restores the original deadline without extending it"
 

@@ -10,6 +10,13 @@ set -euo pipefail
 STATE_DIR="$HOME/.local/state/omarchy/indicators"
 STATE_FILE="$STATE_DIR/stay-awake"
 
+# Serialize choices with the shell and update ownership changes.
+lock_state() {
+  mkdir -p -- "$STATE_DIR"
+  exec {idle_lock}>>"$STATE_FILE.lock"
+  flock "$idle_lock"
+}
+
 stay_awake_enabled() {
   [[ -f $STATE_FILE && ! -L $STATE_FILE ]] || return 1
   [[ ! -s $STATE_FILE ]] && return 0
@@ -56,6 +63,7 @@ apply_state() {
 
 case "${1:-toggle}" in
   toggle)
+    lock_state
     if stay_awake_enabled; then
       apply_state allow-idle
     else
@@ -64,10 +72,12 @@ case "${1:-toggle}" in
     print_idle_state
     ;;
   stay-awake|awake|on)
+    lock_state
     apply_state stay-awake
     print_idle_state
     ;;
   allow-idle|idle|off)
+    lock_state
     apply_state allow-idle
     print_idle_state
     ;;
