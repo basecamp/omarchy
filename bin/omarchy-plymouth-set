@@ -195,6 +195,7 @@ run_root_transaction() {
     sddm_dir=/usr/share/sddm/themes/omarchy
     plymouth_theme_assets=(
       bullet.png
+      efi-splash.bmp
       entry.png
       lock.png
       logo.png
@@ -311,6 +312,22 @@ run_root_transaction() {
       for asset in "${sddm_assets[@]}"; do
         copy_trusted_file "$source_root/default/sddm/omarchy/$asset" "$sddm_stage/$asset"
       done
+    fi
+
+    # Render the EFI splash from the chosen logo. Refresh modes publish the
+    # packaged efi-splash.bmp, which is already the output of this recipe for the
+    # packaged logo.png. systemd-stub blits it 1:1 and centered, with no scaling
+    # and no DPI awareness: an image wider or taller than the firmware graphics
+    # mode overflows the blit and leaves a black screen, so bound to 1024x768, the
+    # floor firmware and VMs reliably provide. Plymouth scales this same logo for
+    # HiDPI and the stub cannot, so on a high-DPI panel the splash is smaller than
+    # the Plymouth logo. /etc/limine-entry-tool.d/omarchy-defaults.conf covers why
+    # it is a BMP at this path, and mkinitcpio aborts if it goes missing.
+    if [[ $mode == "set" ]]; then
+      failure_context="the EFI splash rendered from the staged logo"
+      magick "$plymouth_stage/logo.png" -resize "1024x768>" -background black -alpha remove -define bmp:format=bmp3 "$plymouth_stage/efi-splash.bmp"
+      chown 0:0 -- "$plymouth_stage/efi-splash.bmp"
+      chmod 0600 -- "$plymouth_stage/efi-splash.bmp"
     fi
 
     if (( ${#plymouth_assets[@]} )); then
