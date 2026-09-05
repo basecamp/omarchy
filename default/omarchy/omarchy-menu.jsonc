@@ -155,6 +155,7 @@
   "setup.default.browser.edge": {"icon":"󰇩","label":"Edge","checked":"[[ \"$(omarchy-default-browser)\" == \"edge\" ]]","action":"omarchy-default-browser edge"},
   "setup.default.browser.firefox": {"icon":"","label":"Firefox","checked":"[[ \"$(omarchy-default-browser)\" == \"firefox\" ]]","action":"omarchy-default-browser firefox"},
   "setup.default.browser.zen": {"icon":"󰖟","label":"Zen","checked":"[[ \"$(omarchy-default-browser)\" == \"zen\" ]]","action":"omarchy-default-browser zen"},
+  "setup.default.browser.other": {"icon":"󰖟","label":"Other","description":"Any installed browser, including Flatpaks","checked":"[[ \"$(omarchy-default-browser)\" == *.desktop ]]","action":"omarchy-menu-default-browser"},
   "setup.default.terminal": {"icon":"","label":"Terminal","title":"Default Terminal"},
   "setup.default.terminal.alacritty": {"icon":"","label":"Alacritty","checked":"[[ \"$(omarchy-default-terminal)\" == \"alacritty\" ]]","action":"omarchy-default-terminal alacritty"},
   "setup.default.terminal.foot": {"icon":"","label":"Foot","checked":"[[ \"$(omarchy-default-terminal)\" == \"foot\" ]]","action":"omarchy-default-terminal foot"},

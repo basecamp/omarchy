@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# omarchy:summary=Read a desktop entry from any XDG data dir
+# omarchy:args=<dirs|path|name|exec> [desktop-id]
+# omarchy:hidden=true
+
+# Resolves entries the way a launcher does: the user's data dir first, then
+# every XDG data dir. Flatpak exports its entries under its own data dirs and
+# adds them to XDG_DATA_DIRS, so a Flatpak browser resolves here without a
+# special case; they stay listed explicitly for sessions that never sourced
+# Flatpak's profile. The Nix profile is not on XDG_DATA_DIRS either.
+
+applications_dirs() {
+  local data_dirs=("${XDG_DATA_HOME:-$HOME/.local/share}" "$HOME/.nix-profile/share")
+  local system_data_dirs
+  IFS=: read -r -a system_data_dirs <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+  data_dirs+=("${system_data_dirs[@]}")
+  data_dirs+=(/var/lib/flatpak/exports/share "$HOME/.local/share/flatpak/exports/share")
+
+  local data_dir
+  for data_dir in "${data_dirs[@]}"; do
+    printf '%s/applications\n' "$data_dir"
+  done
+}
+
+desktop_path() {
+  local applications_dir
+  while read -r applications_dir; do
+    if [[ -f $applications_dir/$1 ]]; then
+      printf '%s\n' "$applications_dir/$1"
+      return 0
+    fi
+  done < <(applications_dirs)
+
+  return 1
+}
+
+# The Exec line minus its %u/%U/%f-style field codes, and minus the @@u ... @@
+# markers Flatpak wraps them in, one word per line: the command and its fixed
+# arguments, ready for a caller to append its own.
+desktop_exec() {
+  local exec_line
+  exec_line=$(sed -n 's/^Exec=//p' "$1" | head -1)
+  [[ -n $exec_line ]] || return 1
+
+  local exec_words word
+  read -r -a exec_words <<<"$exec_line"
+  for word in "${exec_words[@]}"; do
+    case $word in
+    %[a-zA-Z] | @@ | @@u) continue ;;
+    esac
+    printf '%s\n' "$word"
+  done
+}
+
+verb=${1:-}
+desktop_id=${2:-}
+
+case $verb in
+dirs)
+  applications_dirs
+  ;;
+path | name | exec)
+  [[ -n $desktop_id ]] || exit 1
+  desktop_file=$(desktop_path "$desktop_id") || exit 1
+  case $verb in
+  path) printf '%s\n' "$desktop_file" ;;
+  name) sed -n 's/^Name=//p' "$desktop_file" | head -1 ;;
+  exec) desktop_exec "$desktop_file" ;;
+  esac
+  ;;
+*)
+  echo "Usage: omarchy-cmd-desktop-entry <dirs|path|name|exec> [desktop-id]" >&2
+  exit 1
+  ;;
+esac

@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=Pick the default browser from every installed browser
+# omarchy:group=menu
+# omarchy:name=default-browser
+
+# Lists every desktop entry that handles web links, wherever it was installed
+# from: pacman, the AUR, Flatpak, or a hand-written entry under ~/.local.
+# Selecting one hands its desktop id to omarchy-default-browser.
+
+set -e
+
+current=$(env -u BROWSER xdg-settings get default-web-browser)
+
+declare -A seen
+options=()
+while read -r applications_dir; do
+  for desktop_file in "$applications_dir"/*.desktop; do
+    [[ -f $desktop_file ]] || continue
+    desktop_id=$(basename "$desktop_file")
+    [[ -z ${seen[$desktop_id]:-} ]] || continue
+    seen[$desktop_id]=1
+
+    grep -q '^MimeType=.*x-scheme-handler/https' "$desktop_file" || continue
+    if grep -q '^NoDisplay=true' "$desktop_file"; then
+      continue
+    fi
+
+    name=$(sed -n 's/^Name=//p' "$desktop_file" | head -1)
+    [[ -n $name ]] || name=${desktop_id%.desktop}
+    if [[ $desktop_id == "$current" ]]; then
+      name="$name ✓"
+    fi
+    options+=("$(printf '󰖟\t%s\t%s' "$name" "$desktop_id")")
+  done
+done < <(omarchy-cmd-desktop-entry dirs)
+
+if (( ${#options[@]} == 0 )); then
+  omarchy-notification-send "No installed browser handles web links"
+  exit 1
+fi
+
+selection=$(printf '%s\n' "${options[@]}" | omarchy-menu-select "Default browser" -- --width 520) || exit 1
+desktop_id=${selection##*$'\t'}
+
+omarchy-default-browser "$desktop_id"

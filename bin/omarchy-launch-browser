@@ -7,11 +7,12 @@ default_browser=$(env -u BROWSER xdg-settings get default-web-browser)
 if [[ -z $default_browser ]]; then
   default_browser=$(xdg-mime query default x-scheme-handler/https)
 fi
-browser_exec=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' {~/.local,~/.nix-profile,/usr}/share/applications/$default_browser 2>/dev/null | head -1)
+mapfile -t browser_command < <(omarchy-cmd-desktop-entry exec "$default_browser")
+(( ${#browser_command[@]} > 0 )) || exit 1
 
-if $browser_exec --help 2>/dev/null | grep -q MOZ_LOG; then
+if "${browser_command[@]}" --help 2>/dev/null | grep -q MOZ_LOG; then
   private_flag="--private-window"
-elif [[ $browser_exec =~ edge ]]; then
+elif [[ ${browser_command[*],,} =~ edge ]]; then
   private_flag="--inprivate"
 else
   private_flag="--incognito"
@@ -19,7 +20,7 @@ fi
 
 systemd-run --user --quiet --collect --unit="omarchy-browser-$(date +%s%N)" \
   --property=StandardOutput=null --property=StandardError=null \
-  uwsm-app -- "$browser_exec" "${@/--private/$private_flag}"
+  uwsm-app -- "${browser_command[@]}" "${@/--private/$private_flag}"
 
 url=""
 for argument in "$@"; do
@@ -30,5 +31,18 @@ for argument in "$@"; do
 done
 
 if [[ -n $url && -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
-  omarchy-hyprland-focus-app "^$(basename "$browser_exec" -stable).*$" || true
+  # A Flatpak window carries the app id (or the sandboxed command) as its
+  # class, not "flatpak"; a native one is named after its binary.
+  if [[ $(basename "${browser_command[0]}") == "flatpak" ]]; then
+    app_id=${browser_command[-1]}
+    app_command=$app_id
+    for word in "${browser_command[@]}"; do
+      if [[ $word == --command=* ]]; then
+        app_command=$(basename "${word#--command=}")
+      fi
+    done
+    omarchy-hyprland-focus-app "^($app_id|$app_command).*$" || true
+  else
+    omarchy-hyprland-focus-app "^$(basename "${browser_command[0]}" -stable).*$" || true
+  fi
 fi
