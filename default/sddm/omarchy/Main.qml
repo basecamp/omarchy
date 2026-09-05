@@ -1,5 +1,6 @@
 import QtQuick 2.0
 import SddmComponents 2.0
+import "resolve-session-index.js" as SessionIndex
 
 Rectangle {
   id: root
@@ -9,14 +10,7 @@ Rectangle {
 
   property string currentUser: userModel.lastUser
   property bool loginFailed: false
-  property int sessionIndex: {
-    for (var i = 0; i < sessionModel.rowCount(); i++) {
-      var name = (sessionModel.data(sessionModel.index(i, 0), Qt.DisplayRole) || "").toString()
-      if (name.indexOf("uwsm") !== -1)
-        return i
-    }
-    return sessionModel.lastIndex
-  }
+  property int sessionIndex: SessionIndex.resolveSessionIndex(sessionModel, Qt.UserRole + 2)
 
   Connections {
     target: sddm
