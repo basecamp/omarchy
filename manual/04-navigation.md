@@ -48,6 +48,10 @@ hl.config({
 })
 ```
 
+### Naming workspaces
+
+A workspace can wear a name instead of its number in the bar. Right-click its tile, type the name, and it's there — `code`, `web`, whatever tells you what lives on it. Leave the prompt empty to go back to the number, or middle-click the tile. The keys don't change: hovering a named tile shows the number it stands for, and `Super + 2` still takes you to the second one whatever it's called. (`omarchy hyprland workspace name 2 web` does the same from a terminal.)
+
 ### Grouping windows
 
 Windows can be grouped using `Super + G`. Once you're in a group, every window you start while that's active will belong to the group. You can move between these grouped windows using `Super + Ctrl + Arrow Left/Right` or `Super + Alt + 1/2/3/4` to go directly to grouped window in order.

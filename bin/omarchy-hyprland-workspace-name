@@ -1,0 +1,171 @@
+#!/bin/bash
+
+# omarchy:summary=Name a workspace in the bar, or take the name away again
+# omarchy:args=<id> [name] | --prompt <id> | --clear <id> | --list [--widget <widget-id>]
+# omarchy:examples=omarchy hyprland workspace name 2 web | omarchy hyprland workspace name --prompt 2 | omarchy hyprland workspace name --clear 2 | omarchy hyprland workspace name --list
+
+# Names live on the workspaces widget's entry in shell.json, so they travel
+# with the rest of the bar configuration and reach the running bar through
+# the same settings patch as any other widget setting:
+#
+#   { "id": "omarchy.workspaces", "names": { "1": "term", "2": "web" } }
+#
+# The bar passes its own widget id in --widget, so a cloned widget names its
+# own entry. Without it the built-in id is used, falling back to whichever
+# clone has taken its place.
+
+set -euo pipefail
+
+MAX_NAME_LENGTH=16
+DEFAULT_WIDGET="omarchy.workspaces"
+
+fail() {
+  echo "omarchy-hyprland-workspace-name: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<USAGE
+Usage:
+  omarchy-hyprland-workspace-name <id> <name>     Name a workspace
+  omarchy-hyprland-workspace-name <id> ""         Clear its name
+  omarchy-hyprland-workspace-name --prompt <id>   Ask for the name in a menu
+  omarchy-hyprland-workspace-name --clear <id>    Clear its name
+  omarchy-hyprland-workspace-name --list          Print every name as JSON
+
+Options:
+  --widget <widget-id>   The bar widget holding the names (default: $DEFAULT_WIDGET)
+
+Names are at most $MAX_NAME_LENGTH characters. A workspace without a name shows its number.
+USAGE
+}
+
+valid_id() {
+  [[ $1 =~ ^[0-9]+$ ]] && (( $1 > 0 )) || fail "workspace id must be a positive number, got: $1"
+}
+
+shell_config() {
+  omarchy-shell shell listShellConfig 2>/dev/null || fail "the Omarchy shell is not running"
+}
+
+config_has_widget() {
+  jq -e --arg id "$1" '
+    (.bar.layout // {}) | [.left, .center, .right] | flatten | map(select(. != null))
+    | any((if type == "object" then .id else . end) == $id)
+  ' <<<"$2" >/dev/null
+}
+
+# The built-in id names the widget the user sees, which after a clone is the
+# clone. Resolve it the way the shell routes calls to a cloned plugin.
+resolve_widget() {
+  local id="$1" config="$2" clone
+  if config_has_widget "$id" "$config"; then
+    echo "$id"
+    return
+  fi
+  clone=$(omarchy-plugin-list --json 2>/dev/null | jq -r --arg id "$id" '
+    map(select(.clonedFrom == $id and .enabled)) | .[0].id // empty
+  ')
+  echo "${clone:-$id}"
+}
+
+current_names() {
+  jq -c --arg id "$1" '
+    (.bar.layout // {}) | [.left, .center, .right] | flatten | map(select(. != null))
+    | map(select(type == "object" and .id == $id)) | .[0].names // {}
+    | with_entries(select(.value | type == "string"))
+  ' <<<"$2"
+}
+
+write_names() {
+  omarchy-bar set "$1" names "$2" --json >/dev/null
+}
+
+normalize_name() {
+  local name
+  name=$(printf '%s' "$1" | tr -d '\n\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+  (( ${#name} <= MAX_NAME_LENGTH )) || return 1
+  printf '%s' "$name"
+}
+
+set_name() {
+  local id="$1" name="$2" widget config names
+  config=$(shell_config)
+  widget=$(resolve_widget "$WIDGET" "$config")
+  names=$(current_names "$widget" "$config")
+  if [[ -z $name ]]; then
+    names=$(jq -c --arg id "$id" 'del(.[$id])' <<<"$names")
+  else
+    names=$(jq -c --arg id "$id" --arg name "$name" '.[$id] = $name' <<<"$names")
+  fi
+  write_names "$widget" "$names"
+}
+
+prompt_name() {
+  local id="$1" config widget current prompt answer name
+  config=$(shell_config)
+  widget=$(resolve_widget "$WIDGET" "$config")
+  current=$(current_names "$widget" "$config" | jq -r --arg id "$id" '.[$id] // ""')
+  if [[ -n $current ]]; then
+    prompt="Rename workspace $id (now: $current)"
+  else
+    prompt="Name workspace $id"
+  fi
+  # A dismissed menu exits non-zero: the name stays as it was.
+  answer=$(omarchy-menu-input "$prompt" --width 420) || return 0
+  if ! name=$(normalize_name "$answer"); then
+    omarchy-notification-send "Workspace name not saved" "Names are at most $MAX_NAME_LENGTH characters."
+    return 1
+  fi
+  set_name "$id" "$name"
+}
+
+WIDGET="$DEFAULT_WIDGET"
+mode="set"
+positional=()
+while (( $# > 0 )); do
+  case "$1" in
+  --widget)
+    shift
+    (( $# > 0 )) || fail "--widget requires a widget id"
+    WIDGET="$1"
+    ;;
+  --prompt | --clear | --list)
+    mode="${1#--}"
+    ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  --*)
+    fail "unknown option: $1"
+    ;;
+  *)
+    positional+=("$1")
+    ;;
+  esac
+  shift
+done
+
+case "$mode" in
+list)
+  config=$(shell_config)
+  current_names "$(resolve_widget "$WIDGET" "$config")" "$config"
+  ;;
+prompt | clear)
+  (( ${#positional[@]} == 1 )) || fail "--$mode takes exactly one workspace id"
+  valid_id "${positional[0]}"
+  if [[ $mode == "prompt" ]]; then
+    prompt_name "${positional[0]}"
+  else
+    set_name "${positional[0]}" ""
+  fi
+  ;;
+set)
+  (( ${#positional[@]} >= 1 )) || { usage >&2; exit 1; }
+  valid_id "${positional[0]}"
+  raw="${positional[*]:1}"
+  name=$(normalize_name "$raw") || fail "workspace names are at most $MAX_NAME_LENGTH characters"
+  set_name "${positional[0]}" "$name"
+  ;;
+esac
