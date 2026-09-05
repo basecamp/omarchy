@@ -777,8 +777,16 @@ ShellRoot {
       shell.pluginReloadPending = true
       return
     }
-    if (typeof Qt.clearComponentCache === "function") Qt.clearComponentCache()
+    if (typeof restartShellForPluginReload === "function") {
+      restartShellForPluginReload()
     shell.pluginRegistry.rescan()
+  }
+  
+  // restart shell as a workaround since reload shell is not available
+  function restartShellForPluginReload() {
+    if (shell.pluginReloadPending) return
+    shell.pluginReloadPending = true
+    Util.execDetached("'" + shell.omarchyPath + "/bin/omarchy-restart-shell'")
   }
 
   Connections {
