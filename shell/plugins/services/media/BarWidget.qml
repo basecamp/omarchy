@@ -71,6 +71,11 @@ BarWidget {
           from: scrollClip.width
           to: -labelText.implicitWidth
           easing.type: Easing.Linear
+
+          // A stopped NumberAnimation leaves x wherever the marquee was, which
+          // parks a title that fits (or the frozen one under an open popup)
+          // outside the clip. Every stop path flips running, so reset here.
+          onRunningChanged: if (!running) labelText.x = 0
         }
       }
     }
