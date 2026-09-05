@@ -1,3 +1,7 @@
+# Upgrades must not delete the version a running process is executing from:
+# mise up would prune the old install dir out from under a live session.
+mise settings set upgrade.auto_prune false
+
 omarchy-mise-install codex
 omarchy-mise-install claude
 omarchy-mise-install crush
