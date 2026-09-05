@@ -166,7 +166,11 @@ variants map to the IPC methods `dismissOne`, `dismissAll`, `invokeLast`,
 Everything goes through the same sender contract, so the pieces are small:
 
 - **Low battery** — `omarchy-battery-low` sends a critical toast and runs the
-  `battery-low` hook.
+  `battery-low` hook. The shell's battery service decides when to call it: it
+  latches so a steady drain warns once, and holds a one-minute cooldown on top
+  so a charger too weak to climb past the threshold — flipping between
+  charging and discharging, clearing the latch each time — cannot restart the
+  toast.
 - **Crash capture** — `omarchy-crash-watch` follows the systemd-coredump
   journal stream and announces each crashed program (deduped per minute) as a
   critical toast whose click runs `omarchy-agent-crash` (via `--exec`, so a
