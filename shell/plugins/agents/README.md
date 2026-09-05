@@ -54,7 +54,12 @@ light surfaces — and the bar glyph stands in when there is none.
 |---|---|---|
 | `claude` | Anthropic's OAuth usage endpoint (5-hour session + 7-day weekly) | `~/.claude/projects` transcripts, opencode sessions on an Anthropic provider, plus `stats-cache.json` and `history.jsonl` as fallback |
 | `codex` | The Codex app-server RPC | native Codex CLI session files (plus pi and opencode sessions) |
+| `copilot` | Not available | numeric usage events in `$COPILOT_HOME/session-store.db` (default `~/.copilot/session-store.db`) |
 | `fireworks` | Estimated prepaid balance: configured funding minus rated account costs | Fireworks billing API, grouped by day and model for the last 30 days |
+
+The Copilot provider covers GitHub Copilot CLI activity retained on this machine, not Copilot usage from IDEs, cloud agents, or other surfaces. It reads only numeric usage metadata: model, timestamps, token counts, session id, and turn index. It does not select prompts, responses, repository names, or tool output. Tokens include every primary-agent and subagent model call; prompt counts represent completed user turns with retained turn metadata. Its all-time token totals cover everything still retained in Copilot CLI's database.
+
+Copilot account limits are not available through a stable local interface, so this collector reports local token history without a subscription meter. The exact AI-credit consumption recorded by Copilot CLI is intentionally not displayed: the Agents panel currently presents token history consistently across providers.
 
 Claude limits need a signed-in CLI; without credentials the panel says so and
 falls back to local stats only. A non-default Claude directory is honored via
@@ -128,6 +133,7 @@ edit `shell.json` directly):
 omarchy bar set omarchy.agents providers '{
   "claude": { "enabled": true },
   "codex": { "enabled": false },
+  "copilot": { "enabled": true },
   "fireworks": { "enabled": true }
 }' --json
 ```

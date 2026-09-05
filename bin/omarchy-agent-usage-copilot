@@ -1,0 +1,325 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the GitHub Copilot CLI usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect GitHub Copilot CLI usage into one display-ready JSON record.
+
+Local token stats come from the numeric assistant usage events in
+~/.copilot/session-store.db. The collector does not read session messages,
+responses, repository names, or tool output.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import sqlite3
+import sys
+import tempfile
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+AGENT_ID = "copilot"
+AGENT_NAME = "GitHub Copilot CLI"
+SCAN_REUSE_SECONDS = 20
+LIMITS_ONLY_REUSE_SECONDS = 900
+
+
+class CopilotUsageError(Exception):
+  pass
+
+
+def number(value: Any) -> int:
+  try:
+    return max(0, round(float(value or 0)))
+  except (TypeError, ValueError):
+    return 0
+
+
+def empty_bucket() -> dict[str, int]:
+  return {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "cacheReadInputTokens": 0,
+    "cacheCreationInputTokens": 0,
+  }
+
+
+def cache_root() -> Path:
+  root = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "omarchy" / "agent-usage"
+  root.mkdir(parents=True, exist_ok=True)
+  return root
+
+
+def base_record(**overrides: Any) -> dict[str, Any]:
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "tabLabel": "Copilot",
+    "updatedAt": datetime.now(timezone.utc).isoformat(),
+    "ready": False,
+    "hasLocalStats": False,
+    "hasPromptStats": False,
+    "tierLabel": "CLI usage",
+    "usageStatusText": "",
+    "authHelpText": "",
+    "todayPrompts": 0,
+    "todaySessions": 0,
+    "todayTotalTokens": 0,
+    "todayTokensByModel": {},
+    "recentDays": [],
+    "totalPrompts": 0,
+    "totalSessions": 0,
+    "activeDays": 0,
+    "activeDates": [],
+    "modelUsage": {},
+    "limits": [],
+  }
+  record.update(overrides)
+  return record
+
+
+def local_day(raw: Any) -> str:
+  text = str(raw or "")
+  if not text:
+    return ""
+  try:
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+  except ValueError:
+    return ""
+  if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+  return parsed.astimezone().date().isoformat()
+
+
+def table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
+  try:
+    return {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
+  except sqlite3.Error:
+    return set()
+
+
+def required_columns(columns: set[str], required: set[str], table: str) -> None:
+  missing = sorted(required - columns)
+  if missing:
+    raise CopilotUsageError(f"{table} is missing required columns: {', '.join(missing)}")
+
+
+def scan(database: Path, now: datetime | None = None) -> dict[str, Any]:
+  current = now.astimezone() if now else datetime.now().astimezone()
+  today = current.date().isoformat()
+  recent_dates = [(current.date() - timedelta(days=offset)).isoformat() for offset in range(6, -1, -1)]
+  recent = {day: {"date": day, "messageCount": 0} for day in recent_dates}
+  today_tokens_by_model: dict[str, int] = {}
+  model_usage: dict[str, dict[str, int]] = {}
+  today_sessions: set[str] = set()
+  total_sessions: set[str] = set()
+  active_dates: set[str] = set()
+  today_prompts = 0
+  today_total_tokens = 0
+  total_prompts = 0
+
+  connection = sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+  try:
+    connection.execute("PRAGMA query_only = ON")
+    usage_columns = table_columns(connection, "assistant_usage_events")
+    required_columns(
+      usage_columns,
+      {
+        "session_id",
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "created_at",
+      },
+      "assistant_usage_events",
+    )
+    can_count_prompts = "turn_index" in usage_columns
+
+    turn_columns = table_columns(connection, "turns")
+    can_count_prompts = can_count_prompts and {"session_id", "turn_index", "timestamp"}.issubset(turn_columns)
+    turn_select = ", turn_index" if can_count_prompts else ""
+    rows = connection.execute(
+      f"""
+      SELECT session_id, model, input_tokens, output_tokens,
+             cache_read_tokens, cache_write_tokens, created_at{turn_select}
+      FROM assistant_usage_events
+      """
+    )
+    usage_turns: set[tuple[str, int]] = set()
+    for row in rows:
+      session_id, model, raw_input, raw_output, raw_cache_read, raw_cache_write, created_at = row[:7]
+      day = local_day(created_at)
+      if not day:
+        continue
+
+      cache_read = number(raw_cache_read)
+      cache_write = number(raw_cache_write)
+      input_tokens = max(0, number(raw_input) - cache_read - cache_write)
+      output_tokens = number(raw_output)
+      total_tokens = input_tokens + output_tokens + cache_read + cache_write
+      if total_tokens == 0:
+        continue
+
+      session = str(session_id or "")
+      model_id = str(model or "unknown")
+      if session:
+        total_sessions.add(session)
+      active_dates.add(day)
+      if can_count_prompts and session and row[7] is not None:
+        try:
+          usage_turns.add((session, int(row[7])))
+        except (TypeError, ValueError):
+          pass
+
+      bucket = model_usage.setdefault(model_id, empty_bucket())
+      bucket["inputTokens"] += input_tokens
+      bucket["outputTokens"] += output_tokens
+      bucket["cacheReadInputTokens"] += cache_read
+      bucket["cacheCreationInputTokens"] += cache_write
+
+      if day in recent:
+        recent[day]["messageCount"] += total_tokens
+      if day == today:
+        today_total_tokens += total_tokens
+        today_tokens_by_model[model_id] = today_tokens_by_model.get(model_id, 0) + total_tokens
+
+    if can_count_prompts and usage_turns:
+      for session_id, turn_index, timestamp in connection.execute(
+        "SELECT session_id, turn_index, timestamp FROM turns"
+      ):
+        try:
+          key = (str(session_id or ""), int(turn_index))
+        except (TypeError, ValueError):
+          continue
+        if key not in usage_turns:
+          continue
+        total_prompts += 1
+        if local_day(timestamp) == today:
+          today_prompts += 1
+          if key[0]:
+            today_sessions.add(key[0])
+  finally:
+    connection.close()
+
+  return base_record(
+    ready=bool(total_sessions or active_dates),
+    hasLocalStats=True,
+    hasPromptStats=can_count_prompts,
+    todayPrompts=today_prompts,
+    todaySessions=len(today_sessions),
+    todayTotalTokens=today_total_tokens,
+    todayTokensByModel=today_tokens_by_model,
+    recentDays=[recent[day] for day in recent_dates],
+    totalPrompts=total_prompts,
+    totalSessions=len(total_sessions),
+    activeDays=len(active_dates),
+    activeDates=sorted(active_dates),
+    modelUsage=model_usage,
+  )
+
+
+def scan_cache_paths(database: Path) -> tuple[Path, Path]:
+  digest = hashlib.sha1(str(database.resolve()).encode("utf-8")).hexdigest()[:16]
+  root = cache_root()
+  return root / f"copilot-scan-{digest}.json", root / f"copilot-scan-{digest}.lock"
+
+
+def read_cached_stats(cache_file: Path, max_age_seconds: float, scan_date: str) -> dict[str, Any] | None:
+  if max_age_seconds <= 0 or not cache_file.exists():
+    return None
+  try:
+    age = time.time() - cache_file.stat().st_mtime
+    if age < 0 or age > max_age_seconds:
+      return None
+    cached = json.loads(cache_file.read_text(encoding="utf-8"))
+  except Exception:
+    return None
+  if not isinstance(cached, dict) or cached.get("schemaVersion") != 1 or cached.get("scanDate") != scan_date:
+    return None
+  stats = cached.get("stats")
+  return stats if isinstance(stats, dict) else None
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+  handle_fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+  tmp = Path(tmp_name)
+  try:
+    with os.fdopen(handle_fd, "w", encoding="utf-8") as handle:
+      handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n")
+    tmp.chmod(0o600)
+    tmp.replace(path)
+  except BaseException:
+    tmp.unlink(missing_ok=True)
+    raise
+
+
+def cached_scan(database: Path, max_age_seconds: float) -> dict[str, Any]:
+  try:
+    return _cached_scan(database, max_age_seconds)
+  except OSError as error:
+    print(f"omarchy-agent-usage-copilot: cache unavailable ({error}); scanning directly", file=sys.stderr)
+    return scan(database)
+
+
+def _cached_scan(database: Path, max_age_seconds: float) -> dict[str, Any]:
+  cache_file, lock_file = scan_cache_paths(database)
+  scan_date = datetime.now().astimezone().date().isoformat()
+  cached = read_cached_stats(cache_file, max_age_seconds, scan_date)
+  if cached is not None:
+    return cached
+
+  with lock_file.open("w") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    cached = read_cached_stats(cache_file, max_age_seconds, scan_date)
+    if cached is not None:
+      return cached
+    stats = scan(database)
+    try:
+      write_json(cache_file, {"schemaVersion": 1, "scanDate": scan_date, "stats": stats})
+    except OSError as error:
+      print(f"omarchy-agent-usage-copilot: could not write usage cache ({error})", file=sys.stderr)
+    return stats
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser(description="Print the GitHub Copilot CLI usage record as JSON")
+  parser.add_argument("--force", action="store_true")
+  parser.add_argument("--limits-only", action="store_true")
+  parser.add_argument("--cache-seconds", type=float, default=SCAN_REUSE_SECONDS)
+  copilot_home = Path(os.environ.get("COPILOT_HOME") or (Path.home() / ".copilot"))
+  parser.add_argument("--database", default=str(copilot_home / "session-store.db"))
+  args = parser.parse_args()
+
+  database = Path(args.database).expanduser()
+  if not database.is_file():
+    record = base_record(
+      usageStatusText="GitHub Copilot unavailable",
+      authHelpText="Use GitHub Copilot CLI once to create local usage data.",
+    )
+  else:
+    try:
+      max_age = 0 if args.force else (LIMITS_ONLY_REUSE_SECONDS if args.limits_only else args.cache_seconds)
+      record = cached_scan(database, max_age)
+      record["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    except (CopilotUsageError, sqlite3.Error, OSError) as error:
+      record = base_record(
+        usageStatusText="GitHub Copilot usage unavailable",
+        authHelpText="Could not read GitHub Copilot CLI's local usage metadata.",
+      )
+      print(f"omarchy-agent-usage-copilot: {error}", file=sys.stderr)
+
+  print(json.dumps(record, separators=(",", ":")))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
