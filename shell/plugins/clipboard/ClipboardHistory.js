@@ -7,7 +7,10 @@ function normalizeEntry(value) {
   var type = String(value.type || value.kind || "")
   if (type === "text") {
     var text = String(value.text || "")
-    return text.trim().length > 0 ? { type: "text", text: text } : null
+    if (text.trim().length === 0) return null
+    var textEntry = { type: "text", text: text }
+    if (value.favorite) textEntry.favorite = true
+    return textEntry
   }
 
   if (type === "image") {
@@ -20,6 +23,7 @@ function normalizeEntry(value) {
     }
     if (value.capturedAt !== undefined && value.capturedAt !== null)
       entry.capturedAt = String(value.capturedAt)
+    if (value.favorite) entry.favorite = true
     return entry
   }
 
@@ -48,24 +52,71 @@ function parseHistory(raw) {
   }
 }
 
-function addEntry(history, entry, limit) {
-  var normalized = normalizeEntry(entry)
-  var max = limit === undefined || limit === null ? 100 : Number(limit)
-  if (isNaN(max)) max = 100
-  max = Math.max(0, max)
-  if (!normalized) return Array.isArray(history) ? history.slice(0, max) : []
-  if (max === 0) return []
-
-  var key = entryKey(normalized)
-  var next = [normalized]
+function capHistory(history, limit) {
   var values = Array.isArray(history) ? history : []
+  var max = limit === undefined || limit === null ? 300 : Number(limit)
+  if (isNaN(max)) max = 300
+  max = Math.max(0, max)
 
-  for (var i = 0; i < values.length && next.length < max; i++) {
-    var existing = normalizeEntry(values[i])
-    if (!existing || entryKey(existing) === key) continue
-    next.push(existing)
+  var favoriteCount = 0
+  for (var i = 0; i < values.length; i++) {
+    var counted = normalizeEntry(values[i])
+    if (counted && counted.favorite) favoriteCount++
   }
 
+  var restBudget = Math.max(0, max - favoriteCount)
+  var kept = []
+  var restKept = 0
+
+  for (var j = 0; j < values.length; j++) {
+    var entry = normalizeEntry(values[j])
+    if (!entry) continue
+    if (entry.favorite) {
+      kept.push(entry)
+    } else if (restKept < restBudget) {
+      kept.push(entry)
+      restKept++
+    }
+  }
+
+  return kept
+}
+
+function addEntry(history, entry, limit) {
+  var normalized = normalizeEntry(entry)
+  var values = Array.isArray(history) ? history : []
+  if (!normalized) return capHistory(values, limit)
+
+  var key = entryKey(normalized)
+  for (var i = 0; i < values.length; i++) {
+    var existing = normalizeEntry(values[i])
+    if (existing && entryKey(existing) === key && existing.favorite) {
+      normalized.favorite = true
+      break
+    }
+  }
+
+  var next = [normalized]
+  for (var j = 0; j < values.length; j++) {
+    var current = normalizeEntry(values[j])
+    if (!current || entryKey(current) === key) continue
+    next.push(current)
+  }
+
+  return capHistory(next, limit)
+}
+
+function toggleFavorite(history, index) {
+  var values = Array.isArray(history) ? history : []
+  var target = Number(index)
+  if (isNaN(target) || target < 0 || target >= values.length) return values.slice()
+
+  var next = values.slice()
+  var entry = normalizeEntry(next[target])
+  if (!entry) return next
+
+  entry.favorite = !entry.favorite
+  next[target] = entry
   return next
 }
 
@@ -171,7 +222,7 @@ function cappedEntry(entry) {
   return { type: "text", text: entry.text.slice(0, cut > 0 ? cut : displayTextLimit) }
 }
 
-function displayRows(history, query, limit) {
+function displayRows(history, query, limit, favoritesOnly) {
   var values = Array.isArray(history) ? history : []
   var needle = String(query || "").trim().toLowerCase()
   var max = limit === undefined || limit === null ? 50 : Number(limit)
@@ -184,6 +235,7 @@ function displayRows(history, query, limit) {
   for (var i = 0; i < values.length; i++) {
     var entry = cappedEntry(normalizeEntry(values[i]))
     if (!entry) continue
+    if (favoritesOnly && !entry.favorite) continue
     if (needle && searchableText(entry).toLowerCase().indexOf(needle) < 0) continue
 
     var paths = filePaths(entry)
@@ -197,6 +249,7 @@ function displayRows(history, query, limit) {
       previewImage: previewPath,
       path: isImage ? String(entry.path || "") : (isFile && paths.length === 1 ? paths[0] : ""),
       mime: isImage ? String(entry.mime || "image/png") : "text/plain",
+      favorite: !!entry.favorite,
       index: i
     })
     if (rows.length >= max) break
@@ -211,6 +264,8 @@ if (typeof module !== "undefined") {
     entryKey: entryKey,
     parseHistory: parseHistory,
     addEntry: addEntry,
+    capHistory: capHistory,
+    toggleFavorite: toggleFavorite,
     removeEntryAt: removeEntryAt,
     clearHistory: clearHistory,
     parseEntryJson: parseEntryJson,
