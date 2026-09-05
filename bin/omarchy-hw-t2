@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether the computer has an Apple T2 security chip.
+
+lspci -nn | grep -q "106b:180[12]"

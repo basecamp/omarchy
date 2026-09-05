@@ -16,4 +16,6 @@ You toggle suspend by running `omarchy toggle suspend` from the terminal. That j
 
 You set up hibernation by running `omarchy hibernation setup` from the terminal. Hibernation creates a /swap subvolume on your boot drive the size of your physical RAM allocation, so make sure you have plenty of room to spare. On a 32GB machine, you'll always need 32GB+ free for this volume. Hibernation also requires the default Limine bootloader.
 
+On Apple T2 Macs, `omarchy hibernation setup` refuses by default: the T2 controller often fails to bring the internal keyboard and trackpad back after resuming from a hibernation image, and the machine can hang mid-hibernate and need a hard power-off. Pass `--force` if you want to set it up anyway. If you had already set up hibernation on a T2 Mac before this warning existed, a migration removes it for you on your next `omarchy update`.
+
 When set up, you'll see the hibernate option under _System_ (or `Super + Esc`), and then you can see if it works consistently on your system. If not, you can remove it again by running `omarchy hibernation remove`.

@@ -47,6 +47,15 @@ if [[ -f $MKINITCPIO_CONF ]] && grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; 
   exit 0
 fi
 
+if omarchy-hw-t2 && ! $FORCE; then
+  echo "Hibernation is unreliable on Apple T2 Macs: the T2 controller often" >&2
+  echo "fails to bring the internal keyboard and trackpad back after resuming" >&2
+  echo "from a hibernation image, and the machine can hang mid-hibernate and" >&2
+  echo "need a hard power-off. See https://wiki.t2linux.org/state/ for details." >&2
+  echo "Pass --force to set it up anyway." >&2
+  exit 0
+fi
+
 if ! $FORCE; then
   MEM_TOTAL_HUMAN=$(free --human | awk '/Mem/ {print $2}')
   if ! gum confirm "Use $MEM_TOTAL_HUMAN on boot drive to make hibernation available?"; then
