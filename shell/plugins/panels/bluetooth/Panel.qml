@@ -55,9 +55,18 @@ Panel {
   readonly property var knownDevices: deviceGroups.known || []
   readonly property var discoveredDevices: deviceGroups.discovered || []
 
+  // Track whether the user explicitly powered off Bluetooth. When the rfkill
+  // soft block drops the adapter, we still want the panel visible with the
+  // "Turned Off" status instead of disappearing with "No adapter" (#9724).
+  property bool poweredOffByUser: false
+
+  onAdapterChanged: {
+    if (adapter) poweredOffByUser = false
+  }
+
   readonly property string icon: {
-    if (!adapter) return ""
-    if (!adapter.enabled) return "󰂲"
+    if (!adapter && !poweredOffByUser) return ""
+    if (poweredOffByUser || (adapter && !adapter.enabled)) return "󰂲"
     if (connectedDevices.length > 0) return "󰂱"
     return "󰂯"
   }
@@ -75,7 +84,7 @@ Panel {
   ]
   readonly property bool rotatingPhrases: adapter && adapter.enabled
   readonly property string heroStatusText: {
-    if (!adapter) return "No adapter"
+    if (!adapter) return poweredOffByUser ? "Turned Off" : "No adapter"
     if (!adapter.enabled) return "Turned Off"
     return activePhrases[phraseIndex % activePhrases.length]
   }
@@ -101,7 +110,7 @@ Panel {
   // sits above the device sections so the adapter can be toggled by keyboard
   // even when it is off and no device rows exist.
   readonly property bool headerHasCursor: cursorActive && focusSection === "header"
-  readonly property string toggleHint: root.adapter && root.adapter.enabled ? "Turn Bluetooth off" : "Turn Bluetooth on"
+  readonly property string toggleHint: (adapter && adapter.enabled) ? "Turn Bluetooth off" : "Turn Bluetooth on"
 
   readonly property color hoverFill: bar
     ? Style.hoverFillFor(bar.foreground, Color.accent)
@@ -497,7 +506,7 @@ Panel {
     if (selectedIndex < 0) selectedIndex = 0
   }
 
-  visible: adapter !== null
+  visible: adapter !== null || poweredOffByUser
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -633,8 +642,16 @@ Panel {
   // switch only moves once BlueZ catches up, so a second click inside that window
   // would re-read the old state and undo the first.
   function toggleBluetooth() {
-    if (!adapter) return
-    Quickshell.execDetached(["omarchy-bluetooth-power", adapter.enabled ? "off" : "on"])
+    if (adapter && adapter.enabled) {
+      poweredOffByUser = true
+      Quickshell.execDetached(["omarchy-bluetooth-power", "off"])
+    } else if (adapter && !adapter.enabled) {
+      poweredOffByUser = false
+      Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+    } else if (!adapter && poweredOffByUser) {
+      // rfkill blocked the adapter; turn it back on.
+      Quickshell.execDetached(["omarchy-bluetooth-power", "on"])
+    }
   }
 
   IpcHandler {
