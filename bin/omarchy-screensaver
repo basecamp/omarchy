@@ -8,6 +8,15 @@ screensaver_in_focus() {
 
 exit_screensaver() {
   hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
+  
+  if [[ -f /tmp/omarchy_screensaver_dnd_state ]]; then
+    local state=$(cat /tmp/omarchy_screensaver_dnd_state 2>/dev/null)
+    if [[ -n $state ]]; then
+      omarchy-shell notifications setDnd "$state" >/dev/null 2>&1
+    fi
+    rm -f /tmp/omarchy_screensaver_dnd_state
+  fi
+
   pkill -x ttfx 2>/dev/null
   pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null
   exit 0

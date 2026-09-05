@@ -6,9 +6,34 @@
 pgrep -f '[o]rg.omarchy.screensaver' && exit 0
 
 # Allow screensaver to be turned off but also force started
-if omarchy-toggle-enabled screensaver-off && [[ $1 != "force" ]]; then
+if [[ $1 != "force" ]] && omarchy-toggle-enabled screensaver-off; then
   exit 1
 fi
+
+media_playing=false
+if [[ $1 != "force" ]] && [[ $(playerctl status 2>/dev/null) == "Playing" ]]; then
+  media_playing=true
+fi
+
+monitors_to_blank=()
+while IFS=':' read -r id name; do
+  if $media_playing; then
+    if hyprctl clients -j | jq -e "any(.monitor == $id and (.fullscreen == true or .fullscreen == 1))" >/dev/null 2>&1; then
+      continue
+    fi
+  fi
+  monitors_to_blank+=("$name")
+done < <(hyprctl monitors -j | jq -r '.[] | "\(.id):\(.name)"')
+
+if ((${#monitors_to_blank[@]} == 0)); then
+  exit 0
+fi
+
+# Save DND state and set it to on
+if ! [[ -f /tmp/omarchy_screensaver_dnd_state ]]; then
+  omarchy-shell notifications isDnd > /tmp/omarchy_screensaver_dnd_state 2>/dev/null || echo "off" > /tmp/omarchy_screensaver_dnd_state
+fi
+omarchy-shell notifications setDnd on >/dev/null 2>&1
 
 focused=$(omarchy-hyprland-monitor-focused)
 terminal=$(xdg-terminal-exec --print-id)
@@ -49,7 +74,7 @@ wait_for_screensaver_window() {
   done
 }
 
-for m in $(hyprctl monitors -j | jq -r '.[] | .name'); do
+for m in "${monitors_to_blank[@]}"; do
   hypr_focus_monitor "$m"
 
   case $terminal in
