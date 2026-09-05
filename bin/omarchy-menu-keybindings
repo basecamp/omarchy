@@ -12,8 +12,26 @@ declare -A LUA_BIND_ARG_MAP
 # Hyprland reports XKB keycodes for code: bindings. Resolve them to symbols
 # via the compiled keymap, with a small fallback for common keys so the menu
 # remains readable if xkbcli cannot resolve a symbol.
+active_keyboard_layout() {
+  local layouts index
+
+  layouts=$(hyprctl getoption input:kb_layout -j 2>/dev/null | jq -r '.str // empty')
+  [[ -n $layouts ]] || return 0
+
+  index=$(hyprctl devices -j 2>/dev/null |
+    jq -r '([.keyboards[] | select(.main == true)][0] // .keyboards[0]).active_layout_index // 0')
+  [[ $index =~ ^[0-9]+$ ]] || index=0
+
+  IFS=',' read -r -a configured_layouts <<<"$layouts"
+  printf '%s\n' "${configured_layouts[$index]:-${configured_layouts[0]}}"
+}
+
 parse_keycodes() {
-  awk '
+  local layout
+  layout=$(active_keyboard_layout)
+  [[ $layout =~ ^[A-Za-z0-9_-]+$ ]] || layout=""
+
+  awk -v layout="$layout" '
     BEGIN {
       split("10=1 11=2 12=3 13=4 14=5 15=6 16=7 17=8 18=9 19=0 20=MINUS 21=EQUAL 59=COMMA 60=PERIOD 61=SLASH", fallbacks, " ")
       for (i in fallbacks) {
@@ -22,7 +40,9 @@ parse_keycodes() {
       }
 
       # </dev/null keeps xkbcli from consuming the binding records on stdin
-      keymap_cmd = "xkbcli compile-keymap </dev/null"
+      keymap_cmd = "xkbcli compile-keymap"
+      if (layout != "") keymap_cmd = keymap_cmd " --layout " layout
+      keymap_cmd = keymap_cmd " </dev/null"
       section = ""
       while ((keymap_cmd | getline line) > 0) {
         if (line ~ /xkb_keycodes/) { section = "codes"; continue }
