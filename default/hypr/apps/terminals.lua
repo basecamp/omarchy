@@ -4,5 +4,10 @@
 -- The class is matched in full, so foot's other app-id needs spelling out.
 o.window(
   "(Alacritty|kitty|com.mitchellh.ghostty|foot|org\\.codeberg\\.dnkl\\.foot|wezterm|org\\.omarchy\\..*|TUI\\..*)",
-  { tag = "+terminal" }
+  {
+    tag = "+terminal",
+    -- Opening a terminal while another client is fullscreen must not inherit
+    -- that fullscreen state (Hyprland's syncfullscreen / focus-under path).
+    fullscreen = false,
+  }
 )
