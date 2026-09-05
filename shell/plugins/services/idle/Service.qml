@@ -73,7 +73,11 @@ Item {
     screensaverTimer.stop()
     lockTimer.stop()
     screensaverLaunchGraceTimer.stop()
-    root.idledThisCycle = false
+    // idledThisCycle stays true across the lock: the lock plugin blanks the
+    // display a few seconds after this point on its own timer, independent
+    // of this cycle. Clearing it here would make the next activity signal's
+    // handleActiveSignal() bail out before cancelIdleCycle() can run the
+    // wake process, leaving the display dark after a real unlock.
     root.screensaverStartedThisCycle = false
     resetScreensaverWindows()
     runProcess(lockProcess, "lock", "omarchy-system-lock")
