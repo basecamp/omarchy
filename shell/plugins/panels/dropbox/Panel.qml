@@ -84,7 +84,6 @@ Panel {
   function setHeaderCursor() {
     cursorActive = true
     focusSection = "header"
-    if (panelFlick) panelFlick.contentY = 0
   }
 
   function toggleRunning() {
@@ -110,25 +109,11 @@ Panel {
     scrollCursorIntoView()
   }
 
-  function scrollItemIntoView(item) {
-    if (!panelFlick || !item) return
-    Qt.callLater(function() {
-      if (!item) return
-      var margin = Style.space(6)
-      var point = item.mapToItem(panelFlick.contentItem, 0, 0)
-      var top = point.y
-      var bottom = top + item.height
-      var viewTop = panelFlick.contentY
-      var viewBottom = viewTop + panelFlick.height
-      var maxY = Math.max(0, panelFlick.contentHeight - panelFlick.height)
-      if (top < viewTop + margin) panelFlick.contentY = Math.max(0, top - margin)
-      else if (bottom > viewBottom - margin) panelFlick.contentY = Math.min(maxY, bottom + margin - panelFlick.height)
-    })
-  }
-
   function scrollCursorIntoView() {
-    if (focusSection === "files" && fileColumn && fileIndex >= 0 && fileIndex < fileColumn.children.length) {
-      scrollItemIntoView(fileColumn.children[fileIndex])
+    if (focusSection === "files" && fileList && fileIndex >= 0 && fileIndex < dropbox.files.length) {
+      Qt.callLater(function() {
+        if (fileList) fileList.positionViewAtIndex(fileIndex, ListView.Contain)
+      })
     }
   }
 
@@ -137,7 +122,6 @@ Panel {
 
   onOpenedChanged: if (opened) {
     cursorActive = false
-    if (panelFlick) panelFlick.contentY = 0
     dropbox.refresh()
     Qt.callLater(function() { keyCatcher.forceActiveFocus() })
   }
@@ -214,142 +198,138 @@ Panel {
         else if (t === "p" || t === "P") root.toggleRunning()
       }
 
-      Flickable {
-        id: panelFlick
+      Column {
+        id: column
         anchors.fill: parent
-        contentWidth: width
-        contentHeight: column.implicitHeight
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        flickableDirection: Flickable.VerticalFlick
-        interactive: contentHeight > height
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        spacing: Style.space(12)
 
-        Column {
-          id: column
-          width: panelFlick.width
-          spacing: Style.space(12)
+        Item {
+          id: header
+          visible: dropbox.authenticated
+          width: parent.width
+          implicitHeight: hero.implicitHeight
+          // Exposed for the hero's trailingControl, whose `root` resolves to
+          // PanelHero (not this Panel) — reach panel state via `header`.
+          readonly property bool ringVisible: root.headerHasCursor
+          function focusHero() { root.setHeaderCursor() }
 
-          Item {
-            id: header
-            visible: dropbox.authenticated
+          PanelHero {
+            id: hero
             width: parent.width
-            implicitHeight: hero.implicitHeight
-            // Exposed for the hero's trailingControl, whose `root` resolves to
-            // PanelHero (not this Panel) — reach panel state via `header`.
-            readonly property bool ringVisible: root.headerHasCursor
-            function focusHero() { root.setHeaderCursor() }
-
-            PanelHero {
-              id: hero
-              width: parent.width
-              title: "Dropbox"
-              meta: dropbox.active ? root.heroPhraseText : "Syncing paused"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              iconOpacity: dropbox.active ? 1.0 : 0.5
-              // Status only — the switch owns toggling, mouse and keyboard alike.
-              iconComponent: Component {
-                DropboxIcon {
-                  iconSize: Style.font.display
-                  color: root.iconColor
-                }
+            title: "Dropbox"
+            meta: dropbox.active ? root.heroPhraseText : "Syncing paused"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            iconOpacity: dropbox.active ? 1.0 : 0.5
+            // Status only — the switch owns toggling, mouse and keyboard alike.
+            iconComponent: Component {
+              DropboxIcon {
+                iconSize: Style.font.display
+                color: root.iconColor
               }
+            }
 
-              // Compact on/off switch on the trailing edge of the hero, and the
-              // header's only cursor target. The service already flips `active`
-              // optimistically, so the knob throws the instant you click it.
-              trailingControl: Component {
-                ToggleSwitch {
-                  id: powerSwitch
-                  visible: dropbox.installed
-                  checked: dropbox.active
-                  busy: dropbox.busy
-                  hasCursor: header.ringVisible
-                  foreground: hero.foreground
-                  onHovered: function(on) { if (on) header.focusHero() }
-                  onToggled: root.toggleRunning()
+            // Compact on/off switch on the trailing edge of the hero, and the
+            // header's only cursor target. The service already flips `active`
+            // optimistically, so the knob throws the instant you click it.
+            trailingControl: Component {
+              ToggleSwitch {
+                id: powerSwitch
+                visible: dropbox.installed
+                checked: dropbox.active
+                busy: dropbox.busy
+                hasCursor: header.ringVisible
+                foreground: hero.foreground
+                onHovered: function(on) { if (on) header.focusHero() }
+                onToggled: root.toggleRunning()
 
-                  PanelToolTip {
-                    visible: powerSwitch.containsMouse
-                    text: root.toggleHint
-                    fontFamily: hero.fontFamily
-                  }
+                PanelToolTip {
+                  visible: powerSwitch.containsMouse
+                  text: root.toggleHint
+                  fontFamily: hero.fontFamily
                 }
               }
             }
+          }
+        }
+
+        Text {
+          visible: dropbox.actionStatus !== "" || dropbox.lastError !== ""
+          width: parent.width
+          text: dropbox.actionStatus !== "" ? dropbox.actionStatus : dropbox.lastError
+          color: dropbox.lastError !== "" && dropbox.actionStatus === "" ? root.urgent : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          wrapMode: Text.WordWrap
+        }
+
+        LoginButton {
+          visible: !dropbox.authenticated
+          width: parent.width
+        }
+
+        Column {
+          visible: dropbox.authenticated
+          width: parent.width
+          spacing: Style.spacing.labelGap
+
+          Column {
+            width: parent.width
+            spacing: Style.spacing.labelGap
+            InfoPair { label: "Stored"; value: Model.usageText(dropbox.usedBytes, dropbox.quotaBytes, dropbox.quotaKnown) }
+          }
+        }
+
+        PanelSeparator {
+          visible: dropbox.authenticated
+          foreground: root.foreground
+        }
+
+        Column {
+          visible: dropbox.authenticated
+          width: parent.width
+          spacing: Style.space(10)
+
+          PanelSectionHeader {
+            text: "RECENT FILES"
+            foreground: root.foreground
+            fontFamily: root.fontFamily
           }
 
           Text {
             textFormat: Text.PlainText
-            visible: dropbox.actionStatus !== "" || dropbox.lastError !== ""
+            visible: dropbox.files.length === 0
             width: parent.width
-            text: dropbox.actionStatus !== "" ? dropbox.actionStatus : dropbox.lastError
-            color: dropbox.lastError !== "" && dropbox.actionStatus === "" ? root.urgent : root.dim
+            text: "No synced files found."
+            color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.bodySmall
-            wrapMode: Text.WordWrap
+            font.pixelSize: Style.font.body
+            horizontalAlignment: Text.AlignHCenter
           }
 
-          LoginButton {
-            visible: !dropbox.authenticated
+          ListView {
+            id: fileList
+            visible: dropbox.files.length > 0
             width: parent.width
-          }
+            height: Math.min(contentHeight, Style.space(340))
+            spacing: Style.space(6)
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            interactive: contentHeight > height
+            model: dropbox.files
+            currentIndex: root.fileIndex
+            onCurrentIndexChanged: if (currentIndex >= 0) Qt.callLater(function() {
+              positionViewAtIndex(currentIndex, ListView.Contain)
+            })
 
-          Column {
-            visible: dropbox.authenticated
-            width: parent.width
-            spacing: Style.spacing.labelGap
+            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-            Column {
-              width: parent.width
-              spacing: Style.spacing.labelGap
-              InfoPair { label: "Stored"; value: Model.usageText(dropbox.usedBytes, dropbox.quotaBytes, dropbox.quotaKnown) }
-            }
-          }
-
-          PanelSeparator {
-            visible: dropbox.authenticated
-            foreground: root.foreground
-          }
-
-          Column {
-            visible: dropbox.authenticated
-            width: parent.width
-            spacing: Style.space(10)
-
-            PanelSectionHeader {
-              text: "RECENT FILES"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            Text {
-              visible: dropbox.files.length === 0
-              width: parent.width
-              text: "No synced files found."
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              horizontalAlignment: Text.AlignHCenter
-            }
-
-            Column {
-              id: fileColumn
-              visible: dropbox.files.length > 0
-              width: parent.width
-              spacing: Style.space(6)
-
-              Repeater {
-                model: dropbox.files
-                FileRow {
-                  required property var modelData
-                  required property int index
-                  width: fileColumn.width
-                  file: modelData
-                  rowIndex: index
-                }
-              }
+            delegate: FileRow {
+              required property var modelData
+              required property int index
+              width: fileList.width
+              file: modelData
+              rowIndex: index
             }
           }
         }
