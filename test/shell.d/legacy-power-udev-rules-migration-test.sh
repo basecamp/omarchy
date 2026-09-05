@@ -162,15 +162,15 @@ for legacy_include in \
     fail "migration repoints $legacy_include at the active Omarchy tree" "$(cat "$xcompose")"
   grep -qF '<Multi_key> <space> <e> : "test@example.com"' "$xcompose" ||
     fail "migration discards the user's own compose sequences"
-  grep -qxF 'omarchy-restart-xcompose' "$CALLS" ||
-    fail "migration does not reload XCompose after rewriting its include" "$(cat "$CALLS")"
+  ! grep -qxF 'omarchy-restart-xcompose' "$CALLS" ||
+    fail "migration restarts XCompose in running applications" "$(cat "$CALLS")"
 done
-pass "migration repoints every legacy XCompose include and preserves custom sequences"
+pass "migration repoints every legacy XCompose include without restarting the input method"
 
 before=$(sha256sum "$xcompose")
 run_migration
 [[ $(sha256sum "$xcompose") == "$before" ]] || fail "migration changes an already repaired XCompose file"
-[[ ! -s $CALLS ]] || fail "migration restarts XCompose when nothing changed" "$(cat "$CALLS")"
+[[ ! -s $CALLS ]] || fail "migration acts when XCompose needs no repair" "$(cat "$CALLS")"
 pass "migration is idempotent on an already repaired XCompose file"
 
 reset_machine

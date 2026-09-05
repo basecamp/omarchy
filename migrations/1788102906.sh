@@ -6,14 +6,14 @@ legacy_xcompose_pattern='^[[:space:]]*include[[:space:]]+"[^"]*/\.local/share/om
 
 # Omarchy 3 pointed the user's compose file through the checkout compatibility
 # link. Preserve their own sequences while moving that include to the packaged
-# tree. A failed live restart is harmless: the next graphical login reads the
-# repaired file.
+# tree. Do not restart fcitx5 from an unattended migration: X11 applications
+# can retain input-method objects owned by the old process and crash when they
+# use them later. The repaired file takes effect at the next graphical login.
 if [[ -f $xcompose ]] && grep -Eq "$legacy_xcompose_pattern" "$xcompose"; then
   xcompose_replacement=${packaged_xcompose//\\/\\\\}
   xcompose_replacement=${xcompose_replacement//&/\\&}
   xcompose_replacement=${xcompose_replacement//|/\\|}
   sed -i -E "s|^([[:space:]]*include[[:space:]]+\")[^\"]*/\\.local/share/omarchy/default/xcompose\"[[:space:]]*$|\\1$xcompose_replacement\"|" "$xcompose"
-  omarchy-restart-xcompose >/dev/null 2>&1 || true
 fi
 
 rules_dir=/etc/udev/rules.d
