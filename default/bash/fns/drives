@@ -29,6 +29,16 @@ iso2sd() {
   sudo eject "$drive"
 }
 
+# First partition path for a device. The kernel separates the partition number with
+# `p` when the device name ends in a digit: nvme0n1p1 and md127p1, but sda1 and md/data1.
+format-drive-partition() {
+  if [[ $1 == *[0-9] ]]; then
+    printf '%s\n' "${1}p1"
+  else
+    printf '%s\n' "${1}1"
+  fi
+}
+
 # Format an entire drive for a single partition using exFAT
 format-drive() {
   if (( $# != 2 )); then
@@ -47,7 +57,7 @@ format-drive() {
       sudo parted -s "$1" mkpart primary 1MiB 100%
       sudo parted -s "$1" set 1 msftdata on
 
-      partition="$([[ $1 == *"nvme"* ]] && echo "${1}p1" || echo "${1}1")"
+      partition="$(format-drive-partition "$1")"
       sudo partprobe "$1" || true
       sudo udevadm settle || true
 
