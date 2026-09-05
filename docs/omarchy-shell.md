@@ -374,6 +374,26 @@ size-vertical   = 28   # left/right bar width at base-size 12
 
 Set `scale-with-font = false` to keep those bar sizes as fixed pixels.
 
+## Bar icon geometry
+
+Every icon in the bar is sized by the pixels it paints, not by its asset dimensions or font metrics. `shell/Ui/WidgetButton.qml`, the base of every bar button first- and third-party, treats a lone icon glyph, a glyph beside a label and any `iconComponent` the same way: the icon is rendered, `shell/Ui/InkMeasure.qml` has ImageMagick measure what it painted, and the icon is fitted from that measurement.
+
+**How big** a mark comes out is read from the raw ink it paints, and fitted by the middle of its two dimensions rather than by whichever one reaches furthest. Fitting the long side alone halves a mark twice as wide as it is tall, so it renders at a fraction of the row's height; fitting the short side inflates that same mark into a slab that dominates everything beside it. `IconRules.meanFit()` takes the middle of the two, and a lone icon's canvas is cut wider than the block (`IconRules.canvasRoom`) so the long axis of a wide mark has somewhere to land.
+
+That size is then nudged by how densely the mark is inked, because two icons the same size on a ruler are not the same size to a reader: a solid slab and a hairline arc filling one box are nowhere near the same weight. `IconRules.weightFit()` makes a dense mark a little smaller and a sparse one a little larger, bounded at both ends. Density is measured from the mark's shape, before any blur — measuring the blurred blob instead reports almost everything as solid, because the blob is deliberately larger and softer than the mark.
+
+**Where it sits** is read from that blurred blob. The shape is smeared until it reads as one soft mass, levelled against its own peak and cut in half, and the mark is shifted so that mass sits centred along the bar. Levelling against its own peak rather than a fixed level is what lets the blur be strong: a thin glyph blurs to a faint mass, and a fixed cut erases such glyphs entirely. Across the bar the mark simply fills its block, and that is what lines a row up. Weight is only judged where the mark can still be moved — one already pressed against its canvas is pinned by its own size.
+
+The block every icon is fitted to is measured from the font rather than set as a bare number: `[bar] icon-canvas` defaults to the height the icon block is drawn to at `[bar] icon-font`, so evening out an uneven row does not enlarge it — icons that already filled that box keep the size they have always had. A theme that pins `icon-canvas` gets exactly what it asks for.
+
+A mark's shape is everything it paints above antialiasing fringe, taken **before** anything else is measured, so how brightly a part was painted never changes where the icon is measured to be: a logo drawn in two tones measures exactly like the same logo drawn in one. Brightness is then a rule of its own — one mark, one brightness, unless the mark really is drawn in two tones. `WidgetButton` weighs the faded parts of an icon against the whole of it: a second tone covering at least `IconRules.twoToneMinShare` of the mark is left as its author drew it, while anything less is one part faded by accident and goes back to full. Set `flattenIcon: false` to opt out.
+
+Glyphs are re-rasterized at a fractional font size and re-measured until the rules hold — a native glyph can only be placed on whole device pixels, so the last fraction of a pixel is not correctable — while components are transformed and raster images go through `shell/Ui/AutoCropImage.qml`, which the tray uses. Text keeps its type metrics; a widget whose glyph is a text-sized marker in a run of text sets `normalizeIcon: false` (the workspace dot). Icon-only buttons take `[bar] icon-slot` so they space like built-in icons, and `BarIndicator` declares its smaller canvas.
+
+The rules live in one place, `shell/Commons/IconRules.qml`. Within a tolerance of one logical pixel — or of one measured pixel, when the render is coarser than that — a mark must be `sized` (it came out the size the block asks for, measured the way it is fitted), `balanced` (its weight sits centred along the bar, where there is room to move it) and `contained` (no ink beyond its canvas, corners included). Every button verifies its final render against them and exposes `inkCompass` and `inkViolations`; `omarchy-dev-bar-icon-audit` collects these from the live bar through `omarchy-shell shell auditIcons`, prints each icon's margins alongside `BX`/`BY` and what it painted, and fails when any shown icon breaks a rule.
+
+The open-panel mark under a module spans the module's icon canvas rather than the ink inside it. Every icon fills the same canvas but reaches it with a different silhouette, so a mark drawn to the ink comes out a different length under each one — wide under the wifi arc, narrow under the battery — and the row of them reads as ragged.
+
 ## Custom bar modules
 
 If a full plugin is overkill, declare a one-off module inline in

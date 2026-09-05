@@ -764,34 +764,19 @@ BarWidget {
     }
   }
 
-  // Renders a tray icon, recoloring symbolic icons to the bar foreground so
-  // they stay visible on any theme (a raw symbolic icon keeps its baked-in
-  // fill and disappears against a matching background).
+  // Render and alpha-trim every tray image before fitting it into the shared
+  // canvas. Source files often carry uneven transparent padding, so their
+  // nominal dimensions say nothing about the pixels people actually see.
   component TrayIcon: Item {
     id: trayIconRoot
     required property var icon
     readonly property bool symbolic: root.iconIsSymbolic(icon)
 
-    Image {
-      id: trayIconImage
+    AutoCropImage {
       anchors.fill: parent
-      fillMode: Image.PreserveAspectFit
-      // Decode at physical pixels: IconImage uses the logical size,
-      // which leaves PNG icons upscaled and blurry on HiDPI displays.
-      sourceSize.width: Math.round(Math.min(width, height) * Screen.devicePixelRatio)
-      sourceSize.height: Math.round(Math.min(width, height) * Screen.devicePixelRatio)
       source: root.trayIconSource(trayIconRoot.icon)
-      // Kept as a hidden layer so the effect can sample it as a texture.
-      visible: !trayIconRoot.symbolic
-      layer.enabled: trayIconRoot.symbolic
-    }
-
-    MultiEffect {
-      anchors.fill: trayIconImage
-      source: trayIconImage
-      visible: trayIconRoot.symbolic
-      colorization: 1.0
-      colorizationColor: root.foreground
+      colorized: trayIconRoot.symbolic
+      color: root.foreground
     }
   }
 
@@ -808,10 +793,12 @@ BarWidget {
       root.openTrayMenu(trayItemRoot.modelData, trayItemRoot, mouse)
     }
 
+    // Same optical canvas as every glyph icon, so trimmed app images and font
+    // icons read as one row.
     TrayIcon {
       anchors.centerIn: parent
-      width: Style.space(12)
-      height: Style.space(12)
+      width: Style.bar.iconCanvas
+      height: Style.bar.iconCanvas
       icon: trayItemRoot.modelData.icon
     }
 

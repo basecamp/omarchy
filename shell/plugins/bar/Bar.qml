@@ -120,6 +120,58 @@ Item {
     moduleSlots = next
   }
 
+  // The first visible icon-bearing button under an item, depth first.
+  function paintedButtonIn(item) {
+    if (!item) return null
+    if ("paintedWidth" in item && "iconOnly" in item) return item.visible ? item : null
+    for (var i = 0; i < item.children.length; i++) {
+      var found = paintedButtonIn(item.children[i])
+      if (found) return found
+    }
+    return null
+  }
+
+  // Every icon in every module with its measured compass margins and the
+  // rules it breaks, for `omarchy-dev-bar-icon-audit`. Text buttons are
+  // listed too so the scan visibly covers each item, but carry no rules.
+  function auditIcons() {
+    var out = []
+    for (var i = 0; i < moduleSlots.length; i++) {
+      var slot = moduleSlots[i]
+      if (slot && slot.activeItem) collectInk(slot.activeItem, slot.moduleName, out)
+    }
+    return out
+  }
+
+  function collectInk(item, module, out) {
+    if (!item) return
+    var button = "iconOnly" in item
+    var image = "colorized" in item && "inkViolations" in item
+    if (button || image) {
+      out.push({
+        module: module,
+        kind: button
+          ? (item.iconComponent !== null ? (item.iconFrames > 1 ? "animation" : "component") : (item.hasIconGlyph ? "glyph" : "text"))
+          : "image",
+        label: button ? (item.hasIconGlyph ? item.iconText : item.text) : String(item.source),
+        shown: item.visible && item.opacity > 0,
+        canvas: button ? item.opticalSize : item.width,
+        // What the icon actually paints, next to the canvas meant to hold it.
+        // A painted size far larger than its canvas is the signature of a
+        // measurement that went wrong, and says so plainly instead of leaving
+        // it to be guessed at from a screenshot.
+        painted: button && item.hasIconGlyph
+          ? Math.round(item.glyphPaintedWidth * 10) / 10 + "x" + Math.round(item.glyphPaintedHeight * 10) / 10
+          : null,
+        squash: button ? Math.round((item.iconSquash || 1) * 100) / 100 : null,
+        verified: item.inkVerified,
+        compass: item.inkCompass,
+        violations: item.inkViolations
+      })
+    }
+    for (var i = 0; i < item.children.length; i++) collectInk(item.children[i], module, out)
+  }
+
   function unregisterModuleSlot(slot) {
     var next = moduleSlots.filter(function(item) { return item !== slot })
     moduleSlots = next
@@ -1568,15 +1620,34 @@ Item {
     readonly property bool hovered: moduleHover.hovered
     readonly property bool dragSource: root.barDragSource === slot
     readonly property bool panelOpen: root.activePopout === slot.activeItem
+    // The icon-bearing button inside the module, found when its panel opens,
+    // so the open-panel mark spans the icon's lit pixels end to end instead
+    // of a fraction of whatever slot the module happens to fill.
+    property var paintedButton: null
+    onPanelOpenChanged: if (panelOpen) paintedButton = root.paintedButtonIn(activeItem)
     // Modules bigger than the mark they want (a text label in a padded slot,
-    // a multi-line stack on a vertical bar) can say how long the open-panel
-    // dot should be along the bar, so it tracks what the module paints
-    // instead of a fraction of whatever slot it happens to fill.
+    // a multi-line stack on a vertical bar) can still say how long the mark
+    // should be along the bar.
     readonly property real panelIndicatorExtent: {
       var key = root.vertical ? "openPanelIndicatorHeight" : "openPanelIndicatorWidth"
       var hint = activeItem && key in activeItem ? activeItem[key] : undefined
       if (hint !== undefined && hint !== null && hint > 0) return Math.round(hint)
+      if (paintedButton) {
+        var painted = root.vertical ? paintedButton.paintedHeight : paintedButton.paintedWidth
+        if (painted > 0) return Math.round(painted)
+      }
       return Math.max(Style.space(10), Math.round((root.vertical ? slot.height : slot.width) * 0.55))
+    }
+    // Where along the bar the mark centers: on the painted content when a
+    // button was found, else on the slot.
+    readonly property real panelIndicatorCenter: {
+      if (paintedButton) {
+        var point = paintedButton.mapToItem(slot,
+          paintedButton.paintedX + paintedButton.paintedWidth / 2,
+          paintedButton.paintedY + paintedButton.paintedHeight / 2)
+        return root.vertical ? point.y : point.x
+      }
+      return (root.vertical ? slot.height : slot.width) / 2
     }
     implicitWidth: activeItem && activeItem.visible ? (root.vertical ? root.barSize : activeItem.implicitWidth) : 0
     implicitHeight: activeItem && activeItem.visible ? activeItem.implicitHeight : 0
@@ -1655,9 +1726,9 @@ Item {
       // panel that opens on that side.
       x: root.vertical
         ? (root.position === "left" ? parent.width - width - inset : inset)
-        : Math.round((parent.width - width) / 2)
+        : Math.round(slot.panelIndicatorCenter - width / 2)
       y: root.vertical
-        ? Math.round((parent.height - height) / 2)
+        ? Math.round(slot.panelIndicatorCenter - height / 2)
         : (root.position === "top" ? parent.height - height - inset : inset)
       z: 50
 
@@ -1760,7 +1831,10 @@ Item {
       }
     }
 
-    onActiveItemChanged: Qt.callLater(injectProps)
+    onActiveItemChanged: {
+      paintedButton = null
+      Qt.callLater(injectProps)
+    }
     onModuleSettingsChanged: injectProps()
 
     function injectProps() {

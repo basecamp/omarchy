@@ -1,5 +1,6 @@
 module qs.Ui
 
+AutoCropImage 1.0 AutoCropImage.qml
 BarIndicator 1.0 BarIndicator.qml
 BarIconButton 1.0 BarIconButton.qml
 BarWidget 1.0 BarWidget.qml
@@ -10,6 +11,7 @@ ButtonGroup 1.0 ButtonGroup.qml
 ConfirmDialog 1.0 ConfirmDialog.qml
 CursorSurface 1.0 CursorSurface.qml
 Dropdown 1.0 Dropdown.qml
+InkMeasure 1.0 InkMeasure.qml
 KeyboardPanel 1.0 KeyboardPanel.qml
 MultiSelect 1.0 MultiSelect.qml
 NumberField 1.0 NumberField.qml

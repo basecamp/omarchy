@@ -44,6 +44,10 @@ BarIconButton {
   maintainIndicatorReveal: indicatorBlock === "inactive"
   revealHost: indicatorHost
   fontSize: Style.font.caption
+  // Indicators are secondary status marks: their canvas shrinks with the
+  // caption size, so they read smaller than the main icons yet stay even
+  // among themselves.
+  opticalSize: Style.bar.iconCanvas * fontSize / Style.bar.iconFont
   horizontalMargin: 5
   verticalPadding: 5
   fixedWidth: vertical ? -1 : Style.bar.statusSlot
