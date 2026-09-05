@@ -518,6 +518,40 @@ def limit_window(window):
   }
 
 
+def codex_rpc_help(proc, stderr_file, exc):
+  """Explain an app-server RPC failure in terms the user can act on.
+
+  rpc_request() raises TimeoutError(method), so a bare str(exc) surfaces in the
+  panel as a lone word like "initialize" or "account/read". Do better, in order:
+
+  1. If the CLI exited and printed to stderr, quote it. That names a flag a
+     codex-cli upgrade dropped or renamed, the common cause of a hard exit.
+  2. If the CLI exited without a word, fall back to the login hint: that is the
+     "not logged in" shape and `codex login` is the fix.
+  3. If the process is still running, the RPC stalled or returned something this
+     collector could not parse. That is not an auth problem and must not send
+     the user to `codex login`; the raw exception text is cryptic but true and
+     searchable, so keep it.
+  """
+  try:
+    proc.wait(timeout=1)
+  except Exception:
+    pass
+  if proc.poll() is None:
+    return str(exc)[:300] or AUTH_HELP
+  detail = ""
+  if stderr_file is not None:
+    try:
+      stderr_file.seek(0)
+      detail = stderr_file.read()
+    except Exception:
+      detail = ""
+  lines = [line.strip() for line in detail.splitlines() if line.strip()]
+  if lines:
+    return f"codex app-server exited: {' '.join(lines)}"[:300]
+  return AUTH_HELP
+
+
 def fetch_codex_rpc():
   result = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
   codex = find_command("codex")
@@ -526,16 +560,21 @@ def fetch_codex_rpc():
     result["authHelpText"] = "codex not found in PATH"
     return result
 
+  # A regular file, not a PIPE: the app-server can log to stderr while it runs,
+  # and an unread pipe would deadlock it once the buffer filled. Only read on
+  # failure, and only once the process has exited (see codex_rpc_help).
+  stderr_file = tempfile.TemporaryFile("w+", errors="replace")
   try:
     proc = subprocess.Popen(
       [codex, "-s", "read-only", "-a", "on-request", "app-server"],
       stdin=subprocess.PIPE,
       stdout=subprocess.PIPE,
-      stderr=subprocess.DEVNULL,
+      stderr=stderr_file,
       text=True,
       env=ENV,
     )
   except Exception as exc:
+    stderr_file.close()
     result["usageStatusText"] = "Codex unavailable"
     result["authHelpText"] = str(exc)
     return result
@@ -558,7 +597,7 @@ def fetch_codex_rpc():
         result["limits"].append(entry)
   except Exception as exc:
     result["usageStatusText"] = "Codex limits unavailable"
-    result["authHelpText"] = str(exc)
+    result["authHelpText"] = codex_rpc_help(proc, stderr_file, exc)
   finally:
     try:
       proc.terminate()
@@ -568,6 +607,7 @@ def fetch_codex_rpc():
         proc.kill()
       except Exception:
         pass
+    stderr_file.close()
   return result
 
 
