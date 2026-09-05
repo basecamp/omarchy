@@ -14,6 +14,10 @@ fi
 
 FLAG_NAME="$1"
 ACTION="${2:-toggle}"
+
+source omarchy-path-guard || exit 1
+omarchy_reject_climbing_name "$FLAG_NAME" "flag name" || exit 1
+
 FLAG_FILE="$HOME/.local/state/omarchy/toggles/hypr/$FLAG_NAME.lua"
 FLAG_SOURCE="$OMARCHY_PATH/default/hypr/toggles/$FLAG_NAME.lua"
 

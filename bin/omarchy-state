@@ -20,6 +20,9 @@ if [[ -z $STATE_NAME ]]; then
   exit 1
 fi
 
+source omarchy-path-guard || exit 1
+omarchy_reject_climbing_name "$STATE_NAME" "state name" || exit 1
+
 case "$COMMAND" in
 set) touch "$STATE_DIR/$STATE_NAME" ;;
 clear) find "$STATE_DIR" -maxdepth 1 -type f -name "$STATE_NAME" -delete ;;

@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# omarchy:summary=Reject a caller-supplied name that would climb out of the directory it is joined to.
+# omarchy:hidden=true
+
+# Several commands join an argument into a path they then write, delete or
+# execute. A name is safe when every component of it is an ordinary filename:
+# `crash-ignore/chromium` is a namespace omarchy-crash-mute relies on, so a
+# slash is allowed, while a `.` or `..` component is what reaches a directory
+# above the one the caller meant. `...` and `..foo` are ordinary filenames and
+# stay legal, as do the glob characters omarchy-state's clear pattern needs.
+omarchy_reject_climbing_name() {
+  local name=$1 label=${2:-name}
+
+  if [[ -z $name || $name == /* || $name == "." || $name == ".." ||
+    $name == ./* || $name == ../* || $name == */./* || $name == */../* ||
+    $name == */. || $name == */.. ]]; then
+    echo "Invalid $label: $name" >&2
+    return 1
+  fi
+
+  return 0
+}

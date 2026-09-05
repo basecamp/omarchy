@@ -712,3 +712,52 @@ assert_output_contains "a --help behind -- belongs to the command and still forw
 
 output=$("$TMPDIR/omarchy" parenthelp --helpme x--help)
 assert_output_contains "help lookalike tokens do not trigger help" "$output" "parenthelp-parent-ran args=[--helpme x--help]"
+
+# omarchy-hook, omarchy-hyprland-toggle, omarchy-toggle and omarchy-state each
+# join an argument into a path they then execute, delete or write. Each escape
+# below reached outside the directory the command meant to work in.
+make_tmpdir GUARD_TMPDIR
+GUARD_HOME="$GUARD_TMPDIR/home"
+mkdir -p "$GUARD_HOME/.local/state/omarchy/toggles/hypr" "$GUARD_HOME/.config/omarchy/hooks"
+
+printf '#!/bin/bash\necho escaped\n' >"$GUARD_TMPDIR/outside-hook"
+chmod +x "$GUARD_TMPDIR/outside-hook"
+printf 'victim\n' >"$GUARD_TMPDIR/outside.lua"
+
+output=$(HOME="$GUARD_HOME" "$ROOT/bin/omarchy-hook" ../../../../outside-hook 2>&1 || true)
+[[ $output != *escaped* ]] || fail "omarchy-hook runs a script above the hooks directory"
+pass "omarchy-hook will not run a script outside the hooks directory"
+
+HOME="$GUARD_HOME" OMARCHY_PATH="$ROOT" "$ROOT/bin/omarchy-hyprland-toggle" ../../../../../../outside off >/dev/null 2>&1 || true
+[[ -f "$GUARD_TMPDIR/outside.lua" ]] || fail "omarchy-hyprland-toggle deletes a .lua above the toggles directory"
+pass "omarchy-hyprland-toggle will not delete a file outside the toggles directory"
+
+HOME="$GUARD_HOME" "$ROOT/bin/omarchy-toggle" ../../../../../outside-toggle on >/dev/null 2>&1 || true
+[[ ! -e "$GUARD_TMPDIR/outside-toggle" ]] || fail "omarchy-toggle writes a flag outside the state directory"
+pass "omarchy-toggle will not write a flag outside the state directory"
+
+HOME="$GUARD_HOME" "$ROOT/bin/omarchy-state" set ../../../../outside-state >/dev/null 2>&1 || true
+[[ ! -e "$GUARD_TMPDIR/outside-state" ]] || fail "omarchy-state writes a file outside the state directory"
+pass "omarchy-state will not write a file outside the state directory"
+
+# omarchy-crash-mute keeps a flag per program under crash-ignore/, so a slash is
+# a namespace rather than an escape. Only a dot component climbs.
+HOME="$GUARD_HOME" "$ROOT/bin/omarchy-toggle" "crash-ignore/chromium" on >/dev/null 2>&1
+[[ -f "$GUARD_HOME/.local/state/omarchy/toggles/crash-ignore/chromium" ]] || fail "omarchy-toggle keeps the crash-ignore namespace working"
+pass "omarchy-toggle still writes a flag inside a nested namespace"
+
+HOME="$GUARD_HOME" "$ROOT/bin/omarchy-toggle" "crash-ignore/../../escape" on >/dev/null 2>&1 || true
+[[ ! -e "$GUARD_HOME/.local/state/omarchy/escape" ]] || fail "omarchy-toggle allows a dot component to climb out of a namespace"
+pass "omarchy-toggle rejects a name that climbs out of its namespace"
+
+# A leading dot is an ordinary filename, and omarchy-state's clear takes a glob.
+for legal_name in 'weird...name' '..leading'; do
+  HOME="$GUARD_HOME" "$ROOT/bin/omarchy-state" set "$legal_name" >/dev/null 2>&1 || true
+  [[ -f "$GUARD_HOME/.local/state/omarchy/$legal_name" ]] || fail "omarchy-state accepts the ordinary filename $legal_name"
+done
+pass "omarchy-state still accepts ordinary names that begin with dots"
+
+HOME="$GUARD_HOME" "$ROOT/bin/omarchy-state" set globbed >/dev/null 2>&1
+HOME="$GUARD_HOME" "$ROOT/bin/omarchy-state" clear 'globb*' >/dev/null 2>&1
+[[ ! -e "$GUARD_HOME/.local/state/omarchy/globbed" ]] || fail "omarchy-state clear still matches a glob"
+pass "omarchy-state clear still takes a glob pattern"
