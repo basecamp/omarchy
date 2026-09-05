@@ -1,3 +1,13 @@
+// Empty legacy state files mean indefinitely; timed files contain a Unix deadline in milliseconds.
+function stayAwakeState(line, now) {
+  if (line.indexOf("yes:") !== 0) return { enabled: false, until: 0, expired: false }
+  var value = line.slice(4)
+  var until = Number(value)
+  if (value === "") return { enabled: true, until: 0, expired: false }
+  if (!isFinite(until) || until <= now) return { enabled: false, until: 0, expired: true }
+  return { enabled: true, until: until, expired: false }
+}
+
 function secondsFromConfig(value, fallback) {
   var n = Number(value)
   if (!isFinite(n) || n < 0) return fallback
@@ -45,6 +55,7 @@ function screensaverWindowsAfter(windows, address, visible) {
 
 if (typeof module !== "undefined") {
   module.exports = {
+    stayAwakeState: stayAwakeState,
     secondsFromConfig: secondsFromConfig,
     eventParts: eventParts,
     screensaverWindowsAfter: screensaverWindowsAfter

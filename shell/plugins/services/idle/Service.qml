@@ -28,7 +28,9 @@ Item {
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
   property bool hasPendingStayAwakePersist: false
-  property bool pendingStayAwakePersist: false
+  property var pendingStayAwakePersist: null
+  property double stayAwakeUntil: 0
+  property int stayAwakeRevision: 0
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
   property string lastEvent: "starting"
@@ -181,6 +183,7 @@ Item {
     return JSON.stringify({
       enabled: root.idleEnabled,
       stayAwake: root.stayAwake,
+      stayAwakeUntil: root.stayAwakeUntil,
       stayAwakeStateLoaded: root.stayAwakeStateLoaded,
       stayAwakeStatePath: root.stayAwakeStatePath,
       idle: idleMonitor.isIdle,
@@ -206,13 +209,13 @@ Item {
     })
   }
 
-  function persistStayAwake(value) {
+  function persistStayAwake(value, until) {
     var command = value
-      ? "mkdir -p \"$HOME/.local/state/omarchy/indicators\" && touch \"$HOME/.local/state/omarchy/indicators/stay-awake\""
+      ? "mkdir -p \"$HOME/.local/state/omarchy/indicators\" && printf '%s' '" + (until > 0 ? String(until) : "") + "' > \"$HOME/.local/state/omarchy/indicators/stay-awake\""
       : "rm -f \"$HOME/.local/state/omarchy/indicators/stay-awake\""
 
     if (stayAwakeStateWriter.running) {
-      root.pendingStayAwakePersist = !!value
+      root.pendingStayAwakePersist = { value: !!value, until: until }
       root.hasPendingStayAwakePersist = true
       return
     }
@@ -222,14 +225,18 @@ Item {
   }
 
   function refreshStayAwakeState() {
-    if (!stayAwakeStateProbe.running) stayAwakeStateProbe.running = true
+    if (!stayAwakeStateWriter.running && !stayAwakeStateProbe.running) stayAwakeStateProbe.running = true
   }
 
-  function applyStayAwake(value, persist, reason) {
+  function applyStayAwake(value, persist, reason, until) {
     var enabled = !!value
     var changed = !root.stayAwakeStateLoaded || root.stayAwake !== enabled
 
-    if (persist) persistStayAwake(enabled)
+    root.stayAwakeUntil = enabled ? Number(until || 0) : 0
+    if (persist) {
+      root.stayAwakeRevision++
+      persistStayAwake(enabled, root.stayAwakeUntil)
+    }
 
     root.stayAwake = enabled
     root.stayAwakeStateLoaded = true
@@ -245,6 +252,21 @@ Item {
 
   function setIdleEnabled(value) {
     return applyStayAwake(!value, true, "ipc")
+  }
+
+  function stayAwakeFor(seconds) {
+    var duration = Number(seconds)
+    if (!isFinite(duration) || duration <= 0) return "invalid duration"
+    return applyStayAwake(true, true, "timed", Date.now() + Math.ceil(duration * 1000))
+  }
+
+  Timer {
+    interval: 1000
+    repeat: true
+    running: root.stayAwake && root.stayAwakeUntil > 0
+    onTriggered: {
+      if (Date.now() >= root.stayAwakeUntil) root.setIdleEnabled(true)
+    }
   }
 
   IdleMonitor {
@@ -300,11 +322,21 @@ Item {
 
   Process {
     id: stayAwakeStateProbe
-    command: ["bash", "-c", "mkdir -p \"$HOME/.local/state/omarchy/indicators\"; if [[ -f $HOME/.local/state/omarchy/indicators/stay-awake ]]; then echo yes; else echo no; fi"]
+    property int revision: 0
+    onRunningChanged: if (running) revision = root.stayAwakeRevision
+    command: ["bash", "-c", "mkdir -p \"$HOME/.local/state/omarchy/indicators\"; if [[ -f $HOME/.local/state/omarchy/indicators/stay-awake ]]; then printf 'yes:'; cat \"$HOME/.local/state/omarchy/indicators/stay-awake\"; echo; else echo no; fi"]
     stdout: SplitParser {
-      onRead: function(line) { root.applyStayAwake(String(line).trim() === "yes", false, "state-file") }
+      onRead: function(line) {
+        if (stayAwakeStateProbe.revision !== root.stayAwakeRevision || stayAwakeStateWriter.running || root.hasPendingStayAwakePersist) return
+        var state = IdleModel.stayAwakeState(String(line).trim(), Date.now())
+        root.applyStayAwake(state.enabled, state.expired, "state-file", state.until)
+      }
     }
-    onExited: function() { stayAwakeStateDirWatcher.reload() }
+    onExited: function() {
+      stayAwakeStateDirWatcher.reload()
+      stayAwakeStateWatcher.reload()
+      if (revision !== root.stayAwakeRevision) root.refreshStayAwakeState()
+    }
   }
 
   Process {
@@ -313,7 +345,7 @@ Item {
       if (root.hasPendingStayAwakePersist) {
         var pending = root.pendingStayAwakePersist
         root.hasPendingStayAwakePersist = false
-        root.persistStayAwake(pending)
+        root.persistStayAwake(pending.value, pending.until)
         return
       }
 
@@ -324,6 +356,14 @@ Item {
   FileView {
     id: stayAwakeStateDirWatcher
     path: root.stayAwakeStateDir
+    watchChanges: true
+    printErrors: false
+    onFileChanged: root.refreshStayAwakeState()
+  }
+
+  FileView {
+    id: stayAwakeStateWatcher
+    path: root.stayAwakeStatePath
     watchChanges: true
     printErrors: false
     onFileChanged: root.refreshStayAwakeState()
@@ -351,6 +391,10 @@ Item {
 
     function disable(): string {
       return root.setIdleEnabled(false)
+    }
+
+    function stayAwakeFor(seconds: int): string {
+      return root.stayAwakeFor(seconds)
     }
 
     function toggle(): string {

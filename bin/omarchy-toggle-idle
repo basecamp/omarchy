@@ -32,7 +32,7 @@ apply_state() {
   case "$1" in
     stay-awake)
       mkdir -p "$STATE_DIR"
-      touch "$STATE_FILE"
+      : > "$STATE_FILE"
       ;;
     allow-idle)
       rm -f "$STATE_FILE"
