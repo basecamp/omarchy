@@ -12,6 +12,14 @@ assert(
 )
 
 assert(
+  backgroundQml.includes('command: ["omarchy-menu", "toggle", "apps"]') &&
+    /id: appsMenuTimer\s+interval: Qt\.styleHints\.mouseDoubleClickInterval\s+onTriggered: root\.openAppsMenu\(\)/.test(backgroundQml) &&
+    /onClicked: function\(mouse\) \{\s+if \(mouse\.button === Qt\.RightButton\) appsMenuTimer\.restart\(\)/.test(backgroundQml) &&
+    /onDoubleClicked: function\(mouse\) \{\s+appsMenuTimer\.stop\(\)/.test(backgroundQml),
+  'right click on the desktop opens the apps menu once the double-click interval has passed'
+)
+
+assert(
   backgroundQml.includes('pendingThemeFallbackTimer.restart()') &&
     backgroundQml.includes('pendingThemeFallbackTimer.stop()') &&
     backgroundQml.includes('id: pendingThemeFallbackTimer') &&
