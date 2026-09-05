@@ -143,6 +143,10 @@ assert(
   'clipboard End selects the last entry'
 )
 assert(
+  /Qt\.Key_J \|\| event\.key === Qt\.Key_K\) && \(event\.modifiers & Qt\.ControlModifier\)[\s\S]*root\.select\(event\.key === Qt\.Key_J \? 1 : -1\)/.test(clipboardQml),
+  'clipboard Ctrl+J and Ctrl+K mirror Down and Up selection'
+)
+assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(clipboardQml),
   'clipboard uses shared pointer movement gate in card coordinates'
 )

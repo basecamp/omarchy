@@ -215,6 +215,14 @@ Item {
           } else if (event.key === Qt.Key_Down) {
             root.selectRow(1)
             event.accepted = true
+          } else if ((event.key === Qt.Key_H || event.key === Qt.Key_L) && (event.modifiers & Qt.ControlModifier)) {
+            // Ctrl+H / Ctrl+L mirror Left / Right in the grid.
+            root.select(event.key === Qt.Key_L ? 1 : -1)
+            event.accepted = true
+          } else if ((event.key === Qt.Key_J || event.key === Qt.Key_K) && (event.modifiers & Qt.ControlModifier)) {
+            // Ctrl+J / Ctrl+K mirror Down / Up for vim-style grid navigation.
+            root.selectRow(event.key === Qt.Key_J ? 1 : -1)
+            event.accepted = true
           } else if (event.key === Qt.Key_PageUp) {
             root.selectPage(-1)
             event.accepted = true

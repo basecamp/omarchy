@@ -1136,7 +1136,7 @@ Item {
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
-          } else if ((event.key === Qt.Key_Backspace || event.key === Qt.Key_Left) && !root.filterText) {
+          } else if ((event.key === Qt.Key_Backspace || event.key === Qt.Key_Left || (event.key === Qt.Key_H && (event.modifiers & Qt.ControlModifier))) && !root.filterText) {
             root.goBack()
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
@@ -1145,13 +1145,17 @@ Item {
           } else if (event.key === Qt.Key_Down) {
             root.select(1)
             event.accepted = true
+          } else if ((event.key === Qt.Key_J || event.key === Qt.Key_K) && (event.modifiers & Qt.ControlModifier)) {
+            // Ctrl+J / Ctrl+K mirror Down / Up for vim-style menu navigation.
+            root.select(event.key === Qt.Key_J ? 1 : -1)
+            event.accepted = true
           } else if (event.key === Qt.Key_PageUp) {
             root.select(-6)
             event.accepted = true
           } else if (event.key === Qt.Key_PageDown) {
             root.select(6)
             event.accepted = true
-          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right) {
+          } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Right || (event.key === Qt.Key_L && (event.modifiers & Qt.ControlModifier))) {
             if (root.dmenuActive) {
               if (root.mode === "input") root.applyDmenuSelection(root.filterText)
               else if (displayModel.count > 0) root.activateIndex(root.cursorActive ? root.selectedIndex : 0)

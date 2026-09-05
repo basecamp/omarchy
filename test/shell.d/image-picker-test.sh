@@ -51,4 +51,8 @@ assert(
   /source: item\.sourceActivated && item\.thumbnailPath \? Util\.fileUrl\(item\.thumbnailPath\) : ""[\s\S]*asynchronous: false/.test(imagePickerQml),
   'image picker loads activated thumbnails synchronously to avoid carousel flicker'
 )
+assert(
+  /Qt\.Key_H \|\| event\.key === Qt\.Key_L\) && \(event\.modifiers & Qt\.ControlModifier\)[\s\S]*root\.selectAdjacent\(event\.key === Qt\.Key_L \? 1 : -1\)/.test(imagePickerQml),
+  'image picker Ctrl+H and Ctrl+L mirror Left and Right'
+)
 JS

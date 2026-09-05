@@ -9,11 +9,21 @@ const fs = require('fs')
 const emojis = requireFromRoot('shell/plugins/emojis/EmojiSearch.js')
 
 const raw = fs.readFileSync(path.join(root, 'shell/plugins/emojis/emojis.json'), 'utf8')
+const emojiQml = fs.readFileSync(path.join(root, 'shell/plugins/emojis/Emojis.qml'), 'utf8')
 const data = emojis.parseEmojis(raw)
 
 assert(data.length > 1000, 'emoji dataset parses')
 assertDeepEqual(emojis.parseEmojis('{'), [], 'invalid emoji JSON parses as empty list')
 assertDeepEqual(emojis.parseEmojis('{"e":"nope"}'), [], 'non-array emoji JSON parses as empty list')
+
+assert(
+  /Qt\.Key_H \|\| event\.key === Qt\.Key_L\) && \(event\.modifiers & Qt\.ControlModifier\)[\s\S]*root\.select\(event\.key === Qt\.Key_L \? 1 : -1\)/.test(emojiQml),
+  'emoji grid Ctrl+H and Ctrl+L mirror Left and Right'
+)
+assert(
+  /Qt\.Key_J \|\| event\.key === Qt\.Key_K\) && \(event\.modifiers & Qt\.ControlModifier\)[\s\S]*root\.selectRow\(event\.key === Qt\.Key_J \? 1 : -1\)/.test(emojiQml),
+  'emoji grid Ctrl+J and Ctrl+K mirror Down and Up rows'
+)
 
 const fixture = [
   { e: 'a', k: 'grinning face smile happy' },
