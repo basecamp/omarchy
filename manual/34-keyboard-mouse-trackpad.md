@@ -61,6 +61,12 @@ On Dell XPS laptops with a haptic touchpad, you can also set the click strength 
 
 Omarchy runs the [fcitx5](https://fcitx-im.org/) input method framework as part of every session — it's what powers the CapsLock compose sequences. That means the plumbing for non-Latin input is already in place: install an input engine like `fcitx5-mozc` (Japanese) or `fcitx5-chinese-addons` (Chinese) with `omarchy pkg add`, plus `fcitx5-configtool` to add the engine to your input methods and set the key that switches between them.
 
+### Typing in Korean
+
+Korean is built in: pick _Korean_ as the keyboard layout during installation and the machine comes up with the [fcitx5-hangul](https://github.com/fcitx/fcitx5-hangul) engine configured. You type English until you press the 한/영 key (or Ctrl+Space on keyboards without one), which toggles Hangul on and off. Caps Lock stays the compose key, as on every other layout.
+
+On a machine installed with a different layout, the same setup is two steps away: run `omarchy pkg add fcitx5-configtool`, then add _Hangul_ to your input methods and set the toggle key. Some Korean keyboards (like Apple's Magic Keyboard) wire the 한/영 key as plain Caps Lock; there you'll want a custom toggle key, or an xkb option that remaps Caps Lock to the Hangul keysym.
+
 ### Use ALT as SUPER
 
 On some keyboards, it's not convenient to use the primary meta key (Windows/cmd key) as SUPER. You can change this to be ALT instead using this change:

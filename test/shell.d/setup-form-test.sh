@@ -133,6 +133,12 @@ assert_status 0 "keyboard prompt succeeds"
 grep -qF -- '--selected English (US)' "$GUM_ARGS" || fail "keyboard prompt preselects English (US)"
 pass "keyboard prompt maps the chosen label to its keymap"
 
+run_prompt omarchy_prompt_keyboard "0:Korean"
+assert_status 0 "keyboard prompt accepts Korean"
+[[ $(field keyboard) == "kr" ]] ||
+  fail "Korean resolves to kr, the XKB marker apply_keyboard persists in place of a console keymap kbd does not ship"
+pass "keyboard prompt maps Korean to the kr marker"
+
 run_prompt omarchy_prompt_keyboard "1:"
 assert_status "$OMARCHY_FORM_BACK" "keyboard prompt reports Esc as back"
 assert_returned "keyboard prompt survives Esc under set -e"

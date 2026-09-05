@@ -57,6 +57,7 @@ Irish|ie
 Italian|it
 Japanese|jp106
 Kazakh|kazakh
+Korean|kr
 Kyrgyz|kyrgyz
 Lao|la-latin1
 Latvian|lv

@@ -616,6 +616,21 @@ confirm_reboot() {
 # the picker no longer offers any such layout).
 apply_keyboard() {
   local keymap="$1"
+
+  # Korean is the one choice that isn't a console keymap: kbd ships no Korean
+  # map, and Korean keyboards type Latin on the US map anyway — Hangul comes
+  # from the fcitx5 IME. Persist us for the console but kr as the XKB layout,
+  # which is how Hyprland and the per-user first-run recognize a Korean machine.
+  if [[ $keymap == "kr" ]]; then
+    apply_keyboard us
+    if grep -q '^XKBLAYOUT=' /etc/vconsole.conf 2>/dev/null; then
+      sed -i 's/^XKBLAYOUT=.*/XKBLAYOUT=kr/' /etc/vconsole.conf
+    else
+      echo "XKBLAYOUT=kr" >>/etc/vconsole.conf
+    fi
+    return 0
+  fi
+
   [[ $(tty 2>/dev/null) == /dev/tty* ]] && loadkeys "$keymap" 2>/dev/null || true
 
   if localectl --no-pager list-keymaps 2>/dev/null | grep -qix "$keymap"; then
