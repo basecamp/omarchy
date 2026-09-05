@@ -14,6 +14,3 @@ fi
 
 # Optional user overrides kept for compatibility with older installs.
 [ -f "$HOME/.config/uwsm/default" ] && . "$HOME/.config/uwsm/default"
-
-# Activate mise if present on the system
-omarchy-cmd-present mise && eval "$(mise activate bash --shims)"
