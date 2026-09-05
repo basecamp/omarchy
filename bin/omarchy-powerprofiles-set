@@ -27,6 +27,11 @@ case "$action" in
   *) usage ;;
 esac
 
+# TLP masks power-profiles-daemon; calling powerprofilesctl then SIGABRTs.
+if ! systemctl is-active --quiet power-profiles-daemon.service; then
+  exit 0
+fi
+
 mapfile -t profiles < <(omarchy-powerprofiles-list)
 
 profile_available() {
