@@ -1426,10 +1426,25 @@ Item {
     }
 
     onPressed: function(mouse) {
+      // A leaked move has no dragging area to finish it, and onReleased no-ops
+      // when dragging is false, so a new press has to dismiss the ghost itself.
+      if (root.barMoveActive)
+        root.clearBarMove()
       dragging = false
       suppressClick = false
       pressedX = mouse.x
       pressedY = mouse.y
+    }
+
+    onPressedChanged: {
+      // pressedChanged fires before released. Defer so a real release can still
+      // finish the move; a dropped grab still has dragging set when this runs.
+      if (pressed || !dragging) return
+      Qt.callLater(function() {
+        if (!gestureArea.dragging || gestureArea.pressed) return
+        gestureArea.dragging = false
+        root.clearBarMove()
+      })
     }
 
     onPressAndHold: function(mouse) {
@@ -1466,6 +1481,9 @@ Item {
       suppressClick = false
       root.clearBarMove()
     }
+
+    // The bar root outlives this area across a Loader swap or remap.
+    Component.onDestruction: if (dragging) root.clearBarMove()
 
     onClicked: function(mouse) {
       if (suppressClick) {

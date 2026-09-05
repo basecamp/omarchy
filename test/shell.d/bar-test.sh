@@ -30,6 +30,27 @@ if ! perl -0ne 'exit(/onPressAndHold:\s*function[^{]*\{[^}]*?\bpressed\b[^}]*?\b
 fi
 pass "bar move ignores a press-and-hold propagated from a widget above"
 
+# The move flag lives on the bar root, so a Loader swap, remap, or dropped
+# grab can destroy or reset the gesture area without released/canceled. The
+# area has to cancel on the way down, after a lost press, and on a later click.
+if ! perl -0ne 'exit(/component CenterGestureArea: MouseArea \{.*?Component\.onDestruction:\s*if\s*\(\s*dragging\s*\)\s*root\.clearBarMove/s ? 0 : 1)' \
+  "$ROOT/shell/plugins/bar/Bar.qml"; then
+  fail "bar move clears when the gesture area is destroyed mid-drag"
+fi
+pass "bar move clears when the gesture area is destroyed mid-drag"
+
+if ! perl -0ne 'exit(/component CenterGestureArea: MouseArea \{.*?onPressedChanged:.*?Qt\.callLater\(.*?clearBarMove/s ? 0 : 1)' \
+  "$ROOT/shell/plugins/bar/Bar.qml"; then
+  fail "bar move clears after a dropped grab that never released"
+fi
+pass "bar move clears after a dropped grab that never released"
+
+if ! perl -0ne 'exit(/component CenterGestureArea: MouseArea \{.*?onPressed:\s*function[^{]*\{[^}]*barMoveActive[^}]*clearBarMove/s ? 0 : 1)' \
+  "$ROOT/shell/plugins/bar/Bar.qml"; then
+  fail "bar move dismisses a leftover ghost on a new press"
+fi
+pass "bar move dismisses a leftover ghost on a new press"
+
 run_node_test <<'JS'
 const fs = require('fs')
 const bar = requireFromRoot('shell/plugins/bar/BarModel.js')
