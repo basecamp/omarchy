@@ -1,0 +1,77 @@
+#!/bin/bash
+# omarchy:summary=Open a web search (or URL) for the given query in a web app
+# omarchy:group=query
+# omarchy:args=[provider] <query>
+#
+# Usage: omarchy-query-web [provider] <query>
+#   provider  one of: google (default), duckduckgo, bing, amazon, youtube, github, wikipedia
+#   query     the text to search for, or a bare URL to open directly
+#
+# The query is URL-encoded and handed to `omarchy-launch-webapp`, which opens it
+# as a chromeless app window in the user's supported browser. The provider name
+# is taken from $1 only when it matches a known provider, so "omarchy-query-web
+# hello world" searches Google for "hello world" rather than treating hello as
+# the provider.
+
+set -euo pipefail
+
+PROVIDERS="google duckduckgo bing amazon youtube github wikipedia"
+
+# --print: only emit the resolved URL instead of opening it. Used by the menu
+# query-plugin, which inserts the URL as a row and opens it on Enter.
+print_only=0
+if [[ "${1:-}" == "--print" ]]; then
+  print_only=1
+  shift
+fi
+
+query="${1:-}"
+provider="google"
+
+# If the first argument is a known provider, shift it off and treat the rest as
+# the query.
+for p in $PROVIDERS; do
+  if [[ "$query" == "$p" ]]; then
+    provider="$p"
+    query="${2:-}"
+    break
+  fi
+done
+
+[[ -z "$query" ]] && exit 0
+
+# A bare http(s) URL is opened directly instead of searched.
+case "$query" in
+  http://*|https://*)
+    encoded="$query"
+    ;;
+  *)
+    encoded="$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$query")"
+    ;;
+esac
+
+# A bare http(s) URL skips the search prefix entirely.
+if [[ "$query" == http://* || "$query" == https://* ]]; then
+  if [[ "$print_only" -eq 1 ]]; then
+    printf '%s\n' "$query"
+    exit 0
+  fi
+  exec omarchy-launch-webapp "$query"
+fi
+
+base=""
+case "$provider" in
+  google)     base="https://www.google.com/search?q=" ;;
+  duckduckgo) base="https://duckduckgo.com/?q=" ;;
+  bing)       base="https://www.bing.com/search?q=" ;;
+  amazon)     base="https://www.amazon.com/s?k=" ;;
+  youtube)    base="https://www.youtube.com/results?search_query=" ;;
+  github)     base="https://github.com/search?q=" ;;
+  wikipedia)  base="https://en.wikipedia.org/w/index.php?search=" ;;
+esac
+
+if [[ "$print_only" -eq 1 ]]; then
+  printf '%s%s\n' "$base" "$encoded"
+else
+  exec omarchy-launch-webapp "${base}${encoded}"
+fi
