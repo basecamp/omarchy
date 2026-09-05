@@ -69,7 +69,7 @@ omarchy-pkg-add|omarchy-pkg-aur-add)
   firefox) command=firefox ;;
   zen-browser-bin) command=zen-browser ;;
   cursor-bin) command=cursor ;;
-  sublime-text-4) command=sublime_text ;;
+  sublime-text-4) command=subl ;;
   vim) command=vim ;;
   neovim) command=nvim ;;
   esac
@@ -169,7 +169,7 @@ editor_cases=(
   'code code editor:vscode'
   'cursor cursor pkg:cursor-bin'
   'zed zeditor editor:zed'
-  'sublime_text sublime_text pkg:sublime-text-4'
+  'sublime_text subl pkg:sublime-text-4'
   'helix helix editor:helix'
   'vim vim pkg:vim'
   'emacs emacs editor:emacs'
@@ -296,6 +296,13 @@ for entry in "${editor_cases[@]}"; do
   [[ $(omarchy-default-editor) == "$command" ]] || fail "$selection becomes the default editor after installation"
 done
 pass "editor defaults install every missing editor before selection"
+
+mkdir -p "$test_home/.local/state/omarchy/defaults"
+printf '%s\n' sublime_text >"$test_home/.local/state/omarchy/defaults/editor"
+touch "$installed_dir/subl"
+[[ $(omarchy-default-editor) == subl ]] || fail "stored sublime_text reports as subl"
+pass "legacy sublime_text default reports as subl"
+
 
 : >"$install_log"
 : >"$terminal_log"

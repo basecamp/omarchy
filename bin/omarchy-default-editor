@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Set the default editor used by omarchy-launch-editor
-# omarchy:args=[code|cursor|zed|sublime_text|helix|vim|emacs|nvim]
+# omarchy:args=[code|cursor|zed|sublime_text|subl|helix|vim|emacs|nvim]
 # omarchy:examples=omarchy default editor | omarchy default editor code | omarchy default editor helix
 
 installing=false
@@ -17,6 +17,9 @@ if (($# == 0)); then
     read -r editor <"$editor_file"
   fi
 
+  # sublime-text-4 puts `subl` on PATH, not the desktop id sublime_text.
+  [[ $editor == "sublime_text" ]] && editor="subl"
+
   [[ -n $editor ]] && echo "$editor" || echo "nvim"
   exit 0
 fi
@@ -25,13 +28,13 @@ case "$1" in
 code) selection="code"; editor="code"; name="VSCode"; glyph= ;;
 cursor) selection="cursor"; editor="cursor"; name="Cursor"; glyph= ;;
 zed | zeditor) selection="zed"; editor="zeditor"; name="Zed"; glyph= ;;
-sublime_text) selection="sublime_text"; editor="sublime_text"; name="Sublime Text"; glyph= ;;
+sublime_text | subl) selection="sublime_text"; editor="subl"; name="Sublime Text"; glyph= ;;
 helix) selection="helix"; editor="helix"; name="Helix"; glyph= ;;
 vim) selection="vim"; editor="vim"; name="Vim"; glyph= ;;
 emacs) selection="emacs"; editor="emacs"; name="Emacs"; glyph= ;;
 nvim) selection="nvim"; editor="nvim"; name="Neovim"; glyph= ;;
 *)
-  echo "Usage: omarchy-default-editor <code|cursor|zed|sublime_text|helix|vim|emacs|nvim>"
+  echo "Usage: omarchy-default-editor <code|cursor|zed|sublime_text|subl|helix|vim|emacs|nvim>"
   exit 1
   ;;
 esac
