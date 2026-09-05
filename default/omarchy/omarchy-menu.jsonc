@@ -285,7 +285,7 @@
   "remove.theme": {"icon":"󰸌","label":"Theme","action":"omarchy-theme-remove"},
   "remove.gaming": {"icon":"","label":"Gaming","title":"Remove"},
   "remove.browser": {"icon":"","label":"Browser","title":"Remove"},
-  "remove.webapp": {"icon":"","label":"Web App","when":"grep -qE '^Exec=.*(omarchy-launch-webapp|omarchy-webapp-handler)' $HOME/.local/share/applications/*.desktop","action":"omarchy-webapp-remove"},
+  "remove.webapp": {"icon":"","label":"Web App","when":"omarchy-webapp-present","action":"omarchy-webapp-remove"},
   "remove.tui": {"icon":"","label":"TUI","when":"grep -qE '^Exec=.*(\\$TERMINAL|xdg-terminal-exec).*-e' $HOME/.local/share/applications/*.desktop","action":"omarchy-tui-remove"},
   "remove.windows": {"icon":"󰍲","label":"Windows","when":"[[ -f $HOME/.local/share/applications/windows-vm.desktop ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-windows-vm remove'"},
   "remove.preinstalls": {"icon":"󰏓","label":"Preinstalls","when":"[[ ! -f $HOME/.local/state/omarchy/preinstalls-removed ]]","action":"omarchy-launch-floating-terminal-with-presentation omarchy-remove-preinstalls"},

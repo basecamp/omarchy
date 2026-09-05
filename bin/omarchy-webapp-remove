@@ -21,8 +21,9 @@ while IFS= read -r -d '' file; do
   fi
 done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0 2>/dev/null)
 
-# The launcher matching a chosen name, or empty when nothing was indexed under
-# it (an app removed between the scan and the pick, say).
+# The launcher matching a chosen name, or empty when the name does not match
+# anything the scan indexed -- which the picker can return, because it parses a
+# tab in an option as its own separator and hands back only what follows.
 path_for_web_app() {
   local wanted="$1" i
   for i in "${!WEB_APPS[@]}"; do
@@ -37,12 +38,21 @@ if (( $# == 0 )); then
   if ((${#WEB_APPS[@]})); then
     mapfile -t SORTED_WEB_APPS < <(printf '%s\n' "${WEB_APPS[@]}" | sort)
     APP_NAME=$(omarchy-menu-select "Select web app to remove" "${SORTED_WEB_APPS[@]}" -- --width 520 --maxheight 520)
+    # The picker offers names the scan produced, so the file a name came from is
+    # the file to delete. Rebuilding a path out of the name cannot reach a
+    # launcher an older install nested inside directories.
+    DESKTOP_FILE=$(path_for_web_app "$APP_NAME")
   else
     echo "No web apps to remove."
     exit 1
   fi
 else
   APP_NAME="$*"
+  # A name from a caller has always meant the launcher of that name in the
+  # applications directory, and omarchy-remove-service-tailscale and its
+  # siblings pass fixed ones. Resolving those through the scan lets a nested
+  # launcher that merely shares a basename answer to them.
+  DESKTOP_FILE="$DESKTOP_DIR/$APP_NAME.desktop"
 fi
 
 if [[ -z $APP_NAME ]]; then
@@ -51,8 +61,14 @@ if [[ -z $APP_NAME ]]; then
 fi
 
 icon_name=$(printf '%s\n' "$APP_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^[:alnum:]]\+/-/g; s/^-//; s/-$//')
-desktop_file=$(path_for_web_app "$APP_NAME")
-rm -f "${desktop_file:-$DESKTOP_DIR/$APP_NAME.desktop}"
+# A name the index cannot place is not an invitation to guess: reconstructing a
+# top-level path from it deletes whatever happens to sit there.
+if [[ -z $DESKTOP_FILE ]]; then
+  echo "No web app launcher found for: $APP_NAME"
+  exit 1
+fi
+
+rm -f "$DESKTOP_FILE"
 rm -f "$ICON_DIR/$icon_name.png" "$ICON_DIR/$APP_NAME.png" "$OLD_ICON_DIR/$APP_NAME.png"
 
 if [[ ${OMARCHY_REMOVE_NOTIFY:-true} != "false" ]]; then

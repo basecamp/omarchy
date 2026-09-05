@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true if any web app launcher is installed.
+
+DESKTOP_DIR="$HOME/.local/share/applications"
+
+# Look for launchers exactly the way omarchy-webapp-remove does, so the menu
+# cannot offer a row the remover finds nothing for, or hide one it could have
+# removed: find descends into the directories an older omarchy-webapp-install
+# made out of a slash in the name, and reads a launcher that is a symlink.
+while IFS= read -r -d '' file; do
+  if grep -q '^Exec=.*\(omarchy-launch-webapp\|omarchy-webapp-handler\).*' "$file" 2>/dev/null; then
+    exit 0
+  fi
+done < <(find "$DESKTOP_DIR" -name '*.desktop' -print0 2>/dev/null)
+
+exit 1
