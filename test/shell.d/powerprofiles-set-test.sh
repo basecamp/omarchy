@@ -77,6 +77,20 @@ rg -F '["omarchy-powerprofiles-set", pendingPowerSource]' "$ROOT/shell/plugins/s
   fail "battery service applies profiles through Omarchy command"
 pass "battery service applies profiles through Omarchy command"
 
+rg -F '["omarchy-hook", "power-source-change", pendingPowerSourceHook]' "$ROOT/shell/plugins/services/battery/Service.qml" >/dev/null ||
+  fail "battery service dispatches the power source hook with the active source"
+rg -F 'onExited: if (root.pendingPowerSourceHook !== "") root.runPendingPowerSourceHook()' "$ROOT/shell/plugins/services/battery/Service.qml" >/dev/null ||
+  fail "battery service serializes power source hook runs"
+rg -F 'root.dispatchPowerSourceHook()' "$ROOT/shell/plugins/services/battery/Service.qml" >/dev/null ||
+  fail "battery service dispatches the hook when UPower reports a source change"
+pass "battery service dispatches serialized power source change hooks"
+
+[[ -f $ROOT/config/omarchy/hooks/power-source-change.d/show-power-source-notification.sample ]] ||
+  fail "power source hook ships an example"
+rg -F '| `power-source-change` | When switching between AC and battery power (`ac` or `battery` in `$1`) |' "$ROOT/manual/31-dotfiles.md" >/dev/null ||
+  fail "manual documents the power source hook argument"
+pass "power source hook ships an example and documentation"
+
 rg -F 'omarchy-powerprofiles-set autodetect' "$ROOT/shell/plugins/menu/Menu.qml" >/dev/null ||
   fail "power profile menu persists selections through Omarchy command"
 pass "power profile menu persists selections through Omarchy command"

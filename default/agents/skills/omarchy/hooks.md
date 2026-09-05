@@ -16,6 +16,7 @@ file first, if one exists.
 ├── post-boot.d/            # After the desktop starts
 ├── post-update.d/          # During `omarchy update`, after system packages and migrations
 ├── pre-refresh-pacman.d/   # Before `omarchy refresh pacman` re-syncs packages
+├── power-source-change.d/  # After switching power source (`ac` or `battery` in $1)
 └── theme-set.d/            # After theme change (theme slug in $1)
 ```
 

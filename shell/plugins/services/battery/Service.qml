@@ -12,6 +12,17 @@ Item {
 
   readonly property int batteryThreshold: 10
   property string pendingPowerSource: ""
+  property string pendingPowerSourceHook: ""
+  property string lastPowerSource: ""
+
+  // UPower hydrates OnBattery before the display device becomes ready. Seed
+  // the baseline then, including when this service loads into an existing shell.
+  Component.onCompleted: initializePowerSource()
+
+  function initializePowerSource() {
+    if (UPower.displayDevice.ready && lastPowerSource === "")
+      lastPowerSource = UPower.onBattery ? "battery" : "ac"
+  }
 
   PersistentProperties {
     id: persisted
@@ -53,11 +64,31 @@ Item {
     powerProfileProcess.running = true
   }
 
+  function dispatchPowerSourceHook() {
+    if (lastPowerSource === "") return
+    var source = UPower.onBattery ? "battery" : "ac"
+    if (source === lastPowerSource) return
+    lastPowerSource = source
+    pendingPowerSourceHook = source
+    if (!powerSourceHookProcess.running) runPendingPowerSourceHook()
+  }
+
+  function runPendingPowerSourceHook() {
+    powerSourceHookProcess.command = ["omarchy-hook", "power-source-change", pendingPowerSourceHook]
+    pendingPowerSourceHook = ""
+    powerSourceHookProcess.running = true
+  }
+
   Process { id: warningProcess }
 
   Process {
     id: powerProfileProcess
     onExited: if (root.pendingPowerSource !== "") root.runPendingPowerProfile()
+  }
+
+  Process {
+    id: powerSourceHookProcess
+    onExited: if (root.pendingPowerSourceHook !== "") root.runPendingPowerSourceHook()
   }
 
   Timer {
@@ -69,10 +100,16 @@ Item {
   }
 
   Connections {
+    target: UPower.displayDevice
+    function onReadyChanged() { root.initializePowerSource() }
+  }
+
+  Connections {
     target: UPower
     function onOnBatteryChanged() {
       root.checkBattery()
       root.applyPowerProfile()
+      root.dispatchPowerSourceHook()
     }
   }
 }
