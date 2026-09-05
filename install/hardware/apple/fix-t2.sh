@@ -13,6 +13,13 @@ if lspci -nn | grep "106b:180[12]" >/dev/null; then
   # Enable T2 fan control
   systemctl enable t2fanrd.service
 
+  # Do not create a DHCP connection for the internal T2 USB Ethernet link.
+  # Keep USB Ethernet adapters and manually configured connections available.
+  if [[ ! -e /etc/NetworkManager/conf.d/90-omarchy-t2-ncm.conf ]]; then
+    install -Dm644 "$OMARCHY_PATH/default/networkmanager/t2-ncm.conf" \
+      /etc/NetworkManager/conf.d/90-omarchy-t2-ncm.conf
+  fi
+
   mkdir -p /etc/modules-load.d
   {
     echo "t2bce_vhci"
