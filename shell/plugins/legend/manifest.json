@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.legend",
+  "name": "Shortcut legend",
+  "version": "1.0.0",
+  "description": "Themed keyboard-shortcut hint card any tool can show via IPC.",
+  "kinds": [
+    "panel"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "panel": "Legend.qml"
+  }
+}

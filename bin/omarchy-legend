@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# omarchy:summary=Show a themed keyboard-shortcut hint card
+# omarchy:args=[-e|--entry <key:action>]... [-c|--corner <top-left|top-right|bottom-left|bottom-right>] [--hide]
+# omarchy:examples=omarchy legend -e "drag:select & snap" -e "r:reset" | omarchy legend --hide
+
+set -euo pipefail
+
+corner="top-right"
+hide=0
+entries=()
+
+while (($#)); do
+  case $1 in
+    -e|--entry) entries+=("${2:-}"); shift 2 ;;
+    -c|--corner) corner="${2:-}"; shift 2 ;;
+    --hide) hide=1; shift ;;
+    -h|--help) omarchy legend --help; exit 0 ;;
+    *) echo "Unknown legend option: $1" >&2; exit 1 ;;
+  esac
+done
+
+if (( hide )); then
+  omarchy-shell -q legend close
+  exit 0
+fi
+
+entries_json="[]"
+if (( ${#entries[@]} > 0 )); then
+  entries_json=$(printf '%s\n' "${entries[@]}" | jq -R 'split(":") | [.[0], (.[1:] | join(":"))]' | jq -sc .)
+fi
+
+payload=$(jq -cn \
+  --argjson entries "$entries_json" \
+  --arg corner "$corner" \
+  '{entries:$entries,corner:$corner}')
+
+omarchy-shell -q legend show "$payload"
