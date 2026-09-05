@@ -12,6 +12,12 @@ The guest is unencrypted on purpose. A lab that cannot reboot without a typed LU
 
 ## Using it
 
+Setup installs its virtualization dependencies and the SSH proxy tool automatically. On a fresh installation with missing package databases, it first runs the normal Omarchy update flow, including keyrings and migrations; this updates that machine and may require a reboot. Failed updates stop installation and are retried before dependencies are installed. The same recovery handles the new guest's display-agent package.
+
+Installing Lab inside another VM requires nested KVM support. If the unused default libvirt network overlaps the outer VM's network, setup saves its original definition and chooses an unused private subnet. It refuses to renumber an active network or one already used by another VM.
+
+Install and privileged workbench actions show an opening state and close the workbench once the terminal is ready, keeping authentication and progress visible. A failed terminal launch leaves the workbench open with an error and retry available.
+
 Once it's installed, launch _Omarchy Lab_ from the app launcher. That starts the VM and opens its console through Omarchy's `virt-viewer` controller. Resize that window to change the guest resolution — Hyprland follows the SPICE framebuffer, so there is no resolution to pick in the installer.
 
 While the console is open, a Lab icon appears in the Omarchy bar. Open it for the complete Lab workbench. Drag the workbench by its header to move it, use `Alt`+arrow keys for keyboard movement, or press `Alt`+`Home` to recenter it. Its position is retained when you close and reopen it during the shell session. The _Console_ page changes aspect ratio, zoom, automatic resizing, cursor rendering, audio, and USB redirection, and can toggle fullscreen, take a screenshot, reboot, stop, or reset the guest. Enable _Keep in bar_ there if you want the Lab icon to remain available as a launcher after closing the viewer. Reset requires a second confirmation because it permanently discards the current overlay. The same panel is available from _Trigger > Lab Controls_ in the Omarchy menu.

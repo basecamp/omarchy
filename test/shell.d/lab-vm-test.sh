@@ -66,7 +66,7 @@ rg -q 'Virtual-\*' "$resize_helper" ||
 if rg -q '1920x1080|5120x1440|1280x800' "$resize_helper" "$ROOT/default/lab-vm/display-resize.service"; then
   fail "display-resize must not hard-code a host resolution"
 fi
-rg -q 'omarchy-pkg-add spice-vdagent' "$lab_vm" ||
+rg -q 'HYPERVISOR_PACKAGES=\(spice-vdagent\)' "$lab_vm" ||
   fail "configure_guest installs spice-vdagent so the client can publish framebuffer size"
 if rg -q 'LAB_VM_ROOT\|readlink -f.*BASH_SOURCE' "$lab_vm"; then
   fail "lab VM defaults must resolve through OMARCHY_PATH"
