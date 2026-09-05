@@ -57,7 +57,12 @@ app launcher.
 
 EOF
 
-  log="/tmp/omarchy-battlenet-installer.log"
+  # The wizard writes its whole transcript here while it runs. A fixed name in
+  # world-writable /tmp lets any other local account pre-plant a symlink at it
+  # and have the wizard's output written through to a file of their choosing,
+  # or read the log from outside. mktemp's file is unpredictable and 0600,
+  # which is the boundary.
+  log=$(mktemp "${TMPDIR:-/tmp}/omarchy-battlenet-installer.XXXXXXXX")
   setsid -f sh -c "umu-run '$installer' >'$log' 2>&1" </dev/null >/dev/null 2>&1
   echo "Installer log: $log"
   launched_installer=1
