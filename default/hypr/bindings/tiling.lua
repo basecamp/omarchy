@@ -91,7 +91,17 @@ o.bind("SUPER + ALT + mouse_down", "Next window in group", hl.dsp.group.next())
 o.bind("SUPER + ALT + mouse_up", "Previous window in group", hl.dsp.group.prev())
 
 for index = 1, 5 do
-  o.bind("SUPER + ALT + code:" .. tostring(index + 9), "Switch to group window " .. index, hl.dsp.group.active({ index = index }))
+  local group_index = index
+  local dispatcher = hl.dsp.group.active({ index = group_index })
+
+  o.bind("SUPER + ALT + code:" .. tostring(group_index + 9), "Switch to group window " .. group_index, function()
+    local window = hl.get_active_window()
+    local group = window and window.group
+
+    if group and group_index <= group.size then
+      hl.dispatch(dispatcher)
+    end
+  end)
 end
 
 o.bind("SUPER + SLASH", "Monitor scaling up", "omarchy-hyprland-monitor-scaling up")
