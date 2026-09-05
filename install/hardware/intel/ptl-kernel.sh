@@ -5,7 +5,12 @@ if omarchy-hw-match "XPS" && omarchy-hw-intel-ptl; then
   echo "Detected Dell XPS Panther Lake, installing PTL kernel..."
 
   omarchy-pkg-add linux-ptl linux-ptl-headers
-  pacman -Rdd --noconfirm linux linux-headers || true
+  # pacman -R aborts the whole transaction when any target is missing, so a
+  # machine without linux-headers would keep stock linux too.
+  for pkg in linux linux-headers; do
+    pacman -Qq "$pkg" &>/dev/null || continue
+    pacman -Rdd --noconfirm "$pkg" || echo "WARNING: could not remove $pkg"
+  done
 
   # linux-ptl doesn't provide=linux, so anything depending on linux drags the
   # stock kernel back in and the boot menu grows a second, slower entry.
