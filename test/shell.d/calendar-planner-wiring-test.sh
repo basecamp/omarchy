@@ -17,6 +17,8 @@ const proposalReview = fs.readFileSync(root + '/shell/plugins/panels/clock/Propo
 const plannerView = fs.readFileSync(root + '/shell/plugins/panels/clock/PlannerView.qml', 'utf8')
 const widget = fs.readFileSync(root + '/shell/plugins/panels/clock/BarWidget.qml', 'utf8')
 const panel = fs.readFileSync(root + '/shell/plugins/panels/clock/Panel.qml', 'utf8')
+const basePackages = fs.readFileSync(root + '/install/omarchy-base.packages', 'utf8')
+const solverMigration = fs.readFileSync(root + '/migrations/1788584591.sh', 'utf8')
 
 assert(manifest.kinds.includes('service'), 'clock manifest declares a service')
 assert(manifest.kinds.includes('bar-widget'), 'clock manifest retains the bar widget')
@@ -105,4 +107,6 @@ assert(!service.includes('notify-send'), 'planner service does not send raw noti
 assert(!service.includes('sqlite'), 'planner service does not use SQLite')
 assert(!service.includes('curl'), 'planner service does not use a network URL')
 assert(!service.includes('systemd'), 'planner service does not add a systemd unit')
+assert(basePackages.split(/\s+/).includes('omarchy-calendar-solver'), 'fresh installs include the calendar solver package')
+assert(solverMigration.includes('omarchy-pkg-add omarchy-calendar-solver'), 'existing installs receive the calendar solver through migration')
 JS
