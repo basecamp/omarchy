@@ -1368,12 +1368,16 @@ Panel {
 
           InfoLabel { text: "IP Address" }
           DetailValue {
+            Layout.columnSpan: 3
+            Layout.fillWidth: true
             text: root.info.ip || "--"
             copyable: !!root.info.ip
             tooltipText: "Copy IP"
           }
           InfoLabel { text: "Gateway" }
           DetailValue {
+            Layout.columnSpan: 3
+            Layout.fillWidth: true
             text: root.info.gateway || "--"
             copyable: !!root.info.gateway
             tooltipText: "Copy gateway"
