@@ -7,6 +7,13 @@
 # even after a theme switch (the inherited environment is captured at login).
 source omarchy-restart-gum
 
+# The presentation script itself runs as `bash -c`, which is non-interactive
+# and never sources default/bash/envs, so the shell-scoped BROWSER default is
+# missing inside this terminal. Tools that open a URL from that process tree
+# (an agent's OAuth flow, for one) would otherwise abort. Re-apply the same
+# default interactive shells get; a BROWSER the caller exported still wins.
+export BROWSER="${BROWSER:-omarchy-launch-browser}"
+
 cmd="$*"
 presentation_script="omarchy-show-logo; $cmd; if (( \$? != 130 )); then omarchy-show-done; fi"
 
