@@ -13,6 +13,9 @@ chromium_prefs="/usr/lib/chromium/initial_preferences"
 chromium_seed='{"distribution":{"require_eula":false},"browser":{"theme":{"color_scheme":0,"color_scheme2":0}}}'
 
 if [[ $(cat "$chromium_prefs" 2>/dev/null) != "$chromium_seed" ]]; then
-  sudo mkdir -p "$(dirname "$chromium_prefs")"
-  echo "$chromium_seed" | sudo tee "$chromium_prefs" >/dev/null
+  # Explicit modes: the migration runs under the caller's umask and sudo keeps
+  # it, so a bare mkdir and tee under `umask 077` leave the seed root-only, and
+  # Chromium, running as the user, lands back on the dialog this exists to skip.
+  sudo install -d -m 755 "$(dirname "$chromium_prefs")"
+  printf '%s\n' "$chromium_seed" | sudo install -m 644 -T /dev/stdin "$chromium_prefs"
 fi
