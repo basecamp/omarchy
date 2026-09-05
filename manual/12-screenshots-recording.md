@@ -42,7 +42,7 @@ Recording runs on gpu-screen-recorder, which encodes on the GPU at 60fps and fal
 
 While you're recording, a little indicator shows up in the bar. Click it to stop. You can also stop with `Alt + Print Screen` again, or with the _Stop Screenrecording_ entry under _Trigger > Capture > Screenrecord_, which only appears while something is actually recording.
 
-Stopping does a bit of tidying before it hands you the file: the first frame gets trimmed, and if there's audio it's normalized to -14 LUFS with the PipeWire capture pop at the very start muted out. Then a notification appears with a thumbnail from the recording. Click it to play the file in mpv.
+Stopping does a bit of tidying before it hands you the file: the first frame gets trimmed, and the PipeWire capture pop at the very start of the soundtrack is muted out. If the recording's audio is much quieter or louder than usual, you'll be asked whether to normalize it to typical streaming volume (YouTube, Spotify, and similar) — that helps spoken voice, but it raises quiet sounds and turns hot levels down, so you can keep the original levels instead. Recordings longer than 10 minutes skip that loudness check and ask immediately. Set `OMARCHY_SCREENRECORD_NORMALIZE=true` to always normalize, or `false` to never be asked. Then a notification appears with a thumbnail from the recording. Click it to play the file in mpv.
 
 ### The webcam overlay
 

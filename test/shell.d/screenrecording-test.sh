@@ -299,3 +299,299 @@ grep -F 'move = { "(monitor_w-monitor_h*2/9-40)", "(monitor_h-monitor_h/4-40)" }
 grep -F 'move = { "(monitor_w-monitor_h*3/10-40)", "(monitor_h-monitor_h*27/80-40)" }' "$webcam_rules" >/dev/null || \
   fail "large webcam starts at its final corner position"
 pass "webcam size rules place the initial window in its final corner"
+
+# --- loudnorm helpers (source the recorder without starting a capture) ---
+
+source "$ROOT/bin/omarchy-capture-screenrecording"
+
+# Fields two-pass loudnorm reads. `}` is on its own line so extract_loudnorm_json's
+# awk range matches; extra ffmpeg keys are unused.
+loudnorm_json() {
+  printf '%s\n' '{' \
+    "	\"input_i\" : \"$1\"," \
+    "	\"input_tp\" : \"${2:--2.00}\"," \
+    "	\"input_lra\" : \"${3:-8.00}\"," \
+    "	\"input_thresh\" : \"${4:--24.00}\"," \
+    "	\"target_offset\" : \"${5:-0.00}\"" \
+    '}'
+}
+
+loudness_might_need_normalization -14.0 && fail "loudness already at -14 LUFS does not need normalization"
+loudness_might_need_normalization -18.0 && fail "loudness at the -18 LUFS quiet threshold does not need normalization"
+loudness_might_need_normalization -18.1 || fail "loudness quieter than -18 LUFS needs normalization"
+loudness_might_need_normalization -11.0 && fail "loudness at the -11 LUFS loud threshold does not need normalization"
+loudness_might_need_normalization -10.9 || fail "loudness louder than -11 LUFS needs normalization"
+loudness_might_need_normalization -inf && fail "non-numeric loudness does not need normalization"
+pass "loudness_might_need_normalization asks outside -18 to -11 LUFS"
+
+pop=$(screenrecord_pop_filter)
+[[ $(screenrecord_audio_filter no) == "$pop" ]] || fail "skipping loudnorm still mutes the PipeWire pop"
+with_loudnorm=$(screenrecord_audio_filter yes)
+[[ $with_loudnorm == "$pop,loudnorm=I=-14:TP=-1.5:LRA=11" ]] || fail "yes appends single-pass loudnorm" "$with_loudnorm"
+two_pass=$(screenrecord_audio_filter yes "$(loudnorm_json -28.00)")
+[[ $two_pass == *measured_I=-28.00* ]] || fail "measured stats feed two-pass loudnorm" "$two_pass"
+pass "screenrecord_audio_filter always mutes the pop and only adds loudnorm when asked"
+
+OMARCHY_SCREENRECORD_NORMALIZE=false
+[[ $(normalize_preference) == no ]] || fail "env false"
+OMARCHY_SCREENRECORD_NORMALIZE=true
+[[ $(normalize_preference) == yes ]] || fail "env true"
+unset OMARCHY_SCREENRECORD_NORMALIZE
+[[ $(normalize_preference) == ask ]] || fail "unset env asks"
+pass "normalize_preference follows OMARCHY_SCREENRECORD_NORMALIZE"
+
+declare -f stop_screenrecording | awk '
+  /RECORDING_FILE/ && !seen { rec=NR; seen=1 }
+  /finalize_recording/ { fin=NR }
+  END { exit (rec && fin && rec < fin) ? 0 : 1 }
+' || fail "stop pins the recording path before finalize"
+declare -f stop_screenrecording | grep -q 'release_recording_file "$filename"' ||
+  fail "stop drops the sidecar through release_recording_file"
+pass "stop pins the recording path before finalize"
+
+sidecar="$tmp_dir/recording-file"
+saved_recording_file=$RECORDING_FILE
+RECORDING_FILE=$sidecar
+
+echo "$tmp_dir/old.mp4" >"$sidecar"
+release_recording_file "$tmp_dir/old.mp4"
+if [[ -e $sidecar ]]; then
+  fail "release_recording_file drops the sidecar when it still names this recording"
+fi
+pass "release_recording_file drops the sidecar when it still names this recording"
+
+echo "$tmp_dir/new.mp4" >"$sidecar"
+release_recording_file "$tmp_dir/old.mp4"
+if [[ $(cat "$sidecar") != "$tmp_dir/new.mp4" ]]; then
+  fail "release_recording_file leaves the sidecar when a newer recording owns it"
+fi
+RECORDING_FILE=$saved_recording_file
+pass "release_recording_file leaves the sidecar when a newer recording owns it"
+
+cat >"$stub_bin/ffmpeg" <<'SH'
+#!/bin/bash
+
+printf '%s\n' "$@" >>"$OMARCHY_TEST_FFMPEG_ARGS"
+if printf '%s\n' "$@" | grep -q 'print_format=json'; then
+  printf '%s\n' "${OMARCHY_TEST_LOUDNORM_JSON-}" >&2
+  exit 0
+fi
+exit 0
+SH
+chmod +x "$stub_bin/ffmpeg"
+
+cat >"$stub_bin/ffprobe" <<'SH'
+#!/bin/bash
+
+if printf '%s\n' "$@" | grep -q format=duration; then
+  printf '%s\n' "${OMARCHY_TEST_DURATION:-30}"
+  exit 0
+fi
+exit 1
+SH
+chmod +x "$stub_bin/ffprobe"
+
+cat >"$stub_bin/omarchy-menu-select" <<'SH'
+#!/bin/bash
+
+printf '%s\n' "$@" >"$OMARCHY_TEST_MENU_ARGS"
+if [[ ${OMARCHY_TEST_MENU_EXIT:-0} != 0 ]]; then
+  exit "$OMARCHY_TEST_MENU_EXIT"
+fi
+printf '%s\n' "${OMARCHY_TEST_MENU_REPLY-}"
+SH
+chmod +x "$stub_bin/omarchy-menu-select"
+
+export OMARCHY_TEST_FFMPEG_ARGS="$tmp_dir/ffmpeg-args"
+dummy_recording="$tmp_dir/dummy.mp4"
+touch "$dummy_recording"
+
+quiet_json=$(loudnorm_json -28.00)
+extracted=$(extract_loudnorm_json <<<"noise"$'\n'"$quiet_json"$'\n'"more")
+[[ $extracted == *'"input_i" : "-28.00"'* && $extracted != *more* ]] || \
+  fail "extract_loudnorm_json keeps the loudnorm object" "$extracted"
+
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
+: >"$OMARCHY_TEST_FFMPEG_ARGS"
+measured=$(measure_loudness "$dummy_recording")
+[[ $measured == *'"input_i" : "-28.00"'* ]] || fail "measure_loudness reads first-pass JSON" "$measured"
+grep -q "print_format=json" "$OMARCHY_TEST_FFMPEG_ARGS" || fail "measure_loudness requests print_format=json"
+grep -q "volume=enable='lt(t,0.4)':volume=0" "$OMARCHY_TEST_FFMPEG_ARGS" || \
+  fail "measure_loudness applies the pop mute so the transient does not skew LUFS"
+pass "measure_loudness runs an audio-only first pass with the pop mute"
+
+unset OMARCHY_SCREENRECORD_NORMALIZE
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+export OMARCHY_TEST_LOUDNORM_JSON="$(loudnorm_json -14.20)"
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == no ]] || fail "near-target audio skips loudnorm"
+[[ -s $OMARCHY_TEST_MENU_ARGS ]] && fail "near-target audio does not prompt" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+pass "decide_normalize skips the prompt when loudness is already in the window"
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+: >"$OMARCHY_TEST_FFMPEG_ARGS"
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
+export OMARCHY_TEST_MENU_REPLY=$'Normalize\traise to typical broadcast levels'
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == yes ]] || fail "quiet audio normalizes when the user accepts"
+wired=$(screenrecord_audio_filter "$SCREENRECORD_NORMALIZE" "$SCREENRECORD_LOUDNESS_STATS")
+[[ $wired == *measured_I=-28.00* ]] || fail "accepting the prompt keeps first-pass stats for two-pass loudnorm" "$wired"
+grep -q "Audio may be unintentionally quiet" "$OMARCHY_TEST_MENU_ARGS" || fail "quiet audio prompt explains the recording is quiet"
+grep -q $'\tKeep original levels\tas recorded' "$OMARCHY_TEST_MENU_ARGS" || \
+  fail "keep option uses empty glyph so the label is not drawn as an icon" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+grep -q $'\tNormalize\traise to typical broadcast levels' "$OMARCHY_TEST_MENU_ARGS" || \
+  fail "quiet normalize option says it will raise to typical broadcast levels" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+pass "decide_normalize prompts when audio is quiet"
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+export OMARCHY_TEST_LOUDNORM_JSON="$(loudnorm_json -8.00)"
+export OMARCHY_TEST_MENU_REPLY=$'Keep original levels\tas recorded'
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == no ]] || fail "hot audio keeps original levels when the user declines"
+grep -q "Audio may be unintentionally loud" "$OMARCHY_TEST_MENU_ARGS" || fail "hot audio prompt explains the recording is loud"
+grep -q $'\tNormalize\tlower to typical broadcast levels' "$OMARCHY_TEST_MENU_ARGS" || \
+  fail "loud normalize option says it will lower to typical broadcast levels" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+pass "decide_normalize prompts when audio is louder than -11 LUFS"
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
+export OMARCHY_TEST_MENU_EXIT=1
+unset OMARCHY_TEST_MENU_REPLY
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == no ]] || fail "Esc keeps original levels"
+pass "decide_normalize treats a cancelled prompt as keep original"
+
+unset OMARCHY_TEST_MENU_EXIT
+: >"$OMARCHY_TEST_MENU_ARGS"
+: >"$OMARCHY_TEST_FFMPEG_ARGS"
+export OMARCHY_TEST_LOUDNORM_JSON="not json"
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == no ]] || fail "unreadable loudnorm JSON skips loudnorm"
+[[ -s $OMARCHY_TEST_MENU_ARGS ]] && fail "unreadable JSON does not prompt" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+pass "decide_normalize skips the prompt when measurement fails"
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+: >"$OMARCHY_TEST_FFMPEG_ARGS"
+OMARCHY_SCREENRECORD_NORMALIZE=false
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == no ]] || fail "env false skips loudnorm"
+[[ -s $OMARCHY_TEST_FFMPEG_ARGS ]] && fail "env false does not measure" "$(cat "$OMARCHY_TEST_FFMPEG_ARGS")"
+[[ -s $OMARCHY_TEST_MENU_ARGS ]] && fail "env false does not prompt" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+unset OMARCHY_SCREENRECORD_NORMALIZE
+pass "env false overrides the prompt"
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+: >"$OMARCHY_TEST_FFMPEG_ARGS"
+OMARCHY_SCREENRECORD_NORMALIZE=true
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == yes ]] || fail "env true applies loudnorm"
+[[ -s $OMARCHY_TEST_FFMPEG_ARGS ]] && fail "env true does not measure" "$(cat "$OMARCHY_TEST_FFMPEG_ARGS")"
+[[ -s $OMARCHY_TEST_MENU_ARGS ]] && fail "env true does not prompt" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+unset OMARCHY_SCREENRECORD_NORMALIZE
+pass "env true overrides the prompt"
+
+export OMARCHY_TEST_DURATION=601
+recording_too_long_to_analyze "$dummy_recording" || fail "601s is too long to analyze"
+export OMARCHY_TEST_DURATION=600
+recording_too_long_to_analyze "$dummy_recording" && fail "600s still analyzes"
+export OMARCHY_TEST_DURATION=N/A
+recording_too_long_to_analyze "$dummy_recording" && fail "unreadable duration still analyzes"
+unset OMARCHY_TEST_DURATION
+pass "recording_too_long_to_analyze is strictly greater than 10 minutes"
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+: >"$OMARCHY_TEST_FFMPEG_ARGS"
+export OMARCHY_TEST_DURATION=601
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
+export OMARCHY_TEST_MENU_REPLY=$'Normalize\tRecommended'
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == yes ]] || fail "a long recording normalizes when the user accepts"
+[[ -z $SCREENRECORD_LOUDNESS_STATS ]] || fail "a long recording does not keep first-pass stats" "$SCREENRECORD_LOUDNESS_STATS"
+wired=$(screenrecord_audio_filter "$SCREENRECORD_NORMALIZE" "$SCREENRECORD_LOUDNESS_STATS")
+[[ $wired == *loudnorm=I=-14:TP=-1.5:LRA=11* ]] || fail "accepting a long recording uses single-pass loudnorm" "$wired"
+[[ $wired == *measured_I* ]] && fail "accepting a long recording must not use two-pass loudnorm" "$wired"
+grep -q "print_format=json" "$OMARCHY_TEST_FFMPEG_ARGS" && \
+  fail "a long recording does not measure loudness" "$(cat "$OMARCHY_TEST_FFMPEG_ARGS")"
+grep -q "Normalize audio to typical broadcast levels?" "$OMARCHY_TEST_MENU_ARGS" || \
+  fail "a long recording asks about typical broadcast levels" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+grep -q $'\tNormalize\tRecommended' "$OMARCHY_TEST_MENU_ARGS" || \
+  fail "a long recording marks normalize as recommended" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+awk '
+  $0 == "\tNormalize\tRecommended" { n=NR }
+  $0 == "\tKeep original levels\tas recorded" { k=NR }
+  END { exit (n && k && n < k) ? 0 : 1 }
+' "$OMARCHY_TEST_MENU_ARGS" || fail "a long recording lists Normalize before Keep" "$(cat "$OMARCHY_TEST_MENU_ARGS")"
+pass "decide_normalize skips analysis on recordings longer than 10 minutes"
+
+: >"$OMARCHY_TEST_MENU_ARGS"
+export OMARCHY_TEST_MENU_REPLY=$'Keep original levels\tas recorded'
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == no ]] || fail "a long recording keeps original levels when the user declines"
+unset OMARCHY_TEST_DURATION
+pass "decide_normalize keeps original levels when a long recording declines"
+
+cat >"$stub_bin/omarchy-menu-select" <<'SH'
+#!/bin/bash
+
+sleep infinity
+SH
+chmod +x "$stub_bin/omarchy-menu-select"
+cat >"$stub_bin/omarchy-menu" <<'SH'
+#!/bin/bash
+
+printf '%s\n' "$@" >"$OMARCHY_TEST_MENU_CLOSE_ARGS"
+SH
+chmod +x "$stub_bin/omarchy-menu"
+export OMARCHY_TEST_MENU_CLOSE_ARGS="$tmp_dir/menu-close-args"
+: >"$OMARCHY_TEST_MENU_CLOSE_ARGS"
+NORMALIZE_PROMPT_TIMEOUT=1
+: >"$OMARCHY_TEST_MENU_ARGS"
+: >"$OMARCHY_TEST_FFMPEG_ARGS"
+export OMARCHY_TEST_LOUDNORM_JSON="$quiet_json"
+decide_normalize "$dummy_recording"
+[[ $SCREENRECORD_NORMALIZE == no ]] || fail "a timed-out prompt keeps original levels"
+[[ $(cat "$OMARCHY_TEST_MENU_CLOSE_ARGS") == close ]] ||
+  fail "a timed-out prompt dismisses the leftover menu" "$(cat "$OMARCHY_TEST_MENU_CLOSE_ARGS")"
+NORMALIZE_PROMPT_TIMEOUT=120
+rm -f "$stub_bin/omarchy-menu"
+cat >"$stub_bin/omarchy-menu-select" <<'SH'
+#!/bin/bash
+
+printf '%s\n' "$@" >"$OMARCHY_TEST_MENU_ARGS"
+if [[ ${OMARCHY_TEST_MENU_EXIT:-0} != 0 ]]; then
+  exit "$OMARCHY_TEST_MENU_EXIT"
+fi
+printf '%s\n' "${OMARCHY_TEST_MENU_REPLY-}"
+SH
+chmod +x "$stub_bin/omarchy-menu-select"
+pass "a hung normalize prompt times out instead of stranding stop"
+
+# --- the recording directory only gates starting ---
+
+cat >"$stub_bin/pgrep" <<'SH'
+#!/bin/bash
+
+exit 1
+SH
+chmod +x "$stub_bin/pgrep"
+
+missing_dir="$tmp_dir/gone"
+
+: >"$OMARCHY_TEST_NOTIFICATION_ARGS"
+if OMARCHY_SCREENRECORD_DIR="$missing_dir" "$ROOT/bin/omarchy-capture-screenrecording"; then
+  fail "starting into a missing recording directory reports failure"
+fi
+grep -Fq "Screen recording directory does not exist: $missing_dir" "$OMARCHY_TEST_NOTIFICATION_ARGS" ||
+  fail "starting into a missing recording directory names the directory" "$(cat "$OMARCHY_TEST_NOTIFICATION_ARGS")"
+pass "starting into a missing recording directory fails instead of reporting success"
+
+: >"$OMARCHY_TEST_NOTIFICATION_ARGS"
+OMARCHY_SCREENRECORD_DIR="$missing_dir" "$ROOT/bin/omarchy-capture-screenrecording" --stop-recording || true
+[[ -s $OMARCHY_TEST_NOTIFICATION_ARGS ]] &&
+  fail "stopping does not complain about the recording directory" "$(cat "$OMARCHY_TEST_NOTIFICATION_ARGS")"
+pass "a missing recording directory does not block stopping"
+
+rm -f "$stub_bin/pgrep"

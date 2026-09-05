@@ -616,6 +616,12 @@ for (const functionName of ['openExistingMenu', 'openDmenu']) {
       && !openMatch[1].includes('pointerGate.allowInitialSample()'),
     `menu ${functionName} ignores a stale hidden-pointer position when becoming visible`
   )
+  const finish = openMatch[1].indexOf('if (root.requestActive) root.finishRequest(null)')
+  const doneFile = openMatch[1].search(/doneFile = /)
+  assert(
+    finish >= 0 && doneFile >= 0 && finish < doneFile,
+    `menu ${functionName} releases an in-flight select before replacing doneFile`
+  )
 }
 assert(
   /function selectFromPointer\(index, item, mouse\)[\s\S]*pointerGate\.moved\(item, mouse\)[\s\S]*root\.selectedIndex = index/.test(menuQml),

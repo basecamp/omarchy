@@ -835,6 +835,9 @@ Item {
   }
 
   function openExistingMenu(initialMenu) {
+    // finishRequest before replacing doneFile, or omarchy-menu-select waits forever.
+    if (root.requestActive) root.finishRequest(null)
+
     requestSerial += 1
     mode = "menu"
     requestActive = false
@@ -859,6 +862,8 @@ Item {
   }
 
   function openDmenu(payload) {
+    if (root.requestActive) root.finishRequest(null)
+
     requestSerial += 1
     mode = payload.mode === "input" ? "input" : "select"
     dmenuPrompt = String(payload.prompt || (mode === "input" ? "Input" : "Select"))

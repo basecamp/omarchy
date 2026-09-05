@@ -17,14 +17,14 @@
 # Env: OMARCHY_SCREENRECORD_DEBUG=true appends gpu-screen-recorder's stderr (and
 # the picker target it was launched with) to /tmp/omarchy-screenrecord.log so
 # users can attach a log when reporting capture failures.
+#
+# Env: OMARCHY_SCREENRECORD_NORMALIZE=true always applies loudnorm after stop;
+# false never does. Unset asks immediately when the recording is longer than 10
+# minutes, or when a shorter recording's integrated loudness is quieter than
+# -18 LUFS or louder than -11 LUFS.
 
 [[ -f ~/.config/user-dirs.dirs ]] && source ~/.config/user-dirs.dirs
 OUTPUT_DIR="${OMARCHY_SCREENRECORD_DIR:-${XDG_VIDEOS_DIR:-$HOME/Videos}}"
-
-if [[ ! -d $OUTPUT_DIR ]]; then
-  omarchy-notification-send -u critical -t 3000 "Screen recording directory does not exist: $OUTPUT_DIR"
-  exit 1
-fi
 
 DESKTOP_AUDIO="false"
 MICROPHONE_AUDIO="false"
@@ -37,6 +37,23 @@ STOP_RECORDING="false"
 RECORDING_FILE="/tmp/omarchy-screenrecord-filename"
 REGION_FILE="${XDG_RUNTIME_DIR:-/tmp}/omarchy-screenrecord-region"
 LOG_FILE=$([[ ${OMARCHY_SCREENRECORD_DEBUG:-false} == "true" ]] && echo "/tmp/omarchy-screenrecord.log" || echo "/dev/null")
+# Seconds to wait on the post-stop normalize prompt before keeping original
+# levels and dismissing the leftover dialog. Super+Space unstrands immediately
+# via the menu; this is for an unanswered prompt (walk-away or shell death).
+NORMALIZE_PROMPT_TIMEOUT=120
+
+# -14 LUFS is the typical target for YouTube, Spotify, and Amazon Music
+# -16 LUBS Apple Music
+# -27 to -24 Netflix, ATSC A/85 (US TV), EBU R128 (Europe TV)
+LOUDNORM_I=-14
+LOUDNORM_TP=-1.5
+LOUDNORM_LRA=11
+LOUDNORM_I_QUIET_TOLERANCE=4
+LOUDNORM_I_LOUD_TOLERANCE=3
+# First-pass loudnorm decodes the whole soundtrack; skip it past this length.
+LOUDNORM_ANALYZE_MAX_SECONDS=600
+SCREENRECORD_LOUDNESS_STATS=""
+SCREENRECORD_NORMALIZE=no
 
 for arg in "$@"; do
   case "$arg" in
@@ -143,6 +160,170 @@ select_capture_target() {
   echo "region:${BASH_REMATCH[3]}x${BASH_REMATCH[4]}+${BASH_REMATCH[1]}+${BASH_REMATCH[2]}"
 }
 
+# Echoes yes, no, or ask from OMARCHY_SCREENRECORD_NORMALIZE.
+normalize_preference() {
+  case ${OMARCHY_SCREENRECORD_NORMALIZE:-} in
+  true)
+    echo yes
+    ;;
+  false)
+    echo no
+    ;;
+  *)
+    echo ask
+    ;;
+  esac
+}
+
+screenrecord_pop_filter() {
+  echo "volume=enable='lt(t,0.4)':volume=0,afade=t=in:st=0.4:d=0.05"
+}
+
+loudnorm_filter() {
+  local stats=${1:-}
+  local filter="loudnorm=I=${LOUDNORM_I}:TP=${LOUDNORM_TP}:LRA=${LOUDNORM_LRA}"
+  local measured_i measured_lra measured_tp measured_thresh offset
+
+  if [[ -n $stats ]]; then
+    measured_i=$(jq -r '.input_i // empty' <<<"$stats" 2>/dev/null || true)
+    measured_lra=$(jq -r '.input_lra // empty' <<<"$stats" 2>/dev/null || true)
+    measured_tp=$(jq -r '.input_tp // empty' <<<"$stats" 2>/dev/null || true)
+    measured_thresh=$(jq -r '.input_thresh // empty' <<<"$stats" 2>/dev/null || true)
+    offset=$(jq -r '.target_offset // empty' <<<"$stats" 2>/dev/null || true)
+    if [[ $measured_i =~ ^-?[0-9]+(\.[0-9]+)?$ && $measured_lra =~ ^-?[0-9]+(\.[0-9]+)?$ &&
+      $measured_tp =~ ^-?[0-9]+(\.[0-9]+)?$ && $measured_thresh =~ ^-?[0-9]+(\.[0-9]+)?$ &&
+      $offset =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+      filter+=":measured_I=${measured_i}:measured_LRA=${measured_lra}:measured_TP=${measured_tp}:measured_thresh=${measured_thresh}:offset=${offset}"
+    fi
+  fi
+
+  echo "$filter"
+}
+
+# $1 is yes or no. Optional $2 is first-pass loudnorm JSON for two-pass.
+screenrecord_audio_filter() {
+  local normalize=$1
+  local stats=${2:-}
+  local filter
+  filter=$(screenrecord_pop_filter)
+  if [[ $normalize == yes ]]; then
+    filter+=",$(loudnorm_filter "$stats")"
+  fi
+  echo "$filter"
+}
+
+# Returns 0 when integrated loudness is outside the skip window: more than
+# LOUDNORM_I_QUIET_TOLERANCE LU below -14, or more than LOUDNORM_I_LOUD_TOLERANCE
+# LU above it.
+loudness_might_need_normalization() {
+  local input_i=$1
+
+  [[ $input_i =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || return 1
+
+  awk -v i="$input_i" -v target="$LOUDNORM_I" -v quiet="$LOUDNORM_I_QUIET_TOLERANCE" -v loud="$LOUDNORM_I_LOUD_TOLERANCE" '
+    BEGIN { exit (i < target - quiet || i > target + loud) ? 0 : 1 }
+  '
+}
+
+extract_loudnorm_json() {
+  awk '/^{/,/^}/'
+}
+
+measure_loudness() {
+  local file=$1
+  local filter output stats
+  filter="$(screenrecord_pop_filter),$(loudnorm_filter):print_format=json"
+  output=$(ffmpeg -hide_banner -nostats -ss 0.1 -i "$file" -vn -af "$filter" -f null - 2>&1) || true
+  stats=$(extract_loudnorm_json <<<"$output")
+  jq -e '.input_i' <<<"$stats" >/dev/null 2>&1 || return 1
+  printf '%s\n' "$stats"
+}
+
+# Remaining args are options in display order. Returns 0 when the user picks Normalize.
+run_normalize_prompt() {
+  local prompt=$1
+  shift
+  local selection status=0
+  selection=$(timeout "$NORMALIZE_PROMPT_TIMEOUT" omarchy-menu-select "$prompt" "$@" -- --width 560) || status=$?
+  if (( status == 124 )); then
+    omarchy-menu close >/dev/null 2>&1 || true
+    return 1
+  fi
+  (( status == 0 )) || return 1
+  [[ $selection == Normalize* ]]
+}
+
+prompt_normalize_audio() {
+  local input_i=$1
+  local keep normalize
+  keep=$'\tKeep original levels\tas recorded'
+  if awk -v i="$input_i" -v target="$LOUDNORM_I" 'BEGIN { exit (i < target) ? 0 : 1 }'; then
+    normalize=$'\tNormalize\traise to typical broadcast levels'
+    run_normalize_prompt "Audio may be unintentionally quiet" "$keep" "$normalize"
+  else
+    normalize=$'\tNormalize\tlower to typical broadcast levels'
+    run_normalize_prompt "Audio may be unintentionally loud" "$keep" "$normalize"
+  fi
+}
+
+prompt_normalize_long_recording() {
+  local keep=$'\tKeep original levels\tas recorded'
+  local normalize=$'\tNormalize\tRecommended'
+  run_normalize_prompt "Normalize audio to typical broadcast levels?" "$normalize" "$keep"
+}
+
+# Returns 0 when duration is strictly greater than LOUDNORM_ANALYZE_MAX_SECONDS.
+recording_too_long_to_analyze() {
+  local duration
+  duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$1" 2>/dev/null) || return 1
+  [[ $duration =~ ^[0-9]+(\.[0-9]+)?$ ]] || return 1
+  awk -v d="$duration" -v max="$LOUDNORM_ANALYZE_MAX_SECONDS" 'BEGIN { exit (d > max) ? 0 : 1 }'
+}
+
+# Sets SCREENRECORD_NORMALIZE to yes or no. SCREENRECORD_LOUDNESS_STATS holds
+# first-pass JSON when a measurement ran — callers must invoke this directly,
+# not via $(...), or the stats never leave the subshell.
+decide_normalize() {
+  local file=$1
+  local choice input_i
+  SCREENRECORD_NORMALIZE=no
+  SCREENRECORD_LOUDNESS_STATS=""
+  choice=$(normalize_preference)
+
+  case $choice in
+  yes)
+    SCREENRECORD_NORMALIZE=yes
+    return
+    ;;
+  no)
+    return
+    ;;
+  esac
+
+  if recording_too_long_to_analyze "$file"; then
+    if prompt_normalize_long_recording; then
+      SCREENRECORD_NORMALIZE=yes
+    fi
+    return
+  fi
+
+  if SCREENRECORD_LOUDNESS_STATS=$(measure_loudness "$file"); then
+    input_i=$(jq -r '.input_i' <<<"$SCREENRECORD_LOUDNESS_STATS")
+    if loudness_might_need_normalization "$input_i"; then
+      if prompt_normalize_audio "$input_i"; then
+        SCREENRECORD_NORMALIZE=yes
+        return
+      fi
+    fi
+  fi
+
+  SCREENRECORD_LOUDNESS_STATS=""
+}
+
+recording_has_audio() {
+  ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$1" 2>/dev/null | grep -q audio
+}
+
 start_screenrecording() {
   local capture_args=()
   local target
@@ -201,6 +382,17 @@ start_screenrecording() {
   fi
 }
 
+# Drop the sidecar only if it still names this recording. A stop that sits in
+# finalize (measure + prompt) can outlive a new start writing a different path.
+release_recording_file() {
+  local filename=$1
+  local current
+  current=$(cat "$RECORDING_FILE" 2>/dev/null) || true
+  if [[ $current == "$filename" ]]; then
+    rm -f "$RECORDING_FILE"
+  fi
+}
+
 stop_screenrecording() {
   pkill -SIGINT -f "^gpu-screen-recorder" # SIGINT required to save video properly
 
@@ -214,12 +406,14 @@ stop_screenrecording() {
   toggle_screenrecording_indicator
   cleanup_webcam
 
+  local filename
+  filename=$(cat "$RECORDING_FILE" 2>/dev/null)
+
   if pgrep -f "^gpu-screen-recorder" >/dev/null; then
     pkill -9 -f "^gpu-screen-recorder"
     omarchy-notification-send -u critical -t 5000 "Screen recording error" "Recording process had to be force-killed. Video may be corrupted."
   else
-    finalize_recording
-    local filename=$(cat "$RECORDING_FILE" 2>/dev/null)
+    finalize_recording "$filename"
     echo "$filename"
     local preview="${filename%.mp4}-preview.png"
 
@@ -239,7 +433,7 @@ stop_screenrecording() {
     ) &
   fi
 
-  rm -f "$RECORDING_FILE"
+  release_recording_file "$filename"
 }
 
 toggle_screenrecording_indicator() {
@@ -251,8 +445,7 @@ screenrecording_active() {
 }
 
 finalize_recording() {
-  local latest
-  latest=$(cat "$RECORDING_FILE" 2>/dev/null)
+  local latest=$1
   [[ -f $latest ]] || return
 
   # Re-encode only when the first GOP contains discardable warmup packets — stream copy can't
@@ -262,13 +455,13 @@ finalize_recording() {
     video_codec=(-c:v libx264 -preset veryfast -crf 20)
   fi
 
-  # Trim the first frame, and normalize audio to -14 LUFS if present, in a single pass
   local args=(-y -ss 0.1 -i "$latest" "${video_codec[@]}")
-  if ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$latest" 2>/dev/null | grep -q audio; then
+  if recording_has_audio "$latest"; then
     # Hard-mute the first 400ms to drop the PipeWire capture-open pop (a near-clipping
     # transient around 130-200ms that a gentle fade-in can't attenuate enough), then a
-    # 50ms fade avoids a click at the boundary before loudnorm normalizes the rest.
-    args+=(-af "volume=enable='lt(t,0.4)':volume=0,afade=t=in:st=0.4:d=0.05,loudnorm=I=-14:TP=-1.5:LRA=11")
+    # 50ms fade avoids a click at the boundary. loudnorm is optional; see decide_normalize.
+    decide_normalize "$latest"
+    args+=(-af "$(screenrecord_audio_filter "$SCREENRECORD_NORMALIZE" "$SCREENRECORD_LOUDNESS_STATS")")
   fi
 
   local processed="${latest%.mp4}-processed.mp4"
@@ -279,10 +472,18 @@ finalize_recording() {
   fi
 }
 
-if screenrecording_active; then
-  stop_screenrecording
-elif [[ $STOP_RECORDING == "true" ]]; then
-  exit 1
-else
-  start_screenrecording || cleanup_webcam
+# Keep start/stop from running when the file is sourced.
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  if screenrecording_active; then
+    stop_screenrecording
+  elif [[ $STOP_RECORDING == "true" ]]; then
+    exit 1
+  elif [[ -d $OUTPUT_DIR ]]; then
+    start_screenrecording || cleanup_webcam
+  else
+    # Only starting needs the directory; stopping still has to finalize a
+    # recording whose directory went away mid-capture.
+    omarchy-notification-send -u critical -t 3000 "Screen recording directory does not exist: $OUTPUT_DIR"
+    exit 1
+  fi
 fi
