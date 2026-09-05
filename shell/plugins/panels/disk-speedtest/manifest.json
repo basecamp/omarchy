@@ -8,6 +8,7 @@
   "kinds": [
     "panel"
   ],
+  "keepLoaded": true,
   "entryPoints": {
     "panel": "Panel.qml"
   }
