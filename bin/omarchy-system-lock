@@ -5,7 +5,33 @@
 # omarchy:name=lock
 # omarchy:examples=omarchy system lock
 
-omarchy-shell lock lock >/dev/null
+lock_timeout=10
+
+lock_ipc() {
+  local limit=$1
+  shift
+
+  OMARCHY_SHELL_IPC_TIMEOUT="$limit" omarchy-shell "$@" 2>/dev/null
+}
+
+lock_state() {
+  jq -r 'if .secure == true then "secure"
+         elif .requested == true then "locking"
+         else "idle" end' \
+    <<<"$(lock_ipc 0.5s lock status)" 2>/dev/null
+}
+
+report_unsecured() {
+  printf 'omarchy-system-lock: the session was not locked (%s)\n' "$1" >&2
+
+  omarchy-notification-send -u critical -g 󰌾 \
+    "Screen did not lock" \
+    "The session is still unlocked ($1)." >/dev/null 2>&1 || true
+
+  exit 1
+}
+
+lock_reply=$(lock_ipc 1s lock lock)
 
 # Set keyboard layout to default (first layout)
 hyprctl switchxkblayout all 0 > /dev/null 2>&1
@@ -24,3 +50,28 @@ pkill -x ttfx 2>/dev/null || true
 # ttfx handles SIGTERM asynchronously, so keep its terminal alive until it exits.
 timeout 1s pidwait -x ttfx 2>/dev/null || true
 pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null || true
+
+# Securing the session happens after the request returns, and the shell answers
+# a refusal on stdout with a zero exit, so neither the reply nor the exit status
+# on its own means the screen is locked. Without this the idle path reports
+# success for a lock that never armed, leaving the session exposed behind a
+# screen that blanks moments later. omarchy-system-sleep-lock polls the same way
+# against the budget logind imposes on it; nothing here is racing a suspend, so
+# a fixed deadline is enough.
+if [[ $lock_reply == "missing-pam" ]]; then
+  report_unsecured "no lock screen is configured"
+fi
+
+deadline=$((SECONDS + lock_timeout))
+
+while (( SECONDS < deadline )); do
+  case $(lock_state) in
+    secure) exit 0 ;;
+    locking) ;;
+    *) lock_ipc 1s lock lock >/dev/null ;;
+  esac
+
+  sleep 0.1
+done
+
+report_unsecured "the shell did not secure the session within ${lock_timeout}s"
