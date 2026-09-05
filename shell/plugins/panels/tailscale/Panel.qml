@@ -427,6 +427,7 @@ Panel {
         else if (t === "n" || t === "N") tailscale.copyPeerName(root.selectedPeer())
         else if (t === "d" || t === "D") tailscale.copyPeerDnsName(root.selectedPeer())
         else if (t === "s" || t === "S") root.sendPeerFile(root.selectedPeer())
+        else if (t === "v" || t === "V") tailscale.sendClipboard(root.selectedPeer())
       }
 
       Flickable {
@@ -978,11 +979,22 @@ Panel {
         id: sendButton
         visible: tailscale.canSendFiles(peerRow.peer)
         iconText: "󰒊"
-        tooltipText: "Send files"
+        tooltipText: "Send files (s)"
         foreground: root.foreground
         fontFamily: root.fontFamily
         Layout.alignment: Qt.AlignVCenter
         onClicked: root.sendPeerFile(peerRow.peer)
+      }
+
+      PanelActionButton {
+        id: clipboardButton
+        visible: tailscale.canSendFiles(peerRow.peer)
+        iconText: "󰅌"
+        tooltipText: "Send clipboard (v)"
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        Layout.alignment: Qt.AlignVCenter
+        onClicked: tailscale.sendClipboard(peerRow.peer)
       }
 
       PanelActionButton {

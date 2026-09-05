@@ -61,6 +61,21 @@ announce() {
   local name="${path##*/}"
   local args=("Received $name" "Saved to ${dir/#$HOME/~}" -u critical)
 
+  # A clipboard drop from omarchy-tailscale-send-clipboard is meant for
+  # pasting, not opening: answering its toast puts the text straight on this
+  # machine's clipboard. The file still lands in the downloads directory as
+  # the recovery path, and an oversized drop is treated as the plain file it
+  # has effectively become.
+  case "${name,,}" in
+  clipboard-[0-9][0-9][0-9][0-9][0-9][0-9]*.txt)
+    if (($(stat -c%s -- "$path") <= 262144)); then
+      omarchy-notification-send "Received clipboard" "Click to copy" -u critical -g 󰅌 \
+        --exec bash -c 'wl-copy --trim-newline <"$1"' copy "$path" || true
+      return
+    fi
+    ;;
+  esac
+
   case "${name,,}" in
   *.png | *.jpg | *.jpeg | *.gif | *.webp | *.avif | *.bmp | *.tif | *.tiff)
     args+=(--image "$path")

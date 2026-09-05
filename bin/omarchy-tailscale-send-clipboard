@@ -1,0 +1,104 @@
+#!/bin/bash
+
+# omarchy:summary=Send the clipboard contents to a machine on your tailnet with Taildrop
+# omarchy:args=<machine>
+# omarchy:examples=omarchy tailscale send-clipboard dhh-fd
+
+set -euo pipefail
+
+if (($# != 1)); then
+  echo "Usage: omarchy-tailscale-send-clipboard <machine>" >&2
+  exit 1
+fi
+
+machine="$1"
+
+# Address the machine by whatever name we were handed, but talk about it by
+# its short name, so a MagicDNS name does not spill into every message.
+name="${machine%%.*}"
+
+refuse() {
+  omarchy-notification-send -g "󰅌" -u critical "Could not send to $name" "$1"
+  exit 1
+}
+
+types=$(wl-paste --list-types 2>/dev/null || true)
+
+[[ -n $types ]] || refuse "The clipboard is empty"
+
+# A password manager marks its copies so clipboard tooling leaves them alone.
+# The shell's clipboard history refuses to record these; refuse to ship them.
+if grep -q 'x-kde-passwordManagerHint' <<<"$types"; then
+  refuse "The clipboard holds a password"
+fi
+
+# Files copied in a file manager offer their paths as a URI list. Sending that
+# list would deliver file:// lines that mean nothing on another machine, so
+# hand the files themselves to the regular Taildrop send instead.
+if grep -qx 'text/uri-list' <<<"$types"; then
+  files=()
+  while IFS= read -r uri; do
+    uri="${uri%$'\r'}"
+    [[ -z $uri || $uri == \#* ]] && continue
+    [[ $uri == file://* ]] || { files=(); break; }
+    path="${uri#file://}"
+    printf -v path '%b' "${path//\%/\\x}"
+    [[ -e $path ]] || { files=(); break; }
+    files+=("$path")
+  done < <(wl-paste --type text/uri-list)
+  if ((${#files[@]} > 0)); then
+    exec omarchy-tailscale-send "$machine" "${files[@]}"
+  fi
+fi
+
+# Taildrop moves files, not clipboards: an image goes over as itself, and
+# anything else goes as a small text file the receiver can open or copy from.
+stamp=$(date +%H%M%S)
+if grep -q '^image/png' <<<"$types"; then
+  paste_type="image/png"
+  filename="clipboard-$stamp.png"
+  what="Clipboard image"
+elif mime=$(grep -m1 '^image/' <<<"$types"); then
+  paste_type="$mime"
+  extension="${mime#image/}"
+  extension="${extension%%;*}"
+  filename="clipboard-$stamp.${extension%%+*}"
+  what="Clipboard image"
+else
+  paste_type="text"
+  filename="clipboard-$stamp.txt"
+  what="Clipboard text"
+fi
+
+# Stage the contents before sending anything: a paste that dies mid-stream
+# would otherwise deliver an empty file to the peer and then blame Taildrop.
+workdir=$(mktemp -d)
+trap 'rm -rf "$workdir"' EXIT
+
+if ! wl-paste --no-newline --type "$paste_type" >"$workdir/$filename" 2>"$workdir/paste-error"; then
+  error=$(<"$workdir/paste-error")
+  refuse "${error:-Could not read the clipboard}"
+fi
+
+[[ -s "$workdir/$filename" ]] || refuse "The clipboard is empty"
+
+tailscale file cp --update-interval=0 -- "$workdir/$filename" "$machine:" >"$workdir/send-error" 2>&1 &
+transfer=$!
+
+# A quick transfer needs no ceremony; only announce one that drags on, so a
+# send to a sleeping phone does not look like nothing happened.
+for _ in {1..20}; do
+  kill -0 "$transfer" 2>/dev/null || break
+  sleep 0.1
+done
+if kill -0 "$transfer" 2>/dev/null; then
+  omarchy-notification-send -g "󰅌" "Sending to $name" "$what" || true
+fi
+
+if wait "$transfer"; then
+  omarchy-notification-send -g "󰅌" "Sent to $name" "$what"
+else
+  error=$(<"$workdir/send-error")
+  omarchy-notification-send -g "󰅌" -u critical "Could not send to $name" "${error:-Taildrop transfer failed}"
+  exit 1
+fi
