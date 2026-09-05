@@ -101,6 +101,13 @@ read_brightness() {
   printf '%s %s\n' "$bus" "$values"
 }
 
+# Some displays ignore a write on the fast path but accept it once the initial
+# DDC checks run, so retry with full checks before reporting a rejected write.
+write_vcp() {
+  ddcutil --bus "$1" --skip-ddc-checks --verify setvcp 10 "$2" >/dev/null 2>&1 ||
+    ddcutil --bus "$1" --verify setvcp 10 "$2" >/dev/null 2>&1
+}
+
 bus=""
 current=""
 maximum=""
@@ -160,9 +167,5 @@ fi
 (( target > 100 )) && target=100
 (( raw_target = (target * maximum + 50) / 100 ))
 
-if ! ddcutil --bus "$bus" --skip-ddc-checks --noverify setvcp 10 "$raw_target" >/dev/null 2>&1; then
-  rm -f "$cache_file"
-  exit 1
-fi
-
+write_vcp "$bus" "$raw_target" || exit 1
 printf '%s\n' "$target"

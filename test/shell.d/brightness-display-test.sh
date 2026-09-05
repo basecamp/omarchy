@@ -48,6 +48,10 @@ EOF
 elif [[ $* == *" getvcp 10 "* ]]; then
   [[ ${DDC_READ_FAIL:-0} == "1" ]] && exit 1
   printf 'VCP 10 C %s %s\n' "${DDC_CURRENT:-40}" "${DDC_MAXIMUM:-80}"
+elif [[ $* == *" setvcp 10 "* ]]; then
+  if [[ ${DDC_WRITE_FAIL:-0} == "1" || ( ${DDC_FAST_WRITE_FAIL:-0} == "1" && $* == *" --skip-ddc-checks "* ) ]]; then
+    [[ $* == *" --noverify "* ]] || exit 1
+  fi
 fi
 SH
 
@@ -68,17 +72,45 @@ run_brightness --monitor DP-1 >/dev/null
 pass "DDC bus mapping is cached"
 
 run_brightness --no-osd --monitor DP-1 25%
-grep -F 'ddcutil --bus 7 --skip-ddc-checks --noverify setvcp 10 20' "$call_log" >/dev/null || \
-  fail "external percentage is converted to the monitor VCP range"
-pass "external percentage is converted to the monitor VCP range"
+grep -F 'ddcutil --bus 7 --skip-ddc-checks --verify setvcp 10 20' "$call_log" >/dev/null || \
+  fail "the first external write verifies the fast DDC path"
+pass "the first external write verifies the fast DDC path"
 
 get_count=$(grep -c ' getvcp 10 ' "$call_log")
 run_brightness --no-osd --monitor DP-1 30%
 (( $(grep -c ' getvcp 10 ' "$call_log") == get_count )) || \
   fail "absolute external brightness reuses the cached VCP range"
-grep -F 'ddcutil --bus 7 --skip-ddc-checks --noverify setvcp 10 24' "$call_log" >/dev/null || \
-  fail "absolute external brightness skips write verification"
-pass "absolute external brightness reuses the cached VCP range"
+grep -F 'ddcutil --bus 7 --skip-ddc-checks --verify setvcp 10 24' "$call_log" >/dev/null || \
+  fail "external brightness verifies every write"
+pass "absolute external brightness reuses its range and verifies its write"
+
+set_count=$(grep -c ' setvcp 10 ' "$call_log")
+DDC_FAST_WRITE_FAIL=1 run_brightness --no-osd --monitor DP-1 35% || \
+  fail "a rejected fast DDC write is retried with full checks"
+(( $(grep -c ' setvcp 10 ' "$call_log") == set_count + 2 )) || \
+  fail "external brightness retries a rejected fast DDC write once"
+grep -F 'ddcutil --bus 7 --skip-ddc-checks --verify setvcp 10 28' "$call_log" >/dev/null || \
+  fail "external brightness probes the fast DDC path"
+grep -F 'ddcutil --bus 7 --verify setvcp 10 28' "$call_log" >/dev/null || \
+  fail "external brightness retries with full DDC checks"
+pass "external brightness falls back to full DDC checks"
+
+set_count=$(grep -c ' setvcp 10 ' "$call_log")
+detect_count=$(grep -c ' detect --brief' "$call_log")
+if DDC_WRITE_FAIL=1 run_brightness --no-osd --monitor DP-1 45% >/dev/null 2>&1; then
+  fail "rejected external brightness write is reported"
+fi
+(( $(grep -c ' setvcp 10 ' "$call_log") == set_count + 2 )) || \
+  fail "a rejected write tries both DDC paths"
+get_count=$(grep -c ' getvcp 10 ' "$call_log")
+brightness=$(run_brightness --monitor DP-1) || fail "external brightness stays readable after a rejected write"
+[[ $brightness == "50" ]] || fail "external brightness stays readable after a rejected write" "actual: $brightness"
+(( $(grep -c ' getvcp 10 ' "$call_log") == get_count + 1 )) || \
+  fail "external brightness is re-read after a rejected write"
+(( $(grep -c ' detect --brief' "$call_log") == detect_count )) || \
+  fail "a rejected write keeps the cached DDC bus"
+pass "rejected external brightness writes leave the display readable"
+rm -f "$runtime_dir/omarchy-brightness-display-ddc/DP-1.bus"
 
 brightness=$(run_brightness --monitor eDP-1)
 [[ $brightness == "40" ]] || fail "internal monitor uses the kernel backlight" "actual: $brightness"
@@ -119,13 +151,13 @@ get_count=$(grep -c ' getvcp 10 ' "$call_log")
 DDC_MAXIMUM=100 run_brightness --no-osd --monitor DP-1 50%
 (( $(grep -c ' getvcp 10 ' "$call_log") == get_count + 1 )) || \
   fail "expired external brightness range is refreshed"
-grep -F 'ddcutil --bus 7 --skip-ddc-checks --noverify setvcp 10 50' "$call_log" >/dev/null || \
+grep -F 'ddcutil --bus 7 --skip-ddc-checks --verify setvcp 10 50' "$call_log" >/dev/null || \
   fail "expired external brightness range uses the refreshed maximum"
 pass "expired external brightness range is refreshed"
 
 rm -f "$runtime_dir/omarchy-brightness-display-ddc/DP-1.bus"
 DDC_CURRENT=4 DDC_MAXIMUM=100 run_brightness --no-osd --monitor DP-1 +5%
-grep -F 'ddcutil --bus 7 --skip-ddc-checks --noverify setvcp 10 5' "$call_log" >/dev/null || \
+grep -F 'ddcutil --bus 7 --skip-ddc-checks --verify setvcp 10 5' "$call_log" >/dev/null || \
   fail "external low brightness writes the one-percent target"
 pass "external low brightness uses a one-percent step"
 

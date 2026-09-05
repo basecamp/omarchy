@@ -17,6 +17,7 @@ Panel {
   property int brightnessPercent: 0
   property int pendingBrightnessPercent: 0
   property bool brightnessSetQueued: false
+  property bool brightnessOsdPending: false
   property bool brightnessAvailable: false
   property string internalMonitor: ""
   property string externalMonitor: ""
@@ -414,17 +415,30 @@ Panel {
   Process {
     id: setBrightnessProc
     stdout: StdioCollector { waitForEnd: true }
-    // Do NOT call refresh() after a brightness set completes. The local
+    // Do NOT call refresh() after a brightness set succeeds. The local
     // brightnessPercent we just wrote is authoritative; re-reading via
     // `omarchy-brightness-display` races the hardware/driver and can
     // return an empty string, which the parser then coerces to 0 —
     // visible as a "bounce to zero" after h/l keypresses. External
     // brightness changes are still picked up by the 5s periodic refresh,
     // the open-time refresh, and Component.onCompleted.
-    onRunningChanged: {
-      if (running) return
+    //
+    // A failed set is verified wrong, so drop the queue and refresh to snap
+    // the slider back. The OSD is only shown once a write is verified.
+    onExited: function(exitCode) {
+      if (exitCode !== 0) {
+        root.brightnessSetQueued = false
+        root.brightnessOsdPending = false
+        root.refresh()
+        return
+      }
       if (root.brightnessSetQueued) {
         root.setBrightness(root.pendingBrightnessPercent)
+        return
+      }
+      if (root.brightnessOsdPending) {
+        root.brightnessOsdPending = false
+        root.showBrightnessOsd(root.brightnessPercent)
       }
     }
   }
@@ -476,8 +490,8 @@ Panel {
       var wheel = Util.wheelSteps(root.wheelAccumulator, delta)
       root.wheelAccumulator = wheel.remainder
       if (wheel.steps === 0) return
+      root.brightnessOsdPending = true
       root.setBrightness(root.brightnessPercent + wheel.steps * 5)
-      root.showBrightnessOsd(root.brightnessPercent)
     }
   }
 
