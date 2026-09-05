@@ -22,6 +22,14 @@ Item {
     var payload = ({})
     try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
 
+    // A select/input request left in flight when a new summon arrives
+    // (e.g. the trigger key repeated before the prior one was answered)
+    // would otherwise have its doneFile silently abandoned by
+    // openDmenu/openExistingMenu below, leaving the caller that's still
+    // polling for it (bin/omarchy-menu-select) blocked forever. Answer it
+    // as cancelled first so every summon always resolves.
+    if (root.requestActive) root.finishRequest(null)
+
     if (payload.fontFamily) root.fontFamily = payload.fontFamily
 
     if (payload.mode === "select" || payload.mode === "input") {
