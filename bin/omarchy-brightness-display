@@ -92,9 +92,11 @@ else
   # Current brightness percentage
   current=$(backlight_brightness "$device") || exit 1
 
+  is_up=0
   # Apply non-uniform step size: 1% steps if at or below 5%, otherwise set an
   # absolute target percentage to avoid raw backlight rounding causing uneven OSD steps.
   if [[ $step == "+5%" ]]; then
+    is_up=1
     if (( current < 5 )); then
       (( target = current + 1 ))
     else
@@ -110,12 +112,22 @@ else
       (( target = current - 5 ))
     fi
 
-    (( target < 1 )) && target=1
+    (( target < 0 )) && target=0
     step="$target%"
+  elif [[ $step == "+"* ]]; then
+    is_up=1
   fi
 
   # Set brightness of the display device.
   brightnessctl -d "$device" set "$step" >/dev/null
+
+  # On hardware with small max_brightness ranges (e.g. acpi_video0 with max_brightness=15),
+  # percentage targets (like 1%) can round to raw 0. When stepping up from 0%, ensure
+  # raw brightness increases by at least +1 step so the display turns back on.
+  new_current=$(backlight_brightness "$device") || new_current="$current"
+  if (( is_up && new_current <= current && current < 100 )); then
+    brightnessctl -d "$device" set +1 >/dev/null
+  fi
 
   # Show the new brightness in OSD
   (( no_osd )) || omarchy-osd -i brightness -p "$(backlight_brightness "$device")"
