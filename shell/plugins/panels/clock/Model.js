@@ -234,7 +234,10 @@ function lifeProgressPercent(age, expectancy) {
 function monthGrid(year, month, weekStart, todayKey) {
   var start = normalizedWeekStart(weekStart, 1)
   var leading = (new Date(year, month, 1).getDay() - start + 7) % 7
-  var cursor = new Date(year, month, 1 - leading)
+  // Build each cell from (year, month, dayIndex) instead of mutating one Date
+  // with setDate(+1). QML's Date wrapper can fail to advance a civil day on
+  // that path, which duplicated 5 September 2026 in the Sunday-start grid.
+  var firstCellDay = 1 - leading
   var today = String(todayKey || "")
   var weeks = []
 
@@ -242,6 +245,7 @@ function monthGrid(year, month, weekStart, todayKey) {
     var days = []
     var thursday = null
     for (var d = 0; d < 7; d++) {
+      var cursor = new Date(year, month, firstCellDay + w * 7 + d)
       var cellYear = cursor.getFullYear()
       var cellMonth = cursor.getMonth()
       var cellDay = cursor.getDate()
@@ -258,7 +262,6 @@ function monthGrid(year, month, weekStart, todayKey) {
         weekend: weekday === 0 || weekday === 6,
         today: key === today
       })
-      cursor.setDate(cursor.getDate() + 1)
     }
     // Number every row by the ISO week owning its Thursday. That is the
     // definition itself for Monday-start weeks, and the only answer that
