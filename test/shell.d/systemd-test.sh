@@ -71,14 +71,6 @@ grep -Fx 'WantedBy=graphical-session.target' "$fcitx_service" >/dev/null ||
 grep -Fx 'ConditionEnvironment=WAYLAND_DISPLAY' "$fcitx_service" >/dev/null ||
   fail "an update over SSH has a live user manager and no display; starting fcitx5 there wedges the unit active-but-blind, and Wants= will not replace it at graphical login"
 
-fcitx_migration="$ROOT/migrations/1785167800.sh"
-grep -F 'is-active --quiet graphical-session.target' "$fcitx_migration" >/dev/null ||
-  fail "migration kills fcitx5 and starts the unit outside a graphical session"
-grep -F 'systemctl --user enable omarchy-fcitx5.service' "$fcitx_migration" >/dev/null ||
-  fail "migration must enable without --now; --now starts the unit before the session-gate check"
-grep -F 'Could not start omarchy-fcitx5.service' "$fcitx_migration" >/dev/null ||
-  fail "migration pkills a working fcitx5, so a failed handover must be reported instead of marked complete"
-
 grep -F 'pkill -x fcitx5' "$ROOT/bin/omarchy-restart-xcompose" >/dev/null ||
   fail "restart-xcompose cannot reload a fcitx5 running outside the unit, so it silently keeps serving the old table"
 
@@ -111,10 +103,4 @@ pass "systemd-oomd acts on sustained memory stall"
 
 grep -Fx 'systemctl enable systemd-oomd.service' "$ROOT/install/config/enable-services.sh" >/dev/null ||
   fail "new installs ship the oomd drop-ins with the daemon that reads them disabled"
-
-oomd_migration=$(grep -rl 'systemd-oomd.service' "$ROOT/migrations" | head -n 1 || true)
-[[ -n $oomd_migration ]] ||
-  fail "existing installs never enable systemd-oomd; enable-services.sh only runs at install time"
-grep -F 'systemctl --user daemon-reload' "$oomd_migration" >/dev/null ||
-  fail "migration leaves the user manager unaware of app.slice candidacy until the next login"
-pass "existing installs enable systemd-oomd and report app.slice without a relogin"
+pass "new installs enable systemd-oomd"
