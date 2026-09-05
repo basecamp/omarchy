@@ -68,6 +68,7 @@ omarchy-pkg-add|omarchy-pkg-aur-add)
   chromium) command=chromium ;;
   firefox) command=firefox ;;
   zen-browser-bin) command=zen-browser ;;
+  omafox) command=omafox ;;
   cursor-bin) command=cursor ;;
   sublime-text-4) command=sublime_text ;;
   vim) command=vim ;;
@@ -121,7 +122,8 @@ done
 for setup_command in \
   omarchy-install-chromium-copy-url \
   omarchy-install-chromium-ytdlp \
-  omarchy-theme-set-browser; do
+  omarchy-theme-set-browser \
+  omafox; do
   ln -s omarchy-test-setup-call "$mock_bin/$setup_command"
 done
 
@@ -231,7 +233,7 @@ pass "Chromium browser installer restores the complete Omarchy setup"
 : >"$setup_log"
 rm -f "$installed_dir/firefox"
 OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install firefox >/dev/null
-[[ $(<"$install_log") == "pkg:firefox" ]] || fail "Firefox browser installer installs the package"
+[[ $(<"$install_log") == $'pkg:firefox\npkg:omafox' ]] || fail "Firefox browser installer installs Firefox and Omafox"
 [[ $(omarchy-default-browser) == "firefox" ]] || fail "Firefox becomes the default after its full installer succeeds"
 grep -Fxq 'sudo:install -d -m 0755 -o root -g root /usr/lib/firefox/distribution' "$setup_log" ||
   fail "Firefox browser installer creates its distribution directory"
@@ -239,14 +241,16 @@ grep -Fxq 'sudo:find /usr/lib/firefox/distribution -mindepth 1 -maxdepth 1 ! -us
   fail "Firefox browser installer drops non-root files from its distribution directory"
 grep -Fxq "sudo:install -m 644 -o root -g root -T $ROOT/default/firefox/policies.json /usr/lib/firefox/distribution/policies.json" "$setup_log" ||
   fail "Firefox browser installer copies policies.json without following a destination symlink"
+grep -Fxq 'omafox:setup' "$setup_log" || fail "Firefox browser installer sets up Omafox"
 [[ -e $installed_dir/firefox ]] || fail "Firefox browser installer marks firefox installed"
+[[ -e $installed_dir/omafox ]] || fail "Firefox browser installer marks omafox installed"
 pass "Firefox browser installer restores the complete Omarchy setup"
 
 : >"$install_log"
 : >"$setup_log"
 rm -f "$installed_dir/zen-browser"
 OMARCHY_TEST_REAL_BROWSER_INSTALL=true omarchy-default-browser --install zen >/dev/null
-[[ $(<"$install_log") == "pkg:zen-browser-bin" ]] || fail "Zen browser installer installs the package"
+[[ $(<"$install_log") == $'pkg:zen-browser-bin\npkg:omafox' ]] || fail "Zen browser installer installs Zen and Omafox"
 [[ $(omarchy-default-browser) == "zen" ]] || fail "Zen becomes the default after its full installer succeeds"
 grep -Fxq 'sudo:install -d -m 0755 -o root -g root /opt/zen-browser/distribution' "$setup_log" ||
   fail "Zen browser installer creates its distribution directory"
@@ -254,7 +258,9 @@ grep -Fxq 'sudo:find /opt/zen-browser/distribution -mindepth 1 -maxdepth 1 ! -us
   fail "Zen browser installer drops non-root files from its distribution directory"
 grep -Fxq "sudo:install -m 644 -o root -g root -T $ROOT/default/firefox/policies.json /opt/zen-browser/distribution/policies.json" "$setup_log" ||
   fail "Zen browser installer copies policies.json without following a destination symlink"
+grep -Fxq 'omafox:setup' "$setup_log" || fail "Zen browser installer sets up Omafox"
 [[ -e $installed_dir/zen-browser ]] || fail "Zen browser installer marks zen-browser installed"
+[[ -e $installed_dir/omafox ]] || fail "Zen browser installer marks omafox installed"
 pass "Zen browser installer restores the complete Omarchy setup"
 
 omarchy-default-browser zen
