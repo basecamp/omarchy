@@ -4,20 +4,24 @@
 # omarchy:group=system
 # omarchy:hidden=true
 
+sleep_monitor="$OMARCHY_PATH/bin/omarchy-system-sleep-monitor"
+
 consume_sleep_events() {
-  local line sleep_lock
+  local line wanted=${1:-true} sleep_lock
   sleep_lock="$OMARCHY_PATH/bin/omarchy-system-sleep-lock"
 
   while IFS= read -r line; do
-    if [[ $line == *"boolean true"* ]]; then
-      "$sleep_lock"
+    if [[ $line == *"boolean ${wanted}"* ]]; then
+      if [[ $wanted == "true" ]]; then
+        "$sleep_lock"
+      fi
       return 0
     fi
   done
 }
 
 monitor_sleep_events() {
-  local monitor_fd monitor_pid status
+  local wanted=${1:-true} monitor_fd monitor_pid status
 
   coproc SLEEP_EVENTS {
     exec dbus-monitor --system \
@@ -32,12 +36,72 @@ monitor_sleep_events() {
   }
   trap cleanup_monitor EXIT
 
-  consume_sleep_events <&"$monitor_fd"
+  consume_sleep_events "$wanted" <&"$monitor_fd"
   status=$?
   cleanup_monitor
   trap - EXIT
 
   return "$status"
+}
+
+# logind refuses a second delay inhibitor while PreparingForSleep is still
+# true ("inhibition already running"). Unknown means we cannot ask, not that
+# we are awake.
+sleep_prepare_state() {
+  local value
+  value=$(timeout --kill-after=0.1s 1s busctl get-property \
+    org.freedesktop.login1 /org/freedesktop/login1 \
+    org.freedesktop.login1.Manager PreparingForSleep 2>/dev/null) || {
+    echo unknown
+    return
+  }
+
+  if [[ $value == *"true"* ]]; then
+    echo true
+  else
+    echo false
+  fi
+}
+
+# Backgrounded because bash defers a trap until a foreground command returns
+# but interrupts wait.
+run_child() {
+  "$@" &
+  child_pid=$!
+
+  local status
+  while true; do
+    wait "$child_pid"
+    status=$?
+
+    kill -0 "$child_pid" 2>/dev/null || break
+  done
+
+  child_pid=""
+  return "$status"
+}
+
+wait_until_resume() {
+  if [[ $(sleep_prepare_state) == "false" ]]; then
+    return 0
+  fi
+
+  run_child "$BASH" "$sleep_monitor" --wait-resume
+}
+
+wait_until_idle_awake() {
+  if [[ $(sleep_prepare_state) == "true" ]]; then
+    run_child "$BASH" "$sleep_monitor" --wait-resume
+  fi
+}
+
+acquire_delay_inhibitor() {
+  run_child systemd-inhibit \
+    --what=sleep \
+    --mode=delay \
+    --who=Omarchy \
+    --why="Lock screen before suspend" \
+    "$BASH" "$sleep_monitor" --inhibited
 }
 
 case ${1:-} in
@@ -46,16 +110,42 @@ case ${1:-} in
     exit 0
     ;;
   --inhibited)
-    monitor_sleep_events
+    monitor_sleep_events true
+    exit 0
+    ;;
+  --wait-resume)
+    monitor_sleep_events false
     exit 0
     ;;
 esac
 
-sleep_monitor="$OMARCHY_PATH/bin/omarchy-system-sleep-monitor"
+child_pid=""
+terminating=0
 
-exec systemd-inhibit \
-  --what=sleep \
-  --mode=delay \
-  --who=Omarchy \
-  --why="Lock screen before suspend" \
-  "$sleep_monitor" --inhibited
+stop() {
+  terminating=1
+  [[ -n $child_pid ]] && kill -TERM "$child_pid" 2>/dev/null
+  return 0
+}
+trap stop HUP INT TERM
+
+# Drop the delay inhibitor after locking so suspend can proceed, then wait
+# for PrepareForSleep(false) before taking another. Restart=always cannot
+# re-arm us: RestartSec freezes during suspend and a fast second sleep
+# beats the respawn.
+while true; do
+  if (( terminating )); then
+    exit 0
+  fi
+  wait_until_idle_awake
+
+  if (( terminating )); then
+    exit 0
+  fi
+  acquire_delay_inhibitor
+
+  if (( terminating )); then
+    exit 0
+  fi
+  wait_until_resume
+done
