@@ -22,6 +22,8 @@ Item {
   property bool fingerprintAuthenticating: false
   property bool passwordPamConfigured: false
   property bool fingerprintConfigured: false
+  property bool suspending: false
+  property bool fingerprintCheckDeferred: false
   property bool previewVisible: false
   property string enteredPassword: ""
   property string pendingPassword: ""
@@ -104,7 +106,45 @@ Item {
   }
 
   function refreshFingerprintStatus() {
+    // The check D-Bus-activates fprintd. Hold it back while suspending; resume
+    // runs it.
+    if (suspending) {
+      fingerprintCheckDeferred = true
+      return
+    }
     if (!fingerprintCheckProc.running) fingerprintCheckProc.running = true
+  }
+
+  // logind announces suspend with PrepareForSleep(true) and resume with
+  // PrepareForSleep(false). A lid-close lock lands a few hundred milliseconds
+  // before the machine sleeps, and an fprintd call in that window activates
+  // the daemon mid-transition: it resets the reader as the USB bus goes down,
+  // and a Synaptics reader comes back "unsupported firmware version" for the
+  // rest of that daemon's life. The availability check then reads no reader
+  // and the lock stays password-only until the next lock. Hold new fprintd
+  // calls until resume.
+  //
+  // A scan already in flight is left alone. fprintd suspends and resumes the
+  // reader itself, and while a scan runs, libfprint lets the kernel
+  // re-enumerate the reader after sleep. Aborting the scan here makes fprintd
+  // close the reader during the transition instead: the close blocks until
+  // resume, the reader wakes with stale firmware state, and every scan fails
+  // until the daemon exits. A scan that rides through sleep either continues
+  // or fails on resume, and the retry starts a fresh one on the new device.
+  function prepareForSleep(sleeping) {
+    if (suspending === sleeping) return
+
+    suspending = sleeping
+    logEvent(sleeping ? "suspending" : "resumed")
+
+    if (sleeping) {
+      fingerprintRetryTimer.stop()
+    } else if (fingerprintCheckDeferred) {
+      fingerprintCheckDeferred = false
+      refreshFingerprintStatus()
+    } else if (lockRequested) {
+      startFingerprint()
+    }
   }
 
   function logEvent(event) {
@@ -207,7 +247,7 @@ Item {
   }
 
   function startFingerprint() {
-    if (!lockRequested || !sessionLock.secure || !fingerprintConfigured) return
+    if (!lockRequested || !sessionLock.secure || !fingerprintConfigured || suspending) return
     if (fingerprintPam.active || fingerprintAuthenticating) return
 
     fingerprintAuthenticating = true
@@ -386,6 +426,36 @@ Item {
     }
   }
 
+  // One subscription for the shell's whole life, so PrepareForSleep(false) is
+  // never missed: omarchy-system-sleep-monitor exits to release its delay
+  // inhibitor and is restarted after the machine is already awake.
+  Process {
+    id: sleepMonitorProc
+    command: ["dbus-monitor", "--system",
+      "type='signal',sender='org.freedesktop.login1',interface='org.freedesktop.login1.Manager',member='PrepareForSleep'"]
+    running: true
+    stdout: SplitParser {
+      onRead: function(line) {
+        var text = String(line)
+        if (text.indexOf("boolean true") !== -1) root.prepareForSleep(true)
+        else if (text.indexOf("boolean false") !== -1) root.prepareForSleep(false)
+      }
+    }
+    onExited: function(exitCode) {
+      // A dead monitor cannot report resume, so never leave the lock stuck
+      // suspending.
+      root.prepareForSleep(false)
+      sleepMonitorRestartTimer.restart()
+    }
+  }
+
+  Timer {
+    id: sleepMonitorRestartTimer
+    interval: 5000
+    repeat: false
+    onTriggered: sleepMonitorProc.running = true
+  }
+
   Process {
     id: strandedLockCheckProc
     command: ["bash", "-c", "omarchy-hyprland-session-locked"]
@@ -530,6 +600,7 @@ Item {
         realScreens: root.realScreenCount(),
         passwordPam: root.passwordPamConfigured,
         fingerprint: root.fingerprintConfigured,
+        suspending: root.suspending,
         authenticating: root.authenticating,
         lastEvent: root.lastEvent,
         lastEventAt: root.lastEventAt
