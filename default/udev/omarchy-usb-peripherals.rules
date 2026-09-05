@@ -1,0 +1,14 @@
+# Hotplugged USB HID must join the seat so logind TakeDevice works under Wayland.
+# 71-seat.rules already tags input* and hidraw*, but USB hub/dock reconnect
+# races can leave those tags missing. Re-apply on add/change.
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="input*", TAG+="seat"
+ACTION=="add|change", SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT}=="?*", TAG+="seat", TAG+="uaccess"
+ACTION=="add|change", SUBSYSTEM=="hidraw", KERNEL=="hidraw*", TAG+="seat"
+
+# Prevent runtime autosuspend on USB hubs so downstream peripherals stay connected
+ACTION=="add", SUBSYSTEM=="usb", ATTR{bDeviceClass}=="09", ATTR{power/control}="on", ATTR{power/autosuspend}="-1"
+
+# Enable wakeup from suspend for USB root controllers, external hubs, and input devices
+ACTION=="add", SUBSYSTEM=="usb", ATTR{devpath}=="0", ATTR{power/wakeup}="enabled"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{bDeviceClass}=="09", ATTR{power/wakeup}="enabled"
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", TEST=="power/wakeup", ATTR{power/wakeup}="enabled"
