@@ -71,12 +71,209 @@ normalize_scale() {
   awk 'NR == 1 { printf "%g\n", $0 }'
 }
 
+# GDK_SCALE is one integer for the whole session, so it can only follow a
+# monitor scale when there is a single monitor to follow. With several outputs
+# enabled, rewriting it here resizes XWayland windows on the displays the user
+# did not touch.
+persist_gdk_scale() {
+  local gdk_scale="$1"
+  local file="$2"
+  local enabled
+
+  # Mirrors are absent from plain `monitors`, so counting there can miss an
+  # output whose XWayland windows this would resize; `all` plus an explicit
+  # disabled filter is what the other monitor helpers use.
+  enabled="$(hyprctl monitors all -j | jq '[.[] | select(.disabled != true)] | length')"
+  [[ $enabled == 1 ]] || return 0
+
+  sed -i --follow-symlinks -E \
+    -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${gdk_scale}|" \
+    -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$gdk_scale"'")|' \
+    "$file"
+}
+
+# Rewrite `scale = ...` inside the hl.monitor rule naming this output, in both
+# the single-line form Omarchy writes and the multi-line form nwg-displays
+# writes. Commented-out examples and rules for other outputs are left alone. A
+# matching rule with no scale field gets one. Returns 3 when no rule names this
+# output and the shared scale variable is read only by a catch-all rule, 4 when
+# no rule names it and writing that variable would reach another output's rule
+# instead, and 1 when the rewrite could not be run at all: a caller that took
+# those for the same thing would answer an unwritable config by falling back to
+# the catch-all and reporting success.
+update_named_monitor_scale() {
+  local monitor="$1"
+  local description="$2"
+  local scale="$3"
+  local file="$4"
+  local tmp="${file}.omarchy-scale.$$"
+
+  # The description goes through the environment rather than -v, which would
+  # read a backslash in the EDID text as an escape sequence.
+  OMARCHY_MONITOR_DESCRIPTION="$description" awk -v monitor="$monitor" -v scale="$scale" '
+    BEGIN { description = ENVIRON["OMARCHY_MONITOR_DESCRIPTION"] }
+    # Hyprland takes a connector name or desc: followed by any prefix of the
+    # monitor description, and desc: is the usual advice for the multi-monitor
+    # setups this matters on, because connectors renumber across hotplug. A
+    # hand-written rule may also space its keys out, and matching a fixed
+    # "output = " would send those to the catch-all the reload overrides.
+    function output_value(text,   value) {
+      has_output = 0
+      if (!match(text, /output[[:space:]]*=[[:space:]]*"[^"]*"/)) return ""
+      has_output = 1
+      value = substr(text, RSTART, RLENGTH)
+      sub(/^output[[:space:]]*=[[:space:]]*"/, "", value)
+      sub(/"$/, "", value)
+      return value
+    }
+    # The shared variable is only the right place to write when a catch-all
+    # rule is what reads it. A rule naming another output reads it just as
+    # well, and then writing it resizes a display the user did not touch.
+    function note_scale_variable(text,   field, value) {
+      if (!match(text, /scale[[:space:]]*=[[:space:]]*[^,;[:space:]}]+/)) return
+      field = substr(text, RSTART, RLENGTH)
+      sub(/^scale[[:space:]]*=[[:space:]]*/, "", field)
+      if (field != "omarchy_monitor_scale") return
+      value = output_value(text)
+      if (has_output && value == "") catch_all_reads_variable = 1
+      else named_reads_variable = 1
+    }
+    function names_monitor(text,   value) {
+      value = output_value(text)
+      if (!has_output) return 0
+      if (value == monitor) return 1
+      # Compared literally rather than as a pattern: a description is EDID free
+      # text and routinely carries . ( and +.
+      if (substr(value, 1, 5) != "desc:") return 0
+      # Hyprland trims the selector before comparing, so a rule that spaces one
+      # out names the output there and has to name it here too.
+      value = substr(value, 6)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value == "") return 0
+      return index(description, value) == 1
+    }
+    # A --[[ ]] comment runs across lines, so a rule inside one has to be seen
+    # as commented out before it is matched: rewriting a scale in there reports
+    # a rule was written while the reload reads no such rule, and the caller
+    # then leaves the catch-all alone too, persisting the scale nowhere.
+    # Comments are blanked rather than cut, so a position found in the blanked
+    # copy still indexes the original. in_block carries the state between lines.
+    # Only the plain --[[ ]] form is recognised; a long bracket with an equals
+    # level is rare enough in a monitors.lua to leave to the reader.
+    function blank(line,   out, i, n, pair) {
+      out = ""
+      n = length(line)
+      i = 1
+      while (i <= n) {
+        pair = substr(line, i, 2)
+        if (in_block) {
+          if (pair == "]]") { in_block = 0; out = out "  "; i += 2 } else { out = out " "; i++ }
+        } else if (substr(line, i, 4) == "--[[") {
+          in_block = 1
+          out = out "    "
+          i += 4
+        } else if (pair == "--") {
+          out = out sprintf("%" (n - i + 1) "s", "")
+          i = n + 1
+        } else {
+          out = out substr(line, i, 1)
+          i++
+        }
+      }
+      return out
+    }
+    # A description is free text, so a desc: value can carry a bracket that
+    # closes nothing -- a prefix cut mid-parenthesis is enough. Counting it
+    # leaves the rule open, swallows every rule after it, and the catch-all is
+    # written as if none of them named this output. The depth counter reads the
+    # line with quoted values emptied for that reason, and nothing else does:
+    # matching a rule still needs to see what the value says.
+    function outside_strings(line,   out, i, n, quoted) {
+      out = ""
+      n = length(line)
+      quoted = 0
+      for (i = 1; i <= n; i++) {
+        if (substr(line, i, 1) == "\"") quoted = !quoted
+        out = out (quoted ? " " : substr(line, i, 1))
+      }
+      return out
+    }
+    function rewrite(text, blanks,   n, i, lines, bare, line, out, done, pos, end) {
+      if (!names_monitor(blanks)) return ""
+      n = split(text, lines, "\n")
+      split(blanks, bare, "\n")
+      out = ""
+      done = 0
+      for (i = 1; i <= n; i++) {
+        line = lines[i]
+        if (!done && match(bare[i], /scale[[:space:]]*=[[:space:]]*("[^"]*"|[^,;[:space:]}]+)/)) {
+          line = substr(line, 1, RSTART - 1) "scale = " scale substr(line, RSTART + RLENGTH)
+          done = 1
+        }
+        out = (i == 1) ? line : out "\n" line
+      }
+      if (done) return out
+      # Append against the blanked copy: a brace or a separator inside a
+      # comment would otherwise take the field, leaving the rule with no scale
+      # while this reports one was written.
+      pos = 0
+      for (i = length(blanks); i >= 1; i--)
+        if (substr(blanks, i, 1) == "}") { pos = i; break }
+      if (pos == 0) return ""
+      end = pos - 1
+      while (end > 0 && substr(blanks, end, 1) ~ /[[:space:]]/) end--
+      # Lua takes , and ; interchangeably between table fields, and so does the
+      # rule reader in omarchy-hyprland-monitor-clamshell.
+      if (substr(blanks, end, 1) ~ /[,;]/)
+        return substr(text, 1, end) " scale = " scale substr(text, end + 1)
+      return substr(text, 1, end) ", scale = " scale substr(text, end + 1)
+    }
+    {
+      bare_line = blank($0)
+      line = outside_strings(bare_line)
+      if (depth == 0 && line !~ /hl\.monitor[[:space:]]*\(/) { print; next }
+      rule = (depth == 0) ? $0 "\n" : rule $0 "\n"
+      bare_rule = (depth == 0) ? bare_line "\n" : bare_rule bare_line "\n"
+      depth += gsub(/[{(]/, "", line)
+      depth -= gsub(/[})]/, "", line)
+      if (depth > 0) next
+      depth = 0
+      note_scale_variable(bare_rule)
+      replaced = rewrite(rule, bare_rule)
+      if (replaced != "") { changed = 1; printf "%s", replaced } else printf "%s", rule
+      rule = ""
+      bare_rule = ""
+    }
+    END {
+      if (rule != "") printf "%s", rule
+      if (changed) exit 0
+      exit (catch_all_reads_variable && !named_reads_variable) ? 3 : 4
+    }
+  ' "$file" >"$tmp"
+  local status=$?
+
+  if (( status == 3 || status == 4 )); then
+    rm -f "$tmp"
+    return "$status"
+  elif (( status != 0 )); then
+    rm -f "$tmp"
+    echo "Could not read $file to persist the scale" >&2
+    return 1
+  fi
+
+  # cat rather than mv: monitors.lua is commonly a symlink into a dotfiles
+  # repo, and mv would replace the link with a regular file.
+  cat "$tmp" >"$file"
+  rm -f "$tmp"
+}
+
 set_scale() {
   local requested_scale="$1"
   local requested="${2:-$requested_scale}"
   local monitor_info="$(hyprctl monitors -j | jq -e -c '.[] | select(.focused == true)')"
   local active_monitor="$(echo "$monitor_info" | jq -r '.name')"
   local current_scale="$(echo "$monitor_info" | jq -r '.scale')"
+  local monitor_description="$(echo "$monitor_info" | jq -r '.description // ""')"
   local width="$(echo "$monitor_info" | jq -r '.width')"
   local height="$(echo "$monitor_info" | jq -r '.height')"
   local refresh_rate="$(echo "$monitor_info" | jq -r '.refreshRate')"
@@ -97,18 +294,33 @@ set_scale() {
   hyprctl eval "hl.monitor({ output = \"$active_monitor\", mode = \"${width}x${height}@${refresh_rate}\", position = \"auto\", scale = $new_scale })" >/dev/null
   audit_scale_change "$requested" "$active_monitor" "$current_scale" "$new_scale"
 
+  [[ -f $monitor_lua ]] || return 0
+
+  # A rule naming this output overrides the catch-all, so the catch-all is the
+  # wrong place to write: the reload that writing monitors.lua triggers would
+  # re-apply the named rule and undo the scale just eval'd.
+  update_named_monitor_scale "$active_monitor" "$monitor_description" "$new_scale" "$monitor_lua"
+  local rewrite_status=$?
+
+  if (( rewrite_status == 0 )); then
+    persist_gdk_scale "$new_gdk_scale" "$monitor_lua"
+    return 0
+  elif (( rewrite_status != 3 && rewrite_status != 4 )); then
+    return 1
+  fi
+
   # Persist to monitors.lua if the user still has Omarchy's generic catch-all
   # defaults, so the scale survives reboots.
-  if [[ -f $monitor_lua ]] && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
-    sed -i -E \
+  if (( rewrite_status == 3 )) && grep -q '^local omarchy_monitor_scale = ' "$monitor_lua"; then
+    sed -i --follow-symlinks -E \
       -e "s|^local omarchy_monitor_scale = .*|local omarchy_monitor_scale = ${new_scale}|" \
-      -e "s|^local omarchy_gdk_scale = .*|local omarchy_gdk_scale = ${new_gdk_scale}|" \
       "$monitor_lua"
-  elif [[ -f $monitor_lua ]] && grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$monitor_lua"; then
-    sed -i -E \
+    persist_gdk_scale "$new_gdk_scale" "$monitor_lua"
+  elif grep -Eq '^hl\.monitor\(\{ output = "", mode = "preferred", position = "auto", scale = ("auto"|[0-9.]+) \}\)' "$monitor_lua"; then
+    sed -i --follow-symlinks -E \
       -e "s|^(hl\.monitor\(\{ output = \"\", mode = \"preferred\", position = \"auto\", scale = )([^ ]+)( \}\))|\\1${new_scale}\\3|" \
-      -e 's|^hl\.env\("GDK_SCALE", ".*"\)|hl.env("GDK_SCALE", "'"$new_gdk_scale"'")|' \
       "$monitor_lua"
+    persist_gdk_scale "$new_gdk_scale" "$monitor_lua"
   fi
 }
 
