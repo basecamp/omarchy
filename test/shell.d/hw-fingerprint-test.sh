@@ -74,6 +74,12 @@ assert_detects "a reader is detected by an existing product-name match"
 write_usb_devices '27c6:1234'
 assert_detects "a reader is detected by an existing vendor match"
 
+write_usb_devices '0a5c:5843:58200'
+assert_detects "a Broadcom ControlVault 3 reader is detected by its device ID"
+
+write_usb_devices '0a5c:1234:Generic Broadcom Device'
+assert_rejects "an unrelated Broadcom device is not detected"
+
 bind_driver() {
   local dev="$1" driver="$2"
 
@@ -86,6 +92,10 @@ bind_driver() {
 write_usb_devices '27c6:1234'
 bind_driver '1-0/1-0:1.0' uvcvideo
 assert_rejects "a vendor guess bound to a kernel driver is rejected"
+
+write_usb_devices '0a5c:5843:58200'
+bind_driver '1-0/1-0:1.0' btusb
+assert_rejects "a ControlVault device ID bound to a kernel driver is rejected"
 
 write_usb_devices '27c6:1234'
 bind_driver '1-0/1-0:1.0' usbfs
