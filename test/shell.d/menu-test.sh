@@ -59,6 +59,12 @@ assertEqual(merged.items['style.theme'].order, 2, 'menu preserves original order
 assert(merged.items.root, 'menu injects root when merging sources')
 
 assertEqual(menu.slugify('Power Saver!'), 'power-saver', 'menu slugifies provider rows')
+assert(
+  /root\.navStack = root\.navStack\.concat\(\[\{ id: root\.activeMenu, selectedIndex: root\.selectedIndex, filterText: root\.filterText \}\]\)/.test(menuQml)
+    && /root\.filterText = restoredFilter === undefined \? "" : restoredFilter/.test(menuQml)
+    && /root\.setActiveMenu\(previous\.id, false, false, previous\.selectedIndex, previous\.filterText\)/.test(menuQml),
+  'menu restores each menu\'s selection and search query when leaving a submenu'
+)
 assertEqual(menu.pathFor(merged.items, 'style.theme'), 'Style › Theme picker', 'menu builds item paths')
 assertEqual(menu.parentPathFor(merged.items, 'style.theme'), 'Style', 'menu builds parent paths')
 assert(menu.isDescendantOf(merged.items, 'style.theme', 'style'), 'menu detects descendants')
@@ -487,12 +493,14 @@ assert(
   'menu filter changes disarm pointer selection'
 )
 assert(
-  /function setActiveMenu\(id, pushHistory, fromPointer\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
+  /function setActiveMenu\(id, pushHistory, fromPointer, restoredIndex, restoredFilter\)[\s\S]*if \(fromPointer\) pointerGate\.allowInitialSample\(\)\s*else root\.disarmPointer\(\)/.test(menuQml),
   'menu route changes only accept an initial pointer sample for mouse activation'
 )
 assert(
-  /\(event\.key === Qt\.Key_Backspace \|\| event\.key === Qt\.Key_Left\) && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml),
-  'menu Left key follows empty-filter Backspace navigation'
+  /else if \(event\.key === Qt\.Key_Left && !root\.dmenuActive\) \{\s*root\.goBack\(\)\s*event\.accepted = true\s*\} else if \(Util\.editsFilter\(event, root\.filterText\)\)/.test(menuQml)
+    && /event\.key === Qt\.Key_Backspace && !root\.filterText[\s\S]*root\.goBack\(\)/.test(menuQml)
+    && /function goBack\(\) \{\s*if \(root\.activeMenu === "root"\) \{\s*if \(root\.filterText\) root\.setFilter\(""\)\s*return false/.test(menuQml),
+  'menu Left key returns to an unfiltered start without changing dmenu input'
 )
 assert(
   /PointerMoveGate\s*\{[\s\S]*id: pointerGate[\s\S]*referenceItem: card[\s\S]*\}/.test(menuQml),

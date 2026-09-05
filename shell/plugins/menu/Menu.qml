@@ -726,13 +726,14 @@ Item {
     root.rebuildDisplay()
   }
 
-  function setActiveMenu(id, pushHistory, fromPointer) {
+  function setActiveMenu(id, pushHistory, fromPointer, restoredIndex, restoredFilter) {
     panel.freezeCardTop()
     if (!root.item(id)) id = "root"
-    if (pushHistory && id !== root.activeMenu) root.navStack = root.navStack.concat([root.activeMenu])
+    if (pushHistory && id !== root.activeMenu)
+      root.navStack = root.navStack.concat([{ id: root.activeMenu, selectedIndex: root.selectedIndex, filterText: root.filterText }])
     root.activeMenu = id
-    root.filterText = ""
-    root.selectedIndex = 0
+    root.filterText = restoredFilter === undefined ? "" : restoredFilter
+    root.selectedIndex = restoredIndex === undefined ? 0 : restoredIndex
     root.cursorActive = true
     if (fromPointer) pointerGate.allowInitialSample()
     else root.disarmPointer()
@@ -742,12 +743,15 @@ Item {
   }
 
   function goBack() {
-    if (root.activeMenu === "root") return false
+    if (root.activeMenu === "root") {
+      if (root.filterText) root.setFilter("")
+      return false
+    }
 
     if (root.navStack.length > 0) {
       var previous = root.navStack[root.navStack.length - 1]
       root.navStack = root.navStack.slice(0, root.navStack.length - 1)
-      root.setActiveMenu(previous, false)
+      root.setActiveMenu(previous.id, false, false, previous.selectedIndex, previous.filterText)
       return true
     }
 
@@ -1133,10 +1137,13 @@ Item {
             if (root.filterText) root.setFilter("")
             else root.cancel()
             event.accepted = true
+          } else if (event.key === Qt.Key_Left && !root.dmenuActive) {
+            root.goBack()
+            event.accepted = true
           } else if (Util.editsFilter(event, root.filterText)) {
             root.setFilter(Util.editedFilter(event, root.filterText))
             event.accepted = true
-          } else if ((event.key === Qt.Key_Backspace || event.key === Qt.Key_Left) && !root.filterText) {
+          } else if (event.key === Qt.Key_Backspace && !root.filterText) {
             root.goBack()
             event.accepted = true
           } else if (event.key === Qt.Key_Up) {
