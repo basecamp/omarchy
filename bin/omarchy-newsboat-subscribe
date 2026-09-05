@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# omarchy:summary=Discover and subscribe to a feed from a page
+# omarchy:args=[page-or-feed-url]
+# omarchy:examples=omarchy newsboat subscribe https://world.hey.com/dhh
+
+set -euo pipefail
+
+if (($# > 1)); then
+  echo "Usage: omarchy newsboat subscribe [http-or-https-page-or-feed-url]" >&2
+  exit 1
+fi
+
+page_url=${1:-}
+if [[ -z $page_url ]]; then
+  page_url=$(wl-paste --no-newline 2>/dev/null || true)
+fi
+
+if [[ ! $page_url =~ ^https?://[^[:space:]]+$ ]]; then
+  echo "Usage: omarchy newsboat subscribe [http-or-https-page-or-feed-url]" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Feeds first with: omarchy install newsboat" >&2
+  omarchy-notification-send -g  "Install Feeds first" "Then subscribe from this page again." \
+    --exec omarchy-launch-floating-terminal-with-presentation omarchy-install-newsboat
+  exit 1
+fi
+
+resolve_status=0
+resolution=$(omarchy-newsboat-resolve "$page_url") || resolve_status=$?
+if (( resolve_status != 0 )); then
+  if (( resolve_status == 3 )); then
+    omarchy-notification-send -g  "No feed found on this page" "$page_url"
+  else
+    omarchy-notification-send -u critical -g  "Couldn't validate this feed" "$page_url"
+  fi
+  exit 1
+fi
+
+feed_url=$(jq -r '.feed_url' <<<"$resolution")
+feed_name=$(jq -r '.name' <<<"$resolution")
+result=$(omarchy-newsboat-add "$feed_url")
+
+if [[ $result == Already\ subscribed:* ]]; then
+  omarchy-notification-send -g  "Already in your feeds" "${feed_name:-$feed_url}" --exec omarchy-newsboat-read
+else
+  notification_body="$feed_url"
+  if pgrep -u "$UID" -x newsboat >/dev/null 2>&1; then
+    notification_body="Press r in Feeds to show it."
+  fi
+  omarchy-notification-send -g  "Subscribed to ${feed_name:-this feed}" "$notification_body" --exec omarchy-newsboat-read
+fi
+
+printf '%s\n' "$feed_url"

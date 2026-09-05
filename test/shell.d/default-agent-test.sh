@@ -14,6 +14,7 @@ notification_history="$test_tmp/notification-history"
 agent_open_log="$test_tmp/agent-open"
 launch_log="$test_tmp/launch"
 inline_log="$test_tmp/inline"
+crush_log="$test_tmp/crush"
 mise_log="$test_tmp/mise"
 mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
@@ -86,6 +87,7 @@ export OMARCHY_TEST_NOTIFICATION_HISTORY="$notification_history"
 export OMARCHY_TEST_AGENT_OPEN_LOG="$agent_open_log"
 export OMARCHY_TEST_AGENT_LAUNCH_LOG="$launch_log"
 export OMARCHY_TEST_AGENT_INLINE_LOG="$inline_log"
+export OMARCHY_TEST_CRUSH_LOG="$crush_log"
 export OMARCHY_TEST_MISE_LOG="$mise_log"
 export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
@@ -447,6 +449,15 @@ assert_launch() {
   assert_launched "$agent" "forwards the interactive prompt" "$@"
 }
 
+assert_conversation_launch() {
+  local agent=$1
+  shift
+
+  printf '%s\n' "$agent" >"$agent_file"
+  omarchy-agent-prompt --conversation "Review this" project
+  assert_launched "$agent" "keeps the prompted conversation open" "$@"
+}
+
 assert_bypass() {
   local agent=$1
   shift
@@ -475,6 +486,37 @@ omarchy-agent-prompt "$literal_hermes_prompt"
 assert_launched hermes "binds its literal initial prompt" env -u HERMES_SESSION_SOURCE \
   hermes chat --yolo --tui "--query=$literal_hermes_prompt"
 pass "Hermes receives prompted launches as one literal query argument"
+
+assert_conversation_launch pi pi "Review this project"
+assert_conversation_launch omp omp --auto-approve -- "Review this project"
+assert_conversation_launch opencode opencode --auto --prompt "Review this project"
+assert_conversation_launch ori ori code --interactive --prompt "Review this project"
+assert_conversation_launch claude claude --permission-mode auto -- "Review this project"
+assert_conversation_launch codex codex --approve-for-me -- "Review this project"
+assert_conversation_launch crush omarchy-agent-crush-conversation "Review this project"
+assert_conversation_launch grok grok --permission-mode bypassPermissions -- "Review this project"
+assert_conversation_launch hermes env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=Review this project"
+assert_conversation_launch agy agy --dangerously-skip-permissions --prompt-interactive "Review this project"
+assert_conversation_launch copilot copilot --allow-all --interactive "Review this project"
+pass "agent launcher keeps confirmation conversations open for every supported agent"
+
+printf '%s\n' codex >"$agent_file"
+OMARCHY_AGENT_NETWORK_ACCESS=true omarchy-agent-prompt --conversation "Review this" project
+assert_launched codex "allows network only when the caller requests it" \
+  codex --approve-for-me -c sandbox_workspace_write.network_access=true -- "Review this project"
+pass "agent launcher can grant a scoped Codex network session"
+
+cat >"$mock_bin/crush" <<'SH'
+#!/bin/bash
+printf '%s\0' "$@" >>"$OMARCHY_TEST_CRUSH_LOG"
+SH
+chmod +x "$mock_bin/crush"
+: >"$crush_log"
+omarchy-agent-crush-conversation "Review this project"
+mapfile -d '' -t crush_args <"$crush_log"
+[[ ${crush_args[*]} == "run Review this project --yolo --continue" ]] ||
+  fail "Crush conversation seeds a session before reopening it" "actual: ${crush_args[*]}"
+pass "Crush conversation continues its seeded session interactively"
 
 assert_bypass pi pi
 assert_bypass omp omp --auto-approve
@@ -525,6 +567,12 @@ omarchy agent prompt "Review this project"
 mapfile -d '' -t launch_args <"$launch_log"
 [[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto --prompt Review this project" ]] ||
   fail "omarchy agent prompt routes the prompt to the launcher"
+
+: >"$launch_log"
+omarchy agent prompt --conversation "Review this project"
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent opencode --auto --prompt Review this project" ]] ||
+  fail "omarchy agent prompt routes a confirmation conversation to the launcher"
 
 : >"$launch_log"
 if omarchy agent Review this project >"$test_tmp/positional-output" 2>&1; then

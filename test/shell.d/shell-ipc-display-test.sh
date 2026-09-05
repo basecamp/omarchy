@@ -12,7 +12,11 @@ touch "$test_dir/run/wayland-1" "$test_dir/run/wayland-1.lock"
 
 cat >"$test_dir/bin/qs" <<'STUB'
 #!/bin/bash
-echo "display=[$WAYLAND_DISPLAY]"
+if [[ ${QS_TEST_DENIED:-0} == 1 ]]; then
+  echo 'ERROR quickshell.ipc: Socket Error QLocalSocket::SocketAccessError' >&2
+  exit 255
+fi
+printf 'display=[%s] args=[%s]\n' "$WAYLAND_DISPLAY" "$*"
 STUB
 chmod +x "$test_dir/bin/qs"
 
@@ -23,9 +27,20 @@ export XDG_RUNTIME_DIR="$test_dir/run"
 # Callers from a stripped environment have no WAYLAND_DISPLAY, and qs matches
 # instances by display.
 output=$(env -u WAYLAND_DISPLAY "$ROOT/bin/omarchy-shell" omarchy.indicators refresh)
-[[ $output == "display=[wayland-1]" ]] || fail "shell ipc recovers a missing display" "$output"
+[[ $output == "display=[wayland-1] args=[ipc -n --any-display -p $ROOT/shell call -- omarchy.indicators refresh]" ]] || fail "shell ipc recovers a missing display" "$output"
 pass "shell ipc recovers a missing display"
 
 output=$(WAYLAND_DISPLAY=wayland-9 "$ROOT/bin/omarchy-shell" omarchy.indicators refresh)
-[[ $output == "display=[wayland-9]" ]] || fail "shell ipc keeps an existing display" "$output"
+[[ $output == "display=[wayland-9] args=[ipc -n --any-display -p $ROOT/shell call -- omarchy.indicators refresh]" ]] || fail "shell ipc keeps an existing display" "$output"
 pass "shell ipc keeps an existing display"
+
+grep -Fq 'qs ipc -n --any-display' "$ROOT/bin/omarchy-shell" || fail "shell IPC remains tied to a caller sandbox's display"
+pass "shell ipc reaches the configured Shell across display namespaces"
+
+export QS_TEST_DENIED=1
+if output=$(WAYLAND_DISPLAY=wayland-1 "$ROOT/bin/omarchy-shell" shell ping 2>&1); then
+  fail "shell ipc reports sandbox socket denial as success"
+fi
+[[ $output == "omarchy-shell access denied by sandbox or permissions" ]] || fail "shell ipc misdiagnoses denied access as a stopped desktop" "$output"
+WAYLAND_DISPLAY=wayland-1 "$ROOT/bin/omarchy-shell" -q shell ping || fail "quiet shell ipc does not contain denied access"
+pass "shell ipc distinguishes denied socket access from a stopped desktop"

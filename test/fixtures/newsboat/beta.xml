@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Beta Systems</title>
+    <link>http://127.0.0.1/beta</link>
+    <description>Second deterministic acceptance feed</description>
+    <item>
+      <title>Beta reliability fix</title>
+      <link>http://127.0.0.1/articles/beta-reliability</link>
+      <guid isPermaLink="false">omarchy-acceptance-beta</guid>
+      <pubDate>Sun, 30 Aug 2026 12:00:00 GMT</pubDate>
+      <description>The second local acceptance article.</description>
+    </item>
+  </channel>
+</rss>

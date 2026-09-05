@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# omarchy:summary=Add an RSS or Atom feed to Newsboat
+# omarchy:args=<feed-url>
+# omarchy:examples=omarchy newsboat add https://example.com/feed.xml
+
+set -euo pipefail
+
+if (( $# != 1 )) || [[ ! $1 =~ ^https?://[^[:space:]]+$ ]]; then
+  echo "Usage: omarchy newsboat add <http-or-https-feed-url>" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Newsboat first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+feed_url="$1"
+newsboat_config_dir="$HOME/.config/newsboat"
+newsboat_urls="$newsboat_config_dir/urls"
+# Use the same lock as Feed Scout, including inside agent sandboxes where
+# XDG_RUNTIME_DIR may be absent or read-only.
+lock_file="/tmp/omarchy-newsboat-$UID-urls.lock"
+staged_urls=""
+
+cleanup() {
+  [[ -z $staged_urls ]] || rm -f -- "$staged_urls"
+}
+trap cleanup EXIT
+
+mkdir -p "$newsboat_config_dir"
+
+{
+  flock 9
+
+  if [[ -e $newsboat_urls || -L $newsboat_urls ]]; then
+    if [[ ! -f $newsboat_urls ]]; then
+      echo "Newsboat subscriptions are not a regular file: $newsboat_urls" >&2
+      exit 1
+    fi
+    urls_target=$(realpath -- "$newsboat_urls")
+  else
+    urls_target=$newsboat_urls
+  fi
+
+  urls_dir=$(dirname -- "$urls_target")
+  urls_name=$(basename -- "$urls_target")
+  staged_urls=$(mktemp "$urls_dir/.${urls_name}.add.XXXXXX")
+  if [[ -f $urls_target ]]; then
+    cp -p -- "$urls_target" "$staged_urls"
+  else
+    chmod 600 "$staged_urls"
+  fi
+
+  while IFS= read -r line || [[ -n $line ]]; do
+    read -r existing_url _ <<<"$line"
+    if [[ $existing_url == "$feed_url" ]]; then
+      echo "Already subscribed: $feed_url"
+      exit 0
+    fi
+  done <"$staged_urls"
+
+  if [[ -s $staged_urls && -n $(tail -c 1 "$staged_urls") ]]; then
+    printf '\n' >>"$staged_urls"
+  fi
+  printf '%s\n' "$feed_url" >>"$staged_urls"
+  mv -f -- "$staged_urls" "$urls_target"
+  staged_urls=""
+} 9>"$lock_file"
+
+echo "Added feed: $feed_url"

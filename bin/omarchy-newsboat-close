@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# omarchy:summary=Close the registered Feeds reader before a confirmed import
+# omarchy:args=<cache-file>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (($# != 1)); then
+  echo "Usage: omarchy-newsboat-close <cache-file>" >&2
+  exit 2
+fi
+
+cache_file=$1
+reader_state_dir="${NEWSBOAT_READER_STATE_DIR:-/tmp/omarchy-newsboat-$UID/readers}"
+
+attempts=${NEWSBOAT_CLOSE_ATTEMPTS:-50}
+if [[ ! $attempts =~ ^[0-9]+$ ]] || (( attempts < 1 || attempts > 100 )); then
+  echo "Invalid Newsboat close attempt count" >&2
+  exit 2
+fi
+
+owner_uid() {
+  if stat -c %u "$1" >/dev/null 2>&1; then
+    stat -c %u "$1"
+  else
+    stat -f %u "$1"
+  fi
+}
+
+matching_wrappers() {
+  local state_file wrapper_pid wrapper_uid wrapper_args child_status
+  local -a state_files
+
+  [[ -d $reader_state_dir ]] || return 0
+  if [[ -L $reader_state_dir || $(owner_uid "$reader_state_dir") != $UID ]]; then
+    echo "Could not inspect registered Feeds readers" >&2
+    return 1
+  fi
+
+  shopt -s nullglob
+  state_files=("$reader_state_dir"/reader.*)
+  shopt -u nullglob
+
+  for state_file in "${state_files[@]}"; do
+    if [[ ! -f $state_file || -L $state_file || $(owner_uid "$state_file") != $UID ]]; then
+      echo "Could not inspect registered Feeds readers" >&2
+      return 1
+    fi
+
+    if ! jq -e '.version == 1 and (.pid | type == "number") and .pid == (.pid | floor) and .pid > 0 and (.cache | type == "string")' "$state_file" >/dev/null; then
+      echo "Could not inspect registered Feeds readers" >&2
+      return 1
+    fi
+    [[ $(jq -r '.cache' "$state_file") == "$cache_file" ]] || continue
+    wrapper_pid=$(jq -r '.pid' "$state_file")
+    [[ ${state_file##*/reader.} == "$wrapper_pid" ]] || {
+      echo "Could not inspect registered Feeds readers" >&2
+      return 1
+    }
+
+    wrapper_uid=$(ps -o uid= -p "$wrapper_pid" 2>/dev/null | tr -d '[:space:]') || wrapper_uid=""
+    if [[ -z $wrapper_uid ]]; then
+      rm -f -- "$state_file"
+      continue
+    elif [[ $wrapper_uid != $UID ]]; then
+      echo "Could not inspect registered Feeds readers" >&2
+      return 1
+    fi
+
+    wrapper_args=$(ps -ww -o args= -p "$wrapper_pid" 2>/dev/null) || wrapper_args=""
+    if [[ $wrapper_args != *"omarchy-newsboat-read"* ]]; then
+      rm -f -- "$state_file"
+      continue
+    fi
+
+    child_status=0
+    pgrep -P "$wrapper_pid" -x newsboat >/dev/null 2>&1 || child_status=$?
+    if (( child_status == 0 )); then
+      printf '%s\n' "$wrapper_pid"
+    elif (( child_status > 1 )); then
+      echo "Could not inspect registered Feeds readers" >&2
+      return 1
+    fi
+  done
+}
+
+wrappers=$(matching_wrappers) || exit 1
+if [[ -z $wrappers ]]; then
+  exit 0
+fi
+
+while IFS= read -r wrapper_pid; do
+  [[ -n $wrapper_pid ]] || continue
+  signal_status=0
+  pkill -TERM -P "$wrapper_pid" -x newsboat >/dev/null 2>&1 || signal_status=$?
+  if (( signal_status > 1 )); then
+    echo "Could not close Feeds safely. Close it manually, then confirm again." >&2
+    exit 1
+  fi
+done <<<"$wrappers"
+
+for ((attempt = 0; attempt < attempts; attempt++)); do
+  sleep 0.1
+  wrappers=$(matching_wrappers) || exit 1
+  [[ -n $wrappers ]] || exit 0
+done
+
+echo "Could not close Feeds safely. Close it manually, then confirm again." >&2
+exit 1

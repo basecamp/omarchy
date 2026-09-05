@@ -33,6 +33,14 @@ A new shell test only needs the right name: drop `<area>-test.sh` into
 `test/shell.d/` and `./test/shell` picks it up automatically. Shared fixtures
 live under `test/shell.d/fixtures/`.
 
+## Feeds verification
+
+The `newsboat-*-test.sh` files cover subscription transactions, concurrent writers, cached-content bounds, reader lifecycle, and confirmation failure paths. `chromium-copy-url-test.sh`, `feed-shortcut-migration-test.sh`, and `default-agent-test.sh` cover the browser bridge, existing profiles, and each supported agent's launch contract. They run automatically with `./test/all`.
+
+In a disposable Omarchy desktop with this checkout active, Newsboat installed, no running reader, and an empty workspace 9, run `OMARCHY_FEEDS_ACCEPTANCE_REQUIRE_FEEDS=1 bash test/acceptance.d/feeds-test.sh`. This uses local feed fixtures, an isolated Chromium profile, real native messaging, real Newsboat, and the native confirmation window. It checks cancellation and approval against the persisted cache and subscriptions. Screenshots go to `OMARCHY_ACCEPTANCE_DIR` or `/tmp/omarchy-acceptance`.
+
+The graphical test replaces the agent's research response with a deterministic stand-in; it does not prove a provider can authenticate or cross its sandbox boundary. Before release, also run Brief and Scout with a configured real agent, confirm the proposed counts, answer the native window, and verify the saved state. The exact helper may require the agent's normal per-command permission approval for desktop IPC and Newsboat files outside its workspace. Do not disable its sandbox or let it answer the native window.
+
 ## The base-test.sh contract
 
 Every shell test starts the same way:

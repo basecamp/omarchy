@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# omarchy:summary=Apply a confirmed Feed Scout proposal
+# omarchy:args=<proposal-id> <feed-count> <feed-id...>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (( $# < 3 )); then
+  echo "Usage: omarchy-newsboat-scout-apply <proposal-id> <feed-count> <feed-id...>" >&2
+  exit 1
+fi
+
+proposal_id=$1
+expected_count=$2
+shift 2
+selected_ids=("$@")
+
+if [[ ! $proposal_id =~ ^[A-Za-z0-9_-]{8,64}$ ]] || [[ ! $expected_count =~ ^[1-5]$ ]]; then
+  echo "Invalid Feed Scout confirmation" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Feeds first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+urls_file="${NEWSBOAT_URLS_FILE:-$HOME/.config/newsboat/urls}"
+state_dir="${NEWSBOAT_SCOUT_STATE_DIR:-/tmp/omarchy-newsboat-$UID/scouts}"
+snapshot_file="$state_dir/scout.$proposal_id"
+
+owner_uid() {
+  if stat -c %u "$1" >/dev/null 2>&1; then
+    stat -c %u "$1"
+  else
+    stat -f %u "$1"
+  fi
+}
+
+if [[ ! -f $urls_file || ! -d $state_dir || -L $state_dir || ! -f $snapshot_file || -L $snapshot_file ]]; then
+  echo "That Feed Scout proposal is no longer available. Run Feed Scout again." >&2
+  exit 1
+fi
+if [[ $(owner_uid "$state_dir") != $UID || $(owner_uid "$snapshot_file") != $UID ]]; then
+  echo "That Feed Scout proposal is no longer available. Run Feed Scout again." >&2
+  exit 1
+fi
+
+umask 077
+runtime_dir=/tmp
+scout_lock="$runtime_dir/omarchy-newsboat-$UID-scout.lock"
+urls_lock="$runtime_dir/omarchy-newsboat-$UID-urls.lock"
+staged_urls=""
+
+cleanup() {
+  [[ -z $staged_urls ]] || rm -f -- "$staged_urls"
+}
+trap cleanup EXIT
+
+exec 8>"$scout_lock"
+exec 9>"$urls_lock"
+flock 8
+flock 9
+
+selected_json=$(jq -cn --args '$ARGS.positional' "${selected_ids[@]}")
+if ! result=$(python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" \
+  scout-apply "$snapshot_file" "$urls_file" "$expected_count" "$selected_json"); then
+  exit 1
+fi
+
+count=$(jq -r '.count' <<<"$result")
+confirm_status=0
+"$OMARCHY_PATH/bin/omarchy-newsboat-confirm" scout "$count" || confirm_status=$?
+if (( confirm_status == 1 )); then
+  printf 'No feeds were added; the Feed Scout proposal remains available.\n'
+  exit 0
+elif (( confirm_status != 0 )); then
+  exit 1
+fi
+
+# Subscriptions may change while the person is answering the separate
+# confirmation window. Revalidate them immediately before staging the write.
+if ! result=$(python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" \
+  scout-apply "$snapshot_file" "$urls_file" "$expected_count" "$selected_json"); then
+  exit 1
+fi
+
+urls_target=$(jq -er '.target | select(type == "string" and length > 0)' <<<"$result")
+staged_urls=$(mktemp "$(dirname "$urls_target")/.urls.scout.XXXXXX")
+cp -- "$urls_target" "$staged_urls"
+chmod 600 "$staged_urls"
+if [[ -s $staged_urls && -n $(tail -c 1 "$staged_urls") ]]; then
+  printf '\n' >>"$staged_urls"
+fi
+jq -r '.feeds[]' <<<"$result" >>"$staged_urls"
+
+if ! mv -f -- "$staged_urls" "$urls_target"; then
+  echo "Could not update Newsboat subscriptions. The proposal is still available." >&2
+  exit 1
+fi
+staged_urls=""
+if ! rm -f -- "$snapshot_file"; then
+  echo "Subscriptions were updated, but the consumed Feed Scout proposal could not be removed." >&2
+  echo "It cannot be applied again because the subscriptions have changed." >&2
+  exit 1
+fi
+
+feed_label=feeds
+(( count != 1 )) || feed_label=feed
+omarchy-notification-send -g  \
+  "$count new $feed_label added" \
+  "Feed Scout updated your finite inbox." \
+  --exec omarchy-newsboat-read || true
+
+printf '%s %s added to Newsboat.\n' "$count" "$feed_label"

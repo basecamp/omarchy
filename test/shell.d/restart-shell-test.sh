@@ -64,8 +64,8 @@ OMARCHY_PATH="$wrapper_root" \
 OMARCHY_TEST_QS_ARGS="$wrapper_args" \
   "$ROOT/bin/omarchy-shell" shell ping >/dev/null
 
-grep -F -- 'ipc -n -p' "$wrapper_args" >/dev/null || fail "shell IPC targets the newest live Quickshell instance"
-pass "shell IPC targets the newest live Quickshell instance"
+grep -F -- 'ipc -n --any-display -p' "$wrapper_args" >/dev/null || fail "shell IPC targets the newest live Quickshell instance across displays"
+pass "shell IPC targets the newest live Quickshell instance across displays"
 
 restart_root="$test_tmp/restart-root"
 restart_bin="$restart_root/bin"
@@ -211,7 +211,7 @@ restart_pid_two=""
 grep -F "kill -p $restart_root/shell --any-display" "$restart_log" >/dev/null || fail "restart stops the shell from the session checkout"
 [[ $(<"$restart_env_log") == "unset" ]] || fail "restart uses the Hyprland session environment for the fresh shell"
 grep -F 'hl.dsp.exec_cmd("omarchy-launch-shell")' "$dispatch_log" >/dev/null || fail "restart launches the fresh shell through Hyprland"
-grep -F "ipc -n -p $restart_root/shell call -- shell ping" "$ipc_log" >/dev/null || fail "restart checks readiness in the session checkout"
+grep -F "ipc -n --any-display -p $restart_root/shell call -- shell ping" "$ipc_log" >/dev/null || fail "restart checks readiness in the session checkout"
 pass "restart replaces duplicate shell instances from the session checkout"
 
 : >"$restart_log"
@@ -262,6 +262,6 @@ fi
 wait "$restart_pid_one" 2>/dev/null || true
 restart_pid_one=""
 [[ $(<"$restart_state") == 303 ]] || fail "dead-lock recovery leaves one fresh shell instance"
-grep -F "ipc -n -p $restart_root/shell call -- lock lock" "$ipc_log" >/dev/null || fail "dead-lock recovery re-acquires the session lock"
-grep -F "ipc -n -p $restart_root/shell call -- lock status" "$ipc_log" >/dev/null || fail "dead-lock recovery waits for the lock to become secure"
+grep -F "ipc -n --any-display -p $restart_root/shell call -- lock lock" "$ipc_log" >/dev/null || fail "dead-lock recovery re-acquires the session lock"
+grep -F "ipc -n --any-display -p $restart_root/shell call -- lock status" "$ipc_log" >/dev/null || fail "dead-lock recovery waits for the lock to become secure"
 pass "restart recovers a locked session whose lock client died"

@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# omarchy:summary=Edit Newsboat subscriptions in the default editor
+
+set -euo pipefail
+
+if (($# != 0)); then
+  echo "Usage: omarchy newsboat edit" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Newsboat first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+newsboat_config_dir="$HOME/.config/newsboat"
+newsboat_urls="$newsboat_config_dir/urls"
+
+mkdir -p "$newsboat_config_dir"
+if [[ ! -f $newsboat_urls ]]; then
+  install -m 600 /dev/null "$newsboat_urls"
+fi
+
+exec omarchy-launch-config-editor "$newsboat_urls"

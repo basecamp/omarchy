@@ -1,0 +1,67 @@
+#!/bin/bash
+
+# omarchy:summary=Resolve and validate the feed advertised by a web page
+# omarchy:args=<page-or-feed-url>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (( $# != 1 )) || [[ ! $1 =~ ^https?://[^[:space:]]+$ ]]; then
+  echo "Usage: omarchy-newsboat-resolve <http-or-https-page-or-feed-url>" >&2
+  exit 1
+fi
+
+page_url=$1
+runtime_dir="${NEWSBOAT_SCOUT_RUNTIME_DIR:-/tmp}"
+work_dir=$(mktemp -d "$runtime_dir/omarchy-feed-resolution.XXXXXX")
+page_document="$work_dir/page"
+feed_document="$work_dir/feed"
+discovery="$work_dir/discovery.json"
+
+cleanup() {
+  rm -f -- "$page_document" "$feed_document" "$discovery"
+  rmdir "$work_dir" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+fetch_document() {
+  local url=$1
+  local destination=$2
+
+  curl --silent --show-error --fail --location --compressed \
+    --proto '=http,https' --proto-redir '=http,https' \
+    --connect-timeout 5 --max-time 15 --max-redirs 5 --max-filesize 4194304 \
+    --user-agent 'Mozilla/5.0 (X11; Linux x86_64) Omarchy-Feeds/1.0' \
+    --output "$destination" --write-out $'%{url_effective}\n%{content_type}' "$url"
+}
+
+if ! page_metadata=$(fetch_document "$page_url" "$page_document"); then
+  echo "Could not inspect: $page_url" >&2
+  exit 2
+fi
+
+effective_page_url=${page_metadata%%$'\n'*}
+page_content_type=${page_metadata#*$'\n'}
+
+python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" \
+  discover "$effective_page_url" "$page_content_type" "$page_document" >"$discovery"
+
+if [[ ! -s $discovery ]]; then
+  echo "No RSS or Atom feed found at: $effective_page_url" >&2
+  exit 3
+fi
+
+feed_url=$(jq -er '.feed_url | select(type == "string" and test("^https?://[^[:space:]]+$"))' "$discovery")
+if [[ $(jq -r '.direct' "$discovery") == "true" ]]; then
+  cp -- "$page_document" "$feed_document"
+  effective_feed_url=$effective_page_url
+else
+  if ! feed_metadata=$(fetch_document "$feed_url" "$feed_document"); then
+    echo "Could not fetch the advertised feed: $feed_url" >&2
+    exit 4
+  fi
+  effective_feed_url=${feed_metadata%%$'\n'*}
+fi
+
+python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" \
+  validate-feed "$effective_page_url" "$effective_feed_url" "$(jq -r '.page_title' "$discovery")" "$feed_document"

@@ -890,6 +890,13 @@ ShellRoot {
     }
   }
 
+  // Newsboat agents run inside a filesystem and PID sandbox. They can request
+  // this Shell-owned surface, but the approval action remains private to QML.
+  NewsboatConfirmation {
+    id: newsboatConfirmation
+    omarchyPath: shell.omarchyPath
+  }
+
   // ---------------------------------------------------------- shell IPC
 
   IpcHandler {
@@ -897,6 +904,18 @@ ShellRoot {
 
     function ping(): string {
       return "ok"
+    }
+
+    function launchNewsboatConfirmation(stateDir: string, requestId: string): string {
+      return newsboatConfirmation.launch(stateDir, requestId)
+    }
+
+    function newsboatConfirmationStatus(requestId: string): string {
+      return newsboatConfirmation.status(requestId)
+    }
+
+    function cancelNewsboatConfirmation(requestId: string): string {
+      return newsboatConfirmation.cancel(requestId)
     }
 
     function applyTheme(colorsB64: string, shellB64: string): string {

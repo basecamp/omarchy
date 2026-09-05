@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# omarchy:summary=Import Newsboat subscriptions from an OPML file
+# omarchy:args=<opml-file>
+# omarchy:examples=omarchy newsboat import ~/Downloads/subscriptions.opml
+
+set -euo pipefail
+
+if (( $# != 1 )) || [[ ! -r $1 || ! -f $1 ]]; then
+  echo "Usage: omarchy newsboat import <readable-opml-file>" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Newsboat first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+opml_file="$1"
+newsboat_config_dir="$HOME/.config/newsboat"
+newsboat_urls="$newsboat_config_dir/urls"
+lock_file="/tmp/omarchy-newsboat-$UID-urls.lock"
+staged_urls=""
+
+mkdir -p "$newsboat_config_dir"
+cleanup() {
+  [[ -z $staged_urls ]] || rm -f -- "$staged_urls"
+}
+trap cleanup EXIT
+
+{
+  flock 9
+  if [[ -e $newsboat_urls || -L $newsboat_urls ]]; then
+    if [[ ! -f $newsboat_urls ]]; then
+      echo "Newsboat subscriptions are not a regular file: $newsboat_urls" >&2
+      exit 1
+    fi
+    urls_target=$(realpath -- "$newsboat_urls")
+  else
+    urls_target=$newsboat_urls
+  fi
+  staged_urls=$(mktemp "$(dirname -- "$urls_target")/.urls.import.XXXXXX")
+  if [[ -f $urls_target ]]; then
+    cp -- "$urls_target" "$staged_urls"
+  fi
+  chmod 600 "$staged_urls"
+
+  newsboat -u "$staged_urls" -i "$opml_file"
+  mv -f -- "$staged_urls" "$urls_target"
+  staged_urls=""
+} 9>"$lock_file"
+
+echo "Imported subscriptions from: $opml_file"

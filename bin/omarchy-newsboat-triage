@@ -1,0 +1,114 @@
+#!/bin/bash
+
+# omarchy:summary=Apply a confirmed Newsboat briefing triage
+# omarchy:args=<brief-id> <read-count> <leave-count> [kept-article-id...]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+if (($# < 3)); then
+  echo "Usage: omarchy-newsboat-triage <brief-id> <read-count> <leave-count> [kept-article-id...]" >&2
+  exit 1
+fi
+
+brief_id=$1
+expected_read=$2
+expected_leave=$3
+shift 3
+kept_ids=("$@")
+
+if [[ ! $brief_id =~ ^[A-Za-z0-9_-]{8,64}$ ]] || [[ ! $expected_read =~ ^[0-9]+$ ]] || [[ ! $expected_leave =~ ^[0-9]+$ ]]; then
+  echo "Invalid briefing confirmation" >&2
+  exit 1
+fi
+
+if omarchy-pkg-missing newsboat; then
+  echo "Install Feeds first with: omarchy install newsboat" >&2
+  exit 1
+fi
+
+cache_file="${NEWSBOAT_CACHE_FILE:-$HOME/.local/share/newsboat/cache.db}"
+urls_file="${NEWSBOAT_URLS_FILE:-$HOME/.config/newsboat/urls}"
+state_dir="${NEWSBOAT_BRIEF_STATE_DIR:-/tmp/omarchy-newsboat-$UID/briefs}"
+snapshot_file="$state_dir/brief.$brief_id"
+
+owner_uid() {
+  if stat -c %u "$1" >/dev/null 2>&1; then
+    stat -c %u "$1"
+  else
+    stat -f %u "$1"
+  fi
+}
+
+if [[ ! -f $cache_file || ! -f $urls_file || ! -d $state_dir || -L $state_dir || ! -f $snapshot_file || -L $snapshot_file ]]; then
+  echo "That feed briefing is no longer available. Run Brief Unread again." >&2
+  exit 1
+fi
+if [[ $(owner_uid "$state_dir") != $UID || $(owner_uid "$snapshot_file") != $UID ]]; then
+  echo "That feed briefing is no longer available. Run Brief Unread again." >&2
+  exit 1
+fi
+
+umask 077
+runtime_dir=/tmp
+lock_file="$runtime_dir/omarchy-newsboat-$UID-triage.lock"
+import_file=$(mktemp "$runtime_dir/omarchy-newsboat-read.XXXXXXXX")
+trap 'rm -f "$import_file"' EXIT
+
+exec 9>"$lock_file"
+flock 9
+
+kept_json=$(jq -cn --args '$ARGS.positional' "${kept_ids[@]}")
+if ! result=$(python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" \
+  triage-prepare "$snapshot_file" "$cache_file" "$urls_file" "$expected_read" "$expected_leave" "$kept_json" "$import_file"); then
+  exit 1
+fi
+
+read_count=$(jq -r '.read' <<<"$result")
+leave_count=$(jq -r '.leave' <<<"$result")
+
+confirm_status=0
+"$OMARCHY_PATH/bin/omarchy-newsboat-confirm" triage "$read_count" "$leave_count" || confirm_status=$?
+if (( confirm_status == 1 )); then
+  printf 'No articles were marked read; the briefing remains available.\n'
+  exit 0
+elif (( confirm_status != 0 )); then
+  exit 1
+fi
+
+# Keep Feeds beside the agent while the person reviews the briefing. Once they
+# approve a read-state change, close the reader before revalidating and importing.
+if (( read_count > 0 )); then
+  omarchy-newsboat-close "$cache_file"
+fi
+
+# The unread edition may change while the person is answering the separate
+# confirmation window. Revalidate it after Feeds closes and immediately before
+# Newsboat mutates state.
+if ! result=$(python3 "$OMARCHY_PATH/bin/omarchy-newsboat-internal.py" \
+  triage-prepare "$snapshot_file" "$cache_file" "$urls_file" "$expected_read" "$expected_leave" "$kept_json" "$import_file"); then
+  exit 1
+fi
+
+if (( read_count > 0 )); then
+  if ! newsboat -q -c "$cache_file" -u "$urls_file" -I "$import_file" >/dev/null; then
+    echo "Could not update the inbox. The briefing remains available; try the confirmed command again." >&2
+    exit 1
+  fi
+fi
+
+if ! rm -f -- "$snapshot_file"; then
+  if (( read_count > 0 )); then
+    echo "The inbox was updated, but the consumed briefing could not be removed." >&2
+    echo "It cannot be applied again because the unread edition has changed." >&2
+  else
+    echo "No read state changed, but the consumed briefing could not be removed." >&2
+  fi
+  exit 1
+fi
+omarchy-notification-send -g 󰚩 \
+  "$read_count marked read · $leave_count left for you" \
+  "Your confirmed feed briefing is ready." \
+  --exec omarchy-newsboat-read || true
+
+printf '%s marked read; %s left unread.\n' "$read_count" "$leave_count"

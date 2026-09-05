@@ -1,0 +1,271 @@
+#!/bin/bash
+
+# omarchy:summary=Confirm a Newsboat mutation outside the agent terminal
+# omarchy:args=<triage <read-count> <leave-count>|scout <feed-count>>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+# Agent sandboxes can expose the desktop runtime directory read-only. Keep the
+# request and detached response in a private path both sides can write instead.
+runtime_dir="${NEWSBOAT_CONFIRM_RUNTIME_DIR:-/tmp}"
+state_root="$runtime_dir/omarchy-newsboat-$UID"
+if [[ -n ${NEWSBOAT_CONFIRM_STATE_DIR:-} ]]; then
+  state_dir="$NEWSBOAT_CONFIRM_STATE_DIR"
+  state_root=""
+else
+  state_dir="$state_root/confirmations"
+fi
+response_written=false
+response_attempted=false
+response_tmp=""
+request_file=""
+response_file=""
+request_id=""
+launcher_requested=false
+
+usage() {
+  echo "Usage: omarchy-newsboat-confirm <triage <read-count> <leave-count>|scout <feed-count>>" >&2
+  exit 2
+}
+
+owner_uid() {
+  if stat -c %u "$1" >/dev/null 2>&1; then
+    stat -c %u "$1"
+  else
+    stat -f %u "$1"
+  fi
+}
+
+prepare_state_dir() {
+  if [[ -n $state_root ]]; then
+    if [[ -L $state_root ]]; then
+      echo "Newsboat confirmation runtime may not be a symlink" >&2
+      exit 2
+    fi
+
+    install -d -m 700 "$state_root"
+    if [[ $(owner_uid "$state_root") != $UID ]]; then
+      echo "Newsboat confirmation runtime is not owned by the current user" >&2
+      exit 2
+    fi
+    chmod 700 "$state_root"
+  fi
+
+  if [[ -L $state_dir ]]; then
+    echo "Newsboat confirmation state may not be a symlink" >&2
+    exit 2
+  fi
+
+  install -d -m 700 "$state_dir"
+  if [[ $(owner_uid "$state_dir") != $UID ]]; then
+    echo "Newsboat confirmation state is not owned by the current user" >&2
+    exit 2
+  fi
+  chmod 700 "$state_dir"
+}
+
+publish_response() {
+  local response_file=$1 decision=$2
+
+  response_attempted=true
+  response_tmp=$(mktemp "$state_dir/.response.XXXXXXXX")
+  chmod 600 "$response_tmp"
+  printf '%s\n' "$decision" >"$response_tmp"
+  mv -f -- "$response_tmp" "$response_file"
+  response_tmp=""
+  response_written=true
+}
+
+cleanup_response() {
+  [[ -z $response_tmp ]] || rm -f -- "$response_tmp"
+  response_tmp=""
+  if [[ $response_written == "false" && $response_attempted == "false" && -n $request_file && -f $request_file ]]; then
+    publish_response "$response_file" failed || true
+  fi
+  [[ -z $response_tmp ]] || rm -f -- "$response_tmp"
+}
+
+respond() {
+  (($# == 1)) || usage
+  local request_id=$1
+  [[ $request_id =~ ^[A-Za-z0-9_-]{8,64}$ ]] || usage
+
+  prepare_state_dir
+
+  local request_file="$state_dir/request.$request_id"
+  local response_file="$state_dir/response.$request_id"
+  if [[ ! -f $request_file || -L $request_file || $(owner_uid "$request_file") != $UID ]]; then
+    echo "That Newsboat confirmation is no longer available" >&2
+    exit 2
+  fi
+
+  local kind prompt read_count leave_count feed_count
+  local decision=failed confirm_status=0
+  trap cleanup_response EXIT
+
+  kind=$(jq -er '.kind | select(. == "triage" or . == "scout")' "$request_file") || exit 2
+  if [[ $kind == "triage" ]]; then
+    read_count=$(jq -er '.read | select(type == "number" and . >= 0 and floor == .)' "$request_file") || exit 2
+    leave_count=$(jq -er '.leave | select(type == "number" and . >= 0 and floor == .)' "$request_file") || exit 2
+    prompt="Mark $read_count articles as read and leave $leave_count unread?"
+  else
+    feed_count=$(jq -er '.count | select(type == "number" and . >= 1 and . <= 5 and floor == .)' "$request_file") || exit 2
+    prompt="Add $feed_count validated feeds to Newsboat?"
+  fi
+
+  gum confirm --default=false --affirmative "Apply" --negative "Cancel" "$prompt" || confirm_status=$?
+  if (( confirm_status == 0 )); then
+    decision=approved
+  elif (( confirm_status == 1 || confirm_status == 130 )); then
+    decision=declined
+  fi
+
+  publish_response "$response_file" "$decision"
+}
+
+bridge() {
+  (($# == 1)) || usage
+  local request_id=$1
+  [[ $request_id =~ ^[A-Za-z0-9_-]{8,64}$ ]] || usage
+
+  local parent_command
+  parent_command=$(ps -o comm= -p "$PPID" 2>/dev/null) || parent_command=""
+  parent_command=${parent_command//[[:space:]]/}
+  if [[ $parent_command != "quickshell" ]]; then
+    echo "The Newsboat confirmation bridge can only be opened by Omarchy Shell" >&2
+    exit 2
+  fi
+
+  prepare_state_dir
+
+  local request_file="$state_dir/request.$request_id"
+  local response_file="$state_dir/response.$request_id"
+  if [[ ! -f $request_file || -L $request_file || $(owner_uid "$request_file") != $UID ]]; then
+    echo "That Newsboat confirmation is no longer available" >&2
+    exit 2
+  fi
+
+  local kind read_count leave_count feed_count descriptor decision=failed
+  trap cleanup_response EXIT
+
+  jq -e '.version == 1' "$request_file" >/dev/null || exit 2
+  kind=$(jq -er '.kind | select(. == "triage" or . == "scout")' "$request_file") || exit 2
+  if [[ $kind == "triage" ]]; then
+    read_count=$(jq -er '.read | select(type == "number" and . >= 0 and floor == .)' "$request_file") || exit 2
+    leave_count=$(jq -er '.leave | select(type == "number" and . >= 0 and floor == .)' "$request_file") || exit 2
+    descriptor=$(jq -cn --argjson read "$read_count" --argjson leave "$leave_count" \
+      '{kind: "triage", read: $read, leave: $leave}')
+  else
+    feed_count=$(jq -er '.count | select(type == "number" and . >= 1 and . <= 5 and floor == .)' "$request_file") || exit 2
+    descriptor=$(jq -cn --argjson count "$feed_count" '{kind: "scout", count: $count}')
+  fi
+
+  printf '%s\n' "$descriptor"
+  if IFS= read -r decision && [[ $decision == "approved" || $decision == "declined" ]]; then
+    publish_response "$response_file" "$decision"
+  else
+    publish_response "$response_file" failed
+  fi
+}
+
+cleanup_request() {
+  [[ -z $request_file ]] || rm -f -- "$request_file"
+  [[ -z $response_file ]] || rm -f -- "$response_file"
+  if [[ $launcher_requested == "true" ]]; then
+    omarchy-shell -q shell cancelNewsboatConfirmation "$request_id" >/dev/null 2>&1 || true
+  fi
+}
+
+request() {
+  local kind=$1 payload timeout_seconds deadline decision launch_result status status_checks=0
+  shift
+
+  case $kind in
+  triage)
+    (($# == 2)) || usage
+    [[ $1 =~ ^[0-9]+$ && $2 =~ ^[0-9]+$ ]] || usage
+    payload=$(jq -cn --argjson read "$1" --argjson leave "$2" '{version: 1, kind: "triage", read: $read, leave: $leave}')
+    ;;
+  scout)
+    (($# == 1)) || usage
+    [[ $1 =~ ^[1-5]$ ]] || usage
+    payload=$(jq -cn --argjson count "$1" '{version: 1, kind: "scout", count: $count}')
+    ;;
+  *) usage ;;
+  esac
+
+  prepare_state_dir
+  umask 077
+  request_file=$(mktemp "$state_dir/request.XXXXXXXX")
+  request_id=${request_file##*/request.}
+  response_file="$state_dir/response.$request_id"
+  printf '%s\n' "$payload" >"$request_file"
+  chmod 600 "$request_file"
+
+  trap cleanup_request EXIT
+
+  if ! launch_result=$(omarchy-shell shell launchNewsboatConfirmation "$state_dir" "$request_id"); then
+    echo "Could not open the Newsboat confirmation window" >&2
+    exit 2
+  elif [[ $launch_result != "ok" ]]; then
+    echo "Could not open the Newsboat confirmation window: $launch_result" >&2
+    exit 2
+  fi
+  launcher_requested=true
+
+  timeout_seconds=${NEWSBOAT_CONFIRM_TIMEOUT_SECONDS:-300}
+  if [[ ! $timeout_seconds =~ ^[0-9]+$ ]] || (( timeout_seconds < 1 || timeout_seconds > 600 )); then
+    echo "Invalid Newsboat confirmation timeout" >&2
+    exit 2
+  fi
+  deadline=$((SECONDS + timeout_seconds))
+
+  while [[ ! -f $response_file ]]; do
+    if (( SECONDS >= deadline )); then
+      echo "Newsboat confirmation timed out without changing anything" >&2
+      exit 2
+    fi
+    ((status_checks += 1))
+    if (( status_checks % 10 == 0 )); then
+      if ! status=$(omarchy-shell shell newsboatConfirmationStatus "$request_id") || [[ $status != "active" ]]; then
+        echo "The Newsboat confirmation window closed without changing anything" >&2
+        exit 2
+      fi
+    fi
+    sleep 0.1
+  done
+
+  if [[ -L $response_file || $(owner_uid "$response_file") != $UID ]]; then
+    echo "Newsboat confirmation returned invalid state" >&2
+    exit 2
+  fi
+  decision=$(<"$response_file")
+
+  case $decision in
+  approved) return 0 ;;
+  declined)
+    echo "Newsboat confirmation was cancelled" >&2
+    return 1
+    ;;
+  *)
+    echo "Newsboat confirmation failed without changing anything" >&2
+    return 2
+    ;;
+  esac
+}
+
+if [[ ${1:-} == "--respond" ]]; then
+  shift
+  respond "$@"
+elif [[ ${1:-} == "--bridge" ]]; then
+  shift
+  (($# == 2)) || usage
+  state_dir=$1
+  state_root=""
+  shift
+  bridge "$@"
+else
+  (($# > 0)) || usage
+  request "$@"
+fi

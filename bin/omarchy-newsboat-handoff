@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# omarchy:summary=Hand off a Newsboat agent action without blocking the reader
+# omarchy:args=<article|brief|scout> [article-url article-title feed-url]
+# omarchy:hidden=true
+
+set -euo pipefail
+
+usage() {
+  echo "Usage: omarchy-newsboat-handoff <article|brief|scout> [article-url article-title feed-url]" >&2
+  exit 64
+}
+
+case ${1:-} in
+  article)
+    (($# == 4)) || usage
+    action=(omarchy-agent-newsboat "$2" "$3" "$4")
+    ;;
+  brief)
+    (($# == 1)) || usage
+    action=(omarchy-newsboat-brief --from-newsboat)
+    ;;
+  scout)
+    if (($# == 1)); then
+      action=(omarchy-newsboat-scout)
+    elif (($# == 4)); then
+      action=(omarchy-newsboat-scout --from-newsboat "$2" "$3" "$4")
+    else
+      usage
+    fi
+    ;;
+  *) usage ;;
+esac
+
+# Newsboat waits for browser commands. Start the agent workflow in its own
+# session so Newsboat can redraw after a resize or finish the macro's quit.
+exec setsid -f "${action[@]}" </dev/null >/dev/null 2>&1

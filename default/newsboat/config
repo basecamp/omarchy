@@ -1,0 +1,7 @@
+# Omarchy maintains the integration layer separately so it follows Omarchy
+# updates. Add personal preferences below this include; later values override
+# the managed defaults.
+include "~/.config/newsboat/omarchy.conf"
+
+# Example personal preference:
+# reload-time 15
