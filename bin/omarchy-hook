@@ -15,14 +15,33 @@ HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
 HOOK_DIR="$HOOK_PATH.d"
 shift
 
+# Run a hook through its own interpreter when it is executable, so a hook
+# written in something other than bash (Python, etc.) is invoked via its
+# shebang instead of being force-fed to bash. Bash parses a non-bash script as
+# shell and can silently misfire on any line that happens to name a real
+# binary (a Python hook's "import foo" line running ImageMagick's "import",
+# for instance) instead of failing loudly. Non-executable hooks keep running
+# under bash, matching the shipped .sample hooks, which ship without the
+# executable bit.
+run_hook() {
+  local hook=$1
+  shift
+
+  if [[ -x $hook ]]; then
+    "$hook" "$@"
+  else
+    bash "$hook" "$@"
+  fi
+}
+
 if [[ -f $HOOK_PATH ]]; then
-  bash "$HOOK_PATH" "$@" || echo "Hook failed: $HOOK_PATH"
+  run_hook "$HOOK_PATH" "$@" || echo "Hook failed: $HOOK_PATH"
 fi
 
 if [[ -d $HOOK_DIR ]]; then
   for hook in "$HOOK_DIR"/*; do
     [[ -f $hook ]] || continue
     [[ $hook == *.sample ]] && continue
-    bash "$hook" "$@" || echo "Hook failed: $hook"
+    run_hook "$hook" "$@" || echo "Hook failed: $hook"
   done
 fi
