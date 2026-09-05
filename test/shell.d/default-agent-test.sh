@@ -19,6 +19,8 @@ mise_history="$test_tmp/mise-history"
 stub_log="$test_tmp/stubs"
 terminal_log="$test_tmp/terminal"
 menu_log="$test_tmp/menu"
+aur_log="$test_tmp/aur"
+muse_login_log="$test_tmp/muse-login"
 mkdir -p "$mock_bin" "$test_home"
 
 cat >"$mock_bin/omarchy-notification-send" <<'SH'
@@ -69,6 +71,26 @@ cat >"$mock_bin/omarchy-menu" <<'SH'
 printf '%s\0' "$@" >"$OMARCHY_TEST_AGENT_MENU_LOG"
 SH
 
+cat >"$mock_bin/omarchy-pkg-present" <<'SH'
+#!/bin/bash
+[[ ${OMARCHY_TEST_PKG_INSTALLED:-false} == "true" ]]
+SH
+
+cat >"$mock_bin/omarchy-pkg-aur-add" <<'SH'
+#!/bin/bash
+printf '%s\n' "$*" >>"$OMARCHY_TEST_AUR_LOG"
+[[ ${OMARCHY_TEST_AUR_FAIL:-false} != "true" ]]
+SH
+
+cat >"$mock_bin/muse" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "login" ]]; then
+  printf 'muse %s\n' "$*" >>"$OMARCHY_TEST_MUSE_LOGIN_LOG"
+else
+  printf '%s\0' muse "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
+fi
+SH
+
 cat >"$mock_bin/omarchy-test-noop" <<'SH'
 #!/bin/bash
 exit 0
@@ -91,6 +113,8 @@ export OMARCHY_TEST_MISE_HISTORY="$mise_history"
 export OMARCHY_TEST_STUB_LOG="$stub_log"
 export OMARCHY_TEST_AGENT_TERMINAL_LOG="$terminal_log"
 export OMARCHY_TEST_AGENT_MENU_LOG="$menu_log"
+export OMARCHY_TEST_AUR_LOG="$aur_log"
+export OMARCHY_TEST_MUSE_LOGIN_LOG="$muse_login_log"
 export OMARCHY_PATH="$ROOT"
 
 grok_package="npm:@xai-official/grok"
@@ -414,6 +438,53 @@ grep -F "Could not set Codex as the default coding agent" "$test_tmp/setup-failu
 [[ ! -s $agent_open_log ]] || fail "failed activation does not open an agent"
 pass "default agent reports mise failures without notifications"
 
+# Muse installs from the AUR rather than mise, and a fresh install runs the
+# Meta browser login before the agent opens.
+: >"$notification_history"
+: >"$agent_open_log"
+: >"$terminal_log"
+omarchy-default-agent muse
+mapfile -d '' -t terminal_args <"$terminal_log"
+[[ ${terminal_args[0]} == "omarchy-default-agent" && ${terminal_args[1]} == "--install" && ${terminal_args[2]} == "muse" ]] ||
+  fail "missing Muse installation opens in a terminal"
+[[ ! -s $notification_history ]] || fail "missing Muse installation skips notifications"
+[[ ! -s $agent_open_log ]] || fail "missing Muse installation waits to open the agent"
+[[ $(omarchy-default-agent) == "copilot" ]] || fail "missing Muse installation waits to change the selection"
+
+: >"$aur_log"
+omarchy-default-agent --install muse >"$test_tmp/muse-install-output"
+grep -Fx "muse-code-bin" "$aur_log" >/dev/null || fail "visible Muse installation adds the AUR package"
+grep -Fx "muse login" "$muse_login_log" >/dev/null ||
+  fail "fresh Muse installation runs the Meta login in the install terminal"
+[[ $(omarchy-default-agent) == "muse" ]] || fail "visible Muse installation changes the selection"
+mapfile -d '' -t agent_open_args <"$agent_open_log"
+[[ ${#agent_open_args[@]} == 2 && ${agent_open_args[0]} == "omarchy-agent" && ${agent_open_args[1]} == "--inline" ]] ||
+  fail "newly installed Muse opens in the installation terminal"
+pass "Muse installs visibly from the AUR and logs in before opening"
+
+: >"$terminal_log"
+: >"$muse_login_log"
+: >"$agent_open_log"
+OMARCHY_TEST_PKG_INSTALLED=true omarchy-default-agent muse-code
+[[ ! -s $terminal_log ]] || fail "installed Muse selection skips the terminal"
+[[ ! -s $muse_login_log ]] || fail "installed Muse selection skips the login"
+[[ $(omarchy-default-agent) == "muse" ]] || fail "default agent canonicalizes muse-code"
+mapfile -d '' -t agent_open_args <"$agent_open_log"
+[[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||
+  fail "installed Muse opens in a new terminal after selection"
+pass "installed Muse selects and opens without repeating the login"
+
+OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent pi
+: >"$agent_open_log"
+if OMARCHY_TEST_PKG_INSTALLED=true OMARCHY_TEST_AUR_FAIL=true omarchy-default-agent musecode >"$test_tmp/muse-failure-output" 2>&1; then
+  fail "default agent rejects a failed Muse activation"
+fi
+[[ $(omarchy-default-agent) == "pi" ]] || fail "failed Muse activation preserves the current default agent"
+grep -F "Could not set Muse Code as the default coding agent" "$test_tmp/muse-failure-output" >/dev/null ||
+  fail "default agent reports a failed Muse activation"
+[[ ! -s $agent_open_log ]] || fail "failed Muse activation does not open an agent"
+pass "default agent reports Muse AUR failures without changing the selection"
+
 rm "$mock_bin/omarchy-agent"
 hash -r
 
@@ -462,6 +533,7 @@ assert_launch opencode opencode --auto --prompt "Review this project"
 assert_launch ori ori code --interactive --prompt "Review this project"
 assert_launch claude claude --permission-mode auto -- "Review this project"
 assert_launch codex codex --approve-for-me -- "Review this project"
+assert_launch muse muse --approval-mode never "Review this project"
 assert_launch crush crush run "Review this project"
 assert_launch grok grok --permission-mode bypassPermissions -- "Review this project"
 assert_launch hermes env -u HERMES_SESSION_SOURCE hermes chat --yolo --tui "--query=Review this project"
@@ -482,6 +554,7 @@ assert_bypass opencode opencode --auto
 assert_bypass ori ori code
 assert_bypass claude claude --permission-mode auto
 assert_bypass codex codex --approve-for-me
+assert_bypass muse muse --approval-mode never
 assert_bypass crush crush --yolo
 assert_bypass grok grok --permission-mode bypassPermissions
 assert_bypass hermes hermes --yolo
