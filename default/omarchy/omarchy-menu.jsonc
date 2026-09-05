@@ -274,6 +274,7 @@
   "install.development.php.php": {"icon":"","label":"PHP","disabled":"omarchy-pkg-present php","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env php'"},
   "install.development.php.laravel": {"icon":"","label":"Laravel","disabled":"[[ -x $HOME/.config/composer/vendor/bin/laravel ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env laravel'"},
   "install.development.php.symfony": {"icon":"","label":"Symfony","disabled":"omarchy-pkg-present symfony-cli","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env symfony'"},
+  "install.development.php.yii3": {"icon":"","label":"Yii3","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env yii3'"},
   "install.development.elixir.elixir": {"icon":"","label":"Elixir","disabled":"[[ -d $HOME/.local/share/mise/installs/elixir ]]","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env elixir'"},
   "install.development.elixir.phoenix": {"icon":"","label":"Phoenix","disabled":"compgen -G \"$HOME/.mix/archives/phx_new*\"","action":"omarchy-launch-floating-terminal-with-presentation 'omarchy-install-dev-env phoenix'"},
 
