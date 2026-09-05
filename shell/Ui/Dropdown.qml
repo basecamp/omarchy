@@ -28,6 +28,8 @@ Item {
   property color accent: Color.accent
   readonly property var popupBorderSpec: Border.localOrSurfaceSpec("popups", "border", popupBorder, Color.popups.border, Style.normalBorderWidth)
   property string fontFamily: Style.font.family
+  property string indicatorText: "󰅀"
+  property string indicatorFontFamily: fontFamily
   property int rowHeight: Style.spacing.controlHeight
   property int popupRowHeight: Style.spacing.popupRowHeight
   property bool showLabel: true
@@ -129,9 +131,9 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: trigger.borderRight + Style.spacing.controlGap
-        text: "󰅀"
+        text: root.indicatorText
         color: Qt.darker(root.foreground, 1.2)
-        font.family: root.fontFamily
+        font.family: root.indicatorFontFamily
         font.pixelSize: Style.font.body
       }
 
