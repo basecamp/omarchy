@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# omarchy:summary=Detect whether an ACPI device ID is present, not merely declared.
+
+# A DSDT routinely declares hardware the machine was never built with, so the
+# presence of an ACPI HID says nothing about whether the part is fitted. ACPI
+# answers this itself through _STA, exposed as the device's "status" file: bit 0
+# is the present bit, and a declared-but-absent device reports 0.
+#
+# On an HP EliteBook X G2i, whose only camera is an OV05C10:
+#
+#   OVTI05C1:00  status=15   present, enabled, functioning
+#   OVTI08F4:00  status=0     declared, not fitted
+#   OVTI01AF:00  status=0     declared, not fitted
+#
+# Matching the HID alone therefore installs a camera stack for a sensor that is
+# not there. Devices with no status file are treated as present, which is what
+# ACPI specifies when _STA is absent.
+
+[ $# -ge 1 ] || {
+  echo "usage: omarchy-hw-acpi-present <ACPI_HID>" >&2
+  exit 2
+}
+
+for dir in /sys/bus/acpi/devices/"$1":*; do
+  [ -d "$dir" ] || continue
+  if [ -r "$dir/status" ]; then
+    (($(cat "$dir/status") & 1)) && exit 0
+  else
+    exit 0
+  fi
+done
+
+exit 1

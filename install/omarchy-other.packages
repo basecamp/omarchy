@@ -11,6 +11,8 @@ dkms
 egl-wayland
 gst-plugin-pipewire
 gtk4-layer-shell
+hp-elitebook-x-g2i-audio
+hp-elitebook-x-g2i-camera
 libpulse
 intel-ipu7-camera
 intel-lpmd
