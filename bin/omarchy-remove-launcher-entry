@@ -40,11 +40,15 @@ fi
 
 desktop_file=""
 for dir in "${desktop_dirs[@]}"; do
-  candidate="$dir/$desktop_file_name"
-  if [[ -f $candidate ]]; then
-    desktop_file="$candidate"
-    break
-  fi
+  [[ -d $dir ]] || continue
+  while IFS= read -r -d '' candidate; do
+    relative="${candidate#"$dir"/}"
+    candidate_id="${relative//\//-}"
+    if [[ $candidate_id == "$desktop_file_name" || ${candidate##*/} == "$desktop_file_name" ]]; then
+      desktop_file="$candidate"
+      break 2
+    fi
+  done < <(find "$dir" -type f -name '*.desktop' -print0 2>/dev/null)
 done
 
 if [[ -z $desktop_file ]]; then
@@ -57,7 +61,7 @@ is_user_desktop_file() {
 
   desktop_dir="${desktop_file%/*}"
   for dir in "${user_desktop_dirs[@]}"; do
-    [[ $desktop_dir == $dir ]] && return 0
+    [[ $desktop_dir == "$dir" || $desktop_dir == "$dir"/* ]] && return 0
   done
 
   return 1
