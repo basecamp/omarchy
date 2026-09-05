@@ -112,10 +112,41 @@ OMARCHY_TEST_MONITOR_SCALE=4 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITO
 grep -F 'scale = 3.2' "$eval_out" >/dev/null || fail "monitor scaling down reaches approximated 3.2x"
 pass "monitor scaling down reaches approximated 3.2x"
 
+# 1.175 is the nearest clean scale to 1.25 on this mode, and it is below the
+# request. Rounding upward only sent 1.33333 instead -- a scale Hyprland would
+# not have chosen for itself.
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=6016 OMARCHY_TEST_MONITOR_HEIGHT=3384 run_scaling 1.25
-grep -F 'scale = 1.33333' "$eval_out" >/dev/null || fail "monitor scaling approximates explicit 1.25x"
+grep -F 'scale = 1.175' "$eval_out" >/dev/null || fail "monitor scaling approximates explicit 1.25x"
 pass "monitor scaling approximates explicit 1.25x"
+
+# What reaches hyprctl is what the panel labelled, so the two have to agree on
+# every preset. shell/plugins/panels/monitor/Model.js is the label; this is the
+# value applied.
+for mode in "1366 768 1.25 1" "2256 1504 1.25 1.175" "3024 1964 1.6 1.33333" "1920 1080 1.75 1.66667"; do
+  set -- $mode
+  write_monitor_config
+  : >"$eval_out"
+  OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=$1 OMARCHY_TEST_MONITOR_HEIGHT=$2 run_scaling "$3"
+  grep -F "scale = $4" "$eval_out" >/dev/null ||
+    fail "monitor scaling applies the scale Hyprland picks on ${1}x${2}" \
+      "requested $3, wanted $4, got $(cat "$eval_out")"
+done
+pass "monitor scaling applies the scale Hyprland picks, including below the request"
+
+# Hyprland gives up after 89 steps rather than reaching further, falling back to
+# the display default. Applying something unrelated to the request instead would
+# move the display somewhere nobody asked for.
+write_monitor_config
+: >"$eval_out"
+if OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=1366 OMARCHY_TEST_MONITOR_HEIGHT=768 \
+  run_scaling 3 2>/dev/null; then
+  fail "monitor scaling refuses a request this mode cannot reach"
+fi
+[[ ! -s $eval_out ]] || fail "monitor scaling applies nothing when it refuses" "$(cat "$eval_out")"
+grep -Fx 'local omarchy_monitor_scale = 2' "$monitor_lua" >/dev/null ||
+  fail "monitor scaling leaves the persisted scale alone when it refuses"
+pass "monitor scaling refuses a request no clean scale is near"
 
 write_monitor_config
 OMARCHY_TEST_MONITOR_SCALE=2 OMARCHY_TEST_MONITOR_WIDTH=1280 OMARCHY_TEST_MONITOR_HEIGHT=800 run_scaling 3.2

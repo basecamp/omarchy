@@ -19,6 +19,21 @@ function gcd(a, b) {
   return a
 }
 
+// The scale Hyprland will actually apply for a requested one, or "" when it
+// would reject the request outright.
+//
+// Hyprland rounds the request to 1/120 units and, if the logical size is not
+// whole, searches outward from there -- one step up, one step down, up to 89
+// steps -- taking the first scale that divides the mode evenly, and giving up
+// if none does (CMonitor::applyMonitorRule). Searching upward only, and without
+// that bound, put the panel on a different number from the compositor: a
+// 1366x768 panel asked for 1.25 reads as 2 here while Hyprland applies 1, and a
+// 2256x1504 Framework display reads as 1.33 against Hyprland's 1.18.
+//
+// `logicalSize` is whole exactly when the scale in 1/120 units divides both
+// mode dimensions in the same units, which is what gcd tests here -- integer
+// arithmetic rather than Hyprland's float division, so a scale like 1.6 cannot
+// miss by an ulp.
 function cleanScale(scale, width, height) {
   var requested = Number(scale)
   var modeWidth = Number(width)
@@ -28,9 +43,16 @@ function cleanScale(scale, width, height) {
 
   var divisor = gcd(Math.round(modeWidth * 120), Math.round(modeHeight * 120))
   var scaleUnits = Math.round(requested * 120)
-  if (scaleUnits > divisor) scaleUnits = divisor
-  while (divisor % scaleUnits !== 0) scaleUnits++
-  return normalizeScale(scaleUnits / 120)
+
+  if (scaleUnits > 0 && divisor % scaleUnits === 0) return normalizeScale(scaleUnits / 120)
+
+  for (var step = 1; step < 90; step++) {
+    if (divisor % (scaleUnits + step) === 0) return normalizeScale((scaleUnits + step) / 120)
+    if (scaleUnits - step > 0 && divisor % (scaleUnits - step) === 0)
+      return normalizeScale((scaleUnits - step) / 120)
+  }
+
+  return ""
 }
 
 function matchingScaleIndex(scales, currentScale, width, height) {
@@ -58,8 +80,14 @@ function availableScales(scales, width, height) {
   var byEffectiveScale = {}
   for (var i = 0; i < scales.length; i++) {
     var requested = Number(scales[i])
-    var effective = Number(cleanScale(requested, width, height))
+    var cleaned = cleanScale(requested, width, height)
 
+    // Hyprland rejects the request outright rather than picking something
+    // nearby, and falls back to the display's default scale. Offering a preset
+    // that lands somewhere the panel cannot name is worse than not offering it.
+    if (cleaned === "") continue
+
+    var effective = Number(cleaned)
     if (!isFinite(requested) || !isFinite(effective)) continue
 
     var key = normalizeScale(effective)

@@ -54,16 +54,29 @@ audit_scale_change() {
 
 # Hyprland only accepts scales where the mode divides into whole logical
 # pixels (in 1/120 steps), so clean scales are divisors of gcd(w*120, h*120).
-# Round the requested scale up to the nearest clean value.
+#
+# This value is what reaches the compositor -- set_scale sends it rather than
+# the request -- so it has to be the scale Hyprland would have picked itself.
+# Hyprland steps outward from the rounded request, one up and one down at each
+# distance, for 89 steps, and gives up rather than reaching further
+# (CMonitor::applyMonitorRule). Rounding upward only, and without that bound,
+# sent it somewhere else entirely: a 1366x768 panel asked for 1.25 was rewritten
+# to 2 before Hyprland ever saw the request, where Hyprland itself applies 1.
+#
+# Prints nothing and fails when no clean scale is near enough, so a caller
+# cannot apply a scale that has no relation to what was asked for.
 clean_scale() {
   awk -v scale="$1" -v width="$2" -v height="$3" '
     function gcd(a, b, t) { while (b) { t = a % b; a = b; b = t } return a }
     BEGIN {
       g = gcd(width * 120, height * 120)
       k = int(scale * 120 + 0.5)
-      if (k > g) k = g
-      while (g % k != 0) k++
-      printf "%g\n", k / 120
+      if (k > 0 && g % k == 0) { printf "%g\n", k / 120; exit 0 }
+      for (i = 1; i < 90; i++) {
+        if (g % (k + i) == 0) { printf "%g\n", (k + i) / 120; exit 0 }
+        if (k - i > 0 && g % (k - i) == 0) { printf "%g\n", (k - i) / 120; exit 0 }
+      }
+      exit 1
     }'
 }
 
@@ -88,7 +101,11 @@ set_scale() {
     exit 1
   fi
 
-  local new_scale="$(clean_scale "$requested_scale" "$width" "$height")"
+  local new_scale
+  new_scale="$(clean_scale "$requested_scale" "$width" "$height")" || {
+    echo "No scale near $requested_scale divides ${width}x${height} into whole pixels." >&2
+    return 1
+  }
   # GTK only honors integer GDK_SCALE values, so persist the nearest whole
   # factor even when the monitor scale itself is fractional.
   local new_gdk_scale="$(awk -v scale="$new_scale" 'BEGIN { printf "%d", int(scale + 0.5) }')"
@@ -119,12 +136,18 @@ scale_from_current() {
 
   awk -v direction="$direction" -v list="${SCALES[*]}" -v width="$width" -v height="$height" '
     function gcd(a, b, t) { while (b) { t = a % b; a = b; b = t } return a }
-    function clean(scale,    g, k) {
+    # Same search as clean_scale above, and for the same reason: a preset that
+    # steps to a scale the compositor would not have chosen is not a step the
+    # user can see. Returns 0 for a preset this mode cannot reach at all.
+    function clean(scale,    g, k, i) {
       g = gcd(width * 120, height * 120)
       k = int(scale * 120 + 0.5)
-      if (k > g) k = g
-      while (g % k != 0) k++
-      return k / 120
+      if (k > 0 && g % k == 0) return k / 120
+      for (i = 1; i < 90; i++) {
+        if (g % (k + i) == 0) return (k + i) / 120
+        if (k - i > 0 && g % (k - i) == 0) return (k - i) / 120
+      }
+      return 0
     }
     NR == 1 { scale = $0; found = 1 }
     END {
@@ -133,6 +156,7 @@ scale_from_current() {
       preset_count = split(list, presets, " ")
       for (i = 1; i <= preset_count; i++) {
         effective = clean(presets[i])
+        if (effective == 0) continue
         key = sprintf("%.8f", effective)
         distance = presets[i] - effective
         if (distance < 0) distance = -distance
@@ -152,6 +176,9 @@ scale_from_current() {
           }
         }
       }
+
+      # Every preset was unreachable on this mode, so there is no step to take.
+      if (n == 0) exit 1
 
       # Snap to the nearest effective scale first. Hyprland reports floating
       # point values, so exact comparisons can otherwise get stuck.
