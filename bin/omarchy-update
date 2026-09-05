@@ -8,8 +8,26 @@
 set -e
 
 if [[ -z ${OMARCHY_UPDATE_LOGGED:-} ]]; then
+  # The transcript holds the whole update session — package names, service
+  # restarts, anything the terminal echoed — and omarchy-update-analyze-logs
+  # reads it back afterwards. A fixed name in world-writable /tmp lets any
+  # other local account pre-plant a symlink at it and have script(1) write the
+  # session through to a file of their choosing (script opens the transcript
+  # without O_NOFOLLOW), or read the log from outside the default umask leaves
+  # it world-readable. Keep it under the per-user runtime directory (0700),
+  # falling back to the state directory where Omarchy keeps everything else of
+  # its own when there is no session runtime dir. The resolution here must
+  # stay in sync with omarchy-update-analyze-logs.
+  update_log_dir="${XDG_RUNTIME_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy}"
+  update_log="$update_log_dir/omarchy-update.log"
+
+  if ! mkdir -p "$update_log_dir" || ! install -m 600 /dev/null "$update_log"; then
+    echo "Error: cannot create $update_log for the update transcript" >&2
+    exit 1
+  fi
+
   script_command=$(printf '%q ' "$0" "$@")
-  exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "/tmp/omarchy-update.log"
+  exec env OMARCHY_UPDATE_LOGGED=1 script -qefc "$script_command" "$update_log"
 fi
 
 if ! omarchy-update-lock held; then
