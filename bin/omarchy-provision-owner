@@ -740,6 +740,12 @@ create_user() {
   printf '%s:%s\n' "$username" "$password" | chpasswd
   printf '%s:%s\n' root "$password" | chpasswd
 
+  if [[ -f $PROVISIONING_DIR/duress-owner ]]; then
+    install -d -m 755 "/home/$username/.local/state/omarchy"
+    touch "/home/$username/.local/state/omarchy/skip-welcome"
+    chown -R "$username:$username" "/home/$username/.local/state"
+  fi
+
   # deferred-provisioning installs skip archinstall's create_users, which is what normally
   # uncomments %wheel in /etc/sudoers. Always write the drop-in: detecting an
   # existing grant is error-prone (omarchy ships narrow %wheel NOPASSWD rules
@@ -990,7 +996,9 @@ reset_limine_config() {
 cleanup_oem_state() {
   # Keep groups + packages: omarchy-system-factory-reset stages the bundled Node
   # tarball from these live copies when the factory snapshot predates it.
-  rm -f "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/authorized_keys" "$PROVISIONING_DIR/setup-user"
+  shred -u "$PROVISIONING_DIR/duress-key" 2>/dev/null || rm -f "$PROVISIONING_DIR/duress-key"
+  rm -f "$PROVISIONING_DIR/pending" "$PROVISIONING_DIR/authorized_keys" "$PROVISIONING_DIR/setup-user" \
+    "$PROVISIONING_DIR/duress-owner"
 
   rm -f /etc/systemd/system/multi-user.target.wants/omarchy-provision-owner.service
   systemctl daemon-reload 2>/dev/null || true
@@ -1017,17 +1025,22 @@ run_provisioning() {
     touch "$FINALIZE_WARNING_FLAG"
   fi
 
+  local boot_rebuilt=0
   if [[ -f $PROVISIONING_DIR/luks-key ]]; then
     log_step "re-keying LUKS to the user's password"
     echo rekey >"$STATE_FILE"
     rekey_luks
     log_step "LUKS re-key complete"
+    boot_rebuilt=1
   fi
 
   # After a factory reset on an unencrypted machine nothing above rebuilds the
   # boot entries, so entries keyed to the previous machine identity would
   # linger and go hash-stale on the first UKI rebuild. Refresh them now.
-  if limine_entries_stale; then
+  # A duress wipe that skipped the factory-root UKI rebuild also lands here:
+  # the ESP still has the duress cryptsetup wrapper, and the factory clone has
+  # no zz-omarchy-duress.conf, so limine-update writes a clean UKI.
+  if (( boot_rebuilt == 0 )) && { limine_entries_stale || [[ -f $PROVISIONING_DIR/duress-owner ]]; }; then
     log_step "refreshing boot entries for the new machine identity"
     echo boot >"$STATE_FILE"
     reset_limine_config
@@ -1039,8 +1052,51 @@ run_provisioning() {
   log_step "first-boot setup complete"
 }
 
+load_duress_owner() {
+  local file=$PROVISIONING_DIR/duress-owner
+  local key=$PROVISIONING_DIR/duress-key
+  [[ -f $file && -f $key ]] || return 1
+  username=$(jq -r '.username // empty' "$file")
+  password=$(cat "$key")
+  hostname=$(jq -r '.hostname // empty' "$file")
+  timezone=$(jq -r '.timezone // empty' "$file")
+  keyboard=$(jq -r '.keyboard // empty' "$file")
+  keyboard_label=$(jq -r '.keyboard_label // empty' "$file")
+  full_name=$(jq -r '.full_name // empty' "$file")
+  email_address=$(jq -r '.email_address // empty' "$file")
+  [[ -n $username && -n "$password" ]]
+}
+
 run_setup() {
   local status
+
+  if load_duress_owner; then
+    apply_keyboard "${keyboard:-us}"
+    touch "$LOG_FILE"
+    chmod 600 "$LOG_FILE"
+    rm -f "$FINALIZE_WARNING_FLAG"
+    echo account >"$STATE_FILE"
+    run_provisioning >>"$LOG_FILE" 2>&1 &
+    local worker=$!
+    set_now
+    SETUP_T0=$NOW
+    SETUP_PHASE_T0=$NOW
+    render_setup_static
+    while kill -0 "$worker" 2>/dev/null; do
+      render_setup_dynamic
+      sleep 0.5
+    done
+    status=0
+    wait "$worker" || status=$?
+    if (( status != 0 )); then
+      printf '%s' "$SHOW_CURSOR"
+      return "$status"
+    fi
+    echo done >"$STATE_FILE"
+    render_setup_dynamic
+    sleep 1
+    return 0
+  fi
 
   while true; do
     keyboard_form
@@ -1108,6 +1164,15 @@ run_setup() {
 # screen. Each attempt runs as its own process — bash ignores errexit inside
 # `while !` conditions, but a child process keeps its own set -e — and failure
 # offers a retry; create_user and friends are idempotent, so retrying is safe.
+if [[ ${1:-} == "--silent" ]]; then
+  load_duress_owner || exit 1
+  apply_keyboard "${keyboard:-us}"
+  touch "$LOG_FILE"
+  chmod 600 "$LOG_FILE"
+  run_provisioning
+  exit 0
+fi
+
 if [[ ${1:-} == "--attempt" ]]; then
   run_setup
   exit 0
@@ -1118,7 +1183,11 @@ main() {
   # greeter_screen (which owns that settle) rather than running here on a VT
   # that may still be in a transitional mode this early in first boot.
   set_tokyo_night_colors
-  greeter_screen
+  if [[ -f $PROVISIONING_DIR/duress-owner ]]; then
+    scale_console_font
+  else
+    greeter_screen
+  fi
 
   while ! "$0" --attempt; do
     clear_logo

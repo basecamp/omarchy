@@ -13,6 +13,7 @@
 [Unit]
 Description=Omarchy provisioning first-boot user setup
 ConditionPathExists=/var/lib/omarchy/provisioning/pending
+ConditionPathExists=!/var/lib/omarchy/provisioning/duress-owner
 ConditionPathExists=!/var/lib/omarchy/provisioning/wipe-pending
 After=systemd-user-sessions.service omarchy-system-factory-reset-finish.service
 Before=display-manager.service getty@tty1.service

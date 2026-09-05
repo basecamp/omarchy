@@ -1,0 +1,434 @@
+#!/bin/bash
+
+# omarchy:summary=Set a disk-unlock duress password that factory-resets the machine
+# omarchy:args=[--remove] [--change]
+# omarchy:examples=omarchy-setup-security-duress | omarchy-setup-security-duress --change | omarchy-setup-security-duress --remove
+# omarchy:requires-sudo=true
+
+set -euo pipefail
+
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
+PROVISIONING_DIR=/var/lib/omarchy/provisioning
+OWNER_FILE=$PROVISIONING_DIR/duress-owner
+DROPIN=/etc/mkinitcpio.conf.d/zz-omarchy-duress.conf
+UNIT_SRC="$OMARCHY_PATH/install/provisioning/omarchy-system-duress-wipe.service"
+UNIT_DST=/etc/systemd/system/omarchy-system-duress-wipe.service
+INITCPIO_SRC="$OMARCHY_PATH/default/initcpio"
+REMOVE=0
+CHANGE=0
+REFRESH_BOOT=0
+
+for arg in "$@"; do
+  case $arg in
+    --remove) REMOVE=1 ;;
+    --change) CHANGE=1 ;;
+    --refresh-boot) REFRESH_BOOT=1 ;;
+  esac
+done
+
+as_root() {
+  if (( EUID == 0 )); then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+fail() {
+  echo -e "\e[31m$1\e[0m" >&2
+  exit 1
+}
+
+luks_device() {
+  local spec src part
+  spec=$(grep -o 'cryptdevice=[^ :]*' /proc/cmdline | head -1 | cut -d= -f2-)
+  case $spec in
+    UUID=*) echo "/dev/disk/by-uuid/${spec#UUID=}"; return 0 ;;
+    PARTUUID=*) echo "/dev/disk/by-partuuid/${spec#PARTUUID=}"; return 0 ;;
+    LABEL=*) echo "/dev/disk/by-label/${spec#LABEL=}"; return 0 ;;
+    PARTLABEL=*) echo "/dev/disk/by-partlabel/${spec#PARTLABEL=}"; return 0 ;;
+    /dev/*) echo "$spec"; return 0 ;;
+  esac
+
+  src=$(findmnt -no SOURCE / | sed 's/\[.*//')
+  [[ -n $src ]] || return 1
+  part=$(lsblk -nspo NAME,FSTYPE "$src" 2>/dev/null | awk '$2=="crypto_LUKS"{print $1; exit}')
+  [[ -n $part ]] && { echo "$part"; return 0; }
+  return 1
+}
+
+token_slot() {
+  printf '%s' "$1" | sed -n 's/.*"keyslots":\["\([0-9][0-9]*\)"\].*/\1/p'
+}
+
+# Prefer leftover omarchy-duress tokens so change/remove/migrate can strip the
+# custom type. Otherwise the generic luks2 token enroll writes.
+find_duress_token() {
+  local device="$1" id json compact slot
+  local luks2_id="" luks2_slot=""
+  for id in {0..31}; do
+    json=$(cryptsetup token export --token-id "$id" "$device" 2>/dev/null) || continue
+    compact=$(printf '%s' "$json" | tr -d ' \n')
+    slot=$(token_slot "$compact")
+    [[ -n $slot ]] || continue
+    case $compact in
+      *'"type":"omarchy-duress"'*)
+        printf '%s %s' "$id" "$slot"
+        return 0
+        ;;
+      *'"type":"luks2"'*)
+        if [[ -z $luks2_id ]]; then
+          luks2_id=$id
+          luks2_slot=$slot
+        fi
+        ;;
+    esac
+  done
+  if [[ -n $luks2_id ]]; then
+    printf '%s %s' "$luks2_id" "$luks2_slot"
+    return 0
+  fi
+  return 1
+}
+
+assign_duress_token() {
+  cryptsetup token add --key-slot "$1" "$2"
+}
+
+# Header-only: swap leftover omarchy-duress tokens for a generic luks2 token so
+# luksDump no longer names the feature. Safe only once the UKI wrapper already
+# understands luks2 tokens (refresh_boot rebuilds first). Uses as_root because
+# --refresh-boot runs as the user from migrations.
+convert_legacy_duress_tokens() {
+  local device id json compact slot
+  device=$(luks_device) || return 0
+  [[ -e $device ]] || return 0
+
+  for id in {0..31}; do
+    json=$(as_root cryptsetup token export --token-id "$id" "$device" 2>/dev/null) || continue
+    compact=$(printf '%s' "$json" | tr -d ' \n')
+    case $compact in
+      *'"type":"omarchy-duress"'*)
+        slot=$(token_slot "$compact")
+        [[ -n $slot ]] || continue
+        as_root cryptsetup token add --key-slot "$slot" "$device" || continue
+        as_root cryptsetup token remove --token-id "$id" "$device" 2>/dev/null || true
+        ;;
+    esac
+  done
+}
+
+luks_keyslots() {
+  cryptsetup luksDump "$1" 2>/dev/null | sed -n 's/^[[:space:]]*\([0-9][0-9]*\):[[:space:]]*luks2.*/\1/p'
+}
+
+new_luks_slot() {
+  local device="$1"
+  shift
+  local -a before=("$@")
+  local slot found existing
+  for slot in $(luks_keyslots "$device"); do
+    found=0
+    for existing in "${before[@]}"; do
+      [[ $slot == "$existing" ]] && { found=1; break; }
+    done
+    if (( !found )); then
+      printf '%s' "$slot"
+      return 0
+    fi
+  done
+  return 1
+}
+
+require_factory_snapshot() {
+  local src top
+  src=$(findmnt -no SOURCE / | sed 's/\[.*\]//')
+  [[ -n $src ]] || return 1
+  top=$(mktemp -d)
+  if mount -o subvolid=5,ro "$src" "$top" 2>/dev/null; then
+    if [[ -d $top/@factory ]]; then
+      umount "$top"
+      rmdir "$top" 2>/dev/null || true
+      return 0
+    fi
+    umount "$top"
+  fi
+  rmdir "$top" 2>/dev/null || true
+  return 1
+}
+
+install_boot_files() {
+  local src="$INITCPIO_SRC"
+  [[ -f $src/cryptsetup-wrapper && -f $src/hooks/omarchy-duress && -f $src/install/omarchy-duress && -f $src/zz-omarchy-duress.conf ]] ||
+    fail "duress initramfs files are missing from $src"
+
+  as_root install -Dm644 "$src/hooks/omarchy-duress" /usr/lib/initcpio/hooks/omarchy-duress
+  as_root install -Dm644 "$src/install/omarchy-duress" /usr/lib/initcpio/install/omarchy-duress
+  as_root install -Dm755 "$src/cryptsetup-wrapper" /usr/lib/initcpio/omarchy-duress-wrapper
+  as_root install -Dm644 "$src/zz-omarchy-duress.conf" "$DROPIN"
+  as_root install -Dm644 "$UNIT_SRC" "$UNIT_DST"
+  as_root systemctl enable omarchy-system-duress-wipe.service >/dev/null
+  omarchy-pkg-add kexec-tools >/dev/null 2>&1 || true
+}
+
+rebuild_boot() {
+  if omarchy-cmd-present limine-mkinitcpio; then
+    as_root limine-mkinitcpio
+  else
+    as_root mkinitcpio -P
+  fi
+}
+
+prompt_current_passphrase() {
+  local device="$1" current
+  while true; do
+    current=$(gum input --password --placeholder "Current disk encryption passphrase" --prompt "Current> ") || exit 1
+    if [[ -z $current ]]; then
+      gum style --foreground 1 "Passphrase cannot be empty." >&2
+      continue
+    fi
+    if cryptsetup open --test-passphrase --key-file <(printf '%s' "$current") "$device" 2>/dev/null; then
+      printf '%s' "$current"
+      return 0
+    fi
+    gum style --foreground 1 "That passphrase does not unlock $device. Try again." >&2
+  done
+}
+
+prompt_new_duress() {
+  local current="$1" duress confirm
+  while true; do
+    duress=$(gum input --password --placeholder "Duress password (must differ from the real one)" --prompt "Duress> ") || exit 1
+    if [[ -z $duress ]]; then
+      gum style --foreground 1 "Duress password cannot be empty." >&2
+      continue
+    fi
+    if [[ $duress == "$current" ]]; then
+      gum style --foreground 1 "Duress password must be different from the real disk password." >&2
+      continue
+    fi
+    confirm=$(gum input --password --placeholder "Confirm duress password" --prompt "Confirm> ") || exit 1
+    if [[ $duress == "$confirm" ]]; then
+      printf '%s' "$duress"
+      return 0
+    fi
+    gum style --foreground 1 "Passwords do not match. Try again." >&2
+  done
+}
+
+change_duress() {
+  local device token_id slot current duress found
+  device=$(luks_device) || fail "No encrypted drive found."
+  [[ -e $device ]] || fail "LUKS device $device not found"
+
+  found=$(find_duress_token "$device" || true)
+  [[ -n $found ]] || fail "No duress password is enrolled. Set one up from Setup > Security > Duress Password."
+  token_id=${found%% *}
+  slot=${found#* }
+
+  echo
+  gum style --bold "Change the duress password?"
+  echo
+  gum style "The current disk password stays the same. Only the duress phrase is replaced."
+  echo
+
+  current=$(prompt_current_passphrase "$device")
+  duress=$(prompt_new_duress "$current")
+
+  local -a slots_before
+  mapfile -t slots_before < <(luks_keyslots "$device")
+  cryptsetup luksAddKey --key-file <(printf '%s' "$current") --pbkdf argon2id --iter-time 2000 "$device" <(printf '%s' "$duress")
+  local new_slot
+  new_slot=$(new_luks_slot "$device" "${slots_before[@]}") || fail "Could not determine the new LUKS keyslot."
+
+  cryptsetup -q luksKillSlot --key-file <(printf '%s' "$current") "$device" "$slot"
+  cryptsetup token remove --token-id "$token_id" "$device" 2>/dev/null || true
+  assign_duress_token "$new_slot" "$device"
+
+  echo -e "\e[32mDuress password updated. It is active immediately.\e[0m"
+}
+
+remove_duress() {
+  local device token_id slot current found
+  device=$(luks_device) || fail "No encrypted drive found."
+  [[ -e $device ]] || fail "LUKS device $device not found"
+
+  found=$(find_duress_token "$device" || true)
+  [[ -n $found ]] || fail "No duress password is enrolled."
+  token_id=${found%% *}
+  slot=${found#* }
+
+  echo
+  echo "This removes the duress password from $device (LUKS slot $slot)."
+  current=$(prompt_current_passphrase "$device")
+
+  cryptsetup -q luksKillSlot --key-file <(printf '%s' "$current") "$device" "$slot"
+  cryptsetup token remove --token-id "$token_id" "$device" 2>/dev/null || true
+  rm -f "$DROPIN" "$OWNER_FILE"
+
+  echo "Rebuilding boot files..."
+  rebuild_boot
+  echo -e "\e[32mDuress password removed.\e[0m"
+}
+
+enroll_duress() {
+  local device current duress confirm typed slot existing token_id old_slot
+
+  device=$(luks_device) || fail "Duress passwords need full-disk encryption."
+  [[ -e $device ]] || fail "LUKS device $device not found"
+  require_factory_snapshot || fail "This machine has no @factory snapshot to reset to. Reinstall from the Omarchy ISO first."
+
+  existing=$(find_duress_token "$device" || true)
+  if [[ -n $existing ]]; then
+    echo "A duress password is already enrolled."
+    local choice
+    choice=$(gum choose "Replace duress password" "Remove duress password" "Cancel") || exit 1
+    case $choice in
+      "Remove duress password") remove_duress; return ;;
+      Cancel) exit 0 ;;
+    esac
+  fi
+
+  echo
+  gum style --bold --foreground 1 "Set a duress password?"
+  echo
+  gum style "At the disk-unlock screen, this password looks like it works — then the machine factory-resets. There is no confirmation and no way to undo it once typed."
+  echo
+  gum style "The next boot after this setup is when it becomes active."
+  echo
+
+  while true; do
+    typed=$(gum input --placeholder "Type 'wipe' to continue" --prompt "> ") || exit 1
+    [[ $typed == "wipe" ]] && break
+    gum style --foreground 1 "Type 'wipe' to continue."
+  done
+
+  current=$(prompt_current_passphrase "$device")
+  duress=$(prompt_new_duress "$current")
+
+  if [[ -n $existing ]]; then
+    token_id=${existing%% *}
+    old_slot=${existing#* }
+    cryptsetup -q luksKillSlot --key-file <(printf '%s' "$current") "$device" "$old_slot"
+    cryptsetup token remove --token-id "$token_id" "$device" 2>/dev/null || true
+  fi
+
+  local -a slots_before
+  mapfile -t slots_before < <(luks_keyslots "$device")
+  cryptsetup luksAddKey --key-file <(printf '%s' "$current") --pbkdf argon2id --iter-time 2000 "$device" <(printf '%s' "$duress")
+  slot=$(new_luks_slot "$device" "${slots_before[@]}") || fail "Could not determine the new LUKS keyslot."
+  assign_duress_token "$slot" "$device"
+
+  collect_duress_owner
+
+  install_boot_files
+  echo "Rebuilding boot files (this can take a minute)..."
+  rebuild_boot
+  echo
+  echo -e "\e[32mDuress password enrolled. It is active on the next reboot.\e[0m"
+}
+
+write_duress_owner() {
+  install -d -m 700 "$PROVISIONING_DIR"
+  umask 077
+  jq -n \
+    --arg username "$1" \
+    --arg hostname "$2" \
+    --arg timezone "$3" \
+    --arg keyboard "$4" \
+    --arg keyboard_label "$5" \
+    --arg full_name "$6" \
+    --arg email_address "$7" \
+    '{username:$username,hostname:$hostname,timezone:$timezone,keyboard:$keyboard,keyboard_label:$keyboard_label,full_name:$full_name,email_address:$email_address}' \
+    >"$OWNER_FILE"
+  chmod 600 "$OWNER_FILE"
+}
+
+collect_duress_owner() {
+  local username full_name email_address hostname timezone keyboard keyboard_label
+
+  echo
+  gum style --bold "After a duress wipe, the machine boots into a fresh desktop."
+  echo
+  gum style "The duress password becomes the new disk and login password, so it keeps working after reboot. There is no duress password on that system."
+  echo
+
+  if gum confirm --affirmative "Choose account details" --negative "Use defaults" "Customize the post-wipe account?"; then
+    source "$OMARCHY_PATH/install/provisioning/setup-form.sh"
+    notice() { gum style --foreground 1 "$1" >&2; sleep "${2:-0}"; }
+    omarchy_username_taken() { return 1; }
+
+    while true; do
+      omarchy_prompt_keyboard || continue
+      omarchy_prompt_username || continue
+      omarchy_prompt_identity || continue
+      omarchy_prompt_hostname || continue
+      omarchy_prompt_timezone || continue
+      break
+    done
+  else
+    username=omarchy
+    hostname=omarchy
+    timezone=UTC
+    keyboard=us
+    keyboard_label="English (US)"
+    full_name=""
+    email_address=""
+  fi
+
+  write_duress_owner \
+    "$username" \
+    "${hostname:-omarchy}" \
+    "${timezone:-UTC}" \
+    "${keyboard:-us}" \
+    "${keyboard_label:-English (US)}" \
+    "${full_name:-}" \
+    "${email_address:-}"
+}
+
+refresh_boot() {
+  [[ -f $DROPIN ]] || exit 0
+  [[ -f $INITCPIO_SRC/cryptsetup-wrapper ]] || exit 0
+
+  local changed=0
+  if ! cmp -s "$INITCPIO_SRC/cryptsetup-wrapper" /usr/lib/initcpio/omarchy-duress-wrapper 2>/dev/null; then
+    changed=1
+  fi
+
+  install_boot_files
+  if (( changed )); then
+    rebuild_boot
+  fi
+  convert_legacy_duress_tokens
+}
+
+main() {
+  export PATH="$OMARCHY_PATH/bin:$PATH"
+
+  if (( REFRESH_BOOT )); then
+    refresh_boot
+    return
+  fi
+
+  if (( EUID != 0 )); then
+    mapfile -t gum_env < <(env | grep '^GUM_' || true)
+    exec sudo env "${gum_env[@]}" "$0" "$@"
+  fi
+
+  omarchy-cmd-present cryptsetup || fail "cryptsetup is required"
+  omarchy-cmd-present gum || fail "gum is required"
+
+  if (( REMOVE )); then
+    remove_duress
+    return
+  fi
+
+  if (( CHANGE )); then
+    change_duress
+    return
+  fi
+
+  enroll_duress
+}
+
+main "$@"

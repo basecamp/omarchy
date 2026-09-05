@@ -1,0 +1,14 @@
+#!/usr/bin/ash
+
+run_latehook() {
+    [ -f /run/omarchy-duress ] || return 0
+    [ -d /new_root ] || return 0
+
+    mkdir -p /new_root/var/lib/omarchy/provisioning
+    cp /run/omarchy-duress /new_root/var/lib/omarchy/provisioning/duress-pending
+    if [ -f /run/omarchy-duress-key ]; then
+        cp /run/omarchy-duress-key /new_root/var/lib/omarchy/provisioning/duress-key
+        chmod 600 /new_root/var/lib/omarchy/provisioning/duress-key
+        rm -f /run/omarchy-duress-key
+    fi
+}

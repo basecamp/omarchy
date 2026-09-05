@@ -1,0 +1,20 @@
+# Runs an unattended factory reset when the initramfs duress wrapper armed
+# /var/lib/omarchy/provisioning/duress-pending. Ordered before home.mount and
+# sddm so the live session never starts. Installed by omarchy-setup-security-duress.
+
+[Unit]
+Description=Omarchy duress factory reset
+DefaultDependencies=no
+ConditionPathExists=/var/lib/omarchy/provisioning/duress-pending
+After=systemd-remount-fs.service
+Before=sysinit.target home.mount var-log.mount var-cache-pacman-pkg.mount sddm.service graphical.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=infinity
+ExecStart=/usr/bin/omarchy-system-factory-reset --unattended
+
+[Install]
+WantedBy=sysinit.target

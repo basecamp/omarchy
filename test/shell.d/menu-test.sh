@@ -321,6 +321,18 @@ assert(
   'menu places Passwordless Sudo under Setup > Security'
 )
 assert(
+  defaultById['setup.security.duress'].action.includes('omarchy-setup-security-duress'),
+  'menu places Duress Password under Setup > Security'
+)
+assert(
+  defaultById['setup.security.duress'].when.includes('crypto_LUKS'),
+  'menu hides Duress Password unless the machine is encrypted'
+)
+assert(
+  defaultById['update.password.duress'].action.includes('omarchy-setup-security-duress --change'),
+  'menu places Duress under Update > Password'
+)
+assert(
   !defaultById['trigger.toggle.direct-boot'] && !defaultById['trigger.toggle.passwordless-sudo'],
   'menu removes the relocated toggles from Trigger > Toggle'
 )

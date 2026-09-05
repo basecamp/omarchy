@@ -25,6 +25,10 @@
 #  - LUKS re-keying changes passphrases, not the volume key. Freed extents
 #    remain readable to someone with raw-device access and a valid passphrase.
 #    Use cryptsetup reencrypt or a reinstall if you need certainty.
+#
+# --unattended is the duress path: no confirm, no gum, always reboot. It
+# requires /var/lib/omarchy/provisioning/duress-pending (armed by the
+# initramfs cryptsetup wrapper) and must already be root.
 
 set -euo pipefail
 
@@ -33,11 +37,23 @@ OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 TOP_MNT=/run/omarchy-system-factory-reset/top
 NEXT_NAME=@omarchy-reset-next
 LOG_FILE=/var/log/omarchy-system-factory-reset.log
+UNATTENDED=0
+
+for arg in "$@"; do
+  case $arg in
+    --unattended) UNATTENDED=1 ;;
+  esac
+done
 
 # Self-elevate so the menu entry (and a bare shell invocation) need no sudo
 # prefix. The caller's gum theme vars are forwarded as `env` arguments rather
 # than via `sudo -E`, so styling survives even under an env_reset sudoers.
+# Unattended is systemd-only: a sudo prompt would be a duress giveaway.
 if (( EUID != 0 )); then
+  if (( UNATTENDED )); then
+    echo "Error: unattended factory reset must run as root" >&2
+    exit 1
+  fi
   mapfile -t gum_env < <(env | grep '^GUM_' || true)
   exec sudo env "${gum_env[@]}" "$0" "$@"
 fi
@@ -46,11 +62,19 @@ export PATH="$OMARCHY_PATH/bin:$PATH"
 
 log() {
   echo "$1" | tee -a "$LOG_FILE" >/dev/null
-  gum style --foreground 8 "  $1"
+  if (( UNATTENDED )); then
+    echo "factory-reset: $1"
+  else
+    gum style --foreground 8 "  $1"
+  fi
 }
 
 fail() {
-  gum style --foreground 1 "Error: $1"
+  if (( UNATTENDED )); then
+    echo "Error: $1" >&2
+  else
+    gum style --foreground 1 "Error: $1"
+  fi
   exit 1
 }
 
@@ -110,6 +134,11 @@ cleanup() {
 trap cleanup EXIT
 
 confirm_reset() {
+  if (( UNATTENDED )); then
+    [[ -f $PROVISIONING_DIR/duress-pending ]] || fail "unattended reset requires a duress pending marker"
+    return 0
+  fi
+
   echo
   gum style --bold --foreground 1 "Reset this computer to factory state?"
   echo
@@ -127,6 +156,19 @@ confirm_reset() {
   [[ $typed == "reset" ]] || fail "Reset not confirmed."
 }
 
+luks_keyslots() {
+  cryptsetup luksDump "$1" 2>/dev/null | sed -n 's/^[[:space:]]*\([0-9][0-9]*\):[[:space:]]*luks2.*/\1/p'
+}
+
+kill_luks_slots_except() {
+  local device="$1" keep_slot="$2" auth="$3" slot
+  [[ -n $keep_slot ]] || return 0
+  for slot in $(luks_keyslots "$device"); do
+    [[ $slot == "$keep_slot" ]] && continue
+    cryptsetup -q luksKillSlot --key-file <(printf '%s' "$auth") "$device" "$slot" >/dev/null 2>&1 || true
+  done
+}
+
 # Re-key to a throwaway passphrase whose keyfile auto-unlocks boot during the
 # provisioning window. $1 is the root of the staged factory system.
 stage_luks_rekey() {
@@ -135,19 +177,46 @@ stage_luks_rekey() {
   device=$(luks_device) || fail "encrypted install, but no usable cryptdevice= in /proc/cmdline"
   [[ -e $device ]] || fail "LUKS device $device not found"
 
-  echo
-  gum style "Confirm your disk encryption passphrase to authorize the re-key."
   local current
-  while true; do
-    current=$(gum input --password --placeholder "Current disk encryption passphrase" --prompt "Passphrase> ") || exit 1
-    if cryptsetup open --test-passphrase --key-file <(printf '%s' "$current") "$device" 2>/dev/null; then
-      break
-    fi
-    gum style --foreground 1 "That passphrase does not unlock $device. Try again."
-  done
+  if (( UNATTENDED )); then
+    [[ -f $PROVISIONING_DIR/duress-key ]] || fail "unattended reset is missing the duress keyfile"
+    current=$(cat "$PROVISIONING_DIR/duress-key")
+    cryptsetup open --test-passphrase --key-file <(printf '%s' "$current") "$device" 2>/dev/null ||
+      fail "duress keyfile does not unlock $device"
+  else
+    echo
+    gum style "Confirm your disk encryption passphrase to authorize the re-key."
+    while true; do
+      current=$(gum input --password --placeholder "Current disk encryption passphrase" --prompt "Passphrase> ") || exit 1
+      if cryptsetup open --test-passphrase --key-file <(printf '%s' "$current") "$device" 2>/dev/null; then
+        break
+      fi
+      gum style --foreground 1 "That passphrase does not unlock $device. Try again."
+    done
+  fi
+
+  local -a slots_before slots_after
+  local new_slot slot found existing
+  mapfile -t slots_before < <(luks_keyslots "$device")
 
   passphrase=$(generate_passphrase)
   cryptsetup luksAddKey --key-file <(printf '%s' "$current") "$device" <(printf '%s' "$passphrase")
+
+  if (( UNATTENDED )); then
+    mapfile -t slots_after < <(luks_keyslots "$device")
+    new_slot=""
+    for slot in "${slots_after[@]}"; do
+      found=0
+      for existing in "${slots_before[@]}"; do
+        [[ $slot == "$existing" ]] && { found=1; break; }
+      done
+      if (( !found )); then
+        new_slot=$slot
+        break
+      fi
+    done
+    kill_luks_slots_except "$device" "$new_slot" "$passphrase"
+  fi
 
   install -d -m 755 "$next$PROVISIONING_DIR"
   printf '%s' "$passphrase" >"$next$PROVISIONING_DIR/luks-key"
@@ -169,6 +238,8 @@ install_provisioning_units() {
 
   install -Dm644 "$unit_src/omarchy-provision-owner.service" \
     "$next/etc/systemd/system/omarchy-provision-owner.service"
+  install -Dm644 "$unit_src/omarchy-provision-duress.service" \
+    "$next/etc/systemd/system/omarchy-provision-duress.service"
   install -Dm644 "$unit_src/omarchy-system-factory-reset-finish.service" \
     "$next/etc/systemd/system/omarchy-system-factory-reset-finish.service"
 
@@ -176,6 +247,8 @@ install_provisioning_units() {
     "$next/etc/systemd/system/sysinit.target.wants"
   ln -sf /etc/systemd/system/omarchy-provision-owner.service \
     "$next/etc/systemd/system/multi-user.target.wants/omarchy-provision-owner.service"
+  ln -sf /etc/systemd/system/omarchy-provision-duress.service \
+    "$next/etc/systemd/system/multi-user.target.wants/omarchy-provision-duress.service"
   ln -sf /etc/systemd/system/omarchy-system-factory-reset-finish.service \
     "$next/etc/systemd/system/sysinit.target.wants/omarchy-system-factory-reset-finish.service"
 }
@@ -204,6 +277,11 @@ reset_limine_config() {
     fi
   done
   [[ -n $found ]] || fail "no limine.conf template in $root/usr/share/omarchy"
+
+  if (( UNATTENDED )); then
+    sed -i 's/^#timeout:.*/timeout: 0/' "$root$esp/limine.conf"
+    grep -q '^timeout:' "$root$esp/limine.conf" || echo 'timeout: 0' >>"$root$esp/limine.conf"
+  fi
 
   local machine_id old_id
   machine_id=$(cat "$root/etc/machine-id" 2>/dev/null || true)
@@ -365,20 +443,38 @@ stage_full_reset() {
 
   install -d -m 755 "$next$PROVISIONING_DIR"
   touch "$next$PROVISIONING_DIR/pending" "$next$PROVISIONING_DIR/wipe-pending"
+  if (( UNATTENDED )); then
+    if [[ -f $PROVISIONING_DIR/duress-owner ]]; then
+      install -Dm600 "$PROVISIONING_DIR/duress-owner" "$next$PROVISIONING_DIR/duress-owner"
+    fi
+    if [[ -f $PROVISIONING_DIR/duress-key ]]; then
+      install -Dm600 "$PROVISIONING_DIR/duress-key" "$next$PROVISIONING_DIR/duress-key"
+    fi
+  fi
 
   install_provisioning_units "$next" "$unit_src"
 
-  if encrypted_install; then
+  local skip_boot_rebuild=0
+  if (( UNATTENDED )) && [[ -d $next/usr/lib/modules/$(uname -r) ]]; then
+    skip_boot_rebuild=1
+  fi
+
+  if encrypted_install && (( skip_boot_rebuild == 0 )); then
     stage_luks_rekey "$next"
   fi
 
-  rebuild_next_boot "$next"
+  if (( skip_boot_rebuild == 0 )); then
+    rebuild_next_boot "$next"
+  fi
 
   log "Activating the factory system"
   local old="@omarchy-old-$(date +%s)"
   mv "$top/@" "$top/$old"
   mv "$next" "$top/@"
   swap_done=1
+  if (( UNATTENDED )); then
+    shred -u "$PROVISIONING_DIR/duress-key" 2>/dev/null || rm -f "$PROVISIONING_DIR/duress-key"
+  fi
   sync
 }
 
@@ -386,6 +482,10 @@ stage_full_reset() {
 # return to. Only the Quattro installer takes that snapshot.
 require_factory_snapshot() {
   [[ -d $TOP_MNT/@factory ]] && return 0
+
+  if (( UNATTENDED )); then
+    fail "This machine has no factory snapshot to reset to."
+  fi
 
   echo
   gum style --bold --foreground 3 "This machine has no factory snapshot to reset to."
@@ -399,11 +499,42 @@ require_factory_snapshot() {
   exit 1
 }
 
+jump_to_factory_system() {
+  local uki dir device
+  device=$(root_device)
+  if [[ -n $device ]]; then
+    mkdir -p /run/nextroot
+    if mount -o subvol=@ "$device" /run/nextroot 2>/dev/null &&
+      [[ -x /run/nextroot/usr/lib/systemd/systemd ]]; then
+      log "Switching userspace to the factory system"
+      systemctl soft-reboot && return
+      umount /run/nextroot 2>/dev/null || true
+    fi
+  fi
+
+  if omarchy-cmd-present kexec; then
+    for dir in /boot/EFI/Linux /efi/EFI/Linux /boot/efi/EFI/Linux; do
+      [[ -d $dir ]] || continue
+      uki=$(find "$dir" -maxdepth 1 -name '*.efi' -print -quit)
+      [[ -n $uki ]] && break
+    done
+    if [[ -n $uki ]] && kexec -l --reuse-cmdline "$uki" 2>/dev/null; then
+      log "Jumping into $uki"
+      systemctl kexec && return
+      kexec -u 2>/dev/null || true
+    fi
+  fi
+  systemctl reboot
+}
+
 main() {
   omarchy-cmd-present btrfs || { echo "Error: btrfs-progs is required" >&2; exit 1; }
 
   root_is_btrfs_at || fail "reset requires the standard Omarchy Btrfs layout (subvol=@)"
 
+  if (( UNATTENDED )); then
+    LOG_FILE=/run/omarchy-system-factory-reset.log
+  fi
   touch "$LOG_FILE"
   chmod 600 "$LOG_FILE"
   swap_done=0
@@ -430,6 +561,12 @@ main() {
   umount -R "$TOP_MNT" 2>/dev/null || true
 
   echo
+  if (( UNATTENDED )); then
+    log "Reset staged. Continuing into the factory system."
+    jump_to_factory_system
+    return
+  fi
+
   gum style --bold "Reset staged. The wipe finishes on the next boot."
   if gum confirm --affirmative "Reboot now" --negative "Reboot later" "Reboot to complete the reset?"; then
     systemctl reboot

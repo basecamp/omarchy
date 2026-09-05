@@ -50,9 +50,9 @@ defaults must use the resync command.
 Deferred-provisioning installs (`omarchy-apply-system --defer-provisioning`)
 create no user at all: the ISO leaves `/var/lib/omarchy/provisioning/pending`
 behind, which arms `omarchy-provision-owner.service` (shipped from
-`install/provisioning/`, alongside the factory-reset finish unit and
-`setup-form.sh`). On first boot `bin/omarchy-provision-owner` creates the
-user on tty1 and runs the finalize step itself.
+`install/provisioning/`, alongside the factory-reset finish unit, the duress
+wipe and silent post-wipe owner units, and `setup-form.sh`). On first boot `bin/omarchy-provision-owner` creates the
+user on tty1 and runs the finalize step itself. A duress wipe instead runs `--silent` so Plymouth stays up and the decoy account is created without the setup wizard.
 
 Current generated theme state lives under
 `~/.local/state/omarchy/current/`. Keep `~/.config/omarchy/` for files a user
@@ -131,7 +131,10 @@ default/**                     ──►  omarchy-settings    /usr/share/omarchy
   ├─ sddm/omarchy/                                      /usr/share/sddm/themes/omarchy/
   ├─ sddm/hyprland.lua                                  /usr/share/sddm/hyprland.lua
   ├─ wayland-sessions/omarchy.desktop                   /usr/local/share/wayland-sessions/
-  └─ plymouth/                                          /usr/share/plymouth/themes/omarchy/
+  ├─ plymouth/                                          /usr/share/plymouth/themes/omarchy/
+  └─ initcpio/{hooks,install,cryptsetup-wrapper,        /usr/share/omarchy/default/initcpio/
+       zz-omarchy-duress.conf}                            (copied to /usr/lib/initcpio and
+                                                          /etc/mkinitcpio.conf.d on duress enroll)
 
 logo.{txt,svg}, icon.{txt,png}  ──► omarchy-settings    /usr/share/omarchy/  (resync source)
                                                         /usr/share/pixmaps/omarchy.png
