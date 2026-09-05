@@ -1,0 +1,135 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Antigravity usage record as JSON
+# omarchy:args=[--force] [--limits-only]
+# omarchy:hidden=true
+"""Collect Antigravity usage into one display-ready JSON record.
+
+Local stats come from Antigravity session databases (~/.gemini/antigravity-cli/conversation_summaries.db)
+and history logs (~/.gemini/antigravity-cli/history.jsonl). The agents panel only ever
+reads the JSON this prints.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import sqlite3
+import sys
+from pathlib import Path
+
+AGENT_ID = "agy"
+AGENT_NAME = "Antigravity"
+AUTH_HELP = "Run `agy` to authenticate or continue a session."
+
+
+def date_string(value: dt.date) -> str:
+  return value.strftime("%Y-%m-%d")
+
+
+def recent_date_strings() -> list[str]:
+  today = dt.datetime.now().date()
+  return [date_string(today - dt.timedelta(days=offset)) for offset in range(6, -1, -1)]
+
+
+def scan_agy_usage() -> dict:
+  home = Path.home()
+  agy_dir = Path(os.environ.get("ANTIGRAVITY_DATA_DIR", home / ".gemini" / "antigravity-cli"))
+  db_path = agy_dir / "conversation_summaries.db"
+  history_path = agy_dir / "history.jsonl"
+
+  today = dt.datetime.now().date()
+  recent_dates = recent_date_strings()
+  recent_days_map = {d: 0 for d in recent_dates}
+  total_sessions = 0
+  total_prompts = 0
+  today_sessions = 0
+  today_prompts = 0
+
+  if db_path.exists():
+    try:
+      conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+      cursor = conn.cursor()
+      cursor.execute("SELECT count(*), coalesce(sum(step_count), 0) FROM conversation_summaries")
+      row = cursor.fetchone()
+      if row:
+        total_sessions = int(row[0] or 0)
+        total_prompts = int(row[1] or 0)
+
+      today_str = date_string(today)
+      cursor.execute("SELECT count(*) FROM conversation_summaries WHERE date(last_modified_time) = ?", (today_str,))
+      row = cursor.fetchone()
+      if row:
+        today_sessions = int(row[0] or 0)
+      conn.close()
+    except Exception:
+      pass
+
+  if history_path.exists():
+    try:
+      with open(history_path, "r", encoding="utf-8") as f:
+        for line in f:
+          line = line.strip()
+          if not line:
+            continue
+          try:
+            data = json.loads(line)
+            ts = data.get("timestamp")
+            if ts:
+              # Timestamp in milliseconds
+              item_date = dt.datetime.fromtimestamp(ts / 1000.0).strftime("%Y-%m-%d")
+              if item_date in recent_days_map:
+                recent_days_map[item_date] += 1
+              if item_date == date_string(today):
+                today_prompts += 1
+          except Exception:
+            pass
+    except Exception:
+      pass
+
+  recent_days = [{"date": d, "messageCount": recent_days_map[d]} for d in recent_dates]
+  active_dates = [d for d, count in recent_days_map.items() if count > 0]
+
+  return {
+    "totalSessions": total_sessions or (1 if today_prompts > 0 else 0),
+    "totalPrompts": total_prompts or today_prompts,
+    "todaySessions": today_sessions or (1 if today_prompts > 0 else 0),
+    "todayPrompts": today_prompts,
+    "recentDays": recent_days,
+    "activeDays": len(active_dates),
+    "activeDates": active_dates,
+  }
+
+
+def main() -> int:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--force", action="store_true", help="rescan records ignoring caches")
+  parser.add_argument("--limits-only", action="store_true", help="only probe limits")
+  parser.add_argument("--cache-seconds", type=float, default=20)
+  _ = parser.parse_args()
+
+  stats = scan_agy_usage()
+
+  record = {
+    "schemaVersion": 1,
+    "id": AGENT_ID,
+    "name": AGENT_NAME,
+    "updatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
+    "ready": stats["totalPrompts"] > 0 or stats["totalSessions"] > 0,
+    "hasLocalStats": True,
+    "tierLabel": "Gemini",
+    "usageStatusText": "Active",
+    "authHelpText": "",
+    "limits": [],
+    "todayTokensByModel": {},
+    "todayTotalTokens": 0,
+    "modelUsage": {},
+  }
+  record.update(stats)
+  print(json.dumps(record, separators=(",", ":"), sort_keys=True))
+  return 0
+
+
+if __name__ == "__main__":
+  raise SystemExit(main())
