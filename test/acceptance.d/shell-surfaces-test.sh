@@ -4,6 +4,30 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 
+RECENT_EMOJIS_FILE="$HOME/.local/state/omarchy/recent-emojis.json"
+recent_emojis_backup=$(mktemp)
+recent_emojis_existed=0
+
+if [[ -f $RECENT_EMOJIS_FILE ]]; then
+  cp "$RECENT_EMOJIS_FILE" "$recent_emojis_backup"
+  recent_emojis_existed=1
+fi
+
+restore_recent_emojis() {
+  omarchy-shell shell hide omarchy.emojis >/dev/null 2>&1 || true
+
+  if ((recent_emojis_existed)); then
+    mkdir -p "$(dirname "$RECENT_EMOJIS_FILE")"
+    cp "$recent_emojis_backup" "$RECENT_EMOJIS_FILE"
+  else
+    rm -f "$RECENT_EMOJIS_FILE"
+  fi
+
+  rm -f "$recent_emojis_backup"
+}
+
+trap restore_recent_emojis EXIT
+
 open_and_close() {
   local name="$1" plugin="$2" namespace="$3" payload="${4:-}"
 
@@ -30,6 +54,17 @@ sleep 1
 screenshot "success-emoji-picker-search"
 wtype -k Return
 wait_until "emoji picker selection closes" 15 layer_absent "omarchy-emojis"
+wait_until "emoji selection is remembered" 15 jq -e '.[0] == "\uD83D\uDE80"' "$RECENT_EMOJIS_FILE"
+
+omarchy-restart-shell
+wait_until "shell restarts after emoji selection" 30 omarchy-shell shell ping
+
+omarchy-shell shell summon omarchy.emojis >/dev/null
+wait_until "emoji picker reopens with recents" 15 layer_present "omarchy-emojis"
+sleep 1
+screenshot "success-emoji-picker-recents"
+omarchy-shell shell hide omarchy.emojis >/dev/null
+wait_until "emoji picker closes after recents check" 15 layer_absent "omarchy-emojis"
 
 # Seed two clipboard entries, search for the older one, and copy it back out.
 clipboard_token="Omarchy acceptance clipboard $(date +%s)"

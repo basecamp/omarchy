@@ -18,7 +18,11 @@ Item {
   property int selectedIndex: 0
   property bool cursorActive: false
   property var emojis: []
+  property var recentEmojis: []
+  property bool recentEmojisLoaded: false
+  property var pendingRecentEmojis: []
   property var filteredEmojis: []
+  readonly property string recentEmojisPath: Quickshell.env("HOME") + "/.local/state/omarchy/recent-emojis.json"
 
   // Shares the [menu] surface tokens — themes that style the menu also
   // style emojis. Selected-cell colors composed in the
@@ -40,7 +44,8 @@ Item {
 
   property int cellWidth: Math.max(Style.space(44), Style.font.display + Style.spacing.md)
   property int cellHeight: Math.max(Style.space(44), Style.font.display + Style.spacing.md)
-  property int columns: Math.floor((cardWidth - contentMargin * 2) / cellWidth)
+  property int columns: Math.max(1, Math.floor(resultGrid.width / cellWidth))
+  onColumnsChanged: if (root.opened) root.rebuildDisplay()
 
   function open(payloadJson) {
     root.opened = true
@@ -71,8 +76,35 @@ Item {
     if (root.opened) root.rebuildDisplay()
   }
 
+  function loadRecentEmojis(raw) {
+    root.recentEmojis = EmojiSearch.parseRecentEmojis(raw)
+    root.recentEmojisLoaded = true
+
+    var pending = root.pendingRecentEmojis
+    root.pendingRecentEmojis = []
+    for (var i = 0; i < pending.length; i++) {
+      root.recentEmojis = EmojiSearch.addRecentEmoji(root.recentEmojis, pending[i], Math.max(1, root.columns), root.emojis)
+    }
+    if (pending.length > 0) root.saveRecentEmojis()
+    if (root.opened) root.rebuildDisplay()
+  }
+
+  function rememberEmoji(emoji) {
+    if (!root.recentEmojisLoaded) {
+      root.pendingRecentEmojis = root.pendingRecentEmojis.concat([emoji])
+      return
+    }
+
+    root.recentEmojis = EmojiSearch.addRecentEmoji(root.recentEmojis, emoji, Math.max(1, root.columns), root.emojis)
+    root.saveRecentEmojis()
+  }
+
+  function saveRecentEmojis() {
+    recentEmojisFile.setText(JSON.stringify(root.recentEmojis, null, 2) + "\n")
+  }
+
   function rebuildDisplay() {
-    var out = EmojiSearch.filterEmojis(root.emojis, root.filterText, 1000)
+    var out = EmojiSearch.displayEmojis(root.emojis, root.recentEmojis, root.filterText, root.columns, 1000)
     root.filteredEmojis = out
 
     displayModel.clear()
@@ -147,6 +179,7 @@ Item {
 
   function applySelected(emoji) {
     if (!emoji) return
+    root.rememberEmoji(emoji)
     root.dismiss()
     Quickshell.execDetached([root.omarchyPath + "/bin/omarchy-menu-emoji-insert", emoji])
   }
@@ -156,6 +189,17 @@ Item {
   FileView {
     path: root.omarchyPath + "/shell/plugins/emojis/emojis.json"
     onLoaded: root.loadEmojis(text())
+  }
+
+  FileView {
+    id: recentEmojisFile
+    path: root.recentEmojisPath
+    watchChanges: true
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadRecentEmojis(text())
+    onLoadFailed: root.loadRecentEmojis("[]")
+    onFileChanged: reload()
   }
   PanelWindow {
     id: panel

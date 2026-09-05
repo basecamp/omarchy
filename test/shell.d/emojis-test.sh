@@ -14,6 +14,12 @@ const data = emojis.parseEmojis(raw)
 assert(data.length > 1000, 'emoji dataset parses')
 assertDeepEqual(emojis.parseEmojis('{'), [], 'invalid emoji JSON parses as empty list')
 assertDeepEqual(emojis.parseEmojis('{"e":"nope"}'), [], 'non-array emoji JSON parses as empty list')
+assertDeepEqual(emojis.parseRecentEmojis('{'), [], 'invalid recent emoji JSON parses as empty list')
+assertDeepEqual(
+  emojis.parseRecentEmojis('["b", "a", "b", "", 42]'),
+  ['b', 'a'],
+  'recent emoji parsing removes duplicates and invalid values'
+)
 
 const fixture = [
   { e: 'a', k: 'grinning face smile happy' },
@@ -37,6 +43,30 @@ assertDeepEqual(
   emojis.filterEmojis(fixture, '', 0),
   [],
   'emoji filtering supports zero result limit'
+)
+
+assertDeepEqual(
+  emojis.addRecentEmoji(['b', 'a'], 'a', 2),
+  ['a', 'b'],
+  'using an emoji moves it to the front of the recent row'
+)
+
+assertDeepEqual(
+  emojis.addRecentEmoji(['missing', 'b'], 'a', 2, fixture),
+  ['a', 'b'],
+  'using an emoji drops stale entries before limiting the recent row'
+)
+
+assertDeepEqual(
+  emojis.displayEmojis(fixture, ['missing', 'c', 'b'], '', 2, 1000).map(item => item.e),
+  ['c', 'b', 'a'],
+  'valid recent emojis are promoted to the first row'
+)
+
+assertDeepEqual(
+  emojis.displayEmojis(fixture, ['c', 'b'], 'joy', 2, 1000).map(item => item.e),
+  ['b'],
+  'recent emojis do not change search result ordering'
 )
 
 assertEqual(
