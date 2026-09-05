@@ -5,6 +5,89 @@
 # omarchy:examples=omarchy debug --print --no-sudo
 # omarchy:requires-sudo=true
 
+omarchy_debug_aq_drm_warn() {
+  local source=$1 value=$2
+
+  [[ -n $value ]] || return 0
+
+  if [[ $value == *by-path* || $value == *pci-0000:* ]]; then
+    printf 'WARNING: %s uses PCI by-path names; Aquamarine splits AQ_DRM_DEVICES on : and SDDM autologin loops\n' "$source"
+  elif [[ $value =~ /dev/dri/card[0-9] ]]; then
+    printf 'WARNING: %s pins /dev/dri/cardN, which rotates across reboots\n' "$source"
+  fi
+}
+
+omarchy_debug_aq_drm_from_file() {
+  local label=$1 file=$2
+  local line
+
+  [[ -f $file ]] || return 1
+
+  line=$(grep -E '^[[:space:]]*(export[[:space:]]+)?AQ_DRM_DEVICES=|hl\.env\(["'\''"]AQ_DRM_DEVICES' "$file" 2>/dev/null | grep -vE '^[[:space:]]*(#|--)' | head -n 1) || true
+  [[ -n $line ]] || return 1
+
+  printf '%s: %s\n' "$label" "$line"
+  omarchy_debug_aq_drm_warn "$label" "$line"
+  return 0
+}
+
+omarchy_debug_aq_drm_section() {
+  local process_value file found dropin_dir hypr_dir
+
+  if [[ -n ${AQ_DRM_DEVICES+x} ]]; then
+    process_value=$AQ_DRM_DEVICES
+    printf 'process: %s\n' "$process_value"
+  else
+    process_value=
+    printf 'process: (unset)\n'
+  fi
+  omarchy_debug_aq_drm_warn "process" "$process_value"
+
+  if ! omarchy_debug_aq_drm_from_file "uwsm env-hyprland" "$HOME/.config/uwsm/env-hyprland"; then
+    if [[ -f $HOME/.config/uwsm/env-hyprland ]]; then
+      printf 'uwsm env-hyprland: (not set)\n'
+    else
+      printf 'uwsm env-hyprland: (absent)\n'
+    fi
+  fi
+
+  dropin_dir=$HOME/.config/uwsm/env-hyprland.d
+  found=0
+  if [[ -d $dropin_dir ]]; then
+    for file in "$dropin_dir"/*; do
+      [[ -f $file ]] || continue
+      omarchy_debug_aq_drm_from_file "uwsm env-hyprland.d/$(basename "$file")" "$file" && found=1
+    done
+  fi
+  if (( found == 0 )); then
+    if [[ -d $dropin_dir ]]; then
+      printf 'uwsm env-hyprland.d: (not set)\n'
+    else
+      printf 'uwsm env-hyprland.d: (absent)\n'
+    fi
+  fi
+
+  hypr_dir=$HOME/.config/hypr
+  found=0
+  if [[ -d $hypr_dir ]]; then
+    for file in "$hypr_dir"/*.lua; do
+      [[ -f $file ]] || continue
+      omarchy_debug_aq_drm_from_file "hypr $(basename "$file")" "$file" && found=1
+    done
+  fi
+  if (( found == 0 )); then
+    if [[ -d $hypr_dir ]]; then
+      printf 'hypr lua: (not set)\n'
+    else
+      printf 'hypr lua: (absent)\n'
+    fi
+  fi
+}
+
+if [[ ${BASH_SOURCE[0]} != "$0" ]]; then
+  return 0
+fi
+
 NO_SUDO=false
 PRINT_ONLY=false
 
@@ -58,6 +141,11 @@ $(journalctl -b -p 4..1)
 INSTALLED PACKAGES
 =========================================
 $({ expac -S '%n %v (%r)' $(pacman -Qqe) 2>/dev/null; comm -13 <(pacman -Sql | sort) <(pacman -Qqe | sort) | xargs -r expac -Q '%n %v (AUR)'; } | sort)
+
+=========================================
+AQ_DRM_DEVICES
+=========================================
+$(omarchy_debug_aq_drm_section)
 EOF
 
 if [[ $PRINT_ONLY = "true" ]]; then
