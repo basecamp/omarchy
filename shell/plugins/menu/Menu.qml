@@ -645,7 +645,29 @@ Item {
       if (root.searchDivider) {
         for (var d = 0; d < drilldownRows.length; d++) drilldownRows[d].section = "drilldown"
       }
+      var calcResult = MenuModel.calcResultForQuery(query)
       rows = currentRows.concat(drilldownRows)
+      if (calcResult) {
+        var calcText = calcResult.text
+        rows.unshift({
+          itemId: "calc",
+          disabled: false,
+          kind: "action",
+          icon: "",
+          iconFont: "",
+          appIcon: "",
+          appId: "",
+          label: calcText,
+          target: "calc",
+          detail: "",
+          path: "",
+          childCount: 0,
+          action: "printf '%s' " + Util.shellQuote(calcText) + " | wl-copy",
+          provider: "",
+          score: 0,
+          section: ""
+        })
+      }
     } else {
       for (var j = 0; j < root.itemOrder.length; j++) {
         var child = root.item(root.itemOrder[j])
@@ -1265,6 +1287,7 @@ Item {
               readonly property bool hasCursor: root.cursorActive && row.index === root.selectedIndex
               readonly property bool isApp: row.kind === "app"
               readonly property bool hasIcon: row.icon.length > 0 || row.isApp
+              readonly property bool isCalc: row.itemId === "calc"
 
               width: ListView.view.width
               height: root.rowHeightForDetail(row.detail)
@@ -1333,6 +1356,7 @@ Item {
                   textFormat: Text.PlainText
                   width: parent.width
                   text: row.label
+                  horizontalAlignment: row.isCalc ? Text.AlignHCenter : Text.AlignLeft
                   color: row.hasCursor ? root.selectedText : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
@@ -1357,7 +1381,7 @@ Item {
                 id: trail
                 width: Style.space(14)
                 anchors.right: parent.right
-                anchors.rightMargin: root.rowReservedBorderRight + Style.space(8)
+                anchors.rightMargin: root.rowReservedBorderRight + Style.space(8) + (row.isCalc ? Style.space(8) : 0)
                 y: contentColumn.y + labelText.y + (labelText.height - height) / 2
                 spacing: 0
 
@@ -1374,9 +1398,9 @@ Item {
 
                 Text {
                   textFormat: Text.PlainText
-                  text: row.kind === "menu" || row.kind === "link" ? "›" : ""
+                  text: row.kind === "menu" || row.kind === "link" ? "›" : (row.isCalc ? "\uf0c5" : "")
                   color: row.hasCursor ? root.selectedText : root.foreground
-                  opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : 0
+                  opacity: row.kind === "menu" || row.kind === "link" ? 0.36 : (row.isCalc ? 0.55 : 0)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.heading
                   font.weight: Font.Normal

@@ -384,6 +384,172 @@ function displayRow(items, itemOrder, checkedResults, disabledResults, entry, de
   }
 }
 
+// Inline calculator for menu search. The tokenizer and the recursive-descent
+// parser below are written from scratch for the menu: `+ - * /`, `x`/`X` and
+// the multiplication/division glyphs (\u00d7 \u00f7), parentheses, unary signs,
+// decimals with `.` only (`,` invalidates all), juxtaposition (`2(3)`), and
+// postfix `%` (`50%` -> 0.5, `5%200` -> 10).
+
+function calcTokenize(text) {
+  var tokens = []
+  var i = 0
+  while (i < text.length) {
+    var c = text.charAt(i)
+    if (c === " " || c === "\t" || c === "\n" || c === "\r") {
+      i += 1
+      continue
+    }
+    if (c === "(" || c === ")" || c === "+" || c === "-" || c === "*" || c === "/" || c === "x" || c === "X" || c === "\u00d7" || c === "\u00f7" || c === "%") {
+      tokens.push(c === "x" || c === "X" ? "*" : c)
+      i += 1
+      continue
+    }
+    var match = text.slice(i).match(/^(?:\d+(?:\.\d*)?|\.\d+)/)
+    if (match) {
+      tokens.push({ value: parseFloat(match[0]) })
+      i += match[0].length
+      continue
+    }
+    return null
+  }
+  return tokens
+}
+
+function calcParse(tokens) {
+  var pos = 0
+  var hasOp = false
+
+  function peek() {
+    return pos < tokens.length ? tokens[pos] : null
+  }
+
+  function next() {
+    var token = tokens[pos]
+    pos += 1
+    return token
+  }
+
+  function parseExpr() {
+    var value = parseTerm()
+    if (value === null) return null
+    for (;;) {
+      var op = peek()
+      if (op !== "+" && op !== "-") return value
+      next()
+      var rhs = parseTerm()
+      if (rhs === null) return null
+      hasOp = true
+      value = op === "+" ? value + rhs : value - rhs
+    }
+  }
+
+  function parseTerm() {
+    var value = parseFactor()
+    if (value === null) return null
+    for (;;) {
+      var op = peek()
+      // Juxtaposition multiplies, like phone calculators: 5%200 is 10.
+      // Never number-on-number, so 1.2.3 stays invalid.
+      var prev = pos > 0 ? tokens[pos - 1] : null
+      var opNum = op !== null && typeof op === "object"
+      var prevNum = prev !== null && typeof prev === "object"
+      var implicit = (opNum || op === "(")
+        && (prevNum || prev === ")" || prev === "%")
+        && !(opNum && prevNum)
+      if (!implicit && op !== "*" && op !== "/" && op !== "\u00d7" && op !== "\u00f7") return value
+      if (!implicit) next()
+      var rhs = parseFactor()
+      if (rhs === null) return null
+      hasOp = true
+      if (implicit || op === "*" || op === "\u00d7") value = value * rhs
+      else value = value / rhs
+    }
+  }
+
+  function parseFactor() {
+    var op = peek()
+    if (op === "+" || op === "-") {
+      next()
+      var value = parseFactor()
+      if (value === null) return null
+      return op === "-" ? -value : value
+    }
+    return parsePrimary()
+  }
+
+  function parsePrimary() {
+    var token = peek()
+    var value = null
+    if (token !== null && typeof token === "object") {
+      next()
+      value = token.value
+    } else if (token === "(") {
+      next()
+      value = parseExpr()
+      if (value === null || peek() !== ")") return null
+      next()
+    } else {
+      return null
+    }
+    while (peek() === "%") {
+      next()
+      value = value / 100
+      hasOp = true
+    }
+    return value
+  }
+
+  var value = parseExpr()
+  if (value === null) return null
+  if (pos !== tokens.length) return null
+  if (!hasOp) return null
+  if (typeof value !== "number" || !isFinite(value)) return null
+  return value
+}
+
+// Evaluates an arithmetic expression to a finite Number. Returns null for
+// anything that is not a complete calculation: empty input, a lone number
+// with no operator, unknown characters, trailing garbage, unbalanced
+// parentheses, or a non-finite result such as division by zero.
+function calcEvaluate(text) {
+  var input = String(text === null || text === undefined ? "" : text)
+  if (!input.trim()) return null
+  if (input.indexOf(",") >= 0) return null
+  var tokens = calcTokenize(input)
+  if (!tokens) return null
+  try {
+    return calcParse(tokens)
+  } catch (e) {
+    return null
+  }
+}
+
+// Formats a result for display: integers below 1e15 print as themselves,
+// else gets 15 significant digits (all a double can be trusted with), padding
+// zeros stripped: 0.1 + 0.2 reads "0.3" instead of "0.30000000000000004".
+function calcFormat(value) {
+  if (typeof value !== "number" || !isFinite(value)) return ""
+  if (Math.abs(value) < 1e15 && Math.floor(value) === value) return String(value)
+  var parts = value.toPrecision(15).split("e")
+  var mantissa = parts[0]
+  if (mantissa.indexOf(".") >= 0) mantissa = mantissa.replace(/0+$/, "").replace(/\.$/, "")
+  if (mantissa === "-0") mantissa = "0"
+  return parts.length > 1 ? mantissa + "e" + parts[1] : mantissa
+}
+
+// Resolves a menu search query to a calculator result row payload, or null
+// when the query is not a calculation: empty, a lone number, or anything
+// with commas or trailing garbage. Letters other than `x` die in the
+// tokenizer, so "firefox" stays a plain search.
+function calcResultForQuery(query) {
+  var text = String(query === null || query === undefined ? "" : query).trim()
+  if (!text) return null
+  if (text.indexOf(",") >= 0) return null
+  var value = calcEvaluate(text)
+  if (value === null) return null
+  return { text: calcFormat(value) }
+}
+
 // Commands a `checked:` expression reads a value out of. Every sibling row
 // asks the same one -- Defaults > Browser has seven rows all comparing
 // against `omarchy-default-browser` -- so the batch runs it once and the rows
@@ -519,6 +685,9 @@ if (typeof module !== "undefined") {
     descriptionTextMatches: descriptionTextMatches,
     matchesQuery: matchesQuery,
     searchScore: searchScore,
-    displayRow: displayRow
+    displayRow: displayRow,
+    calcEvaluate: calcEvaluate,
+    calcFormat: calcFormat,
+    calcResultForQuery: calcResultForQuery
   }
 }
