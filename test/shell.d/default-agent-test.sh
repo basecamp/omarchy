@@ -542,3 +542,68 @@ fi
 grep -F "missing is not installed" "$test_tmp/missing-output" >/dev/null ||
   fail "agent launcher explains when the default command is missing"
 pass "agent launcher reports a missing default command"
+
+# OpenClaw comes from its pacman package, not mise: choosing it must route
+# through omarchy-install-openclaw-cli and never touch a mise environment.
+cat >"$mock_bin/omarchy-pkg-present" <<'SH'
+#!/bin/bash
+[[ $1 == openclaw && ${OMARCHY_TEST_OPENCLAW_INSTALLED:-false} == "true" ]]
+SH
+cat >"$mock_bin/omarchy-pkg-add" <<'SH'
+#!/bin/bash
+printf '%s\n' "pkg-add $*" >>"$OMARCHY_TEST_STUB_LOG"
+SH
+cat >"$mock_bin/omarchy-launch-openclaw" <<'SH'
+#!/bin/bash
+printf '%s\0' omarchy-launch-openclaw "$@" >"$OMARCHY_TEST_AGENT_INLINE_LOG"
+SH
+cat >"$mock_bin/openclaw" <<'SH'
+#!/bin/bash
+exit 0
+SH
+chmod +x "$mock_bin/omarchy-pkg-present" "$mock_bin/omarchy-pkg-add" \
+  "$mock_bin/omarchy-launch-openclaw" "$mock_bin/openclaw"
+
+: >"$launch_log"
+: >"$terminal_log"
+: >"$mise_history"
+OMARCHY_TEST_OPENCLAW_INSTALLED=true omarchy-default-agent openclaw
+read -r chosen <"$agent_file"
+[[ $chosen == openclaw ]] || fail "choosing OpenClaw records it as the default agent"
+mapfile -d '' -t launch_args <"$launch_log"
+[[ ${launch_args[*]} == "--app-id=org.omarchy.agent omarchy-launch-openclaw --tui" ]] ||
+  fail "choosing OpenClaw launches its terminal UI"
+[[ ! -s $terminal_log ]] || fail "an installed OpenClaw needs no install terminal"
+! grep -q 'use -g openclaw' "$mise_history" || fail "OpenClaw never installs through mise"
+pass "choosing OpenClaw uses the package and launches its terminal UI"
+
+: >"$terminal_log"
+OMARCHY_TEST_OPENCLAW_INSTALLED=false omarchy-default-agent openclaw
+mapfile -d '' -t terminal_args <"$terminal_log"
+[[ ${terminal_args[*]} == "omarchy-default-agent --install openclaw" ]] ||
+  fail "a missing OpenClaw routes through the install terminal"
+pass "a missing OpenClaw routes through the install terminal"
+
+: >"$stub_log"
+: >"$inline_log"
+OMARCHY_TEST_OPENCLAW_INSTALLED=false omarchy-default-agent --install openclaw >/dev/null
+grep -Fx "pkg-add openclaw" "$stub_log" >/dev/null ||
+  fail "installing OpenClaw as default agent adds its package"
+mapfile -d '' -t inline_args <"$inline_log"
+[[ ${inline_args[*]} == "omarchy-launch-openclaw --tui" ]] ||
+  fail "installing OpenClaw as default agent hands over to its terminal UI"
+pass "installing OpenClaw as default agent adds its package"
+
+: >"$launch_log"
+omarchy agent prompt "Review this project"
+mapfile -d '' -t launch_args <"$launch_log"
+# Element-wise: the prompt must travel as one argv entry, which a space-joined
+# comparison could not tell apart from a prompt split into words.
+[[ ${#launch_args[@]} == 5 &&
+  ${launch_args[0]} == "--app-id=org.omarchy.agent" &&
+  ${launch_args[1]} == "omarchy-launch-openclaw" &&
+  ${launch_args[2]} == "--tui" &&
+  ${launch_args[3]} == "--message" &&
+  ${launch_args[4]} == "Review this project" ]] ||
+  fail "OpenClaw receives prompts through --message" "argv: ${launch_args[*]}"
+pass "OpenClaw receives prompts through --message"

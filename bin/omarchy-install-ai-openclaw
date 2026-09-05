@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# omarchy:summary=Install the OpenClaw agent platform and its Control UI web app
+# omarchy:requires-sudo=true
+
+set -e
+
+echo "Installing OpenClaw..."
+omarchy-pkg-add openclaw
+
+# The desktop app is OpenClaw's Control UI: a web app served by its own
+# gateway. The launcher entry goes through omarchy-launch-openclaw, which
+# onboards or starts that gateway before opening the window. The icon ships
+# inside the package, so nothing is fetched here.
+echo "Installing the OpenClaw web app..."
+omarchy-webapp-install OpenClaw "http://127.0.0.1:18789" \
+  /usr/lib/node_modules/openclaw/dist/control-ui/apple-touch-icon.png \
+  omarchy-launch-openclaw
+
+# A first install runs onboarding right here: launching the app instead would
+# open a second floating terminal for the wizard, identical to this one.
+# omarchy-openclaw-onboard runs the wizard the way this flow needs (terminal
+# prompts, gateway as a user service, and it actually returns). A machine
+# that is already onboarded goes straight to the app.
+if [[ -f $HOME/.openclaw/openclaw.json ]]; then
+  echo "Opening OpenClaw..."
+  setsid uwsm-app -- gtk-launch OpenClaw >/dev/null 2>&1 &
+elif omarchy-openclaw-onboard && [[ -f $HOME/.openclaw/openclaw.json ]]; then
+  echo "Opening OpenClaw..."
+  setsid uwsm-app -- gtk-launch OpenClaw >/dev/null 2>&1 &
+fi
+
+echo ""
+echo "OpenClaw has been installed."
+echo "If you skipped onboarding, launching OpenClaw from the app grid resumes it."
