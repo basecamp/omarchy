@@ -16,6 +16,11 @@ Item {
   readonly property string userName: Quickshell.env("USER") || Quickshell.env("LOGNAME")
   readonly property string currentBackgroundLink: stateHome + "/omarchy/current/background"
 
+  // The lock blank only dims the keyboard backlight. Blanking the display
+  // (Hyprland DPMS-off) makes some monitors drop their link, tearing the
+  // output out from under the lock surface and killing the shell while it
+  // holds the session lock; the lock screen already covers the desktop, and
+  // real display-off still happens at suspend/lid-close.
   property bool lockRequested: false
   property bool pendingSessionLock: false
   property bool authenticatingPassword: false
@@ -408,7 +413,7 @@ Item {
 
   Process {
     id: blankProcess
-    command: ["bash", "-c", "omarchy-brightness-keyboard off; omarchy-brightness-display off"]
+    command: ["bash", "-c", "omarchy-brightness-keyboard off"]
   }
 
   Timer {
