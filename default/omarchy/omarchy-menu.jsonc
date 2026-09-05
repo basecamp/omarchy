@@ -89,6 +89,7 @@
   "trigger.share.receive": {"icon":"󰥦","label":"Receive","action":"uwsm-app -- localsend"},
   "trigger.toggle.idle-lock": {"icon":"󰅶","label":"Stay Awake","action":"omarchy-toggle-idle"},
   "trigger.toggle.notifications": {"icon":"󰂛","label":"Notifications","action":"omarchy-toggle-notification-silencing"},
+  "trigger.toggle.notification-popups": {"icon":"󰍺","label":"Toasts on every display","checked":"[[ \"$(omarchy-shell notifications popupMonitor 2>/dev/null)\" == \"all\" ]]","action":"omarchy-toggle-notification-popups"},
   "trigger.toggle.crash-capture": {"icon":"󱚡","label":"Crash Capture","action":"omarchy-toggle-crash-capture"},
   "trigger.toggle.screensaver": {"icon":"󱄄","label":"Screensaver","action":"omarchy-toggle-screensaver"},
   "trigger.toggle.nightlight": {"icon":"󰔎","label":"Nightlight","action":"omarchy-toggle-nightlight"},

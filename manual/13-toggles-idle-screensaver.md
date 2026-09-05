@@ -12,6 +12,7 @@ From the terminal, the same switches are `omarchy toggle <thing>`. Run `omarchy 
 | ------ | ------ | ------- |
 | Night light | `Super + Ctrl + N` | `omarchy toggle nightlight` |
 | Silence notifications | `Super + Ctrl + ,` | `omarchy toggle notification silencing` |
+| Toasts on every display | — | `omarchy toggle notification popups` |
 | Stay awake (no idle lock) | `Super + Ctrl + I` | `omarchy toggle idle` |
 | Crash capture | — | `omarchy toggle crash-capture` |
 | Screensaver | — | `omarchy toggle screensaver` |
@@ -61,6 +62,8 @@ Then start hyprsunset at login by adding `o.launch_on_start("hyprsunset")` to `~
 Nothing is lost, though. A silenced notification is written straight into your notification history, which is exactly the record you want when you come back and wonder what you missed. Open it with `Super + Shift + Alt + ,`. See [notices](10-notices.md) for the rest of the notification story.
 
 Two kinds of message still get through: Omarchy's own confirmation toasts for something you just did ("Theme changed", "Screenshot saved"), and critical alerts sent from the command line. Chat apps that mark everything critical to force their way in front of you don't qualify.
+
+Toasts appear on every monitor. Uncheck _Trigger > Toggle > Toasts on every display_ to show them only on the focused one.
 
 ### Idle
 

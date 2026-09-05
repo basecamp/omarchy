@@ -3,6 +3,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Hyprland
 import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Services.Notifications
@@ -59,28 +60,38 @@ Item {
   property var liveRefs: ({})
 
   // PersistentProperties handles in-process QML reloads. The on-disk
-  // notifications.json file is the cross-restart backstop — its `dnd` key
-  // is hydrated into persisted.doNotDisturb on startup and written back via
-  // a debounced save timer.
+  // notifications.json file is the cross-restart backstop — `dnd` and
+  // `popupMonitor` hydrate on startup and write back via a debounced save.
   PersistentProperties {
     id: persisted
     reloadableId: "omarchy-notifications"
     property bool doNotDisturb: false
+    property string popupMonitor: "all"
     onDoNotDisturbChanged: {
       // Suppress the write that load-time hydration would otherwise trigger.
       if (service._hydrating) return
       service.scheduleSettingsSave()
     }
+    onPopupMonitorChanged: {
+      if (service._hydrating) return
+      service.scheduleSettingsSave()
+    }
   }
 
-  // Guards onDoNotDisturbChanged while we're hydrating from disk so the
+  // Guards property-changed handlers while we're hydrating from disk so the
   // hydration assignment doesn't immediately schedule a write-back.
   property bool _hydrating: false
 
   readonly property alias doNotDisturb: persisted.doNotDisturb
+  readonly property alias popupMonitor: persisted.popupMonitor
+  readonly property string focusedMonitorName: Hyprland.focusedMonitor ? String(Hyprland.focusedMonitor.name || "") : ""
 
   function setDoNotDisturb(value) {
     persisted.doNotDisturb = !!value
+  }
+
+  function setPopupMonitor(value) {
+    persisted.popupMonitor = NotificationLogic.normalizePopupMonitor(value) || "all"
   }
 
   // popupModel feeds the on-screen toast stack — the only model the service
@@ -821,6 +832,12 @@ Item {
       service._hydrating = false
     }
 
+    if (parsed.popupMonitor !== null) {
+      service._hydrating = true
+      persisted.popupMonitor = parsed.popupMonitor
+      service._hydrating = false
+    }
+
     service.settingsLoaded = true
     // Versions before the history moved into its own directory kept every
     // notification in here. Rewrite once so that dead payload doesn't sit in
@@ -829,7 +846,7 @@ Item {
   }
 
   function flushSettings() {
-    settingsFile.setText(JSON.stringify({ version: 3, dnd: persisted.doNotDisturb }, null, 2) + "\n")
+    settingsFile.setText(JSON.stringify({ version: 4, dnd: persisted.doNotDisturb, popupMonitor: persisted.popupMonitor }, null, 2) + "\n")
   }
 
   Component.onCompleted: {
@@ -875,6 +892,20 @@ Item {
 
     function isDnd(): string {
       return dndState()
+    }
+
+    function popupMonitor(): string {
+      return service.popupMonitor
+    }
+
+    function setPopupMonitor(value: string): string {
+      service.setPopupMonitor(value)
+      return service.popupMonitor
+    }
+
+    function togglePopupMonitor(): string {
+      service.setPopupMonitor(service.popupMonitor === "focused" ? "all" : "focused")
+      return service.popupMonitor
     }
 
     // Replay the notifications that have been moved into the history dir.
@@ -947,7 +978,8 @@ Item {
   // One PanelWindow per output (Variants on Quickshell.screens) holding the
   // stacked toast cards. Layer is Overlay, exclusionMode Ignore, no
   // keyboard focus — popups are passive surfaces and must never steal input
-  // from the focused application.
+  // from the focused application. popupMonitor "focused" hides the overlay
+  // on every output except the one Hyprland currently has focused.
 
   Variants {
     model: Quickshell.screens
@@ -956,7 +988,8 @@ Item {
       id: popupWindow
       required property var modelData
       screen: modelData
-      visible: popupModel.count > 0
+      visible: popupModel.count > 0 && NotificationLogic.showsOnScreen(
+        service.popupMonitor, String(modelData.name || ""), service.focusedMonitorName)
 
       WlrLayershell.namespace: "omarchy-notifications"
       WlrLayershell.layer: WlrLayer.Overlay

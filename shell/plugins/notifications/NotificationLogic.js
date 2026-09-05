@@ -252,23 +252,41 @@ function historyEntry(value, normalUrgency) {
   }
 }
 
-// notifications.json holds nothing but the last-set DND preference now that
+// Canonical toast-display mode. "all" is every output (the historical
+// default). "focused" is the monitor Hyprland currently has focused.
+function normalizePopupMonitor(value) {
+  if (value === undefined || value === null || value === "") return null
+  return String(value).toLowerCase() === "focused" ? "focused" : "all"
+}
+
+// Whether a toast overlay on `screenName` should be visible. An empty
+// focused name fail-opens to every output so toasts are not lost before
+// Hyprland has reported a focused monitor.
+function showsOnScreen(mode, screenName, focusedName) {
+  if (normalizePopupMonitor(mode) !== "focused") return true
+  var focused = String(focusedName || "")
+  if (!focused) return true
+  return String(screenName || "") === focused
+}
+
+// notifications.json holds DND and which outputs show toasts, now that
 // history is a directory of files. Older versions kept `pending`/`past`
 // (and, older still, `entries`) arrays in there; their presence is reported
 // so the service can rewrite the file without the dead payload.
 function parseSettings(raw) {
   var text = String(raw || "").trim()
-  if (!text) return { error: false, dnd: null, legacy: false }
+  if (!text) return { error: false, dnd: null, popupMonitor: null, legacy: false }
 
   try {
     var parsed = JSON.parse(text)
     return {
       error: false,
       dnd: parsed && typeof parsed.dnd === "boolean" ? parsed.dnd : null,
+      popupMonitor: parsed ? normalizePopupMonitor(parsed.popupMonitor) : null,
       legacy: !!(parsed && (parsed.pending || parsed.past || parsed.entries))
     }
   } catch (e) {
-    return { error: true, errorMessage: String(e), dnd: null, legacy: false }
+    return { error: true, errorMessage: String(e), dnd: null, popupMonitor: null, legacy: false }
   }
 }
 
@@ -465,6 +483,8 @@ if (typeof module !== "undefined") {
     replacementSnapshot: replacementSnapshot,
     historyEntry: historyEntry,
     parseSettings: parseSettings,
+    normalizePopupMonitor: normalizePopupMonitor,
+    showsOnScreen: showsOnScreen,
     historyRows: historyRows,
     popupEntry: popupEntry,
     popupFileName: popupFileName,
