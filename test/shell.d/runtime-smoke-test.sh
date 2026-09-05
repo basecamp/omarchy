@@ -299,6 +299,7 @@ visible_default_ids='[
   "omarchy.system-update",
   "omarchy.network",
   "omarchy.audio",
+  "omarchy.input",
   "omarchy.monitor"
 ]'
 
@@ -346,7 +347,7 @@ jq -e '
 
 pass "runtime geometry keeps update before indicators"
 
-for panel_id in omarchy.audio omarchy.bluetooth omarchy.monitor omarchy.network omarchy.power; do
+for panel_id in omarchy.audio omarchy.bluetooth omarchy.input omarchy.monitor omarchy.network omarchy.power; do
   shell_ipc "$panel_id" open >/dev/null || fail_with_log "direct panel IPC opens $panel_id"
   shell_ipc "$panel_id" close >/dev/null || fail_with_log "direct panel IPC closes $panel_id"
 done

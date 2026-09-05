@@ -198,8 +198,8 @@ assertEqual(
   'menu hides Extra Themes until a theme cloned from git is there to update'
 )
 assert(
-  defaultById['setup.input'].action.includes('input.lua'),
-  'menu keeps Input as a direct config action'
+  defaultById['setup.input'].action.includes('shell summon omarchy.input'),
+  'menu opens the Input panel'
 )
 assert(
   defaultById['setup.direct-boot'].action.includes('omarchy-setup-direct-boot'),

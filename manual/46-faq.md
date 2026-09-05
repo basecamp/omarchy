@@ -2,17 +2,7 @@
 
 ### How do I switch between keyboard layouts?
 
-Edit your `~/.config/hypr/input.lua` file and add this to switch between layouts on `Left Alt + Right Alt`:
-
-```
-hl.config({
-  input = {
-    -- Use multiple keyboard layouts and switch between them with Left Alt + Right Alt
-    kb_layout = "us,fr",
-    kb_options = "compose:caps,shift:both_capslock_cancel,grp:alts_toggle",
-  },
-})
-```
+Open _Setup > Input_, then choose a _Second layout_. Press both Alt keys together to switch between it and your primary layout.
 
 The bar will automatically show your current keyboard layout once you have multiple layouts configured (and you can click it to switch too).
 

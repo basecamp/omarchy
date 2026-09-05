@@ -1,6 +1,14 @@
 # Keyboard, Mouse, Trackpad
 
-Hyprland lets you configure all your inputs in great detail. You can change the keyboard repeat to be supersonically fast or make the trackpad use natural scrolling. You change all of it in `~/.config/hypr/input.lua`, which you can also reach via _Setup > Input_ in the Omarchy menu (`Super + Space`). Anything you set there replaces Omarchy's defaults.
+Open _Setup > Input_ in the Omarchy menu (`Super + Space`) for the settings most people need: keyboard layouts, Compose and Super keys, Num Lock, pointer speed, natural scrolling, and touchpad clicking. The same panel lives on the right side of the default bar.
+
+Hyprland has many more input options. Choose _Advanced input config_ at the bottom of the panel to edit `~/.config/hypr/input.lua` for keyboard repeat, gestures, per-app scrolling, and other specialized settings.
+
+![Input settings panel](images/input-panel.webp)
+
+The layout pickers search every layout installed with XKB, so adding another language does not turn the panel into a long list of regional options.
+
+![Searchable keyboard layout picker](images/input-panel-layout-picker.webp)
 
 Here's an example:
 
@@ -37,7 +45,7 @@ o.window("(Alacritty|kitty|foot)", { scroll_touchpad = 1.5 })
 
 You can [see all the input options](https://wiki.hypr.land/Configuring/Basics/Variables/#input) on the Hyprland wiki for inputs.
 
-By default, Omarchy uses CapsLock as the compose key for [quick emojis](07-hotkeys.md#quick-emojis) and [other completions](07-hotkeys.md#quick-completions). If you'd rather use CapsLock as Caps Lock, move the compose key elsewhere by changing `compose:caps` in `kb_options`. For example, this moves the compose key to Right Alt:
+By default, Omarchy uses CapsLock as the compose key for [quick emojis](07-hotkeys.md#quick-emojis) and [other completions](07-hotkeys.md#quick-completions). If you'd rather use CapsLock as Caps Lock, choose Right Alt, Menu key, or Disabled under _Compose key_ in the Input panel. The equivalent advanced configuration is:
 
 ```lua
 hl.config({
@@ -63,7 +71,7 @@ Omarchy runs the [fcitx5](https://fcitx-im.org/) input method framework as part 
 
 ### Use ALT as SUPER
 
-On some keyboards, it's not convenient to use the primary meta key (Windows/cmd key) as SUPER. You can change this to be ALT instead using this change:
+On some keyboards, it's not convenient to use the primary meta key (Windows/cmd key) as SUPER. Choose _Alt key (swap)_ under _Super lives on_ in the Input panel. The equivalent advanced configuration is:
 
 ```lua
 hl.config({

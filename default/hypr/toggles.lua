@@ -20,4 +20,14 @@ local disabled_input_device = require("default.hypr.disabled-input-device")
 disabled_input_device("touchpad")
 disabled_input_device("touchscreen")
 
+-- Settings chosen in the Input panel are generated outside ~/.config/hypr so
+-- the panel never rewrites a user's hand-maintained Lua. Load them last so the
+-- visible controls describe the effective values they own.
+local input_panel = paths.state_home .. "/omarchy/hypr/input.lua"
+local input_file = io.open(input_panel, "r")
+if input_file then
+  input_file:close()
+  dofile(input_panel)
+end
+
 require("default.hypr.workspace-layouts")
