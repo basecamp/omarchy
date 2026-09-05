@@ -74,6 +74,13 @@ fi
 mkdir -p "$(dirname "$agent_file")"
 printf '%s\n' "$agent" >"$agent_file"
 
+# Oh My Pi is installed on demand rather than preinstalled, so its theme is
+# activated the first time it becomes the default agent. Pi gets the same
+# treatment from install/user/theme.sh, where it is already on the machine.
+if [[ $agent == "omp" ]]; then
+  omarchy-theme-set-omp --activate
+fi
+
 if [[ $installing == "true" ]]; then
   printf '\033[2J\033[3J\033[H'
   exec omarchy-agent --inline
