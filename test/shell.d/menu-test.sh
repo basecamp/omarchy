@@ -227,6 +227,7 @@ const expectedAgents = {
   hermes: { icon: '\ue90a', iconFont: 'omarchy', label: 'Hermes' },
   copilot: { icon: '', label: 'Copilot' },
   crush: { icon: '󰋑', label: 'Crush' },
+  dsh: { icon: '\ue90b', iconFont: 'omarchy', label: 'DeepSeek Harness' },
 }
 assert(
   Object.entries(expectedAgents).every(([agent, expected]) => {
@@ -245,7 +246,7 @@ assertDeepEqual(
   defaultItems
     .filter(item => item.parent === 'setup.default.agent')
     .map(item => item.label),
-  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Ori', 'Pi'],
+  ['Antigravity', 'Claude', 'Codex', 'Copilot', 'Crush', 'DeepSeek Harness', 'Grok', 'Hermes', 'omp', 'OpenCode', 'Ori', 'Pi'],
   'menu sorts coding agents alphabetically'
 )
 const expectedDefaults = {
@@ -262,6 +263,14 @@ assert(
   'menu always exposes every supported browser, terminal, and editor under Defaults'
 )
 assert(!defaultById['install.ai.crush'], 'menu removes Crush from Install > AI')
+assert(
+  defaultById['install.ai.dsh']
+    && defaultById['install.ai.dsh'].label === 'DeepSeek Harness'
+    && defaultById['install.ai.dsh'].disabled.includes('mise where npm:@deepseek-ai/dsh')
+    && defaultById['install.ai.dsh'].action.includes('omarchy-mise-install npm:@deepseek-ai/dsh dsh')
+    && defaultById['install.ai.dsh'].action.includes('dsh web'),
+  'menu offers DeepSeek Harness under Install > AI without treating the stub as installed'
+)
 // Software you already have keeps its place in Install, dimmed rather than
 // dropped, so the list reads as a catalog of what Omarchy can install.
 // Chromium Account is the sole Install row with anything left to hide for, so
@@ -637,5 +646,5 @@ assert(
 JS
 
 font_charset=$(fc-query --format='%{charset}' "$ROOT/default/fonts/omarchy/omarchy.ttf")
-[[ $font_charset == *"e900-e90a"* ]] || fail "Omarchy icon font includes every custom menu glyph"
+[[ $font_charset == *"e900-e90b"* ]] || fail "Omarchy icon font includes every custom menu glyph"
 pass "Omarchy icon font includes the official agent marks"
