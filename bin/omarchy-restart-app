@@ -3,5 +3,11 @@
 # omarchy:summary=Restart an application by killing it and relaunching via uwsm.
 # omarchy:args=<application-name> [application-args...]
 
-pkill -x $1
-setsid uwsm-app -- "$@" >/dev/null 2>&1 &
+pkill -x "$1" || true
+
+# Launch in a transient user service so we return immediately and so a
+# Type=oneshot caller cannot SIGTERM uwsm-app mid FIFO handshake. setsid
+# does not leave the caller's cgroup; that wedges wayland-wm-app-daemon.
+systemd-run --user --no-block --collect --quiet --same-dir \
+  --slice=app-graphical.slice \
+  -- uwsm-app -- "$@"
