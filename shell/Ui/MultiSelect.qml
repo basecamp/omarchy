@@ -326,14 +326,20 @@ Item {
       MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
+        // CloseOnReleaseOutside closes on release, so by click time the popup
+        // is already closed; the press-time state marks this as a collapse.
+        property bool _wasOpenAtPress: false
+        onPressed: _wasOpenAtPress = popup.opened
         onClicked: {
           trigger.forceActiveFocus()
-          popup.opened ? popup.close() : popup.open()
+          if (popup.opened || _wasOpenAtPress) popup.close()
+          else popup.open()
         }
       }
 
       QQC.Popup {
         id: popup
+        closePolicy: QQC.Popup.CloseOnReleaseOutside | QQC.Popup.CloseOnEscape
         // Reparent to the window's content item so the popup is free of any
         // clipping ancestor. Position
         // and available height are recomputed on open and any time the

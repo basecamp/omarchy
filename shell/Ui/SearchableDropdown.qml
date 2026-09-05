@@ -160,9 +160,14 @@ Item {
       MouseArea {
         anchors.fill: parent
         cursorShape: Qt.PointingHandCursor
+        // CloseOnReleaseOutside closes on release, so by click time the popup
+        // is already closed; the press-time state marks this as a collapse.
+        property bool _wasOpenAtPress: false
+        onPressed: _wasOpenAtPress = popup.opened
         onClicked: {
           trigger.forceActiveFocus()
-          popup.opened ? popup.close() : popup.open()
+          if (popup.opened || _wasOpenAtPress) popup.close()
+          else popup.open()
         }
       }
 
@@ -171,6 +176,7 @@ Item {
         x: 0
         y: trigger.height + Style.spacing.xxs
         width: trigger.width
+        closePolicy: QQC.Popup.CloseOnReleaseOutside | QQC.Popup.CloseOnEscape
         implicitHeight: Math.max(root.popupMinHeight,
                                  Math.min(resultList.contentHeight + Style.space(50),
                                           root.popupRowHeight * 6 + 5 * Style.spacing.labelGap + Style.space(50)))
