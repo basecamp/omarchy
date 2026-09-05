@@ -11,7 +11,9 @@ if [[ ${1:-} == "--install" ]]; then
 fi
 
 if (($# == 0)); then
-  case "$(env -u BROWSER xdg-settings get default-web-browser)" in
+  # text/html holds the real browser, since x-scheme-handler/http(s)
+  # points at omarchy-url-open
+  case "$(xdg-mime query default text/html)" in
   chromium.desktop) echo "chromium" ;;
   google-chrome.desktop) echo "chrome" ;;
   brave-browser.desktop) echo "brave" ;;
@@ -19,7 +21,7 @@ if (($# == 0)); then
   microsoft-edge.desktop) echo "edge" ;;
   firefox.desktop) echo "firefox" ;;
   zen.desktop) echo "zen" ;;
-  *) env -u BROWSER xdg-settings get default-web-browser ;;
+  *) xdg-mime query default text/html ;;
   esac
   exit 0
 fi
@@ -47,5 +49,11 @@ if omarchy-cmd-missing "$command"; then
 fi
 
 env -u BROWSER xdg-settings set default-web-browser "$desktop_id" || exit 1
+
+# Record the real browser in text/html and keep omarchy-url-open in front of
+# http(s) links so they can be routed to native apps
+xdg-mime default "$desktop_id" text/html
+xdg-mime default omarchy-url-open.desktop x-scheme-handler/http
+xdg-mime default omarchy-url-open.desktop x-scheme-handler/https
 
 omarchy-notification-send -g $glyph "$name is now the default browser"

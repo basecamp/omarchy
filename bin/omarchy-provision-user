@@ -118,6 +118,11 @@ source "$OMARCHY_INSTALL/user/all.sh"
 
 omarchy-refresh-applications
 env -u BROWSER xdg-settings set default-web-browser chromium.desktop
+# xdg-settings claims x-scheme-handler/http(s) for the browser; hand them
+# back to omarchy-url-open, which records the real browser in text/html
+xdg-mime default chromium.desktop text/html
+xdg-mime default omarchy-url-open.desktop x-scheme-handler/http
+xdg-mime default omarchy-url-open.desktop x-scheme-handler/https
 xdg-mime default HEY.desktop x-scheme-handler/mailto
 
 if (( first_install )); then

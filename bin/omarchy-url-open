@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# omarchy:summary=Open a URL in a matching native app when available, otherwise the default browser.
+# omarchy:args=[url]
+# omarchy:hidden=true
+
+url="$1"
+
+spotify_running() {
+  dbus-send --session --dest=org.freedesktop.DBus --type=method_call \
+    --print-reply /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner \
+    string:org.mpris.MediaPlayer2.spotify 2>/dev/null | grep -q "boolean true"
+}
+
+open_in_spotify() {
+  local uri="$1"
+
+  if ! spotify_running; then
+    setsid uwsm-app -- spotify &>/dev/null &
+
+    # The client silently drops URIs passed on a cold start, so wait for it
+    # to claim its D-Bus name (up to 15 seconds) before handing over the URI
+    for _ in $(seq 1 30); do
+      spotify_running && break
+      sleep 0.5
+    done
+    sleep 1
+  fi
+
+  dbus-send --session --dest=org.mpris.MediaPlayer2.spotify --type=method_call \
+    /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.OpenUri "string:$uri"
+  exec dbus-send --session --dest=org.mpris.MediaPlayer2.spotify --type=method_call \
+    /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Raise
+}
+
+case "$url" in
+http://open.spotify.com/* | https://open.spotify.com/*)
+  if omarchy-cmd-present spotify; then
+    path="${url#*open.spotify.com/}"
+    path="${path%%\?*}"
+
+    # Strip localized prefixes like open.spotify.com/intl-de/track/...
+    [[ $path == intl-*/* ]] && path="${path#*/}"
+
+    type="${path%%/*}"
+    id="${path#*/}"
+    id="${id%%/*}"
+
+    case "$type" in
+    track | album | artist | playlist | show | episode)
+      open_in_spotify "spotify:$type:$id"
+      ;;
+    esac
+  fi
+  ;;
+esac
+
+# Everything else goes to the default browser (omarchy-launch-browser resolves
+# it from text/html, since x-scheme-handler/http(s) points back at this script)
+exec omarchy-launch-browser "$url"
