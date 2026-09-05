@@ -11,7 +11,11 @@ if (( $# < 1 )); then
 fi
 
 HOOK=$1
-HOOK_PATH="$HOME/.config/omarchy/hooks/$1"
+if [[ ! $HOOK =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "Invalid hook name: $HOOK" >&2
+  exit 1
+fi
+HOOK_PATH="$HOME/.config/omarchy/hooks/$HOOK"
 HOOK_DIR="$HOOK_PATH.d"
 shift
 
