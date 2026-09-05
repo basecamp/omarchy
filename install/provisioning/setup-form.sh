@@ -47,7 +47,7 @@ French|fr
 French (Canada)|cf
 French (Switzerland)|fr_CH
 Georgian|ge
-German|de
+German|de-latin1
 German (Switzerland)|de_CH-latin1
 Greek|gr
 Hebrew|il

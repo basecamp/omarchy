@@ -127,7 +127,7 @@ pass "the form publishes the 0/1/130 status contract and leads with English (US)
 
 run_prompt omarchy_prompt_keyboard "0:German"
 assert_status 0 "keyboard prompt succeeds"
-[[ $(field keyboard) == "de" ]] || fail "keyboard prompt resolves the label to a keymap"
+[[ $(field keyboard) == "de-latin1" ]] || fail "keyboard prompt resolves the label to a keymap"
 [[ $(field keyboard_label) == "German" ]] || fail "keyboard prompt keeps the label for the summary"
 [[ $(head -n 1 "$tmp_dir/stdin.1") == "English (US)" ]] || fail "keyboard prompt offers English (US) first"
 grep -qF -- '--selected English (US)' "$GUM_ARGS" || fail "keyboard prompt preselects English (US)"
