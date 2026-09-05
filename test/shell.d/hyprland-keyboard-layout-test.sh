@@ -65,6 +65,12 @@ XKBVARIANT=intl
 assert_input "latin layouts are left alone" "[de] [nodeadkeys] [$base_options]" 'XKBLAYOUT=de
 XKBVARIANT=nodeadkeys
 '
+assert_input "colemak is us layout with colemak variant" "[us] [colemak] [$base_options]" 'XKBLAYOUT=us
+XKBVARIANT=colemak
+'
+assert_input "dvorak is us layout with dvorak variant" "[us] [dvorak] [$base_options]" 'XKBLAYOUT=us
+XKBVARIANT=dvorak
+'
 assert_input "non-latin layout gains us in front" "[us,ara] [,] [$toggle_options]" 'XKBLAYOUT=ara
 '
 assert_input "prepended us keeps variants aligned" "[us,ru] [,phonetic] [$toggle_options]" 'XKBLAYOUT=ru
