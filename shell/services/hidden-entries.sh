@@ -94,7 +94,7 @@ scan_dir() {
 
 scan_dir "$HOME/.local/share/applications"
 
-IFS=":" read -ra data_dirs <<< "${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+IFS=":" read -ra data_dirs <<< "${XDG_DATA_DIRS:-$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/usr/local/share:/usr/share}"
 for data_dir in "${data_dirs[@]}"; do
   scan_dir "$data_dir/applications"
 done
