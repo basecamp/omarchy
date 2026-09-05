@@ -76,8 +76,70 @@ Item {
 
   function recordsChanged() {
     dataRevision++
+    scheduleLimitResetNotifications()
     scheduleLimitsRetry()
     scheduleSync()
+  }
+
+  // A reset deadline is stable for the lifetime of a rate-limit window. Keep
+  // the deadlines we first see in memory and announce them when they pass;
+  // this stays accurate even when the normal usage refresh is deliberately
+  // infrequent. Deadlines already past when the shell starts are ignored.
+  property var pendingLimitResets: ({})
+
+  function limitResetNotificationsEnabled() {
+    return setting("notifyOnLimitReset", true) !== false
+  }
+
+  function scheduleLimitResetNotifications() {
+    if (!limitResetNotificationsEnabled()) {
+      pendingLimitResets = ({})
+      return
+    }
+
+    var next = Object.assign({}, pendingLimitResets)
+    var now = Date.now()
+    for (var i = 0; i < agents.length; i++) {
+      var record = agents[i] ? agents[i].record : null
+      if (!record || !record.id || !providerEnabled(String(record.id))) continue
+      var limits = Array.isArray(record.limits) ? record.limits : []
+      for (var j = 0; j < limits.length; j++) {
+        var limit = limits[j] || {}
+        var resetAt = String(limit.resetsAt || "")
+        var resetMs = new Date(resetAt).getTime()
+        if (!isFinite(resetMs) || resetMs <= now) continue
+        var label = String(limit.title || limit.label || "Limit")
+        var key = String(record.id) + "\n" + label + "\n" + resetAt
+        next[key] = {
+          deadline: resetMs,
+          providerName: String(record.name || record.id),
+          label: label
+        }
+      }
+    }
+    pendingLimitResets = next
+  }
+
+  function announcePassedLimitResets() {
+    if (!limitResetNotificationsEnabled()) return
+    var now = Date.now()
+    var next = Object.assign({}, pendingLimitResets)
+    for (var key in pendingLimitResets) {
+      var reset = pendingLimitResets[key]
+      if (!reset || reset.deadline > now) continue
+      Quickshell.execDetached(["omarchy-notification-send",
+        reset.providerName + " limit reset",
+        reset.label + " is available again."])
+      delete next[key]
+    }
+    pendingLimitResets = next
+  }
+
+  Timer {
+    interval: 15000
+    running: root.limitResetNotificationsEnabled()
+    repeat: true
+    onTriggered: root.announcePassedLimitResets()
   }
 
   // A collector that could not reach its limits endpoint at all — typically
