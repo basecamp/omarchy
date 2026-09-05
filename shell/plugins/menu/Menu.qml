@@ -277,6 +277,11 @@ Item {
       script: "current=$(powerprofilesctl get 2>/dev/null); omarchy-powerprofiles-list 2>/dev/null | while read -r p; do [[ -z $p ]] && continue; printf '%s\\t%s\\t%s\\n' \"$p\" \"$p\" \"$current\"; done",
       icon: "\udb81\udc0b",
       actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + Util.shellQuote(value) }
+    },
+    "agent-harnesses": {
+      script: "current=$(\"$OMARCHY_PATH/bin/omarchy-default-agent\" 2>/dev/null); \"$OMARCHY_PATH/bin/omarchy-agent-list\" --json 2>/dev/null | jq -r --arg current \"$current\" '.[] | [.name, .id, (if .id == $current then .id else \"\" end), (.icon // \"\"), (.iconFont // \"\")] | @tsv'",
+      icon: "󰚩",
+      actionFor: function(value) { return "omarchy-default-agent " + Util.shellQuote(value) }
     }
   })
 
@@ -361,6 +366,8 @@ Item {
       var label = parts[0] || ""
       var value = parts[1] || parts[0] || ""
       var current = parts[2] || ""
+      var icon = parts[3] || ""
+      var iconFont = parts[4] || ""
       if (!label) continue
       // Distinct values can slugify alike — Fira Code and Fira-Code both give
       // fira-code — and a repeated id is dropped, which would silently lose a
@@ -373,7 +380,8 @@ Item {
         id: rowId,
         parent: menuId,
         kind: "action",
-        icon: (value === current) ? "✓" : (spec.icon || ""),
+        icon: (value === current) ? "✓" : (icon || spec.icon || ""),
+        iconFont: iconFont,
         label: label,
         title: "",
         target: "",

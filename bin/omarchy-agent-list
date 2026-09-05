@@ -1,0 +1,14 @@
+#!/bin/bash
+
+# omarchy:summary=List available coding-agent harnesses
+# omarchy:group=agent
+# omarchy:args=[--json]
+
+set -euo pipefail
+
+if [[ ${1:-} == "--json" ]]; then
+  omarchy-agent-catalog
+  exit 0
+fi
+[[ -z ${1:-} ]] || { echo "Usage: omarchy agent list [--json]" >&2; exit 1; }
+omarchy-agent-catalog | jq -r '.[] | [.id, .name, (if .firstParty then "built-in" else "installed" end)] | @tsv'

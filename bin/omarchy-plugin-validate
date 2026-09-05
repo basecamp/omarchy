@@ -52,13 +52,37 @@ ID=$(jq -r '.id // ""' "$MANIFEST")
 [[ $ID != *".."* ]] || fail "invalid plugin id '$ID'"
 [[ $ID != omarchy.* ]] || fail "plugin id '$ID' uses the reserved omarchy.* namespace"
 
-# kinds must be a non-empty array.
-jq -e '(.kinds | type) == "array" and (.kinds | length) > 0' "$MANIFEST" >/dev/null 2>&1 \
-  || fail "'kinds' must be a non-empty array"
+# A normal shell plugin needs a kind to load. A harness-only plugin contributes
+# declarative metadata to the agent registry, so it may deliberately have none.
+jq -e '(.kinds | type) == "array" and ((.kinds | length) > 0 or ((.agentHarness | type) == "object" and (.entryPoints | type) == "object" and (.entryPoints | length) == 0))' "$MANIFEST" >/dev/null 2>&1 \
+  || fail "'kinds' must be non-empty unless a metadata-only 'agentHarness' has empty 'entryPoints'"
 
 # entryPoints must be an object and every value a safe relative path that exists.
 jq -e '(.entryPoints | type) == "object"' "$MANIFEST" >/dev/null 2>&1 \
   || fail "'entryPoints' must be an object"
+
+# Agent harness metadata stays declarative: external plugins may name a mise
+# package and argv templates, never a shell install hook. First-party manifests
+# may additionally use a trusted Omarchy installer for exceptional cases.
+jq -e '
+  def valid_id: type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*\\z") and (contains("..") | not);
+  def valid_command:
+    type == "array" and length > 0
+    and all(.[];
+      type == "string" and length > 0
+      and (contains("\n") | not) and (contains("\r") | not)
+      and ([scan("\\{[^{}]+\\}")] | all(. == "{project}" or . == "{prompt}"))
+    );
+  if .agentHarness == null then true
+  else
+    (.agentHarness | type) == "object"
+    and (.agentHarness.id | valid_id)
+    and (.agentHarness.name | type == "string" and length > 0)
+    and ((.agentHarness.aliases // []) | type == "array" and all(.[]; valid_id and (contains("..") | not)))
+    and (.agentHarness.install | type == "object" and .type == "mise" and (.package | (type == "string" and length > 0 and (startswith("-") | not) and (contains("\n") | not) and (contains("\r") | not))) and (.command | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")))
+    and (.agentHarness.launch | type == "object" and (.mode == "terminal" or .mode == "browser") and (.command | valid_command) and ((.promptCommand // .command) | valid_command))
+  end
+' "$MANIFEST" >/dev/null 2>&1 || fail "'agentHarness' must declare a safe mise-backed harness"
 
 # A bar widget may declare where it should land when enabled without an
 # explicit placement.

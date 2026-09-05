@@ -45,6 +45,10 @@ Saving a file anywhere under `~/.config/omarchy/plugins/` reloads plugin code
 automatically. If a change somehow fails to apply, force a reload with
 `omarchy-shell shell rescanPlugins`.
 
+## Agent Harness Integrations
+
+Built-in harnesses always appear under _Setup > Defaults > Agent_. A third-party plugin may include declarative `agentHarness` metadata to add another choice; install it through the normal plugin flow with `omarchy plugin add <git-url>`, and never create a separate agent installer. A harness-only integration may declare empty `kinds` and `entryPoints`; it is available immediately on installation, the registry never loads QML for it, and it cannot be enabled. Ordinary plugins still need a supported shell `kind` and matching QML `entryPoint`. Third-party harnesses are limited to a `mise` package and argv launch templates using only `{project}` and `{prompt}`; never add arbitrary shell install hooks. Keep harness IDs and aliases unique: add/update rejects collisions, while legacy collisions are listed deterministically with a warning.
+
 ## Idle and Lock
 
 Set `idle.screensaver` and `idle.lock` in `~/.config/omarchy/shell.json`,

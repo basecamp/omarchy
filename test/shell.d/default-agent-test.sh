@@ -329,7 +329,7 @@ for selection in "${!expected_agents[@]}"; do
   [[ $(omarchy-default-agent) == $expected ]] || fail "default agent canonicalizes $selection"
 
   mapfile -d '' -t mise_args <"$mise_log"
-  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == ${expected_packages[$expected]} ]] ||
+  [[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "--" && ${mise_args[3]} == ${expected_packages[$expected]} ]] ||
     fail "default agent installs $selection globally through mise"
 
   mapfile -d '' -t agent_open_args <"$agent_open_log"
@@ -355,7 +355,7 @@ mapfile -d '' -t terminal_args <"$terminal_log"
 
 omarchy-default-agent --install github-copilot >"$test_tmp/install-output"
 mapfile -d '' -t mise_args <"$mise_log"
-[[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "copilot" ]] ||
+[[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "--" && ${mise_args[3]} == "copilot" ]] ||
   fail "visible agent installation activates the provider globally through mise"
 [[ $(omarchy-default-agent) == "copilot" ]] || fail "visible agent installation changes the selection after mise succeeds"
 [[ ! -s $notification_history ]] || fail "visible agent installation leaves progress to the terminal"
@@ -373,7 +373,7 @@ OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent github-copilot
 [[ ! -s $terminal_log ]] || fail "installed agent selection skips the terminal"
 [[ ! -s $notification_history ]] || fail "installed agent selection skips notifications"
 mapfile -d '' -t mise_args <"$mise_log"
-[[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "copilot" ]] ||
+[[ ${mise_args[0]} == "use" && ${mise_args[1]} == "-g" && ${mise_args[2]} == "--" && ${mise_args[3]} == "copilot" ]] ||
   fail "default agent still activates an installed provider globally through mise"
 mapfile -d '' -t agent_open_args <"$agent_open_log"
 [[ ${#agent_open_args[@]} == 1 && ${agent_open_args[0]} == "omarchy-agent" ]] ||

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "harnesses": [
+    {"id":"afk","name":"AFK","aliases":["afk-agent"],"icon":"","iconFont":"omarchy","install":{"type":"mise","package":"forgejo:mooglest/public[api_url=https://git.mooglest.com/api/v1]","command":"afk"},"launch":{"mode":"browser","command":["afk","open","--project","{project}"],"promptCommand":["afk","open","--project","{project}","{prompt}"]}},
+    {"id":"agy","name":"Antigravity","aliases":["antigravity","antigravity-cli","gemini","gemini-cli"],"icon":"󰋑","install":{"type":"mise","package":"antigravity-cli","command":"agy"},"launch":{"mode":"terminal","command":["agy","--dangerously-skip-permissions"],"promptCommand":["agy","--dangerously-skip-permissions","--prompt-interactive","{prompt}"]}},
+    {"id":"claude","name":"Claude","aliases":["claude-code"],"icon":"󰚩","install":{"type":"mise","package":"claude","command":"claude"},"launch":{"mode":"terminal","command":["claude","--permission-mode","auto"],"promptCommand":["claude","--permission-mode","auto","--","{prompt}"]}},
+    {"id":"codex","name":"Codex","icon":"","iconFont":"omarchy","install":{"type":"mise","package":"codex","command":"codex"},"launch":{"mode":"terminal","command":["codex","--approve-for-me"],"promptCommand":["codex","--approve-for-me","--","{prompt}"]}},
+    {"id":"copilot","name":"GitHub Copilot","aliases":["github-copilot"],"icon":"","install":{"type":"mise","package":"copilot","command":"copilot"},"launch":{"mode":"terminal","command":["copilot","--allow-all"],"promptCommand":["copilot","--allow-all","--interactive","{prompt}"]}},
+    {"id":"crush","name":"Crush","icon":"󰢱","install":{"type":"mise","package":"crush","command":"crush"},"launch":{"mode":"terminal","command":["crush","--yolo"],"promptCommand":["crush","run","{prompt}"]}},
+    {"id":"grok","name":"Grok","icon":"","iconFont":"omarchy","install":{"type":"mise","package":"npm:@xai-official/grok","command":"grok"},"launch":{"mode":"terminal","command":["grok","--permission-mode","bypassPermissions"],"promptCommand":["grok","--permission-mode","bypassPermissions","--","{prompt}"]}},
+    {"id":"hermes","name":"Hermes","icon":"","iconFont":"omarchy","install":{"type":"installer","command":"hermes","installer":"omarchy-install-hermes-cli"},"launch":{"mode":"terminal","command":["hermes","--yolo"],"promptCommand":["env","-u","HERMES_SESSION_SOURCE","hermes","chat","--yolo","--tui","--query={prompt}"]}},
+    {"id":"omp","name":"omp","aliases":["oh-my-pi"],"icon":"","iconFont":"omarchy","install":{"type":"mise","package":"github:can1357/oh-my-pi","command":"omp"},"launch":{"mode":"terminal","command":["omp","--auto-approve"],"promptCommand":["omp","--auto-approve","--","{prompt}"]}},
+    {"id":"opencode","name":"OpenCode","aliases":["open-code"],"icon":"","iconFont":"omarchy","install":{"type":"mise","package":"opencode","command":"opencode"},"launch":{"mode":"terminal","command":["opencode","--auto"],"promptCommand":["opencode","--auto","--prompt","{prompt}"]}},
+    {"id":"ori","name":"Ori","aliases":["openrouter"],"icon":"","iconFont":"omarchy","install":{"type":"mise","package":"github:OpenRouterLabs/ori-releases","command":"ori"},"launch":{"mode":"terminal","command":["ori","code"],"promptCommand":["ori","code","--interactive","--prompt","{prompt}"]}},
+    {"id":"pi","name":"Pi","icon":"","iconFont":"omarchy","install":{"type":"mise","package":"pi","command":"pi"},"launch":{"mode":"terminal","command":["pi"],"promptCommand":["pi","{prompt}"]}}
+  ]
+}

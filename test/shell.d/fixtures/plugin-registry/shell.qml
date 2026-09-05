@@ -109,6 +109,18 @@ ShellRoot {
     scan += block("thirdparty", "/third/missing", { schemaVersion: 1, id: "third.missing", name: "missing", version: "1.0.0", kinds: ["panel"] })
     scan += block("thirdparty", "/third/bad-section", manifest("third.bad-section", ["bar-widget"], { barWidget: "Widget.qml" }, { defaultSection: "bottom" }))
     scan += block("thirdparty", "/third/schema", { schemaVersion: 2, id: "third.schema", name: "schema", version: "1.0.0", kinds: ["panel"], entryPoints: { panel: "Panel.qml" } })
+    var harnessOnly = manifest("third.harness", [], {})
+    harnessOnly.agentHarness = { id: "third-agent", name: "Third Agent", install: { type: "mise", package: "npm:third-agent", command: "third-agent" }, launch: { mode: "terminal", command: ["third-agent"] } }
+    scan += block("thirdparty", "/third/harness", harnessOnly)
+    var malformedHarness = manifest("third.bad-harness", [], {})
+    malformedHarness.agentHarness = {}
+    scan += block("thirdparty", "/third/bad-harness", malformedHarness)
+    var malformedAlias = manifest("third.bad-alias", [], {})
+    malformedAlias.agentHarness = { id: "third-alias", name: "Third Alias", aliases: ["bad..alias"], install: { type: "mise", package: "npm:third-agent", command: "third-agent" }, launch: { mode: "terminal", command: ["third-agent"] } }
+    scan += block("thirdparty", "/third/bad-alias", malformedAlias)
+    var newlineAlias = manifest("third.newline-alias", [], {})
+    newlineAlias.agentHarness = { id: "third-newline", name: "Third Newline", aliases: ["bad\nalias"], install: { type: "mise", package: "npm:third-agent", command: "third-agent" }, launch: { mode: "terminal", command: ["third-agent"] } }
+    scan += block("thirdparty", "/third/newline-alias", newlineAlias)
     scan += block("thirdparty", "/third/bad-json", "{")
 
     registry.parseScanOutput(scan)
@@ -125,6 +137,7 @@ ShellRoot {
       "omarchy.hybrid",
       "third.bar",
       "third.center-widget",
+      "third.harness",
       "third.panel",
       "third.right-widget",
       "third.widget"
@@ -141,6 +154,11 @@ ShellRoot {
     root.assertTrue(!has("third.missing"), "incomplete manifests are rejected")
     root.assertTrue(!has("third.bad-section"), "invalid default bar widget sections are rejected")
     root.assertTrue(!has("third.schema"), "unsupported schema versions are rejected")
+    root.assertTrue(!has("third.bad-harness"), "malformed metadata-only harness plugins are rejected")
+    root.assertTrue(!has("third.bad-alias"), "malformed harness aliases are rejected")
+    root.assertTrue(!has("third.newline-alias"), "newline-bearing harness aliases are rejected")
+    root.assertTrue(!registry.setEnabled("third.harness", true), "metadata-only harness plugins cannot be enabled")
+    root.assertTrue(root.config.plugins.length === 0, "metadata-only enablement writes no shell config")
 
     root.assertTrue(registry.isEnabled("omarchy.first-widget"), "first-party plugins are implicitly enabled")
     root.assertTrue(registry.isEnabled("omarchy.bar"), "built-in bar option is active by default")

@@ -39,6 +39,10 @@ valid_plugin_id() {
 update_one() {
   local id="$1"
   local dir="$PLUGINS_DIR/$id"
+  local old_harness
+  local new_harness
+  local agent_file="$HOME/.config/omarchy/defaults/agent"
+  old_harness=$(jq -r '.agentHarness.id // empty' "$dir/manifest.json")
 
   if ! git -C "$dir" fetch --quiet origin HEAD; then
     echo "omarchy-plugin-update: fetch failed for '$id'" >&2
@@ -69,10 +73,16 @@ update_one() {
     return 1
   fi
 
-  if ! omarchy-plugin-validate "$dir"; then
+  if ! omarchy-plugin-validate "$dir" || ! omarchy-agent-catalog "$dir/manifest.json" >/dev/null; then
     git -C "$dir" reset --hard ORIG_HEAD >/dev/null
-    echo "omarchy-plugin-update: update of '$id' failed validation; rolled back" >&2
+    echo "omarchy-plugin-update: update of '$id' failed validation or introduced an agent harness conflict; rolled back" >&2
     return 1
+  fi
+
+  new_harness=$(jq -r '.agentHarness.id // empty' "$dir/manifest.json")
+  if [[ -n $old_harness && $old_harness != "$new_harness" && -f $agent_file && $(<"$agent_file") == "$old_harness" ]]; then
+    rm -f "$agent_file"
+    echo "Cleared default coding agent $old_harness because its integration changed."
   fi
 
   echo "Updated $id."

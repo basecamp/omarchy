@@ -175,3 +175,22 @@ for good in \
     fail "plugin add did not reach git clone for a legitimate URL: $good" "$output"
 done
 pass "plugin add lets legitimate git URLs reach git clone"
+
+# A metadata-only integration is ready as soon as it is installed, so the
+# success message must direct users to default selection rather than enablement.
+harness_incoming="$TMPDIR/harness-incoming"
+mkdir -p "$harness_incoming"
+cat >"$harness_incoming/manifest.json" <<'JSON'
+{"schemaVersion":1,"id":"acme.harness","name":"Acme Harness","version":"1.0.0","kinds":[],"entryPoints":{},"agentHarness":{"id":"acme-agent","name":"Acme Agent","install":{"type":"mise","package":"npm:@acme/agent","command":"acme-agent"},"launch":{"mode":"terminal","command":["acme-agent"]}}}
+JSON
+git -C "$harness_incoming" init -q
+git -C "$harness_incoming" add manifest.json
+git -C "$harness_incoming" -c user.name=Test -c user.email=test@example.com commit -qm "Initial"
+output=$(HOME="$test_home" OMARCHY_PATH="$ROOT" PATH="$stub_dir:$ROOT/bin:$PATH" \
+  omarchy-plugin-add "$harness_incoming" --yes 2>&1) ||
+  fail "plugin add installs a metadata-only harness" "$output"
+grep -Fq 'Select it with: omarchy default agent acme-agent' <<<"$output" ||
+  fail "plugin add gives a metadata-only harness its default-agent next step" "$output"
+! grep -Fq 'Enable it later with:' <<<"$output" ||
+  fail "plugin add does not offer enablement for a metadata-only harness" "$output"
+pass "plugin add directs metadata-only harnesses to default selection"
