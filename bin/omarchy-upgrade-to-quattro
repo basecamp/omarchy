@@ -7,6 +7,8 @@
 
 set -euo pipefail
 
+readonly OMARCHY_PACKAGING_KEY_FINGERPRINT=40DFB630FF42BCFFB047046CF0134EE680CAC571
+
 usage() {
   cat <<'USAGE'
 Usage: omarchy-upgrade-to-quattro [--yes] [--reboot] [--dev] [--channel stable|rc|edge] [--user USER]
@@ -411,7 +413,7 @@ configure_pacman_channel() {
     /^[[:space:]]*\[omarchy\][[:space:]]*$/ {
       if (!wrote) {
         print "[omarchy]"
-        print "SigLevel = Optional TrustAll"
+        print "SigLevel = Required DatabaseOptional"
         print "Server = " server
         wrote = 1
       }
@@ -424,13 +426,58 @@ configure_pacman_channel() {
       if (!wrote) {
         print ""
         print "[omarchy]"
-        print "SigLevel = Optional TrustAll"
+        print "SigLevel = Required DatabaseOptional"
         print "Server = " server
       }
     }
   ' /etc/pacman.conf >"$tmp"
   as_root install -m 0644 "$tmp" /etc/pacman.conf
   rm -f "$tmp"
+}
+
+installed_omarchy_primary_fingerprint() {
+  as_root /usr/bin/gpg --homedir /etc/pacman.d/gnupg --batch --with-colons \
+    --fingerprint "$OMARCHY_PACKAGING_KEY_FINGERPRINT" 2>/dev/null |
+    /usr/bin/awk -F: '
+      $1 == "pub" && !seen { seen = 1; next }
+      seen && $1 == "fpr" { print $10; exit }
+    '
+}
+
+bootstrap_omarchy_packaging_key() {
+  local actual
+  log "Establishing the pinned Omarchy packaging key"
+
+  actual=$(installed_omarchy_primary_fingerprint || true)
+  if [[ $actual != "$OMARCHY_PACKAGING_KEY_FINGERPRINT" ]]; then
+    as_root /usr/bin/pacman-key --recv-keys "$OMARCHY_PACKAGING_KEY_FINGERPRINT" \
+      --keyserver hkps://keys.openpgp.org ||
+      fail "Could not retrieve the pinned Omarchy packaging key; no package transaction was attempted."
+    actual=$(installed_omarchy_primary_fingerprint || true)
+  fi
+
+  [[ $actual == "$OMARCHY_PACKAGING_KEY_FINGERPRINT" ]] ||
+    fail "The retrieved Omarchy packaging key fingerprint did not match $OMARCHY_PACKAGING_KEY_FINGERPRINT."
+  as_root /usr/bin/pacman-key --lsign-key "$OMARCHY_PACKAGING_KEY_FINGERPRINT" ||
+    fail "Could not locally trust the verified Omarchy packaging key."
+}
+
+verify_effective_omarchy_package_policy() {
+  local policy
+  policy=$(/usr/bin/pacman-conf --repo omarchy SigLevel 2>/dev/null) ||
+    fail "Could not resolve the effective Omarchy repository signature policy."
+  if [[ -z ${policy//[$' \t\n\r']/} ]]; then
+    policy=$(/usr/bin/pacman-conf SigLevel 2>/dev/null) ||
+      fail "Could not resolve the inherited package signature policy."
+  fi
+  policy=${policy//$'\n'/ }
+  policy=${policy//$'\t'/ }
+  [[ " $policy " == *" PackageRequired "* &&
+    " $policy " == *" PackageTrustedOnly "* &&
+    " $policy " != *" PackageOptional "* &&
+    " $policy " != *" PackageNever "* &&
+    " $policy " != *" PackageTrustAll "* ]] ||
+    fail "The effective Omarchy repository policy does not require trusted package signatures."
 }
 
 install_keyrings() {
@@ -447,12 +494,7 @@ install_keyrings() {
   # server's copy isn't newer, leaving stale checksums that no amount of
   # re-downloading can satisfy.
 
-  as_root pacman -Syy --noconfirm archlinux-keyring omarchy-keyring || {
-    warn "Keyring package install failed; attempting to trust the Omarchy packaging key directly."
-    as_root pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org || true
-    as_root pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571 || true
-    as_root pacman -Syy --noconfirm archlinux-keyring omarchy-keyring
-  }
+  as_root /usr/bin/pacman -Syy --noconfirm archlinux-keyring omarchy-keyring
 }
 
 remove_legacy_installer_package() {
@@ -2352,6 +2394,8 @@ upgrade_started=1
 suppress_hyprland_config_reload
 create_pre_upgrade_snapshot
 configure_pacman_channel
+bootstrap_omarchy_packaging_key
+verify_effective_omarchy_package_policy
 install_keyrings
 remove_legacy_installer_package
 remove_legacy_limine_configs
