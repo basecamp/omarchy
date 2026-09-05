@@ -67,12 +67,13 @@ What this does not cover: a theme distributed as an archive rather than a git re
 
 ## `colors.toml`
 
-`colors.toml` provides the palette keys used by templates. Keys are grouped
-semantic-first: accent/selection/muted, then the backgrounds, then the
-foregrounds, then the named colors:
+`colors.toml` provides the palette keys and shared terminal appearance settings used by templates. Color keys are grouped semantic-first: accent/selection/muted, then the backgrounds, then the foregrounds, then the named colors:
 
 ```toml
 mode = "dark"
+terminal_opacity = 0.95
+terminal_blur = true
+terminal_blur_radius = 20
 
 accent = "#7aa2f7"
 selection = "#292e42"
@@ -91,6 +92,8 @@ bright_foreground = "#c0caf5"
 red = "#f7768e"
 blue = "#7aa2f7"
 ```
+
+`terminal_opacity` accepts a decimal from `0.0` (transparent) through `1.0` (opaque) and defaults to `1.0`. `terminal_blur` accepts `true` or `false` and defaults to `false`. When blur is enabled, `terminal_blur_radius` accepts an integer from `0` through `64` and defaults to `20`. Omarchy maps these shared values to Alacritty, Foot, Ghostty, and Kitty; terminals that only expose a blur toggle ignore the radius.
 
 Any key can be referenced from a template with `{{ key }}`. The foundational
 shell palette is loaded from:
@@ -174,6 +177,68 @@ The second argument is a fallback. For example,
 `{{ shell_gradient hyprland_active_border accent }}` means: use
 `hyprland_active_border` if the theme defines it; otherwise use `accent`.
 The helper does not choose the first color unless you use `gradient_start`.
+
+## `hyprland.toml`
+
+A theme may add an optional `hyprland.toml` to override presentation settings that cannot be expressed by the palette alone. Omarchy validates the declaration and appends safe settings to its generated `hyprland.lua`; a hand-written `hyprland.lua` in a trusted local theme still takes precedence.
+
+```toml
+schema = 1
+
+[general]
+gaps_in = 6
+gaps_out = 12
+border_size = 2
+
+[decoration]
+rounding = 12
+inactive_opacity = 0.96
+
+[decoration.blur]
+enabled = true
+size = 4
+passes = 3
+
+[decoration.shadow]
+enabled = true
+range = 18
+render_power = 4
+color = "background"
+offset = "0 3"
+
+[group.groupbar]
+height = 24
+text_color = "foreground"
+active_color = "accent"
+
+[[beziers]]
+name = "themeEase"
+x1 = 0.25
+y1 = 0.46
+x2 = 0.45
+y2 = 0.94
+
+[[animations]]
+name = "windows"
+enabled = true
+speed = 3.5
+curve = "themeEase"
+style = "popin 87%"
+```
+
+Color fields accept a Hyprland `rgb(...)`/`rgba(...)` value, `#RRGGBB`/`#RRGGBBAA`, or a key from `colors.toml`. The supported settings are:
+
+| Table | Keys |
+| --- | --- |
+| `general` | `gaps_in`, `gaps_out`, `border_size` |
+| `decoration` | `rounding`, `rounding_power`, active/inactive/fullscreen opacity, `dim_inactive`, `dim_strength` |
+| `decoration.blur` | `enabled`, `size`, `passes`, `noise`, `contrast`, `brightness`, `vibrancy`, `vibrancy_darkness`, `ignore_opacity` |
+| `decoration.shadow` | `enabled`, `range`, `render_power`, `color`, `color_inactive`, `offset`, `scale` |
+| `group.groupbar` | enabled, titles, scrolling, sizing, spacing, text and active/inactive colors, gradients and gradient rounding |
+| `beziers` | `name`, `x1`, `y1`, `x2`, `y2` |
+| `animations` | `name`, `enabled`, `speed`, `curve`, `style` |
+
+Unknown keys, invalid values, commands, rules, bindings, monitors, input, environment settings, layouts, and raw Lua are rejected. If the optional file is invalid, Omarchy reports it and keeps the normal generated Hyprland appearance.
 
 ## `shell.toml`
 

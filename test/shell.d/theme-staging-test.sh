@@ -70,6 +70,7 @@ mkdir -p "$hostile/backgrounds" "$hostile/.git"
 write_colors "$hostile/colors.toml"
 touch "$hostile/light.mode"
 printf 'os.execute("%s")\n' "$marker" >"$hostile/hyprland.lua"
+printf 'schema = 1\n[decoration]\nrounding = 13\n' >"$hostile/hyprland.toml"
 printf 'vim.cmd("%s")\n' "$marker" >"$hostile/neovim.lua"
 printf 'shell %s\n' "$marker" >"$hostile/kitty.conf"
 printf '[terminal.shell]\nprogram = "%s"\n' "$marker" >"$hostile/alacritty.toml"
@@ -109,6 +110,8 @@ for generated in hyprland.lua neovim.lua gum_env.lua kitty.conf alacritty.toml f
   assert_staged "$generated" "$generated is generated from Omarchy's template"
   assert_no_marker "$generated" "an installed theme cannot supply $generated"
 done
+assert_staged hyprland.toml "an installed theme keeps declarative Hyprland settings"
+grep -Fq 'rounding = 13' "$(staged hyprland.lua)" || fail "declarative Hyprland settings reach the generated Lua"
 
 # Colour is kept, including a file Omarchy would otherwise have generated.
 assert_staged shell.toml "shell.toml is staged"
@@ -172,6 +175,44 @@ grep -q '#abcdef' "$(staged colors.toml)" || fail "a user overlay still replaces
 assert_no_marker hyprland.lua "a user overlay cannot add Lua to a stock theme"
 
 pass "an overlay on a stock theme repaints it without adding code"
+
+# Declarative settings extend bundled theme Lua rather than being mistaken for
+# a trusted user override. Invalid data must still leave that bundled Lua alone.
+kanagawa_overlay="$themes/kanagawa"
+kanagawa_stock="$ROOT/themes/kanagawa/hyprland.lua"
+kanagawa_stock_size=$(stat -c %s "$kanagawa_stock")
+mkdir -p "$kanagawa_overlay/.git"
+write_colors "$kanagawa_overlay/colors.toml"
+printf 'schema = 1\n[decoration]\nrounding = 13\n' >"$kanagawa_overlay/hyprland.toml"
+
+set_theme kanagawa || fail "omarchy-theme-set applies declarative settings over bundled Hyprland Lua"
+cmp "$kanagawa_stock" <(head -c "$kanagawa_stock_size" "$(staged hyprland.lua)") || fail "bundled Hyprland Lua is preserved"
+grep -Fq 'rounding = 13' "$(staged hyprland.lua)" || fail "declarative settings extend bundled Hyprland Lua"
+
+pass "an installed overlay extends bundled Hyprland Lua declaratively"
+
+printf 'schema = 1\n[general]\nlayout = "master"\n' >"$kanagawa_overlay/hyprland.toml"
+set_theme kanagawa || fail "omarchy-theme-set keeps bundled Hyprland Lua when overlay data is invalid"
+cmp "$kanagawa_stock" "$(staged hyprland.lua)" || fail "invalid declarative settings preserve bundled Hyprland Lua byte for byte"
+! grep -Fq 'Generated from declarative hyprland.toml' "$(staged hyprland.lua)" || fail "invalid declarative settings append nothing to bundled Lua"
+grep -q 'ignoring invalid hyprland.toml' "$test_tmp/stderr" || fail "invalid stock overlay warns"
+
+pass "invalid installed overlay data leaves bundled Hyprland Lua unchanged"
+
+rm -rf "$kanagawa_overlay/.git"
+printf 'schema = 1\n[decoration]\nrounding = 12\n' >"$kanagawa_overlay/hyprland.toml"
+set_theme kanagawa || fail "omarchy-theme-set applies trusted declarative settings over bundled Hyprland Lua"
+cmp "$kanagawa_stock" <(head -c "$kanagawa_stock_size" "$(staged hyprland.lua)") || fail "trusted declarative settings preserve bundled Hyprland Lua"
+grep -Fq 'rounding = 12' "$(staged hyprland.lua)" || fail "trusted declarative settings extend bundled Hyprland Lua"
+
+pass "a trusted declarative overlay extends bundled Hyprland Lua"
+
+printf 'trusted-local-hyprland\n' >"$kanagawa_overlay/hyprland.lua"
+printf 'schema = 1\n[decoration]\nrounding = 11\n' >"$kanagawa_overlay/hyprland.toml"
+set_theme kanagawa || fail "omarchy-theme-set applies a trusted local override on a stock theme"
+[[ $(cat "$(staged hyprland.lua)") == "trusted-local-hyprland" ]] || fail "trusted local Hyprland Lua retains precedence over declarative settings"
+
+pass "trusted local Hyprland Lua still overrides bundled and declarative settings"
 
 # A theme the user wrote themselves has no git repo behind it and is theirs.
 mine="$themes/mine"

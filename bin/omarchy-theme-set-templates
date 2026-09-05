@@ -367,6 +367,295 @@ apply_shell_section_overrides() {
   done
 }
 
+append_hyprland_toml() {
+  local settings="$NEXT_THEME_DIR/hyprland.toml"
+  local output="$NEXT_THEME_DIR/hyprland.lua"
+  local generated
+
+  [[ -f $settings && -f $output ]] || return
+  generated=$(mktemp)
+
+  if python3 - "$settings" "$COLORS_FILE" >"$generated" <<'PY'
+import json
+import math
+import re
+import sys
+import tomllib
+
+settings_path, colors_path = sys.argv[1:]
+
+
+class InvalidTheme(ValueError):
+    pass
+
+
+def invalid(message):
+    raise InvalidTheme(message)
+
+
+def require_table(value, path):
+    if not isinstance(value, dict):
+        invalid(f"{path} must be a table")
+    return value
+
+
+def reject_unknown(table, allowed, path):
+    unknown = set(table) - set(allowed)
+    if unknown:
+        invalid(f"unknown {path} key: {sorted(unknown)[0]}")
+
+
+def boolean(value, path):
+    if not isinstance(value, bool):
+        invalid(f"{path} must be a boolean")
+    return value
+
+
+def number(value, path, minimum, maximum):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        invalid(f"{path} must be a number")
+    if value < minimum or value > maximum:
+        invalid(f"{path} must be between {minimum} and {maximum}")
+    return value
+
+
+def integer(value, path, minimum, maximum):
+    if isinstance(value, bool) or not isinstance(value, int):
+        invalid(f"{path} must be an integer")
+    return number(value, path, minimum, maximum)
+
+
+def short_name(value, path):
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,63}", value):
+        invalid(f"{path} must be a short name")
+    return value
+
+
+try:
+    with open(settings_path, "rb") as file:
+        document = tomllib.load(file)
+    with open(colors_path, "rb") as file:
+        palette = tomllib.load(file)
+
+    reject_unknown(document, {"schema", "general", "decoration", "group", "beziers", "animations"}, "top-level")
+    if type(document.get("schema")) is not int or document["schema"] != 1:
+        invalid("schema must be 1")
+
+    def color(value, path):
+        if not isinstance(value, str) or len(value) > 64:
+            invalid(f"{path} must be a color or palette key")
+        resolved = palette.get(value, value)
+        if not isinstance(resolved, str):
+            invalid(f"{path} palette reference is not a color")
+        if re.fullmatch(r"#[0-9A-Fa-f]{6}", resolved):
+            return f"rgb({resolved[1:]})"
+        if re.fullmatch(r"#[0-9A-Fa-f]{8}", resolved):
+            return f"rgba({resolved[1:]})"
+        if re.fullmatch(r"rgb\([0-9A-Fa-f]{6}\)|rgba\([0-9A-Fa-f]{8}\)", resolved):
+            return resolved
+        if re.fullmatch(r"0x[0-9A-Fa-f]{8}", resolved):
+            return resolved
+        invalid(f"{path} must be a Hyprland color or palette key")
+
+    scalar_specs = {
+        "general": {
+            "gaps_in": (integer, 0, 100),
+            "gaps_out": (integer, 0, 100),
+            "border_size": (integer, 0, 20),
+        },
+        "decoration": {
+            "rounding": (integer, 0, 20),
+            "rounding_power": (number, 2, 10),
+            "active_opacity": (number, 0, 1),
+            "inactive_opacity": (number, 0, 1),
+            "fullscreen_opacity": (number, 0, 1),
+            "dim_inactive": (boolean,),
+            "dim_strength": (number, 0, 1),
+        },
+        "blur": {
+            "enabled": (boolean,),
+            "size": (integer, 0, 64),
+            "passes": (integer, 0, 10),
+            "noise": (number, 0, 1),
+            "contrast": (number, 0, 2),
+            "brightness": (number, 0, 2),
+            "vibrancy": (number, 0, 1),
+            "vibrancy_darkness": (number, 0, 1),
+            "ignore_opacity": (boolean,),
+        },
+        "shadow": {
+            "enabled": (boolean,),
+            "range": (integer, 0, 100),
+            "render_power": (integer, 1, 4),
+            "scale": (number, 0, 1),
+        },
+        "groupbar": {
+            "enabled": (boolean,),
+            "render_titles": (boolean,),
+            "scrolling": (boolean,),
+            "font_size": (integer, 2, 64),
+            "height": (integer, 1, 64),
+            "indicator_height": (integer, 1, 64),
+            "indicator_gap": (integer, 0, 64),
+            "gaps_in": (integer, 0, 20),
+            "gaps_out": (integer, 0, 20),
+            "gradients": (boolean,),
+            "gradient_rounding": (integer, 0, 20),
+            "gradient_round_only_edges": (boolean,),
+        },
+    }
+
+    def validated_scalars(table, specs, path):
+        reject_unknown(table, specs, path)
+        result = {}
+        for key, value in table.items():
+            validator, *bounds = specs[key]
+            result[key] = validator(value, f"{path}.{key}", *bounds)
+        return result
+
+    config = {}
+    if "general" in document:
+        config["general"] = validated_scalars(require_table(document["general"], "general"), scalar_specs["general"], "general")
+
+    if "decoration" in document:
+        source = require_table(document["decoration"], "decoration")
+        reject_unknown(source, set(scalar_specs["decoration"]) | {"blur", "shadow"}, "decoration")
+        decoration = validated_scalars({key: value for key, value in source.items() if key not in {"blur", "shadow"}}, scalar_specs["decoration"], "decoration")
+        if "blur" in source:
+            decoration["blur"] = validated_scalars(require_table(source["blur"], "decoration.blur"), scalar_specs["blur"], "decoration.blur")
+        if "shadow" in source:
+            shadow_source = require_table(source["shadow"], "decoration.shadow")
+            reject_unknown(shadow_source, set(scalar_specs["shadow"]) | {"color", "color_inactive", "offset"}, "decoration.shadow")
+            shadow = validated_scalars({key: value for key, value in shadow_source.items() if key in scalar_specs["shadow"]}, scalar_specs["shadow"], "decoration.shadow")
+            for key in ("color", "color_inactive"):
+                if key in shadow_source:
+                    shadow[key] = color(shadow_source[key], f"decoration.shadow.{key}")
+            if "offset" in shadow_source:
+                offset = shadow_source["offset"]
+                match = re.fullmatch(r"(-?[0-9]{1,3}) +(-?[0-9]{1,3})", offset) if isinstance(offset, str) else None
+                if not match or any(abs(int(coordinate)) > 100 for coordinate in match.groups()):
+                    invalid("decoration.shadow.offset must contain two coordinates from -100 through 100")
+                shadow["offset"] = [int(match.group(1)), int(match.group(2))]
+            decoration["shadow"] = shadow
+        config["decoration"] = decoration
+
+    if "group" in document:
+        group_source = require_table(document["group"], "group")
+        reject_unknown(group_source, {"groupbar"}, "group")
+        if "groupbar" in group_source:
+            source = require_table(group_source["groupbar"], "group.groupbar")
+            color_keys = {"text_color", "text_color_inactive", "active_color", "inactive_color"}
+            reject_unknown(source, set(scalar_specs["groupbar"]) | color_keys, "group.groupbar")
+            groupbar = validated_scalars({key: value for key, value in source.items() if key not in color_keys}, scalar_specs["groupbar"], "group.groupbar")
+            for key in ("text_color", "text_color_inactive"):
+                if key in source:
+                    groupbar[key] = color(source[key], f"group.groupbar.{key}")
+            groupbar_colors = {}
+            if "active_color" in source:
+                groupbar_colors["active"] = color(source["active_color"], "group.groupbar.active_color")
+            if "inactive_color" in source:
+                groupbar_colors["inactive"] = color(source["inactive_color"], "group.groupbar.inactive_color")
+            if groupbar_colors:
+                groupbar["col"] = groupbar_colors
+            config["group"] = {"groupbar": groupbar}
+
+    curves = document.get("beziers", [])
+    animations = document.get("animations", [])
+    if not isinstance(curves, list) or len(curves) > 32:
+        invalid("beziers must contain at most 32 entries")
+    if not isinstance(animations, list) or len(animations) > 32:
+        invalid("animations must contain at most 32 entries")
+
+    parsed_curves = []
+    curve_names = {"default", "easeOutQuint", "easeInOutCubic", "linear", "almostLinear", "quick"}
+    declared_curve_names = set()
+    for index, entry in enumerate(curves):
+        entry = require_table(entry, f"beziers[{index}]")
+        reject_unknown(entry, {"name", "x1", "y1", "x2", "y2"}, f"beziers[{index}]")
+        if set(entry) != {"name", "x1", "y1", "x2", "y2"}:
+            invalid(f"beziers[{index}] requires name, x1, y1, x2, and y2")
+        name = short_name(entry["name"], f"beziers[{index}].name")
+        if name in declared_curve_names:
+            invalid(f"duplicate bezier name: {name}")
+        declared_curve_names.add(name)
+        curve_names.add(name)
+        parsed_curves.append((name, *(number(entry[key], f"beziers[{index}].{key}", -2, 2) for key in ("x1", "y1", "x2", "y2"))))
+
+    animation_leaves = {
+        "global", "border", "borderangle", "windows", "windowsIn", "windowsMove", "windowsOut",
+        "fade", "fadeIn", "fadeOut", "fadeSwitch", "fadeShadow", "fadeDim", "fadeLayers",
+        "fadeLayersIn", "fadeLayersOut", "fadePopups", "fadePopupsIn", "fadePopupsOut", "fadeDpms",
+        "fadeGlow", "layers", "layersIn", "layersOut", "workspaces", "workspacesIn", "workspacesOut",
+        "specialWorkspace", "specialWorkspaceIn", "specialWorkspaceOut", "glowangle", "shadowangle",
+        "monitorAdded", "zoomFactor",
+    }
+    parsed_animations = []
+    for index, entry in enumerate(animations):
+        entry = require_table(entry, f"animations[{index}]")
+        reject_unknown(entry, {"name", "enabled", "speed", "curve", "style"}, f"animations[{index}]")
+        if not {"name", "enabled"}.issubset(entry):
+            invalid(f"animations[{index}] requires name and enabled")
+        leaf = entry["name"]
+        if leaf not in animation_leaves:
+            invalid(f"animations[{index}].name is not allowlisted")
+        enabled = boolean(entry["enabled"], f"animations[{index}].enabled")
+        parsed = {"leaf": leaf, "enabled": enabled}
+        if "speed" in entry:
+            parsed["speed"] = number(entry["speed"], f"animations[{index}].speed", 0, 100)
+        if "curve" in entry:
+            curve = short_name(entry["curve"], f"animations[{index}].curve")
+            if curve not in curve_names:
+                invalid(f"animations[{index}].curve is unknown")
+            parsed["bezier"] = curve
+        if "style" in entry:
+            style = entry["style"]
+            if not isinstance(style, str) or len(style) > 32 or not re.fullmatch(r"(?:fade|slide(?:fade|vert)?(?: (?:top|bottom|left|right))?|popin(?: [0-9]{1,3}%)?)", style):
+                invalid(f"animations[{index}].style is not allowlisted")
+            parsed["style"] = style
+        parsed_animations.append(parsed)
+
+    def lua(value, level=0):
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return str(value).lower()
+        if isinstance(value, str):
+            return json.dumps(value, ensure_ascii=True)
+        if isinstance(value, list):
+            return "{ " + ", ".join(lua(item, level + 1) for item in value) + " }"
+        if isinstance(value, dict):
+            if not value:
+                return "{}"
+            indent = "  " * level
+            child = "  " * (level + 1)
+            lines = ["{"]
+            for key, item in value.items():
+                lines.append(f"{child}{key} = {lua(item, level + 1)},")
+            lines.append(f"{indent}}}")
+            return "\n".join(lines)
+        invalid("internal unsupported value")
+
+    if config or parsed_curves or parsed_animations:
+        print("\n-- Generated from declarative hyprland.toml")
+    if config:
+        print(f"hl.config({lua(config)})")
+    for name, x1, y1, x2, y2 in parsed_curves:
+        print(f"hl.curve({lua(name)}, {{ type = \"bezier\", points = {{ {{ {lua(x1)}, {lua(y1)} }}, {{ {lua(x2)}, {lua(y2)} }} }} }})")
+    for animation in parsed_animations:
+        print(f"hl.animation({lua(animation)})")
+except (InvalidTheme, OSError, tomllib.TOMLDecodeError) as error:
+    print(f"hyprland.toml: {error}", file=sys.stderr)
+    sys.exit(1)
+PY
+  then
+    cat "$generated" >>"$output"
+  else
+    printf 'omarchy-theme-set-templates: ignoring invalid hyprland.toml\n' >&2
+  fi
+
+  rm "$generated"
+}
+
 # Only generate dynamic templates for themes with a colors.toml definition
 if [[ -f $COLORS_FILE ]]; then
   sed_script=$(mktemp)
@@ -387,6 +676,9 @@ if [[ -f $COLORS_FILE ]]; then
   add_mix_values
   add_gradient_function_values
 
+  hyprland_already_exists=false
+  [[ -f $NEXT_THEME_DIR/hyprland.lua ]] && hyprland_already_exists=true
+
   # Process user templates first, then built-in templates (user overrides built-in)
   for tpl in "${template_files[@]}"; do
     filename=$(basename "$tpl" .tpl)
@@ -397,6 +689,10 @@ if [[ -f $COLORS_FILE ]]; then
       sed -f "$sed_script" "$tpl" >"$output_path"
     fi
   done
+
+  if [[ $hyprland_already_exists == "false" || ${OMARCHY_THEME_HYPRLAND_LUA_FROM_STOCK:-0} == "1" ]]; then
+    append_hyprland_toml
+  fi
 
   rm "$sed_script"
 fi

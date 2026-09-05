@@ -268,10 +268,18 @@ mkdir -p "$NEXT_THEME_PATH"
 # Copy official theme first, then overlay the user's theme on top
 cp -r "$OMARCHY_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 
+HYPRLAND_LUA_FROM_STOCK=0
+if [[ -f $NEXT_THEME_PATH/hyprland.lua ]]; then
+  HYPRLAND_LUA_FROM_STOCK=1
+fi
+
 if theme_came_from_a_repo "$USER_THEMES_PATH/$THEME_NAME"; then
   stage_installed_theme "$USER_THEMES_PATH/$THEME_NAME"
   report_ignored_theme_files
 else
+  if [[ -e $USER_THEMES_PATH/$THEME_NAME/hyprland.lua || -L $USER_THEMES_PATH/$THEME_NAME/hyprland.lua ]]; then
+    HYPRLAND_LUA_FROM_STOCK=0
+  fi
   cp -r "$USER_THEMES_PATH/$THEME_NAME/"* "$NEXT_THEME_PATH/" 2>/dev/null
 fi
 
@@ -280,8 +288,9 @@ if [[ ! -f $NEXT_THEME_PATH/colors.toml && -f $NEXT_THEME_PATH/alacritty.toml ]]
   omarchy-theme-colors-from-alacritty "$NEXT_THEME_PATH"
 fi
 
-# Generate dynamic configs
-omarchy-theme-set-templates
+# Generate dynamic configs. A declarative user overlay may extend bundled Lua,
+# while a trusted user-supplied hyprland.lua remains authoritative.
+OMARCHY_THEME_HYPRLAND_LUA_FROM_STOCK="$HYPRLAND_LUA_FROM_STOCK" omarchy-theme-set-templates
 
 OLD_BACKGROUND_SNAPSHOT=""
 if [[ $THEME_HEADLESS != "1" && $OMARCHY_THEME_SKIP_BACKGROUND != "1" ]]; then
