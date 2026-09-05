@@ -1,0 +1,173 @@
+#!/usr/bin/python3
+# omarchy:summary=Print the Hermes Agent usage record as JSON
+# omarchy:args=[--write]
+# omarchy:hidden=true
+"""Collect Hermes Agent usage into one display-ready JSON record.
+
+Everything the agents panel shows for Hermes comes from this one command:
+local session stats from ~/.hermes/state.db (sessions, session_model_usage,
+messages) and nothing else. It prints the same record contract as the
+packaged claude/codex collectors; with --write it updates the record file
+atomically instead, so a user systemd timer can keep the panel fresh --
+omarchy-agent-usage-update only discovers packaged collectors.
+
+Chat sessions that arrived over messaging gateways count too: Hermes treats
+them as first-class sessions and so does this record.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import sqlite3
+import sys
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
+
+DB_PATH = Path.home() / ".hermes" / "state.db"
+USAGE_DIR = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "omarchy/agents/usage"
+RECENT_DAYS = 7
+
+
+def day_bounds(day: datetime.date) -> tuple[float, float]:
+    start = datetime(day.year, day.month, day.day).astimezone()
+    return start.timestamp(), start.timestamp() + 86400
+
+
+def collect() -> dict:
+    now = datetime.now().astimezone()
+    record = {
+        "schemaVersion": 1,
+        "id": "hermes",
+        "name": "Hermes",
+        "updatedAt": now.isoformat(),
+        "ready": shutil.which("hermes") is not None,
+        "hasLocalStats": False,
+        "todayPrompts": 0,
+        "todaySessions": 0,
+        "todayTotalTokens": 0,
+        "todayTokensByModel": {},
+        "recentDays": [],
+        "totalPrompts": 0,
+        "totalSessions": 0,
+        "activeDays": 0,
+        "activeDates": [],
+        "modelUsage": {},
+        "limits": [],
+        "tierLabel": "",
+        "usageStatusText": "" if DB_PATH.exists() else "Hermes state not found",
+        "authHelpText": "",
+    }
+
+    if not DB_PATH.exists():
+        return record
+
+    try:
+        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    except sqlite3.Error:
+        record["usageStatusText"] = "Hermes state unreadable"
+        return record
+
+    try:
+        today_start, _ = day_bounds(now.date())
+        week_start, _ = day_bounds(now.date() - timedelta(days=RECENT_DAYS - 1))
+
+        record["hasLocalStats"] = True
+        record["totalSessions"] = conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        record["todaySessions"] = conn.execute(
+            "SELECT COUNT(*) FROM sessions WHERE started_at >= ?", (today_start,)
+        ).fetchone()[0]
+        record["totalPrompts"] = conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE role = 'user'"
+        ).fetchone()[0]
+        record["todayPrompts"] = conn.execute(
+            "SELECT COUNT(*) FROM messages WHERE role = 'user' AND timestamp >= ?", (today_start,)
+        ).fetchone()[0]
+
+        for model, tokens in conn.execute(
+            """SELECT smu.model,
+                      SUM(smu.input_tokens + smu.output_tokens
+                        + smu.cache_read_tokens + smu.cache_write_tokens)
+               FROM session_model_usage smu
+               JOIN sessions s ON s.id = smu.session_id
+               WHERE s.started_at >= ?
+               GROUP BY smu.model""",
+            (today_start,),
+        ):
+            if tokens:
+                record["todayTokensByModel"][model] = int(tokens)
+        record["todayTotalTokens"] = sum(record["todayTokensByModel"].values())
+
+        per_day = dict(
+            conn.execute(
+                """SELECT date(timestamp, 'unixepoch', 'localtime'), COUNT(*)
+                   FROM messages
+                   WHERE role = 'user' AND timestamp >= ?
+                   GROUP BY 1""",
+                (week_start,),
+            )
+        )
+        record["recentDays"] = [
+            {
+                "date": (now.date() - timedelta(days=offset)).isoformat(),
+                "messageCount": int(per_day.get((now.date() - timedelta(days=offset)).isoformat(), 0)),
+            }
+            for offset in range(RECENT_DAYS - 1, -1, -1)
+        ]
+
+        active_dates = [
+            row[0]
+            for row in conn.execute(
+                "SELECT DISTINCT date(started_at, 'unixepoch', 'localtime') FROM sessions ORDER BY 1"
+            )
+            if row[0]
+        ]
+        record["activeDays"] = len(active_dates)
+        record["activeDates"] = active_dates[-400:]
+
+        for model, inp, outp, cache_read, cache_write in conn.execute(
+            """SELECT model, SUM(input_tokens), SUM(output_tokens),
+                      SUM(cache_read_tokens), SUM(cache_write_tokens)
+               FROM session_model_usage GROUP BY model"""
+        ):
+            record["modelUsage"][model] = {
+                "inputTokens": int(inp or 0),
+                "outputTokens": int(outp or 0),
+                "cacheReadInputTokens": int(cache_read or 0),
+                "cacheCreationInputTokens": int(cache_write or 0),
+            }
+    except sqlite3.Error:
+        record["usageStatusText"] = "Hermes state unreadable"
+    finally:
+        conn.close()
+
+    return record
+
+
+def main() -> int:
+    record = collect()
+    payload = json.dumps(record, separators=(",", ":"))
+
+    if "--write" not in sys.argv[1:]:
+        print(payload)
+        return 0
+
+    USAGE_DIR.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".hermes.", dir=USAGE_DIR)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(payload + "\n")
+        os.replace(tmp, USAGE_DIR / "hermes.json")
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
