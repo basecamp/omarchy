@@ -65,6 +65,32 @@ grep -q 'SUPER + F  *→ Full screen' <<<"$rendered" ||
   fail "a chord with no alternative renders on its own" "$rendered"
 pass "the keybindings menu renders its entries"
 
+! grep -q 'Copy URL from Web App' <<<"$rendered" ||
+  fail "an unloaded Copy URL extension stays out of the keybindings menu" "$rendered"
+! grep -q 'Download Video from Web App' <<<"$rendered" ||
+  fail "an unloaded Download Video extension stays out of the keybindings menu" "$rendered"
+pass "unloaded Chromium extensions stay out of the keybindings menu"
+
+cat >"$home/.config/chromium-flags.conf" <<EOF
+--load-extension=$ROOT/default/chromium/extensions/copy-url,$ROOT/default/chromium/extensions/yt-dlp
+EOF
+
+rendered=$(keybindings)
+grep -q 'SHIFT ALT + L  *→ Copy URL from Web App' <<<"$rendered" ||
+  fail "an enabled Copy URL extension advertises its shortcut" "$rendered"
+grep -q 'SHIFT ALT + D  *→ Download Video from Web App' <<<"$rendered" ||
+  fail "an enabled Download Video extension advertises its shortcut" "$rendered"
+pass "enabled Chromium extensions advertise their shortcuts"
+
+sed -i 's|,.*yt-dlp||' "$home/.config/chromium-flags.conf"
+
+rendered=$(keybindings)
+grep -q 'Copy URL from Web App' <<<"$rendered" ||
+  fail "the enabled Copy URL shortcut remains after the flags change" "$rendered"
+! grep -q 'Download Video from Web App' <<<"$rendered" ||
+  fail "the keybindings cache follows the current Chromium extension flags" "$rendered"
+pass "Chromium extension changes invalidate the keybindings cache"
+
 (( $(grep -c '→ Close window$' <<<"$rendered") == 1 )) ||
   fail "an alternative chord joins the row of the first one" "$rendered"
 grep -q 'SUPER + W / SUPER + Q  *→ Close window' <<<"$rendered" ||

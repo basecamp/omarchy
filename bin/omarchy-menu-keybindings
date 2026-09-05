@@ -325,10 +325,36 @@ dynamic_bindings() {
     done
 }
 
-# Hardcoded bindings, like the copy-url extension and such
+# The browser shortcuts come from unpacked Chromium extensions rather than
+# Hyprland. Only advertise one when an installed Chromium-family browser is
+# configured to load the extension that owns it.
+chromium_extension_enabled() {
+  local extension="$1" flags_file
+
+  [[ -d $OMARCHY_PATH/default/chromium/extensions/$extension ]] || return 1
+
+  for flags_file in \
+    "$HOME/.config/chromium-flags.conf" \
+    "$HOME/.config/chrome-flags.conf" \
+    "$HOME/.config/brave-flags.conf" \
+    "$HOME/.config/brave-origin-flags.conf" \
+    "$HOME/.config/microsoft-edge-stable-flags.conf"; do
+    if [[ -f $flags_file ]] && grep -Eq "^[[:space:]]*--load-extension=.*[/]extensions/$extension([,[:space:]]|$)" "$flags_file"; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 static_bindings() {
-  echo "SHIFT ALT,L,Copy URL from Web App,sendshortcut,SHIFT ALT,L,"
-  echo "SHIFT ALT,D,Download Video from Web App,sendshortcut,SHIFT ALT,D,"
+  if chromium_extension_enabled copy-url; then
+    echo "SHIFT ALT,L,Copy URL from Web App,sendshortcut,SHIFT ALT,L,"
+  fi
+
+  if chromium_extension_enabled yt-dlp; then
+    echo "SHIFT ALT,D,Download Video from Web App,sendshortcut,SHIFT ALT,D,"
+  fi
 }
 
 # Actions Omarchy binds to a second chord meant as an alternative, named one at
@@ -530,7 +556,17 @@ output_binding_records_uncached() {
 
 keybindings_cache_key() {
   {
-    printf 'v13\n'
+    printf 'v14\n'
+    if chromium_extension_enabled copy-url; then
+      printf 'copy-url:on\n'
+    else
+      printf 'copy-url:off\n'
+    fi
+    if chromium_extension_enabled yt-dlp; then
+      printf 'yt-dlp:on\n'
+    else
+      printf 'yt-dlp:off\n'
+    fi
     hyprctl devices 2>/dev/null | grep -F 'active keymap:'
     hyprctl binds 2>/dev/null
   } | sha256sum | awk '{ print $1 }'
