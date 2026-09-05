@@ -16,6 +16,9 @@ require("default.hypr.omarchy")
 -- Put your personal overrides in these files. They're loaded after Omarchy's
 -- defaults so package updates can improve the defaults without rewriting your
 -- ~/.config/hypr files.
+-- Environment variables: optional ~/.config/hypr/envs.lua, loaded from
+-- default.hypr.envs after nvidia.lua. Do not require it here; a missing file
+-- would abort the rest of this config.
 require("hypr.monitors")
 require("hypr.input")
 require("hypr.bindings")

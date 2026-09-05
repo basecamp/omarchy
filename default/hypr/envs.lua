@@ -47,3 +47,7 @@ hl.config({
     no_update_news = true,
   },
 })
+
+-- Personal environment overrides. After the package defaults (including nvidia.lua)
+-- so user hl.env calls win. Optional: many installs have no ~/.config/hypr/envs.lua.
+require_optional.module("hypr.envs")
