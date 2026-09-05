@@ -47,6 +47,100 @@ function parseSinkAvailability(raw) {
   return next
 }
 
+function parseOutputProfiles(raw) {
+  try {
+    var parsed = JSON.parse(String(raw || "[]"))
+    if (!Array.isArray(parsed)) return []
+
+    var profiles = []
+    for (var i = 0; i < parsed.length; i++) {
+      var profile = parsed[i] || {}
+      var cardName = String(profile.cardName || "")
+      var profileName = String(profile.profileName || "")
+      if (!cardName || !profileName) continue
+      profiles.push({
+        cardName: cardName,
+        profileName: profileName,
+        label: friendlyDeviceLabel(profile.label || profile.description || profileName),
+        description: friendlyDeviceLabel(profile.description || "")
+      })
+    }
+    return profiles
+  } catch (error) {
+    return []
+  }
+}
+
+function outputProfileKey(cardName, profileName) {
+  return String(cardName || "") + "|" + String(profileName || "")
+}
+
+function outputProfileSinkName(cardName, profileName) {
+  cardName = String(cardName || "")
+  profileName = String(profileName || "")
+  if (cardName.indexOf("alsa_card.") !== 0 || profileName.indexOf("output:") !== 0) return ""
+  return "alsa_output." + cardName.slice(10) + "." + profileName.slice(7)
+}
+
+function sinkProfileKey(node) {
+  var p = nodeProps(node)
+  var cardName = p["device.name"] || ""
+  var profileName = p["device.profile.name"] || ""
+  if (!cardName || !profileName) return ""
+  if (String(profileName).indexOf("output:") !== 0) profileName = "output:" + profileName
+  return outputProfileKey(cardName, profileName)
+}
+
+function outputRows(sinks, profiles) {
+  var rows = []
+  var activeProfiles = {}
+  var profilesByKey = {}
+  var profilesBySinkName = {}
+  var sinkValues = Array.isArray(sinks) ? sinks : []
+  var profileValues = Array.isArray(profiles) ? profiles : []
+
+  for (var i = 0; i < profileValues.length; i++) {
+    var availableProfile = profileValues[i]
+    var availableKey = outputProfileKey(availableProfile.cardName, availableProfile.profileName)
+    var sinkName = outputProfileSinkName(availableProfile.cardName, availableProfile.profileName)
+    profilesByKey[availableKey] = availableProfile
+    if (sinkName) profilesBySinkName[sinkName] = availableProfile
+  }
+
+  for (var j = 0; j < sinkValues.length; j++) {
+    var node = sinkValues[j]
+    var activeKey = sinkProfileKey(node)
+    var profile = profilesBySinkName[String(node && node.name || "")] || profilesByKey[activeKey]
+    if (profile) activeKey = outputProfileKey(profile.cardName, profile.profileName)
+    if (activeKey) activeProfiles[activeKey] = true
+    rows.push({
+      kind: "sink",
+      node: node,
+      label: profile ? profile.label : "",
+      description: profile ? profile.description : ""
+    })
+  }
+
+  for (var k = 0; k < profileValues.length; k++) {
+    var inactiveProfile = profileValues[k]
+    var key = outputProfileKey(inactiveProfile.cardName, inactiveProfile.profileName)
+    if (!key || activeProfiles[key]) continue
+    rows.push({
+      kind: "profile",
+      cardName: inactiveProfile.cardName,
+      profileName: inactiveProfile.profileName,
+      label: inactiveProfile.label,
+      description: inactiveProfile.description
+    })
+  }
+
+  return rows.sort(function(a, b) {
+    var left = String(a && a.label || "")
+    var right = String(b && b.label || "")
+    return left < right ? -1 : left > right ? 1 : 0
+  })
+}
+
 function friendlyDeviceLabel(text) {
   var label = String(text || "").trim()
   label = label.replace(/^sof-soundwire\s+/i, "")
@@ -240,6 +334,11 @@ if (typeof module !== "undefined") {
     listSnapshot: listSnapshot,
     outputVolumeName: outputVolumeName,
     parseSinkAvailability: parseSinkAvailability,
+    parseOutputProfiles: parseOutputProfiles,
+    outputProfileKey: outputProfileKey,
+    outputProfileSinkName: outputProfileSinkName,
+    sinkProfileKey: sinkProfileKey,
+    outputRows: outputRows,
     friendlyDeviceLabel: friendlyDeviceLabel,
     nodeProps: nodeProps,
     nodeLabel: nodeLabel,

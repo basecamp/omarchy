@@ -1,0 +1,46 @@
+#!/bin/bash
+
+# omarchy:summary=Activate an audio card output profile and make its sink default
+# omarchy:args=<card-name> <profile-name>
+# omarchy:hidden=true
+
+set -euo pipefail
+
+card_name=${1:-}
+profile_name=${2:-}
+
+if [[ -z $card_name || -z $profile_name ]]; then
+  echo "Usage: omarchy-audio-output-set-profile <card-name> <profile-name>" >&2
+  exit 1
+fi
+
+cards=$(timeout 2 pactl -f json list cards 2>/dev/null)
+if ! jq -e --arg card "$card_name" --arg profile "$profile_name" '
+  any(.[];
+    .name == $card
+    and (.profiles[$profile].sinks // 0) > 0
+    and (.profiles[$profile].available // true) != false
+    and ($profile | startswith("output:")))
+' <<<"$cards" >/dev/null; then
+  echo "Audio output profile is unavailable: $card_name $profile_name" >&2
+  exit 1
+fi
+
+timeout 2 pactl set-card-profile "$card_name" "$profile_name"
+
+profile_device=${profile_name#output:}
+for _ in {1..20}; do
+  sink=$(timeout 2 pactl -f json list sinks 2>/dev/null | jq -c --arg card "$card_name" --arg profile "$profile_device" '
+    first(.[]
+      | select(.properties["device.name"] == $card)
+      | select(.properties["device.profile.name"] == $profile)) // empty
+  ')
+  if [[ -n $sink ]]; then
+    omarchy-audio-output-set-default "$(jq -r '.index' <<<"$sink")" "$(jq -r '.name' <<<"$sink")"
+    exit 0
+  fi
+  sleep 0.1
+done
+
+echo "Audio sink did not appear for profile: $card_name $profile_name" >&2
+exit 1

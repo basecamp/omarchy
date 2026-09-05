@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# omarchy:summary=List available audio output profiles for the shell
+# omarchy:hidden=true
+
+set -euo pipefail
+
+timeout 2 pactl -f json list cards 2>/dev/null | jq -c '
+  [ .[]
+    | . as $card
+    | (.ports // {} | to_entries[]) as $port
+    | select(($port.value.availability // "unknown") != "not available")
+    | [($port.value.profiles // [])[] as $profile_name
+        | ($card.profiles[$profile_name] // {}) as $profile
+        | select(($profile.sinks // 0) == 1)
+        | select(($profile.available // true) != false)
+        | select($profile_name | startswith("output:"))
+        | {
+            cardName: $card.name,
+            profileName: $profile_name,
+            label: ($port.value.properties["device.product.name"] // $port.value.description // $profile.description // $profile_name),
+            description: ($profile.description // $port.value.description // $profile_name),
+            priority: (($profile.priority // 0) + ($port.value.priority // 0))
+          }
+      ]
+    | select(length > 0)
+    | max_by(.priority)
+  ]
+  | unique_by(.cardName + "|" + .profileName)
+  | sort_by(-.priority)
+  | map(del(.priority))
+'
