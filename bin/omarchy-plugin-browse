@@ -1,0 +1,102 @@
+#!/bin/bash
+
+# omarchy:summary=Browse and install community shell plugins
+# omarchy:group=plugin
+
+set -euo pipefail
+
+catalog_url="https://plugins.omarchy.org/catalog.json"
+plugin_url="https://plugins.omarchy.org/plugin.html"
+preview_base_url="https://plugins.omarchy.org/"
+
+catalog=$(curl -fsSL --max-time 10 "$catalog_url" 2>/dev/null) || {
+  omarchy-notification-send "Could not load the Omarchy plugin marketplace"
+  exit 1
+}
+
+jq -e '.plugins | type == "array"' <<<"$catalog" >/dev/null || {
+  omarchy-notification-send "The Omarchy plugin marketplace returned invalid data"
+  exit 1
+}
+
+installed=$(omarchy-plugin-list --json 2>/dev/null || printf '[]')
+jq -e 'type == "array"' <<<"$installed" >/dev/null || installed='[]'
+
+plugins=$(jq -c --argjson installed "$installed" --arg preview_base_url "$preview_base_url" '
+  def preview_url:
+    if . == "" then ""
+    elif startswith("http://") or startswith("https://") then .
+    else $preview_base_url + .
+    end;
+
+  [.plugins[]
+   | select((.sourceType // "community") == "community")
+   | select((.id // "") != "")
+   | . as $plugin
+   | . + {
+       installed: ($installed | any(.id == $plugin.id)),
+       previewPath: ((.previewImage // .previewThumbnail // "") | preview_url),
+       previewImages: (
+         ([.previewImage // empty]
+          + ((.previewImages // .previews // .screenshots // [])
+             | map(if type == "string" then . else (.url // .src // .path // "") end)))
+         | map(select(type == "string" and length > 0) | preview_url)
+         | unique
+       )
+     }]
+' <<<"$catalog")
+
+if [[ $(jq 'length' <<<"$plugins") == "0" ]]; then
+  omarchy-notification-send "No community plugins are currently listed"
+  exit 0
+fi
+
+selection_file=$(mktemp)
+done_file=$(mktemp)
+catalog_file=$(mktemp)
+printf '%s' "$plugins" >"$catalog_file"
+rm -f "$done_file"
+trap 'rm -f "$selection_file" "$done_file" "$catalog_file"' EXIT
+
+payload=$(jq -cn --arg catalog_file "$catalog_file" --arg selection_file "$selection_file" --arg done_file "$done_file" '{catalogFile: $catalog_file, selectionFile: $selection_file, doneFile: $done_file}')
+omarchy-shell shell summon omarchy.plugin-marketplace "$payload" >/dev/null || {
+  omarchy-notification-send "Could not open the Omarchy plugin marketplace"
+  exit 1
+}
+
+while [[ ! -e $done_file ]]; do
+  sleep 0.05
+done
+
+[[ -s $selection_file ]] || exit 0
+selection=$(<"$selection_file")
+action=${selection%%$'\t'*}
+id=${selection#*$'\t'}
+if [[ $action == "$selection" ]]; then
+  action="view"
+  id=$selection
+fi
+[[ -n $id ]] || exit 1
+
+plugin=$(jq -cer --arg id "$id" '.plugins[] | select(.id == $id)' <<<"$catalog") || {
+  omarchy-notification-send "That plugin is no longer in the marketplace"
+  exit 1
+}
+
+repo=$(jq -r '.repo // empty' <<<"$plugin")
+install_available=$(jq -r '.installAvailable // false' <<<"$plugin")
+if jq -e --arg id "$id" 'any(.[]; .id == $id)' <<<"$installed" >/dev/null; then
+  installed_plugin=true
+else
+  installed_plugin=false
+fi
+
+if [[ $action == "remove" && $installed_plugin == "true" ]]; then
+  omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-remove $(printf '%q' "$id")"
+elif [[ $installed_plugin == "true" ]]; then
+  omarchy-launch-webapp "$plugin_url?id=$(jq -rn --arg id "$id" '$id | @uri')"
+elif [[ $install_available == "true" && -n $repo ]]; then
+  omarchy-launch-floating-terminal-with-presentation "omarchy-plugin-add $(printf '%q' "$repo")"
+else
+  omarchy-launch-webapp "$plugin_url?id=$(jq -rn --arg id "$id" '$id | @uri')"
+fi

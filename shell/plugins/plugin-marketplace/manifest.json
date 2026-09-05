@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy.plugin-marketplace",
+  "name": "Plugin marketplace",
+  "version": "1.0.0",
+  "author": "Omarchy",
+  "description": "Searchable community plugin marketplace with previews and metadata",
+  "kinds": ["overlay"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "PluginMarketplace.qml"
+  }
+}

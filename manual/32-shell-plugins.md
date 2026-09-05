@@ -29,6 +29,16 @@ Enabled state is stored in `~/.config/omarchy/shell.json`, and the rule differs 
 
 A full bar plugin has no off state at all. There's always exactly one bar, so you replace it by enabling another one. Bar widget placement is covered in [the top bar](05-the-top-bar.md).
 
+## Finding community plugins
+
+Browse the community marketplace from Omarchy:
+
+```
+omarchy plugin browse
+```
+
+The native picker marks plugins you already have. Selecting an installable plugin opens the normal add flow, including the trust warning and confirmation; listings that need manual setup open their marketplace page instead. The full catalog is also available at [omarchyplugins.com](https://omarchyplugins.com).
+
 ## Adding a plugin from git
 
 A third-party plugin is just a git repo with a `manifest.json` at its root.
