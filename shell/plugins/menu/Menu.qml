@@ -76,11 +76,20 @@ Item {
   property int providerRevision: 0
 
   // Shared application engine (entries, hidden filters, icons, launch,
-  // removal), owned by the shell and also used by the standalone launcher.
+  // removal and renaming), owned by the shell.
   readonly property var appLibrary: root.shell ? root.shell.appLibrary : null
   property bool deleteConfirmOpen: false
   property var deleteTarget: null
-  onOpenedChanged: if (!opened) { deleteConfirmOpen = false; deleteTarget = null }
+  property bool renameDialogOpen: false
+  property var renameTarget: null
+  property string renameName: ""
+  onOpenedChanged: if (!opened) {
+    deleteConfirmOpen = false
+    deleteTarget = null
+    renameDialogOpen = false
+    renameTarget = null
+    renameName = ""
+  }
   // Bound to the central [menu] section in shell.toml via Color.qml.
   // Each color already includes its alpha companion (composed in the
   // singleton), so consumers can drop them straight into a Rectangle.
@@ -812,6 +821,36 @@ Item {
     if (root.appLibrary) root.appLibrary.remove(target.appId, target.label)
   }
 
+  function requestRenameSelected() {
+    if (!root.cursorActive || root.selectedIndex < 0 || root.selectedIndex >= displayModel.count) return false
+    var row = displayModel.get(root.selectedIndex)
+    if (!row || row.kind !== "app") return false
+    root.renameTarget = { appId: row.appId, label: row.label }
+    root.renameName = row.label
+    root.renameDialogOpen = true
+    Qt.callLater(function() {
+      renameField.forceActiveFocus()
+      renameField.selectAll()
+    })
+    return true
+  }
+
+  function cancelRename() {
+    root.renameDialogOpen = false
+    root.renameTarget = null
+    root.renameName = ""
+    root.disarmPointer()
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function confirmRename() {
+    var target = root.renameTarget
+    var nextName = root.renameName.trim()
+    if (!target || !nextName) return
+    root.cancelRename()
+    if (root.appLibrary) root.appLibrary.rename(target.appId, nextName)
+  }
+
   function applyDmenuSelection(value) {
     applySerial = requestSerial
     opened = false
@@ -1116,7 +1155,7 @@ Item {
       Item {
         id: keyCatcher
         anchors.fill: parent
-        z: root.deleteConfirmOpen ? 20 : 0
+        z: root.deleteConfirmOpen || root.renameDialogOpen ? 20 : 0
         focus: true
 
         Keys.priority: Keys.BeforeItem
@@ -1126,8 +1165,14 @@ Item {
             return
           }
 
+          if (root.renameDialogOpen) return
+
           if (event.key === Qt.Key_Delete) {
             root.requestDeleteSelected()
+            event.accepted = true
+          } else if (event.key === Qt.Key_R
+                     && (event.modifiers & Qt.ControlModifier)
+                     && root.requestRenameSelected()) {
             event.accepted = true
           } else if (event.key === Qt.Key_Escape) {
             if (root.filterText) root.setFilter("")
@@ -1181,6 +1226,96 @@ Item {
           cornerRadius: root.cornerRadius
           onCanceled: root.cancelDelete()
           onConfirmed: root.confirmDelete()
+        }
+
+        Rectangle {
+          anchors.fill: parent
+          visible: root.renameDialogOpen
+          z: 10
+          color: root.scrim
+
+          MouseArea { anchors.fill: parent; onClicked: root.cancelRename() }
+
+          BorderSurface {
+            id: renameCard
+            width: Math.min(parent.width - Style.space(32), Style.space(370))
+            height: renameCard.contentTopInset + renameCard.contentBottomInset + renameContent.implicitHeight
+            anchors.centerIn: parent
+            color: root.background
+            borderSpec: Border.flat(root.selectedText, Style.normalBorderWidth)
+            padding: Style.space(18)
+            radius: root.cornerRadius
+
+            MouseArea { anchors.fill: parent; onClicked: {} }
+
+            Column {
+              id: renameContent
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.top: parent.top
+              anchors.leftMargin: parent.contentLeftInset
+              anchors.rightMargin: parent.contentRightInset
+              anchors.topMargin: parent.contentTopInset
+              spacing: Style.space(14)
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Rename " + ((root.renameTarget && root.renameTarget.label) || "application")
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.title
+                wrapMode: Text.WordWrap
+              }
+
+              TextField {
+                id: renameField
+                width: parent.width
+                text: root.renameName
+                placeholderText: "Application name"
+                foreground: root.foreground
+                accent: root.selectedText
+                onTextChanged: if (root.renameDialogOpen && text !== root.renameName) root.renameName = text
+                // Consume submit keys here. Otherwise the same Enter event
+                // reaches the menu key catcher after the dialog closes and
+                // launches the selected application.
+                Keys.onReturnPressed: function(event) {
+                  root.confirmRename()
+                  event.accepted = true
+                }
+                Keys.onEnterPressed: function(event) {
+                  root.confirmRename()
+                  event.accepted = true
+                }
+                Keys.onEscapePressed: function(event) {
+                  root.cancelRename()
+                  event.accepted = true
+                }
+              }
+
+              Row {
+                anchors.right: parent.right
+                spacing: Style.space(10)
+
+                Button {
+                  text: "Cancel"
+                  bordered: true
+                  foreground: root.foreground
+                  accent: root.selectedText
+                  onClicked: root.cancelRename()
+                }
+
+                Button {
+                  text: "Rename"
+                  bordered: true
+                  enabled: root.renameName.trim().length > 0
+                  foreground: root.foreground
+                  accent: root.selectedText
+                  onClicked: root.confirmRename()
+                }
+              }
+            }
+          }
         }
       }
 

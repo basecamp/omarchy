@@ -38,8 +38,11 @@ chmod +x "$tmp_dir/bin/update-desktop-database"
 
 cat >"$tmp_dir/bin/pacman" <<'SCRIPT'
 #!/bin/bash
-if [[ $1 == "-Qqo" && $2 == */native.desktop ]]; then
-  printf 'native-pkg\n'
+if [[ $1 == "-Qqo" ]]; then
+  case "$2" in
+    */native.desktop) printf 'native-pkg\n' ;;
+    */renamed.desktop) printf 'renamed-pkg\n' ;;
+  esac
 fi
 SCRIPT
 chmod +x "$tmp_dir/bin/pacman"
@@ -62,6 +65,19 @@ Name=Native
 Exec=native
 DESKTOP
 
+cat >"$tmp_dir/system/applications/renamed.desktop" <<'DESKTOP'
+[Desktop Entry]
+Name=Original
+Exec=renamed
+DESKTOP
+
+cat >"$tmp_dir/data/applications/renamed.desktop" <<'DESKTOP'
+[Desktop Entry]
+X-Omarchy-Renamed=true
+Name=Custom Name
+Exec=renamed
+DESKTOP
+
 cat >"$tmp_dir/data/applications/aliens.desktop" <<'DESKTOP'
 [Desktop Entry]
 Name=Aliens
@@ -77,6 +93,7 @@ export XDG_DATA_DIRS="$tmp_dir/system"
 "$ROOT/bin/omarchy-remove-launcher-entry" Docker.desktop Docker
 "$ROOT/bin/omarchy-remove-launcher-entry" native.desktop Native
 "$ROOT/bin/omarchy-remove-launcher-entry" aliens.desktop Aliens
+"$ROOT/bin/omarchy-remove-launcher-entry" renamed.desktop 'Custom Name'
 
 mapfile -t lines <"$TEST_LOG"
 
@@ -92,5 +109,8 @@ pass "launcher remove opens package uninstall flow"
 [[ ! -e $tmp_dir/data/applications/aliens.desktop ]] || fail "launcher remove deletes user-owned desktop files"
 pass "launcher remove deletes user-owned desktop files"
 
-(( ${#lines[@]} == 3 )) || fail "launcher remove does not notify for user-owned desktop files" "$(printf '%s\n' "${lines[@]}")"
+[[ ${lines[3]} == "terminal::echo Uninstalling Custom\\ Name...; sudo pacman -Rns renamed-pkg && rm -f -- $tmp_dir/data/applications/renamed.desktop && update-desktop-database $tmp_dir/data/applications" ]] || fail "launcher remove uninstalls through a managed rename override" "${lines[3]}"
+pass "launcher remove uninstalls through a managed rename override"
+
+(( ${#lines[@]} == 4 )) || fail "launcher remove does not notify for user-owned desktop files" "$(printf '%s\n' "${lines[@]}")"
 pass "launcher remove does not notify for user-owned desktop files"

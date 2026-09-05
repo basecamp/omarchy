@@ -6,7 +6,7 @@ import qs.Commons
 import "AppSearch.js" as AppSearch
 
 // Shared desktop-application library: the sorted entry list with hidden-entry
-// filtering, the icon fallback index, launch feedback, and entry removal.
+// filtering, the icon fallback index, launch feedback, and entry management.
 // Injected as shell.appLibrary; the menu's Apps submenu is the consumer.
 Item {
   id: root
@@ -89,6 +89,13 @@ Item {
     var id = String(desktopId || "")
     if (!id) return
     Util.execDetached(Util.shellQuote(root.omarchyPath + "/bin/omarchy-remove-launcher-entry") + " " + Util.shellQuote(id) + " " + Util.shellQuote(String(name || id)))
+  }
+
+  function rename(desktopId, name) {
+    var id = String(desktopId || "")
+    var nextName = String(name || "").trim()
+    if (!id || !nextName) return
+    Util.execDetached(Util.shellQuote(root.omarchyPath + "/bin/omarchy-rename-launcher-entry") + " " + Util.shellQuote(id) + " " + Util.shellQuote(nextName))
   }
 
   function normalizeDesktopId(id) {

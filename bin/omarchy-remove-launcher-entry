@@ -39,9 +39,14 @@ else
 fi
 
 desktop_file=""
+rename_override=""
 for dir in "${desktop_dirs[@]}"; do
   candidate="$dir/$desktop_file_name"
   if [[ -f $candidate ]]; then
+    if [[ $dir == "${user_desktop_dirs[0]}" ]] && grep -Fxq 'X-Omarchy-Renamed=true' "$candidate"; then
+      rename_override="$candidate"
+      continue
+    fi
     desktop_file="$candidate"
     break
   fi
@@ -88,13 +93,25 @@ if package_name="$(pacman -Qqo "$desktop_file" 2>/dev/null | head -1)" && [[ -n 
   display_name="${entry_name:-$desktop_name}"
   quoted_package="$(printf '%q' "$package_name")"
   quoted_display="$(printf '%q' "$display_name")"
-  exec omarchy-launch-floating-terminal-with-presentation "echo Uninstalling $quoted_display...; sudo pacman -Rns $quoted_package"
+  command="echo Uninstalling $quoted_display...; sudo pacman -Rns $quoted_package"
+  if [[ -n $rename_override ]]; then
+    quoted_override="$(printf '%q' "$rename_override")"
+    quoted_applications_dir="$(printf '%q' "${rename_override%/*}")"
+    command+=" && rm -f -- $quoted_override && update-desktop-database $quoted_applications_dir"
+  fi
+  exec omarchy-launch-floating-terminal-with-presentation "$command"
 fi
 
 if omarchy-cmd-present flatpak && flatpak info "${desktop_file_name%.desktop}" >/dev/null 2>&1; then
   flatpak_id="${desktop_file_name%.desktop}"
   quoted_flatpak="$(printf '%q' "$flatpak_id")"
-  exec omarchy-launch-floating-terminal-with-presentation "flatpak uninstall $quoted_flatpak"
+  command="flatpak uninstall $quoted_flatpak"
+  if [[ -n $rename_override ]]; then
+    quoted_override="$(printf '%q' "$rename_override")"
+    quoted_applications_dir="$(printf '%q' "${rename_override%/*}")"
+    command+=" && rm -f -- $quoted_override && update-desktop-database $quoted_applications_dir"
+  fi
+  exec omarchy-launch-floating-terminal-with-presentation "$command"
 fi
 
 echo "Don't know how to uninstall $desktop_file_name" >&2
