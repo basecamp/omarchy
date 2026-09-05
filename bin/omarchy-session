@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# omarchy:summary=Save and restore desktop applications after login
+# omarchy:args=<watch|save|restore|status>
+# omarchy:examples=omarchy session status | omarchy session restore
+
+set -euo pipefail
+
+state_home=${XDG_STATE_HOME:-$HOME/.local/state}
+state_dir="$state_home/omarchy/session"
+state_file="$state_dir/last.json"
+
+usage() {
+  echo "Usage: omarchy session <watch|save|restore|status>"
+}
+
+desktop_id_for_class() {
+  local class="$1" file
+  [[ -n $class ]] || return 1
+  while IFS= read -r -d '' file; do
+    if grep -Eiq "^StartupWMClass=${class//./\\.}$" "$file"; then
+      basename "$file"
+      return 0
+    fi
+  done < <(find "$HOME/.local/share/applications" /usr/local/share/applications /usr/share/applications -type f -name '*.desktop' -print0 2>/dev/null)
+  return 1
+}
+
+save() {
+  local clients tmp client class desktop
+  clients=$(hyprctl -j clients 2>/dev/null) || return 0
+  jq -e 'type == "array"' >/dev/null <<<"$clients" || return 0
+  mkdir -p "$state_dir"
+  tmp=$(mktemp "$state_dir/.last.XXXXXX")
+  printf '{"schema":1,"saved_at":"%s","clients":[' "$(date --iso-8601=seconds)" >"$tmp"
+  local first=true
+  while IFS= read -r client; do
+    class=$(jq -r '.initialClass // .class // ""' <<<"$client")
+    [[ -n $class && $class != "org.quickshell" && $class != "quickshell" ]] || continue
+    desktop=$(desktop_id_for_class "$class" || true)
+    client=$(jq --arg desktop "$desktop" 'del(.address, .pid, .mapped, .hidden, .grouped, .tags, .swallowing, .focusHistoryID) | .desktop_id = $desktop' <<<"$client")
+    if $first; then first=false; else printf ',' >>"$tmp"; fi
+    printf '%s' "$client" >>"$tmp"
+  done < <(jq -c '.[]' <<<"$clients")
+  printf ']}' >>"$tmp"
+  jq -e . "$tmp" >/dev/null && mv "$tmp" "$state_file" || rm -f "$tmp"
+}
+
+restore() {
+  [[ -f $state_file ]] || return 0
+  jq -e '.schema == 1 and (.clients | type == "array")' "$state_file" >/dev/null || return 0
+  local record desktop workspace floating fullscreen x y width height initial_class address before candidate attempt
+  while IFS= read -r record; do
+    desktop=$(jq -r '.desktop_id // empty' <<<"$record")
+    [[ -n $desktop && -f "/usr/share/applications/$desktop" || -f "$HOME/.local/share/applications/$desktop" ]] || continue
+    initial_class=$(jq -r '.initialClass // .class // empty' <<<"$record")
+    before=$(hyprctl -j clients 2>/dev/null | jq -r '.[].address' 2>/dev/null || true)
+    gtk-launch "${desktop%.desktop}" >/dev/null 2>&1 || continue
+    workspace=$(jq -r '.workspace.id // empty' <<<"$record")
+    floating=$(jq -r '.floating // false' <<<"$record")
+    fullscreen=$(jq -r '.fullscreen // false' <<<"$record")
+    x=$(jq -r '.at[0] // empty' <<<"$record"); y=$(jq -r '.at[1] // empty' <<<"$record")
+    width=$(jq -r '.size[0] // empty' <<<"$record"); height=$(jq -r '.size[1] // empty' <<<"$record")
+    address=""
+    for attempt in {1..40}; do
+      candidate=$(hyprctl -j clients 2>/dev/null | jq -r --arg class "$initial_class" --argjson before "$(jq -Rsc 'split("\n") | map(select(length > 0))' <<<"$before")" '.[] | select((.initialClass // .class) == $class and (.address as $a | $before | index($a) | not)) | .address' 2>/dev/null | head -1)
+      [[ -n $candidate ]] && { address=$candidate; break; }
+      sleep 0.25
+    done
+    [[ -n $address ]] || continue
+    [[ -n $workspace ]] && hyprctl dispatch movetoworkspacesilent "$workspace,address:$address" >/dev/null 2>&1 || true
+    if [[ $floating == true ]]; then
+      hyprctl dispatch togglefloating "address:$address" >/dev/null 2>&1 || true
+      [[ -n $width && -n $height ]] && hyprctl dispatch resizewindowpixel "exact $width $height,address:$address" >/dev/null 2>&1 || true
+      [[ -n $x && -n $y ]] && hyprctl dispatch movewindowpixel "exact $x $y,address:$address" >/dev/null 2>&1 || true
+    fi
+    [[ $fullscreen == true ]] && hyprctl dispatch fullscreen "1,address:$address" >/dev/null 2>&1 || true
+  done < <(jq -c '.clients[]' "$state_file")
+}
+
+case ${1:-} in
+  save) save ;;
+  restore) restore ;;
+  watch)
+    restore
+    while :; do save; sleep 10; done
+    ;;
+  status)
+    [[ -f $state_file ]] && jq '{saved_at, clients: [.clients[] | {desktop_id, class, workspace, floating}]}' "$state_file" || echo 'No saved session.'
+    ;;
+  *) usage; exit 1 ;;
+esac

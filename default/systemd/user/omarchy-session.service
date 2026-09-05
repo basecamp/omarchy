@@ -1,0 +1,15 @@
+[Unit]
+Description=Save and restore Omarchy desktop applications
+After=graphical-session.target
+PartOf=graphical-session.target
+ConditionEnvironment=WAYLAND_DISPLAY
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/omarchy-session watch
+ExecStop=/usr/bin/omarchy-session save
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target
