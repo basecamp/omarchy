@@ -61,6 +61,15 @@ printf '\t%s' "$@" >>"$TEST_LOG"
 printf '\n' >>"$TEST_LOG"
 SH
 
+# Stubbed rather than run: the real one would hit pacman.
+cat >"$stub_bin/omarchy-pkg-add" <<'SH'
+#!/bin/bash
+
+printf 'omarchy-pkg-add' >>"$TEST_LOG"
+printf '\t%s' "$@" >>"$TEST_LOG"
+printf '\n' >>"$TEST_LOG"
+SH
+
 chmod +x "$stub_bin"/*
 
 # The leaf reads the vendor from an absolute path, so point it at a fixture by
@@ -71,6 +80,7 @@ run_leaf() {
   rm -rf "$test_tmp/etc"
   mkdir -p "$test_tmp/etc"
   printf '%s' "$vendor" >"$test_tmp/dmi/sys_vendor"
+  : >"$calls"
 
   # Redirect both absolute paths the leaf touches into the sandbox.
   local script="$test_tmp/leaf.sh"
@@ -78,7 +88,7 @@ run_leaf() {
       -e "s|/etc/modprobe.d|$test_tmp/etc/modprobe.d|g" \
       "$leaf" >"$script"
 
-  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" PATH="$stub_bin:$PATH" \
+  WIFI_ID="$wifi_id" T2_HARDWARE="$t2" PATH="$stub_bin:$PATH" TEST_LOG="$calls" \
     bash -eE -o pipefail -c 'source "$1"' bash "$script" </dev/null
 }
 
@@ -87,15 +97,19 @@ run_leaf() {
 run_leaf "Apple Inc." 4488 1 >/dev/null
 grep -q 'feature_disable=0x82000' "$conf" 2>/dev/null ||
   fail "a T2 Mac still gets the quirk" "$(ls -R "$test_tmp/etc" 2>&1)"
-pass "a T2 Mac still gets the quirk"
+grep -Fq $'omarchy-pkg-add\tapple-bcm-firmware' "$calls" ||
+  fail "a T2 Mac still gets the firmware package" "$(cat "$calls")"
+pass "a T2 Mac still gets the quirk and the firmware package"
 
 # Every Broadcom part brcmfmac drives, on a Mac with no T2 to detect: BCM43602
 # and its single-band variants, BCM4350, BCM4355, BCM4364, BCM4378, BCM4387.
 for wifi_id in 43ba 43bb 43bc 43a3 43dc 4464 4425 4433; do
   run_leaf "Apple Inc." "$wifi_id" 0 >/dev/null
   [[ -f $conf ]] || fail "a Mac without a T2 gets the quirk" "14e4:$wifi_id"
+  grep -Fq $'omarchy-pkg-add\tapple-bcm-firmware' "$calls" ||
+    fail "a Mac without a T2 gets the firmware package" "14e4:$wifi_id"
 done
-pass "every brcmfmac part on a Mac without a T2 gets the quirk"
+pass "every brcmfmac part on a Mac without a T2 gets the quirk and the firmware package"
 
 # Older Macs report the vendor differently.
 run_leaf "Apple Computer, Inc." 43ba 0 >/dev/null
@@ -103,18 +117,22 @@ run_leaf "Apple Computer, Inc." 43ba 0 >/dev/null
 pass "the older Apple vendor string is recognized"
 
 # BCM4360 Macs run the out-of-tree wl driver, which never reads this option, so
-# writing it would only look like the machine had been dealt with.
+# writing it would only look like the machine had been dealt with -- and it
+# never shipped Apple NVRAM through this package either.
 run_leaf "Apple Inc." 43a0 0 >/dev/null
 [[ ! -f $conf ]] || fail "a Mac whose Wi-Fi brcmfmac does not drive is left alone"
+[[ ! -s $calls ]] || fail "a Mac whose Wi-Fi brcmfmac does not drive gets no firmware package" "$(cat "$calls")"
 pass "a Mac whose Wi-Fi brcmfmac does not drive is left alone"
 
 # Plenty of non-Apple hardware uses brcmfmac and does not share this bug.
 run_leaf "LENOVO" 43ba 0 >/dev/null
 [[ ! -f $conf ]] || fail "non-Apple hardware is left alone"
+[[ ! -s $calls ]] || fail "non-Apple hardware gets no firmware package" "$(cat "$calls")"
 pass "non-Apple hardware is left alone"
 
 run_leaf "Apple Inc." "" 0 >/dev/null
 [[ ! -f $conf ]] || fail "a Mac with no wireless device is left alone"
+[[ ! -s $calls ]] || fail "a Mac with no wireless device gets no firmware package" "$(cat "$calls")"
 pass "a Mac with no wireless device is left alone"
 
 # Installs that predate the quirk never ran the leaf, so the migration has to
