@@ -1,10 +1,23 @@
 #!/bin/bash
 
-# omarchy:summary=Returns true if any of the named packages are missing from the system (or false if they're all there).
+# omarchy:summary=Returns true if any of the named packages or groups are missing from the system (or false if they're all there).
 # omarchy:args=<packages...>
 
 for pkg in "$@"; do
-  if ! pacman -Q "$pkg" &>/dev/null; then
+  if pacman -Q "$pkg" &>/dev/null; then
+    continue
+  fi
+
+  # `pacman -Q` only recognizes package records; groups need a sync query.
+  group_packages=$(pacman -Sgq "$pkg" 2>/dev/null)
+  if [[ -n $group_packages ]]; then
+    # Treat a group as present only when every member is installed.
+    while read -r group_pkg; do
+      if ! pacman -Q "$group_pkg" &>/dev/null; then
+        exit 0
+      fi
+    done <<< "$group_packages"
+  else
     exit 0
   fi
 done
