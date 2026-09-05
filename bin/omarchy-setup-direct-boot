@@ -38,10 +38,19 @@ if [[ -n $existing_entry ]]; then
 
   exit 0
 else
-  uki_file=$(sudo find /boot/EFI/Linux/ -name "omarchy*.efi" -printf "%f\n" 2>/dev/null | head -1)
+  # Keep the kernel that is running successfully, including hardware-specific
+  # kernels. Directory order can otherwise silently select stock linux.
+  kernel=$(cat "/usr/lib/modules/$(uname -r)/pkgbase" 2>/dev/null)
 
-  if [[ -z $uki_file ]]; then
-    echo "Error: No Omarchy UKI found in /boot/EFI/Linux/" >&2
+  if [[ -z $kernel ]]; then
+    echo "Error: Cannot identify the running kernel package. Reboot into an installed kernel and try again." >&2
+    exit 1
+  fi
+
+  uki_file="omarchy_${kernel}.efi"
+
+  if ! sudo test -f "/boot/EFI/Linux/$uki_file"; then
+    echo "Error: No Omarchy UKI found for the running kernel ($kernel)." >&2
     exit 1
   fi
 
@@ -49,7 +58,7 @@ else
   disk=$(echo "$boot_source" | sed 's/p\?[0-9]*$//')
   part=$(echo "$boot_source" | grep -o 'p\?[0-9]*$' | sed 's/^p//')
 
-  if gum confirm "Setup direct boot (so snapshot booting must be done via bios)?"; then
+  if gum confirm "Setup direct boot with $kernel (snapshots require BIOS)?"; then
     echo "Creating EFI boot entry for $uki_file"
 
     sudo efibootmgr --create \
