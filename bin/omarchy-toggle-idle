@@ -5,11 +5,23 @@
 # omarchy:args=[toggle|stay-awake|allow-idle|status]
 # omarchy:examples=omarchy toggle idle | omarchy toggle idle stay-awake | omarchy-toggle-idle --status
 
+set -euo pipefail
+
 STATE_DIR="$HOME/.local/state/omarchy/indicators"
 STATE_FILE="$STATE_DIR/stay-awake"
 
 stay_awake_enabled() {
-  [[ -f $STATE_FILE ]]
+  [[ -f $STATE_FILE && ! -L $STATE_FILE ]] || return 1
+  [[ ! -s $STATE_FILE ]] && return 0
+
+  local deadline now size
+  size=$(stat -c %s -- "$STATE_FILE") || return 1
+  (( size <= 28 )) || return 1
+  deadline=$(head -c 64 -- "$STATE_FILE") || return 1
+  [[ $deadline =~ ^[0-9]{1,10}:[0-9]{1,5}:[0-9]{1,5}$ ]] && return 0
+  [[ $deadline =~ ^[0-9]{1,16}$ ]] || return 1
+  now=$(date +%s%3N)
+  (( 10#$deadline > now && 10#$deadline <= now + 86400000 ))
 }
 
 print_status() {
@@ -31,8 +43,10 @@ print_idle_state() {
 apply_state() {
   case "$1" in
     stay-awake)
-      mkdir -p "$STATE_DIR"
-      : > "$STATE_FILE"
+      mkdir -p -- "$STATE_DIR"
+      temporary=$(mktemp "$STATE_DIR/.stay-awake.XXXXXX")
+      trap 'rm -f -- "$temporary"' EXIT
+      mv -fT -- "$temporary" "$STATE_FILE"
       ;;
     allow-idle)
       rm -f "$STATE_FILE"

@@ -27,10 +27,10 @@ Item {
 
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
-  property bool hasPendingStayAwakePersist: false
   property var pendingStayAwakePersist: null
   property double stayAwakeUntil: 0
   property int stayAwakeRevision: 0
+  property bool stayAwakeProbePending: false
   property bool idledThisCycle: false
   property bool screensaverStartedThisCycle: false
   property string lastEvent: "starting"
@@ -210,22 +210,31 @@ Item {
   }
 
   function persistStayAwake(value, until) {
-    var command = value
-      ? "mkdir -p \"$HOME/.local/state/omarchy/indicators\" && printf '%s' '" + (until > 0 ? String(until) : "") + "' > \"$HOME/.local/state/omarchy/indicators/stay-awake\""
-      : "rm -f \"$HOME/.local/state/omarchy/indicators/stay-awake\""
-
     if (stayAwakeStateWriter.running) {
-      root.pendingStayAwakePersist = { value: !!value, until: until }
-      root.hasPendingStayAwakePersist = true
+      root.pendingStayAwakePersist = { value: value, until: until }
       return
     }
 
-    stayAwakeStateWriter.command = ["bash", "-lc", command]
+    // Rename a complete file into place. Readers must never see a timed write as
+    // an empty (indefinite) file, and a symlink must not redirect a truncation.
+    stayAwakeStateWriter.command = value ? ["bash", "-c", `
+      set -euo pipefail
+      mkdir -p -- "$1"
+      temporary=$(mktemp "$1/.stay-awake.XXXXXX")
+      trap 'rm -f -- "$temporary"' EXIT
+      printf '%s' "$2" > "$temporary"
+      mv -fT -- "$temporary" "$1/stay-awake"
+    `, "--", root.stayAwakeStateDir, until > 0 ? String(until) : ""]
+      : ["rm", "-f", "--", root.stayAwakeStatePath]
     stayAwakeStateWriter.running = true
   }
 
   function refreshStayAwakeState() {
-    if (!stayAwakeStateWriter.running && !stayAwakeStateProbe.running) stayAwakeStateProbe.running = true
+    root.stayAwakeProbePending = true
+    if (stayAwakeStateWriter.running || stayAwakeStateProbe.running) return
+    root.stayAwakeProbePending = false
+    stayAwakeStateProbe.revision = root.stayAwakeRevision
+    stayAwakeStateProbe.running = true
   }
 
   function applyStayAwake(value, persist, reason, until) {
@@ -255,9 +264,9 @@ Item {
   }
 
   function stayAwakeFor(seconds) {
-    var duration = Number(seconds)
-    if (!isFinite(duration) || duration <= 0) return "invalid duration"
-    return applyStayAwake(true, true, "timed", Date.now() + Math.ceil(duration * 1000))
+    var until = IdleModel.stayAwakeDeadline(seconds, Date.now())
+    if (!until) return "invalid duration"
+    return applyStayAwake(true, true, "timed", until)
   }
 
   // Check the saved wall-clock deadline so suspend does not extend the session.
@@ -266,7 +275,7 @@ Item {
     repeat: true
     running: root.stayAwake && root.stayAwakeUntil > 0
     onTriggered: {
-      if (Date.now() >= root.stayAwakeUntil) root.setIdleEnabled(true)
+      if (Date.now() >= root.stayAwakeUntil) root.applyStayAwake(false, false, "expired")
     }
   }
 
@@ -324,48 +333,51 @@ Item {
   Process {
     id: stayAwakeStateProbe
     property int revision: 0
-    onRunningChanged: if (running) revision = root.stayAwakeRevision
-    command: ["bash", "-c", "mkdir -p \"$HOME/.local/state/omarchy/indicators\"; if [[ -f $HOME/.local/state/omarchy/indicators/stay-awake ]]; then printf 'yes:'; cat \"$HOME/.local/state/omarchy/indicators/stay-awake\"; echo; else echo no; fi"]
-    stdout: SplitParser {
-      onRead: function(line) {
-        // A probe started before a newer choice must not replace it.
-        if (stayAwakeStateProbe.revision !== root.stayAwakeRevision || stayAwakeStateWriter.running || root.hasPendingStayAwakePersist) return
-        var state = IdleModel.stayAwakeState(String(line).trim(), Date.now())
-        root.applyStayAwake(state.enabled, state.expired, "state-file", state.until)
+    command: ["bash", "-c", `
+      mkdir -p -- "$1" || exit
+      if [[ ! -e $1/stay-awake && ! -L $1/stay-awake ]]; then
+        printf no
+      elif [[ -f $1/stay-awake && ! -L $1/stay-awake ]]; then
+        printf 'yes:'
+        head -c 64 -- "$1/stay-awake"
+      else
+        exit 1
+      fi
+    `, "--", root.stayAwakeStateDir]
+    stdout: StdioCollector { id: stayAwakeStateOutput; waitForEnd: true }
+    onExited: function(exitCode) {
+      // A probe started before a newer choice must not replace it.
+      if (revision === root.stayAwakeRevision && !stayAwakeStateWriter.running && !root.pendingStayAwakePersist) {
+        var state = IdleModel.stayAwakeState(exitCode === 0 ? stayAwakeStateOutput.text : "no", Date.now())
+        root.applyStayAwake(state.enabled, false, "state-file", state.until)
+        if (exitCode !== 0) root.logEvent("state-read-failed", exitCode)
       }
-    }
-    onExited: function() {
-      stayAwakeStateDirWatcher.reload()
       stayAwakeStateWatcher.reload()
-      if (revision !== root.stayAwakeRevision) root.refreshStayAwakeState()
+      if (root.stayAwakeProbePending || revision !== root.stayAwakeRevision) root.refreshStayAwakeState()
     }
   }
 
   Process {
     id: stayAwakeStateWriter
-    onExited: function() {
-      if (root.hasPendingStayAwakePersist) {
+    onExited: function(exitCode) {
+      if (root.pendingStayAwakePersist) {
         var pending = root.pendingStayAwakePersist
-        root.hasPendingStayAwakePersist = false
+        root.pendingStayAwakePersist = null
         root.persistStayAwake(pending.value, pending.until)
-        return
+      } else {
+        if (exitCode !== 0) {
+          root.logEvent("state-write-failed", exitCode)
+          Quickshell.execDetached(["omarchy-notification-send", "Stay Awake could not be saved", "Your change was not saved. Please try again."])
+        }
+        root.refreshStayAwakeState()
       }
-
-      root.refreshStayAwakeState()
     }
-  }
-
-  FileView {
-    id: stayAwakeStateDirWatcher
-    path: root.stayAwakeStateDir
-    watchChanges: true
-    printErrors: false
-    onFileChanged: root.refreshStayAwakeState()
   }
 
   FileView {
     id: stayAwakeStateWatcher
     path: root.stayAwakeStatePath
+    preload: false
     watchChanges: true
     printErrors: false
     onFileChanged: root.refreshStayAwakeState()

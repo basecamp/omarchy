@@ -1,11 +1,23 @@
-// Empty legacy state files mean indefinitely; timed files contain a Unix deadline in milliseconds.
-function stayAwakeState(line, now) {
-  if (line.indexOf("yes:") !== 0) return { enabled: false, until: 0, expired: false }
-  var value = line.slice(4)
+// Empty legacy files mean indefinitely. A timed file contains its deadline in milliseconds.
+var maxStayAwakeSeconds = 24 * 60 * 60
+
+function stayAwakeDeadline(seconds, now) {
+  var duration = Number(seconds)
+  if (!Number.isInteger(duration) || duration <= 0 || duration > maxStayAwakeSeconds) return 0
+  return now + duration * 1000
+}
+
+function stayAwakeState(raw, now) {
+  var disabled = { enabled: false, until: 0 }
+  if (raw === "yes:") return { enabled: true, until: 0 }
+  if (raw.indexOf("yes:") !== 0 || raw.length > 32) return disabled
+
+  var value = raw.slice(4).replace(/\n+$/, "")
+  if (/^[0-9]{1,10}:[0-9]{1,5}:[0-9]{1,5}$/.test(value)) return { enabled: true, until: 0 }
   var until = Number(value)
-  if (value === "") return { enabled: true, until: 0, expired: false }
-  if (!isFinite(until) || until <= now) return { enabled: false, until: 0, expired: true }
-  return { enabled: true, until: until, expired: false }
+  if (!/^[0-9]{1,16}$/.test(value) || !Number.isSafeInteger(until)) return disabled
+  if (until <= now || until > now + maxStayAwakeSeconds * 1000) return disabled
+  return { enabled: true, until: until }
 }
 
 function secondsFromConfig(value, fallback) {
@@ -56,6 +68,7 @@ function screensaverWindowsAfter(windows, address, visible) {
 if (typeof module !== "undefined") {
   module.exports = {
     stayAwakeState: stayAwakeState,
+    stayAwakeDeadline: stayAwakeDeadline,
     secondsFromConfig: secondsFromConfig,
     eventParts: eventParts,
     screensaverWindowsAfter: screensaverWindowsAfter
