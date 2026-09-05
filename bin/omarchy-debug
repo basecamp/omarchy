@@ -28,16 +28,26 @@ done
 
 LOG_FILE="/tmp/omarchy-debug.log"
 
+redact_network() {
+  sed -E \
+    -e 's/\b([0-9a-f]{2}:){5}[0-9a-f]{2}\b/<mac>/gi' \
+    -e 's/\b[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\b/<ip>/g'
+}
+
 if [[ $NO_SUDO = "true" ]]; then
   DMESG_OUTPUT="(skipped - --no-sudo flag used)"
 else
-  DMESG_OUTPUT="$(sudo dmesg)"
+  DMESG_OUTPUT="$(sudo dmesg | grep -v '\[UFW BLOCK\]' | redact_network)"
 fi
 
 cat > "$LOG_FILE" <<EOF
 Date: $(date)
 Hostname: $(hostname)
 Omarchy Package: $(pacman -Q omarchy-dev 2>/dev/null || pacman -Q omarchy 2>/dev/null || echo "unknown")
+
+Note: [UFW BLOCK] lines, MAC addresses, and IPv4 addresses in the logs below
+have been redacted. The hostname, package list, and other system details may
+still identify this machine; review this file before sharing it publicly.
 
 =========================================
 SYSTEM INFORMATION
@@ -52,7 +62,7 @@ $DMESG_OUTPUT
 =========================================
 JOURNALCTL (CURRENT BOOT, WARNINGS+ERRORS)
 =========================================
-$(journalctl -b -p 4..1)
+$(journalctl -b -p 4..1 | redact_network)
 
 =========================================
 INSTALLED PACKAGES
