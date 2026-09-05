@@ -1,0 +1,109 @@
+# Resolve PCI by-path entries in AQ_DRM_DEVICES to real DRM nodes.
+# Aquamarine splits this variable on ':' (hyprwm/aquamarine#167), so a path
+# like /dev/dri/by-path/pci-0000:13:00.0-card is truncated, Hyprland dies,
+# and SDDM autologin loops with no compositor error.
+#
+# Sourced from ~/.config/uwsm/env-hyprland.d after the wiki-documented
+# env-hyprland export. zz- sorts after numeric prefixes and letter-named
+# files like my_vars under POSIX ls (uwsm's loader); a later name such as
+# zzz- still loads after this file. Colon-free pins (cardN, udev names)
+# are left alone, but every by-path entry is resolved so a stale one is
+# dropped. A set-but-empty value is unset: getenv non-null takes the
+# explicit path, and CVarList on "" yields no GPUs.
+#
+# Split on ':' like Aquamarine (removeEmpty). A by-path name absorbs colon
+# fragments until it exists or ends in udev's -card/-control/-render suffix.
+# A continuation containing '/' starts a new entry.
+
+omarchy_sanitize_aq_drm_emit() {
+  _omarchy_aq_path=$1
+  [[ -n $_omarchy_aq_path ]] || return 0
+
+  # Resolve every by-path entry, not just the colon-bearing ones: a colon-free
+  # name like platform-vkms-card is still unusable once the device is gone.
+  case "$_omarchy_aq_path" in
+    *:*|*/by-path/*)
+      _omarchy_aq_real=$(readlink -e "$_omarchy_aq_path" 2>/dev/null || true)
+      case "${_omarchy_aq_real:-}" in
+        ""|*:* ) return 0 ;;
+      esac
+      _omarchy_aq_path=$_omarchy_aq_real
+      ;;
+  esac
+
+  if [[ -n $_omarchy_aq_out ]]; then
+    _omarchy_aq_out=$_omarchy_aq_out:$_omarchy_aq_path
+  else
+    _omarchy_aq_out=$_omarchy_aq_path
+  fi
+}
+
+omarchy_sanitize_aq_drm_devices() {
+  if [[ -z ${AQ_DRM_DEVICES:-} ]]; then
+    unset AQ_DRM_DEVICES
+    return 0
+  fi
+
+  _omarchy_aq_rest=$AQ_DRM_DEVICES
+  _omarchy_aq_out=
+  _omarchy_aq_cur=
+
+  while :; do
+    case "$_omarchy_aq_rest" in
+      *:*)
+        _omarchy_aq_part=${_omarchy_aq_rest%%:*}
+        _omarchy_aq_rest=${_omarchy_aq_rest#*:}
+        ;;
+      *)
+        _omarchy_aq_part=$_omarchy_aq_rest
+        _omarchy_aq_rest=
+        ;;
+    esac
+
+    if [[ -n $_omarchy_aq_part ]]; then
+      if [[ -z $_omarchy_aq_cur ]]; then
+        _omarchy_aq_cur=$_omarchy_aq_part
+      else
+        # Keep absorbing colon fragments until the by-path exists or hits
+        # udev's DRM suffix. A continuation containing '/' is a new entry.
+        _omarchy_aq_glue=
+        case "$_omarchy_aq_cur" in
+          */by-path/*-card|*/by-path/*-control|*/by-path/*-render)
+            ;;
+          */by-path/*)
+            if [[ ! -e $_omarchy_aq_cur ]]; then
+              case "$_omarchy_aq_part" in
+                */*) ;;
+                *) _omarchy_aq_glue=1 ;;
+              esac
+            fi
+            ;;
+        esac
+
+        if [[ -n $_omarchy_aq_glue ]]; then
+          _omarchy_aq_cur=$_omarchy_aq_cur:$_omarchy_aq_part
+        else
+          omarchy_sanitize_aq_drm_emit "$_omarchy_aq_cur"
+          _omarchy_aq_cur=$_omarchy_aq_part
+        fi
+      fi
+    fi
+
+    [[ -n $_omarchy_aq_rest ]] || break
+  done
+
+  [[ -n $_omarchy_aq_cur ]] && omarchy_sanitize_aq_drm_emit "$_omarchy_aq_cur"
+
+  if [[ -n $_omarchy_aq_out ]]; then
+    AQ_DRM_DEVICES=$_omarchy_aq_out
+    export AQ_DRM_DEVICES
+  else
+    unset AQ_DRM_DEVICES
+  fi
+
+  unset _omarchy_aq_rest _omarchy_aq_out _omarchy_aq_path _omarchy_aq_real
+  unset _omarchy_aq_part _omarchy_aq_cur _omarchy_aq_glue
+}
+
+omarchy_sanitize_aq_drm_devices
+unset -f omarchy_sanitize_aq_drm_devices omarchy_sanitize_aq_drm_emit
