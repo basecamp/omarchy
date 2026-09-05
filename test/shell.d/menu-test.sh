@@ -7,6 +7,7 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/base-test.sh"
 run_node_test <<'JS'
 const fs = require('fs')
 const menu = requireFromRoot('shell/plugins/menu/MenuModel.js')
+const usage = requireFromRoot('shell/plugins/menu/MenuUsage.js')
 const menuQml = fs.readFileSync(path.join(root, 'shell/plugins/menu/Menu.qml'), 'utf8')
 const defaultMenuJsonc = fs.readFileSync(path.join(root, 'default/omarchy/omarchy-menu.jsonc'), 'utf8')
 
@@ -103,6 +104,41 @@ assert(menu.matchesQuery(entry, 'colors', true), 'menu matches aliases')
 assert(!menu.matchesQuery(entry, 'missing', true), 'menu rejects missing terms')
 assert(!menu.matchesQuery(entry, 'theme', false), 'menu hides invisible matches')
 assert(menu.searchScore(merged.items, entry, 'theme') < menu.searchScore(merged.items, entry, 'appearance'), 'menu scores name matches above description matches')
+
+assertEqual(menu.searchMatchPriority({ kind: 'app', label: 'Brave', aliases: ['Browser'] }, 'br'), 5, 'menu treats an application label prefix as a strong match')
+assertEqual(menu.searchMatchPriority({ kind: 'action', label: 'Install', aliases: [] }, 'in'), 5, 'menu ranks command label prefixes like application prefixes')
+assertEqual(menu.searchMatchPriority({ kind: 'app', label: 'Zen Browser', aliases: [] }, 'zen'), 7, 'menu keeps whole-word application matches in the exact tier')
+assertEqual(menu.searchMatchPriority({ kind: 'action', label: 'Install Package', aliases: [] }, 'package'), 3, 'menu keeps label substring matches above metadata matches')
+assertEqual(menu.searchMatchPriority({ kind: 'action', label: 'Add', aliases: [], id: 'install.aur' }, 'aur'), 2, 'menu keeps id matches above description matches')
+assertEqual(menu.searchMatchPriority({ kind: 'action', label: 'Help', aliases: [], id: 'learn.help', description: 'read the guide' }, 'guide'), 1, 'menu gives description-only matches the weakest learned tier')
+assert(
+  menu.compareSearchRows(
+    { matchPriority: 5, usageCount: 8, lastUsedAt: 100, score: 20, path: 'Brave' },
+    { matchPriority: 5, usageCount: 1, lastUsedAt: 200, score: 0, path: 'Browser' }
+  ) < 0,
+  'menu ranks equally strong matches by activation count'
+)
+assert(
+  menu.compareSearchRows(
+    { matchPriority: 5, usageCount: 3, lastUsedAt: 200, score: 20, path: 'Learn' },
+    { matchPriority: 5, usageCount: 3, lastUsedAt: 100, score: 0, path: 'Less' }
+  ) < 0,
+  'menu breaks equal activation counts by recency'
+)
+assert(
+  menu.compareSearchRows(
+    { matchPriority: 7, usageCount: 0, lastUsedAt: 0, score: 20, path: 'Install' },
+    { matchPriority: 5, usageCount: 99, lastUsedAt: 999, score: 0, path: 'Input' }
+  ) < 0,
+  'menu keeps exact matches above frequently used prefix matches'
+)
+
+assertDeepEqual(usage.parse('{"version":1,"records":{"apps.brave":{"count":3,"lastUsedAt":42}}}'), { 'apps.brave': { count: 3, lastUsedAt: 42 } }, 'menu usage parses valid persisted records')
+assertDeepEqual(usage.parse('{broken'), {}, 'menu usage ignores corrupt persisted records')
+const recordedUsage = usage.record({ install: { count: 2, lastUsedAt: 10 } }, 'install', 99)
+assertDeepEqual(recordedUsage, { install: { count: 3, lastUsedAt: 99 } }, 'menu usage records frequency and recency')
+assertEqual(usage.count(recordedUsage, 'install'), 3, 'menu usage reads activation count')
+assertEqual(usage.lastUsedAt(recordedUsage, 'install'), 99, 'menu usage reads activation recency')
 
 assertDeepEqual(
   menu.displayRow(merged.items, merged.itemOrder, {}, {}, entry, 'Style', 12, 'search'),
@@ -474,6 +510,14 @@ assert(
 assert(
   /function rebuildDisplay\(\)[\s\S]*?root\.settleCursor\(\)/.test(menuQml),
   'menu parks the cursor on a selectable row after the rows change'
+)
+assert(
+  /if \(query\)[\s\S]*row\.usageCount = usage\.count\(row\.itemId\)[\s\S]*MenuModel\.compareSearchRows/.test(menuQml),
+  'menu applies learned ranking only inside the query branch'
+)
+assert(
+  /function activateIndex\(index, fromPointer\)[\s\S]*usage\.record\(row\.itemId\)/.test(menuQml),
+  'menu records every selectable result activation by stable item id'
 )
 // A menu with nothing selectable in it has no cursor, and Return must not
 // conjure one onto a disabled row just because rows exist.

@@ -13,6 +13,7 @@ Item {
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
   property var shell: null
   property var manifest: null
+  MenuUsageStore { id: usage }
 
   // Plugin lifecycle hooks. The host calls open(payloadJson) after
   // `omarchy-shell shell summon omarchy.menu ...` and close() when hidden.
@@ -630,13 +631,15 @@ Item {
 
         var detail = root.parentPathFor(entry.id)
         var row = root.displayRow(entry, detail, root.searchScore(entry, query))
+        row.matchPriority = MenuModel.searchMatchPriority(entry, query)
+        row.usageCount = usage.count(row.itemId)
+        row.lastUsedAt = usage.lastUsedAt(row.itemId)
         if (entry.parent === active) currentRows.push(row)
         else drilldownRows.push(row)
       }
 
       var searchSort = function(a, b) {
-        if (a.score !== b.score) return a.score - b.score
-        return a.path.localeCompare(b.path)
+        return MenuModel.compareSearchRows(a, b)
       }
 
       currentRows.sort(searchSort)
@@ -772,6 +775,7 @@ Item {
     if (!root.rowSelectable(index)) return
 
     var row = displayModel.get(index)
+    usage.record(row.itemId)
     if (row.kind === "menu" || row.kind === "link") {
       root.setActiveMenu(row.target || row.itemId, true, fromPointer)
     } else if (row.kind === "app") {
@@ -956,6 +960,13 @@ Item {
     target: root.appLibrary
     function onAppsChanged() {
       if (root.providersLoaded["apps"]) root.mergeAppRows()
+    }
+  }
+
+  Connections {
+    target: usage
+    function onLoadedChanged() {
+      if (usage.loaded && root.opened && root.filterText.trim()) root.rebuildDisplay()
     }
   }
 
