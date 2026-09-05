@@ -1,0 +1,5 @@
+-- Personal environment overrides.
+-- Loaded after Omarchy's default.hypr.envs so these hl.env() calls win.
+--
+-- Example:
+-- hl.env("LIBVA_DRIVER_NAME", "iHD")
