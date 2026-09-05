@@ -1,6 +1,45 @@
+// BlueZ keeps two names for every device: Name, the one the device itself
+// advertises, and Alias, the friendly name the user can set. Alias defaults to
+// Name, and BlueZ restores that default the moment Alias is written an empty
+// string. Quickshell surfaces them as deviceName (read-only) and name
+// (writable), so name is the one the user chose and it wins wherever a device
+// is labelled — falling back to the advertised name only when there is no
+// alias at all.
+function friendlyName(device) {
+  if (!device) return ""
+  return String(device.name || "").trim()
+}
+
+function defaultName(device) {
+  if (!device) return ""
+  return String(device.deviceName || "").trim()
+}
+
 function deviceLabel(device) {
   if (!device) return ""
-  return String(device.deviceName || device.name || "").trim()
+  return friendlyName(device) || defaultName(device)
+}
+
+// True only when the alias actually differs from the advertised name, rather
+// than BlueZ mirroring one into the other. The editor shows the advertised
+// name as its placeholder so what clearing the field restores is visible
+// before it is cleared.
+function hasFriendlyName(device) {
+  var friendly = friendlyName(device)
+  return friendly !== "" && friendly !== defaultName(device)
+}
+
+// Every name a device answers to, friendly one first. PipeWire is not
+// consistent about which of the two it copies into a node — bluez5 nodes carry
+// the alias in some properties and the advertised name in others — so matching
+// has to try both, or renaming a speaker would cost it its audio-sink match.
+function deviceNames(device) {
+  var names = []
+  var friendly = friendlyName(device)
+  var fallback = defaultName(device)
+  if (friendly !== "") names.push(friendly)
+  if (fallback !== "" && fallback !== friendly) names.push(fallback)
+  return names
 }
 
 function toArray(values) {
@@ -33,9 +72,17 @@ function normalizedAddress(value) {
   return String(value || "").trim().toLowerCase().replace(/[^0-9a-f]/g, "")
 }
 
+// Whether a device is real enough to list, which is a question about the
+// device and not about what its owner called it. Both names are asked, because
+// judging by the label alone would let an address- or UUID-shaped alias — a
+// legal thing to type into the rename editor — drop the device out of every
+// section, including the row needed to type something else.
 function hasHumanName(device) {
-  var label = deviceLabel(device)
-  return label !== "" && !isUuidLike(label) && !isAddressLike(label)
+  var names = deviceNames(device)
+  for (var i = 0; i < names.length; i++) {
+    if (!isUuidLike(names[i]) && !isAddressLike(names[i])) return true
+  }
+  return false
 }
 
 function nodeProps(node) {
@@ -70,8 +117,11 @@ function bluetoothSinkMatchesDevice(node, device) {
   var text = nodeText(node)
   if (address !== "" && normalizedAddress(text).indexOf(address) !== -1) return true
 
-  var label = deviceLabel(device).toLowerCase()
-  return label !== "" && text.indexOf(label) !== -1
+  var names = deviceNames(device)
+  for (var n = 0; n < names.length; n++) {
+    if (text.indexOf(names[n].toLowerCase()) !== -1) return true
+  }
+  return false
 }
 
 function sortedByLabel(devices) {
@@ -157,6 +207,10 @@ function sectionDevices(lists, section) {
 if (typeof module !== "undefined") {
   module.exports = {
     deviceLabel: deviceLabel,
+    friendlyName: friendlyName,
+    defaultName: defaultName,
+    hasFriendlyName: hasFriendlyName,
+    deviceNames: deviceNames,
     toArray: toArray,
     isUuidLike: isUuidLike,
     isAddressLike: isAddressLike,

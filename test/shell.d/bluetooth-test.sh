@@ -50,11 +50,85 @@ assert(/sibling\.owesDiscoveryStop = true/.test(stopTimer[0]), 'bluetooth moves 
 assert(/onDiscoveringChanged[\s\S]{0,120}owesDiscoveryStop = false/.test(panelSource), 'bluetooth settles the stop it owes once discovery is confirmed down')
 assert(/Component\.onDestruction: \{[\s\S]{0,400}owesDiscoveryStop = true[\s\S]{0,200}discovering = false/.test(panelSource), 'bluetooth passes the stop it owes to a sibling when an instance is destroyed')
 
+// BlueZ keeps Name (advertised) and Alias (user-settable, defaults to Name).
+// Quickshell exposes them as deviceName and name, and the alias is the one the
+// user chose, so it is the one shown.
+const renamed = { name: "  Andrew's HSTN  ", deviceName: 'Oakley Meta 0091' }
+assertEqual(bluetooth.friendlyName(renamed), "Andrew's HSTN", 'bluetooth trims the friendly name')
+assertEqual(bluetooth.defaultName(renamed), 'Oakley Meta 0091', 'bluetooth reads the advertised name apart from the alias')
+assertEqual(bluetooth.deviceLabel(renamed), "Andrew's HSTN", 'bluetooth shows the friendly name')
+assert(bluetooth.hasFriendlyName(renamed), 'bluetooth sees a device the user renamed')
+assert(
+  !bluetooth.hasFriendlyName({ name: 'Xbox Wireless Controller', deviceName: 'Xbox Wireless Controller' }),
+  'bluetooth does not mistake BlueZ mirroring Name into Alias for a rename'
+)
+assertEqual(
+  bluetooth.deviceLabel({ name: '   ', deviceName: 'Oakley Meta 0091' }),
+  'Oakley Meta 0091',
+  'bluetooth falls back to the advertised name when the alias is blank'
+)
+
+// Renaming writes BlueZ's Alias, the writable half of the pair quickshell
+// exposes; the advertised name is read-only and must never be written.
+assert(/device\.name = next/.test(panelSource), 'bluetooth writes the friendly name back to BlueZ')
+assert(!/\.deviceName = /.test(panelSource), 'bluetooth never writes the advertised device name')
+
+// Clearing the field is the reset: BlueZ restores Alias to Name when it is
+// written an empty string, so nothing may filter that empty value out.
+const commitRename = panelSource.match(/function commitRename\(\) \{[\s\S]*?\n {2}\}/)
+assert(commitRename, 'bluetooth has the rename commit')
+assert(/String\(renameText \|\| ""\)\.trim\(\)/.test(commitRename[0]), 'bluetooth trims the typed name before writing it')
+assert(!/next === ""/.test(commitRename[0]), 'bluetooth lets an empty name through so BlueZ resets the alias to the advertised name')
+
+// The open editor lives on the panel, keyed by address: rows are
+// primitives-only projections rebuilt on every BlueZ report, so a
+// delegate-owned editor would lose its text and its focus to a scan landing
+// mid-word, and a rename re-sorts the list under it besides.
+assert(/property string renameAddress: ""/.test(panelSource), 'bluetooth keeps the open editor on the panel, keyed by address')
+assert(/blocked: root\.renameAddress !== ""/.test(panelSource), 'bluetooth hands the keyboard to the editor while it is open')
+
+// Forgetting a device with its editor open leaves the object alive in the scan
+// and moves it to the discovered section, so an existence-only check would keep
+// the editor — and its hold on the key catcher — on a row that no longer offers
+// renaming at all.
+const renameable = panelSource.match(/function renameable\(device\) \{[\s\S]*?\n {2}\}/)
+assert(renameable, 'bluetooth has one predicate for what may be renamed')
+assert(
+  /device\.connected \|\| device\.paired \|\| device\.bonded \|\| device\.trusted/.test(renameable[0]),
+  'bluetooth renames only the devices BlueZ remembers, the same ones it offers to forget'
+)
+assert(/renameAddress !== "" && !renameable\(deviceForAddress\(renameAddress\)\)/.test(panelSource), 'bluetooth closes the editor when its device stops being remembered')
+assert(/function commitRename\(\)[\s\S]*?if \(!renameable\(device\)\)/.test(panelSource), 'bluetooth refuses the write when the device stopped being remembered')
+assert(/function openRenamePrompt\(device\)[\s\S]*?!renameable\(device\)/.test(panelSource), 'bluetooth opens the editor only on a device that may be renamed')
+assert(/readonly property bool isRenaming: forgetAvailable/.test(panelSource), 'bluetooth renders the editor only on rows that offer renaming')
+
 assert(bluetooth.isUuidLike('0000110b-0000-1000-8000-00805f9b34fb'), 'bluetooth detects UUID-like names')
 assert(bluetooth.isAddressLike('AA:BB:CC:DD:EE:FF'), 'bluetooth detects address-like names')
 assertEqual(bluetooth.normalizedAddress('AA:BB_CC-dd-ee-ff'), 'aabbccddeeff', 'bluetooth normalizes BlueZ and PipeWire address formats')
 assert(!bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF' }), 'bluetooth rejects address-only device labels')
 assert(bluetooth.hasHumanName({ deviceName: 'MX Master 3S' }), 'bluetooth accepts human device labels')
+assert(
+  bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF', deviceName: 'MX Master 3S' }),
+  'bluetooth keeps a device whose advertised name is human when the alias looks like an address'
+)
+assert(
+  bluetooth.hasHumanName({ name: '0000110b-0000-1000-8000-00805f9b34fb', deviceName: 'MX Master 3S' }),
+  'bluetooth keeps a device whose advertised name is human when the alias looks like a UUID'
+)
+assert(
+  !bluetooth.hasHumanName({ name: 'AA:BB:CC:DD:EE:FF', deviceName: '11:22:33:44:55:66' }),
+  'bluetooth still drops a device with no human name of either kind'
+)
+
+// The rename editor accepts any string, so a device renamed to an address
+// shape has to stay on screen — the row is the only way back.
+assertDeepEqual(
+  bluetooth.deviceLists([
+    { name: 'AA:BB:CC:DD:EE:FF', deviceName: 'MX Master 3S', paired: true, address: '9' }
+  ]).known.map(bluetooth.deviceLabel),
+  ['AA:BB:CC:DD:EE:FF'],
+  'bluetooth still lists a device renamed to an address shape, so the rename can be undone'
+)
 
 const devices = [
   { name: 'Speaker', connected: false, paired: true, address: '2' },
@@ -98,7 +172,12 @@ assertDeepEqual(
   'bluetooth projects device rows with primitives only'
 )
 assertEqual(
-  bluetooth.deviceLabel(bluetooth.deviceRow({ name: 'Generic', deviceName: 'MX Master 3S', address: '2', connected: true })),
+  bluetooth.deviceLabel(bluetooth.deviceRow({ name: "Andrew's Headphones", deviceName: 'WH-1000XM5', address: '2', connected: true })),
+  "Andrew's Headphones",
+  'bluetooth labels a device with the friendly name over the advertised one'
+)
+assertEqual(
+  bluetooth.deviceLabel(bluetooth.deviceRow({ name: '', deviceName: 'MX Master 3S', address: '2', connected: true })),
   'MX Master 3S',
   'bluetooth keeps deviceName in row projections so labels survive QObject-free rows'
 )
@@ -136,6 +215,41 @@ assert(
   ),
   'bluetooth matches audio sinks by human device label when address is unavailable'
 )
+// PipeWire copies one name or the other into a node depending on the property,
+// so a renamed speaker has to match on either or it loses its sink.
+const renamedSpeaker = { address: '11:22:33:44:55:66', name: 'Kitchen Speaker', deviceName: 'JBL Go 3' }
+assert(
+  bluetooth.bluetoothSinkMatchesDevice(
+    {
+      isSink: true,
+      isStream: false,
+      ready: true,
+      name: 'alsa_output.usb-speaker',
+      properties: { 'device.product.name': 'JBL Go 3' }
+    },
+    renamedSpeaker
+  ),
+  'bluetooth matches a renamed device to a sink PipeWire labels with the advertised name'
+)
+assert(
+  bluetooth.bluetoothSinkMatchesDevice(
+    {
+      isSink: true,
+      isStream: false,
+      ready: true,
+      name: 'alsa_output.usb-speaker',
+      properties: { 'device.alias': 'Kitchen Speaker' }
+    },
+    renamedSpeaker
+  ),
+  'bluetooth matches a renamed device to a sink PipeWire labels with the friendly name'
+)
+assertDeepEqual(
+  bluetooth.deviceNames({ name: 'Xbox Wireless Controller', deviceName: 'Xbox Wireless Controller' }),
+  ['Xbox Wireless Controller'],
+  'bluetooth does not try the same name twice when the alias mirrors the advertised name'
+)
+
 assert(
   !bluetooth.bluetoothSinkMatchesDevice({ isSink: false, isStream: false, ready: true, name: 'bluez_output.AA_BB_CC_DD_EE_FF.1', properties: {} }, { address: 'AA:BB:CC:DD:EE:FF', name: 'JBL Go 3' }),
   'bluetooth ignores non-sink nodes when matching audio outputs'
