@@ -25,7 +25,10 @@ if lspci | grep -qi 'nvidia'; then
 options nvidia_drm modeset=1
 EOF
 
-  # Configure mkinitcpio for early loading
+  # Configure mkinitcpio for early loading. Keep this module list in sync
+  # with the blacklist and MODULES filter in
+  # default/initcpio/install/omarchy-defer-gpu and omarchy-hibernation-setup:
+  # hibernation defers exactly these modules out of the initramfs.
   mkdir -p /etc/mkinitcpio.conf.d
   cat > /etc/mkinitcpio.conf.d/nvidia.conf <<'EOF'
 MODULES+=(nvidia nvidia_modeset nvidia_uvm nvidia_drm)

@@ -5,8 +5,9 @@
 
 MKINITCPIO_CONF="/etc/mkinitcpio.conf.d/omarchy_resume.conf"
 
-# Check if hibernation is configured
-if [[ ! -f $MKINITCPIO_CONF ]] || ! grep -q "^HOOKS+=(resume)$" "$MKINITCPIO_CONF"; then
+# Check if hibernation is configured (older setups wrote a bare
+# "HOOKS+=(resume)" drop-in; both formats count as configured)
+if [[ ! -f $MKINITCPIO_CONF ]] || ! grep -q "^HOOKS+=(resume" "$MKINITCPIO_CONF"; then
   echo "Hibernation is not set up"
   exit 0
 fi
@@ -47,6 +48,18 @@ fi
 # Remove mkinitcpio resume hook
 echo "Removing resume hook"
 sudo rm "$MKINITCPIO_CONF"
+
+# Remove the resume kernel parameters and the initramfs GPU-defer hook that
+# omarchy-hibernation-setup created; they must go before the rebuild below,
+# or the regenerated UKI and limine entries still carry resume= pointing at
+# the deleted swapfile
+RESUME_DROP_IN="/etc/limine-entry-tool.d/resume.conf"
+RTC_DROP_IN="/etc/limine-entry-tool.d/rtc-alarm.conf"
+if [[ -f $RESUME_DROP_IN ]]; then
+  echo "Removing resume kernel parameters"
+  sudo rm "$RESUME_DROP_IN"
+fi
+sudo rm -f "$RTC_DROP_IN" /etc/initcpio/install/omarchy-defer-gpu
 
 echo "Regenerating initramfs..."
 sudo limine-mkinitcpio
