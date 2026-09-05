@@ -32,6 +32,14 @@ OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 STATE_DIR="${OMARCHY_MIGRATION_STATE:-$HOME/.local/state/omarchy/migrations}"
 MIGRATIONS_DIR="$OMARCHY_PATH/migrations"
 
+require_migrations_dir() {
+  if [[ ! -d $MIGRATIONS_DIR ]]; then
+    echo "omarchy-migrate: migrations directory missing: $MIGRATIONS_DIR" >&2
+    echo "Check OMARCHY_PATH (currently ${OMARCHY_PATH})." >&2
+    exit 2
+  fi
+}
+
 migration_entries() {
   [[ -d $MIGRATIONS_DIR ]] || return 0
 
@@ -56,6 +64,7 @@ pending_migrations() {
 }
 
 if [[ $mode == "pending" ]]; then
+  require_migrations_dir
   pending_output=$(pending_migrations)
   if [[ -n $pending_output ]]; then
     printf '%s\n' "$pending_output"
@@ -64,6 +73,8 @@ if [[ $mode == "pending" ]]; then
     exit 1
   fi
 fi
+
+require_migrations_dir
 
 wait_for_pacman_transaction() {
   local lock_file=/var/lib/pacman/db.lck
