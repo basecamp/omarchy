@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Hyprland
 import Quickshell.Io
+import Quickshell.Services.UPower
 import Quickshell.Wayland
 import "IdleModel.js" as IdleModel
 
@@ -17,8 +18,12 @@ Item {
   readonly property int defaultScreensaverSeconds: 150
   readonly property int defaultLockSeconds: 300
   readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
-  readonly property int screensaverTimeoutSeconds: secondsFromConfig(idleConfig.screensaver, defaultScreensaverSeconds)
-  readonly property int lockTimeoutSeconds: secondsFromConfig(idleConfig.lock, defaultLockSeconds)
+  readonly property var resolvedTimeouts: IdleModel.effectiveTimeouts(idleConfig, UPower.onBattery, {
+    screensaver: defaultScreensaverSeconds,
+    lock: defaultLockSeconds
+  })
+  readonly property int screensaverTimeoutSeconds: resolvedTimeouts.screensaver
+  readonly property int lockTimeoutSeconds: resolvedTimeouts.lock
   readonly property int firstIdleTimeoutSeconds: Math.min(screensaverTimeoutSeconds, lockTimeoutSeconds)
   readonly property int screensaverDelaySeconds: Math.max(0, screensaverTimeoutSeconds - firstIdleTimeoutSeconds)
   readonly property int lockDelaySeconds: Math.max(0, lockTimeoutSeconds - firstIdleTimeoutSeconds)
@@ -27,6 +32,8 @@ Item {
 
   property bool stayAwake: false
   property bool stayAwakeStateLoaded: false
+  property bool monitorArmed: true
+  property bool timeoutsReady: false
   property bool hasPendingStayAwakePersist: false
   property bool pendingStayAwakePersist: false
   property bool idledThisCycle: false
@@ -39,6 +46,22 @@ Item {
   function secondsFromConfig(value, fallback) {
     return IdleModel.secondsFromConfig(value, fallback)
   }
+
+  function handleIdleTimeoutsChanged() {
+    if (!root.timeoutsReady) return
+
+    logEvent("idle-timeout-rearm", "screensaver=" + root.screensaverTimeoutSeconds + " lock=" + root.lockTimeoutSeconds + " power=" + (UPower.onBattery ? "battery" : "ac"))
+    if (root.idledThisCycle) root.cancelIdleCycle("timeout-change")
+    if (!root.idleEnabled) return
+
+    // ext-idle-notify keeps the old timeout until the monitor is disabled and
+    // re-enabled. Plug/unplug and a shell.json edit both change the deadline.
+    root.monitorArmed = false
+    Qt.callLater(function() { root.monitorArmed = true })
+  }
+
+  onScreensaverTimeoutSecondsChanged: root.handleIdleTimeoutsChanged()
+  onLockTimeoutSecondsChanged: root.handleIdleTimeoutsChanged()
 
   function nowIso() {
     return new Date().toISOString()
@@ -185,6 +208,8 @@ Item {
       stayAwakeStatePath: root.stayAwakeStatePath,
       idle: idleMonitor.isIdle,
       inIdleCycle: root.idledThisCycle,
+      onBattery: UPower.onBattery,
+      powerSource: UPower.onBattery ? "battery" : "ac",
       screensaverStarted: root.screensaverStartedThisCycle,
       screensaver: root.screensaverTimeoutSeconds,
       lock: root.lockTimeoutSeconds,
@@ -249,7 +274,7 @@ Item {
 
   IdleMonitor {
     id: idleMonitor
-    enabled: root.idleEnabled
+    enabled: root.idleEnabled && root.monitorArmed
     timeout: root.firstIdleTimeoutSeconds
     respectInhibitors: true
     onIsIdleChanged: root.handleIdleChanged()
@@ -332,6 +357,7 @@ Item {
   Component.onCompleted: {
     logEvent("service-ready")
     refreshStayAwakeState()
+    root.timeoutsReady = true
   }
 
   IpcHandler {

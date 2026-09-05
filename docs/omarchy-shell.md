@@ -134,7 +134,11 @@ string on a miss.
   "version": 1,
   "idle": {
     "screensaver": 150,
-    "lock": 300
+    "lock": 300,
+    "ac": {
+      "screensaver": 300,
+      "lock": 1800
+    }
   },
   "bar": {
     "id": "omarchy.bar",
@@ -166,7 +170,7 @@ Rules:
 5. Third-party enabled ⇔ present; for full bar options that means `bar.id`.
    First-party non-bar plugins are enabled unless listed in `disabledPlugins[]`.
 6. `barWidget.allowMultiple: true` in the manifest permits multiple instances.
-7. `idle.screensaver` and `idle.lock` are seconds since user idle began.
+7. `idle.screensaver` and `idle.lock` are seconds since user idle began. Optional `idle.ac` and `idle.battery` objects override those numbers while on AC or battery.
 8. `version: 1` is required.
 
 `config/omarchy/shell.json` describes the fresh-install state. When no

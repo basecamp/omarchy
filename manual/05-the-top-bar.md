@@ -131,4 +131,4 @@ Every widget is one entry in one of the three layout arrays, and its settings si
 
 One rule worth internalizing: **once you have your own `shell.json`, it's canonical**. Until you customize anything, the shell reads Omarchy's default file. The moment you drag a widget, run `omarchy bar`, or edit the file yourself, you own it — there's no deep merge, so new default widgets in future Omarchy releases won't appear on your bar automatically. `omarchy bar defaults` puts the shipped layout back whenever you want a clean slate.
 
-The same file also holds your idle timings at the top level, outside the `bar` key: `idle.screensaver` and `idle.lock`, both in seconds since you went idle. So the default screensaver kicks in at 150 seconds and the lock at 300.
+The same file also holds your idle timings at the top level, outside the `bar` key: `idle.screensaver` and `idle.lock`, both in seconds since you went idle. Optional `idle.ac` and `idle.battery` objects override those numbers by power source. On battery the default screensaver kicks in at 150 seconds and the lock at 300; on AC those stretch to 300 and 1800.

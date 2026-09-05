@@ -1,7 +1,30 @@
 function secondsFromConfig(value, fallback) {
-  var n = Number(value)
+  var n
+  if (typeof value === "number") n = value
+  else if (typeof value === "string" && value.trim() !== "") n = Number(value)
+  else return fallback
   if (!isFinite(n) || n < 0) return fallback
   return Math.floor(n)
+}
+
+function profileBlock(idleConfig, name) {
+  var block = idleConfig && idleConfig[name]
+  if (!block || typeof block !== "object" || Array.isArray(block)) return null
+  return block
+}
+
+function effectiveTimeouts(idleConfig, onBattery, defaults) {
+  var config = idleConfig && typeof idleConfig === "object" ? idleConfig : {}
+  var fallbackScreensaver = secondsFromConfig(config.screensaver, defaults && defaults.screensaver)
+  var fallbackLock = secondsFromConfig(config.lock, defaults && defaults.lock)
+  var profile = profileBlock(config, onBattery ? "battery" : "ac")
+  if (!profile) {
+    return { screensaver: fallbackScreensaver, lock: fallbackLock }
+  }
+  return {
+    screensaver: secondsFromConfig(profile.screensaver, fallbackScreensaver),
+    lock: secondsFromConfig(profile.lock, fallbackLock)
+  }
 }
 
 function eventParts(event, count) {
@@ -46,6 +69,8 @@ function screensaverWindowsAfter(windows, address, visible) {
 if (typeof module !== "undefined") {
   module.exports = {
     secondsFromConfig: secondsFromConfig,
+    profileBlock: profileBlock,
+    effectiveTimeouts: effectiveTimeouts,
     eventParts: eventParts,
     screensaverWindowsAfter: screensaverWindowsAfter
   }
