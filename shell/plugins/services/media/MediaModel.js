@@ -119,6 +119,37 @@ function osdMessage(player, fallback) {
   return label || fallback
 }
 
+// Among currently-paused players, the one that was most recently seen
+// actually playing. `lastActiveAt` maps playerKey() -> timestamp, updated by
+// the caller each time a player is observed playing (see Service.qml's
+// syncPlayingOrder). This is used as a recency-based tiebreaker so a player
+// that merely happens to be open (e.g. Spotify sitting idle) doesn't win a
+// play/pause command over whatever was actually paused, once any explicit
+// preferred-player tracking has been lost (e.g. its playback stream or MPRIS
+// instance went away while paused).
+function mostRecentlyActivePlayer(players, lastActiveAt) {
+  var list = Array.isArray(players) ? players : []
+  var active = lastActiveAt || {}
+  var best = null
+  var bestAt = -1
+
+  for (var i = 0; i < list.length; i++) {
+    var p = list[i]
+    if (!p || isProxyPlayer(p) || !hasMetadata(p)) continue
+
+    var key = playerKey(p)
+    var at = key ? active[key] : undefined
+    if (at === undefined) continue
+
+    if (at > bestAt) {
+      best = p
+      bestAt = at
+    }
+  }
+
+  return best
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     isProxyPlayer: isProxyPlayer,
@@ -137,6 +168,7 @@ if (typeof module !== "undefined") {
     trackSignature: trackSignature,
     trackChanged: trackChanged,
     labelFor: labelFor,
-    osdMessage: osdMessage
+    osdMessage: osdMessage,
+    mostRecentlyActivePlayer: mostRecentlyActivePlayer
   }
 }
