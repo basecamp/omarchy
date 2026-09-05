@@ -5,7 +5,8 @@
 ACTIVE_WORKSPACE=$(hyprctl activeworkspace -j | jq -r '.id')
 [[ $ACTIVE_WORKSPACE =~ ^-?[0-9]+$ ]] || exit 1
 CURRENT_LAYOUT=$(hyprctl activeworkspace -j | jq -r '.tiledLayout')
-LAYOUTS_DIR="$HOME/.local/state/omarchy/workspace-layouts"
+# Match default/hypr/paths.lua state_home so saves land where workspace-layouts.lua loads.
+LAYOUTS_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/workspace-layouts"
 LAYOUT_FILE="$LAYOUTS_DIR/$ACTIVE_WORKSPACE.lua"
 
 case "$CURRENT_LAYOUT" in

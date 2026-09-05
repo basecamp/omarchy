@@ -31,7 +31,10 @@ cat >"$stub_dir/omarchy-notification-send" <<'EOF'
 EOF
 chmod +x "$stub_dir/omarchy-notification-send"
 
-HOME="$home_dir" HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" \
+# The toggle and paths.lua both follow XDG_STATE_HOME now, so the cases that
+# assert the HOME default have to clear it: inherited from the developer's own
+# environment it sends these writes into their real state directory.
+HOME="$home_dir" XDG_STATE_HOME="" HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" \
   "$ROOT/bin/omarchy-hyprland-workspace-layout-toggle"
 
 layout_file="$home_dir/.local/state/omarchy/workspace-layouts/3.lua"
@@ -42,7 +45,7 @@ grep -Fx 'eval hl.workspace_rule({ workspace = "3", layout = "scrolling" })' "$l
   fail "workspace layout toggle applies the selected layout immediately"
 pass "workspace layout toggle persists and applies the selected layout"
 
-if HOME="$home_dir" HYPRCTL_LOG="$log_file" HYPRCTL_BROKEN=1 PATH="$stub_dir:$PATH" \
+if HOME="$home_dir" XDG_STATE_HOME="" HYPRCTL_LOG="$log_file" HYPRCTL_BROKEN=1 PATH="$stub_dir:$PATH" \
   "$ROOT/bin/omarchy-hyprland-workspace-layout-toggle" 2>/dev/null; then
   fail "workspace layout toggle exits nonzero without a workspace id"
 fi
@@ -50,7 +53,22 @@ fi
   fail "workspace layout toggle does not persist a rule without a workspace id"
 pass "workspace layout toggle ignores broken hyprctl output"
 
-HOME="$home_dir" OMARCHY_PATH="$ROOT" lua <<'LUA'
+# When XDG_STATE_HOME is set, saves must follow paths.state_home (not bare HOME).
+xdg_home="$tmpdir/xdg-home"
+xdg_state="$tmpdir/xdg-state"
+rm -f "$log_file"
+HOME="$xdg_home" XDG_STATE_HOME="$xdg_state" HYPRCTL_LOG="$log_file" PATH="$stub_dir:$PATH" \
+  "$ROOT/bin/omarchy-hyprland-workspace-layout-toggle"
+xdg_layout="$xdg_state/omarchy/workspace-layouts/3.lua"
+[[ -f $xdg_layout ]] || fail "workspace layout toggle saves under XDG_STATE_HOME"
+[[ -e $xdg_home/.local/state/omarchy/workspace-layouts/3.lua ]] &&
+  fail "workspace layout toggle does not also write under HOME when XDG_STATE_HOME is set"
+pass "workspace layout toggle respects XDG_STATE_HOME"
+
+# lua reading a bare heredoc exits 0 even when the chunk raises, and base-test.sh
+# does not set -e, so both loader checks have to fail the file themselves or the
+# pass below runs on a module-not-found error. Same shape as hyprland-qconsole-test.sh.
+HOME="$home_dir" XDG_STATE_HOME="" OMARCHY_PATH="$ROOT" lua - <<'LUA' || fail "saved workspace layouts load into Hyprland configuration"
 local rules = {}
 
 hl = {
@@ -62,8 +80,55 @@ hl = {
 dofile(os.getenv("OMARCHY_PATH") .. "/default/hypr/bootstrap.lua")
 require("default.hypr.workspace-layouts")
 
-assert(#rules == 1)
+assert(#rules == 1, "expected 1 layout rule, got " .. #rules)
 assert(rules[1].workspace == "3")
 assert(rules[1].layout == "scrolling")
 LUA
 pass "saved workspace layouts load into Hyprland configuration"
+
+# Production loads layouts through toggles.lua. XDG_STATE_HOME can diverge from
+# HOME/.local/state; bootstrap only puts HOME on package.path, so the layouts
+# directory itself must be on package.path (nil module prefix), matching toggles.
+HOME="$xdg_home" XDG_STATE_HOME="$xdg_state" OMARCHY_PATH="$ROOT" lua - <<'LUA' || fail "saved workspace layouts load via toggles when XDG_STATE_HOME diverges from HOME"
+local rules = {}
+
+hl = {
+  workspace_rule = function(rule)
+    table.insert(rules, rule)
+  end,
+}
+
+dofile(os.getenv("OMARCHY_PATH") .. "/default/hypr/bootstrap.lua")
+local ok, err = pcall(require, "default.hypr.toggles")
+assert(ok, err)
+assert(#rules == 1, "expected 1 layout rule via toggles, got " .. #rules)
+assert(rules[1].workspace == "3")
+assert(rules[1].layout == "scrolling")
+LUA
+pass "saved workspace layouts load via toggles when XDG_STATE_HOME diverges from HOME"
+
+# The failure reported in #9664: a user hyprland.lua from before bootstrap
+# extraction set package.path to ~/.config and $OMARCHY_PATH only — no state
+# root. Prefixed require("omarchy.workspace-layouts.N") then failed every reload.
+# The first loader check above uses current bootstrap (state on path), so it
+# cannot catch that; this case must still apply the saved rule without it.
+HOME="$home_dir" XDG_STATE_HOME="" OMARCHY_PATH="$ROOT" lua - <<'LUA' || fail "saved workspace layouts load when package.path has no state root"
+local rules = {}
+
+hl = {
+  workspace_rule = function(rule)
+    table.insert(rules, rule)
+  end,
+}
+
+local home = assert(os.getenv("HOME"), "HOME")
+local omarchy = assert(os.getenv("OMARCHY_PATH"), "OMARCHY_PATH")
+package.path = home .. "/.config/?.lua;" .. omarchy .. "/?.lua"
+
+require("default.hypr.workspace-layouts")
+
+assert(#rules == 1, "expected 1 layout rule without state on package.path, got " .. #rules)
+assert(rules[1].workspace == "3")
+assert(rules[1].layout == "scrolling")
+LUA
+pass "saved workspace layouts load when package.path has no state root"
