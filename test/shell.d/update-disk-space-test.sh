@@ -8,6 +8,7 @@ unset GUM_STATUS
 unset OMARCHY_UPDATE_FORCE
 unset TEST_AVAILABLE_BYTES
 unset TEST_DF_INVALID
+unset TEST_FINDMNT_OPTIONS
 
 test_tmp=$(mktemp -d)
 trap 'rm -rf "$test_tmp"' EXIT
@@ -50,6 +51,10 @@ if (( TEST_DF_INVALID )); then
 else
   printf "Avail\n%s\n" "$TEST_AVAILABLE_BYTES"
 fi'
+
+write_stub findmnt '
+printf "%s\n" "${TEST_FINDMNT_OPTIONS:-rw,noatime,subvol=/@}"
+'
 
 write_stub gum '
 printf "%s\n" "$*" >>"$GUM_MARKER"
@@ -113,6 +118,17 @@ set -e
 [[ ! -f $gum_marker ]] || fail "interactive update stops before confirmation with low disk space"
 [[ ! -f $snapshot_marker ]] || fail "interactive update stops before snapshotting with low disk space"
 pass "interactive update stops before confirmation with low disk space"
+
+rm -f "$snapshot_marker" "$gum_marker"
+set +e
+output=$(TEST_FINDMNT_OPTIONS='rw,noatime,subvol=/@/.snapshots/8/snapshot' run_update -y)
+status=$?
+set -e
+(( status == 1 )) || fail "snapshot update exits non-zero with low disk space"
+[[ $output == *"You need at least 10 GiB free to safely update Omarchy."* ]] || fail "snapshot low-space update keeps the free-space warning"
+[[ $output == *"booted from a Btrfs snapshot"* ]] || fail "snapshot low-space update explains the snapshot cause"
+[[ ! -f $snapshot_marker ]] || fail "snapshot low-space update stops before snapshotting"
+pass "low disk space while booted from a snapshot suggests rebooting regular Omarchy"
 
 rm -f "$snapshot_marker" "$gum_marker"
 output=$(OMARCHY_UPDATE_FORCE=1 run_update -y)
