@@ -18,6 +18,10 @@
 
 POWER_WAIT_SECONDS=${OMARCHY_BLUETOOTH_POWER_WAIT_SECONDS:-2}
 
+# How long the adapter is left undisturbed after this call brought it up. See
+# take_lock for what lands in that window otherwise.
+POWER_SETTLE_SECONDS=${OMARCHY_BLUETOOTH_POWER_SETTLE_SECONDS:-5}
+
 controllers() {
   timeout 2s bluetoothctl list 2>/dev/null | awk '{print $2}'
 }
@@ -48,31 +52,74 @@ wait_powered() {
   done
 }
 
+# Serialize the calls that move the block. A block landing while bluetoothd is
+# still bringing the adapter up takes the USB transport down mid-setup, and the
+# commands still in flight fail against a controller that is no longer there:
+#
+#   Bluetooth: hci0: Device setup in 2012942 usecs
+#   Bluetooth: hci0: Opcode 0x0c1a failed: -71
+#   Bluetooth: hci0: Error when powering off device on rfkill (-71)
+#
+# Nothing retries them, and the adapter comes back Powered: yes and reads as
+# healthy either way, so nothing surfaces the radio having been left
+# half-configured. Two quick clicks on the bar toggle are enough to land in it.
+#
+# Dropped rather than queued, like the brightness keys: a click the user never
+# saw land is not worth replaying seconds later against a radio whose state has
+# moved on since. is-on must not take the lock — it answers through its exit
+# status, and a dropped call exiting 0 would report a blocked radio as powered.
+# Failing open on a lock file that cannot be opened at all: the interlock makes
+# the common path safer, but it is not a precondition for honouring what the
+# user asked for. Swallowing the request there would leave a toggle that reports
+# success and does nothing.
+take_lock() {
+  # Grouped so the shell's own redirection error is silenced too: on the
+  # command itself the failing redirection is processed before the 2>/dev/null
+  # that was meant to cover it.
+  { exec {lock_fd}>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-bluetooth-power.lock"; } 2>/dev/null || return 0
+  flock -n "$lock_fd" || exit 0
+}
+
 power_on() {
+  local was_powered=0
+
+  powered && was_powered=1
+
   rfkill unblock bluetooth
 
   # Usually all it takes: with AutoEnable at its default, bluetoothd powers the
   # adapter up on its own once the block is gone. It will not do that for an
   # adapter powered down without a block, so ask directly before giving up.
-  wait_powered && return 0
+  if ! wait_powered; then
+    timeout 5s bluetoothctl power on >/dev/null 2>&1
 
-  timeout 5s bluetoothctl power on >/dev/null 2>&1
-  wait_powered && return 0
+    if ! wait_powered; then
+      echo "omarchy-bluetooth-power: adapter did not come up" >&2
+      return 1
+    fi
+  fi
 
-  echo "omarchy-bluetooth-power: adapter did not come up" >&2
-  return 1
+  # Hold the lock past Powered: yes when this call is what brought the adapter
+  # up. Powered flips as soon as the controller answers, while bluetoothd is
+  # still restoring the LE state behind it, and that gap is the whole window
+  # take_lock exists to cover. An adapter that was already on has no setup
+  # running and nothing to wait for.
+  ((was_powered)) || sleep "$POWER_SETTLE_SECONDS"
 }
 
 case "${1:-}" in
   on)
+    take_lock
     power_on
     ;;
   off)
+    take_lock
     # No bluetoothctl power off to go with this: the block already drops the
     # adapter to Powered: no, and it is the half that survives the reboot.
     rfkill block bluetooth
     ;;
   toggle)
+    take_lock
     if powered; then
       rfkill block bluetooth
     else
