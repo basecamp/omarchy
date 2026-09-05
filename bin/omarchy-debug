@@ -2,7 +2,7 @@
 
 # omarchy:summary=Print debugging information
 # omarchy:args=[--no-sudo] [--print]
-# omarchy:examples=omarchy debug --print --no-sudo
+# omarchy:hidden=true
 # omarchy:requires-sudo=true
 
 NO_SUDO=false

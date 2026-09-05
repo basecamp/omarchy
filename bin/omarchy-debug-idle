@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # omarchy:summary=Show idle, screensaver, and lock diagnostics
-# omarchy:group=debug
 # omarchy:args=[log-lines]
-# omarchy:examples=omarchy debug idle | omarchy-debug-idle 400
+# omarchy:hidden=true
 
 lines=${1:-200}
 if [[ ! $lines =~ ^[0-9]+$ ]]; then
