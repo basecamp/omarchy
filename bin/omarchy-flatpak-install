@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# omarchy:summary=Show a fuzzy-finder TUI for picking new Flatpak apps to install from Flathub.
+# omarchy:requires-sudo=true
+
+fzf_args=(
+  --multi
+  --preview 'flatpak remote-info flathub {1}'
+  --preview-label='alt-p: toggle description, alt-j/k: scroll, tab: multi-select'
+  --preview-label-pos='bottom'
+  --preview-window 'down:65%:wrap'
+  --bind 'alt-p:toggle-preview'
+  --bind 'alt-d:preview-half-page-down,alt-u:preview-half-page-up'
+  --bind 'alt-k:preview-up,alt-j:preview-down'
+  --color 'pointer:green,marker:green'
+)
+
+# --app so the list is the apps someone would install, not the runtimes and
+# extensions they pull in. The first run downloads Flathub's appstream data,
+# which is why this can pause before the picker appears.
+app_ids=$(flatpak remote-ls flathub --app --columns=application | fzf "${fzf_args[@]}")
+
+if [[ -n $app_ids ]]; then
+  source omarchy-sudo-keepalive
+
+  # Convert newline-separated selections to arguments for the add helper
+  echo "$app_ids" | tr '\n' ' ' | xargs omarchy-flatpak-add
+  omarchy-show-done
+fi

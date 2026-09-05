@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# omarchy:summary=Install Flatpak apps from Flathub if they are missing
+# omarchy:args=<app-ids...>
+# omarchy:examples=omarchy flatpak add com.obsproject.Studio
+# omarchy:requires-sudo=true
+
+# System scope, the same as everything omarchy-pkg-add installs: an app added
+# by Omarchy belongs to the machine, and sudo settles the privilege here rather
+# than leaving flatpak to raise a polkit dialog that a terminal install has
+# nobody to answer.
+if omarchy-flatpak-missing "$@"; then
+  if (( EUID == 0 )); then
+    flatpak install --system --noninteractive flathub "$@" || exit 1
+  else
+    sudo flatpak install --system --noninteractive flathub "$@" || exit 1
+  fi
+fi
+
+for app in "$@"; do
+  # Secondary check to handle states where flatpak doesn't actually register an error
+  if ! flatpak info "$app" &>/dev/null; then
+    echo -e "\033[31mError: Flatpak app '$app' did not install\033[0m" >&2
+    exit 1
+  fi
+done
+
+exit 0

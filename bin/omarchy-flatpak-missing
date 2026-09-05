@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# omarchy:summary=Returns true if any of the named Flatpak apps are missing from the system (or false if they're all there).
+# omarchy:args=<app-ids...>
+
+for app in "$@"; do
+  if ! flatpak info "$app" &>/dev/null; then
+    exit 0
+  fi
+done
+
+exit 1

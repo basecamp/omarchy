@@ -6,9 +6,7 @@
 
 set -e
 
-if omarchy-cmd-present flatpak && flatpak info com.nvidia.geforcenow &>/dev/null; then
-  flatpak uninstall -y --delete-data com.nvidia.geforcenow
-fi
+omarchy-flatpak-drop com.nvidia.geforcenow
 
 echo ""
 echo "GeForce NOW removed."
