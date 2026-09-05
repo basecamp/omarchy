@@ -10,10 +10,28 @@ consume_sleep_events() {
 
   while IFS= read -r line; do
     if [[ $line == *"boolean true"* ]]; then
+      if hibernate_boot_auth_active; then
+        printf 'omarchy-system-sleep-monitor: boot authentication replaces the hibernate session lock\n' >&2
+        return 0
+      fi
       "$sleep_lock"
       return 0
     fi
   done
+}
+
+hibernate_boot_auth_active() {
+  local marker marker_fd lock_status
+  [[ -n ${XDG_RUNTIME_DIR:-} ]] || return 1
+  marker="$XDG_RUNTIME_DIR/omarchy-hibernate-boot-auth.lock"
+  [[ -f $marker ]] || return 1
+
+  exec {marker_fd}<"$marker" || return 1
+  flock -n -E 75 "$marker_fd" 2>/dev/null
+  lock_status=$?
+  exec {marker_fd}>&-
+
+  (( lock_status == 75 ))
 }
 
 monitor_sleep_events() {

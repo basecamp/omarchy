@@ -129,6 +129,7 @@ assertDeepEqual(
 
 const defaultItems = menu.parseMenuJsonc(defaultMenuJsonc)
 const defaultById = Object.fromEntries(defaultItems.map(item => [item.id, item]))
+assertEqual(defaultById['system.hibernate'].action, 'omarchy-system-hibernate', 'menu hibernates through the authentication-aware command')
 
 // Needs the real menu: app rows sort after all menu items, and only at that
 // item count does the order tiebreak alone bury an installed app.
