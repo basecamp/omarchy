@@ -7,6 +7,11 @@ set -e
 
 # Install voxtype and configure it for use.
 
+if ! grep -qw avx2 /proc/cpuinfo; then
+  echo "Voxtype Dictation requires AVX2 on this hardware and cannot be installed." >&2
+  exit 1
+fi
+
 if gum confirm "Install Voxtype + AI model (~150MB) to enable dictation?"; then
   omarchy-pkg-add wtype voxtype-bin
 
