@@ -628,7 +628,7 @@ Item {
         if (!root.isDescendantOf(entry.id, active)) continue
         if (!root.matchesQuery(entry, query)) continue
 
-        var detail = root.parentPathFor(entry.id)
+        var detail = MenuModel.searchDetail(root.items, entry)
         var row = root.displayRow(entry, detail, root.searchScore(entry, query))
         if (entry.parent === active) currentRows.push(row)
         else drilldownRows.push(row)
