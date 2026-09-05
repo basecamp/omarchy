@@ -15,6 +15,17 @@ Item {
   property QtObject bar: null
   property string moduleName: ""
   property var settings: ({})
+  property string region: ""
+
+  readonly property color effectiveForeground: {
+    if (bar && typeof bar.regionForeground === "function" && region !== "") {
+      var rf = bar.regionForeground(region)
+      if (rf !== undefined) return rf
+    }
+    if (bar && bar.barForeground !== undefined) return bar.barForeground
+    if (bar && bar.foreground !== undefined) return bar.foreground
+    return Color.foreground
+  }
 
   // Bar geometry, lifted off the host. Widgets read these constantly to pick
   // between horizontal/vertical layouts; defining them on the base keeps the

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# omarchy:summary=Choose a legible transparent bar text color
+# omarchy:summary=Choose legible transparent bar text colors across regions
 # omarchy:hidden=true
 
 set -e
@@ -11,6 +11,7 @@ text_color=${3:-}
 background_color=${4:-}
 background_path=""
 screen_size=""
+mode="regions"
 
 shift 4 2>/dev/null || true
 while (($# > 0)); do
@@ -23,6 +24,10 @@ while (($# > 0)); do
     screen_size=${2:-}
     shift 2
     ;;
+  --single)
+    mode="single"
+    shift
+    ;;
   *)
     shift
     ;;
@@ -34,7 +39,11 @@ valid_hex() {
 }
 
 fallback() {
-  printf '%s\n' "$text_color"
+  if [[ $mode == "single" ]]; then
+    printf '%s\n' "$text_color"
+  else
+    printf '%s %s %s\n' "$text_color" "$text_color" "$text_color"
+  fi
   exit 0
 }
 
@@ -68,6 +77,18 @@ contrast() {
   '
 }
 
+pick_best_color() {
+  local sample="$1"
+  local text_contrast
+  local background_contrast
+  text_contrast=$(contrast "$text_color" "$sample")
+  background_contrast=$(contrast "$background_color" "$sample")
+
+  awk -v text="$text_contrast" -v background="$background_contrast" 'BEGIN { exit !(background > text) }' \
+    && printf '%s' "$background_color" \
+    || printf '%s' "$text_color"
+}
+
 valid_hex "$text_color" || fallback
 valid_hex "$background_color" || fallback
 [[ $position =~ ^(top|bottom|left|right)$ ]] || fallback
@@ -93,33 +114,69 @@ screen_height=${BASH_REMATCH[2]}
 case "$position" in
 top)
   crop="${screen_width}x${bar_size}+0+0"
+  sample_geom="3x1!"
+  sample_fmt='%[fx:int(255*p{0,0}.r)],%[fx:int(255*p{0,0}.g)],%[fx:int(255*p{0,0}.b)]\n%[fx:int(255*p{1,0}.r)],%[fx:int(255*p{1,0}.g)],%[fx:int(255*p{1,0}.b)]\n%[fx:int(255*p{2,0}.r)],%[fx:int(255*p{2,0}.g)],%[fx:int(255*p{2,0}.b)]\n'
   ;;
 bottom)
   crop_y=$((screen_height - bar_size))
   ((crop_y >= 0)) || fallback
   crop="${screen_width}x${bar_size}+0+${crop_y}"
+  sample_geom="3x1!"
+  sample_fmt='%[fx:int(255*p{0,0}.r)],%[fx:int(255*p{0,0}.g)],%[fx:int(255*p{0,0}.b)]\n%[fx:int(255*p{1,0}.r)],%[fx:int(255*p{1,0}.g)],%[fx:int(255*p{1,0}.b)]\n%[fx:int(255*p{2,0}.r)],%[fx:int(255*p{2,0}.g)],%[fx:int(255*p{2,0}.b)]\n'
   ;;
 left)
   crop="${bar_size}x${screen_height}+0+0"
+  sample_geom="1x3!"
+  sample_fmt='%[fx:int(255*p{0,0}.r)],%[fx:int(255*p{0,0}.g)],%[fx:int(255*p{0,0}.b)]\n%[fx:int(255*p{0,1}.r)],%[fx:int(255*p{0,1}.g)],%[fx:int(255*p{0,1}.b)]\n%[fx:int(255*p{0,2}.r)],%[fx:int(255*p{0,2}.g)],%[fx:int(255*p{0,2}.b)]\n'
   ;;
 right)
   crop_x=$((screen_width - bar_size))
   ((crop_x >= 0)) || fallback
   crop="${bar_size}x${screen_height}+${crop_x}+0"
+  sample_geom="1x3!"
+  sample_fmt='%[fx:int(255*p{0,0}.r)],%[fx:int(255*p{0,0}.g)],%[fx:int(255*p{0,0}.b)]\n%[fx:int(255*p{0,1}.r)],%[fx:int(255*p{0,1}.g)],%[fx:int(255*p{0,1}.b)]\n%[fx:int(255*p{0,2}.r)],%[fx:int(255*p{0,2}.g)],%[fx:int(255*p{0,2}.b)]\n'
   ;;
 esac
 
-pixel=$(magick "$background_path" -auto-orient \
+if [[ $mode == "single" ]]; then
+  pixel=$(magick "$background_path" -auto-orient \
+    -resize "${screen_width}x${screen_height}^" \
+    -gravity center -extent "${screen_width}x${screen_height}" \
+    -gravity NorthWest -crop "$crop" +repage \
+    -scale '1x1!' -format '%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]' info:- 2>/dev/null || true)
+  [[ $pixel =~ ^([0-9]+),([0-9]+),([0-9]+)$ ]] || fallback
+
+  sample=$(printf '#%02x%02x%02x' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
+  printf '%s\n' "$(pick_best_color "$sample")"
+  exit 0
+fi
+
+pixels=$(magick "$background_path" -auto-orient \
   -resize "${screen_width}x${screen_height}^" \
   -gravity center -extent "${screen_width}x${screen_height}" \
   -gravity NorthWest -crop "$crop" +repage \
-  -resize '1x1!' -format '%[fx:int(255*r)],%[fx:int(255*g)],%[fx:int(255*b)]' info:- 2>/dev/null || true)
-[[ $pixel =~ ^([0-9]+),([0-9]+),([0-9]+)$ ]] || fallback
+  -scale "$sample_geom" -format "$sample_fmt" info:- 2>/dev/null || true)
 
-sample=$(printf '#%02x%02x%02x' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}")
-text_contrast=$(contrast "$text_color" "$sample")
-background_contrast=$(contrast "$background_color" "$sample")
+readarray -t pixel_array <<< "$pixels"
+if ((${#pixel_array[@]} < 3)); then
+  fallback
+fi
 
-awk -v text="$text_contrast" -v background="$background_contrast" 'BEGIN { exit !(background > text) }' \
-  && printf '%s\n' "$background_color" \
-  || printf '%s\n' "$text_color"
+to_hex() {
+  local p="$1"
+  if [[ $p =~ ^([0-9]+),([0-9]+),([0-9]+)$ ]]; then
+    printf '#%02x%02x%02x' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
+  else
+    echo "$text_color"
+  fi
+}
+
+sample_left=$(to_hex "${pixel_array[0]}")
+sample_center=$(to_hex "${pixel_array[1]}")
+sample_right=$(to_hex "${pixel_array[2]}")
+
+color_left=$(pick_best_color "$sample_left")
+color_center=$(pick_best_color "$sample_center")
+color_right=$(pick_best_color "$sample_right")
+
+printf '%s %s %s\n' "$color_left" "$color_center" "$color_right"

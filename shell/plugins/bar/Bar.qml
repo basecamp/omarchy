@@ -65,15 +65,31 @@ Item {
   property color themeForeground: Color.bar.text
   property color themeContrastForeground: Color.background
   property color transparentForeground: Color.bar.text
+  property color transparentForegroundLeft: Color.bar.text
+  property color transparentForegroundCenter: Color.bar.text
+  property color transparentForegroundRight: Color.bar.text
   property color foreground: themeForeground
   property color barForeground: useTransparentForeground ? transparentForeground : themeForeground
+  property color barForegroundLeft: useTransparentForeground ? transparentForegroundLeft : themeForeground
+  property color barForegroundCenter: useTransparentForeground ? transparentForegroundCenter : themeForeground
+  property color barForegroundRight: useTransparentForeground ? transparentForegroundRight : themeForeground
   property bool foregroundAnimationEnabled: true
   property color background: Color.bar.background
   property color urgent: Color.bar.active
 
   Behavior on barForeground { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on barForegroundLeft { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on barForegroundCenter { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+  Behavior on barForegroundRight { enabled: root.foregroundAnimationEnabled; ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on background { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
   Behavior on urgent { ColorAnimation { duration: 420; easing.type: Easing.InOutCubic } }
+
+  function regionForeground(region) {
+    if (region === "left") return barForegroundLeft
+    if (region === "center") return barForegroundCenter
+    if (region === "right") return barForegroundRight
+    return barForeground
+  }
   property var tooltipTarget: null
   property var pendingTooltipTarget: null
   property string tooltipText: ""
@@ -822,6 +838,9 @@ Item {
   function scheduleTransparentForegroundRefresh() {
     if (!requestedTransparent) {
       transparentForeground = themeForeground
+      transparentForegroundLeft = themeForeground
+      transparentForegroundCenter = themeForeground
+      transparentForegroundRight = themeForeground
       return
     }
     transparentForegroundTimer.restart()
@@ -856,16 +875,34 @@ Item {
     id: transparentForegroundProc
     stdout: SplitParser {
       onRead: function(line) {
-        var value = String(line || "").trim()
-        if (!/^#[0-9A-Fa-f]{6}$/.test(value)) return
-
-        root.foregroundAnimationEnabled = false
-        root.transparentForeground = value
-        if (root.requestedTransparent) {
-          root.useTransparentForeground = true
-          root.transparent = true
+        var parts = String(line || "").trim().split(/\s+/)
+        var wasTransparent = root.useTransparentForeground
+        if (parts.length >= 3 &&
+            /^#[0-9A-Fa-f]{6}$/.test(parts[0]) &&
+            /^#[0-9A-Fa-f]{6}$/.test(parts[1]) &&
+            /^#[0-9A-Fa-f]{6}$/.test(parts[2])) {
+          if (!wasTransparent) root.foregroundAnimationEnabled = false
+          root.transparentForegroundLeft = parts[0]
+          root.transparentForegroundCenter = parts[1]
+          root.transparentForegroundRight = parts[2]
+          root.transparentForeground = parts[1]
+          if (root.requestedTransparent) {
+            root.useTransparentForeground = true
+            root.transparent = true
+          }
+          if (!wasTransparent) root.restoreForegroundAnimation()
+        } else if (parts.length >= 1 && /^#[0-9A-Fa-f]{6}$/.test(parts[0])) {
+          if (!wasTransparent) root.foregroundAnimationEnabled = false
+          root.transparentForegroundLeft = parts[0]
+          root.transparentForegroundCenter = parts[0]
+          root.transparentForegroundRight = parts[0]
+          root.transparentForeground = parts[0]
+          if (root.requestedTransparent) {
+            root.useTransparentForeground = true
+            root.transparent = true
+          }
+          if (!wasTransparent) root.restoreForegroundAnimation()
         }
-        root.restoreForegroundAnimation()
       }
     }
   }
@@ -1769,6 +1806,7 @@ Item {
       if ("bar" in target) target.bar = root
       if ("moduleName" in target) target.moduleName = moduleName
       if ("settings" in target) target.settings = moduleSettings
+      if ("region" in target) target.region = region
     }
 
     Component {
